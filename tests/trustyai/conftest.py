@@ -92,7 +92,7 @@ def minio_secret(admin_client: DynamicClient, model_namespace: Namespace) -> Gen
             "AWS_DEFAULT_REGION": "dXMtc291dGg=",
             "AWS_S3_BUCKET": "bW9kZWxtZXNoLWV4YW1wbGUtbW9kZWxz",
             "AWS_S3_ENDPOINT": "aHR0cDovL21pbmlvOjkwMDA=",
-            "AWS_SECRET_ACCESS_KEY": "VEhFU0VDUkVUS0VZ",
+            "AWS_SECRET_ACCESS_KEY": "VEhFU0VDUkVUS0VZ",  # pragma: allowlist secret
         },
         label={
             f"{OPENDATAHUB_IO}/dashboard": "true",
