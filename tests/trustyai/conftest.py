@@ -1,4 +1,4 @@
-from typing import Generator, Any
+from typing import Any
 
 import pytest
 from kubernetes.dynamic import DynamicClient
@@ -7,8 +7,6 @@ from ocp_resources.pod import Pod
 from ocp_resources.resource import get_client
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
-
-from tests.trustyai.utils.minio import MinioPod, MinioService, MinioSecret
 
 
 MINIO: str = "minio"
@@ -31,7 +29,7 @@ def model_namespace(request: Any, admin_client: DynamicClient) -> Namespace:
 
 
 @pytest.fixture(scope="class")
-def minio_pod(admin_client: DynamicClient, model_namespace: Namespace) -> Generator[MinioPod]:
+def minio_pod(admin_client: DynamicClient, model_namespace: Namespace) -> Pod:
     with Pod(
         name=MINIO,
         namespace=model_namespace.name,
@@ -63,7 +61,7 @@ def minio_pod(admin_client: DynamicClient, model_namespace: Namespace) -> Genera
 
 
 @pytest.fixture(scope="class")
-def minio_service(admin_client: DynamicClient, model_namespace: Namespace) -> Generator[MinioService]:
+def minio_service(admin_client: DynamicClient, model_namespace: Namespace) -> Service:
     with Service(
         name=MINIO,
         namespace=model_namespace.name,
@@ -83,7 +81,7 @@ def minio_service(admin_client: DynamicClient, model_namespace: Namespace) -> Ge
 
 
 @pytest.fixture(scope="class")
-def minio_secret(admin_client: DynamicClient, model_namespace: Namespace) -> Generator[MinioSecret]:
+def minio_secret(admin_client: DynamicClient, model_namespace: Namespace) -> Secret:
     with Secret(
         name="aws-connection-minio-data-connection",
         namespace=model_namespace.name,
@@ -107,5 +105,5 @@ def minio_secret(admin_client: DynamicClient, model_namespace: Namespace) -> Gen
 
 
 @pytest.fixture(scope="class")
-def minio_data_connection(minio_service: Service, minio_pod: Pod, minio_secret: Secret) -> Generator[Secret]:
+def minio_data_connection(minio_service: Service, minio_pod: Pod, minio_secret: Secret) -> Secret:
     yield minio_secret
