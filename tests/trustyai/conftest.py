@@ -74,7 +74,7 @@ def minio_service(admin_client: DynamicClient, model_namespace: Namespace) -> Se
             }
         ],
         selector={
-            "app": "minio",
+            "app": MINIO,
         },
     ) as minio_service:
         yield minio_service
