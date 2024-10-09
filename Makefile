@@ -1,17 +1,10 @@
-# Pytest args handling
-PYTEST_ARGS ?= tests --tc-file=tests/global_config.py --tc-format=python
-
-#OPENSHIFT_PYTHON_WRAPPER LOG LEVEL
-export OPENSHIFT_PYTHON_WRAPPER_LOG_LEVEL=DEBUG
-
-
 IMAGE_BUILD_CMD = $(shell which podman 2>/dev/null || which docker)
 IMAGE_REGISTRY ?= "quay.io"
 REGISTRY_NAMESPACE ?= "redhat_msi"
-OPERATOR_IMAGE_NAME="opendatahub-tests"
+IMAGE_NAME="opendatahub-tests"
 IMAGE_TAG ?= "latest"
 
-FULL_OPERATOR_IMAGE ?= "$(IMAGE_REGISTRY)/$(REGISTRY_NAMESPACE)/$(OPERATOR_IMAGE_NAME):$(IMAGE_TAG)"
+FULL_OPERATOR_IMAGE ?= "$(IMAGE_REGISTRY)/$(REGISTRY_NAMESPACE)/$(IMAGE_NAME):$(IMAGE_TAG)"
 POETRY_BIN = poetry
 
 all: check
