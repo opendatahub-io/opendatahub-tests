@@ -8,18 +8,13 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
-from ocp_resources.resource import ResourceEditor, get_client
+from ocp_resources.resource import ResourceEditor
 from ocp_resources.service_mesh_member import ServiceMeshMember
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_utilities.infra import get_pods_by_name_prefix
 from pytest_testconfig import config as py_config
 
 from utilities.serving_runtime import ServingRuntimeFromTemplate
-
-
-@pytest.fixture(scope="session")
-def admin_client() -> DynamicClient:
-    return get_client()
 
 
 @pytest.fixture(scope="session")
@@ -43,16 +38,6 @@ def aws_secret_access_key() -> Optional[str]:
 @pytest.fixture(scope="session")
 def valid_aws_config(aws_access_key: str, aws_secret_access_key: str) -> Tuple[str, str]:
     return aws_access_key, aws_secret_access_key
-
-
-@pytest.fixture(scope="class")
-def model_namespace(request, admin_client: DynamicClient) -> Namespace:
-    with Namespace(
-        client=admin_client,
-        name=request.param["name"],
-    ) as ns:
-        ns.wait_for_status(status=Namespace.Status.ACTIVE, timeout=120)
-        yield ns
 
 
 @pytest.fixture(scope="class")
