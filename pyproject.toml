@@ -16,42 +16,34 @@ no_implicit_optional = true
 show_error_codes = true
 warn_unused_ignores = true
 
-[tool.poetry]
+[tool.uv]
+dev-dependencies = [
+    "ipdb>=0.13.13",
+    "ipython>=8.12.3",
+]
+
+[project]
+requires-python = ">=3.8"
 name = "opendatahub-tests"
 version = "0.1.0"
 description = "Tests repository for Open Data Hub (ODH)"
 authors = []
-license = "Apache License 2.0"
+license = "Apache-2.0"
 readme = "README.md"
-packages = [{ include = "*" }]
-homepage = "https://github.com/opendatahub-io/opendatahub-tests"
 keywords = ["Openshift", "RHOAI", "ODH"]
 classifiers = [
   "Programming Language :: Python :: 3",
   "Operating System :: OS Independent",
 ]
 
-[tool.poetry-dynamic-versioning.substitution]
-files = ["VERSION"]
+dependencies = [
+    "openshift-python-utilities",
+    "openshift-python-wrapper",
+    "pytest-progress",
+    "pytest-testconfig",
+    "python-simple-logger",
+    "pyyaml",
+]
 
-[tool.poetry.dependencies]
-python = "^3.8"
-python-simple-logger = "^1.0.39"
-pytest-testconfig = "^0.2.0"
-pytest-progress = "^1.3.0"
-pyyaml = "^6.0.2"
-openshift-python-utilities = "^5.0.68"
-openshift-python-wrapper = "^10.0.92"
-
-
-[tool.poetry.group.dev.dependencies]
-ipdb = "^0.13.13"
-ipython = "*"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
-
-[tool.poetry-dynamic-versioning]
-enable = true
-pattern = "((?P<epoch>\\d+)!)?(?P<base>\\d+(\\.\\d+)*)"
+[project.urls]
+homepage = "https://github.com/opendatahub-io/opendatahub-tests"

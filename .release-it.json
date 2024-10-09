@@ -40,8 +40,8 @@
   },
   "plugins": {
     "@release-it/bumper": {
-      "in": "VERSION",
-      "out": "VERSION"
+      "in": "pyproject.toml",
+      "out": { "file": "pyproject.toml", "path": "project.version" }
     }
   }
 }

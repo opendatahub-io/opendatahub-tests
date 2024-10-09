@@ -1,0 +1,14 @@
+**/*.pyc
+**/__pycache__/
+.git/
+.github/
+.idea
+.pytest_cache/
+.tox
+.venv/
+.flake8
+.gitignore
+README.md
+renovate.json
+.pre-commit-config.yaml
+.release-it.json
