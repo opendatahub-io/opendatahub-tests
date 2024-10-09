@@ -1,31 +1,13 @@
-from typing import Any
-
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
-from ocp_resources.resource import get_client
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 
 
 MINIO: str = "minio"
 OPENDATAHUB_IO: str = "opendatahub.io"
-
-
-@pytest.fixture(scope="session")
-def admin_client() -> DynamicClient:
-    return get_client()
-
-
-@pytest.fixture(scope="class")
-def model_namespace(request: Any, admin_client: DynamicClient) -> Namespace:
-    with Namespace(
-        client=admin_client,
-        name=request.param["name"],
-    ) as ns:
-        ns.wait_for_status(status=Namespace.Status.ACTIVE, timeout=120)
-        yield ns
 
 
 @pytest.fixture(scope="class")
@@ -81,7 +63,9 @@ def minio_service(admin_client: DynamicClient, model_namespace: Namespace) -> Se
 
 
 @pytest.fixture(scope="class")
-def minio_secret(admin_client: DynamicClient, model_namespace: Namespace) -> Secret:
+def minio_data_connection(
+    admin_client: DynamicClient, model_namespace: Namespace, minio_pod: Pod, minio_service: Service
+) -> Secret:
     with Secret(
         name="aws-connection-minio-data-connection",
         namespace=model_namespace.name,
@@ -102,8 +86,3 @@ def minio_secret(admin_client: DynamicClient, model_namespace: Namespace) -> Sec
         },
     ) as minio_secret:
         yield minio_secret
-
-
-@pytest.fixture(scope="class")
-def minio_data_connection(minio_service: Service, minio_pod: Pod, minio_secret: Secret) -> Secret:
-    yield minio_secret
