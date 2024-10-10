@@ -5,7 +5,6 @@ IMAGE_NAME="opendatahub-tests"
 IMAGE_TAG ?= "latest"
 
 FULL_OPERATOR_IMAGE ?= "$(IMAGE_REGISTRY)/$(REGISTRY_NAMESPACE)/$(IMAGE_NAME):$(IMAGE_TAG)"
-POETRY_BIN = poetry
 
 all: check
 

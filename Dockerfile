@@ -23,7 +23,6 @@ RUN curl -L https://mirror.openshift.com/pub/openshift-v4/clients/rosa/latest/ro
 RUN curl -L https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/stable/openshift-client-linux.tar.gz --output /tmp/openshift-client-linux.tar.gz \
     && tar xvf /tmp/openshift-client-linux.tar.gz --no-same-owner \
     && mv oc /usr/bin/oc \
-    && mv kubectl /usr/bin/kubectl \
     && chmod +x /usr/bin/oc
 
 RUN useradd -ms /bin/bash $USER
