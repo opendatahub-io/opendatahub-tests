@@ -1,4 +1,4 @@
-FROM python:3.12
+FROM python:3.13
 
 ARG USER=odh
 ARG TESTS_DIR=/home/$USER/opendatahub-tests/
