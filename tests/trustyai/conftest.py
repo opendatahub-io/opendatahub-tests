@@ -135,8 +135,7 @@ def mariadb_operator(admin_client: DynamicClient) -> None:
 
 
 @pytest.fixture(scope="session")
-def mariadb_operator_cr(admin_client
-) -> MariadbOperator:
+def mariadb_operator_cr(admin_client) -> MariadbOperator:
     with MariadbOperator(
         client=admin_client,
         name=f"{MARIADB}-operator",
@@ -179,7 +178,9 @@ def mariadb_operator_cr(admin_client
 
 
 @pytest.fixture(scope="class")
-def mariadb(admin_client, model_namespace: Namespace, db_credentials: Secret, mariadb_operator_cr: MariadbOperator) -> MariaDB:
+def mariadb(
+    admin_client, model_namespace: Namespace, db_credentials: Secret, mariadb_operator_cr: MariadbOperator
+) -> MariaDB:
     with MariaDB(
         client=admin_client,
         name="mariadb",
