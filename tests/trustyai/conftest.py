@@ -236,7 +236,7 @@ def mariadb(
         service={"type": "ClusterIP"},
         storage={"size": "1Gi"},
         update_strategy={"type": "ReplicasFirstPrimaryLast"},
-        username="quarkus",
+        username=QUARKUS,
     ) as mariadb:
         wait_for_mariadb_pods(mariadb=mariadb)
         yield mariadb
