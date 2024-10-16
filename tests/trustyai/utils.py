@@ -10,7 +10,7 @@ from simple_logger.logger import get_logger
 LOGGER = get_logger(name=__name__)
 
 
-def wait_for_mariadb_operator_deployments(mariadb_operator: MariadbOperator, timeout: int = 300) -> None:
+def wait_for_mariadb_operator_deployments(mariadb_operator: MariadbOperator) -> None:
     expected_deployment_names: List[str] = [
         "mariadb-operator",
         "mariadb-operator-cert-controller",
