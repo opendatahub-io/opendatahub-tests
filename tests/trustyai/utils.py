@@ -1,4 +1,3 @@
-from time import sleep
 from typing import List
 
 from ocp_resources.deployment import Deployment
@@ -9,6 +8,7 @@ from timeout_sampler import TimeoutSampler, TimeoutExpiredError
 from simple_logger.logger import get_logger
 
 LOGGER = get_logger(name=__name__)
+
 
 def wait_for_mariadb_operator_deployments(mariadb_operator: MariadbOperator, timeout: int = 300) -> None:
     expected_deployment_names: List[str] = [
@@ -21,6 +21,7 @@ def wait_for_mariadb_operator_deployments(mariadb_operator: MariadbOperator, tim
     for name in expected_deployment_names:
         deployment = Deployment(name=name, namespace=mariadb_operator.namespace)
         deployment.wait_for_replicas()
+
 
 def wait_for_mariadb_pods(mariadb: MariaDB, timeout: int = 300) -> None:
     namespace = mariadb.namespace

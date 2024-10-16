@@ -1,5 +1,3 @@
-from time import sleep
-
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.maria_db import MariaDB
@@ -12,7 +10,7 @@ from ocp_utilities.operators import install_operator, uninstall_operator
 
 from tests.trustyai.utils import wait_for_mariadb_operator_deployments, wait_for_mariadb_pods
 
-TIMEOUT_10_MIN = 60*10
+TIMEOUT_10_MIN = 60 * 10
 
 MINIO: str = "minio"
 OPENDATAHUB_IO: str = "opendatahub.io"
@@ -139,8 +137,7 @@ def mariadb_operator(admin_client: DynamicClient) -> None:
 
 
 @pytest.fixture(scope="session")
-def mariadb_operator_cr(admin_client: DynamicClient
-) -> MariadbOperator:
+def mariadb_operator_cr(admin_client: DynamicClient) -> MariadbOperator:
     with MariadbOperator(
         client=admin_client,
         name=f"{MARIADB}-operator",
@@ -183,7 +180,12 @@ def mariadb_operator_cr(admin_client: DynamicClient
 
 
 @pytest.fixture(scope="class")
-def mariadb(admin_client: DynamicClient, model_namespace: Namespace, db_credentials: Secret, mariadb_operator_cr: MariadbOperator) -> MariaDB:
+def mariadb(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    db_credentials: Secret,
+    mariadb_operator_cr: MariadbOperator,
+) -> MariaDB:
     with MariaDB(
         client=admin_client,
         name=MARIADB,
