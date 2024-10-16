@@ -192,7 +192,7 @@ def mariadb(
         client=admin_client,
         name=MARIADB,
         namespace=model_namespace.name,
-        connection={"secretName": "mariadb-conn", "secretTemplate": {"key": "dsn"}},  # pragma: allowlist secret
+        connection={"secretName": "mariadb-conn", "secretTemplate": {"key": "dsn"}},
         database="trustyai_database",
         galera={"enabled": False},
         metrics={
@@ -201,7 +201,7 @@ def mariadb(
                 "generate": True,
                 "key": "password",
                 "name": "mariadb-metrics",
-            },  # pragma: allowlist secret
+            },
         },
         my_cnf="""
             [mariadb]
@@ -216,22 +216,22 @@ def mariadb(
             "generate": False,
             "key": "databasePassword",
             "name": "db-credentials",
-        },  # pragma: allowlist secret
+        },
         primary_connection={
-            "secretName": "mariadb-conn-primary",
+            "secretName": "mariadb-conn-primary", # pragma: allowlist secret
             "secretTemplate": {"key": "dsn"},
-        },  # pragma: allowlist secret
+        },
         primary_service={"type": "ClusterIP"},
         replicas=1,
         root_password_secret_key_ref={
             "generate": False,
             "key": "databasePassword",
             "name": "db-credentials",
-        },  # pragma: allowlist secret
+        },
         secondary_connection={
-            "secretName": "mariadb-conn-secondary",
+            "secretName": "mariadb-conn-secondary", # pragma: allowlist secret
             "secretTemplate": {"key": "dsn"},
-        },  # pragma: allowlist secret
+        },
         secondary_service={"type": "ClusterIP"},
         service={"type": "ClusterIP"},
         storage={"size": "1Gi"},
