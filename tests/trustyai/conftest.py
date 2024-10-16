@@ -192,7 +192,7 @@ def mariadb(
         client=admin_client,
         name=MARIADB,
         namespace=model_namespace.name,
-        connection={"secretName": "mariadb-conn", "secretTemplate": {"key": "dsn"}},
+        connection={"secretName": "mariadb-conn", "secretTemplate": {"key": "dsn"}}, # pragma: allowlist secret
         database="trustyai_database",
         galera={"enabled": False},
         metrics={
