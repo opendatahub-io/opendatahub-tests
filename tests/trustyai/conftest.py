@@ -1,5 +1,3 @@
-from time import sleep
-
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.maria_db import MariaDB
@@ -14,7 +12,7 @@ from tests.trustyai.utils import wait_for_mariadb_operator_deployments, wait_for
 
 OPENSHIFT_OPERATORS = "openshift-operators"
 
-TIMEOUT_10_MIN = 60*10
+TIMEOUT_10_MIN = 60 * 10
 
 MINIO: str = "minio"
 OPENDATAHUB_IO: str = "opendatahub.io"
