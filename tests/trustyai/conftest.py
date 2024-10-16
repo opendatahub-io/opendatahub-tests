@@ -192,12 +192,16 @@ def mariadb(
         client=admin_client,
         name=MARIADB,
         namespace=model_namespace.name,
-        connection={"secretName": "mariadb-conn", "secretTemplate": {"key": "dsn"}}, # pragma: allowlist secret
+        connection={"secretName": "mariadb-conn", "secretTemplate": {"key": "dsn"}},  # pragma: allowlist secret
         database="trustyai_database",
         galera={"enabled": False},
         metrics={
             "enabled": False,
-            "passwordSecretKeyRef": {"generate": True, "key": "password", "name": "mariadb-metrics"}, # pragma: allowlist secret
+            "passwordSecretKeyRef": {
+                "generate": True,
+                "key": "password",
+                "name": "mariadb-metrics",
+            },  # pragma: allowlist secret
         },
         my_cnf="""
             [mariadb]
@@ -208,12 +212,26 @@ def mariadb(
             innodb_buffer_pool_size=1024M
             max_allowed_packet=256M
             """,
-        password_secret_key_ref={"generate": False, "key": "databasePassword", "name": "db-credentials"}, # pragma: allowlist secret
-        primary_connection={"secretName": "mariadb-conn-primary", "secretTemplate": {"key": "dsn"}}, # pragma: allowlist secret
+        password_secret_key_ref={
+            "generate": False,
+            "key": "databasePassword",
+            "name": "db-credentials",
+        },  # pragma: allowlist secret
+        primary_connection={
+            "secretName": "mariadb-conn-primary",
+            "secretTemplate": {"key": "dsn"},
+        },  # pragma: allowlist secret
         primary_service={"type": "ClusterIP"},
         replicas=1,
-        root_password_secret_key_ref={"generate": False, "key": "databasePassword", "name": "db-credentials"}, # pragma: allowlist secret
-        secondary_connection={"secretName": "mariadb-conn-secondary", "secretTemplate": {"key": "dsn"}}, # pragma: allowlist secret
+        root_password_secret_key_ref={
+            "generate": False,
+            "key": "databasePassword",
+            "name": "db-credentials",
+        },  # pragma: allowlist secret
+        secondary_connection={
+            "secretName": "mariadb-conn-secondary",
+            "secretTemplate": {"key": "dsn"},
+        },  # pragma: allowlist secret
         secondary_service={"type": "ClusterIP"},
         service={"type": "ClusterIP"},
         storage={"size": "1Gi"},
