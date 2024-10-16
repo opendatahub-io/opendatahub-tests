@@ -218,7 +218,7 @@ def mariadb(
             "name": "db-credentials",
         },
         primary_connection={
-            "secretName": "mariadb-conn-primary", # pragma: allowlist secret
+            "secretName": "mariadb-conn-primary",  # pragma: allowlist secret
             "secretTemplate": {"key": "dsn"},
         },
         primary_service={"type": "ClusterIP"},
@@ -229,7 +229,7 @@ def mariadb(
             "name": "db-credentials",
         },
         secondary_connection={
-            "secretName": "mariadb-conn-secondary", # pragma: allowlist secret
+            "secretName": "mariadb-conn-secondary",  # pragma: allowlist secret
             "secretTemplate": {"key": "dsn"},
         },
         secondary_service={"type": "ClusterIP"},
