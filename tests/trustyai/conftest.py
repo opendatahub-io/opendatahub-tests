@@ -10,7 +10,9 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_utilities.operators import install_operator, uninstall_operator
 
-from tests.trustyai.utils import wait_for_mariadb_operator_pods, wait_for_mariadb_pods
+from tests.trustyai.utils import wait_for_mariadb_operator_deployments, wait_for_mariadb_pods
+
+TIMEOUT_10_MIN = 60*10
 
 MINIO: str = "minio"
 OPENDATAHUB_IO: str = "opendatahub.io"
@@ -100,7 +102,7 @@ def minio_data_connection(
 
 
 @pytest.fixture(scope="class")
-def db_credentials(admin_client, model_namespace: Namespace) -> Secret:
+def db_credentials(admin_client: DynamicClient, model_namespace: Namespace) -> Secret:
     with Secret(
         client=admin_client,
         name="db-credentials",
@@ -129,7 +131,7 @@ def mariadb_operator(admin_client: DynamicClient) -> None:
         channel="alpha",
         source="community-operators",
         operator_namespace=namespace,
-        timeout=600,
+        timeout=TIMEOUT_10_MIN,
         install_plan_approval="Manual",
     )
     yield
@@ -137,7 +139,8 @@ def mariadb_operator(admin_client: DynamicClient) -> None:
 
 
 @pytest.fixture(scope="session")
-def mariadb_operator_cr(admin_client) -> MariadbOperator:
+def mariadb_operator_cr(admin_client: DynamicClient
+) -> MariadbOperator:
     with MariadbOperator(
         client=admin_client,
         name=f"{MARIADB}-operator",
@@ -175,18 +178,15 @@ def mariadb_operator_cr(admin_client) -> MariadbOperator:
         mariadb_operator.wait_for_condition(
             condition="Deployed", status=mariadb_operator.Condition.Status.TRUE, timeout=10 * 60
         )
-        wait_for_mariadb_operator_pods(mariadb_operator=mariadb_operator)
-        sleep(60)
+        wait_for_mariadb_operator_deployments(mariadb_operator=mariadb_operator)
         yield mariadb_operator
 
 
 @pytest.fixture(scope="class")
-def mariadb(
-    admin_client, model_namespace: Namespace, db_credentials: Secret, mariadb_operator_cr: MariadbOperator
-) -> MariaDB:
+def mariadb(admin_client: DynamicClient, model_namespace: Namespace, db_credentials: Secret, mariadb_operator_cr: MariadbOperator) -> MariaDB:
     with MariaDB(
         client=admin_client,
-        name="mariadb",
+        name=MARIADB,
         namespace=model_namespace.name,
         connection={"secretName": "mariadb-conn", "secretTemplate": {"key": "dsn"}},
         database="trustyai_database",
