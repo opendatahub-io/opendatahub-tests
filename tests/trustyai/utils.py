@@ -28,7 +28,7 @@ def wait_for_mariadb_pods(mariadb: MariaDB, timeout: int = 300) -> None:
     label_key = "app.kubernetes.io/instance"
     label_value = "mariadb"
 
-    def _check_mariadb_pod():
+    def _check_mariadb_pod() -> bool:
         pods = Pod.get(namespace=namespace)
         matching_pods = [pod for pod in pods if pod.labels.get(label_key) == label_value]
         if not matching_pods:
