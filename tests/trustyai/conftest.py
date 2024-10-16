@@ -1,3 +1,5 @@
+from time import sleep
+
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.maria_db import MariaDB
@@ -174,6 +176,7 @@ def mariadb_operator_cr(admin_client) -> MariadbOperator:
             condition="Deployed", status=mariadb_operator.Condition.Status.TRUE, timeout=10 * 60
         )
         wait_for_mariadb_operator_pods(mariadb_operator=mariadb_operator)
+        sleep(60)
         yield mariadb_operator
 
 
