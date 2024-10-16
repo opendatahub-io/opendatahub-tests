@@ -7,6 +7,8 @@ from ocp_resources.pod import Pod
 from timeout_sampler import TimeoutSampler, TimeoutExpiredError
 from simple_logger.logger import get_logger
 
+TIMEOUT_5_MIN = 60 * 5
+
 LOGGER = get_logger(name=__name__)
 
 
@@ -23,7 +25,7 @@ def wait_for_mariadb_operator_deployments(mariadb_operator: MariadbOperator) -> 
         deployment.wait_for_replicas()
 
 
-def wait_for_mariadb_pods(mariadb: MariaDB, timeout: int = 300) -> None:
+def wait_for_mariadb_pods(mariadb: MariaDB, timeout: int = TIMEOUT_5_MIN) -> None:
     namespace = mariadb.namespace
     label_key = "app.kubernetes.io/instance"
     label_value = "mariadb"
