@@ -1,9 +1,11 @@
 import os
 import shlex
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import pytest
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
+from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
@@ -11,9 +13,12 @@ from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.service_mesh_member import ServiceMeshMember
 from ocp_resources.serving_runtime import ServingRuntime
+from ocp_resources.storage_class import StorageClass
 from ocp_utilities.infra import get_pods_by_name_prefix
 from pytest_testconfig import config as py_config
 
+from tests.model_serving.model_server.storage.constants import NFS_STR
+from tests.model_serving.model_server.storage.pvc.utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
@@ -57,14 +62,27 @@ def ci_s3_storage_uri(request) -> str:
 
 
 @pytest.fixture(scope="class")
-def model_pvc(admin_client: DynamicClient, model_namespace: Namespace) -> PersistentVolumeClaim:
-    with PersistentVolumeClaim(
-        name="model-pvc",
-        namespace=model_namespace.name,
-        client=admin_client,
-        size="15Gi",
-        accessmodes="ReadWriteOnce",
-    ) as pvc:
+def model_pvc(
+    request,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+) -> PersistentVolumeClaim:
+    access_mode = "ReadWriteOnce"
+    pvc_kwargs = {
+        "name": "model-pvc",
+        "namespace": model_namespace.name,
+        "client": admin_client,
+        "size": "15Gi",
+    }
+    if hasattr(request, "param"):
+        access_mode = request.param.get("access-modes")
+
+        if storage_class_name := request.param.get("storage-class-name"):
+            pvc_kwargs["storage_class"] = storage_class_name
+
+    pvc_kwargs["accessmodes"] = access_mode
+
+    with PersistentVolumeClaim(**pvc_kwargs) as pvc:
         yield pvc
 
 
@@ -114,7 +132,7 @@ def downloaded_model_data(
 def serving_runtime(
     request,
     admin_client: DynamicClient,
-    service_mesh_member,
+    service_mesh_member: ServiceMeshMember,
     model_namespace: Namespace,
     downloaded_model_data: str,
 ) -> ServingRuntime:
@@ -136,44 +154,67 @@ def inference_service(
     model_pvc: PersistentVolumeClaim,
     downloaded_model_data: str,
 ) -> InferenceService:
-    with InferenceService(
-        client=admin_client,
-        name=request.param["name"],
-        namespace=model_namespace.name,
-        annotations={
-            "serving.knative.openshift.io/enablePassthrough": "true",
-            "sidecar.istio.io/inject": "true",
-            "sidecar.istio.io/rewriteAppHTTPProbers": "true",
-            "serving.kserve.io/deploymentMode": "Serverless",
-        },
-        predictor={
-            "model": {
-                "modelFormat": {"name": serving_runtime.instance.spec.supportedModelFormats[0].name},
-                "version": "1",
-                "runtime": serving_runtime.name,
-                "storageUri": f"pvc://{model_pvc.name}/{downloaded_model_data}",
-            },
-        },
-    ) as inference_service:
-        inference_service.wait_for_condition(
-            condition=inference_service.Condition.READY,
-            status=inference_service.Condition.Status.TRUE,
-            timeout=10 * 60,
+    isvc_kwargs = {
+        "client": admin_client,
+        "name": request.param["name"],
+        "namespace": model_namespace.name,
+        "runtime": serving_runtime.name,
+        "storage_uri": f"pvc://{model_pvc.name}/{downloaded_model_data}",
+        "model_format": serving_runtime.instance.spec.supportedModelFormats[0].name,
+        "deployment_mode": request.param.get("deployment-mode", "Serverless"),
+    }
+
+    if min_replicas := request.param.get("min-replicas"):
+        isvc_kwargs["min_replicas"] = min_replicas
+
+    with create_isvc(**isvc_kwargs) as isvc:
+        yield isvc
+
+
+@pytest.fixture(scope="class")
+def isvc_deployment_ready(admin_client: DynamicClient, inference_service: InferenceService) -> None:
+    deployment_name_prefix = f"{inference_service.name}-predictor"
+    deployment = list(
+        Deployment.get(
+            dyn_client=admin_client,
+            namespace=inference_service.namespace,
         )
-        yield inference_service
+    )
+
+    if deployment and deployment[0].name.startswith(deployment_name_prefix):
+        deployment[0].wait_for_replicas()
+        return
+
+    raise ResourceNotFoundError(f"Deployment with prefix {deployment_name_prefix} not found")
 
 
 @pytest.fixture()
-def predictor_pod(admin_client: DynamicClient, inference_service: InferenceService) -> Pod:
+def predictor_pods_scope_function(admin_client: DynamicClient, inference_service: InferenceService) -> List[Pod]:
     return get_pods_by_name_prefix(
         client=admin_client,
         pod_prefix=f"{inference_service.name}-predictor",
         namespace=inference_service.namespace,
-    )[0]
+    )
+
+
+@pytest.fixture(scope="class")
+def predictor_pods_scope_class(
+    admin_client: DynamicClient, inference_service: InferenceService, isvc_deployment_ready: None
+) -> List[Pod]:
+    return get_pods_by_name_prefix(
+        client=admin_client,
+        pod_prefix=f"{inference_service.name}-predictor",
+        namespace=inference_service.namespace,
+    )
 
 
 @pytest.fixture()
-def patched_isvc(request, inference_service: InferenceService, predictor_pod: Pod) -> InferenceService:
+def first_predictor_pod(predictor_pods_scope_function) -> Pod:
+    return predictor_pods_scope_function[0]
+
+
+@pytest.fixture()
+def patched_isvc(request, inference_service: InferenceService, first_predictor_pod: Pod) -> InferenceService:
     with ResourceEditor(
         patches={
             inference_service: {
@@ -183,5 +224,11 @@ def patched_isvc(request, inference_service: InferenceService, predictor_pod: Po
             }
         }
     ):
-        predictor_pod.wait_deleted()
+        first_predictor_pod.wait_deleted()
         yield inference_service
+
+
+@pytest.fixture(scope="module")
+def skip_if_no_nfs_storage_class(admin_client):
+    if not StorageClass(client=admin_client, name=NFS_STR).exists:
+        pytest.skip(f"StorageClass {NFS_STR} is missing from the cluster")
