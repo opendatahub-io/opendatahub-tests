@@ -28,7 +28,7 @@ name = "opendatahub-tests"
 version = "0.1.0"
 description = "Tests repository for Open Data Hub (ODH)"
 authors = []
-license = "Apache License 2.0"
+license = {text = "Apache License (2.0)"}
 readme = "README.md"
 keywords = ["Openshift", "RHOAI", "ODH"]
 classifiers = [
