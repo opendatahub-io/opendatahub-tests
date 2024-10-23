@@ -1,3 +1,6 @@
+from typing import Generator, Dict
+
+from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 from ocp_resources.project_project_openshift_io import Project
 from ocp_resources.project_request import ProjectRequest
@@ -7,13 +10,13 @@ TIMEOUT_6MIN = 6 * 10
 
 
 def create_ns(
-    name,
-    unprivileged_client=None,
-    labels=None,
-    admin_client=None,
-    teardown=True,
-    delete_timeout=TIMEOUT_6MIN,
-):
+    name: str,
+    unprivileged_client: DynamicClient = None,
+    labels: Dict[str, str] =None,
+    admin_client: DynamicClient = None,
+    teardown: bool = True,
+    delete_timeout: int = TIMEOUT_6MIN,
+) -> Generator[Namespace] | Generator[Project] :
     if not unprivileged_client:
         with Namespace(
             client=admin_client,

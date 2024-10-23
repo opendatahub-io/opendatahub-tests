@@ -48,7 +48,12 @@ def curl_from_pod(
     return pod.execute(command=shlex.split(f"curl -k {host}/{endpoint}"), ignore_rc=True)
 
 
-def create_sidecar_pod(admin_client, namespace, istio, pod_name):
+def create_sidecar_pod(
+    admin_client: DynamicClient,
+    namespace: str,
+    istio: bool,
+    pod_name: str,
+) -> Pod:
     cmd = f"oc run {pod_name} -n {namespace} --image=registry.access.redhat.com/rhel7/rhel-tools"
     if istio:
         cmd = f'{cmd} --annotations=sidecar.istio.io/inject="true"'

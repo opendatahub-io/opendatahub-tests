@@ -1,8 +1,10 @@
+from typing import Dict, List
+
 AWS_REGION: str = "us-east-2"
 AWS_BUCKET: str = "ods-ci-wisdom"
 AWS_ENDPOINT: str = "https://s3.us-east-2.amazonaws.com/"
 
-SR_CONTAINERS_KSERVE_CAIKIT: list = [
+SR_CONTAINERS_KSERVE_CAIKIT: List[Dict[str,str]] = [
     {
         "args": ["--model-name=/mnt/models/artifacts/"],
         "command": ["text-generation-launcher"],
@@ -24,8 +26,8 @@ SR_CONTAINERS_KSERVE_CAIKIT: list = [
         "volumeMounts": [{"mountPath": "/dev/shm", "name": "shm"}],
     },
 ]
-SR_SUPPORTED_FORMATS_CAIKIT: list = [
+SR_SUPPORTED_FORMATS_CAIKIT: List[Dict[str,str]] = [
     {"autoSelect": True, "name": "caikit"},
 ]
-SR_VOLUMES: list = [{"emptyDir": {"medium": "Memory", "sizeLimit": "2Gi"}, "name": "shm"}]
-SR_ANNOTATIONS: dict = {"prometheus.io/path": "/metrics", "prometheus.io/port": "3000"}
+SR_VOLUMES: List[Dict[str,str]] = [{"emptyDir": {"medium": "Memory", "sizeLimit": "2Gi"}, "name": "shm"}]
+SR_ANNOTATIONS: Dict[str,str] = {"prometheus.io/path": "/metrics", "prometheus.io/port": "3000"}
