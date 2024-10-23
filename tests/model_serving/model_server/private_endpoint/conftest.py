@@ -1,9 +1,11 @@
 import json
 import pytest
+from typing import Generator
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.secret import Secret
 from ocp_resources.namespace import Namespace
 from ocp_resources.serving_runtime import ServingRuntime
+from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
 from ocp_resources.service_mesh_member import ServiceMeshMember
 from kubernetes.dynamic import DynamicClient
@@ -25,12 +27,12 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.fixture(scope="module")
-def endpoint_namespace(admin_client):
+def endpoint_namespace(admin_client: DynamicClient) -> Generator[Namespace]:
     yield from create_ns(admin_client=admin_client, name="endpoint-namespace")
 
 
 @pytest.fixture(scope="module")
-def diff_namespace(admin_client):
+def diff_namespace(admin_client: DynamicClient) -> Generator[Namespace]:
     yield from create_ns(admin_client=admin_client, name="diff-namespace")
 
 
@@ -38,7 +40,7 @@ def diff_namespace(admin_client):
 def endpoint_sr(
     admin_client: DynamicClient,
     endpoint_namespace: Namespace,
-) -> ServingRuntime:
+) -> Generator[ServingRuntime]:
     with ServingRuntime(
         client=admin_client,
         name="flan-example-sr",
@@ -53,7 +55,9 @@ def endpoint_sr(
 
 
 @pytest.fixture()
-def endpoint_s3_secret(admin_client, endpoint_namespace, aws_access_key, aws_secret_access_key):
+def endpoint_s3_secret(
+    admin_client: DynamicClient, endpoint_namespace: Namespace, aws_access_key: str, aws_secret_access_key: str
+) -> Generator[Secret]:
     data = {
         "AWS_ACCESS_KEY_ID": b64_encoded_string(aws_access_key),
         "AWS_DEFAULT_REGION": b64_encoded_string(AWS_REGION),
@@ -72,7 +76,13 @@ def endpoint_s3_secret(admin_client, endpoint_namespace, aws_access_key, aws_sec
 
 
 @pytest.fixture()
-def endpoint_isvc(admin_client, endpoint_sr, endpoint_s3_secret, storage_config_secret, endpoint_namespace):
+def endpoint_isvc(
+    admin_client: DynamicClient,
+    endpoint_sr: ServingRuntime,
+    endpoint_s3_secret: Secret,
+    storage_config_secret: Secret,
+    endpoint_namespace: Namespace,
+) -> Generator[InferenceService]:
     predictor = {
         "model": {
             "modelFormat": {
@@ -99,7 +109,13 @@ def endpoint_isvc(admin_client, endpoint_sr, endpoint_s3_secret, storage_config_
 
 
 @pytest.fixture()
-def storage_config_secret(admin_client, endpoint_namespace, endpoint_s3_secret, aws_access_key, aws_secret_access_key):
+def storage_config_secret(
+    admin_client: DynamicClient,
+    endpoint_namespace: Namespace,
+    endpoint_s3_secret: Secret,
+    aws_access_key: str,
+    aws_secret_access_key: str,
+) -> Generator[Secret]:
     secret = {
         "access_key_id": aws_access_key,
         "bucket": AWS_BUCKET,
@@ -121,7 +137,7 @@ def storage_config_secret(admin_client, endpoint_namespace, endpoint_s3_secret, 
 
 
 @pytest.fixture()
-def service_mesh_member(admin_client, diff_namespace):
+def service_mesh_member(admin_client: DynamicClient, diff_namespace: Namespace) -> Generator[ServiceMeshMember]:
     with ServiceMeshMember(
         client=admin_client,
         namespace=diff_namespace.name,
@@ -133,7 +149,7 @@ def service_mesh_member(admin_client, diff_namespace):
 
 
 @pytest.fixture()
-def endpoint_pod_with_istio_sidecar(admin_client, endpoint_namespace):
+def endpoint_pod_with_istio_sidecar(admin_client: DynamicClient, endpoint_namespace: Namespace) -> Generator[Pod]:
     pod = create_sidecar_pod(
         admin_client=admin_client,
         namespace=endpoint_namespace.name,
@@ -145,7 +161,7 @@ def endpoint_pod_with_istio_sidecar(admin_client, endpoint_namespace):
 
 
 @pytest.fixture()
-def endpoint_pod_without_istio_sidecar(admin_client, endpoint_namespace):
+def endpoint_pod_without_istio_sidecar(admin_client: DynamicClient, endpoint_namespace: Namespace) -> Generator[Pod]:
     pod = create_sidecar_pod(
         admin_client=admin_client,
         namespace=endpoint_namespace.name,
@@ -157,7 +173,7 @@ def endpoint_pod_without_istio_sidecar(admin_client, endpoint_namespace):
 
 
 @pytest.fixture()
-def diff_pod_with_istio_sidecar(admin_client, diff_namespace):
+def diff_pod_with_istio_sidecar(admin_client: DynamicClient, diff_namespace: Namespace) -> Generator[Pod]:
     pod = create_sidecar_pod(
         admin_client=admin_client,
         namespace=diff_namespace.name,
@@ -169,7 +185,7 @@ def diff_pod_with_istio_sidecar(admin_client, diff_namespace):
 
 
 @pytest.fixture()
-def diff_pod_without_istio_sidecar(admin_client, diff_namespace):
+def diff_pod_without_istio_sidecar(admin_client: DynamicClient, diff_namespace: Namespace) -> Generator[Pod]:
     pod = create_sidecar_pod(
         admin_client=admin_client,
         namespace=diff_namespace.name,
@@ -181,7 +197,7 @@ def diff_pod_without_istio_sidecar(admin_client, diff_namespace):
 
 
 @pytest.fixture()
-def running_flan_pod(admin_client, endpoint_isvc):
+def running_flan_pod(admin_client: DynamicClient, endpoint_isvc: InferenceService) -> None:
     predictor_pod = get_flan_pod(
         namespace=endpoint_isvc.namespace,
         client=admin_client,
