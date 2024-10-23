@@ -162,3 +162,7 @@ cython_debug/
 # OS generated files #
 .DS_Store
 .DS_Store?
+
+# OS generated files #
+.DS_Store
+.DS_Store?
