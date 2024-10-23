@@ -12,11 +12,11 @@ TIMEOUT_6MIN = 6 * 10
 def create_ns(
     name: str,
     unprivileged_client: DynamicClient = None,
-    labels: Dict[str, str] =None,
+    labels: Dict[str, str] = None,
     admin_client: DynamicClient = None,
     teardown: bool = True,
     delete_timeout: int = TIMEOUT_6MIN,
-) -> Generator[Namespace] | Generator[Project] :
+) -> Generator[Namespace] | Generator[Project]:
     if not unprivileged_client:
         with Namespace(
             client=admin_client,
