@@ -17,7 +17,6 @@ def create_ns(
     teardown: bool = True,
     delete_timeout: int = TIMEOUT_6MIN,
 ) -> Generator[Namespace] | Generator[Project]:
-) -> Generator[Namespace] | Generator[Project]:
     if not unprivileged_client:
         with Namespace(
             client=admin_client,
