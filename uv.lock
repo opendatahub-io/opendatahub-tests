@@ -680,7 +680,7 @@ dev = [
 
 [[package]]
 name = "openshift-python-utilities"
-version = "5.0.68"
+version = "5.0.70"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "beautifulsoup4" },
@@ -695,11 +695,11 @@ dependencies = [
     { name = "semver" },
     { name = "timeout-sampler" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e4/73/e829a94696d4d2d3074affe97b2e3591a1776a9dd50a20dde10b93540819/openshift_python_utilities-5.0.68.tar.gz", hash = "sha256:afe16b18eec3b20ca71a41601904bb5d7416bf3ec27877faecc0f0c29b7c2f7c", size = 18225 }
+sdist = { url = "https://files.pythonhosted.org/packages/a4/72/fa3d90605f10621b2b3409c400ca7230c36ec4ca1b549f74829c196451e1/openshift_python_utilities-5.0.70.tar.gz", hash = "sha256:dcc8e31f263f04584cda6e327415e72ac00f5a563e7eecbd401b0cc9a6abc382", size = 18300 }
 
 [[package]]
 name = "openshift-python-wrapper"
-version = "10.0.93"
+version = "10.0.99"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -719,11 +719,11 @@ dependencies = [
     { name = "timeout-sampler" },
     { name = "xmltodict" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5f/d6/6326e4f949f906aac843602a47dfe2b6206fc372f032fadabd3e073e2c1b/openshift_python_wrapper-10.0.93.tar.gz", hash = "sha256:faa0b732a07c81374c211efde62f8b8cb00479f49f3b8d593e9dcbf2c6895977", size = 5775607 }
+sdist = { url = "https://files.pythonhosted.org/packages/7c/28/ae14f46ee41e83d977a2bc1b52022407cbbd8bafa70992a47c9eda168c44/openshift_python_wrapper-10.0.99.tar.gz", hash = "sha256:c7c59b035532ab5447a0f6b2b83eb340042c309f74dd6bf7f3fee52b83a4417d", size = 6748161 }
 
 [[package]]
 name = "openshift-python-wrapper-data-collector"
-version = "1.0.77"
+version = "1.0.80"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "openshift-python-wrapper" },
@@ -731,7 +731,7 @@ dependencies = [
     { name = "pytest-testconfig" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/10/2f/6b6a1132910a023a5f544ff97ca2a5dffd2e91985dcdc36f138495c2a120/openshift_python_wrapper_data_collector-1.0.77.tar.gz", hash = "sha256:318e7873b5f8e2fbc57f11f858acc3b162b1909a311c299541256650574cfba2", size = 8311 }
+sdist = { url = "https://files.pythonhosted.org/packages/66/12/2c63dd21f6fec507746475a04421ebb5cfd698208a9c96d16b8bd903041d/openshift_python_wrapper_data_collector-1.0.80.tar.gz", hash = "sha256:1398ac6291a67ccaa075711963a1893dc8881164b979aa50d4436342878a0855", size = 8378 }
 
 [[package]]
 name = "orderly-set"
@@ -884,7 +884,7 @@ wheels = [
 
 [[package]]
 name = "pyhelper-utils"
-version = "0.0.42"
+version = "0.0.43"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "ipdb" },
@@ -893,7 +893,7 @@ dependencies = [
     { name = "requests" },
     { name = "rich" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/48/d4/f961d328fdc9717a9a6b5679369cccccabb48bf5b8b0da806b6a83425313/pyhelper_utils-0.0.42.tar.gz", hash = "sha256:45d60797b92d463d534e253f9dd5a7e2e2e1c26ea98becc5928cc4546130c20e", size = 9694 }
+sdist = { url = "https://files.pythonhosted.org/packages/f0/2e/eaedbd9d73a1fdd7a16bfa6b69cf8e1df147b965f25628f56fd33ed66187/pyhelper_utils-0.0.43.tar.gz", hash = "sha256:a90694f9f9df8bcd5369c53f222dfbcd1946650a5f1255a87184f3c03b4bca30", size = 9748 }
 
 [[package]]
 name = "pynacl"
@@ -1003,12 +1003,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/45/60/571982c7af8f5453b
 
 [[package]]
 name = "python-simple-logger"
-version = "1.0.40"
+version = "1.0.41"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorlog" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/59/f5/83285945b8a6de4c7cd017895ee58fb2b7c0d3b267d18385d52ae2d4a764/python_simple_logger-1.0.40.tar.gz", hash = "sha256:5194447ca8dd743e668f32df880ccd766100339f0d24f922dd4e849066770946", size = 8214 }
+sdist = { url = "https://files.pythonhosted.org/packages/4a/2b/761f249251cf81c2327c9e942a7c6642dedc5bf958959df74cad04bb5708/python_simple_logger-1.0.41.tar.gz", hash = "sha256:9890bf0698fc670eaff6430462ac1da16baad51f3139395e9c8056a2df1e7174", size = 8232 }
 
 [[package]]
 name = "python-slugify"
@@ -1213,12 +1213,12 @@ wheels = [
 
 [[package]]
 name = "timeout-sampler"
-version = "0.0.46"
+version = "0.0.47"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "python-simple-logger" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4c/ce/8de4b35145fc351236c2bd7f3e7094b3c985674f165a3818164b0ef1198d/timeout_sampler-0.0.46.tar.gz", hash = "sha256:286dadc6920bb8976b1247759ab5f546c56caa1ac8adc878862b1a2a614e7b12", size = 3673 }
+sdist = { url = "https://files.pythonhosted.org/packages/44/42/86db619cdcfe9f5fe32ee1e927fdb6954a6b4d7209266b13be9c6b3a947c/timeout_sampler-0.0.47.tar.gz", hash = "sha256:1922eb3417bff24cd3c0dda984fec8f669d0784332b09f179bad2d78b47eca99", size = 3668 }
 
 [[package]]
 name = "tomli"
@@ -1276,9 +1276,9 @@ wheels = [
 
 [[package]]
 name = "xmltodict"
-version = "0.14.0"
+version = "0.14.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/44/ea/9467a80e5d1722067ad235801883e6eb92f1665c2c629fea7d57fb52775e/xmltodict-0.14.0.tar.gz", hash = "sha256:8b39b25b564fd466be566c9e8a869cc4b5083c2fec7f98665f47bf0853f6cc77", size = 51945 }
+sdist = { url = "https://files.pythonhosted.org/packages/50/05/51dcca9a9bf5e1bce52582683ce50980bcadbc4fa5143b9f2b19ab99958f/xmltodict-0.14.2.tar.gz", hash = "sha256:201e7c28bb210e374999d1dde6382923ab0ed1a8a5faeece48ab525b7810a553", size = 51942 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c6/99/23393ec588b33a63b2471df7ab8e583eca117c63fb47b95545e5e747be75/xmltodict-0.14.0-py2.py3-none-any.whl", hash = "sha256:6dd20b8de8d0eb84d175ec706cc17b53df236615b0980de33537736319e5ee85", size = 9993 },
+    { url = "https://files.pythonhosted.org/packages/d6/45/fc303eb433e8a2a271739c98e953728422fa61a3c1f36077a49e395c972e/xmltodict-0.14.2-py2.py3-none-any.whl", hash = "sha256:20cc7d723ed729276e808f26fb6b3599f786cbc37e06c65e192ba77c40f20aac", size = 9981 },
 ]
