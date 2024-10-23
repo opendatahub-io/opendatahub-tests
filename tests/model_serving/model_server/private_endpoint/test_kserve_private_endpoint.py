@@ -1,9 +1,9 @@
-import pytest
 from simple_logger.logger import get_logger
 from tests.model_serving.model_server.private_endpoint.utils import curl_from_pod
 
 
 LOGGER = get_logger(name=__name__)
+
 
 class TestKserveInternalEndpoint:
     def test_deploy_model(self, endpoint_namespace, endpoint_isvc, running_flan_pod):
@@ -32,8 +32,8 @@ class TestKserveInternalEndpoint:
         LOGGER.info("Testing curl from a different namespace with a pod part of the service mesh")
 
         curl_stdout = curl_from_pod(
-            isvc=endpoint_isvc, 
-            pod=diff_pod_with_istio_sidecar, 
+            isvc=endpoint_isvc,
+            pod=diff_pod_with_istio_sidecar,
             endpoint="health",
             protocol="https",
         )

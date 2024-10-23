@@ -1,8 +1,6 @@
-
 import shlex
 import base64
 
-import pytest
 from ocp_resources.pod import Pod
 from kubernetes.dynamic.client import DynamicClient
 from ocp_resources.inference_service import InferenceService
@@ -59,7 +57,7 @@ def create_sidecar_pod(admin_client, namespace, istio, pod_name):
 
     _, _, err = run_command(command=shlex.split(cmd), check=False)
     if err:
-        #pytest.fail(f"Failed on {err}")
+        # pytest.fail(f"Failed on {err}")
         LOGGER.info(msg=err)
 
     pod = Pod(name=pod_name, namespace=namespace, client=admin_client)

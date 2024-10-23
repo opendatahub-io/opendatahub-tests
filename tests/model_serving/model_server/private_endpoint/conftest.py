@@ -10,8 +10,15 @@ from kubernetes.dynamic import DynamicClient
 
 from tests.model_serving.model_server.private_endpoint.utils import create_sidecar_pod, get_flan_pod, b64_encoded_string
 from tests.model_serving.model_server.private_endpoint.infra import create_ns
-from tests.model_serving.model_server.storage.conftest import aws_access_key, aws_secret_access_key
-from tests.model_serving.model_server.private_endpoint.constants import AWS_REGION, AWS_BUCKET, AWS_ENDPOINT, SR_ANNOTATIONS, SR_CONTAINERS_KSERVE_CAIKIT, SR_SUPPORTED_FORMATS_CAIKIT, SR_VOLUMES
+from tests.model_serving.model_server.private_endpoint.constants import (
+    AWS_REGION,
+    AWS_BUCKET,
+    AWS_ENDPOINT,
+    SR_ANNOTATIONS,
+    SR_CONTAINERS_KSERVE_CAIKIT,
+    SR_SUPPORTED_FORMATS_CAIKIT,
+    SR_VOLUMES,
+)
 
 
 LOGGER = get_logger(name=__name__)
@@ -40,7 +47,7 @@ def endpoint_sr(
         multi_model=False,
         supported_model_formats=SR_SUPPORTED_FORMATS_CAIKIT,
         volumes=SR_VOLUMES,
-        spec_annotations=SR_ANNOTATIONS
+        spec_annotations=SR_ANNOTATIONS,
     ) as model_runtime:
         yield model_runtime
 
@@ -70,7 +77,7 @@ def endpoint_isvc(admin_client, endpoint_sr, endpoint_s3_secret, storage_config_
         "model": {
             "modelFormat": {
                 "name": "caikit",
-                },
+            },
             "name": "kserve-container",
             "resources": {
                 "limits": {"cpu": "2", "memory": "8Gi"},
@@ -84,7 +91,9 @@ def endpoint_isvc(admin_client, endpoint_sr, endpoint_s3_secret, storage_config_
         },
     }
 
-    with InferenceService(client=admin_client, namespace=endpoint_namespace.name, predictor=predictor, name="test") as isvc:
+    with InferenceService(
+        client=admin_client, namespace=endpoint_namespace.name, predictor=predictor, name="test"
+    ) as isvc:
         isvc.wait_for_condition(condition="Ready", status="True")
         yield isvc
 
@@ -92,17 +101,15 @@ def endpoint_isvc(admin_client, endpoint_sr, endpoint_s3_secret, storage_config_
 @pytest.fixture()
 def storage_config_secret(admin_client, endpoint_namespace, endpoint_s3_secret, aws_access_key, aws_secret_access_key):
     secret = {
-        "access_key_id":aws_access_key,
-        "bucket":AWS_BUCKET,
-        "default_bucket":AWS_BUCKET,
-        "endpoint_url":AWS_ENDPOINT,
-        "region":AWS_REGION,
-        "secret_access_key":aws_secret_access_key,
-        "type":"s3"
-        }
-    data = {
-        "endpoint-s3-secret": b64_encoded_string(json.dumps(secret))
+        "access_key_id": aws_access_key,
+        "bucket": AWS_BUCKET,
+        "default_bucket": AWS_BUCKET,
+        "endpoint_url": AWS_ENDPOINT,
+        "region": AWS_REGION,
+        "secret_access_key": aws_secret_access_key,
+        "type": "s3",
     }
+    data = {"endpoint-s3-secret": b64_encoded_string(json.dumps(secret))}
     with Secret(
         client=admin_client,
         namespace=endpoint_namespace.name,
