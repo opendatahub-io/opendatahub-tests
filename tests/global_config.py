@@ -10,6 +10,9 @@ aws_access_key_id: Optional[str] = os.environ.get("AWS_ACCESS_KEY_ID", "aws_acce
 
 # S3 buckets
 ci_s3_bucket_name: str = "ci-bucket"
+model_s3_bucket_name: str = "model-bucket"
+model_s3_bucket_region = "us-east-1"
+model_s3_endpoint = f"https://{model_s3_bucket_region}.amazonaws.com/"
 
 for _dir in dir():
     val = locals()[_dir]

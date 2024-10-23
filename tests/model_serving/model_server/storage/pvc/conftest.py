@@ -1,6 +1,5 @@
-import os
 import shlex
-from typing import List, Optional, Tuple
+from typing import List
 
 import pytest
 from kubernetes.dynamic import DynamicClient
@@ -18,42 +17,8 @@ from ocp_utilities.infra import get_pods_by_name_prefix
 from pytest_testconfig import config as py_config
 
 from tests.model_serving.model_server.storage.constants import NFS_STR
-from tests.model_serving.model_server.storage.pvc.utils import create_isvc
+from tests.model_serving.model_server.utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
-
-
-@pytest.fixture(scope="session")
-def aws_access_key() -> Optional[str]:
-    access_key = py_config.get("aws_access_key_id", os.environ.get("AWS_ACCESS_KEY_ID"))
-    if not access_key:
-        raise ValueError("AWS access key is not set")
-
-    return access_key
-
-
-@pytest.fixture(scope="session")
-def aws_secret_access_key() -> Optional[str]:
-    secret_access_key = py_config.get("aws_secret_access_key", os.environ.get("AWS_SECRET_ACCESS_KEY"))
-    if not secret_access_key:
-        raise ValueError("AWS secret key is not set")
-
-    return secret_access_key
-
-
-@pytest.fixture(scope="session")
-def valid_aws_config(aws_access_key: str, aws_secret_access_key: str) -> Tuple[str, str]:
-    return aws_access_key, aws_secret_access_key
-
-
-@pytest.fixture(scope="class")
-def service_mesh_member(admin_client: DynamicClient, model_namespace: Namespace) -> ServiceMeshMember:
-    with ServiceMeshMember(
-        client=admin_client,
-        name="default",
-        namespace=model_namespace.name,
-        control_plane_ref={"name": "data-science-smcp", "namespace": "istio-system"},
-    ) as smm:
-        yield smm
 
 
 @pytest.fixture(scope="class")
@@ -128,8 +93,54 @@ def downloaded_model_data(
     return model_dir
 
 
+@pytest.fixture()
+def predictor_pods_scope_function(admin_client: DynamicClient, pvc_inference_service: InferenceService) -> List[Pod]:
+    return get_pods_by_name_prefix(
+        client=admin_client,
+        pod_prefix=f"{pvc_inference_service.name}-predictor",
+        namespace=pvc_inference_service.namespace,
+    )
+
+
 @pytest.fixture(scope="class")
-def serving_runtime(
+def predictor_pods_scope_class(
+    admin_client: DynamicClient, pvc_inference_service: InferenceService, isvc_deployment_ready: None
+) -> List[Pod]:
+    return get_pods_by_name_prefix(
+        client=admin_client,
+        pod_prefix=f"{pvc_inference_service.name}-predictor",
+        namespace=pvc_inference_service.namespace,
+    )
+
+
+@pytest.fixture()
+def first_predictor_pod(predictor_pods_scope_function) -> Pod:
+    return predictor_pods_scope_function[0]
+
+
+@pytest.fixture()
+def patched_isvc(request, pvc_inference_service: InferenceService, first_predictor_pod: Pod) -> InferenceService:
+    with ResourceEditor(
+        patches={
+            pvc_inference_service: {
+                "metadata": {
+                    "annotations": {"storage.kserve.io/readonly": request.param["readonly"]},
+                }
+            }
+        }
+    ):
+        first_predictor_pod.wait_deleted()
+        yield pvc_inference_service
+
+
+@pytest.fixture(scope="module")
+def skip_if_no_nfs_storage_class(admin_client):
+    if not StorageClass(client=admin_client, name=NFS_STR).exists:
+        pytest.skip(f"StorageClass {NFS_STR} is missing from the cluster")
+
+
+@pytest.fixture(scope="class")
+def pvc_serving_runtime(
     request,
     admin_client: DynamicClient,
     service_mesh_member: ServiceMeshMember,
@@ -146,11 +157,11 @@ def serving_runtime(
 
 
 @pytest.fixture(scope="class")
-def inference_service(
+def pvc_inference_service(
     request,
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    serving_runtime: ServingRuntime,
+    pvc_serving_runtime: ServingRuntime,
     model_pvc: PersistentVolumeClaim,
     downloaded_model_data: str,
 ) -> InferenceService:
@@ -158,9 +169,9 @@ def inference_service(
         "client": admin_client,
         "name": request.param["name"],
         "namespace": model_namespace.name,
-        "runtime": serving_runtime.name,
+        "runtime": pvc_serving_runtime.name,
         "storage_uri": f"pvc://{model_pvc.name}/{downloaded_model_data}",
-        "model_format": serving_runtime.instance.spec.supportedModelFormats[0].name,
+        "model_format": pvc_serving_runtime.instance.spec.supportedModelFormats[0].name,
         "deployment_mode": request.param.get("deployment-mode", "Serverless"),
     }
 
@@ -172,12 +183,12 @@ def inference_service(
 
 
 @pytest.fixture(scope="class")
-def isvc_deployment_ready(admin_client: DynamicClient, inference_service: InferenceService) -> None:
-    deployment_name_prefix = f"{inference_service.name}-predictor"
+def isvc_deployment_ready(admin_client: DynamicClient, pvc_inference_service: InferenceService) -> None:
+    deployment_name_prefix = f"{pvc_inference_service.name}-predictor"
     deployment = list(
         Deployment.get(
             dyn_client=admin_client,
-            namespace=inference_service.namespace,
+            namespace=pvc_inference_service.namespace,
         )
     )
 
@@ -186,49 +197,3 @@ def isvc_deployment_ready(admin_client: DynamicClient, inference_service: Infere
         return
 
     raise ResourceNotFoundError(f"Deployment with prefix {deployment_name_prefix} not found")
-
-
-@pytest.fixture()
-def predictor_pods_scope_function(admin_client: DynamicClient, inference_service: InferenceService) -> List[Pod]:
-    return get_pods_by_name_prefix(
-        client=admin_client,
-        pod_prefix=f"{inference_service.name}-predictor",
-        namespace=inference_service.namespace,
-    )
-
-
-@pytest.fixture(scope="class")
-def predictor_pods_scope_class(
-    admin_client: DynamicClient, inference_service: InferenceService, isvc_deployment_ready: None
-) -> List[Pod]:
-    return get_pods_by_name_prefix(
-        client=admin_client,
-        pod_prefix=f"{inference_service.name}-predictor",
-        namespace=inference_service.namespace,
-    )
-
-
-@pytest.fixture()
-def first_predictor_pod(predictor_pods_scope_function) -> Pod:
-    return predictor_pods_scope_function[0]
-
-
-@pytest.fixture()
-def patched_isvc(request, inference_service: InferenceService, first_predictor_pod: Pod) -> InferenceService:
-    with ResourceEditor(
-        patches={
-            inference_service: {
-                "metadata": {
-                    "annotations": {"storage.kserve.io/readonly": request.param["readonly"]},
-                }
-            }
-        }
-    ):
-        first_predictor_pod.wait_deleted()
-        yield inference_service
-
-
-@pytest.fixture(scope="module")
-def skip_if_no_nfs_storage_class(admin_client):
-    if not StorageClass(client=admin_client, name=NFS_STR).exists:
-        pytest.skip(f"StorageClass {NFS_STR} is missing from the cluster")

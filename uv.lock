@@ -664,8 +664,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "openshift-python-utilities" },
-    { name = "openshift-python-wrapper" },
+    { name = "openshift-python-utilities", specifier = ">=5.0.71" },
+    { name = "openshift-python-wrapper", specifier = ">=10.0.100" },
     { name = "pytest-progress" },
     { name = "pytest-testconfig" },
     { name = "python-simple-logger" },
@@ -680,7 +680,7 @@ dev = [
 
 [[package]]
 name = "openshift-python-utilities"
-version = "5.0.68"
+version = "5.0.71"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "beautifulsoup4" },
@@ -695,11 +695,11 @@ dependencies = [
     { name = "semver" },
     { name = "timeout-sampler" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e4/73/e829a94696d4d2d3074affe97b2e3591a1776a9dd50a20dde10b93540819/openshift_python_utilities-5.0.68.tar.gz", hash = "sha256:afe16b18eec3b20ca71a41601904bb5d7416bf3ec27877faecc0f0c29b7c2f7c", size = 18225 }
+sdist = { url = "https://files.pythonhosted.org/packages/89/6f/3bdbc052664630e0bd8ad304b1b67895757435ddae7cae6a0f6f5d5ebf7f/openshift_python_utilities-5.0.71.tar.gz", hash = "sha256:4a52c065e43285659b80ca32f6621e19f0edc7903e855b32f3a48d893315c066", size = 18312 }
 
 [[package]]
 name = "openshift-python-wrapper"
-version = "10.0.93"
+version = "10.0.100"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -719,11 +719,11 @@ dependencies = [
     { name = "timeout-sampler" },
     { name = "xmltodict" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5f/d6/6326e4f949f906aac843602a47dfe2b6206fc372f032fadabd3e073e2c1b/openshift_python_wrapper-10.0.93.tar.gz", hash = "sha256:faa0b732a07c81374c211efde62f8b8cb00479f49f3b8d593e9dcbf2c6895977", size = 5775607 }
+sdist = { url = "https://files.pythonhosted.org/packages/54/9d/37fccda5945d6a8d3a12e67548df92e401cffeea6b4c4366db5482dd3478/openshift_python_wrapper-10.0.100.tar.gz", hash = "sha256:eeaea53eda20658312d7cb91bf5a7dbcb66eeb7e02435ebc104d2853b25afca7", size = 6749430 }
 
 [[package]]
 name = "openshift-python-wrapper-data-collector"
-version = "1.0.77"
+version = "1.0.81"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "openshift-python-wrapper" },
@@ -731,7 +731,7 @@ dependencies = [
     { name = "pytest-testconfig" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/10/2f/6b6a1132910a023a5f544ff97ca2a5dffd2e91985dcdc36f138495c2a120/openshift_python_wrapper_data_collector-1.0.77.tar.gz", hash = "sha256:318e7873b5f8e2fbc57f11f858acc3b162b1909a311c299541256650574cfba2", size = 8311 }
+sdist = { url = "https://files.pythonhosted.org/packages/d0/9e/347d2f6a854c27899fdaf89365bce78a1726dafb3e30f71ff522e31c222a/openshift_python_wrapper_data_collector-1.0.81.tar.gz", hash = "sha256:87e030cb3c33cdb78629fe726488af6bec7ec7debfb91fd7628b0ea0b9e3f4fc", size = 8384 }
 
 [[package]]
 name = "orderly-set"

@@ -18,7 +18,7 @@ POD_TOUCH_SPLIT_COMMAND: List[str] = shlex.split("touch /mnt/models/test")
 
 
 @pytest.mark.parametrize(
-    "model_namespace, ci_s3_storage_uri, serving_runtime, inference_service",
+    "model_namespace, ci_s3_storage_uri, pvc_serving_runtime, pvc_inference_service",
     [
         pytest.param(
             {"name": "pvc-write-access"},
@@ -38,8 +38,8 @@ class TestKservePVCWriteAccess:
         ]
         assert not restarted_containers, f"Containers {restarted_containers} restarted"
 
-    def test_isvc_read_only_annotation_not_set_by_default(self, inference_service):
-        assert not inference_service.instance.metadata.annotations.get(
+    def test_isvc_read_only_annotation_not_set_by_default(self, pvc_inference_service):
+        assert not pvc_inference_service.instance.metadata.annotations.get(
             "storage.kserve.io/readonly"
         ), "Read only annotation is set"
 

@@ -17,7 +17,7 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_nfs_storage_class")
 
 
 @pytest.mark.parametrize(
-    "model_namespace, ci_s3_storage_uri, model_pvc, serving_runtime, inference_service",
+    "model_namespace, ci_s3_storage_uri, model_pvc, pvc_serving_runtime, pvc_inference_service",
     [
         pytest.param(
             {"name": "pvc-rxw-access"},
