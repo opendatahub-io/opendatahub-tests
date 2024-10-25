@@ -8,6 +8,7 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_utilities.operators import install_operator, uninstall_operator
 
+from tests.trustyai.constants import MARIADB
 from tests.trustyai.utils import wait_for_mariadb_operator_deployments, wait_for_mariadb_pods
 
 OPENSHIFT_OPERATORS = "openshift-operators"
@@ -16,7 +17,6 @@ TIMEOUT_10_MIN = 60 * 10
 
 MINIO: str = "minio"
 OPENDATAHUB_IO: str = "opendatahub.io"
-MARIADB: str = "mariadb"
 QUARKUS: str = "quarkus"
 
 
@@ -121,7 +121,7 @@ def db_credentials(admin_client: DynamicClient, model_namespace: Namespace) -> S
 
 
 @pytest.fixture(scope="session")
-def mariadb_operator(admin_client: DynamicClient) -> None:
+def installed_mariadb_operator(admin_client: DynamicClient) -> None:
     name = "mariadb-operator"
     namespace = "openshift-operators"
     install_operator(
@@ -238,5 +238,5 @@ def mariadb(
         update_strategy={"type": "ReplicasFirstPrimaryLast"},
         username=QUARKUS,
     ) as mariadb:
-        wait_for_mariadb_pods(mariadb=mariadb)
+        wait_for_mariadb_pods(client=admin_client, mariadb=mariadb)
         yield mariadb

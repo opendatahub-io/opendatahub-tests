@@ -1,11 +1,14 @@
 from typing import List
 
+from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.maria_db import MariaDB
 from ocp_resources.mariadb_operator import MariadbOperator
 from ocp_resources.pod import Pod
 from timeout_sampler import TimeoutSampler, TimeoutExpiredError
 from simple_logger.logger import get_logger
+
+from tests.trustyai.constants import MARIADB
 
 TIMEOUT_5_MIN = 60 * 5
 
@@ -25,14 +28,19 @@ def wait_for_mariadb_operator_deployments(mariadb_operator: MariadbOperator) -> 
         deployment.wait_for_replicas()
 
 
-def wait_for_mariadb_pods(mariadb: MariaDB, timeout: int = TIMEOUT_5_MIN) -> None:
+def wait_for_mariadb_pods(client: DynamicClient, mariadb: MariaDB, timeout: int = TIMEOUT_5_MIN) -> None:
     namespace = mariadb.namespace
-    label_key = "app.kubernetes.io/instance"
-    label_value = "mariadb"
 
     def _check_mariadb_pod() -> bool:
         pods = Pod.get(namespace=namespace)
-        matching_pods = [pod for pod in pods if pod.labels.get(label_key) == label_value]
+        matching_pods = [
+            pod
+            for pod in Pod.get(
+                dyn_client=client,
+                namespace=namespace,
+                label_selector=f"app.kubernetes.io/instance={MARIADB}",
+            )
+        ]
         if not matching_pods:
             return False
         pod = matching_pods[0]
@@ -48,5 +56,5 @@ def wait_for_mariadb_pods(mariadb: MariaDB, timeout: int = TIMEOUT_5_MIN) -> Non
         for result in sampler:
             if result:
                 return
-    except TimeoutExpiredError:
-        raise TimeoutError(f"Timed out waiting for MariaDB pod after {timeout} seconds")
+    except TimeoutExpiredError as exc:
+        raise exc
