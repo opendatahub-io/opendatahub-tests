@@ -45,6 +45,7 @@ dependencies = [
     "pytest-testconfig",
     "python-simple-logger",
     "pyyaml",
+    "tenacity",
 ]
 
 [project.urls]

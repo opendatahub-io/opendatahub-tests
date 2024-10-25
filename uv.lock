@@ -654,6 +654,7 @@ dependencies = [
     { name = "pytest-testconfig" },
     { name = "python-simple-logger" },
     { name = "pyyaml" },
+    { name = "tenacity" },
 ]
 
 [package.dev-dependencies]
@@ -670,6 +671,7 @@ requires-dist = [
     { name = "pytest-testconfig" },
     { name = "python-simple-logger" },
     { name = "pyyaml" },
+    { name = "tenacity" },
 ]
 
 [package.metadata.requires-dev]
@@ -699,7 +701,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/e4/73/e829a94696d4d2d30
 
 [[package]]
 name = "openshift-python-wrapper"
-version = "10.0.93"
+version = "10.0.100"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -719,7 +721,7 @@ dependencies = [
     { name = "timeout-sampler" },
     { name = "xmltodict" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5f/d6/6326e4f949f906aac843602a47dfe2b6206fc372f032fadabd3e073e2c1b/openshift_python_wrapper-10.0.93.tar.gz", hash = "sha256:faa0b732a07c81374c211efde62f8b8cb00479f49f3b8d593e9dcbf2c6895977", size = 5775607 }
+sdist = { url = "https://files.pythonhosted.org/packages/54/9d/37fccda5945d6a8d3a12e67548df92e401cffeea6b4c4366db5482dd3478/openshift_python_wrapper-10.0.100.tar.gz", hash = "sha256:eeaea53eda20658312d7cb91bf5a7dbcb66eeb7e02435ebc104d2853b25afca7", size = 6749430 }
 
 [[package]]
 name = "openshift-python-wrapper-data-collector"
@@ -1200,6 +1202,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/28/e3/55dcc2cfbc3ca9c29519eb6884dd1415ecb53b0e934862d3559ddcb7e20b/stack_data-0.6.3.tar.gz", hash = "sha256:836a778de4fec4dcd1dcd89ed8abff8a221f58308462e1c4aa2a3cf30148f0b9", size = 44707 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f1/7b/ce1eafaf1a76852e2ec9b22edecf1daa58175c090266e9f6c64afcd81d91/stack_data-0.6.3-py3-none-any.whl", hash = "sha256:d5558e0c25a4cb0853cddad3d77da9891a08cb85dd9f9f91b9f8cd66e511e695", size = 24521 },
+]
+
+[[package]]
+name = "tenacity"
+version = "9.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/cd/94/91fccdb4b8110642462e653d5dcb27e7b674742ad68efd146367da7bdb10/tenacity-9.0.0.tar.gz", hash = "sha256:807f37ca97d62aa361264d497b0e31e92b8027044942bfa756160d908320d73b", size = 47421 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b6/cb/b86984bed139586d01532a587464b5805f12e397594f19f931c4c2fbfa61/tenacity-9.0.0-py3-none-any.whl", hash = "sha256:93de0c98785b27fcf659856aa9f54bfbd399e29969b0621bc7f762bd441b4539", size = 28169 },
 ]
 
 [[package]]
