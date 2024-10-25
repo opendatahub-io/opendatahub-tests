@@ -52,9 +52,7 @@ class TGISGRPCPlugin:
 
         request = generation_pb2_grpc.generation__pb2.BatchedGenerationRequest(
             model_id=self.model_name,
-            requests=[
-                generation_pb2_grpc.generation__pb2.GenerationRequest(text=query.get("text"))
-            ],
+            requests=[generation_pb2_grpc.generation__pb2.GenerationRequest(text=query.get("text"))],
             params=generation_pb2_grpc.generation__pb2.Parameters(
                 method=generation_pb2_grpc.generation__pb2.GREEDY,
                 sampling=generation_pb2_grpc.generation__pb2.SamplingParameters(seed=1037),
@@ -85,7 +83,7 @@ class TGISGRPCPlugin:
             params=generation_pb2_grpc.generation__pb2.Parameters(
                 method=generation_pb2_grpc.generation__pb2.GREEDY,
                 sampling=generation_pb2_grpc.generation__pb2.SamplingParameters(seed=1037),
-                response=generation_pb2_grpc.generation__pb2.ResponseOptions(generated_tokens=True)
+                response=generation_pb2_grpc.generation__pb2.ResponseOptions(generated_tokens=True),
             ),
         )
 

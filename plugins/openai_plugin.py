@@ -22,10 +22,7 @@ class OpenAIClient:
         request_func (Callable): The function to use for making requests.
     """
 
-    def __init__(self,
-                 host: Any,
-                 streaming: bool = False,
-                 model_name: Any = None) -> None:
+    def __init__(self, host: Any, streaming: bool = False, model_name: Any = None) -> None:
         """
         Initializes the OpenAIClient.
 
@@ -138,8 +135,9 @@ class OpenAIClient:
             logger.exception("Request error")
             return str(err)
 
-    def _construct_request_data(self, endpoint: str, query: dict, extra_param: Optional[dict] = None,
-                                streaming: bool = False) -> dict:
+    def _construct_request_data(
+        self, endpoint: str, query: dict, extra_param: Optional[dict] = None, streaming: bool = False
+    ) -> dict:
         """
         Constructs the request data based on the endpoint and query parameters.
 
@@ -154,25 +152,14 @@ class OpenAIClient:
         """
         data = {}
         if "/v1/chat/completions" in endpoint:
-            data = {
-                "messages": query,
-                "temperature": 0.1,
-                "seed": 1037,
-                "stream": streaming
-            }
+            data = {"messages": query, "temperature": 0.1, "seed": 1037, "stream": streaming}
         elif "/v1/embeddings" in endpoint:
             data = {
                 "input": query["text"],
                 "encoding_format": 0.1,
             }
         else:
-            data = {
-                "prompt": query["text"],
-                "temperature": 1.0,
-                "top_p": 0.9,
-                "seed": 1037,
-                "stream": streaming
-            }
+            data = {"prompt": query["text"], "temperature": 1.0, "top_p": 0.9, "seed": 1037, "stream": streaming}
 
         if self.model_name:
             data["model"] = self.model_name
@@ -214,9 +201,12 @@ class OpenAIClient:
         Returns:
             str: The parsed streaming response data.
         """
-        if "/v1/chat/completions" in endpoint and not message["choices"][0]['delta'].get('content'):
-            message["choices"][0]['delta']['content'] = ""
+        if "/v1/chat/completions" in endpoint and not message["choices"][0]["delta"].get("content"):
+            message["choices"][0]["delta"]["content"] = ""
         if message.get("error"):
             return message.get("error")
-        return message["choices"][0].get('delta', {}).get('content', '') if "/v1/chat/completions" in endpoint else \
-            message["choices"][0].get("text", "")
+        return (
+            message["choices"][0].get("delta", {}).get("content", "")
+            if "/v1/chat/completions" in endpoint
+            else message["choices"][0].get("text", "")
+        )
