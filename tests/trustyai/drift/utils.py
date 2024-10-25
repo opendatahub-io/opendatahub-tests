@@ -101,18 +101,17 @@ def send_inference_request(
             f"Waiting {retry_state.next_action.sleep} seconds..."
         ),
     )
-    def _make_request():
+    def _make_request() -> None:
         try:
             response = requests.post(url=url, headers=headers, data=data_batch, verify=False, timeout=TIMEOUT_30SEC)
             response.raise_for_status()
-            return response
         except RequestException as e:
             LOGGER.debug(response.content)
             LOGGER.error(f"Error sending data for file: {file_path}. Error: {str(e)}")
             raise
 
     try:
-        return _make_request()
+        _make_request()
     except RequestException:
         LOGGER.error(f"All {max_retries} retry attempts failed for file: {file_path}")
         raise
@@ -170,7 +169,6 @@ def send_inference_requests_and_verify_trustyai_service(
 ) -> None:
     """Sends all the data batches present in a given directory to an InferenceService, and verifies that TrustyAIService has registered the observations."""
 
-    files_processed = 0
     for root, _, files in os.walk(data_path):
         for file_name in files:
             file_path = os.path.join(root, file_name)
@@ -192,7 +190,7 @@ def send_inference_requests_and_verify_trustyai_service(
             )
 
 
-def wait_for_modelmesh_pods_registered_by_trustyai(client: DynamicClient, namespace: Namespace):
+def wait_for_modelmesh_pods_registered_by_trustyai(client: DynamicClient, namespace: Namespace) -> None:
     """Check if all the ModelMesh pods in a given namespace are ready and have been registered by the TrustyAIService in that same namespace."""
 
     def _check_pods_ready_with_env() -> bool:
