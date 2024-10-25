@@ -260,6 +260,7 @@ version = "3.0.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
+    { name = "typing-extensions", marker = "python_full_version < '3.9'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/cf/71/608e4546208e5a421ef00b484f582e58ce0f17da05459b915c8ba22dfb78/cloup-3.0.5.tar.gz", hash = "sha256:c92b261c7bb7e13004930f3fb4b3edad8de2d1f12994dcddbe05bc21990443c5", size = 225806 }
 wheels = [
@@ -669,7 +670,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/e4/73/e829a94696d4d2d30
 
 [[package]]
 name = "openshift-python-wrapper"
-version = "10.0.93"
+version = "10.0.100"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -689,7 +690,7 @@ dependencies = [
     { name = "timeout-sampler" },
     { name = "xmltodict" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5f/d6/6326e4f949f906aac843602a47dfe2b6206fc372f032fadabd3e073e2c1b/openshift_python_wrapper-10.0.93.tar.gz", hash = "sha256:faa0b732a07c81374c211efde62f8b8cb00479f49f3b8d593e9dcbf2c6895977", size = 5775607 }
+sdist = { url = "https://files.pythonhosted.org/packages/54/9d/37fccda5945d6a8d3a12e67548df92e401cffeea6b4c4366db5482dd3478/openshift_python_wrapper-10.0.100.tar.gz", hash = "sha256:eeaea53eda20658312d7cb91bf5a7dbcb66eeb7e02435ebc104d2853b25afca7", size = 6749430 }
 
 [[package]]
 name = "openshift-python-wrapper-data-collector"
