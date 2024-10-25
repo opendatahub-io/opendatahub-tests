@@ -2,7 +2,6 @@ import json
 import logging
 import os
 import subprocess
-from time import sleep
 from typing import Any
 
 import requests
@@ -24,14 +23,23 @@ LOGGER = logging.getLogger(__name__)
 TIMEOUT_1SEC: int = 1
 TIMEOUT_30SEC: int = 30
 
+
 def get_ocp_token(namespace: Namespace) -> str:
     return subprocess.check_output(["oc", "create", "token", "test-user", "-n", namespace.name]).decode().strip()
 
 
 def send_request_to_trustyai_service(
-    client: DynamicClient, token: str, trustyai_service: TrustyAIService, endpoint: str, method: str, data: Any = None, json: Any = None
+    client: DynamicClient,
+    token: str,
+    trustyai_service: TrustyAIService,
+    endpoint: str,
+    method: str,
+    data: Any = None,
+    json: Any = None,
 ) -> Any:
-    trustyai_service_route = Route(client=client, namespace=trustyai_service.namespace, name="trustyai-service", ensure_exists=True)
+    trustyai_service_route = Route(
+        client=client, namespace=trustyai_service.namespace, name="trustyai-service", ensure_exists=True
+    )
 
     url = f"https://{trustyai_service_route.host}{endpoint}"
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
@@ -54,12 +62,12 @@ def get_trustyai_model_metadata(client: DynamicClient, token: str, trustyai_serv
 
 
 def send_inference_request(
-        client: DynamicClient,
-        token: str,
-        inference_service: InferenceService,
-        data_batch: Any,
-        file_path: str,
-        max_retries: int = 5,
+    client: DynamicClient,
+    token: str,
+    inference_service: InferenceService,
+    data_batch: Any,
+    file_path: str,
+    max_retries: int = 5,
 ) -> None:
     """
     Send data batch to inference service with retry logic for network errors.
@@ -91,17 +99,11 @@ def send_inference_request(
         before_sleep=lambda retry_state: LOGGER.warning(
             f"Retry attempt {retry_state.attempt_number} for file {file_path} after error. "
             f"Waiting {retry_state.next_action.sleep} seconds..."
-        )
+        ),
     )
     def _make_request():
         try:
-            response = requests.post(
-                url=url,
-                headers=headers,
-                data=data_batch,
-                verify=False,
-                timeout=TIMEOUT_30SEC
-            )
+            response = requests.post(url=url, headers=headers, data=data_batch, verify=False, timeout=TIMEOUT_30SEC)
             response.raise_for_status()
             return response
         except RequestException as e:
@@ -111,7 +113,7 @@ def send_inference_request(
 
     try:
         return _make_request()
-    except RequestException as e:
+    except RequestException:
         LOGGER.error(f"All {max_retries} retry attempts failed for file: {file_path}")
         raise
 
@@ -139,10 +141,15 @@ def get_trustyai_number_of_observations(client: DynamicClient, token: str, trust
 
 def get_number_of_observations_from_data_batch(data: Any) -> int:
     data_dict = json.loads(data)
-    return data_dict['inputs'][0]['shape'][0]
+    return data_dict["inputs"][0]["shape"][0]
 
-def wait_for_trustyai_to_register_inference_request(client:DynamicClient, token:str, trustyai_service: TrustyAIService, expected_observations: int) -> None:
-    current_observations = get_trustyai_number_of_observations(client=client, token=token, trustyai_service=trustyai_service)
+
+def wait_for_trustyai_to_register_inference_request(
+    client: DynamicClient, token: str, trustyai_service: TrustyAIService, expected_observations: int
+) -> None:
+    current_observations = get_trustyai_number_of_observations(
+        client=client, token=token, trustyai_service=trustyai_service
+    )
 
     samples = TimeoutSampler(
         wait_timeout=TIMEOUT_30SEC,
@@ -154,7 +161,13 @@ def wait_for_trustyai_to_register_inference_request(client:DynamicClient, token:
             return
 
 
-def send_inference_requests_and_verify_trustyai_service(client:DynamicClient, token: str, data_path: str, trustyai_service: TrustyAIService, inference_service: InferenceService) -> None:
+def send_inference_requests_and_verify_trustyai_service(
+    client: DynamicClient,
+    token: str,
+    data_path: str,
+    trustyai_service: TrustyAIService,
+    inference_service: InferenceService,
+) -> None:
     """Sends all the data batches present in a given directory to an InferenceService, and verifies that TrustyAIService has registered the observations."""
 
     files_processed = 0
@@ -165,17 +178,25 @@ def send_inference_requests_and_verify_trustyai_service(client:DynamicClient, to
             with open(file_path, "r") as file:
                 data = file.read()
 
-            current_observations = get_trustyai_number_of_observations(client=client, token=token, trustyai_service=trustyai_service)
-            send_inference_request(client=client, token=token, inference_service=inference_service, data_batch=data, file_path=file_path)
-            wait_for_trustyai_to_register_inference_request(client=client, token=token, trustyai_service=trustyai_service, expected_observations=current_observations+get_number_of_observations_from_data_batch(data))
+            current_observations = get_trustyai_number_of_observations(
+                client=client, token=token, trustyai_service=trustyai_service
+            )
+            send_inference_request(
+                client=client, token=token, inference_service=inference_service, data_batch=data, file_path=file_path
+            )
+            wait_for_trustyai_to_register_inference_request(
+                client=client,
+                token=token,
+                trustyai_service=trustyai_service,
+                expected_observations=current_observations + get_number_of_observations_from_data_batch(data),
+            )
 
 
-def wait_for_modelmesh_pods_registered_by_trustyai(client:DynamicClient, namespace: Namespace):
+def wait_for_modelmesh_pods_registered_by_trustyai(client: DynamicClient, namespace: Namespace):
     """Check if all the ModelMesh pods in a given namespace are ready and have been registered by the TrustyAIService in that same namespace."""
 
     def _check_pods_ready_with_env() -> bool:
-        modelmesh_pods = [pod for pod in Pod.get(client=client, namespace=namespace) if
-                          MODELMESH_SERVING in pod.name]
+        modelmesh_pods = [pod for pod in Pod.get(client=client, namespace=namespace) if MODELMESH_SERVING in pod.name]
 
         found_pod_with_env = False
 
@@ -184,9 +205,7 @@ def wait_for_modelmesh_pods_registered_by_trustyai(client:DynamicClient, namespa
                 has_env_var = False
                 # Check containers for environment variable
                 for container in pod.instance.spec.containers:
-                    if container.env is not None and any(
-                            env.name == "MM_PAYLOAD_PROCESSORS" for env in container.env
-                    ):
+                    if container.env is not None and any(env.name == "MM_PAYLOAD_PROCESSORS" for env in container.env):
                         has_env_var = True
                         found_pod_with_env = True
                         break
@@ -211,5 +230,3 @@ def wait_for_modelmesh_pods_registered_by_trustyai(client:DynamicClient, namespa
     for sample in samples:
         if sample:
             return
-
-

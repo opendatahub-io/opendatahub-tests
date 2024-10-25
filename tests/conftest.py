@@ -11,10 +11,6 @@ def admin_client() -> DynamicClient:
 
 @pytest.fixture(scope="class")
 def model_namespace(request, admin_client: DynamicClient) -> Namespace:
-    with Namespace(
-        client=admin_client,
-        name=request.param["name"],
-        label={"modelmesh-enabled": "true"}
-    ) as ns:
+    with Namespace(client=admin_client, name=request.param["name"], label={"modelmesh-enabled": "true"}) as ns:
         ns.wait_for_status(status=Namespace.Status.ACTIVE, timeout=120)
         yield ns

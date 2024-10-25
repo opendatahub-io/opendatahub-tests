@@ -6,7 +6,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 
-from tests.trustyai.constants import MODELMESH_SERVING, TIMEOUT_5MIN
+from tests.trustyai.constants import MODELMESH_SERVING
 from tests.trustyai.drift.utils import wait_for_modelmesh_pods_registered_by_trustyai
 
 MLSERVER: str = "mlserver"
@@ -87,7 +87,12 @@ def gaussian_credit_model(
         },
         annotations={f"{InferenceService.ApiGroup.SERVING_KSERVE_IO}/deploymentMode": "ModelMesh"},
     ) as inference_service:
-        deployment = Deployment(client=admin_client, namespace=model_namespace.name, name=f"{MODELMESH_SERVING}-{mlserver_runtime.name}", wait_for_resource=True)
+        deployment = Deployment(
+            client=admin_client,
+            namespace=model_namespace.name,
+            name=f"{MODELMESH_SERVING}-{mlserver_runtime.name}",
+            wait_for_resource=True,
+        )
         deployment.wait_for_replicas()
         wait_for_modelmesh_pods_registered_by_trustyai(client=admin_client, namespace=model_namespace.name)
         yield inference_service

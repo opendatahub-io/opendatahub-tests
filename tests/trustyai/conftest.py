@@ -64,7 +64,9 @@ def cluster_monitoring_config(admin_client: DynamicClient) -> ConfigMap:
             data={"config.yaml": config_yaml},
         ) as cm:
             yield cm
-    except ConflictError: # This resource is usually created when doing exploratory testing, add this exception for convenience
+    except (
+        ConflictError
+    ):  # This resource is usually created when doing exploratory testing, add this exception for convenience
         yield ConfigMap(name=name, namespace=namespace)
 
 
@@ -81,7 +83,9 @@ def user_workload_monitoring_config(admin_client: DynamicClient) -> ConfigMap:
             data={"config.yaml": config_yaml},
         ) as cm:
             yield cm
-    except ConflictError: # This resource is usually created when doing exploratory testing, add this exception for convenience
+    except (
+        ConflictError
+    ):  # This resource is usually created when doing exploratory testing, add this exception for convenience
         yield ConfigMap(name=name, namespace=namespace)
 
 
