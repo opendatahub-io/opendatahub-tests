@@ -46,6 +46,7 @@ dependencies = [
     "python-simple-logger",
     "pyyaml",
     "tenacity",
+    "types-requests>=2.32.0.20241016",
 ]
 
 [project.urls]
