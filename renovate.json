@@ -1,1 +1,19 @@
-{"$schema": "https://docs.renovatebot.com/renovate-schema.json", "packageRules": [{"matchPackagePatterns": ["python-simple-logger", "pytest-testconfig", "pytest-progress", "pyyaml", "openshift-python-utilities", "openshift-python-wrapper", "ipdb", "ipython"], "groupName": "python-deps"}]}
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    ":dependencyDashboard",
+    ":maintainLockFilesWeekly",
+    ":prHourlyLimitNone"
+  ],
+  "prConcurrentLimit": 0,
+  "lockFileMaintenance": {
+    "enabled": true
+  },
+  "baseBranches": ["main"],
+  "packageRules": [
+    {
+      "matchPackagePatterns": ["*"],
+      "groupName": "python-dependencies"
+    }
+  ]
+}
