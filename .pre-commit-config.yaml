@@ -53,5 +53,5 @@ repos:
     rev: v1.13.0
     hooks:
       - id: mypy
-        additional_dependencies: ["types-PyYAML, types-requests"]
+        additional_dependencies: ["types-PyYAML", "types-requests"]
         exclude: ^(docs/|.*/test_.*|.*conftest.py)
