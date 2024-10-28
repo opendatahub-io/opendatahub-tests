@@ -2,7 +2,7 @@ import json
 import logging
 import os
 import subprocess
-from typing import Any
+from typing import Any, Dict, List
 
 import requests
 from kubernetes.dynamic import DynamicClient
@@ -12,7 +12,6 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 from ocp_resources.trustyai_service import TrustyAIService
-from requests import RequestException
 from timeout_sampler import TimeoutSampler
 
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
@@ -41,8 +40,8 @@ def send_request_to_trustyai_service(
         client=client, namespace=trustyai_service.namespace, name="trustyai-service", ensure_exists=True
     )
 
-    url = f"https://{trustyai_service_route.host}{endpoint}"
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    url: str = f"https://{trustyai_service_route.host}{endpoint}"
+    headers: Dict[str, str] = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
     if method == "GET":
         return requests.get(url=url, headers=headers, verify=False)
@@ -86,16 +85,16 @@ def send_inference_request(
     Raises:
         RequestException: If all retry attempts fail
     """
-    namespace = inference_service.namespace
-    inference_route = Route(client=client, namespace=namespace, name=inference_service.name)
+    namespace: str = inference_service.namespace
+    inference_route: Route = Route(client=client, namespace=namespace, name=inference_service.name)
 
-    url = f"https://{inference_route.host}{inference_route.instance.spec.path}/infer"
-    headers = {"Authorization": f"Bearer {token}"}
+    url: str = f"https://{inference_route.host}{inference_route.instance.spec.path}/infer"
+    headers: Dict[str, str] = {"Authorization": f"Bearer {token}"}
 
     @retry(
         stop=stop_after_attempt(max_retries),
         wait=wait_exponential(multiplier=1, min=4, max=10),
-        retry=retry_if_exception_type(RequestException),
+        retry=retry_if_exception_type(requests.RequestException),
         before_sleep=lambda retry_state: LOGGER.warning(
             f"Retry attempt {retry_state.attempt_number} for file {file_path} after error. "
             f"Waiting {retry_state.next_action.sleep} seconds..."
@@ -103,50 +102,50 @@ def send_inference_request(
     )
     def _make_request() -> None:
         try:
-            response = requests.post(url=url, headers=headers, data=data_batch, verify=False, timeout=TIMEOUT_30SEC)
+            response: requests.Response = requests.post(url=url, headers=headers, data=data_batch, verify=False, timeout=TIMEOUT_30SEC)
             response.raise_for_status()
-        except RequestException as e:
+        except requests.RequestException as e:
             LOGGER.debug(response.content)
             LOGGER.error(f"Error sending data for file: {file_path}. Error: {str(e)}")
             raise
 
     try:
         _make_request()
-    except RequestException:
+    except requests.RequestException:
         LOGGER.error(f"All {max_retries} retry attempts failed for file: {file_path}")
         raise
 
 
 def get_trustyai_number_of_observations(client: DynamicClient, token: str, trustyai_service: TrustyAIService) -> int:
-    model_metadata = get_trustyai_model_metadata(client=client, token=token, trustyai_service=trustyai_service)
+    model_metadata: requests.Response = get_trustyai_model_metadata(client=client, token=token, trustyai_service=trustyai_service)
 
     if not model_metadata:
         return 0
 
     try:
         # Convert response to JSON
-        metadata_json = model_metadata.json()
+        metadata_json: Any = model_metadata.json()
 
         # If empty JSON, return 0
         if not metadata_json:
             return 0
 
         # Get the first model key from the metadata
-        model_key = next(iter(metadata_json))
+        model_key: Any = next(iter(metadata_json))
         return metadata_json[model_key]["data"]["observations"]
     except Exception as e:
         raise TypeError(f"Failed to parse response: {str(e)}")
 
 
 def get_number_of_observations_from_data_batch(data: Any) -> int:
-    data_dict = json.loads(data)
+    data_dict: Dict[str, str] = json.loads(data)
     return data_dict["inputs"][0]["shape"][0]
 
 
 def wait_for_trustyai_to_register_inference_request(
     client: DynamicClient, token: str, trustyai_service: TrustyAIService, expected_observations: int
 ) -> None:
-    current_observations = get_trustyai_number_of_observations(
+    current_observations: int = get_trustyai_number_of_observations(
         client=client, token=token, trustyai_service=trustyai_service
     )
 
@@ -194,9 +193,9 @@ def wait_for_modelmesh_pods_registered_by_trustyai(client: DynamicClient, namesp
     """Check if all the ModelMesh pods in a given namespace are ready and have been registered by the TrustyAIService in that same namespace."""
 
     def _check_pods_ready_with_env() -> bool:
-        modelmesh_pods = [pod for pod in Pod.get(client=client, namespace=namespace) if MODELMESH_SERVING in pod.name]
+        modelmesh_pods: List[Pod] = [pod for pod in Pod.get(client=client, namespace=namespace) if MODELMESH_SERVING in pod.name]
 
-        found_pod_with_env = False
+        found_pod_with_env: bool = False
 
         for pod in modelmesh_pods:
             try:
