@@ -141,7 +141,7 @@ def get_trustyai_number_of_observations(client: DynamicClient, token: str, trust
         raise TypeError(f"Failed to parse response: {str(e)}")
 
 
-def get_number_of_observations_from_data_batch(data: Any) -> int:
+def get_number_of_observations_from_data_batch(data: Any) -> str:
     data_dict: Dict[str, str] = json.loads(data)
     return data_dict["inputs"][0]["shape"][0]
 
