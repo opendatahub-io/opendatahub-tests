@@ -102,7 +102,9 @@ def send_inference_request(
     )
     def _make_request() -> None:
         try:
-            response: requests.Response = requests.post(url=url, headers=headers, data=data_batch, verify=False, timeout=TIMEOUT_30SEC)
+            response: requests.Response = requests.post(
+                url=url, headers=headers, data=data_batch, verify=False, timeout=TIMEOUT_30SEC
+            )
             response.raise_for_status()
         except requests.RequestException as e:
             LOGGER.debug(response.content)
@@ -117,7 +119,9 @@ def send_inference_request(
 
 
 def get_trustyai_number_of_observations(client: DynamicClient, token: str, trustyai_service: TrustyAIService) -> int:
-    model_metadata: requests.Response = get_trustyai_model_metadata(client=client, token=token, trustyai_service=trustyai_service)
+    model_metadata: requests.Response = get_trustyai_model_metadata(
+        client=client, token=token, trustyai_service=trustyai_service
+    )
 
     if not model_metadata:
         return 0
@@ -193,7 +197,9 @@ def wait_for_modelmesh_pods_registered_by_trustyai(client: DynamicClient, namesp
     """Check if all the ModelMesh pods in a given namespace are ready and have been registered by the TrustyAIService in that same namespace."""
 
     def _check_pods_ready_with_env() -> bool:
-        modelmesh_pods: List[Pod] = [pod for pod in Pod.get(client=client, namespace=namespace) if MODELMESH_SERVING in pod.name]
+        modelmesh_pods: List[Pod] = [
+            pod for pod in Pod.get(client=client, namespace=namespace) if MODELMESH_SERVING in pod.name
+        ]
 
         found_pod_with_env: bool = False
 
