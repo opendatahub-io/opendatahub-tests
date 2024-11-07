@@ -34,15 +34,3 @@ or by saving the kubeconfig file under `~/.kube/config`
 ```bash
 uv run pytest
 ```
-
-### To overwrite a pytest config argument
-
-```bash
-uv run pytest --tc=<arg name>:<arg value>
-```
-
-For example:
-
-```bash
-uv run pytest --tc=ci_s3_bucket_name:my-bucket
-```
