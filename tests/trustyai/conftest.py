@@ -53,40 +53,36 @@ def modelmesh_serviceaccount(admin_client: DynamicClient, model_namespace: Names
 
 @pytest.fixture(scope="session")
 def cluster_monitoring_config(admin_client: DynamicClient) -> ConfigMap:
-    config_yaml = yaml.dump({"enableUserWorkload": "true"})
     name = "cluster-monitoring-config"
     namespace = "openshift-monitoring"
-    try:
-        with ConfigMap(
-            client=admin_client,
-            name=name,
-            namespace=namespace,
-            data={"config.yaml": config_yaml},
-        ) as cm:
-            yield cm
-    except (
-        ConflictError
-    ):  # This resource is usually created when doing exploratory testing, add this exception for convenience
-        yield ConfigMap(name=name, namespace=namespace)
+    cm = ConfigMap(name=name, namespace=namespace)
+    if cm.exists: # This resource is usually created when doing exploratory testing, add this exception for convenience
+        yield cm
+
+    with ConfigMap(
+        client=admin_client,
+        name=name,
+        namespace=namespace,
+        data={"config.yaml": yaml.dump({"enableUserWorkload": "true"})},
+    ) as cm:
+        yield cm
 
 
 @pytest.fixture(scope="session")
 def user_workload_monitoring_config(admin_client: DynamicClient) -> ConfigMap:
-    config_yaml = yaml.dump({"prometheus": {"logLevel": "debug", "retention": "15d"}})
     name = "user-workload-monitoring-config"
     namespace = "openshift-user-workload-monitoring"
-    try:
-        with ConfigMap(
-            client=admin_client,
-            name=name,
-            namespace=namespace,
-            data={"config.yaml": config_yaml},
-        ) as cm:
-            yield cm
-    except (
-        ConflictError
-    ):  # This resource is usually created when doing exploratory testing, add this exception for convenience
-        yield ConfigMap(name=name, namespace=namespace)
+    cm = ConfigMap(name=name, namespace=namespace)
+    if cm.exists: # This resource is usually created when doing exploratory testing, add this exception for convenience
+        yield cm
+
+    with ConfigMap(
+        client=admin_client,
+        name=name,
+        namespace=namespace,
+        data={"config.yaml": yaml.dump({"prometheus": {"logLevel": "debug", "retention": "15d"}})},
+    ) as cm:
+        yield cm
 
 
 @pytest.fixture(scope="class")

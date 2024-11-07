@@ -135,15 +135,19 @@ def get_trustyai_number_of_observations(client: DynamicClient, token: str, trust
             return 0
 
         # Get the first model key from the metadata
-        model_key: Any = next(iter(metadata_json))
-        return metadata_json[model_key]["data"]["observations"]
+        model_key: str = next(iter(metadata_json))
+
+        # Safely access nested dictionary values using get()
+        model = metadata_json.get(model_key)
+        if not model:
+            raise KeyError(f"Model data not found for key: {model_key}")
+
+        if observations := model.get("data", {}).get("observations"):
+            return observations
+
+        raise KeyError("Observations data not found in model metadata")
     except Exception as e:
         raise TypeError(f"Failed to parse response: {str(e)}")
-
-
-def get_number_of_observations_from_data_batch(data: Any) -> int:
-    data_dict = json.loads(data)
-    return data_dict["inputs"][0]["shape"][0]
 
 
 def wait_for_trustyai_to_register_inference_request(
@@ -170,7 +174,16 @@ def send_inference_requests_and_verify_trustyai_service(
     trustyai_service: TrustyAIService,
     inference_service: InferenceService,
 ) -> None:
-    """Sends all the data batches present in a given directory to an InferenceService, and verifies that TrustyAIService has registered the observations."""
+    """
+    Sends all the data batches present in a given directory to an InferenceService, and verifies that TrustyAIService has registered the observations.
+
+    Args:
+        client (DynamicClient): The client instance for making API calls.
+        token (str): Authentication token for API access.
+        data_path (str): Directory path containing data batch files.
+        trustyai_service (TrustyAIService): TrustyAIService that will register the model.
+        inference_service (InferenceService): Model to be registered by TrustyAI.
+    """
 
     for root, _, files in os.walk(data_path):
         for file_name in files:
@@ -189,12 +202,18 @@ def send_inference_requests_and_verify_trustyai_service(
                 client=client,
                 token=token,
                 trustyai_service=trustyai_service,
-                expected_observations=current_observations + get_number_of_observations_from_data_batch(data),
+                expected_observations=current_observations + json.loads(data)["inputs"][0]["shape"][0],
             )
 
 
 def wait_for_modelmesh_pods_registered_by_trustyai(client: DynamicClient, namespace: Namespace) -> None:
-    """Check if all the ModelMesh pods in a given namespace are ready and have been registered by the TrustyAIService in that same namespace."""
+    """
+    Check if all the ModelMesh pods in a given namespace are ready and have been registered by the TrustyAIService in that same namespace.
+
+    Args:
+        client (DynamicClient): The client instance for interacting with the cluster.
+        namespace (Namespace): The namespace where ModelMesh pods and TrustyAIService are deployed.
+    """
 
     def _check_pods_ready_with_env() -> bool:
         modelmesh_pods: List[Pod] = [
