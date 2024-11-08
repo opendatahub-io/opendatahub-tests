@@ -3,7 +3,6 @@ import subprocess
 import pytest
 import yaml
 from kubernetes.dynamic import DynamicClient
-from kubernetes.dynamic.exceptions import ConflictError
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
@@ -56,7 +55,7 @@ def cluster_monitoring_config(admin_client: DynamicClient) -> ConfigMap:
     name = "cluster-monitoring-config"
     namespace = "openshift-monitoring"
     cm = ConfigMap(name=name, namespace=namespace)
-    if cm.exists: # This resource is usually created when doing exploratory testing, add this exception for convenience
+    if cm.exists:  # This resource is usually created when doing exploratory testing, add this exception for convenience
         yield cm
 
     with ConfigMap(
@@ -73,7 +72,7 @@ def user_workload_monitoring_config(admin_client: DynamicClient) -> ConfigMap:
     name = "user-workload-monitoring-config"
     namespace = "openshift-user-workload-monitoring"
     cm = ConfigMap(name=name, namespace=namespace)
-    if cm.exists: # This resource is usually created when doing exploratory testing, add this exception for convenience
+    if cm.exists:  # This resource is usually created when doing exploratory testing, add this exception for convenience
         yield cm
 
     with ConfigMap(
