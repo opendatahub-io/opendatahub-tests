@@ -16,7 +16,7 @@ from timeout_sampler import TimeoutSampler
 
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
-from tests.trustyai.constants import MODELMESH_SERVING, TIMEOUT_5MIN
+from tests.trustyai.constants import TIMEOUT_5MIN
 
 LOGGER = logging.getLogger(__name__)
 TIMEOUT_1SEC: int = 1
@@ -217,7 +217,8 @@ def wait_for_modelmesh_pods_registered_by_trustyai(client: DynamicClient, namesp
 
     def _check_pods_ready_with_env() -> bool:
         modelmesh_pods: List[Pod] = [
-            pod for pod in Pod.get(client=client, namespace=namespace)
+            pod
+            for pod in Pod.get(client=client, namespace=namespace)
             if pod.labels.get("modelmesh-service") == "modelmesh-serving"
         ]
 
