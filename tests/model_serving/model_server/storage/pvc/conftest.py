@@ -1,4 +1,3 @@
-import os
 import shlex
 from typing import List, Optional, Tuple
 
@@ -15,7 +14,6 @@ from ocp_resources.service_mesh_member import ServiceMeshMember
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.storage_class import StorageClass
 from ocp_utilities.infra import get_pods_by_name_prefix
-from pytest_testconfig import config as py_config
 
 from tests.model_serving.model_server.storage.constants import NFS_STR
 from tests.model_serving.model_server.storage.pvc.utils import create_isvc
@@ -23,26 +21,32 @@ from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
 @pytest.fixture(scope="session")
-def aws_access_key() -> Optional[str]:
-    access_key = py_config.get("aws_access_key_id", os.environ.get("AWS_ACCESS_KEY_ID"))
+def aws_access_key_id(pytestconfig) -> Optional[str]:
+    access_key = pytestconfig.option.aws_access_key_id
     if not access_key:
-        raise ValueError("AWS access key is not set")
+        raise ValueError(
+            "AWS access key id is not set. "
+            "Either pass with `--aws-access-key-id` or set `AWS_ACCESS_KEY_ID` environment variable"
+        )
 
     return access_key
 
 
 @pytest.fixture(scope="session")
-def aws_secret_access_key() -> Optional[str]:
-    secret_access_key = py_config.get("aws_secret_access_key", os.environ.get("AWS_SECRET_ACCESS_KEY"))
+def aws_secret_access_key(pytestconfig) -> Optional[str]:
+    secret_access_key = pytestconfig.option.aws_secret_access_key
     if not secret_access_key:
-        raise ValueError("AWS secret key is not set")
+        raise ValueError(
+            "AWS secret access key is not set. "
+            "Either pass with `--aws-secret-access-key` or set `AWS_SECRET_ACCESS_KEY` environment variable"
+        )
 
     return secret_access_key
 
 
 @pytest.fixture(scope="session")
-def valid_aws_config(aws_access_key: str, aws_secret_access_key: str) -> Tuple[str, str]:
-    return aws_access_key, aws_secret_access_key
+def valid_aws_config(aws_access_key_id: str, aws_secret_access_key: str) -> Tuple[str, str]:
+    return aws_access_key_id, aws_secret_access_key
 
 
 @pytest.fixture(scope="class")
@@ -56,9 +60,21 @@ def service_mesh_member(admin_client: DynamicClient, model_namespace: Namespace)
         yield smm
 
 
+@pytest.fixture(scope="session")
+def ci_s3_bucket_name(pytestconfig) -> str:
+    bucket_name = pytestconfig.option.ci_s3_bucket_name
+    if not bucket_name:
+        raise ValueError(
+            "CI S3 bucket name is not set. "
+            "Either pass with `--ci-s3-bucket-name` or set `CI_S3_BUCKET_NAME` environment variable"
+        )
+
+    return bucket_name
+
+
 @pytest.fixture(scope="class")
-def ci_s3_storage_uri(request) -> str:
-    return f"s3://{py_config['ci_s3_bucket_name']}/{request.param['model-dir']}/"
+def ci_s3_storage_uri(request, ci_s3_bucket_name) -> str:
+    return f"s3://{ci_s3_bucket_name}/{request.param['model-dir']}/"
 
 
 @pytest.fixture(scope="class")
@@ -93,7 +109,7 @@ def downloaded_model_data(
     ci_s3_storage_uri: str,
     model_pvc: PersistentVolumeClaim,
     aws_secret_access_key: str,
-    aws_access_key: str,
+    aws_access_key_id: str,
 ) -> str:
     mount_path: str = "data"
     model_dir: str = "model-dir"
@@ -107,7 +123,7 @@ def downloaded_model_data(
                 "sleep infinity",
             ],
             "env": [
-                {"name": "AWS_ACCESS_KEY_ID", "value": aws_access_key},
+                {"name": "AWS_ACCESS_KEY_ID", "value": aws_access_key_id},
                 {"name": "AWS_SECRET_ACCESS_KEY", "value": aws_secret_access_key},
             ],
             "volumeMounts": [{"mountPath": mount_path, "name": model_pvc.name, "subPath": model_dir}],
@@ -199,7 +215,9 @@ def predictor_pods_scope_function(admin_client: DynamicClient, inference_service
 
 @pytest.fixture(scope="class")
 def predictor_pods_scope_class(
-    admin_client: DynamicClient, inference_service: InferenceService, isvc_deployment_ready: None
+    admin_client: DynamicClient,
+    inference_service: InferenceService,
+    isvc_deployment_ready: None,
 ) -> List[Pod]:
     return get_pods_by_name_prefix(
         client=admin_client,

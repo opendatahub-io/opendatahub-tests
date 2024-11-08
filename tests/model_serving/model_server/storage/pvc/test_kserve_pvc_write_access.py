@@ -39,9 +39,9 @@ class TestKservePVCWriteAccess:
         assert not restarted_containers, f"Containers {restarted_containers} restarted"
 
     def test_isvc_read_only_annotation_not_set_by_default(self, inference_service):
-        assert not inference_service.instance.metadata.annotations.get(
-            "storage.kserve.io/readonly"
-        ), "Read only annotation is set"
+        assert not inference_service.instance.metadata.annotations.get("storage.kserve.io/readonly"), (
+            "Read only annotation is set"
+        )
 
     def test_isvc_read_only_annotation_default_value(self, first_predictor_pod):
         with pytest.raises(ExecOnPodError):
