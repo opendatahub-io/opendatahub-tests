@@ -217,7 +217,8 @@ def wait_for_modelmesh_pods_registered_by_trustyai(client: DynamicClient, namesp
 
     def _check_pods_ready_with_env() -> bool:
         modelmesh_pods: List[Pod] = [
-            pod for pod in Pod.get(client=client, namespace=namespace) if MODELMESH_SERVING in pod.name
+            pod for pod in Pod.get(client=client, namespace=namespace)
+            if pod.labels.get("modelmesh-service") == "modelmesh-serving"
         ]
 
         found_pod_with_env: bool = False
