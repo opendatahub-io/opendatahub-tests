@@ -1,6 +1,6 @@
 import shlex
 import base64
-from typing import Optional, Generator
+from typing import Optional
 from urllib.parse import urlparse
 
 from ocp_resources.pod import Pod
@@ -18,12 +18,23 @@ class ProtocolNotSupported(Exception):
     def __init__(self, protocol: str):
         self.protocol = protocol
 
+
     def __str__(self) -> str:
         return f"Protocol {self.protocol} is not supported"
 
 
+
+
 class MissingStorageArgument(Exception):
     def __init__(
+        self,
+        storageUri: Optional[str],
+        storage_key: Optional[str],
+        storage_path: Optional[str],
+    ):
+        self.storageUri = storageUri
+        self.storage_key = storage_key
+        self.storage_path = storage_path
         self,
         storageUri: Optional[str],
         storage_key: Optional[str],
@@ -40,6 +51,7 @@ class MissingStorageArgument(Exception):
             "storage_key": {self.storage_key}
             "storage_path: {self.storage_path}
             In order to create a valid ISVC you need to specify either a storageUri value
+            or both a storage key and a storage path.
             or both a storage key and a storage path.
         """
         return msg
@@ -76,7 +88,7 @@ def create_sidecar_pod(
     namespace: str,
     istio: bool,
     pod_name: str,
-) -> Generator[Pod, None, None]:
+) -> Pod:
     cmd = f"oc run {pod_name} -n {namespace} --image=registry.access.redhat.com/rhel7/rhel-tools"
     if istio:
         cmd = f'{cmd} --annotations=sidecar.istio.io/inject="true"'
@@ -87,14 +99,14 @@ def create_sidecar_pod(
     if err:
         LOGGER.info(msg=err)
 
-    with Pod(
-        name=pod_name,
-        namespace=namespace,
-        client=admin_client,
-    ) as p:
-        p.wait_for_status(status="Running")
-        p.wait_for_condition(condition="Ready", status="True")
-        yield p
+    containers = [pod_name]
+    if istio:
+        containers.append("istio-proxy")
+
+    pod = Pod(name=pod_name, namespace=namespace, client=admin_client)
+    pod.wait_for_status(status="Running")
+    pod.wait_for_condition(condition="Ready", status="True")
+    return pod
 
 
 def b64_encoded_string(string_to_encode: str) -> str:

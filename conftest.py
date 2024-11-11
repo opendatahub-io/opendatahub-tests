@@ -2,6 +2,8 @@ import logging
 import os
 import pathlib
 import shutil
+import pytest
+from typing import Optional
 
 from utilities.logger import separator, setup_logging
 
@@ -29,6 +31,12 @@ def pytest_addoption(parser):
     # Buckets options
     buckets_group.addoption(
         "--ci-s3-bucket-name", default=os.environ.get("CI_S3_BUCKET_NAME"), help="Ci S3 bucket name"
+    )
+
+    buckets_group.addoption(
+        "--ci-s3-bucket-name-wisdom",
+        default=os.environ.get("CI_S3_BUCKET_NAME_WISDOM"),
+        help="Ci S3 bucket name - wisdom",
     )
 
 
@@ -83,3 +91,15 @@ def pytest_sessionfinish(session, exitstatus):
 
     reporter = session.config.pluginmanager.get_plugin("terminalreporter")
     reporter.summary_stats()
+
+
+@pytest.fixture(scope="session")
+def s3_bucket_name_wisdom(pytestconfig: pytest.Config) -> Optional[str]:
+    wisdom_bucket = pytestconfig.option.ci_s3_bucket_name_wisdom
+    if not wisdom_bucket:
+        raise ValueError(
+            "Bucket name for wisdom bucket is not defined."
+            "Either pass with `--ci-s3-bucket-name-wisdom` or set `CI_S3_BUCKET_NAME_WISDOM` environment variable"
+        )
+
+    return wisdom_bucket

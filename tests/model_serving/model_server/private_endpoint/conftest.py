@@ -16,7 +16,6 @@ from tests.model_serving.model_server.private_endpoint.utils import create_sidec
 from tests.model_serving.model_server.private_endpoint.infra import create_ns
 from tests.model_serving.model_server.private_endpoint.constants import (
     AWS_REGION_EAST_2,
-    AWS_BUCKET_WISDOM,
     AWS_ENDPOINT_EAST_2,
 )
 
@@ -26,10 +25,12 @@ LOGGER = get_logger(name=__name__)
 
 @pytest.fixture(scope="module")
 def endpoint_namespace(admin_client: DynamicClient) -> Generator[Namespace, None, None]:
+def endpoint_namespace(admin_client: DynamicClient) -> Generator[Namespace, None, None]:
     yield from create_ns(admin_client=admin_client, name="endpoint-namespace")
 
 
 @pytest.fixture(scope="module")
+def diff_namespace(admin_client: DynamicClient) -> Generator[Namespace, None, None]:
 def diff_namespace(admin_client: DynamicClient) -> Generator[Namespace, None, None]:
     yield from create_ns(admin_client=admin_client, name="diff-namespace")
 
@@ -38,6 +39,7 @@ def diff_namespace(admin_client: DynamicClient) -> Generator[Namespace, None, No
 def endpoint_sr(
     admin_client: DynamicClient,
     endpoint_namespace: Namespace,
+) -> Generator[ServingRuntime, None, None]:
 ) -> Generator[ServingRuntime, None, None]:
     with ServingRuntimeFromTemplate(
         client=admin_client,
@@ -53,12 +55,14 @@ def endpoint_s3_secret(
     admin_client: DynamicClient,
     endpoint_namespace: Namespace,
     aws_access_key_id: str,
+    aws_access_key_id: str,
     aws_secret_access_key: str,
+    s3_bucket_name_wisdom: str,
 ) -> Generator[Secret, None, None]:
     data = {
         "AWS_ACCESS_KEY_ID": b64_encoded_string(aws_access_key_id),
         "AWS_DEFAULT_REGION": b64_encoded_string(AWS_REGION_EAST_2),
-        "AWS_S3_BUCKET": b64_encoded_string(AWS_BUCKET_WISDOM),
+        "AWS_S3_BUCKET": b64_encoded_string(s3_bucket_name_wisdom),
         "AWS_S3_ENDPOINT": b64_encoded_string(AWS_ENDPOINT_EAST_2),
         "AWS_SECRET_ACCESS_KEY": b64_encoded_string(aws_secret_access_key),
     }
@@ -80,10 +84,11 @@ def endpoint_isvc(
     storage_config_secret: Secret,
     endpoint_namespace: Namespace,
 ) -> Generator[InferenceService, None, None]:
+) -> Generator[InferenceService, None, None]:
     with create_isvc(
         client=admin_client,
         name="test",
-        namespace=endpoint_namespace,
+        namespace=endpoint_namespace.name,
         deployment_mode="Serverless",
         storage_key="endpoint-s3-secret",
         storage_path="flan-t5-small/flan-t5-small-caikit",
@@ -100,11 +105,12 @@ def storage_config_secret(
     endpoint_s3_secret: Secret,
     aws_access_key_id: str,
     aws_secret_access_key: str,
+    s3_bucket_name_wisdom: str,
 ) -> Generator[Secret, None, None]:
     secret = {
         "access_key_id": aws_access_key_id,
-        "bucket": AWS_BUCKET_WISDOM,
-        "default_bucket": AWS_BUCKET_WISDOM,
+        "bucket": s3_bucket_name_wisdom,
+        "default_bucket": s3_bucket_name_wisdom,
         "endpoint_url": AWS_ENDPOINT_EAST_2,
         "region": AWS_REGION_EAST_2,
         "secret_access_key": aws_secret_access_key,
@@ -125,6 +131,9 @@ def storage_config_secret(
 def service_mesh_member(
     admin_client: DynamicClient, diff_namespace: Namespace
 ) -> Generator[ServiceMeshMember, None, None]:
+def service_mesh_member(
+    admin_client: DynamicClient, diff_namespace: Namespace
+) -> Generator[ServiceMeshMember, None, None]:
     with ServiceMeshMember(
         client=admin_client,
         namespace=diff_namespace.name,
@@ -137,42 +146,50 @@ def service_mesh_member(
 
 @pytest.fixture()
 def endpoint_pod_with_istio_sidecar(admin_client: DynamicClient, endpoint_namespace: Namespace) -> Pod:
-    return create_sidecar_pod(
+    pod = create_sidecar_pod(
         admin_client=admin_client,
         namespace=endpoint_namespace.name,
         istio=True,
         pod_name="test-with-istio",
     )
+    yield pod
+    pod.clean_up()
 
 
 @pytest.fixture()
 def endpoint_pod_without_istio_sidecar(admin_client: DynamicClient, endpoint_namespace: Namespace) -> Pod:
-    return create_sidecar_pod(
+    pod = create_sidecar_pod(
         admin_client=admin_client,
         namespace=endpoint_namespace.name,
         istio=False,
         pod_name="test",
     )
+    yield pod
+    pod.clean_up()
 
 
 @pytest.fixture()
 def diff_pod_with_istio_sidecar(admin_client: DynamicClient, diff_namespace: Namespace) -> Pod:
-    return create_sidecar_pod(
+    pod = create_sidecar_pod(
         admin_client=admin_client,
         namespace=diff_namespace.name,
         istio=True,
         pod_name="test-with-istio",
     )
+    yield pod
+    pod.clean_up()
 
 
 @pytest.fixture()
 def diff_pod_without_istio_sidecar(admin_client: DynamicClient, diff_namespace: Namespace) -> Pod:
-    return create_sidecar_pod(
+    pod = create_sidecar_pod(
         admin_client=admin_client,
         namespace=diff_namespace.name,
         istio=False,
         pod_name="test",
     )
+    yield pod
+    pod.clean_up()
 
 
 @pytest.fixture()

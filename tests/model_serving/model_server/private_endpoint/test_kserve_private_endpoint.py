@@ -29,7 +29,6 @@ class TestKserveInternalEndpoint:
         self: Self,
         endpoint_isvc: InferenceService,
         endpoint_pod_with_istio_sidecar: Pod,
-        diff_pod_with_istio_sidecar: Pod,
         service_mesh_member: ServiceMeshMember,
     ) -> None:
         LOGGER.info("Testing curl from the same namespace with a pod part of the service mesh")
@@ -44,7 +43,6 @@ class TestKserveInternalEndpoint:
     def test_curl_with_istio_diff_ns(
         self: Self,
         endpoint_isvc: InferenceService,
-        endpoint_pod_with_istio_sidecar: Pod,
         diff_pod_with_istio_sidecar: Pod,
         service_mesh_member: ServiceMeshMember,
     ) -> None:
@@ -62,7 +60,6 @@ class TestKserveInternalEndpoint:
         self: Self,
         endpoint_isvc: InferenceService,
         endpoint_pod_without_istio_sidecar: Pod,
-        diff_pod_without_istio_sidecar: Pod,
         service_mesh_member: ServiceMeshMember,
     ) -> None:
         LOGGER.info("Testing curl from the same namespace with a pod not part of the service mesh")
@@ -78,7 +75,6 @@ class TestKserveInternalEndpoint:
     def test_curl_outside_istio_diff_ns(
         self: Self,
         endpoint_isvc: InferenceService,
-        endpoint_pod_without_istio_sidecar: Pod,
         diff_pod_without_istio_sidecar: Pod,
         service_mesh_member: ServiceMeshMember,
     ) -> None:

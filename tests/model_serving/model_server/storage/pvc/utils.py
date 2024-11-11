@@ -28,13 +28,19 @@ def create_isvc(
             "runtime": runtime,
         },
     }
+) -> Generator[InferenceService, Any, Any]:
+    predictor_storage = {
+        "minReplicas": min_replicas,
+        "model": {
+            "modelFormat": {"name": model_format},
+            "version": "1",
+            "runtime": runtime,
+        },
+    }
     if storage_uri:
-        predictor_storage["model"]["storageUri"] = storage_uri
+        predictor_storage["model"]["storageUri"] = storage_uri  # type: ignore
     elif storage_key and storage_path:
-        predictor_storage["storage"] = {
-            "key": storage_key,
-            "path": storage_path,
-        }
+        predictor_storage["model"]["storage"] = {"key": storage_key, "path": storage_path}  # type: ignore
     else:
         raise MissingStorageArgument(storage_uri, storage_key, storage_path)
 
@@ -49,6 +55,7 @@ def create_isvc(
             "serving.kserve.io/deploymentMode": deployment_mode,
         },
         predictor=predictor_storage,
+        wait_for_resource=wait,
     ) as inference_service:
         if wait:
             inference_service.wait_for_condition(
