@@ -687,14 +687,14 @@ sdist = { url = "https://files.pythonhosted.org/packages/1b/9c/9a8fd01a6b64665e6
 
 [[package]]
 name = "openshift-python-wrapper-data-collector"
-version = "1.0.80"
+version = "1.0.83"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "openshift-python-wrapper" },
     { name = "pytest-testconfig" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/66/12/2c63dd21f6fec507746475a04421ebb5cfd698208a9c96d16b8bd903041d/openshift_python_wrapper_data_collector-1.0.80.tar.gz", hash = "sha256:1398ac6291a67ccaa075711963a1893dc8881164b979aa50d4436342878a0855", size = 8378 }
+sdist = { url = "https://files.pythonhosted.org/packages/51/68/88bf9874ea1ff012ce90542ed5e79b7778cd6fa5ee25c5f5c250556c481f/openshift_python_wrapper_data_collector-1.0.83.tar.gz", hash = "sha256:e2b0880a1e60d1a93debaa78656f76cb2b5946a81825a2f57ad4d84291d1bbde", size = 8378 }
 
 [[package]]
 name = "orderly-set"
@@ -847,7 +847,7 @@ wheels = [
 
 [[package]]
 name = "pyhelper-utils"
-version = "0.0.43"
+version = "0.0.44"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "ipdb" },
@@ -856,7 +856,7 @@ dependencies = [
     { name = "requests" },
     { name = "rich" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f0/2e/eaedbd9d73a1fdd7a16bfa6b69cf8e1df147b965f25628f56fd33ed66187/pyhelper_utils-0.0.43.tar.gz", hash = "sha256:a90694f9f9df8bcd5369c53f222dfbcd1946650a5f1255a87184f3c03b4bca30", size = 9748 }
+sdist = { url = "https://files.pythonhosted.org/packages/9f/ef/384a05ec3d49a6f7cdceedf012dba834bb760087c5e5ee7cfcd30e3ef642/pyhelper_utils-0.0.44.tar.gz", hash = "sha256:de21bc9de7eea02bc4e1b85686e18eb49dde3d7f41b45f1cfc498df0e47abc17", size = 9756 }
 
 [[package]]
 name = "pynacl"
@@ -966,12 +966,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/45/60/571982c7af8f5453b
 
 [[package]]
 name = "python-simple-logger"
-version = "1.0.41"
+version = "1.0.42"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorlog" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4a/2b/761f249251cf81c2327c9e942a7c6642dedc5bf958959df74cad04bb5708/python_simple_logger-1.0.41.tar.gz", hash = "sha256:9890bf0698fc670eaff6430462ac1da16baad51f3139395e9c8056a2df1e7174", size = 8232 }
+sdist = { url = "https://files.pythonhosted.org/packages/28/64/43d256b46b8f9e2d227425b896cc8f7eb6cfc276219be8924f5d622a8038/python_simple_logger-1.0.42.tar.gz", hash = "sha256:ad8ffd2019bcf824377d4ac2ac295b29210de0572ac85b45a8e250acf9ca0053", size = 8236 }
 
 [[package]]
 name = "python-slugify"
@@ -1169,12 +1169,12 @@ wheels = [
 
 [[package]]
 name = "timeout-sampler"
-version = "0.0.47"
+version = "0.0.48"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "python-simple-logger" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/44/42/86db619cdcfe9f5fe32ee1e927fdb6954a6b4d7209266b13be9c6b3a947c/timeout_sampler-0.0.47.tar.gz", hash = "sha256:1922eb3417bff24cd3c0dda984fec8f669d0784332b09f179bad2d78b47eca99", size = 3668 }
+sdist = { url = "https://files.pythonhosted.org/packages/a5/82/bd9cd416ab50d7894ff1904e1ed3d16e2959619f6567bc134b3cb6f095fc/timeout_sampler-0.0.48.tar.gz", hash = "sha256:8c878876ea90949e511a206ac7b7b1ca1a3481e7d0965b1a255f18822cce5605", size = 3672 }
 
 [[package]]
 name = "tomli"
