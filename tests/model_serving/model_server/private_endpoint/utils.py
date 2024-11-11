@@ -1,8 +1,11 @@
 import shlex
 import base64
+from typing import Optional, Generator
+from urllib.parse import urlparse
 
 from ocp_resources.pod import Pod
 from kubernetes.dynamic.client import DynamicClient
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.inference_service import InferenceService
 from pyhelper_utils.shell import run_command
 from simple_logger.logger import get_logger
@@ -11,15 +14,33 @@ from simple_logger.logger import get_logger
 LOGGER = get_logger(name=__name__)
 
 
-class FlanPodNotFoundError(Exception):
-    pass
-
-
 class ProtocolNotSupported(Exception):
     def __init__(self, protocol: str):
         self.protocol = protocol
-        self.message = f"Protocol {protocol} is not supported"
-        super().__init__(self.message)
+    def __str__(self) -> str:
+        return f"Protocol {self.protocol} is not supported"
+    
+class MissingStorageArgument(Exception):
+    def __init__(
+            self, 
+            storageUri: Optional[str], 
+            storage_key: Optional[str], 
+            storage_path: Optional[str],
+        ):
+        self.storageUri=storageUri
+        self.storage_key=storage_key
+        self.storage_path=storage_path
+
+    def __str__(self) -> str:
+        msg = f"""
+            You've passed the following parameters:
+            "storageUri": {self.storageUri}
+            "storage_key": {self.storage_key}
+            "storage_path: {self.storage_path}
+            In order to create a valid ISVC you need to specify either a storageUri value
+            or both a storage key and a storage path. 
+        """
+        return msg
 
 
 def get_flan_pod(client: DynamicClient, namespace: str, name_prefix: str) -> Pod:
@@ -27,7 +48,7 @@ def get_flan_pod(client: DynamicClient, namespace: str, name_prefix: str) -> Pod
         if name_prefix + "-predictor" in pod.name:
             return pod
 
-    raise FlanPodNotFoundError(f"No flan predictor pod found in namespace {namespace}")
+    raise ResourceNotFoundError(f"No flan predictor pod found in namespace {namespace}")
 
 
 def curl_from_pod(
@@ -37,8 +58,8 @@ def curl_from_pod(
     protocol: str = "http",
 ) -> str:
     if protocol == "http":
-        tmp = isvc.instance.status.address.url
-        host = "http://" + tmp.split("://")[1]
+        parsed = urlparse(isvc.instance.status.address.url)
+        host = parsed._replace(scheme="http").geturl()
 
     elif protocol == "https":
         host = isvc.instance.status.address.url
@@ -53,7 +74,7 @@ def create_sidecar_pod(
     namespace: str,
     istio: bool,
     pod_name: str,
-) -> Pod:
+) -> Generator[Pod,None,None]:
     cmd = f"oc run {pod_name} -n {namespace} --image=registry.access.redhat.com/rhel7/rhel-tools"
     if istio:
         cmd = f'{cmd} --annotations=sidecar.istio.io/inject="true"'
@@ -62,13 +83,16 @@ def create_sidecar_pod(
 
     _, _, err = run_command(command=shlex.split(cmd), check=False)
     if err:
-        # pytest.fail(f"Failed on {err}")
         LOGGER.info(msg=err)
 
-    pod = Pod(name=pod_name, namespace=namespace, client=admin_client)
-    pod.wait_for_status(status="Running")
-    pod.wait_for_condition(condition="Ready", status="True")
-    return pod
+    with Pod(
+        name=pod_name,
+        namespace=namespace,
+        client=admin_client,
+    ) as p:
+        p.wait_for_status(status="Running")
+        p.wait_for_condition(condition="Ready", status="True")
+        yield p
 
 
 def b64_encoded_string(string_to_encode: str) -> str:

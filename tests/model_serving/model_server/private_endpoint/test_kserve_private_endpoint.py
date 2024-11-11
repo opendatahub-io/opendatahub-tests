@@ -12,16 +12,20 @@ LOGGER = get_logger(name=__name__)
 
 
 class TestKserveInternalEndpoint:
-    def test_deploy_model(
+    def test_deploy_model_state_loaded(
         self: Self, endpoint_namespace: Namespace, endpoint_isvc: InferenceService, running_flan_pod: Pod
     ) -> None:
         assert endpoint_isvc.instance.status.modelStatus.states.activeModelState == "Loaded"
+    
+    def test_deploy_model_url(
+        self: Self, endpoint_namespace: Namespace, endpoint_isvc: InferenceService, running_flan_pod: Pod
+    ) -> None:
         assert (
             endpoint_isvc.instance.status.address.url
             == f"https://{endpoint_isvc.name}.{endpoint_namespace.name}.svc.cluster.local"
         )
 
-    def test_curl_with_istio(
+    def test_curl_with_istio_same_ns(
         self: Self,
         endpoint_isvc: InferenceService,
         endpoint_pod_with_istio_sidecar: Pod,
@@ -37,6 +41,13 @@ class TestKserveInternalEndpoint:
         )
         assert curl_stdout == "OK"
 
+    def test_curl_with_istio_diff_ns(
+        self: Self,
+        endpoint_isvc: InferenceService,
+        endpoint_pod_with_istio_sidecar: Pod,
+        diff_pod_with_istio_sidecar: Pod,
+        service_mesh_member: ServiceMeshMember,
+    ) -> None:
         LOGGER.info("Testing curl from a different namespace with a pod part of the service mesh")
 
         curl_stdout = curl_from_pod(
@@ -47,7 +58,7 @@ class TestKserveInternalEndpoint:
         )
         assert curl_stdout == "OK"
 
-    def test_curl_outside_istio(
+    def test_curl_outside_istio_same_ns(
         self: Self,
         endpoint_isvc: InferenceService,
         endpoint_pod_without_istio_sidecar: Pod,
@@ -64,6 +75,13 @@ class TestKserveInternalEndpoint:
         )
         assert curl_stdout == "OK"
 
+    def test_curl_outside_istio_diff_ns(
+        self: Self,
+        endpoint_isvc: InferenceService,
+        endpoint_pod_without_istio_sidecar: Pod,
+        diff_pod_without_istio_sidecar: Pod,
+        service_mesh_member: ServiceMeshMember,
+    ) -> None:
         LOGGER.info("Testing curl from a different namespace with a pod not part of the service mesh")
 
         curl_stdout = curl_from_pod(

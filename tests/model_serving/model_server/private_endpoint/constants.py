@@ -1,8 +1,8 @@
 from typing import Dict, List, Any
 
-AWS_REGION: str = "us-east-2"
-AWS_BUCKET: str = "ods-ci-wisdom"
-AWS_ENDPOINT: str = "https://s3.us-east-2.amazonaws.com/"
+AWS_REGION_EAST_2: str = "us-east-2"
+AWS_BUCKET_WISDOM: str = "ods-ci-wisdom"
+AWS_ENDPOINT_EAST_2: str = "https://s3.us-east-2.amazonaws.com/"
 
 SR_CONTAINERS_KSERVE_CAIKIT: List[Dict[Any, Any]] = [
     {
