@@ -2,7 +2,6 @@ from typing import Generator, Dict, Optional
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
-from ocp_resources.project_project_openshift_io import Project
 
 
 def create_ns(
@@ -11,7 +10,7 @@ def create_ns(
     admin_client: DynamicClient = None,
     teardown: bool = True,
     delete_timeout: int = 6 * 10,
-) -> Generator[Namespace,None,None]:
+) -> Generator[Namespace, None, None]:
     with Namespace(
         client=admin_client,
         name=name,

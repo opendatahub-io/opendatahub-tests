@@ -14,7 +14,6 @@ from utilities.serving_runtime import ServingRuntimeFromTemplate
 from tests.model_serving.model_server.storage.pvc.utils import create_isvc
 from tests.model_serving.model_server.private_endpoint.utils import create_sidecar_pod, get_flan_pod, b64_encoded_string
 from tests.model_serving.model_server.private_endpoint.infra import create_ns
-from tests.model_serving.model_server.storage.pvc.conftest import aws_access_key_id, aws_secret_access_key
 from tests.model_serving.model_server.private_endpoint.constants import (
     AWS_REGION_EAST_2,
     AWS_BUCKET_WISDOM,
@@ -26,12 +25,12 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.fixture(scope="module")
-def endpoint_namespace(admin_client: DynamicClient) -> Generator[Namespace,None,None]:
+def endpoint_namespace(admin_client: DynamicClient) -> Generator[Namespace, None, None]:
     yield from create_ns(admin_client=admin_client, name="endpoint-namespace")
 
 
 @pytest.fixture(scope="module")
-def diff_namespace(admin_client: DynamicClient) -> Generator[Namespace,None,None]:
+def diff_namespace(admin_client: DynamicClient) -> Generator[Namespace, None, None]:
     yield from create_ns(admin_client=admin_client, name="diff-namespace")
 
 
@@ -39,7 +38,7 @@ def diff_namespace(admin_client: DynamicClient) -> Generator[Namespace,None,None
 def endpoint_sr(
     admin_client: DynamicClient,
     endpoint_namespace: Namespace,
-) -> Generator[ServingRuntime,None,None]:
+) -> Generator[ServingRuntime, None, None]:
     with ServingRuntimeFromTemplate(
         client=admin_client,
         name="flan-example-sr",
@@ -53,9 +52,9 @@ def endpoint_sr(
 def endpoint_s3_secret(
     admin_client: DynamicClient,
     endpoint_namespace: Namespace,
-    aws_access_key_id: str, 
+    aws_access_key_id: str,
     aws_secret_access_key: str,
-) -> Generator[Secret,None,None]:
+) -> Generator[Secret, None, None]:
     data = {
         "AWS_ACCESS_KEY_ID": b64_encoded_string(aws_access_key_id),
         "AWS_DEFAULT_REGION": b64_encoded_string(AWS_REGION_EAST_2),
@@ -80,7 +79,7 @@ def endpoint_isvc(
     endpoint_s3_secret: Secret,
     storage_config_secret: Secret,
     endpoint_namespace: Namespace,
-) -> Generator[InferenceService,None,None]:
+) -> Generator[InferenceService, None, None]:
     with create_isvc(
         client=admin_client,
         name="test",
@@ -101,7 +100,7 @@ def storage_config_secret(
     endpoint_s3_secret: Secret,
     aws_access_key_id: str,
     aws_secret_access_key: str,
-) -> Generator[Secret,None,None]:
+) -> Generator[Secret, None, None]:
     secret = {
         "access_key_id": aws_access_key_id,
         "bucket": AWS_BUCKET_WISDOM,
@@ -123,7 +122,9 @@ def storage_config_secret(
 
 
 @pytest.fixture()
-def service_mesh_member(admin_client: DynamicClient, diff_namespace: Namespace) -> Generator[ServiceMeshMember,None,None]:
+def service_mesh_member(
+    admin_client: DynamicClient, diff_namespace: Namespace
+) -> Generator[ServiceMeshMember, None, None]:
     with ServiceMeshMember(
         client=admin_client,
         namespace=diff_namespace.name,

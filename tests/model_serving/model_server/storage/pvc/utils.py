@@ -19,22 +19,22 @@ def create_isvc(
     storage_path: Optional[str] = None,
     min_replicas: int = 1,
     wait: bool = True,
-) -> Generator[InferenceService,Any,Any]:
-    predictor_storage={
-            "minReplicas": min_replicas,
-            "model": {
-                "modelFormat": {"name": model_format},
-                "version": "1",
-                "runtime": runtime,
-            },
-        }
+) -> Generator[InferenceService, Any, Any]:
+    predictor_storage = {
+        "minReplicas": min_replicas,
+        "model": {
+            "modelFormat": {"name": model_format},
+            "version": "1",
+            "runtime": runtime,
+        },
+    }
     if storage_uri:
         predictor_storage["model"]["storageUri"] = storage_uri
     elif storage_key and storage_path:
-        predictor_storage["storage"] =  {
-                "key": storage_key,
-                "path": storage_path,
-            }
+        predictor_storage["storage"] = {
+            "key": storage_key,
+            "path": storage_path,
+        }
     else:
         raise MissingStorageArgument(storage_uri, storage_key, storage_path)
 

@@ -16,7 +16,7 @@ class TestKserveInternalEndpoint:
         self: Self, endpoint_namespace: Namespace, endpoint_isvc: InferenceService, running_flan_pod: Pod
     ) -> None:
         assert endpoint_isvc.instance.status.modelStatus.states.activeModelState == "Loaded"
-    
+
     def test_deploy_model_url(
         self: Self, endpoint_namespace: Namespace, endpoint_isvc: InferenceService, running_flan_pod: Pod
     ) -> None:
