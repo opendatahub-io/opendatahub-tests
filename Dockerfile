@@ -1,10 +1,15 @@
 FROM python:3.13
 
 ARG USER=odh
-ARG TESTS_DIR=/home/$USER/opendatahub-tests/
+ARG HOME=/home/$USER
+ARG TESTS_DIR=$HOME/opendatahub-tests/
+ENV UV_PYTHON=python3.13
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_NO_SYNC=1
+ENV UV_CACHE_DIR=${TESTS_DIR}/.cache
 
-ENV UV_INSTALL_DIR="/home/$USER/.local"
-ENV PATH="${PATH}:$UV_INSTALL_DIR/bin"
+ENV BIN_DIR="$HOME_DIR/.local/bin"
+ENV PATH="$PATH:$BIN_DIR"
 
 RUN apt-get update \
     && apt-get install -y ssh gnupg software-properties-common curl gpg wget vim \
@@ -27,13 +32,12 @@ RUN curl -L https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/sta
 
 RUN useradd -ms /bin/bash $USER
 USER $USER
+WORKDIR $HOME_DIR
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx ${BIN_DIR}/
+
 WORKDIR $TESTS_DIR
 COPY --chown=$USER:$USER . $TESTS_DIR
 
-# Download the latest uv installer and create the virtual environment
-RUN curl -sSL https://astral.sh/uv/install.sh -o /tmp/uv-installer.sh \
-  && sh /tmp/uv-installer.sh \
-  && rm /tmp/uv-installer.sh
 RUN uv sync
 
 ENTRYPOINT ["uv", "run", "pytest"]
