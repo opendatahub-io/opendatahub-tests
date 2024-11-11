@@ -19,7 +19,7 @@ OPENDATAHUB_IO: str = "opendatahub.io"
 
 
 @pytest.fixture(scope="class")
-def trustyai_service_pvc(
+def trustyai_service_with_pvc_storage(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     modelmesh_serviceaccount: ServiceAccount,
@@ -54,7 +54,7 @@ def modelmesh_serviceaccount(admin_client: DynamicClient, model_namespace: Names
 def cluster_monitoring_config(admin_client: DynamicClient) -> ConfigMap:
     name = "cluster-monitoring-config"
     namespace = "openshift-monitoring"
-    cm = ConfigMap(name=name, namespace=namespace)
+    cm = ConfigMap(client=admin_client, name=name, namespace=namespace)
     if cm.exists:  # This resource is usually created when doing exploratory testing, add this exception for convenience
         yield cm
 
