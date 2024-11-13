@@ -1,5 +1,4 @@
 import json
-import logging
 import os
 import subprocess
 from typing import Any, Dict, List
@@ -12,13 +11,14 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 from ocp_resources.trustyai_service import TrustyAIService
+from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from tests.trustyai.constants import TIMEOUT_5MIN
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = get_logger()
 TIMEOUT_1SEC: int = 1
 TIMEOUT_30SEC: int = 30
 
