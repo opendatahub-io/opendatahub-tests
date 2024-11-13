@@ -13,6 +13,7 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.trustyai_service import TrustyAIService
 
 from tests.trustyai.constants import TRUSTYAI_SERVICE
+from tests.trustyai.utils import update_configmap_data
 from tests.utils import create_ns
 
 MINIO: str = "minio"
@@ -65,15 +66,19 @@ def modelmesh_serviceaccount(admin_client: DynamicClient, ns_with_modelmesh_enab
 def cluster_monitoring_config(admin_client: DynamicClient) -> ConfigMap:
     name = "cluster-monitoring-config"
     namespace = "openshift-monitoring"
+    data = ({"config.yaml": yaml.dump({"enableUserWorkload": "true"})},)
     cm = ConfigMap(client=admin_client, name=name, namespace=namespace)
     if cm.exists:  # This resource is usually created when doing exploratory testing, add this exception for convenience
+        updated_cm = update_configmap_data(configmap=cm, data=data)
         yield cm
+        if updated_cm:
+            updated_cm.restore()
 
     with ConfigMap(
         client=admin_client,
         name=name,
         namespace=namespace,
-        data={"config.yaml": yaml.dump({"enableUserWorkload": "true"})},
+        data=data,
     ) as cm:
         yield cm
 
@@ -82,15 +87,19 @@ def cluster_monitoring_config(admin_client: DynamicClient) -> ConfigMap:
 def user_workload_monitoring_config(admin_client: DynamicClient) -> ConfigMap:
     name = "user-workload-monitoring-config"
     namespace = "openshift-user-workload-monitoring"
-    cm = ConfigMap(name=name, namespace=namespace)
+    data = ({"config.yaml": yaml.dump({"prometheus": {"logLevel": "debug", "retention": "15d"}})},)
+    cm = ConfigMap(client=admin_client, name=name, namespace=namespace)
     if cm.exists:  # This resource is usually created when doing exploratory testing, add this exception for convenience
+        updated_cm = update_configmap_data(configmap=cm, data=data)
         yield cm
+        if updated_cm:
+            updated_cm.restore()
 
     with ConfigMap(
         client=admin_client,
         name=name,
         namespace=namespace,
-        data={"config.yaml": yaml.dump({"prometheus": {"logLevel": "debug", "retention": "15d"}})},
+        data=data,
     ) as cm:
         yield cm
 
