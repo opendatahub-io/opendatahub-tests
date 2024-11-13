@@ -19,7 +19,6 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 from tests.trustyai.constants import TIMEOUT_5MIN
 
 LOGGER = get_logger(name=__name__)
-TIMEOUT_1SEC: int = 1
 TIMEOUT_30SEC: int = 30
 
 
@@ -154,7 +153,7 @@ def wait_for_trustyai_to_register_inference_request(
 
     samples = TimeoutSampler(
         wait_timeout=TIMEOUT_30SEC,
-        sleep=TIMEOUT_1SEC,
+        sleep=1,
         func=lambda: current_observations == expected_observations,
     )
     for sample in samples:
