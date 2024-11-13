@@ -81,8 +81,7 @@ def send_inference_request(
     Raises:
         RequestException: If all retry attempts fail
     """
-    namespace: str = inference_service.namespace
-    inference_route: Route = Route(client=client, namespace=namespace, name=inference_service.name)
+    inference_route: Route = Route(client=client, namespace=inference_service.namespace, name=inference_service.name)
 
     url: str = f"https://{inference_route.host}{inference_route.instance.spec.path}/infer"
     headers: Dict[str, str] = {"Authorization": f"Bearer {token}"}
