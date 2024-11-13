@@ -78,7 +78,7 @@ def gaussian_credit_model(
     name = "gaussian-credit-model"
     with InferenceService(
         client=admin_client,
-        name="gaussian-credit-model",
+        name=name,
         namespace=ns_with_modelmesh_enabled.name,
         predictor={
             "model": {
