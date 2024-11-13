@@ -98,7 +98,7 @@ def send_inference_request(
             )
             response.raise_for_status()
         except requests.RequestException as e:
-            LOGGER.debug(response.content)
+            LOGGER.error(response.content)
             LOGGER.error(f"Error sending data for file: {file_path}. Error: {str(e)}")
             raise
 
