@@ -9,6 +9,5 @@ def update_configmap_data(configmap: ConfigMap, data: Dict[str, Any]) -> Union[R
     if configmap.data != data:
         updated_cm = ResourceEditor(patches={configmap: {"data": data}})
         updated_cm.update(backup_resources=True)
-        return updated_cm
 
     return updated_cm
