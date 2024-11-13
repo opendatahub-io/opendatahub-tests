@@ -57,9 +57,8 @@ def get_trustyai_model_metadata(client: DynamicClient, token: str, trustyai_serv
 
 
 def send_inference_request(
-    client: DynamicClient,
     token: str,
-    inference_service: InferenceService,
+    inference_route: Route,
     data_batch: Any,
     file_path: str,
     max_retries: int = 5,
@@ -68,9 +67,8 @@ def send_inference_request(
     Send data batch to inference service with retry logic for network errors.
 
     Args:
-        client: DynamicClient instance
         token: Authentication token
-        inference_service: InferenceService instance
+        inference_route: Route of the inference service
         data_batch: Data to be sent
         file_path: Path to the file being processed
         max_retries: Maximum number of retry attempts (default: 5)
@@ -81,8 +79,6 @@ def send_inference_request(
     Raises:
         RequestException: If all retry attempts fail
     """
-    inference_route: Route = Route(client=client, namespace=inference_service.namespace, name=inference_service.name)
-
     url: str = f"https://{inference_route.host}{inference_route.instance.spec.path}/infer"
     headers: Dict[str, str] = {"Authorization": f"Bearer {token}"}
 
@@ -174,6 +170,7 @@ def send_inference_requests_and_verify_trustyai_service(
         trustyai_service (TrustyAIService): TrustyAIService that will register the model.
         inference_service (InferenceService): Model to be registered by TrustyAI.
     """
+    inference_route: Route = Route(client=client, namespace=inference_service.namespace, name=inference_service.name)
 
     for root, _, files in os.walk(data_path):
         for file_name in files:
@@ -185,9 +182,7 @@ def send_inference_requests_and_verify_trustyai_service(
             current_observations = get_trustyai_number_of_observations(
                 client=client, token=token, trustyai_service=trustyai_service
             )
-            send_inference_request(
-                client=client, token=token, inference_service=inference_service, data_batch=data, file_path=file_path
-            )
+            send_inference_request(token=token, inference_route=inference_route, data_batch=data, file_path=file_path)
             wait_for_trustyai_to_register_inference_request(
                 client=client,
                 token=token,
