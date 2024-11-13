@@ -27,18 +27,13 @@ def create_ocp_tooken(namespace: Namespace) -> str:
 
 
 def send_request_to_trustyai_service(
-    client: DynamicClient,
     token: str,
-    trustyai_service: TrustyAIService,
+    trustyai_service_route: TrustyAIService,
     endpoint: str,
     method: str,
     data: Optional[Dict[str, Any]] = None,
     json: Optional[Dict[str, Any]] = None,
 ) -> Any:
-    trustyai_service_route = Route(
-        client=client, namespace=trustyai_service.namespace, name="trustyai-service", ensure_exists=True
-    )
-
     url: str = f"https://{trustyai_service_route.host}{endpoint}"
     headers: Dict[str, str] = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
@@ -50,10 +45,12 @@ def send_request_to_trustyai_service(
 
 
 def get_trustyai_model_metadata(client: DynamicClient, token: str, trustyai_service: TrustyAIService) -> Any:
+    trustyai_service_route = Route(
+        client=client, namespace=trustyai_service.namespace, name="trustyai-service", ensure_exists=True
+    )
     return send_request_to_trustyai_service(
-        client=client,
         token=token,
-        trustyai_service=trustyai_service,
+        trustyai_service_route=trustyai_service_route,
         endpoint="/info",
         method="GET",
     )
