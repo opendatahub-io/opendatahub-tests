@@ -1,7 +1,7 @@
 import json
 import os
 import subprocess
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import requests
 from kubernetes.dynamic import DynamicClient
@@ -32,8 +32,8 @@ def send_request_to_trustyai_service(
     trustyai_service: TrustyAIService,
     endpoint: str,
     method: str,
-    data: Any = None,
-    json: Any = None,
+    data: Optional[Dict[str, Any]] = None,
+    json: Optional[Dict[str, Any]] = None,
 ) -> Any:
     trustyai_service_route = Route(
         client=client, namespace=trustyai_service.namespace, name="trustyai-service", ensure_exists=True
