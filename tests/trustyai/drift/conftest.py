@@ -5,6 +5,7 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
+from ocp_resources.trustyai_service import TrustyAIService
 
 from tests.trustyai.constants import MODELMESH_SERVING
 from tests.trustyai.drift.utils import wait_for_modelmesh_pods_registered_by_trustyai
@@ -72,6 +73,7 @@ def gaussian_credit_model(
     ns_with_modelmesh_enabled: Namespace,
     minio_data_connection: Secret,
     mlserver_runtime: ServingRuntime,
+    trustyai_service_with_pvc_storage: TrustyAIService,
 ) -> InferenceService:
     name = "gaussian-credit-model"
     with InferenceService(
