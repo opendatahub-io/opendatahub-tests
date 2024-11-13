@@ -20,7 +20,7 @@ SKLEARN = "sklearn"
 
 @pytest.fixture(scope="class")
 def mlserver_runtime(
-    admin_client: DynamicClient, minio_data_connection: Secret, model_namespace: Namespace
+    admin_client: DynamicClient, minio_data_connection: Secret, ns_with_modelmesh_enabled: Namespace
 ) -> ServingRuntime:
     supported_model_formats = [
         {"name": SKLEARN, "version": "0", "autoselect": "true"},
@@ -47,7 +47,7 @@ def mlserver_runtime(
     with ServingRuntime(
         client=admin_client,
         name=MLSERVER_RUNTIME_NAME,
-        namespace=model_namespace.name,
+        namespace=ns_with_modelmesh_enabled.name,
         containers=containers,
         supported_model_formats=supported_model_formats,
         multi_model=True,
@@ -69,7 +69,7 @@ def mlserver_runtime(
 @pytest.fixture(scope="class")
 def gaussian_credit_model(
     admin_client: DynamicClient,
-    model_namespace: Namespace,
+    ns_with_modelmesh_enabled: Namespace,
     minio_data_connection: Secret,
     mlserver_runtime: ServingRuntime,
 ) -> InferenceService:
@@ -77,7 +77,7 @@ def gaussian_credit_model(
     with InferenceService(
         client=admin_client,
         name="gaussian-credit-model",
-        namespace=model_namespace.name,
+        namespace=ns_with_modelmesh_enabled.name,
         predictor={
             "model": {
                 "modelFormat": {"name": XGBOOST},
@@ -89,10 +89,10 @@ def gaussian_credit_model(
     ) as inference_service:
         deployment = Deployment(
             client=admin_client,
-            namespace=model_namespace.name,
+            namespace=ns_with_modelmesh_enabled.name,
             name=f"{MODELMESH_SERVING}-{mlserver_runtime.name}",
             wait_for_resource=True,
         )
         deployment.wait_for_replicas()
-        wait_for_modelmesh_pods_registered_by_trustyai(client=admin_client, namespace=model_namespace.name)
+        wait_for_modelmesh_pods_registered_by_trustyai(client=admin_client, namespace=ns_with_modelmesh_enabled.name)
         yield inference_service

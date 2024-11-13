@@ -127,17 +127,12 @@ def get_trustyai_number_of_observations(client: DynamicClient, token: str, trust
         return 0
 
     try:
-        # Convert response to JSON
         metadata_json: Any = model_metadata.json()
 
-        # If empty JSON, return 0
         if not metadata_json:
             return 0
 
-        # Get the first model key from the metadata
         model_key: str = next(iter(metadata_json))
-
-        # Safely access nested dictionary values using get()
         model = metadata_json.get(model_key)
         if not model:
             raise KeyError(f"Model data not found for key: {model_key}")

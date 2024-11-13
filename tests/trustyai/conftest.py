@@ -13,6 +13,7 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.trustyai_service import TrustyAIService
 
 from tests.trustyai.constants import TRUSTYAI_SERVICE
+from tests.utils import create_ns
 
 MINIO: str = "minio"
 OPENDATAHUB_IO: str = "opendatahub.io"
@@ -21,7 +22,7 @@ OPENDATAHUB_IO: str = "opendatahub.io"
 @pytest.fixture(scope="class")
 def trustyai_service_with_pvc_storage(
     admin_client: DynamicClient,
-    model_namespace: Namespace,
+    ns_with_modelmesh_enabled: Namespace,
     modelmesh_serviceaccount: ServiceAccount,
     cluster_monitoring_config: ConfigMap,
     user_workload_monitoring_config: ConfigMap,
@@ -29,24 +30,34 @@ def trustyai_service_with_pvc_storage(
     with TrustyAIService(
         client=admin_client,
         name=TRUSTYAI_SERVICE,
-        namespace=model_namespace.name,
+        namespace=ns_with_modelmesh_enabled.name,
         storage={"format": "PVC", "folder": "/inputs", "size": "1Gi"},
         data={"filename": "data.csv", "format": "CSV"},
         metrics={"schedule": "5s"},
     ) as trustyai_service:
-        trustyai_deployment = Deployment(namespace=model_namespace.name, name=TRUSTYAI_SERVICE, wait_for_resource=True)
+        trustyai_deployment = Deployment(
+            namespace=ns_with_modelmesh_enabled.name, name=TRUSTYAI_SERVICE, wait_for_resource=True
+        )
         trustyai_deployment.wait_for_replicas()
         yield trustyai_service
 
 
 @pytest.fixture(scope="class")
-def openshift_token(model_namespace):
-    return subprocess.check_output(["oc", "whoami", "-t", model_namespace.name]).decode().strip()
+def ns_with_modelmesh_enabled(request, admin_client: DynamicClient):
+    with create_ns(client=admin_client, name=request.param["name"], labels={"modelmesh-enabled": "true"}) as ns:
+        yield ns
 
 
 @pytest.fixture(scope="class")
-def modelmesh_serviceaccount(admin_client: DynamicClient, model_namespace: Namespace) -> ServiceAccount:
-    with ServiceAccount(client=admin_client, name="modelmesh-serving-sa", namespace=model_namespace.name) as sa:
+def openshift_token(ns_with_modelmesh_enabled):
+    return subprocess.check_output(["oc", "whoami", "-t", ns_with_modelmesh_enabled.name]).decode().strip()
+
+
+@pytest.fixture(scope="class")
+def modelmesh_serviceaccount(admin_client: DynamicClient, ns_with_modelmesh_enabled: Namespace) -> ServiceAccount:
+    with ServiceAccount(
+        client=admin_client, name="modelmesh-serving-sa", namespace=ns_with_modelmesh_enabled.name
+    ) as sa:
         yield sa
 
 
@@ -85,11 +96,11 @@ def user_workload_monitoring_config(admin_client: DynamicClient) -> ConfigMap:
 
 
 @pytest.fixture(scope="class")
-def minio_pod(admin_client: DynamicClient, model_namespace: Namespace) -> Pod:
+def minio_pod(admin_client: DynamicClient, ns_with_modelmesh_enabled: Namespace) -> Pod:
     with Pod(
         client=admin_client,
         name=MINIO,
-        namespace=model_namespace.name,
+        namespace=ns_with_modelmesh_enabled.name,
         containers=[
             {
                 "args": [
@@ -118,11 +129,11 @@ def minio_pod(admin_client: DynamicClient, model_namespace: Namespace) -> Pod:
 
 
 @pytest.fixture(scope="class")
-def minio_service(admin_client: DynamicClient, model_namespace: Namespace) -> Service:
+def minio_service(admin_client: DynamicClient, ns_with_modelmesh_enabled: Namespace) -> Service:
     with Service(
         client=admin_client,
         name=MINIO,
-        namespace=model_namespace.name,
+        namespace=ns_with_modelmesh_enabled.name,
         ports=[
             {
                 "name": "minio-client-port",
@@ -140,12 +151,12 @@ def minio_service(admin_client: DynamicClient, model_namespace: Namespace) -> Se
 
 @pytest.fixture(scope="class")
 def minio_data_connection(
-    admin_client: DynamicClient, model_namespace: Namespace, minio_pod: Pod, minio_service: Service
+    admin_client: DynamicClient, ns_with_modelmesh_enabled: Namespace, minio_pod: Pod, minio_service: Service
 ) -> Secret:
     with Secret(
         client=admin_client,
         name="aws-connection-minio-data-connection",
-        namespace=model_namespace.name,
+        namespace=ns_with_modelmesh_enabled.name,
         data_dict={
             "AWS_ACCESS_KEY_ID": "VEhFQUNDRVNTS0VZ",
             "AWS_DEFAULT_REGION": "dXMtc291dGg=",
