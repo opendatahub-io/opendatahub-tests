@@ -18,7 +18,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 
 from tests.trustyai.constants import TIMEOUT_5MIN
 
-LOGGER = get_logger()
+LOGGER = get_logger(name=__name__)
 TIMEOUT_1SEC: int = 1
 TIMEOUT_30SEC: int = 30
 
