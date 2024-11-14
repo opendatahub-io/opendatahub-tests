@@ -28,15 +28,6 @@ def create_isvc(
             "runtime": runtime,
         },
     }
-) -> Generator[InferenceService, Any, Any]:
-    predictor_storage = {
-        "minReplicas": min_replicas,
-        "model": {
-            "modelFormat": {"name": model_format},
-            "version": "1",
-            "runtime": runtime,
-        },
-    }
     if storage_uri:
         predictor_storage["model"]["storageUri"] = storage_uri  # type: ignore
     elif storage_key and storage_path:
