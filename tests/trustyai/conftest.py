@@ -69,10 +69,8 @@ def cluster_monitoring_config(admin_client: DynamicClient) -> ConfigMap:
     data = {"config.yaml": yaml.dump({"enableUserWorkload": "true"})}
     cm = ConfigMap(client=admin_client, name=name, namespace=namespace)
     if cm.exists:  # This resource is usually created when doing exploratory testing, add this exception for convenience
-        updated_cm = update_configmap_data(configmap=cm, data=data)
-        yield cm
-        if updated_cm:
-            updated_cm.restore()
+        with update_configmap_data(configmap=cm, data=data) as cm:
+            yield cm
 
     with ConfigMap(
         client=admin_client,
@@ -90,10 +88,8 @@ def user_workload_monitoring_config(admin_client: DynamicClient) -> ConfigMap:
     data = {"config.yaml": yaml.dump({"prometheus": {"logLevel": "debug", "retention": "15d"}})}
     cm = ConfigMap(client=admin_client, name=name, namespace=namespace)
     if cm.exists:  # This resource is usually created when doing exploratory testing, add this exception for convenience
-        updated_cm = update_configmap_data(configmap=cm, data=data)
-        yield cm
-        if updated_cm:
-            updated_cm.restore()
+        with update_configmap_data(configmap=cm, data=data) as cm:
+            yield cm
 
     with ConfigMap(
         client=admin_client,

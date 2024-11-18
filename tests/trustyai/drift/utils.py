@@ -22,7 +22,7 @@ LOGGER = get_logger(name=__name__)
 TIMEOUT_30SEC: int = 30
 
 
-def create_ocp_tooken(namespace: Namespace) -> str:
+def create_ocp_token(namespace: Namespace) -> str:
     return subprocess.check_output(["oc", "create", "token", "test-user", "-n", namespace.name]).decode().strip()
 
 
