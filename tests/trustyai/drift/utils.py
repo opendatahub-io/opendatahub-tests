@@ -22,38 +22,41 @@ LOGGER = get_logger(name=__name__)
 TIMEOUT_30SEC: int = 30
 
 
+class TrustyAIServiceRequestHandler:
+    """
+    Class to encapsulate the behaviors associated to the different TrustyAIService requests we make in the tests
+    TODO: It will be moved to a more general file when we start using it in new tests.
+    """
+
+    def __init__(self, token: str, service: TrustyAIService, client: DynamicClient):
+        self.token = token
+        self.service = service
+        self.headers = {"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"}
+        self.service_route = Route(
+            client=client, namespace=service.namespace, name="trustyai-service", ensure_exists=True
+        )
+
+    def _send_request(
+        self,
+        endpoint: str,
+        method: str,
+        data: Optional[Dict[str, Any]] = None,
+        json: Optional[Dict[str, Any]] = None,
+    ) -> Any:
+        url = f"https://{self.service_route.host}{endpoint}"
+
+        if method == "GET":
+            return requests.get(url=url, headers=self.headers, verify=False)
+        elif method == "POST":
+            return requests.post(url=url, headers=self.headers, data=data, json=json, verify=False)
+        raise ValueError(f"Unsupported HTTP method: {method}")
+
+    def get_model_metadata(self) -> Any:
+        return self._send_request(endpoint="/info", method="GET")
+
+
 def create_ocp_token(namespace: Namespace) -> str:
     return subprocess.check_output(["oc", "create", "token", "test-user", "-n", namespace.name]).decode().strip()
-
-
-def send_request_to_trustyai_service(
-    token: str,
-    trustyai_service_route: TrustyAIService,
-    endpoint: str,
-    method: str,
-    data: Optional[Dict[str, Any]] = None,
-    json: Optional[Dict[str, Any]] = None,
-) -> Any:
-    url: str = f"https://{trustyai_service_route.host}{endpoint}"
-    headers: Dict[str, str] = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-
-    if method == "GET":
-        return requests.get(url=url, headers=headers, verify=False)
-    elif method == "POST":
-        return requests.post(url=url, headers=headers, data=data, json=json, verify=False)
-    raise ValueError(f"Unsupported HTTP method: {method}")
-
-
-def get_trustyai_model_metadata(client: DynamicClient, token: str, trustyai_service: TrustyAIService) -> Any:
-    trustyai_service_route = Route(
-        client=client, namespace=trustyai_service.namespace, name="trustyai-service", ensure_exists=True
-    )
-    return send_request_to_trustyai_service(
-        token=token,
-        trustyai_service_route=trustyai_service_route,
-        endpoint="/info",
-        method="GET",
-    )
 
 
 def send_inference_request(
@@ -110,9 +113,8 @@ def send_inference_request(
 
 
 def get_trustyai_number_of_observations(client: DynamicClient, token: str, trustyai_service: TrustyAIService) -> int:
-    model_metadata: requests.Response = get_trustyai_model_metadata(
-        client=client, token=token, trustyai_service=trustyai_service
-    )
+    handler = TrustyAIServiceRequestHandler(token=token, service=trustyai_service, client=client)
+    model_metadata: requests.Response = handler.get_model_metadata()
 
     if not model_metadata:
         return 0
