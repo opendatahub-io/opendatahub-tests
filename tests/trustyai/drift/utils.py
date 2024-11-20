@@ -45,11 +45,12 @@ class TrustyAIServiceRequestHandler:
     ) -> Any:
         url = f"https://{self.service_route.host}{endpoint}"
 
+        if method not in ("GET", "POST"):
+            raise ValueError(f"Unsupported HTTP method: {method}")
         if method == "GET":
             return requests.get(url=url, headers=self.headers, verify=False)
         elif method == "POST":
             return requests.post(url=url, headers=self.headers, data=data, json=json, verify=False)
-        raise ValueError(f"Unsupported HTTP method: {method}")
 
     def get_model_metadata(self) -> Any:
         return self._send_request(endpoint="/info", method="GET")
