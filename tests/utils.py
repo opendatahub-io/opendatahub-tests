@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from typing import Any, Dict, Union, Optional
+from typing import Any, Dict, Optional
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
