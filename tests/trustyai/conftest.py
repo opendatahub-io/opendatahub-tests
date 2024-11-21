@@ -12,7 +12,7 @@ from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.trustyai_service import TrustyAIService
 
-from tests.trustyai.constants import TRUSTYAI_SERVICE
+from tests.trustyai.constants import TRUSTYAI_SERVICE, MODELMESH_SERVING
 from tests.trustyai.utils import update_configmap_data
 from tests.utils import create_ns
 
@@ -57,7 +57,7 @@ def openshift_token(ns_with_modelmesh_enabled):
 @pytest.fixture(scope="class")
 def modelmesh_serviceaccount(admin_client: DynamicClient, ns_with_modelmesh_enabled: Namespace) -> ServiceAccount:
     with ServiceAccount(
-        client=admin_client, name="modelmesh-serving-sa", namespace=ns_with_modelmesh_enabled.name
+        client=admin_client, name=f"{MODELMESH_SERVING}-sa", namespace=ns_with_modelmesh_enabled.name
     ) as sa:
         yield sa
 

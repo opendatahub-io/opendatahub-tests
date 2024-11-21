@@ -60,7 +60,7 @@ def mlserver_runtime(
             "modelLoadingTimeoutMillis": 90000,
         },
         annotations={"enable-route": "true"},
-        label={"name": f"modelmesh-serving-{MLSERVER_RUNTIME_NAME}-SR"},
+        label={"name": f"{MODELMESH_SERVING}-{MLSERVER_RUNTIME_NAME}-SR"},
     ) as mlserver:
         yield mlserver
 
