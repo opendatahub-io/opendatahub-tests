@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from typing import Any, Dict, Union
+from typing import Any, Dict, Union, Optional
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
@@ -11,7 +11,7 @@ TIMEOUT_2MIN = 2 * 60
 def create_ns(
     client: DynamicClient,
     name: str,
-    labels: Union[Dict[str, Any], None] = None,
+    labels: Optional[Dict[str, Any]] = None,
     wait_for_resource: bool = True,
 ) -> Namespace:
     with Namespace(
