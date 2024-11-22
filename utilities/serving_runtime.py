@@ -4,6 +4,8 @@ from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.template import Template
 
+from utilities.constants import APPLICATIONS_NAMESPACE
+
 
 class ServingRuntimeFromTemplate(ServingRuntime):
     def __init__(self, client: DynamicClient, name: str, namespace: str, template_name: str):
@@ -18,7 +20,7 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         template = Template(
             client=self.client,
             name=self.template_name,
-            namespace="redhat-ods-applications",
+            namespace=APPLICATIONS_NAMESPACE,
         )
         if template.exists:
             return template
