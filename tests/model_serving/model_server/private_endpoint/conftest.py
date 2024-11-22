@@ -12,7 +12,6 @@ from kubernetes.dynamic import DynamicClient
 
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 from tests.model_serving.model_server.storage.pvc.utils import create_isvc
-from tests.model_serving.model_server.storage.pvc.conftest import aws_access_key_id, aws_secret_access_key
 from tests.model_serving.model_server.private_endpoint.utils import create_sidecar_pod, get_flan_pod, b64_encoded_string
 from tests.model_serving.model_server.private_endpoint.infra import create_ns
 from tests.model_serving.model_server.private_endpoint.constants import (
