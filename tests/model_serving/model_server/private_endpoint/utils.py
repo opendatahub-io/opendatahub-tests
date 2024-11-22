@@ -22,7 +22,7 @@ class ProtocolNotSupported(Exception):
         return f"Protocol {self.protocol} is not supported"
 
 
-class MissingStorageArgument(Exception):
+class InvalidStorageArgument(Exception):
     def __init__(
         self,
         storageUri: Optional[str],
@@ -40,7 +40,6 @@ class MissingStorageArgument(Exception):
             "storage_key": {self.storage_key}
             "storage_path: {self.storage_path}
             In order to create a valid ISVC you need to specify either a storageUri value
-            or both a storage key and a storage path.
             or both a storage key and a storage path.
         """
         return msg
@@ -60,15 +59,12 @@ def curl_from_pod(
     endpoint: str,
     protocol: str = "http",
 ) -> str:
-    if protocol == "http":
-        parsed = urlparse(isvc.instance.status.address.url)
-        host = parsed._replace(scheme="http").geturl()
-
-    elif protocol == "https":
-        host = isvc.instance.status.address.url
-    else:
+    if protocol not in ("https", "http"):
         raise ProtocolNotSupported(protocol)
-
+    host = isvc.instance.status.address.url
+    if protocol == "http":
+        parsed = urlparse(host)
+        host = parsed._replace(scheme="http").geturl()
     return pod.execute(command=shlex.split(f"curl -k {host}/{endpoint}"), ignore_rc=True)
 
 
@@ -99,6 +95,18 @@ def create_sidecar_pod(
 
 
 def b64_encoded_string(string_to_encode: str) -> str:
+    """Returns openshift compliant base64 encoding of a string
+
+    encodes the input string to bytes-like, encodes the bytes-like to base 64,
+    decodes the b64 to a string and returns it. This is needed for openshift
+    resources expecting b64 encoded values in the yaml.
+
+    Args:
+        string_to_encode: The string to encode in base64
+
+    Returns:
+        A base64 encoded string that is compliant with openshift's yaml format
+    """
     # encodes the string to bytes-like, encodes the bytes-like to base 64, decodes the b64 to a string and returns it
     # needed for openshift resources expecting b64 encoded values in the yaml
     return base64.b64encode(string_to_encode.encode()).decode()

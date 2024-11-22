@@ -6,10 +6,10 @@ from ocp_resources.namespace import Namespace
 
 def create_ns(
     name: str,
-    labels: Optional[Dict[str, str]] = None,
-    admin_client: DynamicClient = None,
+    admin_client: DynamicClient,
     teardown: bool = True,
     delete_timeout: int = 6 * 10,
+    labels: Optional[Dict[str, str]] = None,
 ) -> Generator[Namespace, None, None]:
     with Namespace(
         client=admin_client,

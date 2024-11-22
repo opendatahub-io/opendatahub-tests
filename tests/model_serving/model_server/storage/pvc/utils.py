@@ -3,7 +3,7 @@ from typing import Optional, Generator, Any
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
-from tests.model_serving.model_server.private_endpoint.utils import MissingStorageArgument
+from tests.model_serving.model_server.private_endpoint.utils import InvalidStorageArgument
 
 
 @contextmanager
@@ -20,7 +20,7 @@ def create_isvc(
     min_replicas: int = 1,
     wait: bool = True,
 ) -> Generator[InferenceService, Any, Any]:
-    predictor_storage = {
+    predictor_dict = {
         "minReplicas": min_replicas,
         "model": {
             "modelFormat": {"name": model_format},
@@ -28,12 +28,15 @@ def create_isvc(
             "runtime": runtime,
         },
     }
-    if storage_uri:
-        predictor_storage["model"]["storageUri"] = storage_uri  # type: ignore
+    # "type:ignore" is needed because otherwise mypy will complain about "Unsupported target for indexed assignment ("object")"
+    if storage_uri and storage_key and storage_path:
+        raise InvalidStorageArgument(storage_uri, storage_key, storage_path)
+    elif storage_uri:
+        predictor_dict["model"]["storageUri"] = storage_uri  # type: ignore
     elif storage_key and storage_path:
-        predictor_storage["model"]["storage"] = {"key": storage_key, "path": storage_path}  # type: ignore
+        predictor_dict["model"]["storage"] = {"key": storage_key, "path": storage_path}  # type: ignore
     else:
-        raise MissingStorageArgument(storage_uri, storage_key, storage_path)
+        raise InvalidStorageArgument(storage_uri, storage_key, storage_path)
 
     with InferenceService(
         client=client,
@@ -45,7 +48,7 @@ def create_isvc(
             "sidecar.istio.io/rewriteAppHTTPProbers": "true",
             "serving.kserve.io/deploymentMode": deployment_mode,
         },
-        predictor=predictor_storage,
+        predictor=predictor_dict,
         wait_for_resource=wait,
     ) as inference_service:
         if wait:

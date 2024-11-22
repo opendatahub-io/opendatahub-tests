@@ -34,9 +34,9 @@ def pytest_addoption(parser):
     )
 
     buckets_group.addoption(
-        "--ci-s3-bucket-name-wisdom",
-        default=os.environ.get("CI_S3_BUCKET_NAME_WISDOM"),
-        help="Ci S3 bucket name - wisdom",
+        "--models-s3-bucket-name",
+        default=os.environ.get("MODELS_S3_BUCKET_NAME"),
+        help="Models S3 bucket name",
     )
 
 
@@ -95,11 +95,11 @@ def pytest_sessionfinish(session, exitstatus):
 
 @pytest.fixture(scope="session")
 def s3_bucket_name_wisdom(pytestconfig: pytest.Config) -> Optional[str]:
-    wisdom_bucket = pytestconfig.option.ci_s3_bucket_name_wisdom
+    wisdom_bucket = pytestconfig.option.models_s3_bucket_name
     if not wisdom_bucket:
         raise ValueError(
-            "Bucket name for wisdom bucket is not defined."
-            "Either pass with `--ci-s3-bucket-name-wisdom` or set `CI_S3_BUCKET_NAME_WISDOM` environment variable"
+            "Bucket name for the models bucket is not defined."
+            "Either pass with `--models-s3-bucket-name` or set `MODELS_S3_BUCKET_NAME` environment variable"
         )
 
     return wisdom_bucket
