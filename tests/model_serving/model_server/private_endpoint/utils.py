@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from ocp_resources.pod import Pod
 from ocp_resources.deployment import Deployment
 from kubernetes.dynamic.client import DynamicClient
-from kubernetes.dynamic.exceptions import ResourceNotFoundError
+from kubernetes.dynamic.exceptions import ResourceNotFoundError, ResourceNotUniqueError
 from ocp_resources.inference_service import InferenceService
 from pyhelper_utils.shell import run_command
 from simple_logger.logger import get_logger
@@ -48,19 +48,23 @@ class InvalidStorageArgument(Exception):
 
 
 def get_flan_deployment(client: DynamicClient, namespace: str, name_prefix: str) -> Deployment:
-    def _get_deployment(
-        dyn_client: DynamicClient = client,
-        namespace: str = namespace,
-        label_selector: str = f"serving.kserve.io/inferenceservice={name_prefix}",
-    ) -> Generator[Deployment, Any, Any]:
-        yield from Deployment.get(dyn_client=dyn_client, namespace=namespace, label_selector=label_selector)
+    deployments = list(
+        Deployment.get(
+            label_selector=f"serving.kserve.io/inferenceservice={name_prefix}",
+            client=client,
+            namespace=namespace,
+        )
+    )
 
-    # There is supposed to be a single deployment for our resource, raise an exception otherwise
-    deployment = list(_get_deployment())
-    if len(deployment) == 1:
-        return deployment[0]
+    if len(deployments) == 1:
+        deployment = deployments[0]
+        if deployment.exists:
+            deployment.wait_for_replicas()
+            return
+    elif len(deployments) > 1:
+        raise ResourceNotUniqueError(f"Multiple flan predictor deployments found in namespace {namespace}")
     else:
-        raise ResourceNotFoundError(f"flan predictor deployment not found in namespace {namespace}")
+        raise ResourceNotFoundError(f"Flan predictor deployment not found in namespace {namespace}")
 
 
 def curl_from_pod(

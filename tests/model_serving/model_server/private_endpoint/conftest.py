@@ -182,9 +182,8 @@ def diff_pod_without_istio_sidecar(
 
 @pytest.fixture()
 def ready_predictor(admin_client: DynamicClient, endpoint_isvc: InferenceService) -> None:
-    predictor_deployment = get_flan_deployment(
+    get_flan_deployment(
         namespace=endpoint_isvc.namespace,
         client=admin_client,
         name_prefix=endpoint_isvc.name,
     )
-    predictor_deployment.wait_for_replicas()
