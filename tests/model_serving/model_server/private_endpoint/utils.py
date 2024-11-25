@@ -96,7 +96,6 @@ def create_sidecar_pod(
         LOGGER.error(msg=err)
 
     pod = Pod(name=pod_name, namespace=namespace, client=admin_client)
-    pod.wait_for_status(status="Running")
     pod.wait_for_condition(condition="Ready", status="True")
     yield pod
     pod.clean_up()

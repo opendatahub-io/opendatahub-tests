@@ -28,14 +28,11 @@ def create_isvc(
             "runtime": runtime,
         },
     }
-    if storage_uri and storage_key and storage_path:
-        raise InvalidStorageArgument(storage_uri, storage_key, storage_path)
-    elif storage_uri:
+    _check_storage_arguments(storage_uri, storage_key, storage_path)
+    if storage_uri:
         predictor_dict["model"]["storageUri"] = storage_uri
-    elif storage_key and storage_path:
+    elif storage_key:
         predictor_dict["model"]["storage"] = {"key": storage_key, "path": storage_path}
-    else:
-        raise InvalidStorageArgument(storage_uri, storage_key, storage_path)
 
     with InferenceService(
         client=client,
@@ -59,10 +56,10 @@ def create_isvc(
         yield inference_service
 
 
-def check_storage_arguments(
-    storage_uri: str,
-    storage_key: str,
-    storage_path: str,
+def _check_storage_arguments(
+    storage_uri: Optional[str],
+    storage_key: Optional[str],
+    storage_path: Optional[str],
 ) -> None:
     if (storage_uri and storage_path) or (not storage_uri and not storage_key) or (storage_key and not storage_path):
         raise InvalidStorageArgument(storage_uri, storage_key, storage_path)
