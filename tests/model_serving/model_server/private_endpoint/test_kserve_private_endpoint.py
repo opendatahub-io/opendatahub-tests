@@ -4,7 +4,7 @@ from simple_logger.logger import get_logger
 from ocp_resources.namespace import Namespace
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
-from ocp_resources.service_mesh_member import ServiceMeshMember
+from ocp_resources.deployment import Deployment
 from tests.model_serving.model_server.private_endpoint.utils import curl_from_pod
 
 
@@ -13,12 +13,12 @@ LOGGER = get_logger(name=__name__)
 
 class TestKserveInternalEndpoint:
     def test_deploy_model_state_loaded(
-        self: Self, endpoint_namespace: Namespace, endpoint_isvc: InferenceService, running_flan_pod: Pod
+        self: Self, endpoint_namespace: Namespace, endpoint_isvc: InferenceService, ready_predictor: Deployment
     ) -> None:
         assert endpoint_isvc.instance.status.modelStatus.states.activeModelState == "Loaded"
 
     def test_deploy_model_url(
-        self: Self, endpoint_namespace: Namespace, endpoint_isvc: InferenceService, running_flan_pod: Pod
+        self: Self, endpoint_namespace: Namespace, endpoint_isvc: InferenceService, ready_predictor: Deployment
     ) -> None:
         assert (
             endpoint_isvc.instance.status.address.url
@@ -29,7 +29,6 @@ class TestKserveInternalEndpoint:
         self: Self,
         endpoint_isvc: InferenceService,
         endpoint_pod_with_istio_sidecar: Pod,
-        service_mesh_member: ServiceMeshMember,
     ) -> None:
         LOGGER.info("Testing curl from the same namespace with a pod part of the service mesh")
 
@@ -44,7 +43,6 @@ class TestKserveInternalEndpoint:
         self: Self,
         endpoint_isvc: InferenceService,
         diff_pod_with_istio_sidecar: Pod,
-        service_mesh_member: ServiceMeshMember,
     ) -> None:
         LOGGER.info("Testing curl from a different namespace with a pod part of the service mesh")
 
@@ -60,7 +58,6 @@ class TestKserveInternalEndpoint:
         self: Self,
         endpoint_isvc: InferenceService,
         endpoint_pod_without_istio_sidecar: Pod,
-        service_mesh_member: ServiceMeshMember,
     ) -> None:
         LOGGER.info("Testing curl from the same namespace with a pod not part of the service mesh")
 
@@ -76,7 +73,6 @@ class TestKserveInternalEndpoint:
         self: Self,
         endpoint_isvc: InferenceService,
         diff_pod_without_istio_sidecar: Pod,
-        service_mesh_member: ServiceMeshMember,
     ) -> None:
         LOGGER.info("Testing curl from a different namespace with a pod not part of the service mesh")
 

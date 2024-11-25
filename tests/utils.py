@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Generator
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
@@ -13,7 +13,7 @@ def create_ns(
     name: str,
     labels: Optional[Dict[str, Any]] = None,
     wait_for_resource: bool = True,
-) -> Namespace:
+) -> Generator[Namespace, Any, Any]:
     with Namespace(
         client=client,
         name=name,

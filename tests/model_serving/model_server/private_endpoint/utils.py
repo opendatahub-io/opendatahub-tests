@@ -1,9 +1,11 @@
 import shlex
 import base64
-from typing import Optional
+from typing import Optional, Any, Generator
 from urllib.parse import urlparse
+from contextlib import contextmanager
 
 from ocp_resources.pod import Pod
+from ocp_resources.deployment import Deployment
 from kubernetes.dynamic.client import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.inference_service import InferenceService
@@ -45,12 +47,20 @@ class InvalidStorageArgument(Exception):
         return msg
 
 
-def get_flan_pod(client: DynamicClient, namespace: str, name_prefix: str) -> Pod:
-    for pod in Pod.get(dyn_client=client, namespace=namespace):
-        if name_prefix + "-predictor" in pod.name:
-            return pod
+def get_flan_deployment(client: DynamicClient, namespace: str, name_prefix: str) -> Deployment:
+    def _get_deployment(
+        dyn_client: DynamicClient = client,
+        namespace: str = namespace,
+        label_selector: str = f"serving.kserve.io/inferenceservice={name_prefix}",
+    ) -> Generator[Deployment, Any, Any]:
+        yield from Deployment.get(dyn_client=dyn_client, namespace=namespace, label_selector=label_selector)
 
-    raise ResourceNotFoundError(f"No flan predictor pod found in namespace {namespace}")
+    # There is supposed to be a single deployment for our resource, raise an exception otherwise
+    deployment = list(_get_deployment())
+    if len(deployment) == 1:
+        return deployment[0]
+    else:
+        raise ResourceNotFoundError(f"flan predictor deployment not found in namespace {namespace}")
 
 
 def curl_from_pod(
@@ -68,12 +78,13 @@ def curl_from_pod(
     return pod.execute(command=shlex.split(f"curl -k {host}/{endpoint}"), ignore_rc=True)
 
 
+@contextmanager
 def create_sidecar_pod(
     admin_client: DynamicClient,
     namespace: str,
     istio: bool,
     pod_name: str,
-) -> Pod:
+) -> Generator[Pod, Any, Any]:
     cmd = f"oc run {pod_name} -n {namespace} --image=registry.access.redhat.com/rhel7/rhel-tools"
     if istio:
         cmd = f'{cmd} --annotations=sidecar.istio.io/inject="true"'
@@ -82,16 +93,13 @@ def create_sidecar_pod(
 
     _, _, err = run_command(command=shlex.split(cmd), check=False)
     if err:
-        LOGGER.info(msg=err)
-
-    containers = [pod_name]
-    if istio:
-        containers.append("istio-proxy")
+        LOGGER.error(msg=err)
 
     pod = Pod(name=pod_name, namespace=namespace, client=admin_client)
     pod.wait_for_status(status="Running")
     pod.wait_for_condition(condition="Ready", status="True")
-    return pod
+    yield pod
+    pod.clean_up()
 
 
 def b64_encoded_string(string_to_encode: str) -> str:
@@ -107,6 +115,4 @@ def b64_encoded_string(string_to_encode: str) -> str:
     Returns:
         A base64 encoded string that is compliant with openshift's yaml format
     """
-    # encodes the string to bytes-like, encodes the bytes-like to base 64, decodes the b64 to a string and returns it
-    # needed for openshift resources expecting b64 encoded values in the yaml
     return base64.b64encode(string_to_encode.encode()).decode()
