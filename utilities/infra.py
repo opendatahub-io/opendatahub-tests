@@ -1,9 +1,11 @@
 from typing import Generator, Dict, Optional
+from contextlib import contextmanager
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 
 
+@contextmanager
 def create_ns(
     name: str,
     admin_client: DynamicClient,

@@ -60,7 +60,7 @@ def get_flan_deployment(client: DynamicClient, namespace: str, name_prefix: str)
         deployment = deployments[0]
         if deployment.exists:
             deployment.wait_for_replicas()
-            return
+            return deployment
     elif len(deployments) > 1:
         raise ResourceNotUniqueError(f"Multiple flan predictor deployments found in namespace {namespace}")
     else:

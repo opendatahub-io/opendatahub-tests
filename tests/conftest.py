@@ -6,7 +6,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 from ocp_resources.resource import get_client
 
-from tests.utils import create_ns
+from utilities.infra import create_ns
 
 
 @pytest.fixture(scope="session")
@@ -16,7 +16,7 @@ def admin_client() -> DynamicClient:
 
 @pytest.fixture(scope="class")
 def model_namespace(request: FixtureRequest, admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
-    with create_ns(client=admin_client, name=request.param["name"]) as ns:
+    with create_ns(admin_client=admin_client, name=request.param["name"]) as ns:
         yield ns
 
 

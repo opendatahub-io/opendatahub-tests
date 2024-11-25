@@ -16,7 +16,7 @@ from ocp_resources.storage_class import StorageClass
 from ocp_utilities.infra import get_pods_by_name_prefix
 
 from tests.model_serving.model_server.storage.constants import NFS_STR
-from tests.model_serving.model_server.storage.pvc.utils import create_isvc
+from tests.model_serving.model_server.utils import create_isvc
 from tests.model_serving.constants import KSERVE_SERVERLESS
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 

@@ -10,13 +10,13 @@ from ocp_resources.serving_runtime import ServingRuntime
 from kubernetes.dynamic import DynamicClient
 
 from utilities.serving_runtime import ServingRuntimeFromTemplate
-from tests.model_serving.model_server.storage.pvc.utils import create_isvc
+from tests.model_serving.model_server.utils import create_isvc
 from tests.model_serving.model_server.private_endpoint.utils import (
     create_sidecar_pod,
     get_flan_deployment,
     b64_encoded_string,
 )
-from tests.model_serving.model_server.private_endpoint.infra import create_ns
+from utilities.infra import create_ns
 from tests.model_serving.constants import KSERVE_SERVERLESS
 
 
@@ -25,12 +25,14 @@ LOGGER = get_logger(name=__name__)
 
 @pytest.fixture(scope="session")
 def endpoint_namespace(admin_client: DynamicClient) -> Generator[Namespace, None, None]:
-    yield from create_ns(admin_client=admin_client, name="endpoint-namespace")
+    with create_ns(admin_client=admin_client, name="endpoint-namespace") as ns:
+        yield ns
 
 
 @pytest.fixture(scope="session")
 def diff_namespace(admin_client: DynamicClient) -> Generator[Namespace, None, None]:
-    yield from create_ns(admin_client=admin_client, name="diff-namespace")
+    with create_ns(admin_client=admin_client, name="diff-namespace") as ns:
+        yield ns
 
 
 @pytest.fixture(scope="session")
