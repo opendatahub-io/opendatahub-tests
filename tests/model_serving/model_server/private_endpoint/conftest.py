@@ -13,11 +13,11 @@ from utilities.serving_runtime import ServingRuntimeFromTemplate
 from tests.model_serving.model_server.utils import create_isvc
 from tests.model_serving.model_server.private_endpoint.utils import (
     create_sidecar_pod,
-    get_flan_deployment,
+    get_kserve_predictor_deployment,
     b64_encoded_string,
 )
 from utilities.infra import create_ns
-from tests.model_serving.constants import KSERVE_SERVERLESS
+from tests.constants import KServeDeploymentType, ModelStoragePath, ModelFormat
 
 
 LOGGER = get_logger(name=__name__)
@@ -88,10 +88,10 @@ def endpoint_isvc(
         client=admin_client,
         name="test",
         namespace=endpoint_namespace.name,
-        deployment_mode=KSERVE_SERVERLESS,
+        deployment_mode=KServeDeploymentType.SERVERLESS.value,
         storage_key="endpoint-s3-secret",
-        storage_path="flan-t5-small/flan-t5-small-caikit",
-        model_format="caikit",
+        storage_path=ModelStoragePath.FLAN_T5_SMALL.value,
+        model_format=ModelFormat.CAIKIT.value,
         runtime=endpoint_sr.name,
     ) as isvc:
         yield isvc
@@ -135,7 +135,7 @@ def endpoint_pod_with_istio_sidecar(
     with create_sidecar_pod(
         admin_client=admin_client,
         namespace=endpoint_namespace.name,
-        istio=True,
+        use_istio=True,
         pod_name="test-with-istio",
     ) as pod:
         yield pod
@@ -148,7 +148,7 @@ def endpoint_pod_without_istio_sidecar(
     with create_sidecar_pod(
         admin_client=admin_client,
         namespace=endpoint_namespace.name,
-        istio=False,
+        use_istio=False,
         pod_name="test",
     ) as pod:
         yield pod
@@ -162,7 +162,7 @@ def diff_pod_with_istio_sidecar(
     with create_sidecar_pod(
         admin_client=admin_client,
         namespace=diff_namespace.name,
-        istio=True,
+        use_istio=True,
         pod_name="test-with-istio",
     ) as pod:
         yield pod
@@ -176,7 +176,7 @@ def diff_pod_without_istio_sidecar(
     with create_sidecar_pod(
         admin_client=admin_client,
         namespace=diff_namespace.name,
-        istio=False,
+        use_istio=False,
         pod_name="test",
     ) as pod:
         yield pod
@@ -184,7 +184,7 @@ def diff_pod_without_istio_sidecar(
 
 @pytest.fixture()
 def ready_predictor(admin_client: DynamicClient, endpoint_isvc: InferenceService) -> None:
-    get_flan_deployment(
+    get_kserve_predictor_deployment(
         namespace=endpoint_isvc.namespace,
         client=admin_client,
         name_prefix=endpoint_isvc.name,

@@ -17,7 +17,7 @@ from ocp_utilities.infra import get_pods_by_name_prefix
 
 from tests.model_serving.model_server.storage.constants import NFS_STR
 from tests.model_serving.model_server.utils import create_isvc
-from tests.model_serving.constants import KSERVE_SERVERLESS
+from tests.constants import KServeDeploymentType
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
@@ -125,7 +125,7 @@ def inference_service(
         "runtime": serving_runtime.name,
         "storage_uri": f"pvc://{model_pvc.name}/{downloaded_model_data}",
         "model_format": serving_runtime.instance.spec.supportedModelFormats[0].name,
-        "deployment_mode": request.param.get("deployment-mode", KSERVE_SERVERLESS),
+        "deployment_mode": request.param.get("deployment-mode", KServeDeploymentType.SERVERLESS.value),
     }
 
     if min_replicas := request.param.get("min-replicas"):

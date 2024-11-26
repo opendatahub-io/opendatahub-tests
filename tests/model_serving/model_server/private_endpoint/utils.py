@@ -47,7 +47,7 @@ class InvalidStorageArgument(Exception):
         return msg
 
 
-def get_flan_deployment(client: DynamicClient, namespace: str, name_prefix: str) -> Deployment:
+def get_kserve_predictor_deployment(client: DynamicClient, namespace: str, name_prefix: str) -> Deployment:
     deployments = list(
         Deployment.get(
             label_selector=f"serving.kserve.io/inferenceservice={name_prefix}",
@@ -62,9 +62,9 @@ def get_flan_deployment(client: DynamicClient, namespace: str, name_prefix: str)
             deployment.wait_for_replicas()
             return deployment
     elif len(deployments) > 1:
-        raise ResourceNotUniqueError(f"Multiple flan predictor deployments found in namespace {namespace}")
+        raise ResourceNotUniqueError(f"Multiple predictor deployments found in namespace {namespace}")
     else:
-        raise ResourceNotFoundError(f"Flan predictor deployment not found in namespace {namespace}")
+        raise ResourceNotFoundError(f"Predictor deployment not found in namespace {namespace}")
 
 
 def curl_from_pod(
@@ -86,11 +86,11 @@ def curl_from_pod(
 def create_sidecar_pod(
     admin_client: DynamicClient,
     namespace: str,
-    istio: bool,
+    use_istio: bool,
     pod_name: str,
 ) -> Generator[Pod, Any, Any]:
     cmd = f"oc run {pod_name} -n {namespace} --image=registry.access.redhat.com/rhel7/rhel-tools"
-    if istio:
+    if use_istio:
         cmd = f'{cmd} --annotations=sidecar.istio.io/inject="true"'
 
     cmd += " -- sleep infinity"

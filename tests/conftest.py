@@ -63,7 +63,7 @@ def ci_s3_bucket_region(pytestconfig: pytest.Config) -> str:
     ci_bucket_region = pytestconfig.option.ci_s3_bucket_region
     if not ci_bucket_region:
         raise ValueError(
-            "Bucket name for the models bucket is not defined."
+            "Region for the ci s3 bucket is not defined."
             "Either pass with `--ci-s3-bucket-region` or set `CI_S3_BUCKET_REGION` environment variable"
         )
     return ci_bucket_region
@@ -74,7 +74,7 @@ def ci_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str:
     ci_bucket_endpoint = pytestconfig.option.ci_s3_bucket_endpoint
     if not ci_bucket_endpoint:
         raise ValueError(
-            "Bucket name for the models bucket is not defined."
+            "Endpoint for the ci s3 bucket is not defined."
             "Either pass with `--ci-s3-bucket-endpoint` or set `CI_S3_BUCKET_ENDPOINT` environment variable"
         )
     return ci_bucket_endpoint
@@ -96,7 +96,7 @@ def models_s3_bucket_region(pytestconfig: pytest.Config) -> str:
     models_bucket_region = pytestconfig.option.models_s3_bucket_region
     if not models_bucket_region:
         raise ValueError(
-            "Bucket name for the models bucket is not defined."
+            "region for the models bucket is not defined."
             "Either pass with `--models-s3-bucket-region` or set `MODELS_S3_BUCKET_REGION` environment variable"
         )
     return models_bucket_region
@@ -107,7 +107,7 @@ def models_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str:
     models_bucket_endpoint = pytestconfig.option.models_s3_bucket_endpoint
     if not models_bucket_endpoint:
         raise ValueError(
-            "Bucket name for the models bucket is not defined."
+            "endpoint for the models bucket is not defined."
             "Either pass with `--models-s3-bucket-endpoint` or set `MODELS_S3_BUCKET_ENDPOINT` environment variable"
         )
     return models_bucket_endpoint
