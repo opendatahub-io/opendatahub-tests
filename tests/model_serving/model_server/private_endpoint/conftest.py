@@ -17,7 +17,7 @@ from tests.model_serving.model_server.private_endpoint.utils import (
     b64_encoded_string,
 )
 from utilities.infra import create_ns
-from tests.constants import KServeDeploymentType, ModelStoragePath, ModelFormat
+from utilities.constants import KServeDeploymentType, ModelStoragePath, ModelFormat
 
 
 LOGGER = get_logger(name=__name__)

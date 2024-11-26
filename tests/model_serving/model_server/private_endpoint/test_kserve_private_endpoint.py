@@ -6,7 +6,7 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
 from ocp_resources.deployment import Deployment
 from tests.model_serving.model_server.private_endpoint.utils import curl_from_pod
-from tests.constants import CurlOutput, ModelEndpoint
+from utilities.constants import CurlOutput, ModelEndpoint
 
 
 LOGGER = get_logger(name=__name__)

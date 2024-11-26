@@ -17,7 +17,7 @@ from ocp_utilities.infra import get_pods_by_name_prefix
 
 from tests.model_serving.model_server.storage.constants import NFS_STR
 from tests.model_serving.model_server.utils import create_isvc
-from tests.constants import KServeDeploymentType
+from utilities.constants import KServeDeploymentType
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 

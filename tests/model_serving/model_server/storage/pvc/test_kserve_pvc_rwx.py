@@ -1,6 +1,6 @@
 import shlex
 from typing import List
-from tests.constants import KServeDeploymentType
+from utilities.constants import KServeDeploymentType
 
 import pytest
 
