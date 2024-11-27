@@ -125,7 +125,7 @@ def inference_service(
         "runtime": serving_runtime.name,
         "storage_uri": f"pvc://{model_pvc.name}/{downloaded_model_data}",
         "model_format": serving_runtime.instance.spec.supportedModelFormats[0].name,
-        "deployment_mode": request.param.get("deployment-mode", KServeDeploymentType.SERVERLESS.value),
+        "deployment_mode": request.param.get("deployment-mode", KServeDeploymentType.SERVERLESS),
     }
 
     if min_replicas := request.param.get("min-replicas"):

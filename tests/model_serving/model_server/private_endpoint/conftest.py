@@ -88,10 +88,10 @@ def endpoint_isvc(
         client=admin_client,
         name="test",
         namespace=endpoint_namespace.name,
-        deployment_mode=KServeDeploymentType.SERVERLESS.value,
+        deployment_mode=KServeDeploymentType.SERVERLESS,
         storage_key="endpoint-s3-secret",
-        storage_path=ModelStoragePath.FLAN_T5_SMALL.value,
-        model_format=ModelFormat.CAIKIT.value,
+        storage_path=ModelStoragePath.FLAN_T5_SMALL,
+        model_format=ModelFormat.CAIKIT,
         runtime=endpoint_sr.name,
     ) as isvc:
         yield isvc

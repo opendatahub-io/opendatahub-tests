@@ -1,24 +1,22 @@
-from enum import Enum
-
 APPLICATIONS_NAMESPACE: str = "redhat-ods-applications"
 
 
-class KServeDeploymentType(Enum):
+class KServeDeploymentType:
     SERVERLESS: str = "Serverless"
     RAW_DEPLOYMENT: str = "RawDeployment"
 
 
-class ModelFormat(Enum):
+class ModelFormat:
     CAIKIT: str = "caikit"
 
 
-class ModelStoragePath(Enum):
-    FLAN_T5_SMALL: str = f"flan-t5-small/flan-t5-small-{ModelFormat.CAIKIT.value}"
+class ModelStoragePath:
+    FLAN_T5_SMALL: str = f"flan-t5-small/flan-t5-small-{ModelFormat.CAIKIT}"
 
 
-class CurlOutput(Enum):
+class CurlOutput:
     HEALTH_OK: str = "OK"
 
 
-class ModelEndpoint(Enum):
+class ModelEndpoint:
     HEALTH: str = "health"

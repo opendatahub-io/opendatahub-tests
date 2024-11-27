@@ -40,9 +40,9 @@ class TestKserveInternalEndpoint:
         curl_stdout = curl_from_pod(
             isvc=endpoint_isvc,
             pod=endpoint_pod_with_istio_sidecar,
-            endpoint=ModelEndpoint.HEALTH.value,
+            endpoint=ModelEndpoint.HEALTH,
         )
-        assert curl_stdout == CurlOutput.HEALTH_OK.value
+        assert curl_stdout == CurlOutput.HEALTH_OK
 
     def test_curl_with_istio_diff_ns(
         self: Self,
@@ -54,10 +54,10 @@ class TestKserveInternalEndpoint:
         curl_stdout = curl_from_pod(
             isvc=endpoint_isvc,
             pod=diff_pod_with_istio_sidecar,
-            endpoint=ModelEndpoint.HEALTH.value,
+            endpoint=ModelEndpoint.HEALTH,
             protocol="https",
         )
-        assert curl_stdout == CurlOutput.HEALTH_OK.value
+        assert curl_stdout == CurlOutput.HEALTH_OK
 
     def test_curl_outside_istio_same_ns(
         self: Self,
@@ -69,10 +69,10 @@ class TestKserveInternalEndpoint:
         curl_stdout = curl_from_pod(
             isvc=endpoint_isvc,
             pod=endpoint_pod_without_istio_sidecar,
-            endpoint=ModelEndpoint.HEALTH.value,
+            endpoint=ModelEndpoint.HEALTH,
             protocol="https",
         )
-        assert curl_stdout == CurlOutput.HEALTH_OK.value
+        assert curl_stdout == CurlOutput.HEALTH_OK
 
     def test_curl_outside_istio_diff_ns(
         self: Self,
@@ -84,7 +84,7 @@ class TestKserveInternalEndpoint:
         curl_stdout = curl_from_pod(
             isvc=endpoint_isvc,
             pod=diff_pod_without_istio_sidecar,
-            endpoint=ModelEndpoint.HEALTH.value,
+            endpoint=ModelEndpoint.HEALTH,
             protocol="https",
         )
-        assert curl_stdout == CurlOutput.HEALTH_OK.value
+        assert curl_stdout == CurlOutput.HEALTH_OK
