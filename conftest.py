@@ -2,6 +2,9 @@ import logging
 import os
 import pathlib
 import shutil
+from pytest import Parser, Session, FixtureRequest, FixtureDef, Item, Config, CollectReport
+from _pytest.terminal import TerminalReporter
+from typing import Optional, Any
 
 from utilities.logger import separator, setup_logging
 
@@ -10,7 +13,7 @@ LOGGER = logging.getLogger(__name__)
 BASIC_LOGGER = logging.getLogger("basic")
 
 
-def pytest_addoption(parser):
+def pytest_addoption(parser: Parser) -> None:
     aws_group = parser.getgroup(name="AWS")
     buckets_group = parser.getgroup(name="Buckets")
 
@@ -31,8 +34,34 @@ def pytest_addoption(parser):
         "--ci-s3-bucket-name", default=os.environ.get("CI_S3_BUCKET_NAME"), help="Ci S3 bucket name"
     )
 
+    buckets_group.addoption(
+        "--ci-s3-bucket-region", default=os.environ.get("CI_S3_BUCKET_REGION"), help="Ci S3 bucket region"
+    )
 
-def pytest_sessionstart(session):
+    buckets_group.addoption(
+        "--ci-s3-bucket-endpoint", default=os.environ.get("CI_S3_BUCKET_ENDPOINT"), help="Ci S3 bucket endpoint"
+    )
+
+    buckets_group.addoption(
+        "--models-s3-bucket-name",
+        default=os.environ.get("MODELS_S3_BUCKET_NAME"),
+        help="Models S3 bucket name",
+    )
+
+    buckets_group.addoption(
+        "--models-s3-bucket-region",
+        default=os.environ.get("MODELS_S3_BUCKET_REGION"),
+        help="Models S3 bucket region",
+    )
+
+    buckets_group.addoption(
+        "--models-s3-bucket-endpoint",
+        default=os.environ.get("MODELS_S3_BUCKET_ENDPOINT"),
+        help="Models S3 bucket endpoint",
+    )
+
+
+def pytest_sessionstart(session: Session) -> None:
     tests_log_file = session.config.getoption("log_file") or "pytest-tests.log"
     if os.path.exists(tests_log_file):
         pathlib.Path(tests_log_file).unlink()
@@ -43,24 +72,24 @@ def pytest_sessionstart(session):
     )
 
 
-def pytest_fixture_setup(fixturedef, request):
+def pytest_fixture_setup(fixturedef: FixtureDef[Any], request: FixtureRequest) -> None:
     LOGGER.info(f"Executing {fixturedef.scope} fixture: {fixturedef.argname}")
 
 
-def pytest_runtest_setup(item):
+def pytest_runtest_setup(item: Item) -> None:
     BASIC_LOGGER.info(f"\n{separator(symbol_='-', val=item.name)}")
     BASIC_LOGGER.info(f"{separator(symbol_='-', val='SETUP')}")
 
 
-def pytest_runtest_call(item):
+def pytest_runtest_call(item: Item) -> None:
     BASIC_LOGGER.info(f"{separator(symbol_='-', val='CALL')}")
 
 
-def pytest_runtest_teardown(item):
+def pytest_runtest_teardown(item: Item) -> None:
     BASIC_LOGGER.info(f"{separator(symbol_='-', val='TEARDOWN')}")
 
 
-def pytest_report_teststatus(report, config):
+def pytest_report_teststatus(report: CollectReport, config: Config) -> None:
     test_name = report.head_line
     when = report.when
     call_str = "call"
@@ -78,8 +107,9 @@ def pytest_report_teststatus(report, config):
             BASIC_LOGGER.info(f"\nTEST: {test_name} STATUS: \033[0;31mFAILED\033[0m")
 
 
-def pytest_sessionfinish(session, exitstatus):
+def pytest_sessionfinish(session: Session, exitstatus: int) -> None:
     shutil.rmtree(path=session.config.option.basetemp, ignore_errors=True)
 
-    reporter = session.config.pluginmanager.get_plugin("terminalreporter")
-    reporter.summary_stats()
+    reporter: Optional[TerminalReporter] = session.config.pluginmanager.get_plugin("terminalreporter")
+    if reporter:
+        reporter.summary_stats()

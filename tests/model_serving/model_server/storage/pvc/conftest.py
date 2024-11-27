@@ -1,7 +1,8 @@
 import shlex
-from typing import List, Optional, Tuple
+from typing import List, Generator, Any
 
 import pytest
+from pytest import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.deployment import Deployment
@@ -10,79 +11,27 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
-from ocp_resources.service_mesh_member import ServiceMeshMember
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.storage_class import StorageClass
 from ocp_utilities.infra import get_pods_by_name_prefix
 
 from tests.model_serving.model_server.storage.constants import NFS_STR
-from tests.model_serving.model_server.storage.pvc.utils import create_isvc
+from tests.model_serving.model_server.utils import create_isvc
+from utilities.constants import KServeDeploymentType
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
-@pytest.fixture(scope="session")
-def aws_access_key_id(pytestconfig) -> Optional[str]:
-    access_key = pytestconfig.option.aws_access_key_id
-    if not access_key:
-        raise ValueError(
-            "AWS access key id is not set. "
-            "Either pass with `--aws-access-key-id` or set `AWS_ACCESS_KEY_ID` environment variable"
-        )
-
-    return access_key
-
-
-@pytest.fixture(scope="session")
-def aws_secret_access_key(pytestconfig) -> Optional[str]:
-    secret_access_key = pytestconfig.option.aws_secret_access_key
-    if not secret_access_key:
-        raise ValueError(
-            "AWS secret access key is not set. "
-            "Either pass with `--aws-secret-access-key` or set `AWS_SECRET_ACCESS_KEY` environment variable"
-        )
-
-    return secret_access_key
-
-
-@pytest.fixture(scope="session")
-def valid_aws_config(aws_access_key_id: str, aws_secret_access_key: str) -> Tuple[str, str]:
-    return aws_access_key_id, aws_secret_access_key
-
-
 @pytest.fixture(scope="class")
-def service_mesh_member(admin_client: DynamicClient, model_namespace: Namespace) -> ServiceMeshMember:
-    with ServiceMeshMember(
-        client=admin_client,
-        name="default",
-        namespace=model_namespace.name,
-        control_plane_ref={"name": "data-science-smcp", "namespace": "istio-system"},
-    ) as smm:
-        yield smm
-
-
-@pytest.fixture(scope="session")
-def ci_s3_bucket_name(pytestconfig) -> str:
-    bucket_name = pytestconfig.option.ci_s3_bucket_name
-    if not bucket_name:
-        raise ValueError(
-            "CI S3 bucket name is not set. "
-            "Either pass with `--ci-s3-bucket-name` or set `CI_S3_BUCKET_NAME` environment variable"
-        )
-
-    return bucket_name
-
-
-@pytest.fixture(scope="class")
-def ci_s3_storage_uri(request, ci_s3_bucket_name) -> str:
+def ci_s3_storage_uri(request: FixtureRequest, ci_s3_bucket_name: str) -> str:
     return f"s3://{ci_s3_bucket_name}/{request.param['model-dir']}/"
 
 
 @pytest.fixture(scope="class")
 def model_pvc(
-    request,
+    request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
-) -> PersistentVolumeClaim:
+) -> Generator[PersistentVolumeClaim, Any, Any]:
     access_mode = "ReadWriteOnce"
     pvc_kwargs = {
         "name": "model-pvc",
@@ -146,12 +95,11 @@ def downloaded_model_data(
 
 @pytest.fixture(scope="class")
 def serving_runtime(
-    request,
+    request: FixtureRequest,
     admin_client: DynamicClient,
-    service_mesh_member: ServiceMeshMember,
     model_namespace: Namespace,
     downloaded_model_data: str,
-) -> ServingRuntime:
+) -> Generator[ServingRuntime, Any, Any]:
     with ServingRuntimeFromTemplate(
         client=admin_client,
         name=request.param["name"],
@@ -163,13 +111,13 @@ def serving_runtime(
 
 @pytest.fixture(scope="class")
 def inference_service(
-    request,
+    request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
     serving_runtime: ServingRuntime,
     model_pvc: PersistentVolumeClaim,
     downloaded_model_data: str,
-) -> InferenceService:
+) -> Generator[InferenceService, Any, Any]:
     isvc_kwargs = {
         "client": admin_client,
         "name": request.param["name"],
@@ -177,7 +125,7 @@ def inference_service(
         "runtime": serving_runtime.name,
         "storage_uri": f"pvc://{model_pvc.name}/{downloaded_model_data}",
         "model_format": serving_runtime.instance.spec.supportedModelFormats[0].name,
-        "deployment_mode": request.param.get("deployment-mode", "Serverless"),
+        "deployment_mode": request.param.get("deployment-mode", KServeDeploymentType.SERVERLESS),
     }
 
     if min_replicas := request.param.get("min-replicas"):
@@ -227,12 +175,16 @@ def predictor_pods_scope_class(
 
 
 @pytest.fixture()
-def first_predictor_pod(predictor_pods_scope_function) -> Pod:
+def first_predictor_pod(predictor_pods_scope_function: List[Pod]) -> Pod:
     return predictor_pods_scope_function[0]
 
 
 @pytest.fixture()
-def patched_isvc(request, inference_service: InferenceService, first_predictor_pod: Pod) -> InferenceService:
+def patched_isvc(
+    request: FixtureRequest,
+    inference_service: InferenceService,
+    first_predictor_pod: Pod,
+) -> Generator[InferenceService, Any, Any]:
     with ResourceEditor(
         patches={
             inference_service: {
@@ -247,6 +199,6 @@ def patched_isvc(request, inference_service: InferenceService, first_predictor_p
 
 
 @pytest.fixture(scope="module")
-def skip_if_no_nfs_storage_class(admin_client):
+def skip_if_no_nfs_storage_class(admin_client: DynamicClient) -> None:
     if not StorageClass(client=admin_client, name=NFS_STR).exists:
         pytest.skip(f"StorageClass {NFS_STR} is missing from the cluster")

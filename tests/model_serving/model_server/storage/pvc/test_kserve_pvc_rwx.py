@@ -1,5 +1,6 @@
 import shlex
 from typing import List
+from utilities.constants import KServeDeploymentType
 
 import pytest
 
@@ -24,7 +25,7 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_nfs_storage_class")
             {"model-dir": "test-dir"},
             {"access-modes": "ReadWriteMany", "storage-class-name": NFS_STR},
             KSERVE_OVMS_SERVING_RUNTIME_PARAMS,
-            INFERENCE_SERVICE_PARAMS | {"deployment-mode": "Serverless", "min-replicas": 2},
+            INFERENCE_SERVICE_PARAMS | {"deployment-mode": KServeDeploymentType.SERVERLESS, "min-replicas": 2},
         )
     ],
     indirect=True,
