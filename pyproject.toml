@@ -42,11 +42,11 @@ classifiers = [
 dependencies = [
     "openshift-python-utilities",
     "openshift-python-wrapper",
-    "pytest-progress",
     "python-simple-logger",
     "pyyaml",
     "tenacity",
     "types-requests>=2.32.0.20241016",
+    "pytest-pspec",
 ]
 
 [project.urls]
