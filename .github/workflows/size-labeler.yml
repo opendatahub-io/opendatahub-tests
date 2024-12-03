@@ -1,0 +1,41 @@
+name: Label PRs by Size
+
+on:
+  pull_request_target:
+
+jobs:
+  label-pr:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Calculate PR size and label
+      id: size
+      run: |
+        PR_FILES_CHANGED=$(git diff --name-only ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} | wc -l)
+        echo "Number of files changed: $PR_FILES_CHANGED"
+
+        if [ $PR_FILES_CHANGED -lt 10 ]; then
+          echo "PR size is extra small (xs)"
+          echo "::set-output name=label::size/xs"
+        elif [ $PR_FILES_CHANGED -lt 50 ]; then
+          echo "PR size is small (s)"
+          echo "::set-output name=label::size/s"
+        elif [ $PR_FILES_CHANGED -lt 100 ]; then
+          echo "PR size is medium (m)"
+          echo "::set-output name=label::size/m"
+        elif [ $PR_FILES_CHANGED -lt 150 ]; then
+          echo "PR size is large (l)"
+          echo "::set-output name=label::size/l"
+        else
+          echo "PR size is extra large (xl)"
+          echo "::set-output name=label::size/xl"
+        fi
+
+    - name: Add label to PR
+      uses: actions-ecosystem/action-add-labels@v1
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        labels: ${{ steps.size.outputs.label }}
