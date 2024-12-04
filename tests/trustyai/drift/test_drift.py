@@ -1,6 +1,6 @@
 import pytest
 
-from tests.trustyai.drift.utils import send_inference_requests_and_verify_trustyai_service
+from tests.trustyai.drift.utils import send_inference_requests_and_verify_trustyai_service, verify_metric_request
 
 
 @pytest.mark.parametrize(
@@ -17,6 +17,7 @@ class TestDriftMetrics:
     Verifies all the basic operations with a drift metric (meanshift) available in TrustyAI, using PVC storage.
 
     1. Send data to the model (gaussian_credit_model) and verify that TrustyAI registers the observations.
+    2. Send metric request (meanshift) and verify the response.
     """
 
     def test_send_inference_request_and_verify_trustyai_service(
@@ -36,3 +37,14 @@ class TestDriftMetrics:
         )
 
         # TODO: Add rest of operations in upcoming PRs (upload data directly to Trusty, send metric request, schedule period metric calculation, delete metric request).
+
+    def test_drift_metric_meanshift(
+        self, admin_client, openshift_token, trustyai_service_with_pvc_storage, gaussian_credit_model
+    ):
+        verify_metric_request(
+            client=admin_client,
+            trustyai_service=trustyai_service_with_pvc_storage,
+            token=openshift_token,
+            metric_name="meanshift",
+            json_data={"modelId": gaussian_credit_model.name, "referenceTag": "TRAINING"},
+        )
