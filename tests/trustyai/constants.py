@@ -3,3 +3,4 @@ TIMEOUT_5MIN = 5 * TIMEOUT_1MIN
 
 TRUSTYAI_SERVICE: str = "trustyai-service"
 MODELMESH_SERVING = "modelmesh-serving"
+MARIADB = "mariadb"

@@ -1,23 +1,36 @@
 import subprocess
+from typing import Any, Dict, List
 
 import pytest
 import yaml
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import ResourceNotFoundError, ResourceNotUniqueError
+from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
+from ocp_resources.maria_db import MariaDB
+from ocp_resources.mariadb_operator import MariadbOperator
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.trustyai_service import TrustyAIService
+from ocp_utilities.operators import install_operator, uninstall_operator
+from simple_logger.logger import get_logger
 
-from tests.trustyai.constants import TRUSTYAI_SERVICE, MODELMESH_SERVING
-from tests.trustyai.utils import update_configmap_data
+from tests.trustyai.constants import TRUSTYAI_SERVICE, MODELMESH_SERVING, TIMEOUT_1MIN, MARIADB
+from tests.trustyai.utils import update_configmap_data, wait_for_mariadb_operator_deployments, wait_for_mariadb_pods
 from tests.utils import create_ns
+
+LOGGER = get_logger(name=__name__)
 
 MINIO: str = "minio"
 OPENDATAHUB_IO: str = "opendatahub.io"
+OPENSHIFT_OPERATORS: str = "openshift-operators"
+QUARKUS: str = "quarkus"
+
+TIMEOUT_10_MIN: int = 10 * TIMEOUT_1MIN
 
 
 @pytest.fixture(scope="class")
@@ -179,3 +192,109 @@ def minio_data_connection(
         },
     ) as minio_secret:
         yield minio_secret
+
+
+@pytest.fixture(scope="class")
+def db_credentials(admin_client: DynamicClient, model_namespace: Namespace) -> Secret:
+    with Secret(
+        client=admin_client,
+        name="db-credentials",
+        namespace=model_namespace.name,
+        string_data={
+            "databaseKind": MARIADB,
+            "databaseName": "trustyai_database",
+            "databaseUsername": QUARKUS,
+            "databasePassword": QUARKUS,
+            "databaseService": MARIADB,
+            "databasePort": "3306",
+            "databaseGeneration": "update",
+        },
+    ) as db_credentials:
+        yield db_credentials
+
+
+@pytest.fixture(scope="session")
+def installed_mariadb_operator(admin_client: DynamicClient) -> None:
+    name = "mariadb-operator"
+    namespace = "openshift-operators"
+    install_operator(
+        admin_client=admin_client,
+        target_namespaces=[namespace],
+        name=name,
+        channel="alpha",
+        source="community-operators",
+        operator_namespace=namespace,
+        timeout=TIMEOUT_10_MIN,
+        install_plan_approval="Manual",
+    )
+    yield
+    uninstall_operator(admin_client=admin_client, name=name, operator_namespace=namespace, clean_up_namespace=False)
+
+
+@pytest.fixture(scope="session")
+def mariadb_operator_cr(admin_client: DynamicClient) -> MariadbOperator:
+    mariadb_csv = get_cluster_service_version(client=admin_client, prefix="mariadb", namespace=OPENSHIFT_OPERATORS)
+    alm_examples = mariadb_csv.get_alm_examples()
+    mariadb_operator_cr_dict = next(d for d in alm_examples if d["kind"] == "MariadbOperator")
+
+    if not mariadb_operator_cr_dict:
+        raise ResourceNotFoundError(f"No MariadbOperator dict found in alm_examples for CSV {mariadb_csv.name}")
+
+    mariadb_operator_cr_dict["metadata"]["namespace"] = OPENSHIFT_OPERATORS
+    with MariadbOperator(kind_dict=mariadb_operator_cr_dict) as mariadb_operator_cr:
+        mariadb_operator_cr.wait_for_condition(
+            condition="Deployed", status=mariadb_operator_cr.Condition.Status.TRUE, timeout=10 * 60
+        )
+        wait_for_mariadb_operator_deployments(mariadb_operator=mariadb_operator_cr)
+        yield mariadb_operator_cr
+
+
+@pytest.fixture(scope="class")
+def mariadb(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    db_credentials: Secret,
+    mariadb_operator_cr: MariadbOperator,
+) -> MariaDB:
+    mariadb_csv: ClusterServiceVersion = get_cluster_service_version(
+        client=admin_client, prefix="mariadb", namespace=OPENSHIFT_OPERATORS
+    )
+    alm_examples: List[Dict[str, Any]] = mariadb_csv.get_alm_examples()
+    mariadb_dict: Dict[str, Any] = next(d for d in alm_examples if d["kind"] == "MariaDB")
+
+    if not mariadb_dict:
+        raise ResourceNotFoundError(f"No MariaDB dict found in alm_examples for CSV {mariadb_csv.name}")
+
+    mariadb_dict["metadata"]["namespace"] = model_namespace.name
+    mariadb_dict["spec"]["database"] = "trustyai_database"
+    mariadb_dict["spec"]["username"] = QUARKUS
+    mariadb_dict["spec"]["replicas"] = 1
+    mariadb_dict["spec"]["galera"]["enabled"] = False
+    mariadb_dict["spec"]["metrics"]["enabled"] = False
+
+    mariadb_dict["spec"]["container"] = {"env": [{"name": "MARIADB_EXTRA_FLAGS", "value": "--skip-ssl"}]}
+
+    password_secret_key_ref = {"generate": False, "key": "databasePassword", "name": "db-credentials"}
+
+    mariadb_dict["spec"]["rootPasswordSecretKeyRef"] = password_secret_key_ref
+    mariadb_dict["spec"]["passwordSecretKeyRef"] = password_secret_key_ref
+
+    with MariaDB(kind_dict=mariadb_dict) as mariadb:
+        wait_for_mariadb_pods(client=admin_client, mariadb=mariadb)
+        yield mariadb
+
+
+def get_cluster_service_version(client: DynamicClient, prefix: str, namespace: str) -> ClusterServiceVersion:
+    csvs = ClusterServiceVersion.get(dyn_client=client, namespace=namespace)
+
+    matching_csvs = [csv for csv in csvs if csv.name.startswith(prefix)]
+
+    if not matching_csvs:
+        raise ResourceNotFoundError(f"No ClusterServiceVersion found starting with prefix '{prefix}'")
+
+    if len(matching_csvs) > 1:
+        raise ResourceNotUniqueError(
+            f"Multiple ClusterServiceVersions found starting with prefix '{prefix}': {[csv.name for csv in matching_csvs]}"
+        )
+
+    return matching_csvs[0]
