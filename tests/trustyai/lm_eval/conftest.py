@@ -16,5 +16,7 @@ def lm_eval_job_hf(model_namespace: Namespace):
             ]
         },
         log_samples=True,
+        allow_online=True,
+        allow_code_execution=True,
     ) as job:
         yield job
