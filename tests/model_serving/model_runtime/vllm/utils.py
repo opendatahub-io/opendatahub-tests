@@ -10,7 +10,9 @@ from utilities.constants import APPLICATIONS_NAMESPACE
 LOGGER = get_logger(name=__name__)
 
 
-def get_runtime_manifest(client: DynamicClient, template_name: str, deployment_type: str) -> ServingRuntime:
+def get_runtime_manifest(
+    client: DynamicClient, template_name: str, deployment_type: str, runtime_image: str
+) -> ServingRuntime:
     # Get the model template and extract the runtime dictionary
     template = get_model_template(client=client, template_name=template_name)
     runtime_dict: Dict[str, Any] = template.instance.objects[0].to_dict()
@@ -21,6 +23,8 @@ def get_runtime_manifest(client: DynamicClient, template_name: str, deployment_t
 
     # Loop through containers and apply changes
     for container in runtime_dict["spec"]["containers"]:
+        if runtime_image:
+            container["image"] = runtime_image
         # Remove '--model' from the container args, we will pass this using isvc
         container["args"] = [arg for arg in container["args"] if "--model" not in arg]
 

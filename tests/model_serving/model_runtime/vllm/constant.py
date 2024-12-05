@@ -13,3 +13,9 @@ vLLM_CONFIG: Dict[str, Dict[str, Any]] = {
     },
     "commands": {"GRPC": "vllm_tgis_adapter"},
 }
+
+TEMPLATE_MAP = {
+    "nvidia": "vllm-runtime-template",
+    "amd": "vllm-rocm-runtime-template",
+    "gaudi": "vllm-gaudi-runtime-template",
+}
