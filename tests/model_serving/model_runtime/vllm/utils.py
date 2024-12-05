@@ -1,6 +1,8 @@
-from typing import Any, Dict
+from contextlib import contextmanager
+from typing import Generator, Any, Dict
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
+from ocp_resources.secret import Secret
 from ocp_resources.template import Template
 from ocp_resources.serving_runtime import ServingRuntime
 from simple_logger.logger import get_logger
@@ -50,3 +52,33 @@ def get_model_template(client: DynamicClient, template_name: str) -> Template:
         return template
 
     raise ResourceNotFoundError(f"{template_name} template not found")
+
+
+@contextmanager
+def kserve_s3_endpoint_secret(
+    admin_client: DynamicClient,
+    name: str,
+    namespace: str,
+    aws_access_key: str,
+    aws_secret_access_key: str,
+    aws_s3_endpoint: str,
+    aws_s3_region: str,
+) -> Generator[Secret, None, None]:
+    with Secret(
+        client=admin_client,
+        name=name,
+        namespace=namespace,
+        annotations={
+            "serving.kserve.io/s3-endpoint": aws_s3_endpoint,
+            "serving.kserve.io/s3-region": aws_s3_region,
+            "serving.kserve.io/s3-useanoncredential": "false",
+            "serving.kserve.io/s3-verifyssl": "0",
+            "serving.kserve.io/s3-usehttps": "1",
+        },
+        string_data={
+            "AWS_ACCESS_KEY_ID": aws_access_key,
+            "AWS_SECRET_ACCESS_KEY": aws_secret_access_key,
+        },
+        wait_for_resource=True,
+    ) as secret:
+        yield secret

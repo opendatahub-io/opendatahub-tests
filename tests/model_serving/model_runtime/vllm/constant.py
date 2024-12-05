@@ -19,3 +19,9 @@ TEMPLATE_MAP = {
     "amd": "vllm-rocm-runtime-template",
     "gaudi": "vllm-gaudi-runtime-template",
 }
+
+ACCELERATOR_IDENTIFIER = {
+    "nvidia": "nvidia.com/gpu",
+    "amd": "amd.com/gpu",
+    "gaudi": "habana.ai/gaudi",
+}
