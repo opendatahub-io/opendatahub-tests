@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/name: model-registry-db
+    app.kubernetes.io/instance: model-registry-db
+    app.kubernetes.io/part-of: model-registry-db
+    app.kubernetes.io/managed-by: kustomize
+  annotations:
+    template.alpha.openshift.io/wait-for-ready: "true"
+  name: model-registry-db
+spec:
+  replicas: 1
+  revisionHistoryLimit: 0
+  selector:
+    matchLabels:
+      name: model-registry-db
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        name: model-registry-db
+        sidecar.istio.io/inject: "false"
+    spec:
+      containers:
+      - env:
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              key: database-user
+              name: model-registry-db
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: database-password
+              name: model-registry-db
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: database-password
+              name: model-registry-db
+        - name: MYSQL_DATABASE
+          valueFrom:
+            secretKeyRef:
+              key: database-name
+              name: model-registry-db
+        args:
+          - --datadir
+          - /var/lib/mysql/datadir
+          - --default-authentication-plugin=mysql_native_password
+        image: mysql:8.3.0
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          exec:
+            command:
+              - /bin/bash
+              - -c
+              - mysqladmin -u\${MYSQL_USER} -p\${MYSQL_ROOT_PASSWORD} ping
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+        name: mysql
+        ports:
+        - containerPort: 3306
+          protocol: TCP
+        readinessProbe:
+          exec:
+            command:
+            - /bin/bash
+            - -c
+            - mysql -D \${MYSQL_DATABASE} -u\${MYSQL_USER} -p\${MYSQL_ROOT_PASSWORD} -e 'SELECT 1'
+          initialDelaySeconds: 10
+          timeoutSeconds: 5
+        securityContext:
+          capabilities: {}
+          privileged: false
+        terminationMessagePath: /dev/termination-log
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: model-registry-db-data
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      volumes:
+      - name: model-registry-db-data
+        persistentVolumeClaim:
+          claimName: model-registry-db
