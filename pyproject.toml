@@ -8,6 +8,7 @@ output-format = "grouped"
 exclude = [".git", ".venv", ".mypy_cache", ".tox", "__pycache__"]
 
 [tool.mypy]
+exclude = ["utilities/plugins/tgis_grpc/"]
 check_untyped_defs = true
 disallow_any_generics = true
 disallow_incomplete_defs = true
