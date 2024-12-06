@@ -111,3 +111,24 @@ def models_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str:
             "Either pass with `--models-s3-bucket-endpoint` or set `MODELS_S3_BUCKET_ENDPOINT` environment variable"
         )
     return models_bucket_endpoint
+
+
+@pytest.fixture(scope="session")
+def supported_accelerator_type(pytestconfig: pytest.Config) -> str:
+    accelerator_type = pytestconfig.option.supported_accelerator_type
+    if not accelerator_type:
+        return None
+    if accelerator_type.lower() not in ["nvidia", "amd", "gaudi"]:
+        raise ValueError(
+            "accelartor type is not defined."
+            "Either pass with `--supported-accelerator-type` or set `SUPPORTED_ACCLERATOR_TYPE` environment variable"
+        )
+    return accelerator_type
+
+
+@pytest.fixture(scope="session")
+def vllm_runtime_image(pytestconfig: pytest.Config) -> str:
+    runtime_image = pytestconfig.option.vllm_runtime_image
+    if not runtime_image:
+        return None
+    return runtime_image
