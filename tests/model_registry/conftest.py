@@ -14,9 +14,13 @@ from utilities.infra import create_ns
 
 LOGGER = get_logger(name=__name__)
 
+DB_RESOURCES_NAME = "model-registry-db"
+
 
 @pytest.fixture(scope="class")
-def model_registry_namespace(admin_client: DynamicClient) -> Generator[Namespace,Any,Any]:
+def model_registry_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
+    # This namespace should exist after Model Registry is enabled, but it can also be deleted
+    # from the cluster and does not get reconciled. Fetch if it exists, create otherwise.
     ns = Namespace(name="rhoai-model-registries", client=admin_client)
     if ns.exists:
         yield ns
@@ -30,178 +34,219 @@ def model_registry_namespace(admin_client: DynamicClient) -> Generator[Namespace
             yield ns
 
 
-#ModelRegistryDBService
 @pytest.fixture(scope="class")
-def model_registry_db_service(admin_client: DynamicClient, model_registry_namespace: Namespace) -> Generator[Service,Any,Any]:
+def model_registry_db_service(
+    admin_client: DynamicClient, model_registry_namespace: Namespace
+) -> Generator[Service, Any, Any]:
     with Service(
         client=admin_client,
-        name="model-registry-db",
+        name=DB_RESOURCES_NAME,
         namespace=model_registry_namespace.name,
-        ports=[{
-            "name": "mysql",
-            "nodePort": 0,
-            "port": 3306,
-            "protocol": "TCP",
-            "appProtocol": "tcp",
-            "targetPort": 3306,
-        }],
+        ports=[
+            {
+                "name": "mysql",
+                "nodePort": 0,
+                "port": 3306,
+                "protocol": "TCP",
+                "appProtocol": "tcp",
+                "targetPort": 3306,
+            }
+        ],
         selector={
-            "name": "model-registry-db",
+            "name": DB_RESOURCES_NAME,
         },
         label={
-            "app.kubernetes.io/name": "model-registry-db",
-            "app.kubernetes.io/instance": "model-registry-db",
-            "app.kubernetes.io/part-of": "model-registry-db",
+            "app.kubernetes.io/name": DB_RESOURCES_NAME,
+            "app.kubernetes.io/instance": DB_RESOURCES_NAME,
+            "app.kubernetes.io/part-of": DB_RESOURCES_NAME,
             "app.kubernetes.io/managed-by": "kustomize",
         },
         annotations={
             "template.openshift.io/expose-uri": "mysql://{.spec.clusterIP}:{.spec.ports[?(.name==\mysql\)].port}",
-        }
+        },
     ) as mr_db_service:
         yield mr_db_service
 
 
-#ModelRegistryDBPVC
 @pytest.fixture(scope="class")
 def model_registry_db_pvc(
     admin_client: DynamicClient,
     model_registry_namespace: Namespace,
 ) -> Generator[PersistentVolumeClaim, Any, Any]:
     pvc_kwargs = {
-        "access_mode": "ReadWriteOnce",
-        "name": "model-registry-db",
+        "accessmodes": "ReadWriteOnce",
+        "name": DB_RESOURCES_NAME,
         "namespace": model_registry_namespace.name,
         "client": admin_client,
         "size": "5Gi",
         "label": {
-            "app.kubernetes.io/name": "model-registry-db",
-            "app.kubernetes.io/instance": "model-registry-db",
-            "app.kubernetes.io/part-of": "model-registry-db",
+            "app.kubernetes.io/name": DB_RESOURCES_NAME,
+            "app.kubernetes.io/instance": DB_RESOURCES_NAME,
+            "app.kubernetes.io/part-of": DB_RESOURCES_NAME,
             "app.kubernetes.io/managed-by": "kustomize",
-        }
+        },
     }
 
     with PersistentVolumeClaim(**pvc_kwargs) as pvc:
         yield pvc
 
 
-#ModelRegistryDBSecret
 @pytest.fixture(scope="class")
 def model_registry_db_secret(
     admin_client: DynamicClient,
     model_registry_namespace: Namespace,
-) -> Generator[Secret,Any,Any]:
+) -> Generator[Secret, Any, Any]:
     with Secret(
         client=admin_client,
-        name="model-registry-db",
+        name=DB_RESOURCES_NAME,
         namespace=model_registry_namespace.name,
         string_data={
             "database-name": "model_registry",
-            "database-password": "TheBlurstOfTimes",  #not secret
-            "database-user": "mlmduser",  #not secret
+            "database-password": "TheBlurstOfTimes",  # pragma: allowlist secret
+            "database-user": "mlmduser",  # pragma: allowlist secret
         },
-        label= {
-            "app.kubernetes.io/name": "model-registry-db",
-            "app.kubernetes.io/instance": "model-registry-db",
-            "app.kubernetes.io/part-of": "model-registry-db",
+        label={
+            "app.kubernetes.io/name": DB_RESOURCES_NAME,
+            "app.kubernetes.io/instance": DB_RESOURCES_NAME,
+            "app.kubernetes.io/part-of": DB_RESOURCES_NAME,
             "app.kubernetes.io/managed-by": "kustomize",
         },
-        annotations= {
+        annotations={
             "template.openshift.io/expose-database_name": "'{.data[''database-name'']}'",
             "template.openshift.io/expose-password": "'{.data[''database-password'']}'",
             "template.openshift.io/expose-username": "'{.data[''database-user'']}'",
-        }
+        },
     ) as mr_db_secret:
         yield mr_db_secret
 
 
-#ModelRegistryDBDeployment
 @pytest.fixture(scope="class")
 def model_registry_db_deployment(
     admin_client: DynamicClient,
     model_registry_namespace: Namespace,
-) -> Generator[Deployment,Any,Any]:
+    model_registry_db_secret: Secret,
+    model_registry_db_pvc: PersistentVolumeClaim,
+    model_registry_db_service: Service,
+) -> Generator[Deployment, Any, Any]:
     with Deployment(
-        # name= "model-registry-db",
-        # namespace=model_registry_namespace.name,
-        # annotations={
-        #     "template.alpha.openshift.io/wait-for-ready": "true",
-        # },
-        # label= {
-        #     "app.kubernetes.io/name": "model-registry-db",
-        #     "app.kubernetes.io/instance": "model-registry-db",
-        #     "app.kubernetes.io/part-of": "model-registry-db",
-        #     "app.kubernetes.io/managed-by": "kustomize",
-        # },
-        # replicas= 1,
-        # revision_history_limit= 0,
-        # selector={
-        #     "matchLabels":{
-        #         "name": "model-registry-db"
-        #     }
-        # },
-        # strategy= {"type": "Recreate"},
-        # template={
-        #     "metadata":{
-        #         "labels":{
-        #             "name": "model-registry-db",
-        #             "sidecar.istio.io/inject": "false"
-        #         }
-        #     },
-        #     "spec":{
-        #         "containers":[{
-        #             "env":[
-        #                 {"name": "MYSQL_USER","valueFrom":{"secretKeyRef":{"key": "database-user","name": "model-registry-db"}}},
-        #                 {"name": "MYSQL_PASSWORD", "valueFrom":{ "secretKeyRef":{"key": "database-password","name": "model-registry-db"}}},
-        #                 {"name": "MYSQL_ROOT_PASSWORD","valueFrom":{"secretKeyRef":{"key": "database-password","name": "model-registry-db"}}},
-        #                 {"name": "MYSQL_DATABASE","valueFrom":{"secretKeyRef":{"key": "database-name","name": "model-registry-db"}}},
-        #             ],
-        #             "args":[
-        #                 "--datadir",
-        #                 "/var/lib/mysql/datadir",
-        #                 "--default-authentication-plugin=mysql_native_password"
-        #             ],
-        #             "image": "mysql:8.3.0",
-        #             "imagePullPolicy": "IfNotPresent",
-        #             "livenessProbe":{
-        #                 "exec":{
-        #                     "command": ["/bin/bash", "-c", "mysqladmin -u\${MYSQL_USER} -p\${MYSQL_ROOT_PASSWORD} ping"]
-        #                 },
-        #                     "initialDelaySeconds": 15, 
-        #                     "periodSeconds": 10, 
-        #                     "timeoutSeconds": 5
-        #             },
-        #             "name": "mysql",
-        #             "ports":[{"containerPort": 3306, "protocol": "TCP"}],
-        #             "readinessProbe":{
-        #                 "exec":{
-        #                     "command": ["/bin/bash", "-c", "mysql -D \${MYSQL_DATABASE} -u\${MYSQL_USER} -p\${MYSQL_ROOT_PASSWORD} -e 'SELECT 1'"]
-        #                 },
-        #                     "initialDelaySeconds": 10,
-        #                     "timeoutSeconds": 5
-        #             },
-        #             "securityContext":{
-        #                 "capabilities" : {},
-        #                 "priviledged": "false"
-        #             },
-        #             "terminationMessagePath": "/dev/termination-log",
-        #             "volumeMounts":[{"mountPath": "/var/lib/mysql", "name": "model-registry-db-data"}]
-        #             },
-        #             {
-        #             "dnsPolicy": "ClusterFirst",
-        #             "restartPolicy": "Always",
-        #             "volumes":[{
-        #                 "name": "model-registry-db-data",
-        #                 "persistentVolumeClaim":{
-        #                     "claimName": "model-registry-db"
-        #                 }
-        #             }],
-        #             }]
-        #         }
-        # }
-        yaml_file="utilities/manifests/db.yaml",
-        namespace=model_registry_namespace.name
+        name=DB_RESOURCES_NAME,
+        namespace=model_registry_namespace.name,
+        annotations={
+            "template.alpha.openshift.io/wait-for-ready": "true",
+        },
+        label={
+            "app.kubernetes.io/name": DB_RESOURCES_NAME,
+            "app.kubernetes.io/instance": DB_RESOURCES_NAME,
+            "app.kubernetes.io/part-of": DB_RESOURCES_NAME,
+            "app.kubernetes.io/managed-by": "kustomize",
+        },
+        replicas=1,
+        revision_history_limit=0,
+        selector={"matchLabels": {"name": DB_RESOURCES_NAME}},
+        strategy={"type": "Recreate"},
+        template={
+            "metadata": {
+                "labels": {
+                    "name": DB_RESOURCES_NAME,
+                    "sidecar.istio.io/inject": "false",
+                }
+            },
+            "spec": {
+                "containers": [
+                    {
+                        "env": [
+                            {
+                                "name": "MYSQL_USER",
+                                "valueFrom": {
+                                    "secretKeyRef": {
+                                        "key": "database-user",
+                                        "name": f"{model_registry_db_secret.name}",
+                                    }
+                                },
+                            },
+                            {
+                                "name": "MYSQL_PASSWORD",
+                                "valueFrom": {
+                                    "secretKeyRef": {
+                                        "key": "database-password",
+                                        "name": f"{model_registry_db_secret.name}",
+                                    }
+                                },
+                            },
+                            {
+                                "name": "MYSQL_ROOT_PASSWORD",
+                                "valueFrom": {
+                                    "secretKeyRef": {
+                                        "key": "database-password",
+                                        "name": f"{model_registry_db_secret.name}",
+                                    }
+                                },
+                            },
+                            {
+                                "name": "MYSQL_DATABASE",
+                                "valueFrom": {
+                                    "secretKeyRef": {
+                                        "key": "database-name",
+                                        "name": f"{model_registry_db_secret.name}",
+                                    }
+                                },
+                            },
+                        ],
+                        "args": [
+                            "--datadir",
+                            "/var/lib/mysql/datadir",
+                            "--default-authentication-plugin=mysql_native_password",
+                        ],
+                        "image": "mysql:8.3.0",
+                        "imagePullPolicy": "IfNotPresent",
+                        "livenessProbe": {
+                            "exec": {
+                                "command": [
+                                    "/bin/bash",
+                                    "-c",
+                                    "mysqladmin -u${MYSQL_USER} -p${MYSQL_ROOT_PASSWORD} ping",
+                                ]
+                            },
+                            "initialDelaySeconds": 15,
+                            "periodSeconds": 10,
+                            "timeoutSeconds": 5,
+                        },
+                        "name": "mysql",
+                        "ports": [{"containerPort": 3306, "protocol": "TCP"}],
+                        "readinessProbe": {
+                            "exec": {
+                                "command": [
+                                    "/bin/bash",
+                                    "-c",
+                                    'mysql -D ${MYSQL_DATABASE} -u${MYSQL_USER} -p${MYSQL_ROOT_PASSWORD} -e "SELECT 1"',
+                                ]
+                            },
+                            "initialDelaySeconds": 10,
+                            "timeoutSeconds": 5,
+                        },
+                        "securityContext": {"capabilities": {}, "privileged": False},
+                        "terminationMessagePath": "/dev/termination-log",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/var/lib/mysql",
+                                "name": f"{DB_RESOURCES_NAME}-data",
+                            }
+                        ],
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "restartPolicy": "Always",
+                "volumes": [
+                    {
+                        "name": f"{DB_RESOURCES_NAME}-data",
+                        "persistentVolumeClaim": {"claimName": DB_RESOURCES_NAME},
+                    }
+                ],
+            },
+        },
+        wait_for_resource=True,
     ) as mr_db_deployment:
+        mr_db_deployment.wait_for_replicas(deployed=True)
         yield mr_db_deployment
 
 
@@ -210,41 +255,34 @@ def model_registry_instance(
     admin_client: DynamicClient,
     model_registry_namespace: Namespace,
     model_registry_db_deployment: Deployment,
-    model_registry_db_secret: Secret
-) -> Generator[ModelRegistry,Any,Any]:
+    model_registry_db_secret: Secret,
+    model_registry_db_service: Service,
+) -> Generator[ModelRegistry, Any, Any]:
     with ModelRegistry(
         name="model-registry",
         namespace=model_registry_namespace.name,
-        label= {
+        label={
             "app.kubernetes.io/name": "model-registry",
             "app.kubernetes.io/instance": "model-registry",
             "app.kubernetes.io/part-of": "model-registry-operator",
             "app.kubernetes.io/managed-by": "kustomize",
-            "app.kubernetes.io/created-by": "model-registry-operator"
+            "app.kubernetes.io/created-by": "model-registry-operator",
         },
         grpc={},
         rest={},
         istio={
             "authProvider": "redhat-ods-applications-auth-provider",
-            "gateway":{
-                "grpc":{
-                    "tls": {}
-                },
-                "rest":{
-                    "tls": {}
-                }
-            }
+            "gateway": {"grpc": {"tls": {}}, "rest": {"tls": {}}},
         },
         mysql={
-            "host": f"{model_registry_db_deployment.name}.svc.cluster.local",
+            "host": f"{model_registry_db_deployment.name}.{model_registry_db_deployment.namespace}.svc.cluster.local",
             "database": model_registry_db_secret.string_data["database-name"],
-            "passwordSecret":{
-                "key": "database-password",
-                "name": "model-registry-db"
-            },
+            "passwordSecret": {"key": "database-password", "name": DB_RESOURCES_NAME},
             "port": 3306,
             "skipDBCreation": False,
-            "username": model_registry_db_secret.string_data["database-user"]
-        }
+            "username": model_registry_db_secret.string_data["database-user"],
+        },
+        wait_for_resource=True,
     ) as mr:
+        mr.wait_for_condition(condition="Available", status="True")
         yield mr
