@@ -30,5 +30,5 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
     indirect=True,
 )
 class TestGranite2BModel:
-    def test_deploy_model_state_loaded(self, model_namespace, ci_s3_storage_uri, serving_runtime):
+    def test_deploy_model_state_loaded(self, model_service_account, ci_s3_storage_uri, serving_runtime):
         print("skelton")
