@@ -33,7 +33,6 @@ def pytest_addoption(parser: Parser) -> None:
     buckets_group.addoption(
         "--ci-s3-bucket-name", default=os.environ.get("CI_S3_BUCKET_NAME"), help="Ci S3 bucket name"
     )
-
     buckets_group.addoption(
         "--ci-s3-bucket-region", default=os.environ.get("CI_S3_BUCKET_REGION"), help="Ci S3 bucket region"
     )
@@ -43,11 +42,8 @@ def pytest_addoption(parser: Parser) -> None:
     )
 
     buckets_group.addoption(
-        "--models-s3-bucket-name",
-        default=os.environ.get("MODELS_S3_BUCKET_NAME"),
-        help="Models S3 bucket name",
+        "--models-s3-bucket-name", default=os.environ.get("MODELS_S3_BUCKET_NAME"), help="Models S3 bucket name"
     )
-
     buckets_group.addoption(
         "--models-s3-bucket-region",
         default=os.environ.get("MODELS_S3_BUCKET_REGION"),

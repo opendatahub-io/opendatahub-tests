@@ -41,8 +41,10 @@ classifiers = [
 ]
 
 dependencies = [
-    "openshift-python-utilities",
-    "openshift-python-wrapper",
+    "ipython>=8.18.1",
+    "openshift-python-utilities>=5.0.71",
+    "openshift-python-wrapper>=10.0.100",
+    "pytest-dependency>=0.6.0",
     "pytest-progress",
     "python-simple-logger",
     "pyyaml",

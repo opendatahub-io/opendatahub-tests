@@ -74,13 +74,14 @@ def cluster_monitoring_config(admin_client: DynamicClient) -> ConfigMap:
         with update_configmap_data(configmap=cm, data=data) as cm:
             yield cm
 
-    with ConfigMap(
-        client=admin_client,
-        name=name,
-        namespace=namespace,
-        data=data,
-    ) as cm:
-        yield cm
+    else:
+        with ConfigMap(
+            client=admin_client,
+            name=name,
+            namespace=namespace,
+            data=data,
+        ) as cm:
+            yield cm
 
 
 @pytest.fixture(scope="session")
@@ -93,13 +94,14 @@ def user_workload_monitoring_config(admin_client: DynamicClient) -> ConfigMap:
         with update_configmap_data(configmap=cm, data=data) as cm:
             yield cm
 
-    with ConfigMap(
-        client=admin_client,
-        name=name,
-        namespace=namespace,
-        data=data,
-    ) as cm:
-        yield cm
+    else:
+        with ConfigMap(
+            client=admin_client,
+            name=name,
+            namespace=namespace,
+            data=data,
+        ) as cm:
+            yield cm
 
 
 @pytest.fixture(scope="class")

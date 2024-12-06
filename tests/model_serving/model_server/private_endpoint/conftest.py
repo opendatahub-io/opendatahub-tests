@@ -10,32 +10,30 @@ from ocp_resources.serving_runtime import ServingRuntime
 from kubernetes.dynamic import DynamicClient
 
 from utilities.serving_runtime import ServingRuntimeFromTemplate
-from tests.model_serving.model_server.utils import create_isvc
+from tests.model_serving.model_server.utils import b64_encoded_string, create_isvc
 from tests.model_serving.model_server.private_endpoint.utils import (
     create_sidecar_pod,
-    get_kserve_predictor_deployment,
-    b64_encoded_string,
 )
-from utilities.infra import create_ns
+from utilities.infra import create_ns, s3_endpoint_secret, wait_for_kserve_predictor_deployment_replicas
 from utilities.constants import KServeDeploymentType, ModelStoragePath, ModelFormat
 
 
 LOGGER = get_logger(name=__name__)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="class")
 def endpoint_namespace(admin_client: DynamicClient) -> Generator[Namespace, None, None]:
     with create_ns(admin_client=admin_client, name="endpoint-namespace") as ns:
         yield ns
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="class")
 def diff_namespace(admin_client: DynamicClient) -> Generator[Namespace, None, None]:
     with create_ns(admin_client=admin_client, name="diff-namespace") as ns:
         yield ns
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="class")
 def endpoint_sr(
     admin_client: DynamicClient,
     endpoint_namespace: Namespace,
@@ -49,7 +47,7 @@ def endpoint_sr(
         yield model_runtime
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="class")
 def endpoint_s3_secret(
     admin_client: DynamicClient,
     endpoint_namespace: Namespace,
@@ -59,24 +57,20 @@ def endpoint_s3_secret(
     models_s3_bucket_region: str,
     models_s3_bucket_endpoint: str,
 ) -> Generator[Secret, None, None]:
-    data = {
-        "AWS_ACCESS_KEY_ID": b64_encoded_string(aws_access_key_id),
-        "AWS_DEFAULT_REGION": b64_encoded_string(models_s3_bucket_region),
-        "AWS_S3_BUCKET": b64_encoded_string(models_s3_bucket_name),
-        "AWS_S3_ENDPOINT": b64_encoded_string(models_s3_bucket_endpoint),
-        "AWS_SECRET_ACCESS_KEY": b64_encoded_string(aws_secret_access_key),
-    }
-    with Secret(
-        client=admin_client,
-        namespace=endpoint_namespace.name,
+    with s3_endpoint_secret(
+        admin_client=admin_client,
         name="endpoint-s3-secret",
-        data_dict=data,
-        wait_for_resource=True,
+        namespace=endpoint_namespace.name,
+        aws_access_key=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
+        aws_s3_region=models_s3_bucket_region,
+        aws_s3_bucket=models_s3_bucket_name,
+        aws_s3_endpoint=models_s3_bucket_endpoint,
     ) as secret:
         yield secret
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="class")
 def endpoint_isvc(
     admin_client: DynamicClient,
     endpoint_sr: ServingRuntime,
@@ -97,7 +91,7 @@ def endpoint_isvc(
         yield isvc
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="class")
 def storage_config_secret(
     admin_client: DynamicClient,
     endpoint_namespace: Namespace,
@@ -117,7 +111,7 @@ def storage_config_secret(
         "secret_access_key": aws_secret_access_key,
         "type": "s3",
     }
-    data = {"endpoint-s3-secret": b64_encoded_string(json.dumps(secret))}
+    data = {"endpoint-s3-secret": b64_encoded_string(string_to_encode=json.dumps(secret))}
     with Secret(
         client=admin_client,
         namespace=endpoint_namespace.name,
@@ -184,8 +178,7 @@ def diff_pod_without_istio_sidecar(
 
 @pytest.fixture()
 def ready_predictor(admin_client: DynamicClient, endpoint_isvc: InferenceService) -> None:
-    get_kserve_predictor_deployment(
-        namespace=endpoint_isvc.namespace,
+    wait_for_kserve_predictor_deployment_replicas(
         client=admin_client,
-        name_prefix=endpoint_isvc.name,
+        isvc=endpoint_isvc,
     )

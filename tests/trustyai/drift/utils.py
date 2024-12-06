@@ -1,6 +1,5 @@
 import json
 import os
-import subprocess
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -56,10 +55,7 @@ class TrustyAIServiceRequestHandler:
         return self._send_request(endpoint="/info", method="GET")
 
 
-def create_ocp_token(namespace: Namespace) -> str:
-    return subprocess.check_output(["oc", "create", "token", "test-user", "-n", namespace.name]).decode().strip()
-
-
+# TODO: Refactor code to be under utilities.inference_utils.Inference
 def send_inference_request(
     token: str,
     inference_route: Route,

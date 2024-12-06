@@ -22,10 +22,10 @@ def odh_model_controller_deployment(admin_client: DynamicClient):
 class TestOperator:
     @pytest.mark.smoke
     def test_odh_model_controller_deployment(self, odh_model_controller_deployment):
-        # Check odh-model-controller deployment expected number of replicas
+        """Check odh-model-controller deployment expected number of replicas"""
         assert odh_model_controller_deployment.instance.spec.replicas == 1
 
     @pytest.mark.smoke
     def test_odh_model_controller_replicas(self, odh_model_controller_deployment):
-        # Check odh-model-controller deployment replicas are running
+        """Check odh-model-controller deployment replicas are running"""
         odh_model_controller_deployment.wait_for_replicas()

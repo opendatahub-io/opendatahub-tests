@@ -10,8 +10,16 @@ class ModelFormat:
     CAIKIT: str = "caikit"
 
 
+class ModelName:
+    FLAN_T5_SMALL: str = "flan-t5-small"
+
+
+class ModelAndFormat:
+    FLAN_T5_SMALL_CAIKIT: str = f"{ModelName.FLAN_T5_SMALL}-{ModelFormat.CAIKIT}"
+
+
 class ModelStoragePath:
-    FLAN_T5_SMALL: str = f"flan-t5-small/flan-t5-small-{ModelFormat.CAIKIT}"
+    FLAN_T5_SMALL: str = f"{ModelName.FLAN_T5_SMALL}/{ModelAndFormat.FLAN_T5_SMALL_CAIKIT}"
 
 
 class CurlOutput:
@@ -20,3 +28,17 @@ class CurlOutput:
 
 class ModelEndpoint:
     HEALTH: str = "health"
+
+
+class RuntimeTemplates:
+    CAIKIT_TGIS_SERVING: str = "caikit-tgis-serving-template"
+
+
+class RuntimeQueryKeys:
+    CAIKIT_TGIS_RUNTIME: str = f"{ModelFormat.CAIKIT}-tgis-runtime"
+
+
+class Protocols:
+    HTTP: str = "http"
+    HTTPS: str = "https"
+    GRPC: str = "grpc"

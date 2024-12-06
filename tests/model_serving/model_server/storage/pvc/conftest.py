@@ -1,11 +1,8 @@
 import shlex
-from typing import List, Generator, Any
+from typing import Any, Generator, List
 
 import pytest
-from pytest import FixtureRequest
 from kubernetes.dynamic import DynamicClient
-from kubernetes.dynamic.exceptions import ResourceNotFoundError
-from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
@@ -13,11 +10,12 @@ from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.storage_class import StorageClass
-from ocp_utilities.infra import get_pods_by_name_prefix
+from pytest import FixtureRequest
 
 from tests.model_serving.model_server.storage.constants import NFS_STR
-from tests.model_serving.model_server.utils import create_isvc
+from tests.model_serving.model_server.utils import create_isvc, get_pods_by_isvc_label
 from utilities.constants import KServeDeploymentType
+from utilities.infra import wait_for_kserve_predictor_deployment_replicas
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
@@ -93,8 +91,45 @@ def downloaded_model_data(
     return model_dir
 
 
+@pytest.fixture()
+def predictor_pods_scope_function(admin_client: DynamicClient, pvc_inference_service: InferenceService) -> List[Pod]:
+    return get_pods_by_isvc_label(
+        client=admin_client,
+        isvc=pvc_inference_service,
+    )
+
+
 @pytest.fixture(scope="class")
-def serving_runtime(
+def predictor_pods_scope_class(
+    admin_client: DynamicClient,
+    pvc_inference_service: InferenceService,
+    isvc_deployment_ready: None,
+) -> List[Pod]:
+    return get_pods_by_isvc_label(
+        client=admin_client,
+        isvc=pvc_inference_service,
+    )
+
+
+@pytest.fixture()
+def patched_read_only_isvc(
+    request, pvc_inference_service: InferenceService, first_predictor_pod: Pod
+) -> InferenceService:
+    with ResourceEditor(
+        patches={
+            pvc_inference_service: {
+                "metadata": {
+                    "annotations": {"storage.kserve.io/readonly": request.param["readonly"]},
+                }
+            }
+        }
+    ):
+        first_predictor_pod.wait_deleted()
+        yield pvc_inference_service
+
+
+@pytest.fixture(scope="class")
+def pvc_serving_runtime(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
@@ -110,11 +145,11 @@ def serving_runtime(
 
 
 @pytest.fixture(scope="class")
-def inference_service(
+def pvc_inference_service(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    serving_runtime: ServingRuntime,
+    pvc_serving_runtime: ServingRuntime,
     model_pvc: PersistentVolumeClaim,
     downloaded_model_data: str,
 ) -> Generator[InferenceService, Any, Any]:
@@ -122,9 +157,9 @@ def inference_service(
         "client": admin_client,
         "name": request.param["name"],
         "namespace": model_namespace.name,
-        "runtime": serving_runtime.name,
+        "runtime": pvc_serving_runtime.name,
         "storage_uri": f"pvc://{model_pvc.name}/{downloaded_model_data}",
-        "model_format": serving_runtime.instance.spec.supportedModelFormats[0].name,
+        "model_format": pvc_serving_runtime.instance.spec.supportedModelFormats[0].name,
         "deployment_mode": request.param.get("deployment-mode", KServeDeploymentType.SERVERLESS),
     }
 
@@ -136,66 +171,16 @@ def inference_service(
 
 
 @pytest.fixture(scope="class")
-def isvc_deployment_ready(admin_client: DynamicClient, inference_service: InferenceService) -> None:
-    deployment_name_prefix = f"{inference_service.name}-predictor"
-    deployment = list(
-        Deployment.get(
-            dyn_client=admin_client,
-            namespace=inference_service.namespace,
-        )
-    )
-
-    if deployment and deployment[0].name.startswith(deployment_name_prefix):
-        deployment[0].wait_for_replicas()
-        return
-
-    raise ResourceNotFoundError(f"Deployment with prefix {deployment_name_prefix} not found")
-
-
-@pytest.fixture()
-def predictor_pods_scope_function(admin_client: DynamicClient, inference_service: InferenceService) -> List[Pod]:
-    return get_pods_by_name_prefix(
+def isvc_deployment_ready(admin_client: DynamicClient, pvc_inference_service: InferenceService) -> None:
+    wait_for_kserve_predictor_deployment_replicas(
         client=admin_client,
-        pod_prefix=f"{inference_service.name}-predictor",
-        namespace=inference_service.namespace,
-    )
-
-
-@pytest.fixture(scope="class")
-def predictor_pods_scope_class(
-    admin_client: DynamicClient,
-    inference_service: InferenceService,
-    isvc_deployment_ready: None,
-) -> List[Pod]:
-    return get_pods_by_name_prefix(
-        client=admin_client,
-        pod_prefix=f"{inference_service.name}-predictor",
-        namespace=inference_service.namespace,
+        isvc=pvc_inference_service,
     )
 
 
 @pytest.fixture()
 def first_predictor_pod(predictor_pods_scope_function: List[Pod]) -> Pod:
     return predictor_pods_scope_function[0]
-
-
-@pytest.fixture()
-def patched_isvc(
-    request: FixtureRequest,
-    inference_service: InferenceService,
-    first_predictor_pod: Pod,
-) -> Generator[InferenceService, Any, Any]:
-    with ResourceEditor(
-        patches={
-            inference_service: {
-                "metadata": {
-                    "annotations": {"storage.kserve.io/readonly": request.param["readonly"]},
-                }
-            }
-        }
-    ):
-        first_predictor_pod.wait_deleted()
-        yield inference_service
 
 
 @pytest.fixture(scope="module")
