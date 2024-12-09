@@ -8,6 +8,8 @@ from ocp_resources.serving_runtime import ServingRuntime
 from simple_logger.logger import get_logger
 from tests.model_serving.model_runtime.vllm.constant import vLLM_CONFIG
 from utilities.constants import APPLICATIONS_NAMESPACE
+from tests.model_serving.model_runtime.vllm.constant import CHAT_QUERY, COMPLETION_QUERY
+from utilities.plugins.openai_plugin import OpenAIClient
 
 LOGGER = get_logger(name=__name__)
 
@@ -82,3 +84,27 @@ def kserve_s3_endpoint_secret(
         wait_for_resource=True,
     ) as secret:
         yield secret
+
+
+def fetch_openai_response(  # type: ignore
+    url: str,
+    model_name: str,
+    chat_query=CHAT_QUERY,
+    completion_query=COMPLETION_QUERY,
+) -> tuple[Any, list[Any], list[Any]]:
+    completion_responses = []
+    chat_responses = []
+    inference_client = OpenAIClient(host=url, model_name=model_name, streaming=True)
+    if chat_query:
+        for query in chat_query:
+            chat_response = inference_client.request_http(endpoint="/v1/chat/completions", query=query)
+            chat_responses.append(chat_response)
+    if completion_query:
+        for query in COMPLETION_QUERY:
+            completion_response = inference_client.request_http(
+                endpoint="/v1/completions", query=query, extra_param={"max_tokens": 100}
+            )
+            completion_responses.append(completion_response)
+
+    model_info = OpenAIClient.get_request_http(host=url, endpoint="/v1/models")
+    return model_info, chat_responses, completion_responses

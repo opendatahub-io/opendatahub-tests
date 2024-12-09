@@ -4,8 +4,6 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.inference_service import InferenceService
-
-# from utilities.infra import s3_endpoint_secret
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from tests.model_serving.model_runtime.vllm.utils import kserve_s3_endpoint_secret
@@ -61,7 +59,7 @@ def vllm_inference_service(
     model_namespace: Namespace,
     serving_runtime: ServingRuntime,
     supported_accelerator_type: str,
-    ci_s3_storage_uri: str,
+    s3_models_storage_uri: str,
     model_service_account: ServiceAccount,
 ) -> Generator[InferenceService, Any, Any]:
     isvc_kwargs = {
@@ -69,7 +67,7 @@ def vllm_inference_service(
         "name": request.param["name"],
         "namespace": model_namespace.name,
         "runtime": serving_runtime.name,
-        "storage_uri": ci_s3_storage_uri,
+        "storage_uri": s3_models_storage_uri,
         "model_format": serving_runtime.instance.spec.supportedModelFormats[0].name,
         "model_service_account": model_service_account.name,
         "deployment_mode": request.param.get("deployment-mode", KServeDeploymentType.SERVERLESS),
@@ -85,9 +83,9 @@ def vllm_inference_service(
     if gpu_count > 1:
         isvc_kwargs["volumes"] = PREDICT_RESOURCES["volumes"]
         isvc_kwargs["volumes_mounts"] = PREDICT_RESOURCES["volume_mounts"]
-    if arguemnts := request.param.get("runtime_argument"):
-        arguemnts.append(f"--tensor-parallel-size={gpu_count}")
-        isvc_kwargs["argument"] = arguemnts
+    if arguments := request.param.get("runtime_argument"):
+        arguments.append(f"--tensor-parallel-size={gpu_count}")
+        isvc_kwargs["argument"] = arguments
 
     if min_replicas := request.param.get("min-replicas"):
         isvc_kwargs["min_replicas"] = min_replicas

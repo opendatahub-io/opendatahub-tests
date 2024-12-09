@@ -1,8 +1,7 @@
 import pytest
 from simple_logger.logger import get_logger
-from utilities.plugins.openai_plugin import OpenAIClient
 from utilities.constants import KServeDeploymentType
-from tests.model_serving.model_runtime.vllm.constant import CHAT_QUERY, COMPLETION_QUERY
+from tests.model_serving.model_runtime.vllm.utils import fetch_openai_response
 
 LOGGER = get_logger(name=__name__)
 
@@ -13,7 +12,7 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
 
 
 @pytest.mark.parametrize(
-    "model_namespace, ci_s3_storage_uri, serving_runtime, vllm_inference_service",
+    "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [
         pytest.param(
             {"name": "granite-serverless-rest"},
@@ -32,22 +31,12 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
 )
 class TestGranite2BModel:
     def test_deploy_model_inference(self, vllm_inference_service, response_snapshot):
-        completion_responses = []
-        chat_responses = []
         URL = vllm_inference_service.instance.status.url
-        if "rest" in vllm_inference_service.instance.metadata.namespace:
-            openai_client = OpenAIClient(
-                host=URL, model_name=vllm_inference_service.instance.metadata.name, streaming=True
+        if vllm_inference_service.instance.metadata.annotations["serving.kserve.io/deploymentMode"] == "Serverless":
+            model_info, chat_responses, completion_responses = fetch_openai_response(
+                url=URL,
+                model_name=vllm_inference_service.instance.metadata.name,
             )
-            for query in COMPLETION_QUERY:
-                completion_response = openai_client.request_http(
-                    endpoint="/v1/completions", query=query, extra_param={"max_tokens": 100}
-                )
-                completion_responses.append(completion_response)
-            for query in CHAT_QUERY:
-                chat_response = openai_client.request_http(endpoint="/v1/chat/completions", query=query)
-                chat_responses.append(chat_response)
-            model_info = OpenAIClient.get_request_http(host=URL, endpoint="/v1/models")
             assert model_info == response_snapshot
-            assert completion_responses == response_snapshot
             assert chat_responses == response_snapshot
+            assert completion_responses == response_snapshot

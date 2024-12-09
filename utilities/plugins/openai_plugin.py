@@ -36,7 +36,7 @@ class OpenAIClient:
         self.model_name = model_name
         self.request_func = self.streaming_request_http if streaming else self.request_http
 
-    def request_http(self, endpoint: str, query: Dict[str, Any], extra_param: Optional[Dict[str, Any]] = None) -> Any:
+    def request_http(self, endpoint: str, query: Dict[str, str], extra_param: Optional[Dict[str, Any]] = None) -> Any:
         """
         Sends a HTTP POST request to the specified endpoint and processes the response.
 
@@ -125,7 +125,11 @@ class OpenAIClient:
             LOGGER.info(response)
             response.raise_for_status()
             message = response.json()
-            return message.get("data", {})
+            data = message.get("data", [])
+            keys_to_remove = ["created", "id"]
+            if data:
+                data = OpenAIClient._remove_keys(data, keys_to_remove)
+            return data
         except (requests.exceptions.RequestException, json.JSONDecodeError):
             LOGGER.exception("Request error")
 
@@ -208,3 +212,14 @@ class OpenAIClient:
             if "/v1/chat/completions" in endpoint
             else message["choices"][0].get("text", "")
         )
+
+    @staticmethod
+    def _remove_keys(data: list[dict[str, Any]], keys_to_remove: list[str]) -> list[dict[str, Any]]:
+        """Remove specific keys from a list of dictionaries."""
+        for item in data:
+            item.pop("created", None)  # only delete created timestamp
+            if "permission" in item:
+                for permission in item["permission"]:
+                    for key in keys_to_remove:
+                        permission.pop(key, None)
+        return data

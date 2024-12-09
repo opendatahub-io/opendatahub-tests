@@ -120,7 +120,7 @@ def supported_accelerator_type(pytestconfig: pytest.Config) -> str:
         return None
     if accelerator_type.lower() not in ["nvidia", "amd", "gaudi"]:
         raise ValueError(
-            "accelartor type is not defined."
+            "accelerator type is not defined."
             "Either pass with `--supported-accelerator-type` or set `SUPPORTED_ACCLERATOR_TYPE` environment variable"
         )
     return accelerator_type

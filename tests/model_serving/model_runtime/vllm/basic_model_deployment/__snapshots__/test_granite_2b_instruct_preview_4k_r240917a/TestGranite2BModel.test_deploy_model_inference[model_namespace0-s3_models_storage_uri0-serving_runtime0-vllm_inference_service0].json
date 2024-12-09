@@ -1,6 +1,5 @@
 [
   {
-    "created": 1733741228,
     "id": "granite-rest",
     "max_model_len": 2048,
     "object": "model",
@@ -14,9 +13,7 @@
         "allow_sampling": true,
         "allow_search_indices": false,
         "allow_view": true,
-        "created": 1733741228,
         "group": null,
-        "id": "modelperm-35a147d11fb3485aa4b2592149e4ae6b",
         "is_blocking": false,
         "object": "model_permission",
         "organization": "*"
