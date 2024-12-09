@@ -20,11 +20,6 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")
-def ci_s3_storage_uri(request: FixtureRequest, models_s3_bucket_name: str) -> str:
-    return f"s3://{models_s3_bucket_name}/{request.param['model-dir']}/"
-
-
-@pytest.fixture(scope="class")
 def serving_runtime(
     request: FixtureRequest,
     admin_client: DynamicClient,
