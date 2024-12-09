@@ -43,7 +43,7 @@ classifiers = [
 dependencies = [
     "ipython>=8.18.1",
     "openshift-python-utilities>=5.0.71",
-    "openshift-python-wrapper",
+    "openshift-python-wrapper>=10.0.100",
     "pytest-dependency>=0.6.0",
     "pytest-progress",
     "python-simple-logger",
@@ -53,7 +53,8 @@ dependencies = [
     "requests",
     "pytest-asyncio",
     "syrupy",
-    "caikit-nlp-client",
+    "protobuf",
+    "grpcio-reflection",
 ]
 
 [project.urls]

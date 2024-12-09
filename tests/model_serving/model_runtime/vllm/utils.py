@@ -69,7 +69,7 @@ def kserve_s3_endpoint_secret(
         name=name,
         namespace=namespace,
         annotations={
-            "serving.kserve.io/s3-endpoint": aws_s3_endpoint,
+            "serving.kserve.io/s3-endpoint": aws_s3_endpoint.replace("https://", ""),
             "serving.kserve.io/s3-region": aws_s3_region,
             "serving.kserve.io/s3-useanoncredential": "false",
             "serving.kserve.io/s3-verifyssl": "0",
