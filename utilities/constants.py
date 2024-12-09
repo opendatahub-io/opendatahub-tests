@@ -42,3 +42,4 @@ class Protocols:
     HTTP: str = "http"
     HTTPS: str = "https"
     GRPC: str = "grpc"
+    REST: str = "rest"

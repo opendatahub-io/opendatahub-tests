@@ -9,7 +9,9 @@ from ocp_resources.model_registry import ModelRegistry
 from simple_logger.logger import get_logger
 from kubernetes.dynamic import DynamicClient
 
+from tests.model_registry.utils import get_endpoint_from_mr_service, get_mr_service_by_label
 from utilities.infra import create_ns
+from utilities.constants import Protocols
 
 
 LOGGER = get_logger(name=__name__)
@@ -286,3 +288,20 @@ def model_registry_instance(
     ) as mr:
         mr.wait_for_condition(condition="Available", status="True")
         yield mr
+
+
+@pytest.fixture(scope="class")
+def model_registry_instance_service(
+    admin_client: DynamicClient,
+    model_registry_namespace: Namespace,
+    model_registry_instance: ModelRegistry,
+) -> Service:
+    return get_mr_service_by_label(admin_client, model_registry_namespace, model_registry_instance)
+
+
+@pytest.fixture(scope="class")
+def model_registry_instance_rest_endpoint(
+    admin_client: DynamicClient,
+    model_registry_instance_service: Service,
+) -> str:
+    return get_endpoint_from_mr_service(admin_client, model_registry_instance_service, Protocols.REST)
