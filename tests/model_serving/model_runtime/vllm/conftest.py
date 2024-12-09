@@ -1,4 +1,4 @@
-from typing import Any, Generator, List
+from typing import Any, Generator
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
@@ -12,10 +12,8 @@ from tests.model_serving.model_runtime.vllm.utils import kserve_s3_endpoint_secr
 from utilities.constants import KServeDeploymentType
 from pytest import FixtureRequest
 from syrupy.extensions.json import JSONSnapshotExtension
-from ocp_resources.pod import Pod
 from tests.model_serving.model_runtime.vllm.utils import get_runtime_manifest
-from tests.model_serving.model_server.utils import create_isvc, get_pods_by_isvc_label
-from utilities.infra import wait_for_kserve_predictor_deployment_replicas
+from tests.model_serving.model_server.utils import create_isvc
 from tests.model_serving.model_runtime.vllm.constant import TEMPLATE_MAP, ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES
 from simple_logger.logger import get_logger
 
@@ -64,7 +62,7 @@ def vllm_inference_service(
     serving_runtime: ServingRuntime,
     supported_accelerator_type: str,
     ci_s3_storage_uri: str,
-    model_service_account,
+    model_service_account: ServiceAccount,
 ) -> Generator[InferenceService, Any, Any]:
     isvc_kwargs = {
         "client": admin_client,
@@ -96,26 +94,6 @@ def vllm_inference_service(
 
     with create_isvc(**isvc_kwargs) as isvc:
         yield isvc
-
-
-@pytest.fixture(scope="class")
-def predictor_pods_scope_class(
-    admin_client: DynamicClient,
-    vllm_inference_service: InferenceService,
-    isvc_deployment_ready: None,
-) -> List[Pod]:
-    return get_pods_by_isvc_label(
-        client=admin_client,
-        isvc=vllm_inference_service,
-    )
-
-
-@pytest.fixture(scope="class")
-def isvc_deployment_ready(admin_client: DynamicClient, vllm_inference_service: InferenceService) -> None:
-    wait_for_kserve_predictor_deployment_replicas(
-        client=admin_client,
-        isvc=vllm_inference_service,
-    )
 
 
 @pytest.fixture(scope="class")

@@ -53,12 +53,12 @@ class TGISGRPCPlugin:
         channel = self._create_channel()
         stub = generation_pb2_grpc.GenerationServiceStub(channel)
 
-        request = generation_pb2_grpc.generation__pb2.BatchedGenerationRequest(
+        request = generation_pb2_grpc.generation__pb2.BatchedGenerationRequest(  # type: ignore
             model_id=self.model_name,
-            requests=[generation_pb2_grpc.generation__pb2.GenerationRequest(text=query.get("text"))],
-            params=generation_pb2_grpc.generation__pb2.Parameters(
-                method=generation_pb2_grpc.generation__pb2.GREEDY,
-                sampling=generation_pb2_grpc.generation__pb2.SamplingParameters(seed=1037),
+            requests=[generation_pb2_grpc.generation__pb2.GenerationRequest(text=query.get("text"))],  # type: ignore
+            params=generation_pb2_grpc.generation__pb2.Parameters(  # type: ignore
+                method=generation_pb2_grpc.generation__pb2.GREEDY,  # type: ignore
+                sampling=generation_pb2_grpc.generation__pb2.SamplingParameters(seed=1037),  # type: ignore
             ),
         )
 
@@ -79,13 +79,13 @@ class TGISGRPCPlugin:
         stub = generation_pb2_grpc.GenerationServiceStub(channel)
 
         tokens = []
-        request = generation_pb2_grpc.generation__pb2.SingleGenerationRequest(
+        request = generation_pb2_grpc.generation__pb2.SingleGenerationRequest(  # type: ignore
             model_id=self.model_name,
-            request=generation_pb2_grpc.generation__pb2.GenerationRequest(text=query.get("text")),
-            params=generation_pb2_grpc.generation__pb2.Parameters(
-                method=generation_pb2_grpc.generation__pb2.GREEDY,
-                sampling=generation_pb2_grpc.generation__pb2.SamplingParameters(seed=1037),
-                response=generation_pb2_grpc.generation__pb2.ResponseOptions(generated_tokens=True),
+            request=generation_pb2_grpc.generation__pb2.GenerationRequest(text=query.get("text")),  # type: ignore
+            params=generation_pb2_grpc.generation__pb2.Parameters(  # type: ignore
+                method=generation_pb2_grpc.generation__pb2.GREEDY,  # type: ignore
+                sampling=generation_pb2_grpc.generation__pb2.SamplingParameters(seed=1037),  # type: ignore
+                response=generation_pb2_grpc.generation__pb2.ResponseOptions(generated_tokens=True),  # type: ignore
             ),
         )
 
@@ -104,11 +104,11 @@ class TGISGRPCPlugin:
         except grpc.RpcError as err:
             self._handle_grpc_error(err)
 
-    def get_model_info(self) -> Any[generation_pb2_grpc.generation__pb2.ModelInfoRequest]:
+    def get_model_info(self) -> list[str]:  # type: ignore
         channel = self._create_channel()
         stub = generation_pb2_grpc.GenerationServiceStub(channel)
 
-        request = generation_pb2_grpc.generation__pb2.ModelInfoRequest()
+        request = generation_pb2_grpc.generation__pb2.ModelInfoRequest()  # type: ignore
 
         try:
             response = stub.ModelInfo(request=request)

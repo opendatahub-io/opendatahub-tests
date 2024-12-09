@@ -2,8 +2,7 @@
 """Client and server classes corresponding to protobuf-defined services."""
 
 import grpc
-
-import generation_pb2 as generation__pb2
+from utilities.plugins.tgis_grpc import generation_pb2 as generation__pb2
 
 GRPC_GENERATED_VERSION = "1.68.1"
 GRPC_VERSION = grpc.__version__
@@ -37,26 +36,26 @@ class GenerationServiceStub(object):
         """
         self.Generate = channel.unary_unary(
             "/fmaas.GenerationService/Generate",
-            request_serializer=generation__pb2.BatchedGenerationRequest.SerializeToString,
-            response_deserializer=generation__pb2.BatchedGenerationResponse.FromString,
+            request_serializer=generation__pb2.BatchedGenerationRequest.SerializeToString,  # type: ignore
+            response_deserializer=generation__pb2.BatchedGenerationResponse.FromString,  # type: ignore
             _registered_method=True,
         )
         self.GenerateStream = channel.unary_stream(
             "/fmaas.GenerationService/GenerateStream",
-            request_serializer=generation__pb2.SingleGenerationRequest.SerializeToString,
-            response_deserializer=generation__pb2.GenerationResponse.FromString,
+            request_serializer=generation__pb2.SingleGenerationRequest.SerializeToString,  # type: ignore
+            response_deserializer=generation__pb2.GenerationResponse.FromString,  # type: ignore
             _registered_method=True,
         )
         self.Tokenize = channel.unary_unary(
             "/fmaas.GenerationService/Tokenize",
-            request_serializer=generation__pb2.BatchedTokenizeRequest.SerializeToString,
-            response_deserializer=generation__pb2.BatchedTokenizeResponse.FromString,
+            request_serializer=generation__pb2.BatchedTokenizeRequest.SerializeToString,  # type: ignore
+            response_deserializer=generation__pb2.BatchedTokenizeResponse.FromString,  # type: ignore
             _registered_method=True,
         )
         self.ModelInfo = channel.unary_unary(
             "/fmaas.GenerationService/ModelInfo",
-            request_serializer=generation__pb2.ModelInfoRequest.SerializeToString,
-            response_deserializer=generation__pb2.ModelInfoResponse.FromString,
+            request_serializer=generation__pb2.ModelInfoRequest.SerializeToString,  # type: ignore
+            response_deserializer=generation__pb2.ModelInfoResponse.FromString,  # type: ignore
             _registered_method=True,
         )
 
@@ -93,23 +92,23 @@ def add_GenerationServiceServicer_to_server(servicer, server):  # type: ignore
     rpc_method_handlers = {
         "Generate": grpc.unary_unary_rpc_method_handler(
             servicer.Generate,
-            request_deserializer=generation__pb2.BatchedGenerationRequest.FromString,
-            response_serializer=generation__pb2.BatchedGenerationResponse.SerializeToString,
+            request_deserializer=generation__pb2.BatchedGenerationRequest.FromString,  # type: ignore
+            response_serializer=generation__pb2.BatchedGenerationResponse.SerializeToString,  # type: ignore
         ),
         "GenerateStream": grpc.unary_stream_rpc_method_handler(
             servicer.GenerateStream,
-            request_deserializer=generation__pb2.SingleGenerationRequest.FromString,
-            response_serializer=generation__pb2.GenerationResponse.SerializeToString,
+            request_deserializer=generation__pb2.SingleGenerationRequest.FromString,  # type: ignore
+            response_serializer=generation__pb2.GenerationResponse.SerializeToString,  # type: ignore
         ),
         "Tokenize": grpc.unary_unary_rpc_method_handler(
             servicer.Tokenize,
-            request_deserializer=generation__pb2.BatchedTokenizeRequest.FromString,
-            response_serializer=generation__pb2.BatchedTokenizeResponse.SerializeToString,
+            request_deserializer=generation__pb2.BatchedTokenizeRequest.FromString,  # type: ignore
+            response_serializer=generation__pb2.BatchedTokenizeResponse.SerializeToString,  # type: ignore
         ),
         "ModelInfo": grpc.unary_unary_rpc_method_handler(
             servicer.ModelInfo,
-            request_deserializer=generation__pb2.ModelInfoRequest.FromString,
-            response_serializer=generation__pb2.ModelInfoResponse.SerializeToString,
+            request_deserializer=generation__pb2.ModelInfoRequest.FromString,  # type: ignore
+            response_serializer=generation__pb2.ModelInfoResponse.SerializeToString,  # type: ignore
         ),
     }
     generic_handler = grpc.method_handlers_generic_handler("fmaas.GenerationService", rpc_method_handlers)
@@ -138,8 +137,8 @@ class GenerationService(object):
             request,
             target,
             "/fmaas.GenerationService/Generate",
-            generation__pb2.BatchedGenerationRequest.SerializeToString,
-            generation__pb2.BatchedGenerationResponse.FromString,
+            generation__pb2.BatchedGenerationRequest.SerializeToString,  # type: ignore
+            generation__pb2.BatchedGenerationResponse.FromString,  # type: ignore
             options,
             channel_credentials,
             insecure,
@@ -168,8 +167,8 @@ class GenerationService(object):
             request,
             target,
             "/fmaas.GenerationService/GenerateStream",
-            generation__pb2.SingleGenerationRequest.SerializeToString,
-            generation__pb2.GenerationResponse.FromString,
+            generation__pb2.SingleGenerationRequest.SerializeToString,  # type: ignore
+            generation__pb2.GenerationResponse.FromString,  # type: ignore
             options,
             channel_credentials,
             insecure,
@@ -198,8 +197,8 @@ class GenerationService(object):
             request,
             target,
             "/fmaas.GenerationService/Tokenize",
-            generation__pb2.BatchedTokenizeRequest.SerializeToString,
-            generation__pb2.BatchedTokenizeResponse.FromString,
+            generation__pb2.BatchedTokenizeRequest.SerializeToString,  # type: ignore
+            generation__pb2.BatchedTokenizeResponse.FromString,  # type: ignore
             options,
             channel_credentials,
             insecure,
@@ -228,8 +227,8 @@ class GenerationService(object):
             request,
             target,
             "/fmaas.GenerationService/ModelInfo",
-            generation__pb2.ModelInfoRequest.SerializeToString,
-            generation__pb2.ModelInfoResponse.FromString,
+            generation__pb2.ModelInfoRequest.SerializeToString,  # type: ignore
+            generation__pb2.ModelInfoResponse.FromString,  # type: ignore
             options,
             channel_credentials,
             insecure,
