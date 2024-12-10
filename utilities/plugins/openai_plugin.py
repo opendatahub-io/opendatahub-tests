@@ -123,7 +123,7 @@ class OpenAIClient:
             requests.exceptions.RequestException: If there is a request error.
             json.JSONDecodeError: If there is a JSON decoding error.
         """
-        headers = {"Content-Type": "application/json"}
+        headers = RestHeader.HEADERS
         url = f"{host}{endpoint}"
         try:
             response = requests.get(url, headers=headers, verify=False)
