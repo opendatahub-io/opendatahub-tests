@@ -17,8 +17,7 @@ def admin_client() -> DynamicClient:
 
 @pytest.fixture(scope="session")
 def admin_client_token(admin_client: DynamicClient) -> str:
-    cmd = "oc whoami -t"
-    _, out, _ = run_command(command=shlex.split(cmd), verify_stderr=False, check=False)
+    _, out, _ = run_command(command=shlex.split("oc whoami -t"), verify_stderr=False, check=False)
     # `\n` appended to token in out, return without that
     return out[:-1]
 

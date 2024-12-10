@@ -5,8 +5,11 @@ from ocp_resources.model_registry import ModelRegistry
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 
 from tests.utils import ProtocolNotSupported
-from utilities.constants import Protocols
+from utilities.constants import Protocols, HTTPRequest
 from tests.model_registry.constants import ModelRegistryEndpoints
+
+
+ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
 
 
 def get_mr_service_by_label(client: DynamicClient, ns: Namespace, mr_instance: ModelRegistry) -> Service:
@@ -37,16 +40,16 @@ def get_mr_service_by_label(client: DynamicClient, ns: Namespace, mr_instance: M
 
 def get_endpoint_from_mr_service(client: DynamicClient, svc: Service, protocol: str) -> str | ProtocolNotSupported:
     if protocol == Protocols.REST:
-        return svc.instance.metadata.annotations["routing.opendatahub.io/external-address-rest"]
+        return svc.instance.metadata.annotations[f"{ADDRESS_ANNOTATION_PREFIX}{Protocols.REST}"]
     elif protocol == Protocols.GRPC:
-        return svc.instance.metadata.annotations["routing.opendatahub.io/external-address-grpc"]
+        return svc.instance.metadata.annotations[f"{ADDRESS_ANNOTATION_PREFIX}{Protocols.GRPC}"]
     else:
         raise ProtocolNotSupported(protocol)
 
 
 def generate_register_model_command(endpoint: str, token: str) -> str:
-    auth_header = f" -H 'Authorization: Bearer {token}'"
-    content_header = " -H 'Content-Type: application/json'"
+    auth_header = f" {HTTPRequest.AUTH_HEADER} {token}'"
+    content_header = f" {HTTPRequest.CONTENT_JSON}"
     data = ' -d \'{"name": "model-name", "description": "test-model", "owner": "opendatahub-tests-client", "externalId": "1", "state": "LIVE"}\''
     cmd = (
         "curl -k "

@@ -28,6 +28,7 @@ def model_registry_namespace(admin_client: DynamicClient) -> Generator[Namespace
     if ns.exists:
         yield ns
     else:
+        LOGGER.warning("rhoai-model-registries namespace was not present, creating it")
         with create_ns(
             name="rhoai-model-registries",
             admin_client=admin_client,
@@ -62,7 +63,6 @@ def model_registry_db_service(
             "app.kubernetes.io/name": DB_RESOURCES_NAME,
             "app.kubernetes.io/instance": DB_RESOURCES_NAME,
             "app.kubernetes.io/part-of": DB_RESOURCES_NAME,
-            "app.kubernetes.io/managed-by": "kustomize",
         },
         annotations={
             "template.openshift.io/expose-uri": "mysql://{.spec.clusterIP}:{.spec.ports[?(.name==\mysql\)].port}",
@@ -86,7 +86,6 @@ def model_registry_db_pvc(
             "app.kubernetes.io/name": DB_RESOURCES_NAME,
             "app.kubernetes.io/instance": DB_RESOURCES_NAME,
             "app.kubernetes.io/part-of": DB_RESOURCES_NAME,
-            "app.kubernetes.io/managed-by": "kustomize",
         },
     }
 
@@ -112,7 +111,6 @@ def model_registry_db_secret(
             "app.kubernetes.io/name": DB_RESOURCES_NAME,
             "app.kubernetes.io/instance": DB_RESOURCES_NAME,
             "app.kubernetes.io/part-of": DB_RESOURCES_NAME,
-            "app.kubernetes.io/managed-by": "kustomize",
         },
         annotations={
             "template.openshift.io/expose-database_name": "'{.data[''database-name'']}'",
@@ -141,7 +139,6 @@ def model_registry_db_deployment(
             "app.kubernetes.io/name": DB_RESOURCES_NAME,
             "app.kubernetes.io/instance": DB_RESOURCES_NAME,
             "app.kubernetes.io/part-of": DB_RESOURCES_NAME,
-            "app.kubernetes.io/managed-by": "kustomize",
         },
         replicas=1,
         revision_history_limit=0,
@@ -268,7 +265,6 @@ def model_registry_instance(
             "app.kubernetes.io/name": "model-registry",
             "app.kubernetes.io/instance": "model-registry",
             "app.kubernetes.io/part-of": "model-registry-operator",
-            "app.kubernetes.io/managed-by": "kustomize",
             "app.kubernetes.io/created-by": "model-registry-operator",
         },
         grpc={},
