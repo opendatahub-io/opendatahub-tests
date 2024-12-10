@@ -32,7 +32,10 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
 class TestGranite2BModel:
     def test_deploy_model_inference(self, vllm_inference_service, response_snapshot):
         URL = vllm_inference_service.instance.status.url
-        if vllm_inference_service.instance.metadata.annotations["serving.kserve.io/deploymentMode"] == "Serverless":
+        if (
+            vllm_inference_service.instance.metadata.annotations["serving.kserve.io/deploymentMode"]
+            == KServeDeploymentType.SERVERLESS
+        ):
             model_info, chat_responses, completion_responses = fetch_openai_response(
                 url=URL,
                 model_name=vllm_inference_service.instance.metadata.name,
