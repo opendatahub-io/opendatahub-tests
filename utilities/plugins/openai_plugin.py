@@ -88,7 +88,7 @@ class OpenAIClient:
             requests.exceptions.RequestException: If there is a request error.
             json.JSONDecodeError: If there is a JSON decoding error.
         """
-        headers = {"Content-Type": "application/json"}
+        headers = RestHeader.HEADERS
         data = self._construct_request_data(endpoint, query, extra_param, streaming=True)
         tokens = []
         try:
