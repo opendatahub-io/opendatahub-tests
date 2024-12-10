@@ -42,3 +42,10 @@ class Protocols:
     HTTP: str = "http"
     HTTPS: str = "https"
     GRPC: str = "grpc"
+
+
+class AcceleratorType:
+    NVIDIA: str = "nvidia"
+    AMD: str = "amd"
+    GAUDI: str = "gaudi"
+    SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI]

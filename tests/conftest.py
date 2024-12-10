@@ -7,6 +7,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.resource import get_client
 
 from utilities.infra import create_ns
+from utilities.constants import AcceleratorType
 
 
 @pytest.fixture(scope="session")
@@ -118,7 +119,7 @@ def supported_accelerator_type(pytestconfig: pytest.Config) -> str:
     accelerator_type = pytestconfig.option.supported_accelerator_type
     if not accelerator_type:
         return None
-    if accelerator_type.lower() not in ["nvidia", "amd", "gaudi"]:
+    if accelerator_type.lower() not in AcceleratorType.SUPPORTED_LISTS:
         raise ValueError(
             "accelerator type is not defined."
             "Either pass with `--supported-accelerator-type` or set `SUPPORTED_ACCLERATOR_TYPE` environment variable"

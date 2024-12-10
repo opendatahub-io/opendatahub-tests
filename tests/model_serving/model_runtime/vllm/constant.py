@@ -1,4 +1,5 @@
 from typing import Any, Dict
+from utilities.constants import AcceleratorType
 
 GRPC_PORT = 8033
 REST_PORT = 8080
@@ -15,15 +16,15 @@ vLLM_CONFIG: Dict[str, Dict[str, Any]] = {
 }
 
 TEMPLATE_MAP = {
-    "nvidia": "vllm-runtime-template",
-    "amd": "vllm-rocm-runtime-template",
-    "gaudi": "vllm-gaudi-runtime-template",
+    AcceleratorType.NVIDIA: "vllm-runtime-template",
+    AcceleratorType.AMD: "vllm-rocm-runtime-template",
+    AcceleratorType.GAUDI: "vllm-gaudi-runtime-template",
 }
 
 ACCELERATOR_IDENTIFIER = {
-    "nvidia": "nvidia.com/gpu",
-    "amd": "amd.com/gpu",
-    "gaudi": "habana.ai/gaudi",
+    AcceleratorType.NVIDIA: "nvidia.com/gpu",
+    AcceleratorType.AMD: "amd.com/gpu",
+    AcceleratorType.GAUDI: "habana.ai/gaudi",
 }
 
 PREDICT_RESOURCES = {

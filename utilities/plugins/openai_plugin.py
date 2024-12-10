@@ -1,14 +1,17 @@
 import json
-import time
 import requests
 import urllib3
+from tenacity import retry, stop_after_attempt, wait_exponential
 from typing import Any, Optional, Dict
 from urllib3.exceptions import InsecureRequestWarning
+from utilities.plugins.constant import OpenAIEnpoints, RestHeader
 from simple_logger.logger import get_logger
 
 urllib3.disable_warnings(category=InsecureRequestWarning)
 requests.packages
 LOGGER = get_logger(name=__name__)
+
+MAX_RETRIES = 5
 
 
 class OpenAIClient:
@@ -36,6 +39,7 @@ class OpenAIClient:
         self.model_name = model_name
         self.request_func = self.streaming_request_http if streaming else self.request_http
 
+    @retry(stop=stop_after_attempt(MAX_RETRIES), wait=wait_exponential(min=1, max=6))
     def request_http(self, endpoint: str, query: Dict[str, str], extra_param: Optional[Dict[str, Any]] = None) -> Any:
         """
         Sends a HTTP POST request to the specified endpoint and processes the response.
@@ -49,13 +53,13 @@ class OpenAIClient:
             Any: The parsed response from the API.
 
         Raises:
-            pytest.Fail: If the request fails due to an exception.
+            requests.exceptions.RequestException: If there is a request error.
+            json.JSONDecodeError: If there is a JSON decoding error.
         """
-        headers = {"Content-Type": "application/json"}
+        headers = RestHeader.HEADERS
         data = self._construct_request_data(endpoint, query, extra_param)
         try:
             url = f"{self.host}{endpoint}"
-            time.sleep(5)  # sometime while making multiple request it fails
             response = requests.post(url, headers=headers, json=data, verify=False)
             LOGGER.info(response)
             response.raise_for_status()
@@ -63,7 +67,9 @@ class OpenAIClient:
             return self._parse_response(endpoint, message)
         except (requests.exceptions.RequestException, json.JSONDecodeError) as err:
             LOGGER.error(f"Test failed due to an unexpected exception: {err}")
+            raise
 
+    @retry(stop=stop_after_attempt(MAX_RETRIES), wait=wait_exponential(min=1, max=6))
     def streaming_request_http(
         self, endpoint: str, query: Dict[str, Any], extra_param: Optional[Dict[str, Any]] = None
     ) -> str:
@@ -87,7 +93,6 @@ class OpenAIClient:
         tokens = []
         try:
             url = f"{self.host}{endpoint}"
-            time.sleep(5)  # sometime while making multiple request it fails
             response = requests.post(url, headers=headers, json=data, verify=False, stream=True)
             LOGGER.info(response)
             response.raise_for_status()
@@ -98,8 +103,8 @@ class OpenAIClient:
                     token = self._parse_streaming_response(endpoint, message)
                     tokens.append(token)
         except (requests.exceptions.RequestException, json.JSONDecodeError):
-            LOGGER.exception("Streaming request error")
-
+            LOGGER.error("Streaming request error")
+            raise
         return "".join(tokens)
 
     @staticmethod
@@ -153,9 +158,9 @@ class OpenAIClient:
             Dict: The constructed request data.
         """
         data = {}
-        if "/v1/chat/completions" in endpoint:
+        if OpenAIEnpoints.CHAT_COMPLETIONS in endpoint:
             data = {"messages": query, "temperature": 0.1, "seed": 1037, "stream": streaming}
-        elif "/v1/embeddings" in endpoint:
+        elif OpenAIEnpoints.EMBEDDINGS in endpoint:
             data = {
                 "input": query["text"],
                 "encoding_format": 0.1,
@@ -182,10 +187,10 @@ class OpenAIClient:
         Returns:
             Any: The parsed response data.
         """
-        if "/v1/chat/completions" in endpoint:
+        if OpenAIEnpoints.CHAT_COMPLETIONS in endpoint:
             LOGGER.info(message["choices"][0])
             return message["choices"][0]
-        elif "/v1/embeddings" in endpoint:
+        elif OpenAIEnpoints.EMBEDDINGS in endpoint:
             LOGGER.info(message["choices"][0])
             return message["choices"][0]
         else:
@@ -203,13 +208,13 @@ class OpenAIClient:
         Returns:
             str: The parsed streaming response data.
         """
-        if "/v1/chat/completions" in endpoint and not message["choices"][0]["delta"].get("content"):
+        if OpenAIEnpoints.CHAT_COMPLETIONS in endpoint and not message["choices"][0]["delta"].get("content"):
             message["choices"][0]["delta"]["content"] = ""
         if message.get("error"):
             return message.get("error")
         return (
             message["choices"][0].get("delta", {}).get("content", "")
-            if "/v1/chat/completions" in endpoint
+            if OpenAIEnpoints.CHAT_COMPLETIONS in endpoint
             else message["choices"][0].get("text", "")
         )
 

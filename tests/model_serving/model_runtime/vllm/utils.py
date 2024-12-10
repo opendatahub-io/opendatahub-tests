@@ -9,6 +9,7 @@ from simple_logger.logger import get_logger
 from tests.model_serving.model_runtime.vllm.constant import vLLM_CONFIG
 from utilities.constants import APPLICATIONS_NAMESPACE
 from tests.model_serving.model_runtime.vllm.constant import CHAT_QUERY, COMPLETION_QUERY
+from utilities.plugins.constant import OpenAIEnpoints
 from utilities.plugins.openai_plugin import OpenAIClient
 
 LOGGER = get_logger(name=__name__)
@@ -97,14 +98,14 @@ def fetch_openai_response(  # type: ignore
     inference_client = OpenAIClient(host=url, model_name=model_name, streaming=True)
     if chat_query:
         for query in chat_query:
-            chat_response = inference_client.request_http(endpoint="/v1/chat/completions", query=query)
+            chat_response = inference_client.request_http(endpoint=OpenAIEnpoints.CHAT_COMPLETIONS, query=query)
             chat_responses.append(chat_response)
     if completion_query:
         for query in COMPLETION_QUERY:
             completion_response = inference_client.request_http(
-                endpoint="/v1/completions", query=query, extra_param={"max_tokens": 100}
+                endpoint=OpenAIEnpoints.COMPLETIONS, query=query, extra_param={"max_tokens": 100}
             )
             completion_responses.append(completion_response)
 
-    model_info = OpenAIClient.get_request_http(host=url, endpoint="/v1/models")
+    model_info = OpenAIClient.get_request_http(host=url, endpoint=OpenAIEnpoints.MODELS_INFO)
     return model_info, chat_responses, completion_responses
