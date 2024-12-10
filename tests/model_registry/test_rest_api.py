@@ -14,6 +14,7 @@ def test_mr_api(case, admin_client_token):
     case.headers["Authorization"] = f"Bearer {admin_client_token}"
     case.headers["Content-Type"] = "application/json"
     LOGGER.warning(case)
+    # Pending https://github.com/schemathesis/schemathesis/issues/2613
     response = case.call_and_validate(excluded_checks=(ignored_auth,), verify=False)
     LOGGER.warning(response)
     # case.validate_response(response, verify=False)
