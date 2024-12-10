@@ -8,6 +8,7 @@ output-format = "grouped"
 exclude = [".git", ".venv", ".mypy_cache", ".tox", "__pycache__"]
 
 [tool.mypy]
+exclude = ["utilities/plugins/tgis_grpc/"]
 check_untyped_defs = true
 disallow_any_generics = true
 disallow_incomplete_defs = true
@@ -42,13 +43,18 @@ classifiers = [
 dependencies = [
     "ipython>=8.18.1",
     "openshift-python-utilities>=5.0.71",
-    "openshift-python-wrapper>=10.0.100",
+    "openshift-python-wrapper>=11.0.6",
     "pytest-dependency>=0.6.0",
     "pytest-progress",
     "python-simple-logger",
     "pyyaml",
     "tenacity",
     "types-requests>=2.32.0.20241016",
+    "requests",
+    "pytest-asyncio",
+    "syrupy",
+    "protobuf",
+    "grpcio-reflection",
 ]
 
 [project.urls]

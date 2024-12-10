@@ -16,7 +16,7 @@ BASIC_LOGGER = logging.getLogger("basic")
 def pytest_addoption(parser: Parser) -> None:
     aws_group = parser.getgroup(name="AWS")
     buckets_group = parser.getgroup(name="Buckets")
-
+    runtime_group = parser.getgroup(name="Runtime Details")
     # AWS config and credentials options
     aws_group.addoption(
         "--aws-secret-access-key",
@@ -54,6 +54,17 @@ def pytest_addoption(parser: Parser) -> None:
         "--models-s3-bucket-endpoint",
         default=os.environ.get("MODELS_S3_BUCKET_ENDPOINT"),
         help="Models S3 bucket endpoint",
+    )
+    # Runtime options
+    runtime_group.addoption(
+        "--supported-accelerator-type",
+        default=os.environ.get("SUPPORTED_ACCLERATOR_TYPE"),
+        help="Supported accelerator type : Nvidia,AMD,Gaudi",
+    )
+    runtime_group.addoption(
+        "--vllm-runtime-image",
+        default=os.environ.get("VLLM_RUNTIME_IMAGE"),
+        help="Specify the runtime image to use for the tests",
     )
 
 

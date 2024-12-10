@@ -29,6 +29,10 @@ def create_isvc(
     external_route: bool = False,
     model_service_account: Optional[str] = "",
     min_replicas: Optional[int] = None,
+    argument: Optional[list[str]] = None,
+    resources: Optional[dict[str, Any]] = None,
+    volumes: Optional[dict[str, Any]] = None,
+    volumes_mounts: Optional[dict[str, Any]] = None,
 ) -> Generator[InferenceService, Any, Any]:
     predictor_dict: Dict[str, Any] = {
         "minReplicas": min_replicas,
@@ -49,7 +53,14 @@ def create_isvc(
 
     if min_replicas:
         predictor_dict["minReplicas"] = min_replicas
-
+    if argument:
+        predictor_dict["model"]["args"] = argument
+    if resources:
+        predictor_dict["model"]["resources"] = resources
+    if volumes_mounts:
+        predictor_dict["model"]["volumeMounts"] = volumes_mounts
+    if volumes:
+        predictor_dict["volumes"] = volumes
     annotations = {"serving.kserve.io/deploymentMode": deployment_mode}
 
     if deployment_mode == KServeDeploymentType.SERVERLESS:
