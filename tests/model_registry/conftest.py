@@ -1,4 +1,5 @@
 import pytest
+import schemathesis
 from typing import Generator, Any
 from ocp_resources.secret import Secret
 from ocp_resources.namespace import Namespace
@@ -305,3 +306,14 @@ def model_registry_instance_rest_endpoint(
     model_registry_instance_service: Service,
 ) -> str:
     return get_endpoint_from_mr_service(admin_client, model_registry_instance_service, Protocols.REST)
+
+
+@pytest.fixture(scope="class")
+def generate_schema(model_registry_instance_rest_endpoint):
+    # host = model_registry_instance_rest_endpoint.split(":")[0]
+    # port = model_registry_instance_rest_endpoint.split(":")[1]
+    schema = schemathesis.from_uri(
+        uri="https://raw.githubusercontent.com/kubeflow/model-registry/main/api/openapi/model-registry.yaml",
+        base_url=f"https://{model_registry_instance_rest_endpoint}/",
+    )
+    return schema

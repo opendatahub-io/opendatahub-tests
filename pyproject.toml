@@ -49,6 +49,7 @@ dependencies = [
     "pyyaml",
     "tenacity",
     "types-requests>=2.32.0.20241016",
+    "schemathesis",
 ]
 
 [project.urls]
