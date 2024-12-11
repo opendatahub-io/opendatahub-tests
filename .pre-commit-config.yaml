@@ -39,10 +39,13 @@ repos:
       - id: ruff
       - id: ruff-format
 
-  - repo: https://github.com/renovatebot/pre-commit-hooks
-    rev: 39.45.0
-    hooks:
-      - id: renovate-config-validator
+  # https://github.com/renovatebot/pre-commit-hooks/issues/2621
+  # This hook goes over the 250MiB limit that pre-commit.ci imposes
+  # Disable unless a solution is found.
+  # - repo: https://github.com/renovatebot/pre-commit-hooks
+  #   rev: 39.45.0
+  #   hooks:
+  #     - id: renovate-config-validator
 
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.21.2
