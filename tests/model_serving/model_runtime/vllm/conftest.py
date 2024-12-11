@@ -7,7 +7,6 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from tests.model_serving.model_runtime.vllm.utils import kserve_s3_endpoint_secret
-from tests.model_serving.model_server.authentication.conftest import s3_models_storage_uri  # noqa: F811
 from utilities.constants import KServeDeploymentType
 from pytest import FixtureRequest
 from syrupy.extensions.json import JSONSnapshotExtension
