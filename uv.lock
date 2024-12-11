@@ -945,7 +945,7 @@ dev = [
 requires-dist = [
     { name = "ipython", specifier = ">=8.18.1" },
     { name = "openshift-python-utilities", specifier = ">=5.0.71" },
-    { name = "openshift-python-wrapper", specifier = ">=11.0.6" },
+    { name = "openshift-python-wrapper", specifier = ">=11.0.7" },
     { name = "pytest-dependency", specifier = ">=0.6.0" },
     { name = "pytest-progress" },
     { name = "python-simple-logger" },
@@ -982,7 +982,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/6d/2a/ca3e321100733becf
 
 [[package]]
 name = "openshift-python-wrapper"
-version = "11.0.6"
+version = "11.0.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -1002,7 +1002,7 @@ dependencies = [
     { name = "timeout-sampler" },
     { name = "xmltodict" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/26/5f/7b2a60053daaf4d2087dc5119734b79aa021f5d9fc4a309226b400db2407/openshift_python_wrapper-11.0.6.tar.gz", hash = "sha256:ccd9f2c399da85a1101e0e703c0656542703e406b8d161ba7ff54fd09c2bb4d3", size = 6478446 }
+sdist = { url = "https://files.pythonhosted.org/packages/56/8d/c6ac8aa44622cfb74cd16fd087be38e7c812eac992d5408ae0b34534363c/openshift_python_wrapper-11.0.7.tar.gz", hash = "sha256:d4619e35cfa0531e4d262d01b85e8d4d971385ec66cc5bf907de136e998a6a30", size = 6478421 }
 
 [[package]]
 name = "openshift-python-wrapper-data-collector"
