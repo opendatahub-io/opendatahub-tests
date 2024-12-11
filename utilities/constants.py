@@ -50,3 +50,10 @@ class HTTPRequest:
     # See e.g. tests/model_registry/utils.py#L51
     AUTH_HEADER: str = "-H 'Authorization: Bearer"
     CONTENT_JSON: str = "-H 'Content-Type: application/json'"
+
+
+class AcceleratorType:
+    NVIDIA: str = "nvidia"
+    AMD: str = "amd"
+    GAUDI: str = "gaudi"
+    SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI]
