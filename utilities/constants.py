@@ -42,6 +42,14 @@ class Protocols:
     HTTP: str = "http"
     HTTPS: str = "https"
     GRPC: str = "grpc"
+    REST: str = "rest"
+
+
+class HTTPRequest:
+    # Pay attention to the single `'`, needs to be closed after your token
+    # See e.g. tests/model_registry/utils.py#L51
+    AUTH_HEADER: str = "-H 'Authorization: Bearer"
+    CONTENT_JSON: str = "-H 'Content-Type: application/json'"
 
 
 class AcceleratorType:

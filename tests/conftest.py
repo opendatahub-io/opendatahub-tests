@@ -1,10 +1,11 @@
 from typing import Tuple, Any, Generator
-
+import shlex
 import pytest
 from pytest import FixtureRequest, Config
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 from ocp_resources.resource import get_client
+from pyhelper_utils.shell import run_command
 
 from utilities.infra import create_ns
 from utilities.constants import AcceleratorType
@@ -13,6 +14,13 @@ from utilities.constants import AcceleratorType
 @pytest.fixture(scope="session")
 def admin_client() -> DynamicClient:
     return get_client()
+
+
+@pytest.fixture(scope="session")
+def admin_client_token(admin_client: DynamicClient) -> str:
+    _, out, _ = run_command(command=shlex.split("oc whoami -t"), verify_stderr=False, check=False)
+    # `\n` appended to token in out, return without that
+    return out[:-1]
 
 
 @pytest.fixture(scope="class")
