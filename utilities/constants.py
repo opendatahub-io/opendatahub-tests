@@ -46,9 +46,9 @@ class Protocols:
 
 
 class HTTPRequest:
-    # Pay attention to the single `'`, needs to be closed after your token
+    # You will need to `.format(token='foo')`
     # See e.g. tests/model_registry/utils.py#L51
-    AUTH_HEADER: str = "-H 'Authorization: Bearer"
+    AUTH_HEADER: str = "-H 'Authorization: Bearer {token}'"
     CONTENT_JSON: str = "-H 'Content-Type: application/json'"
 
 
@@ -57,3 +57,10 @@ class AcceleratorType:
     AMD: str = "amd"
     GAUDI: str = "gaudi"
     SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI]
+
+
+class KubernetesAnnotations:
+    NAME: str = "app.kubernetes.io/name"
+    INSTANCE: str = "app.kubernetes.io/instance"
+    PART_OF: str = "app.kubernetes.io/part-of"
+    CREATED_BY: str = "app.kubernetes.io/created-by"

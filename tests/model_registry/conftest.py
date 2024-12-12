@@ -12,12 +12,14 @@ from kubernetes.dynamic import DynamicClient
 
 from tests.model_registry.utils import get_endpoint_from_mr_service, get_mr_service_by_label
 from utilities.infra import create_ns
-from utilities.constants import Protocols
+from utilities.constants import Protocols, KubernetesAnnotations
 
 
 LOGGER = get_logger(name=__name__)
 
-DB_RESOURCES_NAME = "model-registry-db"
+DB_RESOURCES_NAME: str = "model-registry-db"
+MR_INSTANCE_NAME: str = "model-registry"
+MR_OPERATOR_NAME: str = "model-registry-operator"
 
 
 @pytest.fixture(scope="class")
@@ -60,9 +62,9 @@ def model_registry_db_service(
             "name": DB_RESOURCES_NAME,
         },
         label={
-            "app.kubernetes.io/name": DB_RESOURCES_NAME,
-            "app.kubernetes.io/instance": DB_RESOURCES_NAME,
-            "app.kubernetes.io/part-of": DB_RESOURCES_NAME,
+            KubernetesAnnotations.NAME: DB_RESOURCES_NAME,
+            KubernetesAnnotations.INSTANCE: DB_RESOURCES_NAME,
+            KubernetesAnnotations.PART_OF: DB_RESOURCES_NAME,
         },
         annotations={
             "template.openshift.io/expose-uri": "mysql://{.spec.clusterIP}:{.spec.ports[?(.name==\mysql\)].port}",
@@ -83,9 +85,9 @@ def model_registry_db_pvc(
         "client": admin_client,
         "size": "5Gi",
         "label": {
-            "app.kubernetes.io/name": DB_RESOURCES_NAME,
-            "app.kubernetes.io/instance": DB_RESOURCES_NAME,
-            "app.kubernetes.io/part-of": DB_RESOURCES_NAME,
+            KubernetesAnnotations.NAME: DB_RESOURCES_NAME,
+            KubernetesAnnotations.INSTANCE: DB_RESOURCES_NAME,
+            KubernetesAnnotations.PART_OF: DB_RESOURCES_NAME,
         },
     }
 
@@ -108,9 +110,9 @@ def model_registry_db_secret(
             "database-user": "mlmduser",  # pragma: allowlist secret
         },
         label={
-            "app.kubernetes.io/name": DB_RESOURCES_NAME,
-            "app.kubernetes.io/instance": DB_RESOURCES_NAME,
-            "app.kubernetes.io/part-of": DB_RESOURCES_NAME,
+            KubernetesAnnotations.NAME: DB_RESOURCES_NAME,
+            KubernetesAnnotations.INSTANCE: DB_RESOURCES_NAME,
+            KubernetesAnnotations.PART_OF: DB_RESOURCES_NAME,
         },
         annotations={
             "template.openshift.io/expose-database_name": "'{.data[''database-name'']}'",
@@ -136,9 +138,9 @@ def model_registry_db_deployment(
             "template.alpha.openshift.io/wait-for-ready": "true",
         },
         label={
-            "app.kubernetes.io/name": DB_RESOURCES_NAME,
-            "app.kubernetes.io/instance": DB_RESOURCES_NAME,
-            "app.kubernetes.io/part-of": DB_RESOURCES_NAME,
+            KubernetesAnnotations.NAME: DB_RESOURCES_NAME,
+            KubernetesAnnotations.INSTANCE: DB_RESOURCES_NAME,
+            KubernetesAnnotations.PART_OF: DB_RESOURCES_NAME,
         },
         replicas=1,
         revision_history_limit=0,
@@ -259,13 +261,13 @@ def model_registry_instance(
     model_registry_db_service: Service,
 ) -> Generator[ModelRegistry, Any, Any]:
     with ModelRegistry(
-        name="model-registry",
+        name=MR_INSTANCE_NAME,
         namespace=model_registry_namespace.name,
         label={
-            "app.kubernetes.io/name": "model-registry",
-            "app.kubernetes.io/instance": "model-registry",
-            "app.kubernetes.io/part-of": "model-registry-operator",
-            "app.kubernetes.io/created-by": "model-registry-operator",
+            KubernetesAnnotations.NAME: MR_INSTANCE_NAME,
+            KubernetesAnnotations.INSTANCE: MR_INSTANCE_NAME,
+            KubernetesAnnotations.PART_OF: MR_OPERATOR_NAME,
+            KubernetesAnnotations.CREATED_BY: MR_OPERATOR_NAME,
         },
         grpc={},
         rest={},
@@ -293,7 +295,9 @@ def model_registry_instance_service(
     model_registry_namespace: Namespace,
     model_registry_instance: ModelRegistry,
 ) -> Service:
-    return get_mr_service_by_label(admin_client, model_registry_namespace, model_registry_instance)
+    return get_mr_service_by_label(
+        client=admin_client, ns=model_registry_namespace, mr_instance=model_registry_instance
+    )
 
 
 @pytest.fixture(scope="class")
@@ -301,15 +305,14 @@ def model_registry_instance_rest_endpoint(
     admin_client: DynamicClient,
     model_registry_instance_service: Service,
 ) -> str:
-    return get_endpoint_from_mr_service(admin_client, model_registry_instance_service, Protocols.REST)
+    return get_endpoint_from_mr_service(
+        client=admin_client, svc=model_registry_instance_service, protocol=Protocols.REST
+    )
 
 
 @pytest.fixture(scope="class")
-def generate_schema(model_registry_instance_rest_endpoint):
-    # host = model_registry_instance_rest_endpoint.split(":")[0]
-    # port = model_registry_instance_rest_endpoint.split(":")[1]
-    schema = schemathesis.from_uri(
+def generated_schema(model_registry_instance_rest_endpoint):
+    return schemathesis.from_uri(
         uri="https://raw.githubusercontent.com/kubeflow/model-registry/main/api/openapi/model-registry.yaml",
         base_url=f"https://{model_registry_instance_rest_endpoint}/",
     )
-    return schema

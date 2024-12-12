@@ -38,7 +38,7 @@ def get_mr_service_by_label(client: DynamicClient, ns: Namespace, mr_instance: M
     raise ResourceNotFoundError(f"{mr_instance.name} has no Service")
 
 
-def get_endpoint_from_mr_service(client: DynamicClient, svc: Service, protocol: str) -> str | ProtocolNotSupported:
+def get_endpoint_from_mr_service(client: DynamicClient, svc: Service, protocol: str) -> str:
     if protocol == Protocols.REST:
         return svc.instance.metadata.annotations[f"{ADDRESS_ANNOTATION_PREFIX}{Protocols.REST}"]
     elif protocol == Protocols.GRPC:
@@ -48,7 +48,7 @@ def get_endpoint_from_mr_service(client: DynamicClient, svc: Service, protocol: 
 
 
 def generate_register_model_command(endpoint: str, token: str) -> str:
-    auth_header = f" {HTTPRequest.AUTH_HEADER} {token}'"
+    auth_header = f" {HTTPRequest.AUTH_HEADER.format(token=token)}"
     content_header = f" {HTTPRequest.CONTENT_JSON}"
     data = ' -d \'{"name": "model-name", "description": "test-model", "owner": "opendatahub-tests-client", "externalId": "1", "state": "LIVE"}\''
     cmd = (

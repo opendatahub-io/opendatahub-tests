@@ -17,10 +17,10 @@ def admin_client() -> DynamicClient:
 
 
 @pytest.fixture(scope="session")
-def admin_client_token(admin_client: DynamicClient) -> str:
+def current_client_token(admin_client: DynamicClient) -> str:
     _, out, _ = run_command(command=shlex.split("oc whoami -t"), verify_stderr=False, check=False)
     # `\n` appended to token in out, return without that
-    return out[:-1]
+    return out.strip()
 
 
 @pytest.fixture(scope="class")

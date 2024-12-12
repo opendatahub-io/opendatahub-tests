@@ -17,15 +17,24 @@ class TestModelRegistryCreation:
     def test_model_registry_instance_creation(self: Self, model_registry_instance: ModelRegistry):
         assert model_registry_instance.name == "model-registry"
 
-    def test_registering_model(self: Self, model_registry_instance_rest_endpoint: str, admin_client_token: str):
-        cmd = generate_register_model_command(model_registry_instance_rest_endpoint, admin_client_token)
-        res, out, _ = run_command(command=shlex.split(cmd), verify_stderr=False, check=False)
-        assert res
+    def test_registering_model(self: Self, model_registry_instance_rest_endpoint: str, current_client_token: str):
+        cmd = generate_register_model_command(
+            endpoint=model_registry_instance_rest_endpoint, token=current_client_token
+        )
+        _, out, _ = run_command(command=shlex.split(cmd))
         out_dict = eval(out)
-        assert out_dict["name"] == "model-name"
-        assert out_dict["description"] == "test-model"
-        assert out_dict["externalId"] == "1"
-        assert out_dict["owner"] == "opendatahub-tests-client"
-        assert out_dict["state"] == "LIVE"
+        errors = []
+        if not out_dict["name"] == "model-name":
+            errors.append(f"Unexpected name, received {out_dict['name']}")
+        if not out_dict["description"] == "test-model":
+            errors.append(f"Unexpected description, received {out_dict['description']}")
+        if not out_dict["externalId"] == "1":
+            errors.append(f"Unexpected id, received {out_dict['externalId']}")
+        if not out_dict["owner"] == "opendatahub-tests-client":
+            errors.append(f"Unexpected owner, received {out_dict['owner']}")
+        if not out_dict["state"] == "LIVE":
+            errors.append(f"Unexpected state, received {out_dict['state']}")
+
+        assert not errors, "errors occured:\n{}".format("\n".join(errors))
 
     # TODO: Query for a registered Model
