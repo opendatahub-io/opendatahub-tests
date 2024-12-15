@@ -33,6 +33,8 @@ def create_isvc(
     resources: Optional[dict[str, Any]] = None,
     volumes: Optional[dict[str, Any]] = None,
     volumes_mounts: Optional[dict[str, Any]] = None,
+    autoscaler_mode: Optional[str] = None,
+    multi_node_worker_spec: Optional[dict[str, int]] = None,
 ) -> Generator[InferenceService, Any, Any]:
     predictor_dict: Dict[str, Any] = {
         "minReplicas": min_replicas,
@@ -61,6 +63,7 @@ def create_isvc(
         predictor_dict["model"]["volumeMounts"] = volumes_mounts
     if volumes:
         predictor_dict["volumes"] = volumes
+
     annotations = {"serving.kserve.io/deploymentMode": deployment_mode}
 
     if deployment_mode == KServeDeploymentType.SERVERLESS:
@@ -75,6 +78,12 @@ def create_isvc(
 
     if external_route:
         annotations["networking.kserve.io/visibility"] = "exposed"
+
+    if autoscaler_mode:
+        annotations["serving.kserve.io/autoscalerClass"] = autoscaler_mode
+
+    if multi_node_worker_spec is not None:
+        predictor_dict["workerSpec"] = multi_node_worker_spec
 
     with InferenceService(
         client=client,

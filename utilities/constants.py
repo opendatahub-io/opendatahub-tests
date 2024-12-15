@@ -49,3 +49,7 @@ class AcceleratorType:
     AMD: str = "amd"
     GAUDI: str = "gaudi"
     SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI]
+
+
+class StorageType:
+    NFS: str = "nfs"

@@ -1,6 +1,6 @@
 import shlex
 from typing import List
-from utilities.constants import KServeDeploymentType
+from utilities.constants import KServeDeploymentType, StorageType
 
 import pytest
 
@@ -8,7 +8,6 @@ from tests.model_serving.model_server.storage.constants import (
     INFERENCE_SERVICE_PARAMS,
     KSERVE_CONTAINER_NAME,
     KSERVE_OVMS_SERVING_RUNTIME_PARAMS,
-    NFS_STR,
 )
 
 POD_LS_SPLIT_COMMAND: List[str] = shlex.split("ls /mnt/models")
@@ -23,7 +22,7 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_nfs_storage_class")
         pytest.param(
             {"name": "pvc-rxw-access"},
             {"model-dir": "test-dir"},
-            {"access-modes": "ReadWriteMany", "storage-class-name": NFS_STR},
+            {"access-modes": "ReadWriteMany", "storage-class-name": StorageType.NFS},
             KSERVE_OVMS_SERVING_RUNTIME_PARAMS,
             INFERENCE_SERVICE_PARAMS | {"deployment-mode": KServeDeploymentType.SERVERLESS, "min-replicas": 2},
         )
