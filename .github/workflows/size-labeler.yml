@@ -1,23 +1,22 @@
-name: PR Size Labeler
-on:
-  pull_request:
-    types: [opened, synchronize]
-    paths-ignore:
-      - '**/*.lock'
-      - '**/LICENSE'
-      - '**/*.md'
+name: size-label
+
+on: pull_request_target
 
 jobs:
-  label-size:
+  size-label:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Label PR Size
-        uses: actions/labeler@v5
+      - name: size-label
+        uses: pascalgn/size-label-action@v0.5.0
+        env:
+          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+          IGNORED: ".*\\.lock"
         with:
-          repo-token: "${{ secrets.GITHUB_TOKEN }}"
-          configuration-path: .github/size-labeler.yml
+          sizes: >
+            {
+              "0": "size/xs",
+              "20": "size/s",
+              "50": "size/m",
+              "100": "size/l",
+              "300": "size/xl"
+            }
