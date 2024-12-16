@@ -2,23 +2,25 @@ name: size-label
 
 on: pull_request
 
+permissions:
+  pull-requests: write
+  contents: read
+
 jobs:
   size-label:
-    permissions:
-      pull-requests: write
-      contents: read
     runs-on: ubuntu-latest
     steps:
       - name: size-label
         uses: pascalgn/size-label-action@v0.5.0
         env:
           GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+          IGNORED: ".*\\.lock"
         with:
           sizes: >
             {
-              "0": "XS",
-              "20": "S",
-              "50": "M",
-              "100": "L",
-              "300": "XL"
+              "0": "size/xs",
+              "20": "size/s",
+              "50": "size/m",
+              "100": "size/l",
+              "300": "size/xl"
             }
