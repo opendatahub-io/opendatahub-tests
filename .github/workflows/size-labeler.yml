@@ -2,9 +2,7 @@ name: size-label
 
 on: pull_request
 
-permissions:
-  pull-requests: write
-  contents: read
+permissions: write-all
 
 jobs:
   size-label:
