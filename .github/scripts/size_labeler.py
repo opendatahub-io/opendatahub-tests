@@ -39,7 +39,7 @@ def get_size_label(size: int) -> str:
 def main() -> None:
     github_token: str = os.environ["GITHUB_TOKEN"]
     repo_name: str = os.environ["GITHUB_REPOSITORY"]
-    pr_number: int = int(os.environ["GITHUB_EVENT_PATH"].split("/")[-2])
+    pr_number: int = int(os.environ["GITHUB_PR_NUMBER"])
 
     g: Github = Github(github_token)
     repo: Repository = g.get_repo(repo_name)
