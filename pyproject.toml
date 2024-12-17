@@ -50,7 +50,7 @@ dependencies = [
     "pyyaml",
     "tenacity",
     "types-requests>=2.32.0.20241016",
-    "schemathesis",
+    "schemathesis>=3.38.10",
     "requests",
     "pytest-asyncio",
     "syrupy",

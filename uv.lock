@@ -1023,7 +1023,7 @@ requires-dist = [
     { name = "python-simple-logger" },
     { name = "pyyaml" },
     { name = "requests" },
-    { name = "schemathesis" },
+    { name = "schemathesis", specifier = ">=3.38.10" },
     { name = "syrupy" },
     { name = "tenacity" },
     { name = "types-requests", specifier = ">=2.32.0.20241016" },

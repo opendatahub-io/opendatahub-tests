@@ -20,19 +20,20 @@ LOGGER = get_logger(name=__name__)
 DB_RESOURCES_NAME: str = "model-registry-db"
 MR_INSTANCE_NAME: str = "model-registry"
 MR_OPERATOR_NAME: str = "model-registry-operator"
+MR_NAMESPACE: str = "rhoai-model-registries"
 
 
 @pytest.fixture(scope="class")
 def model_registry_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
     # This namespace should exist after Model Registry is enabled, but it can also be deleted
     # from the cluster and does not get reconciled. Fetch if it exists, create otherwise.
-    ns = Namespace(name="rhoai-model-registries", client=admin_client)
+    ns = Namespace(name=MR_NAMESPACE, client=admin_client)
     if ns.exists:
         yield ns
     else:
-        LOGGER.warning("rhoai-model-registries namespace was not present, creating it")
+        LOGGER.warning(f"{MR_NAMESPACE} namespace was not present, creating it")
         with create_ns(
-            name="rhoai-model-registries",
+            name=MR_NAMESPACE,
             admin_client=admin_client,
             teardown=False,
             ensure_exists=True,
@@ -78,20 +79,18 @@ def model_registry_db_pvc(
     admin_client: DynamicClient,
     model_registry_namespace: Namespace,
 ) -> Generator[PersistentVolumeClaim, Any, Any]:
-    pvc_kwargs = {
-        "accessmodes": "ReadWriteOnce",
-        "name": DB_RESOURCES_NAME,
-        "namespace": model_registry_namespace.name,
-        "client": admin_client,
-        "size": "5Gi",
-        "label": {
+    with PersistentVolumeClaim(
+        accessmodes="ReadWriteOnce",
+        name=DB_RESOURCES_NAME,
+        namespace=model_registry_namespace.name,
+        client=admin_client,
+        size="5Gi",
+        label={
             KubernetesAnnotations.NAME: DB_RESOURCES_NAME,
             KubernetesAnnotations.INSTANCE: DB_RESOURCES_NAME,
             KubernetesAnnotations.PART_OF: DB_RESOURCES_NAME,
         },
-    }
-
-    with PersistentVolumeClaim(**pvc_kwargs) as pvc:
+    ) as pvc:
         yield pvc
 
 

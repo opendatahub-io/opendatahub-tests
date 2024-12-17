@@ -1,4 +1,5 @@
 import shlex
+from ast import literal_eval
 from typing import Self
 from simple_logger.logger import get_logger
 from ocp_resources.model_registry import ModelRegistry
@@ -15,14 +16,14 @@ class TestModelRegistryCreation:
     # TODO: Enable Model Registry in DSC if needed
 
     def test_model_registry_instance_creation(self: Self, model_registry_instance: ModelRegistry):
-        assert model_registry_instance.name == "model-registry"
+        assert model_registry_instance.exists
 
     def test_registering_model(self: Self, model_registry_instance_rest_endpoint: str, current_client_token: str):
         cmd = generate_register_model_command(
             endpoint=model_registry_instance_rest_endpoint, token=current_client_token
         )
         _, out, _ = run_command(command=shlex.split(cmd))
-        out_dict = eval(out)
+        out_dict = literal_eval(out)
         errors = []
         if not out_dict["name"] == "model-name":
             errors.append(f"Unexpected name, received {out_dict['name']}")

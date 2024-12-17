@@ -46,8 +46,7 @@ class Protocols:
 
 
 class HTTPRequest:
-    # You will need to `.format(token='foo')`
-    # See e.g. tests/model_registry/utils.py#L51
+    # Use string formatting to set the token value when using this constant
     AUTH_HEADER: str = "-H 'Authorization: Bearer {token}'"
     CONTENT_JSON: str = "-H 'Content-Type: application/json'"
 
