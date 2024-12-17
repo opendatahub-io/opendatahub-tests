@@ -261,6 +261,9 @@ def verify_metric_request(
         token (str): Authentication token for the service.
         metric_name (str): Name of the metric to request.
         json_data (Any): JSON payload for the metric request.
+
+    Raise:
+        AssertionError if some of the response fields does not have the expected value.
     """
 
     response = TrustyAIServiceRequestHandler(token=token, service=trustyai_service, client=client).send_drift_request(
@@ -269,12 +272,26 @@ def verify_metric_request(
     LOGGER.info(msg=f"TrustyAI metric request response: {json.dumps(json.loads(response.text), indent=2)}")
     response_data = json.loads(response.text)
 
-    assert response.status_code == http.HTTPStatus.OK, f"Unexpected status code: {response.status_code}"
-    assert response_data["timestamp"] != "", "Timestamp is empty"
-    assert response_data["type"] == "metric", "Incorrect type"
-    assert response_data["value"] != "", "Value is empty"
-    assert isinstance(response_data["value"], float), "Value must be a float"
-    assert response_data["specificDefinition"] != "", "Specific definition is empty"
-    assert response_data["name"] == metric_name, f"Wrong name: {response_data['name']}, expected: {metric_name}"
-    assert response_data["id"] != "", "ID is empty"
-    assert response_data["thresholds"] != "", "Thresholds are empty"
+    errors = []
+
+    if response.status_code != http.HTTPStatus.OK:
+        errors.append(f"Unexpected status code: {response.status_code}")
+    if response_data["timestamp"] == "":
+        errors.append("Timestamp is empty")
+    if response_data["type"] != "metric":
+        errors.append("Incorrect type")
+    if response_data["value"] == "":
+        errors.append("Value is empty")
+    if not isinstance(response_data["value"], float):
+        errors.append("Value must be a float")
+    if response_data["specificDefinition"] == "":
+        errors.append("Specific definition is empty")
+    if response_data["name"] != metric_name:
+        errors.append(f"Wrong name: {response_data['name']}, expected: {metric_name}")
+    if response_data["id"] == "":
+        errors.append("ID is empty")
+    if response_data["thresholds"] == "":
+        errors.append("Thresholds are empty")
+
+    if errors:
+        raise AssertionError("\n".join(errors))
