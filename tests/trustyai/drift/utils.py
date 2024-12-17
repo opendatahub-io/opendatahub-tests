@@ -22,6 +22,10 @@ LOGGER = get_logger(name=__name__)
 TIMEOUT_30SEC: int = 30
 
 
+class MetricValidationError(Exception):
+    pass
+
+
 class TrustyAIServiceRequestHandler:
     """
     Class to encapsulate the behaviors associated to the different TrustyAIService requests we make in the tests
@@ -294,4 +298,4 @@ def verify_metric_request(
         errors.append("Thresholds are empty")
 
     if errors:
-        raise AssertionError("\n".join(errors))
+        raise MetricValidationError("\n".join(errors))
