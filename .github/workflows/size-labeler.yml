@@ -3,14 +3,12 @@ on:
   pull_request:
     types: [opened, synchronize]
 
+permissions: write-all
+
 jobs:
   label-size:
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-      issues: write
-      pull-requests: write
+
     steps:
       - uses: actions/checkout@v4
 
