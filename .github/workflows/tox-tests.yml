@@ -2,7 +2,7 @@ name: Tox Tests
 
 on:
   push:
-  pull_request:
+  # pull_request:
 
 jobs:
   tox-tests:
