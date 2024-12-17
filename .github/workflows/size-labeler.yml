@@ -25,4 +25,4 @@ jobs:
       - name: Run size labeler
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python .github/scripts/size_labeler.py
+        run: uv run python .github/scripts/size_labeler.py
