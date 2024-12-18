@@ -1,6 +1,11 @@
 import pytest
 
-from tests.trustyai.drift.utils import send_inference_requests_and_verify_trustyai_service, verify_metric_request
+from tests.trustyai.drift.utils import (
+    send_inference_requests_and_verify_trustyai_service,
+    verify_trustyai_metric_request,
+    verify_trustyai_metric_scheduling,
+    verify_upload_data_to_trustyai_service,
+)
 
 
 @pytest.mark.parametrize(
@@ -36,12 +41,34 @@ class TestDriftMetrics:
             inference_service=gaussian_credit_model,
         )
 
-        # TODO: Add rest of operations in upcoming PRs (upload data directly to Trusty, send metric request, schedule period metric calculation, delete metric request).
+    def test_upload_data_to_trustyai_service(
+        self,
+        admin_client,
+        openshift_token,
+        trustyai_service_with_pvc_storage,
+    ) -> None:
+        verify_upload_data_to_trustyai_service(
+            client=admin_client,
+            trustyai_service=trustyai_service_with_pvc_storage,
+            token=openshift_token,
+            data_path="./tests/trustyai/drift/model_data/training_data.json",
+        )
 
     def test_drift_metric_meanshift(
         self, admin_client, openshift_token, trustyai_service_with_pvc_storage, gaussian_credit_model
     ):
-        verify_metric_request(
+        verify_trustyai_metric_request(
+            client=admin_client,
+            trustyai_service=trustyai_service_with_pvc_storage,
+            token=openshift_token,
+            metric_name="meanshift",
+            json_data={"modelId": gaussian_credit_model.name, "referenceTag": "TRAINING"},
+        )
+
+    def test_drift_metric_schedule_meanshift(
+        self, admin_client, openshift_token, trustyai_service_with_pvc_storage, gaussian_credit_model
+    ):
+        verify_trustyai_metric_scheduling(
             client=admin_client,
             trustyai_service=trustyai_service_with_pvc_storage,
             token=openshift_token,

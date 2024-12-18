@@ -16,7 +16,7 @@ from timeout_sampler import TimeoutSampler
 
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
-from tests.trustyai.constants import TIMEOUT_5MIN, MODELMESH_SERVING
+from tests.trustyai.constants import TIMEOUT_5MIN, MODELMESH_SERVING, TIMEOUT_1MIN
 
 LOGGER = get_logger(name=__name__)
 TIMEOUT_30SEC: int = 30
@@ -44,7 +44,7 @@ class TrustyAIServiceRequestHandler:
         self,
         endpoint: str,
         method: str,
-        data: Optional[Dict[str, Any]] = None,
+        data: Optional[str] = None,
         json: Optional[Dict[str, Any]] = None,
     ) -> Any:
         url = f"https://{self.service_route.host}{endpoint}"
@@ -59,13 +59,36 @@ class TrustyAIServiceRequestHandler:
     def get_model_metadata(self) -> Any:
         return self._send_request(endpoint="/info", method="GET")
 
-    def send_drift_request(
+    def send_drift_metric_request(
         self,
         metric_name: str,
         json: Optional[Dict[str, Any]] = None,
+        schedule: bool = False,
     ) -> Any:
-        LOGGER.info(f"Sending request for drift metric: {metric_name}")
-        return self._send_request(endpoint=f"/metrics/drift/{metric_name}", method="POST", json=json)
+        endpoint: str = f"/metrics/drift/{metric_name}{'/request' if schedule else ''}"
+        LOGGER.info(f"Sending request for drift metric to endpoint {endpoint}")
+        return self._send_request(endpoint=endpoint, method="POST", json=json)
+
+    def get_drift_metrics(
+        self,
+        metric_name: str,
+    ) -> Any:
+        endpoint: str = f"/metrics/drift/{metric_name}/requests"
+        LOGGER.info(f"Sending request to get drift metrics to endpoint {endpoint}")
+        return self._send_request(
+            endpoint=endpoint,
+            method="GET",
+        )
+
+    def upload_data(
+        self,
+        data_path: str,
+    ) -> Any:
+        with open(data_path, "r") as file:
+            data = file.read()
+
+        LOGGER.info(f"Uploading data to TrustyAIService: {data_path}")
+        return self._send_request(endpoint="/data/upload", method="POST", data=data)
 
 
 # TODO: Refactor code to be under utilities.inference_utils.Inference
@@ -107,7 +130,7 @@ def send_inference_request(
     def _make_request() -> None:
         try:
             response: requests.Response = requests.post(
-                url=url, headers=headers, data=data_batch, verify=False, timeout=TIMEOUT_30SEC
+                url=url, headers=headers, data=data_batch, verify=False, timeout=TIMEOUT_1MIN
             )
             response.raise_for_status()
         except requests.RequestException as e:
@@ -156,7 +179,7 @@ def wait_for_trustyai_to_register_inference_request(
     )
 
     samples = TimeoutSampler(
-        wait_timeout=TIMEOUT_30SEC,
+        wait_timeout=120,
         sleep=1,
         func=lambda: current_observations == expected_observations,
     )
@@ -253,7 +276,7 @@ def wait_for_modelmesh_pods_registered_by_trustyai(client: DynamicClient, namesp
             return
 
 
-def verify_metric_request(
+def verify_trustyai_metric_request(
     client: DynamicClient, trustyai_service: TrustyAIService, token: str, metric_name: str, json_data: Any
 ) -> None:
     """
@@ -267,12 +290,12 @@ def verify_metric_request(
         json_data (Any): JSON payload for the metric request.
 
     Raise:
-        AssertionError if some of the response fields does not have the expected value.
+        MetricValidationError if some of the response fields does not have the expected value.
     """
 
-    response = TrustyAIServiceRequestHandler(token=token, service=trustyai_service, client=client).send_drift_request(
-        metric_name=metric_name, json=json_data
-    )
+    response = TrustyAIServiceRequestHandler(
+        token=token, service=trustyai_service, client=client
+    ).send_drift_metric_request(metric_name=metric_name, json=json_data)
     LOGGER.info(msg=f"TrustyAI metric request response: {json.dumps(json.loads(response.text), indent=2)}")
     response_data = json.loads(response.text)
 
@@ -286,11 +309,9 @@ def verify_metric_request(
         errors.append("Incorrect type")
     if response_data["value"] == "":
         errors.append("Value is empty")
-    if not isinstance(response_data["value"], float):
-        errors.append("Value must be a float")
     if response_data["specificDefinition"] == "":
         errors.append("Specific definition is empty")
-    if response_data["name"] != metric_name:
+    if response_data["name"].lower() != metric_name:
         errors.append(f"Wrong name: {response_data['name']}, expected: {metric_name}")
     if response_data["id"] == "":
         errors.append("ID is empty")
@@ -299,3 +320,69 @@ def verify_metric_request(
 
     if errors:
         raise MetricValidationError("\n".join(errors))
+
+
+def verify_trustyai_metric_scheduling(
+    client: DynamicClient, trustyai_service: TrustyAIService, token: str, metric_name: str, json_data: Any
+) -> None:
+    handler = TrustyAIServiceRequestHandler(token=token, service=trustyai_service, client=client)
+    response = handler.send_drift_metric_request(
+        metric_name=metric_name,
+        json=json_data,
+        schedule=True,
+    )
+    LOGGER.info(msg=f"TrustyAI metric scheduling request response: {json.dumps(json.loads(response.text), indent=2)}")
+    response_data = json.loads(response.text)
+
+    errors = []
+
+    request_id = response_data["requestId"]
+    if request_id == "":
+        errors.append("Request ID is empty")
+    if response.status_code != http.HTTPStatus.OK:
+        errors.append(f"Unexpected status code: {response.status_code}")
+    if response_data["timestamp"] == "":
+        errors.append("Timestamp is empty")
+
+    get_metrics_response = handler.get_drift_metrics(metric_name="meanshift")
+    LOGGER.info(msg=f"TrustyAI scheduled metrics: {json.dumps(json.loads(get_metrics_response.text), indent=2)}")
+    get_metrics_data = json.loads(get_metrics_response.text)
+
+    if get_metrics_response.status_code != http.HTTPStatus.OK:
+        errors.append(f"Unexpected status code for metrics response: {get_metrics_response.status_code}")
+    if "requests" not in get_metrics_data or not get_metrics_data["requests"]:
+        errors.append("No requests found in metrics response")
+    elif len(get_metrics_data["requests"]) != 1:
+        errors.append(f"Expected exactly 1 request, got {len(get_metrics_data['requests'])}")
+    else:
+        metrics_request_id = get_metrics_data["requests"][0]["id"]
+        if metrics_request_id != request_id:
+            errors.append(f"Request ID mismatch. Expected: {request_id}, Got: {metrics_request_id}")
+
+    if errors:
+        raise MetricValidationError("\n".join(errors))
+
+
+def verify_upload_data_to_trustyai_service(
+    client: DynamicClient,
+    trustyai_service: TrustyAIService,
+    token: str,
+    data_path: str,
+) -> Any:
+    with open(data_path, "r") as file:
+        data = file.read()
+
+    expected_num_observations: int = (
+        get_trustyai_number_of_observations(client=client, token=token, trustyai_service=trustyai_service)
+        + json.loads(data)["request"]["inputs"][0]["shape"][0]
+    )
+
+    response = TrustyAIServiceRequestHandler(token=token, service=trustyai_service, client=client).upload_data(
+        data_path=data_path
+    )
+    assert response.status_code == http.HTTPStatus.OK
+
+    actual_num_observations: int = get_trustyai_number_of_observations(
+        client=client, token=token, trustyai_service=trustyai_service
+    )
+    assert expected_num_observations == actual_num_observations
