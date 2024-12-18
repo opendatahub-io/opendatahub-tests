@@ -20,6 +20,7 @@ from tests.trustyai.constants import TIMEOUT_5MIN, MODELMESH_SERVING, TIMEOUT_1M
 
 LOGGER = get_logger(name=__name__)
 TIMEOUT_30SEC: int = 30
+TIMEOUT_2MIN: int = TIMEOUT_1MIN * 2
 
 
 class MetricValidationError(Exception):
@@ -179,7 +180,7 @@ def wait_for_trustyai_to_register_inference_request(
     )
 
     samples = TimeoutSampler(
-        wait_timeout=120,
+        wait_timeout=TIMEOUT_2MIN,
         sleep=1,
         func=lambda: current_observations == expected_observations,
     )
@@ -344,7 +345,7 @@ def verify_trustyai_metric_scheduling(
     if response_data["timestamp"] == "":
         errors.append("Timestamp is empty")
 
-    get_metrics_response = handler.get_drift_metrics(metric_name="meanshift")
+    get_metrics_response = handler.get_drift_metrics(metric_name=metric_name)
     LOGGER.info(msg=f"TrustyAI scheduled metrics: {json.dumps(json.loads(get_metrics_response.text), indent=2)}")
     get_metrics_data = json.loads(get_metrics_response.text)
 

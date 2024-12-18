@@ -8,6 +8,10 @@ from tests.trustyai.drift.utils import (
 )
 
 
+MEANSHIFT: str = "meanshift"
+BASE_DATA_PATH: str = "./tests/trustyai/drift/model_data"
+
+
 @pytest.mark.parametrize(
     "ns_with_modelmesh_enabled",
     [
@@ -36,7 +40,7 @@ class TestDriftMetrics:
         send_inference_requests_and_verify_trustyai_service(
             client=admin_client,
             token=openshift_token,
-            data_path="./tests/trustyai/drift/model_data/data_batches",
+            data_path=f"{BASE_DATA_PATH}/data_batches",
             trustyai_service=trustyai_service_with_pvc_storage,
             inference_service=gaussian_credit_model,
         )
@@ -51,7 +55,7 @@ class TestDriftMetrics:
             client=admin_client,
             trustyai_service=trustyai_service_with_pvc_storage,
             token=openshift_token,
-            data_path="./tests/trustyai/drift/model_data/training_data.json",
+            data_path=f"{BASE_DATA_PATH}/training_data.json",
         )
 
     def test_drift_metric_meanshift(
