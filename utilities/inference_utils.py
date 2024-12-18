@@ -129,6 +129,12 @@ class LlmInference(Inference):
             token=token,
         )
 
+        if (
+            self.inference_service.instance.metatadata.annotations.get("networking.kserve.io/visibility", "")
+            != "exposed"
+        ):
+            pass
+
         res, out, err = run_command(command=shlex.split(cmd), verify_stderr=False, check=False)
         if not res:
             raise ValueError(f"Inference failed with error: {err}\nOutput: {out}\nCommand: {cmd}")
