@@ -65,7 +65,7 @@ class TestDriftMetrics:
             client=admin_client,
             trustyai_service=trustyai_service_with_pvc_storage,
             token=openshift_token,
-            metric_name="meanshift",
+            metric_name=MEANSHIFT,
             json_data={"modelId": gaussian_credit_model.name, "referenceTag": "TRAINING"},
         )
 
@@ -76,6 +76,6 @@ class TestDriftMetrics:
             client=admin_client,
             trustyai_service=trustyai_service_with_pvc_storage,
             token=openshift_token,
-            metric_name="meanshift",
+            metric_name=MEANSHIFT,
             json_data={"modelId": gaussian_credit_model.name, "referenceTag": "TRAINING"},
         )

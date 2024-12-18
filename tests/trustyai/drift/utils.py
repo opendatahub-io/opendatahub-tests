@@ -326,6 +326,22 @@ def verify_trustyai_metric_request(
 def verify_trustyai_metric_scheduling(
     client: DynamicClient, trustyai_service: TrustyAIService, token: str, metric_name: str, json_data: Any
 ) -> None:
+    """
+    Schedules a metric request with the TrustyAI service and validates both the scheduling response
+    and subsequent metrics retrieval.
+
+    Args:
+        client (DynamicClient): The client instance for interacting with the cluster.
+        trustyai_service (TrustyAIService): The TrustyAI service instance to interact with.
+        token (str): Authentication token for the service.
+        metric_name (str): Name of the metric to schedule.
+        json_data (Any): JSON payload for the metric scheduling request.
+
+    Raises:
+        MetricValidationError: If the scheduling response or metrics retrieval response contain invalid
+            or unexpected values, including empty required fields or mismatched request IDs.
+    """
+
     handler = TrustyAIServiceRequestHandler(token=token, service=trustyai_service, client=client)
     response = handler.send_drift_metric_request(
         metric_name=metric_name,
@@ -370,6 +386,16 @@ def verify_upload_data_to_trustyai_service(
     token: str,
     data_path: str,
 ) -> Any:
+    """
+    Uploads data to the TrustyAI service and verifies the number of observations increased correctly.
+
+    Args:
+        client (DynamicClient): The client instance for interacting with the cluster.
+        trustyai_service (TrustyAIService): The TrustyAI service instance to interact with.
+        token (str): Authentication token for the service.
+        data_path (str): Path to the data file to be uploaded.
+    """
+
     with open(data_path, "r") as file:
         data = file.read()
 
