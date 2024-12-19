@@ -13,7 +13,6 @@ from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.authorino import Authorino
 from pyhelper_utils.shell import run_command
 
-
 from tests.model_serving.model_server.authentication.utils import (
     create_isvc_view_role,
 )
@@ -32,11 +31,6 @@ def skip_if_no_authorino_operator(admin_client: DynamicClient):
         namespace="redhat-ods-applications-auth-provider",
     ).exists:
         pytest.skip(f"{name} operator is missing from the cluster")
-
-
-@pytest.fixture(scope="class")
-def s3_models_storage_uri(request, models_s3_bucket_name) -> str:
-    return f"s3://{models_s3_bucket_name}/{request.param['model-dir']}/"
 
 
 @pytest.fixture(scope="class")

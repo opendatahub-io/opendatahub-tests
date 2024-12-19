@@ -36,34 +36,39 @@ def get_size_label(size: int) -> str:
 
 
 def set_pr_size(pr: PullRequest) -> None:
+    size: int = get_pr_size(pr=pr)
+    size_label: str = get_size_label(size=size)
+
     for label in pr.labels:
-        if label.name.startswith("size/"):
+        if label.name == size_label:
+            LOGGER.info(f"Label {label.name} already set")
+            return
+
+        if label.name.lower().startswith("size/"):
             pr.remove_from_labels(label.name)
 
-    size: int = get_pr_size(pr=pr)
-    new_label: str = get_size_label(size=size)
-    LOGGER.info(f"New label: {new_label}")
-    pr.add_to_labels(new_label)
+    LOGGER.info(f"New label: {size_label}")
+    pr.add_to_labels(size_label)
 
 
 def main() -> None:
     github_token: str = os.getenv("GITHUB_TOKEN", "")
     if not github_token:
-        LOGGER.error("GITHUB_TOKEN is not set")
+        raise ValueError("GITHUB_TOKEN is not set")
 
     repo_name: str = os.environ["GITHUB_REPOSITORY"]
 
     pr_number: int = int(os.getenv("GITHUB_PR_NUMBER", 0))
     if not pr_number:
-        LOGGER.error("GITHUB_PR_NUMBER is not set")
+        raise ValueError("GITHUB_PR_NUMBER is not set")
 
     event_action: str = os.getenv("GITHUB_EVENT_ACTION", "")
     if not event_action:
-        LOGGER.error("GITHUB_EVENT_ACTION is not set")
+        raise ValueError("GITHUB_EVENT_ACTION is not set")
 
     event_name: str = os.getenv("GITHUB_EVENT_NAME", "")
     if not event_name:
-        LOGGER.error("GITHUB_EVENT_NAME is not set")
+        raise ValueError("GITHUB_EVENT_NAME is not set")
 
     gh_client: Github = Github(github_token)
     repo: Repository = gh_client.get_repo(repo_name)
