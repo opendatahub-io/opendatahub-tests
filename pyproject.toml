@@ -55,6 +55,7 @@ dependencies = [
     "syrupy",
     "protobuf",
     "grpcio-reflection",
+    "pygithub>=2.5.0",
 ]
 
 [project.urls]
