@@ -54,21 +54,21 @@ def set_pr_size(pr: PullRequest) -> None:
 def main() -> None:
     github_token: str = os.getenv("GITHUB_TOKEN", "")
     if not github_token:
-        raise ValueError("GITHUB_TOKEN is not set")
+        sys.exit("GITHUB_TOKEN is not set")
 
     repo_name: str = os.environ["GITHUB_REPOSITORY"]
 
     pr_number: int = int(os.getenv("GITHUB_PR_NUMBER", 0))
     if not pr_number:
-        raise ValueError("GITHUB_PR_NUMBER is not set")
+        sys.exit("GITHUB_PR_NUMBER is not set")
 
     event_action: str = os.getenv("GITHUB_EVENT_ACTION", "")
     if not event_action:
-        raise ValueError("GITHUB_EVENT_ACTION is not set")
+        sys.exit("GITHUB_EVENT_ACTION is not set")
 
     event_name: str = os.getenv("GITHUB_EVENT_NAME", "")
     if not event_name:
-        raise ValueError("GITHUB_EVENT_NAME is not set")
+        sys.exit("GITHUB_EVENT_NAME is not set")
 
     gh_client: Github = Github(github_token)
     repo: Repository = gh_client.get_repo(repo_name)
