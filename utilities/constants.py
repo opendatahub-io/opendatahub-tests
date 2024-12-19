@@ -42,6 +42,13 @@ class Protocols:
     HTTP: str = "http"
     HTTPS: str = "https"
     GRPC: str = "grpc"
+    REST: str = "rest"
+
+
+class HTTPRequest:
+    # Use string formatting to set the token value when using this constant
+    AUTH_HEADER: str = "-H 'Authorization: Bearer {token}'"
+    CONTENT_JSON: str = "-H 'Content-Type: application/json'"
 
 
 class AcceleratorType:
@@ -49,3 +56,10 @@ class AcceleratorType:
     AMD: str = "amd"
     GAUDI: str = "gaudi"
     SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI]
+
+
+class KubernetesAnnotations:
+    NAME: str = "app.kubernetes.io/name"
+    INSTANCE: str = "app.kubernetes.io/instance"
+    PART_OF: str = "app.kubernetes.io/part-of"
+    CREATED_BY: str = "app.kubernetes.io/created-by"
