@@ -1,5 +1,3 @@
-from typing import List
-
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 from ocp_resources.service import Service
@@ -15,7 +13,7 @@ ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
 
 
 class TooManyServices(Exception):
-    def __init__(self, services: List):
+    def __init__(self, services: list[Service]):
         self.services = services
 
     def __str__(self) -> str:
