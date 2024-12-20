@@ -56,16 +56,17 @@ def get_endpoint_from_mr_service(client: DynamicClient, svc: Service, protocol: 
 
 
 def generate_register_model_command(endpoint: str, token: str) -> str:
-    data = ' -d \'{"name": "model-name", "description": "test-model", "owner": "opendatahub-tests-client", "externalId": "1", "state": "LIVE"}\''
-    cmd = (
-        "curl -k "
-        + f" {HTTPRequest.AUTH_HEADER.format(token=token)}"
-        + f" {HTTPRequest.CONTENT_JSON}"
-        + data
-        + " "
-        + Protocols.HTTPS
-        + "://"
-        + endpoint
-        + ModelRegistryEndpoints.REGISTERED_MODELS
-    )
+    # data = ' -d \'{"name": "model-name", "description": "test-model", "owner": "opendatahub-tests-client", "externalId": "1", "state": "LIVE"}\''
+    # cmd = (
+    #     "curl -k "
+    #     + f" {HTTPRequest.AUTH_HEADER.format(token=token)}"
+    #     + f" {HTTPRequest.CONTENT_JSON}"
+    #     + data
+    #     + " "
+    #     + Protocols.HTTPS
+    #     + "://"
+    #     + endpoint
+    #     + ModelRegistryEndpoints.REGISTERED_MODELS
+    # )
+    cmd = f'curl -k {HTTPRequest.AUTH_HEADER.format(token=token)} {HTTPRequest.CONTENT_JSON} -d \'{"name": "model-name", "description": "test-model", "owner": "opendatahub-tests-client", "externalId": "1", "state": "LIVE"}\' {Protocols.HTTPS}://{endpoint}{ModelRegistryEndpoints.REGISTERED_MODELS}'
     return cmd

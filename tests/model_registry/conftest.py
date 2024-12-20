@@ -21,6 +21,11 @@ DB_RESOURCES_NAME: str = "model-registry-db"
 MR_INSTANCE_NAME: str = "model-registry"
 MR_OPERATOR_NAME: str = "model-registry-operator"
 MR_NAMESPACE: str = "rhoai-model-registries"
+DEFAULT_LABEL_DICT_DB: dict[str, str] = {
+    KubernetesAnnotations.NAME: DB_RESOURCES_NAME,
+    KubernetesAnnotations.INSTANCE: DB_RESOURCES_NAME,
+    KubernetesAnnotations.PART_OF: DB_RESOURCES_NAME,
+}
 
 
 @pytest.fixture(scope="class")
@@ -36,7 +41,6 @@ def model_registry_namespace(admin_client: DynamicClient) -> Generator[Namespace
             name=MR_NAMESPACE,
             admin_client=admin_client,
             teardown=False,
-            ensure_exists=True,
         ) as ns:
             yield ns
 
@@ -62,11 +66,7 @@ def model_registry_db_service(
         selector={
             "name": DB_RESOURCES_NAME,
         },
-        label={
-            KubernetesAnnotations.NAME: DB_RESOURCES_NAME,
-            KubernetesAnnotations.INSTANCE: DB_RESOURCES_NAME,
-            KubernetesAnnotations.PART_OF: DB_RESOURCES_NAME,
-        },
+        label=DEFAULT_LABEL_DICT_DB,
         annotations={
             "template.openshift.io/expose-uri": "mysql://{.spec.clusterIP}:{.spec.ports[?(.name==\mysql\)].port}",
         },
@@ -85,11 +85,7 @@ def model_registry_db_pvc(
         namespace=model_registry_namespace.name,
         client=admin_client,
         size="5Gi",
-        label={
-            KubernetesAnnotations.NAME: DB_RESOURCES_NAME,
-            KubernetesAnnotations.INSTANCE: DB_RESOURCES_NAME,
-            KubernetesAnnotations.PART_OF: DB_RESOURCES_NAME,
-        },
+        label=DEFAULT_LABEL_DICT_DB,
     ) as pvc:
         yield pvc
 
@@ -108,11 +104,7 @@ def model_registry_db_secret(
             "database-password": "TheBlurstOfTimes",  # pragma: allowlist secret
             "database-user": "mlmduser",  # pragma: allowlist secret
         },
-        label={
-            KubernetesAnnotations.NAME: DB_RESOURCES_NAME,
-            KubernetesAnnotations.INSTANCE: DB_RESOURCES_NAME,
-            KubernetesAnnotations.PART_OF: DB_RESOURCES_NAME,
-        },
+        label=DEFAULT_LABEL_DICT_DB,
         annotations={
             "template.openshift.io/expose-database_name": "'{.data[''database-name'']}'",
             "template.openshift.io/expose-password": "'{.data[''database-password'']}'",
@@ -136,11 +128,7 @@ def model_registry_db_deployment(
         annotations={
             "template.alpha.openshift.io/wait-for-ready": "true",
         },
-        label={
-            KubernetesAnnotations.NAME: DB_RESOURCES_NAME,
-            KubernetesAnnotations.INSTANCE: DB_RESOURCES_NAME,
-            KubernetesAnnotations.PART_OF: DB_RESOURCES_NAME,
-        },
+        label=DEFAULT_LABEL_DICT_DB,
         replicas=1,
         revision_history_limit=0,
         selector={"matchLabels": {"name": DB_RESOURCES_NAME}},
