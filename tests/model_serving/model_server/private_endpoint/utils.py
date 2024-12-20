@@ -9,16 +9,9 @@ from ocp_resources.inference_service import InferenceService
 from simple_logger.logger import get_logger
 
 from utilities.constants import Protocols
+from tests.utils import ProtocolNotSupported
 
 LOGGER = get_logger(name=__name__)
-
-
-class ProtocolNotSupported(Exception):
-    def __init__(self, protocol: str):
-        self.protocol = protocol
-
-    def __str__(self) -> str:
-        return f"Protocol {self.protocol} is not supported"
 
 
 class InvalidStorageArgument(Exception):
