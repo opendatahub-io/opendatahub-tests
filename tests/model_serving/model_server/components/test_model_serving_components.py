@@ -52,7 +52,8 @@ class TestOperator:
         if expected_replicas := COMPONENTS_EXPECTED_REPLICAS.get(component_deployment.name):
             assert component_deployment.instance.spec.replicas == expected_replicas
 
-        raise ValueError(f"{component_deployment.name} is missing from `COMPONENTS_EXPECTED_REPLICAS`")
+        else:
+            raise ValueError(f"{component_deployment.name} is missing from `COMPONENTS_EXPECTED_REPLICAS`")
 
     def test_deployment_running_replicas(self, component_deployment):
         """Check deployment replicas are running"""
