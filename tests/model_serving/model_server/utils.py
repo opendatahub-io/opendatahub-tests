@@ -34,6 +34,7 @@ def create_isvc(
     resources: Optional[dict[str, Any]] = None,
     volumes: Optional[dict[str, Any]] = None,
     volumes_mounts: Optional[dict[str, Any]] = None,
+    model_version: Optional[str] = None,
 ) -> Generator[InferenceService, Any, Any]:
     labels: Dict[str, str] = {}
     predictor_dict: Dict[str, Any] = {
@@ -44,6 +45,9 @@ def create_isvc(
             "runtime": runtime,
         },
     }
+
+    if model_version:
+        predictor_dict["model"]["modelFormat"]["version"] = model_version
 
     _check_storage_arguments(storage_uri, storage_key, storage_path)
     if storage_uri:

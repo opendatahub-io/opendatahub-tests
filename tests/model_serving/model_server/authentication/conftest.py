@@ -15,9 +15,7 @@ from ocp_resources.serving_runtime import ServingRuntime
 from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
 
-from tests.model_serving.model_server.authentication.utils import (
-    create_isvc_view_role,
-)
+from utilities.infra import create_isvc_view_role
 from tests.model_serving.model_server.utils import create_isvc, get_pods_by_isvc_label
 from utilities.constants import KServeDeploymentType, ModelFormat, Protocols, RuntimeQueryKeys, RuntimeTemplates
 from utilities.serving_runtime import ServingRuntimeFromTemplate
@@ -36,12 +34,12 @@ def skip_if_no_authorino_operator(admin_client: DynamicClient):
 
 # GRPC model serving
 @pytest.fixture(scope="class")
-def grpc_model_service_account(admin_client: DynamicClient, endpoint_s3_secret: Secret) -> ServiceAccount:
+def grpc_model_service_account(admin_client: DynamicClient, models_endpoint_s3_secret: Secret) -> ServiceAccount:
     with ServiceAccount(
         client=admin_client,
-        namespace=endpoint_s3_secret.namespace,
+        namespace=models_endpoint_s3_secret.namespace,
         name=f"{Protocols.GRPC}-models-bucket-sa",
-        secrets=[{"name": endpoint_s3_secret.name}],
+        secrets=[{"name": models_endpoint_s3_secret.name}],
     ) as sa:
         yield sa
 

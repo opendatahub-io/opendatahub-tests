@@ -1,13 +1,16 @@
+import json
 from contextlib import contextmanager
-from typing import Dict, Generator, Optional
+from typing import Dict, Generator, List, Optional
 
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError, ResourceNotUniqueError
 from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
+from ocp_resources.role import Role
 from ocp_resources.secret import Secret
 
+from tests.model_serving.model_server.utils import b64_encoded_string
 from utilities.general import get_s3_secret_dict
 
 
@@ -80,3 +83,61 @@ def s3_endpoint_secret(
         wait_for_resource=True,
     ) as secret:
         yield secret
+
+
+@contextmanager
+def create_storage_config_secret(
+    admin_client: DynamicClient,
+    endpoint_secret_name: str,
+    namespace: str,
+    aws_access_key: str,
+    aws_secret_access_key: str,
+    aws_s3_bucket: str,
+    aws_s3_region: str,
+    aws_s3_endpoint: str,
+) -> Generator[Secret, None, None]:
+    secret = {
+        "access_key_id": aws_access_key,
+        "bucket": aws_s3_bucket,
+        "default_bucket": aws_s3_bucket,
+        "endpoint_url": aws_s3_endpoint,
+        "region": aws_s3_region,
+        "secret_access_key": aws_secret_access_key,
+        "type": "s3",
+    }
+    data = {endpoint_secret_name: b64_encoded_string(string_to_encode=json.dumps(secret))}
+    with Secret(
+        client=admin_client,
+        namespace=namespace,
+        data_dict=data,
+        wait_for_resource=True,
+        name="storage-config",
+    ) as storage_config:
+        yield storage_config
+
+
+@contextmanager
+def create_isvc_view_role(
+    client: DynamicClient,
+    isvc: InferenceService,
+    name: str,
+    resource_names: Optional[List[str]] = None,
+) -> Role:
+    rules = [
+        {
+            "apiGroups": [isvc.api_group],
+            "resources": ["inferenceservices"],
+            "verbs": ["get"],
+        },
+    ]
+
+    if resource_names:
+        rules[0].update({"resourceNames": resource_names})
+
+    with Role(
+        client=client,
+        name=name,
+        namespace=isvc.namespace,
+        rules=rules,
+    ) as role:
+        yield role

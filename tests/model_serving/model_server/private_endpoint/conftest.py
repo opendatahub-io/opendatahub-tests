@@ -1,4 +1,3 @@
-import json
 import pytest
 from typing import Generator, Any
 from ocp_resources.inference_service import InferenceService
@@ -10,11 +9,16 @@ from ocp_resources.serving_runtime import ServingRuntime
 from kubernetes.dynamic import DynamicClient
 
 from utilities.serving_runtime import ServingRuntimeFromTemplate
-from tests.model_serving.model_server.utils import b64_encoded_string, create_isvc
+from tests.model_serving.model_server.utils import create_isvc
 from tests.model_serving.model_server.private_endpoint.utils import (
     create_sidecar_pod,
 )
-from utilities.infra import create_ns, s3_endpoint_secret, wait_for_kserve_predictor_deployment_replicas
+from utilities.infra import (
+    create_ns,
+    create_storage_config_secret,
+    s3_endpoint_secret,
+    wait_for_kserve_predictor_deployment_replicas,
+)
 from utilities.constants import KServeDeploymentType, ModelStoragePath, ModelFormat
 
 
@@ -94,7 +98,6 @@ def endpoint_isvc(
 @pytest.fixture(scope="class")
 def storage_config_secret(
     admin_client: DynamicClient,
-    endpoint_namespace: Namespace,
     endpoint_s3_secret: Secret,
     aws_access_key_id: str,
     aws_secret_access_key: str,
@@ -102,22 +105,15 @@ def storage_config_secret(
     models_s3_bucket_region: str,
     models_s3_bucket_endpoint: str,
 ) -> Generator[Secret, None, None]:
-    secret = {
-        "access_key_id": aws_access_key_id,
-        "bucket": models_s3_bucket_name,
-        "default_bucket": models_s3_bucket_name,
-        "endpoint_url": models_s3_bucket_endpoint,
-        "region": models_s3_bucket_region,
-        "secret_access_key": aws_secret_access_key,
-        "type": "s3",
-    }
-    data = {"endpoint-s3-secret": b64_encoded_string(string_to_encode=json.dumps(secret))}
-    with Secret(
-        client=admin_client,
-        namespace=endpoint_namespace.name,
-        data_dict=data,
-        wait_for_resource=True,
-        name="storage-config",
+    with create_storage_config_secret(
+        admin_client=admin_client,
+        endpoint_secret_name=endpoint_s3_secret.name,
+        namespace=endpoint_s3_secret.namespace,
+        aws_access_key=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
+        aws_s3_bucket=models_s3_bucket_name,
+        aws_s3_region=models_s3_bucket_region,
+        aws_s3_endpoint=models_s3_bucket_endpoint,
     ) as storage_config:
         yield storage_config
 

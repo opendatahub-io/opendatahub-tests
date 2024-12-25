@@ -16,7 +16,8 @@ from timeout_sampler import TimeoutSampler
 
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
-from tests.trustyai.constants import TIMEOUT_5MIN, MODELMESH_SERVING
+from tests.trustyai.constants import TIMEOUT_5MIN
+from utilities.constants import MODELMESH_SERVING
 
 LOGGER = get_logger(name=__name__)
 TIMEOUT_30SEC: int = 30
@@ -105,13 +106,14 @@ def send_inference_request(
         ),
     )
     def _make_request() -> None:
+        response: Optional[requests.Response] = None
+
         try:
-            response: requests.Response = requests.post(
-                url=url, headers=headers, data=data_batch, verify=False, timeout=TIMEOUT_30SEC
-            )
+            response = requests.post(url=url, headers=headers, data=data_batch, verify=False, timeout=TIMEOUT_30SEC)
             response.raise_for_status()
         except requests.RequestException as e:
-            LOGGER.error(response.content)
+            if response:
+                LOGGER.error(response.content)
             LOGGER.error(f"Error sending data for file: {file_path}. Error: {str(e)}")
             raise
 

@@ -1,10 +1,8 @@
+import json
 import re
-from contextlib import contextmanager
-from typing import List, Optional
+from typing import Optional
 
-from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
-from ocp_resources.role import Role
 from simple_logger.logger import get_logger
 
 from utilities.inference_utils import LlmInference
@@ -61,7 +59,7 @@ def verify_inference_response(
 
     else:
         if use_default_query:
-            expected_response_text = inference.inference_config["default_query_model"]["model"].get("response_text")
+            expected_response_text = inference.inference_config["default_query_model"]["model"].get("response_output")
             if not expected_response_text:
                 raise ValueError(f"Missing response text key for inference {runtime}")
 
@@ -74,35 +72,11 @@ def verify_inference_response(
                 ):
                     assert "".join(output) == expected_response_text
 
+            elif inference_type == inference.INFER:
+                assert json.dumps(res["output"]).replace(" ", "") == expected_response_text
+
             else:
                 assert res["output"][inference.inference_response_text_key_name] == expected_response_text
 
         else:
-            raise InferenceResponseError(f"Inference response text not found in response. Response: {res}")
-
-
-@contextmanager
-def create_isvc_view_role(
-    client: DynamicClient,
-    isvc: InferenceService,
-    name: str,
-    resource_names: Optional[List[str]] = None,
-) -> Role:
-    rules = [
-        {
-            "apiGroups": [isvc.api_group],
-            "resources": ["inferenceservices"],
-            "verbs": ["get"],
-        },
-    ]
-
-    if resource_names:
-        rules[0].update({"resourceNames": resource_names})
-
-    with Role(
-        client=client,
-        name=name,
-        namespace=isvc.namespace,
-        rules=rules,
-    ) as role:
-        yield role
+            raise InferenceResponseError(f"Inference response output not found in response. Response: {res}")
