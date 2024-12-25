@@ -282,21 +282,21 @@ def verify_metric_request(
 
     if response.status_code != http.HTTPStatus.OK:
         errors.append(f"Unexpected status code: {response.status_code}")
-    if response_data["timestamp"] == "":
+    if response_data.get("timestamp", "") == "":
         errors.append("Timestamp is empty")
-    if response_data["type"] != "metric":
-        errors.append("Incorrect type")
-    if response_data["value"] == "":
+    if (metric_type := response_data.get("type", "")) != "metric":
+        errors.append(f"Incorrect type: {metric_type or 'None'}")
+    if response_data.get("value", "") == "":
         errors.append("Value is empty")
-    if not isinstance(response_data["value"], float):
+    if not isinstance(response_data.get("value"), float):
         errors.append("Value must be a float")
-    if response_data["specificDefinition"] == "":
+    if response_data.get("specificDefinition", "") == "":
         errors.append("Specific definition is empty")
-    if response_data["name"] != metric_name:
-        errors.append(f"Wrong name: {response_data['name']}, expected: {metric_name}")
-    if response_data["id"] == "":
+    if (response_metric_name := response_data.get("name", "")) != metric_name:
+        errors.append(f"Wrong name: {response_metric_name or 'None'}, expected: {metric_name}")
+    if response_data.get("id", "") == "":
         errors.append("ID is empty")
-    if response_data["thresholds"] == "":
+    if response_data.get("thresholds", "") == "":
         errors.append("Thresholds are empty")
 
     if errors:
