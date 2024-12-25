@@ -3,8 +3,7 @@ from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.template import Template
-
-from utilities.constants import APPLICATIONS_NAMESPACE
+from pytest_testconfig import config as py_config
 
 
 class ServingRuntimeFromTemplate(ServingRuntime):
@@ -17,6 +16,7 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         multi_model: Optional[bool] = None,
         enable_http: Optional[bool] = None,
         enable_grpc: Optional[bool] = None,
+        resources: Optional[Dict[str, Any]] = None,
     ):
         self.client = client
         self.name = name
@@ -25,6 +25,7 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         self.multi_model = multi_model
         self.enable_http = enable_http
         self.enable_grpc = enable_grpc
+        self.resources = resources
 
         self.model_dict = self.update_model_dict()
 
@@ -34,7 +35,7 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         template = Template(
             client=self.client,
             name=self.template_name,
-            namespace=APPLICATIONS_NAMESPACE,
+            namespace=py_config["applications_namespace"],
         )
         if template.exists:
             return template
@@ -65,5 +66,8 @@ class ServingRuntimeFromTemplate(ServingRuntime):
 
                     if self.enable_grpc is True:
                         container["ports"][0] = {"containerPort": 8085, "name": "h2c", "protocol": "TCP"}
+
+            if self.resources is not None and (resource_dict := self.resources.get(container["name"])):
+                container["resources"] = resource_dict
 
         return _model_dict

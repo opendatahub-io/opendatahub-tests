@@ -6,6 +6,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
+from ocp_resources.service import Service
 
 from tests.model_serving.model_server.private_endpoint.utils import (
     InvalidStorageArgument,
@@ -26,14 +27,16 @@ def create_isvc(
     storage_path: Optional[str] = None,
     wait: bool = True,
     enable_auth: bool = False,
-    external_route: bool = False,
+    external_route: Optional[bool] = None,
     model_service_account: Optional[str] = "",
     min_replicas: Optional[int] = None,
     argument: Optional[list[str]] = None,
     resources: Optional[dict[str, Any]] = None,
     volumes: Optional[dict[str, Any]] = None,
     volumes_mounts: Optional[dict[str, Any]] = None,
+    model_version: Optional[str] = None,
 ) -> Generator[InferenceService, Any, Any]:
+    labels: Dict[str, str] = {}
     predictor_dict: Dict[str, Any] = {
         "minReplicas": min_replicas,
         "model": {
@@ -42,6 +45,9 @@ def create_isvc(
             "runtime": runtime,
         },
     }
+
+    if model_version:
+        predictor_dict["model"]["modelFormat"]["version"] = model_version
 
     _check_storage_arguments(storage_uri, storage_key, storage_path)
     if storage_uri:
@@ -71,10 +77,21 @@ def create_isvc(
         })
 
     if enable_auth:
-        annotations["security.opendatahub.io/enable-auth"] = "true"
+        # TODO: add modelmesh support
+        if deployment_mode == KServeDeploymentType.SERVERLESS:
+            annotations["security.opendatahub.io/enable-auth"] = "true"
+        elif deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
+            labels["security.openshift.io/enable-authentication"] = "true"
 
-    if external_route:
-        annotations["networking.kserve.io/visibility"] = "exposed"
+    # default to True if deployment_mode is Serverless (default behavior of Serverless) if was not provided by the user
+    if external_route is None and deployment_mode == KServeDeploymentType.SERVERLESS:
+        external_route = True
+
+    if external_route and deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
+        labels["networking.kserve.io/visibility"] = "exposed"
+
+    if deployment_mode == KServeDeploymentType.SERVERLESS and external_route is False:
+        labels["networking.knative.dev/visibility"] = "cluster-local"
 
     with InferenceService(
         client=client,
@@ -82,6 +99,7 @@ def create_isvc(
         namespace=namespace,
         annotations=annotations,
         predictor=predictor_dict,
+        label=labels,
     ) as inference_service:
         if wait:
             inference_service.wait_for_condition(
@@ -140,3 +158,28 @@ def get_pods_by_isvc_label(client: DynamicClient, isvc: InferenceService) -> Lis
         return pods
 
     raise ResourceNotFoundError(f"{isvc.name} has no pods")
+
+
+def get_services_by_isvc_label(client: DynamicClient, isvc: InferenceService) -> List[Service]:
+    """
+    Args:
+        client (DynamicClient): OCP Client to use.
+        isvc (InferenceService):InferenceService object.
+
+    Returns:
+        list[Service]: A list of all matching pods
+
+    Raises:
+        ResourceNotFoundError: if no pods are found.
+    """
+    if svcs := [
+        svc
+        for svc in Service.get(
+            dyn_client=client,
+            namespace=isvc.namespace,
+            label_selector=f"{isvc.ApiGroup.SERVING_KSERVE_IO}/inferenceservice={isvc.name}",
+        )
+    ]:
+        return svcs
+
+    raise ResourceNotFoundError(f"{isvc.name} has no services")

@@ -8,10 +8,16 @@ from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
 from ocp_resources.inference_service import InferenceService
+from ocp_resources.service import Service
 from pyhelper_utils.shell import run_command
 from simple_logger.logger import get_logger
 
+from tests.model_serving.model_server.utils import (
+    get_services_by_isvc_label,
+)
+from utilities.constants import KServeDeploymentType, MODELMESH_SERVING, Protocols
 from utilities.manifests.runtime_query_config import RUNTIMES_QUERY_CONFIG
+import portforward
 
 LOGGER = get_logger(name=__name__)
 
@@ -19,6 +25,7 @@ LOGGER = get_logger(name=__name__)
 class Inference:
     ALL_TOKENS: str = "all-tokens"
     STREAMING: str = "streaming"
+    INFER: str = "infer"
 
     def __init__(self, inference_service: InferenceService, runtime: str):
         """
@@ -27,14 +34,40 @@ class Inference:
         """
         self.inference_service = inference_service
         self.runtime = runtime
+        self.deployment_mode = self.inference_service.instance.metadata.annotations["serving.kserve.io/deploymentMode"]
+        self.visibility_exposed = self.is_service_exposed()
+
         self.inference_url = self.get_inference_url()
 
     def get_inference_url(self) -> str:
         # TODO: add ModelMesh support
-        if url := self.inference_service.instance.status.components.predictor.url:
-            return urlparse(url).netloc
+        if self.visibility_exposed:
+            if url := self.inference_service.instance.status.components.predictor.url:
+                return urlparse(url).netloc
+            else:
+                raise ValueError(f"{self.inference_service.name}: No url found in InferenceService status")
+
         else:
-            raise ValueError(f"{self.inference_service.name}: No url found in InferenceService status")
+            return "localhost"
+
+    def is_service_exposed(self) -> bool:
+        labels = self.inference_service.labels
+
+        if self.deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
+            if labels and labels.get("networking.kserve.io/visibility") == "exposed":
+                return True
+            else:
+                return False
+
+        elif self.deployment_mode == KServeDeploymentType.SERVERLESS:
+            if labels and labels.get("networking.knative.dev/visibility") == "cluster-local":
+                return False
+            else:
+                return True
+
+        else:
+            # TODO: add support for ModelMesh
+            return False
 
 
 class LlmInference(Inference):
@@ -55,11 +88,12 @@ class LlmInference(Inference):
 
     def get_runtime_config(self) -> Dict[str, Any]:
         if inference_type := self.inference_config.get(self.inference_type):
-            if data := inference_type.get(self.protocol):
+            protocol = Protocols.HTTP if self.protocol in Protocols.TCP_PROTOCOLS else self.protocol
+            if data := inference_type.get(protocol):
                 return data
 
             else:
-                raise ValueError(f"Protocol {self.protocol} not supported.\nSupported protocols are {inference_type}")
+                raise ValueError(f"Protocol {protocol} not supported.\nSupported protocols are {inference_type}")
 
         else:
             raise ValueError(
@@ -68,34 +102,40 @@ class LlmInference(Inference):
 
     @property
     def inference_response_text_key_name(self) -> Optional[str]:
-        return self.runtime_config["response_fields_map"].get("response_text")
+        return self.runtime_config["response_fields_map"].get("response_output")
 
     def generate_command(
         self,
         model_name: str,
-        text: Optional[str] = None,
+        inference_input: Optional[Any] = None,
         use_default_query: bool = False,
         insecure: bool = False,
         token: Optional[str] = None,
         port: Optional[int] = None,
     ) -> str:
         if use_default_query:
-            text = self.inference_config.get("default_query_model", {}).get("text")
-            if not text:
+            inference_input = self.inference_config.get("default_query_model", {}).get("input")
+            if not inference_input:
                 raise ValueError(f"Missing default query dict for {model_name}")
 
         header = f"'{Template(self.runtime_config['header']).safe_substitute(model_name=model_name)}'"
+
+        if isinstance(inference_input, list):
+            inference_input = json.dumps(inference_input)
+
         body = Template(self.runtime_config["body"]).safe_substitute(
             model_name=model_name,
-            query_text=text,
+            query_input=inference_input,
         )
 
-        if self.protocol == "http":
-            url = f"https://{self.inference_url}/{self.runtime_config['endpoint']}"
+        endpoint = Template(self.runtime_config["endpoint"]).safe_substitute(model_name=self.inference_service.name)
+
+        if self.protocol in Protocols.TCP_PROTOCOLS:
+            url = f"{self.protocol}://{self.inference_url}/{endpoint}"
             cmd_exec = "curl -i -s"
 
         elif self.protocol == "grpc":
-            url = f"{self.inference_url}:{port or 443} {self.runtime_config['endpoint']}"
+            url = f"{self.inference_url}:{port or 443} {endpoint}"
             cmd_exec = "grpcurl -connect-timeout 10"
 
         else:
@@ -123,18 +163,34 @@ class LlmInference(Inference):
     ) -> Dict[str, Any]:
         cmd = self.generate_command(
             model_name=model_name,
-            text=text,
+            inference_input=text,
             use_default_query=use_default_query,
             insecure=insecure,
             token=token,
         )
 
-        res, out, err = run_command(command=shlex.split(cmd), verify_stderr=False, check=False)
+        # For internal inference, we need to use port forwarding to the service
+        if not self.visibility_exposed:
+            svc = self.get_isvc_service()
+            port = self.get_target_port(svc=svc)
+            cmd = cmd.replace("localhost", f"localhost:{port}")
+
+            with portforward.forward(
+                pod_or_service=svc.name,
+                namespace=svc.namespace,
+                from_port=port,
+                to_port=port,
+            ):
+                res, out, err = run_command(command=shlex.split(cmd), verify_stderr=False, check=False)
+
+        else:
+            res, out, err = run_command(command=shlex.split(cmd), verify_stderr=False, check=False)
+
         if not res:
             raise ValueError(f"Inference failed with error: {err}\nOutput: {out}\nCommand: {cmd}")
 
         try:
-            if self.protocol == "http":
+            if self.protocol in Protocols.TCP_PROTOCOLS:
                 # with curl response headers are also returned
                 response_dict = {}
                 response_list = out.splitlines()
@@ -150,3 +206,30 @@ class LlmInference(Inference):
 
         except JSONDecodeError:
             return {"output": out}
+
+    def get_isvc_service(self) -> Service:
+        if self.deployment_mode == KServeDeploymentType.MODEL_MESH:
+            if svc := list(
+                Service.get(
+                    dyn_client=self.inference_service.client,
+                    name=MODELMESH_SERVING,
+                    namespace=self.inference_service.namespace,
+                )
+            ):
+                svc = svc[0]
+            else:
+                raise ValueError(f"Service {MODELMESH_SERVING} not found")
+
+        else:
+            svc = get_services_by_isvc_label(client=self.inference_service.client, isvc=self.inference_service)[0]
+        return svc
+
+    def get_target_port(self, svc: Service) -> int:
+        if port := [
+            item.targetPort if isinstance(item.targetPort, int) else item.port
+            for item in svc.instance.spec.ports
+            if item.name == self.protocol.lower()
+        ]:
+            return port[0]
+
+        raise ValueError(f"No port found for protocol {self.protocol} service {svc.name}")

@@ -55,7 +55,8 @@ dependencies = [
     "syrupy",
     "protobuf",
     "grpcio-reflection",
-    "pygithub>=2.5.0",
+    "portforward>=0.7.1",
+    "pytest-testconfig>=0.2.0",
 ]
 
 [project.urls]

@@ -35,7 +35,7 @@ def model_pvc(
         "name": "model-pvc",
         "namespace": model_namespace.name,
         "client": admin_client,
-        "size": "15Gi",
+        "size": "4Gi",
     }
     if hasattr(request, "param"):
         access_mode = request.param.get("access-modes")
@@ -46,6 +46,7 @@ def model_pvc(
     pvc_kwargs["accessmodes"] = access_mode
 
     with PersistentVolumeClaim(**pvc_kwargs) as pvc:
+        pvc.wait_for_status(status=pvc.Status.BOUND, timeout=120)
         yield pvc
 
 
@@ -183,7 +184,7 @@ def first_predictor_pod(predictor_pods_scope_function: List[Pod]) -> Pod:
     return predictor_pods_scope_function[0]
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def skip_if_no_nfs_storage_class(admin_client: DynamicClient) -> None:
     if not StorageClass(client=admin_client, name=NFS_STR).exists:
         pytest.skip(f"StorageClass {NFS_STR} is missing from the cluster")

@@ -133,3 +133,9 @@ def vllm_runtime_image(pytestconfig: pytest.Config) -> str:
     if not runtime_image:
         return None
     return runtime_image
+
+
+@pytest.fixture(scope="class")
+def ns_with_modelmesh_enabled(request: FixtureRequest, admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
+    with create_ns(admin_client=admin_client, name=request.param["name"], labels={"modelmesh-enabled": "true"}) as ns:
+        yield ns
