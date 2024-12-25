@@ -1,14 +1,8 @@
-from __future__ import annotations
-
 import json
 import re
-from contextlib import contextmanager
-from typing import List, Optional
+from typing import Optional
 
-from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
-from ocp_resources.role import Role
-from ocp_resources.serving_runtime import ServingRuntime
 from simple_logger.logger import get_logger
 
 from utilities.inference_utils import LlmInference
@@ -86,35 +80,3 @@ def verify_inference_response(
 
         else:
             raise InferenceResponseError(f"Inference response output not found in response. Response: {res}")
-
-
-@contextmanager
-def create_view_role(
-    client: DynamicClient,
-    target_resource: InferenceService | ServingRuntime,
-    name: str,
-    resource_names: Optional[List[str]] = None,
-) -> Role:
-    resources_map = {
-        "InferenceService": "inferenceservices",
-        "ServingRuntime": "servingruntimes",
-    }
-
-    rules = [
-        {
-            "apiGroups": [target_resource.api_group],
-            "resources": [resources_map[target_resource.kind]],
-            "verbs": ["get"],
-        },
-    ]
-
-    if resource_names:
-        rules[0].update({"resourceNames": resource_names})
-
-    with Role(
-        client=client,
-        name=name,
-        namespace=target_resource.namespace,
-        rules=rules,
-    ) as role:
-        yield role

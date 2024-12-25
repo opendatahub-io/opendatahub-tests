@@ -15,9 +15,7 @@ from ocp_resources.serving_runtime import ServingRuntime
 from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
 
-from tests.model_serving.model_server.authentication.utils import (
-    create_view_role,
-)
+from utilities.infra import create_isvc_view_role
 from tests.model_serving.model_server.utils import create_isvc, get_pods_by_isvc_label
 from utilities.constants import KServeDeploymentType, ModelFormat, Protocols, RuntimeQueryKeys, RuntimeTemplates
 from utilities.serving_runtime import ServingRuntimeFromTemplate
@@ -87,9 +85,9 @@ def grpc_s3_inference_service(
 
 @pytest.fixture(scope="class")
 def http_view_role(admin_client: DynamicClient, http_s3_caikit_serverless_inference_service: InferenceService) -> Role:
-    with create_view_role(
+    with create_isvc_view_role(
         client=admin_client,
-        target_resource=http_s3_caikit_serverless_inference_service,
+        isvc=http_s3_caikit_serverless_inference_service,
         name=f"{http_s3_caikit_serverless_inference_service.name}-view",
         resource_names=[http_s3_caikit_serverless_inference_service.name],
     ) as role:
@@ -148,9 +146,9 @@ def patched_remove_authentication_isvc(
 
 @pytest.fixture(scope="class")
 def grpc_view_role(admin_client: DynamicClient, grpc_s3_inference_service: InferenceService) -> Role:
-    with create_view_role(
+    with create_isvc_view_role(
         client=admin_client,
-        target_resource=grpc_s3_inference_service,
+        isvc=grpc_s3_inference_service,
         name=f"{grpc_s3_inference_service.name}-view",
         resource_names=[grpc_s3_inference_service.name],
     ) as role:

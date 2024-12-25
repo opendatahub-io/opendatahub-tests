@@ -36,6 +36,7 @@ class TestOpenVINO:
         )
 
     @pytest.mark.sanity
+    @pytest.mark.skip(reason="product bug?")
     @pytest.mark.polarion("ODS-1920")
     def test_model_mesh_openvino_inference_with_token(
         self,

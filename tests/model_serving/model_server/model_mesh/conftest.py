@@ -14,7 +14,6 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from pyhelper_utils.shell import run_command
 
-from tests.model_serving.model_server.authentication.utils import create_view_role
 from tests.model_serving.model_server.utils import create_isvc
 from utilities.constants import (
     KServeDeploymentType,
@@ -24,7 +23,7 @@ from utilities.constants import (
     RuntimeQueryKeys,
     RuntimeTemplates,
 )
-from utilities.infra import create_storage_config_secret, s3_endpoint_secret
+from utilities.infra import create_isvc_view_role, create_storage_config_secret, s3_endpoint_secret
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
@@ -143,13 +142,13 @@ def http_s3_openvino_model_mesh_inference_service(
 @pytest.fixture(scope="class")
 def model_mesh_view_role(
     admin_client: DynamicClient,
-    http_s3_openvino_model_mesh_serving_runtime: ServingRuntime,
+    http_s3_openvino_model_mesh_inference_service: ServingRuntime,
 ) -> Role:
-    with create_view_role(
+    with create_isvc_view_role(
         client=admin_client,
-        target_resource=http_s3_openvino_model_mesh_serving_runtime,
-        name=f"{http_s3_openvino_model_mesh_serving_runtime.name}-view",
-        resource_names=[http_s3_openvino_model_mesh_serving_runtime.name],
+        isvc=http_s3_openvino_model_mesh_inference_service,
+        name=f"{http_s3_openvino_model_mesh_inference_service.name}-view",
+        resource_names=[http_s3_openvino_model_mesh_inference_service.name],
     ) as role:
         yield role
 

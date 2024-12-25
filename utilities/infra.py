@@ -1,12 +1,13 @@
 import json
 from contextlib import contextmanager
-from typing import Dict, Generator, Optional
+from typing import Dict, Generator, List, Optional
 
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError, ResourceNotUniqueError
 from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
+from ocp_resources.role import Role
 from ocp_resources.secret import Secret
 
 from tests.model_serving.model_server.utils import b64_encoded_string
@@ -113,3 +114,30 @@ def create_storage_config_secret(
         name="storage-config",
     ) as storage_config:
         yield storage_config
+
+
+@contextmanager
+def create_isvc_view_role(
+    client: DynamicClient,
+    isvc: InferenceService,
+    name: str,
+    resource_names: Optional[List[str]] = None,
+) -> Role:
+    rules = [
+        {
+            "apiGroups": [isvc.api_group],
+            "resources": ["inferenceservices"],
+            "verbs": ["get"],
+        },
+    ]
+
+    if resource_names:
+        rules[0].update({"resourceNames": resource_names})
+
+    with Role(
+        client=client,
+        name=name,
+        namespace=isvc.namespace,
+        rules=rules,
+    ) as role:
+        yield role
