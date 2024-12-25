@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import json
 import re
 from contextlib import contextmanager
 from typing import List, Optional
@@ -5,6 +8,7 @@ from typing import List, Optional
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.role import Role
+from ocp_resources.serving_runtime import ServingRuntime
 from simple_logger.logger import get_logger
 
 from utilities.inference_utils import LlmInference
@@ -61,7 +65,7 @@ def verify_inference_response(
 
     else:
         if use_default_query:
-            expected_response_text = inference.inference_config["default_query_model"]["model"].get("response_text")
+            expected_response_text = inference.inference_config["default_query_model"]["model"].get("response_output")
             if not expected_response_text:
                 raise ValueError(f"Missing response text key for inference {runtime}")
 
@@ -74,24 +78,32 @@ def verify_inference_response(
                 ):
                     assert "".join(output) == expected_response_text
 
+            elif inference_type == inference.INFER:
+                assert json.dumps(res["output"]).replace(" ", "") == expected_response_text
+
             else:
                 assert res["output"][inference.inference_response_text_key_name] == expected_response_text
 
         else:
-            raise InferenceResponseError(f"Inference response text not found in response. Response: {res}")
+            raise InferenceResponseError(f"Inference response output not found in response. Response: {res}")
 
 
 @contextmanager
-def create_isvc_view_role(
+def create_view_role(
     client: DynamicClient,
-    isvc: InferenceService,
+    target_resource: InferenceService | ServingRuntime,
     name: str,
     resource_names: Optional[List[str]] = None,
 ) -> Role:
+    resources_map = {
+        "InferenceService": "inferenceservices",
+        "ServingRuntime": "servingruntimes",
+    }
+
     rules = [
         {
-            "apiGroups": [isvc.api_group],
-            "resources": ["inferenceservices"],
+            "apiGroups": [target_resource.api_group],
+            "resources": [resources_map[target_resource.kind]],
             "verbs": ["get"],
         },
     ]
@@ -102,7 +114,7 @@ def create_isvc_view_role(
     with Role(
         client=client,
         name=name,
-        namespace=isvc.namespace,
+        namespace=target_resource.namespace,
         rules=rules,
     ) as role:
         yield role

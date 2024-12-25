@@ -11,7 +11,7 @@ from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
 @pytest.fixture(scope="class")
-def endpoint_s3_secret(
+def models_endpoint_s3_secret(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     aws_access_key_id: str,
@@ -35,12 +35,12 @@ def endpoint_s3_secret(
 
 # HTTP model serving
 @pytest.fixture(scope="class")
-def http_model_service_account(admin_client: DynamicClient, endpoint_s3_secret: Secret) -> ServiceAccount:
+def http_model_service_account(admin_client: DynamicClient, models_endpoint_s3_secret: Secret) -> ServiceAccount:
     with ServiceAccount(
         client=admin_client,
-        namespace=endpoint_s3_secret.namespace,
+        namespace=models_endpoint_s3_secret.namespace,
         name=f"{Protocols.HTTP}-models-bucket-sa",
-        secrets=[{"name": endpoint_s3_secret.name}],
+        secrets=[{"name": models_endpoint_s3_secret.name}],
     ) as sa:
         yield sa
 
