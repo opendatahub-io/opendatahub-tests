@@ -29,13 +29,14 @@ def get_size_label(size: int) -> str:
         (21, 50): "size/s",
         (51, 100): "size/m",
         (101, 300): "size/l",
-        (301, sys.maxsize): "size/xl",
+        (301, 1000): "size/xl",
+        (1001, sys.maxsize): "size/xxl",
     }
 
     for (min_size, max_size), label in size_labels.items():
         if min_size <= size <= max_size:
             return label
-    return "size/xl"
+    return "size/xxl"
 
 
 def set_pr_size(pr: PullRequest) -> None:

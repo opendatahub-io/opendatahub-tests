@@ -27,4 +27,5 @@
 - When a PR is opened, add reviewers (requires updates to OWNERS file(s))
 - When a PR is reviewed/commented by a user who's not the PR owner, add `reviewed|commented|approved-by-<username>` label
 - When a PR is ready to be merged (all checks passed), add `ready-to-merge` label
+- If label is missing from repository (i.e was manually deleted), add it back (label colors should be defined as well)
 - Tests
