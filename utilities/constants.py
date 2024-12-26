@@ -47,6 +47,7 @@ class Protocols:
     HTTPS: str = "https"
     GRPC: str = "grpc"
     TCP_PROTOCOLS: set[str] = {HTTP, HTTPS}
+    ALL_SUPPORTED_PROTOCOLS: set[str] = TCP_PROTOCOLS.union({GRPC})
 
 
 class AcceleratorType:

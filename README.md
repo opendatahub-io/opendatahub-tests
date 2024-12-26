@@ -34,3 +34,7 @@ or by saving the kubeconfig file under `~/.kube/config`
 ```bash
 uv run pytest
 ```
+
+### Running on different distributions
+Bt default, RHOAI distribution is set.  
+To run on ODH, pass `--tc=distribution:upstream` to pytest.
