@@ -143,7 +143,6 @@ def main() -> None:
 
     comment_body: str | None = None
     labels_action_name: str = "add-remove-labels"
-
     if action == labels_action_name and event_name == "issue_comment":
         comment_body = os.getenv("COMMENT_BODY")
         if not comment_body:
