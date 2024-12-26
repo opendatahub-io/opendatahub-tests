@@ -8,7 +8,7 @@ permissions:
   contents: write
 
 jobs:
-  label-size:
+  size-labeler:
     runs-on: ubuntu-latest
 
     steps:
@@ -28,4 +28,5 @@ jobs:
           GITHUB_PR_NUMBER: ${{github.event.pull_request.number}}
           GITHUB_EVENT_ACTION: ${{github.event.action}}
           GITHUB_EVENT_NAME: ${{github.event_name}}
+          ACTION: "size-labeler"
         run: uv run python .github/workflows/scripts/pr_labeler.py
