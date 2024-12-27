@@ -40,6 +40,7 @@ class TestRestRawDeployment:
             use_default_query=True,
         )
 
+    @pytest.mark.jira("RHOAIENG-17322", run=False)
     @pytest.mark.parametrize(
         "patched_http_s3_caikit_raw_isvc_visibility_label",
         [

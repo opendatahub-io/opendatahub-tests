@@ -57,6 +57,7 @@ dependencies = [
     "grpcio-reflection",
     "portforward>=0.7.1",
     "pytest-testconfig>=0.2.0",
+    "pytest-jira>=0.3.21",
 ]
 
 [project.urls]

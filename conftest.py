@@ -19,6 +19,7 @@ def pytest_addoption(parser: Parser) -> None:
     aws_group = parser.getgroup(name="AWS")
     buckets_group = parser.getgroup(name="Buckets")
     runtime_group = parser.getgroup(name="Runtime Details")
+
     # AWS config and credentials options
     aws_group.addoption(
         "--aws-secret-access-key",

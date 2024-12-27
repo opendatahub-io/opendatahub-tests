@@ -35,6 +35,17 @@ or by saving the kubeconfig file under `~/.kube/config`
 uv run pytest
 ```
 
+To see optional cli arguments run:
+
+```bash
+uv run pytest --help
+```
+
 ### Running on different distributions
 Bt default, RHOAI distribution is set.  
 To run on ODH, pass `--tc=distribution:upstream` to pytest.
+
+### jira integration
+To skip running tests which have open bugs, [pytest_jira](https://github.com/rhevm-qe-automation/pytest_jira) plugin is used.
+To run tests with jira integration, you need to set `PYTEST_JIRA_URL` and `PYTEST_JIRA_TOKEN` environment variables.
+To make a test with jira marker, add: `@pytest.mark.jira(jira_id="RHOAIENG-0000", run=False)` to the test.
