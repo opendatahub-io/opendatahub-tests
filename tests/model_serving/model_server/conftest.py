@@ -1,4 +1,7 @@
+from typing import Any, Generator
+
 import pytest
+from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
@@ -58,5 +61,21 @@ def http_s3_caikit_serving_runtime(
         multi_model=False,
         enable_http=True,
         enable_grpc=False,
+    ) as model_runtime:
+        yield model_runtime
+
+
+@pytest.fixture(scope="class")
+def serving_runtime_from_template(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+) -> Generator[ServingRuntime, Any, Any]:
+    with ServingRuntimeFromTemplate(
+        client=admin_client,
+        name=request.param["name"],
+        namespace=model_namespace.name,
+        template_name=request.param["template-name"],
+        multi_model=request.param["multi-model"],
     ) as model_runtime:
         yield model_runtime

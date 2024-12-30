@@ -16,7 +16,6 @@ from tests.model_serving.model_server.storage.constants import NFS_STR
 from tests.model_serving.model_server.utils import create_isvc, get_pods_by_isvc_label
 from utilities.constants import KServeDeploymentType
 from utilities.infra import wait_for_kserve_predictor_deployment_replicas
-from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
 @pytest.fixture(scope="class")
@@ -130,27 +129,11 @@ def patched_read_only_isvc(
 
 
 @pytest.fixture(scope="class")
-def pvc_serving_runtime(
-    request: FixtureRequest,
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-    downloaded_model_data: str,
-) -> Generator[ServingRuntime, Any, Any]:
-    with ServingRuntimeFromTemplate(
-        client=admin_client,
-        name=request.param["name"],
-        namespace=model_namespace.name,
-        template_name=request.param["template-name"],
-    ) as model_runtime:
-        yield model_runtime
-
-
-@pytest.fixture(scope="class")
 def pvc_inference_service(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    pvc_serving_runtime: ServingRuntime,
+    serving_runtime_from_template: ServingRuntime,
     model_pvc: PersistentVolumeClaim,
     downloaded_model_data: str,
 ) -> Generator[InferenceService, Any, Any]:
@@ -158,9 +141,9 @@ def pvc_inference_service(
         "client": admin_client,
         "name": request.param["name"],
         "namespace": model_namespace.name,
-        "runtime": pvc_serving_runtime.name,
+        "runtime": serving_runtime_from_template.name,
         "storage_uri": f"pvc://{model_pvc.name}/{downloaded_model_data}",
-        "model_format": pvc_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        "model_format": serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
         "deployment_mode": request.param.get("deployment-mode", KServeDeploymentType.SERVERLESS),
     }
 

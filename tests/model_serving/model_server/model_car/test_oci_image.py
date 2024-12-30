@@ -1,0 +1,59 @@
+import pytest
+
+from tests.model_serving.model_server.authentication.utils import (
+    verify_inference_response,
+)
+from tests.model_serving.model_server.utils import get_pods_by_isvc_label
+from utilities.constants import ModelFormat, Protocols, RuntimeQueryKeys
+from utilities.inference_utils import Inference
+
+
+def test_oci_image(model_car):
+    """
+    Test OCI image
+    """
+    model_car.test_oci_image()
+
+
+@pytest.mark.parametrize(
+    "model_namespace, serving_runtime_from_template, model_car_tgis_inference_service",
+    [
+        pytest.param(
+            {"name": "tgsi-model-car"},
+            {
+                "name": "tgis-runtime",
+                "template-name": "tgis-grpc-serving-template",
+                "multi-model": False,
+            },
+            {
+                "storage-uri": "oci://quay.io/mwaykole/test@sha256:c526a1a3697253eb09adc65da6efaf7f36150205c3a51ab8d13b92b6a3af9c1c"
+            },
+        )
+    ],
+    indirect=True,
+)
+class TestKserveModelCar:
+    @pytest.mark.smoke
+    @pytest.mark.jira("RHOAIENG-13465")
+    def test_model_car_no_restarts(self, model_car_tgis_inference_service):
+        pod = get_pods_by_isvc_label(
+            client=model_car_tgis_inference_service.client,
+            isvc=model_car_tgis_inference_service,
+        )[0]
+        restarted_containers = [
+            container.name for container in pod.instance.status.containerStatuses if container.restartCount > 1
+        ]
+        assert not restarted_containers, f"Containers {restarted_containers} restarted"
+
+    @pytest.mark.smoke
+    @pytest.mark.jira("RHOAIENG-12306")
+    def test_model_authentication_using_rest(self, model_car_tgis_inference_service):
+        """Verify model query with token using REST"""
+        verify_inference_response(
+            inference_service=model_car_tgis_inference_service,
+            runtime=RuntimeQueryKeys.CAIKIT_TGIS_RUNTIME,
+            inference_type=Inference.STREAMING,
+            protocol=Protocols.GRPC,
+            model_name=ModelFormat.CAIKIT,
+            use_default_query=True,
+        )

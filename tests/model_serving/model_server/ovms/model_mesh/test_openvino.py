@@ -24,7 +24,7 @@ from utilities.inference_utils import Inference
 )
 class TestOpenVINO:
     @pytest.mark.smoke
-    @pytest.mark.polarion("ODS-1919", "ODS-2054")
+    @pytest.mark.polarion("ODS-2053", "ODS-2054")
     def test_model_mesh_openvino_rest_inference(self, http_s3_openvino_model_mesh_inference_service):
         verify_inference_response(
             inference_service=http_s3_openvino_model_mesh_inference_service,
