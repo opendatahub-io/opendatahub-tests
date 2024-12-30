@@ -95,14 +95,14 @@ def add_remove_pr_labels(pr: PullRequest, event_name: str, event_action: str, co
         LOGGER.info(f"User labels: {user_requested_labels}")
 
         # In case of the same label appears multiple times, the last one is used
-        labels: dict[str, bool] = {}
+        labels: dict[str, dict[str, bool]] = {}
         for _label in user_requested_labels:
-            labels[_label[0].replace(label_prefix, "")] = _label[1] == "cancel"
+            labels[_label[0].replace(label_prefix, "")] = {"cancel": _label[1] == "cancel"}
 
         LOGGER.info(f"Processing labels: {labels}")
-        for label, delete_label in labels.items():
+        for label, action in labels.items():
             label_in_pr = any([label == _label.lower() for _label in pr_labels])
-            if delete_label or event_action == "deleted":
+            if action["cancel"] or event_action == "deleted":
                 if label_in_pr:
                     LOGGER.info(f"Removing label {label}")
                     pr.remove_from_labels(label)
