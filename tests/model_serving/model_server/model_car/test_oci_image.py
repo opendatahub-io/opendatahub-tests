@@ -8,13 +8,6 @@ from utilities.constants import ModelName, Protocols, RuntimeQueryKeys
 from utilities.inference_utils import Inference
 
 
-def test_oci_image(model_car):
-    """
-    Test OCI image
-    """
-    model_car.test_oci_image()
-
-
 @pytest.mark.parametrize(
     "model_namespace, serving_runtime_from_template, model_car_tgis_inference_service",
     [
