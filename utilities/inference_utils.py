@@ -222,7 +222,7 @@ class LlmInference(Inference):
                 response_dict: Dict[str, Any] = {}
                 response_headers: List[str] = []
 
-                if "content-type: application/json" in out:
+                if "content-type: application/json" in out.lower():
                     if response_re := re.match(r"(.*)\n\{", out, re.MULTILINE | re.DOTALL):
                         response_headers = response_re.group(1).splitlines()
                         if output_re := re.search(r"(\{.*)(?s:.*)(\})", out, re.MULTILINE | re.DOTALL):
