@@ -19,11 +19,13 @@ class ModelName:
 class ModelAndFormat:
     FLAN_T5_SMALL_CAIKIT: str = f"{ModelName.FLAN_T5_SMALL}-{ModelFormat.CAIKIT}"
     OPENVINO_IR: str = f"{ModelFormat.OPENVINO}_ir"
+    KSERVE_OPENVINO_IR: str = f"{OPENVINO_IR}_kserve"
 
 
 class ModelStoragePath:
     FLAN_T5_SMALL: str = f"{ModelName.FLAN_T5_SMALL}/{ModelAndFormat.FLAN_T5_SMALL_CAIKIT}"
     OPENVINO_EXAMPLE_MODEL: str = f"{ModelFormat.OPENVINO}-example-model"
+    KSERVE_OPENVINO_EXAMPLE_MODEL: str = f"kserve-openvino-test/{OPENVINO_EXAMPLE_MODEL}"
 
 
 class CurlOutput:
@@ -32,6 +34,10 @@ class CurlOutput:
 
 class ModelEndpoint:
     HEALTH: str = "health"
+
+
+class ModelVersion:
+    OPSET1: str = "opset1"
 
 
 class RuntimeTemplates:
@@ -44,6 +50,7 @@ class RuntimeQueryKeys:
     TGIS_RUNTIME: str = "tgis-runtime"
     CAIKIT_TGIS_RUNTIME: str = f"{ModelFormat.CAIKIT}-{TGIS_RUNTIME}"
     OPENVINO_RUNTIME: str = f"{ModelFormat.OPENVINO}-runtime"
+    OPENVINO_KSERVE_RUNTIME: str = f"{ModelFormat.OPENVINO}-kserve-runtime"
 
 
 class Protocols:

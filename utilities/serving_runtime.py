@@ -17,6 +17,7 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         enable_http: Optional[bool] = None,
         enable_grpc: Optional[bool] = None,
         resources: Optional[Dict[str, Any]] = None,
+        model_format_name: Optional[Dict[str, str]] = None,
     ):
         self.client = client
         self.name = name
@@ -26,6 +27,7 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         self.enable_http = enable_http
         self.enable_grpc = enable_grpc
         self.resources = resources
+        self.model_format_name = model_format_name
 
         self.model_dict = self.update_model_dict()
 
@@ -69,5 +71,10 @@ class ServingRuntimeFromTemplate(ServingRuntime):
 
             if self.resources is not None and (resource_dict := self.resources.get(container["name"])):
                 container["resources"] = resource_dict
+
+        if self.model_format_name is not None:
+            for model in _model_dict["spec"]["supportedModelFormats"]:
+                if model["name"] in self.model_format_name:
+                    model["version"] = self.model_format_name[model["name"]]
 
         return _model_dict

@@ -60,6 +60,22 @@ RUNTIMES_QUERY_CONFIG: Dict[str, Any] = {
             },
         },
     },
+    RuntimeQueryKeys.OPENVINO_KSERVE_RUNTIME: {
+        "default_query_model": {
+            "input": INQUIRIES["infer"]["query_input"],
+            "model": INQUIRIES["infer"]["models"][ModelAndFormat.KSERVE_OPENVINO_IR],
+        },
+        "infer": {
+            "http": {
+                "endpoint": "v2/models/$model_name/infer",
+                "header": "Content-type:application/json",
+                "body": '{"inputs": $query_input}',
+                "response_fields_map": {
+                    "response_output": "output",
+                },
+            },
+        },
+    },
     RuntimeQueryKeys.TGIS_RUNTIME: {
         "default_query_model": {
             "input": INQUIRIES["water_boil"]["query_input"],

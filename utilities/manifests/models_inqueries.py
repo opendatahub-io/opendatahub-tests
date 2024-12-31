@@ -62,6 +62,11 @@ INQUIRIES: Dict[str, Any] = {
                 '"outputs":[{"name":"Func/StatefulPartitionedCall/output/_13:0","datatype":"FP32",'
                 '"shape":[1,1],"data":[0]}]}',
             },
+            ModelAndFormat.KSERVE_OPENVINO_IR: {
+                "response_output": '{"model_name":"http-openvino","model_version":"1",'
+                '"outputs":[{"name":"Func/StatefulPartitionedCall/output/_13:0","shape":[1,1],'
+                '"datatype":"FP32","data":[0.0]}]}',
+            },
         },
     },
 }

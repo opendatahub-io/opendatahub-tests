@@ -10,7 +10,9 @@ from ocp_resources.serving_runtime import ServingRuntime
 from tests.model_serving.model_server.utils import create_isvc
 from utilities.constants import (
     KServeDeploymentType,
+    ModelAndFormat,
     ModelFormat,
+    ModelVersion,
     Protocols,
     RuntimeQueryKeys,
     RuntimeTemplates,
@@ -36,6 +38,7 @@ def openvino_kserve_serving_runtime(
                 "limits": {"cpu": "2", "memory": "8Gi"},
             }
         },
+        model_format_name={ModelAndFormat.OPENVINO_IR: ModelVersion.OPSET1},
     ) as model_runtime:
         yield model_runtime
 
@@ -89,8 +92,9 @@ def http_openvino_serverless_inference_service(
         namespace=model_namespace.name,
         runtime=openvino_kserve_serving_runtime.name,
         storage_uri=ci_s3_storage_uri,
-        model_format=openvino_kserve_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        model_format=ModelAndFormat.OPENVINO_IR,
         deployment_mode=KServeDeploymentType.SERVERLESS,
         model_service_account=openvino_model_service_account.name,
+        model_version=ModelVersion.OPSET1,
     ) as isvc:
         yield isvc

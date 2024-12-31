@@ -108,6 +108,41 @@ class LlmInference(Inference):
     def inference_response_key_name(self) -> str:
         return self.runtime_config["response_fields_map"].get("response", "output")
 
+    def get_inference_body(
+        self,
+        model_name: str,
+        inference_input: Optional[Any] = None,
+        use_default_query: bool = False,
+    ) -> str:
+        if use_default_query:
+            inference_input = self.inference_config.get("default_query_model", {}).get("input")
+            if not inference_input:
+                raise ValueError(f"Missing default query dict for {model_name}")
+
+        if isinstance(inference_input, list):
+            inference_input = json.dumps(inference_input)
+
+        return Template(self.runtime_config["body"]).safe_substitute(
+            model_name=model_name,
+            query_input=inference_input,
+        )
+
+    def get_inference_endpoint_url(self, port: Optional[int] = None) -> str:
+        endpoint = Template(self.runtime_config["endpoint"]).safe_substitute(model_name=self.inference_service.name)
+
+        if self.protocol in Protocols.TCP_PROTOCOLS:
+            return f"{self.protocol}://{self.inference_url}/{endpoint}"
+
+        elif self.protocol == "grpc":
+            return f"{self.inference_url}:{port or 443} {endpoint}"
+
+        else:
+            raise ValueError(f"Protocol {self.protocol} not supported")
+
+    @staticmethod
+    def get_authorization_header(token: str) -> str:
+        return f"Authorization: Bearer {token}"
+
     def generate_command(
         self,
         model_name: str,
@@ -117,30 +152,19 @@ class LlmInference(Inference):
         token: Optional[str] = None,
         port: Optional[int] = None,
     ) -> str:
-        if use_default_query:
-            inference_input = self.inference_config.get("default_query_model", {}).get("input")
-            if not inference_input:
-                raise ValueError(f"Missing default query dict for {model_name}")
-
-        header = f"'{Template(self.runtime_config['header']).safe_substitute(model_name=model_name)}'"
-
-        if isinstance(inference_input, list):
-            inference_input = json.dumps(inference_input)
-
-        body = Template(self.runtime_config["body"]).safe_substitute(
+        body = self.get_inference_body(
             model_name=model_name,
-            query_input=inference_input,
+            inference_input=inference_input,
+            use_default_query=use_default_query,
         )
-
-        endpoint = Template(self.runtime_config["endpoint"]).safe_substitute(model_name=self.inference_service.name)
+        header = f"'{Template(self.runtime_config['header']).safe_substitute(model_name=model_name)}'"
+        url = self.get_inference_endpoint_url(port=port)
 
         if self.protocol in Protocols.TCP_PROTOCOLS:
-            url = f"{self.protocol}://{self.inference_url}/{endpoint}"
-            cmd_exec = "curl -i -s"
+            cmd_exec = "curl -i -s "
 
         elif self.protocol == "grpc":
-            url = f"{self.inference_url}:{port or 443} {endpoint}"
-            cmd_exec = "grpcurl -connect-timeout 10"
+            cmd_exec = "grpcurl -connect-timeout 10 "
 
         else:
             raise ValueError(f"Protocol {self.protocol} not supported")
@@ -200,12 +224,20 @@ class LlmInference(Inference):
             if self.protocol in Protocols.TCP_PROTOCOLS:
                 # with curl response headers are also returned
                 response_dict = {}
-                response_list = out.splitlines()
-                for line in response_list[:-2]:
+                if "content-type: application/json" in out:
+                    if response_re := re.match(r"(.*)\n\{", out, re.MULTILINE | re.DOTALL):
+                        response_headers = response_re.group(1).splitlines()
+                        if output_re := re.search(r"(\{.*)(?s:.*)(\})", out, re.MULTILINE | re.DOTALL):
+                            output = re.sub(r"\n\s*", "", output_re.group())
+                            response_dict["output"] = json.loads(output)
+
+                else:
+                    response_headers = out.splitlines()[:-2]
+                    response_dict["output"] = json.loads(response_headers[-1])
+
+                for line in response_headers:
                     header_name, header_value = re.split(": | ", line.strip(), maxsplit=1)
                     response_dict[header_name] = header_value
-
-                response_dict["output"] = json.loads(response_list[-1])
 
                 return response_dict
             else:

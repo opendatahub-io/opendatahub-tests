@@ -19,6 +19,7 @@ from utilities.constants import (
     KServeDeploymentType,
     ModelAndFormat,
     ModelFormat,
+    ModelVersion,
     Protocols,
     RuntimeQueryKeys,
     RuntimeTemplates,
@@ -127,7 +128,7 @@ def http_s3_openvino_model_mesh_inference_service(
         "storage_path": request.param.get("model-path"),
         "model_format": ModelAndFormat.OPENVINO_IR,
         "deployment_mode": KServeDeploymentType.MODEL_MESH,
-        "model_version": "opset1",
+        "model_version": ModelVersion.OPSET1,
     }
 
     enable_auth = False

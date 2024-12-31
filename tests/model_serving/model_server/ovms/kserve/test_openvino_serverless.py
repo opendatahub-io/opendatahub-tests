@@ -10,7 +10,7 @@ from utilities.inference_utils import Inference
     [
         pytest.param(
             {"name": "kserve-serverless-openvino"},
-            {"model-dir": ModelStoragePath.OPENVINO_EXAMPLE_MODEL},
+            {"model-dir": ModelStoragePath.KSERVE_OPENVINO_EXAMPLE_MODEL},
         )
     ],
     indirect=True,
@@ -22,9 +22,9 @@ class TestOpenVINO:
     def test_serverless_openvino_rest_inference(self, http_openvino_serverless_inference_service):
         verify_inference_response(
             inference_service=http_openvino_serverless_inference_service,
-            runtime=RuntimeQueryKeys.OPENVINO_RUNTIME,
+            runtime=RuntimeQueryKeys.OPENVINO_KSERVE_RUNTIME,
             inference_type=Inference.INFER,
-            protocol=Protocols.HTTP,
+            protocol=Protocols.HTTPS,
             model_name=ModelFormat.OPENVINO,
             use_default_query=True,
         )
