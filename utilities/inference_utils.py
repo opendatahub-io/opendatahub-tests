@@ -139,10 +139,6 @@ class LlmInference(Inference):
         else:
             raise ValueError(f"Protocol {self.protocol} not supported")
 
-    @staticmethod
-    def get_authorization_header(token: str) -> str:
-        return f"Authorization: Bearer {token}"
-
     def generate_command(
         self,
         model_name: str,
