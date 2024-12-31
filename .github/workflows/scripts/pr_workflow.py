@@ -11,6 +11,42 @@ from simple_logger.logger import get_logger
 LOGGER = get_logger(name="pr_labeler")
 
 
+WIP_STR: str = "wip"
+LGTM_STR: str = "lgtm"
+VERIFIED_STR: str = "verified"
+HOLD_STR: str = "hold"
+LABEL_PREFIX: str = "/"
+
+SUPPORTED_LABELS: set[str] = {
+    f"{LABEL_PREFIX}{WIP_STR}",
+    f"{LABEL_PREFIX}{LGTM_STR}",
+    f"{LABEL_PREFIX}{VERIFIED_STR}",
+    f"{LABEL_PREFIX}{HOLD_STR}",
+}
+
+CANCEL_ACTION: str = "cancel"
+WELCOME_COMMENT: str = f"""
+The following are automatically added/executed:
+ * PR size label.
+ * Run [pre-commit](https://pre-commit.ci/)
+ * Run [tox](https://tox.wiki/)
+
+Available user actions:
+ * To mark a PR as `WIP`, add `/wip` in a comment. To remove it from the PR comment `/wip cancel` to the PR.
+ * To block merging of a PR, add `/hold` in a comment. To un-block merging of PR comment `/hold cancel`.
+ * To mark a PR as approved, add `/lgtm` in a comment. To remove, add `/lgtm cancel`.
+        `lgtm` label removed on each new commit push.
+ * To mark PR as verified comment `/verified` to the PR, to un-verify comment `/verified cancel` to the PR.
+        `verified` label removed on each new commit push.
+
+<details>
+<summary>Supported labels</summary>
+
+{SUPPORTED_LABELS}
+</details>
+    """
+
+
 def get_pr_size(pr: PullRequest) -> int:
     additions: int = 0
 
@@ -55,11 +91,9 @@ def set_pr_size(pr: PullRequest) -> None:
 
 
 def add_remove_pr_labels(pr: PullRequest, event_name: str, event_action: str, comment_body: str = "") -> None:
-    wip_str: str = "wip"
-    lgtm_str: str = "lgtm"
-    verified_str: str = "verified"
-    hold_str: str = "hold"
-    label_prefix: str = "/"
+    if comment_body and WELCOME_COMMENT in comment_body:
+        LOGGER.info(f"Welcome message found in PR {pr.title}. Not processing")
+        return
 
     LOGGER.info(
         f"add_remove_pr_label comment_body: {comment_body} event_name:{event_name} event_action: {event_action}"
@@ -72,24 +106,18 @@ def add_remove_pr_labels(pr: PullRequest, event_name: str, event_action: str, co
     if event_action == "synchronize":
         LOGGER.info("Synchronize event")
         for label in pr_labels:
-            if label.lower() in (lgtm_str, verified_str):
+            if label.lower() in (LGTM_STR, VERIFIED_STR):
                 LOGGER.info(f"Removing label {label}")
                 pr.remove_from_labels(label)
         return
 
     elif event_name == "issue_comment":
         LOGGER.info("Issue comment event")
-        supported_labels: set[str] = {
-            f"{label_prefix}{wip_str}",
-            f"{label_prefix}{lgtm_str}",
-            f"{label_prefix}{verified_str}",
-            f"{label_prefix}{hold_str}",
-        }
 
         # Searches for `supported_labels` in PR comment and splits to tuples;
         # index 0 is label, index 1 (optional) `cancel`
         user_requested_labels: list[tuple[str, str]] = re.findall(
-            rf"({'|'.join(supported_labels)})\s*(cancel)?", comment_body.lower()
+            rf"({'|'.join(SUPPORTED_LABELS)})\s*(cancel)?", comment_body.lower()
         )
 
         LOGGER.info(f"User labels: {user_requested_labels}")
@@ -97,12 +125,12 @@ def add_remove_pr_labels(pr: PullRequest, event_name: str, event_action: str, co
         # In case of the same label appears multiple times, the last one is used
         labels: dict[str, dict[str, bool]] = {}
         for _label in user_requested_labels:
-            labels[_label[0].replace(label_prefix, "")] = {"cancel": _label[1] == "cancel"}
+            labels[_label[0].replace(LABEL_PREFIX, "")] = {CANCEL_ACTION: _label[1] == CANCEL_ACTION}
 
         LOGGER.info(f"Processing labels: {labels}")
         for label, action in labels.items():
             label_in_pr = any([label == _label.lower() for _label in pr_labels])
-            if action["cancel"] or event_action == "deleted":
+            if action[CANCEL_ACTION] or event_action == "deleted":
                 if label_in_pr:
                     LOGGER.info(f"Removing label {label}")
                     pr.remove_from_labels(label)
@@ -115,10 +143,15 @@ def add_remove_pr_labels(pr: PullRequest, event_name: str, event_action: str, co
     LOGGER.warning("`add_remove_pr_label` called without a supported event")
 
 
+def add_welcome_comment(pr: PullRequest) -> None:
+    pr.create_issue_comment(body=WELCOME_COMMENT)
+
+
 def main() -> None:
     labels_action_name: str = "add-remove-labels"
     pr_size_action_name: str = "add-pr-size-label"
-    supported_actions: set[str] = {pr_size_action_name, labels_action_name}
+    welcome_comment_action_name: str = "add-welcome-comment"
+    supported_actions: set[str] = {pr_size_action_name, labels_action_name, welcome_comment_action_name}
     action: str | None = os.getenv("ACTION")
 
     if not action or action not in supported_actions:
@@ -164,6 +197,9 @@ def main() -> None:
             event_action=event_action,
             comment_body=comment_body,
         )
+
+    if action == welcome_comment_action_name:
+        add_welcome_comment(pr=pr)
 
 
 if __name__ == "__main__":

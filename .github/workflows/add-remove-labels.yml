@@ -1,6 +1,5 @@
 name: PR Add Remove Labels Based on user input
 on:
-  # pull_request:
   pull_request_target:
     types: [synchronize]
 
@@ -42,4 +41,4 @@ jobs:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           COMMENT_BODY: ${{ github.event.comment.body }}
           ACTION: "add-remove-labels"
-        run: uv run python .github/workflows/scripts/pr_labeler.py
+        run: uv run python .github/workflows/scripts/pr_workflow.py
