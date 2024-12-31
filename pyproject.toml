@@ -58,6 +58,7 @@ dependencies = [
     "portforward>=0.7.1",
     "pytest-testconfig>=0.2.0",
     "pytest-jira>=0.3.21",
+    "pygithub>=2.5.0",
 ]
 
 [project.urls]
