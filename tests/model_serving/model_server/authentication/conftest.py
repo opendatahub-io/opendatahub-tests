@@ -17,8 +17,7 @@ from pytest_testconfig import config as py_config
 
 from utilities.infra import create_isvc_view_role
 from tests.model_serving.model_server.utils import create_isvc, get_pods_by_isvc_label
-from utilities.constants import KServeDeploymentType, ModelFormat, Protocols, RuntimeQueryKeys, RuntimeTemplates
-from utilities.serving_runtime import ServingRuntimeFromTemplate
+from utilities.constants import KServeDeploymentType, ModelFormat, Protocols
 
 
 @pytest.fixture(scope="session")
@@ -45,27 +44,10 @@ def grpc_model_service_account(admin_client: DynamicClient, models_endpoint_s3_s
 
 
 @pytest.fixture(scope="class")
-def grpc_s3_serving_runtime(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-) -> ServingRuntime:
-    with ServingRuntimeFromTemplate(
-        client=admin_client,
-        name=f"{Protocols.GRPC}-{RuntimeQueryKeys.CAIKIT_TGIS_RUNTIME}",
-        namespace=model_namespace.name,
-        template_name=RuntimeTemplates.CAIKIT_TGIS_SERVING,
-        multi_model=False,
-        enable_http=False,
-        enable_grpc=True,
-    ) as model_runtime:
-        yield model_runtime
-
-
-@pytest.fixture(scope="class")
 def grpc_s3_inference_service(
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    grpc_s3_serving_runtime: ServingRuntime,
+    grpc_s3_caikit_serving_runtime: ServingRuntime,
     s3_models_storage_uri: str,
     grpc_model_service_account: ServiceAccount,
 ) -> InferenceService:
@@ -73,9 +55,9 @@ def grpc_s3_inference_service(
         client=admin_client,
         name=f"{Protocols.GRPC}-{ModelFormat.CAIKIT}",
         namespace=model_namespace.name,
-        runtime=grpc_s3_serving_runtime.name,
+        runtime=grpc_s3_caikit_serving_runtime.name,
         storage_uri=s3_models_storage_uri,
-        model_format=grpc_s3_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        model_format=grpc_s3_caikit_serving_runtime.instance.spec.supportedModelFormats[0].name,
         deployment_mode=KServeDeploymentType.SERVERLESS,
         model_service_account=grpc_model_service_account.name,
         enable_auth=True,

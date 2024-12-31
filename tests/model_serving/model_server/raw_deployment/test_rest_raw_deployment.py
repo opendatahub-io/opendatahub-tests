@@ -18,7 +18,7 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
     "model_namespace, s3_models_storage_uri",
     [
         pytest.param(
-            {"name": "raw-deployment"},
+            {"name": "rest-raw-deployment"},
             {"model-dir": ModelStoragePath.FLAN_T5_SMALL},
         )
     ],
@@ -62,7 +62,7 @@ class TestRestRawDeployment:
             use_default_query=True,
         )
 
-    @pytest.mark.dependency(depends=["test_rest_raw_deployment_exposed_route"])
+    # @pytest.mark.dependency(depends=["test_rest_raw_deployment_exposed_route"])
     @pytest.mark.parametrize(
         "patched_http_s3_caikit_raw_isvc_visibility_label",
         [
@@ -73,7 +73,7 @@ class TestRestRawDeployment:
         indirect=True,
     )
     def test_disabled_rest_raw_deployment_exposed_route(self, patched_http_s3_caikit_raw_isvc_visibility_label):
-        """Test HTTP inference fails when using external route after it was disabled"""
+        """Test HTTP inference succeeds when using external route after it was changed to `local-cluster`"""
         verify_inference_response(
             inference_service=patched_http_s3_caikit_raw_isvc_visibility_label,
             runtime=RuntimeQueryKeys.CAIKIT_TGIS_RUNTIME,

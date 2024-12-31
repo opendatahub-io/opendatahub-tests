@@ -56,3 +56,50 @@ def patched_http_s3_caikit_raw_isvc_visibility_label(
         }
     ):
         yield http_s3_caikit_raw_inference_service
+
+
+@pytest.fixture(scope="class")
+def grpc_s3_caikit_raw_inference_service(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    grpc_s3_caikit_serving_runtime: ServingRuntime,
+    s3_models_storage_uri: str,
+    grpc_model_service_account: ServiceAccount,
+) -> InferenceService:
+    isvc_kwargs = {
+        "client": admin_client,
+        "name": f"{Protocols.GRPC}-{ModelFormat.CAIKIT}",
+        "namespace": model_namespace.name,
+        "runtime": grpc_s3_caikit_serving_runtime.name,
+        "storage_uri": s3_models_storage_uri,
+        "model_format": grpc_s3_caikit_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        "model_service_account": grpc_model_service_account.name,
+        "deployment_mode": KServeDeploymentType.RAW_DEPLOYMENT,
+    }
+
+    enable_auth = False
+
+    if hasattr(request, "param"):
+        enable_auth = request.param.get("enable-auth")
+
+    isvc_kwargs["enable_auth"] = enable_auth
+
+    with create_isvc(**isvc_kwargs) as isvc:
+        yield isvc
+
+
+@pytest.fixture()
+def patched_grpc_s3_caikit_raw_isvc_visibility_label(
+    request: FixtureRequest, admin_client: DynamicClient, grpc_s3_caikit_raw_inference_service: InferenceService
+) -> InferenceService:
+    with ResourceEditor(
+        patches={
+            grpc_s3_caikit_raw_inference_service: {
+                "metadata": {
+                    "labels": {"networking.kserve.io/visibility": request.param["visibility"]},
+                }
+            }
+        }
+    ):
+        yield grpc_s3_caikit_raw_inference_service
