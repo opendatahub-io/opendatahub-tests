@@ -1,0 +1,27 @@
+name: PR Size Labeler
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  pull-requests: write
+  contents: write
+
+jobs:
+  add-pr-size-label:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Run size labeler
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_PR_NUMBER: ${{github.event.pull_request.number}}
+          GITHUB_EVENT_ACTION: ${{github.event.action}}
+          GITHUB_EVENT_NAME: ${{github.event_name}}
+          ACTION: "add-pr-size-label"
+        run: uv run python .github/workflows/scripts/pr_labeler.py

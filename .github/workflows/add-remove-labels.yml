@@ -1,0 +1,43 @@
+name: PR Add Remove Labels Based on user input
+on:
+  pull_request:
+    types: [synchronize]
+  issue_comment:
+    types: [created, edited, deleted]
+    if: |
+      contains(github.event.comment.body, '/wip') ||
+      contains(github.event.comment.body, '/verified') ||
+      contains(github.event.comment.body, '/lgtm') ||
+      contains(github.event.comment.body, '/hold')
+
+
+permissions:
+  pull-requests: write
+  contents: write
+
+jobs:
+  add-remove-labels:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Acknowledge the request with thumbs up reaction
+        if: ${{ github.event.comment }}
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ github.event.comment.id }}
+          reactions: '+1'
+
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Run add remove labels
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_PR_NUMBER: "${{ github.event.pull_request.number || github.event.issue.number }}"
+          GITHUB_EVENT_ACTION: ${{ github.event.action }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          ACTION: "add-remove-labels"
+        run: uv run python .github/workflows/scripts/pr_labeler.py
