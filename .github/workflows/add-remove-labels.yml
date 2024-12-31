@@ -1,6 +1,5 @@
 name: PR Add Remove Labels Based on user input
 on:
-  # pull_request:
   pull_request_target:
     types: [synchronize]
 
