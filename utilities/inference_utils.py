@@ -4,7 +4,7 @@ import re
 import shlex
 from json import JSONDecodeError
 from string import Template
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 from ocp_resources.inference_service import InferenceService
@@ -223,7 +223,9 @@ class LlmInference(Inference):
         try:
             if self.protocol in Protocols.TCP_PROTOCOLS:
                 # with curl response headers are also returned
-                response_dict = {}
+                response_dict: Dict[str, Any] = {}
+                response_headers: List[str] = []
+
                 if "content-type: application/json" in out:
                     if response_re := re.match(r"(.*)\n\{", out, re.MULTILINE | re.DOTALL):
                         response_headers = response_re.group(1).splitlines()
