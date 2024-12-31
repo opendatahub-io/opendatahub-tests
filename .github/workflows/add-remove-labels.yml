@@ -3,7 +3,7 @@ on:
   # pull_request:
   pull_request_target:
     types: [synchronize]
-    
+
   issue_comment:
     types: [created, edited, deleted]
     if: |
