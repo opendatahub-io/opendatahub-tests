@@ -67,16 +67,20 @@ def verify_inference_response(
             if inference_type == inference.STREAMING:
                 if output := re.findall(
                     rf"{inference.inference_response_text_key_name}\": \"(.*)\"",
-                    res["output"],
+                    res[inference.inference_response_key_name],
                     re.MULTILINE,
                 ):
                     assert "".join(output) == expected_response_text
 
             elif inference_type == inference.INFER:
-                assert json.dumps(res["output"]).replace(" ", "") == expected_response_text
+                assert json.dumps(res[inference.inference_response_key_name]).replace(" ", "") == expected_response_text
 
             else:
-                assert res["output"][inference.inference_response_text_key_name] == expected_response_text
+                response = res[inference.inference_response_key_name]
+                if isinstance(response, list):
+                    response = response[0]
+
+                assert response[inference.inference_response_text_key_name] == expected_response_text
 
         else:
             raise InferenceResponseError(f"Inference response output not found in response. Response: {res}")

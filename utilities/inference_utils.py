@@ -104,6 +104,10 @@ class LlmInference(Inference):
     def inference_response_text_key_name(self) -> Optional[str]:
         return self.runtime_config["response_fields_map"].get("response_output")
 
+    @property
+    def inference_response_key_name(self) -> str:
+        return self.runtime_config["response_fields_map"].get("response", "output")
+
     def generate_command(
         self,
         model_name: str,
@@ -148,6 +152,9 @@ class LlmInference(Inference):
 
         if insecure:
             cmd += " --insecure"
+
+        if cmd_args := self.runtime_config.get("args"):
+            cmd += f" {cmd_args} "
 
         cmd += f" {url}"
 

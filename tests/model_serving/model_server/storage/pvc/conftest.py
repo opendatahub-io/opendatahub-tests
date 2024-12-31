@@ -19,11 +19,6 @@ from utilities.infra import wait_for_kserve_predictor_deployment_replicas
 
 
 @pytest.fixture(scope="class")
-def ci_s3_storage_uri(request: FixtureRequest, ci_s3_bucket_name: str) -> str:
-    return f"s3://{ci_s3_bucket_name}/{request.param['model-dir']}/"
-
-
-@pytest.fixture(scope="class")
 def model_pvc(
     request: FixtureRequest,
     admin_client: DynamicClient,

@@ -8,10 +8,12 @@ class ModelFormat:
     CAIKIT: str = "caikit"
     ONNX: str = "onnx"
     OPENVINO: str = "openvino"
+    OVMS: str = "ovms"
 
 
 class ModelName:
     FLAN_T5_SMALL: str = "flan-t5-small"
+    FLAN_T5_SMALL_HF: str = f"{FLAN_T5_SMALL}-hf"
 
 
 class ModelAndFormat:
@@ -34,11 +36,13 @@ class ModelEndpoint:
 
 class RuntimeTemplates:
     CAIKIT_TGIS_SERVING: str = "caikit-tgis-serving-template"
-    OVMS_MODEL_MESH: str = "ovms"
+    OVMS_MODEL_MESH: str = ModelFormat.OVMS
+    OVMS_KSERVE: str = f"kserve-{ModelFormat.OVMS}"
 
 
 class RuntimeQueryKeys:
-    CAIKIT_TGIS_RUNTIME: str = f"{ModelFormat.CAIKIT}-tgis-runtime"
+    TGIS_RUNTIME: str = "tgis-runtime"
+    CAIKIT_TGIS_RUNTIME: str = f"{ModelFormat.CAIKIT}-{TGIS_RUNTIME}"
     OPENVINO_RUNTIME: str = f"{ModelFormat.OPENVINO}-runtime"
 
 

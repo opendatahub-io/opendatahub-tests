@@ -1,12 +1,16 @@
 from typing import Any, Dict
 
-from utilities.constants import ModelAndFormat
+from utilities.constants import ModelAndFormat, ModelName
 
 INQUIRIES: Dict[str, Any] = {
     "water_boil": {
         "query_input": "At what temperature does water boil?",
         "models": {
             ModelAndFormat.FLAN_T5_SMALL_CAIKIT: {
+                "response_tokens": 5,
+                "response_output": "74 degrees F",
+            },
+            ModelName.FLAN_T5_SMALL_HF: {
                 "response_tokens": 5,
                 "response_output": "74 degrees F",
             },

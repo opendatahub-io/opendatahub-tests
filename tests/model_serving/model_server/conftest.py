@@ -79,3 +79,8 @@ def serving_runtime_from_template(
         multi_model=request.param["multi-model"],
     ) as model_runtime:
         yield model_runtime
+
+
+@pytest.fixture(scope="class")
+def ci_s3_storage_uri(request: FixtureRequest, ci_s3_bucket_name: str) -> str:
+    return f"s3://{ci_s3_bucket_name}/{request.param['model-dir']}/"
