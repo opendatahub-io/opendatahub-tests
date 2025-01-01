@@ -40,7 +40,7 @@ class TestKserveModelCar:
 
     @pytest.mark.smoke
     @pytest.mark.jira("RHOAIENG-12306")
-    def test_model_authentication_using_rest(self, model_car_tgis_inference_service):
+    def test_model_car_using_rest(self, model_car_tgis_inference_service):
         """Verify model query with token using REST"""
         verify_inference_response(
             inference_service=model_car_tgis_inference_service,

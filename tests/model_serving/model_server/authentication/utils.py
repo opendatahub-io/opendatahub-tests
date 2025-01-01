@@ -62,12 +62,15 @@ def verify_inference_response(
 
     else:
         if use_default_query:
-            expected_response_text = Template(
-                inference.inference_config["default_query_model"]["query_output"].get("response_output")
-            ).safe_substitute(model_name=model_name)
+            expected_response_text = inference.inference_config["default_query_model"]["query_output"]
 
             if not expected_response_text:
                 raise ValueError(f"Missing response text key for inference {runtime}")
+
+            if isinstance(expected_response_text, dict):
+                expected_response_text = Template(expected_response_text.get("response_output")).safe_substitute(
+                    model_name=model_name
+                )
 
         if inference.inference_response_text_key_name:
             if inference_type == inference.STREAMING:

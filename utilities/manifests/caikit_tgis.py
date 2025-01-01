@@ -1,5 +1,4 @@
-CAIKIT_TGIS_INFERENCE_CONFIG = (
-    {
+CAIKIT_TGIS_INFERENCE_CONFIG = {
         "default_query_model": {
             "query_input": "At what temperature does water boil?",
             "query_output": "74 degrees F",
@@ -36,5 +35,4 @@ CAIKIT_TGIS_INFERENCE_CONFIG = (
                 "response_fields_map": {"response_output": "generated_text"},
             },
         },
-    },
-)
+    }
