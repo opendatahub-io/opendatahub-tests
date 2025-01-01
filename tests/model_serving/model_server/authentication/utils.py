@@ -20,7 +20,7 @@ def verify_inference_response(
     runtime: str,
     inference_type: str,
     protocol: str,
-    model_name: str,
+    model_name: Optional[str] = None,
     text: Optional[str] = None,
     use_default_query: bool = False,
     expected_response_text: Optional[str] = None,
@@ -28,6 +28,8 @@ def verify_inference_response(
     token: Optional[str] = None,
     authorized_user: Optional[bool] = None,
 ) -> None:
+    model_name = model_name or inference_service.name
+
     inference = UserInference(
         inference_service=inference_service,
         runtime=runtime,

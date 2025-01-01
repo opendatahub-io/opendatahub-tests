@@ -11,9 +11,7 @@ from tests.model_serving.model_server.utils import create_isvc
 from utilities.constants import (
     KServeDeploymentType,
     ModelAndFormat,
-    ModelFormat,
     Protocols,
-    ModelInferenceRuntime,
     RuntimeTemplates,
 )
 from utilities.infra import s3_endpoint_secret
@@ -28,7 +26,7 @@ def openvino_kserve_serving_runtime(
 ) -> ServingRuntime:
     with ServingRuntimeFromTemplate(
         client=admin_client,
-        name=f"{Protocols.HTTP}-{ModelInferenceRuntime.OPENVINO_RUNTIME}",
+        name=request.param["runtime-name"],
         namespace=model_namespace.name,
         template_name=RuntimeTemplates.OVMS_KSERVE,
         multi_model=False,
@@ -78,7 +76,7 @@ def openvino_model_service_account(admin_client: DynamicClient, ci_endpoint_s3_s
 
 
 @pytest.fixture(scope="class")
-def http_openvino_serverless_inference_service(
+def ovms_serverless_inference_service(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
@@ -88,7 +86,7 @@ def http_openvino_serverless_inference_service(
 ) -> InferenceService:
     with create_isvc(
         client=admin_client,
-        name=f"{Protocols.HTTP}-{ModelFormat.OPENVINO}",
+        name=f"{request.param['name']}-serverless",
         namespace=model_namespace.name,
         runtime=openvino_kserve_serving_runtime.name,
         storage_uri=ci_s3_storage_uri,

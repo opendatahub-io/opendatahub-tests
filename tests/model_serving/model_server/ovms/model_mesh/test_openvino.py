@@ -4,7 +4,6 @@ from tests.model_serving.model_server.authentication.utils import (
     verify_inference_response,
 )
 from utilities.constants import (
-    ModelFormat,
     ModelStoragePath,
     Protocols,
     ModelInferenceRuntime,
@@ -31,7 +30,6 @@ class TestOpenVINO:
             runtime=ModelInferenceRuntime.OPENVINO_RUNTIME,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTP,
-            model_name=ModelFormat.OPENVINO,
             use_default_query=True,
         )
 
@@ -49,7 +47,6 @@ class TestOpenVINO:
             runtime=ModelInferenceRuntime.OPENVINO_RUNTIME,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTP,
-            model_name=ModelFormat.OPENVINO,
             use_default_query=True,
             token=model_mesh_inference_token,
         )
