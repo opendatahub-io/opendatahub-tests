@@ -19,7 +19,7 @@ OPENVINO_INFERENCE_CONFIG = {
         "default_query_model": {
             "query_input": DEFAULT_INPUT,
             "query_output": {
-                "response_output": '{"model_name":"$model_name__isvc-ac836837df","model_version":"1",'
+                "response_output": '{"model_name":"${model_name}__isvc-ac836837df","model_version":"1",'
                 '"outputs":[{"name":"Func/StatefulPartitionedCall/output/_13:0","datatype":"FP32",'
                 '"shape":[1,1],"data":[0]}]}',
             },
