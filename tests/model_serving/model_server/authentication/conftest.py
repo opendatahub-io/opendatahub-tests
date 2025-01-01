@@ -22,7 +22,7 @@ from utilities.constants import (
     KServeDeploymentType,
     ModelFormat,
     Protocols,
-    RuntimeQueryKeys,
+    ModelInferenceRuntime,
     RuntimeTemplates,
 )
 from utilities.serving_runtime import ServingRuntimeFromTemplate
@@ -58,7 +58,7 @@ def grpc_s3_caikit_serving_runtime(
 ) -> ServingRuntime:
     with ServingRuntimeFromTemplate(
         client=admin_client,
-        name=f"{Protocols.GRPC}-{RuntimeQueryKeys.CAIKIT_TGIS_RUNTIME}",
+        name=f"{Protocols.GRPC}-{ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME}",
         namespace=model_namespace.name,
         template_name=RuntimeTemplates.CAIKIT_TGIS_SERVING,
         multi_model=False,
@@ -235,7 +235,7 @@ def unprivileged_s3_caikit_serving_runtime(
     with ServingRuntimeFromTemplate(
         client=admin_client,
         unprivileged_client=unprivileged_client,
-        name=f"{Protocols.HTTP}-{RuntimeQueryKeys.CAIKIT_TGIS_RUNTIME}",
+        name=f"{Protocols.HTTP}-{ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME}",
         namespace=unprivileged_model_namespace.name,
         template_name=RuntimeTemplates.CAIKIT_TGIS_SERVING,
         multi_model=False,

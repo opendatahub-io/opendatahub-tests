@@ -7,7 +7,7 @@ from utilities.constants import (
     ModelFormat,
     ModelStoragePath,
     Protocols,
-    RuntimeQueryKeys,
+    ModelInferenceRuntime,
 )
 from utilities.inference_utils import Inference
 
@@ -28,7 +28,7 @@ class TestOpenVINO:
     def test_model_mesh_openvino_rest_inference(self, http_s3_openvino_model_mesh_inference_service):
         verify_inference_response(
             inference_service=http_s3_openvino_model_mesh_inference_service,
-            runtime=RuntimeQueryKeys.OPENVINO_RUNTIME,
+            runtime=ModelInferenceRuntime.OPENVINO_RUNTIME,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTP,
             model_name=ModelFormat.OPENVINO,
@@ -46,7 +46,7 @@ class TestOpenVINO:
     ):
         verify_inference_response(
             inference_service=http_s3_openvino_model_mesh_inference_service,
-            runtime=RuntimeQueryKeys.OPENVINO_RUNTIME,
+            runtime=ModelInferenceRuntime.OPENVINO_RUNTIME,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTP,
             model_name=ModelFormat.OPENVINO,

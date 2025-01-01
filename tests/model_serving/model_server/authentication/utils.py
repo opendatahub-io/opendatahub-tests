@@ -1,11 +1,12 @@
 import json
 import re
+from string import Template
 from typing import Optional
 
 from ocp_resources.inference_service import InferenceService
 from simple_logger.logger import get_logger
 
-from utilities.inference_utils import LlmInference
+from utilities.inference_utils import UserInference
 
 LOGGER = get_logger(name=__name__)
 
@@ -27,7 +28,7 @@ def verify_inference_response(
     token: Optional[str] = None,
     authorized_user: Optional[bool] = None,
 ) -> None:
-    inference = LlmInference(
+    inference = UserInference(
         inference_service=inference_service,
         runtime=runtime,
         inference_type=inference_type,
@@ -59,7 +60,10 @@ def verify_inference_response(
 
     else:
         if use_default_query:
-            expected_response_text = inference.inference_config["default_query_model"]["model"].get("response_output")
+            expected_response_text = Template(
+                inference.inference_config["default_query_model"]["query_output"].get("response_output")
+            ).safe_substitute(model_name=model_name)
+
             if not expected_response_text:
                 raise ValueError(f"Missing response text key for inference {runtime}")
 

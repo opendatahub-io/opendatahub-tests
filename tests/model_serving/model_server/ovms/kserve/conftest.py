@@ -12,9 +12,8 @@ from utilities.constants import (
     KServeDeploymentType,
     ModelAndFormat,
     ModelFormat,
-    ModelVersion,
     Protocols,
-    RuntimeQueryKeys,
+    ModelInferenceRuntime,
     RuntimeTemplates,
 )
 from utilities.infra import s3_endpoint_secret
@@ -23,12 +22,13 @@ from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 @pytest.fixture(scope="class")
 def openvino_kserve_serving_runtime(
+    request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
 ) -> ServingRuntime:
     with ServingRuntimeFromTemplate(
         client=admin_client,
-        name=f"{Protocols.HTTP}-{RuntimeQueryKeys.OPENVINO_RUNTIME}",
+        name=f"{Protocols.HTTP}-{ModelInferenceRuntime.OPENVINO_RUNTIME}",
         namespace=model_namespace.name,
         template_name=RuntimeTemplates.OVMS_KSERVE,
         multi_model=False,
@@ -38,7 +38,7 @@ def openvino_kserve_serving_runtime(
                 "limits": {"cpu": "2", "memory": "8Gi"},
             }
         },
-        model_format_name={ModelAndFormat.OPENVINO_IR: ModelVersion.OPSET1},
+        model_format_name=request.param["model-format"],
     ) as model_runtime:
         yield model_runtime
 
@@ -95,6 +95,6 @@ def http_openvino_serverless_inference_service(
         model_format=ModelAndFormat.OPENVINO_IR,
         deployment_mode=KServeDeploymentType.SERVERLESS,
         model_service_account=openvino_model_service_account.name,
-        model_version=ModelVersion.OPSET1,
+        model_version=request.param["model-version"],
     ) as isvc:
         yield isvc

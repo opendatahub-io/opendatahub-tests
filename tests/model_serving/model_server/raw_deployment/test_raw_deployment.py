@@ -7,7 +7,7 @@ from utilities.constants import (
     ModelFormat,
     ModelStoragePath,
     Protocols,
-    RuntimeQueryKeys,
+    ModelInferenceRuntime,
 )
 from utilities.inference_utils import Inference
 
@@ -33,7 +33,7 @@ class TestRestRawDeployment:
         """Test HTTP inference using internal route"""
         verify_inference_response(
             inference_service=http_s3_caikit_raw_inference_service,
-            runtime=RuntimeQueryKeys.CAIKIT_TGIS_RUNTIME,
+            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTP,
             model_name=ModelFormat.CAIKIT,
@@ -55,7 +55,7 @@ class TestRestRawDeployment:
         """Test HTTP inference using exposed (external) route"""
         verify_inference_response(
             inference_service=patched_http_s3_caikit_raw_isvc_visibility_label,
-            runtime=RuntimeQueryKeys.CAIKIT_TGIS_RUNTIME,
+            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTPS,
             model_name=ModelFormat.CAIKIT,
@@ -76,7 +76,7 @@ class TestRestRawDeployment:
         """Test HTTP inference fails when using external route after it was disabled"""
         verify_inference_response(
             inference_service=patched_http_s3_caikit_raw_isvc_visibility_label,
-            runtime=RuntimeQueryKeys.CAIKIT_TGIS_RUNTIME,
+            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTP,
             model_name=ModelFormat.CAIKIT,

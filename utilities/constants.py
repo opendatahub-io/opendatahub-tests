@@ -1,3 +1,14 @@
+from typing import Any, Dict
+
+from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
+from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
+from utilities.manifests.openvino import (
+    OPENVINO_INFERENCE_CONFIG,
+    OPENVINO_KSERVE_INFERENCE_CONFIG,
+)
+from utilities.manifests.tgis_grpc import TGIS_INFERENCE_CONFIG
+
+
 class KServeDeploymentType:
     SERVERLESS: str = "Serverless"
     RAW_DEPLOYMENT: str = "RawDeployment"
@@ -38,6 +49,7 @@ class ModelEndpoint:
 
 class ModelVersion:
     OPSET1: str = "opset1"
+    OPSET13: str = "opset13"
 
 
 class RuntimeTemplates:
@@ -46,11 +58,20 @@ class RuntimeTemplates:
     OVMS_KSERVE: str = f"kserve-{ModelFormat.OVMS}"
 
 
-class RuntimeQueryKeys:
+class ModelInferenceRuntime:
     TGIS_RUNTIME: str = "tgis-runtime"
     CAIKIT_TGIS_RUNTIME: str = f"{ModelFormat.CAIKIT}-{TGIS_RUNTIME}"
     OPENVINO_RUNTIME: str = f"{ModelFormat.OPENVINO}-runtime"
     OPENVINO_KSERVE_RUNTIME: str = f"{ModelFormat.OPENVINO}-kserve-runtime"
+    ONNX_RUNTIME: str = f"{ModelFormat.ONNX}-runtime"
+
+    MAPPING: Dict[str, Any] = {
+        CAIKIT_TGIS_RUNTIME: CAIKIT_TGIS_INFERENCE_CONFIG,
+        OPENVINO_RUNTIME: OPENVINO_INFERENCE_CONFIG,
+        OPENVINO_KSERVE_RUNTIME: OPENVINO_KSERVE_INFERENCE_CONFIG,
+        TGIS_RUNTIME: TGIS_INFERENCE_CONFIG,
+        ONNX_RUNTIME: ONNX_INFERENCE_CONFIG,
+    }
 
 
 class Protocols:

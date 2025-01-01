@@ -21,7 +21,7 @@ from utilities.constants import (
     ModelFormat,
     ModelVersion,
     Protocols,
-    RuntimeQueryKeys,
+    ModelInferenceRuntime,
     RuntimeTemplates,
 )
 from utilities.infra import create_isvc_view_role, create_storage_config_secret, s3_endpoint_secret
@@ -35,7 +35,7 @@ def http_s3_openvino_model_mesh_serving_runtime(
 ) -> ServingRuntime:
     with ServingRuntimeFromTemplate(
         client=admin_client,
-        name=f"{Protocols.HTTP}-{RuntimeQueryKeys.OPENVINO_RUNTIME}",
+        name=f"{Protocols.HTTP}-{ModelInferenceRuntime.OPENVINO_RUNTIME}",
         namespace=ns_with_modelmesh_enabled.name,
         template_name=RuntimeTemplates.OVMS_MODEL_MESH,
         multi_model=True,

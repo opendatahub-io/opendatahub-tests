@@ -36,3 +36,27 @@ pre-commit install
 If you use Visual Studio Code as your IDE, we recommend using the [Mypy Type Checker](https://marketplace.visualstudio.com/items?itemName=ms-python.mypy-type-checker) extension.
 After installing it, make sure to update the `Mypy-type-checkers: Args` setting
 to `"mypy-type-checker.args" = ["--config-file=pyproject.toml"]`.
+
+
+## Adding new runtime
+To add a new runtime, you need to:  
+1. Add a new file under [manifests](utilities/manifests) directory.
+2. Add `<runtime>_INFERENCE_CONFIG` dict with:
+```code
+"default_query_model": {
+        "query_input": <default query to be sent to the model>,
+        "query_output": <expected output>,
+    },
+    "<query type, for example: all-tokens>": {
+        "<protocol, for example HTTP>": {
+            "endpoint": "<model endpoint>",
+            "header": "<model required headers>",
+            "body": '{<model expected body}',
+            "response_fields_map": {
+                "response_output": <output field in response>,
+                "response": <response field in response - optional>,
+            },
+        },
+```
+3. Add a new entry to [ModelInferenceRuntime](utilities.constants.ModelInferenceRuntime)
+4. Add the new entry to [Mapping](utilities.constants.ModelInferenceRuntime.MAPPING)

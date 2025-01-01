@@ -15,8 +15,12 @@ from simple_logger.logger import get_logger
 from tests.model_serving.model_server.utils import (
     get_services_by_isvc_label,
 )
-from utilities.constants import KServeDeploymentType, MODELMESH_SERVING, Protocols
-from utilities.manifests.runtime_query_config import RUNTIMES_QUERY_CONFIG
+from utilities.constants import (
+    KServeDeploymentType,
+    MODELMESH_SERVING,
+    ModelInferenceRuntime,
+    Protocols,
+)
 import portforward
 
 LOGGER = get_logger(name=__name__)
@@ -70,7 +74,7 @@ class Inference:
             return False
 
 
-class LlmInference(Inference):
+class UserInference(Inference):
     def __init__(self, protocol: str, inference_type: str, **kwargs: Any) -> None:
         super().__init__(**kwargs)
 
@@ -80,11 +84,13 @@ class LlmInference(Inference):
         self.runtime_config = self.get_runtime_config()
 
     def get_inference_config(self) -> Dict[str, Any]:
-        if runtime_config := RUNTIMES_QUERY_CONFIG.get(self.runtime):
+        if runtime_config := ModelInferenceRuntime.MAPPING.get(self.runtime):
             return runtime_config
 
         else:
-            raise ValueError(f"Runtime {self.runtime} not supported. Supported runtimes are {RUNTIMES_QUERY_CONFIG}")
+            raise ValueError(
+                f"Runtime {self.runtime} not supported. Supported runtimes are {ModelInferenceRuntime.MAPPING.keys()}"
+            )
 
     def get_runtime_config(self) -> Dict[str, Any]:
         if inference_type := self.inference_config.get(self.inference_type):
@@ -114,8 +120,11 @@ class LlmInference(Inference):
         inference_input: Optional[Any] = None,
         use_default_query: bool = False,
     ) -> str:
+        if not use_default_query and inference_input is None:
+            raise ValueError("Either pass `inference_input` or set `use_default_query` to True")
+
         if use_default_query:
-            inference_input = self.inference_config.get("default_query_model", {}).get("input")
+            inference_input = self.inference_config.get("default_query_model", {}).get("query_input")
             if not inference_input:
                 raise ValueError(f"Missing default query dict for {model_name}")
 

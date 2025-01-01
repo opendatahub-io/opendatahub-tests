@@ -8,7 +8,7 @@ from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 
-from utilities.constants import Protocols, RuntimeQueryKeys, RuntimeTemplates
+from utilities.constants import Protocols, ModelInferenceRuntime, RuntimeTemplates
 from utilities.infra import s3_endpoint_secret
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -55,7 +55,7 @@ def http_s3_caikit_serving_runtime(
 ) -> ServingRuntime:
     with ServingRuntimeFromTemplate(
         client=admin_client,
-        name=f"{Protocols.HTTP}-{RuntimeQueryKeys.CAIKIT_TGIS_RUNTIME}",
+        name=f"{Protocols.HTTP}-{ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME}",
         namespace=model_namespace.name,
         template_name=RuntimeTemplates.CAIKIT_TGIS_SERVING,
         multi_model=False,

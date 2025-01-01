@@ -4,7 +4,7 @@ from tests.model_serving.model_server.authentication.utils import (
     verify_inference_response,
 )
 from tests.model_serving.model_server.utils import get_pods_by_isvc_label
-from utilities.constants import ModelName, Protocols, RuntimeQueryKeys
+from utilities.constants import ModelName, Protocols, ModelInferenceRuntime
 from utilities.inference_utils import Inference
 
 
@@ -44,7 +44,7 @@ class TestKserveModelCar:
         """Verify model query with token using REST"""
         verify_inference_response(
             inference_service=model_car_tgis_inference_service,
-            runtime=RuntimeQueryKeys.TGIS_RUNTIME,
+            runtime=ModelInferenceRuntime.TGIS_RUNTIME,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.GRPC,
             model_name=ModelName.FLAN_T5_SMALL_HF,
