@@ -1,5 +1,6 @@
 from typing import Any, Dict
 
+from utilities.manifests.caikit_standalone import CAIKIT_STANDALONE_INFERENCE_CONFIG
 from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 from utilities.manifests.openvino import (
@@ -75,6 +76,7 @@ class ModelInferenceRuntime:
         OPENVINO_KSERVE_RUNTIME: OPENVINO_KSERVE_INFERENCE_CONFIG,
         TGIS_RUNTIME: TGIS_INFERENCE_CONFIG,
         ONNX_RUNTIME: ONNX_INFERENCE_CONFIG,
+        CAIKIT_STANDALONE_RUNTIME: CAIKIT_STANDALONE_INFERENCE_CONFIG,
     }
 
 

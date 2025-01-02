@@ -9,7 +9,6 @@ from utilities.constants import (
     Protocols,
     ModelInferenceRuntime,
 )
-from utilities.inference_utils import Inference
 
 pytestmark = pytest.mark.usefixtures("valid_aws_config")
 
@@ -22,7 +21,7 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
         pytest.param(
             {"name": "raw-deployment-caikit-bge"},
             {"model-dir": ModelStoragePath.EMBEDDING_MODEL},
-            {"name": ModelName.CAIKIT_BGE_LARGE_EN},
+            {"name": "bge-large-en-caikit"},
         )
     ],
     indirect=True,
@@ -32,8 +31,8 @@ def test_caikit_bge_large_en_raw_internal_route(http_s3_caikit_standalone_raw_in
     """Test Caikit bge-large-en model inference using internal route"""
     verify_inference_response(
         inference_service=http_s3_caikit_standalone_raw_inference_service,
-        runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
-        inference_type=Inference.ALL_TOKENS,
+        runtime=ModelInferenceRuntime.CAIKIT_STANDALONE_RUNTIME,
+        inference_type="embedding",
         protocol=Protocols.HTTP,
         model_name=ModelName.CAIKIT_BGE_LARGE_EN,
         use_default_query=True,
