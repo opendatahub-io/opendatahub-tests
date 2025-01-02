@@ -68,7 +68,8 @@ def http_model_service_account(admin_client: DynamicClient, models_endpoint_s3_s
 
 
 @pytest.fixture(scope="class")
-def http_s3_caikit_serving_runtime(
+def http_s3_caikit_tgis_serving_runtime(
+    request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
 ) -> ServingRuntime:

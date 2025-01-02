@@ -58,6 +58,7 @@ class RuntimeTemplates:
     CAIKIT_TGIS_SERVING: str = "caikit-tgis-serving-template"
     OVMS_MODEL_MESH: str = ModelFormat.OVMS
     OVMS_KSERVE: str = f"kserve-{ModelFormat.OVMS}"
+    CAIKIT_STANDALONE_SERVING: str = "caikit-standalone-serving-template"
 
 
 class ModelInferenceRuntime:
@@ -66,6 +67,7 @@ class ModelInferenceRuntime:
     OPENVINO_RUNTIME: str = f"{ModelFormat.OPENVINO}-runtime"
     OPENVINO_KSERVE_RUNTIME: str = f"{ModelFormat.OPENVINO}-kserve-runtime"
     ONNX_RUNTIME: str = f"{ModelFormat.ONNX}-runtime"
+    CAIKIT_STANDALONE_RUNTIME: str = f"{ModelFormat.CAIKIT}-standalone-runtime"
 
     MAPPING: Dict[str, Any] = {
         CAIKIT_TGIS_RUNTIME: CAIKIT_TGIS_INFERENCE_CONFIG,

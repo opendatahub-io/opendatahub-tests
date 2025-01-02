@@ -16,24 +16,25 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
 
 @pytest.mark.raw_deployment
 @pytest.mark.parametrize(
-    "model_namespace, s3_models_storage_uri",
+    "model_namespace, s3_models_storage_uri, http_s3_caikit_tgis_raw_inference_service",
     [
         pytest.param(
             {"name": "raw-deployment-caikit-flan"},
             {"model-dir": ModelStoragePath.FLAN_T5_SMALL},
+            {"name": f"{Protocols.HTTP}-{ModelFormat.CAIKIT}"},
         )
     ],
     indirect=True,
 )
 class TestRestRawDeployment:
-    def test_default_visibility_value(self, http_s3_caikit_raw_inference_service):
+    def test_default_visibility_value(self, http_s3_caikit_tgis_raw_inference_service):
         """Test default route visibility value"""
-        assert http_s3_caikit_raw_inference_service.annotations.get("networking.kserve.io/visibility") is None
+        assert http_s3_caikit_tgis_raw_inference_service.annotations.get("networking.kserve.io/visibility") is None
 
-    def test_rest_raw_deployment_internal_route(self, http_s3_caikit_raw_inference_service):
+    def test_rest_raw_deployment_internal_route(self, http_s3_caikit_tgis_raw_inference_service):
         """Test HTTP inference using internal route"""
         verify_inference_response(
-            inference_service=http_s3_caikit_raw_inference_service,
+            inference_service=http_s3_caikit_tgis_raw_inference_service,
             runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTP,
