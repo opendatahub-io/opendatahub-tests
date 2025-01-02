@@ -25,6 +25,7 @@ class ModelFormat:
 class ModelName:
     FLAN_T5_SMALL: str = "flan-t5-small"
     FLAN_T5_SMALL_HF: str = f"{FLAN_T5_SMALL}-hf"
+    CAIKIT_BGE_LARGE_EN: str = f"bge-large-en-v1.5-{ModelFormat.CAIKIT}"
 
 
 class ModelAndFormat:
@@ -37,6 +38,7 @@ class ModelStoragePath:
     FLAN_T5_SMALL: str = f"{ModelName.FLAN_T5_SMALL}/{ModelAndFormat.FLAN_T5_SMALL_CAIKIT}"
     OPENVINO_EXAMPLE_MODEL: str = f"{ModelFormat.OPENVINO}-example-model"
     KSERVE_OPENVINO_EXAMPLE_MODEL: str = f"kserve-openvino-test/{OPENVINO_EXAMPLE_MODEL}"
+    EMBEDDING_MODEL: str = "embeddingsmodel"
 
 
 class CurlOutput:
