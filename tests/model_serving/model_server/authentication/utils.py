@@ -88,7 +88,7 @@ def verify_inference_response(
             elif inference_type == inference.INFER:
                 assert json.dumps(res[inference.inference_response_key_name]).replace(" ", "") == expected_response_text
 
-            elif inference.inference_config["check_regex_response"]:
+            elif inference.inference_config.get("check_regex_response"):
                 assert re.search(expected_response_text, json.dumps(res[inference.inference_response_text_key_name]))  # type: ignore[arg-type]
 
             else:
