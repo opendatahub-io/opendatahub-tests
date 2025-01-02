@@ -62,15 +62,19 @@ def verify_inference_response(
 
     else:
         if use_default_query:
-            expected_response_text = inference.inference_config["default_query_model"]["query_output"]
+            expected_response_text = inference.inference_config["default_query_model"]
+
+            if isinstance(expected_response_text, dict):
+                if inference.inference_config.get("check_regex_response"):
+                    expected_response_text = expected_response_text.get(inference_type, {}).get("query_output", "")
+
+                if "response_output" in expected_response_text:
+                    expected_response_text = Template(expected_response_text.get("response_output")).safe_substitute(
+                        model_name=model_name
+                    )
 
             if not expected_response_text:
                 raise ValueError(f"Missing response text key for inference {runtime}")
-
-            if isinstance(expected_response_text, dict):
-                expected_response_text = Template(expected_response_text.get("response_output")).safe_substitute(
-                    model_name=model_name
-                )
 
         if inference.inference_response_text_key_name:
             if inference_type == inference.STREAMING:

@@ -126,7 +126,10 @@ class UserInference(Inference):
             raise ValueError("Either pass `inference_input` or set `use_default_query` to True")
 
         if use_default_query:
-            inference_input = self.inference_config.get("default_query_model", {}).get("query_input")
+            inference_input = self.inference_config.get("default_query_model", {}).get(
+                "query_input"
+            ) or self.inference_config.get("default_query_model", {}).get(self.inference_type).get("query_input")
+
             if not inference_input:
                 raise ValueError(f"Missing default query dict for {model_name}")
 
