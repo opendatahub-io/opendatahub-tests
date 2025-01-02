@@ -13,9 +13,9 @@ from ocp_resources.storage_class import StorageClass
 from pytest import FixtureRequest
 
 from tests.model_serving.model_server.storage.constants import NFS_STR
-from tests.model_serving.model_server.utils import create_isvc, get_pods_by_isvc_label
+from tests.model_serving.model_server.utils import create_isvc
 from utilities.constants import KServeDeploymentType
-from utilities.infra import wait_for_kserve_predictor_deployment_replicas
+from utilities.infra import get_pods_by_isvc_label, wait_for_kserve_predictor_deployment_replicas
 
 
 @pytest.fixture(scope="class")

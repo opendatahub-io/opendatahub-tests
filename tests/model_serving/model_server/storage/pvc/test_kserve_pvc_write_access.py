@@ -10,7 +10,7 @@ from tests.model_serving.model_server.storage.constants import (
     KSERVE_OVMS_SERVING_RUNTIME_PARAMS,
     NFS_STR,
 )
-from tests.model_serving.model_server.utils import get_pods_by_isvc_label
+from utilities.infra import get_pods_by_isvc_label
 
 pytestmark = pytest.mark.usefixtures("skip_if_no_nfs_storage_class", "valid_aws_config")
 

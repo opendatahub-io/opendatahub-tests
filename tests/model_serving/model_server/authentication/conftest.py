@@ -16,8 +16,8 @@ from ocp_resources.serving_runtime import ServingRuntime
 from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
 
-from utilities.infra import create_isvc_view_role, create_ns, s3_endpoint_secret
-from tests.model_serving.model_server.utils import create_isvc, get_pods_by_isvc_label
+from utilities.infra import create_isvc_view_role, create_ns, get_pods_by_isvc_label, s3_endpoint_secret
+from tests.model_serving.model_server.utils import create_isvc
 from utilities.constants import (
     KServeDeploymentType,
     ModelFormat,
