@@ -2,8 +2,6 @@ import subprocess
 
 import pytest
 import yaml
-from pytest import FixtureRequest
-from typing import Generator, Any
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
@@ -14,9 +12,9 @@ from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.trustyai_service import TrustyAIService
 
-from tests.trustyai.constants import TRUSTYAI_SERVICE, MODELMESH_SERVING
+from tests.trustyai.constants import TRUSTYAI_SERVICE
+from utilities.constants import MODELMESH_SERVING
 from tests.trustyai.utils import update_configmap_data
-from utilities.infra import create_ns
 
 MINIO: str = "minio"
 OPENDATAHUB_IO: str = "opendatahub.io"
@@ -43,12 +41,6 @@ def trustyai_service_with_pvc_storage(
         )
         trustyai_deployment.wait_for_replicas()
         yield trustyai_service
-
-
-@pytest.fixture(scope="class")
-def ns_with_modelmesh_enabled(request: FixtureRequest, admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
-    with create_ns(admin_client=admin_client, name=request.param["name"], labels={"modelmesh-enabled": "true"}) as ns:
-        yield ns
 
 
 @pytest.fixture(scope="class")

@@ -1,3 +1,4 @@
+import http
 import json
 import os
 from typing import Any, Dict, List, Optional
@@ -15,10 +16,15 @@ from timeout_sampler import TimeoutSampler
 
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
-from tests.trustyai.constants import TIMEOUT_5MIN, MODELMESH_SERVING
+from tests.trustyai.constants import TIMEOUT_5MIN
+from utilities.constants import MODELMESH_SERVING
 
 LOGGER = get_logger(name=__name__)
 TIMEOUT_30SEC: int = 30
+
+
+class MetricValidationError(Exception):
+    pass
 
 
 class TrustyAIServiceRequestHandler:
@@ -53,6 +59,14 @@ class TrustyAIServiceRequestHandler:
 
     def get_model_metadata(self) -> Any:
         return self._send_request(endpoint="/info", method="GET")
+
+    def send_drift_request(
+        self,
+        metric_name: str,
+        json: Optional[Dict[str, Any]] = None,
+    ) -> Any:
+        LOGGER.info(f"Sending request for drift metric: {metric_name}")
+        return self._send_request(endpoint=f"/metrics/drift/{metric_name}", method="POST", json=json)
 
 
 # TODO: Refactor code to be under utilities.inference_utils.Inference
@@ -92,13 +106,14 @@ def send_inference_request(
         ),
     )
     def _make_request() -> None:
+        response: Optional[requests.Response] = None
+
         try:
-            response: requests.Response = requests.post(
-                url=url, headers=headers, data=data_batch, verify=False, timeout=TIMEOUT_30SEC
-            )
+            response = requests.post(url=url, headers=headers, data=data_batch, verify=False, timeout=TIMEOUT_30SEC)
             response.raise_for_status()
         except requests.RequestException as e:
-            LOGGER.error(response.content)
+            if response:
+                LOGGER.error(response.content)
             LOGGER.error(f"Error sending data for file: {file_path}. Error: {str(e)}")
             raise
 
@@ -238,3 +253,51 @@ def wait_for_modelmesh_pods_registered_by_trustyai(client: DynamicClient, namesp
     for sample in samples:
         if sample:
             return
+
+
+def verify_metric_request(
+    client: DynamicClient, trustyai_service: TrustyAIService, token: str, metric_name: str, json_data: Any
+) -> None:
+    """
+    Sends a metric request to a TrustyAIService and validates the response.
+
+    Args:
+        client (DynamicClient): The client instance for interacting with the cluster.
+        trustyai_service (TrustyAIService): The TrustyAI service instance to interact with.
+        token (str): Authentication token for the service.
+        metric_name (str): Name of the metric to request.
+        json_data (Any): JSON payload for the metric request.
+
+    Raise:
+        AssertionError if some of the response fields does not have the expected value.
+    """
+
+    response = TrustyAIServiceRequestHandler(token=token, service=trustyai_service, client=client).send_drift_request(
+        metric_name=metric_name, json=json_data
+    )
+    LOGGER.info(msg=f"TrustyAI metric request response: {json.dumps(json.loads(response.text), indent=2)}")
+    response_data = json.loads(response.text)
+
+    errors = []
+
+    if response.status_code != http.HTTPStatus.OK:
+        errors.append(f"Unexpected status code: {response.status_code}")
+    if response_data.get("timestamp", "") == "":
+        errors.append("Timestamp is empty")
+    if (metric_type := response_data.get("type", "")) != "metric":
+        errors.append(f"Incorrect type: {metric_type or 'None'}")
+    if response_data.get("value", "") == "":
+        errors.append("Value is empty")
+    if not isinstance(response_data.get("value"), float):
+        errors.append("Value must be a float")
+    if response_data.get("specificDefinition", "") == "":
+        errors.append("Specific definition is empty")
+    if (response_metric_name := response_data.get("name", "")) != metric_name:
+        errors.append(f"Wrong name: {response_metric_name or 'None'}, expected: {metric_name}")
+    if response_data.get("id", "") == "":
+        errors.append("ID is empty")
+    if response_data.get("thresholds", "") == "":
+        errors.append("Thresholds are empty")
+
+    if errors:
+        raise MetricValidationError("\n".join(errors))

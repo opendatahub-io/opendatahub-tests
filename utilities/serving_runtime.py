@@ -3,8 +3,7 @@ from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.template import Template
-
-from utilities.constants import APPLICATIONS_NAMESPACE
+from pytest_testconfig import config as py_config
 
 
 class ServingRuntimeFromTemplate(ServingRuntime):
@@ -17,24 +16,31 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         multi_model: Optional[bool] = None,
         enable_http: Optional[bool] = None,
         enable_grpc: Optional[bool] = None,
+        resources: Optional[Dict[str, Any]] = None,
+        model_format_name: Optional[Dict[str, str]] = None,
+        unprivileged_client: Optional[DynamicClient] = None,
     ):
-        self.client = client
+        self.admin_client = client
         self.name = name
         self.namespace = namespace
         self.template_name = template_name
         self.multi_model = multi_model
         self.enable_http = enable_http
         self.enable_grpc = enable_grpc
+        self.resources = resources
+        self.model_format_name = model_format_name
+        self.unprivileged_client = unprivileged_client
 
         self.model_dict = self.update_model_dict()
 
-        super().__init__(client=self.client, kind_dict=self.model_dict)
+        super().__init__(client=self.unprivileged_client or self.admin_client, kind_dict=self.model_dict)
 
     def get_model_template(self) -> Template:
+        # Only admin client can get templates from the cluster
         template = Template(
-            client=self.client,
+            client=self.admin_client,
             name=self.template_name,
-            namespace=APPLICATIONS_NAMESPACE,
+            namespace=py_config["applications_namespace"],
         )
         if template.exists:
             return template
@@ -65,5 +71,13 @@ class ServingRuntimeFromTemplate(ServingRuntime):
 
                     if self.enable_grpc is True:
                         container["ports"][0] = {"containerPort": 8085, "name": "h2c", "protocol": "TCP"}
+
+            if self.resources is not None and (resource_dict := self.resources.get(container["name"])):
+                container["resources"] = resource_dict
+
+        if self.model_format_name is not None:
+            for model in _model_dict["spec"]["supportedModelFormats"]:
+                if model["name"] in self.model_format_name:
+                    model["version"] = self.model_format_name[model["name"]]
 
         return _model_dict

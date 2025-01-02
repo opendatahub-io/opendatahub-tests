@@ -1,5 +1,6 @@
 from typing import Self
 
+import pytest
 from simple_logger.logger import get_logger
 from ocp_resources.namespace import Namespace
 from ocp_resources.inference_service import InferenceService
@@ -11,6 +12,10 @@ from utilities.constants import CurlOutput, ModelEndpoint, Protocols
 LOGGER = get_logger(name=__name__)
 
 
+pytestmark = pytest.mark.usefixtures("skip_if_no_deployed_openshift_serverless", "valid_aws_config")
+
+
+@pytest.mark.serverless
 class TestKserveInternalEndpoint:
     """Tests the internal endpoint of a kserve predictor"""
 
