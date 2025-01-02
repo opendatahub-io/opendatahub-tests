@@ -43,7 +43,8 @@ To add a new runtime, you need to:
 1. Add a new file under [manifests](utilities/manifests) directory.
 2. Add `<runtime>_INFERENCE_CONFIG` dict with:
 ```code
-"default_query_model": {
+    "check_regex_response": True|False,  # Optioanl, if set to True, `query_output` should be a regex
+    "default_query_model": {
         "query_input": <default query to be sent to the model>,
         "query_output": <expected output>,
     },
