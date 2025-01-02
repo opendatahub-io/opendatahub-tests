@@ -9,7 +9,6 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
-from ocp_resources.service import Service
 from simple_logger.logger import get_logger
 
 from tests.model_serving.model_server.private_endpoint.utils import (
@@ -170,31 +169,6 @@ def get_pods_by_isvc_label(client: DynamicClient, isvc: InferenceService) -> Lis
         return pods
 
     raise ResourceNotFoundError(f"{isvc.name} has no pods")
-
-
-def get_services_by_isvc_label(client: DynamicClient, isvc: InferenceService) -> List[Service]:
-    """
-    Args:
-        client (DynamicClient): OCP Client to use.
-        isvc (InferenceService):InferenceService object.
-
-    Returns:
-        list[Service]: A list of all matching pods
-
-    Raises:
-        ResourceNotFoundError: if no pods are found.
-    """
-    if svcs := [
-        svc
-        for svc in Service.get(
-            dyn_client=client,
-            namespace=isvc.namespace,
-            label_selector=f"{isvc.ApiGroup.SERVING_KSERVE_IO}/inferenceservice={isvc.name}",
-        )
-    ]:
-        return svcs
-
-    raise ResourceNotFoundError(f"{isvc.name} has no services")
 
 
 def verify_inference_response(

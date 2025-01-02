@@ -13,9 +13,7 @@ from ocp_resources.service import Service
 from pyhelper_utils.shell import run_command
 from simple_logger.logger import get_logger
 
-from tests.model_serving.model_server.utils import (
-    get_services_by_isvc_label,
-)
+from utilities.infra import get_services_by_isvc_label
 from utilities.certificates_utils import get_ca_bundle
 from utilities.constants import (
     KServeDeploymentType,

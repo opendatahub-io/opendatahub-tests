@@ -18,6 +18,7 @@ from ocp_resources.project_project_openshift_io import Project
 from ocp_resources.project_request import ProjectRequest
 from ocp_resources.role import Role
 from ocp_resources.secret import Secret
+from ocp_resources.service import Service
 from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
@@ -230,3 +231,28 @@ def is_managed_cluster(client: DynamicClient) -> bool:
                 return next(b["value"] == "true" for b in tags if b["key"] == "red-hat-managed")
 
     return False
+
+
+def get_services_by_isvc_label(client: DynamicClient, isvc: InferenceService) -> List[Service]:
+    """
+    Args:
+        client (DynamicClient): OCP Client to use.
+        isvc (InferenceService):InferenceService object.
+
+    Returns:
+        list[Service]: A list of all matching pods
+
+    Raises:
+        ResourceNotFoundError: if no pods are found.
+    """
+    if svcs := [
+        svc
+        for svc in Service.get(
+            dyn_client=client,
+            namespace=isvc.namespace,
+            label_selector=f"{isvc.ApiGroup.SERVING_KSERVE_IO}/inferenceservice={isvc.name}",
+        )
+    ]:
+        return svcs
+
+    raise ResourceNotFoundError(f"{isvc.name} has no services")
