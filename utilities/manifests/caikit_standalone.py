@@ -1,5 +1,5 @@
 CAIKIT_STANDALONE_INFERENCE_CONFIG = {
-    "check_regex_response": True,
+    "support_multi_default_queries": True,
     "default_query_model": {
         "embedding": {
             "query_input": "At what temperature does Nitrogen boil?",

@@ -1,9 +1,6 @@
 import pytest
 
-from tests.model_serving.model_server.authentication.utils import (
-    verify_inference_response,
-)
-from tests.model_serving.model_server.utils import get_pods_by_isvc_label
+from tests.model_serving.model_server.utils import get_pods_by_isvc_label, verify_inference_response
 from utilities.constants import ModelName, Protocols, ModelInferenceRuntime
 from utilities.inference_utils import Inference
 

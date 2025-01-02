@@ -1,8 +1,6 @@
 import pytest
 
-from tests.model_serving.model_server.authentication.utils import (
-    verify_inference_response,
-)
+from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import (
     ModelStoragePath,
     Protocols,
