@@ -31,7 +31,7 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_deployed_openshift_serverless",
     ],
     indirect=True,
 )
-class TestOpenVINO:
+class TestOpenVINOServerless:
     @pytest.mark.smoke
     @pytest.mark.polarion("ODS-2626")
     def test_serverless_openvino_rest_inference(self, ovms_serverless_inference_service):

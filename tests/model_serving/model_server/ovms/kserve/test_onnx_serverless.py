@@ -29,7 +29,7 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_deployed_openshift_serverless",
     ],
     indirect=True,
 )
-class TestOpenVINO:
+class TestONNXServerless:
     @pytest.mark.smoke
     @pytest.mark.jira("RHOAIENG-9045")
     def test_serverless_onnx_rest_inference(self, ovms_serverless_inference_service):

@@ -200,9 +200,9 @@ def verify_inference_response(
                 raise ValueError(f"Missing response text key for inference {runtime}")
 
             if isinstance(expected_response_text, dict):
-                expected_response_text = Template(
-                    expected_response_text["query_output"].get("response_output")
-                ).safe_substitute(model_name=model_name)
+                expected_response_text = Template(expected_response_text.get("response_output")).safe_substitute(
+                    model_name=model_name
+                )
 
         if inference.inference_response_text_key_name:
             if inference_type == inference.STREAMING:
