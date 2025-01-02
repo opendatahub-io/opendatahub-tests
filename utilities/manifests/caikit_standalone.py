@@ -1,7 +1,8 @@
 CAIKIT_STANDALONE_INFERENCE_CONFIG = {
+        "check_regex_response": True,
         "default_query_model": {
             "query_input": "At what temperature does Nitrogen boil?",
-            "query_output": "74 degrees F",
+            "query_output": r'{"result": \{.*?\}, "producer_id": {"name": "EmbeddingModule", "version": "\d.\d.\d"}, "input_token_count": \d+}',
         },
         "embedding": {
             "http": {
@@ -9,7 +10,7 @@ CAIKIT_STANDALONE_INFERENCE_CONFIG = {
                 "header": "Content-type:application/json",
                 "body": '{"model_id": "$model_name","inputs": "$query_input"}',
                 "response_fields_map": {
-                    "response_output": "result",
+                    "response_output": "output",
                 },
             },
         },
@@ -18,7 +19,7 @@ CAIKIT_STANDALONE_INFERENCE_CONFIG = {
                 "endpoint": "api/v1/task/rerank",
                 "header": "Content-type:application/json",
                 "body": '{"model_id": "$model_name","inputs": "$query_input"}',
-                "response_fields_map": {"response_output": "result"},
+                "response_fields_map": {"response_output": "output"},
             },
         },
         "sentence-similarity": {
@@ -26,7 +27,7 @@ CAIKIT_STANDALONE_INFERENCE_CONFIG = {
             "endpoint": "api/v1/task/sentence-similarity",
             "header": "Content-type:application/json",
             "body": '{"model_id": "$model_name","inputs": "$query_input"}',
-            "response_fields_map": {"response_output": "result"},
+            "response_fields_map": {"response_output": "output"},
         },
     },
     }
