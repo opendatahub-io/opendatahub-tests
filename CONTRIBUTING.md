@@ -37,6 +37,21 @@ If you use Visual Studio Code as your IDE, we recommend using the [Mypy Type Che
 After installing it, make sure to update the `Mypy-type-checkers: Args` setting
 to `"mypy-type-checker.args" = ["--config-file=pyproject.toml"]`.
 
+## Check the code
+Checks tools are used to check the code are defined in .pre-commit-config.yaml file
+To install pre-commit:
+
+```bash
+pip install pre-commit --user
+pre-commit install
+pre-commit install --hook-type commit-msg
+```
+
+Run pre-commit:
+
+```bash
+pre-commit run --all-files
+```
 
 ## Adding new runtime
 To add a new runtime, you need to:  
