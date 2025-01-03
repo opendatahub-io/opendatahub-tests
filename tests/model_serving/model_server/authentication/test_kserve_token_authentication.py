@@ -23,10 +23,12 @@ pytestmark = pytest.mark.usefixtures(
 class TestKserveTokenAuthentication:
     @pytest.mark.smoke
     @pytest.mark.dependency(name="test_model_authentication_using_rest")
-    def test_model_authentication_using_rest(self, http_s3_caikit_serverless_inference_service, http_inference_token):
+    def test_model_authentication_using_rest(
+        self, http_s3_caikit_serverless_inference_service_auth_enabled, http_inference_token
+    ):
         """Verify model query with token using REST"""
         verify_inference_response(
-            inference_service=http_s3_caikit_serverless_inference_service,
+            inference_service=http_s3_caikit_serverless_inference_service_auth_enabled,
             runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTPS,
@@ -61,10 +63,12 @@ class TestKserveTokenAuthentication:
         )
 
     @pytest.mark.dependency(depends=["test_disabled_model_authentication"])
-    def test_re_enabled_model_authentication(self, http_s3_caikit_serverless_inference_service, http_inference_token):
+    def test_re_enabled_model_authentication(
+        self, http_s3_caikit_serverless_inference_service_auth_enabled, http_inference_token
+    ):
         """Verify model query after authentication is re-enabled"""
         verify_inference_response(
-            inference_service=http_s3_caikit_serverless_inference_service,
+            inference_service=http_s3_caikit_serverless_inference_service_auth_enabled,
             runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTPS,
@@ -73,10 +77,10 @@ class TestKserveTokenAuthentication:
             token=http_inference_token,
         )
 
-    def test_model_authentication_using_invalid_token(self, http_s3_caikit_serverless_inference_service):
+    def test_model_authentication_using_invalid_token(self, http_s3_caikit_serverless_inference_service_auth_enabled):
         """Verify model query with an invalid token"""
         verify_inference_response(
-            inference_service=http_s3_caikit_serverless_inference_service,
+            inference_service=http_s3_caikit_serverless_inference_service_auth_enabled,
             runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTPS,
@@ -86,10 +90,10 @@ class TestKserveTokenAuthentication:
             authorized_user=False,
         )
 
-    def test_model_authentication_without_token(self, http_s3_caikit_serverless_inference_service):
+    def test_model_authentication_without_token(self, http_s3_caikit_serverless_inference_service_auth_enabled):
         """Verify model query without providing a token"""
         verify_inference_response(
-            inference_service=http_s3_caikit_serverless_inference_service,
+            inference_service=http_s3_caikit_serverless_inference_service_auth_enabled,
             runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTPS,
@@ -99,10 +103,12 @@ class TestKserveTokenAuthentication:
         )
 
     @pytest.mark.sanity
-    def test_block_cross_model_authentication(self, http_s3_caikit_serverless_inference_service, grpc_inference_token):
+    def test_block_cross_model_authentication(
+        self, http_s3_caikit_serverless_inference_service_auth_enabled, grpc_inference_token
+    ):
         """Verify model query with a second model's token is blocked"""
         verify_inference_response(
-            inference_service=http_s3_caikit_serverless_inference_service,
+            inference_service=http_s3_caikit_serverless_inference_service_auth_enabled,
             runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTPS,

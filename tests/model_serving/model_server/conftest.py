@@ -4,12 +4,14 @@ import pytest
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.cluster_service_version import ClusterServiceVersion
+from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 
-from utilities.constants import Protocols, ModelInferenceRuntime, RuntimeTemplates
+from tests.model_serving.model_server.utils import create_isvc
+from utilities.constants import KServeDeploymentType, ModelFormat, Protocols, ModelInferenceRuntime, RuntimeTemplates
 from utilities.infra import s3_endpoint_secret
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -104,3 +106,46 @@ def serving_runtime_from_template(
 @pytest.fixture(scope="class")
 def ci_s3_storage_uri(request: FixtureRequest, ci_s3_bucket_name: str) -> str:
     return f"s3://{ci_s3_bucket_name}/{request.param['model-dir']}/"
+
+
+@pytest.fixture(scope="class")
+def http_s3_caikit_serverless_inference_service_auth_enabled(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    http_s3_caikit_tgis_serving_runtime: ServingRuntime,
+    s3_models_storage_uri: str,
+    http_model_service_account: ServiceAccount,
+) -> InferenceService:
+    with create_isvc(
+        client=admin_client,
+        name=f"{Protocols.HTTP}-{ModelFormat.CAIKIT}",
+        namespace=model_namespace.name,
+        runtime=http_s3_caikit_tgis_serving_runtime.name,
+        storage_uri=s3_models_storage_uri,
+        model_format=http_s3_caikit_tgis_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        deployment_mode=KServeDeploymentType.SERVERLESS,
+        model_service_account=http_model_service_account.name,
+        enable_auth=True,
+    ) as isvc:
+        yield isvc
+
+
+@pytest.fixture(scope="class")
+def http_s3_caikit_serverless_inference_service_auth_disabled(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    http_s3_caikit_tgis_serving_runtime: ServingRuntime,
+    s3_models_storage_uri: str,
+    http_model_service_account: ServiceAccount,
+) -> InferenceService:
+    with create_isvc(
+        client=admin_client,
+        name=f"{Protocols.HTTP}-{ModelFormat.CAIKIT}",
+        namespace=model_namespace.name,
+        runtime=http_s3_caikit_tgis_serving_runtime.name,
+        storage_uri=s3_models_storage_uri,
+        model_format=http_s3_caikit_tgis_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        deployment_mode=KServeDeploymentType.SERVERLESS,
+        model_service_account=http_model_service_account.name,
+    ) as isvc:
+        yield isvc

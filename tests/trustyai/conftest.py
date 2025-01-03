@@ -1,5 +1,3 @@
-import subprocess
-
 import pytest
 import yaml
 from kubernetes.dynamic import DynamicClient
@@ -15,6 +13,7 @@ from ocp_resources.trustyai_service import TrustyAIService
 from tests.trustyai.constants import TRUSTYAI_SERVICE
 from utilities.constants import MODELMESH_SERVING
 from tests.trustyai.utils import update_configmap_data
+from utilities.infra import get_openshift_token
 
 MINIO: str = "minio"
 OPENDATAHUB_IO: str = "opendatahub.io"
@@ -45,7 +44,7 @@ def trustyai_service_with_pvc_storage(
 
 @pytest.fixture(scope="class")
 def openshift_token(ns_with_modelmesh_enabled):
-    return subprocess.check_output(["oc", "whoami", "-t", ns_with_modelmesh_enabled.name]).decode().strip()
+    return get_openshift_token()
 
 
 @pytest.fixture(scope="class")
