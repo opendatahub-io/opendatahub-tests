@@ -7,6 +7,7 @@ from functools import cache
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.secret import Secret
 from pytest_testconfig import config as py_config
+from simple_logger.logger import get_logger
 
 from utilities.constants import (
     ISTIO_CA_BUNDLE_FILENAME,
@@ -14,6 +15,9 @@ from utilities.constants import (
     OPENSHIFT_CA_BUNDLE_FILENAME,
 )
 from utilities.infra import is_managed_cluster, is_self_managed_operator
+
+
+LOGGER = get_logger(name=__name__)
 
 
 def create_ca_bundle_file(client: DynamicClient, ca_type: str) -> str:
@@ -44,7 +48,8 @@ def create_ca_bundle_file(client: DynamicClient, ca_type: str) -> str:
 
         return filepath
 
-    raise Exception(f"Could not find {certs_secret.name} secret")
+    LOGGER.warning(f"Could not find {certs_secret.name} secret")
+    return ""
 
 
 @cache
@@ -52,8 +57,12 @@ def get_ca_bundle(client: DynamicClient, deployment_mode: str) -> str:
     if deployment_mode in (
         KServeDeploymentType.SERVERLESS,
         KServeDeploymentType.RAW_DEPLOYMENT,
-    ) and not is_managed_cluster(client):
-        return create_ca_bundle_file(client=client, ca_type="knative")
+    ):
+        if is_managed_cluster(client):
+            LOGGER.info("Running on managed cluster, not using ca bundle")
+            return ""
+        else:
+            return create_ca_bundle_file(client=client, ca_type="knative")
 
     elif deployment_mode == KServeDeploymentType.MODEL_MESH:
         if is_self_managed_operator(client=client):

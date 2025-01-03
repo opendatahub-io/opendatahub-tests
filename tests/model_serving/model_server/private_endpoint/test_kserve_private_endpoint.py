@@ -39,7 +39,10 @@ class TestKserveInternalEndpoint:
         endpoint_isvc: InferenceService,
         endpoint_pod_with_istio_sidecar: Pod,
     ) -> None:
-        """Verifies the response from the health endpoint, sending a request from a pod in the same ns and part of the Istio Service Mesh"""
+        """
+        Verifies the response from the health endpoint,
+        sending a request from a pod in the same ns and part of the Istio Service Mesh
+        """
 
         curl_stdout = curl_from_pod(
             isvc=endpoint_isvc,
@@ -53,7 +56,10 @@ class TestKserveInternalEndpoint:
         endpoint_isvc: InferenceService,
         diff_pod_with_istio_sidecar: Pod,
     ) -> None:
-        """Verifies the response from the health endpoint, sending a request from a pod in a different ns and part of the Istio Service Mesh"""
+        """
+        Verifies the response from the health endpoint,
+        sending a request from a pod in a different ns and part of the Istio Service Mesh
+        """
 
         curl_stdout = curl_from_pod(
             isvc=endpoint_isvc,
@@ -68,7 +74,10 @@ class TestKserveInternalEndpoint:
         endpoint_isvc: InferenceService,
         endpoint_pod_without_istio_sidecar: Pod,
     ) -> None:
-        """Verifies the response from the health endpoint, sending a request from a pod in the same ns and not part of the Istio Service Mesh"""
+        """
+        Verifies the response from the health endpoint,
+        sending a request from a pod in the same ns and not part of the Istio Service Mesh
+        """
 
         curl_stdout = curl_from_pod(
             isvc=endpoint_isvc,
@@ -83,7 +92,10 @@ class TestKserveInternalEndpoint:
         endpoint_isvc: InferenceService,
         diff_pod_without_istio_sidecar: Pod,
     ) -> None:
-        """Verifies the response from the health endpoint, sending a request from a pod in a different ns and not part of the Istio Service Mesh"""
+        """
+        Verifies the response from the health endpoint,
+        sending a request from a pod in a different ns and not part of the Istio Service Mesh
+        """
 
         curl_stdout = curl_from_pod(
             isvc=endpoint_isvc,

@@ -197,7 +197,7 @@ class UserInference(Inference):
                 cmd += f" --cacert {ca} "
 
             else:
-                LOGGER.error("No CA bundle found, using insecure aceess")
+                LOGGER.warning("No CA bundle found, using insecure aceess")
                 cmd += " --insecure"
 
         if cmd_args := self.runtime_config.get("args"):

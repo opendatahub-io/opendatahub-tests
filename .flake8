@@ -1,11 +1,55 @@
 [flake8]
-select=M511
-
+# UFN plugin must be run in serial
+jobs = 0
+max-line-length = 120
 exclude =
     doc,
     .tox,
+    .venv,
+    venv*,
     .git,
     .yml,
     Pipfile.*,
     docs/*,
     .cache/*
+    utilities/manifests/*
+    /utilities/plugins/*
+
+fcn_exclude_functions =
+    re,
+    group,
+    os,
+    parser,
+    urllib,
+    shutil,
+    LOGGER,
+    BASIC_LOGGER,
+    findall,
+    json,
+    yaml,
+    request,
+    sub,
+    logging,
+    add_option,
+    pytest,
+    expect,
+    parametrize,
+    check_output,
+    datetime,
+    pytestconfig,
+    addoption,
+    getoption,
+    usefixtures,
+    skip,
+    tmp_path_factory,
+    snapshot,
+    urlparse,
+    wait_for_status,
+    write,
+
+
+enable-extensions =
+    FCN,
+    UFN,
+    NIC,
+    NIT,

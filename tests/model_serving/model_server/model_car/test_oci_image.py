@@ -21,7 +21,7 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_deployed_openshift_serverless")
                 "multi-model": False,
             },
             {
-                "storage-uri": "oci://quay.io/mwaykole/test@sha256:c526a1a3697253eb09adc65da6efaf7f36150205c3a51ab8d13b92b6a3af9c1c"
+                "storage-uri": "oci://quay.io/mwaykole/test@sha256:c526a1a3697253eb09adc65da6efaf7f36150205c3a51ab8d13b92b6a3af9c1c"  # noqa: E501
             },
         )
     ],

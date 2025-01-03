@@ -175,7 +175,8 @@ def send_inference_requests_and_verify_trustyai_service(
     inference_service: InferenceService,
 ) -> None:
     """
-    Sends all the data batches present in a given directory to an InferenceService, and verifies that TrustyAIService has registered the observations.
+    Sends all the data batches present in a given directory to
+    an InferenceService, and verifies that TrustyAIService has registered the observations.
 
     Args:
         client (DynamicClient): The client instance for making API calls.
@@ -207,7 +208,8 @@ def send_inference_requests_and_verify_trustyai_service(
 
 def wait_for_modelmesh_pods_registered_by_trustyai(client: DynamicClient, namespace: Namespace) -> None:
     """
-    Check if all the ModelMesh pods in a given namespace are ready and have been registered by the TrustyAIService in that same namespace.
+    Check if all the ModelMesh pods in a given namespace are
+    ready and have been registered by the TrustyAIService in that same namespace.
 
     Args:
         client (DynamicClient): The client instance for interacting with the cluster.
