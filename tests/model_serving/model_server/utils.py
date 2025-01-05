@@ -57,7 +57,7 @@ def create_isvc(
     if model_version:
         predictor_dict["model"]["modelFormat"]["version"] = model_version
 
-    _check_storage_arguments(storage_uri, storage_key, storage_path)
+    _check_storage_arguments(storage_uri=storage_uri, storage_key=storage_key, storage_path=storage_path)
     if storage_uri:
         predictor_dict["model"]["storageUri"] = storage_uri
     elif storage_key:
@@ -217,7 +217,7 @@ def verify_inference_response(
                 assert json.dumps(res[inference.inference_response_key_name]).replace(" ", "") == expected_response_text
 
             elif use_regex:
-                assert re.search(expected_response_text, json.dumps(res[inference.inference_response_text_key_name]))  # type: ignore[arg-type]
+                assert re.search(expected_response_text, json.dumps(res[inference.inference_response_text_key_name]))  # type: ignore[arg-type]  # noqa: E501
 
             else:
                 response = res[inference.inference_response_key_name]

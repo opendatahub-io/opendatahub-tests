@@ -1,11 +1,23 @@
 [flake8]
+# UFN plugin must be run in serial
+jobs = 0
+max-line-length = 120
 select=M511
 
 exclude =
     doc,
     .tox,
+    .venv,
     .git,
     .yml,
     Pipfile.*,
     docs/*,
     .cache/*
+    utilities/manifests/*
+    /utilities/plugins/*
+
+
+enable-extensions =
+    UFN,
+    NIC,
+    NIT,
