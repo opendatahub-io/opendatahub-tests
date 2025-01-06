@@ -63,7 +63,9 @@ def create_ns(
             yield ns
 
 
-def wait_for_kserve_predictor_deployment_replicas(client: DynamicClient, isvc: InferenceService) -> Deployment:
+def wait_for_kserve_predictor_deployment_replicas(
+    client: DynamicClient, isvc: InferenceService, expected_num_deployments: int = 1
+) -> List[Deployment]:
     ns = isvc.namespace
 
     deployments = list(
@@ -74,13 +76,14 @@ def wait_for_kserve_predictor_deployment_replicas(client: DynamicClient, isvc: I
         )
     )
 
-    if len(deployments) == 1:
-        deployment = deployments[0]
-        if deployment.exists:
-            deployment.wait_for_replicas()
-            return deployment
+    if len(deployments) == expected_num_deployments:
+        for deployment in deployments:
+            if deployment.exists:
+                deployment.wait_for_replicas()
 
-    elif len(deployments) > 1:
+        return deployments
+
+    elif len(deployments) > expected_num_deployments:
         raise ResourceNotUniqueError(f"Multiple predictor deployments found in namespace {ns}")
 
     else:

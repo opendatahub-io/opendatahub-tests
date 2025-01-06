@@ -43,6 +43,8 @@ def create_isvc(
     volumes: Optional[dict[str, Any]] = None,
     volumes_mounts: Optional[dict[str, Any]] = None,
     model_version: Optional[str] = None,
+    autoscaler_mode: Optional[str] = None,
+    multi_node_worker_spec: Optional[dict[str, int]] = None,
 ) -> Generator[InferenceService, Any, Any]:
     labels: Dict[str, str] = {}
     predictor_dict: Dict[str, Any] = {
@@ -75,6 +77,7 @@ def create_isvc(
         predictor_dict["model"]["volumeMounts"] = volumes_mounts
     if volumes:
         predictor_dict["volumes"] = volumes
+
     annotations = {"serving.kserve.io/deploymentMode": deployment_mode}
 
     if deployment_mode == KServeDeploymentType.SERVERLESS:
@@ -100,6 +103,12 @@ def create_isvc(
 
     if deployment_mode == KServeDeploymentType.SERVERLESS and external_route is False:
         labels["networking.knative.dev/visibility"] = "cluster-local"
+
+    if autoscaler_mode:
+        annotations["serving.kserve.io/autoscalerClass"] = autoscaler_mode
+
+    if multi_node_worker_spec is not None:
+        predictor_dict["workerSpec"] = multi_node_worker_spec
 
     with InferenceService(
         client=client,

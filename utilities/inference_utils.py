@@ -294,7 +294,11 @@ class UserInference(Inference):
         else:
             svc_protocol = self.protocol
 
-        for port in svc.instance.spec.ports:
+        ports = svc.instance.spec.ports
+        if not ports:
+            raise ValueError(f"Service {svc.name} has no ports")
+
+        for port in ports:
             svc_port = port.targetPort if isinstance(port.targetPort, int) else port.port
 
             if (

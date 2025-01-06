@@ -5,11 +5,13 @@ from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.namespace import Namespace
+from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
+from ocp_resources.storage_class import StorageClass
 
-from utilities.constants import Protocols, ModelInferenceRuntime, RuntimeTemplates
+from utilities.constants import Protocols, ModelInferenceRuntime, RuntimeTemplates, StorageClassName
 from utilities.infra import s3_endpoint_secret
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -104,3 +106,35 @@ def serving_runtime_from_template(
 @pytest.fixture(scope="class")
 def ci_s3_storage_uri(request: FixtureRequest, ci_s3_bucket_name: str) -> str:
     return f"s3://{ci_s3_bucket_name}/{request.param['model-dir']}/"
+
+
+@pytest.fixture(scope="class")
+def model_pvc(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+) -> Generator[PersistentVolumeClaim, Any, Any]:
+    access_mode = "ReadWriteOnce"
+    pvc_kwargs = {
+        "name": "model-pvc",
+        "namespace": model_namespace.name,
+        "client": admin_client,
+        "size": request.param["pvc-size"],
+    }
+    if hasattr(request, "param"):
+        access_mode = request.param.get("access-modes")
+
+        if storage_class_name := request.param.get("storage-class-name"):
+            pvc_kwargs["storage_class"] = storage_class_name
+
+    pvc_kwargs["accessmodes"] = access_mode
+
+    with PersistentVolumeClaim(**pvc_kwargs) as pvc:
+        pvc.wait_for_status(status=pvc.Status.BOUND, timeout=120)
+        yield pvc
+
+
+@pytest.fixture(scope="session")
+def skip_if_no_nfs_storage_class(admin_client: DynamicClient) -> None:
+    if not StorageClass(client=admin_client, name=StorageClassName.NFS).exists:
+        pytest.skip(f"StorageClass {StorageClassName.NFS} is missing from the cluster")

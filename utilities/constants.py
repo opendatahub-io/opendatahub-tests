@@ -8,6 +8,7 @@ from utilities.manifests.openvino import (
     OPENVINO_KSERVE_INFERENCE_CONFIG,
 )
 from utilities.manifests.tgis_grpc import TGIS_INFERENCE_CONFIG
+from utilities.manifests.vllm import VLLM_INFERENCE_CONFIG
 
 
 class KServeDeploymentType:
@@ -21,6 +22,7 @@ class ModelFormat:
     ONNX: str = "onnx"
     OPENVINO: str = "openvino"
     OVMS: str = "ovms"
+    VLLM: str = "vllm"
 
 
 class ModelName:
@@ -69,6 +71,7 @@ class ModelInferenceRuntime:
     OPENVINO_KSERVE_RUNTIME: str = f"{ModelFormat.OPENVINO}-kserve-runtime"
     ONNX_RUNTIME: str = f"{ModelFormat.ONNX}-runtime"
     CAIKIT_STANDALONE_RUNTIME: str = f"{ModelFormat.CAIKIT}-standalone-runtime"
+    VLLM_RUNTIME: str = f"{ModelFormat.VLLM}-runtime"
 
     MAPPING: Dict[str, Any] = {
         CAIKIT_TGIS_RUNTIME: CAIKIT_TGIS_INFERENCE_CONFIG,
@@ -77,6 +80,7 @@ class ModelInferenceRuntime:
         TGIS_RUNTIME: TGIS_INFERENCE_CONFIG,
         ONNX_RUNTIME: ONNX_INFERENCE_CONFIG,
         CAIKIT_STANDALONE_RUNTIME: CAIKIT_STANDALONE_INFERENCE_CONFIG,
+        VLLM_RUNTIME: VLLM_INFERENCE_CONFIG,
     }
 
 
@@ -93,6 +97,10 @@ class AcceleratorType:
     AMD: str = "amd"
     GAUDI: str = "gaudi"
     SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI]
+
+
+class StorageClassName:
+    NFS: str = "nfs"
 
 
 MODELMESH_SERVING: str = "modelmesh-serving"
