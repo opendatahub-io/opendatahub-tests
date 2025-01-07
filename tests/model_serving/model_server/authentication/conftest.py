@@ -108,27 +108,25 @@ def http_view_role(
 def http_role_binding(
     admin_client: DynamicClient,
     http_view_role: Role,
-    http_model_service_account: ServiceAccount,
+    model_service_account: ServiceAccount,
     http_s3_caikit_serverless_inference_service: InferenceService,
 ) -> RoleBinding:
     with RoleBinding(
         client=admin_client,
-        namespace=http_model_service_account.namespace,
-        name=f"{Protocols.HTTP}-{http_model_service_account.name}-view",
+        namespace=model_service_account.namespace,
+        name=f"{Protocols.HTTP}-{model_service_account.name}-view",
         role_ref_name=http_view_role.name,
         role_ref_kind=http_view_role.kind,
-        subjects_kind=http_model_service_account.kind,
-        subjects_name=http_model_service_account.name,
+        subjects_kind=model_service_account.kind,
+        subjects_name=model_service_account.name,
     ) as rb:
         yield rb
 
 
 @pytest.fixture(scope="class")
-def http_inference_token(http_model_service_account: ServiceAccount, http_role_binding: RoleBinding) -> str:
+def http_inference_token(model_service_account: ServiceAccount, http_role_binding: RoleBinding) -> str:
     return run_command(
-        command=shlex.split(
-            f"oc create token -n {http_model_service_account.namespace} {http_model_service_account.name}"
-        )
+        command=shlex.split(f"oc create token -n {model_service_account.namespace} {model_service_account.name}")
     )[1].strip()
 
 
@@ -201,7 +199,7 @@ def http_s3_caikit_serverless_inference_service(
     model_namespace: Namespace,
     http_s3_caikit_tgis_serving_runtime: ServingRuntime,
     s3_models_storage_uri: str,
-    http_model_service_account: ServiceAccount,
+    model_service_account: ServiceAccount,
 ) -> InferenceService:
     with create_isvc(
         client=admin_client,
@@ -211,7 +209,7 @@ def http_s3_caikit_serverless_inference_service(
         storage_uri=s3_models_storage_uri,
         model_format=http_s3_caikit_tgis_serving_runtime.instance.spec.supportedModelFormats[0].name,
         deployment_mode=KServeDeploymentType.SERVERLESS,
-        model_service_account=http_model_service_account.name,
+        model_service_account=model_service_account.name,
         enable_auth=True,
     ) as isvc:
         yield isvc
@@ -301,3 +299,21 @@ def unprivileged_s3_caikit_serverless_inference_service(
         model_service_account=unprivileged_model_service_account.name,
     ) as isvc:
         yield isvc
+
+
+@pytest.fixture(scope="class")
+def http_s3_caikit_tgis_serving_runtime(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+) -> ServingRuntime:
+    with ServingRuntimeFromTemplate(
+        client=admin_client,
+        name=f"{Protocols.HTTP}-{ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME}",
+        namespace=model_namespace.name,
+        template_name=RuntimeTemplates.CAIKIT_TGIS_SERVING,
+        multi_model=False,
+        enable_http=True,
+        enable_grpc=False,
+    ) as model_runtime:
+        yield model_runtime
