@@ -15,7 +15,7 @@ from pytest import FixtureRequest
 from tests.model_serving.model_server.storage.constants import NFS_STR
 from tests.model_serving.model_server.utils import create_isvc
 from utilities.constants import KServeDeploymentType
-from utilities.infra import get_pods_by_isvc_label, wait_for_kserve_predictor_deployment_replicas
+from utilities.infra import get_pods_by_isvc_label
 
 
 @pytest.fixture(scope="class")
@@ -98,7 +98,6 @@ def predictor_pods_scope_function(admin_client: DynamicClient, pvc_inference_ser
 def predictor_pods_scope_class(
     admin_client: DynamicClient,
     pvc_inference_service: InferenceService,
-    isvc_deployment_ready: None,
 ) -> List[Pod]:
     return get_pods_by_isvc_label(
         client=admin_client,
@@ -140,6 +139,7 @@ def pvc_inference_service(
         "storage_uri": f"pvc://{model_pvc.name}/{downloaded_model_data}",
         "model_format": serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
         "deployment_mode": request.param.get("deployment-mode", KServeDeploymentType.SERVERLESS),
+        "wait_for_predictor_pods": True,
     }
 
     if min_replicas := request.param.get("min-replicas"):
@@ -147,14 +147,6 @@ def pvc_inference_service(
 
     with create_isvc(**isvc_kwargs) as isvc:
         yield isvc
-
-
-@pytest.fixture(scope="class")
-def isvc_deployment_ready(admin_client: DynamicClient, pvc_inference_service: InferenceService) -> None:
-    wait_for_kserve_predictor_deployment_replicas(
-        client=admin_client,
-        isvc=pvc_inference_service,
-    )
 
 
 @pytest.fixture()

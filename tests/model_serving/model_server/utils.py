@@ -13,7 +13,7 @@ from tests.model_serving.model_server.private_endpoint.utils import (
 )
 from utilities.constants import KServeDeploymentType
 from utilities.inference_utils import UserInference
-
+from utilities.infra import wait_for_kserve_predictor_deployment_replicas
 
 LOGGER = get_logger(name=__name__)
 
@@ -43,6 +43,7 @@ def create_isvc(
     volumes: Optional[dict[str, Any]] = None,
     volumes_mounts: Optional[dict[str, Any]] = None,
     model_version: Optional[str] = None,
+    wait_for_predictor_pods: bool = True,
 ) -> Generator[InferenceService, Any, Any]:
     labels: Dict[str, str] = {}
     predictor_dict: Dict[str, Any] = {
@@ -115,6 +116,13 @@ def create_isvc(
                 status=inference_service.Condition.Status.TRUE,
                 timeout=10 * 60,
             )
+
+        if wait_for_predictor_pods:
+            wait_for_kserve_predictor_deployment_replicas(
+                client=client,
+                isvc=inference_service,
+            )
+
         yield inference_service
 
 
