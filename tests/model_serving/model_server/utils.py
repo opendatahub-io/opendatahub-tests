@@ -208,7 +208,10 @@ def verify_inference_response(
             if not expected_response_text:
                 raise ValueError(f"Missing response text key for inference {runtime}")
 
-            if isinstance(expected_response_text, dict):
+            if isinstance(expected_response_text, str):
+                expected_response_text = Template(expected_response_text).safe_substitute(model_name=model_name)
+
+            elif isinstance(expected_response_text, dict):
                 expected_response_text = Template(expected_response_text.get("response_output")).safe_substitute(
                     model_name=model_name
                 )
@@ -222,12 +225,16 @@ def verify_inference_response(
                 ):
                     assert "".join(output) == expected_response_text
 
-            elif inference_type == inference.INFER:
-                assert json.dumps(res[inference.inference_response_key_name]).replace(" ", "") == expected_response_text
-
-            elif use_regex:
+            elif inference_type == inference.INFER or use_regex:
                 formatted_res = json.dumps(res[inference.inference_response_text_key_name]).replace(" ", "")
-                assert re.search(expected_response_text, formatted_res)  # type: ignore[arg-type]  # noqa: E501
+                if use_regex:
+                    assert re.search(expected_response_text, formatted_res)  # type: ignore[arg-type]  # noqa: E501
+
+                else:
+                    assert (
+                        json.dumps(res[inference.inference_response_key_name]).replace(" ", "")
+                        == expected_response_text
+                    )
 
             else:
                 response = res[inference.inference_response_key_name]
