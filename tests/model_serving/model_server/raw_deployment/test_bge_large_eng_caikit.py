@@ -17,7 +17,7 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
 @pytest.mark.raw_deployment
 @pytest.mark.jira("RHOAIENG-11749")
 @pytest.mark.parametrize(
-    "model_namespace, s3_models_storage_uri, serving_runtime_from_template, s3_inference_service",
+    "model_namespace, s3_models_storage_uri, serving_runtime_from_template, s3_models_inference_service",
     [
         pytest.param(
             {"name": "raw-deployment-caikit-bge"},
@@ -34,10 +34,10 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
     indirect=True,
 )
 class TestBgeLargeEnCaikit:
-    def test_caikit_bge_large_en_embedding_raw_internal_route(self, s3_inference_service):
+    def test_caikit_bge_large_en_embedding_raw_internal_route(self, s3_models_inference_service):
         """Test Caikit bge-large-en embedding model inference using internal route"""
         verify_inference_response(
-            inference_service=s3_inference_service,
+            inference_service=s3_models_inference_service,
             runtime=ModelInferenceRuntime.CAIKIT_STANDALONE_RUNTIME,
             inference_type="embedding",
             protocol=Protocols.HTTP,
@@ -45,10 +45,10 @@ class TestBgeLargeEnCaikit:
             use_default_query=True,
         )
 
-    def test_caikit_bge_large_en_rerank_raw_internal_route(self, s3_inference_service):
+    def test_caikit_bge_large_en_rerank_raw_internal_route(self, s3_models_inference_service):
         """Test Caikit bge-large-en rerank model inference using internal route"""
         verify_inference_response(
-            inference_service=s3_inference_service,
+            inference_service=s3_models_inference_service,
             runtime=ModelInferenceRuntime.CAIKIT_STANDALONE_RUNTIME,
             inference_type="rerank",
             protocol=Protocols.HTTP,
@@ -56,10 +56,10 @@ class TestBgeLargeEnCaikit:
             use_default_query=True,
         )
 
-    def test_caikit_bge_large_en_sentence_similarity_raw_internal_route(self, s3_inference_service):
+    def test_caikit_bge_large_en_sentence_similarity_raw_internal_route(self, s3_models_inference_service):
         """Test Caikit bge-large-en sentence-similarity model inference using internal route"""
         verify_inference_response(
-            inference_service=s3_inference_service,
+            inference_service=s3_models_inference_service,
             runtime=ModelInferenceRuntime.CAIKIT_STANDALONE_RUNTIME,
             inference_type="sentence-similarity",
             protocol=Protocols.HTTP,

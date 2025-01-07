@@ -98,7 +98,7 @@ def ci_s3_storage_uri(request: FixtureRequest, ci_s3_bucket_name: str) -> str:
 
 
 @pytest.fixture(scope="class")
-def s3_inference_service(
+def s3_models_inference_service(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
