@@ -78,15 +78,15 @@ def serving_runtime_from_template(
         "client": admin_client,
         "name": request.param["name"],
         "namespace": model_namespace.name,
-        "template-name": request.param["template-name"],
-        "multi-model": request.param["multi-model"],
+        "template_name": request.param["template-name"],
+        "multi_model": request.param["multi-model"],
     }
 
-    if request.param["enable-http"]:
-        runtime_kwargs["enable_http"] = True
+    if enable_http := request.param.get("enable-http") is not None:
+        runtime_kwargs["enable_http"] = enable_http
 
-    if request.param["enable-grpc"]:
-        runtime_kwargs["enable_grpc"] = True
+    if enable_grpc := request.param.get("enable-grpc") is not None:
+        runtime_kwargs["enable_grpc"] = enable_grpc
 
     with ServingRuntimeFromTemplate(**runtime_kwargs) as model_runtime:
         yield model_runtime
