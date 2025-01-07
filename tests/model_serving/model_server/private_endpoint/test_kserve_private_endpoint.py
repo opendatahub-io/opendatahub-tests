@@ -2,12 +2,10 @@ from typing import Self
 
 import pytest
 from simple_logger.logger import get_logger
-from ocp_resources.namespace import Namespace
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
-from ocp_resources.deployment import Deployment
 from tests.model_serving.model_server.private_endpoint.utils import curl_from_pod
-from utilities.constants import CurlOutput, ModelEndpoint, Protocols
+from utilities.constants import CurlOutput, ModelEndpoint, Protocols, RuntimeTemplates
 
 LOGGER = get_logger(name=__name__)
 
@@ -15,23 +13,33 @@ LOGGER = get_logger(name=__name__)
 pytestmark = pytest.mark.usefixtures("skip_if_no_deployed_openshift_serverless", "valid_aws_config")
 
 
+@pytest.mark.parametrize(
+    "model_namespace, serving_runtime_from_template",
+    [
+        pytest.param(
+            {"name": "endpoint"},
+            {
+                "name": "flan-example-runtime",
+                "template-name": RuntimeTemplates.CAIKIT_TGIS_SERVING,
+                "multi-model": False,
+            },
+        )
+    ],
+    indirect=True,
+)
 @pytest.mark.serverless
 class TestKserveInternalEndpoint:
     """Tests the internal endpoint of a kserve predictor"""
 
-    def test_deploy_model_state_loaded(
-        self: Self, endpoint_namespace: Namespace, endpoint_isvc: InferenceService, ready_predictor: Deployment
-    ) -> None:
+    def test_deploy_model_state_loaded(self: Self, endpoint_isvc: InferenceService) -> None:
         """Verifies that the predictor gets to state Loaded"""
         assert endpoint_isvc.instance.status.modelStatus.states.activeModelState == "Loaded"
 
-    def test_deploy_model_url(
-        self: Self, endpoint_namespace: Namespace, endpoint_isvc: InferenceService, ready_predictor: Deployment
-    ) -> None:
+    def test_deploy_model_url(self: Self, endpoint_isvc: InferenceService) -> None:
         """Verifies that the internal endpoint has the expected formatting"""
         assert (
             endpoint_isvc.instance.status.address.url
-            == f"https://{endpoint_isvc.name}.{endpoint_namespace.name}.svc.cluster.local"
+            == f"https://{endpoint_isvc.name}.{endpoint_isvc.namespace}.svc.cluster.local"
         )
 
     def test_curl_with_istio_same_ns(
