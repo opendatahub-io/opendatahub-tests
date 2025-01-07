@@ -183,7 +183,9 @@ def verify_inference_response(
         use_regex = False
 
         if use_default_query:
-            expected_response_text_config = inference.inference_config.get("default_query_model")
+            expected_response_text_config: Dict[str, Any] = inference.inference_config.get("default_query_model", {})
+            use_regex = expected_response_text_config.get("use_regex", False)
+
             if not expected_response_text_config:
                 raise ValueError(
                     f"Missing default_query_model config for inference {runtime}. "
@@ -224,7 +226,8 @@ def verify_inference_response(
                 assert json.dumps(res[inference.inference_response_key_name]).replace(" ", "") == expected_response_text
 
             elif use_regex:
-                assert re.search(expected_response_text, json.dumps(res[inference.inference_response_text_key_name]))  # type: ignore[arg-type]  # noqa: E501
+                formatted_res = json.dumps(res[inference.inference_response_text_key_name]).replace(" ", "")
+                assert re.search(expected_response_text, formatted_res)  # type: ignore[arg-type]  # noqa: E501
 
             else:
                 response = res[inference.inference_response_key_name]
