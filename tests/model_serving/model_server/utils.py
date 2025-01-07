@@ -13,7 +13,7 @@ from tests.model_serving.model_server.private_endpoint.utils import (
 )
 from utilities.constants import KServeDeploymentType
 from utilities.inference_utils import UserInference
-from utilities.infra import wait_for_kserve_predictor_deployment_replicas
+from utilities.infra import wait_for_inference_deployment_replicas
 
 LOGGER = get_logger(name=__name__)
 
@@ -118,9 +118,8 @@ def create_isvc(
             )
 
         if wait_for_predictor_pods:
-            wait_for_kserve_predictor_deployment_replicas(
-                client=client,
-                isvc=inference_service,
+            wait_for_inference_deployment_replicas(
+                client=client, isvc=inference_service, deployment_mode=deployment_mode
             )
 
         yield inference_service

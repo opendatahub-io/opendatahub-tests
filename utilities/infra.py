@@ -24,6 +24,7 @@ from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 
+from utilities.constants import KServeDeploymentType, MODELMESH_SERVING
 from utilities.general import b64_encoded_string, get_s3_secret_dict
 
 
@@ -63,12 +64,23 @@ def create_ns(
             yield ns
 
 
-def wait_for_kserve_predictor_deployment_replicas(client: DynamicClient, isvc: InferenceService) -> Deployment:
+def wait_for_inference_deployment_replicas(
+    client: DynamicClient, isvc: InferenceService, deployment_mode: str
+) -> Deployment:
     ns = isvc.namespace
+
+    if deployment_mode in (
+        KServeDeploymentType.SERVERLESS,
+        KServeDeploymentType.RAW_DEPLOYMENT,
+    ):
+        label_selector = f"{isvc.ApiGroup.SERVING_KSERVE_IO}/inferenceservice={isvc.name}"
+
+    else:
+        label_selector = f"modelmesh-service={MODELMESH_SERVING}"
 
     deployments = list(
         Deployment.get(
-            label_selector=f"{isvc.ApiGroup.SERVING_KSERVE_IO}/inferenceservice={isvc.name}",
+            label_selector=label_selector,
             client=client,
             namespace=isvc.namespace,
         )
