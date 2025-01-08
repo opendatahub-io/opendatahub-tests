@@ -112,6 +112,7 @@ class TestRestRawDeployment:
     indirect=True,
 )
 class TestGrpcRawDeployment:
+    @pytest.mark.jira("RHOAIENG-17783", run=False)
     def test_grpc_raw_deployment_internal_route(self, s3_models_inference_service):
         """Test GRPC inference using internal route"""
         verify_inference_response(
