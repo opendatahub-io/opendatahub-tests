@@ -13,7 +13,7 @@ from tests.model_serving.model_server.private_endpoint.utils import (
 )
 from utilities.constants import KServeDeploymentType
 from utilities.inference_utils import UserInference
-from utilities.infra import wait_for_kserve_predictor_deployment_replicas
+from utilities.infra import wait_for_inference_deployment_replicas
 
 LOGGER = get_logger(name=__name__)
 
@@ -127,9 +127,8 @@ def create_isvc(
             )
 
         if wait_for_predictor_pods:
-            wait_for_kserve_predictor_deployment_replicas(
-                client=client,
-                isvc=inference_service,
+            wait_for_inference_deployment_replicas(
+                client=client, isvc=inference_service, deployment_mode=deployment_mode
             )
 
         yield inference_service
@@ -193,7 +192,9 @@ def verify_inference_response(
         use_regex = False
 
         if use_default_query:
-            expected_response_text_config = inference.inference_config.get("default_query_model")
+            expected_response_text_config: Dict[str, Any] = inference.inference_config.get("default_query_model", {})
+            use_regex = expected_response_text_config.get("use_regex", False)
+
             if not expected_response_text_config:
                 raise ValueError(
                     f"Missing default_query_model config for inference {runtime}. "
@@ -216,7 +217,10 @@ def verify_inference_response(
             if not expected_response_text:
                 raise ValueError(f"Missing response text key for inference {runtime}")
 
-            if isinstance(expected_response_text, dict):
+            if isinstance(expected_response_text, str):
+                expected_response_text = Template(expected_response_text).safe_substitute(model_name=model_name)
+
+            elif isinstance(expected_response_text, dict):
                 expected_response_text = Template(expected_response_text.get("response_output")).safe_substitute(
                     model_name=model_name
                 )
@@ -230,11 +234,16 @@ def verify_inference_response(
                 ):
                     assert "".join(output) == expected_response_text
 
-            elif inference_type == inference.INFER:
-                assert json.dumps(res[inference.inference_response_key_name]).replace(" ", "") == expected_response_text
+            elif inference_type == inference.INFER or use_regex:
+                formatted_res = json.dumps(res[inference.inference_response_text_key_name]).replace(" ", "")
+                if use_regex:
+                    assert re.search(expected_response_text, formatted_res)  # type: ignore[arg-type]  # noqa: E501
 
-            elif use_regex:
-                assert re.search(expected_response_text, json.dumps(res[inference.inference_response_text_key_name]))  # type: ignore[arg-type]  # noqa: E501
+                else:
+                    assert (
+                        json.dumps(res[inference.inference_response_key_name]).replace(" ", "")
+                        == expected_response_text
+                    )
 
             else:
                 response = res[inference.inference_response_key_name]

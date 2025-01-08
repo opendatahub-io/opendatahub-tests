@@ -4,6 +4,7 @@ import pytest
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.cluster_service_version import ClusterServiceVersion
+from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.secret import Secret
@@ -11,7 +12,8 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.storage_class import StorageClass
 
-from utilities.constants import Protocols, ModelInferenceRuntime, RuntimeTemplates, StorageClassName
+from tests.model_serving.model_server.utils import create_isvc
+from utilities.constants import StorageClassName
 from utilities.infra import s3_endpoint_secret
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -59,32 +61,14 @@ def models_endpoint_s3_secret(
 
 # HTTP model serving
 @pytest.fixture(scope="class")
-def http_model_service_account(admin_client: DynamicClient, models_endpoint_s3_secret: Secret) -> ServiceAccount:
+def model_service_account(admin_client: DynamicClient, models_endpoint_s3_secret: Secret) -> ServiceAccount:
     with ServiceAccount(
         client=admin_client,
         namespace=models_endpoint_s3_secret.namespace,
-        name=f"{Protocols.HTTP}-models-bucket-sa",
+        name="models-bucket-sa",
         secrets=[{"name": models_endpoint_s3_secret.name}],
     ) as sa:
         yield sa
-
-
-@pytest.fixture(scope="class")
-def http_s3_caikit_tgis_serving_runtime(
-    request: FixtureRequest,
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-) -> ServingRuntime:
-    with ServingRuntimeFromTemplate(
-        client=admin_client,
-        name=f"{Protocols.HTTP}-{ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME}",
-        namespace=model_namespace.name,
-        template_name=RuntimeTemplates.CAIKIT_TGIS_SERVING,
-        multi_model=False,
-        enable_http=True,
-        enable_grpc=False,
-    ) as model_runtime:
-        yield model_runtime
 
 
 @pytest.fixture(scope="class")
@@ -93,19 +77,58 @@ def serving_runtime_from_template(
     admin_client: DynamicClient,
     model_namespace: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
-    with ServingRuntimeFromTemplate(
-        client=admin_client,
-        name=request.param["name"],
-        namespace=model_namespace.name,
-        template_name=request.param["template-name"],
-        multi_model=request.param["multi-model"],
-    ) as model_runtime:
+    runtime_kwargs = {
+        "client": admin_client,
+        "name": request.param["name"],
+        "namespace": model_namespace.name,
+        "template_name": request.param["template-name"],
+        "multi_model": request.param["multi-model"],
+    }
+
+    if enable_http := request.param.get("enable-http") is not None:
+        runtime_kwargs["enable_http"] = enable_http
+
+    if enable_grpc := request.param.get("enable-grpc") is not None:
+        runtime_kwargs["enable_grpc"] = enable_grpc
+
+    with ServingRuntimeFromTemplate(**runtime_kwargs) as model_runtime:
         yield model_runtime
 
 
 @pytest.fixture(scope="class")
 def ci_s3_storage_uri(request: FixtureRequest, ci_s3_bucket_name: str) -> str:
     return f"s3://{ci_s3_bucket_name}/{request.param['model-dir']}/"
+
+
+@pytest.fixture(scope="class")
+def s3_models_inference_service(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    serving_runtime_from_template: ServingRuntime,
+    s3_models_storage_uri: str,
+    model_service_account: ServiceAccount,
+) -> InferenceService:
+    isvc_kwargs = {
+        "client": admin_client,
+        "name": request.param["name"],
+        "namespace": model_namespace.name,
+        "runtime": serving_runtime_from_template.name,
+        "storage_uri": s3_models_storage_uri,
+        "model_format": serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
+        "model_service_account": model_service_account.name,
+        "deployment_mode": request.param["deployment-mode"],
+    }
+
+    enable_auth = False
+
+    if hasattr(request, "param"):
+        enable_auth = request.param.get("enable-auth")
+
+    isvc_kwargs["enable_auth"] = enable_auth
+
+    with create_isvc(**isvc_kwargs) as isvc:
+        yield isvc
 
 
 @pytest.fixture(scope="class")
