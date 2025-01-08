@@ -82,10 +82,10 @@ def serving_runtime_from_template(
         "multi_model": request.param["multi-model"],
     }
 
-    if enable_http := request.param.get("enable-http") is not None:
+    if (enable_http := request.param.get("enable-http")) is not None:
         runtime_kwargs["enable_http"] = enable_http
 
-    if enable_grpc := request.param.get("enable-grpc") is not None:
+    if (enable_grpc := request.param.get("enable-grpc")) is not None:
         runtime_kwargs["enable_grpc"] = enable_grpc
 
     with ServingRuntimeFromTemplate(**runtime_kwargs) as model_runtime:

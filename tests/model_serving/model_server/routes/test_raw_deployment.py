@@ -18,7 +18,7 @@ pytestmark = [pytest.mark.usefixtures("valid_aws_config"), pytest.mark.raw_deplo
     "model_namespace, s3_models_storage_uri, serving_runtime_from_template, s3_models_inference_service",
     [
         pytest.param(
-            {"name": "raw-deployment-caikit-flan"},
+            {"name": "raw-deployment-caikit-flan-rest"},
             {"model-dir": ModelStoragePath.FLAN_T5_SMALL},
             {
                 "name": f"{Protocols.HTTP}-{ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME}",
@@ -35,7 +35,8 @@ pytestmark = [pytest.mark.usefixtures("valid_aws_config"), pytest.mark.raw_deplo
 class TestRestRawDeployment:
     def test_default_visibility_value(self, s3_models_inference_service):
         """Test default route visibility value"""
-        assert s3_models_inference_service.labels.get("networking.kserve.io/visibility") is None
+        if labels := s3_models_inference_service.labels:
+            assert labels.get("networking.kserve.io/visibility") is None
 
     def test_rest_raw_deployment_internal_route(self, s3_models_inference_service):
         """Test HTTP inference using internal route"""
@@ -96,7 +97,7 @@ class TestRestRawDeployment:
     "model_namespace, s3_models_storage_uri, serving_runtime_from_template, s3_models_inference_service",
     [
         pytest.param(
-            {"name": "raw-deployment-caikit-flan"},
+            {"name": "raw-deployment-caikit-flan-grpc"},
             {"model-dir": ModelStoragePath.FLAN_T5_SMALL},
             {
                 "name": f"{Protocols.HTTP}-{ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME}",
@@ -117,7 +118,7 @@ class TestGrpcRawDeployment:
             inference_service=s3_models_inference_service,
             runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
             inference_type=Inference.ALL_TOKENS,
-            protocol=Protocols.HTTP,
+            protocol=Protocols.GRPC,
             model_name=ModelFormat.CAIKIT,
             use_default_query=True,
         )
@@ -138,7 +139,7 @@ class TestGrpcRawDeployment:
             inference_service=patched_s3_caikit_raw_isvc_visibility_label,
             runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
             inference_type=Inference.ALL_TOKENS,
-            protocol=Protocols.HTTPS,
+            protocol=Protocols.GRPC,
             model_name=ModelFormat.CAIKIT,
             use_default_query=True,
         )
