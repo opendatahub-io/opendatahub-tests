@@ -1,17 +1,15 @@
 import pytest
 
-from tests.model_serving.model_server.authentication.utils import (
-    verify_inference_response,
-)
+from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import (
-    ModelFormat,
     ModelStoragePath,
     Protocols,
-    RuntimeQueryKeys,
+    ModelInferenceRuntime,
 )
 from utilities.inference_utils import Inference
 
 
+@pytest.mark.model_mesh
 @pytest.mark.parametrize(
     "ns_with_modelmesh_enabled, http_s3_openvino_model_mesh_inference_service",
     [
@@ -22,16 +20,15 @@ from utilities.inference_utils import Inference
     ],
     indirect=True,
 )
-class TestOpenVINO:
+class TestOpenVINOModelMesh:
     @pytest.mark.smoke
     @pytest.mark.polarion("ODS-2053", "ODS-2054")
     def test_model_mesh_openvino_rest_inference(self, http_s3_openvino_model_mesh_inference_service):
         verify_inference_response(
             inference_service=http_s3_openvino_model_mesh_inference_service,
-            runtime=RuntimeQueryKeys.OPENVINO_RUNTIME,
+            runtime=ModelInferenceRuntime.OPENVINO_RUNTIME,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTP,
-            model_name=ModelFormat.OPENVINO,
             use_default_query=True,
         )
 
@@ -46,10 +43,9 @@ class TestOpenVINO:
     ):
         verify_inference_response(
             inference_service=http_s3_openvino_model_mesh_inference_service,
-            runtime=RuntimeQueryKeys.OPENVINO_RUNTIME,
+            runtime=ModelInferenceRuntime.OPENVINO_RUNTIME,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTP,
-            model_name=ModelFormat.OPENVINO,
             use_default_query=True,
             token=model_mesh_inference_token,
         )

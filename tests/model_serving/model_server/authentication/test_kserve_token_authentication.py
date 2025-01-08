@@ -1,14 +1,15 @@
 import pytest
 
-from tests.model_serving.model_server.authentication.utils import (
-    verify_inference_response,
-)
-from utilities.constants import ModelFormat, ModelStoragePath, Protocols, RuntimeQueryKeys
+from tests.model_serving.model_server.utils import verify_inference_response
+from utilities.constants import ModelFormat, ModelStoragePath, Protocols, ModelInferenceRuntime
 from utilities.inference_utils import Inference
 
-pytestmark = pytest.mark.usefixtures("skip_if_no_authorino_operator", "valid_aws_config")
+pytestmark = pytest.mark.usefixtures(
+    "skip_if_no_authorino_operator", "skip_if_no_deployed_openshift_serverless", "valid_aws_config"
+)
 
 
+@pytest.mark.serverless
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri",
     [
@@ -26,7 +27,7 @@ class TestKserveTokenAuthentication:
         """Verify model query with token using REST"""
         verify_inference_response(
             inference_service=http_s3_caikit_serverless_inference_service,
-            runtime=RuntimeQueryKeys.CAIKIT_TGIS_RUNTIME,
+            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTPS,
             model_name=ModelFormat.CAIKIT,
@@ -39,7 +40,7 @@ class TestKserveTokenAuthentication:
         """Verify model query with token using GRPC"""
         verify_inference_response(
             inference_service=grpc_s3_inference_service,
-            runtime=RuntimeQueryKeys.CAIKIT_TGIS_RUNTIME,
+            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
             inference_type=Inference.STREAMING,
             protocol=Protocols.GRPC,
             model_name=ModelFormat.CAIKIT,
@@ -52,7 +53,7 @@ class TestKserveTokenAuthentication:
         """Verify model query after authentication is disabled"""
         verify_inference_response(
             inference_service=patched_remove_authentication_isvc,
-            runtime=RuntimeQueryKeys.CAIKIT_TGIS_RUNTIME,
+            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTPS,
             model_name=ModelFormat.CAIKIT,
@@ -64,7 +65,7 @@ class TestKserveTokenAuthentication:
         """Verify model query after authentication is re-enabled"""
         verify_inference_response(
             inference_service=http_s3_caikit_serverless_inference_service,
-            runtime=RuntimeQueryKeys.CAIKIT_TGIS_RUNTIME,
+            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTPS,
             model_name=ModelFormat.CAIKIT,
@@ -76,7 +77,7 @@ class TestKserveTokenAuthentication:
         """Verify model query with an invalid token"""
         verify_inference_response(
             inference_service=http_s3_caikit_serverless_inference_service,
-            runtime=RuntimeQueryKeys.CAIKIT_TGIS_RUNTIME,
+            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTPS,
             model_name=ModelFormat.CAIKIT,
@@ -89,7 +90,7 @@ class TestKserveTokenAuthentication:
         """Verify model query without providing a token"""
         verify_inference_response(
             inference_service=http_s3_caikit_serverless_inference_service,
-            runtime=RuntimeQueryKeys.CAIKIT_TGIS_RUNTIME,
+            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTPS,
             model_name=ModelFormat.CAIKIT,
@@ -102,7 +103,7 @@ class TestKserveTokenAuthentication:
         """Verify model query with a second model's token is blocked"""
         verify_inference_response(
             inference_service=http_s3_caikit_serverless_inference_service,
-            runtime=RuntimeQueryKeys.CAIKIT_TGIS_RUNTIME,
+            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTPS,
             model_name=ModelFormat.CAIKIT,

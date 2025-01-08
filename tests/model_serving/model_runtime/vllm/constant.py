@@ -56,7 +56,8 @@ COMPLETION_QUERY = [
         "Western versus Eastern societies."
     },
     {
-        "text": "Compare and contrast artificial intelligence with human intelligence in terms of processing information."
+        "text": "Compare and contrast artificial intelligence with human intelligence in terms of "
+        "processing information."
     },
     {"text": "Briefly describe the major milestones in the development of artificial intelligence from 1950 to 2020."},
 ]
@@ -65,13 +66,13 @@ CHAT_QUERY = [
     [
         {
             "role": "system",
-            "content": "Given a target sentence, construct the underlying meaning representation of the input sentence as a "
-            "single function with attributes and attribute values.",
+            "content": "Given a target sentence, construct the underlying meaning representation of the input "
+            "sentence as a single function with attributes and attribute values.",
         },
         {
             "role": "user",
-            "content": "SpellForce 3 is a pretty bad game. The developer Grimlore Games is clearly a bunch of no-talent "
-            "hacks, and 2017 was a terrible year for games anyway.",
+            "content": "SpellForce 3 is a pretty bad game. The developer Grimlore Games is "
+            "clearly a bunch of no-talent hacks, and 2017 was a terrible year for games anyway.",
         },
     ],
 ]

@@ -11,10 +11,7 @@ from tests.model_serving.model_server.utils import create_isvc
 from utilities.constants import (
     KServeDeploymentType,
     ModelAndFormat,
-    ModelFormat,
-    ModelVersion,
     Protocols,
-    RuntimeQueryKeys,
     RuntimeTemplates,
 )
 from utilities.infra import s3_endpoint_secret
@@ -23,12 +20,13 @@ from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 @pytest.fixture(scope="class")
 def openvino_kserve_serving_runtime(
+    request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
 ) -> ServingRuntime:
     with ServingRuntimeFromTemplate(
         client=admin_client,
-        name=f"{Protocols.HTTP}-{RuntimeQueryKeys.OPENVINO_RUNTIME}",
+        name=request.param["runtime-name"],
         namespace=model_namespace.name,
         template_name=RuntimeTemplates.OVMS_KSERVE,
         multi_model=False,
@@ -38,7 +36,7 @@ def openvino_kserve_serving_runtime(
                 "limits": {"cpu": "2", "memory": "8Gi"},
             }
         },
-        model_format_name={ModelAndFormat.OPENVINO_IR: ModelVersion.OPSET1},
+        model_format_name=request.param["model-format"],
     ) as model_runtime:
         yield model_runtime
 
@@ -78,7 +76,7 @@ def openvino_model_service_account(admin_client: DynamicClient, ci_endpoint_s3_s
 
 
 @pytest.fixture(scope="class")
-def http_openvino_serverless_inference_service(
+def ovms_serverless_inference_service(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
@@ -88,13 +86,13 @@ def http_openvino_serverless_inference_service(
 ) -> InferenceService:
     with create_isvc(
         client=admin_client,
-        name=f"{Protocols.HTTP}-{ModelFormat.OPENVINO}",
+        name=f"{request.param['name']}-serverless",
         namespace=model_namespace.name,
         runtime=openvino_kserve_serving_runtime.name,
         storage_uri=ci_s3_storage_uri,
         model_format=ModelAndFormat.OPENVINO_IR,
         deployment_mode=KServeDeploymentType.SERVERLESS,
         model_service_account=openvino_model_service_account.name,
-        model_version=ModelVersion.OPSET1,
+        model_version=request.param["model-version"],
     ) as isvc:
         yield isvc

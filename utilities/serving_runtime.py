@@ -18,8 +18,9 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         enable_grpc: Optional[bool] = None,
         resources: Optional[Dict[str, Any]] = None,
         model_format_name: Optional[Dict[str, str]] = None,
+        unprivileged_client: Optional[DynamicClient] = None,
     ):
-        self.client = client
+        self.admin_client = client
         self.name = name
         self.namespace = namespace
         self.template_name = template_name
@@ -28,14 +29,16 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         self.enable_grpc = enable_grpc
         self.resources = resources
         self.model_format_name = model_format_name
+        self.unprivileged_client = unprivileged_client
 
         self.model_dict = self.update_model_dict()
 
-        super().__init__(client=self.client, kind_dict=self.model_dict)
+        super().__init__(client=self.unprivileged_client or self.admin_client, kind_dict=self.model_dict)
 
     def get_model_template(self) -> Template:
+        # Only admin client can get templates from the cluster
         template = Template(
-            client=self.client,
+            client=self.admin_client,
             name=self.template_name,
             namespace=py_config["applications_namespace"],
         )

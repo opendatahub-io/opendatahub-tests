@@ -36,7 +36,9 @@ class TestDriftMetrics:
             inference_service=gaussian_credit_model,
         )
 
-        # TODO: Add rest of operations in upcoming PRs (upload data directly to Trusty, send metric request, schedule period metric calculation, delete metric request).
+        # TODO: Add rest of operations in upcoming PRs
+        #  (upload data directly to Trusty, send metric request,
+        #  schedule period metric calculation, delete metric request).
 
     def test_drift_metric_meanshift(
         self, admin_client, openshift_token, trustyai_service_with_pvc_storage, gaussian_credit_model

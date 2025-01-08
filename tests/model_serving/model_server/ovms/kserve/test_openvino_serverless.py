@@ -1,30 +1,45 @@
 import pytest
 
-from tests.model_serving.model_server.authentication.utils import verify_inference_response
-from utilities.constants import ModelFormat, ModelStoragePath, Protocols, RuntimeQueryKeys
+from tests.model_serving.model_server.utils import verify_inference_response
+from utilities.constants import (
+    ModelAndFormat,
+    ModelFormat,
+    ModelStoragePath,
+    ModelVersion,
+    Protocols,
+    ModelInferenceRuntime,
+)
 from utilities.inference_utils import Inference
 
 
+pytestmark = pytest.mark.usefixtures("skip_if_no_deployed_openshift_serverless", "valid_aws_config")
+
+
+@pytest.mark.serverless
 @pytest.mark.parametrize(
-    "model_namespace, ci_s3_storage_uri",
+    "model_namespace, ci_s3_storage_uri, openvino_kserve_serving_runtime, ovms_serverless_inference_service",
     [
         pytest.param(
             {"name": "kserve-serverless-openvino"},
             {"model-dir": ModelStoragePath.KSERVE_OPENVINO_EXAMPLE_MODEL},
+            {
+                "runtime-name": ModelInferenceRuntime.OPENVINO_KSERVE_RUNTIME,
+                "model-format": {ModelAndFormat.OPENVINO_IR: ModelVersion.OPSET1},
+            },
+            {"name": ModelFormat.OPENVINO, "model-version": ModelVersion.OPSET1},
         )
     ],
     indirect=True,
 )
-class TestOpenVINO:
+class TestOpenVINOServerless:
     @pytest.mark.smoke
     @pytest.mark.polarion("ODS-2626")
-    @pytest.mark.jira("RHOAIENG-9045")
-    def test_serverless_openvino_rest_inference(self, http_openvino_serverless_inference_service):
+    def test_serverless_openvino_rest_inference(self, ovms_serverless_inference_service):
+        """Verify that kserve Serverless OpenVINO model can be queried using REST"""
         verify_inference_response(
-            inference_service=http_openvino_serverless_inference_service,
-            runtime=RuntimeQueryKeys.OPENVINO_KSERVE_RUNTIME,
+            inference_service=ovms_serverless_inference_service,
+            runtime=ModelInferenceRuntime.OPENVINO_KSERVE_RUNTIME,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
-            model_name=ModelFormat.OPENVINO,
             use_default_query=True,
         )

@@ -21,7 +21,7 @@ from utilities.constants import (
     ModelFormat,
     ModelVersion,
     Protocols,
-    RuntimeQueryKeys,
+    ModelInferenceRuntime,
     RuntimeTemplates,
 )
 from utilities.infra import create_isvc_view_role, create_storage_config_secret, s3_endpoint_secret
@@ -35,7 +35,7 @@ def http_s3_openvino_model_mesh_serving_runtime(
 ) -> ServingRuntime:
     with ServingRuntimeFromTemplate(
         client=admin_client,
-        name=f"{Protocols.HTTP}-{RuntimeQueryKeys.OPENVINO_RUNTIME}",
+        name=f"{Protocols.HTTP}-{ModelInferenceRuntime.OPENVINO_RUNTIME}",
         namespace=ns_with_modelmesh_enabled.name,
         template_name=RuntimeTemplates.OVMS_MODEL_MESH,
         multi_model=True,
@@ -73,7 +73,7 @@ def ci_model_mesh_endpoint_s3_secret(
 
 
 @pytest.fixture(scope="class")
-def storage_config_secret(
+def model_mesh_storage_config_secret(
     admin_client: DynamicClient,
     ci_model_mesh_endpoint_s3_secret: Secret,
     aws_access_key_id: str,
@@ -115,7 +115,7 @@ def http_s3_openvino_model_mesh_inference_service(
     ns_with_modelmesh_enabled: Namespace,
     http_s3_openvino_model_mesh_serving_runtime: ServingRuntime,
     ci_model_mesh_endpoint_s3_secret: Secret,
-    storage_config_secret: Secret,
+    model_mesh_storage_config_secret: Secret,
     model_mesh_model_service_account: ServiceAccount,
 ) -> InferenceService:
     isvc_kwargs = {

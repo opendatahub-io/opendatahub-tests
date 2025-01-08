@@ -3,9 +3,10 @@ preview = true
 line-length = 120
 fix = true
 output-format = "grouped"
+extend-exclude = ["utilities/manifests"]
 
 [tool.ruff.format]
-exclude = [".git", ".venv", ".mypy_cache", ".tox", "__pycache__"]
+exclude = [".git", ".venv", ".mypy_cache", ".tox", "__pycache__", "utilities/manifests"]
 
 [tool.mypy]
 exclude = ["utilities/plugins/tgis_grpc/"]

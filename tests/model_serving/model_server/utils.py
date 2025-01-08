@@ -1,17 +1,25 @@
-import base64
+import json
+import re
 from contextlib import contextmanager
-from typing import Any, Dict, Generator, List, Optional
+from string import Template
+from typing import Any, Dict, Generator, Optional
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
-from ocp_resources.pod import Pod
-from kubernetes.dynamic.exceptions import ResourceNotFoundError
-from ocp_resources.service import Service
+from simple_logger.logger import get_logger
 
 from tests.model_serving.model_server.private_endpoint.utils import (
     InvalidStorageArgument,
 )
 from utilities.constants import KServeDeploymentType
+from utilities.inference_utils import UserInference
+from utilities.infra import wait_for_inference_deployment_replicas
+
+LOGGER = get_logger(name=__name__)
+
+
+class InferenceResponseError(Exception):
+    pass
 
 
 @contextmanager
@@ -35,6 +43,7 @@ def create_isvc(
     volumes: Optional[dict[str, Any]] = None,
     volumes_mounts: Optional[dict[str, Any]] = None,
     model_version: Optional[str] = None,
+    wait_for_predictor_pods: bool = True,
 ) -> Generator[InferenceService, Any, Any]:
     labels: Dict[str, str] = {}
     predictor_dict: Dict[str, Any] = {
@@ -49,7 +58,7 @@ def create_isvc(
     if model_version:
         predictor_dict["model"]["modelFormat"]["version"] = model_version
 
-    _check_storage_arguments(storage_uri, storage_key, storage_path)
+    _check_storage_arguments(storage_uri=storage_uri, storage_key=storage_key, storage_path=storage_path)
     if storage_uri:
         predictor_dict["model"]["storageUri"] = storage_uri
     elif storage_key:
@@ -107,6 +116,12 @@ def create_isvc(
                 status=inference_service.Condition.Status.TRUE,
                 timeout=10 * 60,
             )
+
+        if wait_for_predictor_pods:
+            wait_for_inference_deployment_replicas(
+                client=client, isvc=inference_service, deployment_mode=deployment_mode
+            )
+
         yield inference_service
 
 
@@ -119,67 +134,114 @@ def _check_storage_arguments(
         raise InvalidStorageArgument(storage_uri, storage_key, storage_path)
 
 
-def b64_encoded_string(string_to_encode: str) -> str:
-    """Returns openshift compliant base64 encoding of a string
+def verify_inference_response(
+    inference_service: InferenceService,
+    runtime: str,
+    inference_type: str,
+    protocol: str,
+    model_name: Optional[str] = None,
+    text: Optional[str] = None,
+    use_default_query: bool = False,
+    expected_response_text: Optional[str] = None,
+    insecure: bool = False,
+    token: Optional[str] = None,
+    authorized_user: Optional[bool] = None,
+) -> None:
+    model_name = model_name or inference_service.name
 
-    encodes the input string to bytes-like, encodes the bytes-like to base 64,
-    decodes the b64 to a string and returns it. This is needed for openshift
-    resources expecting b64 encoded values in the yaml.
+    inference = UserInference(
+        inference_service=inference_service,
+        runtime=runtime,
+        inference_type=inference_type,
+        protocol=protocol,
+    )
 
-    Args:
-        string_to_encode: The string to encode in base64
+    res = inference.run_inference(
+        model_name=model_name,
+        text=text,
+        use_default_query=use_default_query,
+        token=token,
+        insecure=insecure,
+    )
 
-    Returns:
-        A base64 encoded string that is compliant with openshift's yaml format
-    """
-    return base64.b64encode(string_to_encode.encode()).decode()
+    if authorized_user is False:
+        auth_header = "x-ext-auth-reason"
 
+        if auth_reason := re.search(rf"{auth_header}: (.*)", res["output"], re.MULTILINE):
+            reason = auth_reason.group(1).lower()
 
-def get_pods_by_isvc_label(client: DynamicClient, isvc: InferenceService) -> List[Pod]:
-    """
-    Args:
-        client (DynamicClient): OCP Client to use.
-        isvc (InferenceService):InferenceService object.
+            if token:
+                assert re.search(r"not (?:authenticated|authorized)", reason)
 
-    Returns:
-        list[Pod]: A list of all matching pods
+            else:
+                assert "credential not found" in reason
 
-    Raises:
-        ResourceNotFoundError: if no pods are found.
-    """
-    if pods := [
-        pod
-        for pod in Pod.get(
-            dyn_client=client,
-            namespace=isvc.namespace,
-            label_selector=f"{isvc.ApiGroup.SERVING_KSERVE_IO}/inferenceservice={isvc.name}",
-        )
-    ]:
-        return pods
+        else:
+            raise ValueError(f"Auth header {auth_header} not found in response. Response: {res['output']}")
 
-    raise ResourceNotFoundError(f"{isvc.name} has no pods")
+    else:
+        use_regex = False
 
+        if use_default_query:
+            expected_response_text_config: Dict[str, Any] = inference.inference_config.get("default_query_model", {})
+            use_regex = expected_response_text_config.get("use_regex", False)
 
-def get_services_by_isvc_label(client: DynamicClient, isvc: InferenceService) -> List[Service]:
-    """
-    Args:
-        client (DynamicClient): OCP Client to use.
-        isvc (InferenceService):InferenceService object.
+            if not expected_response_text_config:
+                raise ValueError(
+                    f"Missing default_query_model config for inference {runtime}. "
+                    f"Config: {expected_response_text_config}"
+                )
 
-    Returns:
-        list[Service]: A list of all matching pods
+            if inference.inference_config.get("support_multi_default_queries"):
+                query_config = expected_response_text_config.get(inference_type)
+                if not query_config:
+                    raise ValueError(
+                        f"Missing default_query_model config for inference {runtime}. "
+                        f"Config: {expected_response_text_config}"
+                    )
+                expected_response_text = query_config.get("query_output", "")
+                use_regex = query_config.get("use_regex", False)
 
-    Raises:
-        ResourceNotFoundError: if no pods are found.
-    """
-    if svcs := [
-        svc
-        for svc in Service.get(
-            dyn_client=client,
-            namespace=isvc.namespace,
-            label_selector=f"{isvc.ApiGroup.SERVING_KSERVE_IO}/inferenceservice={isvc.name}",
-        )
-    ]:
-        return svcs
+            else:
+                expected_response_text = expected_response_text_config.get("query_output")
 
-    raise ResourceNotFoundError(f"{isvc.name} has no services")
+            if not expected_response_text:
+                raise ValueError(f"Missing response text key for inference {runtime}")
+
+            if isinstance(expected_response_text, str):
+                expected_response_text = Template(expected_response_text).safe_substitute(model_name=model_name)
+
+            elif isinstance(expected_response_text, dict):
+                expected_response_text = Template(expected_response_text.get("response_output")).safe_substitute(
+                    model_name=model_name
+                )
+
+        if inference.inference_response_text_key_name:
+            if inference_type == inference.STREAMING:
+                if output := re.findall(
+                    rf"{inference.inference_response_text_key_name}\": \"(.*)\"",
+                    res[inference.inference_response_key_name],
+                    re.MULTILINE,
+                ):
+                    assert "".join(output) == expected_response_text
+
+            elif inference_type == inference.INFER or use_regex:
+                formatted_res = json.dumps(res[inference.inference_response_text_key_name]).replace(" ", "")
+                if use_regex:
+                    assert re.search(expected_response_text, formatted_res)  # type: ignore[arg-type]  # noqa: E501
+
+                else:
+                    assert (
+                        json.dumps(res[inference.inference_response_key_name]).replace(" ", "")
+                        == expected_response_text
+                    )
+
+            else:
+                response = res[inference.inference_response_key_name]
+                if isinstance(response, list):
+                    response = response[0]
+
+                assert response[inference.inference_response_text_key_name] == expected_response_text
+
+        else:
+            raise InferenceResponseError(f"Inference response output not found in response. Response: {res}")
