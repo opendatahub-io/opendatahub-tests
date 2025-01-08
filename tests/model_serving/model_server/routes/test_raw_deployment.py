@@ -117,7 +117,7 @@ class TestGrpcRawDeployment:
         verify_inference_response(
             inference_service=s3_models_inference_service,
             runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
-            inference_type=Inference.ALL_TOKENS,
+            inference_type=Inference.STREAMING,
             protocol=Protocols.GRPC,
             model_name=ModelFormat.CAIKIT,
             use_default_query=True,
@@ -138,7 +138,7 @@ class TestGrpcRawDeployment:
         verify_inference_response(
             inference_service=patched_s3_caikit_raw_isvc_visibility_label,
             runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
-            inference_type=Inference.ALL_TOKENS,
+            inference_type=Inference.STREAMING,
             protocol=Protocols.GRPC,
             model_name=ModelFormat.CAIKIT,
             use_default_query=True,

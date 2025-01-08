@@ -151,7 +151,7 @@ class UserInference(Inference):
             return f"{self.protocol}://{self.inference_url}/{endpoint}"
 
         elif self.protocol == "grpc":
-            return f"{self.inference_url}{443 if self.visibility_exposed else ''} {endpoint}"
+            return f"{self.inference_url}{':443' if self.visibility_exposed else ''} {endpoint}"
 
         else:
             raise ValueError(f"Protocol {self.protocol} not supported")
