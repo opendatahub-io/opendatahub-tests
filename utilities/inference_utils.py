@@ -46,8 +46,16 @@ class Inference:
     def get_inference_url(self) -> str:
         # TODO: add ModelMesh support
         if self.visibility_exposed:
-            if url := self.inference_service.instance.status.components.predictor.url:
+            if self.deployment_mode == KServeDeploymentType.SERVERLESS and (
+                url := self.inference_service.instance.status.components.predictor.url
+            ):
                 return urlparse(url).netloc
+
+            elif self.deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT and (
+                url := self.inference_service.instance.status.url
+            ):
+                return urlparse(url).netloc
+
             else:
                 raise ValueError(f"{self.inference_service.name}: No url found in InferenceService status")
 

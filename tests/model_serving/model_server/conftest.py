@@ -121,7 +121,7 @@ def s3_models_inference_service(
     }
 
     if (external_route := request.param.get("external-route")) is not None:
-        isvc_kwargs["enable_auth"] = external_route
+        isvc_kwargs["external_route"] = external_route
 
     if (enable_auth := request.param.get("enable-auth")) is not None:
         isvc_kwargs["enable_auth"] = enable_auth
