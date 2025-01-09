@@ -144,14 +144,14 @@ class UserInference(Inference):
             query_input=inference_input,
         )
 
-    def get_inference_endpoint_url(self, port: Optional[int] = None) -> str:
+    def get_inference_endpoint_url(self) -> str:
         endpoint = Template(self.runtime_config["endpoint"]).safe_substitute(model_name=self.inference_service.name)
 
         if self.protocol in Protocols.TCP_PROTOCOLS:
             return f"{self.protocol}://{self.inference_url}/{endpoint}"
 
         elif self.protocol == "grpc":
-            return f"{self.inference_url}:{port or 443} {endpoint}"
+            return f"{self.inference_url}{':443' if self.visibility_exposed else ''} {endpoint}"
 
         else:
             raise ValueError(f"Protocol {self.protocol} not supported")
@@ -163,7 +163,6 @@ class UserInference(Inference):
         use_default_query: bool = False,
         insecure: bool = False,
         token: Optional[str] = None,
-        port: Optional[int] = None,
     ) -> str:
         body = self.get_inference_body(
             model_name=model_name,
@@ -171,13 +170,15 @@ class UserInference(Inference):
             use_default_query=use_default_query,
         )
         header = f"'{Template(self.runtime_config['header']).safe_substitute(model_name=model_name)}'"
-        url = self.get_inference_endpoint_url(port=port)
+        url = self.get_inference_endpoint_url()
 
         if self.protocol in Protocols.TCP_PROTOCOLS:
             cmd_exec = "curl -i -s "
 
         elif self.protocol == "grpc":
             cmd_exec = "grpcurl -connect-timeout 10 "
+            if self.deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
+                cmd_exec += " --plaintext "
 
         else:
             raise ValueError(f"Protocol {self.protocol} not supported")

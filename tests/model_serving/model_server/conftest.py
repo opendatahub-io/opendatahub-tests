@@ -85,10 +85,10 @@ def serving_runtime_from_template(
         "multi_model": request.param["multi-model"],
     }
 
-    if enable_http := request.param.get("enable-http") is not None:
+    if (enable_http := request.param.get("enable-http")) is not None:
         runtime_kwargs["enable_http"] = enable_http
 
-    if enable_grpc := request.param.get("enable-grpc") is not None:
+    if (enable_grpc := request.param.get("enable-grpc")) is not None:
         runtime_kwargs["enable_grpc"] = enable_grpc
 
     with ServingRuntimeFromTemplate(**runtime_kwargs) as model_runtime:
@@ -120,12 +120,11 @@ def s3_models_inference_service(
         "deployment_mode": request.param["deployment-mode"],
     }
 
-    enable_auth = False
+    if (external_route := request.param.get("external-route")) is not None:
+        isvc_kwargs["enable_auth"] = external_route
 
-    if hasattr(request, "param"):
-        enable_auth = request.param.get("enable-auth")
-
-    isvc_kwargs["enable_auth"] = enable_auth
+    if (enable_auth := request.param.get("enable-auth")) is not None:
+        isvc_kwargs["enable_auth"] = enable_auth
 
     with create_isvc(**isvc_kwargs) as isvc:
         yield isvc
