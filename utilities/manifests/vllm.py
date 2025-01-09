@@ -1,11 +1,7 @@
 VLLM_INFERENCE_CONFIG = {
         "default_query_model": {
             "query_input": '"prompt": "At what temperature does Nitrogen boil?", "max_tokens": 100, "temperature": 0',
-            "query_output": {
-                "response_output": '{"model_name":"$model_name","model_version":"1",'
-                '"outputs":[{"name":"Plus214_Output_0","shape":[1,10],'
-                r'"datatype":"FP32","data":\[.*\]}]}',
-            },
+            "query_output": r'{"id":"cmpl-[a-z0-9]+","object":"text_completion","created":\d+,"model":"$model_name","choices":\[{"index":0,"text":".*Theboilingpointofnitrogenis77.4K.*","logprobs":null,"finish_reason":"length","stop_reason":null,"prompt_logprobs":null}\],"usage":{"prompt_tokens":10,"total_tokens":110,"completion_tokens":100}}',
             "use_regex": True
         },
         "completions": {
