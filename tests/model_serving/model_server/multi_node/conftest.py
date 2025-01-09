@@ -13,7 +13,10 @@ from ocp_resources.serving_runtime import ServingRuntime
 from tests.model_serving.model_server.utils import create_isvc
 from utilities.constants import KServeDeploymentType
 from utilities.general import download_model_data
-from utilities.infra import get_pods_by_isvc_label, wait_for_kserve_predictor_deployment_replicas
+from utilities.infra import (
+    get_pods_by_isvc_label,
+    wait_for_inference_deployment_replicas,
+)
 
 
 @pytest.fixture(scope="session")
@@ -76,8 +79,14 @@ def multi_node_inference_service(
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         autoscaler_mode="external",
         multi_node_worker_spec={},
+        wait_for_predictor_pods=False,
     ) as isvc:
-        wait_for_kserve_predictor_deployment_replicas(client=admin_client, isvc=isvc, expected_num_deployments=2)
+        wait_for_inference_deployment_replicas(
+            client=admin_client,
+            isvc=isvc,
+            deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+            expected_num_deployments=2,
+        )
         yield isvc
 
 

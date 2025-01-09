@@ -13,7 +13,7 @@ from ocp_resources.service import Service
 from pyhelper_utils.shell import run_command
 from simple_logger.logger import get_logger
 
-from utilities.infra import get_services_by_isvc_label
+from utilities.infra import get_pods_by_isvc_label, get_services_by_isvc_label
 from utilities.certificates_utils import get_ca_bundle
 from utilities.constants import (
     KServeDeploymentType,
@@ -295,6 +295,14 @@ class UserInference(Inference):
             svc_protocol = self.protocol
 
         ports = svc.instance.spec.ports
+
+        # For multi node with headless service, we need to get the pod to get the port
+        # TODO: check behavior for both normal and headless service
+        if self.inference_service.instance.spec.predictor.workerSpec and not self.visibility_exposed:
+            pod = get_pods_by_isvc_label(client=self.inference_service.client, isvc=self.inference_service)[0]
+            if ports := pod.instance.spec.containers[0].ports:
+                return ports[0].containerPort
+
         if not ports:
             raise ValueError(f"Service {svc.name} has no ports")
 

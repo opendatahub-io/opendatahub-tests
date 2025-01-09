@@ -123,7 +123,7 @@ def create_isvc(
             inference_service.wait_for_condition(
                 condition=inference_service.Condition.READY,
                 status=inference_service.Condition.Status.TRUE,
-                timeout=10 * 60,
+                timeout=15 * 60,
             )
 
         if wait_for_predictor_pods:
