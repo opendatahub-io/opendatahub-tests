@@ -11,9 +11,11 @@ from simple_logger.logger import get_logger
 from tests.model_serving.model_server.private_endpoint.utils import (
     InvalidStorageArgument,
 )
+from tenacity import retry, wait_exponential, stop_after_attempt
 from utilities.constants import KServeDeploymentType
 from utilities.inference_utils import UserInference
 from utilities.infra import wait_for_inference_deployment_replicas
+from utilities.plugins.openai_plugin import MAX_RETRIES
 
 LOGGER = get_logger(name=__name__)
 
@@ -90,7 +92,7 @@ def create_isvc(
         if deployment_mode == KServeDeploymentType.SERVERLESS:
             annotations["security.opendatahub.io/enable-auth"] = "true"
         elif deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
-            labels["security.openshift.io/enable-authentication"] = "true"
+            labels["security.opendatahub.io/enable-auth"] = "true"
 
     # default to True if deployment_mode is Serverless (default behavior of Serverless) if was not provided by the user
     if external_route is None and deployment_mode == KServeDeploymentType.SERVERLESS:
@@ -133,6 +135,7 @@ def _check_storage_arguments(
     if (storage_uri and storage_path) or (not storage_uri and not storage_key) or (storage_key and not storage_path):
         raise InvalidStorageArgument(storage_uri, storage_key, storage_path)
 
+@retry(stop=stop_after_attempt(5), wait=wait_exponential(min=1, max=6))
 
 def verify_inference_response(
     inference_service: InferenceService,
