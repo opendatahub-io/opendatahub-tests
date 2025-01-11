@@ -88,6 +88,8 @@ def grpc_s3_inference_service(
         enable_auth=True,
     ) as isvc:
         yield isvc
+
+
 @pytest.fixture(scope="class")
 def grpc_s3_raw_inference_service(
     admin_client: DynamicClient,
@@ -110,6 +112,7 @@ def grpc_s3_raw_inference_service(
     ) as isvc:
         yield isvc
 
+
 @pytest.fixture(scope="class")
 def http_view_role(
     admin_client: DynamicClient,
@@ -123,6 +126,7 @@ def http_view_role(
     ) as role:
         yield role
 
+
 @pytest.fixture(scope="class")
 def http_raw_view_role(
     admin_client: DynamicClient,
@@ -135,6 +139,7 @@ def http_raw_view_role(
         resource_names=[http_s3_caikit_raw_inference_service.name],
     ) as role:
         yield role
+
 
 @pytest.fixture(scope="class")
 def http_role_binding(
@@ -153,6 +158,7 @@ def http_role_binding(
         subjects_name=model_service_account.name,
     ) as rb:
         yield rb
+
 
 @pytest.fixture(scope="class")
 def http_raw_role_binding(
@@ -179,11 +185,13 @@ def http_inference_token(model_service_account: ServiceAccount, http_role_bindin
         command=shlex.split(f"oc create token -n {model_service_account.namespace} {model_service_account.name}")
     )[1].strip()
 
+
 @pytest.fixture(scope="class")
 def http_raw_inference_token(model_service_account: ServiceAccount, http_raw_role_binding: RoleBinding) -> str:
     return run_command(
         command=shlex.split(f"oc create token -n {model_service_account.namespace} {model_service_account.name}")
     )[1].strip()
+
 
 @pytest.fixture()
 def patched_remove_authentication_isvc(
@@ -206,6 +214,8 @@ def patched_remove_authentication_isvc(
         predictor_pod.wait_deleted()
 
         yield http_s3_caikit_serverless_inference_service
+
+
 @pytest.fixture()
 def patched_remove_raw_authentication_isvc(
     admin_client: DynamicClient,
@@ -238,6 +248,8 @@ def grpc_view_role(admin_client: DynamicClient, grpc_s3_inference_service: Infer
         resource_names=[grpc_s3_inference_service.name],
     ) as role:
         yield role
+
+
 @pytest.fixture(scope="class")
 def grpc_raw_view_role(admin_client: DynamicClient, grpc_s3_raw_inference_service: InferenceService) -> Role:
     with create_isvc_view_role(
@@ -247,6 +259,7 @@ def grpc_raw_view_role(admin_client: DynamicClient, grpc_s3_raw_inference_servic
         resource_names=[grpc_s3_raw_inference_service.name],
     ) as role:
         yield role
+
 
 @pytest.fixture(scope="class")
 def grpc_role_binding(
@@ -284,6 +297,8 @@ def grpc_raw_role_binding(
         subjects_name=grpc_model_service_account.name,
     ) as rb:
         yield rb
+
+
 @pytest.fixture(scope="class")
 def grpc_inference_token(grpc_model_service_account: ServiceAccount, grpc_role_binding: RoleBinding) -> str:
     return run_command(
@@ -292,6 +307,7 @@ def grpc_inference_token(grpc_model_service_account: ServiceAccount, grpc_role_b
         )
     )[1].strip()
 
+
 @pytest.fixture(scope="class")
 def grpc_raw_inference_token(grpc_model_service_account: ServiceAccount, grpc_role_binding: RoleBinding) -> str:
     return run_command(
@@ -299,6 +315,7 @@ def grpc_raw_inference_token(grpc_model_service_account: ServiceAccount, grpc_ro
             f"oc create token -n {grpc_model_service_account.namespace} {grpc_model_service_account.name}"
         )
     )[1].strip()
+
 
 @pytest.fixture(scope="class")
 def http_s3_caikit_serverless_inference_service(
@@ -345,7 +362,6 @@ def http_s3_caikit_raw_inference_service(
         external_route=True,
     ) as isvc:
         yield isvc
-
 
 
 # Unprivileged user tests

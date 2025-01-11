@@ -15,7 +15,6 @@ from tenacity import retry, wait_exponential, stop_after_attempt
 from utilities.constants import KServeDeploymentType
 from utilities.inference_utils import UserInference
 from utilities.infra import wait_for_inference_deployment_replicas
-from utilities.plugins.openai_plugin import MAX_RETRIES
 
 LOGGER = get_logger(name=__name__)
 
@@ -135,8 +134,8 @@ def _check_storage_arguments(
     if (storage_uri and storage_path) or (not storage_uri and not storage_key) or (storage_key and not storage_path):
         raise InvalidStorageArgument(storage_uri, storage_key, storage_path)
 
-@retry(stop=stop_after_attempt(5), wait=wait_exponential(min=1, max=6))
 
+@retry(stop=stop_after_attempt(5), wait=wait_exponential(min=1, max=6))
 def verify_inference_response(
     inference_service: InferenceService,
     runtime: str,
