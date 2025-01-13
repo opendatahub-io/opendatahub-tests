@@ -112,7 +112,7 @@ class KubernetesAnnotations:
     PART_OF: str = "app.kubernetes.io/part-of"
     CREATED_BY: str = "app.kubernetes.io/created-by"
 
-      
+
 class StorageClassName:
     NFS: str = "nfs"
 

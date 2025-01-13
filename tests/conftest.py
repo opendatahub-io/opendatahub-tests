@@ -15,7 +15,6 @@ from pytest import FixtureRequest, Config
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 from ocp_resources.resource import get_client
-from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 
