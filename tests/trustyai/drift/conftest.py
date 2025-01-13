@@ -7,12 +7,14 @@ from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.trustyai_service import TrustyAIService
 
-from tests.trustyai.constants import MODELMESH_SERVING
+from utilities.constants import MODELMESH_SERVING
 from tests.trustyai.drift.utils import wait_for_modelmesh_pods_registered_by_trustyai
 
 MLSERVER: str = "mlserver"
 MLSERVER_RUNTIME_NAME: str = f"{MLSERVER}-1.x"
-MLSERVER_QUAY_IMAGE: str = "quay.io/aaguirre/mlserver@sha256:8884d989b3063a47bf0e6c20c1c0ff253662121a977fe5b74b54e682839360d4"  # TODO: Move this image to a better place
+MLSERVER_QUAY_IMAGE: str = (
+    "quay.io/aaguirre/mlserver@sha256:8884d989b3063a47bf0e6c20c1c0ff253662121a977fe5b74b54e682839360d4"  # noqa: E501  # TODO: Move this image to a better place
+)
 XGBOOST = "xgboost"
 SKLEARN = "sklearn"
 

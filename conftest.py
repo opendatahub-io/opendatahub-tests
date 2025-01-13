@@ -2,9 +2,12 @@ import logging
 import os
 import pathlib
 import shutil
+
 from pytest import Parser, Session, FixtureRequest, FixtureDef, Item, Config, CollectReport
 from _pytest.terminal import TerminalReporter
 from typing import Optional, Any
+from pytest_testconfig import config as py_config
+
 
 from utilities.logger import separator, setup_logging
 
@@ -17,6 +20,7 @@ def pytest_addoption(parser: Parser) -> None:
     aws_group = parser.getgroup(name="AWS")
     buckets_group = parser.getgroup(name="Buckets")
     runtime_group = parser.getgroup(name="Runtime Details")
+
     # AWS config and credentials options
     aws_group.addoption(
         "--aws-secret-access-key",
@@ -77,6 +81,9 @@ def pytest_sessionstart(session: Session) -> None:
         log_file=tests_log_file,
         log_level=session.config.getoption("log_cli_level") or logging.INFO,
     )
+
+    if py_config.get("distribution") == "upstream":
+        py_config["applications_namespace"] = "opendatahub"
 
 
 def pytest_fixture_setup(fixturedef: FixtureDef[Any], request: FixtureRequest) -> None:

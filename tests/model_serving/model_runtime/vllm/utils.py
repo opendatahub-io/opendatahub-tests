@@ -5,9 +5,9 @@ from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.secret import Secret
 from ocp_resources.template import Template
 from ocp_resources.serving_runtime import ServingRuntime
+from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 from tests.model_serving.model_runtime.vllm.constant import vLLM_CONFIG
-from utilities.constants import APPLICATIONS_NAMESPACE
 from tests.model_serving.model_runtime.vllm.constant import CHAT_QUERY, COMPLETION_QUERY
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.plugins.openai_plugin import OpenAIClient
@@ -49,7 +49,7 @@ def get_model_template(client: DynamicClient, template_name: str) -> Template:
     template = Template(
         client=client,
         name=template_name,
-        namespace=APPLICATIONS_NAMESPACE,
+        namespace=py_config["applications_namespace"],
     )
     if template.exists:
         return template

@@ -9,20 +9,22 @@ from tests.model_serving.model_server.storage.constants import (
     KSERVE_CONTAINER_NAME,
     KSERVE_OVMS_SERVING_RUNTIME_PARAMS,
 )
-from tests.model_serving.model_server.utils import get_pods_by_isvc_label
+from utilities.constants import StorageClassName
+from utilities.infra import get_pods_by_isvc_label
 
-pytestmark = pytest.mark.usefixtures("valid_aws_config")
+pytestmark = pytest.mark.usefixtures("skip_if_no_nfs_storage_class", "valid_aws_config")
 
 
 POD_TOUCH_SPLIT_COMMAND: List[str] = shlex.split("touch /mnt/models/test")
 
 
 @pytest.mark.parametrize(
-    "model_namespace, ci_s3_storage_uri, pvc_serving_runtime, pvc_inference_service",
+    "model_namespace, ci_bucket_downloaded_model_data, model_pvc, serving_runtime_from_template, pvc_inference_service",
     [
         pytest.param(
             {"name": "pvc-write-access"},
             {"model-dir": "test-dir"},
+            {"access-modes": "ReadWriteMany", "storage-class-name": StorageClassName.NFS, "pvc-size": "4Gi"},
             KSERVE_OVMS_SERVING_RUNTIME_PARAMS,
             INFERENCE_SERVICE_PARAMS,
         )
