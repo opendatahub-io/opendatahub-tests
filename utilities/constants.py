@@ -89,14 +89,14 @@ class Protocols:
     HTTPS: str = "https"
     GRPC: str = "grpc"
     REST: str = "rest"
+    TCP_PROTOCOLS: set[str] = {"HTTP", "HTTPS"}
+    ALL_SUPPORTED_PROTOCOLS: set[str] = TCP_PROTOCOLS.union({"GRPC"})
 
 
 class HTTPRequest:
     # Use string formatting to set the token value when using this constant
     AUTH_HEADER: str = "-H 'Authorization: Bearer {token}'"
     CONTENT_JSON: str = "-H 'Content-Type: application/json'"
-    TCP_PROTOCOLS: set[str] = {"HTTP", "HTTPS"}
-    ALL_SUPPORTED_PROTOCOLS: set[str] = TCP_PROTOCOLS.union({"GRPC"})
 
 
 class AcceleratorType:
