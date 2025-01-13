@@ -68,5 +68,5 @@ def generate_register_model_command(endpoint: str, token: str) -> str:
     #     + endpoint
     #     + ModelRegistryEndpoints.REGISTERED_MODELS
     # )
-    cmd = f'curl -k {HTTPRequest.AUTH_HEADER.format(token=token)} {HTTPRequest.CONTENT_JSON} -d \'{"name": "model-name", "description": "test-model", "owner": "opendatahub-tests-client", "externalId": "1", "state": "LIVE"}\' {Protocols.HTTPS}://{endpoint}{ModelRegistryEndpoints.REGISTERED_MODELS}'
+    cmd = f'curl -k {HTTPRequest.AUTH_HEADER.format(token=token)} {HTTPRequest.CONTENT_JSON} -d \'{{"name": "model-name", "description": "test-model", "owner": "opendatahub-tests-client", "externalId": "1", "state": "LIVE"}}\' {Protocols.HTTPS}://{endpoint}{ModelRegistryEndpoints.REGISTERED_MODELS}'
     return cmd
