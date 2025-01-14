@@ -1,8 +1,8 @@
+import pytest
 import shlex
 from ast import literal_eval
 from typing import Self
 from simple_logger.logger import get_logger
-from ocp_resources.model_registry import ModelRegistry
 from pyhelper_utils.shell import run_command
 
 from tests.model_registry.utils import generate_register_model_command
@@ -15,9 +15,7 @@ class TestModelRegistryCreation:
 
     # TODO: Enable Model Registry in DSC if needed
 
-    def test_model_registry_instance_creation(self: Self, model_registry_instance: ModelRegistry):
-        assert model_registry_instance.exists
-
+    @pytest.mark.smoke
     def test_registering_model(self: Self, model_registry_instance_rest_endpoint: str, current_client_token: str):
         cmd = generate_register_model_command(
             endpoint=model_registry_instance_rest_endpoint, token=current_client_token

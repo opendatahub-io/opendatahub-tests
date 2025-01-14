@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import os
-import shlex
 import shutil
 from typing import List, Tuple, Any, Generator
 
@@ -18,7 +17,7 @@ from ocp_resources.resource import get_client
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 
-from utilities.infra import create_ns, login_with_user_password
+from utilities.infra import create_ns, login_with_user_password, get_openshift_token
 from utilities.constants import AcceleratorType
 
 
@@ -44,9 +43,7 @@ def tests_tmp_dir(request: FixtureRequest, tmp_path_factory: TempPathFactory) ->
 
 @pytest.fixture(scope="session")
 def current_client_token(admin_client: DynamicClient) -> str:
-    _, out, _ = run_command(command=shlex.split("oc whoami -t"), verify_stderr=False, check=False)
-    # `\n` appended to token in out, return without that
-    return out.strip()
+    return get_openshift_token()
 
 
 @pytest.fixture(scope="class")

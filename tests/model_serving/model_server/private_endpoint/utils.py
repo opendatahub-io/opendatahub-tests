@@ -1,5 +1,5 @@
 import shlex
-from typing import Optional, Any, Generator
+from typing import Any, Generator
 from urllib.parse import urlparse
 from contextlib import contextmanager
 
@@ -9,32 +9,9 @@ from ocp_resources.inference_service import InferenceService
 from simple_logger.logger import get_logger
 
 from utilities.constants import Protocols
-from tests.utils import ProtocolNotSupported
+from utilities.exceptions import ProtocolNotSupported
 
 LOGGER = get_logger(name=__name__)
-
-
-class InvalidStorageArgument(Exception):
-    def __init__(
-        self,
-        storageUri: Optional[str],
-        storage_key: Optional[str],
-        storage_path: Optional[str],
-    ):
-        self.storageUri = storageUri
-        self.storage_key = storage_key
-        self.storage_path = storage_path
-
-    def __str__(self) -> str:
-        msg = f"""
-            You've passed the following parameters:
-            "storageUri": {self.storageUri}
-            "storage_key": {self.storage_key}
-            "storage_path: {self.storage_path}
-            In order to create a valid ISVC you need to specify either a storageUri value
-            or both a storage key and a storage path.
-        """
-        return msg
 
 
 def curl_from_pod(

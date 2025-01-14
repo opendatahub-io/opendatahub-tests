@@ -8,18 +8,12 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from simple_logger.logger import get_logger
 
-from tests.model_serving.model_server.private_endpoint.utils import (
-    InvalidStorageArgument,
-)
 from utilities.constants import KServeDeploymentType
+from utilities.exceptions import InferenceResponseError, InvalidStorageArgument
 from utilities.inference_utils import UserInference
 from utilities.infra import wait_for_inference_deployment_replicas
 
 LOGGER = get_logger(name=__name__)
-
-
-class InferenceResponseError(Exception):
-    pass
 
 
 @contextmanager

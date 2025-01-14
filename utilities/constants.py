@@ -1,5 +1,6 @@
 from typing import Any, Dict
 
+from ocp_resources.resource import Resource
 from utilities.manifests.caikit_standalone import CAIKIT_STANDALONE_INFERENCE_CONFIG
 from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
@@ -107,10 +108,10 @@ class AcceleratorType:
 
 
 class KubernetesAnnotations:
-    NAME: str = "app.kubernetes.io/name"
-    INSTANCE: str = "app.kubernetes.io/instance"
-    PART_OF: str = "app.kubernetes.io/part-of"
-    CREATED_BY: str = "app.kubernetes.io/created-by"
+    NAME: str = f"{Resource.ApiGroup.APP_KUBERNETES_IO}/name"
+    INSTANCE: str = f"{Resource.ApiGroup.APP_KUBERNETES_IO}/instance"
+    PART_OF: str = f"{Resource.ApiGroup.APP_KUBERNETES_IO}/part-of"
+    CREATED_BY: str = f"{Resource.ApiGroup.APP_KUBERNETES_IO}/created-by"
 
 
 class StorageClassName:
