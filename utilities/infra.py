@@ -44,6 +44,7 @@ def create_ns(
     teardown: bool = True,
     delete_timeout: int = 4 * 60,
     labels: Optional[dict[str, str]] = None,
+    annotations: Optional[dict[str, str]] = None,
 ) -> Generator[Namespace | Project, Any, Any]:
     """
     Create namespace with admin or unprivileged client.
@@ -55,6 +56,7 @@ def create_ns(
         teardown (bool): should run resource teardown
         delete_timeout (int): delete timeout.
         labels (dict[str, str]): labels dict to set for namespace
+        annotations (dict[str, str]): annotations dict to set for namespace
 
     Yields:
         Namespace | Project: namespace or project
@@ -64,6 +66,8 @@ def create_ns(
         with ProjectRequest(name=name, client=unprivileged_client, teardown=teardown):
             project = Project(
                 name=name,
+                label=labels,
+                annotations=annotations,
                 client=unprivileged_client,
                 teardown=teardown,
                 delete_timeout=delete_timeout,
@@ -76,6 +80,7 @@ def create_ns(
             client=admin_client,
             name=name,
             label=labels,
+            annotations=annotations,
             teardown=teardown,
             delete_timeout=delete_timeout,
         ) as ns:
