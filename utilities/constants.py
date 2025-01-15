@@ -2,6 +2,8 @@ from typing import Any
 
 from ocp_resources.resource import Resource
 
+OPENDATAHUB_IO: str = "opendatahub.io"
+
 
 class KServeDeploymentType:
     SERVERLESS: str = "Serverless"
@@ -121,10 +123,11 @@ class Annotations:
         DEPLOYMENT_MODE: str = "serving.kserve.io/deploymentMode"
 
     class KserveAuth:
-        SECURITY: str = "security.opendatahub.io/enable-auth"
+        SECURITY: str = f"security.{OPENDATAHUB_IO}/enable-auth"
 
     class OpenDataHubIo:
-        MANAGED: str = "opendatahub.io/managed"
+        MANAGED: str = f"{OPENDATAHUB_IO}/managed"
+        SERVICE_MESH: str = f"{OPENDATAHUB_IO}/service-mesh"
 
 
 class StorageClassName:
@@ -154,10 +157,13 @@ class DscComponents:
 
 class Labels:
     class OpenDataHub:
-        DASHBOARD: str = "opendatahub.io/dashboard"
+        DASHBOARD: str = f"{OPENDATAHUB_IO}/dashboard"
 
     class KserveAuth:
-        SECURITY: str = "security.opendatahub.io/enable-auth"
+        SECURITY: str = f"security.{OPENDATAHUB_IO}/enable-auth"
+
+    class Notebook:
+        INJECT_OAUTH: str = f"notebooks.{OPENDATAHUB_IO}/inject-oauth"
 
 
 class Timeout:
@@ -173,6 +179,7 @@ MODEL_REGISTRY: str = "model-registry"
 MODELMESH_SERVING: str = "modelmesh-serving"
 ISTIO_CA_BUNDLE_FILENAME: str = "istio_knative.crt"
 OPENSHIFT_CA_BUNDLE_FILENAME: str = "openshift_ca.crt"
+INTERNAL_IMAGE_REGISTRY_PATH: str = "image-registry.openshift-image-registry.svc:5000"
 
 vLLM_CONFIG: dict[str, dict[str, Any]] = {
     "port_configurations": {
