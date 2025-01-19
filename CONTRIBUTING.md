@@ -33,10 +33,6 @@ pre-commit install
 - Add typing to new code; typing is enforced using [mypy](https://mypy-lang.org/)
   - Rules are defined in [our pyproject.toml file](//pyproject.toml#L10)
 
-If you use Visual Studio Code as your IDE, we recommend using the [Mypy Type Checker](https://marketplace.visualstudio.com/items?itemName=ms-python.mypy-type-checker) extension.
-After installing it, make sure to update the `Mypy-type-checkers: Args` setting
-to `"mypy-type-checker.args" = ["--config-file=pyproject.toml"]`.
-
 ## Check the code
 Checks tools are used to check the code are defined in .pre-commit-config.yaml file
 To install pre-commit:

@@ -18,13 +18,10 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 
 from tests.trustyai.constants import TIMEOUT_5MIN
 from utilities.constants import MODELMESH_SERVING
+from utilities.exceptions import MetricValidationError
 
 LOGGER = get_logger(name=__name__)
 TIMEOUT_30SEC: int = 30
-
-
-class MetricValidationError(Exception):
-    pass
 
 
 class TrustyAIServiceRequestHandler:

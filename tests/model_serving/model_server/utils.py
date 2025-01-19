@@ -7,19 +7,50 @@ from typing import Any, Dict, Generator, Optional
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from simple_logger.logger import get_logger
+from timeout_sampler import TimeoutSampler
 
-from tests.model_serving.model_server.private_endpoint.utils import (
-    InvalidStorageArgument,
-)
 from utilities.constants import KServeDeploymentType
+from utilities.exceptions import FailedPodsError, InferenceResponseError, InvalidStorageArgumentError
 from utilities.inference_utils import UserInference
-from utilities.infra import wait_for_inference_deployment_replicas
+from utilities.infra import (
+    get_pods_by_isvc_label,
+    wait_for_inference_deployment_replicas,
+)
 
 LOGGER = get_logger(name=__name__)
 
 
-class InferenceResponseError(Exception):
-    pass
+def verify_no_failed_pods(client: DynamicClient, isvc: InferenceService) -> None:
+    failed_pods: dict[str, Any] = {}
+
+    for pods in TimeoutSampler(
+        wait_timeout=5 * 60,
+        sleep=10,
+        func=get_pods_by_isvc_label,
+        client=client,
+        isvc=isvc,
+    ):
+        if pods:
+            if all([pod.instance.status.phase == pod.Status.RUNNING for pod in pods]):
+                return
+
+            for pod in pods:
+                pod_status = pod.instance.status
+                if init_container_status := pod_status.initContainerStatuses:
+                    if container_terminated := init_container_status[0].lastState.terminated:
+                        if container_terminated.reason == "Error":
+                            failed_pods[pod.name] = pod_status
+
+                elif pod_status.phase in (
+                    pod.Status.CRASH_LOOPBACK_OFF,
+                    pod.Status.FAILED,
+                    pod.Status.IMAGE_PULL_BACK_OFF,
+                    pod.Status.ERR_IMAGE_PULL,
+                ):
+                    failed_pods[pod.name] = pod_status
+
+            if failed_pods:
+                raise FailedPodsError(pods=failed_pods)
 
 
 @contextmanager
@@ -119,16 +150,17 @@ def create_isvc(
         predictor=predictor_dict,
         label=labels,
     ) as inference_service:
+        if wait_for_predictor_pods:
+            verify_no_failed_pods(client=client, isvc=inference_service)
+            wait_for_inference_deployment_replicas(
+                client=client, isvc=inference_service, deployment_mode=deployment_mode
+            )
+
         if wait:
             inference_service.wait_for_condition(
                 condition=inference_service.Condition.READY,
                 status=inference_service.Condition.Status.TRUE,
                 timeout=15 * 60,
-            )
-
-        if wait_for_predictor_pods:
-            wait_for_inference_deployment_replicas(
-                client=client, isvc=inference_service, deployment_mode=deployment_mode
             )
 
         yield inference_service
@@ -140,7 +172,7 @@ def _check_storage_arguments(
     storage_path: Optional[str],
 ) -> None:
     if (storage_uri and storage_path) or (not storage_uri and not storage_key) or (storage_key and not storage_path):
-        raise InvalidStorageArgument(storage_uri, storage_key, storage_path)
+        raise InvalidStorageArgumentError(storage_uri=storage_uri, storage_key=storage_key, storage_path=storage_path)
 
 
 def verify_inference_response(

@@ -17,7 +17,7 @@ from ocp_resources.resource import get_client
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 
-from utilities.infra import create_ns, login_with_user_password
+from utilities.infra import create_ns, login_with_user_password, get_openshift_token
 from utilities.constants import AcceleratorType
 
 
@@ -39,6 +39,11 @@ def tests_tmp_dir(request: FixtureRequest, tmp_path_factory: TempPathFactory) ->
     yield
 
     shutil.rmtree(str(tests_tmp_path), ignore_errors=True)
+
+
+@pytest.fixture(scope="session")
+def current_client_token(admin_client: DynamicClient) -> str:
+    return get_openshift_token()
 
 
 @pytest.fixture(scope="class")

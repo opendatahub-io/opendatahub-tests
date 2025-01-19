@@ -20,6 +20,7 @@ from utilities.constants import (
     MODELMESH_SERVING,
     ModelInferenceRuntime,
     Protocols,
+    HTTPRequest,
 )
 import portforward
 
@@ -194,7 +195,7 @@ class UserInference(Inference):
         cmd = f"{cmd_exec} -d '{body}'  -H {header}"
 
         if token:
-            cmd += f' -H "Authorization: Bearer {token}"'
+            cmd += f" {HTTPRequest.AUTH_HEADER.format(token=token)}"
 
         if insecure:
             cmd += " --insecure"

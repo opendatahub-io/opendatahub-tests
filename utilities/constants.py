@@ -1,5 +1,6 @@
 from typing import Any, Dict
 
+from ocp_resources.resource import Resource
 from utilities.manifests.caikit_standalone import CAIKIT_STANDALONE_INFERENCE_CONFIG
 from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
@@ -88,8 +89,15 @@ class Protocols:
     HTTP: str = "http"
     HTTPS: str = "https"
     GRPC: str = "grpc"
+    REST: str = "rest"
     TCP_PROTOCOLS: set[str] = {HTTP, HTTPS}
     ALL_SUPPORTED_PROTOCOLS: set[str] = TCP_PROTOCOLS.union({GRPC})
+
+
+class HTTPRequest:
+    # Use string formatting to set the token value when using this constant
+    AUTH_HEADER: str = "-H 'Authorization: Bearer {token}'"
+    CONTENT_JSON: str = "-H 'Content-Type: application/json'"
 
 
 class AcceleratorType:
@@ -97,6 +105,13 @@ class AcceleratorType:
     AMD: str = "amd"
     GAUDI: str = "gaudi"
     SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI]
+
+
+class KubernetesAnnotations:
+    NAME: str = f"{Resource.ApiGroup.APP_KUBERNETES_IO}/name"
+    INSTANCE: str = f"{Resource.ApiGroup.APP_KUBERNETES_IO}/instance"
+    PART_OF: str = f"{Resource.ApiGroup.APP_KUBERNETES_IO}/part-of"
+    CREATED_BY: str = f"{Resource.ApiGroup.APP_KUBERNETES_IO}/created-by"
 
 
 class StorageClassName:
