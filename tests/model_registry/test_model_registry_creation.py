@@ -9,12 +9,18 @@ from tests.model_registry.utils import generate_register_model_command
 
 LOGGER = get_logger(name=__name__)
 
+component_name = "modelregistry"
+desired_state = "Managed"
 
+
+@pytest.mark.usefixtures("set_dsc_component_state")
 class TestModelRegistryCreation:
-    """Tests the creation of a model registry"""
+    """
+    Tests the creation of a model registry. If the component is set to 'Removed' it will be switched to 'Managed'
+    for the duration of this test module.
+    """
 
-    # TODO: Enable Model Registry in DSC if needed
-
+    # TODO: Switch to Python client
     @pytest.mark.smoke
     def test_registering_model(self: Self, model_registry_instance_rest_endpoint: str, current_client_token: str):
         cmd = generate_register_model_command(

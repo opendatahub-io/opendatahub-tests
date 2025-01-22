@@ -12,8 +12,9 @@ from ocp_resources.secret import Secret
 from pyhelper_utils.shell import run_command
 from pytest import FixtureRequest, Config
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.namespace import Namespace
-from ocp_resources.resource import get_client
+from ocp_resources.resource import get_client, ResourceEditor
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 
@@ -238,3 +239,38 @@ def unprivileged_client(
 
         else:
             yield admin_client
+
+
+@pytest.fixture(scope="session")
+def dsc_resource(admin_client: DynamicClient, name: str = "default-dsc"):
+    for dsc in DataScienceCluster.get(dyn_client=admin_client, name=name):
+        yield dsc
+
+
+def get_dsc_component_state(dsc_resource: DataScienceCluster, component_name: str) -> str:
+    return dsc_resource.instance.spec.components[component_name].managementState
+
+
+@pytest.fixture(scope="module")
+def set_dsc_component_state(
+    dsc_resource: DataScienceCluster,
+    request: FixtureRequest,
+) -> Generator[DataScienceCluster, Any, Any]:
+    component_name = getattr(request.module, "component_name")
+    desired_state = getattr(request.module, "desired_state")
+    if get_dsc_component_state(dsc_resource=dsc_resource, component_name=component_name) != desired_state:
+        with ResourceEditor(
+            patches={
+                dsc_resource: {
+                    "spec": {
+                        "components": {
+                            f"{component_name}": {"managementState": f"{desired_state}"},
+                        }
+                    }
+                }
+            }
+        ):
+            yield dsc_resource
+    else:
+        LOGGER.warning(f"Component {component_name} was already set to managementState {desired_state}")
+        yield dsc_resource
