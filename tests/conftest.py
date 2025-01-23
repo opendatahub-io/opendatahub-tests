@@ -12,6 +12,7 @@ from ocp_resources.secret import Secret
 from pyhelper_utils.shell import run_command
 from pytest import FixtureRequest, Config
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.namespace import Namespace
 from ocp_resources.resource import get_client, ResourceEditor
@@ -242,23 +243,25 @@ def unprivileged_client(
 
 
 @pytest.fixture(scope="session")
-def dsc_resource(admin_client: DynamicClient, name: str = "default-dsc"):
-    for dsc in DataScienceCluster.get(dyn_client=admin_client, name=name):
-        yield dsc
-
-
-def get_dsc_component_state(dsc_resource: DataScienceCluster, component_name: str) -> str:
-    return dsc_resource.instance.spec.components[component_name].managementState
+def dsc_resource(admin_client: DynamicClient):
+    name = py_config["dsc_name"]
+    try:
+        for dsc in DataScienceCluster.get(dyn_client=admin_client, name=name):
+            yield dsc
+    except Exception:
+        raise ResourceNotFoundError
 
 
 @pytest.fixture(scope="module")
-def set_dsc_component_state(
-    dsc_resource: DataScienceCluster,
+def updated_dsc_component_state(
     request: FixtureRequest,
+    dsc_resource: DataScienceCluster,
 ) -> Generator[DataScienceCluster, Any, Any]:
-    component_name = getattr(request.module, "component_name")
-    desired_state = getattr(request.module, "desired_state")
-    if get_dsc_component_state(dsc_resource=dsc_resource, component_name=component_name) != desired_state:
+    component_name = request.param["component_name"]
+    desired_state = request.param["desired_state"]
+    # Condition type for component being succesfully reconciled by DSC
+    condition_type = request.param["condition_type"]
+    if dsc_resource.instance.spec.components[component_name].managementState != desired_state:
         with ResourceEditor(
             patches={
                 dsc_resource: {
@@ -270,6 +273,7 @@ def set_dsc_component_state(
                 }
             }
         ):
+            dsc_resource.wait_for_condition(condition=condition_type, status="True")
             yield dsc_resource
     else:
         LOGGER.warning(f"Component {component_name} was already set to managementState {desired_state}")
