@@ -2,7 +2,7 @@ import pytest
 
 from tests.trustyai.drift.utils import (
     send_inference_requests_and_verify_trustyai_service,
-    verify_trustyai_metric_scheduling,
+    verify_trustyai_metric_scheduling_request,
     verify_trustyai_metric_request,
     verify_upload_data_to_trustyai_service,
 )
@@ -71,7 +71,7 @@ class TestDriftMetrics:
     def test_drift_metric_schedule_meanshift(
         self, admin_client, current_client_token, trustyai_service_with_pvc_storage, gaussian_credit_model
     ):
-        verify_trustyai_metric_scheduling(
+        verify_trustyai_metric_scheduling_request(
             client=admin_client,
             trustyai_service=trustyai_service_with_pvc_storage,
             token=current_client_token,

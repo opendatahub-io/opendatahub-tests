@@ -21,6 +21,7 @@ from utilities.constants import MODELMESH_SERVING
 from utilities.exceptions import MetricValidationError
 from utilities.infra import TIMEOUT_2MIN
 
+
 LOGGER = get_logger(name=__name__)
 TIMEOUT_30SEC: int = 30
 
@@ -301,6 +302,51 @@ def wait_for_modelmesh_pods_registered_by_trustyai(client: DynamicClient, namesp
             return
 
 
+def validate_trustyai_response(
+    response: Any,
+    response_data: Dict[str, Any],
+    expected_values: Optional[Dict[str, Any]] = None,
+    required_fields: Optional[List[str]] = None,
+) -> List[str]:
+    """
+    Validates a TrustyAI service response against common criteria.
+
+    Args:
+        response: The HTTP response object
+        response_data: The parsed JSON response data
+        expected_values: Dictionary of field names and their expected values
+        required_fields: List of fields that should not be empty
+
+    Returns:
+        list: List of error messages found during validation
+    """
+    errors = []
+
+    # Validate HTTP status
+    if response.status_code != http.HTTPStatus.OK:
+        errors.append(f"Unexpected status code: {response.status_code}")
+
+    # Validate required non-empty fields
+    if required_fields:
+        for field in required_fields:
+            if field in response_data and response_data[field] == "":
+                errors.append(f"{field.capitalize()} is empty")
+
+    # Validate expected values
+    if expected_values:
+        for field, expected in expected_values.items():
+            if field in response_data:
+                actual = response_data.get(field)
+                if isinstance(actual, str) and isinstance(expected, str):
+                    if actual.lower() != expected.lower():
+                        errors.append(f"Wrong {field}: {actual or 'None'}, expected: {expected}")
+                else:
+                    if actual != expected:
+                        errors.append(f"Wrong {field}: {actual or 'None'}, expected: {expected}")
+
+    return errors
+
+
 def verify_trustyai_metric_request(
     client: DynamicClient, trustyai_service: TrustyAIService, token: str, metric_name: str, json_data: Any
 ) -> None:
@@ -317,37 +363,25 @@ def verify_trustyai_metric_request(
     Raise:
         MetricValidationError if some of the response fields does not have the expected value.
     """
-
     response = TrustyAIServiceRequestHandler(
         token=token, service=trustyai_service, client=client
     ).send_drift_metric_request(metric_name=metric_name, json=json_data)
+
     LOGGER.info(msg=f"TrustyAI metric request response: {json.dumps(json.loads(response.text), indent=2)}")
     response_data = json.loads(response.text)
 
-    errors = []
+    required_fields = ["timestamp", "value", "specificDefinition", "id", "thresholds"]
+    expected_values = {"type": "metric", "name": metric_name}
 
-    if response.status_code != http.HTTPStatus.OK:
-        errors.append(f"Unexpected status code: {response.status_code}")
-    if response_data["timestamp"] == "":
-        errors.append("Timestamp is empty")
-    if response_data["type"] != "metric":
-        errors.append("Incorrect type")
-    if response_data["value"] == "":
-        errors.append("Value is empty")
-    if response_data["specificDefinition"] == "":
-        errors.append("Specific definition is empty")
-    if response_data["name"].lower() != metric_name:
-        errors.append(f"Wrong name: {response_data['name']}, expected: {metric_name}")
-    if response_data["id"] == "":
-        errors.append("ID is empty")
-    if response_data["thresholds"] == "":
-        errors.append("Thresholds are empty")
+    errors = validate_trustyai_response(
+        response=response, response_data=response_data, expected_values=expected_values, required_fields=required_fields
+    )
 
     if errors:
         raise MetricValidationError("\n".join(errors))
 
 
-def verify_trustyai_metric_scheduling(
+def verify_trustyai_metric_scheduling_request(
     client: DynamicClient, trustyai_service: TrustyAIService, token: str, metric_name: str, json_data: Any
 ) -> None:
     """
@@ -365,32 +399,30 @@ def verify_trustyai_metric_scheduling(
         MetricValidationError: If the scheduling response or metrics retrieval response contain invalid
             or unexpected values, including empty required fields or mismatched request IDs.
     """
-
     handler = TrustyAIServiceRequestHandler(token=token, service=trustyai_service, client=client)
     response = handler.send_drift_metric_request(
         metric_name=metric_name,
         json=json_data,
         schedule=True,
     )
-    LOGGER.info(msg=f"TrustyAI metric scheduling request response: {json.dumps(json.loads(response.text), indent=2)}")
+
     response_data = json.loads(response.text)
+    LOGGER.info(msg=f"TrustyAI metric scheduling request response: {response_data}")
 
-    errors = []
+    required_fields = ["requestId", "timestamp"]
+    errors = validate_trustyai_response(response=response, response_data=response_data, required_fields=required_fields)
 
-    request_id = response_data["requestId"]
-    if request_id == "":
-        errors.append("Request ID is empty")
-    if response.status_code != http.HTTPStatus.OK:
-        errors.append(f"Unexpected status code: {response.status_code}")
-    if response_data["timestamp"] == "":
-        errors.append("Timestamp is empty")
+    request_id = response_data.get("requestId", "")
 
+    # Get and validate metrics
     get_metrics_response = handler.get_drift_metrics(metric_name=metric_name)
-    LOGGER.info(msg=f"TrustyAI scheduled metrics: {json.dumps(json.loads(get_metrics_response.text), indent=2)}")
     get_metrics_data = json.loads(get_metrics_response.text)
+    LOGGER.info(msg=f"TrustyAI scheduled metrics: {get_metrics_data}")
 
-    if get_metrics_response.status_code != http.HTTPStatus.OK:
-        errors.append(f"Unexpected status code for metrics response: {get_metrics_response.status_code}")
+    metrics_errors = validate_trustyai_response(response=get_metrics_response, response_data=get_metrics_data)
+    errors.extend(metrics_errors)
+
+    # Validate metrics-specific requirements
     if "requests" not in get_metrics_data or not get_metrics_data["requests"]:
         errors.append("No requests found in metrics response")
     elif len(get_metrics_data["requests"]) != 1:
