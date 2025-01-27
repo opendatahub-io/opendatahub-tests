@@ -13,19 +13,24 @@ pytestmark = [pytest.mark.modelmesh]
 
 
 @pytest.mark.parametrize(
-    "model_namespace, http_s3_openvino_model_mesh_inference_service",
+    "model_namespace, http_s3_openvino_model_mesh_inference_service, http_s3_tensorflow_model_mesh_inference_service",
     [
         pytest.param(
             {"name": "model-mesh-openvino", "modelmesh-enabled": True},
+            {"enable-external-route": True},
             {"model-path": ModelStoragePath.OPENVINO_EXAMPLE_MODEL},
+            {"enable-external-route": True},
+            {"model-path": ModelStoragePath.TENSORFLOW_MODEL},
         )
     ],
     indirect=True,
 )
-class TestOpenVINOModelMesh:
-    @pytest.mark.smoke
-    @pytest.mark.polarion("ODS-2053", "ODS-2054")
-    def test_model_mesh_openvino_rest_inference_internal_route(self, http_s3_openvino_model_mesh_inference_service):
+class TestOpenVINOModelMeshMultiServers:
+    def test_model_mesh_openvino_rest_inference_internal_route(
+        self,
+        http_s3_openvino_model_mesh_inference_service,
+        http_s3_tensorflow_model_mesh_inference_service,
+    ):
         verify_inference_response(
             inference_service=http_s3_openvino_model_mesh_inference_service,
             runtime=ModelInferenceRuntime.OPENVINO_RUNTIME,
@@ -34,19 +39,15 @@ class TestOpenVINOModelMesh:
             use_default_query=True,
         )
 
-    @pytest.mark.sanity
-    @pytest.mark.polarion("ODS-1920")
-    def test_model_mesh_openvino_inference_with_token(
+    def test_model_mesh_tensorflow_rest_inference_external_route(
         self,
-        patched_model_mesh_sr_with_authentication,
+        http_s3_tensorflow_model_mesh_inference_service,
         http_s3_openvino_model_mesh_inference_service,
-        model_mesh_inference_token,
     ):
         verify_inference_response(
-            inference_service=http_s3_openvino_model_mesh_inference_service,
-            runtime=ModelInferenceRuntime.OPENVINO_RUNTIME,
+            inference_service=http_s3_tensorflow_model_mesh_inference_service,
+            runtime=ModelInferenceRuntime.TENSORFLOW_RUNTIME,
             inference_type=Inference.INFER,
-            protocol=Protocols.HTTP,
+            protocol=Protocols.HTTPS,
             use_default_query=True,
-            token=model_mesh_inference_token,
         )

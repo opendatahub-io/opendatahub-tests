@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shlex
 from contextlib import contextmanager
 from functools import cache
@@ -108,6 +109,9 @@ def s3_endpoint_secret(
     aws_s3_endpoint: str,
     aws_s3_region: str,
 ) -> Generator[Secret, None, None]:
+    # DO not create secret if exists in the namespace
+    os.environ["REUSE_IF_RESOURCE_EXISTS"] = f"{{Secret: {{{name}: {namespace}}}}}"
+
     with Secret(
         client=admin_client,
         name=name,

@@ -4,10 +4,10 @@ from tests.trustyai.drift.utils import send_inference_requests_and_verify_trusty
 
 
 @pytest.mark.parametrize(
-    "ns_with_modelmesh_enabled",
+    "model_namespace",
     [
         pytest.param(
-            {"name": "test-drift-gaussian-credit-model"},
+            {"name": "test-drift-gaussian-credit-model", "modelmesh-enabled": True},
         )
     ],
     indirect=True,
@@ -24,7 +24,7 @@ class TestDriftMetrics:
         self,
         admin_client,
         current_client_token,
-        ns_with_modelmesh_enabled,
+        model_namespace,
         trustyai_service_with_pvc_storage,
         gaussian_credit_model,
     ) -> None:

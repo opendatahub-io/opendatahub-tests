@@ -189,7 +189,7 @@ def verify_inference_response(
     inference_type: str,
     protocol: str,
     model_name: Optional[str] = None,
-    text: Optional[str] = None,
+    inference_input: Optional[Any] = None,
     use_default_query: bool = False,
     expected_response_text: Optional[str] = None,
     insecure: bool = False,
@@ -207,7 +207,7 @@ def verify_inference_response(
 
     res = inference.run_inference(
         model_name=model_name,
-        text=text,
+        inference_input=inference_input,
         use_default_query=use_default_query,
         token=token,
         insecure=insecure,

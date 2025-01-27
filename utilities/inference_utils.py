@@ -228,14 +228,14 @@ class UserInference(Inference):
     def run_inference(
         self,
         model_name: str,
-        text: Optional[str] = None,
+        inference_input: Optional[str] = None,
         use_default_query: bool = False,
         insecure: bool = False,
         token: Optional[str] = None,
     ) -> Dict[str, Any]:
         cmd = self.generate_command(
             model_name=model_name,
-            inference_input=text,
+            inference_input=inference_input,
             use_default_query=use_default_query,
             insecure=insecure,
             token=token,
