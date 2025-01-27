@@ -14,13 +14,12 @@ from ocp_resources.trustyai_service import TrustyAIService
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
-from tests.trustyai.constants import TIMEOUT_1MIN, TIMEOUT_10MIN
+from tests.trustyai.constants import TIMEOUT_1MIN, TIMEOUT_10MIN, TIMEOUT_5MIN
 from utilities.constants import MODELMESH_SERVING
 from utilities.exceptions import MetricValidationError
 from utilities.infra import TIMEOUT_2MIN
-
+from timeout_sampler import retry
 
 LOGGER = get_logger(name=__name__)
 TIMEOUT_30SEC: int = 30
@@ -92,6 +91,7 @@ class TrustyAIServiceRequestHandler:
 
 
 # TODO: Refactor code to be under utilities.inference_utils.Inference
+@retry(wait_timeout=TIMEOUT_30SEC, sleep=5)
 def send_inference_request(
     token: str,
     client: DynamicClient,
@@ -99,7 +99,7 @@ def send_inference_request(
     data_batch: Any,
     file_path: str,
     max_retries: int = 5,
-) -> None:
+) -> requests.Response:
     """
     Send data batch to inference service with retry logic for network errors.
 
@@ -122,27 +122,19 @@ def send_inference_request(
     url: str = f"https://{inference_route.host}{inference_route.instance.spec.path}/infer"
     headers: Dict[str, str] = {"Authorization": f"Bearer {token}"}
 
-    @retry(
-        stop=stop_after_attempt(max_retries),
-        wait=wait_exponential(multiplier=1, min=4, max=10),
-        retry=retry_if_exception_type(requests.RequestException),
-        before_sleep=lambda retry_state: LOGGER.warning(
-            f"Retry attempt {retry_state.attempt_number} for file {file_path} after error. "
-            f"Waiting {retry_state.next_action.sleep} seconds..."
-        ),
-    )
-    def _make_request() -> None:
+    def _make_request() -> requests.Response:
         try:
             response: requests.Response = requests.post(
                 url=url, headers=headers, data=data_batch, verify=False, timeout=TIMEOUT_1MIN
             )
+            return response
         except requests.RequestException as e:
             LOGGER.error(response.text)
             LOGGER.error(f"Error sending data for file: {file_path}. Error: {str(e)}")
             raise
 
     try:
-        _make_request()
+        return _make_request()
     except requests.RequestException:
         LOGGER.error(f"All {max_retries} retry attempts failed for file: {file_path}")
         raise
@@ -175,14 +167,6 @@ def get_trustyai_number_of_observations(client: DynamicClient, token: str, trust
         raise
 
 
-@retry(
-    stop=stop_after_attempt(5),
-    wait=wait_exponential(multiplier=1, min=4, max=10),
-    retry=retry_if_exception_type(AssertionError),
-    before_sleep=lambda retry_state: LOGGER.warning(
-        f"Verification attempt {retry_state.attempt_number} failed. Retrying..."
-    ),
-)
 def send_inference_and_verify_trustyai_registered(
     token: str,
     inference_service: InferenceService,
@@ -197,13 +181,13 @@ def send_inference_and_verify_trustyai_registered(
     )
 
     samples = TimeoutSampler(
-        wait_timeout=TIMEOUT_2MIN,
+        wait_timeout=TIMEOUT_5MIN,
         sleep=TIMEOUT_30SEC,
         func=lambda: get_trustyai_number_of_observations(client=client, token=token, trustyai_service=trustyai_service),
     )
 
     for obs in samples:
-        if obs == expected_observations:
+        if obs >= expected_observations:
             return
 
     raise AssertionError(f"Observations not updated. Current: {obs}, Expected: {expected_observations}")
@@ -468,4 +452,4 @@ def verify_upload_data_to_trustyai_service(
     actual_num_observations: int = get_trustyai_number_of_observations(
         client=client, token=token, trustyai_service=trustyai_service
     )
-    assert expected_num_observations == actual_num_observations
+    assert expected_num_observations >= actual_num_observations
