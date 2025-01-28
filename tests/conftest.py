@@ -54,6 +54,7 @@ def model_namespace(request: FixtureRequest, admin_client: DynamicClient) -> Gen
     ns_kwargs = {"admin_client": admin_client, "name": request.param["name"]}
 
     if request.param.get("modelmesh-enabled"):
+        request.getfixturevalue(argname="enabled_modelmesh_in_dsc")
         ns_kwargs["labels"] = {"modelmesh-enabled": "true"}
 
     with create_ns(**ns_kwargs) as ns:

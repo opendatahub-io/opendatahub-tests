@@ -101,7 +101,7 @@ def pytest_runtest_setup(item: Item) -> None:
     BASIC_LOGGER.info(f"{separator(symbol_='-', val='SETUP')}")
 
     if KServeDeploymentType.SERVERLESS.lower() in item.keywords:
-        item.fixturenames.insert(0, "skip_if_no_redhat_authorino_operator")
+        item.fixturenames.insert(0, "skip_if_no_deployed_redhat_authorino_operator")
         item.fixturenames.insert(0, "skip_if_no_deployed_openshift_serverless")
         item.fixturenames.insert(0, "skip_if_no_deployed_openshift_service_mesh")
         item.fixturenames.insert(0, "enabled_kserve_in_dsc")

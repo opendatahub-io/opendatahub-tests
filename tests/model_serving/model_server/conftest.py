@@ -171,25 +171,17 @@ def skip_if_no_nfs_storage_class(admin_client: DynamicClient) -> None:
         pytest.skip(f"StorageClass {StorageClassName.NFS} is missing from the cluster")
 
 
-@pytest.fixture(scope="class")
-def modelmesh_management_state(dsc_resource: DataScienceCluster) -> str:
-    return dsc_resource.instance.spec.components[DscComponents.MODELMESHSERVING].managementState
-
-
-@pytest.fixture(scope="class")
-def kserve_management_state(dsc_resource: DataScienceCluster) -> str:
-    return dsc_resource.instance.spec.components[DscComponents.KSERVE].managementState
-
-
 @pytest.fixture(scope="package")
-def skip_if_no_redhat_authorino_operator(admin_client: DynamicClient):
+def skip_if_no_deployed_redhat_authorino_operator(admin_client: DynamicClient):
     name = "authorino"
+    namespace = f"{py_config['applications_namespace']}-auth-provider"
+
     if not Authorino(
         client=admin_client,
         name=name,
-        namespace=f"{py_config['applications_namespace']}-auth-provider",
+        namespace=namespace,
     ).exists:
-        pytest.skip(f"{name} operator is missing from the cluster")
+        pytest.skip(f"Authorino {name} CR is missing from {namespace} namespace")
 
 
 @pytest.fixture(scope="package")
@@ -249,7 +241,7 @@ def http_s3_ovms_model_mesh_serving_runtime(
     admin_client: DynamicClient,
     model_namespace: Namespace,
 ) -> ServingRuntime:
-    rt_kwargs = {
+    runtime_kwargs = {
         "client": admin_client,
         "namespace": model_namespace.name,
         "name": f"{Protocols.HTTP}-{ModelInferenceRuntime.OPENVINO_RUNTIME}",
@@ -271,10 +263,10 @@ def http_s3_ovms_model_mesh_serving_runtime(
         enable_external_route = request.param.get("enable-external-route")
         enable_auth = request.param.get("enable-auth")
 
-    rt_kwargs["enable_external_route"] = enable_external_route
-    rt_kwargs["enable_auth"] = enable_auth
+    runtime_kwargs["enable_external_route"] = enable_external_route
+    runtime_kwargs["enable_auth"] = enable_auth
 
-    with ServingRuntimeFromTemplate(**rt_kwargs) as model_runtime:
+    with ServingRuntimeFromTemplate(**runtime_kwargs) as model_runtime:
         yield model_runtime
 
 

@@ -3,6 +3,7 @@ from typing import Dict
 import pytest
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.exceptions import MissingResourceResError
 from pytest_testconfig import config as py_config
@@ -19,8 +20,11 @@ COMPONENTS_EXPECTED_REPLICAS: Dict[str, int] = {
 
 @pytest.fixture(scope="class")
 def component_deployment(
-    request: FixtureRequest, admin_client: DynamicClient, kserve_management_state, modelmesh_management_state
+    request: FixtureRequest, admin_client: DynamicClient, dsc_resource: DataScienceCluster
 ) -> Deployment:
+    kserve_management_state = dsc_resource.instance.spec.components[DscComponents.KSERVE].managementState
+    modelmesh_management_state = dsc_resource.instance.spec.components[DscComponents.MODELMESHSERVING].managementState
+
     name = request.param["name"]
     if (
         name in ("modelmesh-controller", "etcd") and modelmesh_management_state == DscComponents.ManagementState.REMOVED
