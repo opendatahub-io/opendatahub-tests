@@ -13,7 +13,7 @@ from tests.model_serving.model_server.storage.constants import (
 POD_LS_SPLIT_COMMAND: List[str] = shlex.split("ls /mnt/models")
 
 
-pytestmark = pytest.mark.usefixtures("skip_if_no_nfs_storage_class")
+pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("skip_if_no_nfs_storage_class")]
 
 
 @pytest.mark.parametrize(

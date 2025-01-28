@@ -9,8 +9,15 @@ from ocp_resources.inference_service import InferenceService
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
-from utilities.constants import Annotations, KServeDeploymentType
-from utilities.exceptions import FailedPodsError, InferenceResponseError, InvalidStorageArgumentError
+from utilities.constants import (
+    Annotations,
+    KServeDeploymentType,
+)
+from utilities.exceptions import (
+    FailedPodsError,
+    InferenceResponseError,
+    InvalidStorageArgumentError,
+)
 from utilities.inference_utils import UserInference
 from utilities.infra import (
     get_pods_by_isvc_label,
@@ -120,13 +127,14 @@ def create_isvc(
         })
 
     if enable_auth:
-        # TODO: add modelmesh support
+        # model mesh auth is set in servingruntime
         if deployment_mode == KServeDeploymentType.SERVERLESS:
             annotations["security.opendatahub.io/enable-auth"] = "true"
         elif deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
             labels["security.openshift.io/enable-authentication"] = "true"
 
     # default to True if deployment_mode is Serverless (default behavior of Serverless) if was not provided by the user
+    # model mesh external route is set in servingruntime
     if external_route is None and deployment_mode == KServeDeploymentType.SERVERLESS:
         external_route = True
 

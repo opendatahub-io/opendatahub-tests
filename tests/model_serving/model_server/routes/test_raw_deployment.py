@@ -11,7 +11,7 @@ from utilities.constants import (
 )
 from utilities.inference_utils import Inference
 
-pytestmark = [pytest.mark.usefixtures("valid_aws_config"), pytest.mark.raw_deployment]
+pytestmark = [pytest.mark.usefixtures("valid_aws_config"), pytest.mark.rawdeployment]
 
 
 @pytest.mark.parametrize(

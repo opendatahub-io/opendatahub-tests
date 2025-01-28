@@ -13,7 +13,12 @@ from ocp_resources.service import Service
 from pyhelper_utils.shell import run_command
 from simple_logger.logger import get_logger
 
-from utilities.infra import get_pods_by_isvc_label, get_services_by_isvc_label
+from utilities.infra import (
+    get_inference_serving_runtime,
+    get_model_mesh_route,
+    get_pods_by_isvc_label,
+    get_services_by_isvc_label,
+)
 from utilities.certificates_utils import get_ca_bundle
 from utilities.constants import (
     KServeDeploymentType,
@@ -56,8 +61,12 @@ class Inference:
             ):
                 return urlparse(url=url).netloc
 
+            elif self.deployment_mode == KServeDeploymentType.MODEL_MESH:
+                route = get_model_mesh_route(client=self.inference_service.client, isvc=self.inference_service)
+                return route.instance.spec.host
+
             else:
-                raise ValueError(f"{self.inference_service.name}: No url found in InferenceService status")
+                raise ValueError(f"{self.inference_service.name}: No url found for inference")
 
         else:
             return "localhost"
@@ -66,20 +75,20 @@ class Inference:
         labels = self.inference_service.labels
 
         if self.deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
-            if labels and labels.get("networking.kserve.io/visibility") == "exposed":
-                return True
-            else:
-                return False
+            return labels and labels.get("networking.kserve.io/visibility") == "exposed"
 
-        elif self.deployment_mode == KServeDeploymentType.SERVERLESS:
+        if self.deployment_mode == KServeDeploymentType.SERVERLESS:
             if labels and labels.get("networking.knative.dev/visibility") == "cluster-local":
                 return False
             else:
                 return True
 
-        else:
-            # TODO: add support for ModelMesh
-            return False
+        if self.deployment_mode == KServeDeploymentType.MODEL_MESH:
+            if runtime := get_inference_serving_runtime(isvc=self.inference_service):
+                _annotations = runtime.instance.metadata.annotations
+                return _annotations and _annotations.get("enable-route") == "true"
+
+        return False
 
 
 class UserInference(Inference):
@@ -206,7 +215,7 @@ class UserInference(Inference):
                 cmd += f" --cacert {ca} "
 
             else:
-                LOGGER.warning("No CA bundle found, using insecure aceess")
+                LOGGER.warning("No CA bundle found, using insecure access")
                 cmd += " --insecure"
 
         if cmd_args := self.runtime_config.get("args"):

@@ -6,6 +6,7 @@ from simple_logger.logger import get_logger
 from pyhelper_utils.shell import run_command
 
 from tests.model_registry.utils import generate_register_model_command
+from utilities.constants import DscComponents
 
 LOGGER = get_logger(name=__name__)
 
@@ -15,9 +16,8 @@ LOGGER = get_logger(name=__name__)
     [
         pytest.param(
             {
-                "component_name": "modelregistry",
-                "desired_state": "Managed",
-                "condition_type": "model-registry-operatorReady",
+                "component_name": DscComponents.MODELREGISTRY,
+                "desired_state": DscComponents.ManagementState.MANAGED,
             },
         )
     ],

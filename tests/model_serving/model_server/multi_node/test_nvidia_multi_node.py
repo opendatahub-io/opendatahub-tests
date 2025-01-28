@@ -7,7 +7,10 @@ from tests.model_serving.model_server.multi_node.utils import (
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import ModelInferenceRuntime, Protocols, StorageClassName
 
-pytestmark = pytest.mark.usefixtures("skip_if_no_gpu_nodes", "skip_if_no_nfs_storage_class")
+pytestmark = [
+    pytest.mark.rawdeployment,
+    pytest.mark.usefixtures("skip_if_no_gpu_nodes", "skip_if_no_nfs_storage_class"),
+]
 
 
 @pytest.mark.parametrize(
