@@ -74,7 +74,7 @@ class Inference:
     def is_service_exposed(self) -> bool:
         labels = self.inference_service.labels
 
-        if self.deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
+        if self.deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT:
             return labels and labels.get("networking.kserve.io/visibility") == "exposed"
 
         if self.deployment_mode == KServeDeploymentType.SERVERLESS:

@@ -8,7 +8,6 @@ from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
 pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config")]
 
 
-@pytest.mark.serverless
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri",
     [

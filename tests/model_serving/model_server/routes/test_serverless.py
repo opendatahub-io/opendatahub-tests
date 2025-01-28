@@ -41,13 +41,13 @@ class TestRestServerlessRoutes:
         if labels := s3_models_inference_service.labels:
             assert labels.get("networking.kserve.io/visibility") is None
 
-    def test_rest_serverless_internal_route(self, s3_models_inference_service):
+    def test_rest_serverless_external_route(self, s3_models_inference_service):
         """Test HTTP inference using internal route"""
         verify_inference_response(
             inference_service=s3_models_inference_service,
             inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
             inference_type=Inference.ALL_TOKENS,
-            protocol=Protocols.HTTP,
+            protocol=Protocols.HTTPS,
             model_name=ModelFormat.CAIKIT,
             use_default_query=True,
         )
@@ -56,13 +56,13 @@ class TestRestServerlessRoutes:
         "patched_s3_caikit_kserve_isvc_visibility_label",
         [
             pytest.param(
-                {"visibility": "exposed"},
+                {"visibility": "local-cluster"},
             )
         ],
         indirect=True,
     )
-    @pytest.mark.dependency(name="test_rest_serverless_exposed_route")
-    def test_rest_serverless_exposed_route(self, patched_s3_caikit_kserve_isvc_visibility_label):
+    @pytest.mark.dependency(name="test_rest_serverless_internal_route")
+    def test_rest_serverless_internal_route(self, patched_s3_caikit_kserve_isvc_visibility_label):
         """Test HTTP inference using exposed (external) route"""
         verify_inference_response(
             inference_service=patched_s3_caikit_kserve_isvc_visibility_label,
@@ -73,23 +73,23 @@ class TestRestServerlessRoutes:
             use_default_query=True,
         )
 
-    @pytest.mark.dependency(depends=["test_rest_serverless_exposed_route"])
+    @pytest.mark.dependency(depends=["test_rest_serverless_internal_route"])
     @pytest.mark.parametrize(
         "patched_s3_caikit_kserve_isvc_visibility_label",
         [
             pytest.param(
-                {"visibility": "local-cluster"},
+                {"visibility": "exposed"},
             )
         ],
         indirect=True,
     )
-    def test_disabled_rest_serverless_exposed_route(self, patched_s3_caikit_kserve_isvc_visibility_label):
+    def test_rest_serverless_exposed_label_route(self, patched_s3_caikit_kserve_isvc_visibility_label):
         """Test HTTP inference fails when using external route after it was disabled"""
         verify_inference_response(
             inference_service=patched_s3_caikit_kserve_isvc_visibility_label,
             inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
             inference_type=Inference.ALL_TOKENS,
-            protocol=Protocols.HTTP,
+            protocol=Protocols.HTTPS,
             model_name=ModelFormat.CAIKIT,
             use_default_query=True,
         )
