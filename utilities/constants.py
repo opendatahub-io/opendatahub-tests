@@ -1,16 +1,4 @@
-from typing import Any, Dict
-
 from ocp_resources.resource import Resource
-from utilities.manifests.caikit_standalone import CAIKIT_STANDALONE_INFERENCE_CONFIG
-from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
-from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
-from utilities.manifests.openvino import (
-    OPENVINO_INFERENCE_CONFIG,
-    OPENVINO_KSERVE_INFERENCE_CONFIG,
-)
-from utilities.manifests.tensorflow import TENSORFLOW_INFERENCE_CONFIG
-from utilities.manifests.tgis_grpc import TGIS_INFERENCE_CONFIG
-from utilities.manifests.vllm import VLLM_INFERENCE_CONFIG
 
 
 class KServeDeploymentType:
@@ -78,17 +66,6 @@ class ModelInferenceRuntime:
     CAIKIT_STANDALONE_RUNTIME: str = f"{ModelFormat.CAIKIT}-standalone-runtime"
     VLLM_RUNTIME: str = f"{ModelFormat.VLLM}-runtime"
     TENSORFLOW_RUNTIME: str = f"{ModelFormat.TENSORFLOW}-runtime"
-
-    MAPPING: Dict[str, Any] = {
-        CAIKIT_TGIS_RUNTIME: CAIKIT_TGIS_INFERENCE_CONFIG,
-        OPENVINO_RUNTIME: OPENVINO_INFERENCE_CONFIG,
-        OPENVINO_KSERVE_RUNTIME: OPENVINO_KSERVE_INFERENCE_CONFIG,
-        TGIS_RUNTIME: TGIS_INFERENCE_CONFIG,
-        ONNX_RUNTIME: ONNX_INFERENCE_CONFIG,
-        CAIKIT_STANDALONE_RUNTIME: CAIKIT_STANDALONE_INFERENCE_CONFIG,
-        VLLM_RUNTIME: VLLM_INFERENCE_CONFIG,
-        TENSORFLOW_RUNTIME: TENSORFLOW_INFERENCE_CONFIG,
-    }
 
 
 class Protocols:

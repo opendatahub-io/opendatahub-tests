@@ -4,9 +4,9 @@ from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import (
     ModelStoragePath,
     Protocols,
-    ModelInferenceRuntime,
 )
 from utilities.inference_utils import Inference
+from utilities.manifests.openvino import OPENVINO_INFERENCE_CONFIG
 
 pytestmark = [pytest.mark.modelmesh]
 
@@ -18,7 +18,10 @@ pytestmark = [pytest.mark.modelmesh]
         pytest.param(
             {"name": "model-mesh-multi-model", "modelmesh-enabled": True},
             {"model-path": ModelStoragePath.OPENVINO_EXAMPLE_MODEL},
-            {"model-path": ModelStoragePath.OPENVINO_VEHICLE_DETECTION},
+            {
+                "model-path": ModelStoragePath.OPENVINO_VEHICLE_DETECTION,
+                "runtime-fixture-name": "http_s3_ovms_model_mesh_serving_runtime",
+            },
         )
     ],
     indirect=True,
@@ -31,7 +34,7 @@ class TestOpenVINOModelMeshMultiModels:
     ):
         verify_inference_response(
             inference_service=http_s3_openvino_model_mesh_inference_service,
-            runtime=ModelInferenceRuntime.OPENVINO_RUNTIME,
+            inference_config=OPENVINO_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTP,
             use_default_query=True,
@@ -44,8 +47,8 @@ class TestOpenVINOModelMeshMultiModels:
     ):
         verify_inference_response(
             inference_service=http_s3_openvino_second_model_mesh_inference_service,
-            runtime=ModelInferenceRuntime.TENSORFLOW_RUNTIME,
-            inference_type=Inference.INFER,
+            inference_config=OPENVINO_INFERENCE_CONFIG,
+            inference_type="infer-vehicle-detection",
             protocol=Protocols.HTTP,
-            query_input="@utilities/manifests/openvino/vehicle-detection-inputs.txt",
+            use_default_query=True,
         )

@@ -4,10 +4,9 @@ from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import (
     ModelStoragePath,
     Protocols,
-    ModelInferenceRuntime,
 )
 from utilities.inference_utils import Inference
-
+from utilities.manifests.openvino import OPENVINO_INFERENCE_CONFIG
 
 pytestmark = [pytest.mark.modelmesh]
 
@@ -28,7 +27,7 @@ class TestOpenVINOModelMesh:
     def test_model_mesh_openvino_rest_inference_internal_route(self, http_s3_openvino_model_mesh_inference_service):
         verify_inference_response(
             inference_service=http_s3_openvino_model_mesh_inference_service,
-            runtime=ModelInferenceRuntime.OPENVINO_RUNTIME,
+            inference_config=OPENVINO_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTP,
             use_default_query=True,
@@ -44,7 +43,7 @@ class TestOpenVINOModelMesh:
     ):
         verify_inference_response(
             inference_service=http_s3_openvino_model_mesh_inference_service,
-            runtime=ModelInferenceRuntime.OPENVINO_RUNTIME,
+            inference_config=OPENVINO_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTP,
             use_default_query=True,

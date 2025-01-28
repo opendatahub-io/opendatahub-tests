@@ -10,6 +10,7 @@ from utilities.constants import (
     RuntimeTemplates,
 )
 from utilities.inference_utils import Inference
+from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
 
 pytestmark = [pytest.mark.usefixtures("valid_aws_config"), pytest.mark.rawdeployment]
 
@@ -45,7 +46,7 @@ class TestRestRawDeployment:
         """Test HTTP inference using internal route"""
         verify_inference_response(
             inference_service=s3_models_inference_service,
-            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
+            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTP,
             model_name=ModelFormat.CAIKIT,
@@ -67,7 +68,7 @@ class TestRestRawDeployment:
         """Test HTTP inference using exposed (external) route"""
         verify_inference_response(
             inference_service=patched_s3_caikit_raw_isvc_visibility_label,
-            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
+            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTPS,
             model_name=ModelFormat.CAIKIT,
@@ -88,7 +89,7 @@ class TestRestRawDeployment:
         """Test HTTP inference fails when using external route after it was disabled"""
         verify_inference_response(
             inference_service=patched_s3_caikit_raw_isvc_visibility_label,
-            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
+            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTP,
             model_name=ModelFormat.CAIKIT,
@@ -123,7 +124,7 @@ class TestGrpcRawDeployment:
         """Test GRPC inference using internal route"""
         verify_inference_response(
             inference_service=s3_models_inference_service,
-            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
+            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
             inference_type=Inference.STREAMING,
             protocol=Protocols.GRPC,
             model_name=ModelFormat.CAIKIT,
@@ -144,7 +145,7 @@ class TestGrpcRawDeployment:
         """Test GRPC inference using exposed (external) route"""
         verify_inference_response(
             inference_service=patched_s3_caikit_raw_isvc_visibility_label,
-            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
+            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
             inference_type=Inference.STREAMING,
             protocol=Protocols.GRPC,
             model_name=ModelFormat.CAIKIT,

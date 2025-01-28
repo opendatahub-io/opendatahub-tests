@@ -22,7 +22,6 @@ from utilities.infra import (
 from utilities.certificates_utils import get_ca_bundle
 from utilities.constants import (
     KServeDeploymentType,
-    ModelInferenceRuntime,
     Protocols,
     HTTPRequest,
 )
@@ -36,13 +35,12 @@ class Inference:
     STREAMING: str = "streaming"
     INFER: str = "infer"
 
-    def __init__(self, inference_service: InferenceService, runtime: str):
+    def __init__(self, inference_service: InferenceService):
         """
         Args:
             inference_service: InferenceService object
         """
         self.inference_service = inference_service
-        self.runtime = runtime
         self.deployment_mode = self.inference_service.instance.metadata.annotations["serving.kserve.io/deploymentMode"]
         self.visibility_exposed = self.is_service_exposed()
 
@@ -92,22 +90,13 @@ class Inference:
 
 
 class UserInference(Inference):
-    def __init__(self, protocol: str, inference_type: str, **kwargs: Any) -> None:
+    def __init__(self, protocol: str, inference_type: str, inference_config: dict[str, Any], **kwargs: Any) -> None:
         super().__init__(**kwargs)
 
         self.protocol = protocol
         self.inference_type = inference_type
-        self.inference_config = self.get_inference_config()
+        self.inference_config = inference_config
         self.runtime_config = self.get_runtime_config()
-
-    def get_inference_config(self) -> Dict[str, Any]:
-        if runtime_config := ModelInferenceRuntime.MAPPING.get(self.runtime):
-            return runtime_config
-
-        else:
-            raise ValueError(
-                f"Runtime {self.runtime} not supported. Supported runtimes are {ModelInferenceRuntime.MAPPING.keys()}"
-            )
 
     def get_runtime_config(self) -> Dict[str, Any]:
         if inference_type := self.inference_config.get(self.inference_type):
@@ -279,8 +268,9 @@ class UserInference(Inference):
                     response_dict["output"] = json.loads(response_headers[-1])
 
                 for line in response_headers:
-                    header_name, header_value = re.split(": | ", line.strip(), maxsplit=1)
-                    response_dict[header_name] = header_value
+                    if line:
+                        header_name, header_value = re.split(": | ", line.strip(), maxsplit=1)
+                        response_dict[header_name] = header_value
 
                 return response_dict
             else:

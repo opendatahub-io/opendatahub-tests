@@ -185,7 +185,7 @@ def _check_storage_arguments(
 
 def verify_inference_response(
     inference_service: InferenceService,
-    runtime: str,
+    inference_config: dict[str, Any],
     inference_type: str,
     protocol: str,
     model_name: Optional[str] = None,
@@ -200,7 +200,7 @@ def verify_inference_response(
 
     inference = UserInference(
         inference_service=inference_service,
-        runtime=runtime,
+        inference_config=inference_config,
         inference_type=inference_type,
         protocol=protocol,
     )
@@ -237,7 +237,7 @@ def verify_inference_response(
 
             if not expected_response_text_config:
                 raise ValueError(
-                    f"Missing default_query_model config for inference {runtime}. "
+                    f"Missing default_query_model config for inference {inference_config}. "
                     f"Config: {expected_response_text_config}"
                 )
 
@@ -245,7 +245,7 @@ def verify_inference_response(
                 query_config = expected_response_text_config.get(inference_type)
                 if not query_config:
                     raise ValueError(
-                        f"Missing default_query_model config for inference {runtime}. "
+                        f"Missing default_query_model config for inference {inference_config}. "
                         f"Config: {expected_response_text_config}"
                     )
                 expected_response_text = query_config.get("query_output", "")
@@ -255,7 +255,7 @@ def verify_inference_response(
                 expected_response_text = expected_response_text_config.get("query_output")
 
             if not expected_response_text:
-                raise ValueError(f"Missing response text key for inference {runtime}")
+                raise ValueError(f"Missing response text key for inference {inference_config}")
 
             if isinstance(expected_response_text, str):
                 expected_response_text = Template(expected_response_text).safe_substitute(model_name=model_name)

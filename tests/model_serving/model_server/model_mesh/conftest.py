@@ -8,7 +8,16 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 
 from tests.model_serving.model_server.utils import create_isvc
-from utilities.constants import KServeDeploymentType, ModelAndFormat, ModelFormat, ModelVersion, Protocols
+from utilities.constants import (
+    KServeDeploymentType,
+    ModelAndFormat,
+    ModelFormat,
+    ModelInferenceRuntime,
+    ModelVersion,
+    Protocols,
+    RuntimeTemplates,
+)
+from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
 @pytest.fixture(scope="class")
@@ -16,15 +25,16 @@ def http_s3_openvino_second_model_mesh_inference_service(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    http_s3_ovms_model_mesh_serving_runtime: ServingRuntime,
     ci_model_mesh_endpoint_s3_secret: Secret,
     model_mesh_model_service_account: ServiceAccount,
 ) -> InferenceService:
+    # Dynamically select the used ServingRuntime by passing "runtime-fixture-name" request.param
+    rt = request.getfixturevalue(argname=request.param["runtime-fixture-name"])
     with create_isvc(
         client=admin_client,
         name=f"{Protocols.HTTP}-{ModelFormat.OPENVINO}-2",
         namespace=model_namespace.name,
-        runtime=http_s3_ovms_model_mesh_serving_runtime.name,
+        runtime=rt.name,
         model_service_account=model_mesh_model_service_account.name,
         storage_key=ci_model_mesh_endpoint_s3_secret.name,
         storage_path=request.param["model-path"],
@@ -33,3 +43,27 @@ def http_s3_openvino_second_model_mesh_inference_service(
         model_version=ModelVersion.OPSET1,
     ) as isvc:
         yield isvc
+
+
+@pytest.fixture(scope="class")
+def http_s3_ovms_external_route_model_mesh_serving_runtime(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+) -> ServingRuntime:
+    with ServingRuntimeFromTemplate(
+        client=admin_client,
+        namespace=model_namespace.name,
+        name=f"{Protocols.HTTP}-{ModelInferenceRuntime.OPENVINO_RUNTIME}-exposed",
+        template_name=RuntimeTemplates.OVMS_MODEL_MESH,
+        multi_model=True,
+        protocol="REST",
+        resources={
+            "ovms": {
+                "requests": {"cpu": "1", "memory": "4Gi"},
+                "limits": {"cpu": "2", "memory": "8Gi"},
+            },
+        },
+        enable_external_route=True,
+    ) as model_runtime:
+        yield model_runtime
