@@ -105,7 +105,7 @@ class UserInference(Inference):
                 return data
 
             else:
-                raise ValueError(f"Protocol {protocol} not supported.\nSupported protocols are {inference_type}")
+                raise ValueError(f"Protocol {protocol} not supported.\nSupported protocols are {self.inference_type}")
 
         else:
             raise ValueError(

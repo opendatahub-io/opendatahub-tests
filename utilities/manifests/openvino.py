@@ -35,6 +35,17 @@ OPENVINO_INFERENCE_CONFIG = {
     "infer": {
         "http": DEFAULT_HTTP_QUERY,
     },
+    "infer-vehicle-detection":
+        {
+            "http": {
+                "endpoint": "v2/models/$model_name/infer",
+                "header": "application/x-www-form-urlencoded",
+                "body": '$query_input',
+                "response_fields_map": {
+                    "response_output": "output",
+                },
+            },
+        }
 }
 
 OPENVINO_KSERVE_INFERENCE_CONFIG = {
