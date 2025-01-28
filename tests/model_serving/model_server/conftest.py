@@ -17,8 +17,8 @@ from ocp_resources.storage_class import StorageClass
 from pytest_testconfig import config as py_config
 
 from tests.model_serving.model_server.utils import create_isvc
+from utilities.constants import DscComponents, StorageClassName
 from utilities.constants import (
-    DscComponents,
     KServeDeploymentType,
     ModelAndFormat,
     ModelFormat,
@@ -26,7 +26,6 @@ from utilities.constants import (
     ModelVersion,
     Protocols,
     RuntimeTemplates,
-    StorageClassName,
 )
 from utilities.infra import s3_endpoint_secret
 from utilities.data_science_cluster_utils import update_components_in_dsc

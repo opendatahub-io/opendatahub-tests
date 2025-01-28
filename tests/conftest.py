@@ -174,6 +174,16 @@ def vllm_runtime_image(pytestconfig: pytest.Config) -> str | None:
     return runtime_image
 
 
+@pytest.fixture(scope="class")
+def ns_with_modelmesh_enabled(request: FixtureRequest, admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
+    with create_ns(
+        admin_client=admin_client,
+        name=request.param["name"],
+        labels={"modelmesh-enabled": "true"},
+    ) as ns:
+        yield ns
+
+
 @pytest.fixture(scope="session")
 def non_admin_user_password(admin_client: DynamicClient) -> Tuple[str, str] | None:
     def _decode_split_data(_data: str) -> List[str]:

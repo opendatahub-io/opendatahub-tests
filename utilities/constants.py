@@ -34,7 +34,6 @@ class ModelStoragePath:
     KSERVE_OPENVINO_EXAMPLE_MODEL: str = f"kserve-openvino-test/{OPENVINO_EXAMPLE_MODEL}"
     EMBEDDING_MODEL: str = "embeddingsmodel"
     TENSORFLOW_MODEL: str = "inception_resnet_v2.pb"
-    OPENVINO_VEHICLE_DETECTION: str = "vehicle-detection"
 
 
 class CurlOutput:
