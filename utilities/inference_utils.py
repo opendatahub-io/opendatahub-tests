@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import json
 import re
 import shlex
@@ -12,6 +13,7 @@ from ocp_resources.resource import get_client
 from ocp_resources.service import Service
 from pyhelper_utils.shell import run_command
 from simple_logger.logger import get_logger
+from timeout_sampler import retry
 
 from utilities.infra import (
     get_inference_serving_runtime,
@@ -214,7 +216,7 @@ class UserInference(Inference):
 
         return cmd
 
-    def run_inference(
+    def run_inference_flow(
         self,
         model_name: str,
         inference_input: Optional[str] = None,
@@ -230,25 +232,7 @@ class UserInference(Inference):
             token=token,
         )
 
-        # For internal inference, we need to use port forwarding to the service
-        if not self.visibility_exposed:
-            svc = get_services_by_isvc_label(client=self.inference_service.client, isvc=self.inference_service)[0]
-            port = self.get_target_port(svc=svc)
-            cmd = cmd.replace("localhost", f"localhost:{port}")
-
-            with portforward.forward(
-                pod_or_service=svc.name,
-                namespace=svc.namespace,
-                from_port=port,
-                to_port=port,
-            ):
-                res, out, err = run_command(command=shlex.split(cmd), verify_stderr=False, check=False)
-
-        else:
-            res, out, err = run_command(command=shlex.split(cmd), verify_stderr=False, check=False)
-
-        if not res:
-            raise ValueError(f"Inference failed with error: {err}\nOutput: {out}\nCommand: {cmd}")
+        out = self.run_inference(cmd=cmd)
 
         try:
             if self.protocol in Protocols.TCP_PROTOCOLS:
@@ -278,6 +262,30 @@ class UserInference(Inference):
 
         except JSONDecodeError:
             return {"output": out}
+
+    @retry(wait_timeout=30, sleep=5)
+    def run_inference(self, cmd: str) -> str:
+        # For internal inference, we need to use port forwarding to the service
+        if not self.visibility_exposed:
+            svc = get_services_by_isvc_label(client=self.inference_service.client, isvc=self.inference_service)[0]
+            port = self.get_target_port(svc=svc)
+            cmd = cmd.replace("localhost", f"localhost:{port}")
+
+            with portforward.forward(
+                pod_or_service=svc.name,
+                namespace=svc.namespace,
+                from_port=port,
+                to_port=port,
+            ):
+                res, out, err = run_command(command=shlex.split(cmd), verify_stderr=False, check=False)
+
+        else:
+            res, out, err = run_command(command=shlex.split(cmd), verify_stderr=False, check=False)
+
+        if not res:
+            raise ValueError(f"Inference failed with error: {err}\nOutput: {out}\nCommand: {cmd}")
+
+        return out
 
     def get_target_port(self, svc: Service) -> int:
         if self.protocol in Protocols.ALL_SUPPORTED_PROTOCOLS:

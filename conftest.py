@@ -3,6 +3,7 @@ import os
 import pathlib
 import shutil
 
+import shortuuid
 from pytest import Parser, Session, FixtureRequest, FixtureDef, Item, Config, CollectReport
 from _pytest.terminal import TerminalReporter
 from typing import Optional, Any
@@ -70,6 +71,10 @@ def pytest_addoption(parser: Parser) -> None:
         default=os.environ.get("VLLM_RUNTIME_IMAGE"),
         help="Specify the runtime image to use for the tests",
     )
+
+
+def pytest_cmdline_main(config):
+    config.option.basetemp = py_config["tmp_base_dir"] = f"{config.option.basetemp}-{shortuuid.uuid()}"
 
 
 def pytest_sessionstart(session: Session) -> None:
@@ -140,7 +145,9 @@ def pytest_report_teststatus(report: CollectReport, config: Config) -> None:
 
 
 def pytest_sessionfinish(session: Session, exitstatus: int) -> None:
-    shutil.rmtree(path=session.config.option.basetemp, ignore_errors=True)
+    base_dir = py_config["tmp_base_dir"]
+    LOGGER.info((f"Deleting pytest base dir {base_dir}"))
+    shutil.rmtree(path=base_dir, ignore_errors=True)
 
     reporter: Optional[TerminalReporter] = session.config.pluginmanager.get_plugin("terminalreporter")
     if reporter:

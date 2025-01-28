@@ -135,8 +135,8 @@ def create_isvc(
 
     # default to True if deployment_mode is Serverless (default behavior of Serverless) if was not provided by the user
     # model mesh external route is set in servingruntime
-    if external_route is None and deployment_mode == KServeDeploymentType.SERVERLESS:
-        external_route = True
+    # if external_route is None and deployment_mode == KServeDeploymentType.SERVERLESS:
+    #     external_route = True
 
     if external_route and deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
         labels["networking.kserve.io/visibility"] = "exposed"
@@ -205,7 +205,7 @@ def verify_inference_response(
         protocol=protocol,
     )
 
-    res = inference.run_inference(
+    res = inference.run_inference_flow(
         model_name=model_name,
         inference_input=inference_input,
         use_default_query=use_default_query,

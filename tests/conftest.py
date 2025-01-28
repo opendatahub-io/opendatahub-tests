@@ -32,7 +32,6 @@ def admin_client() -> DynamicClient:
     return get_client()
 
 
-@pytest.mark.early(order=0)
 @pytest.fixture(scope="session", autouse=True)
 def tests_tmp_dir(request: FixtureRequest, tmp_path_factory: TempPathFactory) -> None:
     base_path = os.path.join(request.config.option.basetemp, "tests")

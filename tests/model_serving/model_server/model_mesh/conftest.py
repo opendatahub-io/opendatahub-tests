@@ -29,12 +29,12 @@ def http_s3_openvino_second_model_mesh_inference_service(
     model_mesh_model_service_account: ServiceAccount,
 ) -> InferenceService:
     # Dynamically select the used ServingRuntime by passing "runtime-fixture-name" request.param
-    rt = request.getfixturevalue(argname=request.param["runtime-fixture-name"])
+    runtime = request.getfixturevalue(argname=request.param["runtime-fixture-name"])
     with create_isvc(
         client=admin_client,
         name=f"{Protocols.HTTP}-{ModelFormat.OPENVINO}-2",
         namespace=model_namespace.name,
-        runtime=rt.name,
+        runtime=runtime.name,
         model_service_account=model_mesh_model_service_account.name,
         storage_key=ci_model_mesh_endpoint_s3_secret.name,
         storage_path=request.param["model-path"],
