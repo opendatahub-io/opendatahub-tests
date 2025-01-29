@@ -249,7 +249,7 @@ def get_services_by_isvc_label(
     raise ResourceNotFoundError(f"{isvc.name} has no services")
 
 
-def get_pods_by_isvc_label(client: DynamicClient, isvc: InferenceService, runtime_name: str | None) -> List[Pod]:
+def get_pods_by_isvc_label(client: DynamicClient, isvc: InferenceService, runtime_name: str | None = None) -> List[Pod]:
     """
     Args:
         client (DynamicClient): OCP Client to use.
