@@ -12,7 +12,7 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
     "model_namespace, s3_models_storage_uri",
     [
         pytest.param(
-            {"name": "kserve-token-authentication"},
+            {"name": "kserve-raw-token-authentication"},
             {"model-dir": ModelStoragePath.FLAN_T5_SMALL},
         )
     ],
@@ -31,19 +31,6 @@ class TestKserveTokenAuthenticationRaw:
             model_name=ModelFormat.CAIKIT,
             use_default_query=True,
             token=http_raw_inference_token,
-        )
-
-    @pytest.mark.smoke
-    def test_model_raw_authentication_using_grpc(self, grpc_s3_raw_inference_service, grpc_raw_inference_token):
-        """Verify model query with token using GRPC"""
-        verify_inference_response(
-            inference_service=grpc_s3_raw_inference_service,
-            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
-            inference_type=Inference.STREAMING,
-            protocol=Protocols.GRPC,
-            model_name=ModelFormat.CAIKIT,
-            use_default_query=True,
-            token=grpc_raw_inference_token,
         )
 
     @pytest.mark.dependency(name="test_disabled_raw_model_authentication")

@@ -181,16 +181,30 @@ def http_raw_role_binding(
 
 @pytest.fixture(scope="class")
 def http_inference_token(model_service_account: ServiceAccount, http_role_binding: RoleBinding) -> str:
-    return run_command(
-        command=shlex.split(f"oc create token -n {model_service_account.namespace} {model_service_account.name}")
-    )[1].strip()
+    return create_inference_token(model_service_account)
 
 
 @pytest.fixture(scope="class")
 def http_raw_inference_token(model_service_account: ServiceAccount, http_raw_role_binding: RoleBinding) -> str:
-    return run_command(
-        command=shlex.split(f"oc create token -n {model_service_account.namespace} {model_service_account.name}")
-    )[1].strip()
+    return create_inference_token(model_service_account)
+
+
+def create_inference_token(model_service_account) -> str:
+    """
+    Generates an inference token for the given model service account.
+
+    Args:
+        model_service_account: An object containing the namespace and name
+                               of the service account.
+
+    Returns:
+        str: The generated inference token.
+    """
+    command = shlex.split(
+        f"oc create token -n {model_service_account.namespace} {model_service_account.name}"
+    )
+    result = run_command(command)
+    return result[1].strip()
 
 
 @pytest.fixture()
