@@ -481,22 +481,17 @@ def verify_trustyai_drift_metric_delete_request(
     """
     handler = TrustyAIServiceRequestHandler(token=token, service=trustyai_service, client=client)
 
-    # Get the initial number of metrics
     drift_metrics_response = handler.get_drift_metrics(metric_name=metric_name)
     drift_metrics_data = json.loads(drift_metrics_response.text)
     initial_num_metrics: int = len(drift_metrics_data.get("requests", []))
 
-    # Raise an error if there are no metrics to delete
     if initial_num_metrics < 1:
         raise ValueError(f"No metrics found for {metric_name}. Cannot perform deletion.")
 
-    # Get the ID of the first metric request
     request_id: str = drift_metrics_data["requests"][0]["id"]
 
-    # Send the delete request
     delete_response = handler.delete_drift_metric(metric_name=metric_name, request_id=request_id)
 
-    # Assert the status code of the delete request is 200 (OK)
     assert delete_response.status_code == http.HTTPStatus.OK, (
         f"Delete request failed with status code: {delete_response.status_code}"
     )
