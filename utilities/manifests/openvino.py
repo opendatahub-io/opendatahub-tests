@@ -22,8 +22,8 @@ OPENVINO_INFERENCE_CONFIG = {
             "query_input": DEFAULT_INPUT,
             "query_output": {
                 "response_output": '{"model_name":"${model_name}__isvc-[0-9a-z]+","model_version":"1",'
-                '"outputs":[{"name":"Func/StatefulPartitionedCall/output/_13:0","datatype":"FP32",'
-                '"shape":[1,1],"data":[0]}]}',
+                '"outputs":\[{"name":"Func/StatefulPartitionedCall/output/_13:0","datatype":"FP32",'
+                '"shape":\[1,1\],"data":\[0\]}]}',
             },
             "use_regex": True
         },
