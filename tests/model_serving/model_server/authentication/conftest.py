@@ -233,7 +233,7 @@ def patched_remove_authentication_isvc(
 @pytest.fixture()
 def patched_remove_raw_authentication_isvc(
     admin_client: DynamicClient,
-    http_s3_caikit_serverless_inference_service: InferenceService,
+    http_s3_caikit_raw_inference_service: InferenceService,
 ) -> InferenceService:
     with ResourceEditor(
         patches={

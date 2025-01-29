@@ -34,10 +34,10 @@ class TestKserveTokenAuthenticationRaw:
         )
 
     @pytest.mark.dependency(name="test_disabled_raw_model_authentication")
-    def test_disabled_raw_model_authentication(self, patched_remove_authentication_isvc):
+    def test_disabled_raw_model_authentication(self, patched_remove_raw_authentication_isvc):
         """Verify model query after authentication is disabled"""
         verify_inference_response(
-            inference_service=patched_remove_authentication_isvc,
+            inference_service=patched_remove_raw_authentication_isvc,
             runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTP,
