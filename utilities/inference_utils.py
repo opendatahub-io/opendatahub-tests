@@ -44,6 +44,7 @@ class Inference:
         """
         self.inference_service = inference_service
         self.deployment_mode = self.inference_service.instance.metadata.annotations["serving.kserve.io/deploymentMode"]
+        self.runtime_name = get_inference_serving_runtime(isvc=self.inference_service)
         self.visibility_exposed = self.is_service_exposed()
 
         self.inference_url = self.get_inference_url()
@@ -84,15 +85,21 @@ class Inference:
                 return True
 
         if self.deployment_mode == KServeDeploymentType.MODEL_MESH:
-            if runtime := get_inference_serving_runtime(isvc=self.inference_service):
-                _annotations = runtime.instance.metadata.annotations
+            if self.runtime_name:
+                _annotations = self.runtime_name.instance.metadata.annotations
                 return _annotations and _annotations.get("enable-route") == "true"
 
         return False
 
 
 class UserInference(Inference):
-    def __init__(self, protocol: str, inference_type: str, inference_config: dict[str, Any], **kwargs: Any) -> None:
+    def __init__(
+        self,
+        protocol: str,
+        inference_type: str,
+        inference_config: dict[str, Any],
+        **kwargs: Any,
+    ) -> None:
         super().__init__(**kwargs)
 
         self.protocol = protocol
@@ -267,7 +274,11 @@ class UserInference(Inference):
     def run_inference(self, cmd: str) -> str:
         # For internal inference, we need to use port forwarding to the service
         if not self.visibility_exposed:
-            svc = get_services_by_isvc_label(client=self.inference_service.client, isvc=self.inference_service)[0]
+            svc = get_services_by_isvc_label(
+                client=self.inference_service.client,
+                isvc=self.inference_service,
+                runtime_name=self.runtime_name,
+            )[0]
             port = self.get_target_port(svc=svc)
             cmd = cmd.replace("localhost", f"localhost:{port}")
 
@@ -298,7 +309,11 @@ class UserInference(Inference):
         # For multi node with headless service, we need to get the pod to get the port
         # TODO: check behavior for both normal and headless service
         if self.inference_service.instance.spec.predictor.workerSpec and not self.visibility_exposed:
-            pod = get_pods_by_isvc_label(client=self.inference_service.client, isvc=self.inference_service)[0]
+            pod = get_pods_by_isvc_label(
+                client=self.inference_service.client,
+                isvc=self.inference_service,
+                runtime_name=self.runtime_name,
+            )[0]
             if ports := pod.instance.spec.containers[0].ports:
                 return ports[0].containerPort
 

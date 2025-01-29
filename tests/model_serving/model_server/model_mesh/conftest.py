@@ -10,7 +10,6 @@ from ocp_resources.serving_runtime import ServingRuntime
 from tests.model_serving.model_server.utils import create_isvc
 from utilities.constants import (
     KServeDeploymentType,
-    ModelAndFormat,
     ModelFormat,
     ModelInferenceRuntime,
     ModelVersion,
@@ -38,7 +37,7 @@ def http_s3_openvino_second_model_mesh_inference_service(
         model_service_account=model_mesh_model_service_account.name,
         storage_key=ci_model_mesh_endpoint_s3_secret.name,
         storage_path=request.param["model-path"],
-        model_format=ModelAndFormat.OPENVINO_IR,
+        model_format=request.param["model-format"],
         deployment_mode=KServeDeploymentType.MODEL_MESH,
         model_version=ModelVersion.OPSET1,
     ) as isvc:

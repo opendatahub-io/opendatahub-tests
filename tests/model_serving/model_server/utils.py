@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import re
 from contextlib import contextmanager
@@ -23,19 +25,17 @@ from utilities.infra import (
     get_pods_by_isvc_label,
     wait_for_inference_deployment_replicas,
 )
+from utilities.jira import is_jira_open
 
 LOGGER = get_logger(name=__name__)
 
 
-def verify_no_failed_pods(client: DynamicClient, isvc: InferenceService) -> None:
+def verify_no_failed_pods(client: DynamicClient, isvc: InferenceService, runtime_name: str | None) -> None:
     failed_pods: dict[str, Any] = {}
 
+    LOGGER.info("Verifying no failed pods")
     for pods in TimeoutSampler(
-        wait_timeout=5 * 60,
-        sleep=10,
-        func=get_pods_by_isvc_label,
-        client=client,
-        isvc=isvc,
+        wait_timeout=5 * 60, sleep=10, func=get_pods_by_isvc_label, client=client, isvc=isvc, runtime_name=runtime_name
     ):
         if pods:
             if all([pod.instance.status.phase == pod.Status.RUNNING for pod in pods]):
@@ -159,12 +159,15 @@ def create_isvc(
         label=labels,
     ) as inference_service:
         if wait_for_predictor_pods:
-            verify_no_failed_pods(client=client, isvc=inference_service)
-            wait_for_inference_deployment_replicas(
-                client=client, isvc=inference_service, deployment_mode=deployment_mode
-            )
+            verify_no_failed_pods(client=client, isvc=inference_service, runtime_name=runtime)
+            wait_for_inference_deployment_replicas(client=client, isvc=inference_service, runtime_name=runtime)
 
         if wait:
+            if is_jira_open(jira_id="RHOAIENG-13636") and deployment_mode == KServeDeploymentType.MODEL_MESH:
+                pod = get_pods_by_isvc_label(client=client, isvc=inference_service, runtime_name=runtime)[0]
+                LOGGER.warning(f"Bug RHOAIENG-13636 - deleting {pod.name} pod to fix model mesh deployment")
+                pod.clean_up()
+
             inference_service.wait_for_condition(
                 condition=inference_service.Condition.READY,
                 status=inference_service.Condition.Status.TRUE,

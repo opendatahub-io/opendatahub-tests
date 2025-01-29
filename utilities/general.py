@@ -110,7 +110,7 @@ def download_model_data(
     return model_path
 
 
-def create_isvc_label_selector_str(isvc: InferenceService) -> str:
+def create_isvc_label_selector_str(isvc: InferenceService, runtime_name: str | None) -> str:
     if isvc.instance.metadata.annotations.get(Annotations.KserveIo.DEPLOYMENT_MODE) in (
         KServeDeploymentType.SERVERLESS,
         KServeDeploymentType.RAW_DEPLOYMENT,
@@ -118,5 +118,6 @@ def create_isvc_label_selector_str(isvc: InferenceService) -> str:
         label_selector = f"{isvc.ApiGroup.SERVING_KSERVE_IO}/inferenceservice={isvc.name}"
 
     else:
-        label_selector = f"modelmesh-service={MODELMESH_SERVING}"
+        label_selector = f"name={MODELMESH_SERVING}-{runtime_name}"
+
     return label_selector

@@ -26,6 +26,7 @@ class ModelAndFormat:
     FLAN_T5_SMALL_CAIKIT: str = f"{ModelName.FLAN_T5_SMALL}-{ModelFormat.CAIKIT}"
     OPENVINO_IR: str = f"{ModelFormat.OPENVINO}_ir"
     KSERVE_OPENVINO_IR: str = f"{OPENVINO_IR}_kserve"
+    ONNX_1: str = f"{ModelFormat.ONNX}-1"
 
 
 class ModelStoragePath:
