@@ -12,7 +12,7 @@ from utilities.constants import (
 from utilities.inference_utils import Inference
 from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
 
-pytestmark = [pytest.mark.usefixtures("valid_aws_config"), pytest.mark.serverless]
+pytestmark = [pytest.mark.usefixtures("valid_aws_config"), pytest.mark.serverless, pytest.mark.sanity]
 
 
 @pytest.mark.parametrize(

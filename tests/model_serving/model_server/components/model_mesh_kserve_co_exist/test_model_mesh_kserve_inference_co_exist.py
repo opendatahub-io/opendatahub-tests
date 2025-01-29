@@ -12,7 +12,7 @@ from utilities.constants import (
 from utilities.inference_utils import Inference
 from utilities.manifests.openvino import OPENVINO_INFERENCE_CONFIG, OPENVINO_KSERVE_INFERENCE_CONFIG
 
-pytestmark = [pytest.mark.serverless, pytest.mark.modelmesh]
+pytestmark = [pytest.mark.serverless, pytest.mark.modelmesh, pytest.mark.sanity]
 
 KSERVE_RUNTIME_PARAMS = {
     "runtime-name": ModelInferenceRuntime.OPENVINO_KSERVE_RUNTIME,

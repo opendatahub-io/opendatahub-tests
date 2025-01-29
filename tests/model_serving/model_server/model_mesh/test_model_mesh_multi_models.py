@@ -10,7 +10,7 @@ from utilities.constants import (
 from utilities.inference_utils import Inference
 from utilities.manifests.openvino import OPENVINO_INFERENCE_CONFIG
 
-pytestmark = [pytest.mark.modelmesh]
+pytestmark = [pytest.mark.modelmesh, pytest.mark.sanity]
 
 
 @pytest.mark.parametrize(

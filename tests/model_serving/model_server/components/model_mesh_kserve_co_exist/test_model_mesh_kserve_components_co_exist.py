@@ -7,6 +7,9 @@ LOGGER = get_logger(name=__name__)
 TIMEOUT = 6 * 60
 
 
+pytestmark = pytest.mark.smoke
+
+
 @pytest.mark.usefixtures("managed_modelmesh_kserve_in_dsc")
 class TestKserveModelmeshCoexist:
     def test_model_mesh_state_in_dsc(self, dsc_resource):
