@@ -35,7 +35,12 @@ def verify_no_failed_pods(client: DynamicClient, isvc: InferenceService, runtime
 
     LOGGER.info("Verifying no failed pods")
     for pods in TimeoutSampler(
-        wait_timeout=5 * 60, sleep=10, func=get_pods_by_isvc_label, client=client, isvc=isvc, runtime_name=runtime_name
+        wait_timeout=5 * 60,
+        sleep=10,
+        func=get_pods_by_isvc_label,
+        client=client,
+        isvc=isvc,
+        runtime_name=runtime_name,
     ):
         if pods:
             if all([pod.instance.status.phase == pod.Status.RUNNING for pod in pods]):
@@ -164,9 +169,19 @@ def create_isvc(
 
         if wait:
             if is_jira_open(jira_id="RHOAIENG-13636") and deployment_mode == KServeDeploymentType.MODEL_MESH:
-                LOGGER.warning("Bug RHOAIENG-13636 - re-creating isvc")
-                inference_service.clean_up()
-                inference_service.deploy()
+                for isvc in InferenceService.get(dyn_client=client, namespace=namespace):
+                    if (
+                        isvc.name != name
+                        and isvc.instance.annotations.get(Annotations.KserveIo.DEPLOYMENT_MODE)
+                        == KServeDeploymentType.MODEL_MESH
+                    ):
+                        LOGGER.warning(
+                            "Bug RHOAIENG-13636 - re-creating isvc if there's already a modelmesh isvc in the namespace"
+                        )
+                        inference_service.clean_up()
+                        inference_service.deploy()
+
+                        break
 
             inference_service.wait_for_condition(
                 condition=inference_service.Condition.READY,
