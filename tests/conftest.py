@@ -15,10 +15,11 @@ from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.namespace import Namespace
-from ocp_resources.resource import get_client, ResourceEditor
+from ocp_resources.resource import get_client
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 
+from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.infra import create_ns, login_with_user_password, get_openshift_token
 from utilities.constants import AcceleratorType
 
@@ -170,7 +171,11 @@ def vllm_runtime_image(pytestconfig: pytest.Config) -> str | None:
 
 @pytest.fixture(scope="class")
 def ns_with_modelmesh_enabled(request: FixtureRequest, admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
-    with create_ns(admin_client=admin_client, name=request.param["name"], labels={"modelmesh-enabled": "true"}) as ns:
+    with create_ns(
+        admin_client=admin_client,
+        name=request.param["name"],
+        labels={"modelmesh-enabled": "true"},
+    ) as ns:
         yield ns
 
 
@@ -210,7 +215,9 @@ def kubconfig_filepath() -> str:
 
 @pytest.fixture(scope="session")
 def unprivileged_client(
-    admin_client: DynamicClient, kubconfig_filepath: str, non_admin_user_password: Tuple[str, str]
+    admin_client: DynamicClient,
+    kubconfig_filepath: str,
+    non_admin_user_password: Tuple[str, str],
 ) -> Generator[DynamicClient, Any, Any]:
     """
     Provides none privileged API client. If non_admin_user_password is None, then it will yield admin_client.
@@ -255,24 +262,8 @@ def updated_dsc_component_state(
     request: FixtureRequest,
     dsc_resource: DataScienceCluster,
 ) -> Generator[DataScienceCluster, Any, Any]:
-    component_name = request.param["component_name"]
-    desired_state = request.param["desired_state"]
-    # Condition type for component being succesfully reconciled by DSC
-    condition_type = request.param["condition_type"]
-    if dsc_resource.instance.spec.components[component_name].managementState != desired_state:
-        with ResourceEditor(
-            patches={
-                dsc_resource: {
-                    "spec": {
-                        "components": {
-                            f"{component_name}": {"managementState": f"{desired_state}"},
-                        }
-                    }
-                }
-            }
-        ):
-            dsc_resource.wait_for_condition(condition=condition_type, status="True")
-            yield dsc_resource
-    else:
-        LOGGER.warning(f"Component {component_name} was already set to managementState {desired_state}")
-        yield dsc_resource
+    with update_components_in_dsc(
+        dsc=dsc_resource,
+        components={request.param["component_name"]: request.param["desired_state"]},
+    ) as dsc:
+        yield dsc

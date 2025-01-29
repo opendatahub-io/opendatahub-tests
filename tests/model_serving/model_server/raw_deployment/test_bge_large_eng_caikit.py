@@ -10,11 +10,10 @@ from utilities.constants import (
     RuntimeTemplates,
 )
 
-pytestmark = pytest.mark.usefixtures("valid_aws_config")
+pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_config")]
 
 
 @pytest.mark.smoke
-@pytest.mark.raw_deployment
 @pytest.mark.jira("RHOAIENG-11749")
 @pytest.mark.parametrize(
     "model_namespace, serving_runtime_from_template, s3_models_inference_service",

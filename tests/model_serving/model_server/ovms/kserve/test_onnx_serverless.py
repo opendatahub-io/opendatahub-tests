@@ -10,7 +10,7 @@ from utilities.constants import (
 from utilities.inference_utils import Inference
 
 
-pytestmark = pytest.mark.usefixtures("skip_if_no_deployed_openshift_serverless", "valid_aws_config")
+pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config")]
 
 
 @pytest.mark.serverless

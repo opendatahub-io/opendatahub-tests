@@ -12,12 +12,10 @@ from ocp_resources.role_binding import RoleBinding
 from ocp_resources.role import Role
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
-from ocp_resources.authorino import Authorino
 from ocp_resources.serving_runtime import ServingRuntime
 from pyhelper_utils.shell import run_command
-from pytest_testconfig import config as py_config
 
-from utilities.infra import create_isvc_view_role, create_ns, get_pods_by_isvc_label, s3_endpoint_secret
+from utilities.infra import create_isvc_view_role, create_ns, s3_endpoint_secret
 from tests.model_serving.model_server.utils import create_isvc
 from utilities.constants import (
     KServeDeploymentType,
@@ -27,17 +25,6 @@ from utilities.constants import (
     RuntimeTemplates,
 )
 from utilities.serving_runtime import ServingRuntimeFromTemplate
-
-
-@pytest.fixture(scope="session")
-def skip_if_no_authorino_operator(admin_client: DynamicClient):
-    name = "authorino"
-    if not Authorino(
-        client=admin_client,
-        name=name,
-        namespace=f"{py_config['applications_namespace']}-auth-provider",
-    ).exists:
-        pytest.skip(f"{name} operator is missing from the cluster")
 
 
 # GRPC model serving
@@ -145,12 +132,6 @@ def patched_remove_authentication_isvc(
             }
         }
     ):
-        predictor_pod = get_pods_by_isvc_label(
-            client=admin_client,
-            isvc=http_s3_caikit_serverless_inference_service,
-        )[0]
-        predictor_pod.wait_deleted()
-
         yield http_s3_caikit_serverless_inference_service
 
 

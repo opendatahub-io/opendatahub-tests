@@ -13,7 +13,7 @@ from utilities.constants import (
 from utilities.inference_utils import Inference
 from utilities.monitoring import get_metrics_value, validate_metrics_value
 
-pytestmark = pytest.mark.usefixtures("skip_if_no_deployed_openshift_serverless", "valid_aws_config", "deleted_metrics")
+pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config", "deleted_metrics")]
 
 
 @pytest.mark.serverless

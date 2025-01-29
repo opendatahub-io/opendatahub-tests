@@ -19,6 +19,9 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         resources: Optional[Dict[str, Any]] = None,
         model_format_name: Optional[Dict[str, str]] = None,
         unprivileged_client: Optional[DynamicClient] = None,
+        enable_external_route: Optional[bool] = None,
+        enable_auth: Optional[bool] = None,
+        protocol: Optional[str] = None,
     ):
         self.admin_client = client
         self.name = name
@@ -30,6 +33,11 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         self.resources = resources
         self.model_format_name = model_format_name
         self.unprivileged_client = unprivileged_client
+
+        # model mesh attributes
+        self.enable_external_route = enable_external_route
+        self.enable_auth = enable_auth
+        self.protocol = protocol
 
         self.model_dict = self.update_model_dict()
 
@@ -60,6 +68,15 @@ class ServingRuntimeFromTemplate(ServingRuntime):
 
         if self.multi_model is not None:
             _model_dict["spec"]["multiModel"] = self.multi_model
+
+        if self.enable_external_route:
+            _model_dict["metadata"].setdefault("annotations", {})["enable-route"] = "true"
+
+        if self.enable_auth:
+            _model_dict["metadata"].setdefault("annotations", {})["enable-route"] = "true"
+
+        if self.protocol is not None:
+            _model_dict["metadata"].setdefault("annotations", {})["opendatahub.io/apiProtocol"] = self.protocol
 
         for container in _model_dict["spec"]["containers"]:
             for env in container.get("env", []):

@@ -3,6 +3,8 @@ on:
   pull_request_target:
     types: [synchronize]
 
+  pull_request_review:
+
   issue_comment:
     types: [created, edited, deleted]
     if: |
@@ -15,6 +17,7 @@ on:
 permissions:
   pull-requests: write
   contents: write
+  issues: write
 
 jobs:
   add-remove-labels:
@@ -38,7 +41,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_PR_NUMBER: "${{ github.event.pull_request.number || github.event.issue.number }}"
           GITHUB_EVENT_ACTION: ${{ github.event.action }}
+          GITHUB_EVENT_REVIEW_STATE: ${{ github.event.review.state }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           COMMENT_BODY: ${{ github.event.comment.body }}
+          GITHUB_USER_LOGIN: ${{ github.event.sender.login }}
           ACTION: "add-remove-labels"
         run: uv run python .github/workflows/scripts/pr_workflow.py

@@ -19,8 +19,10 @@ from ocp_resources.pod import Pod
 from ocp_resources.project_project_openshift_io import Project
 from ocp_resources.project_request import ProjectRequest
 from ocp_resources.role import Role
+from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
+from ocp_resources.serving_runtime import ServingRuntime
 from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
@@ -65,7 +67,10 @@ def create_ns(
 
 
 def wait_for_inference_deployment_replicas(
-    client: DynamicClient, isvc: InferenceService, deployment_mode: str, expected_num_deployments: int = 1
+    client: DynamicClient,
+    isvc: InferenceService,
+    deployment_mode: str,
+    expected_num_deployments: int = 1,
 ) -> List[Deployment]:
     ns = isvc.namespace
     label_selector = create_isvc_label_selector_str(isvc=isvc)
@@ -216,10 +221,10 @@ def get_services_by_isvc_label(client: DynamicClient, isvc: InferenceService) ->
         isvc (InferenceService):InferenceService object.
 
     Returns:
-        list[Service]: A list of all matching pods
+        list[Service]: A list of all matching services
 
     Raises:
-        ResourceNotFoundError: if no pods are found.
+        ResourceNotFoundError: if no services are found.
     """
     label_selector = create_isvc_label_selector_str(isvc=isvc)
 
@@ -267,9 +272,55 @@ def get_openshift_token() -> str:
 
 
 def get_kserve_storage_initialize_image(client: DynamicClient) -> str:
-    kserve_cm = ConfigMap(client=client, name="inferenceservice-config", namespace=py_config["applications_namespace"])
+    kserve_cm = ConfigMap(
+        client=client,
+        name="inferenceservice-config",
+        namespace=py_config["applications_namespace"],
+    )
 
     if not kserve_cm.exists:
         raise ResourceNotFoundError(f"{kserve_cm.name} config map does not exist")
 
     return json.loads(kserve_cm.instance.data.storageInitializer)["image"]
+
+
+def get_inference_serving_runtime(isvc: InferenceService) -> ServingRuntime | None:
+    runtime = ServingRuntime(
+        client=isvc.client,
+        namespace=isvc.namespace,
+        name=isvc.instance.spec.predictor.model.runtime,
+    )
+
+    if not runtime:
+        LOGGER.warning(f"InferenceService {isvc.name} runtime is empty")
+        return None
+
+    if runtime.exists:
+        return runtime
+
+    raise ResourceNotFoundError(f"{isvc.name} runtime {runtime.name} does not exist")
+
+
+def get_model_mesh_route(client: DynamicClient, isvc: InferenceService) -> Route:
+    """
+    Args:
+        client (DynamicClient): OCP Client to use.
+        isvc (InferenceService):InferenceService object.
+
+    Returns:
+        Route: inference service route
+
+    Raises:
+        ResourceNotFoundError: if route was found.
+    """
+    if routes := [
+        route
+        for route in Route.get(
+            dyn_client=client,
+            namespace=isvc.namespace,
+            label_selector=f"inferenceservice-name={isvc.name}",
+        )
+    ]:
+        return routes[0]
+
+    raise ResourceNotFoundError(f"{isvc.name} has no routes")
