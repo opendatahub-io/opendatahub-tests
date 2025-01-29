@@ -188,9 +188,7 @@ def create_inference_token(model_service_account) -> str:
     Returns:
         str: The generated inference token.
     """
-    command = shlex.split(
-        f"oc create token -n {model_service_account.namespace} {model_service_account.name}"
-    )
+    command = shlex.split(f"oc create token -n {model_service_account.namespace} {model_service_account.name}")
     result = run_command(command)
     return result[1].strip()
 

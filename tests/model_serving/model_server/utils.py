@@ -18,8 +18,6 @@ from utilities.exceptions import (
     InferenceResponseError,
     InvalidStorageArgumentError,
 )
-from tenacity import retry, wait_exponential, stop_after_attempt
-from utilities.constants import KServeDeploymentType
 from utilities.inference_utils import UserInference
 from utilities.infra import (
     get_pods_by_isvc_label,
