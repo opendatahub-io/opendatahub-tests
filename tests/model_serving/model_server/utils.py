@@ -14,14 +14,11 @@ from tests.model_serving.model_server.private_endpoint.utils import (
 from tenacity import retry, wait_exponential, stop_after_attempt
 from utilities.constants import KServeDeploymentType
 from utilities.inference_utils import UserInference
-from utilities.inference_utils import UserInference
 from utilities.infra import (
     get_pods_by_isvc_label,
     wait_for_inference_deployment_replicas,
 )
 LOGGER = get_logger(name=__name__)
-
-
 class InferenceResponseError(Exception):
     pass
 
