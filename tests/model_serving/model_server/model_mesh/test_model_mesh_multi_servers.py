@@ -2,6 +2,7 @@ import pytest
 
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import (
+    ModelFormat,
     ModelStoragePath,
     Protocols,
 )
@@ -22,7 +23,9 @@ pytestmark = [pytest.mark.modelmesh]
             {"model-path": ModelStoragePath.OPENVINO_EXAMPLE_MODEL},
             {
                 "model-path": ModelStoragePath.TENSORFLOW_MODEL,
+                "model-format": ModelFormat.TENSORFLOW,
                 "runtime-fixture-name": "http_s3_ovms_external_route_model_mesh_serving_runtime",
+                "model-version": "2",
             },
         )
     ],
@@ -48,7 +51,7 @@ class TestOpenVINOModelMeshMultiServers:
         http_s3_openvino_second_model_mesh_inference_service,
     ):
         verify_inference_response(
-            inference_service=http_s3_openvino_model_mesh_inference_service,
+            inference_service=http_s3_openvino_second_model_mesh_inference_service,
             inference_config=TENSORFLOW_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,

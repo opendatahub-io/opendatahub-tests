@@ -12,7 +12,6 @@ from utilities.constants import (
     KServeDeploymentType,
     ModelFormat,
     ModelInferenceRuntime,
-    ModelVersion,
     Protocols,
     RuntimeTemplates,
 )
@@ -39,7 +38,7 @@ def http_s3_openvino_second_model_mesh_inference_service(
         storage_path=request.param["model-path"],
         model_format=request.param["model-format"],
         deployment_mode=KServeDeploymentType.MODEL_MESH,
-        model_version=ModelVersion.OPSET1,
+        model_version=request.param["model-version"],
     ) as isvc:
         yield isvc
 

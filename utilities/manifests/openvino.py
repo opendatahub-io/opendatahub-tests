@@ -21,14 +21,15 @@ OPENVINO_INFERENCE_CONFIG = {
         "infer": {
             "query_input": DEFAULT_INPUT,
             "query_output": {
-                "response_output": '{"model_name":"${model_name}__isvc-ac836837df","model_version":"1",'
+                "response_output": '{"model_name":"${model_name}__isvc-[0-9a-z]+","model_version":"1",'
                 '"outputs":[{"name":"Func/StatefulPartitionedCall/output/_13:0","datatype":"FP32",'
                 '"shape":[1,1],"data":[0]}]}',
             },
+            "use_regex": True
         },
         "infer-vehicle-detection": {
             "query_input": "@utilities/manifests/openvino/vehicle-detection-inputs.txt",
-            "query_output": '{"model_name":"${model_name}__isvc-eceac9476c","model_version":"1","outputs":\[{"name":"detection_out","datatype":"FP32","shape":\[1,1,200,7\],"data":\[.*\]}\]}',
+            "query_output": '{"model_name":"${model_name}__isvc-[0-9a-z]+","model_version":"1","outputs":\[{"name":"detection_out","datatype":"FP32","shape":\[1,1,200,7\],"data":\[.*\]}\]}',
             "use_regex": True
         },
     },

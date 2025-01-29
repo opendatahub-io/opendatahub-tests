@@ -4,6 +4,7 @@ from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import (
     ModelAndFormat,
     ModelStoragePath,
+    ModelVersion,
     Protocols,
 )
 from utilities.inference_utils import Inference
@@ -23,6 +24,7 @@ pytestmark = [pytest.mark.modelmesh]
                 "model-path": ModelStoragePath.OPENVINO_VEHICLE_DETECTION,
                 "runtime-fixture-name": "http_s3_ovms_model_mesh_serving_runtime",
                 "model-format": ModelAndFormat.OPENVINO_IR,
+                "model-version": ModelVersion.OPSET1,
             },
         )
     ],
