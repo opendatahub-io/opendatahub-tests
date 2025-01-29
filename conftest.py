@@ -8,12 +8,12 @@ from _pytest.terminal import TerminalReporter
 from typing import Optional, Any
 from pytest_testconfig import config as py_config
 
-
+from utilities.constants import KServeDeploymentType
 from utilities.logger import separator, setup_logging
 
 
-LOGGER = logging.getLogger(__name__)
-BASIC_LOGGER = logging.getLogger("basic")
+LOGGER = logging.getLogger(name=__name__)
+BASIC_LOGGER = logging.getLogger(name="basic")
 
 
 def pytest_addoption(parser: Parser) -> None:
@@ -91,8 +91,26 @@ def pytest_fixture_setup(fixturedef: FixtureDef[Any], request: FixtureRequest) -
 
 
 def pytest_runtest_setup(item: Item) -> None:
+    """
+    Performs the following actions:
+    1. Adds skip fixture for kserve if serverless or authorino operators are not installed.
+    2. Adds skip fixture for serverless if authorino/serverless/service mesh are not deployed.
+    """
+
     BASIC_LOGGER.info(f"\n{separator(symbol_='-', val=item.name)}")
     BASIC_LOGGER.info(f"{separator(symbol_='-', val='SETUP')}")
+
+    if KServeDeploymentType.SERVERLESS.lower() in item.keywords:
+        item.fixturenames.insert(0, "skip_if_no_redhat_authorino_operator")
+        item.fixturenames.insert(0, "skip_if_no_deployed_openshift_serverless")
+        item.fixturenames.insert(0, "skip_if_no_deployed_openshift_service_mesh")
+        item.fixturenames.insert(0, "enabled_kserve_in_dsc")
+
+    elif KServeDeploymentType.RAW_DEPLOYMENT.lower() in item.keywords:
+        item.fixturenames.insert(0, "enabled_kserve_in_dsc")
+
+    elif KServeDeploymentType.MODEL_MESH.lower() in item.keywords:
+        item.fixturenames.insert(0, "enabled_modelmesh_in_dsc")
 
 
 def pytest_runtest_call(item: Item) -> None:

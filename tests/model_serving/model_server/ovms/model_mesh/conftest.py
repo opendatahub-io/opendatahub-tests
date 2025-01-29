@@ -1,5 +1,4 @@
 import shlex
-from typing import Generator
 
 import pytest
 from _pytest.fixtures import FixtureRequest
@@ -24,28 +23,42 @@ from utilities.constants import (
     ModelInferenceRuntime,
     RuntimeTemplates,
 )
-from utilities.infra import create_isvc_view_role, create_storage_config_secret, s3_endpoint_secret
+from utilities.infra import create_isvc_view_role, s3_endpoint_secret
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
 @pytest.fixture(scope="class")
-def http_s3_openvino_model_mesh_serving_runtime(
+def http_s3_ovms_model_mesh_serving_runtime(
+    request: FixtureRequest,
     admin_client: DynamicClient,
     ns_with_modelmesh_enabled: Namespace,
 ) -> ServingRuntime:
-    with ServingRuntimeFromTemplate(
-        client=admin_client,
-        name=f"{Protocols.HTTP}-{ModelInferenceRuntime.OPENVINO_RUNTIME}",
-        namespace=ns_with_modelmesh_enabled.name,
-        template_name=RuntimeTemplates.OVMS_MODEL_MESH,
-        multi_model=True,
-        resources={
+    rt_kwargs = {
+        "client": admin_client,
+        "namespace": ns_with_modelmesh_enabled.name,
+        "name": f"{Protocols.HTTP}-{ModelInferenceRuntime.OPENVINO_RUNTIME}",
+        "template_name": RuntimeTemplates.OVMS_MODEL_MESH,
+        "multi_model": True,
+        "protocol": "REST",
+        "resources": {
             "ovms": {
                 "requests": {"cpu": "1", "memory": "4Gi"},
                 "limits": {"cpu": "2", "memory": "8Gi"},
             }
         },
-    ) as model_runtime:
+    }
+
+    enable_external_route = False
+    enable_auth = False
+
+    if hasattr(request, "param"):
+        enable_external_route = request.param.get("enable-external-route")
+        enable_auth = request.param.get("enable-auth")
+
+    rt_kwargs["enable_external_route"] = enable_external_route
+    rt_kwargs["enable_auth"] = enable_auth
+
+    with ServingRuntimeFromTemplate(**rt_kwargs) as model_runtime:
         yield model_runtime
 
 
@@ -73,29 +86,6 @@ def ci_model_mesh_endpoint_s3_secret(
 
 
 @pytest.fixture(scope="class")
-def model_mesh_storage_config_secret(
-    admin_client: DynamicClient,
-    ci_model_mesh_endpoint_s3_secret: Secret,
-    aws_access_key_id: str,
-    aws_secret_access_key: str,
-    ci_s3_bucket_name: str,
-    ci_s3_bucket_region: str,
-    ci_s3_bucket_endpoint: str,
-) -> Generator[Secret, None, None]:
-    with create_storage_config_secret(
-        admin_client=admin_client,
-        endpoint_secret_name=ci_model_mesh_endpoint_s3_secret.name,
-        namespace=ci_model_mesh_endpoint_s3_secret.namespace,
-        aws_access_key=aws_access_key_id,
-        aws_secret_access_key=aws_secret_access_key,
-        aws_s3_bucket=ci_s3_bucket_name,
-        aws_s3_region=ci_s3_bucket_region,
-        aws_s3_endpoint=ci_s3_bucket_endpoint,
-    ) as storage_config:
-        yield storage_config
-
-
-@pytest.fixture(scope="class")
 def model_mesh_model_service_account(
     admin_client: DynamicClient, ci_model_mesh_endpoint_s3_secret: Secret
 ) -> ServiceAccount:
@@ -113,32 +103,22 @@ def http_s3_openvino_model_mesh_inference_service(
     request: FixtureRequest,
     admin_client: DynamicClient,
     ns_with_modelmesh_enabled: Namespace,
-    http_s3_openvino_model_mesh_serving_runtime: ServingRuntime,
+    http_s3_ovms_model_mesh_serving_runtime: ServingRuntime,
     ci_model_mesh_endpoint_s3_secret: Secret,
-    model_mesh_storage_config_secret: Secret,
     model_mesh_model_service_account: ServiceAccount,
 ) -> InferenceService:
-    isvc_kwargs = {
-        "client": admin_client,
-        "name": f"{Protocols.HTTP}-{ModelFormat.OPENVINO}",
-        "namespace": ns_with_modelmesh_enabled.name,
-        "runtime": http_s3_openvino_model_mesh_serving_runtime.name,
-        "model_service_account": model_mesh_model_service_account.name,
-        "storage_key": ci_model_mesh_endpoint_s3_secret.name,
-        "storage_path": request.param.get("model-path"),
-        "model_format": ModelAndFormat.OPENVINO_IR,
-        "deployment_mode": KServeDeploymentType.MODEL_MESH,
-        "model_version": ModelVersion.OPSET1,
-    }
-
-    enable_auth = False
-
-    if hasattr(request, "param"):
-        enable_auth = request.param.get("enable-auth")
-
-    isvc_kwargs["enable_auth"] = enable_auth
-
-    with create_isvc(**isvc_kwargs) as isvc:
+    with create_isvc(
+        client=admin_client,
+        name=f"{Protocols.HTTP}-{ModelFormat.OPENVINO}",
+        namespace=ns_with_modelmesh_enabled.name,
+        runtime=http_s3_ovms_model_mesh_serving_runtime.name,
+        model_service_account=model_mesh_model_service_account.name,
+        storage_key=ci_model_mesh_endpoint_s3_secret.name,
+        storage_path=request.param["model-path"],
+        model_format=ModelAndFormat.OPENVINO_IR,
+        deployment_mode=KServeDeploymentType.MODEL_MESH,
+        model_version=ModelVersion.OPSET1,
+    ) as isvc:
         yield isvc
 
 
@@ -189,11 +169,11 @@ def model_mesh_inference_token(
 @pytest.fixture()
 def patched_model_mesh_sr_with_authentication(
     admin_client: DynamicClient,
-    http_s3_openvino_model_mesh_serving_runtime: ServingRuntime,
+    http_s3_ovms_model_mesh_serving_runtime: ServingRuntime,
 ) -> None:
     with ResourceEditor(
         patches={
-            http_s3_openvino_model_mesh_serving_runtime: {
+            http_s3_ovms_model_mesh_serving_runtime: {
                 "metadata": {
                     "annotations": {"enable-auth": "true"},
                 }
@@ -201,3 +181,27 @@ def patched_model_mesh_sr_with_authentication(
         }
     ):
         yield
+
+
+@pytest.fixture(scope="class")
+def http_s3_tensorflow_model_mesh_inference_service(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    ns_with_modelmesh_enabled: Namespace,
+    http_s3_ovms_model_mesh_serving_runtime: ServingRuntime,
+    ci_model_mesh_endpoint_s3_secret: Secret,
+    model_mesh_model_service_account: ServiceAccount,
+) -> InferenceService:
+    with create_isvc(
+        client=admin_client,
+        name=f"{Protocols.HTTP}-{ModelFormat.TENSORFLOW}",
+        namespace=ns_with_modelmesh_enabled.name,
+        runtime=http_s3_ovms_model_mesh_serving_runtime.name,
+        model_service_account=model_mesh_model_service_account.name,
+        storage_key=ci_model_mesh_endpoint_s3_secret.name,
+        storage_path=request.param["model-path"],
+        model_format=ModelFormat.TENSORFLOW,
+        deployment_mode=KServeDeploymentType.MODEL_MESH,
+        model_version="2",
+    ) as isvc:
+        yield isvc

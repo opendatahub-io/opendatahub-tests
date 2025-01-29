@@ -1,5 +1,17 @@
+from __future__ import annotations
+
 import base64
 from typing import Dict
+
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.inference_service import InferenceService
+from ocp_resources.pod import Pod
+from simple_logger.logger import get_logger
+
+import utilities.infra
+from utilities.constants import Annotations, KServeDeploymentType, MODELMESH_SERVING
+
+LOGGER = get_logger(name=__name__)
 
 
 def get_s3_secret_dict(
@@ -32,3 +44,79 @@ def b64_encoded_string(string_to_encode: str) -> str:
         A base64 encoded string that is compliant with openshift's yaml format
     """
     return base64.b64encode(string_to_encode.encode()).decode()
+
+
+def download_model_data(
+    admin_client: DynamicClient,
+    aws_access_key_id: str,
+    aws_secret_access_key: str,
+    model_namespace: str,
+    model_pvc_name: str,
+    bucket_name: str,
+    aws_endpoint_url: str,
+    aws_default_region: str,
+    model_path: str,
+    use_sub_path: bool = False,
+) -> str:
+    volume_mount = {"mountPath": "/mnt/models/", "name": model_pvc_name}
+    if use_sub_path:
+        volume_mount["subPath"] = model_path
+
+    pvc_model_path = f"/mnt/models/{model_path}"
+    init_containers = [
+        {
+            "name": "init-container",
+            "image": "quay.io/quay/busybox@sha256:92f3298bf80a1ba949140d77987f5de081f010337880cd771f7e7fc928f8c74d",
+            "command": ["sh"],
+            "args": ["-c", f"mkdir -p {pvc_model_path} && chmod -R 777 {pvc_model_path}"],
+            "volumeMounts": [volume_mount],
+        }
+    ]
+    containers = [
+        {
+            "name": "model-downloader",
+            "image": utilities.infra.get_kserve_storage_initialize_image(client=admin_client),
+            "args": [
+                f"s3://{bucket_name}/{model_path}/",
+                pvc_model_path,
+            ],
+            "env": [
+                {"name": "AWS_ACCESS_KEY_ID", "value": aws_access_key_id},
+                {"name": "AWS_SECRET_ACCESS_KEY", "value": aws_secret_access_key},
+                {"name": "S3_USE_HTTPS", "value": "1"},
+                {"name": "AWS_ENDPOINT_URL", "value": aws_endpoint_url},
+                {"name": "AWS_DEFAULT_REGION", "value": aws_default_region},
+                {"name": "S3_VERIFY_SSL", "value": "false"},
+                {"name": "awsAnonymousCredential", "value": "false"},
+            ],
+            "volumeMounts": [volume_mount],
+        }
+    ]
+    volumes = [{"name": model_pvc_name, "persistentVolumeClaim": {"claimName": model_pvc_name}}]
+
+    with Pod(
+        client=admin_client,
+        namespace=model_namespace,
+        name="download-model-data",
+        init_containers=init_containers,
+        containers=containers,
+        volumes=volumes,
+        restart_policy="Never",
+    ) as pod:
+        pod.wait_for_status(status=Pod.Status.RUNNING)
+        LOGGER.info("Waiting for model download to complete")
+        pod.wait_for_status(status=Pod.Status.SUCCEEDED, timeout=25 * 60)
+
+    return model_path
+
+
+def create_isvc_label_selector_str(isvc: InferenceService) -> str:
+    if isvc.instance.metadata.annotations.get(Annotations.KserveIo.DEPLOYMENT_MODE) in (
+        KServeDeploymentType.SERVERLESS,
+        KServeDeploymentType.RAW_DEPLOYMENT,
+    ):
+        label_selector = f"{isvc.ApiGroup.SERVING_KSERVE_IO}/inferenceservice={isvc.name}"
+
+    else:
+        label_selector = f"modelmesh-service={MODELMESH_SERVING}"
+    return label_selector

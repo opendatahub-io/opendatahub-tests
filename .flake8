@@ -2,7 +2,6 @@
 # UFN plugin must be run in serial
 jobs = 0
 max-line-length = 120
-select=M511
 
 exclude =
     doc,
@@ -12,12 +11,27 @@ exclude =
     .yml,
     Pipfile.*,
     docs/*,
-    .cache/*
-    utilities/manifests/*
-    /utilities/plugins/*
+    .cache/*,
+    utilities/manifests/*,
+    utilities/plugins/*,
+
+fcn_exclude_functions =
+    re,
+    logging,
+    LOGGER,
+    os,
+    json,
+    pytest,
+    usefixtures,
+    add_to_labels,
+    addoption,
+    write,
+    from_pytest_fixture,
+    QueueListener
 
 
 enable-extensions =
+    FCN,
     UFN,
     NIC,
     NIT,

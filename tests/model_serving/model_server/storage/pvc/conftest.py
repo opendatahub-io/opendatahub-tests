@@ -1,4 +1,3 @@
-import shlex
 from typing import Any, Generator, List
 
 import pytest
@@ -9,81 +8,38 @@ from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.serving_runtime import ServingRuntime
-from ocp_resources.storage_class import StorageClass
 from pytest import FixtureRequest
 
-from tests.model_serving.model_server.storage.constants import NFS_STR
 from tests.model_serving.model_server.utils import create_isvc
 from utilities.constants import KServeDeploymentType
+from utilities.general import download_model_data
 from utilities.infra import get_pods_by_isvc_label
 
 
 @pytest.fixture(scope="class")
-def model_pvc(
+def ci_bucket_downloaded_model_data(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
-) -> Generator[PersistentVolumeClaim, Any, Any]:
-    access_mode = "ReadWriteOnce"
-    pvc_kwargs = {
-        "name": "model-pvc",
-        "namespace": model_namespace.name,
-        "client": admin_client,
-        "size": "4Gi",
-    }
-    if hasattr(request, "param"):
-        access_mode = request.param.get("access-modes")
-
-        if storage_class_name := request.param.get("storage-class-name"):
-            pvc_kwargs["storage_class"] = storage_class_name
-
-    pvc_kwargs["accessmodes"] = access_mode
-
-    with PersistentVolumeClaim(**pvc_kwargs) as pvc:
-        pvc.wait_for_status(status=pvc.Status.BOUND, timeout=120)
-        yield pvc
-
-
-@pytest.fixture(scope="class")
-def downloaded_model_data(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-    ci_s3_storage_uri: str,
     model_pvc: PersistentVolumeClaim,
     aws_secret_access_key: str,
     aws_access_key_id: str,
+    ci_s3_bucket_name: str,
+    ci_s3_bucket_endpoint: str,
+    ci_s3_bucket_region: str,
 ) -> str:
-    mount_path: str = "data"
-    model_dir: str = "model-dir"
-    containers = [
-        {
-            "name": "model-downloader",
-            "image": "quay.io/redhat_msi/qe-tools-base-image",
-            "args": [
-                "sh",
-                "-c",
-                "sleep infinity",
-            ],
-            "env": [
-                {"name": "AWS_ACCESS_KEY_ID", "value": aws_access_key_id},
-                {"name": "AWS_SECRET_ACCESS_KEY", "value": aws_secret_access_key},
-            ],
-            "volumeMounts": [{"mountPath": mount_path, "name": model_pvc.name, "subPath": model_dir}],
-        }
-    ]
-    volumes = [{"name": model_pvc.name, "persistentVolumeClaim": {"claimName": model_pvc.name}}]
-
-    with Pod(
-        client=admin_client,
-        namespace=model_namespace.name,
-        name="download-model-data",
-        containers=containers,
-        volumes=volumes,
-    ) as pod:
-        pod.wait_for_status(status=Pod.Status.RUNNING)
-        pod.execute(command=shlex.split(f"aws s3 cp --recursive {ci_s3_storage_uri} /{mount_path}/{model_dir}"))
-
-    return model_dir
+    return download_model_data(
+        admin_client=admin_client,
+        aws_access_key_id=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
+        model_namespace=model_namespace.name,
+        model_pvc_name=model_pvc.name,
+        bucket_name=ci_s3_bucket_name,
+        aws_endpoint_url=ci_s3_bucket_endpoint,
+        aws_default_region=ci_s3_bucket_region,
+        model_path=request.param["model-dir"],
+        use_sub_path=True,
+    )
 
 
 @pytest.fixture()
@@ -129,14 +85,14 @@ def pvc_inference_service(
     model_namespace: Namespace,
     serving_runtime_from_template: ServingRuntime,
     model_pvc: PersistentVolumeClaim,
-    downloaded_model_data: str,
+    ci_bucket_downloaded_model_data: str,
 ) -> Generator[InferenceService, Any, Any]:
     isvc_kwargs = {
         "client": admin_client,
         "name": request.param["name"],
         "namespace": model_namespace.name,
         "runtime": serving_runtime_from_template.name,
-        "storage_uri": f"pvc://{model_pvc.name}/{downloaded_model_data}",
+        "storage_uri": f"pvc://{model_pvc.name}/{ci_bucket_downloaded_model_data}",
         "model_format": serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
         "deployment_mode": request.param.get("deployment-mode", KServeDeploymentType.SERVERLESS),
         "wait_for_predictor_pods": True,
@@ -152,9 +108,3 @@ def pvc_inference_service(
 @pytest.fixture()
 def first_predictor_pod(predictor_pods_scope_function: List[Pod]) -> Pod:
     return predictor_pods_scope_function[0]
-
-
-@pytest.fixture(scope="session")
-def skip_if_no_nfs_storage_class(admin_client: DynamicClient) -> None:
-    if not StorageClass(client=admin_client, name=NFS_STR).exists:
-        pytest.skip(f"StorageClass {NFS_STR} is missing from the cluster")

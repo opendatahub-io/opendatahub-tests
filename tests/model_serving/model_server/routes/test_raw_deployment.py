@@ -11,15 +11,14 @@ from utilities.constants import (
 )
 from utilities.inference_utils import Inference
 
-pytestmark = [pytest.mark.usefixtures("valid_aws_config"), pytest.mark.raw_deployment]
+pytestmark = [pytest.mark.usefixtures("valid_aws_config"), pytest.mark.rawdeployment]
 
 
 @pytest.mark.parametrize(
-    "model_namespace, s3_models_storage_uri, serving_runtime_from_template, s3_models_inference_service",
+    "model_namespace, serving_runtime_from_template, s3_models_inference_service",
     [
         pytest.param(
             {"name": "raw-deployment-caikit-flan-rest"},
-            {"model-dir": ModelStoragePath.FLAN_T5_SMALL},
             {
                 "name": f"{Protocols.HTTP}-{ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME}",
                 "template-name": RuntimeTemplates.CAIKIT_TGIS_SERVING,
@@ -27,7 +26,11 @@ pytestmark = [pytest.mark.usefixtures("valid_aws_config"), pytest.mark.raw_deplo
                 "enable-http": True,
                 "enable-grpc": False,
             },
-            {"name": f"{Protocols.HTTP}-{ModelFormat.CAIKIT}", "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT},
+            {
+                "name": f"{Protocols.HTTP}-{ModelFormat.CAIKIT}",
+                "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
+                "model-dir": ModelStoragePath.FLAN_T5_SMALL,
+            },
         )
     ],
     indirect=True,
@@ -94,11 +97,10 @@ class TestRestRawDeployment:
 
 
 @pytest.mark.parametrize(
-    "model_namespace, s3_models_storage_uri, serving_runtime_from_template, s3_models_inference_service",
+    "model_namespace, serving_runtime_from_template, s3_models_inference_service",
     [
         pytest.param(
             {"name": "raw-deployment-caikit-flan-grpc"},
-            {"model-dir": ModelStoragePath.FLAN_T5_SMALL},
             {
                 "name": f"{Protocols.HTTP}-{ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME}",
                 "template-name": RuntimeTemplates.CAIKIT_TGIS_SERVING,
@@ -106,7 +108,11 @@ class TestRestRawDeployment:
                 "enable-grpc": True,
                 "enable-http": False,
             },
-            {"name": f"{Protocols.GRPC}-{ModelFormat.CAIKIT}", "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT},
+            {
+                "name": f"{Protocols.GRPC}-{ModelFormat.CAIKIT}",
+                "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
+                "model-dir": ModelStoragePath.FLAN_T5_SMALL,
+            },
         )
     ],
     indirect=True,

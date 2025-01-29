@@ -13,24 +13,27 @@ from utilities.constants import (
 from utilities.inference_utils import Inference
 from utilities.monitoring import get_metrics_value, validate_metrics_value
 
-pytestmark = pytest.mark.usefixtures("skip_if_no_deployed_openshift_serverless", "valid_aws_config", "deleted_metrics")
+pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config", "deleted_metrics")]
 
 
 @pytest.mark.serverless
 @pytest.mark.jira("RHOAIENG-3236", run=False)
 @pytest.mark.parametrize(
-    "model_namespace, s3_models_storage_uri, serving_runtime_from_template, s3_models_inference_service",
+    "model_namespace, serving_runtime_from_template, s3_models_inference_service",
     [
         pytest.param(
             {"name": "kserve-tgis-metrics"},
-            {"model-dir": ModelStoragePath.FLAN_T5_SMALL},
             {
                 "name": f"{Protocols.HTTP}-{ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME}",
                 "template-name": RuntimeTemplates.CAIKIT_TGIS_SERVING,
                 "multi-model": False,
                 "enable-http": True,
             },
-            {"name": f"{Protocols.HTTP}-{ModelFormat.CAIKIT}", "deployment-mode": KServeDeploymentType.SERVERLESS},
+            {
+                "name": f"{Protocols.HTTP}-{ModelFormat.CAIKIT}",
+                "deployment-mode": KServeDeploymentType.SERVERLESS,
+                "model-dir": ModelStoragePath.FLAN_T5_SMALL,
+            },
         )
     ],
     indirect=True,

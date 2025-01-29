@@ -7,20 +7,59 @@ from typing import Any, Dict, Generator, Optional
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from simple_logger.logger import get_logger
+from timeout_sampler import TimeoutSampler
 
-from tests.model_serving.model_server.private_endpoint.utils import (
-    InvalidStorageArgument,
+from utilities.constants import (
+    Annotations,
+    KServeDeploymentType,
+)
+from utilities.exceptions import (
+    FailedPodsError,
+    InferenceResponseError,
+    InvalidStorageArgumentError,
 )
 from tenacity import retry, wait_exponential, stop_after_attempt
 from utilities.constants import KServeDeploymentType
 from utilities.inference_utils import UserInference
-from utilities.infra import wait_for_inference_deployment_replicas
+from utilities.infra import (
+    get_pods_by_isvc_label,
+    wait_for_inference_deployment_replicas,
+)
 
 LOGGER = get_logger(name=__name__)
 
 
-class InferenceResponseError(Exception):
-    pass
+def verify_no_failed_pods(client: DynamicClient, isvc: InferenceService) -> None:
+    failed_pods: dict[str, Any] = {}
+
+    for pods in TimeoutSampler(
+        wait_timeout=5 * 60,
+        sleep=10,
+        func=get_pods_by_isvc_label,
+        client=client,
+        isvc=isvc,
+    ):
+        if pods:
+            if all([pod.instance.status.phase == pod.Status.RUNNING for pod in pods]):
+                return
+
+            for pod in pods:
+                pod_status = pod.instance.status
+                if init_container_status := pod_status.initContainerStatuses:
+                    if container_terminated := init_container_status[0].lastState.terminated:
+                        if container_terminated.reason == "Error":
+                            failed_pods[pod.name] = pod_status
+
+                elif pod_status.phase in (
+                    pod.Status.CRASH_LOOPBACK_OFF,
+                    pod.Status.FAILED,
+                    pod.Status.IMAGE_PULL_BACK_OFF,
+                    pod.Status.ERR_IMAGE_PULL,
+                ):
+                    failed_pods[pod.name] = pod_status
+
+            if failed_pods:
+                raise FailedPodsError(pods=failed_pods)
 
 
 @contextmanager
@@ -45,6 +84,8 @@ def create_isvc(
     volumes_mounts: Optional[dict[str, Any]] = None,
     model_version: Optional[str] = None,
     wait_for_predictor_pods: bool = True,
+    autoscaler_mode: Optional[str] = None,
+    multi_node_worker_spec: Optional[dict[str, int]] = None,
 ) -> Generator[InferenceService, Any, Any]:
     labels: Dict[str, str] = {}
     predictor_dict: Dict[str, Any] = {
@@ -77,7 +118,8 @@ def create_isvc(
         predictor_dict["model"]["volumeMounts"] = volumes_mounts
     if volumes:
         predictor_dict["volumes"] = volumes
-    annotations = {"serving.kserve.io/deploymentMode": deployment_mode}
+
+    annotations = {Annotations.KserveIo.DEPLOYMENT_MODE: deployment_mode}
 
     if deployment_mode == KServeDeploymentType.SERVERLESS:
         annotations.update({
@@ -87,13 +129,14 @@ def create_isvc(
         })
 
     if enable_auth:
-        # TODO: add modelmesh support
+        # model mesh auth is set in servingruntime
         if deployment_mode == KServeDeploymentType.SERVERLESS:
             annotations["security.opendatahub.io/enable-auth"] = "true"
         elif deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
             labels["security.opendatahub.io/enable-auth"] = "true"
 
     # default to True if deployment_mode is Serverless (default behavior of Serverless) if was not provided by the user
+    # model mesh external route is set in servingruntime
     if external_route is None and deployment_mode == KServeDeploymentType.SERVERLESS:
         external_route = True
 
@@ -103,6 +146,12 @@ def create_isvc(
     if deployment_mode == KServeDeploymentType.SERVERLESS and external_route is False:
         labels["networking.knative.dev/visibility"] = "cluster-local"
 
+    if autoscaler_mode:
+        annotations["serving.kserve.io/autoscalerClass"] = autoscaler_mode
+
+    if multi_node_worker_spec is not None:
+        predictor_dict["workerSpec"] = multi_node_worker_spec
+
     with InferenceService(
         client=client,
         name=name,
@@ -111,16 +160,17 @@ def create_isvc(
         predictor=predictor_dict,
         label=labels,
     ) as inference_service:
+        if wait_for_predictor_pods:
+            verify_no_failed_pods(client=client, isvc=inference_service)
+            wait_for_inference_deployment_replicas(
+                client=client, isvc=inference_service, deployment_mode=deployment_mode
+            )
+
         if wait:
             inference_service.wait_for_condition(
                 condition=inference_service.Condition.READY,
                 status=inference_service.Condition.Status.TRUE,
-                timeout=10 * 60,
-            )
-
-        if wait_for_predictor_pods:
-            wait_for_inference_deployment_replicas(
-                client=client, isvc=inference_service, deployment_mode=deployment_mode
+                timeout=15 * 60,
             )
 
         yield inference_service
@@ -132,10 +182,9 @@ def _check_storage_arguments(
     storage_path: Optional[str],
 ) -> None:
     if (storage_uri and storage_path) or (not storage_uri and not storage_key) or (storage_key and not storage_path):
-        raise InvalidStorageArgument(storage_uri, storage_key, storage_path)
+        raise InvalidStorageArgumentError(storage_uri=storage_uri, storage_key=storage_key, storage_path=storage_path)
 
 
-@retry(stop=stop_after_attempt(5), wait=wait_exponential(min=1, max=6))
 def verify_inference_response(
     inference_service: InferenceService,
     runtime: str,

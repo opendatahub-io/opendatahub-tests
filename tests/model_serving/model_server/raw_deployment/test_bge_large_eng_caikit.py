@@ -10,25 +10,27 @@ from utilities.constants import (
     RuntimeTemplates,
 )
 
-pytestmark = pytest.mark.usefixtures("valid_aws_config")
+pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_config")]
 
 
 @pytest.mark.smoke
-@pytest.mark.raw_deployment
 @pytest.mark.jira("RHOAIENG-11749")
 @pytest.mark.parametrize(
-    "model_namespace, s3_models_storage_uri, serving_runtime_from_template, s3_models_inference_service",
+    "model_namespace, serving_runtime_from_template, s3_models_inference_service",
     [
         pytest.param(
             {"name": "raw-deployment-caikit-bge"},
-            {"model-dir": ModelStoragePath.EMBEDDING_MODEL},
             {
                 "name": f"{Protocols.HTTP}-{ModelInferenceRuntime.CAIKIT_STANDALONE_RUNTIME}",
                 "template-name": RuntimeTemplates.CAIKIT_STANDALONE_SERVING,
                 "multi-model": False,
                 "enable-http": True,
             },
-            {"name": "bge-large-en-caikit", "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT},
+            {
+                "name": "bge-large-en-caikit",
+                "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
+                "model-dir": ModelStoragePath.EMBEDDING_MODEL,
+            },
         )
     ],
     indirect=True,

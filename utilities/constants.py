@@ -1,5 +1,6 @@
 from typing import Any, Dict
 
+from ocp_resources.resource import Resource
 from utilities.manifests.caikit_standalone import CAIKIT_STANDALONE_INFERENCE_CONFIG
 from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
@@ -7,7 +8,9 @@ from utilities.manifests.openvino import (
     OPENVINO_INFERENCE_CONFIG,
     OPENVINO_KSERVE_INFERENCE_CONFIG,
 )
+from utilities.manifests.tensorflow import TENSORFLOW_INFERENCE_CONFIG
 from utilities.manifests.tgis_grpc import TGIS_INFERENCE_CONFIG
+from utilities.manifests.vllm import VLLM_INFERENCE_CONFIG
 
 
 class KServeDeploymentType:
@@ -21,6 +24,8 @@ class ModelFormat:
     ONNX: str = "onnx"
     OPENVINO: str = "openvino"
     OVMS: str = "ovms"
+    VLLM: str = "vllm"
+    TENSORFLOW: str = "tensorflow"
 
 
 class ModelName:
@@ -40,6 +45,7 @@ class ModelStoragePath:
     OPENVINO_EXAMPLE_MODEL: str = f"{ModelFormat.OPENVINO}-example-model"
     KSERVE_OPENVINO_EXAMPLE_MODEL: str = f"kserve-openvino-test/{OPENVINO_EXAMPLE_MODEL}"
     EMBEDDING_MODEL: str = "embeddingsmodel"
+    TENSORFLOW_MODEL: str = "inception_resnet_v2.pb"
 
 
 class CurlOutput:
@@ -69,6 +75,8 @@ class ModelInferenceRuntime:
     OPENVINO_KSERVE_RUNTIME: str = f"{ModelFormat.OPENVINO}-kserve-runtime"
     ONNX_RUNTIME: str = f"{ModelFormat.ONNX}-runtime"
     CAIKIT_STANDALONE_RUNTIME: str = f"{ModelFormat.CAIKIT}-standalone-runtime"
+    VLLM_RUNTIME: str = f"{ModelFormat.VLLM}-runtime"
+    TENSORFLOW_RUNTIME: str = f"{ModelFormat.TENSORFLOW}-runtime"
 
     MAPPING: Dict[str, Any] = {
         CAIKIT_TGIS_RUNTIME: CAIKIT_TGIS_INFERENCE_CONFIG,
@@ -77,6 +85,8 @@ class ModelInferenceRuntime:
         TGIS_RUNTIME: TGIS_INFERENCE_CONFIG,
         ONNX_RUNTIME: ONNX_INFERENCE_CONFIG,
         CAIKIT_STANDALONE_RUNTIME: CAIKIT_STANDALONE_INFERENCE_CONFIG,
+        VLLM_RUNTIME: VLLM_INFERENCE_CONFIG,
+        TENSORFLOW_RUNTIME: TENSORFLOW_INFERENCE_CONFIG,
     }
 
 
@@ -84,8 +94,15 @@ class Protocols:
     HTTP: str = "http"
     HTTPS: str = "https"
     GRPC: str = "grpc"
+    REST: str = "rest"
     TCP_PROTOCOLS: set[str] = {HTTP, HTTPS}
     ALL_SUPPORTED_PROTOCOLS: set[str] = TCP_PROTOCOLS.union({GRPC})
+
+
+class HTTPRequest:
+    # Use string formatting to set the token value when using this constant
+    AUTH_HEADER: str = "-H 'Authorization: Bearer {token}'"
+    CONTENT_JSON: str = "-H 'Content-Type: application/json'"
 
 
 class AcceleratorType:
@@ -93,6 +110,42 @@ class AcceleratorType:
     AMD: str = "amd"
     GAUDI: str = "gaudi"
     SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI]
+
+
+class Annotations:
+    class KubernetesIo:
+        NAME: str = f"{Resource.ApiGroup.APP_KUBERNETES_IO}/name"
+        INSTANCE: str = f"{Resource.ApiGroup.APP_KUBERNETES_IO}/instance"
+        PART_OF: str = f"{Resource.ApiGroup.APP_KUBERNETES_IO}/part-of"
+        CREATED_BY: str = f"{Resource.ApiGroup.APP_KUBERNETES_IO}/created-by"
+
+    class KserveIo:
+        DEPLOYMENT_MODE: str = "serving.kserve.io/deploymentMode"
+
+
+class StorageClassName:
+    NFS: str = "nfs"
+
+
+class DscComponents:
+    MODELMESHSERVING: str = "modelmeshserving"
+    KSERVE: str = "kserve"
+    MODELREGISTRY: str = "modelregistry"
+
+    class ManagementState:
+        MANAGED: str = "Managed"
+        REMOVED: str = "Removed"
+
+    class ConditionType:
+        MODEL_REGISTRY_READY: str = "ModelRegistryReady"
+        KSERVE_READY: str = "KserveReady"
+        MODEL_MESH_SERVING_READY: str = "ModelMeshServingReady"
+
+    COMPONENT_MAPPING: dict[str, str] = {
+        MODELMESHSERVING: ConditionType.MODEL_MESH_SERVING_READY,
+        KSERVE: ConditionType.KSERVE_READY,
+        MODELREGISTRY: ConditionType.MODEL_REGISTRY_READY,
+    }
 
 
 MODELMESH_SERVING: str = "modelmesh-serving"

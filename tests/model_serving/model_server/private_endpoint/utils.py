@@ -1,5 +1,5 @@
 import shlex
-from typing import Optional, Any, Generator
+from typing import Any, Generator
 from urllib.parse import urlparse
 from contextlib import contextmanager
 
@@ -9,39 +9,9 @@ from ocp_resources.inference_service import InferenceService
 from simple_logger.logger import get_logger
 
 from utilities.constants import Protocols
+from utilities.exceptions import ProtocolNotSupportedError
 
 LOGGER = get_logger(name=__name__)
-
-
-class ProtocolNotSupported(Exception):
-    def __init__(self, protocol: str):
-        self.protocol = protocol
-
-    def __str__(self) -> str:
-        return f"Protocol {self.protocol} is not supported"
-
-
-class InvalidStorageArgument(Exception):
-    def __init__(
-        self,
-        storageUri: Optional[str],
-        storage_key: Optional[str],
-        storage_path: Optional[str],
-    ):
-        self.storageUri = storageUri
-        self.storage_key = storage_key
-        self.storage_path = storage_path
-
-    def __str__(self) -> str:
-        msg = f"""
-            You've passed the following parameters:
-            "storageUri": {self.storageUri}
-            "storage_key": {self.storage_key}
-            "storage_path: {self.storage_path}
-            In order to create a valid ISVC you need to specify either a storageUri value
-            or both a storage key and a storage path.
-        """
-        return msg
 
 
 def curl_from_pod(
@@ -51,10 +21,10 @@ def curl_from_pod(
     protocol: str = Protocols.HTTP,
 ) -> str:
     if protocol not in (Protocols.HTTPS, Protocols.HTTP):
-        raise ProtocolNotSupported(protocol)
+        raise ProtocolNotSupportedError(protocol)
     host = isvc.instance.status.address.url
     if protocol == "http":
-        parsed = urlparse(host)
+        parsed = urlparse(url=host)
         host = parsed._replace(scheme="http").geturl()
     return pod.execute(command=shlex.split(f"curl -k {host}/{endpoint}"), ignore_rc=True)
 

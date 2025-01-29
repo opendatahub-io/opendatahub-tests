@@ -1,6 +1,6 @@
 IMAGE_BUILD_CMD = $(shell which podman 2>/dev/null || which docker)
 IMAGE_REGISTRY ?= "quay.io"
-REGISTRY_NAMESPACE ?= "modh"
+REGISTRY_NAMESPACE ?= "opendatahub"
 IMAGE_NAME="opendatahub-tests"
 IMAGE_TAG ?= "latest"
 

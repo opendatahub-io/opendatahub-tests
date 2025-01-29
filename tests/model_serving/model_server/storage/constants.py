@@ -10,6 +10,3 @@ KSERVE_OVMS_SERVING_RUNTIME_PARAMS: Dict[str, Any] = {
     "multi-model": False,
 }
 INFERENCE_SERVICE_PARAMS: Dict[str, str] = {"name": ModelFormat.ONNX}
-
-# Storage
-NFS_STR: str = "nfs"

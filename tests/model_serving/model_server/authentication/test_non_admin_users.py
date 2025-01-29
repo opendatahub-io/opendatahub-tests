@@ -6,12 +6,11 @@ from utilities.inference_utils import Inference
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, s3_models_storage_uri, unprivileged_s3_caikit_serverless_inference_service",
+    "unprivileged_model_namespace, unprivileged_s3_caikit_serverless_inference_service",
     [
         pytest.param(
             {"name": "non-admin-test"},
             {"model-dir": ModelStoragePath.FLAN_T5_SMALL},
-            {"enable-auth": False},
         )
     ],
     indirect=True,

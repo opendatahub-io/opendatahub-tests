@@ -10,21 +10,20 @@ from utilities.constants import (
 from utilities.inference_utils import Inference
 
 
-pytestmark = pytest.mark.usefixtures("skip_if_no_deployed_openshift_serverless", "valid_aws_config")
+pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config")]
 
 
 @pytest.mark.serverless
 @pytest.mark.parametrize(
-    "model_namespace, ci_s3_storage_uri, openvino_kserve_serving_runtime, ovms_serverless_inference_service",
+    "model_namespace, openvino_kserve_serving_runtime, ovms_serverless_inference_service",
     [
         pytest.param(
             {"name": "kserve-serverless-onnx"},
-            {"model-dir": "test-dir"},
             {
                 "runtime-name": ModelInferenceRuntime.ONNX_RUNTIME,
                 "model-format": {ModelFormat.ONNX: ModelVersion.OPSET13},
             },
-            {"name": ModelFormat.ONNX, "model-version": ModelVersion.OPSET13},
+            {"name": ModelFormat.ONNX, "model-version": ModelVersion.OPSET13, "model-dir": "test-dir"},
         )
     ],
     indirect=True,

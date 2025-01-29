@@ -55,7 +55,7 @@ def vllm_inference_service(
     serving_runtime: ServingRuntime,
     supported_accelerator_type: str,
     s3_models_storage_uri: str,
-    model_service_account: ServiceAccount,
+    vllm_model_service_account: ServiceAccount,
 ) -> Generator[InferenceService, Any, Any]:
     isvc_kwargs = {
         "client": admin_client,
@@ -64,7 +64,7 @@ def vllm_inference_service(
         "runtime": serving_runtime.name,
         "storage_uri": s3_models_storage_uri,
         "model_format": serving_runtime.instance.spec.supportedModelFormats[0].name,
-        "model_service_account": model_service_account.name,
+        "model_service_account": vllm_model_service_account.name,
         "deployment_mode": request.param.get("deployment-mode", KServeDeploymentType.SERVERLESS),
     }
     accelerator_type = supported_accelerator_type.lower()
@@ -90,7 +90,7 @@ def vllm_inference_service(
 
 
 @pytest.fixture(scope="class")
-def model_service_account(admin_client: DynamicClient, kserve_endpoint_s3_secret: Secret):
+def vllm_model_service_account(admin_client: DynamicClient, kserve_endpoint_s3_secret: Secret):
     with ServiceAccount(
         client=admin_client,
         namespace=kserve_endpoint_s3_secret.namespace,
@@ -123,4 +123,4 @@ def kserve_endpoint_s3_secret(
 
 @pytest.fixture
 def response_snapshot(snapshot):
-    return snapshot.use_extension(JSONSnapshotExtension)
+    return snapshot.use_extension(extension_class=JSONSnapshotExtension)

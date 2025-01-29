@@ -12,21 +12,24 @@ from utilities.constants import (
 from utilities.inference_utils import Inference
 
 
-pytestmark = pytest.mark.usefixtures("skip_if_no_deployed_openshift_serverless", "valid_aws_config")
+pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config")]
 
 
 @pytest.mark.serverless
 @pytest.mark.parametrize(
-    "model_namespace, ci_s3_storage_uri, openvino_kserve_serving_runtime, ovms_serverless_inference_service",
+    "model_namespace, openvino_kserve_serving_runtime, ovms_serverless_inference_service",
     [
         pytest.param(
             {"name": "kserve-serverless-openvino"},
-            {"model-dir": ModelStoragePath.KSERVE_OPENVINO_EXAMPLE_MODEL},
             {
                 "runtime-name": ModelInferenceRuntime.OPENVINO_KSERVE_RUNTIME,
                 "model-format": {ModelAndFormat.OPENVINO_IR: ModelVersion.OPSET1},
             },
-            {"name": ModelFormat.OPENVINO, "model-version": ModelVersion.OPSET1},
+            {
+                "name": ModelFormat.OPENVINO,
+                "model-version": ModelVersion.OPSET1,
+                "model-dir": ModelStoragePath.KSERVE_OPENVINO_EXAMPLE_MODEL,
+            },
         )
     ],
     indirect=True,

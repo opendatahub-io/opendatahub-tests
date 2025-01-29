@@ -12,12 +12,15 @@ from ocp_resources.secret import Secret
 from pyhelper_utils.shell import run_command
 from pytest import FixtureRequest, Config
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
+from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.namespace import Namespace
 from ocp_resources.resource import get_client
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 
-from utilities.infra import create_ns, login_with_user_password
+from utilities.data_science_cluster_utils import update_components_in_dsc
+from utilities.infra import create_ns, login_with_user_password, get_openshift_token
 from utilities.constants import AcceleratorType
 
 
@@ -33,12 +36,17 @@ def admin_client() -> DynamicClient:
 @pytest.fixture(scope="session", autouse=True)
 def tests_tmp_dir(request: FixtureRequest, tmp_path_factory: TempPathFactory) -> None:
     base_path = os.path.join(request.config.option.basetemp, "tests")
-    tests_tmp_path = tmp_path_factory.mktemp(base_path)
+    tests_tmp_path = tmp_path_factory.mktemp(basename=base_path)
     py_config["tmp_base_dir"] = str(tests_tmp_path)
 
     yield
 
-    shutil.rmtree(str(tests_tmp_path), ignore_errors=True)
+    shutil.rmtree(path=str(tests_tmp_path), ignore_errors=True)
+
+
+@pytest.fixture(scope="session")
+def current_client_token(admin_client: DynamicClient) -> str:
+    return get_openshift_token()
 
 
 @pytest.fixture(scope="class")
@@ -163,7 +171,11 @@ def vllm_runtime_image(pytestconfig: pytest.Config) -> str | None:
 
 @pytest.fixture(scope="class")
 def ns_with_modelmesh_enabled(request: FixtureRequest, admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
-    with create_ns(admin_client=admin_client, name=request.param["name"], labels={"modelmesh-enabled": "true"}) as ns:
+    with create_ns(
+        admin_client=admin_client,
+        name=request.param["name"],
+        labels={"modelmesh-enabled": "true"},
+    ) as ns:
         yield ns
 
 
@@ -203,7 +215,9 @@ def kubconfig_filepath() -> str:
 
 @pytest.fixture(scope="session")
 def unprivileged_client(
-    admin_client: DynamicClient, kubconfig_filepath: str, non_admin_user_password: Tuple[str, str]
+    admin_client: DynamicClient,
+    kubconfig_filepath: str,
+    non_admin_user_password: Tuple[str, str],
 ) -> Generator[DynamicClient, Any, Any]:
     """
     Provides none privileged API client. If non_admin_user_password is None, then it will yield admin_client.
@@ -233,3 +247,23 @@ def unprivileged_client(
 
         else:
             yield admin_client
+
+
+@pytest.fixture(scope="session")
+def dsc_resource(admin_client: DynamicClient):
+    name = py_config["dsc_name"]
+    for dsc in DataScienceCluster.get(dyn_client=admin_client, name=name):
+        return dsc
+    raise ResourceNotFoundError(f"DSC resource {name} not found")
+
+
+@pytest.fixture(scope="module")
+def updated_dsc_component_state(
+    request: FixtureRequest,
+    dsc_resource: DataScienceCluster,
+) -> Generator[DataScienceCluster, Any, Any]:
+    with update_components_in_dsc(
+        dsc=dsc_resource,
+        components={request.param["component_name"]: request.param["desired_state"]},
+    ) as dsc:
+        yield dsc

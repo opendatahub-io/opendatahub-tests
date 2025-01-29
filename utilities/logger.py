@@ -53,7 +53,7 @@ def setup_logging(log_level: int, log_file: str = "/tmp/pytest-tests.log") -> Qu
     basic_log_queue_handler.set_name(name="basic")
     basic_log_queue_handler.setFormatter(fmt=basic_log_formatter)
 
-    basic_logger = logging.getLogger("basic")
+    basic_logger = logging.getLogger(name="basic")
     basic_logger.setLevel(level=log_level)
     basic_logger.addHandler(hdlr=basic_log_queue_handler)
 

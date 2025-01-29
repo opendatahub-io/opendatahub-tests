@@ -13,13 +13,18 @@ from ocp_resources.service import Service
 from pyhelper_utils.shell import run_command
 from simple_logger.logger import get_logger
 
-from utilities.infra import get_services_by_isvc_label
+from utilities.infra import (
+    get_inference_serving_runtime,
+    get_model_mesh_route,
+    get_pods_by_isvc_label,
+    get_services_by_isvc_label,
+)
 from utilities.certificates_utils import get_ca_bundle
 from utilities.constants import (
     KServeDeploymentType,
-    MODELMESH_SERVING,
     ModelInferenceRuntime,
     Protocols,
+    HTTPRequest,
 )
 import portforward
 
@@ -49,15 +54,19 @@ class Inference:
             if self.deployment_mode == KServeDeploymentType.SERVERLESS and (
                 url := self.inference_service.instance.status.components.predictor.url
             ):
-                return urlparse(url).netloc
+                return urlparse(url=url).netloc
 
             elif self.deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT and (
                 url := self.inference_service.instance.status.url
             ):
-                return urlparse(url).netloc
+                return urlparse(url=url).netloc
+
+            elif self.deployment_mode == KServeDeploymentType.MODEL_MESH:
+                route = get_model_mesh_route(client=self.inference_service.client, isvc=self.inference_service)
+                return route.instance.spec.host
 
             else:
-                raise ValueError(f"{self.inference_service.name}: No url found in InferenceService status")
+                raise ValueError(f"{self.inference_service.name}: No url found for inference")
 
         else:
             return "localhost"
@@ -66,20 +75,20 @@ class Inference:
         labels = self.inference_service.labels
 
         if self.deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
-            if labels and labels.get("networking.kserve.io/visibility") == "exposed":
-                return True
-            else:
-                return False
+            return labels and labels.get("networking.kserve.io/visibility") == "exposed"
 
-        elif self.deployment_mode == KServeDeploymentType.SERVERLESS:
+        if self.deployment_mode == KServeDeploymentType.SERVERLESS:
             if labels and labels.get("networking.knative.dev/visibility") == "cluster-local":
                 return False
             else:
                 return True
 
-        else:
-            # TODO: add support for ModelMesh
-            return False
+        if self.deployment_mode == KServeDeploymentType.MODEL_MESH:
+            if runtime := get_inference_serving_runtime(isvc=self.inference_service):
+                _annotations = runtime.instance.metadata.annotations
+                return _annotations and _annotations.get("enable-route") == "true"
+
+        return False
 
 
 class UserInference(Inference):
@@ -194,7 +203,7 @@ class UserInference(Inference):
         cmd = f"{cmd_exec} -d '{body}'  -H {header}"
 
         if token:
-            cmd += f' -H "Authorization: Bearer {token}"'
+            cmd += f" {HTTPRequest.AUTH_HEADER.format(token=token)}"
 
         if insecure:
             cmd += " --insecure"
@@ -206,7 +215,7 @@ class UserInference(Inference):
                 cmd += f" --cacert {ca} "
 
             else:
-                LOGGER.warning("No CA bundle found, using insecure aceess")
+                LOGGER.warning("No CA bundle found, using insecure access")
                 cmd += " --insecure"
 
         if cmd_args := self.runtime_config.get("args"):
@@ -234,7 +243,7 @@ class UserInference(Inference):
 
         # For internal inference, we need to use port forwarding to the service
         if not self.visibility_exposed:
-            svc = self.get_isvc_service()
+            svc = get_services_by_isvc_label(client=self.inference_service.client, isvc=self.inference_service)[0]
             port = self.get_target_port(svc=svc)
             cmd = cmd.replace("localhost", f"localhost:{port}")
 
@@ -280,30 +289,25 @@ class UserInference(Inference):
         except JSONDecodeError:
             return {"output": out}
 
-    def get_isvc_service(self) -> Service:
-        if self.deployment_mode == KServeDeploymentType.MODEL_MESH:
-            if svc := list(
-                Service.get(
-                    dyn_client=self.inference_service.client,
-                    name=MODELMESH_SERVING,
-                    namespace=self.inference_service.namespace,
-                )
-            ):
-                svc = svc[0]
-            else:
-                raise ValueError(f"Service {MODELMESH_SERVING} not found")
-
-        else:
-            svc = get_services_by_isvc_label(client=self.inference_service.client, isvc=self.inference_service)[0]
-        return svc
-
     def get_target_port(self, svc: Service) -> int:
         if self.protocol in Protocols.ALL_SUPPORTED_PROTOCOLS:
             svc_protocol = "TCP"
         else:
             svc_protocol = self.protocol
 
-        for port in svc.instance.spec.ports:
+        ports = svc.instance.spec.ports
+
+        # For multi node with headless service, we need to get the pod to get the port
+        # TODO: check behavior for both normal and headless service
+        if self.inference_service.instance.spec.predictor.workerSpec and not self.visibility_exposed:
+            pod = get_pods_by_isvc_label(client=self.inference_service.client, isvc=self.inference_service)[0]
+            if ports := pod.instance.spec.containers[0].ports:
+                return ports[0].containerPort
+
+        if not ports:
+            raise ValueError(f"Service {svc.name} has no ports")
+
+        for port in ports:
             svc_port = port.targetPort if isinstance(port.targetPort, int) else port.port
 
             if (

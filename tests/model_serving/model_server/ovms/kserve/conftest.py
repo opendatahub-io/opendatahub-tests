@@ -4,14 +4,12 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
-from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 
 from tests.model_serving.model_server.utils import create_isvc
 from utilities.constants import (
     KServeDeploymentType,
     ModelAndFormat,
-    Protocols,
     RuntimeTemplates,
 )
 from utilities.infra import s3_endpoint_secret
@@ -65,34 +63,22 @@ def ci_endpoint_s3_secret(
 
 
 @pytest.fixture(scope="class")
-def openvino_model_service_account(admin_client: DynamicClient, ci_endpoint_s3_secret: Secret) -> ServiceAccount:
-    with ServiceAccount(
-        client=admin_client,
-        namespace=ci_endpoint_s3_secret.namespace,
-        name=f"{Protocols.GRPC}-models-bucket-sa",
-        secrets=[{"name": ci_endpoint_s3_secret.name}],
-    ) as sa:
-        yield sa
-
-
-@pytest.fixture(scope="class")
 def ovms_serverless_inference_service(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
     openvino_kserve_serving_runtime: ServingRuntime,
-    ci_s3_storage_uri: str,
-    openvino_model_service_account: ServiceAccount,
+    ci_endpoint_s3_secret: Secret,
 ) -> InferenceService:
     with create_isvc(
         client=admin_client,
         name=f"{request.param['name']}-serverless",
         namespace=model_namespace.name,
         runtime=openvino_kserve_serving_runtime.name,
-        storage_uri=ci_s3_storage_uri,
+        storage_path=request.param["model-dir"],
+        storage_key=ci_endpoint_s3_secret.name,
         model_format=ModelAndFormat.OPENVINO_IR,
         deployment_mode=KServeDeploymentType.SERVERLESS,
-        model_service_account=openvino_model_service_account.name,
         model_version=request.param["model-version"],
     ) as isvc:
         yield isvc
