@@ -164,9 +164,9 @@ def create_isvc(
 
         if wait:
             if is_jira_open(jira_id="RHOAIENG-13636") and deployment_mode == KServeDeploymentType.MODEL_MESH:
-                pod = get_pods_by_isvc_label(client=client, isvc=inference_service, runtime_name=runtime)[0]
-                LOGGER.warning(f"Bug RHOAIENG-13636 - deleting {pod.name} pod to fix model mesh deployment")
-                pod.clean_up()
+                LOGGER.warning("Bug RHOAIENG-13636 - re-creating isvc")
+                inference_service.clean_up()
+                inference_service.deploy()
 
             inference_service.wait_for_condition(
                 condition=inference_service.Condition.READY,
