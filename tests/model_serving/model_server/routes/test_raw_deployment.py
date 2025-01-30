@@ -118,8 +118,8 @@ class TestRestRawDeploymentRoutes:
     ],
     indirect=True,
 )
+@pytest.mark.jira("RHOAIENG-17783", run=False)
 class TestGrpcRawDeployment:
-    @pytest.mark.jira("RHOAIENG-17783", run=False)
     def test_grpc_raw_deployment_internal_route(self, s3_models_inference_service):
         """Test GRPC inference using internal route"""
         verify_inference_response(
@@ -131,7 +131,6 @@ class TestGrpcRawDeployment:
             use_default_query=True,
         )
 
-    @pytest.mark.jira("RHOAIENG-17322", run=False)
     @pytest.mark.parametrize(
         "patched_s3_caikit_kserve_isvc_visibility_label",
         [
