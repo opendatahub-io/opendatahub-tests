@@ -22,6 +22,7 @@ from ocp_resources.role import Role
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
+from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
@@ -324,3 +325,19 @@ def get_model_mesh_route(client: DynamicClient, isvc: InferenceService) -> Route
         return routes[0]
 
     raise ResourceNotFoundError(f"{isvc.name} has no routes")
+
+
+def create_inference_token(model_service_account: ServiceAccount) -> str:
+    """
+    Generates an inference token for the given model service account.
+
+    Args:
+        model_service_account (ServiceAccount): An object containing the namespace and name
+                               of the service account.
+
+    Returns:
+        str: The generated inference token.
+    """
+    return run_command(
+        shlex.split(f"oc create token -n {model_service_account.namespace} {model_service_account.name}")
+    )[1].strip()

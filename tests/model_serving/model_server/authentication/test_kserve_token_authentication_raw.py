@@ -7,7 +7,7 @@ from utilities.inference_utils import Inference
 pytestmark = pytest.mark.usefixtures("valid_aws_config")
 
 
-@pytest.mark.serverless
+@pytest.mark.rawdeployment
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri",
     [
@@ -18,7 +18,7 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
     ],
     indirect=True,
 )
-class TestKserveTokenAuthenticationRaw:
+class TestKserveTokenAuthenticationRawForRest:
     @pytest.mark.smoke
     @pytest.mark.dependency(name="test_model_authentication_using_rest_raw")
     def test_model_authentication_using_rest_raw(self, http_s3_caikit_raw_inference_service, http_raw_inference_token):
