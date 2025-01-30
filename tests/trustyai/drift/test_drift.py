@@ -27,6 +27,8 @@ class TestDriftMetrics:
 
     1. Send data to the model (gaussian_credit_model) and verify that TrustyAI registers the observations.
     2. Send metric request (meanshift) and verify the response.
+    3. Send metric scheduling request and verify the response.
+    4. Send metric deletion request and verify that the scheduled metric has been deleted.
     """
 
     def test_send_inference_request_and_verify_trustyai_service(
