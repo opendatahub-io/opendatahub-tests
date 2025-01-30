@@ -173,10 +173,12 @@ def create_isvc(
             if is_jira_open(jira_id="RHOAIENG-13636") and deployment_mode == KServeDeploymentType.MODEL_MESH:
                 for isvc in InferenceService.get(dyn_client=client, namespace=namespace):
                     _runtime = get_inference_serving_runtime(isvc=isvc)
+                    isvc_annotations = isvc.instance.metadata.annotations
                     if (
                         _runtime.name != runtime
-                        and (_annotations := isvc.instance.annotations)
-                        and _annotations.get(Annotations.KserveIo.DEPLOYMENT_MODE) == KServeDeploymentType.MODEL_MESH
+                        and isvc_annotations
+                        and isvc_annotations.get(Annotations.KserveIo.DEPLOYMENT_MODE)
+                        == KServeDeploymentType.MODEL_MESH
                     ):
                         LOGGER.warning(
                             "Bug RHOAIENG-13636 - re-creating isvc if there's already a modelmesh isvc in the namespace"
