@@ -50,6 +50,11 @@ def verify_no_failed_pods(client: DynamicClient, isvc: InferenceService, runtime
 
             for pod in pods:
                 pod_status = pod.instance.status
+                if pod_status.containerStatuses:
+                    for container_status in pod_status.containerStatuses:
+                        if (state := container_status.state.waiting) and state.reason == pod.Status.IMAGE_PULL_BACK_OFF:
+                            failed_pods[pod.name] = pod_status
+
                 if init_container_status := pod_status.initContainerStatuses:
                     if container_terminated := init_container_status[0].lastState.terminated:
                         if container_terminated.reason == "Error":
