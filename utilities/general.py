@@ -120,7 +120,7 @@ def create_isvc_label_selector_str(isvc: InferenceService, resource_type: str, r
 
     elif deployment_mode == KServeDeploymentType.MODEL_MESH:
         if resource_type == "service":
-            return f"modelmesh-service:={MODELMESH_SERVING}"
+            return f"modelmesh-service={MODELMESH_SERVING}"
         else:
             return f"name={MODELMESH_SERVING}-{runtime_name}"
 
