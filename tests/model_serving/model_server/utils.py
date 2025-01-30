@@ -22,6 +22,7 @@ from utilities.exceptions import (
 )
 from utilities.inference_utils import UserInference
 from utilities.infra import (
+    get_inference_serving_runtime,
     get_pods_by_isvc_label,
     wait_for_inference_deployment_replicas,
 )
@@ -168,12 +169,14 @@ def create_isvc(
             wait_for_inference_deployment_replicas(client=client, isvc=inference_service, runtime_name=runtime)
 
         if wait:
+            # Modelmesh 2nd server in the ns will fail to be Ready; isvc needs to be re-applied
             if is_jira_open(jira_id="RHOAIENG-13636") and deployment_mode == KServeDeploymentType.MODEL_MESH:
                 for isvc in InferenceService.get(dyn_client=client, namespace=namespace):
+                    _runtime = get_inference_serving_runtime(isvc=isvc)
                     if (
-                        isvc.name != name
-                        and isvc.instance.annotations.get(Annotations.KserveIo.DEPLOYMENT_MODE)
-                        == KServeDeploymentType.MODEL_MESH
+                        _runtime.name != runtime
+                        and (_annotations := isvc.instance.annotations)
+                        and _annotations.get(Annotations.KserveIo.DEPLOYMENT_MODE) == KServeDeploymentType.MODEL_MESH
                     ):
                         LOGGER.warning(
                             "Bug RHOAIENG-13636 - re-creating isvc if there's already a modelmesh isvc in the namespace"

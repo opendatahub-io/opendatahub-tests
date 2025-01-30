@@ -294,16 +294,12 @@ def get_kserve_storage_initialize_image(client: DynamicClient) -> str:
     return json.loads(kserve_cm.instance.data.storageInitializer)["image"]
 
 
-def get_inference_serving_runtime(isvc: InferenceService) -> ServingRuntime | None:
+def get_inference_serving_runtime(isvc: InferenceService) -> ServingRuntime:
     runtime = ServingRuntime(
         client=isvc.client,
         namespace=isvc.namespace,
         name=isvc.instance.spec.predictor.model.runtime,
     )
-
-    if not runtime:
-        LOGGER.warning(f"InferenceService {isvc.name} runtime is empty")
-        return None
 
     if runtime.exists:
         return runtime

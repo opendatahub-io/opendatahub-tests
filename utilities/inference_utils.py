@@ -44,7 +44,7 @@ class Inference:
         """
         self.inference_service = inference_service
         self.deployment_mode = self.inference_service.instance.metadata.annotations["serving.kserve.io/deploymentMode"]
-        self.runtime_name = get_inference_serving_runtime(isvc=self.inference_service)
+        self.runtime = get_inference_serving_runtime(isvc=self.inference_service)
         self.visibility_exposed = self.is_service_exposed()
 
         self.inference_url = self.get_inference_url()
@@ -85,8 +85,8 @@ class Inference:
                 return True
 
         if self.deployment_mode == KServeDeploymentType.MODEL_MESH:
-            if self.runtime_name:
-                _annotations = self.runtime_name.instance.metadata.annotations
+            if self.runtime:
+                _annotations = self.runtime.instance.metadata.annotations
                 return _annotations and _annotations.get("enable-route") == "true"
 
         return False
@@ -277,7 +277,7 @@ class UserInference(Inference):
             svc = get_services_by_isvc_label(
                 client=self.inference_service.client,
                 isvc=self.inference_service,
-                runtime_name=self.runtime_name,
+                runtime_name=self.runtime.name,
             )[0]
             port = self.get_target_port(svc=svc)
             cmd = cmd.replace("localhost", f"localhost:{port}")
@@ -312,7 +312,7 @@ class UserInference(Inference):
             pod = get_pods_by_isvc_label(
                 client=self.inference_service.client,
                 isvc=self.inference_service,
-                runtime_name=self.runtime_name,
+                runtime_name=self.runtime.name,
             )[0]
             if ports := pod.instance.spec.containers[0].ports:
                 return ports[0].containerPort
