@@ -74,7 +74,7 @@ def wait_for_inference_deployment_replicas(
     expected_num_deployments: int = 1,
 ) -> List[Deployment]:
     ns = isvc.namespace
-    label_selector = create_isvc_label_selector_str(isvc=isvc, runtime_name=runtime_name)
+    label_selector = create_isvc_label_selector_str(isvc=isvc, resource_type="deployment", runtime_name=runtime_name)
 
     deployments = list(
         Deployment.get(
@@ -220,7 +220,7 @@ def is_managed_cluster(client: DynamicClient) -> bool:
 
 
 def get_services_by_isvc_label(
-    client: DynamicClient, isvc: InferenceService, runtime_name: str | None
+    client: DynamicClient, isvc: InferenceService, runtime_name: str | None = None
 ) -> List[Service]:
     """
     Args:
@@ -234,7 +234,7 @@ def get_services_by_isvc_label(
     Raises:
         ResourceNotFoundError: if no services are found.
     """
-    label_selector = create_isvc_label_selector_str(isvc=isvc, runtime_name=runtime_name)
+    label_selector = create_isvc_label_selector_str(isvc=isvc, resource_type="service", runtime_name=runtime_name)
 
     if svcs := [
         svc
@@ -262,7 +262,7 @@ def get_pods_by_isvc_label(client: DynamicClient, isvc: InferenceService, runtim
     Raises:
         ResourceNotFoundError: if no pods are found.
     """
-    label_selector = create_isvc_label_selector_str(isvc=isvc, runtime_name=runtime_name)
+    label_selector = create_isvc_label_selector_str(isvc=isvc, resource_type="pod", runtime_name=runtime_name)
 
     if pods := [
         pod
