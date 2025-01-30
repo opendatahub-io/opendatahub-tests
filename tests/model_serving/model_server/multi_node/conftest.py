@@ -82,10 +82,7 @@ def multi_node_inference_service(
         wait_for_predictor_pods=False,
     ) as isvc:
         wait_for_inference_deployment_replicas(
-            client=admin_client,
-            isvc=isvc,
-            deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-            expected_num_deployments=2,
+            client=admin_client, isvc=isvc, expected_num_deployments=2, runtime_name=serving_runtime_from_template.name
         )
         yield isvc
 

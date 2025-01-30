@@ -13,10 +13,10 @@ BASE_DATA_PATH: str = "./tests/trustyai/drift/model_data"
 
 
 @pytest.mark.parametrize(
-    "ns_with_modelmesh_enabled",
+    "model_namespace",
     [
         pytest.param(
-            {"name": "test-drift-gaussian-credit-model"},
+            {"name": "test-drift-gaussian-credit-model", "modelmesh-enabled": True},
         )
     ],
     indirect=True,
@@ -35,7 +35,7 @@ class TestDriftMetrics:
         self,
         admin_client,
         current_client_token,
-        ns_with_modelmesh_enabled,
+        model_namespace,
         trustyai_service_with_pvc_storage,
         gaussian_credit_model,
     ) -> None:

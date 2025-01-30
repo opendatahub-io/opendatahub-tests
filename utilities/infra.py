@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shlex
 from contextlib import contextmanager
 from functools import cache
@@ -70,11 +71,11 @@ def create_ns(
 def wait_for_inference_deployment_replicas(
     client: DynamicClient,
     isvc: InferenceService,
-    deployment_mode: str,
+    runtime_name: str | None,
     expected_num_deployments: int = 1,
 ) -> List[Deployment]:
     ns = isvc.namespace
-    label_selector = create_isvc_label_selector_str(isvc=isvc)
+    label_selector = create_isvc_label_selector_str(isvc=isvc, resource_type="deployment", runtime_name=runtime_name)
 
     deployments = list(
         Deployment.get(
@@ -84,6 +85,7 @@ def wait_for_inference_deployment_replicas(
         )
     )
 
+    LOGGER.info("Waiting for inference deployment replicas to complete")
     if len(deployments) == expected_num_deployments:
         for deployment in deployments:
             if deployment.exists:
@@ -109,6 +111,9 @@ def s3_endpoint_secret(
     aws_s3_endpoint: str,
     aws_s3_region: str,
 ) -> Generator[Secret, None, None]:
+    # DO not create secret if exists in the namespace
+    os.environ["REUSE_IF_RESOURCE_EXISTS"] = f"{{Secret: {{{name}: {namespace}}}}}"
+
     with Secret(
         client=admin_client,
         name=name,
@@ -215,11 +220,14 @@ def is_managed_cluster(client: DynamicClient) -> bool:
     return False
 
 
-def get_services_by_isvc_label(client: DynamicClient, isvc: InferenceService) -> List[Service]:
+def get_services_by_isvc_label(
+    client: DynamicClient, isvc: InferenceService, runtime_name: str | None = None
+) -> List[Service]:
     """
     Args:
         client (DynamicClient): OCP Client to use.
-        isvc (InferenceService):InferenceService object.
+        isvc (InferenceService): InferenceService object.
+        runtime_name (str): ServingRuntime name
 
     Returns:
         list[Service]: A list of all matching services
@@ -227,7 +235,7 @@ def get_services_by_isvc_label(client: DynamicClient, isvc: InferenceService) ->
     Raises:
         ResourceNotFoundError: if no services are found.
     """
-    label_selector = create_isvc_label_selector_str(isvc=isvc)
+    label_selector = create_isvc_label_selector_str(isvc=isvc, resource_type="service", runtime_name=runtime_name)
 
     if svcs := [
         svc
@@ -242,11 +250,12 @@ def get_services_by_isvc_label(client: DynamicClient, isvc: InferenceService) ->
     raise ResourceNotFoundError(f"{isvc.name} has no services")
 
 
-def get_pods_by_isvc_label(client: DynamicClient, isvc: InferenceService) -> List[Pod]:
+def get_pods_by_isvc_label(client: DynamicClient, isvc: InferenceService, runtime_name: str | None = None) -> List[Pod]:
     """
     Args:
         client (DynamicClient): OCP Client to use.
         isvc (InferenceService):InferenceService object.
+        runtime_name (str): ServingRuntime name
 
     Returns:
         list[Pod]: A list of all matching pods
@@ -254,7 +263,8 @@ def get_pods_by_isvc_label(client: DynamicClient, isvc: InferenceService) -> Lis
     Raises:
         ResourceNotFoundError: if no pods are found.
     """
-    label_selector = create_isvc_label_selector_str(isvc=isvc)
+    label_selector = create_isvc_label_selector_str(isvc=isvc, resource_type="pod", runtime_name=runtime_name)
+
     if pods := [
         pod
         for pod in Pod.get(
@@ -285,16 +295,12 @@ def get_kserve_storage_initialize_image(client: DynamicClient) -> str:
     return json.loads(kserve_cm.instance.data.storageInitializer)["image"]
 
 
-def get_inference_serving_runtime(isvc: InferenceService) -> ServingRuntime | None:
+def get_inference_serving_runtime(isvc: InferenceService) -> ServingRuntime:
     runtime = ServingRuntime(
         client=isvc.client,
         namespace=isvc.namespace,
         name=isvc.instance.spec.predictor.model.runtime,
     )
-
-    if not runtime:
-        LOGGER.warning(f"InferenceService {isvc.name} runtime is empty")
-        return None
 
     if runtime.exists:
         return runtime

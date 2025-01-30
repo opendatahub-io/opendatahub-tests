@@ -1,13 +1,13 @@
 import pytest
 
 from tests.model_serving.model_server.utils import verify_inference_response
-from utilities.constants import ModelFormat, ModelStoragePath, Protocols, ModelInferenceRuntime
+from utilities.constants import ModelFormat, ModelStoragePath, Protocols
 from utilities.inference_utils import Inference
+from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
 
 pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config")]
 
 
-@pytest.mark.serverless
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri",
     [
@@ -25,7 +25,7 @@ class TestKserveTokenAuthentication:
         """Verify model query with token using REST"""
         verify_inference_response(
             inference_service=http_s3_caikit_serverless_inference_service,
-            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
+            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTPS,
             model_name=ModelFormat.CAIKIT,
@@ -38,7 +38,7 @@ class TestKserveTokenAuthentication:
         """Verify model query with token using GRPC"""
         verify_inference_response(
             inference_service=grpc_s3_inference_service,
-            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
+            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
             inference_type=Inference.STREAMING,
             protocol=Protocols.GRPC,
             model_name=ModelFormat.CAIKIT,
@@ -51,7 +51,7 @@ class TestKserveTokenAuthentication:
         """Verify model query after authentication is disabled"""
         verify_inference_response(
             inference_service=patched_remove_authentication_isvc,
-            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
+            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTPS,
             model_name=ModelFormat.CAIKIT,
@@ -63,7 +63,7 @@ class TestKserveTokenAuthentication:
         """Verify model query after authentication is re-enabled"""
         verify_inference_response(
             inference_service=http_s3_caikit_serverless_inference_service,
-            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
+            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTPS,
             model_name=ModelFormat.CAIKIT,
@@ -75,7 +75,7 @@ class TestKserveTokenAuthentication:
         """Verify model query with an invalid token"""
         verify_inference_response(
             inference_service=http_s3_caikit_serverless_inference_service,
-            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
+            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTPS,
             model_name=ModelFormat.CAIKIT,
@@ -88,7 +88,7 @@ class TestKserveTokenAuthentication:
         """Verify model query without providing a token"""
         verify_inference_response(
             inference_service=http_s3_caikit_serverless_inference_service,
-            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
+            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTPS,
             model_name=ModelFormat.CAIKIT,
@@ -101,7 +101,7 @@ class TestKserveTokenAuthentication:
         """Verify model query with a second model's token is blocked"""
         verify_inference_response(
             inference_service=http_s3_caikit_serverless_inference_service,
-            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
+            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTPS,
             model_name=ModelFormat.CAIKIT,

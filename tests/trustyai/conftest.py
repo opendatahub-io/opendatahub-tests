@@ -21,7 +21,7 @@ OPENDATAHUB_IO: str = "opendatahub.io"
 @pytest.fixture(scope="class")
 def trustyai_service_with_pvc_storage(
     admin_client: DynamicClient,
-    ns_with_modelmesh_enabled: Namespace,
+    model_namespace: Namespace,
     modelmesh_serviceaccount: ServiceAccount,
     cluster_monitoring_config: ConfigMap,
     user_workload_monitoring_config: ConfigMap,
@@ -29,23 +29,19 @@ def trustyai_service_with_pvc_storage(
     with TrustyAIService(
         client=admin_client,
         name=TRUSTYAI_SERVICE,
-        namespace=ns_with_modelmesh_enabled.name,
+        namespace=model_namespace.name,
         storage={"format": "PVC", "folder": "/inputs", "size": "1Gi"},
         data={"filename": "data.csv", "format": "CSV"},
         metrics={"schedule": "5s"},
     ) as trustyai_service:
-        trustyai_deployment = Deployment(
-            namespace=ns_with_modelmesh_enabled.name, name=TRUSTYAI_SERVICE, wait_for_resource=True
-        )
+        trustyai_deployment = Deployment(namespace=model_namespace.name, name=TRUSTYAI_SERVICE, wait_for_resource=True)
         trustyai_deployment.wait_for_replicas()
         yield trustyai_service
 
 
 @pytest.fixture(scope="class")
-def modelmesh_serviceaccount(admin_client: DynamicClient, ns_with_modelmesh_enabled: Namespace) -> ServiceAccount:
-    with ServiceAccount(
-        client=admin_client, name=f"{MODELMESH_SERVING}-sa", namespace=ns_with_modelmesh_enabled.name
-    ) as sa:
+def modelmesh_serviceaccount(admin_client: DynamicClient, model_namespace: Namespace) -> ServiceAccount:
+    with ServiceAccount(client=admin_client, name=f"{MODELMESH_SERVING}-sa", namespace=model_namespace.name) as sa:
         yield sa
 
 
@@ -90,11 +86,11 @@ def user_workload_monitoring_config(admin_client: DynamicClient) -> ConfigMap:
 
 
 @pytest.fixture(scope="class")
-def minio_pod(admin_client: DynamicClient, ns_with_modelmesh_enabled: Namespace) -> Pod:
+def minio_pod(admin_client: DynamicClient, model_namespace: Namespace) -> Pod:
     with Pod(
         client=admin_client,
         name=MINIO,
-        namespace=ns_with_modelmesh_enabled.name,
+        namespace=model_namespace.name,
         containers=[
             {
                 "args": [
@@ -123,11 +119,11 @@ def minio_pod(admin_client: DynamicClient, ns_with_modelmesh_enabled: Namespace)
 
 
 @pytest.fixture(scope="class")
-def minio_service(admin_client: DynamicClient, ns_with_modelmesh_enabled: Namespace) -> Service:
+def minio_service(admin_client: DynamicClient, model_namespace: Namespace) -> Service:
     with Service(
         client=admin_client,
         name=MINIO,
-        namespace=ns_with_modelmesh_enabled.name,
+        namespace=model_namespace.name,
         ports=[
             {
                 "name": "minio-client-port",
@@ -145,12 +141,12 @@ def minio_service(admin_client: DynamicClient, ns_with_modelmesh_enabled: Namesp
 
 @pytest.fixture(scope="class")
 def minio_data_connection(
-    admin_client: DynamicClient, ns_with_modelmesh_enabled: Namespace, minio_pod: Pod, minio_service: Service
+    admin_client: DynamicClient, model_namespace: Namespace, minio_pod: Pod, minio_service: Service
 ) -> Secret:
     with Secret(
         client=admin_client,
         name="aws-connection-minio-data-connection",
-        namespace=ns_with_modelmesh_enabled.name,
+        namespace=model_namespace.name,
         data_dict={
             "AWS_ACCESS_KEY_ID": "VEhFQUNDRVNTS0VZ",
             "AWS_DEFAULT_REGION": "dXMtc291dGg=",
