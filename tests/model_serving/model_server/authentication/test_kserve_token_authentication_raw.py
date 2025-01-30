@@ -1,8 +1,9 @@
 import pytest
 
 from tests.model_serving.model_server.utils import verify_inference_response
-from utilities.constants import ModelFormat, ModelStoragePath, Protocols, ModelInferenceRuntime
+from utilities.constants import ModelFormat, ModelStoragePath, Protocols
 from utilities.inference_utils import Inference
+from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
 
 pytestmark = pytest.mark.usefixtures("valid_aws_config")
 
@@ -25,7 +26,7 @@ class TestKserveTokenAuthenticationRawForRest:
         """Verify RAW Kserve model query with token using REST"""
         verify_inference_response(
             inference_service=http_s3_caikit_raw_inference_service,
-            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
+            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTPS,
             model_name=ModelFormat.CAIKIT,
@@ -38,7 +39,7 @@ class TestKserveTokenAuthenticationRawForRest:
         """Verify model query after authentication is disabled"""
         verify_inference_response(
             inference_service=patched_remove_raw_authentication_isvc,
-            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
+            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTP,
             model_name=ModelFormat.CAIKIT,
