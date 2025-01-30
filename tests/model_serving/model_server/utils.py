@@ -12,6 +12,7 @@ from timeout_sampler import TimeoutSampler
 from utilities.constants import (
     Annotations,
     KServeDeploymentType,
+    Labels,
 )
 from utilities.exceptions import (
     FailedPodsError,
@@ -129,9 +130,9 @@ def create_isvc(
     if enable_auth:
         # model mesh auth is set in servingruntime
         if deployment_mode == KServeDeploymentType.SERVERLESS:
-            annotations["security.opendatahub.io/enable-auth"] = "true"
+            annotations[Annotations.KserveAuth.SECURITY] = "true"
         elif deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
-            labels["security.openshift.io/enable-authentication"] = "true"
+            labels[Labels.KserveAuth.SECURITY] = "true"
 
     # default to True if deployment_mode is Serverless (default behavior of Serverless) if was not provided by the user
     # model mesh external route is set in servingruntime
