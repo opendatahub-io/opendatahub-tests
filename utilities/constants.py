@@ -101,6 +101,9 @@ class Annotations:
     class KserveIo:
         DEPLOYMENT_MODE: str = "serving.kserve.io/deploymentMode"
 
+    class KserveAuth:
+        SECURITY: str = "security.opendatahub.io/enable-auth"
+
 
 class StorageClassName:
     NFS: str = "nfs"
@@ -127,6 +130,12 @@ class DscComponents:
     }
 
 
+class Labels:
+    class KserveAuth:
+        SECURITY: str = "security.opendatahub.io/enable-auth"
+
+
+MODEL_REGISTRY: str = "model-registry"
 MODELMESH_SERVING: str = "modelmesh-serving"
 ISTIO_CA_BUNDLE_FILENAME: str = "istio_knative.crt"
 OPENSHIFT_CA_BUNDLE_FILENAME: str = "openshift_ca.crt"

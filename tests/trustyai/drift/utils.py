@@ -48,12 +48,14 @@ class TrustyAIServiceRequestHandler:
     ) -> Any:
         url = f"https://{self.service_route.host}{endpoint}"
 
-        if method not in ("GET", "POST"):
+        if method not in ("GET", "POST", "DELETE"):
             raise ValueError(f"Unsupported HTTP method: {method}")
         if method == "GET":
             return requests.get(url=url, headers=self.headers, verify=False)
         elif method == "POST":
             return requests.post(url=url, headers=self.headers, data=data, json=json, verify=False)
+        elif method == "DELETE":
+            return requests.delete(url=url, headers=self.headers, json=json, verify=False)
 
     def get_model_metadata(self) -> Any:
         return self._send_request(endpoint="/info", method="GET")
@@ -78,6 +80,12 @@ class TrustyAIServiceRequestHandler:
             endpoint=endpoint,
             method="GET",
         )
+
+    def delete_drift_metric(self, metric_name: str, request_id: str) -> Any:
+        endpoint: str = f"/metrics/drift/{metric_name}/request"
+        LOGGER.info(f"Sending request to delete drift metric {request_id} to endpoint {endpoint}")
+        json_payload = {"requestId": request_id}
+        return self._send_request(endpoint=endpoint, method="DELETE", json=json_payload)
 
     def upload_data(
         self,
@@ -453,3 +461,46 @@ def verify_upload_data_to_trustyai_service(
         client=client, token=token, trustyai_service=trustyai_service
     )
     assert expected_num_observations >= actual_num_observations
+
+
+def verify_trustyai_drift_metric_delete_request(
+    client: DynamicClient, trustyai_service: TrustyAIService, token: str, metric_name: str
+) -> None:
+    """
+    Deletes a drift metric request from the TrustyAI service and verifies that the deletion was successful.
+
+    Args:
+        client (DynamicClient): The client instance for interacting with the cluster.
+        trustyai_service (TrustyAIService): The TrustyAI service instance to interact with.
+        token (str): Authentication token for the service.
+        metric_name (str): Name of the metric to delete.
+
+    Raises:
+        ValueError: If there are no metrics to delete.
+        AssertionError: If the deletion request fails or the number of metrics after deletion is not as expected.
+    """
+    handler = TrustyAIServiceRequestHandler(token=token, service=trustyai_service, client=client)
+
+    drift_metrics_response = handler.get_drift_metrics(metric_name=metric_name)
+    drift_metrics_data = json.loads(drift_metrics_response.text)
+    initial_num_metrics: int = len(drift_metrics_data.get("requests", []))
+
+    if initial_num_metrics < 1:
+        raise ValueError(f"No metrics found for {metric_name}. Cannot perform deletion.")
+
+    request_id: str = drift_metrics_data["requests"][0]["id"]
+
+    delete_response = handler.delete_drift_metric(metric_name=metric_name, request_id=request_id)
+
+    assert delete_response.status_code == http.HTTPStatus.OK, (
+        f"Delete request failed with status code: {delete_response.status_code}"
+    )
+
+    # Verify the number of metrics after deletion is N-1
+    updated_drift_metrics_response = handler.get_drift_metrics(metric_name=metric_name)
+    updated_drift_metrics_data = json.loads(updated_drift_metrics_response.text)
+    updated_num_metrics: int = len(updated_drift_metrics_data.get("requests", []))
+
+    assert updated_num_metrics == initial_num_metrics - 1, (
+        f"Number of metrics after deletion is {updated_num_metrics}, expected {initial_num_metrics - 1}"
+    )
