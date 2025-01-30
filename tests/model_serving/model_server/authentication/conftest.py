@@ -26,6 +26,7 @@ from utilities.constants import (
 )
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 from utilities.constants import Annotations
+from utilities.constants import Labels
 
 
 # GRPC model serving
@@ -181,7 +182,7 @@ def patched_remove_raw_authentication_isvc(
         patches={
             http_s3_caikit_raw_inference_service: {
                 "metadata": {
-                    "annotations": {Annotations.KserveAuth.SECURITY: "false"},
+                    "labels": {Labels.KserveAuth.SECURITY: "false"},
                 }
             }
         }
