@@ -1,11 +1,19 @@
 import pytest
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.config_map import ConfigMap
+from ocp_resources.deployment import Deployment
 from ocp_resources.lm_eval_job import LMEvalJob
 from ocp_resources.namespace import Namespace
+from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
+from ocp_resources.pod import Pod
+from ocp_resources.resource import ResourceEditor
+from pytest_testconfig import py_config
 
 
 @pytest.fixture(scope="function")
-def lm_eval_job_hf(model_namespace: Namespace):
+def lmevaljob_hf(admin_client: DynamicClient, model_namespace: Namespace):
     with LMEvalJob(
+        client=admin_client,
         name="test-job",
         namespace=model_namespace.name,
         model="hf",
@@ -20,3 +28,97 @@ def lm_eval_job_hf(model_namespace: Namespace):
         allow_code_execution=True,
     ) as job:
         yield job
+
+
+@pytest.fixture(scope="function")
+def lmevaljob_local_offline_builtin_tasks(
+    admin_client: DynamicClient, model_namespace: Namespace, lmeval_data_downloader_pod_flan_arceasy: Pod
+):
+    with LMEvalJob(
+        client=admin_client,
+        name="lmeval-test",
+        namespace=model_namespace.name,
+        model="hf",
+        model_args=[{"name": "pretrained", "value": "/opt/app-root/src/hf_home/flan"}],
+        task_list={"taskNames": ["arc_easy"]},
+        log_samples=True,
+        offline={"storage": {"pvcName": "lmeval-data"}},
+        pod={
+            "container": {
+                "env": [
+                    {"name": "HF_HUB_VERBOSITY", "value": "debug"},
+                    {"name": "UNITXT_DEFAULT_VERBOSITY", "value": "debug"},
+                ]
+            }
+        },
+        label={"opendatahub.io/dashboard": "true", "lmevaltests": "vllm"},
+    ) as job:
+        yield job
+
+
+@pytest.fixture(scope="function")
+def patched_trustyai_operator_configmap_allow_online(admin_client: DynamicClient):
+    namespace: str = py_config["applications_namespace"]
+    trustyai_service_operator: str = "trustyai-service-operator"
+
+    configmap: ConfigMap = ConfigMap(
+        client=admin_client, name=f"{trustyai_service_operator}-config", namespace=namespace, ensure_exists=True
+    )
+    with ResourceEditor(
+        patches={configmap: {"data": {"lmes-allow-online": "true", "lmes-allow-code-execution": "true"}}}
+    ):
+        deployment: Deployment = Deployment(
+            client=admin_client,
+            name=f"{trustyai_service_operator}-controller-manager",
+            namespace=namespace,
+            ensure_exists=True,
+        )
+        num_replicas: int = deployment.replicas
+        deployment.scale_replicas(replica_count=0)
+        deployment.scale_replicas(replica_count=num_replicas)
+        deployment.wait_for_replicas()
+        yield configmap
+
+
+@pytest.fixture(scope="function")
+def lmeval_data_pvc(admin_client: DynamicClient, model_namespace: Namespace):
+    with PersistentVolumeClaim(
+        client=admin_client,
+        name="lmeval-data",
+        namespace=model_namespace.name,
+        label={"lmevaltests": "vllm"},
+        accessmodes=PersistentVolumeClaim.AccessMode.RWO,
+        size="20Gi",
+    ) as pvc:
+        yield pvc
+
+
+@pytest.fixture(scope="function")
+def lmeval_data_downloader_pod_flan_arceasy(
+    admin_client: DynamicClient, model_namespace: Namespace, lmeval_data_pvc: PersistentVolumeClaim
+):
+    with Pod(
+        client=admin_client,
+        namespace=model_namespace.name,
+        name="lmeval-downloader",
+        label={"lmevaltests": "vllm"},
+        security_context={"fsGroup": 1000, "seccompProfile": {"type": "RuntimeDefault"}},
+        containers=[
+            {
+                "name": "data",
+                "image": "quay.io/trustyai_testing/lmeval-assets-flan-arceasy:latest",
+                "command": ["/bin/sh", "-c", "cp -r /mnt/data/. /mnt/pvc/"],
+                "securityContext": {
+                    "runAsUser": 1000,
+                    "runAsNonRoot": True,
+                    "allowPrivilegeEscalation": False,
+                    "capabilities": {"drop": ["ALL"]},
+                },
+                "volumeMounts": [{"mountPath": "/mnt/pvc", "name": "pvc-volume"}],
+            }
+        ],
+        restart_policy="Never",
+        volumes=[{"name": "pvc-volume", "persistentVolumeClaim": {"claimName": "lmeval-data"}}],
+    ) as pod:
+        pod.wait_for_status(status=Pod.Status.SUCCEEDED)
+        yield pod
