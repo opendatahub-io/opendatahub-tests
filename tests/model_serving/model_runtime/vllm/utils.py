@@ -5,12 +5,16 @@ from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.secret import Secret
 from ocp_resources.template import Template
 from ocp_resources.serving_runtime import ServingRuntime
+from ocp_resources.inference_service import InferenceService
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 from tests.model_serving.model_runtime.vllm.constant import vLLM_CONFIG
 from tests.model_serving.model_runtime.vllm.constant import CHAT_QUERY, COMPLETION_QUERY
+from utilities.exceptions import NotSupportedError
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.plugins.openai_plugin import OpenAIClient
+from utilities.plugins.tgis_grpc_plugin import TGISGRPCPlugin
+import portforward
 
 LOGGER = get_logger(name=__name__)
 
@@ -109,3 +113,49 @@ def fetch_openai_response(  # type: ignore
 
     model_info = OpenAIClient.get_request_http(host=url, endpoint=OpenAIEnpoints.MODELS_INFO)
     return model_info, chat_responses, completion_responses
+
+
+def fetch_tgis_response(  # type: ignore
+    url: str,
+    model_name: str,
+    completion_query=COMPLETION_QUERY,
+) -> tuple[Any, list[Any], list[Any]]:
+    completion_responses = []
+    stream_completion_responses = []
+    inference_client = TGISGRPCPlugin(host=url, model_name=model_name, streaming=True)
+    model_info = inference_client.get_model_info()
+    if completion_query:
+        for query in COMPLETION_QUERY:
+            completion_response = inference_client.make_grpc_request(query=query)
+            completion_responses.append(completion_response)
+            stream_response = inference_client.make_grpc_request_stream(query=query)
+            completion_responses.append(completion_response)
+            stream_completion_responses.append(stream_response)
+    return model_info, completion_responses, stream_completion_responses
+
+
+def run_raw_inference(
+    pod_name: str, isvc: InferenceService, port: int, endpoint: str
+) -> tuple[Any, list[Any], list[Any]]:
+    LOGGER.info(pod_name)
+    with portforward.forward(
+        pod_or_service=pod_name,
+        namespace=isvc.namespace,
+        from_port=port,
+        to_port=port,
+    ):
+        if endpoint == "tgis":
+            model_detail, grpc_chat_response, grpc_chat_stream_responses = fetch_tgis_response(
+                url=f"localhost:{port}",
+                model_name=isvc.instance.metadata.name,
+            )
+            return model_detail, grpc_chat_response, grpc_chat_stream_responses
+
+        elif endpoint == "openai":
+            model_info, completion_responses, stream_completion_responses = fetch_openai_response(
+                url=f"http://localhost:{port}",
+                model_name=isvc.instance.metadata.name,
+            )
+            return model_info, completion_responses, stream_completion_responses
+        else:
+            raise NotSupportedError(f"{endpoint} endpoint")

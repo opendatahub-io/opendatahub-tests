@@ -56,3 +56,15 @@ class FailedPodsError(Exception):
 
     def __str__(self) -> str:
         return f"The following pods are not running: {self.pods}"
+
+
+class NotSupportedError(Exception):
+    """
+    Custom exception message for not supported types
+    """
+
+    def __init__(self, type: str):
+        self.type = type
+
+    def __str__(self) -> str:
+        return f"The {self.type} is not supported"
