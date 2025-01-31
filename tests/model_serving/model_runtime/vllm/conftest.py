@@ -4,6 +4,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.inference_service import InferenceService
+from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from tests.model_serving.model_runtime.vllm.utils import kserve_s3_endpoint_secret
@@ -128,5 +129,5 @@ def response_snapshot(snapshot):
 
 
 @pytest.fixture
-def get_pod_name_resource(admin_client: DynamicClient, vllm_inference_service: InferenceService):
+def get_pod_name_resource(admin_client: DynamicClient, vllm_inference_service: InferenceService) -> Pod:
     return get_pods_by_isvc_label(client=admin_client, isvc=vllm_inference_service)[0]
