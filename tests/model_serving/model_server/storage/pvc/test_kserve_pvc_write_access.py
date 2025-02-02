@@ -12,7 +12,7 @@ from tests.model_serving.model_server.storage.constants import (
 from utilities.constants import StorageClassName
 from utilities.infra import get_pods_by_isvc_label
 
-pytestmark = pytest.mark.usefixtures("skip_if_no_nfs_storage_class", "valid_aws_config")
+pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("skip_if_no_nfs_storage_class", "valid_aws_config")]
 
 
 POD_TOUCH_SPLIT_COMMAND: List[str] = shlex.split("touch /mnt/models/test")

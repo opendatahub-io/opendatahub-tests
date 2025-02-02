@@ -1,8 +1,9 @@
 import pytest
 
 from tests.model_serving.model_server.utils import verify_inference_response
-from utilities.constants import ModelFormat, ModelStoragePath, Protocols, ModelInferenceRuntime
+from utilities.constants import ModelFormat, ModelStoragePath, Protocols
 from utilities.inference_utils import Inference
+from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
 
 
 @pytest.mark.parametrize(
@@ -24,7 +25,7 @@ class TestKserveUnprivilegedUser:
         """Verify non admin can deploy a model and query using REST"""
         verify_inference_response(
             inference_service=unprivileged_s3_caikit_serverless_inference_service,
-            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
+            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTPS,
             model_name=ModelFormat.CAIKIT,

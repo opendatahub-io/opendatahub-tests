@@ -1,8 +1,7 @@
 import pytest
 from ocp_resources.pod import Pod
 
-
-TIMEOUT_10MIN = 60 * 10
+from tests.trustyai.constants import TIMEOUT_10MIN
 
 
 @pytest.mark.parametrize(

@@ -10,8 +10,9 @@ from utilities.constants import (
     RuntimeTemplates,
 )
 from utilities.inference_utils import Inference
+from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
 
-pytestmark = [pytest.mark.usefixtures("valid_aws_config"), pytest.mark.raw_deployment]
+pytestmark = [pytest.mark.usefixtures("valid_aws_config"), pytest.mark.rawdeployment]
 
 
 @pytest.mark.parametrize(
@@ -35,7 +36,7 @@ pytestmark = [pytest.mark.usefixtures("valid_aws_config"), pytest.mark.raw_deplo
     ],
     indirect=True,
 )
-class TestRestRawDeployment:
+class TestRestRawDeploymentRoutes:
     def test_default_visibility_value(self, s3_models_inference_service):
         """Test default route visibility value"""
         if labels := s3_models_inference_service.labels:
@@ -45,7 +46,7 @@ class TestRestRawDeployment:
         """Test HTTP inference using internal route"""
         verify_inference_response(
             inference_service=s3_models_inference_service,
-            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
+            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTP,
             model_name=ModelFormat.CAIKIT,
@@ -54,7 +55,7 @@ class TestRestRawDeployment:
 
     @pytest.mark.jira("RHOAIENG-17322", run=False)
     @pytest.mark.parametrize(
-        "patched_s3_caikit_raw_isvc_visibility_label",
+        "patched_s3_caikit_kserve_isvc_visibility_label",
         [
             pytest.param(
                 {"visibility": "exposed"},
@@ -63,11 +64,11 @@ class TestRestRawDeployment:
         indirect=True,
     )
     @pytest.mark.dependency(name="test_rest_raw_deployment_exposed_route")
-    def test_rest_raw_deployment_exposed_route(self, patched_s3_caikit_raw_isvc_visibility_label):
+    def test_rest_raw_deployment_exposed_route(self, patched_s3_caikit_kserve_isvc_visibility_label):
         """Test HTTP inference using exposed (external) route"""
         verify_inference_response(
-            inference_service=patched_s3_caikit_raw_isvc_visibility_label,
-            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
+            inference_service=patched_s3_caikit_kserve_isvc_visibility_label,
+            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTPS,
             model_name=ModelFormat.CAIKIT,
@@ -76,7 +77,7 @@ class TestRestRawDeployment:
 
     @pytest.mark.dependency(depends=["test_rest_raw_deployment_exposed_route"])
     @pytest.mark.parametrize(
-        "patched_s3_caikit_raw_isvc_visibility_label",
+        "patched_s3_caikit_kserve_isvc_visibility_label",
         [
             pytest.param(
                 {"visibility": "local-cluster"},
@@ -84,11 +85,11 @@ class TestRestRawDeployment:
         ],
         indirect=True,
     )
-    def test_disabled_rest_raw_deployment_exposed_route(self, patched_s3_caikit_raw_isvc_visibility_label):
+    def test_disabled_rest_raw_deployment_exposed_route(self, patched_s3_caikit_kserve_isvc_visibility_label):
         """Test HTTP inference fails when using external route after it was disabled"""
         verify_inference_response(
-            inference_service=patched_s3_caikit_raw_isvc_visibility_label,
-            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
+            inference_service=patched_s3_caikit_kserve_isvc_visibility_label,
+            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTP,
             model_name=ModelFormat.CAIKIT,
@@ -117,22 +118,21 @@ class TestRestRawDeployment:
     ],
     indirect=True,
 )
+@pytest.mark.jira("RHOAIENG-17783", run=False)
 class TestGrpcRawDeployment:
-    @pytest.mark.jira("RHOAIENG-17783", run=False)
     def test_grpc_raw_deployment_internal_route(self, s3_models_inference_service):
         """Test GRPC inference using internal route"""
         verify_inference_response(
             inference_service=s3_models_inference_service,
-            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
+            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
             inference_type=Inference.STREAMING,
             protocol=Protocols.GRPC,
             model_name=ModelFormat.CAIKIT,
             use_default_query=True,
         )
 
-    @pytest.mark.jira("RHOAIENG-17322", run=False)
     @pytest.mark.parametrize(
-        "patched_s3_caikit_raw_isvc_visibility_label",
+        "patched_s3_caikit_kserve_isvc_visibility_label",
         [
             pytest.param(
                 {"visibility": "exposed"},
@@ -140,11 +140,11 @@ class TestGrpcRawDeployment:
         ],
         indirect=True,
     )
-    def test_grpc_raw_deployment_exposed_route(self, patched_s3_caikit_raw_isvc_visibility_label):
+    def test_grpc_raw_deployment_exposed_route(self, patched_s3_caikit_kserve_isvc_visibility_label):
         """Test GRPC inference using exposed (external) route"""
         verify_inference_response(
-            inference_service=patched_s3_caikit_raw_isvc_visibility_label,
-            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
+            inference_service=patched_s3_caikit_kserve_isvc_visibility_label,
+            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
             inference_type=Inference.STREAMING,
             protocol=Protocols.GRPC,
             model_name=ModelFormat.CAIKIT,

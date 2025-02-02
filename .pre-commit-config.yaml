@@ -32,7 +32,7 @@ repos:
       - id: detect-secrets
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.2
+    rev: v0.9.3
     hooks:
       - id: ruff
       - id: ruff-format
@@ -46,7 +46,7 @@ repos:
   #     - id: renovate-config-validator
 
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.23.1
+    rev: v8.23.2
     hooks:
       - id: gitleaks
 
@@ -55,4 +55,4 @@ repos:
     hooks:
       - id: mypy
         additional_dependencies: ["types-PyYAML", "types-requests"]
-        exclude: ^(docs/|.*/test_.*|.*conftest.py|utilities/manifests/)
+        exclude: ^(docs/|.*/test_.*|.*conftest.py|utilities/manifests/*)

@@ -12,12 +12,16 @@ from ocp_resources.role_binding import RoleBinding
 from ocp_resources.role import Role
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
-from ocp_resources.authorino import Authorino
 from ocp_resources.serving_runtime import ServingRuntime
 from pyhelper_utils.shell import run_command
-from pytest_testconfig import config as py_config
 
-from utilities.infra import create_isvc_view_role, create_ns, get_pods_by_isvc_label, s3_endpoint_secret
+from utilities.infra import (
+    create_isvc_view_role,
+    create_ns,
+    get_pods_by_isvc_label,
+    s3_endpoint_secret,
+    create_inference_token,
+)
 from tests.model_serving.model_server.utils import create_isvc
 from utilities.constants import (
     KServeDeploymentType,
@@ -27,17 +31,7 @@ from utilities.constants import (
     RuntimeTemplates,
 )
 from utilities.serving_runtime import ServingRuntimeFromTemplate
-
-
-@pytest.fixture(scope="session")
-def skip_if_no_authorino_operator(admin_client: DynamicClient):
-    name = "authorino"
-    if not Authorino(
-        client=admin_client,
-        name=name,
-        namespace=f"{py_config['applications_namespace']}-auth-provider",
-    ).exists:
-        pytest.skip(f"{name} operator is missing from the cluster")
+from utilities.constants import Annotations
 
 
 # GRPC model serving
@@ -126,9 +120,7 @@ def http_role_binding(
 
 @pytest.fixture(scope="class")
 def http_inference_token(model_service_account: ServiceAccount, http_role_binding: RoleBinding) -> str:
-    return run_command(
-        command=shlex.split(f"oc create token -n {model_service_account.namespace} {model_service_account.name}")
-    )[1].strip()
+    return create_inference_token(model_service_account=model_service_account)
 
 
 @pytest.fixture()
@@ -140,7 +132,7 @@ def patched_remove_authentication_isvc(
         patches={
             http_s3_caikit_serverless_inference_service: {
                 "metadata": {
-                    "annotations": {"security.opendatahub.io/enable-auth": "false"},
+                    "annotations": {Annotations.KserveAuth.SECURITY: "false"},
                 }
             }
         }

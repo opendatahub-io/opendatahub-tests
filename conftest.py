@@ -3,12 +3,13 @@ import os
 import pathlib
 import shutil
 
+import shortuuid
 from pytest import Parser, Session, FixtureRequest, FixtureDef, Item, Config, CollectReport
 from _pytest.terminal import TerminalReporter
 from typing import Optional, Any
 from pytest_testconfig import config as py_config
 
-
+from utilities.constants import KServeDeploymentType
 from utilities.logger import separator, setup_logging
 
 
@@ -72,6 +73,10 @@ def pytest_addoption(parser: Parser) -> None:
     )
 
 
+def pytest_cmdline_main(config):
+    config.option.basetemp = py_config["tmp_base_dir"] = f"{config.option.basetemp}-{shortuuid.uuid()}"
+
+
 def pytest_sessionstart(session: Session) -> None:
     tests_log_file = session.config.getoption("log_file") or "pytest-tests.log"
     if os.path.exists(tests_log_file):
@@ -91,8 +96,26 @@ def pytest_fixture_setup(fixturedef: FixtureDef[Any], request: FixtureRequest) -
 
 
 def pytest_runtest_setup(item: Item) -> None:
+    """
+    Performs the following actions:
+    1. Adds skip fixture for kserve if serverless or authorino operators are not installed.
+    2. Adds skip fixture for serverless if authorino/serverless/service mesh are not deployed.
+    """
+
     BASIC_LOGGER.info(f"\n{separator(symbol_='-', val=item.name)}")
     BASIC_LOGGER.info(f"{separator(symbol_='-', val='SETUP')}")
+
+    if KServeDeploymentType.SERVERLESS.lower() in item.keywords:
+        item.fixturenames.insert(0, "skip_if_no_deployed_redhat_authorino_operator")
+        item.fixturenames.insert(0, "skip_if_no_deployed_openshift_serverless")
+        item.fixturenames.insert(0, "skip_if_no_deployed_openshift_service_mesh")
+        item.fixturenames.insert(0, "enabled_kserve_in_dsc")
+
+    elif KServeDeploymentType.RAW_DEPLOYMENT.lower() in item.keywords:
+        item.fixturenames.insert(0, "enabled_kserve_in_dsc")
+
+    elif KServeDeploymentType.MODEL_MESH.lower() in item.keywords:
+        item.fixturenames.insert(0, "enabled_modelmesh_in_dsc")
 
 
 def pytest_runtest_call(item: Item) -> None:
@@ -122,7 +145,9 @@ def pytest_report_teststatus(report: CollectReport, config: Config) -> None:
 
 
 def pytest_sessionfinish(session: Session, exitstatus: int) -> None:
-    shutil.rmtree(path=session.config.option.basetemp, ignore_errors=True)
+    base_dir = py_config["tmp_base_dir"]
+    LOGGER.info(f"Deleting pytest base dir {base_dir}")
+    shutil.rmtree(path=base_dir, ignore_errors=True)
 
     reporter: Optional[TerminalReporter] = session.config.pluginmanager.get_plugin("terminalreporter")
     if reporter:

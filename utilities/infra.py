@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shlex
 from contextlib import contextmanager
 from functools import cache
@@ -19,8 +20,11 @@ from ocp_resources.pod import Pod
 from ocp_resources.project_project_openshift_io import Project
 from ocp_resources.project_request import ProjectRequest
 from ocp_resources.role import Role
+from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
+from ocp_resources.service_account import ServiceAccount
+from ocp_resources.serving_runtime import ServingRuntime
 from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
@@ -65,10 +69,13 @@ def create_ns(
 
 
 def wait_for_inference_deployment_replicas(
-    client: DynamicClient, isvc: InferenceService, deployment_mode: str, expected_num_deployments: int = 1
+    client: DynamicClient,
+    isvc: InferenceService,
+    runtime_name: str | None,
+    expected_num_deployments: int = 1,
 ) -> List[Deployment]:
     ns = isvc.namespace
-    label_selector = create_isvc_label_selector_str(isvc=isvc)
+    label_selector = create_isvc_label_selector_str(isvc=isvc, resource_type="deployment", runtime_name=runtime_name)
 
     deployments = list(
         Deployment.get(
@@ -78,6 +85,7 @@ def wait_for_inference_deployment_replicas(
         )
     )
 
+    LOGGER.info("Waiting for inference deployment replicas to complete")
     if len(deployments) == expected_num_deployments:
         for deployment in deployments:
             if deployment.exists:
@@ -103,6 +111,9 @@ def s3_endpoint_secret(
     aws_s3_endpoint: str,
     aws_s3_region: str,
 ) -> Generator[Secret, None, None]:
+    # DO not create secret if exists in the namespace
+    os.environ["REUSE_IF_RESOURCE_EXISTS"] = f"{{Secret: {{{name}: {namespace}}}}}"
+
     with Secret(
         client=admin_client,
         name=name,
@@ -209,19 +220,22 @@ def is_managed_cluster(client: DynamicClient) -> bool:
     return False
 
 
-def get_services_by_isvc_label(client: DynamicClient, isvc: InferenceService) -> List[Service]:
+def get_services_by_isvc_label(
+    client: DynamicClient, isvc: InferenceService, runtime_name: str | None = None
+) -> List[Service]:
     """
     Args:
         client (DynamicClient): OCP Client to use.
-        isvc (InferenceService):InferenceService object.
+        isvc (InferenceService): InferenceService object.
+        runtime_name (str): ServingRuntime name
 
     Returns:
-        list[Service]: A list of all matching pods
+        list[Service]: A list of all matching services
 
     Raises:
-        ResourceNotFoundError: if no pods are found.
+        ResourceNotFoundError: if no services are found.
     """
-    label_selector = create_isvc_label_selector_str(isvc=isvc)
+    label_selector = create_isvc_label_selector_str(isvc=isvc, resource_type="service", runtime_name=runtime_name)
 
     if svcs := [
         svc
@@ -236,11 +250,12 @@ def get_services_by_isvc_label(client: DynamicClient, isvc: InferenceService) ->
     raise ResourceNotFoundError(f"{isvc.name} has no services")
 
 
-def get_pods_by_isvc_label(client: DynamicClient, isvc: InferenceService) -> List[Pod]:
+def get_pods_by_isvc_label(client: DynamicClient, isvc: InferenceService, runtime_name: str | None = None) -> List[Pod]:
     """
     Args:
         client (DynamicClient): OCP Client to use.
         isvc (InferenceService):InferenceService object.
+        runtime_name (str): ServingRuntime name
 
     Returns:
         list[Pod]: A list of all matching pods
@@ -248,7 +263,8 @@ def get_pods_by_isvc_label(client: DynamicClient, isvc: InferenceService) -> Lis
     Raises:
         ResourceNotFoundError: if no pods are found.
     """
-    label_selector = create_isvc_label_selector_str(isvc=isvc)
+    label_selector = create_isvc_label_selector_str(isvc=isvc, resource_type="pod", runtime_name=runtime_name)
+
     if pods := [
         pod
         for pod in Pod.get(
@@ -267,9 +283,67 @@ def get_openshift_token() -> str:
 
 
 def get_kserve_storage_initialize_image(client: DynamicClient) -> str:
-    kserve_cm = ConfigMap(client=client, name="inferenceservice-config", namespace=py_config["applications_namespace"])
+    kserve_cm = ConfigMap(
+        client=client,
+        name="inferenceservice-config",
+        namespace=py_config["applications_namespace"],
+    )
 
     if not kserve_cm.exists:
         raise ResourceNotFoundError(f"{kserve_cm.name} config map does not exist")
 
     return json.loads(kserve_cm.instance.data.storageInitializer)["image"]
+
+
+def get_inference_serving_runtime(isvc: InferenceService) -> ServingRuntime:
+    runtime = ServingRuntime(
+        client=isvc.client,
+        namespace=isvc.namespace,
+        name=isvc.instance.spec.predictor.model.runtime,
+    )
+
+    if runtime.exists:
+        return runtime
+
+    raise ResourceNotFoundError(f"{isvc.name} runtime {runtime.name} does not exist")
+
+
+def get_model_mesh_route(client: DynamicClient, isvc: InferenceService) -> Route:
+    """
+    Args:
+        client (DynamicClient): OCP Client to use.
+        isvc (InferenceService):InferenceService object.
+
+    Returns:
+        Route: inference service route
+
+    Raises:
+        ResourceNotFoundError: if route was found.
+    """
+    if routes := [
+        route
+        for route in Route.get(
+            dyn_client=client,
+            namespace=isvc.namespace,
+            label_selector=f"inferenceservice-name={isvc.name}",
+        )
+    ]:
+        return routes[0]
+
+    raise ResourceNotFoundError(f"{isvc.name} has no routes")
+
+
+def create_inference_token(model_service_account: ServiceAccount) -> str:
+    """
+    Generates an inference token for the given model service account.
+
+    Args:
+        model_service_account (ServiceAccount): An object containing the namespace and name
+                               of the service account.
+
+    Returns:
+        str: The generated inference token.
+    """
+    return run_command(
+        shlex.split(f"oc create token -n {model_service_account.namespace} {model_service_account.name}")
+    )[1].strip()

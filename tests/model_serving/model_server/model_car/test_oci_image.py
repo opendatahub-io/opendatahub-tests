@@ -2,14 +2,13 @@ import pytest
 
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.infra import get_pods_by_isvc_label
-from utilities.constants import ModelName, Protocols, ModelInferenceRuntime
+from utilities.constants import ModelName, Protocols
 from utilities.inference_utils import Inference
+from utilities.manifests.tgis_grpc import TGIS_INFERENCE_CONFIG
+
+pytestmark = pytest.mark.serverless
 
 
-pytestmark = pytest.mark.usefixtures("skip_if_no_deployed_openshift_serverless")
-
-
-@pytest.mark.serverless
 @pytest.mark.parametrize(
     "model_namespace, serving_runtime_from_template, model_car_tgis_inference_service",
     [
@@ -46,7 +45,7 @@ class TestKserveModelCar:
         """Verify model query with token using REST"""
         verify_inference_response(
             inference_service=model_car_tgis_inference_service,
-            runtime=ModelInferenceRuntime.TGIS_RUNTIME,
+            inference_config=TGIS_INFERENCE_CONFIG,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.GRPC,
             model_name=ModelName.FLAN_T5_SMALL_HF,
