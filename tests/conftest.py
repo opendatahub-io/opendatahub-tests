@@ -8,6 +8,7 @@ from typing import List, Tuple, Any, Generator
 import pytest
 import yaml
 from _pytest.tmpdir import TempPathFactory
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.secret import Secret
 from pyhelper_utils.shell import run_command
 from pytest import FixtureRequest, Config
@@ -20,7 +21,7 @@ from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 
 from utilities.data_science_cluster_utils import update_components_in_dsc
-from utilities.infra import create_ns, login_with_user_password, get_openshift_token
+from utilities.infra import create_ns, login_with_user_password, get_openshift_token, update_configmap_data
 from utilities.constants import AcceleratorType
 
 
@@ -262,3 +263,23 @@ def updated_dsc_component_state(
         components={request.param["component_name"]: request.param["desired_state"]},
     ) as dsc:
         yield dsc
+
+
+@pytest.fixture(scope="session")
+def cluster_monitoring_config(admin_client: DynamicClient) -> ConfigMap:
+    name = "cluster-monitoring-config"
+    namespace = "openshift-monitoring"
+    data = {"config.yaml": yaml.dump({"enableUserWorkload": "true"})}
+    cm = ConfigMap(client=admin_client, name=name, namespace=namespace)
+    if cm.exists:  # This resource is usually created when doing exploratory testing, add this exception for convenience
+        with update_configmap_data(configmap=cm, data=data) as cm:
+            yield cm
+
+    else:
+        with ConfigMap(
+            client=admin_client,
+            name=name,
+            namespace=namespace,
+            data=data,
+        ) as cm:
+            yield cm

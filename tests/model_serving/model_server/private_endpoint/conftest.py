@@ -35,7 +35,7 @@ def endpoint_isvc(
         namespace=serving_runtime_from_template.namespace,
         deployment_mode=KServeDeploymentType.SERVERLESS,
         storage_key=models_endpoint_s3_secret.name,
-        storage_path=ModelStoragePath.FLAN_T5_SMALL,
+        storage_path=ModelStoragePath.FLAN_T5_SMALL_CAIKIT,
         model_format=ModelFormat.CAIKIT,
         runtime=serving_runtime_from_template.name,
         wait_for_predictor_pods=True,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from string import Template
 from typing import Any, Dict, Generator, Optional
@@ -323,3 +324,37 @@ def verify_inference_response(
 
         else:
             raise InferenceResponseError(f"Inference response output not found in response. Response: {res}")
+
+
+def run_inference_multiple_times(
+    isvc: InferenceService,
+    inference_config: str,
+    inference_type: str,
+    protocol: str,
+    model_name: str,
+    iterations: int,
+    run_in_parallel: bool = False,
+) -> None:
+    futures = []
+
+    with ThreadPoolExecutor() as executor:
+        for iteration in range(iterations):
+            infer_kwargs = {
+                "inference_service": isvc,
+                "inference_config": inference_config,
+                "inference_type": inference_type,
+                "protocol": protocol,
+                "model_name": model_name,
+                "use_default_query": True,
+            }
+
+            if run_in_parallel:
+                futures.append(executor.submit(verify_inference_response, **infer_kwargs))
+            else:
+                verify_inference_response(**infer_kwargs)
+
+        if futures:
+            for result in as_completed(futures):
+                _exception = result.exception()
+                if _exception:
+                    LOGGER.error(f"Failed to run inference. Error: {_exception}")

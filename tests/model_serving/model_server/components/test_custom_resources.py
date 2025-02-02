@@ -66,7 +66,7 @@ class TestInferenceServiceCustomResources:
 
     @pytest.mark.parametrize(
         "s3_models_storage_uri",
-        [pytest.param({"model-dir": ModelStoragePath.FLAN_T5_SMALL})],
+        [pytest.param({"model-dir": ModelStoragePath.FLAN_T5_SMALL_CAIKIT})],
         indirect=True,
     )
     @pytest.mark.dependency(depends=["test_isvc_with_invalid_models_s3_path"])

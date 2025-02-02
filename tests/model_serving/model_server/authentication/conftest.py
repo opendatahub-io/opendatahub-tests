@@ -15,7 +15,12 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from pyhelper_utils.shell import run_command
 
-from utilities.infra import create_isvc_view_role, create_ns, s3_endpoint_secret, create_inference_token
+from utilities.infra import (
+    create_isvc_view_role,
+    create_ns,
+    s3_endpoint_secret,
+    create_inference_token,
+)
 from tests.model_serving.model_server.utils import create_isvc
 from utilities.constants import (
     KServeDeploymentType,
@@ -364,3 +369,24 @@ def http_s3_caikit_tgis_serving_runtime(
         enable_grpc=False,
     ) as model_runtime:
         yield model_runtime
+
+
+@pytest.fixture(scope="class")
+def unprivileged_s3_caikit_raw_inference_service(
+    request: FixtureRequest,
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+    unprivileged_s3_caikit_serving_runtime: ServingRuntime,
+    unprivileged_models_endpoint_s3_secret: Secret,
+) -> InferenceService:
+    with create_isvc(
+        client=unprivileged_client,
+        name=f"{Protocols.HTTP}-{ModelFormat.CAIKIT}-raw",
+        namespace=unprivileged_model_namespace.name,
+        runtime=unprivileged_s3_caikit_serving_runtime.name,
+        model_format=unprivileged_s3_caikit_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        deployment_mode=KServeDeploymentType.SERVERLESS,
+        storage_key=unprivileged_models_endpoint_s3_secret.name,
+        storage_path=request.param["model-dir"],
+    ) as isvc:
+        yield isvc

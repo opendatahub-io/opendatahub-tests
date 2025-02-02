@@ -12,7 +12,7 @@ from ocp_resources.trustyai_service import TrustyAIService
 
 from tests.trustyai.constants import TRUSTYAI_SERVICE
 from utilities.constants import MODELMESH_SERVING
-from tests.trustyai.utils import update_configmap_data
+from utilities.infra import update_configmap_data
 
 MINIO: str = "minio"
 OPENDATAHUB_IO: str = "opendatahub.io"
@@ -43,26 +43,6 @@ def trustyai_service_with_pvc_storage(
 def modelmesh_serviceaccount(admin_client: DynamicClient, model_namespace: Namespace) -> ServiceAccount:
     with ServiceAccount(client=admin_client, name=f"{MODELMESH_SERVING}-sa", namespace=model_namespace.name) as sa:
         yield sa
-
-
-@pytest.fixture(scope="session")
-def cluster_monitoring_config(admin_client: DynamicClient) -> ConfigMap:
-    name = "cluster-monitoring-config"
-    namespace = "openshift-monitoring"
-    data = {"config.yaml": yaml.dump({"enableUserWorkload": "true"})}
-    cm = ConfigMap(client=admin_client, name=name, namespace=namespace)
-    if cm.exists:  # This resource is usually created when doing exploratory testing, add this exception for convenience
-        with update_configmap_data(configmap=cm, data=data) as cm:
-            yield cm
-
-    else:
-        with ConfigMap(
-            client=admin_client,
-            name=name,
-            namespace=namespace,
-            data=data,
-        ) as cm:
-            yield cm
 
 
 @pytest.fixture(scope="session")

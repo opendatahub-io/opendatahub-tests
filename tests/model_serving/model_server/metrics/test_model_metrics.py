@@ -1,7 +1,9 @@
 import pytest
 
-from tests.model_serving.model_server.metrics.utils import run_inference_multiple_times
-from tests.model_serving.model_server.utils import verify_inference_response
+from tests.model_serving.model_server.utils import (
+    run_inference_multiple_times,
+    verify_inference_response,
+)
 from utilities.constants import (
     KServeDeploymentType,
     ModelFormat,
@@ -14,7 +16,10 @@ from utilities.inference_utils import Inference
 from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
 from utilities.monitoring import get_metrics_value, validate_metrics_value
 
-pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config", "deleted_metrics")]
+pytestmark = [
+    pytest.mark.serverless,
+    pytest.mark.usefixtures("valid_aws_config", "user_workload_monitoring_config_map"),
+]
 
 
 @pytest.mark.serverless
@@ -33,7 +38,7 @@ pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config"
             {
                 "name": f"{Protocols.HTTP}-{ModelFormat.CAIKIT}",
                 "deployment-mode": KServeDeploymentType.SERVERLESS,
-                "model-dir": ModelStoragePath.FLAN_T5_SMALL,
+                "model-dir": ModelStoragePath.FLAN_T5_SMALL_CAIKIT,
             },
         )
     ],

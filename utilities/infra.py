@@ -5,7 +5,7 @@ import os
 import shlex
 from contextlib import contextmanager
 from functools import cache
-from typing import Dict, Generator, List, Optional
+from typing import Any, Dict, Generator, List, Optional
 
 import kubernetes
 from kubernetes.dynamic import DynamicClient
@@ -19,6 +19,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.project_project_openshift_io import Project
 from ocp_resources.project_request import ProjectRequest
+from ocp_resources.resource import ResourceEditor
 from ocp_resources.role import Role
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
@@ -347,3 +348,12 @@ def create_inference_token(model_service_account: ServiceAccount) -> str:
     return run_command(
         shlex.split(f"oc create token -n {model_service_account.namespace} {model_service_account.name}")
     )[1].strip()
+
+
+@contextmanager
+def update_configmap_data(configmap: ConfigMap, data: Dict[str, Any]) -> ResourceEditor:
+    if configmap.data == data:
+        yield configmap
+    else:
+        with ResourceEditor(patches={configmap: {"data": data}}) as update:
+            yield update

@@ -30,12 +30,13 @@ class ModelAndFormat:
 
 
 class ModelStoragePath:
-    FLAN_T5_SMALL: str = f"{ModelName.FLAN_T5_SMALL}/{ModelAndFormat.FLAN_T5_SMALL_CAIKIT}"
+    FLAN_T5_SMALL_CAIKIT: str = f"{ModelName.FLAN_T5_SMALL}/{ModelAndFormat.FLAN_T5_SMALL_CAIKIT}"
     OPENVINO_EXAMPLE_MODEL: str = f"{ModelFormat.OPENVINO}-example-model"
     KSERVE_OPENVINO_EXAMPLE_MODEL: str = f"kserve-openvino-test/{OPENVINO_EXAMPLE_MODEL}"
     EMBEDDING_MODEL: str = "embeddingsmodel"
     TENSORFLOW_MODEL: str = "inception_resnet_v2.pb"
     OPENVINO_VEHICLE_DETECTION: str = "vehicle-detection"
+    FLAN_T5_SMALL_HF: str = f"{ModelName.FLAN_T5_SMALL}/{ModelName.FLAN_T5_SMALL_HF}"
 
 
 class CurlOutput:
