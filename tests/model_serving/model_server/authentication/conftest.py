@@ -385,7 +385,7 @@ def unprivileged_s3_caikit_raw_inference_service(
         namespace=unprivileged_model_namespace.name,
         runtime=unprivileged_s3_caikit_serving_runtime.name,
         model_format=unprivileged_s3_caikit_serving_runtime.instance.spec.supportedModelFormats[0].name,
-        deployment_mode=KServeDeploymentType.SERVERLESS,
+        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         storage_key=unprivileged_models_endpoint_s3_secret.name,
         storage_path=request.param["model-dir"],
     ) as isvc:

@@ -267,19 +267,12 @@ def updated_dsc_component_state(
 
 @pytest.fixture(scope="session")
 def cluster_monitoring_config(admin_client: DynamicClient) -> ConfigMap:
-    name = "cluster-monitoring-config"
-    namespace = "openshift-monitoring"
     data = {"config.yaml": yaml.dump({"enableUserWorkload": "true"})}
-    cm = ConfigMap(client=admin_client, name=name, namespace=namespace)
-    if cm.exists:  # This resource is usually created when doing exploratory testing, add this exception for convenience
-        with update_configmap_data(configmap=cm, data=data) as cm:
-            yield cm
 
-    else:
-        with ConfigMap(
-            client=admin_client,
-            name=name,
-            namespace=namespace,
-            data=data,
-        ) as cm:
-            yield cm
+    with update_configmap_data(
+        client=admin_client,
+        name="cluster-monitoring-config",
+        namespace="openshift-monitoring",
+        data=data,
+    ) as cm:
+        yield cm

@@ -351,9 +351,17 @@ def create_inference_token(model_service_account: ServiceAccount) -> str:
 
 
 @contextmanager
-def update_configmap_data(configmap: ConfigMap, data: Dict[str, Any]) -> ResourceEditor:
-    if configmap.data == data:
-        yield configmap
+def update_configmap_data(
+    client: DynamicClient, name: str, namespace: str, data: Dict[str, Any]
+) -> Generator[ConfigMap, Any, Any]:
+    cm = ConfigMap(client=client, name=name, namespace=namespace)
+
+    # Some CM resources are usually created when doing exploratory testing, add this exception for convenience
+    if cm.exists:
+        with ResourceEditor(patches={cm: {"data": data}}):
+            yield cm
+
     else:
-        with ResourceEditor(patches={configmap: {"data": data}}) as update:
-            yield update
+        ConfigMap.data = data
+        with ConfigMap as cm:
+            yield cm

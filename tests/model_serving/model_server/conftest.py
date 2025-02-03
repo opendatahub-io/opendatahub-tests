@@ -30,7 +30,11 @@ from utilities.constants import (
     Protocols,
     RuntimeTemplates,
 )
-from utilities.infra import get_openshift_token, s3_endpoint_secret
+from utilities.infra import (
+    get_openshift_token,
+    s3_endpoint_secret,
+    update_configmap_data,
+)
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -188,7 +192,9 @@ def skip_if_no_deployed_redhat_authorino_operator(admin_client: DynamicClient):
 
 
 @pytest.fixture(scope="package")
-def enabled_kserve_in_dsc(dsc_resource: DataScienceCluster) -> Generator[DataScienceCluster, Any, Any]:
+def enabled_kserve_in_dsc(
+    dsc_resource: DataScienceCluster,
+) -> Generator[DataScienceCluster, Any, Any]:
     with update_components_in_dsc(
         dsc=dsc_resource,
         components={DscComponents.KSERVE: DscComponents.ManagementState.MANAGED},
@@ -197,7 +203,9 @@ def enabled_kserve_in_dsc(dsc_resource: DataScienceCluster) -> Generator[DataSci
 
 
 @pytest.fixture(scope="package")
-def enabled_modelmesh_in_dsc(dsc_resource: DataScienceCluster) -> Generator[DataScienceCluster, Any, Any]:
+def enabled_modelmesh_in_dsc(
+    dsc_resource: DataScienceCluster,
+) -> Generator[DataScienceCluster, Any, Any]:
     with update_components_in_dsc(
         dsc=dsc_resource,
         components={DscComponents.MODELMESHSERVING: DscComponents.ManagementState.MANAGED},
@@ -415,18 +423,20 @@ def prometheus(admin_client: DynamicClient) -> Prometheus:
 def user_workload_monitoring_config_map(
     admin_client: DynamicClient, cluster_monitoring_config: ConfigMap
 ) -> Generator[ConfigMap, None, None]:
-    data = yaml.dump({
-        "prometheus": {
-            "logLevel": "debug",
-            "retention": "1d",
-            "volumeClaimTemplate": {"spec": {"resources": {"requests": {"storage": "40Gi"}}}},
-        }
-    })
+    data = {
+        "config.yaml": yaml.dump({
+            "prometheus": {
+                "logLevel": "debug",
+                "retention": "1d",
+                "volumeClaimTemplate": {"spec": {"resources": {"requests": {"storage": "40Gi"}}}},
+            }
+        })
+    }
 
-    with ConfigMap(
+    with update_configmap_data(
         client=admin_client,
         name="user-workload-monitoring-config",
         namespace="openshift-user-workload-monitoring",
-        data={"config.yaml": data},
-    ) as config_map:
-        yield config_map
+        data=data,
+    ) as cm:
+        yield cm
