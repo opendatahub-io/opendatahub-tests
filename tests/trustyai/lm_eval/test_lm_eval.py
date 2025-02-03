@@ -16,10 +16,10 @@ from tests.trustyai.lm_eval.utils import verify_lmevaljob_running
 )
 # TODO: replace with pytest-jira marker
 @pytest.mark.skip(reason="Feature not implemented yet")
-def test_lmeval_huggingface_model(admin_client, model_namespace, lm_eval_job_hf):
+def test_lmeval_huggingface_model(admin_client, model_namespace, lmevaljob_hf):
     """Basic test that verifies that LMEval can run successfully pulling a model from HuggingFace."""
     lmevaljob_pod = Pod(
-        client=admin_client, name=lm_eval_job_hf.name, namespace=lm_eval_job_hf.namespace, wait_for_resource=True
+        client=admin_client, name=lmevaljob_hf.name, namespace=lmevaljob_hf.namespace, wait_for_resource=True
     )
     lmevaljob_pod.wait_for_status(status=lmevaljob_pod.Status.SUCCEEDED, timeout=TIMEOUT_10MIN)
 

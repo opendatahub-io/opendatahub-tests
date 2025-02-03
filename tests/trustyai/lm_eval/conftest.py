@@ -9,6 +9,8 @@ from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from pytest_testconfig import py_config
 
+from utilities.constants import Labels
+
 
 @pytest.fixture(scope="function")
 def lmevaljob_hf(admin_client: DynamicClient, model_namespace: Namespace):
@@ -51,7 +53,7 @@ def lmevaljob_local_offline_builtin_tasks(
                 ]
             }
         },
-        label={"opendatahub.io/dashboard": "true", "lmevaltests": "vllm"},
+        label={Labels.OpenDataHub.DASHBOARD: "true", "lmevaltests": "vllm"},
     ) as job:
         yield job
 
