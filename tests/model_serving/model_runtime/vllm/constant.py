@@ -3,13 +3,16 @@ from utilities.constants import AcceleratorType
 
 GRPC_PORT = 8033
 REST_PORT = 8080
+REST_PORT_NAME = "http1"
+GRPC_PORT_NAME = "h2c"
+TCP_PROTOCOL_NAME = "TCP"
 # Configurations
 vLLM_CONFIG: Dict[str, Dict[str, Any]] = {
     "port_configurations": {
-        "grpc": [{"containerPort": GRPC_PORT, "name": "h2c", "protocol": "TCP"}],
+        "grpc": [{"containerPort": GRPC_PORT, "name": GRPC_PORT_NAME, "protocol": TCP_PROTOCOL_NAME}],
         "raw": [
-            {"containerPort": REST_PORT, "name": "http1", "protocol": "TCP"},
-            {"containerPort": GRPC_PORT, "name": "h2c", "protocol": "TCP"},
+            {"containerPort": REST_PORT, "name": REST_PORT_NAME, "protocol": TCP_PROTOCOL_NAME},
+            {"containerPort": GRPC_PORT, "name": GRPC_PORT_NAME, "protocol": TCP_PROTOCOL_NAME},
         ],
     },
     "commands": {"GRPC": "vllm_tgis_adapter"},

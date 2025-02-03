@@ -64,6 +64,7 @@ class TGISGRPCPlugin:
 
         try:
             response = stub.Generate(request=request)
+            LOGGER.info(response)
             response = response.responses[0]
             return {
                 "input_tokens": response.input_token_count,
@@ -109,7 +110,7 @@ class TGISGRPCPlugin:
         stub = generation_pb2_grpc.GenerationServiceStub(channel)
 
         request = generation_pb2_grpc.generation__pb2.ModelInfoRequest()  # type: ignore
-
+        LOGGER.info(request)
         try:
             response = stub.ModelInfo(request=request)
             return response

@@ -4,6 +4,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.inference_service import InferenceService
+from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from tests.model_serving.model_runtime.vllm.utils import kserve_s3_endpoint_secret
@@ -14,7 +15,7 @@ from tests.model_serving.model_runtime.vllm.utils import get_runtime_manifest
 from tests.model_serving.model_server.utils import create_isvc
 from tests.model_serving.model_runtime.vllm.constant import TEMPLATE_MAP, ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES
 from simple_logger.logger import get_logger
-
+from utilities.infra import get_pods_by_isvc_label
 
 LOGGER = get_logger(name=__name__)
 
@@ -65,7 +66,7 @@ def vllm_inference_service(
         "storage_uri": s3_models_storage_uri,
         "model_format": serving_runtime.instance.spec.supportedModelFormats[0].name,
         "model_service_account": vllm_model_service_account.name,
-        "deployment_mode": request.param.get("deployment-mode", KServeDeploymentType.SERVERLESS),
+        "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.SERVERLESS),
     }
     accelerator_type = supported_accelerator_type.lower()
     gpu_count = request.param.get("gpu_count")
@@ -79,6 +80,7 @@ def vllm_inference_service(
         isvc_kwargs["volumes"] = PREDICT_RESOURCES["volumes"]
         isvc_kwargs["volumes_mounts"] = PREDICT_RESOURCES["volume_mounts"]
     if arguments := request.param.get("runtime_argument"):
+        arguments = [arg for arg in arguments if not arg.startswith("--tensor-parallel-size")]
         arguments.append(f"--tensor-parallel-size={gpu_count}")
         isvc_kwargs["argument"] = arguments
 
@@ -124,3 +126,8 @@ def kserve_endpoint_s3_secret(
 @pytest.fixture
 def response_snapshot(snapshot):
     return snapshot.use_extension(extension_class=JSONSnapshotExtension)
+
+
+@pytest.fixture
+def get_pod_name_resource(admin_client: DynamicClient, vllm_inference_service: InferenceService) -> Pod:
+    return get_pods_by_isvc_label(client=admin_client, isvc=vllm_inference_service)[0]
