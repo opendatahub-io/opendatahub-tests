@@ -46,8 +46,6 @@ def verify_no_failed_pods(client: DynamicClient, isvc: InferenceService, runtime
             FailedPodsError: If any pod is in failed state
 
     """
-    failed_pods: dict[str, Any] = {}
-
     LOGGER.info("Verifying no failed pods")
     for pods in TimeoutSampler(
         wait_timeout=5 * 60,
@@ -57,21 +55,38 @@ def verify_no_failed_pods(client: DynamicClient, isvc: InferenceService, runtime
         isvc=isvc,
         runtime_name=runtime_name,
     ):
+        ready_pods = 0
+        failed_pods: dict[str, Any] = {}
+
         if pods:
-            if all([pod.instance.status.phase == pod.Status.RUNNING for pod in pods]):
+            for pod in pods:
+                for condition in pod.instance.status.conditions:
+                    if condition.type == pod.Status.READY and condition.status == pod.Condition.Status.TRUE:
+                        ready_pods += 1
+
+            if ready_pods == len(pods):
                 return
 
             for pod in pods:
                 pod_status = pod.instance.status
+
                 if pod_status.containerStatuses:
                     for container_status in pod_status.containerStatuses:
-                        if (state := container_status.state.waiting) and state.reason == pod.Status.IMAGE_PULL_BACK_OFF:
+                        is_waiting_pull_back_off = (
+                            wait_state := container_status.state.waiting
+                        ) and wait_state.reason == pod.Status.IMAGE_PULL_BACK_OFF
+
+                        is_terminated_error = (
+                            terminate_state := container_status.state.terminated
+                        ) and terminate_state.reason in (pod.Status.ERROR, pod.Status.CRASH_LOOPBACK_OFF)
+
+                        if is_waiting_pull_back_off or is_terminated_error:
                             failed_pods[pod.name] = pod_status
 
-                if init_container_status := pod_status.initContainerStatuses:
-                    if container_terminated := init_container_status[0].lastState.terminated:
-                        if container_terminated.reason == "Error":
-                            failed_pods[pod.name] = pod_status
+                        if init_container_status := pod_status.initContainerStatuses:
+                            if container_terminated := init_container_status[0].lastState.terminated:
+                                if container_terminated.reason == "Error":
+                                    failed_pods[pod.name] = pod_status
 
                 elif pod_status.phase in (
                     pod.Status.CRASH_LOOPBACK_OFF,

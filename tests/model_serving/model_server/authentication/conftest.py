@@ -25,6 +25,7 @@ from tests.model_serving.model_server.utils import create_isvc
 from utilities.constants import (
     KServeDeploymentType,
     ModelFormat,
+    ModelStoragePath,
     Protocols,
     ModelInferenceRuntime,
     RuntimeTemplates,
@@ -391,6 +392,6 @@ def unprivileged_s3_caikit_raw_inference_service(
         model_format=unprivileged_s3_caikit_serving_runtime.instance.spec.supportedModelFormats[0].name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         storage_key=unprivileged_models_endpoint_s3_secret.name,
-        storage_path=request.param["model-dir"],
+        storage_path=ModelStoragePath.FLAN_T5_SMALL_CAIKIT,
     ) as isvc:
         yield isvc

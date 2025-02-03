@@ -458,14 +458,14 @@ def update_configmap_data(
         ConfigMap: The updated configmap.
 
     """
-    cm = ConfigMap(client=client, name=name, namespace=namespace)
+    config_map = ConfigMap(client=client, name=name, namespace=namespace)
 
     # Some CM resources may already be present as they are usually created when doing exploratory testing
-    if cm.exists:
-        with ResourceEditor(patches={cm: {"data": data}}):
-            yield cm
+    if config_map.exists:
+        with ResourceEditor(patches={config_map: {"data": data}}):
+            yield config_map
 
     else:
-        ConfigMap.data = data
-        with ConfigMap as cm:
+        config_map.data = data
+        with config_map as cm:
             yield cm

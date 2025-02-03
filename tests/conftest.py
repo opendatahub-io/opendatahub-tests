@@ -276,8 +276,8 @@ def enabled_modelmesh_in_dsc(dsc_resource: DataScienceCluster) -> Generator[Data
 
 
 @pytest.fixture(scope="session")
-def cluster_monitoring_config(admin_client: DynamicClient) -> ConfigMap:
-    data = {"config.yaml": yaml.dump({"enableUserWorkload": "true"})}
+def cluster_monitoring_config(admin_client: DynamicClient) -> Generator[ConfigMap, Any, Any]:
+    data = {"config.yaml": yaml.dump({"enableUserWorkload": True})}
 
     with update_configmap_data(
         client=admin_client,

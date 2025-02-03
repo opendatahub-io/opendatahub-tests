@@ -418,7 +418,7 @@ def user_workload_monitoring_config_map(
         "config.yaml": yaml.dump({
             "prometheus": {
                 "logLevel": "debug",
-                "retention": "1d",
+                "retention": "15d",
                 "volumeClaimTemplate": {"spec": {"resources": {"requests": {"storage": "40Gi"}}}},
             }
         })

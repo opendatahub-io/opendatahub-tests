@@ -4,10 +4,9 @@ from tests.model_serving.model_server.utils import (
     run_inference_multiple_times,
     verify_inference_response,
 )
-from utilities.constants import ModelFormat, ModelName, ModelStoragePath, Protocols
+from utilities.constants import ModelFormat, ModelStoragePath, Protocols
 from utilities.inference_utils import Inference
 from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
-from utilities.manifests.tgis_grpc import TGIS_INFERENCE_CONFIG
 from utilities.monitoring import validate_metrics_value
 
 
@@ -58,10 +57,10 @@ class TestRawUnprivilegedUser:
         """Verify non admin can deploy a Raw model and query using REST"""
         verify_inference_response(
             inference_service=unprivileged_s3_caikit_raw_inference_service,
-            inference_config=TGIS_INFERENCE_CONFIG,
+            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
             inference_type=Inference.ALL_TOKENS,
-            protocol=Protocols.GRPC,
-            model_name=ModelName.FLAN_T5_SMALL_HF,
+            protocol=Protocols.HTTP,
+            model_name=ModelFormat.CAIKIT,
             use_default_query=True,
         )
 
@@ -76,12 +75,11 @@ class TestRawUnprivilegedUser:
 
         run_inference_multiple_times(
             isvc=unprivileged_s3_caikit_raw_inference_service,
-            inference_config=TGIS_INFERENCE_CONFIG,
-            inference_type=Inference.STREAMING,
-            protocol=Protocols.GRPC,
-            model_name=ModelName.FLAN_T5_SMALL_HF,
+            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
+            inference_type=Inference.ALL_TOKENS,
+            protocol=Protocols.HTTP,
+            model_name=ModelFormat.CAIKIT,
             iterations=total_runs,
-            run_in_parallel=True,
         )
         validate_metrics_value(
             prometheus=prometheus,
