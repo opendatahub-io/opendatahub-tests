@@ -56,4 +56,3 @@ repos:
       - id: mypy
         additional_dependencies: ["types-PyYAML", "types-requests"]
         exclude: ^(docs/|.*/test_.*|utilities/manifests/*|utilities/plugins/tgis_grpc/*)
-
