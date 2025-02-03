@@ -7,7 +7,7 @@ from simple_logger.logger import get_logger
 LOGGER = get_logger(name=__name__)
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture()
 def deleted_metrics(prometheus: Prometheus) -> None:
     for metric in ("tgi_request_success", "tgi_request_count"):
         LOGGER.info(f"deleting {metric} metric")

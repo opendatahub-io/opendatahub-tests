@@ -47,7 +47,7 @@ class TestModelMetrics:
     @pytest.mark.smoke
     @pytest.mark.polarion("ODS-2555")
     @pytest.mark.dependency(name="test_model_metrics_num_success_requests")
-    def test_model_metrics_num_success_requests(self, s3_models_inference_service, prometheus):
+    def test_model_metrics_num_success_requests(self, s3_models_inference_service, deleted_metrics, prometheus):
         """Verify number of successful model requests in OpenShift monitoring system (UserWorkloadMonitoring) metrics"""
         verify_inference_response(
             inference_service=s3_models_inference_service,
@@ -69,7 +69,7 @@ class TestModelMetrics:
         name="test_model_metrics_num_total_requests",
         depends=["test_model_metrics_num_success_requests"],
     )
-    def test_model_metrics_num_total_requests(self, s3_models_inference_service, prometheus):
+    def test_model_metrics_num_total_requests(self, s3_models_inference_service, deleted_metrics, prometheus):
         """Verify number of total model requests in OpenShift monitoring system (UserWorkloadMonitoring) metrics"""
         total_runs = 5
 
