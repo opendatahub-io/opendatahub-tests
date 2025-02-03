@@ -7,13 +7,14 @@ from ocp_resources.pod import Pod
 
 from timeout_sampler import TimeoutWatch
 
+from tests.trustyai.constants import TIMEOUT_10MIN
 from utilities.infra import TIMEOUT_2MIN
 
 
 def verify_lmevaljob_running(client: DynamicClient, lmevaljob: LMEvalJob) -> None:
     # Verifies that the LMEvalJob Pod gets to Running and stays either Running or Succeeded for at least 2 minutes
     lmevaljob_pod = Pod(client=client, name=lmevaljob.name, namespace=lmevaljob.namespace, wait_for_resource=True)
-    lmevaljob_pod.wait_for_status(status=lmevaljob_pod.Status.RUNNING)
+    lmevaljob_pod.wait_for_status(status=lmevaljob_pod.Status.RUNNING, timeout=TIMEOUT_10MIN)
 
     check_pod_status_in_time(pod=lmevaljob_pod, status={Pod.Status.RUNNING, Pod.Status.SUCCEEDED})
 
