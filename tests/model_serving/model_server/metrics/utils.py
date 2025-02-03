@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any
 
 from ocp_resources.inference_service import InferenceService
 from simple_logger.logger import get_logger
@@ -11,20 +12,33 @@ LOGGER = get_logger(name=__name__)
 
 def run_inference_multiple_times(
     isvc: InferenceService,
-    runtime: str,
+    inference_config: dict[str, Any],
     inference_type: str,
     protocol: str,
     model_name: str,
     iterations: int,
     run_in_parallel: bool = False,
 ) -> None:
+    """
+    Run inference multiple times and verify the response.
+
+    Args:
+        isvc (InferenceService): InferenceService object
+        inference_config (dict[str, Any]): Inference configuration
+        inference_type (str): Inference type
+        protocol (str): Protocol
+        model_name (str): Model name
+        iterations (int): Number of iterations
+        run_in_parallel (bool): Run in parallel
+
+    """
     futures = []
 
     with ThreadPoolExecutor() as executor:
         for iteration in range(iterations):
             infer_kwargs = {
                 "inference_service": isvc,
-                "runtime": runtime,
+                "inference_config": inference_config,
                 "inference_type": inference_type,
                 "protocol": protocol,
                 "model_name": model_name,

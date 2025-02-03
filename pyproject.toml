@@ -9,7 +9,6 @@ extend-exclude = ["utilities/manifests"]
 exclude = [".git", ".venv", ".mypy_cache", ".tox", "__pycache__", "utilities/manifests"]
 
 [tool.mypy]
-exclude = ["utilities/plugins/tgis_grpc/"]
 check_untyped_defs = true
 disallow_any_generics = true
 disallow_incomplete_defs = true

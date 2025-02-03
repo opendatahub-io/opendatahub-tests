@@ -1,5 +1,3 @@
-from typing import Dict
-
 import pytest
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
@@ -10,7 +8,7 @@ from pytest_testconfig import config as py_config
 
 from utilities.constants import DscComponents
 
-COMPONENTS_EXPECTED_REPLICAS: Dict[str, int] = {
+COMPONENTS_EXPECTED_REPLICAS: dict[str, int] = {
     "odh-model-controller": 1,
     "modelmesh-controller": 3,
     "etcd": 1,

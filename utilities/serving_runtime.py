@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.serving_runtime import ServingRuntime
@@ -16,13 +16,32 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         multi_model: Optional[bool] = None,
         enable_http: Optional[bool] = None,
         enable_grpc: Optional[bool] = None,
-        resources: Optional[Dict[str, Any]] = None,
-        model_format_name: Optional[Dict[str, str]] = None,
+        resources: Optional[dict[str, Any]] = None,
+        model_format_name: Optional[dict[str, str]] = None,
         unprivileged_client: Optional[DynamicClient] = None,
         enable_external_route: Optional[bool] = None,
         enable_auth: Optional[bool] = None,
         protocol: Optional[str] = None,
     ):
+        """
+        ServingRuntimeFromTemplate class
+
+        Args:
+            client (DynamicClient): DynamicClient object
+            name (str): Name of the serving runtime
+            namespace (str): Namespace of the serving runtime
+            template_name (str): Name of the serving runtime template to use
+            multi_model (bool): Whether to use multi model (model mesh) or not (kserve)
+            enable_http (bool): Whether to enable http or not
+            enable_grpc (bool): Whether to enable grpc or not
+            resources (dict): Resources to be used for the serving runtime
+            model_format_name (dict): Model format name to be used for the serving runtime
+            unprivileged_client (DynamicClient): DynamicClient object for unprivileged user
+            enable_external_route (bool): Whether to enable external route or not; relevant for model mesh only
+            enable_auth (bool): Whether to enable auth or not; relevant for model mesh only
+            protocol (str): Protocol to be used for the serving runtime; relevant for model mesh only
+        """
+
         self.admin_client = client
         self.name = name
         self.namespace = namespace
@@ -44,6 +63,16 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         super().__init__(client=self.unprivileged_client or self.admin_client, kind_dict=self.model_dict)
 
     def get_model_template(self) -> Template:
+        """
+        Get the model template from the cluster
+
+        Returns:
+            Template: SeringRuntime Template object
+
+        Raises:
+            ResourceNotFoundError: If the template is not found
+
+        """
         # Only admin client can get templates from the cluster
         template = Template(
             client=self.admin_client,
@@ -55,15 +84,29 @@ class ServingRuntimeFromTemplate(ServingRuntime):
 
         raise ResourceNotFoundError(f"{self.template_name} template not found")
 
-    def get_model_dict_from_template(self) -> Dict[Any, Any]:
+    def get_model_dict_from_template(self) -> dict[Any, Any]:
+        """
+        Get the model dictionary from the template
+
+        Returns:
+            dict[Any, Any]: Model dict
+
+        """
         template = self.get_model_template()
-        model_dict: Dict[str, Any] = template.instance.objects[0].to_dict()
+        model_dict: dict[str, Any] = template.instance.objects[0].to_dict()
         model_dict["metadata"]["name"] = self.name
         model_dict["metadata"]["namespace"] = self.namespace
 
         return model_dict
 
-    def update_model_dict(self) -> Dict[str, Any]:
+    def update_model_dict(self) -> dict[str, Any]:
+        """
+        Update the model dict with values from init
+
+        Returns:
+            dict[str, Any]: Model dict
+
+        """
         _model_dict = self.get_model_dict_from_template()
 
         if self.multi_model is not None:

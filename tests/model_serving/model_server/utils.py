@@ -4,7 +4,7 @@ import json
 import re
 from contextlib import contextmanager
 from string import Template
-from typing import Any, Dict, Generator, Optional
+from typing import Any, Generator, Optional
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
@@ -33,6 +33,18 @@ LOGGER = get_logger(name=__name__)
 
 
 def verify_no_failed_pods(client: DynamicClient, isvc: InferenceService, runtime_name: str | None) -> None:
+    """
+    Verify no failed pods.
+
+    Args:
+        client (DynamicClient): DynamicClient object
+        isvc (InferenceService): InferenceService object
+        runtime_name (str): ServingRuntime name
+
+    Raises:
+            FailedPodsError: If any pod is in failed state
+
+    """
     failed_pods: dict[str, Any] = {}
 
     LOGGER.info("Verifying no failed pods")
@@ -97,8 +109,40 @@ def create_isvc(
     autoscaler_mode: Optional[str] = None,
     multi_node_worker_spec: Optional[dict[str, int]] = None,
 ) -> Generator[InferenceService, Any, Any]:
-    labels: Dict[str, str] = {}
-    predictor_dict: Dict[str, Any] = {
+    """
+    Create InferenceService object.
+
+    Args:
+        client (DynamicClient): DynamicClient object
+        name (str): InferenceService name
+        namespace (str): Namespace name
+        deployment_mode (str): Deployment mode
+        model_format (str): Model format
+        runtime (str): ServingRuntime name
+        storage_uri (str): Storage URI
+        storage_key (str): Storage key
+        storage_path (str): Storage path
+        wait (bool): Wait for InferenceService to be ready
+        enable_auth (bool): Enable authentication
+        external_route (bool): External route
+        model_service_account (str): Model service account
+        min_replicas (int): Minimum replicas
+        argument (list[str]): Argument
+        resources (dict[str, Any]): Resources
+        volumes (dict[str, Any]): Volumes
+        volumes_mounts (dict[str, Any]): Volumes mounts
+        model_version (str): Model version
+        wait_for_predictor_pods (bool): Wait for predictor pods
+        autoscaler_mode (str): Autoscaler mode
+        multi_node_worker_spec (dict[str, int]): Multi node worker spec
+        wait_for_predictor_pods (bool): Wait for predictor pods
+
+    Yields:
+        InferenceService: InferenceService object
+
+    """
+    labels: dict[str, str] = {}
+    predictor_dict: dict[str, Any] = {
         "minReplicas": min_replicas,
         "model": {
             "modelFormat": {"name": model_format},
@@ -208,6 +252,17 @@ def _check_storage_arguments(
     storage_key: Optional[str],
     storage_path: Optional[str],
 ) -> None:
+    """
+    Check if storage_uri, storage_key and storage_path are valid.
+
+    Args:
+        storage_uri (str): URI of the storage.
+        storage_key (str): Key of the storage.
+        storage_path (str): Path of the storage.
+
+    Raises:
+        InvalidStorageArgumentError: If storage_uri, storage_key and storage_path are not valid.
+    """
     if (storage_uri and storage_path) or (not storage_uri and not storage_key) or (storage_key and not storage_path):
         raise InvalidStorageArgumentError(storage_uri=storage_uri, storage_key=storage_key, storage_path=storage_path)
 
@@ -225,6 +280,27 @@ def verify_inference_response(
     token: Optional[str] = None,
     authorized_user: Optional[bool] = None,
 ) -> None:
+    """
+    Verify the inference response.
+
+    Args:
+        inference_service (InferenceService): Inference service.
+        inference_config (dict[str, Any]): Inference config.
+        inference_type (str): Inference type.
+        protocol (str): Protocol.
+        model_name (str): Model name.
+        inference_input (Any): Inference input.
+        use_default_query (bool): Use default query or not.
+        expected_response_text (str): Expected response text.
+        insecure (bool): Insecure mode.
+        token (str): Token.
+        authorized_user (bool): Authorized user.
+
+    Raises:
+        InvalidInferenceResponseError: If inference response is invalid.
+        ValidationError: If inference response is invalid.
+
+    """
     model_name = model_name or inference_service.name
 
     inference = UserInference(
@@ -261,7 +337,7 @@ def verify_inference_response(
         use_regex = False
 
         if use_default_query:
-            expected_response_text_config: Dict[str, Any] = inference.inference_config.get("default_query_model", {})
+            expected_response_text_config: dict[str, Any] = inference.inference_config.get("default_query_model", {})
             use_regex = expected_response_text_config.get("use_regex", False)
 
             if not expected_response_text_config:

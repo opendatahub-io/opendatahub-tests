@@ -1,7 +1,7 @@
 import http
 import json
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 import requests
 from kubernetes.dynamic import DynamicClient
@@ -44,7 +44,7 @@ class TrustyAIServiceRequestHandler:
         endpoint: str,
         method: str,
         data: Optional[str] = None,
-        json: Optional[Dict[str, Any]] = None,
+        json: Optional[dict[str, Any]] = None,
     ) -> Any:
         url = f"https://{self.service_route.host}{endpoint}"
 
@@ -63,7 +63,7 @@ class TrustyAIServiceRequestHandler:
     def send_drift_metric_request(
         self,
         metric_name: str,
-        json: Optional[Dict[str, Any]] = None,
+        json: Optional[dict[str, Any]] = None,
         schedule: bool = False,
     ) -> Any:
         endpoint: str = f"/metrics/drift/{metric_name}{'/request' if schedule else ''}"
@@ -128,7 +128,7 @@ def send_inference_request(
     inference_route: Route = Route(client=client, namespace=inference_service.namespace, name=inference_service.name)
 
     url: str = f"https://{inference_route.host}{inference_route.instance.spec.path}/infer"
-    headers: Dict[str, str] = {"Authorization": f"Bearer {token}"}
+    headers: dict[str, str] = {"Authorization": f"Bearer {token}"}
 
     def _make_request() -> requests.Response:
         try:
@@ -254,7 +254,7 @@ def wait_for_modelmesh_pods_registered_by_trustyai(client: DynamicClient, namesp
     """
 
     def _check_pods_ready_with_env() -> bool:
-        modelmesh_pods: List[Pod] = [
+        modelmesh_pods: list[Pod] = [
             pod
             for pod in Pod.get(client=client, namespace=namespace)
             if pod.labels.get("modelmesh-service") == MODELMESH_SERVING
@@ -296,10 +296,10 @@ def wait_for_modelmesh_pods_registered_by_trustyai(client: DynamicClient, namesp
 
 def validate_trustyai_response(
     response: Any,
-    response_data: Dict[str, Any],
-    expected_values: Optional[Dict[str, Any]] = None,
-    required_fields: Optional[List[str]] = None,
-) -> List[str]:
+    response_data: dict[str, Any],
+    expected_values: Optional[dict[str, Any]] = None,
+    required_fields: Optional[list[str]] = None,
+) -> list[str]:
     """
     Validates a TrustyAI service response against common criteria.
 

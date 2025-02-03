@@ -1,6 +1,6 @@
 [
   {
-    "id": "granite-ser",
+    "id": "granite-raw",
     "max_model_len": 2048,
     "object": "model",
     "owned_by": "vllm",
