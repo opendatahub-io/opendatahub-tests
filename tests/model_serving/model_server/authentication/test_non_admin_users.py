@@ -20,9 +20,9 @@ from utilities.monitoring import validate_metrics_value
     ],
     indirect=True,
 )
+@pytest.mark.smoke
+@pytest.mark.serverless
 class TestServerlessUnprivilegedUser:
-    @pytest.mark.smoke
-    @pytest.mark.serverless
     @pytest.mark.polarion("ODS-2552")
     def test_non_admin_deploy_serverless_and_query_model(self, unprivileged_s3_caikit_serverless_inference_service):
         """Verify non admin can deploy a model and query using REST"""
@@ -46,9 +46,9 @@ class TestServerlessUnprivilegedUser:
     ],
     indirect=True,
 )
+@pytest.mark.sanity
+@pytest.mark.rawdeployment
 class TestRawUnprivilegedUser:
-    @pytest.mark.sanity
-    @pytest.mark.rawdeployment
     @pytest.mark.polarion("ODS-2611")
     def test_non_admin_deploy_raw_and_query_model(
         self,
