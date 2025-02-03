@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import re
 from contextlib import contextmanager
@@ -12,6 +14,7 @@ from timeout_sampler import TimeoutSampler
 from utilities.constants import (
     Annotations,
     KServeDeploymentType,
+    Labels,
 )
 from utilities.exceptions import (
     FailedPodsError,
@@ -20,22 +23,26 @@ from utilities.exceptions import (
 )
 from utilities.inference_utils import UserInference
 from utilities.infra import (
+    get_inference_serving_runtime,
     get_pods_by_isvc_label,
     wait_for_inference_deployment_replicas,
 )
+from utilities.jira import is_jira_open
 
 LOGGER = get_logger(name=__name__)
 
 
-def verify_no_failed_pods(client: DynamicClient, isvc: InferenceService) -> None:
+def verify_no_failed_pods(client: DynamicClient, isvc: InferenceService, runtime_name: str | None) -> None:
     failed_pods: dict[str, Any] = {}
 
+    LOGGER.info("Verifying no failed pods")
     for pods in TimeoutSampler(
         wait_timeout=5 * 60,
         sleep=10,
         func=get_pods_by_isvc_label,
         client=client,
         isvc=isvc,
+        runtime_name=runtime_name,
     ):
         if pods:
             if all([pod.instance.status.phase == pod.Status.RUNNING for pod in pods]):
@@ -43,6 +50,11 @@ def verify_no_failed_pods(client: DynamicClient, isvc: InferenceService) -> None
 
             for pod in pods:
                 pod_status = pod.instance.status
+                if pod_status.containerStatuses:
+                    for container_status in pod_status.containerStatuses:
+                        if (state := container_status.state.waiting) and state.reason == pod.Status.IMAGE_PULL_BACK_OFF:
+                            failed_pods[pod.name] = pod_status
+
                 if init_container_status := pod_status.initContainerStatuses:
                     if container_terminated := init_container_status[0].lastState.terminated:
                         if container_terminated.reason == "Error":
@@ -129,9 +141,9 @@ def create_isvc(
     if enable_auth:
         # model mesh auth is set in servingruntime
         if deployment_mode == KServeDeploymentType.SERVERLESS:
-            annotations["security.opendatahub.io/enable-auth"] = "true"
+            annotations[Annotations.KserveAuth.SECURITY] = "true"
         elif deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
-            labels["security.openshift.io/enable-authentication"] = "true"
+            labels[Labels.KserveAuth.SECURITY] = "true"
 
     # default to True if deployment_mode is Serverless (default behavior of Serverless) if was not provided by the user
     # model mesh external route is set in servingruntime
@@ -159,12 +171,29 @@ def create_isvc(
         label=labels,
     ) as inference_service:
         if wait_for_predictor_pods:
-            verify_no_failed_pods(client=client, isvc=inference_service)
-            wait_for_inference_deployment_replicas(
-                client=client, isvc=inference_service, deployment_mode=deployment_mode
-            )
+            verify_no_failed_pods(client=client, isvc=inference_service, runtime_name=runtime)
+            wait_for_inference_deployment_replicas(client=client, isvc=inference_service, runtime_name=runtime)
 
         if wait:
+            # Modelmesh 2nd server in the ns will fail to be Ready; isvc needs to be re-applied
+            if is_jira_open(jira_id="RHOAIENG-13636") and deployment_mode == KServeDeploymentType.MODEL_MESH:
+                for isvc in InferenceService.get(dyn_client=client, namespace=namespace):
+                    _runtime = get_inference_serving_runtime(isvc=isvc)
+                    isvc_annotations = isvc.instance.metadata.annotations
+                    if (
+                        _runtime.name != runtime
+                        and isvc_annotations
+                        and isvc_annotations.get(Annotations.KserveIo.DEPLOYMENT_MODE)
+                        == KServeDeploymentType.MODEL_MESH
+                    ):
+                        LOGGER.warning(
+                            "Bug RHOAIENG-13636 - re-creating isvc if there's already a modelmesh isvc in the namespace"
+                        )
+                        inference_service.clean_up()
+                        inference_service.deploy()
+
+                        break
+
             inference_service.wait_for_condition(
                 condition=inference_service.Condition.READY,
                 status=inference_service.Condition.Status.TRUE,
@@ -185,11 +214,11 @@ def _check_storage_arguments(
 
 def verify_inference_response(
     inference_service: InferenceService,
-    runtime: str,
+    inference_config: dict[str, Any],
     inference_type: str,
     protocol: str,
     model_name: Optional[str] = None,
-    text: Optional[str] = None,
+    inference_input: Optional[Any] = None,
     use_default_query: bool = False,
     expected_response_text: Optional[str] = None,
     insecure: bool = False,
@@ -200,14 +229,14 @@ def verify_inference_response(
 
     inference = UserInference(
         inference_service=inference_service,
-        runtime=runtime,
+        inference_config=inference_config,
         inference_type=inference_type,
         protocol=protocol,
     )
 
-    res = inference.run_inference(
+    res = inference.run_inference_flow(
         model_name=model_name,
-        text=text,
+        inference_input=inference_input,
         use_default_query=use_default_query,
         token=token,
         insecure=insecure,
@@ -237,7 +266,7 @@ def verify_inference_response(
 
             if not expected_response_text_config:
                 raise ValueError(
-                    f"Missing default_query_model config for inference {runtime}. "
+                    f"Missing default_query_model config for inference {inference_config}. "
                     f"Config: {expected_response_text_config}"
                 )
 
@@ -245,7 +274,7 @@ def verify_inference_response(
                 query_config = expected_response_text_config.get(inference_type)
                 if not query_config:
                     raise ValueError(
-                        f"Missing default_query_model config for inference {runtime}. "
+                        f"Missing default_query_model config for inference {inference_config}. "
                         f"Config: {expected_response_text_config}"
                     )
                 expected_response_text = query_config.get("query_output", "")
@@ -255,7 +284,7 @@ def verify_inference_response(
                 expected_response_text = expected_response_text_config.get("query_output")
 
             if not expected_response_text:
-                raise ValueError(f"Missing response text key for inference {runtime}")
+                raise ValueError(f"Missing response text key for inference {inference_config}")
 
             if isinstance(expected_response_text, str):
                 expected_response_text = Template(expected_response_text).safe_substitute(model_name=model_name)

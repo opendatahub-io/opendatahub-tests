@@ -11,6 +11,7 @@ from utilities.constants import (
     RuntimeTemplates,
 )
 from utilities.inference_utils import Inference
+from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
 from utilities.monitoring import get_metrics_value, validate_metrics_value
 
 pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config", "deleted_metrics")]
@@ -46,7 +47,7 @@ class TestModelMetrics:
         """Verify number of successful model requests in OpenShift monitoring system (UserWorkloadMonitoring)metrics"""
         verify_inference_response(
             inference_service=s3_models_inference_service,
-            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
+            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTPS,
             model_name=ModelFormat.CAIKIT,
@@ -70,7 +71,7 @@ class TestModelMetrics:
 
         run_inference_multiple_times(
             isvc=s3_models_inference_service,
-            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
+            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.HTTPS,
             model_name=ModelFormat.CAIKIT,

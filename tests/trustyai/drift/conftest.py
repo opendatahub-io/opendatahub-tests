@@ -23,7 +23,7 @@ TIMEOUT_20MIN = 20 * TIMEOUT_1MIN
 
 @pytest.fixture(scope="class")
 def mlserver_runtime(
-    admin_client: DynamicClient, minio_data_connection: Secret, ns_with_modelmesh_enabled: Namespace
+    admin_client: DynamicClient, minio_data_connection: Secret, model_namespace: Namespace
 ) -> ServingRuntime:
     supported_model_formats = [
         {"name": SKLEARN, "version": "0", "autoselect": "true"},
@@ -50,7 +50,7 @@ def mlserver_runtime(
     with ServingRuntime(
         client=admin_client,
         name=MLSERVER_RUNTIME_NAME,
-        namespace=ns_with_modelmesh_enabled.name,
+        namespace=model_namespace.name,
         containers=containers,
         supported_model_formats=supported_model_formats,
         multi_model=True,
@@ -72,7 +72,7 @@ def mlserver_runtime(
 @pytest.fixture(scope="class")
 def gaussian_credit_model(
     admin_client: DynamicClient,
-    ns_with_modelmesh_enabled: Namespace,
+    model_namespace: Namespace,
     minio_data_connection: Secret,
     mlserver_runtime: ServingRuntime,
     trustyai_service_with_pvc_storage: TrustyAIService,
@@ -81,7 +81,7 @@ def gaussian_credit_model(
     with InferenceService(
         client=admin_client,
         name=name,
-        namespace=ns_with_modelmesh_enabled.name,
+        namespace=model_namespace.name,
         predictor={
             "model": {
                 "modelFormat": {"name": XGBOOST},
@@ -93,10 +93,10 @@ def gaussian_credit_model(
     ) as inference_service:
         deployment = Deployment(
             client=admin_client,
-            namespace=ns_with_modelmesh_enabled.name,
+            namespace=model_namespace.name,
             name=f"{MODELMESH_SERVING}-{mlserver_runtime.name}",
             wait_for_resource=True,
         )
-        deployment.wait_for_replicas(timeout=TIMEOUT_20MIN)
-        wait_for_modelmesh_pods_registered_by_trustyai(client=admin_client, namespace=ns_with_modelmesh_enabled.name)
+        deployment.wait_for_replicas()
+        wait_for_modelmesh_pods_registered_by_trustyai(client=admin_client, namespace=model_namespace.name)
         yield inference_service

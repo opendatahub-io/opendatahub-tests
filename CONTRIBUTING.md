@@ -71,6 +71,4 @@ To add a new runtime, you need to:
             },
         },
 ```
-3. Add a new entry to [ModelInferenceRuntime](utilities.constants.ModelInferenceRuntime)
-4. Add the new entry to [Mapping](utilities.constants.ModelInferenceRuntime.MAPPING)
-5. See [caikit_standalone](utilities/manifests/caikit_standalone.py) for an example
+3. See [caikit_standalone](utilities/manifests/caikit_standalone.py) for an example

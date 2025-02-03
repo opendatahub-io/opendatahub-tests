@@ -9,6 +9,7 @@ from utilities.constants import (
     ModelInferenceRuntime,
     RuntimeTemplates,
 )
+from utilities.manifests.caikit_standalone import CAIKIT_STANDALONE_INFERENCE_CONFIG
 
 pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_config")]
 
@@ -40,7 +41,7 @@ class TestBgeLargeEnCaikit:
         """Test Caikit bge-large-en embedding model inference using internal route"""
         verify_inference_response(
             inference_service=s3_models_inference_service,
-            runtime=ModelInferenceRuntime.CAIKIT_STANDALONE_RUNTIME,
+            inference_config=CAIKIT_STANDALONE_INFERENCE_CONFIG,
             inference_type="embedding",
             protocol=Protocols.HTTP,
             model_name=ModelName.CAIKIT_BGE_LARGE_EN,
@@ -51,7 +52,7 @@ class TestBgeLargeEnCaikit:
         """Test Caikit bge-large-en rerank model inference using internal route"""
         verify_inference_response(
             inference_service=s3_models_inference_service,
-            runtime=ModelInferenceRuntime.CAIKIT_STANDALONE_RUNTIME,
+            inference_config=CAIKIT_STANDALONE_INFERENCE_CONFIG,
             inference_type="rerank",
             protocol=Protocols.HTTP,
             model_name=ModelName.CAIKIT_BGE_LARGE_EN,
@@ -62,7 +63,7 @@ class TestBgeLargeEnCaikit:
         """Test Caikit bge-large-en sentence-similarity model inference using internal route"""
         verify_inference_response(
             inference_service=s3_models_inference_service,
-            runtime=ModelInferenceRuntime.CAIKIT_STANDALONE_RUNTIME,
+            inference_config=CAIKIT_STANDALONE_INFERENCE_CONFIG,
             inference_type="sentence-similarity",
             protocol=Protocols.HTTP,
             model_name=ModelName.CAIKIT_BGE_LARGE_EN,
