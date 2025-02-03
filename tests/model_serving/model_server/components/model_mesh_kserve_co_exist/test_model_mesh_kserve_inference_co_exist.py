@@ -83,7 +83,7 @@ class TestOpenVINOServerlessModelMesh:
 )
 class TestOpenVINOModelMeshServerless:
     def test_model_mesh_openvino_created_before_serverless_in_namespace_rest_inference(
-        self, ovms_serverless_inference_service, http_s3_openvino_model_mesh_inference_service
+        self, http_s3_openvino_model_mesh_inference_service, ovms_serverless_inference_service
     ):
         """Verify that modelmesh model can be queried when running with kserve inference service"""
         verify_inference_response(
@@ -95,7 +95,7 @@ class TestOpenVINOModelMeshServerless:
         )
 
     def test_serverless_openvino_created_after_model_mesh_ns_rest_inference(
-        self, ovms_serverless_inference_service, http_s3_openvino_model_mesh_inference_service
+        self, http_s3_openvino_model_mesh_inference_service, ovms_serverless_inference_service
     ):
         """Verify that Serverless model can be queried when running with modelmesh inference service"""
         verify_inference_response(
