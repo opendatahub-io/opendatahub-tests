@@ -69,7 +69,7 @@ class TestModelMetrics:
         name="test_model_metrics_num_total_requests",
         depends=["test_model_metrics_num_success_requests"],
     )
-    def test_model_metrics_num_total_requests(self, s3_models_inference_service, deleted_metrics, prometheus):
+    def test_model_metrics_num_total_requests(self, s3_models_inference_service, prometheus):
         """Verify number of total model requests in OpenShift monitoring system (UserWorkloadMonitoring) metrics"""
         total_runs = 5
 
