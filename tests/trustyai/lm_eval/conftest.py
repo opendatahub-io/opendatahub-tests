@@ -16,8 +16,8 @@ from utilities.constants import Labels
 
 @pytest.fixture(scope="function")
 def lmevaljob_hf(
-    admin_client: DynamicClient, model_namespace: Namespace, patched_trustyai_operator_configmap_allow_online
-):
+    admin_client: DynamicClient, model_namespace: Namespace, patched_trustyai_operator_configmap_allow_online: ConfigMap
+) -> LMEvalJob:
     with LMEvalJob(
         client=admin_client,
         name="test-job",
@@ -41,9 +41,9 @@ def lmevaljob_local_offline(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    patched_trustyai_operator_configmap_allow_online,
+    patched_trustyai_operator_configmap_allow_online: ConfigMap,
     lmeval_data_downloader_pod: Pod,
-):
+) -> LMEvalJob:
     with LMEvalJob(
         client=admin_client,
         name="lmeval-test",
@@ -67,7 +67,7 @@ def lmevaljob_local_offline(
 
 
 @pytest.fixture(scope="function")
-def patched_trustyai_operator_configmap_allow_online(admin_client: DynamicClient):
+def patched_trustyai_operator_configmap_allow_online(admin_client: DynamicClient) -> ConfigMap:
     namespace: str = py_config["applications_namespace"]
     trustyai_service_operator: str = "trustyai-service-operator"
 
@@ -91,7 +91,7 @@ def patched_trustyai_operator_configmap_allow_online(admin_client: DynamicClient
 
 
 @pytest.fixture(scope="function")
-def lmeval_data_pvc(admin_client: DynamicClient, model_namespace: Namespace):
+def lmeval_data_pvc(admin_client: DynamicClient, model_namespace: Namespace) -> PersistentVolumeClaim:
     with PersistentVolumeClaim(
         client=admin_client,
         name="lmeval-data",
@@ -109,7 +109,7 @@ def lmeval_data_downloader_pod(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     lmeval_data_pvc: PersistentVolumeClaim,
-):
+) -> Pod:
     with Pod(
         client=admin_client,
         namespace=model_namespace.name,
