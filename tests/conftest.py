@@ -21,8 +21,7 @@ from simple_logger.logger import get_logger
 
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.infra import create_ns, login_with_user_password, get_openshift_token
-from utilities.constants import AcceleratorType
-
+from utilities.constants import AcceleratorType, DscComponents
 
 LOGGER = get_logger(name=__name__)
 
@@ -260,5 +259,14 @@ def updated_dsc_component_state(
     with update_components_in_dsc(
         dsc=dsc_resource,
         components={request.param["component_name"]: request.param["desired_state"]},
+    ) as dsc:
+        yield dsc
+
+
+@pytest.fixture(scope="package")
+def enabled_modelmesh_in_dsc(dsc_resource: DataScienceCluster) -> Generator[DataScienceCluster, Any, Any]:
+    with update_components_in_dsc(
+        dsc=dsc_resource,
+        components={DscComponents.MODELMESHSERVING: DscComponents.ManagementState.MANAGED},
     ) as dsc:
         yield dsc

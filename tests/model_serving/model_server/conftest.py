@@ -194,15 +194,6 @@ def enabled_kserve_in_dsc(dsc_resource: DataScienceCluster) -> Generator[DataSci
 
 
 @pytest.fixture(scope="package")
-def enabled_modelmesh_in_dsc(dsc_resource: DataScienceCluster) -> Generator[DataScienceCluster, Any, Any]:
-    with update_components_in_dsc(
-        dsc=dsc_resource,
-        components={DscComponents.MODELMESHSERVING: DscComponents.ManagementState.MANAGED},
-    ) as dsc:
-        yield dsc
-
-
-@pytest.fixture(scope="package")
 def skip_if_no_deployed_openshift_service_mesh(admin_client: DynamicClient):
     smcp = ServiceMeshControlPlane(client=admin_client, name="data-science-smcp", namespace="istio-system")
     if not smcp or not smcp.exists:
