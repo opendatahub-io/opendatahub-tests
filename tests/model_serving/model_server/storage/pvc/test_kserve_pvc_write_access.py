@@ -1,5 +1,4 @@
 import shlex
-from typing import List
 
 from ocp_resources.pod import ExecOnPodError
 import pytest
@@ -15,7 +14,7 @@ from utilities.infra import get_pods_by_isvc_label
 pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("skip_if_no_nfs_storage_class", "valid_aws_config")]
 
 
-POD_TOUCH_SPLIT_COMMAND: List[str] = shlex.split("touch /mnt/models/test")
+POD_TOUCH_SPLIT_COMMAND: list[str] = shlex.split("touch /mnt/models/test")
 
 
 @pytest.mark.parametrize(
@@ -33,6 +32,7 @@ POD_TOUCH_SPLIT_COMMAND: List[str] = shlex.split("touch /mnt/models/test")
 )
 class TestKservePVCWriteAccess:
     def test_pod_containers_not_restarted(self, first_predictor_pod):
+        """Test that the containers are not restarted"""
         restarted_containers = [
             container.name
             for container in first_predictor_pod.instance.status.containerStatuses
@@ -41,11 +41,13 @@ class TestKservePVCWriteAccess:
         assert not restarted_containers, f"Containers {restarted_containers} restarted"
 
     def test_isvc_read_only_annotation_not_set_by_default(self, pvc_inference_service):
+        """Test that the read only annotation is not set by default"""
         assert not pvc_inference_service.instance.metadata.annotations.get("storage.kserve.io/readonly"), (
             "Read only annotation is set"
         )
 
     def test_isvc_read_only_annotation_default_value(self, first_predictor_pod):
+        """Test that write access is denied by default"""
         with pytest.raises(ExecOnPodError):
             first_predictor_pod.execute(
                 container=KSERVE_CONTAINER_NAME,
@@ -62,6 +64,7 @@ class TestKservePVCWriteAccess:
         indirect=True,
     )
     def test_isvc_read_only_annotation_false(self, admin_client, patched_read_only_isvc):
+        """Test that write access is allowed when the read only annotation is set to false"""
         new_pod = get_pods_by_isvc_label(
             client=admin_client,
             isvc=patched_read_only_isvc,
@@ -81,6 +84,7 @@ class TestKservePVCWriteAccess:
         indirect=True,
     )
     def test_isvc_read_only_annotation_true(self, admin_client, patched_read_only_isvc):
+        """ """
         new_pod = get_pods_by_isvc_label(
             client=admin_client,
             isvc=patched_read_only_isvc,

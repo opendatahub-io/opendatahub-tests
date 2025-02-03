@@ -37,6 +37,7 @@ class TestOpenVINOModelMeshMultiServers:
         http_s3_openvino_model_mesh_inference_service,
         http_s3_openvino_second_model_mesh_inference_service,
     ):
+        """Test inference with OpenVINO model when multiple servers in the same namespace"""
         verify_inference_response(
             inference_service=http_s3_openvino_model_mesh_inference_service,
             inference_config=OPENVINO_INFERENCE_CONFIG,
@@ -50,6 +51,7 @@ class TestOpenVINOModelMeshMultiServers:
         http_s3_openvino_model_mesh_inference_service,
         http_s3_openvino_second_model_mesh_inference_service,
     ):
+        """Test inference with TensorFlow model when multiple servers in the same namespace"""
         verify_inference_response(
             inference_service=http_s3_openvino_second_model_mesh_inference_service,
             inference_config=TENSORFLOW_INFERENCE_CONFIG,

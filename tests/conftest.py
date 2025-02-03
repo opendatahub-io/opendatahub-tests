@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import os
 import shutil
-from typing import List, Tuple, Any, Generator
+from typing import Tuple, Any, Generator
 
 import pytest
 import yaml
@@ -32,7 +32,7 @@ def admin_client() -> DynamicClient:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def tests_tmp_dir(request: FixtureRequest, tmp_path_factory: TempPathFactory) -> None:
+def tests_tmp_dir(request: FixtureRequest, tmp_path_factory: TempPathFactory) -> Generator[None, None, None]:
     base_path = os.path.join(request.config.option.basetemp, "tests")
     tests_tmp_path = tmp_path_factory.mktemp(basename=base_path)
     py_config["tmp_base_dir"] = str(tests_tmp_path)
@@ -175,7 +175,7 @@ def vllm_runtime_image(pytestconfig: pytest.Config) -> str | None:
 
 @pytest.fixture(scope="session")
 def non_admin_user_password(admin_client: DynamicClient) -> Tuple[str, str] | None:
-    def _decode_split_data(_data: str) -> List[str]:
+    def _decode_split_data(_data: str) -> list[str]:
         return base64.b64decode(_data).decode().split(",")
 
     if ldap_Secret := list(

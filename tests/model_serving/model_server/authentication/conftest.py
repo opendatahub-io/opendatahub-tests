@@ -15,7 +15,12 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from pyhelper_utils.shell import run_command
 
-from utilities.infra import create_isvc_view_role, create_ns, s3_endpoint_secret, create_inference_token
+from utilities.infra import (
+    create_isvc_view_role,
+    create_ns,
+    s3_endpoint_secret,
+    create_inference_token,
+)
 from tests.model_serving.model_server.utils import create_isvc
 from utilities.constants import (
     KServeDeploymentType,
@@ -31,7 +36,9 @@ from utilities.constants import Labels
 
 # GRPC model serving
 @pytest.fixture(scope="class")
-def grpc_model_service_account(admin_client: DynamicClient, models_endpoint_s3_secret: Secret) -> ServiceAccount:
+def grpc_model_service_account(
+    admin_client: DynamicClient, models_endpoint_s3_secret: Secret
+) -> Generator[ServiceAccount, Any, Any]:
     with ServiceAccount(
         client=admin_client,
         namespace=models_endpoint_s3_secret.namespace,
@@ -45,7 +52,7 @@ def grpc_model_service_account(admin_client: DynamicClient, models_endpoint_s3_s
 def grpc_s3_caikit_serving_runtime(
     admin_client: DynamicClient,
     model_namespace: Namespace,
-) -> ServingRuntime:
+) -> Generator[ServingRuntime, Any, Any]:
     with ServingRuntimeFromTemplate(
         client=admin_client,
         name=f"{Protocols.GRPC}-{ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME}",
@@ -65,7 +72,7 @@ def grpc_s3_inference_service(
     grpc_s3_caikit_serving_runtime: ServingRuntime,
     s3_models_storage_uri: str,
     models_endpoint_s3_secret: Secret,
-) -> InferenceService:
+) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
         name=f"{Protocols.GRPC}-{ModelFormat.CAIKIT}",
@@ -84,7 +91,7 @@ def grpc_s3_inference_service(
 def http_view_role(
     admin_client: DynamicClient,
     http_s3_caikit_serverless_inference_service: InferenceService,
-) -> Role:
+) -> Generator[Role, Any, Any]:
     with create_isvc_view_role(
         client=admin_client,
         isvc=http_s3_caikit_serverless_inference_service,
@@ -98,7 +105,7 @@ def http_view_role(
 def http_raw_view_role(
     admin_client: DynamicClient,
     http_s3_caikit_raw_inference_service: InferenceService,
-) -> Role:
+) -> Generator[Role, Any, Any]:
     with create_isvc_view_role(
         client=admin_client,
         isvc=http_s3_caikit_raw_inference_service,
@@ -114,7 +121,7 @@ def http_role_binding(
     http_view_role: Role,
     model_service_account: ServiceAccount,
     http_s3_caikit_serverless_inference_service: InferenceService,
-) -> RoleBinding:
+) -> Generator[RoleBinding, Any, Any]:
     with RoleBinding(
         client=admin_client,
         namespace=model_service_account.namespace,
@@ -133,7 +140,7 @@ def http_raw_role_binding(
     http_raw_view_role: Role,
     model_service_account: ServiceAccount,
     http_s3_caikit_raw_inference_service: InferenceService,
-) -> RoleBinding:
+) -> Generator[RoleBinding, Any, Any]:
     with RoleBinding(
         client=admin_client,
         namespace=model_service_account.namespace,
@@ -160,7 +167,7 @@ def http_raw_inference_token(model_service_account: ServiceAccount, http_raw_rol
 def patched_remove_authentication_isvc(
     admin_client: DynamicClient,
     http_s3_caikit_serverless_inference_service: InferenceService,
-) -> InferenceService:
+) -> Generator[InferenceService, Any, Any]:
     with ResourceEditor(
         patches={
             http_s3_caikit_serverless_inference_service: {

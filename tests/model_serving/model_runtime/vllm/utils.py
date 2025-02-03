@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from typing import Generator, Any, Dict
+from typing import Generator, Any
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.secret import Secret
@@ -24,7 +24,7 @@ def get_runtime_manifest(
 ) -> ServingRuntime:
     # Get the model template and extract the runtime dictionary
     template = get_model_template(client=client, template_name=template_name)
-    runtime_dict: Dict[str, Any] = template.instance.objects[0].to_dict()
+    runtime_dict: dict[str, Any] = template.instance.objects[0].to_dict()
 
     # Determine deployment type conditions early
     is_grpc = "grpc" in deployment_type.lower()
@@ -70,7 +70,7 @@ def kserve_s3_endpoint_secret(
     aws_secret_access_key: str,
     aws_s3_endpoint: str,
     aws_s3_region: str,
-) -> Generator[Secret, None, None]:
+) -> Generator[Secret, Any, Any]:
     with Secret(
         client=admin_client,
         name=name,

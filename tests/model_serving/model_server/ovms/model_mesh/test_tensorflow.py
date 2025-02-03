@@ -26,6 +26,7 @@ class TestTensorflowModelMesh:
     @pytest.mark.sanity
     @pytest.mark.polarion("ODS-2268")
     def test_model_mesh_tensorflow_rest_inference_external_route(self, http_s3_tensorflow_model_mesh_inference_service):
+        """Test tensorflow model mesh inference with external route"""
         verify_inference_response(
             inference_service=http_s3_tensorflow_model_mesh_inference_service,
             inference_config=TENSORFLOW_INFERENCE_CONFIG,

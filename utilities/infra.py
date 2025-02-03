@@ -5,7 +5,7 @@ import os
 import shlex
 from contextlib import contextmanager
 from functools import cache
-from typing import Dict, Generator, List, Optional
+from typing import Any, Generator, Optional
 
 import kubernetes
 from kubernetes.dynamic import DynamicClient
@@ -43,8 +43,23 @@ def create_ns(
     unprivileged_client: Optional[DynamicClient] = None,
     teardown: bool = True,
     delete_timeout: int = 4 * 60,
-    labels: Optional[Dict[str, str]] = None,
-) -> Generator[Namespace, None, None]:
+    labels: Optional[dict[str, str]] = None,
+) -> Generator[Namespace | Project, Any, Any]:
+    """
+    Create namespace with admin or unprivileged client.
+
+    Args:
+        name (str): namespace name.
+        admin_client (DynamicClient): admin client.
+        unprivileged_client (UnprivilegedClient): unprivileged client.
+        teardown (bool): should run resource teardown
+        delete_timeout (int): delete timeout.
+        labels (dict[str, str]): labels dict to set for namespace
+
+    Yields:
+        Namespace | Project: namespace or project
+
+    """
     if unprivileged_client:
         with ProjectRequest(name=name, client=unprivileged_client, teardown=teardown):
             project = Project(
@@ -73,7 +88,20 @@ def wait_for_inference_deployment_replicas(
     isvc: InferenceService,
     runtime_name: str | None,
     expected_num_deployments: int = 1,
-) -> List[Deployment]:
+) -> list[Deployment]:
+    """
+    Wait for inference deployment replicas to complete.
+
+    Args:
+        client (DynamicClient): Dynamic client.
+        isvc (InferenceService): InferenceService object
+        runtime_name (str): ServingRuntime name.
+        expected_num_deployments (int): Expected number of deployments per InferenceService.
+
+    Returns:
+        list[Deployment]: List of Deployment objects for InferenceService.
+
+    """
     ns = isvc.namespace
     label_selector = create_isvc_label_selector_str(isvc=isvc, resource_type="deployment", runtime_name=runtime_name)
 
@@ -110,7 +138,24 @@ def s3_endpoint_secret(
     aws_s3_bucket: str,
     aws_s3_endpoint: str,
     aws_s3_region: str,
-) -> Generator[Secret, None, None]:
+) -> Generator[Secret, Any, Any]:
+    """
+    Create S3 endpoint secret.
+
+    Args:
+        admin_client (DynamicClient): Dynamic client.
+        name (str): Secret name.
+        namespace (str): Secret namespace name.
+        aws_access_key (str): Secret access key.
+        aws_secret_access_key (str): Secret access key.
+        aws_s3_bucket (str): Secret s3 bucket.
+        aws_s3_endpoint (str): Secret s3 endpoint.
+        aws_s3_region (str): Secret s3 region.
+
+    Yield:
+        Secret: Secret object
+
+    """
     # DO not create secret if exists in the namespace
     os.environ["REUSE_IF_RESOURCE_EXISTS"] = f"{{Secret: {{{name}: {namespace}}}}}"
 
@@ -138,8 +183,21 @@ def create_isvc_view_role(
     client: DynamicClient,
     isvc: InferenceService,
     name: str,
-    resource_names: Optional[List[str]] = None,
-) -> Role:
+    resource_names: Optional[list[str]] = None,
+) -> Generator[Role, Any, Any]:
+    """
+    Create a view role for an InferenceService.
+
+    Args:
+        client (DynamicClient): Dynamic client.
+        isvc (InferenceService): InferenceService object.
+        name (str): Role name.
+        resource_names (list[str]): Resource names to be attached to role.
+
+    Yields:
+        Role: Role object.
+
+    """
     rules = [
         {
             "apiGroups": [isvc.api_group],
@@ -222,7 +280,7 @@ def is_managed_cluster(client: DynamicClient) -> bool:
 
 def get_services_by_isvc_label(
     client: DynamicClient, isvc: InferenceService, runtime_name: str | None = None
-) -> List[Service]:
+) -> list[Service]:
     """
     Args:
         client (DynamicClient): OCP Client to use.
@@ -250,7 +308,7 @@ def get_services_by_isvc_label(
     raise ResourceNotFoundError(f"{isvc.name} has no services")
 
 
-def get_pods_by_isvc_label(client: DynamicClient, isvc: InferenceService, runtime_name: str | None = None) -> List[Pod]:
+def get_pods_by_isvc_label(client: DynamicClient, isvc: InferenceService, runtime_name: str | None = None) -> list[Pod]:
     """
     Args:
         client (DynamicClient): OCP Client to use.
@@ -279,10 +337,30 @@ def get_pods_by_isvc_label(client: DynamicClient, isvc: InferenceService, runtim
 
 
 def get_openshift_token() -> str:
+    """
+    Get the OpenShift token.
+
+    Returns:
+        str: The OpenShift token.
+
+    """
     return run_command(command=shlex.split("oc whoami -t"))[1].strip()
 
 
 def get_kserve_storage_initialize_image(client: DynamicClient) -> str:
+    """
+    Get the image used to storage-initializer.
+
+    Args:
+        client (DynamicClient): DynamicClient client.
+
+    Returns:
+        str: The image used to storage-initializer.
+
+    Raises:
+        ResourceNotFoundError: if the config map does not exist.
+
+    """
     kserve_cm = ConfigMap(
         client=client,
         name="inferenceservice-config",
@@ -296,6 +374,19 @@ def get_kserve_storage_initialize_image(client: DynamicClient) -> str:
 
 
 def get_inference_serving_runtime(isvc: InferenceService) -> ServingRuntime:
+    """
+    Get the serving runtime for the inference service.
+
+    Args:
+        isvc (InferenceService):InferenceService object.
+
+    Returns:
+        ServingRuntime: ServingRuntime object.
+
+    Raises:
+        ResourceNotFoundError: if the serving runtime does not exist.
+
+    """
     runtime = ServingRuntime(
         client=isvc.client,
         namespace=isvc.namespace,

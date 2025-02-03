@@ -1,3 +1,5 @@
+from typing import Any, Generator
+
 import pytest
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
@@ -25,7 +27,7 @@ def http_s3_openvino_second_model_mesh_inference_service(
     model_namespace: Namespace,
     ci_model_mesh_endpoint_s3_secret: Secret,
     model_mesh_model_service_account: ServiceAccount,
-) -> InferenceService:
+) -> Generator[InferenceService, Any, Any]:
     # Dynamically select the used ServingRuntime by passing "runtime-fixture-name" request.param
     runtime = request.getfixturevalue(argname=request.param["runtime-fixture-name"])
     with create_isvc(
@@ -48,7 +50,7 @@ def http_s3_ovms_external_route_model_mesh_serving_runtime(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
-) -> ServingRuntime:
+) -> Generator[ServingRuntime, Any, Any]:
     with ServingRuntimeFromTemplate(
         client=admin_client,
         namespace=model_namespace.name,

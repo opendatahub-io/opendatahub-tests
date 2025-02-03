@@ -1,5 +1,4 @@
 import shlex
-from typing import List
 from utilities.constants import KServeDeploymentType, StorageClassName
 
 import pytest
@@ -10,7 +9,7 @@ from tests.model_serving.model_server.storage.constants import (
     KSERVE_OVMS_SERVING_RUNTIME_PARAMS,
 )
 
-POD_LS_SPLIT_COMMAND: List[str] = shlex.split("ls /mnt/models")
+POD_LS_SPLIT_COMMAND: list[str] = shlex.split("ls /mnt/models")
 
 
 pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("skip_if_no_nfs_storage_class")]
@@ -31,12 +30,14 @@ pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("skip_if_no_nfs_st
 )
 class TestKservePVCReadWriteManyAccess:
     def test_first_isvc_pvc_read_access(self, predictor_pods_scope_class):
+        """Test that the first predictor pod has read access to the PVC"""
         predictor_pods_scope_class[0].execute(
             container=KSERVE_CONTAINER_NAME,
             command=POD_LS_SPLIT_COMMAND,
         )
 
     def test_second_isvc_pvc_read_access(self, predictor_pods_scope_class):
+        """Test that the second predictor pod has read access to the PVC"""
         predictor_pods_scope_class[1].execute(
             container=KSERVE_CONTAINER_NAME,
             command=POD_LS_SPLIT_COMMAND,
