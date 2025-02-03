@@ -5,7 +5,7 @@ import re
 import shlex
 from json import JSONDecodeError
 from string import Template
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 from urllib.parse import urlparse
 
 from ocp_resources.inference_service import InferenceService
@@ -50,7 +50,16 @@ class Inference:
         self.inference_url = self.get_inference_url()
 
     def get_inference_url(self) -> str:
-        # TODO: add ModelMesh support
+        """
+        Get inference url
+
+        Returns:
+            inference url
+
+        Raises:
+            ValueError: If the inference url is not found
+
+        """
         if self.visibility_exposed:
             if self.deployment_mode == KServeDeploymentType.SERVERLESS and (
                 url := self.inference_service.instance.status.components.predictor.url
@@ -73,6 +82,13 @@ class Inference:
             return "localhost"
 
     def is_service_exposed(self) -> bool:
+        """
+        Check if the service is exposed or internal
+
+        Returns:
+            bool: True if the service is exposed, False otherwise
+
+        """
         labels = self.inference_service.labels
 
         if self.deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT:
@@ -100,6 +116,15 @@ class UserInference(Inference):
         inference_config: dict[str, Any],
         **kwargs: Any,
     ) -> None:
+        """
+        User inference object
+
+        Args:
+            protocol (str): inference protocol
+            inference_type (str): inference type
+            inference_config (dict[str, Any]): inference config
+            **kwargs ():
+        """
         super().__init__(**kwargs)
 
         self.protocol = protocol
@@ -107,7 +132,17 @@ class UserInference(Inference):
         self.inference_config = inference_config
         self.runtime_config = self.get_runtime_config()
 
-    def get_runtime_config(self) -> Dict[str, Any]:
+    def get_runtime_config(self) -> dict[str, Any]:
+        """
+        Get runtime config from inference config based on inference type and protocol
+
+        Returns:
+            dict[str, Any]: runtime config
+
+        Raises:
+            ValueError: If the runtime config is not found
+
+        """
         if inference_type := self.inference_config.get(self.inference_type):
             protocol = Protocols.HTTP if self.protocol in Protocols.TCP_PROTOCOLS else self.protocol
             if data := inference_type.get(protocol):
@@ -123,10 +158,24 @@ class UserInference(Inference):
 
     @property
     def inference_response_text_key_name(self) -> Optional[str]:
+        """
+        Get inference response text key name from runtime config
+
+        Returns:
+            Optional[str]: inference response text key name
+
+        """
         return self.runtime_config["response_fields_map"].get("response_output")
 
     @property
     def inference_response_key_name(self) -> str:
+        """
+        Get inference response key name from runtime config
+
+        Returns:
+            str: inference response key name
+
+        """
         return self.runtime_config["response_fields_map"].get("response", "output")
 
     def get_inference_body(
@@ -135,6 +184,21 @@ class UserInference(Inference):
         inference_input: Optional[Any] = None,
         use_default_query: bool = False,
     ) -> str:
+        """
+        Get inference body from runtime config
+
+        Args:
+            model_name (str): inference model name
+            inference_input (Any): inference input
+            use_default_query (bool): use default query from inference config
+
+        Returns:
+            str: inference body
+
+        Raises:
+            ValueError: If inference input is not provided
+
+        """
         if not use_default_query and inference_input is None:
             raise ValueError("Either pass `inference_input` or set `use_default_query` to True")
 
@@ -160,6 +224,16 @@ class UserInference(Inference):
         )
 
     def get_inference_endpoint_url(self) -> str:
+        """
+        Get inference endpoint url from runtime config
+
+        Returns:
+            str: inference endpoint url
+
+        Raises:
+            ValueError: If the protocol is not supported
+
+        """
         endpoint = Template(self.runtime_config["endpoint"]).safe_substitute(model_name=self.inference_service.name)
 
         if self.protocol in Protocols.TCP_PROTOCOLS:
@@ -179,6 +253,23 @@ class UserInference(Inference):
         insecure: bool = False,
         token: Optional[str] = None,
     ) -> str:
+        """
+        Generate command to run inference
+
+        Args:
+            model_name (str): inference model name
+            inference_input (Any): inference input
+            use_default_query (bool): use default query from inference config
+            insecure (bool): Use insecure connection
+            token (str): Token to use for authentication
+
+        Returns:
+            str: inference command
+
+        Raises:
+                ValueError: If the protocol is not supported
+
+        """
         body = self.get_inference_body(
             model_name=model_name,
             inference_input=inference_input,
@@ -230,7 +321,21 @@ class UserInference(Inference):
         use_default_query: bool = False,
         insecure: bool = False,
         token: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
+        """
+        Run inference full flow - generate command and run it
+
+        Args:
+            model_name (str): inference model name
+            inference_input (str): inference input
+            use_default_query (bool): use default query from inference config
+            insecure (bool): Use insecure connection
+            token (str): Token to use for authentication
+
+        Returns:
+            dict: inference response dict with response headers and response output
+
+        """
         cmd = self.generate_command(
             model_name=model_name,
             inference_input=inference_input,
@@ -244,8 +349,8 @@ class UserInference(Inference):
         try:
             if self.protocol in Protocols.TCP_PROTOCOLS:
                 # with curl response headers are also returned
-                response_dict: Dict[str, Any] = {}
-                response_headers: List[str] = []
+                response_dict: dict[str, Any] = {}
+                response_headers: list[str] = []
 
                 if "content-type: application/json" in out.lower():
                     if response_re := re.match(r"(.*)\n\{", out, re.MULTILINE | re.DOTALL):
@@ -272,6 +377,19 @@ class UserInference(Inference):
 
     @retry(wait_timeout=30, sleep=5)
     def run_inference(self, cmd: str) -> str:
+        """
+        Run inference command
+
+        Args:
+            cmd (str): inference command
+
+        Returns:
+            str: inference output
+
+        Raises:
+            ValueError: If inference fails
+
+        """
         # For internal inference, we need to use port forwarding to the service
         if not self.visibility_exposed:
             svc = get_services_by_isvc_label(
@@ -299,6 +417,19 @@ class UserInference(Inference):
         return out
 
     def get_target_port(self, svc: Service) -> int:
+        """
+        Get target port for inference when using port forwarding
+
+        Args:
+            svc (Service): Service object
+
+        Returns:
+            int: Target port
+
+        Raises:
+                ValueError: If target port is not found in service
+
+        """
         if self.protocol in Protocols.ALL_SUPPORTED_PROTOCOLS:
             svc_protocol = "TCP"
         else:

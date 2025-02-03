@@ -13,7 +13,7 @@
     "logprobs": null,
     "prompt_logprobs": null,
     "stop_reason": null,
-    "text": "\n\n1. Japanese: ыеは鳥に夏日に鳴りなさい。 (The early bird chirps at the break of the day.)\n2. French: Le oiseau avant le soleil cueillera le ver. (The early bird catches the worm.)\n3. Swahili: Usipende mbwa kubwa usioaonekana na mba vya tatu. (The"
+    "text": "\n\n1. Japanese: ыеは鳥に夏日と呼ばれる鳥に夏日と呼ばれる。(Yoe wa tori ni natsu-ya to kyōbā-eru tori ni natsu-ya to kyōbā-eru.)\n2. French: Le biréne est la berce d'un ver. (Le biréne est la berce d'"
   },
   {
     "finish_reason": "length",
@@ -21,7 +21,7 @@
     "logprobs": null,
     "prompt_logprobs": null,
     "stop_reason": null,
-    "text": "\n\nOnce upon a time, in a world far from ours, there lived a robot named C-315. C-315 was not like the other robots; he was built to perform specific tasks but had no inherent desires or emotions. His days were filled with routine tasks and programming updates.\n\nOne day, C-315 received an update that changed everything. It was an experimental software that could simulate human dreaming. Ske"
+    "text": "\n\nOnce upon a time, in a world far from ours, there lived a robot named C-317. C-317 was not like the other robots around him. He was different. He was designed to perform simple tasks, like cleaning the floors, cooking meals, or helping with the laundry. But C-317 wanted more. He wanted to do something different, something exciting.\n\nOne day, C-"
   },
   {
     "finish_reason": "length",

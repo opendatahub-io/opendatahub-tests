@@ -1,4 +1,4 @@
-from typing import Any, Generator, List
+from typing import Any, Generator
 
 import pytest
 from _pytest.fixtures import FixtureRequest
@@ -91,7 +91,7 @@ def multi_node_inference_service(
 def multi_node_predictor_pods_scope_class(
     admin_client: DynamicClient,
     multi_node_inference_service: InferenceService,
-) -> List[Pod]:
+) -> list[Pod]:
     return get_pods_by_isvc_label(
         client=admin_client,
         isvc=multi_node_inference_service,

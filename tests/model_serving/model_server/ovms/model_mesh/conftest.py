@@ -1,4 +1,5 @@
 import shlex
+from typing import Any, Generator
 
 import pytest
 from kubernetes.dynamic import DynamicClient
@@ -19,7 +20,7 @@ from utilities.infra import create_isvc_view_role
 def model_mesh_view_role(
     admin_client: DynamicClient,
     http_s3_openvino_model_mesh_inference_service: ServingRuntime,
-) -> Role:
+) -> Generator[Role, Any, Any]:
     with create_isvc_view_role(
         client=admin_client,
         isvc=http_s3_openvino_model_mesh_inference_service,
@@ -34,7 +35,7 @@ def model_mesh_role_binding(
     admin_client: DynamicClient,
     model_mesh_view_role: Role,
     model_mesh_model_service_account: ServiceAccount,
-) -> RoleBinding:
+) -> Generator[RoleBinding, Any, Any]:
     with RoleBinding(
         client=admin_client,
         namespace=model_mesh_model_service_account.namespace,
@@ -63,7 +64,7 @@ def model_mesh_inference_token(
 def patched_model_mesh_sr_with_authentication(
     admin_client: DynamicClient,
     http_s3_ovms_model_mesh_serving_runtime: ServingRuntime,
-) -> None:
+) -> Generator[None, None, None]:
     with ResourceEditor(
         patches={
             http_s3_ovms_model_mesh_serving_runtime: {

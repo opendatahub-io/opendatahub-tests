@@ -38,7 +38,7 @@ def invalid_s3_models_inference_service(
     serving_runtime_from_template: ServingRuntime,
     models_s3_bucket_name: str,
     model_service_account: ServiceAccount,
-) -> InferenceService:
+) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
         name=request.param["name"],
@@ -57,7 +57,7 @@ def invalid_s3_models_inference_service(
 @pytest.fixture
 def updated_s3_models_inference_service(
     invalid_s3_models_inference_service: InferenceService, s3_models_storage_uri: str
-) -> InferenceService:
+) -> Generator[InferenceService, Any, Any]:
     with ResourceEditor(
         patches={
             invalid_s3_models_inference_service: {

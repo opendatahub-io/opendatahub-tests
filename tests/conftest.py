@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import os
 import shutil
-from typing import List, Tuple, Any, Generator
+from typing import Tuple, Any, Generator
 
 import pytest
 import yaml
@@ -21,8 +21,9 @@ from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 
 from utilities.data_science_cluster_utils import update_components_in_dsc
-from utilities.infra import create_ns, login_with_user_password, get_openshift_token, update_configmap_data
-from utilities.constants import AcceleratorType
+from utilities.infra import create_ns, login_with_user_password, get_openshift_token
+from utilities.constants import AcceleratorType, DscComponents
+from utilities.infra import update_configmap_data
 
 
 LOGGER = get_logger(name=__name__)
@@ -34,7 +35,7 @@ def admin_client() -> DynamicClient:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def tests_tmp_dir(request: FixtureRequest, tmp_path_factory: TempPathFactory) -> None:
+def tests_tmp_dir(request: FixtureRequest, tmp_path_factory: TempPathFactory) -> Generator[None, None, None]:
     base_path = os.path.join(request.config.option.basetemp, "tests")
     tests_tmp_path = tmp_path_factory.mktemp(basename=base_path)
     py_config["tmp_base_dir"] = str(tests_tmp_path)
@@ -177,7 +178,7 @@ def vllm_runtime_image(pytestconfig: pytest.Config) -> str | None:
 
 @pytest.fixture(scope="session")
 def non_admin_user_password(admin_client: DynamicClient) -> Tuple[str, str] | None:
-    def _decode_split_data(_data: str) -> List[str]:
+    def _decode_split_data(_data: str) -> list[str]:
         return base64.b64decode(_data).decode().split(",")
 
     if ldap_Secret := list(
@@ -261,6 +262,15 @@ def updated_dsc_component_state(
     with update_components_in_dsc(
         dsc=dsc_resource,
         components={request.param["component_name"]: request.param["desired_state"]},
+    ) as dsc:
+        yield dsc
+
+
+@pytest.fixture(scope="package")
+def enabled_modelmesh_in_dsc(dsc_resource: DataScienceCluster) -> Generator[DataScienceCluster, Any, Any]:
+    with update_components_in_dsc(
+        dsc=dsc_resource,
+        components={DscComponents.MODELMESHSERVING: DscComponents.ManagementState.MANAGED},
     ) as dsc:
         yield dsc
 
