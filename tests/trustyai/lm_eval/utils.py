@@ -12,7 +12,19 @@ from utilities.infra import TIMEOUT_2MIN
 
 
 def verify_lmevaljob_running(client: DynamicClient, lmevaljob: LMEvalJob) -> None:
-    # Verifies that the LMEvalJob Pod gets to Running and stays either Running or Succeeded for at least 2 minutes
+    """
+    Verifies that an LMEvalJob Pod reaches Running state and maintains Running/Succeeded state.
+    Waits for Pod to enter Running state, then checks it stays Running or Succeeded for 2 minutes.
+
+    Args:
+        client: DynamicClient instance for interacting with Kubernetes
+        lmevaljob: LMEvalJob object representing the job to verify
+
+    Raises:
+        TimeoutError: If Pod doesn't reach Running state within 10 minutes
+        AssertionError: If Pod doesn't stay in one of the desired states for 2 minutes
+    """
+
     lmevaljob_pod = Pod(client=client, name=lmevaljob.name, namespace=lmevaljob.namespace, wait_for_resource=True)
     lmevaljob_pod.wait_for_status(status=lmevaljob_pod.Status.RUNNING, timeout=TIMEOUT_10MIN)
 
