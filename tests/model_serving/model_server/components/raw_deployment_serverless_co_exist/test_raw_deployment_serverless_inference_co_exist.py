@@ -31,13 +31,13 @@ SERVERLESS_ISVC_PARAMS = {
     "model-dir": ModelStoragePath.KSERVE_OPENVINO_EXAMPLE_MODEL,
 }
 RAW_RUNTIME_PARAMS = {
-    "name": f"{Protocols.HTTP}-{ModelInferenceRuntime.CAIKIT_STANDALONE_RUNTIME}",
+    "name": f"{Protocols.HTTP}-{ModelInferenceRuntime.CAIKIT_STANDALONE_RUNTIME}".lower(),
     "template-name": RuntimeTemplates.CAIKIT_STANDALONE_SERVING,
     "multi-model": False,
     "enable-http": True,
 }
 RAW_ISVC_PARAMS = {
-    "name": f"{ModelFormat.CAIKIT}-{KServeDeploymentType.RAW_DEPLOYMENT}",
+    "name": f"{ModelFormat.CAIKIT}-{KServeDeploymentType.RAW_DEPLOYMENT}".lower(),
     "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
     "model-dir": ModelStoragePath.EMBEDDING_MODEL,
 }
