@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import os
 import shutil
-from typing import Tuple, Any, Generator
+from typing import Any, Generator
 
 import pytest
 import yaml
@@ -85,7 +85,7 @@ def aws_secret_access_key(pytestconfig: Config) -> str:
 
 
 @pytest.fixture(scope="session")
-def valid_aws_config(aws_access_key_id: str, aws_secret_access_key: str) -> Tuple[str, str]:
+def valid_aws_config(aws_access_key_id: str, aws_secret_access_key: str) -> tuple[str, str]:
     return aws_access_key_id, aws_secret_access_key
 
 
@@ -177,7 +177,7 @@ def vllm_runtime_image(pytestconfig: pytest.Config) -> str | None:
 
 
 @pytest.fixture(scope="session")
-def non_admin_user_password(admin_client: DynamicClient) -> Tuple[str, str] | None:
+def non_admin_user_password(admin_client: DynamicClient) -> tuple[str, str] | None:
     def _decode_split_data(_data: str) -> list[str]:
         return base64.b64decode(_data).decode().split(",")
 
@@ -214,7 +214,7 @@ def kubconfig_filepath() -> str:
 def unprivileged_client(
     admin_client: DynamicClient,
     kubconfig_filepath: str,
-    non_admin_user_password: Tuple[str, str],
+    non_admin_user_password: tuple[str, str],
 ) -> Generator[DynamicClient, Any, Any]:
     """
     Provides none privileged API client. If non_admin_user_password is None, then it will yield admin_client.

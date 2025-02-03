@@ -445,9 +445,22 @@ def create_inference_token(model_service_account: ServiceAccount) -> str:
 def update_configmap_data(
     client: DynamicClient, name: str, namespace: str, data: dict[str, Any]
 ) -> Generator[ConfigMap, Any, Any]:
+    """
+    Update the data of a configmap.
+
+    Args:
+        client (DynamicClient): DynamicClient client.
+        name (str): Name of the configmap.
+        namespace (str): Namespace of the configmap.
+        data (dict[str, Any]): Data to update the configmap with.
+
+    Yields:
+        ConfigMap: The updated configmap.
+
+    """
     cm = ConfigMap(client=client, name=name, namespace=namespace)
 
-    # Some CM resources are usually created when doing exploratory testing, add this exception for convenience
+    # Some CM resources may already be present as they are usually created when doing exploratory testing
     if cm.exists:
         with ResourceEditor(patches={cm: {"data": data}}):
             yield cm

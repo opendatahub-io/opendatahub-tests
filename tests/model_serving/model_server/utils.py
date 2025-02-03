@@ -404,13 +404,26 @@ def verify_inference_response(
 
 def run_inference_multiple_times(
     isvc: InferenceService,
-    inference_config: str,
+    inference_config: dict[str, Any],
     inference_type: str,
     protocol: str,
     model_name: str,
     iterations: int,
     run_in_parallel: bool = False,
 ) -> None:
+    """
+    Run inference multiple times.
+
+    Args:
+        isvc (InferenceService): Inference service.
+        inference_config (dict[str, Any]): Inference config.
+        inference_type (str): Inference type.
+        protocol (str): Protocol.
+        model_name (str): Model name.
+        iterations (int): Number of iterations.
+        run_in_parallel (bool, optional): Run inference in parallel.
+
+    """
     futures = []
 
     with ThreadPoolExecutor() as executor:
