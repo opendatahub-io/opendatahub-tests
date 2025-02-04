@@ -27,6 +27,7 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
                 "name": "mistralawq-ser",
                 "min-replicas": 1,
             },
+           # marks=pytest.mark.smoke,
         ),
         pytest.param(
             {"name": "mistral-awq-raw"},
