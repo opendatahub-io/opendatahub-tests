@@ -163,4 +163,4 @@ def run_raw_inference(
 
 def validate_supported_quantization_schema(q_type:str) -> None:
     if q_type not in VLLM_SUPPORTED_QUANTIZATION:
-        raise ValueError(f"Unsupported quantization type: {q_type}")
+       raise ValueError(f"Unsupported quantization type: {q_type}")
