@@ -10,7 +10,7 @@ uv run pytest --pre-upgrade
 
 ```
 
-To run pre-upgrade tests delete the resources (useful for debugging pre-upgrade tests)
+To run pre-upgrade tests and delete the resources at the end of the run (useful for debugging pre-upgrade tests)
 
 ```bash
 uv run pytest --pre-upgrade --delete-pre-upgrade-resources

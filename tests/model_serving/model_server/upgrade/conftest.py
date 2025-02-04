@@ -24,12 +24,16 @@ from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
 LOGGER = get_logger(name=__name__)
+UPGRADE_NAMESPACE = "upgrade-model-server"
+
 UPGRADE_RESOURCES = (
-    '{"Namespace": {"upgrade-model-server"},'
-    '"ServingRuntime": {"onnx-serverless","caikit-raw","ovms-model-mesh"},'
-    '"InferenceService": {"onnx-serverless","caikit-raw", "ovms-model-mesh"}, '
-    '"Secret": {"ci-bucket-secret"},'
-    '"ServiceAccount": {"models-bucket-sa"},}'
+    f"{{Namespace: {{{UPGRADE_NAMESPACE:}}},"
+    f"ServingRuntime: {{onnx-serverless: {UPGRADE_NAMESPACE},"
+    f"caikit-raw: {UPGRADE_NAMESPACE},ovms-model-mesh: {UPGRADE_NAMESPACE}}},"
+    f"InferenceService: {{onnx-serverless: {UPGRADE_NAMESPACE},"
+    f"caikit-raw: {UPGRADE_NAMESPACE}, ovms-model-mesh: {UPGRADE_NAMESPACE}}}, "
+    f'Secret": {{ci-bucket-secret: {UPGRADE_NAMESPACE}, models-bucket-secret: {UPGRADE_NAMESPACE}}},'
+    f"ServiceAccount: {{models-bucket-sa: {UPGRADE_NAMESPACE}}}}}"
 )
 
 
@@ -42,6 +46,7 @@ def skipped_teardown_resources(pytestconfig) -> None:
 
 @pytest.fixture(scope="session")
 def reused_resources() -> None:
+    LOGGER.info(f"Setting `REUSE_IF_RESOURCE_EXISTS` environment variable to {UPGRADE_RESOURCES}")
     os.environ["REUSE_IF_RESOURCE_EXISTS"] = UPGRADE_RESOURCES
 
 
@@ -51,7 +56,7 @@ def model_namespace_scope_session(
 ) -> Generator[Namespace, Any, Any]:
     with create_ns(
         admin_client=admin_client,
-        name="upgrade-model-server",
+        name=UPGRADE_NAMESPACE,
         labels={"modelmesh-enabled": "true"},
     ) as ns:
         yield ns
