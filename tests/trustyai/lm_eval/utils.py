@@ -1,14 +1,17 @@
-from time import sleep
 from typing import Set
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.lm_eval_job import LMEvalJob
 from ocp_resources.pod import Pod
 
-from timeout_sampler import TimeoutWatch
+from timeout_sampler import TimeoutSampler, TimeoutExpiredError
 
 from tests.trustyai.constants import TIMEOUT_10MIN
 from utilities.infra import TIMEOUT_2MIN
+from simple_logger.logger import get_logger
+
+
+LOGGER = get_logger(name=__name__)
 
 
 def verify_lmevaljob_running(client: DynamicClient, lmevaljob: LMEvalJob) -> None:
@@ -45,7 +48,15 @@ def check_pod_status_in_time(pod: Pod, status: Set[Pod.Status], duration: int = 
         AssertionError: If pod status is not in the expected set
     """
 
-    _start = TimeoutWatch(timeout=duration)
-    while _start.remaining_time() > 0:
-        assert pod.status in status
-        sleep(wait)  # noqa: FCN001
+    sampler = TimeoutSampler(
+        wait_timeout=TIMEOUT_2MIN,
+        sleep=1,
+        func=lambda: pod.status not in (Pod.Status.RUNNING, Pod.Status.SUCCEEDED),
+    )
+
+    try:
+        for sample in sampler:
+            if sample:
+                raise AssertionError(f"Pod status is not the expected: {pod.stauts}")
+    except TimeoutExpiredError:
+        LOGGER.info(f"Pod status is {pod.status} as expected")
