@@ -113,7 +113,7 @@ def lmeval_data_downloader_pod(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     lmeval_data_pvc: PersistentVolumeClaim,
-) -> Generator[Pod]:
+) -> Generator[Pod, None, None]:
     with Pod(
         client=admin_client,
         namespace=model_namespace.name,
