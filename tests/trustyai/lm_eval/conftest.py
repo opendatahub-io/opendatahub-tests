@@ -69,7 +69,7 @@ def lmevaljob_local_offline(
 
 
 @pytest.fixture(scope="function")
-def patched_trustyai_operator_configmap_allow_online(admin_client: DynamicClient) -> Generator[ConfigMap]:
+def patched_trustyai_operator_configmap_allow_online(admin_client: DynamicClient) -> Generator[ConfigMap, None, None]:
     namespace: str = py_config["applications_namespace"]
     trustyai_service_operator: str = "trustyai-service-operator"
 
@@ -93,7 +93,9 @@ def patched_trustyai_operator_configmap_allow_online(admin_client: DynamicClient
 
 
 @pytest.fixture(scope="function")
-def lmeval_data_pvc(admin_client: DynamicClient, model_namespace: Namespace) -> Generator[PersistentVolumeClaim]:
+def lmeval_data_pvc(
+    admin_client: DynamicClient, model_namespace: Namespace
+) -> Generator[PersistentVolumeClaim, None, None]:
     with PersistentVolumeClaim(
         client=admin_client,
         name="lmeval-data",
