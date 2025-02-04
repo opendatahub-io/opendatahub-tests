@@ -30,7 +30,7 @@ def nvidia_gpu_nodes(nodes: list[Node]) -> list[Node]:
 
 
 @pytest.fixture(scope="session")
-def skip_if_no_gpu_nodes(nvidia_gpu_nodes):
+def skip_if_no_gpu_nodes(nvidia_gpu_nodes: list[Node]) -> None:
     if len(nvidia_gpu_nodes) < 2:
         pytest.skip("Multi-node tests can only run on a Cluster with at least 2 GPU Worker nodes")
 

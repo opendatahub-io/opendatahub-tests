@@ -132,6 +132,9 @@ class DscComponents:
 
 
 class Labels:
+    class OpenDataHub:
+        DASHBOARD: str = "opendatahub.io/dashboard"
+
     class KserveAuth:
         SECURITY: str = "security.opendatahub.io/enable-auth"
 
