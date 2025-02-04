@@ -33,7 +33,7 @@ from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
 @pytest.fixture(scope="package")
-def skip_if_no_deployed_openshift_serverless(admin_client: DynamicClient):
+def skip_if_no_deployed_openshift_serverless(admin_client: DynamicClient) -> None:
     name = "openshift-serverless"
     csvs = list(
         ClusterServiceVersion.get(
