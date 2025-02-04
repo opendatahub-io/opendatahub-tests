@@ -7,11 +7,16 @@ from tests.model_serving.model_runtime.vllm.constant import VLLM_SUPPORTED_QUANT
 LOGGER = get_logger(name=__name__)
 
 
-serving_argument= ["--model=/mnt/models", "--uvicorn-log-level=debug", "--chat-template=/app/data/template/tool_chat_template_mistral.jinja"]
+serving_argument = [
+    "--model=/mnt/models",
+    "--uvicorn-log-level=debug",
+    "--chat-template=/app/data/template/tool_chat_template_mistral.jinja",
+]
 
 model_path = "TheBloke/OpenHermes-2.5-Mistral-7B-AWQ"
 
 pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "valid_aws_config")
+
 
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
@@ -27,7 +32,7 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
                 "name": "mistralawq-ser",
                 "min-replicas": 1,
             },
-           # marks=pytest.mark.smoke,
+            # marks=pytest.mark.smoke,
         ),
         pytest.param(
             {"name": "mistral-awq-raw"},
@@ -97,7 +102,6 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
     indirect=True,
 )
 class TestOpenHermesAWQModel:
-
     def test_deploy_model_inference(self, vllm_inference_service, get_pod_name_resource, response_snapshot):
         if (
             vllm_inference_service.instance.metadata.annotations["serving.kserve.io/deploymentMode"]
@@ -128,6 +132,7 @@ class TestOpenHermesAWQModel:
             assert chat_responses == response_snapshot
             assert completion_responses == response_snapshot
 
+
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [
@@ -143,7 +148,7 @@ class TestOpenHermesAWQModel:
                 "name": "mistralmarlin-raw",
                 "min-replicas": 1,
             },
-        ),        
+        ),
         pytest.param(
             {"name": "mistral-sig-multi"},
             {"model-dir": model_path},
@@ -173,7 +178,6 @@ class TestOpenHermesAWQModel:
     indirect=True,
 )
 class TestOpenHermesAWQMultiGPU:
-
     def test_deploy_marlin_model_inference(self, vllm_inference_service, get_pod_name_resource, response_snapshot):
         if (
             vllm_inference_service.instance.metadata.annotations["serving.kserve.io/deploymentMode"]
