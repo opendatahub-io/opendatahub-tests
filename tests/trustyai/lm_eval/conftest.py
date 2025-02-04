@@ -19,7 +19,7 @@ from utilities.constants import Labels
 @pytest.fixture(scope="function")
 def lmevaljob_hf(
     admin_client: DynamicClient, model_namespace: Namespace, patched_trustyai_operator_configmap_allow_online: ConfigMap
-) -> Generator[LMEvalJob]:
+) -> Generator[LMEvalJob, None, None]:
     with LMEvalJob(
         client=admin_client,
         name="test-job",
@@ -45,7 +45,7 @@ def lmevaljob_local_offline(
     model_namespace: Namespace,
     patched_trustyai_operator_configmap_allow_online: ConfigMap,
     lmeval_data_downloader_pod: Pod,
-) -> Generator[LMEvalJob]:
+) -> Generator[LMEvalJob, None, None]:
     with LMEvalJob(
         client=admin_client,
         name="lmeval-test",

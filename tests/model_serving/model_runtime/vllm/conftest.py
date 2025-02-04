@@ -27,7 +27,7 @@ def serving_runtime(
     model_namespace: Namespace,
     supported_accelerator_type: str,
     vllm_runtime_image: str,
-) -> Generator[ServingRuntime]:
+) -> Generator[ServingRuntime, None, None]:
     accelerator_type = supported_accelerator_type.lower()
     template_name = TEMPLATE_MAP.get(accelerator_type, "vllm-runtime-template")
     manifest = get_runtime_manifest(
