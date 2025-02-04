@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import shlex
 from contextlib import contextmanager
 from functools import cache
@@ -156,30 +155,29 @@ def s3_endpoint_secret(
         Secret: Secret object
 
     """
-    # DO not create secret if exists in the namespace
-    reuse_secret_name = f"{name}: {namespace}"
-    reuse_env_variable = os.environ.get("REUSE_ENV_VARIABLE")
+    secret_kwargs = {"client": admin_client, "name": name, "namespace": namespace}
+    secret = Secret(**secret_kwargs)
 
-    if not reuse_env_variable or reuse_secret_name not in reuse_env_variable:
-        os.environ["REUSE_IF_RESOURCE_EXISTS"] = f"{{Secret: {{{reuse_secret_name}}}}}"
-
-    with Secret(
-        client=admin_client,
-        name=name,
-        namespace=namespace,
-        annotations={"opendatahub.io/connection-type": "s3"},
-        # the labels are needed to set the secret as data connection by odh-model-controller
-        label={"opendatahub.io/managed": "true", "opendatahub.io/dashboard": "true"},
-        data_dict=utilities.general.get_s3_secret_dict(
-            aws_access_key=aws_access_key,
-            aws_secret_access_key=aws_secret_access_key,
-            aws_s3_bucket=aws_s3_bucket,
-            aws_s3_endpoint=aws_s3_endpoint,
-            aws_s3_region=aws_s3_region,
-        ),
-        wait_for_resource=True,
-    ) as secret:
+    if secret.exists:
+        LOGGER.info(f"Secret {name} already exists in namespace {namespace}")
         yield secret
+
+    else:
+        with Secret(
+            annotations={"opendatahub.io/connection-type": "s3"},
+            # the labels are needed to set the secret as data connection by odh-model-controller
+            label={"opendatahub.io/managed": "true", "opendatahub.io/dashboard": "true"},
+            data_dict=utilities.general.get_s3_secret_dict(
+                aws_access_key=aws_access_key,
+                aws_secret_access_key=aws_secret_access_key,
+                aws_s3_bucket=aws_s3_bucket,
+                aws_s3_endpoint=aws_s3_endpoint,
+                aws_s3_region=aws_s3_region,
+            ),
+            wait_for_resource=True,
+            **secret_kwargs,
+        ) as secret:
+            yield secret
 
 
 @contextmanager
