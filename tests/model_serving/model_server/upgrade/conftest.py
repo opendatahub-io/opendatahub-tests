@@ -145,22 +145,34 @@ def openvino_serverless_serving_runtime_scope_session(
 
 @pytest.fixture(scope="session")
 def ovms_serverless_inference_service_scope_session(
+    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     openvino_serverless_serving_runtime_scope_session: ServingRuntime,
     ci_endpoint_s3_secret_scope_session: Secret,
 ) -> Generator[InferenceService, Any, Any]:
-    with create_isvc(
-        client=admin_client,
-        name="onnx-serverless",
-        namespace=openvino_serverless_serving_runtime_scope_session.namespace,
-        runtime=openvino_serverless_serving_runtime_scope_session.name,
-        storage_path="test-dir",
-        storage_key=ci_endpoint_s3_secret_scope_session.name,
-        model_format=ModelAndFormat.OPENVINO_IR,
-        deployment_mode=KServeDeploymentType.SERVERLESS,
-        model_version=ModelVersion.OPSET13,
-    ) as isvc:
+    isvc_kwargs = {
+        "client": admin_client,
+        "name": openvino_serverless_serving_runtime_scope_session.name,
+        "namespace": openvino_serverless_serving_runtime_scope_session.namespace,
+    }
+
+    isvc = InferenceService(**isvc_kwargs)
+
+    if pytestconfig.option.post_upgrade:
         yield isvc
+        isvc.clean_up()
+
+    else:
+        with create_isvc(
+            runtime=openvino_serverless_serving_runtime_scope_session.name,
+            storage_path="test-dir",
+            storage_key=ci_endpoint_s3_secret_scope_session.name,
+            model_format=ModelAndFormat.OPENVINO_IR,
+            deployment_mode=KServeDeploymentType.SERVERLESS,
+            model_version=ModelVersion.OPSET13,
+            **isvc_kwargs,
+        ) as isvc:
+            yield isvc
 
 
 @pytest.fixture(scope="session")
@@ -181,22 +193,35 @@ def caikit_raw_serving_runtime_scope_session(
 
 @pytest.fixture(scope="session")
 def caikit_raw_inference_service_scope_session(
+    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     caikit_raw_serving_runtime_scope_session: ServingRuntime,
     models_endpoint_s3_secret_scope_session: Secret,
 ) -> Generator[InferenceService, Any, Any]:
-    with create_isvc(
-        client=admin_client,
-        name="caikit-raw",
-        namespace=caikit_raw_serving_runtime_scope_session.namespace,
-        runtime=caikit_raw_serving_runtime_scope_session.name,
-        model_format=caikit_raw_serving_runtime_scope_session.instance.spec.supportedModelFormats[0].name,
-        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-        storage_key=models_endpoint_s3_secret_scope_session.name,
-        storage_path=ModelStoragePath.EMBEDDING_MODEL,
-        external_route=True,
-    ) as isvc:
+    isvc_kwargs = {
+        "client": admin_client,
+        "name": caikit_raw_serving_runtime_scope_session.name,
+        "namespace": caikit_raw_serving_runtime_scope_session.namespace,
+    }
+
+    isvc = InferenceService(**isvc_kwargs)
+
+    if pytestconfig.option.post_upgrade:
         yield isvc
+
+        isvc.clean_up()
+
+    else:
+        with create_isvc(
+            runtime=caikit_raw_serving_runtime_scope_session.name,
+            model_format=caikit_raw_serving_runtime_scope_session.instance.spec.supportedModelFormats[0].name,
+            deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+            storage_key=models_endpoint_s3_secret_scope_session.name,
+            storage_path=ModelStoragePath.EMBEDDING_MODEL,
+            external_route=True,
+            **isvc_kwargs,
+        ) as isvc:
+            yield isvc
 
 
 @pytest.fixture(scope="session")
@@ -223,21 +248,33 @@ def s3_ovms_model_mesh_serving_runtime_scope_session(
 
 @pytest.fixture(scope="session")
 def openvino_model_mesh_inference_service_scope_session(
+    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     s3_ovms_model_mesh_serving_runtime_scope_session: ServingRuntime,
     ci_endpoint_s3_secret_scope_session: Secret,
     model_mesh_model_service_account_scope_session: ServiceAccount,
 ) -> Generator[InferenceService, Any, Any]:
-    with create_isvc(
-        client=admin_client,
-        name="ovms-model-mesh",
-        namespace=s3_ovms_model_mesh_serving_runtime_scope_session.namespace,
-        runtime=s3_ovms_model_mesh_serving_runtime_scope_session.name,
-        model_service_account=model_mesh_model_service_account_scope_session.name,
-        storage_key=ci_endpoint_s3_secret_scope_session.name,
-        storage_path=ModelStoragePath.OPENVINO_EXAMPLE_MODEL,
-        model_format=ModelAndFormat.OPENVINO_IR,
-        deployment_mode=KServeDeploymentType.MODEL_MESH,
-        model_version=ModelVersion.OPSET1,
-    ) as isvc:
+    isvc_kwargs = {
+        "client": admin_client,
+        "name": s3_ovms_model_mesh_serving_runtime_scope_session.name,
+        "namespace": s3_ovms_model_mesh_serving_runtime_scope_session.namespace,
+    }
+
+    isvc = InferenceService(**isvc_kwargs)
+
+    if pytestconfig.option.post_upgrade:
         yield isvc
+        isvc.clean_up()
+
+    else:
+        with create_isvc(
+            runtime=s3_ovms_model_mesh_serving_runtime_scope_session.name,
+            model_service_account=model_mesh_model_service_account_scope_session.name,
+            storage_key=ci_endpoint_s3_secret_scope_session.name,
+            storage_path=ModelStoragePath.OPENVINO_EXAMPLE_MODEL,
+            model_format=ModelAndFormat.OPENVINO_IR,
+            deployment_mode=KServeDeploymentType.MODEL_MESH,
+            model_version=ModelVersion.OPSET1,
+            **isvc_kwargs,
+        ) as isvc:
+            yield isvc
