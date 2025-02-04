@@ -30,6 +30,7 @@ class TestKserveModelCar:
     @pytest.mark.smoke
     @pytest.mark.jira("RHOAIENG-13465")
     def test_model_car_no_restarts(self, model_car_tgis_inference_service):
+        """Verify that model pod doesn't restart"""
         pod = get_pods_by_isvc_label(
             client=model_car_tgis_inference_service.client,
             isvc=model_car_tgis_inference_service,

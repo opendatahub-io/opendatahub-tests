@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any
 from utilities.constants import AcceleratorType
 
 GRPC_PORT = 8033
@@ -9,7 +9,7 @@ TCP_PROTOCOL_NAME = "TCP"
 # Quantization
 VLLM_SUPPORTED_QUANTIZATION = ["marlin", "awq"]
 # Configurations
-vLLM_CONFIG: Dict[str, Dict[str, Any]] = {
+vLLM_CONFIG: dict[str, dict[str, Any]] = {
     "port_configurations": {
         "grpc": [{"containerPort": GRPC_PORT, "name": GRPC_PORT_NAME, "protocol": TCP_PROTOCOL_NAME}],
         "raw": [

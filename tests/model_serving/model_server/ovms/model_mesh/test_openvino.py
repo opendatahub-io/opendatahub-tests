@@ -25,6 +25,7 @@ class TestOpenVINOModelMesh:
     @pytest.mark.smoke
     @pytest.mark.polarion("ODS-2053", "ODS-2054")
     def test_model_mesh_openvino_rest_inference_internal_route(self, http_s3_openvino_model_mesh_inference_service):
+        """Test OpenVINO ModelMesh inference with internal route"""
         verify_inference_response(
             inference_service=http_s3_openvino_model_mesh_inference_service,
             inference_config=OPENVINO_INFERENCE_CONFIG,
@@ -41,6 +42,7 @@ class TestOpenVINOModelMesh:
         http_s3_openvino_model_mesh_inference_service,
         model_mesh_inference_token,
     ):
+        """Test OpenVINO ModelMesh inference with token"""
         verify_inference_response(
             inference_service=http_s3_openvino_model_mesh_inference_service,
             inference_config=OPENVINO_INFERENCE_CONFIG,

@@ -1,3 +1,5 @@
+from typing import Any, Generator
+
 import pytest
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
@@ -15,7 +17,7 @@ def patched_s3_caikit_kserve_isvc_visibility_label(
     request: FixtureRequest,
     admin_client: DynamicClient,
     s3_models_inference_service: InferenceService,
-) -> InferenceService:
+) -> Generator[InferenceService, Any, Any]:
     visibility = request.param["visibility"]
 
     labels = s3_models_inference_service.instance.metadata.labels

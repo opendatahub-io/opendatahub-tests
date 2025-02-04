@@ -1,4 +1,4 @@
-from typing import Any, Generator, List
+from typing import Any, Generator
 
 import pytest
 from _pytest.fixtures import FixtureRequest
@@ -30,7 +30,7 @@ def nvidia_gpu_nodes(nodes: list[Node]) -> list[Node]:
 
 
 @pytest.fixture(scope="session")
-def skip_if_no_gpu_nodes(nvidia_gpu_nodes):
+def skip_if_no_gpu_nodes(nvidia_gpu_nodes: list[Node]) -> None:
     if len(nvidia_gpu_nodes) < 2:
         pytest.skip("Multi-node tests can only run on a Cluster with at least 2 GPU Worker nodes")
 
@@ -91,7 +91,7 @@ def multi_node_inference_service(
 def multi_node_predictor_pods_scope_class(
     admin_client: DynamicClient,
     multi_node_inference_service: InferenceService,
-) -> List[Pod]:
+) -> list[Pod]:
     return get_pods_by_isvc_label(
         client=admin_client,
         isvc=multi_node_inference_service,
