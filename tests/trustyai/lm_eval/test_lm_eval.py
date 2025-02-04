@@ -1,8 +1,8 @@
 import pytest
 from ocp_resources.pod import Pod
 
-from tests.trustyai.constants import TIMEOUT_10MIN
 from tests.trustyai.lm_eval.utils import verify_lmevaljob_running
+from utilities.constants import Timeout
 
 
 @pytest.mark.parametrize(
@@ -19,7 +19,7 @@ def test_lmeval_huggingface_model(admin_client, model_namespace, lmevaljob_hf):
     lmevaljob_pod = Pod(
         client=admin_client, name=lmevaljob_hf.name, namespace=lmevaljob_hf.namespace, wait_for_resource=True
     )
-    lmevaljob_pod.wait_for_status(status=lmevaljob_pod.Status.SUCCEEDED, timeout=TIMEOUT_10MIN)
+    lmevaljob_pod.wait_for_status(status=lmevaljob_pod.Status.SUCCEEDED, timeout=Timeout.TIMEOUT_10MIN)
 
 
 @pytest.mark.parametrize(

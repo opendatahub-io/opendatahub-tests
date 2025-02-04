@@ -16,6 +16,7 @@ from utilities.constants import (
     Annotations,
     KServeDeploymentType,
     Labels,
+    Timeout,
 )
 from utilities.exceptions import (
     FailedPodsError,
@@ -48,7 +49,7 @@ def verify_no_failed_pods(client: DynamicClient, isvc: InferenceService, runtime
     """
     LOGGER.info("Verifying no failed pods")
     for pods in TimeoutSampler(
-        wait_timeout=5 * 60,
+        wait_timeout=Timeout.TIMEOUT_5MIN,
         sleep=10,
         func=get_pods_by_isvc_label,
         client=client,

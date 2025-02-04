@@ -14,9 +14,7 @@ from ocp_resources.trustyai_service import TrustyAIService
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
-
-from tests.trustyai.constants import TIMEOUT_1MIN, TIMEOUT_10MIN, TIMEOUT_5MIN
-from utilities.constants import MODELMESH_SERVING
+from utilities.constants import MODELMESH_SERVING, Timeout
 from utilities.exceptions import MetricValidationError
 from utilities.infra import TIMEOUT_2MIN
 from timeout_sampler import retry
@@ -133,7 +131,7 @@ def send_inference_request(
     def _make_request() -> requests.Response:
         try:
             response: requests.Response = requests.post(
-                url=url, headers=headers, data=data_batch, verify=False, timeout=TIMEOUT_1MIN
+                url=url, headers=headers, data=data_batch, verify=False, timeout=Timeout.TIMEOUT_1MIN
             )
             return response
         except requests.RequestException as e:
@@ -189,7 +187,7 @@ def send_inference_and_verify_trustyai_registered(
     )
 
     samples = TimeoutSampler(
-        wait_timeout=TIMEOUT_5MIN,
+        wait_timeout=Timeout.TIMEOUT_5MIN,
         sleep=TIMEOUT_30SEC,
         func=lambda: get_trustyai_number_of_observations(client=client, token=token, trustyai_service=trustyai_service),
     )
@@ -285,7 +283,7 @@ def wait_for_modelmesh_pods_registered_by_trustyai(client: DynamicClient, namesp
         return found_pod_with_env
 
     samples = TimeoutSampler(
-        wait_timeout=TIMEOUT_10MIN,
+        wait_timeout=Timeout.TIMEOUT_10MIN,
         sleep=TIMEOUT_2MIN,
         func=_check_pods_ready_with_env,
     )

@@ -139,6 +139,12 @@ class Labels:
         SECURITY: str = "security.opendatahub.io/enable-auth"
 
 
+class Timeout:
+    TIMEOUT_1MIN = 60
+    TIMEOUT_10MIN = 10 * TIMEOUT_1MIN
+    TIMEOUT_5MIN: int = 5 * TIMEOUT_1MIN
+
+
 MODEL_REGISTRY: str = "model-registry"
 MODELMESH_SERVING: str = "modelmesh-serving"
 ISTIO_CA_BUNDLE_FILENAME: str = "istio_knative.crt"
