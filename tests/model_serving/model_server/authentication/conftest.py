@@ -30,6 +30,7 @@ from utilities.constants import (
     ModelInferenceRuntime,
     RuntimeTemplates,
 )
+from utilities.jira import is_jira_open
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 from utilities.constants import Annotations
 from utilities.constants import Labels
@@ -186,7 +187,6 @@ def patched_remove_raw_authentication_isvc(
     admin_client: DynamicClient,
     http_s3_caikit_raw_inference_service: InferenceService,
 ) -> InferenceService:
-    # TODO: Add bug on new pod creation
     predictor_pod = get_pods_by_isvc_label(
         client=admin_client,
         isvc=http_s3_caikit_raw_inference_service,
@@ -201,7 +201,9 @@ def patched_remove_raw_authentication_isvc(
             }
         }
     ):
-        predictor_pod.wait_deleted()
+        if is_jira_open(jira_id="RHOAIENG-19275"):
+            predictor_pod.wait_deleted()
+
         yield http_s3_caikit_raw_inference_service
 
 
