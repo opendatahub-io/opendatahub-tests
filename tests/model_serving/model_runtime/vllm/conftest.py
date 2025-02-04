@@ -7,7 +7,7 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
-from tests.model_serving.model_runtime.vllm.utils import kserve_s3_endpoint_secret
+from tests.model_serving.model_runtime.vllm.utils import kserve_s3_endpoint_secret,validate_supported_quantization_schema
 from utilities.constants import KServeDeploymentType
 from pytest import FixtureRequest
 from syrupy.extensions.json import JSONSnapshotExtension
@@ -80,8 +80,11 @@ def vllm_inference_service(
         isvc_kwargs["volumes"] = PREDICT_RESOURCES["volumes"]
         isvc_kwargs["volumes_mounts"] = PREDICT_RESOURCES["volume_mounts"]
     if arguments := request.param.get("runtime_argument"):
-        arguments = [arg for arg in arguments if not arg.startswith("--tensor-parallel-size")]
+        arguments = [arg for arg in arguments if not (arg.startswith("--tensor-parallel-size") or arg.startswith("--quantization"))]
         arguments.append(f"--tensor-parallel-size={gpu_count}")
+        if quantization:= request.param.get("quantization"):
+            validate_supported_quantization_schema(q_type=quantization)
+            arguments.append(f"--quantization={quantization}")
         isvc_kwargs["argument"] = arguments
 
     if min_replicas := request.param.get("min-replicas"):

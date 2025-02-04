@@ -6,6 +6,8 @@ REST_PORT = 8080
 REST_PORT_NAME = "http1"
 GRPC_PORT_NAME = "h2c"
 TCP_PROTOCOL_NAME = "TCP"
+# Quantization
+VLLM_SUPPORTED_QUANTIZATION = ["marlin","awq"]
 # Configurations
 vLLM_CONFIG: Dict[str, Dict[str, Any]] = {
     "port_configurations": {
@@ -79,3 +81,5 @@ CHAT_QUERY = [
         },
     ],
 ]
+
+

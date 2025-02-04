@@ -14,6 +14,7 @@ from utilities.exceptions import NotSupportedError
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.plugins.openai_plugin import OpenAIClient
 from utilities.plugins.tgis_grpc_plugin import TGISGRPCPlugin
+from tests.model_serving.model_runtime.vllm.constant import VLLM_SUPPORTED_QUANTIZATION
 import portforward
 
 LOGGER = get_logger(name=__name__)
@@ -159,3 +160,7 @@ def run_raw_inference(
             return model_info, completion_responses, stream_completion_responses
         else:
             raise NotSupportedError(f"{endpoint} endpoint")
+
+def validate_supported_quantization_schema(q_type:str):
+    if q_type not in VLLM_SUPPORTED_QUANTIZATION:
+       raise ValueError(f"Unsupported quantization type: {q_type}")
