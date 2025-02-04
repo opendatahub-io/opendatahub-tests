@@ -91,11 +91,11 @@ def pytest_addoption(parser: Parser) -> None:
     )
 
 
-def pytest_cmdline_main(config):
+def pytest_cmdline_main(config: Any) -> None:
     config.option.basetemp = py_config["tmp_base_dir"] = f"{config.option.basetemp}-{shortuuid.uuid()}"
 
 
-def pytest_collection_modifyitems(session: Session, config: Config, items: list[Item]):
+def pytest_collection_modifyitems(session: Session, config: Config, items: list[Item]) -> None:
     # Filter upgrade tests based on '--pre-upgrade' / '--post-upgrade' option and marker.
     pre_upgrade_tests: list[Item] = []
     post_upgrade_tests: list[Item] = []
