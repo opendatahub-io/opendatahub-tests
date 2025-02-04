@@ -31,8 +31,8 @@ UPGRADE_RESOURCES = (
     f"ServingRuntime: {{onnx-serverless: {UPGRADE_NAMESPACE},"
     f"caikit-raw: {UPGRADE_NAMESPACE},ovms-model-mesh: {UPGRADE_NAMESPACE}}},"
     f"InferenceService: {{onnx-serverless: {UPGRADE_NAMESPACE},"
-    f"caikit-raw: {UPGRADE_NAMESPACE}, ovms-model-mesh: {UPGRADE_NAMESPACE}}}, "
-    f'Secret": {{ci-bucket-secret: {UPGRADE_NAMESPACE}, models-bucket-secret: {UPGRADE_NAMESPACE}}},'
+    f"caikit-raw: {UPGRADE_NAMESPACE}, ovms-model-mesh: {UPGRADE_NAMESPACE}}},"
+    f"Secret: {{ci-bucket-secret: {UPGRADE_NAMESPACE}, models-bucket-secret: {UPGRADE_NAMESPACE}}},"
     f"ServiceAccount: {{models-bucket-sa: {UPGRADE_NAMESPACE}}}}}"
 )
 

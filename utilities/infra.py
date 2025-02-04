@@ -157,7 +157,11 @@ def s3_endpoint_secret(
 
     """
     # DO not create secret if exists in the namespace
-    os.environ["REUSE_IF_RESOURCE_EXISTS"] = f"{{Secret: {{{name}: {namespace}}}}}"
+    reuse_secret_name = f"{name}: {namespace}"
+    reuse_env_variable = os.environ.get("REUSE_ENV_VARIABLE")
+
+    if not reuse_env_variable or reuse_secret_name not in reuse_env_variable:
+        os.environ["REUSE_IF_RESOURCE_EXISTS"] = f"{{Secret: {{{reuse_secret_name}}}}}"
 
     with Secret(
         client=admin_client,
