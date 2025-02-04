@@ -298,7 +298,7 @@ def model_registry_instance_rest_endpoint(
 
 
 @pytest.fixture(scope="class")
-def generated_schema(model_registry_instance_rest_endpoint):
+def generated_schema(model_registry_instance_rest_endpoint: str) -> Any:
     return schemathesis.from_uri(
         uri="https://raw.githubusercontent.com/kubeflow/model-registry/main/api/openapi/model-registry.yaml",
         base_url=f"https://{model_registry_instance_rest_endpoint}/",
