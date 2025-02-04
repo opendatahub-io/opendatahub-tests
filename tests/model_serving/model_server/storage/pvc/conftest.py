@@ -63,7 +63,7 @@ def predictor_pods_scope_class(
 
 @pytest.fixture()
 def patched_read_only_isvc(
-    request, pvc_inference_service: InferenceService, first_predictor_pod: Pod
+    request: FixtureRequest, pvc_inference_service: InferenceService, first_predictor_pod: Pod
 ) -> Generator[InferenceService, Any, Any]:
     with ResourceEditor(
         patches={

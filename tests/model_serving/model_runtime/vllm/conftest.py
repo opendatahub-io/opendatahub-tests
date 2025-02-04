@@ -27,7 +27,7 @@ def serving_runtime(
     model_namespace: Namespace,
     supported_accelerator_type: str,
     vllm_runtime_image: str,
-):
+) -> Generator[ServingRuntime, None, None]:
     accelerator_type = supported_accelerator_type.lower()
     template_name = TEMPLATE_MAP.get(accelerator_type, "vllm-runtime-template")
     manifest = get_runtime_manifest(
@@ -43,7 +43,7 @@ def serving_runtime(
 
 
 @pytest.fixture(scope="session")
-def skip_if_no_supported_accelerator_type(supported_accelerator_type: str):
+def skip_if_no_supported_accelerator_type(supported_accelerator_type: str) -> None:
     if not supported_accelerator_type:
         pytest.skip("Accelartor type is not provide,vLLM test can not be run on CPU")
 
@@ -71,7 +71,7 @@ def vllm_inference_service(
     accelerator_type = supported_accelerator_type.lower()
     gpu_count = request.param.get("gpu_count")
     identifier = ACCELERATOR_IDENTIFIER.get(accelerator_type, "nvidia.com/gpu")
-    resources = PREDICT_RESOURCES["resources"]
+    resources: Any = PREDICT_RESOURCES["resources"]
     resources["requests"][identifier] = gpu_count
     resources["limits"][identifier] = gpu_count
     isvc_kwargs["resources"] = resources
@@ -92,7 +92,7 @@ def vllm_inference_service(
 
 
 @pytest.fixture(scope="class")
-def vllm_model_service_account(admin_client: DynamicClient, kserve_endpoint_s3_secret: Secret):
+def vllm_model_service_account(admin_client: DynamicClient, kserve_endpoint_s3_secret: Secret) -> ServiceAccount:
     with ServiceAccount(
         client=admin_client,
         namespace=kserve_endpoint_s3_secret.namespace,
@@ -124,7 +124,7 @@ def kserve_endpoint_s3_secret(
 
 
 @pytest.fixture
-def response_snapshot(snapshot):
+def response_snapshot(snapshot: Any) -> Any:
     return snapshot.use_extension(extension_class=JSONSnapshotExtension)
 
 

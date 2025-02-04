@@ -244,7 +244,7 @@ def unprivileged_client(
 
 
 @pytest.fixture(scope="session")
-def dsc_resource(admin_client: DynamicClient):
+def dsc_resource(admin_client: DynamicClient) -> DataScienceCluster:
     name = py_config["dsc_name"]
     for dsc in DataScienceCluster.get(dyn_client=admin_client, name=name):
         return dsc
