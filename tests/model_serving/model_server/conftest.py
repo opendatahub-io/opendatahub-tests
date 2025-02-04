@@ -293,7 +293,7 @@ def model_mesh_model_service_account(
     with ServiceAccount(
         client=admin_client,
         namespace=ci_model_mesh_endpoint_s3_secret.namespace,
-        name=f"{Protocols.HTTP}-models-bucket-sa",
+        name="models-bucket-sa",
         secrets=[{"name": ci_model_mesh_endpoint_s3_secret.name}],
     ) as sa:
         yield sa

@@ -50,8 +50,10 @@ class TestPreUpgradeModelServer:
         )
 
 
+@pytest.mark.usefixtures("reused_resources")
 class TestPostUpgradeModelServer:
     @pytest.mark.post_upgrade
+    @pytest.mark.dependency(name="test_serverless_onnx_post_upgrade_inference_service_exists")
     def test_serverless_onnx_post_upgrade_inference_service_exists(
         self, ovms_serverless_inference_service_scope_session
     ):
@@ -59,7 +61,7 @@ class TestPostUpgradeModelServer:
         assert ovms_serverless_inference_service_scope_session.exists
 
     @pytest.mark.post_upgrade
-    @pytest.mark.rawdeployment
+    @pytest.mark.dependency(depends=["test_serverless_onnx_post_upgrade_inference_service_exists"])
     def test_serverless_onnx_post_upgrade_inference(self, ovms_serverless_inference_service_scope_session):
         """Verify that kserve Serverless ONNX model can be queried using REST after upgrade"""
         verify_inference_response(
@@ -71,6 +73,13 @@ class TestPostUpgradeModelServer:
         )
 
     @pytest.mark.post_upgrade
+    @pytest.mark.dependency(name="test_raw_caikit_bge_post_upgrade_inference_exists")
+    def test_raw_caikit_bge_post_upgrade_inference_exists(self, caikit_raw_inference_service_scope_session):
+        """Test that raw deployment inference service exists after upgrade"""
+        assert caikit_raw_inference_service_scope_session.exists
+
+    @pytest.mark.post_upgrade
+    @pytest.mark.dependency(depends=["test_raw_caikit_bge_post_upgrade_inference_exists"])
     def test_raw_caikit_bge_post_upgrade_inference(self, caikit_raw_inference_service_scope_session):
         """Test Caikit bge-large-en embedding model inference using internal route after upgrade"""
         verify_inference_response(
@@ -83,6 +92,15 @@ class TestPostUpgradeModelServer:
         )
 
     @pytest.mark.post_upgrade
+    @pytest.mark.dependency(name="test_model_mesh_openvino_post_upgrade_inference_exists")
+    def test_model_mesh_openvino_post_upgrade_inference_exists(
+        self, openvino_model_mesh_inference_service_scope_session
+    ):
+        """Test that model mesh inference service exists after upgrade"""
+        assert openvino_model_mesh_inference_service_scope_session.exists
+
+    @pytest.mark.post_upgrade
+    @pytest.mark.dependency(depends=["test_model_mesh_openvino_post_upgrade_inference_exists"])
     def test_model_mesh_openvino_post_upgrade_inference(self, openvino_model_mesh_inference_service_scope_session):
         """Test OpenVINO ModelMesh inference with internal route after upgrade"""
         verify_inference_response(

@@ -8,6 +8,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
+from simple_logger.logger import get_logger
 
 from tests.model_serving.model_server.utils import create_isvc
 from utilities.constants import (
@@ -18,15 +19,30 @@ from utilities.constants import (
     ModelVersion,
     RuntimeTemplates,
 )
-from utilities.infra import create_ns
+from utilities.infra import create_ns, s3_endpoint_secret
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
+LOGGER = get_logger(name=__name__)
+UPGRADE_RESOURCES = (
+    '{"Namespace": {"upgrade-model-server"},'
+    '"ServingRuntime": {"onnx-serverless","caikit-raw","ovms-model-mesh"},'
+    '"InferenceService": {"onnx-serverless","caikit-raw", "ovms-model-mesh"}, '
+    '"Secret": {"ci-bucket-secret"},'
+    '"ServiceAccount": {"models-bucket-sa"},}'
+)
+
+
 @pytest.fixture(scope="session")
-def skipped_teardown_resources() -> None:
-    os.environ["SKIP_RESOURCE_TEARDOWN"] = (
-        "{Namespace: {upgrade-model-server}, ServingRuntime: {}, InferenceService: {},Secret: {},ServiceAccount:  {}}"
-    )
+def skipped_teardown_resources(pytestconfig) -> None:
+    if not pytestconfig.option.delete_pre_upgrade_resources:
+        LOGGER.info(f"Setting `SKIP_RESOURCE_TEARDOWN` environment variable to {UPGRADE_RESOURCES}")
+        os.environ["SKIP_RESOURCE_TEARDOWN"] = UPGRADE_RESOURCES
+
+
+@pytest.fixture(scope="session")
+def reused_resources() -> None:
+    os.environ["REUSE_IF_RESOURCE_EXISTS"] = UPGRADE_RESOURCES
 
 
 @pytest.fixture(scope="session")
@@ -39,6 +55,65 @@ def model_namespace_scope_session(
         labels={"modelmesh-enabled": "true"},
     ) as ns:
         yield ns
+
+
+@pytest.fixture(scope="session")
+def models_endpoint_s3_secret_scope_session(
+    admin_client: DynamicClient,
+    model_namespace_scope_session: Namespace,
+    aws_access_key_id: str,
+    aws_secret_access_key: str,
+    models_s3_bucket_name: str,
+    models_s3_bucket_region: str,
+    models_s3_bucket_endpoint: str,
+) -> Generator[Secret, Any, Any]:
+    with s3_endpoint_secret(
+        admin_client=admin_client,
+        name="models-bucket-secret",
+        namespace=model_namespace_scope_session.name,
+        aws_access_key=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
+        aws_s3_region=models_s3_bucket_region,
+        aws_s3_bucket=models_s3_bucket_name,
+        aws_s3_endpoint=models_s3_bucket_endpoint,
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="session")
+def ci_endpoint_s3_secret_scope_session(
+    admin_client: DynamicClient,
+    model_namespace_scope_session: Namespace,
+    aws_access_key_id: str,
+    aws_secret_access_key: str,
+    ci_s3_bucket_name: str,
+    ci_s3_bucket_region: str,
+    ci_s3_bucket_endpoint: str,
+) -> Generator[Secret, Any, Any]:
+    with s3_endpoint_secret(
+        admin_client=admin_client,
+        name="ci-bucket-secret",
+        namespace=model_namespace_scope_session.name,
+        aws_access_key=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
+        aws_s3_region=ci_s3_bucket_region,
+        aws_s3_bucket=ci_s3_bucket_name,
+        aws_s3_endpoint=ci_s3_bucket_endpoint,
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="session")
+def model_mesh_model_service_account_scope_session(
+    admin_client: DynamicClient, ci_endpoint_s3_secret_scope_session: Secret
+) -> Generator[ServiceAccount, Any, Any]:
+    with ServiceAccount(
+        client=admin_client,
+        namespace=ci_endpoint_s3_secret_scope_session.namespace,
+        name="models-bucket-sa",
+        secrets=[{"name": ci_endpoint_s3_secret_scope_session.name}],
+    ) as sa:
+        yield sa
 
 
 @pytest.fixture(scope="session")
@@ -67,15 +142,15 @@ def openvino_serverless_serving_runtime_scope_session(
 def ovms_serverless_inference_service_scope_session(
     admin_client: DynamicClient,
     openvino_serverless_serving_runtime_scope_session: ServingRuntime,
-    ci_endpoint_s3_secret: Secret,
+    ci_endpoint_s3_secret_scope_session: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
-        name="serverless-ovms",
+        name="onnx-serverless",
         namespace=openvino_serverless_serving_runtime_scope_session.namespace,
         runtime=openvino_serverless_serving_runtime_scope_session.name,
         storage_path="test-dir",
-        storage_key=ci_endpoint_s3_secret.name,
+        storage_key=ci_endpoint_s3_secret_scope_session.name,
         model_format=ModelAndFormat.OPENVINO_IR,
         deployment_mode=KServeDeploymentType.SERVERLESS,
         model_version=ModelVersion.OPSET13,
@@ -103,15 +178,16 @@ def caikit_raw_serving_runtime_scope_session(
 def caikit_raw_inference_service_scope_session(
     admin_client: DynamicClient,
     caikit_raw_serving_runtime_scope_session: ServingRuntime,
-    models_endpoint_s3_secret: Secret,
+    models_endpoint_s3_secret_scope_session: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
         name="caikit-raw",
         namespace=caikit_raw_serving_runtime_scope_session.namespace,
+        runtime=caikit_raw_serving_runtime_scope_session.name,
         model_format=caikit_raw_serving_runtime_scope_session.instance.spec.supportedModelFormats[0].name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-        storage_key=models_endpoint_s3_secret.name,
+        storage_key=models_endpoint_s3_secret_scope_session.name,
         storage_path=ModelStoragePath.EMBEDDING_MODEL,
         external_route=True,
     ) as isvc:
@@ -144,16 +220,16 @@ def s3_ovms_model_mesh_serving_runtime_scope_session(
 def openvino_model_mesh_inference_service_scope_session(
     admin_client: DynamicClient,
     s3_ovms_model_mesh_serving_runtime_scope_session: ServingRuntime,
-    ci_model_mesh_endpoint_s3_secret: Secret,
-    model_mesh_model_service_account: ServiceAccount,
+    ci_endpoint_s3_secret_scope_session: Secret,
+    model_mesh_model_service_account_scope_session: ServiceAccount,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
-        name="openvino-model-mesh",
+        name="ovms-model-mesh",
         namespace=s3_ovms_model_mesh_serving_runtime_scope_session.namespace,
         runtime=s3_ovms_model_mesh_serving_runtime_scope_session.name,
-        model_service_account=model_mesh_model_service_account.name,
-        storage_key=ci_model_mesh_endpoint_s3_secret.name,
+        model_service_account=model_mesh_model_service_account_scope_session.name,
+        storage_key=ci_endpoint_s3_secret_scope_session.name,
         storage_path=ModelStoragePath.OPENVINO_EXAMPLE_MODEL,
         model_format=ModelAndFormat.OPENVINO_IR,
         deployment_mode=KServeDeploymentType.MODEL_MESH,

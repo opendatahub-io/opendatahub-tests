@@ -84,6 +84,11 @@ def pytest_addoption(parser: Parser) -> None:
         action="store_true",
         help="Run post-upgrade tests",
     )
+    upgrade_group.addoption(
+        "--delete-pre-upgrade-resources",
+        action="store_true",
+        help="Delete pre-upgrade resources; useful when debugging pre-upgrade tests",
+    )
 
 
 def pytest_cmdline_main(config):
