@@ -38,7 +38,7 @@ UPGRADE_RESOURCES = (
 
 
 @pytest.fixture(scope="session")
-def skipped_teardown_resources(pytestconfig) -> None:
+def skipped_teardown_resources(pytestconfig: pytest.Config) -> None:
     if not pytestconfig.option.delete_pre_upgrade_resources:
         LOGGER.info(f"Setting `SKIP_RESOURCE_TEARDOWN` environment variable to {UPGRADE_RESOURCES}")
         os.environ["SKIP_RESOURCE_TEARDOWN"] = UPGRADE_RESOURCES
