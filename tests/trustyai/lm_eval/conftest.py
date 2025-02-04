@@ -1,3 +1,5 @@
+from typing import Generator
+
 import pytest
 from pytest import FixtureRequest
 from kubernetes.dynamic import DynamicClient
@@ -17,7 +19,7 @@ from utilities.constants import Labels
 @pytest.fixture(scope="function")
 def lmevaljob_hf(
     admin_client: DynamicClient, model_namespace: Namespace, patched_trustyai_operator_configmap_allow_online: ConfigMap
-) -> LMEvalJob:
+) -> Generator[LMEvalJob]:
     with LMEvalJob(
         client=admin_client,
         name="test-job",
@@ -43,7 +45,7 @@ def lmevaljob_local_offline(
     model_namespace: Namespace,
     patched_trustyai_operator_configmap_allow_online: ConfigMap,
     lmeval_data_downloader_pod: Pod,
-) -> LMEvalJob:
+) -> Generator[LMEvalJob]:
     with LMEvalJob(
         client=admin_client,
         name="lmeval-test",
@@ -67,7 +69,7 @@ def lmevaljob_local_offline(
 
 
 @pytest.fixture(scope="function")
-def patched_trustyai_operator_configmap_allow_online(admin_client: DynamicClient) -> ConfigMap:
+def patched_trustyai_operator_configmap_allow_online(admin_client: DynamicClient) -> Generator[ConfigMap]:
     namespace: str = py_config["applications_namespace"]
     trustyai_service_operator: str = "trustyai-service-operator"
 
@@ -91,7 +93,7 @@ def patched_trustyai_operator_configmap_allow_online(admin_client: DynamicClient
 
 
 @pytest.fixture(scope="function")
-def lmeval_data_pvc(admin_client: DynamicClient, model_namespace: Namespace) -> PersistentVolumeClaim:
+def lmeval_data_pvc(admin_client: DynamicClient, model_namespace: Namespace) -> Generator[PersistentVolumeClaim]:
     with PersistentVolumeClaim(
         client=admin_client,
         name="lmeval-data",
@@ -109,7 +111,7 @@ def lmeval_data_downloader_pod(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     lmeval_data_pvc: PersistentVolumeClaim,
-) -> Pod:
+) -> Generator[Pod]:
     with Pod(
         client=admin_client,
         namespace=model_namespace.name,
