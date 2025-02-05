@@ -14,11 +14,11 @@ from tests.model_serving.model_runtime.vllm.utils import (
 from utilities.constants import KServeDeploymentType
 from pytest import FixtureRequest
 from syrupy.extensions.json import JSONSnapshotExtension
-from tests.model_serving.model_runtime.vllm.utils import get_runtime_manifest
 from tests.model_serving.model_server.utils import create_isvc
 from tests.model_serving.model_runtime.vllm.constant import TEMPLATE_MAP, ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES
 from simple_logger.logger import get_logger
 from utilities.infra import get_pods_by_isvc_label
+from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 LOGGER = get_logger(name=__name__)
 
@@ -33,15 +33,14 @@ def serving_runtime(
 ) -> Generator[ServingRuntime, None, None]:
     accelerator_type = supported_accelerator_type.lower()
     template_name = TEMPLATE_MAP.get(accelerator_type, "vllm-runtime-template")
-    manifest = get_runtime_manifest(
+    with ServingRuntimeFromTemplate(
         client=admin_client,
+        name="vllm-runtime",
+        namespace=model_namespace.name,
         template_name=template_name,
         deployment_type=request.param["deployment_type"],
         runtime_image=vllm_runtime_image,
-    )
-    manifest["metadata"]["name"] = "vllm-runtime"
-    manifest["metadata"]["namespace"] = model_namespace.name
-    with ServingRuntime(client=admin_client, kind_dict=manifest) as model_runtime:
+    ) as model_runtime:
         yield model_runtime
 
 
