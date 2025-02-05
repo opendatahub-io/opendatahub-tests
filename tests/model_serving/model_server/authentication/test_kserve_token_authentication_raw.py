@@ -41,7 +41,7 @@ class TestKserveTokenAuthenticationRawForRest:
             inference_service=patched_remove_raw_authentication_isvc,
             inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
             inference_type=Inference.ALL_TOKENS,
-            protocol=Protocols.HTTP,
+            protocol=Protocols.HTTPS,
             model_name=ModelFormat.CAIKIT,
             use_default_query=True,
         )

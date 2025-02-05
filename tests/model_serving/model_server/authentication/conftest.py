@@ -18,6 +18,7 @@ from pyhelper_utils.shell import run_command
 from utilities.infra import (
     create_isvc_view_role,
     create_ns,
+    get_pods_by_isvc_label,
     s3_endpoint_secret,
     create_inference_token,
 )
@@ -29,6 +30,7 @@ from utilities.constants import (
     ModelInferenceRuntime,
     RuntimeTemplates,
 )
+from utilities.jira import is_jira_open
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 from utilities.constants import Annotations
 from utilities.constants import Labels
@@ -185,6 +187,11 @@ def patched_remove_raw_authentication_isvc(
     admin_client: DynamicClient,
     http_s3_caikit_raw_inference_service: InferenceService,
 ) -> InferenceService:
+    predictor_pod = get_pods_by_isvc_label(
+        client=admin_client,
+        isvc=http_s3_caikit_raw_inference_service,
+    )[0]
+
     with ResourceEditor(
         patches={
             http_s3_caikit_raw_inference_service: {
@@ -194,6 +201,9 @@ def patched_remove_raw_authentication_isvc(
             }
         }
     ):
+        if is_jira_open(jira_id="RHOAIENG-19275"):
+            predictor_pod.wait_deleted()
+
         yield http_s3_caikit_raw_inference_service
 
 
