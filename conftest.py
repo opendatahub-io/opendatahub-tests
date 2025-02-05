@@ -20,7 +20,7 @@ BASIC_LOGGER = logging.getLogger(name="basic")
 def pytest_addoption(parser: Parser) -> None:
     aws_group = parser.getgroup(name="AWS")
     buckets_group = parser.getgroup(name="Buckets")
-    runtime_group = parser.getgroup(name="Runtime Details")
+    runtime_group = parser.getgroup(name="Runtime details")
     upgrade_group = parser.getgroup(name="Upgrade options")
 
     # AWS config and credentials options
