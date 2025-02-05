@@ -1,15 +1,15 @@
 import pytest
 
-from tests.trustyai.drift.utils import (
+from tests.model_explainability.trustyai_service.utils import (
     send_inference_requests_and_verify_trustyai_service,
-    verify_trustyai_metric_scheduling_request,
-    verify_trustyai_metric_request,
     verify_upload_data_to_trustyai_service,
-    verify_trustyai_drift_metric_delete_request,
+    verify_trustyai_metric_request,
+    TrustyAIServiceMetrics,
+    verify_trustyai_metric_scheduling_request,
+    verify_trustyai_metric_delete_request,
 )
 
-MEANSHIFT: str = "meanshift"
-BASE_DATA_PATH: str = "./tests/trustyai/drift/model_data"
+BASE_DATA_PATH: str = "./tests/model_explainability/trustyai_service/drift/model_data"
 
 
 @pytest.mark.parametrize(
@@ -67,7 +67,7 @@ class TestDriftMetrics:
             client=admin_client,
             trustyai_service=trustyai_service_with_pvc_storage,
             token=current_client_token,
-            metric_name=MEANSHIFT,
+            metric_name=TrustyAIServiceMetrics.Drift.MEANSHIFT,
             json_data={"modelId": gaussian_credit_model.name, "referenceTag": "TRAINING"},
         )
 
@@ -78,14 +78,14 @@ class TestDriftMetrics:
             client=admin_client,
             trustyai_service=trustyai_service_with_pvc_storage,
             token=current_client_token,
-            metric_name=MEANSHIFT,
+            metric_name=TrustyAIServiceMetrics.Drift.MEANSHIFT,
             json_data={"modelId": gaussian_credit_model.name, "referenceTag": "TRAINING"},
         )
 
     def test_drift_metric_delete(self, admin_client, current_client_token, trustyai_service_with_pvc_storage):
-        verify_trustyai_drift_metric_delete_request(
+        verify_trustyai_metric_delete_request(
             client=admin_client,
             trustyai_service=trustyai_service_with_pvc_storage,
             token=current_client_token,
-            metric_name=MEANSHIFT,
+            metric_name=TrustyAIServiceMetrics.Drift.MEANSHIFT,
         )

@@ -10,9 +10,9 @@ from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.trustyai_service import TrustyAIService
 
-from tests.trustyai.constants import TRUSTYAI_SERVICE
+from tests.model_explainability.constants import TRUSTYAI_SERVICE
+from tests.model_explainability.utils import update_configmap_data
 from utilities.constants import MODELMESH_SERVING
-from tests.trustyai.utils import update_configmap_data
 
 MINIO: str = "minio"
 OPENDATAHUB_IO: str = "opendatahub.io"

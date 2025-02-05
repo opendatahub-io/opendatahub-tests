@@ -1,4 +1,4 @@
-import http
+from http import HTTPMethod, HTTPStatus
 import json
 import os
 from typing import Any, Optional
@@ -15,7 +15,7 @@ from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 
-from tests.trustyai.constants import TIMEOUT_1MIN, TIMEOUT_10MIN, TIMEOUT_5MIN
+from tests.model_explainability.constants import TIMEOUT_1MIN, TIMEOUT_10MIN, TIMEOUT_5MIN
 from utilities.constants import MODELMESH_SERVING
 from utilities.exceptions import MetricValidationError
 from utilities.infra import TIMEOUT_2MIN
@@ -25,11 +25,28 @@ LOGGER = get_logger(name=__name__)
 TIMEOUT_30SEC: int = 30
 
 
-class TrustyAIServiceRequestHandler:
+class TrustyAIServiceMetrics:
+    class Fairness:
+        BASE_URL = "/metrics/group/fairness"
+        SPD: str = "spd"
+
+    class Drift:
+        BASE_URL = "/metrics/drift"
+        MEANSHIFT: str = "meanshift"
+
+
+class TrustyAIServiceClient:
     """
-    Class to encapsulate the behaviors associated to the different TrustyAIService requests we make in the tests
-    TODO: It will be moved to a more general file when we start using it in new tests.
+    Class to encapsulate the behaviors associated to the different TrustyAIService requests used in the tests
     """
+
+    class Endpoints:
+        INFO: str = "info"  # Endpoint used to get model metadata
+        DATA_UPLOAD: str = "data/upload"  # Endpoint used to upload data to TrustyAIService
+        REQUEST: str = (
+            "request"  # Endpoint used to schedule a recurrent metric calculation, or to delete a scheduled metric
+        )
+        REQUESTS: str = "requests"  # Endpoint used to get all scheduled metrics for a given metric type
 
     def __init__(self, token: str, service: TrustyAIService, client: DynamicClient):
         self.token = token
@@ -46,46 +63,29 @@ class TrustyAIServiceRequestHandler:
         data: Optional[str] = None,
         json: Optional[dict[str, Any]] = None,
     ) -> Any:
-        url = f"https://{self.service_route.host}{endpoint}"
+        url = f"https://{self.service_route.host}/{endpoint}"
 
-        if method not in ("GET", "POST", "DELETE"):
+        if method not in (HTTPMethod.GET, HTTPMethod.POST, HTTPMethod.DELETE):
             raise ValueError(f"Unsupported HTTP method: {method}")
-        if method == "GET":
+        if method == HTTPMethod.GET:
             return requests.get(url=url, headers=self.headers, verify=False)
-        elif method == "POST":
+        elif method == HTTPMethod.POST:
             return requests.post(url=url, headers=self.headers, data=data, json=json, verify=False)
-        elif method == "DELETE":
+        elif method == HTTPMethod.DELETE:
             return requests.delete(url=url, headers=self.headers, json=json, verify=False)
 
+    def _get_metric_base_url(self, metric_name: str) -> str:
+        base_url = ""
+        if hasattr(TrustyAIServiceMetrics.Fairness, metric_name.upper()):
+            base_url = TrustyAIServiceMetrics.Fairness.BASE_URL
+        elif hasattr(TrustyAIServiceMetrics.Drift, metric_name.upper()):
+            base_url = TrustyAIServiceMetrics.Drift.BASE_URL
+        else:
+            raise MetricValidationError(f"Unknown metric: {metric_name}")
+        return f"{base_url}/{metric_name}"
+
     def get_model_metadata(self) -> Any:
-        return self._send_request(endpoint="/info", method="GET")
-
-    def send_drift_metric_request(
-        self,
-        metric_name: str,
-        json: Optional[dict[str, Any]] = None,
-        schedule: bool = False,
-    ) -> Any:
-        endpoint: str = f"/metrics/drift/{metric_name}{'/request' if schedule else ''}"
-        LOGGER.info(f"Sending request for drift metric to endpoint {endpoint}")
-        return self._send_request(endpoint=endpoint, method="POST", json=json)
-
-    def get_drift_metrics(
-        self,
-        metric_name: str,
-    ) -> Any:
-        endpoint: str = f"/metrics/drift/{metric_name}/requests"
-        LOGGER.info(f"Sending request to get drift metrics to endpoint {endpoint}")
-        return self._send_request(
-            endpoint=endpoint,
-            method="GET",
-        )
-
-    def delete_drift_metric(self, metric_name: str, request_id: str) -> Any:
-        endpoint: str = f"/metrics/drift/{metric_name}/request"
-        LOGGER.info(f"Sending request to delete drift metric {request_id} to endpoint {endpoint}")
-        json_payload = {"requestId": request_id}
-        return self._send_request(endpoint=endpoint, method="DELETE", json=json_payload)
+        return self._send_request(endpoint=self.Endpoints.INFO, method=HTTPMethod.GET)
 
     def upload_data(
         self,
@@ -95,7 +95,36 @@ class TrustyAIServiceRequestHandler:
             data = file.read()
 
         LOGGER.info(f"Uploading data to TrustyAIService: {data_path}")
-        return self._send_request(endpoint="/data/upload", method="POST", data=data)
+        return self._send_request(endpoint=self.Endpoints.DATA_UPLOAD, method=HTTPMethod.POST, data=data)
+
+    def request_metric(
+        self,
+        metric_name: str,
+        json: Optional[dict[str, Any]] = None,
+        schedule: bool = False,
+    ) -> Any:
+        endpoint: str = (
+            f"/{self._get_metric_base_url(metric_name=metric_name)}/{self.Endpoints.REQUEST if schedule else ''}"
+        )
+        LOGGER.info(f"Sending request for metric {metric_name} to endpoint {endpoint}")
+        return self._send_request(endpoint=endpoint, method=HTTPMethod.POST, json=json)
+
+    def get_metrics(
+        self,
+        metric_name: str,
+    ) -> Any:
+        endpoint: str = f"{self._get_metric_base_url(metric_name=metric_name)}/{self.Endpoints.REQUESTS}"
+        LOGGER.info(f"Sending request to get drift metrics to endpoint {endpoint}")
+        return self._send_request(
+            endpoint=endpoint,
+            method=HTTPMethod.GET,
+        )
+
+    def delete_metric(self, metric_name: str, request_id: str) -> Any:
+        endpoint: str = f"{self._get_metric_base_url(metric_name=metric_name)}/{self.Endpoints.REQUEST}"
+        LOGGER.info(f"Sending request to delete {metric_name} metric {request_id} to endpoint {endpoint}")
+        json_payload = {"requestId": request_id}
+        return self._send_request(endpoint=endpoint, method=HTTPMethod.DELETE, json=json_payload)
 
 
 # TODO: Refactor code to be under utilities.inference_utils.Inference
@@ -149,7 +178,7 @@ def send_inference_request(
 
 
 def get_trustyai_number_of_observations(client: DynamicClient, token: str, trustyai_service: TrustyAIService) -> int:
-    handler = TrustyAIServiceRequestHandler(token=token, service=trustyai_service, client=client)
+    handler = TrustyAIServiceClient(token=token, service=trustyai_service, client=client)
     model_metadata: requests.Response = handler.get_model_metadata()
 
     if not model_metadata:
@@ -315,7 +344,7 @@ def validate_trustyai_response(
     errors = []
 
     # Validate HTTP status
-    if response.status_code != http.HTTPStatus.OK:
+    if response.status_code != HTTPStatus.OK:
         errors.append(f"Unexpected status code: {response.status_code}")
 
     # Validate required non-empty fields
@@ -355,9 +384,9 @@ def verify_trustyai_metric_request(
     Raise:
         MetricValidationError if some of the response fields does not have the expected value.
     """
-    response = TrustyAIServiceRequestHandler(
-        token=token, service=trustyai_service, client=client
-    ).send_drift_metric_request(metric_name=metric_name, json=json_data)
+    response = TrustyAIServiceClient(token=token, service=trustyai_service, client=client).request_metric(
+        metric_name=metric_name, json=json_data
+    )
 
     LOGGER.info(msg=f"TrustyAI metric request response: {json.dumps(json.loads(response.text), indent=2)}")
     response_data = json.loads(response.text)
@@ -391,8 +420,8 @@ def verify_trustyai_metric_scheduling_request(
         MetricValidationError: If the scheduling response or metrics retrieval response contain invalid
             or unexpected values, including empty required fields or mismatched request IDs.
     """
-    handler = TrustyAIServiceRequestHandler(token=token, service=trustyai_service, client=client)
-    response = handler.send_drift_metric_request(
+    handler = TrustyAIServiceClient(token=token, service=trustyai_service, client=client)
+    response = handler.request_metric(
         metric_name=metric_name,
         json=json_data,
         schedule=True,
@@ -407,7 +436,7 @@ def verify_trustyai_metric_scheduling_request(
     request_id = response_data.get("requestId", "")
 
     # Get and validate metrics
-    get_metrics_response = handler.get_drift_metrics(metric_name=metric_name)
+    get_metrics_response = handler.get_metrics(metric_name=metric_name)
     get_metrics_data = json.loads(get_metrics_response.text)
     LOGGER.info(msg=f"TrustyAI scheduled metrics: {get_metrics_data}")
 
@@ -452,10 +481,10 @@ def verify_upload_data_to_trustyai_service(
         + json.loads(data)["request"]["inputs"][0]["shape"][0]
     )
 
-    response = TrustyAIServiceRequestHandler(token=token, service=trustyai_service, client=client).upload_data(
+    response = TrustyAIServiceClient(token=token, service=trustyai_service, client=client).upload_data(
         data_path=data_path
     )
-    assert response.status_code == http.HTTPStatus.OK
+    assert response.status_code == HTTPStatus.OK
 
     actual_num_observations: int = get_trustyai_number_of_observations(
         client=client, token=token, trustyai_service=trustyai_service
@@ -463,11 +492,11 @@ def verify_upload_data_to_trustyai_service(
     assert expected_num_observations >= actual_num_observations
 
 
-def verify_trustyai_drift_metric_delete_request(
+def verify_trustyai_metric_delete_request(
     client: DynamicClient, trustyai_service: TrustyAIService, token: str, metric_name: str
 ) -> None:
     """
-    Deletes a drift metric request from the TrustyAI service and verifies that the deletion was successful.
+    Deletes a metric request from the TrustyAI service and verifies that the deletion was successful.
 
     Args:
         client (DynamicClient): The client instance for interacting with the cluster.
@@ -479,27 +508,27 @@ def verify_trustyai_drift_metric_delete_request(
         ValueError: If there are no metrics to delete.
         AssertionError: If the deletion request fails or the number of metrics after deletion is not as expected.
     """
-    handler = TrustyAIServiceRequestHandler(token=token, service=trustyai_service, client=client)
+    handler = TrustyAIServiceClient(token=token, service=trustyai_service, client=client)
 
-    drift_metrics_response = handler.get_drift_metrics(metric_name=metric_name)
-    drift_metrics_data = json.loads(drift_metrics_response.text)
-    initial_num_metrics: int = len(drift_metrics_data.get("requests", []))
+    metrics_response = handler.get_metrics(metric_name=metric_name)
+    metrics_data = json.loads(metrics_response.text)
+    initial_num_metrics: int = len(metrics_data.get("requests", []))
 
     if initial_num_metrics < 1:
         raise ValueError(f"No metrics found for {metric_name}. Cannot perform deletion.")
 
-    request_id: str = drift_metrics_data["requests"][0]["id"]
+    request_id: str = metrics_data["requests"][0]["id"]
 
-    delete_response = handler.delete_drift_metric(metric_name=metric_name, request_id=request_id)
+    delete_response = handler.delete_metric(metric_name=metric_name, request_id=request_id)
 
-    assert delete_response.status_code == http.HTTPStatus.OK, (
+    assert delete_response.status_code == HTTPStatus.OK, (
         f"Delete request failed with status code: {delete_response.status_code}"
     )
 
     # Verify the number of metrics after deletion is N-1
-    updated_drift_metrics_response = handler.get_drift_metrics(metric_name=metric_name)
-    updated_drift_metrics_data = json.loads(updated_drift_metrics_response.text)
-    updated_num_metrics: int = len(updated_drift_metrics_data.get("requests", []))
+    updated_metrics_response = handler.get_metrics(metric_name=metric_name)
+    updated_metrics_data = json.loads(updated_metrics_response.text)
+    updated_num_metrics: int = len(updated_metrics_data.get("requests", []))
 
     assert updated_num_metrics == initial_num_metrics - 1, (
         f"Number of metrics after deletion is {updated_num_metrics}, expected {initial_num_metrics - 1}"

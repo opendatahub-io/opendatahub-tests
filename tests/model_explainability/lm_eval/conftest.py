@@ -12,7 +12,7 @@ from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from pytest_testconfig import py_config
 
-from tests.trustyai.constants import TIMEOUT_10MIN
+from tests.model_explainability.constants import TIMEOUT_10MIN
 from utilities.constants import Labels
 
 
