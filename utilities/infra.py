@@ -166,7 +166,7 @@ def s3_endpoint_secret(
         namespace=namespace,
         annotations={"opendatahub.io/connection-type": "s3"},
         # the labels are needed to set the secret as data connection by odh-model-controller
-        label={"opendatahub.io/managed": "true", {Labels.OpenDataHub.DASHBOARD}: "true"},
+        label={"opendatahub.io/managed": "true", Labels.OpenDataHub.DASHBOARD: "true"},
         data_dict=utilities.general.get_s3_secret_dict(
             aws_access_key=aws_access_key,
             aws_secret_access_key=aws_secret_access_key,
