@@ -2,7 +2,7 @@ import pytest
 from typing import Self
 from simple_logger.logger import get_logger
 
-
+from ocp_resources.data_science_cluster import DataScienceCluster
 from utilities.constants import Protocols, DscComponents
 from model_registry import ModelRegistry
 
@@ -28,14 +28,15 @@ class TestModelRegistryCreation:
     for the duration of this test module.
     """
 
-    # TODO: Switch to Python client
     @pytest.mark.smoke
     def test_registering_model(
-        self: Self, model_registry_instance_rest_endpoint: str, current_client_token: str, updated_dsc_component_state
+        self: Self,
+        model_registry_instance_rest_endpoint: str,
+        current_client_token: str,
+        updated_dsc_component_state: DataScienceCluster,
     ):
         # address and port need to be split in the client instantiation
-        server = model_registry_instance_rest_endpoint.split(":")[0]
-        port = model_registry_instance_rest_endpoint.split(":")[1]
+        server, port = model_registry_instance_rest_endpoint.split(":")
         registry = ModelRegistry(
             server_address=f"{Protocols.HTTPS}://{server}",
             port=port,
