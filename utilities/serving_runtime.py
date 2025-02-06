@@ -3,6 +3,7 @@ from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.template import Template
+from tests.model_serving.model_runtime.vllm.constant import vLLM_CONFIG
 from pytest_testconfig import config as py_config
 
 
@@ -22,6 +23,8 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         enable_external_route: Optional[bool] = None,
         enable_auth: Optional[bool] = None,
         protocol: Optional[str] = None,
+        deployment_type: Optional[str] = None,
+        runtime_image: Optional[str] = None,
     ):
         """
         ServingRuntimeFromTemplate class
@@ -52,6 +55,8 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         self.resources = resources
         self.model_format_name = model_format_name
         self.unprivileged_client = unprivileged_client
+        self.deployment_type = deployment_type
+        self.runtime_image = runtime_image
 
         # model mesh attributes
         self.enable_external_route = enable_external_route
@@ -134,6 +139,23 @@ class ServingRuntimeFromTemplate(ServingRuntime):
 
             if self.resources is not None and (resource_dict := self.resources.get(container["name"])):
                 container["resources"] = resource_dict
+
+            if self.runtime_image is not None:
+                container["image"] = self.runtime_image
+
+            if "vllm" in self.template_name and self.runtime_image is not None and self.deployment_type is not None:
+                is_grpc = "grpc" in self.deployment_type.lower()
+                is_raw = "raw" in self.deployment_type.lower()
+                # Remove '--model' from the container args, we will pass this using isvc
+                container["args"] = [arg for arg in container["args"] if "--model" not in arg]
+                # Update command if deployment type is grpc
+                if is_grpc or is_raw:
+                    container["command"][-1] = vLLM_CONFIG["commands"]["GRPC"]
+
+                if is_grpc:
+                    container["ports"] = vLLM_CONFIG["port_configurations"]["grpc"]
+                elif is_raw:
+                    container["ports"] = vLLM_CONFIG["port_configurations"]["raw"]
 
         if self.model_format_name is not None:
             for model in _model_dict["spec"]["supportedModelFormats"]:
