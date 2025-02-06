@@ -3,7 +3,7 @@ from typing import Self
 from simple_logger.logger import get_logger
 
 
-from utilities.constants import Protocols
+from utilities.constants import Protocols, DscComponents
 from model_registry import ModelRegistry
 
 
