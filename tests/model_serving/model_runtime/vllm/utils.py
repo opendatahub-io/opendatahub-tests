@@ -1,64 +1,18 @@
 from contextlib import contextmanager
 from typing import Generator, Any
 from kubernetes.dynamic import DynamicClient
-from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.secret import Secret
-from ocp_resources.template import Template
-from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.inference_service import InferenceService
-from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
-from tests.model_serving.model_runtime.vllm.constant import vLLM_CONFIG
 from tests.model_serving.model_runtime.vllm.constant import CHAT_QUERY, COMPLETION_QUERY
 from utilities.exceptions import NotSupportedError
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.plugins.openai_plugin import OpenAIClient
 from utilities.plugins.tgis_grpc_plugin import TGISGRPCPlugin
+from tests.model_serving.model_runtime.vllm.constant import VLLM_SUPPORTED_QUANTIZATION
 import portforward
 
 LOGGER = get_logger(name=__name__)
-
-
-def get_runtime_manifest(
-    client: DynamicClient, template_name: str, deployment_type: str, runtime_image: str
-) -> ServingRuntime:
-    # Get the model template and extract the runtime dictionary
-    template = get_model_template(client=client, template_name=template_name)
-    runtime_dict: dict[str, Any] = template.instance.objects[0].to_dict()
-
-    # Determine deployment type conditions early
-    is_grpc = "grpc" in deployment_type.lower()
-    is_raw = "raw" in deployment_type.lower()
-
-    # Loop through containers and apply changes
-    for container in runtime_dict["spec"]["containers"]:
-        if runtime_image:
-            container["image"] = runtime_image
-        # Remove '--model' from the container args, we will pass this using isvc
-        container["args"] = [arg for arg in container["args"] if "--model" not in arg]
-
-        # Update command if deployment type is grpc
-        if is_grpc or is_raw:
-            container["command"][-1] = vLLM_CONFIG["commands"]["GRPC"]
-
-        if is_grpc:
-            container["ports"] = vLLM_CONFIG["port_configurations"]["grpc"]
-        elif is_raw:
-            container["ports"] = vLLM_CONFIG["port_configurations"]["raw"]
-
-    return runtime_dict
-
-
-def get_model_template(client: DynamicClient, template_name: str) -> Template:
-    template = Template(
-        client=client,
-        name=template_name,
-        namespace=py_config["applications_namespace"],
-    )
-    if template.exists:
-        return template
-
-    raise ResourceNotFoundError(f"{template_name} template not found")
 
 
 @contextmanager
@@ -159,3 +113,13 @@ def run_raw_inference(
             return model_info, completion_responses, stream_completion_responses
         else:
             raise NotSupportedError(f"{endpoint} endpoint")
+
+
+def validate_supported_quantization_schema(q_type: str) -> None:
+    if q_type not in VLLM_SUPPORTED_QUANTIZATION:
+        raise ValueError(f"Unsupported quantization type: {q_type}")
+
+
+def validate_inferenec_output(*args: tuple[str, ...], response_snapshot: Any) -> None:
+    for data in args:
+        assert data == response_snapshot, f"output mismatch for {data}"

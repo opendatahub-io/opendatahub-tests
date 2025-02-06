@@ -7,15 +7,18 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
-from tests.model_serving.model_runtime.vllm.utils import kserve_s3_endpoint_secret
+from tests.model_serving.model_runtime.vllm.utils import (
+    kserve_s3_endpoint_secret,
+    validate_supported_quantization_schema,
+)
 from utilities.constants import KServeDeploymentType
 from pytest import FixtureRequest
 from syrupy.extensions.json import JSONSnapshotExtension
-from tests.model_serving.model_runtime.vllm.utils import get_runtime_manifest
 from tests.model_serving.model_server.utils import create_isvc
 from tests.model_serving.model_runtime.vllm.constant import TEMPLATE_MAP, ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES
 from simple_logger.logger import get_logger
 from utilities.infra import get_pods_by_isvc_label
+from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 LOGGER = get_logger(name=__name__)
 
@@ -30,15 +33,14 @@ def serving_runtime(
 ) -> Generator[ServingRuntime, None, None]:
     accelerator_type = supported_accelerator_type.lower()
     template_name = TEMPLATE_MAP.get(accelerator_type, "vllm-runtime-template")
-    manifest = get_runtime_manifest(
+    with ServingRuntimeFromTemplate(
         client=admin_client,
+        name="vllm-runtime",
+        namespace=model_namespace.name,
         template_name=template_name,
         deployment_type=request.param["deployment_type"],
         runtime_image=vllm_runtime_image,
-    )
-    manifest["metadata"]["name"] = "vllm-runtime"
-    manifest["metadata"]["namespace"] = model_namespace.name
-    with ServingRuntime(client=admin_client, kind_dict=manifest) as model_runtime:
+    ) as model_runtime:
         yield model_runtime
 
 
@@ -80,8 +82,15 @@ def vllm_inference_service(
         isvc_kwargs["volumes"] = PREDICT_RESOURCES["volumes"]
         isvc_kwargs["volumes_mounts"] = PREDICT_RESOURCES["volume_mounts"]
     if arguments := request.param.get("runtime_argument"):
-        arguments = [arg for arg in arguments if not arg.startswith("--tensor-parallel-size")]
+        arguments = [
+            arg
+            for arg in arguments
+            if not (arg.startswith("--tensor-parallel-size") or arg.startswith("--quantization"))
+        ]
         arguments.append(f"--tensor-parallel-size={gpu_count}")
+        if quantization := request.param.get("quantization"):
+            validate_supported_quantization_schema(q_type=quantization)
+            arguments.append(f"--quantization={quantization}")
         isvc_kwargs["argument"] = arguments
 
     if min_replicas := request.param.get("min-replicas"):
