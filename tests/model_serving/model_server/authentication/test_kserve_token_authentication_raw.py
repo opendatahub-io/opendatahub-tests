@@ -2,6 +2,7 @@ import pytest
 from ocp_resources.resource import ResourceEditor
 
 from tests.model_serving.model_server.utils import verify_inference_response
+from utilities.constants import ModelFormat, ModelStoragePath, Protocols, ModelInferenceRuntime
 from utilities.constants import Labels, ModelFormat, ModelStoragePath, Protocols
 from utilities.inference_utils import Inference
 from utilities.infra import check_pod_status_in_time, get_pods_by_isvc_label
@@ -80,3 +81,33 @@ class TestKserveTokenAuthenticationRawForRest:
         ).update()
 
         check_pod_status_in_time(pod=pod, status={pod.Status.RUNNING})
+
+    @pytest.mark.dependency(depends=["test_disabled_raw_model_authentication"])
+    def test_re_enabled_raw_model_authentication(self, http_s3_caikit_raw_inference_service, http_raw_inference_token):
+        """Verify model query after authentication is re-enabled"""
+        verify_inference_response(
+            inference_service=http_s3_caikit_raw_inference_service,
+            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
+            inference_type=Inference.ALL_TOKENS,
+            protocol=Protocols.HTTPS,
+            model_name=ModelFormat.CAIKIT,
+            use_default_query=True,
+            token=http_raw_inference_token,
+        )
+
+    @pytest.mark.skip(reason="Skipping test_cross_model_authentication_raw: RHOAIRFE-534")
+    @pytest.mark.dependency(name="test_cross_model_authentication_raw")
+    def test_cross_model_authentication_raw(self, http_s3_caikit_raw_inference_service_2,
+                                           http_raw_inference_token):
+        """Verify model with another model token"""
+
+        verify_inference_response(
+            inference_service=http_s3_caikit_raw_inference_service_2,
+            runtime=ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME,
+            inference_type=Inference.ALL_TOKENS,
+            protocol=Protocols.HTTPS,
+            model_name=ModelFormat.CAIKIT,
+            use_default_query=True,
+            token=http_raw_inference_token,
+            authorized_user=False,
+        )

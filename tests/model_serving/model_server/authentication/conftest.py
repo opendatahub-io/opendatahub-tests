@@ -117,6 +117,24 @@ def http_raw_view_role(
     ) as role:
         yield role
 
+@pytest.fixture(scope="class")
+def http_raw_role_binding_2(
+        admin_client: DynamicClient,
+        http_raw_view_role_2: Role,
+        model_service_account_2: ServiceAccount,
+        http_s3_caikit_raw_inference_service_2: InferenceService,
+) -> RoleBinding:
+    with RoleBinding(
+            client=admin_client,
+            namespace=model_service_account_2.namespace,
+            name=f"{Protocols.HTTP}-{model_service_account_2.name}-view",
+            role_ref_name=http_raw_view_role_2.name,
+            role_ref_kind=http_raw_view_role_2.kind,
+            subjects_kind=model_service_account_2.kind,
+            subjects_name=model_service_account_2.name,
+    ) as rb:
+        yield rb
+
 
 @pytest.fixture(scope="class")
 def http_role_binding(
@@ -155,6 +173,24 @@ def http_raw_role_binding(
     ) as rb:
         yield rb
 
+@pytest.fixture(scope="class")
+def http_raw_role_binding_2(
+        admin_client: DynamicClient,
+        http_raw_view_role_2: Role,
+        model_service_account_2: ServiceAccount,
+        http_s3_caikit_raw_inference_service_2: InferenceService,
+) -> RoleBinding:
+    with RoleBinding(
+            client=admin_client,
+            namespace=model_service_account_2.namespace,
+            name=f"{Protocols.HTTP}-{model_service_account_2.name}-view",
+            role_ref_name=http_raw_view_role_2.name,
+            role_ref_kind=http_raw_view_role_2.kind,
+            subjects_kind=model_service_account_2.kind,
+            subjects_name=model_service_account_2.name,
+    ) as rb:
+        yield rb
+
 
 @pytest.fixture(scope="class")
 def http_inference_token(model_service_account: ServiceAccount, http_role_binding: RoleBinding) -> str:
@@ -164,6 +200,10 @@ def http_inference_token(model_service_account: ServiceAccount, http_role_bindin
 @pytest.fixture(scope="class")
 def http_raw_inference_token(model_service_account: ServiceAccount, http_raw_role_binding: RoleBinding) -> str:
     return create_inference_token(model_service_account=model_service_account)
+
+@pytest.fixture(scope="class")
+def http_raw_inference_token_2(model_service_account_2: ServiceAccount, http_raw_role_binding_2: RoleBinding) -> str:
+    return create_inference_token(model_service_account=model_service_account_2)
 
 
 @pytest.fixture()
@@ -297,6 +337,28 @@ def http_s3_caikit_raw_inference_service(
     ) as isvc:
         yield isvc
 
+@pytest.fixture(scope="class")
+def http_s3_caikit_raw_inference_service_2(
+        request: FixtureRequest,
+        admin_client: DynamicClient,
+        model_namespace: Namespace,
+        http_s3_caikit_tgis_serving_runtime: ServingRuntime,
+        s3_models_storage_uri: str,
+        model_service_account_2: ServiceAccount,
+) -> InferenceService:
+    with create_isvc(
+            client=admin_client,
+            name=f"{Protocols.HTTP}-{ModelFormat.CAIKIT}-2",
+            namespace=model_namespace.name,
+            runtime=http_s3_caikit_tgis_serving_runtime.name,
+            storage_uri=s3_models_storage_uri,
+            model_format=http_s3_caikit_tgis_serving_runtime.instance.spec.supportedModelFormats[0].name,
+            deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+            model_service_account=model_service_account_2.name,
+            enable_auth=True,
+            external_route=True,
+    ) as isvc:
+        yield isvc
 
 # Unprivileged user tests
 @pytest.fixture(scope="class")

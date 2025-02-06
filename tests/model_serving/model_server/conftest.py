@@ -94,6 +94,16 @@ def model_service_account(
     ) as sa:
         yield sa
 
+@pytest.fixture(scope="class")
+def model_service_account_2(admin_client: DynamicClient, models_endpoint_s3_secret: Secret) -> ServiceAccount:
+    with ServiceAccount(
+            client=admin_client,
+            namespace=models_endpoint_s3_secret.namespace,
+            name="models-bucket-sa-2",
+            secrets=[{"name": models_endpoint_s3_secret.name}],
+    ) as sa:
+        yield sa
+
 
 @pytest.fixture(scope="class")
 def serving_runtime_from_template(
