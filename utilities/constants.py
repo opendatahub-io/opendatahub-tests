@@ -1,15 +1,4 @@
-from typing import Any, Dict
-
 from ocp_resources.resource import Resource
-from utilities.manifests.caikit_standalone import CAIKIT_STANDALONE_INFERENCE_CONFIG
-from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
-from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
-from utilities.manifests.openvino import (
-    OPENVINO_INFERENCE_CONFIG,
-    OPENVINO_KSERVE_INFERENCE_CONFIG,
-)
-from utilities.manifests.tgis_grpc import TGIS_INFERENCE_CONFIG
-from utilities.manifests.vllm import VLLM_INFERENCE_CONFIG
 
 
 class KServeDeploymentType:
@@ -24,6 +13,7 @@ class ModelFormat:
     OPENVINO: str = "openvino"
     OVMS: str = "ovms"
     VLLM: str = "vllm"
+    TENSORFLOW: str = "tensorflow"
 
 
 class ModelName:
@@ -36,6 +26,7 @@ class ModelAndFormat:
     FLAN_T5_SMALL_CAIKIT: str = f"{ModelName.FLAN_T5_SMALL}-{ModelFormat.CAIKIT}"
     OPENVINO_IR: str = f"{ModelFormat.OPENVINO}_ir"
     KSERVE_OPENVINO_IR: str = f"{OPENVINO_IR}_kserve"
+    ONNX_1: str = f"{ModelFormat.ONNX}-1"
 
 
 class ModelStoragePath:
@@ -43,6 +34,8 @@ class ModelStoragePath:
     OPENVINO_EXAMPLE_MODEL: str = f"{ModelFormat.OPENVINO}-example-model"
     KSERVE_OPENVINO_EXAMPLE_MODEL: str = f"kserve-openvino-test/{OPENVINO_EXAMPLE_MODEL}"
     EMBEDDING_MODEL: str = "embeddingsmodel"
+    TENSORFLOW_MODEL: str = "inception_resnet_v2.pb"
+    OPENVINO_VEHICLE_DETECTION: str = "vehicle-detection"
 
 
 class CurlOutput:
@@ -73,16 +66,7 @@ class ModelInferenceRuntime:
     ONNX_RUNTIME: str = f"{ModelFormat.ONNX}-runtime"
     CAIKIT_STANDALONE_RUNTIME: str = f"{ModelFormat.CAIKIT}-standalone-runtime"
     VLLM_RUNTIME: str = f"{ModelFormat.VLLM}-runtime"
-
-    MAPPING: Dict[str, Any] = {
-        CAIKIT_TGIS_RUNTIME: CAIKIT_TGIS_INFERENCE_CONFIG,
-        OPENVINO_RUNTIME: OPENVINO_INFERENCE_CONFIG,
-        OPENVINO_KSERVE_RUNTIME: OPENVINO_KSERVE_INFERENCE_CONFIG,
-        TGIS_RUNTIME: TGIS_INFERENCE_CONFIG,
-        ONNX_RUNTIME: ONNX_INFERENCE_CONFIG,
-        CAIKIT_STANDALONE_RUNTIME: CAIKIT_STANDALONE_INFERENCE_CONFIG,
-        VLLM_RUNTIME: VLLM_INFERENCE_CONFIG,
-    }
+    TENSORFLOW_RUNTIME: str = f"{ModelFormat.TENSORFLOW}-runtime"
 
 
 class Protocols:
@@ -117,11 +101,44 @@ class Annotations:
     class KserveIo:
         DEPLOYMENT_MODE: str = "serving.kserve.io/deploymentMode"
 
+    class KserveAuth:
+        SECURITY: str = "security.opendatahub.io/enable-auth"
+
 
 class StorageClassName:
     NFS: str = "nfs"
 
 
+class DscComponents:
+    MODELMESHSERVING: str = "modelmeshserving"
+    KSERVE: str = "kserve"
+    MODELREGISTRY: str = "modelregistry"
+
+    class ManagementState:
+        MANAGED: str = "Managed"
+        REMOVED: str = "Removed"
+
+    class ConditionType:
+        MODEL_REGISTRY_READY: str = "ModelRegistryReady"
+        KSERVE_READY: str = "KserveReady"
+        MODEL_MESH_SERVING_READY: str = "ModelMeshServingReady"
+
+    COMPONENT_MAPPING: dict[str, str] = {
+        MODELMESHSERVING: ConditionType.MODEL_MESH_SERVING_READY,
+        KSERVE: ConditionType.KSERVE_READY,
+        MODELREGISTRY: ConditionType.MODEL_REGISTRY_READY,
+    }
+
+
+class Labels:
+    class OpenDataHub:
+        DASHBOARD: str = "opendatahub.io/dashboard"
+
+    class KserveAuth:
+        SECURITY: str = "security.opendatahub.io/enable-auth"
+
+
+MODEL_REGISTRY: str = "model-registry"
 MODELMESH_SERVING: str = "modelmesh-serving"
 ISTIO_CA_BUNDLE_FILENAME: str = "istio_knative.crt"
 OPENSHIFT_CA_BUNDLE_FILENAME: str = "openshift_ca.crt"

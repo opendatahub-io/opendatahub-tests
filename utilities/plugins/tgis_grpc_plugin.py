@@ -3,7 +3,7 @@ import socket
 import ssl
 import sys
 from utilities.plugins.tgis_grpc import generation_pb2_grpc
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 from simple_logger.logger import get_logger
 
 
@@ -49,7 +49,7 @@ class TGISGRPCPlugin:
         credentials = self._channel_credentials()
         return grpc.secure_channel(self.host, credentials) if credentials else grpc.insecure_channel(self.host)
 
-    def make_grpc_request(self, query: Dict[str, Any]) -> Any:
+    def make_grpc_request(self, query: dict[str, Any]) -> Any:
         channel = self._create_channel()
         stub = generation_pb2_grpc.GenerationServiceStub(channel)
 
@@ -64,6 +64,7 @@ class TGISGRPCPlugin:
 
         try:
             response = stub.Generate(request=request)
+            LOGGER.info(response)
             response = response.responses[0]
             return {
                 "input_tokens": response.input_token_count,
@@ -74,7 +75,7 @@ class TGISGRPCPlugin:
         except grpc.RpcError as err:
             self._handle_grpc_error(err)
 
-    def make_grpc_request_stream(self, query: Dict[str, Any]) -> Any:
+    def make_grpc_request_stream(self, query: dict[str, Any]) -> Any:
         channel = self._create_channel()
         stub = generation_pb2_grpc.GenerationServiceStub(channel)
 
@@ -109,7 +110,7 @@ class TGISGRPCPlugin:
         stub = generation_pb2_grpc.GenerationServiceStub(channel)
 
         request = generation_pb2_grpc.generation__pb2.ModelInfoRequest()  # type: ignore
-
+        LOGGER.info(request)
         try:
             response = stub.ModelInfo(request=request)
             return response

@@ -9,7 +9,6 @@ extend-exclude = ["utilities/manifests"]
 exclude = [".git", ".venv", ".mypy_cache", ".tox", "__pycache__", "utilities/manifests"]
 
 [tool.mypy]
-exclude = ["utilities/plugins/tgis_grpc/"]
 check_untyped_defs = true
 disallow_any_generics = true
 disallow_incomplete_defs = true
@@ -62,6 +61,9 @@ dependencies = [
     "pytest-testconfig>=0.2.0",
     "pytest-jira>=0.3.21",
     "pygithub>=2.5.0",
+    "timeout-sampler>=1.0.6",
+    "shortuuid>=1.0.13",
+    "jira>=3.8.0",
 ]
 
 [project.urls]

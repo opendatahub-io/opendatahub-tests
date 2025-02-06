@@ -30,6 +30,11 @@ RUN curl -L https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/sta
     && mv oc /usr/bin/oc \
     && chmod +x /usr/bin/oc
 
+# Install grpcurl
+RUN curl -sSL "https://github.com/fullstorydev/grpcurl/releases/download/v1.9.2/grpcurl_1.9.2_linux_x86_64.tar.gz"  --output /tmp/grpcurl_1.2.tar.gz \
+    && tar xvf /tmp/grpcurl_1.2.tar.gz --no-same-owner \
+    && mv grpcurl /usr/bin/grpcurl
+
 RUN useradd -ms /bin/bash $USER
 USER $USER
 WORKDIR $HOME_DIR

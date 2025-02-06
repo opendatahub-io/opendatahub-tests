@@ -5,9 +5,13 @@ from tests.model_serving.model_server.multi_node.utils import (
     verify_ray_status,
 )
 from tests.model_serving.model_server.utils import verify_inference_response
-from utilities.constants import ModelInferenceRuntime, Protocols, StorageClassName
+from utilities.constants import Protocols, StorageClassName
+from utilities.manifests.vllm import VLLM_INFERENCE_CONFIG
 
-pytestmark = pytest.mark.usefixtures("skip_if_no_gpu_nodes", "skip_if_no_nfs_storage_class")
+pytestmark = [
+    pytest.mark.rawdeployment,
+    pytest.mark.usefixtures("skip_if_no_gpu_nodes", "skip_if_no_nfs_storage_class"),
+]
 
 
 @pytest.mark.parametrize(
@@ -61,7 +65,7 @@ class TestMultiNode:
         """Test multi node basic inference"""
         verify_inference_response(
             inference_service=multi_node_inference_service,
-            runtime=ModelInferenceRuntime.VLLM_RUNTIME,
+            inference_config=VLLM_INFERENCE_CONFIG,
             inference_type="completions",
             protocol=Protocols.HTTP,
             use_default_query=True,

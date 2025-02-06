@@ -1,3 +1,5 @@
+from typing import Any, Generator
+
 import pytest
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
@@ -15,7 +17,7 @@ def model_car_tgis_inference_service(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     serving_runtime_from_template: ServingRuntime,
-) -> InferenceService:
+) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
         name="tgis-model-car",

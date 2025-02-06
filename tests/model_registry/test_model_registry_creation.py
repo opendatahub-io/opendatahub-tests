@@ -2,17 +2,33 @@ import pytest
 from typing import Self
 from simple_logger.logger import get_logger
 
+
 from utilities.constants import Protocols
 from model_registry import ModelRegistry
+
 
 LOGGER = get_logger(name=__name__)
 
 
+@pytest.mark.parametrize(
+    "updated_dsc_component_state",
+    [
+        pytest.param(
+            {
+                "component_name": DscComponents.MODELREGISTRY,
+                "desired_state": DscComponents.ManagementState.MANAGED,
+            },
+        )
+    ],
+    indirect=True,
+)
 class TestModelRegistryCreation:
-    """Tests the creation of a model registry"""
+    """
+    Tests the creation of a model registry. If the component is set to 'Removed' it will be switched to 'Managed'
+    for the duration of this test module.
+    """
 
-    # TODO: Enable Model Registry in DSC if needed
-
+    # TODO: Switch to Python client
     @pytest.mark.smoke
     def test_registering_model(self: Self, model_registry_instance_rest_endpoint: str, current_client_token: str):
         # address and port need to be split in the client instantiation
