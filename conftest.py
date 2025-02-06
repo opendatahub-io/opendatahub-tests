@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import os
 import pathlib
@@ -96,13 +98,17 @@ def pytest_cmdline_main(config: Any) -> None:
 
 
 def pytest_collection_modifyitems(session: Session, config: Config, items: list[Item]) -> None:
-    # Filter upgrade tests based on '--pre-upgrade' / '--post-upgrade' option and marker.
+    """
+    Pytest fixture to filter or re-order the items in-place.
+
+    Filters upgrade tests based on '--pre-upgrade' / '--post-upgrade' option and marker.
+    """
     pre_upgrade_tests: list[Item] = []
     post_upgrade_tests: list[Item] = []
     non_upgrade_tests: list[Item] = []
 
-    run_pre_upgrade_tests = config.getoption(name="pre_upgrade")
-    run_post_upgrade_tests = config.getoption(name="post_upgrade")
+    run_pre_upgrade_tests: str | None = config.getoption(name="pre_upgrade")
+    run_post_upgrade_tests: str | None = config.getoption(name="post_upgrade")
 
     for item in items:
         if "pre_upgrade" in item.keywords:

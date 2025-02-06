@@ -24,9 +24,9 @@ from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
 LOGGER = get_logger(name=__name__)
-UPGRADE_NAMESPACE = "upgrade-model-server"
+UPGRADE_NAMESPACE: str = "upgrade-model-server"
 
-UPGRADE_RESOURCES = (
+UPGRADE_RESOURCES: str = (
     f"{{Namespace: {{{UPGRADE_NAMESPACE:}}},"
     f"ServingRuntime: {{onnx-serverless: {UPGRADE_NAMESPACE},"
     f"caikit-raw: {UPGRADE_NAMESPACE},ovms-model-mesh: {UPGRADE_NAMESPACE}}},"
