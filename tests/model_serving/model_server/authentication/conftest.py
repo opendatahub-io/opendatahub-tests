@@ -26,6 +26,7 @@ from tests.model_serving.model_server.utils import create_isvc
 from utilities.constants import (
     KServeDeploymentType,
     ModelFormat,
+    ModelStoragePath,
     Protocols,
     ModelInferenceRuntime,
     RuntimeTemplates,
@@ -186,7 +187,7 @@ def patched_remove_authentication_isvc(
 def patched_remove_raw_authentication_isvc(
     admin_client: DynamicClient,
     http_s3_caikit_raw_inference_service: InferenceService,
-) -> InferenceService:
+) -> Generator[InferenceService, Any, Any]:
     predictor_pod = get_pods_by_isvc_label(
         client=admin_client,
         isvc=http_s3_caikit_raw_inference_service,
@@ -208,7 +209,9 @@ def patched_remove_raw_authentication_isvc(
 
 
 @pytest.fixture(scope="class")
-def grpc_view_role(admin_client: DynamicClient, grpc_s3_inference_service: InferenceService) -> Role:
+def grpc_view_role(
+    admin_client: DynamicClient, grpc_s3_inference_service: InferenceService
+) -> Generator[Role, Any, Any]:
     with create_isvc_view_role(
         client=admin_client,
         isvc=grpc_s3_inference_service,
@@ -224,7 +227,7 @@ def grpc_role_binding(
     grpc_view_role: Role,
     grpc_model_service_account: ServiceAccount,
     grpc_s3_inference_service: InferenceService,
-) -> RoleBinding:
+) -> Generator[RoleBinding, Any, Any]:
     with RoleBinding(
         client=admin_client,
         namespace=grpc_model_service_account.namespace,
@@ -254,7 +257,7 @@ def http_s3_caikit_serverless_inference_service(
     http_s3_caikit_tgis_serving_runtime: ServingRuntime,
     s3_models_storage_uri: str,
     models_endpoint_s3_secret: Secret,
-) -> InferenceService:
+) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
         name=f"{Protocols.HTTP}-{ModelFormat.CAIKIT}",
@@ -277,7 +280,7 @@ def http_s3_caikit_raw_inference_service(
     http_s3_caikit_tgis_serving_runtime: ServingRuntime,
     s3_models_storage_uri: str,
     model_service_account: ServiceAccount,
-) -> InferenceService:
+) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
         name=f"{Protocols.HTTP}-{ModelFormat.CAIKIT}",
@@ -307,7 +310,7 @@ def unprivileged_s3_caikit_serving_runtime(
     admin_client: DynamicClient,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
-) -> ServingRuntime:
+) -> Generator[ServingRuntime, Any, Any]:
     with ServingRuntimeFromTemplate(
         client=admin_client,
         unprivileged_client=unprivileged_client,
@@ -330,7 +333,7 @@ def unprivileged_models_endpoint_s3_secret(
     models_s3_bucket_name: str,
     models_s3_bucket_region: str,
     models_s3_bucket_endpoint: str,
-) -> Secret:
+) -> Generator[Secret, Any, Any]:
     with s3_endpoint_secret(
         admin_client=unprivileged_client,
         name="models-bucket-secret",
@@ -351,7 +354,7 @@ def unprivileged_s3_caikit_serverless_inference_service(
     unprivileged_model_namespace: Namespace,
     unprivileged_s3_caikit_serving_runtime: ServingRuntime,
     unprivileged_models_endpoint_s3_secret: Secret,
-) -> InferenceService:
+) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelFormat.CAIKIT}",
@@ -370,7 +373,7 @@ def http_s3_caikit_tgis_serving_runtime(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
-) -> ServingRuntime:
+) -> Generator[ServingRuntime, Any, Any]:
     with ServingRuntimeFromTemplate(
         client=admin_client,
         name=f"{Protocols.HTTP}-{ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME}",
@@ -381,3 +384,24 @@ def http_s3_caikit_tgis_serving_runtime(
         enable_grpc=False,
     ) as model_runtime:
         yield model_runtime
+
+
+@pytest.fixture(scope="class")
+def unprivileged_s3_caikit_raw_inference_service(
+    request: FixtureRequest,
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+    unprivileged_s3_caikit_serving_runtime: ServingRuntime,
+    unprivileged_models_endpoint_s3_secret: Secret,
+) -> Generator[InferenceService, Any, Any]:
+    with create_isvc(
+        client=unprivileged_client,
+        name=f"{Protocols.HTTP}-{ModelFormat.CAIKIT}-raw",
+        namespace=unprivileged_model_namespace.name,
+        runtime=unprivileged_s3_caikit_serving_runtime.name,
+        model_format=unprivileged_s3_caikit_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+        storage_key=unprivileged_models_endpoint_s3_secret.name,
+        storage_path=ModelStoragePath.FLAN_T5_SMALL_CAIKIT,
+    ) as isvc:
+        yield isvc

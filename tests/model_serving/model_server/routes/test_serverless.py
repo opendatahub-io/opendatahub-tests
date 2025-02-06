@@ -29,7 +29,7 @@ pytestmark = [pytest.mark.usefixtures("valid_aws_config"), pytest.mark.serverles
             {
                 "name": f"{Protocols.HTTP}-{ModelFormat.CAIKIT}",
                 "deployment-mode": KServeDeploymentType.SERVERLESS,
-                "model-dir": ModelStoragePath.FLAN_T5_SMALL,
+                "model-dir": ModelStoragePath.FLAN_T5_SMALL_CAIKIT,
             },
         )
     ],

@@ -13,7 +13,7 @@ pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config"
     [
         pytest.param(
             {"name": "kserve-token-authentication"},
-            {"model-dir": ModelStoragePath.FLAN_T5_SMALL},
+            {"model-dir": ModelStoragePath.FLAN_T5_SMALL_CAIKIT},
         )
     ],
     indirect=True,

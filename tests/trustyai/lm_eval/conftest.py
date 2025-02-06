@@ -12,8 +12,7 @@ from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from pytest_testconfig import py_config
 
-from tests.trustyai.constants import TIMEOUT_10MIN
-from utilities.constants import Labels
+from utilities.constants import Labels, Timeout
 
 
 @pytest.fixture(scope="function")
@@ -137,5 +136,5 @@ def lmeval_data_downloader_pod(
         restart_policy="Never",
         volumes=[{"name": "pvc-volume", "persistentVolumeClaim": {"claimName": "lmeval-data"}}],
     ) as pod:
-        pod.wait_for_status(status=Pod.Status.SUCCEEDED, timeout=TIMEOUT_10MIN)
+        pod.wait_for_status(status=Pod.Status.SUCCEEDED, timeout=Timeout.TIMEOUT_10MIN)
         yield pod

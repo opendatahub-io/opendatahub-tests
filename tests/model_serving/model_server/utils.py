@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from string import Template
 from typing import Any, Generator, Optional
@@ -15,6 +16,7 @@ from utilities.constants import (
     Annotations,
     KServeDeploymentType,
     Labels,
+    Timeout,
 )
 from utilities.exceptions import (
     FailedPodsError,
@@ -45,32 +47,47 @@ def verify_no_failed_pods(client: DynamicClient, isvc: InferenceService, runtime
             FailedPodsError: If any pod is in failed state
 
     """
-    failed_pods: dict[str, Any] = {}
-
     LOGGER.info("Verifying no failed pods")
     for pods in TimeoutSampler(
-        wait_timeout=5 * 60,
+        wait_timeout=Timeout.TIMEOUT_5MIN,
         sleep=10,
         func=get_pods_by_isvc_label,
         client=client,
         isvc=isvc,
         runtime_name=runtime_name,
     ):
+        ready_pods = 0
+        failed_pods: dict[str, Any] = {}
+
         if pods:
-            if all([pod.instance.status.phase == pod.Status.RUNNING for pod in pods]):
+            for pod in pods:
+                for condition in pod.instance.status.conditions:
+                    if condition.type == pod.Status.READY and condition.status == pod.Condition.Status.TRUE:
+                        ready_pods += 1
+
+            if ready_pods == len(pods):
                 return
 
             for pod in pods:
                 pod_status = pod.instance.status
+
                 if pod_status.containerStatuses:
                     for container_status in pod_status.containerStatuses:
-                        if (state := container_status.state.waiting) and state.reason == pod.Status.IMAGE_PULL_BACK_OFF:
+                        is_waiting_pull_back_off = (
+                            wait_state := container_status.state.waiting
+                        ) and wait_state.reason == pod.Status.IMAGE_PULL_BACK_OFF
+
+                        is_terminated_error = (
+                            terminate_state := container_status.state.terminated
+                        ) and terminate_state.reason in (pod.Status.ERROR, pod.Status.CRASH_LOOPBACK_OFF)
+
+                        if is_waiting_pull_back_off or is_terminated_error:
                             failed_pods[pod.name] = pod_status
 
-                if init_container_status := pod_status.initContainerStatuses:
-                    if container_terminated := init_container_status[0].lastState.terminated:
-                        if container_terminated.reason == "Error":
-                            failed_pods[pod.name] = pod_status
+                        if init_container_status := pod_status.initContainerStatuses:
+                            if container_terminated := init_container_status[0].lastState.terminated:
+                                if container_terminated.reason == "Error":
+                                    failed_pods[pod.name] = pod_status
 
                 elif pod_status.phase in (
                     pod.Status.CRASH_LOOPBACK_OFF,
@@ -399,3 +416,50 @@ def verify_inference_response(
 
         else:
             raise InferenceResponseError(f"Inference response output not found in response. Response: {res}")
+
+
+def run_inference_multiple_times(
+    isvc: InferenceService,
+    inference_config: dict[str, Any],
+    inference_type: str,
+    protocol: str,
+    model_name: str,
+    iterations: int,
+    run_in_parallel: bool = False,
+) -> None:
+    """
+    Run inference multiple times.
+
+    Args:
+        isvc (InferenceService): Inference service.
+        inference_config (dict[str, Any]): Inference config.
+        inference_type (str): Inference type.
+        protocol (str): Protocol.
+        model_name (str): Model name.
+        iterations (int): Number of iterations.
+        run_in_parallel (bool, optional): Run inference in parallel.
+
+    """
+    futures = []
+
+    with ThreadPoolExecutor() as executor:
+        for iteration in range(iterations):
+            infer_kwargs = {
+                "inference_service": isvc,
+                "inference_config": inference_config,
+                "inference_type": inference_type,
+                "protocol": protocol,
+                "model_name": model_name,
+                "use_default_query": True,
+            }
+
+            if run_in_parallel:
+                futures.append(executor.submit(verify_inference_response, **infer_kwargs))
+            else:
+                verify_inference_response(**infer_kwargs)
+
+        if futures:
+            for result in as_completed(futures):
+                _exception = result.exception()
+                if _exception:
+                    LOGGER.error(f"Failed to run inference. Error: {_exception}")
