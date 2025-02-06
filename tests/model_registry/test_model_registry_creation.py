@@ -30,7 +30,9 @@ class TestModelRegistryCreation:
 
     # TODO: Switch to Python client
     @pytest.mark.smoke
-    def test_registering_model(self: Self, model_registry_instance_rest_endpoint: str, current_client_token: str):
+    def test_registering_model(
+        self: Self, model_registry_instance_rest_endpoint: str, current_client_token: str, updated_dsc_component_state
+    ):
         # address and port need to be split in the client instantiation
         server = model_registry_instance_rest_endpoint.split(":")[0]
         port = model_registry_instance_rest_endpoint.split(":")[1]
