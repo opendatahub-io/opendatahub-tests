@@ -45,8 +45,8 @@ class TestModelRegistryCreation:
             is_secure=False,
         )
         model = registry.register_model(
-            name="my-model",  # model name
-            uri="https://storage-place.my-company.com",  # model URI
+            name="my-model",
+            uri="https://storage-place.my-company.com",
             version="2.0.0",
             description="lorem ipsum",
             model_format_name="onnx",
@@ -54,7 +54,6 @@ class TestModelRegistryCreation:
             storage_key="my-data-connection",
             storage_path="path/to/model",
             metadata={
-                # can be one of the following types
                 "int_key": 1,
                 "bool_key": False,
                 "float_key": 3.14,
