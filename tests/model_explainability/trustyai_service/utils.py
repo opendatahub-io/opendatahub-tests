@@ -1,25 +1,26 @@
-from http import HTTPMethod, HTTPStatus
+from http import HTTPStatus
 import json
 import os
 from typing import Any, Optional
 
 import requests
 from kubernetes.dynamic import DynamicClient
-from kubernetes.dynamic.exceptions import NotFoundError
+from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
-from ocp_resources.namespace import Namespace
-from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 from ocp_resources.trustyai_service import TrustyAIService
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 
-from tests.model_explainability.constants import TIMEOUT_1MIN, TIMEOUT_10MIN, TIMEOUT_5MIN
-from utilities.constants import MODELMESH_SERVING
+from tests.model_explainability.constants import TIMEOUT_1MIN, TIMEOUT_10MIN
+from utilities.constants import Protocols
 from utilities.exceptions import MetricValidationError
-from utilities.infra import TIMEOUT_2MIN
+from utilities.inference_utils import UserInference, Inference
 from timeout_sampler import retry
+
+from utilities.infra import create_isvc_label_selector_str
+from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
 
 LOGGER = get_logger(name=__name__)
 TIMEOUT_30SEC: int = 30
@@ -65,17 +66,16 @@ class TrustyAIServiceClient:
     ) -> Any:
         url = f"https://{self.service_route.host}/{endpoint}"
 
-        if method not in (HTTPMethod.GET, HTTPMethod.POST, HTTPMethod.DELETE):
+        if method not in ("GET", "POST", "DELETE"):
             raise ValueError(f"Unsupported HTTP method: {method}")
-        if method == HTTPMethod.GET:
+        if method == "GET":
             return requests.get(url=url, headers=self.headers, verify=False)
-        elif method == HTTPMethod.POST:
+        elif method == "POST":
             return requests.post(url=url, headers=self.headers, data=data, json=json, verify=False)
-        elif method == HTTPMethod.DELETE:
+        elif method == "DELETE":
             return requests.delete(url=url, headers=self.headers, json=json, verify=False)
 
     def _get_metric_base_url(self, metric_name: str) -> str:
-        base_url = ""
         if hasattr(TrustyAIServiceMetrics.Fairness, metric_name.upper()):
             base_url = TrustyAIServiceMetrics.Fairness.BASE_URL
         elif hasattr(TrustyAIServiceMetrics.Drift, metric_name.upper()):
@@ -85,7 +85,7 @@ class TrustyAIServiceClient:
         return f"{base_url}/{metric_name}"
 
     def get_model_metadata(self) -> Any:
-        return self._send_request(endpoint=self.Endpoints.INFO, method=HTTPMethod.GET)
+        return self._send_request(endpoint=self.Endpoints.INFO, method="GET")
 
     def upload_data(
         self,
@@ -95,7 +95,7 @@ class TrustyAIServiceClient:
             data = file.read()
 
         LOGGER.info(f"Uploading data to TrustyAIService: {data_path}")
-        return self._send_request(endpoint=self.Endpoints.DATA_UPLOAD, method=HTTPMethod.POST, data=data)
+        return self._send_request(endpoint=self.Endpoints.DATA_UPLOAD, method="POST", data=data)
 
     def request_metric(
         self,
@@ -107,7 +107,7 @@ class TrustyAIServiceClient:
             f"/{self._get_metric_base_url(metric_name=metric_name)}/{self.Endpoints.REQUEST if schedule else ''}"
         )
         LOGGER.info(f"Sending request for metric {metric_name} to endpoint {endpoint}")
-        return self._send_request(endpoint=endpoint, method=HTTPMethod.POST, json=json)
+        return self._send_request(endpoint=endpoint, method="POST", json=json)
 
     def get_metrics(
         self,
@@ -117,21 +117,21 @@ class TrustyAIServiceClient:
         LOGGER.info(f"Sending request to get drift metrics to endpoint {endpoint}")
         return self._send_request(
             endpoint=endpoint,
-            method=HTTPMethod.GET,
+            method="GET",
         )
 
     def delete_metric(self, metric_name: str, request_id: str) -> Any:
         endpoint: str = f"{self._get_metric_base_url(metric_name=metric_name)}/{self.Endpoints.REQUEST}"
         LOGGER.info(f"Sending request to delete {metric_name} metric {request_id} to endpoint {endpoint}")
         json_payload = {"requestId": request_id}
-        return self._send_request(endpoint=endpoint, method=HTTPMethod.DELETE, json=json_payload)
+        return self._send_request(endpoint=endpoint, method="DELETE", json=json_payload)
 
 
 # TODO: Refactor code to be under utilities.inference_utils.Inference
 @retry(wait_timeout=TIMEOUT_30SEC, sleep=5)
 def send_inference_request(
-    token: str,
     client: DynamicClient,
+    token: str,
     inference_service: InferenceService,
     data_batch: Any,
     file_path: str,
@@ -141,6 +141,7 @@ def send_inference_request(
     Send data batch to inference service with retry logic for network errors.
 
     Args:
+        client: Dynamic client used to interact with the cluster
         token: Authentication token
         inference_route: Route of the inference service
         data_batch: Data to be sent
@@ -154,9 +155,9 @@ def send_inference_request(
         RequestException: If all retry attempts fail
     """
 
-    inference_route: Route = Route(client=client, namespace=inference_service.namespace, name=inference_service.name)
-
-    url: str = f"https://{inference_route.host}{inference_route.instance.spec.path}/infer"
+    temp_url = inference_service.instance.status["url"]
+    url = f"https://{temp_url}" if not temp_url.startswith("http") else temp_url
+    url = f"{url}/v2/models/{inference_service.name}/infer"
     headers: dict[str, str] = {"Authorization": f"Bearer {token}"}
 
     def _make_request() -> requests.Response:
@@ -166,7 +167,6 @@ def send_inference_request(
             )
             return response
         except requests.RequestException as e:
-            LOGGER.error(response.text)
             LOGGER.error(f"Error sending data for file: {file_path}. Error: {str(e)}")
             raise
 
@@ -213,13 +213,26 @@ def send_inference_and_verify_trustyai_registered(
     trustyai_service: TrustyAIService,
     expected_observations: int,
 ) -> None:
-    send_inference_request(
-        client=client, token=token, inference_service=inference_service, data_batch=data_batch, file_path=file_path
+    inference = UserInference(
+        inference_service=inference_service,
+        # runtime=ModelInferenceRuntime.OPENVINO_RUNTIME,
+        inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
+        inference_type=Inference.INFER,
+        protocol=Protocols.HTTPS,
     )
 
+    res = inference.run_inference_flow(
+        model_name=inference_service.name,
+        inference_input=data_batch,
+        use_default_query=False,
+        token=token,
+        insecure=True,
+    )
+    LOGGER.debug(res)
+
     samples = TimeoutSampler(
-        wait_timeout=TIMEOUT_5MIN,
-        sleep=TIMEOUT_30SEC,
+        wait_timeout=180,
+        sleep=1,
         func=lambda: get_trustyai_number_of_observations(client=client, token=token, trustyai_service=trustyai_service),
     )
 
@@ -259,7 +272,7 @@ def send_inference_requests_and_verify_trustyai_service(
             current_observations = get_trustyai_number_of_observations(
                 client=client, token=token, trustyai_service=trustyai_service
             )
-            expected_observations: int = current_observations + json.loads(data)["inputs"][0]["shape"][0]
+            expected_observations: int = current_observations + json.loads(data)[0]["shape"][0]
 
             send_inference_and_verify_trustyai_registered(
                 token=token,
@@ -272,51 +285,46 @@ def send_inference_requests_and_verify_trustyai_service(
             )
 
 
-def wait_for_modelmesh_pods_registered_by_trustyai(client: DynamicClient, namespace: Namespace) -> None:
+def wait_for_isvc_deployment_registered_by_trustyaiservice(
+    client: DynamicClient, isvc: InferenceService, trustyai_service: TrustyAIService, runtime_name: str
+) -> None:
     """
     Check if all the ModelMesh pods in a given namespace are
     ready and have been registered by the TrustyAIService in that same namespace.
 
     Args:
         client (DynamicClient): The client instance for interacting with the cluster.
-        namespace (Namespace): The namespace where ModelMesh pods and TrustyAIService are deployed.
+        isvc (InferenceService): The InferenceService related to the deployment.
+        runtime_name (str): The name of the serving runtime of the isvc
     """
+    label_selector = create_isvc_label_selector_str(isvc=isvc, resource_type="deployment", runtime_name=runtime_name)
 
-    def _check_pods_ready_with_env() -> bool:
-        modelmesh_pods: list[Pod] = [
-            pod
-            for pod in Pod.get(client=client, namespace=namespace)
-            if pod.labels.get("modelmesh-service") == MODELMESH_SERVING
-        ]
+    def _check_deployments_ready() -> bool:
+        deployments = list(
+            Deployment.get(
+                label_selector=label_selector,
+                client=client,
+                namespace=isvc.namespace,
+            )
+        )
 
-        found_pod_with_env: bool = False
+        if not deployments:
+            return False
 
-        for pod in modelmesh_pods:
-            try:
-                has_env_var = False
-                # Check containers for environment variable
-                for container in pod.instance.spec.containers:
-                    if container.env is not None and any(env.name == "MM_PAYLOAD_PROCESSORS" for env in container.env):
-                        has_env_var = True
-                        found_pod_with_env = True
-                        break
+        for deployment in deployments:
+            if (
+                deployment.instance.metadata.annotations.get("internal.serving.kserve.io/logger-sink-url")
+                == f"http://{trustyai_service.name}.{isvc.namespace}.svc.cluster.local"
+            ):
+                deployment.wait_for_replicas()
+                return True
 
-                # If pod has env var but isn't running, return False
-                if has_env_var and pod.status != Pod.Status.RUNNING:
-                    return False
-
-            except NotFoundError:
-                # Ignore pods that were deleted during the process
-                continue
-
-        # Return True only if we found at least one pod with the env var
-        # and all pods with the env var are running
-        return found_pod_with_env
+        return False
 
     samples = TimeoutSampler(
         wait_timeout=TIMEOUT_10MIN,
-        sleep=TIMEOUT_2MIN,
-        func=_check_pods_ready_with_env,
+        sleep=1,
+        func=_check_deployments_ready,
     )
     for sample in samples:
         if sample:

@@ -28,10 +28,12 @@ from ocp_resources.serving_runtime import ServingRuntime
 from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
+from timeout_sampler import TimeoutSampler
 
-import utilities.general
-from utilities.constants import Labels
-from utilities.general import create_isvc_label_selector_str
+from utilities.constants import Labels, KServeDeploymentType, Annotations, MODELMESH_SERVING
+from utilities.exceptions import InvalidStorageArgumentError, FailedPodsError
+from utilities.general import get_s3_secret_dict
+from utilities.jira import is_jira_open
 
 LOGGER = get_logger(name=__name__)
 TIMEOUT_2MIN = 2 * 60
@@ -167,7 +169,7 @@ def s3_endpoint_secret(
         annotations={"opendatahub.io/connection-type": "s3"},
         # the labels are needed to set the secret as data connection by odh-model-controller
         label={"opendatahub.io/managed": "true", Labels.OpenDataHub.DASHBOARD: "true"},
-        data_dict=utilities.general.get_s3_secret_dict(
+        data_dict=get_s3_secret_dict(
             aws_access_key=aws_access_key,
             aws_secret_access_key=aws_secret_access_key,
             aws_s3_bucket=aws_s3_bucket,
@@ -439,3 +441,271 @@ def create_inference_token(model_service_account: ServiceAccount) -> str:
     return run_command(
         shlex.split(f"oc create token -n {model_service_account.namespace} {model_service_account.name}")
     )[1].strip()
+
+
+def create_isvc_label_selector_str(isvc: InferenceService, resource_type: str, runtime_name: str | None = None) -> str:
+    """
+    Creates a label selector string for the given InferenceService.
+
+    Args:
+        isvc (InferenceService): InferenceService object
+        resource_type (str): Type of the resource: service or other for model mesh
+        runtime_name (str): ServingRuntime name
+
+    Returns:
+        str: Label selector string
+
+    Raises:
+        ValueError: If the deployment mode is not supported
+
+    """
+    deployment_mode = isvc.instance.metadata.annotations.get(Annotations.KserveIo.DEPLOYMENT_MODE)
+    if deployment_mode in (
+        KServeDeploymentType.SERVERLESS,
+        KServeDeploymentType.RAW_DEPLOYMENT,
+    ):
+        return f"{isvc.ApiGroup.SERVING_KSERVE_IO}/inferenceservice={isvc.name}"
+
+    elif deployment_mode == KServeDeploymentType.MODEL_MESH:
+        if resource_type == "service":
+            return f"modelmesh-service={MODELMESH_SERVING}"
+        else:
+            return f"name={MODELMESH_SERVING}-{runtime_name}"
+
+    else:
+        raise ValueError(f"Unknown deployment mode {deployment_mode}")
+
+
+def verify_no_failed_pods(client: DynamicClient, isvc: InferenceService, runtime_name: str | None) -> None:
+    """
+    Verify no failed pods.
+
+    Args:
+        client (DynamicClient): DynamicClient object
+        isvc (InferenceService): InferenceService object
+        runtime_name (str): ServingRuntime name
+
+    Raises:
+            FailedPodsError: If any pod is in failed state
+
+    """
+    failed_pods: dict[str, Any] = {}
+
+    LOGGER.info("Verifying no failed pods")
+    for pods in TimeoutSampler(
+        wait_timeout=5 * 60,
+        sleep=10,
+        func=get_pods_by_isvc_label,
+        client=client,
+        isvc=isvc,
+        runtime_name=runtime_name,
+    ):
+        if pods:
+            if all([pod.instance.status.phase == pod.Status.RUNNING for pod in pods]):
+                return
+
+            for pod in pods:
+                pod_status = pod.instance.status
+                if pod_status.containerStatuses:
+                    for container_status in pod_status.containerStatuses:
+                        if (state := container_status.state.waiting) and state.reason == pod.Status.IMAGE_PULL_BACK_OFF:
+                            failed_pods[pod.name] = pod_status
+
+                if init_container_status := pod_status.initContainerStatuses:
+                    if container_terminated := init_container_status[0].lastState.terminated:
+                        if container_terminated.reason == "Error":
+                            failed_pods[pod.name] = pod_status
+
+                elif pod_status.phase in (
+                    pod.Status.CRASH_LOOPBACK_OFF,
+                    pod.Status.FAILED,
+                    pod.Status.IMAGE_PULL_BACK_OFF,
+                    pod.Status.ERR_IMAGE_PULL,
+                ):
+                    failed_pods[pod.name] = pod_status
+
+            if failed_pods:
+                raise FailedPodsError(pods=failed_pods)
+
+
+@contextmanager
+def create_isvc(
+    client: DynamicClient,
+    name: str,
+    namespace: str,
+    deployment_mode: str,
+    model_format: str,
+    runtime: str,
+    storage_uri: Optional[str] = None,
+    storage_key: Optional[str] = None,
+    storage_path: Optional[str] = None,
+    wait: bool = True,
+    enable_auth: bool = False,
+    external_route: Optional[bool] = None,
+    model_service_account: Optional[str] = "",
+    min_replicas: Optional[int] = None,
+    argument: Optional[list[str]] = None,
+    resources: Optional[dict[str, Any]] = None,
+    volumes: Optional[dict[str, Any]] = None,
+    volumes_mounts: Optional[dict[str, Any]] = None,
+    model_version: Optional[str] = None,
+    wait_for_predictor_pods: bool = True,
+    autoscaler_mode: Optional[str] = None,
+    multi_node_worker_spec: Optional[dict[str, int]] = None,
+) -> Generator[InferenceService, Any, Any]:
+    """
+    Create InferenceService object.
+
+    Args:
+        client (DynamicClient): DynamicClient object
+        name (str): InferenceService name
+        namespace (str): Namespace name
+        deployment_mode (str): Deployment mode
+        model_format (str): Model format
+        runtime (str): ServingRuntime name
+        storage_uri (str): Storage URI
+        storage_key (str): Storage key
+        storage_path (str): Storage path
+        wait (bool): Wait for InferenceService to be ready
+        enable_auth (bool): Enable authentication
+        external_route (bool): External route
+        model_service_account (str): Model service account
+        min_replicas (int): Minimum replicas
+        argument (list[str]): Argument
+        resources (dict[str, Any]): Resources
+        volumes (dict[str, Any]): Volumes
+        volumes_mounts (dict[str, Any]): Volumes mounts
+        model_version (str): Model version
+        wait_for_predictor_pods (bool): Wait for predictor pods
+        autoscaler_mode (str): Autoscaler mode
+        multi_node_worker_spec (dict[str, int]): Multi node worker spec
+        wait_for_predictor_pods (bool): Wait for predictor pods
+
+    Yields:
+        InferenceService: InferenceService object
+
+    """
+    labels: dict[str, str] = {}
+    predictor_dict: dict[str, Any] = {
+        "minReplicas": min_replicas,
+        "model": {
+            "modelFormat": {"name": model_format},
+            "version": "1",
+            "runtime": runtime,
+        },
+    }
+
+    if model_version:
+        predictor_dict["model"]["modelFormat"]["version"] = model_version
+
+    _check_storage_arguments(storage_uri=storage_uri, storage_key=storage_key, storage_path=storage_path)
+    if storage_uri:
+        predictor_dict["model"]["storageUri"] = storage_uri
+    elif storage_key:
+        predictor_dict["model"]["storage"] = {"key": storage_key, "path": storage_path}
+    if model_service_account:
+        predictor_dict["serviceAccountName"] = model_service_account
+
+    if min_replicas:
+        predictor_dict["minReplicas"] = min_replicas
+    if argument:
+        predictor_dict["model"]["args"] = argument
+    if resources:
+        predictor_dict["model"]["resources"] = resources
+    if volumes_mounts:
+        predictor_dict["model"]["volumeMounts"] = volumes_mounts
+    if volumes:
+        predictor_dict["volumes"] = volumes
+
+    annotations = {Annotations.KserveIo.DEPLOYMENT_MODE: deployment_mode}
+
+    if deployment_mode == KServeDeploymentType.SERVERLESS:
+        annotations.update({
+            "serving.knative.openshift.io/enablePassthrough": "true",
+            "sidecar.istio.io/inject": "true",
+            "sidecar.istio.io/rewriteAppHTTPProbers": "true",
+        })
+
+    if enable_auth:
+        # model mesh auth is set in servingruntime
+        if deployment_mode == KServeDeploymentType.SERVERLESS:
+            annotations[Annotations.KserveAuth.SECURITY] = "true"
+        elif deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
+            labels[Labels.KserveAuth.SECURITY] = "true"
+
+    # default to True if deployment_mode is Serverless (default behavior of Serverless) if was not provided by the user
+    # model mesh external route is set in servingruntime
+    if external_route is None and deployment_mode == KServeDeploymentType.SERVERLESS:
+        external_route = True
+
+    if external_route and deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
+        labels["networking.kserve.io/visibility"] = "exposed"
+
+    if deployment_mode == KServeDeploymentType.SERVERLESS and external_route is False:
+        labels["networking.knative.dev/visibility"] = "cluster-local"
+
+    if autoscaler_mode:
+        annotations["serving.kserve.io/autoscalerClass"] = autoscaler_mode
+
+    if multi_node_worker_spec is not None:
+        predictor_dict["workerSpec"] = multi_node_worker_spec
+
+    with InferenceService(
+        client=client,
+        name=name,
+        namespace=namespace,
+        annotations=annotations,
+        predictor=predictor_dict,
+        label=labels,
+    ) as inference_service:
+        if wait_for_predictor_pods:
+            verify_no_failed_pods(client=client, isvc=inference_service, runtime_name=runtime)
+            wait_for_inference_deployment_replicas(client=client, isvc=inference_service, runtime_name=runtime)
+
+        if wait:
+            # Modelmesh 2nd server in the ns will fail to be Ready; isvc needs to be re-applied
+            if is_jira_open(jira_id="RHOAIENG-13636") and deployment_mode == KServeDeploymentType.MODEL_MESH:
+                for isvc in InferenceService.get(dyn_client=client, namespace=namespace):
+                    _runtime = get_inference_serving_runtime(isvc=isvc)
+                    isvc_annotations = isvc.instance.metadata.annotations
+                    if (
+                        _runtime.name != runtime
+                        and isvc_annotations
+                        and isvc_annotations.get(Annotations.KserveIo.DEPLOYMENT_MODE)
+                        == KServeDeploymentType.MODEL_MESH
+                    ):
+                        LOGGER.warning(
+                            "Bug RHOAIENG-13636 - re-creating isvc if there's already a modelmesh isvc in the namespace"
+                        )
+                        inference_service.clean_up()
+                        inference_service.deploy()
+
+                        break
+
+            inference_service.wait_for_condition(
+                condition=inference_service.Condition.READY,
+                status=inference_service.Condition.Status.TRUE,
+                timeout=15 * 60,
+            )
+
+        yield inference_service
+
+
+def _check_storage_arguments(
+    storage_uri: Optional[str],
+    storage_key: Optional[str],
+    storage_path: Optional[str],
+) -> None:
+    """
+    Check if storage_uri, storage_key and storage_path are valid.
+
+    Args:
+        storage_uri (str): URI of the storage.
+        storage_key (str): Key of the storage.
+        storage_path (str): Path of the storage.
+
+    Raises:
+        InvalidStorageArgumentError: If storage_uri, storage_key and storage_path are not valid.
+    """
+    if (storage_uri and storage_path) or (not storage_uri and not storage_key) or (storage_key and not storage_path):
+        raise InvalidStorageArgumentError(storage_uri=storage_uri, storage_key=storage_key, storage_path=storage_path)

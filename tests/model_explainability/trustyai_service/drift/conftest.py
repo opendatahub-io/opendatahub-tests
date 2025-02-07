@@ -1,6 +1,7 @@
+from typing import Any, Generator
+
 import pytest
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
@@ -8,14 +9,13 @@ from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.trustyai_service import TrustyAIService
 
 from tests.model_explainability.constants import TIMEOUT_1MIN
-from tests.model_explainability.trustyai_service.utils import wait_for_modelmesh_pods_registered_by_trustyai
-from utilities.constants import MODELMESH_SERVING
+from tests.model_explainability.trustyai_service.utils import wait_for_isvc_deployment_registered_by_trustyaiservice
+from utilities.constants import KServeDeploymentType
+from utilities.infra import create_isvc
 
 MLSERVER: str = "mlserver"
 MLSERVER_RUNTIME_NAME: str = f"{MLSERVER}-1.x"
-MLSERVER_QUAY_IMAGE: str = (
-    "quay.io/aaguirre/mlserver@sha256:8884d989b3063a47bf0e6c20c1c0ff253662121a977fe5b74b54e682839360d4"  # noqa: E501  # TODO: Move this image to a better place
-)
+MLSERVER_QUAY_IMAGE: str = "quay.io/rh-ee-mmisiura/mlserver:1.6.1"
 XGBOOST = "xgboost"
 SKLEARN = "sklearn"
 TIMEOUT_20MIN = 20 * TIMEOUT_1MIN
@@ -24,47 +24,47 @@ TIMEOUT_20MIN = 20 * TIMEOUT_1MIN
 @pytest.fixture(scope="class")
 def mlserver_runtime(
     admin_client: DynamicClient, minio_data_connection: Secret, model_namespace: Namespace
-) -> ServingRuntime:
+) -> Generator[ServingRuntime, Any, Any]:
     supported_model_formats = [
-        {"name": SKLEARN, "version": "0", "autoselect": "true"},
-        {"name": XGBOOST, "version": "1", "autoselect": "true"},
-        {"name": "lightgbm", "version": "3", "autoselect": "true"},
+        {"name": "sklearn", "version": "0", "autoSelect": True, "priority": 2},
+        {"name": "sklearn", "version": "1", "autoSelect": True, "priority": 2},
+        {"name": "xgboost", "version": "1", "autoSelect": True, "priority": 2},
+        {"name": "xgboost", "version": "2", "autoSelect": True, "priority": 2},
+        {"name": "lightgbm", "version": "3", "autoSelect": True, "priority": 2},
+        {"name": "lightgbm", "version": "4", "autoSelect": True, "priority": 2},
+        {"name": "mlflow", "version": "1", "autoSelect": True, "priority": 1},
+        {"name": "mlflow", "version": "2", "autoSelect": True, "priority": 1},
     ]
     containers = [
         {
-            "name": MLSERVER,
-            "image": MLSERVER_QUAY_IMAGE,
+            "name": "kserve-container",
+            "image": "quay.io/rh-ee-mmisiura/mlserver:1.6.1",
             "env": [
-                {"name": "MLSERVER_MODELS_DIR", "value": "/models/_mlserver_models/"},
-                {"name": "MLSERVER_GRPC_PORT", "value": "8001"},
-                {"name": "MLSERVER_HTTP_PORT", "value": "8002"},
-                {"name": "MLSERVER_LOAD_MODELS_AT_STARTUP", "value": "false"},
-                {"name": "MLSERVER_MODEL_NAME", "value": "dummy-model-fixme"},
-                {"name": "MLSERVER_HOST", "value": "127.0.0.1"},
-                {"name": "MLSERVER_GRPC_MAX_MESSAGE_LENGTH", "value": "-1"},
+                {"name": "MLSERVER_MODEL_IMPLEMENTATION", "value": "{{.Labels.modelClass}}"},
+                {"name": "MLSERVER_HTTP_PORT", "value": "8080"},
+                {"name": "MLSERVER_GRPC_PORT", "value": "9000"},
+                {"name": "MODELS_DIR", "value": "/mnt/models/"},
             ],
-            "resources": {"requests": {"cpu": "500m", "memory": "1Gi"}, "limits": {"cpu": "5", "memory": "1Gi"}},
+            "resources": {"requests": {"cpu": "1", "memory": "2Gi"}, "limits": {"cpu": "1", "memory": "2Gi"}},
         }
     ]
 
     with ServingRuntime(
         client=admin_client,
-        name=MLSERVER_RUNTIME_NAME,
+        name="kserve-mlserver",
         namespace=model_namespace.name,
         containers=containers,
         supported_model_formats=supported_model_formats,
-        multi_model=True,
-        protocol_versions=["grpc-v2"],
-        grpc_endpoint="port:8085",
-        grpc_data_endpoint="port:8001",
-        built_in_adapter={
-            "serverType": MLSERVER,
-            "runtimeManagementPort": 8001,
-            "memBufferBytes": 134217728,
-            "modelLoadingTimeoutMillis": 90000,
+        protocol_versions=["v2"],
+        annotations={
+            "opendatahub.io/accelerator-name": "",
+            "opendatahub.io/recommended-accelerators": '["nvidia.com/gpu"]',
+            "opendatahub.io/template-display-name": "KServe MLServer",
+            "prometheus.kserve.io/path": "/metrics",
+            "prometheus.io/port": "8080",
+            "openshift.io/display-name": "mlserver-1.x",
         },
-        annotations={"enable-route": "true"},
-        label={"name": f"{MODELMESH_SERVING}-{MLSERVER_RUNTIME_NAME}-SR"},
+        label={"opendatahub.io/dashboard": "true"},
     ) as mlserver:
         yield mlserver
 
@@ -76,27 +76,24 @@ def gaussian_credit_model(
     minio_data_connection: Secret,
     mlserver_runtime: ServingRuntime,
     trustyai_service_with_pvc_storage: TrustyAIService,
-) -> InferenceService:
-    name = "gaussian-credit-model"
-    with InferenceService(
+) -> Generator[InferenceService, Any, Any]:
+    with create_isvc(
         client=admin_client,
-        name=name,
+        name="gaussian-credit-model",
         namespace=model_namespace.name,
-        predictor={
-            "model": {
-                "modelFormat": {"name": XGBOOST},
-                "runtime": mlserver_runtime.name,
-                "storage": {"key": minio_data_connection.name, "path": f"{SKLEARN}/{name.replace('-', '_')}.json"},
-            }
-        },
-        annotations={f"{InferenceService.ApiGroup.SERVING_KSERVE_IO}/deploymentMode": "ModelMesh"},
-    ) as inference_service:
-        deployment = Deployment(
+        deployment_mode=KServeDeploymentType.SERVERLESS,
+        model_format=XGBOOST,
+        runtime="kserve-mlserver",
+        storage_key=minio_data_connection.name,
+        storage_path="sklearn/gaussian_credit_model/1",
+        enable_auth=True,
+        wait_for_predictor_pods=False,
+        resources={"requests": {"cpu": "1", "memory": "2Gi"}, "limits": {"cpu": "1", "memory": "2Gi"}},
+    ) as isvc:
+        wait_for_isvc_deployment_registered_by_trustyaiservice(
             client=admin_client,
-            namespace=model_namespace.name,
-            name=f"{MODELMESH_SERVING}-{mlserver_runtime.name}",
-            wait_for_resource=True,
+            isvc=isvc,
+            trustyai_service=trustyai_service_with_pvc_storage,
+            runtime_name=mlserver_runtime,
         )
-        deployment.wait_for_replicas()
-        wait_for_modelmesh_pods_registered_by_trustyai(client=admin_client, namespace=model_namespace.name)
-        yield inference_service
+        yield isvc

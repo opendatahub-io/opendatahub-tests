@@ -16,7 +16,7 @@ BASE_DATA_PATH: str = "./tests/model_explainability/trustyai_service/drift/model
     "model_namespace",
     [
         pytest.param(
-            {"name": "test-drift-gaussian-credit-model", "modelmesh-enabled": True},
+            {"name": "test-drift"},
         )
     ],
     indirect=True,

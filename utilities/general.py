@@ -3,12 +3,10 @@ from __future__ import annotations
 import base64
 
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
 
-import utilities.infra
-from utilities.constants import Annotations, KServeDeploymentType, MODELMESH_SERVING
+from utilities.infra import get_kserve_storage_initialize_image
 
 LOGGER = get_logger(name=__name__)
 
@@ -107,7 +105,7 @@ def download_model_data(
     containers = [
         {
             "name": "model-downloader",
-            "image": utilities.infra.get_kserve_storage_initialize_image(client=admin_client),
+            "image": get_kserve_storage_initialize_image(client=admin_client),
             "args": [
                 f"s3://{bucket_name}/{model_path}/",
                 pvc_model_path,
@@ -140,36 +138,3 @@ def download_model_data(
         pod.wait_for_status(status=Pod.Status.SUCCEEDED, timeout=25 * 60)
 
     return model_path
-
-
-def create_isvc_label_selector_str(isvc: InferenceService, resource_type: str, runtime_name: str | None = None) -> str:
-    """
-    Creates a label selector string for the given InferenceService.
-
-    Args:
-        isvc (InferenceService): InferenceService object
-        resource_type (str): Type of the resource: service or other for model mesh
-        runtime_name (str): ServingRuntime name
-
-    Returns:
-        str: Label selector string
-
-    Raises:
-        ValueError: If the deployment mode is not supported
-
-    """
-    deployment_mode = isvc.instance.metadata.annotations.get(Annotations.KserveIo.DEPLOYMENT_MODE)
-    if deployment_mode in (
-        KServeDeploymentType.SERVERLESS,
-        KServeDeploymentType.RAW_DEPLOYMENT,
-    ):
-        return f"{isvc.ApiGroup.SERVING_KSERVE_IO}/inferenceservice={isvc.name}"
-
-    elif deployment_mode == KServeDeploymentType.MODEL_MESH:
-        if resource_type == "service":
-            return f"modelmesh-service={MODELMESH_SERVING}"
-        else:
-            return f"name={MODELMESH_SERVING}-{runtime_name}"
-
-    else:
-        raise ValueError(f"Unknown deployment mode {deployment_mode}")

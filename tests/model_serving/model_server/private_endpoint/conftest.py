@@ -10,9 +10,8 @@ from ocp_resources.serving_runtime import ServingRuntime
 from simple_logger.logger import get_logger
 
 from tests.model_serving.model_server.private_endpoint.utils import create_sidecar_pod
-from tests.model_serving.model_server.utils import create_isvc
 from utilities.constants import KServeDeploymentType, ModelFormat, ModelStoragePath
-from utilities.infra import create_ns
+from utilities.infra import create_ns, create_isvc
 
 LOGGER = get_logger(name=__name__)
 

@@ -7,8 +7,8 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.serving_runtime import ServingRuntime
 
-from tests.model_serving.model_server.utils import create_isvc
 from utilities.constants import KServeDeploymentType
+from utilities.infra import create_isvc
 
 
 @pytest.fixture(scope="class")
