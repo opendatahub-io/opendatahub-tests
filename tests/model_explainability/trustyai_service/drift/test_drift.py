@@ -1,22 +1,23 @@
 import pytest
 
-from tests.trustyai.drift.utils import (
+from tests.model_explainability.trustyai_service.utils import (
     send_inference_requests_and_verify_trustyai_service,
-    verify_trustyai_metric_scheduling_request,
-    verify_trustyai_metric_request,
     verify_upload_data_to_trustyai_service,
-    verify_trustyai_drift_metric_delete_request,
+    verify_trustyai_metric_request,
+    TrustyAIServiceMetrics,
+    verify_trustyai_metric_scheduling_request,
+    verify_trustyai_metric_delete_request,
 )
+from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
 
-MEANSHIFT: str = "meanshift"
-BASE_DATA_PATH: str = "./tests/trustyai/drift/model_data"
+BASE_DATA_PATH: str = "./tests/model_explainability/trustyai_service/drift/model_data"
 
 
 @pytest.mark.parametrize(
     "model_namespace",
     [
         pytest.param(
-            {"name": "test-drift-gaussian-credit-model", "modelmesh-enabled": True},
+            {"name": "test-drift"},
         )
     ],
     indirect=True,
@@ -31,7 +32,7 @@ class TestDriftMetrics:
     4. Send metric deletion request and verify that the scheduled metric has been deleted.
     """
 
-    def test_send_inference_request_and_verify_trustyai_service(
+    def test_drift_send_inference_and_verify_trustyai_service(
         self,
         admin_client,
         current_client_token,
@@ -45,6 +46,7 @@ class TestDriftMetrics:
             data_path=f"{BASE_DATA_PATH}/data_batches",
             trustyai_service=trustyai_service_with_pvc_storage,
             inference_service=gaussian_credit_model,
+            inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
         )
 
     def test_upload_data_to_trustyai_service(
@@ -67,7 +69,7 @@ class TestDriftMetrics:
             client=admin_client,
             trustyai_service=trustyai_service_with_pvc_storage,
             token=current_client_token,
-            metric_name=MEANSHIFT,
+            metric_name=TrustyAIServiceMetrics.Drift.MEANSHIFT,
             json_data={"modelId": gaussian_credit_model.name, "referenceTag": "TRAINING"},
         )
 
@@ -78,14 +80,14 @@ class TestDriftMetrics:
             client=admin_client,
             trustyai_service=trustyai_service_with_pvc_storage,
             token=current_client_token,
-            metric_name=MEANSHIFT,
+            metric_name=TrustyAIServiceMetrics.Drift.MEANSHIFT,
             json_data={"modelId": gaussian_credit_model.name, "referenceTag": "TRAINING"},
         )
 
     def test_drift_metric_delete(self, admin_client, current_client_token, trustyai_service_with_pvc_storage):
-        verify_trustyai_drift_metric_delete_request(
+        verify_trustyai_metric_delete_request(
             client=admin_client,
             trustyai_service=trustyai_service_with_pvc_storage,
             token=current_client_token,
-            metric_name=MEANSHIFT,
+            metric_name=TrustyAIServiceMetrics.Drift.MEANSHIFT,
         )
