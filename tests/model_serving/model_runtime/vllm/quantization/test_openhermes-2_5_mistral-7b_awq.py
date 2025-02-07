@@ -4,7 +4,7 @@ from utilities.constants import KServeDeploymentType
 from tests.model_serving.model_runtime.vllm.utils import (
     fetch_openai_response,
     run_raw_inference,
-    validate_inferenec_output,
+    validate_inference_output,
 )
 from tests.model_serving.model_runtime.vllm.constant import VLLM_SUPPORTED_QUANTIZATION
 
@@ -120,7 +120,7 @@ class TestOpenHermesAWQModel:
                 url=vllm_inference_service.instance.status.url,
                 model_name=vllm_inference_service.instance.metadata.name,
             )
-            validate_inferenec_output(
+            validate_inference_output(
                 model_info, chat_responses, completion_responses, response_snapshot=response_snapshot
             )
         else:
@@ -135,14 +135,14 @@ class TestOpenHermesAWQModel:
             model_details, grpc_chat_response, grpc_chat_stream_responses = run_raw_inference(
                 pod_name=pod, isvc=vllm_inference_service, port=8033, endpoint="tgis"
             )
-            validate_inferenec_output(
+            validate_inference_output(
                 model_details, grpc_chat_response, grpc_chat_stream_responses, response_snapshot=response_snapshot
             )
 
             model_info, chat_responses, completion_responses = run_raw_inference(
                 pod_name=pod, isvc=vllm_inference_service, port=8080, endpoint="openai"
             )
-            validate_inferenec_output(
+            validate_inference_output(
                 model_info, chat_responses, completion_responses, response_snapshot=response_snapshot
             )
         else:
@@ -206,7 +206,7 @@ class TestOpenHermesAWQMultiGPU:
                 url=vllm_inference_service.instance.status.url,
                 model_name=vllm_inference_service.instance.metadata.name,
             )
-            validate_inferenec_output(
+            validate_inference_output(
                 model_info, chat_responses, completion_responses, response_snapshot=response_snapshot
             )
         else:
@@ -222,13 +222,13 @@ class TestOpenHermesAWQMultiGPU:
                 pod_name=pod, isvc=vllm_inference_service, port=8033, endpoint="tgis"
             )
 
-            validate_inferenec_output(
+            validate_inference_output(
                 model_details, grpc_chat_response, grpc_chat_stream_responses, response_snapshot=response_snapshot
             )
             model_info, chat_responses, completion_responses = run_raw_inference(
                 pod_name=pod, isvc=vllm_inference_service, port=8080, endpoint="openai"
             )
-            validate_inferenec_output(
+            validate_inference_output(
                 model_info, chat_responses, completion_responses, response_snapshot=response_snapshot
             )
         else:

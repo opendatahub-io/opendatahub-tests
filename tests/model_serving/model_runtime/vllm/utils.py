@@ -129,6 +129,6 @@ def validate_supported_quantization_schema(q_type: str) -> None:
         raise ValueError(f"Unsupported quantization type: {q_type}")
 
 
-def validate_inferenec_output(*args: tuple[str, ...], response_snapshot: Any) -> None:
+def validate_inference_output(*args: tuple[str, ...], response_snapshot: Any) -> None:
     for data in args:
         assert data == response_snapshot, f"output mismatch for {data}"

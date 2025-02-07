@@ -3,7 +3,7 @@ from simple_logger.logger import get_logger
 from utilities.constants import KServeDeploymentType
 from tests.model_serving.model_runtime.vllm.utils import (
     run_raw_inference,
-    validate_inferenec_output,
+    validate_inference_output,
 )
 from tests.model_serving.model_runtime.vllm.constant import MULTI_IMAGE_QUERIES, THREE_IMAGE_QUERY
 
@@ -41,7 +41,7 @@ class TestGraniteVisionModel:
         model_info, chat_responses, completion_responses = run_raw_inference(
             pod_name=pod, isvc=vllm_inference_service, port=8080, endpoint="openai", chat_query=MULTI_IMAGE_QUERIES
         )
-        validate_inferenec_output(model_info, chat_responses, completion_responses, response_snapshot=response_snapshot)
+        validate_inference_output(model_info, chat_responses, completion_responses, response_snapshot=response_snapshot)
 
     @pytest.mark.xfail(reason="Test expected to fail due to image limit of 2, but model query requests 3 images.")
     def test_multi_image_query_inference(self, vllm_inference_service, get_pod_name_resource, response_snapshot):
@@ -49,7 +49,7 @@ class TestGraniteVisionModel:
         model_info, chat_responses, completion_responses = run_raw_inference(
             pod_name=pod, isvc=vllm_inference_service, port=8080, endpoint="openai", chat_query=THREE_IMAGE_QUERY
         )
-        validate_inferenec_output(model_info, chat_responses, completion_responses, response_snapshot=response_snapshot)
+        validate_inference_output(model_info, chat_responses, completion_responses, response_snapshot=response_snapshot)
 
 
 @pytest.mark.parametrize(
@@ -76,4 +76,4 @@ class TestGraniteMultiGPUVisionModel:
         model_info, chat_responses, completion_responses = run_raw_inference(
             pod_name=pod, isvc=vllm_inference_service, port=8080, endpoint="openai", chat_query=MULTI_IMAGE_QUERIES
         )
-        validate_inferenec_output(model_info, chat_responses, completion_responses, response_snapshot=response_snapshot)
+        validate_inference_output(model_info, chat_responses, completion_responses, response_snapshot=response_snapshot)
