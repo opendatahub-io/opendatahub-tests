@@ -6,7 +6,7 @@ from ocp_resources.pod import Pod
 
 from timeout_sampler import TimeoutSampler, TimeoutExpiredError
 
-from tests.trustyai.constants import TIMEOUT_10MIN
+from tests.model_explainability.constants import TIMEOUT_10MIN
 from utilities.infra import TIMEOUT_2MIN
 from simple_logger.logger import get_logger
 

@@ -10,9 +10,8 @@ from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.serving_runtime import ServingRuntime
 
-from tests.model_serving.model_server.utils import create_isvc
 from utilities.constants import KServeDeploymentType
-from utilities.general import download_model_data
+from utilities.infra import download_model_data, create_isvc
 from utilities.infra import (
     get_pods_by_isvc_label,
     wait_for_inference_deployment_replicas,

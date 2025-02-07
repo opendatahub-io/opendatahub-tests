@@ -1,3 +1,5 @@
+from typing import Generator, Any
+
 import pytest
 import yaml
 from kubernetes.dynamic import DynamicClient
@@ -10,9 +12,9 @@ from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.trustyai_service import TrustyAIService
 
-from tests.trustyai.constants import TRUSTYAI_SERVICE
+from tests.model_explainability.constants import TRUSTYAI_SERVICE
+from tests.model_explainability.utils import update_configmap_data
 from utilities.constants import MODELMESH_SERVING
-from tests.trustyai.utils import update_configmap_data
 
 MINIO: str = "minio"
 OPENDATAHUB_IO: str = "opendatahub.io"
@@ -25,7 +27,7 @@ def trustyai_service_with_pvc_storage(
     modelmesh_serviceaccount: ServiceAccount,
     cluster_monitoring_config: ConfigMap,
     user_workload_monitoring_config: ConfigMap,
-) -> TrustyAIService:
+) -> Generator[TrustyAIService, Any, Any]:
     with TrustyAIService(
         client=admin_client,
         name=TRUSTYAI_SERVICE,
@@ -40,13 +42,15 @@ def trustyai_service_with_pvc_storage(
 
 
 @pytest.fixture(scope="class")
-def modelmesh_serviceaccount(admin_client: DynamicClient, model_namespace: Namespace) -> ServiceAccount:
+def modelmesh_serviceaccount(
+    admin_client: DynamicClient, model_namespace: Namespace
+) -> Generator[ServiceAccount, Any, Any]:
     with ServiceAccount(client=admin_client, name=f"{MODELMESH_SERVING}-sa", namespace=model_namespace.name) as sa:
         yield sa
 
 
 @pytest.fixture(scope="session")
-def cluster_monitoring_config(admin_client: DynamicClient) -> ConfigMap:
+def cluster_monitoring_config(admin_client: DynamicClient) -> Generator[ConfigMap, Any, Any]:
     name = "cluster-monitoring-config"
     namespace = "openshift-monitoring"
     data = {"config.yaml": yaml.dump({"enableUserWorkload": "true"})}
@@ -66,7 +70,7 @@ def cluster_monitoring_config(admin_client: DynamicClient) -> ConfigMap:
 
 
 @pytest.fixture(scope="session")
-def user_workload_monitoring_config(admin_client: DynamicClient) -> ConfigMap:
+def user_workload_monitoring_config(admin_client: DynamicClient) -> Generator[ConfigMap, Any, Any]:
     name = "user-workload-monitoring-config"
     namespace = "openshift-user-workload-monitoring"
     data = {"config.yaml": yaml.dump({"prometheus": {"logLevel": "debug", "retention": "15d"}})}
@@ -86,7 +90,7 @@ def user_workload_monitoring_config(admin_client: DynamicClient) -> ConfigMap:
 
 
 @pytest.fixture(scope="class")
-def minio_pod(admin_client: DynamicClient, model_namespace: Namespace) -> Pod:
+def minio_pod(admin_client: DynamicClient, model_namespace: Namespace) -> Generator[Pod, Any, Any]:
     with Pod(
         client=admin_client,
         name=MINIO,
@@ -107,8 +111,7 @@ def minio_pod(admin_client: DynamicClient, model_namespace: Namespace) -> Pod:
                         "value": "THESECRETKEY",
                     },
                 ],
-                "image": "quay.io/trustyai/modelmesh-minio-examples@"
-                "sha256:e8360ec33837b347c76d2ea45cd4fea0b40209f77520181b15e534b101b1f323",
+                "image": "quay.io/rh-ee-mmisiura/modelmesh-minio-examples:latest",
                 "name": MINIO,
             }
         ],
@@ -119,7 +122,7 @@ def minio_pod(admin_client: DynamicClient, model_namespace: Namespace) -> Pod:
 
 
 @pytest.fixture(scope="class")
-def minio_service(admin_client: DynamicClient, model_namespace: Namespace) -> Service:
+def minio_service(admin_client: DynamicClient, model_namespace: Namespace) -> Generator[Service, Any, Any]:
     with Service(
         client=admin_client,
         name=MINIO,
@@ -142,7 +145,7 @@ def minio_service(admin_client: DynamicClient, model_namespace: Namespace) -> Se
 @pytest.fixture(scope="class")
 def minio_data_connection(
     admin_client: DynamicClient, model_namespace: Namespace, minio_pod: Pod, minio_service: Service
-) -> Secret:
+) -> Generator[Secret, Any, Any]:
     with Secret(
         client=admin_client,
         name="aws-connection-minio-data-connection",

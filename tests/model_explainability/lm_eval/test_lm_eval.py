@@ -1,8 +1,8 @@
 import pytest
 from ocp_resources.pod import Pod
 
-from tests.trustyai.constants import TIMEOUT_10MIN
-from tests.trustyai.lm_eval.utils import verify_lmevaljob_running
+from tests.model_explainability.constants import TIMEOUT_10MIN
+from tests.model_explainability.lm_eval.utils import verify_lmevaljob_running
 
 
 @pytest.mark.parametrize(
