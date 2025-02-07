@@ -43,7 +43,7 @@ class TestGraniteVisionModel:
         self,
         vllm_inference_service: Generator[InferenceService, Any, Any],
         get_pod_name_resource: Pod,
-        response_snapshot,
+        response_snapshot: Any,
     ):
         model_info, chat_responses, completion_responses = run_raw_inference(
             pod_name=get_pod_name_resource.name,
@@ -55,7 +55,12 @@ class TestGraniteVisionModel:
         validate_inference_output(model_info, chat_responses, completion_responses, response_snapshot=response_snapshot)
 
     @pytest.mark.xfail(reason="Test expected to fail due to image limit of 2, but model query requests 3 images.")
-    def test_multi_image_query_inference(self, vllm_inference_service, get_pod_name_resource, response_snapshot):
+    def test_multi_image_query_inference(
+        self,
+        vllm_inference_service: Generator[InferenceService, Any, Any],
+        get_pod_name_resource: Pod,
+        response_snapshot: Any,
+    ):
         model_info, chat_responses, completion_responses = run_raw_inference(
             pod_name=get_pod_name_resource.name,
             isvc=vllm_inference_service,
@@ -85,7 +90,12 @@ class TestGraniteVisionModel:
     indirect=True,
 )
 class TestGraniteMultiGPUVisionModel:
-    def test_multi_vision_image_inference(self, vllm_inference_service, get_pod_name_resource, response_snapshot):
+    def test_multi_vision_image_inference(
+        self,
+        vllm_inference_service: Generator[InferenceService, Any, Any],
+        get_pod_name_resource: Pod,
+        response_snapshot: Any,
+    ):
         model_info, chat_responses, completion_responses = run_raw_inference(
             pod_name=get_pod_name_resource.name,
             isvc=vllm_inference_service,
