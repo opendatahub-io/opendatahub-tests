@@ -114,7 +114,7 @@ def pytest_collection_modifyitems(session: Session, config: Config, items: list[
         if "pre_upgrade" in item.keywords:
             pre_upgrade_tests.append(item)
 
-        if "post_upgrade" in item.keywords:
+        elif "post_upgrade" in item.keywords:
             post_upgrade_tests.append(item)
 
         else:
