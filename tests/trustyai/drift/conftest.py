@@ -7,8 +7,7 @@ from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.trustyai_service import TrustyAIService
 
-from tests.trustyai.constants import TIMEOUT_1MIN
-from utilities.constants import MODELMESH_SERVING
+from utilities.constants import MODELMESH_SERVING, Timeout
 from tests.trustyai.drift.utils import wait_for_modelmesh_pods_registered_by_trustyai
 
 MLSERVER: str = "mlserver"
@@ -18,7 +17,7 @@ MLSERVER_QUAY_IMAGE: str = (
 )
 XGBOOST = "xgboost"
 SKLEARN = "sklearn"
-TIMEOUT_20MIN = 20 * TIMEOUT_1MIN
+TIMEOUT_20MIN = 20 * Timeout.TIMEOUT_1MIN
 
 
 @pytest.fixture(scope="class")

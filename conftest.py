@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import os
 import pathlib
@@ -20,7 +22,8 @@ BASIC_LOGGER = logging.getLogger(name="basic")
 def pytest_addoption(parser: Parser) -> None:
     aws_group = parser.getgroup(name="AWS")
     buckets_group = parser.getgroup(name="Buckets")
-    runtime_group = parser.getgroup(name="Runtime Details")
+    runtime_group = parser.getgroup(name="Runtime details")
+    upgrade_group = parser.getgroup(name="Upgrade options")
 
     # AWS config and credentials options
     aws_group.addoption(
@@ -72,9 +75,68 @@ def pytest_addoption(parser: Parser) -> None:
         help="Specify the runtime image to use for the tests",
     )
 
+    # Upgrade options
+    upgrade_group.addoption(
+        "--pre-upgrade",
+        action="store_true",
+        help="Run pre-upgrade tests",
+    )
+    upgrade_group.addoption(
+        "--post-upgrade",
+        action="store_true",
+        help="Run post-upgrade tests",
+    )
+    upgrade_group.addoption(
+        "--delete-pre-upgrade-resources",
+        action="store_true",
+        help="Delete pre-upgrade resources; useful when debugging pre-upgrade tests",
+    )
+
 
 def pytest_cmdline_main(config: Any) -> None:
     config.option.basetemp = py_config["tmp_base_dir"] = f"{config.option.basetemp}-{shortuuid.uuid()}"
+
+
+def pytest_collection_modifyitems(session: Session, config: Config, items: list[Item]) -> None:
+    """
+    Pytest fixture to filter or re-order the items in-place.
+
+    Filters upgrade tests based on '--pre-upgrade' / '--post-upgrade' option and marker.
+    """
+    pre_upgrade_tests: list[Item] = []
+    post_upgrade_tests: list[Item] = []
+    non_upgrade_tests: list[Item] = []
+
+    run_pre_upgrade_tests: str | None = config.getoption(name="pre_upgrade")
+    run_post_upgrade_tests: str | None = config.getoption(name="post_upgrade")
+
+    for item in items:
+        if "pre_upgrade" in item.keywords:
+            pre_upgrade_tests.append(item)
+
+        if "post_upgrade" in item.keywords:
+            post_upgrade_tests.append(item)
+
+        else:
+            non_upgrade_tests.append(item)
+
+    upgrade_tests = pre_upgrade_tests + post_upgrade_tests
+
+    if run_pre_upgrade_tests and run_post_upgrade_tests:
+        items[:] = upgrade_tests
+        config.hook.pytest_deselected(items=non_upgrade_tests)
+
+    elif run_pre_upgrade_tests:
+        items[:] = pre_upgrade_tests
+        config.hook.pytest_deselected(items=post_upgrade_tests + non_upgrade_tests)
+
+    elif run_post_upgrade_tests:
+        items[:] = post_upgrade_tests
+        config.hook.pytest_deselected(items=pre_upgrade_tests + non_upgrade_tests)
+
+    else:
+        items[:] = non_upgrade_tests
+        config.hook.pytest_deselected(items=upgrade_tests)
 
 
 def pytest_sessionstart(session: Session) -> None:
