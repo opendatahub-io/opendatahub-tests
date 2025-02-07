@@ -5,6 +5,7 @@ from ocp_resources.secret import Secret
 from ocp_resources.inference_service import InferenceService
 from simple_logger.logger import get_logger
 from tests.model_serving.model_runtime.vllm.constant import CHAT_QUERY, COMPLETION_QUERY
+from tenacity import retry, stop_after_attempt, wait_exponential
 from utilities.exceptions import NotSupportedError
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.plugins.openai_plugin import OpenAIClient
@@ -88,8 +89,14 @@ def fetch_tgis_response(  # type: ignore
     return model_info, completion_responses, stream_completion_responses
 
 
-def run_raw_inference(
-    pod_name: str, isvc: InferenceService, port: int, endpoint: str
+@retry(stop=stop_after_attempt(5), wait=wait_exponential(min=1, max=6))
+def run_raw_inference(  # type: ignore
+    pod_name: str,
+    isvc: InferenceService,
+    port: int,
+    endpoint: str,
+    chat_query=CHAT_QUERY,
+    completion_query=COMPLETION_QUERY,
 ) -> tuple[Any, list[Any], list[Any]]:
     LOGGER.info(pod_name)
     with portforward.forward(
@@ -109,6 +116,8 @@ def run_raw_inference(
             model_info, completion_responses, stream_completion_responses = fetch_openai_response(
                 url=f"http://localhost:{port}",
                 model_name=isvc.instance.metadata.name,
+                chat_query=chat_query,
+                completion_query=completion_query,
             )
             return model_info, completion_responses, stream_completion_responses
         else:

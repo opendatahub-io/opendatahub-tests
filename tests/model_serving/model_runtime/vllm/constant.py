@@ -81,3 +81,51 @@ CHAT_QUERY = [
         },
     ],
 ]
+
+IMAGE_URL_SCENERY = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"  # noqa: E501
+IMAGE_URL_DUCK = (
+    "https://upload.wikimedia.org/wikipedia/commons/d/da/2015_Kaczka_krzy%C5%BCowka_w_wodzie_%28samiec%29.jpg"
+)
+IMAGE_URL_LION = "https://upload.wikimedia.org/wikipedia/commons/7/77/002_The_lion_king_Snyggve_in_the_Serengeti_National_Park_Photo_by_Giles_Laurent.jpg"  # noqa: E501
+
+MULTI_IMAGE_QUERIES = [
+    [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "What's in this image?"},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": IMAGE_URL_SCENERY},
+                },
+            ],
+        },
+    ],
+    [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "What are the animals in these images?"},
+                {"type": "image_url", "image_url": {"url": IMAGE_URL_LION}},
+                {"type": "image_url", "image_url": {"url": IMAGE_URL_DUCK}},
+            ],
+        }
+    ],
+]
+
+THREE_IMAGE_QUERY = [
+    [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Explain these images?"},
+                {"type": "image_url", "image_url": {"url": IMAGE_URL_LION}},
+                {"type": "image_url", "image_url": {"url": IMAGE_URL_DUCK}},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": IMAGE_URL_SCENERY},
+                },
+            ],
+        }
+    ],
+]
