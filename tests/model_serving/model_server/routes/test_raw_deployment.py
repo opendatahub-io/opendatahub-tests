@@ -30,7 +30,7 @@ pytestmark = [pytest.mark.usefixtures("valid_aws_config"), pytest.mark.rawdeploy
             {
                 "name": f"{Protocols.HTTP}-{ModelFormat.CAIKIT}",
                 "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
-                "model-dir": ModelStoragePath.FLAN_T5_SMALL,
+                "model-dir": ModelStoragePath.FLAN_T5_SMALL_CAIKIT,
             },
         )
     ],
@@ -112,7 +112,7 @@ class TestRestRawDeploymentRoutes:
             {
                 "name": f"{Protocols.GRPC}-{ModelFormat.CAIKIT}",
                 "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
-                "model-dir": ModelStoragePath.FLAN_T5_SMALL,
+                "model-dir": ModelStoragePath.FLAN_T5_SMALL_CAIKIT,
             },
         )
     ],

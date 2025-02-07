@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import shlex
 from contextlib import contextmanager
 from functools import cache
@@ -19,6 +18,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.project_project_openshift_io import Project
 from ocp_resources.project_request import ProjectRequest
+from ocp_resources.resource import ResourceEditor
 from ocp_resources.role import Role
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
@@ -30,7 +30,6 @@ from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 
 import utilities.general
-from utilities.constants import Labels
 from utilities.general import create_isvc_label_selector_str
 
 LOGGER = get_logger(name=__name__)
@@ -157,26 +156,29 @@ def s3_endpoint_secret(
         Secret: Secret object
 
     """
-    # DO not create secret if exists in the namespace
-    os.environ["REUSE_IF_RESOURCE_EXISTS"] = f"{{Secret: {{{name}: {namespace}}}}}"
+    secret_kwargs = {"client": admin_client, "name": name, "namespace": namespace}
+    secret = Secret(**secret_kwargs)
 
-    with Secret(
-        client=admin_client,
-        name=name,
-        namespace=namespace,
-        annotations={"opendatahub.io/connection-type": "s3"},
-        # the labels are needed to set the secret as data connection by odh-model-controller
-        label={"opendatahub.io/managed": "true", Labels.OpenDataHub.DASHBOARD: "true"},
-        data_dict=utilities.general.get_s3_secret_dict(
-            aws_access_key=aws_access_key,
-            aws_secret_access_key=aws_secret_access_key,
-            aws_s3_bucket=aws_s3_bucket,
-            aws_s3_endpoint=aws_s3_endpoint,
-            aws_s3_region=aws_s3_region,
-        ),
-        wait_for_resource=True,
-    ) as secret:
+    if secret.exists:
+        LOGGER.info(f"Secret {name} already exists in namespace {namespace}")
         yield secret
+
+    else:
+        with Secret(
+            annotations={"opendatahub.io/connection-type": "s3"},
+            # the labels are needed to set the secret as data connection by odh-model-controller
+            label={"opendatahub.io/managed": "true", "opendatahub.io/dashboard": "true"},
+            data_dict=utilities.general.get_s3_secret_dict(
+                aws_access_key=aws_access_key,
+                aws_secret_access_key=aws_secret_access_key,
+                aws_s3_bucket=aws_s3_bucket,
+                aws_s3_endpoint=aws_s3_endpoint,
+                aws_s3_region=aws_s3_region,
+            ),
+            wait_for_resource=True,
+            **secret_kwargs,
+        ) as secret:
+            yield secret
 
 
 @contextmanager
@@ -439,3 +441,33 @@ def create_inference_token(model_service_account: ServiceAccount) -> str:
     return run_command(
         shlex.split(f"oc create token -n {model_service_account.namespace} {model_service_account.name}")
     )[1].strip()
+
+
+@contextmanager
+def update_configmap_data(
+    client: DynamicClient, name: str, namespace: str, data: dict[str, Any]
+) -> Generator[ConfigMap, Any, Any]:
+    """
+    Update the data of a configmap.
+
+    Args:
+        client (DynamicClient): DynamicClient client.
+        name (str): Name of the configmap.
+        namespace (str): Namespace of the configmap.
+        data (dict[str, Any]): Data to update the configmap with.
+
+    Yields:
+        ConfigMap: The updated configmap.
+
+    """
+    config_map = ConfigMap(client=client, name=name, namespace=namespace)
+
+    # Some CM resources may already be present as they are usually created when doing exploratory testing
+    if config_map.exists:
+        with ResourceEditor(patches={config_map: {"data": data}}):
+            yield config_map
+
+    else:
+        config_map.data = data
+        with config_map as cm:
+            yield cm

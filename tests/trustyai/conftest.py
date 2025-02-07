@@ -12,7 +12,7 @@ from ocp_resources.trustyai_service import TrustyAIService
 
 from tests.trustyai.constants import TRUSTYAI_SERVICE
 from utilities.constants import MODELMESH_SERVING
-from tests.trustyai.utils import update_configmap_data
+from utilities.infra import update_configmap_data
 
 MINIO: str = "minio"
 OPENDATAHUB_IO: str = "opendatahub.io"
@@ -46,43 +46,15 @@ def modelmesh_serviceaccount(admin_client: DynamicClient, model_namespace: Names
 
 
 @pytest.fixture(scope="session")
-def cluster_monitoring_config(admin_client: DynamicClient) -> ConfigMap:
-    name = "cluster-monitoring-config"
-    namespace = "openshift-monitoring"
-    data = {"config.yaml": yaml.dump({"enableUserWorkload": "true"})}
-    cm = ConfigMap(client=admin_client, name=name, namespace=namespace)
-    if cm.exists:  # This resource is usually created when doing exploratory testing, add this exception for convenience
-        with update_configmap_data(configmap=cm, data=data) as cm:
-            yield cm
-
-    else:
-        with ConfigMap(
-            client=admin_client,
-            name=name,
-            namespace=namespace,
-            data=data,
-        ) as cm:
-            yield cm
-
-
-@pytest.fixture(scope="session")
 def user_workload_monitoring_config(admin_client: DynamicClient) -> ConfigMap:
-    name = "user-workload-monitoring-config"
-    namespace = "openshift-user-workload-monitoring"
     data = {"config.yaml": yaml.dump({"prometheus": {"logLevel": "debug", "retention": "15d"}})}
-    cm = ConfigMap(client=admin_client, name=name, namespace=namespace)
-    if cm.exists:  # This resource is usually created when doing exploratory testing, add this exception for convenience
-        with update_configmap_data(configmap=cm, data=data) as cm:
-            yield cm
-
-    else:
-        with ConfigMap(
-            client=admin_client,
-            name=name,
-            namespace=namespace,
-            data=data,
-        ) as cm:
-            yield cm
+    with update_configmap_data(
+        client=admin_client,
+        name="user-workload-monitoring-config",
+        namespace="openshift-user-workload-monitoring",
+        data=data,
+    ) as cm:
+        yield cm
 
 
 @pytest.fixture(scope="class")
