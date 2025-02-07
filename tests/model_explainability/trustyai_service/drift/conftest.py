@@ -16,9 +16,9 @@ from utilities.infra import create_isvc
 MLSERVER: str = "mlserver"
 MLSERVER_RUNTIME_NAME: str = f"{MLSERVER}-1.x"
 MLSERVER_QUAY_IMAGE: str = "quay.io/rh-ee-mmisiura/mlserver:1.6.1"
-XGBOOST = "xgboost"
-SKLEARN = "sklearn"
-TIMEOUT_20MIN = 20 * TIMEOUT_1MIN
+XGBOOST: str = "xgboost"
+SKLEARN: str = "sklearn"
+TIMEOUT_20MIN: int = 20 * TIMEOUT_1MIN
 
 
 @pytest.fixture(scope="class")
