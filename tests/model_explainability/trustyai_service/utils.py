@@ -13,14 +13,12 @@ from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 
-from tests.model_explainability.constants import TIMEOUT_1MIN, TIMEOUT_10MIN
+from tests.model_explainability.constants import TIMEOUT_10MIN, TIMEOUT_5MIN
 from utilities.constants import Protocols
 from utilities.exceptions import MetricValidationError
 from utilities.inference_utils import UserInference, Inference
-from timeout_sampler import retry
 
 from utilities.infra import create_isvc_label_selector_str
-from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
 
 LOGGER = get_logger(name=__name__)
 TIMEOUT_30SEC: int = 30
@@ -36,6 +34,16 @@ class TrustyAIServiceMetrics:
         MEANSHIFT: str = "meanshift"
 
 
+def _get_metric_base_url(metric_name: str) -> str:
+    if hasattr(TrustyAIServiceMetrics.Fairness, metric_name.upper()):
+        base_url: str = TrustyAIServiceMetrics.Fairness.BASE_URL
+    elif hasattr(TrustyAIServiceMetrics.Drift, metric_name.upper()):
+        base_url = TrustyAIServiceMetrics.Drift.BASE_URL
+    else:
+        raise MetricValidationError(f"Unknown metric: {metric_name}")
+    return f"{base_url}/{metric_name}"
+
+
 class TrustyAIServiceClient:
     """
     Class to encapsulate the behaviors associated to the different TrustyAIService requests used in the tests
@@ -48,6 +56,7 @@ class TrustyAIServiceClient:
             "request"  # Endpoint used to schedule a recurrent metric calculation, or to delete a scheduled metric
         )
         REQUESTS: str = "requests"  # Endpoint used to get all scheduled metrics for a given metric type
+        INFO_NAMES: str = "info/names"  # Endpoint used to apply name mappings
 
     def __init__(self, token: str, service: TrustyAIService, client: DynamicClient):
         self.token = token
@@ -75,106 +84,57 @@ class TrustyAIServiceClient:
         elif method == "DELETE":
             return requests.delete(url=url, headers=self.headers, json=json, verify=False)
 
-    def _get_metric_base_url(self, metric_name: str) -> str:
-        if hasattr(TrustyAIServiceMetrics.Fairness, metric_name.upper()):
-            base_url = TrustyAIServiceMetrics.Fairness.BASE_URL
-        elif hasattr(TrustyAIServiceMetrics.Drift, metric_name.upper()):
-            base_url = TrustyAIServiceMetrics.Drift.BASE_URL
-        else:
-            raise MetricValidationError(f"Unknown metric: {metric_name}")
-        return f"{base_url}/{metric_name}"
-
-    def get_model_metadata(self) -> Any:
+    def get_model_metadata(self) -> requests.Response:
         return self._send_request(endpoint=self.Endpoints.INFO, method="GET")
 
     def upload_data(
         self,
         data_path: str,
-    ) -> Any:
+    ) -> requests.Response:
         with open(data_path, "r") as file:
             data = file.read()
 
         LOGGER.info(f"Uploading data to TrustyAIService: {data_path}")
         return self._send_request(endpoint=self.Endpoints.DATA_UPLOAD, method="POST", data=data)
 
+    def apply_name_mappings(
+        self, model_name: str, input_mappings: dict[str, str], output_mappings: dict[str, str]
+    ) -> requests.Response:
+        mappings: dict[str, Any] = {
+            "modelId": model_name,
+            "inputMapping": input_mappings,
+            "outputMapping": output_mappings,
+        }
+
+        LOGGER.info(f"Applying name mappings: {mappings}")
+        return self._send_request(endpoint=self.Endpoints.INFO_NAMES, method="POST", json=mappings)
+
     def request_metric(
         self,
         metric_name: str,
         json: Optional[dict[str, Any]] = None,
         schedule: bool = False,
-    ) -> Any:
-        endpoint: str = (
-            f"/{self._get_metric_base_url(metric_name=metric_name)}/{self.Endpoints.REQUEST if schedule else ''}"
-        )
+    ) -> requests.Response:
+        endpoint: str = f"/{_get_metric_base_url(metric_name=metric_name)}/{self.Endpoints.REQUEST if schedule else ''}"
         LOGGER.info(f"Sending request for metric {metric_name} to endpoint {endpoint}")
         return self._send_request(endpoint=endpoint, method="POST", json=json)
 
     def get_metrics(
         self,
         metric_name: str,
-    ) -> Any:
-        endpoint: str = f"{self._get_metric_base_url(metric_name=metric_name)}/{self.Endpoints.REQUESTS}"
+    ) -> requests.Response:
+        endpoint: str = f"{_get_metric_base_url(metric_name=metric_name)}/{self.Endpoints.REQUESTS}"
         LOGGER.info(f"Sending request to get drift metrics to endpoint {endpoint}")
         return self._send_request(
             endpoint=endpoint,
             method="GET",
         )
 
-    def delete_metric(self, metric_name: str, request_id: str) -> Any:
-        endpoint: str = f"{self._get_metric_base_url(metric_name=metric_name)}/{self.Endpoints.REQUEST}"
+    def delete_metric(self, metric_name: str, request_id: str) -> requests.Response:
+        endpoint: str = f"{_get_metric_base_url(metric_name=metric_name)}/{self.Endpoints.REQUEST}"
         LOGGER.info(f"Sending request to delete {metric_name} metric {request_id} to endpoint {endpoint}")
         json_payload = {"requestId": request_id}
         return self._send_request(endpoint=endpoint, method="DELETE", json=json_payload)
-
-
-# TODO: Refactor code to be under utilities.inference_utils.Inference
-@retry(wait_timeout=TIMEOUT_30SEC, sleep=5)
-def send_inference_request(
-    client: DynamicClient,
-    token: str,
-    inference_service: InferenceService,
-    data_batch: Any,
-    file_path: str,
-    max_retries: int = 5,
-) -> requests.Response:
-    """
-    Send data batch to inference service with retry logic for network errors.
-
-    Args:
-        client: Dynamic client used to interact with the cluster
-        token: Authentication token
-        inference_route: Route of the inference service
-        data_batch: Data to be sent
-        file_path: Path to the file being processed
-        max_retries: Maximum number of retry attempts (default: 5)
-
-    Returns:
-        None
-
-    Raises:
-        RequestException: If all retry attempts fail
-    """
-
-    temp_url = inference_service.instance.status["url"]
-    url = f"https://{temp_url}" if not temp_url.startswith("http") else temp_url
-    url = f"{url}/v2/models/{inference_service.name}/infer"
-    headers: dict[str, str] = {"Authorization": f"Bearer {token}"}
-
-    def _make_request() -> requests.Response:
-        try:
-            response: requests.Response = requests.post(
-                url=url, headers=headers, data=data_batch, verify=False, timeout=TIMEOUT_1MIN
-            )
-            return response
-        except requests.RequestException as e:
-            LOGGER.error(f"Error sending data for file: {file_path}. Error: {str(e)}")
-            raise
-
-    try:
-        return _make_request()
-    except requests.RequestException:
-        LOGGER.error(f"All {max_retries} retry attempts failed for file: {file_path}")
-        raise
 
 
 def get_trustyai_number_of_observations(client: DynamicClient, token: str, trustyai_service: TrustyAIService) -> int:
@@ -211,12 +171,15 @@ def send_inference_and_verify_trustyai_registered(
     client: DynamicClient,
     trustyai_service: TrustyAIService,
     expected_observations: int,
+    inference_config: dict[str, Any],
+    inference_type: str = Inference.INFER,
+    protocol: str = Protocols.HTTPS,
 ) -> None:
     inference = UserInference(
         inference_service=inference_service,
-        inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
-        inference_type=Inference.INFER,
-        protocol=Protocols.HTTPS,
+        inference_config=inference_config,
+        inference_type=inference_type,
+        protocol=protocol,
     )
 
     res = inference.run_inference_flow(
@@ -225,10 +188,10 @@ def send_inference_and_verify_trustyai_registered(
         use_default_query=False,
         token=token,
     )
-    LOGGER.debug(res)
+    LOGGER.debug(f"Inference response: {res}")
 
     samples = TimeoutSampler(
-        wait_timeout=180,
+        wait_timeout=TIMEOUT_5MIN,
         sleep=1,
         func=lambda: get_trustyai_number_of_observations(client=client, token=token, trustyai_service=trustyai_service),
     )
@@ -246,6 +209,9 @@ def send_inference_requests_and_verify_trustyai_service(
     data_path: str,
     trustyai_service: TrustyAIService,
     inference_service: InferenceService,
+    inference_config: dict[str, Any],
+    inference_type: str = Inference.INFER,
+    protocol: str = Protocols.HTTPS,
 ) -> None:
     """
     Sends all the data batches present in a given directory to an InferenceService, and verifies that
@@ -257,6 +223,9 @@ def send_inference_requests_and_verify_trustyai_service(
         data_path (str): Directory path containing data batch files.
         trustyai_service (TrustyAIService): TrustyAIService that will register the model.
         inference_service (InferenceService): Model to be registered by TrustyAI.
+        inference_config (dict[str, Any]): Inference config to be used when sending the inference.
+        inference_type (Optional[str]): Inference type to be used when sending the inference
+        protocol (Optional[str]): Protocol to be used when sending the inference
     """
 
     for root, _, files in os.walk(data_path):
@@ -278,6 +247,9 @@ def send_inference_requests_and_verify_trustyai_service(
                 client=client,
                 trustyai_service=trustyai_service,
                 expected_observations=expected_observations,
+                inference_config=inference_config,
+                inference_type=inference_type,
+                protocol=protocol,
             )
 
 
@@ -465,10 +437,10 @@ def verify_trustyai_metric_scheduling_request(
 
 def verify_upload_data_to_trustyai_service(
     client: DynamicClient,
-    trustyai_service: TrustyAIService,
     token: str,
+    trustyai_service: TrustyAIService,
     data_path: str,
-) -> Any:
+) -> None:
     """
     Uploads data to the TrustyAI service and verifies the number of observations increased correctly.
 
@@ -538,4 +510,47 @@ def verify_trustyai_metric_delete_request(
 
     assert updated_num_metrics == initial_num_metrics - 1, (
         f"Number of metrics after deletion is {updated_num_metrics}, expected {initial_num_metrics - 1}"
+    )
+
+
+def verify_name_mappings(
+    client: DynamicClient,
+    token: str,
+    trustyai_service: TrustyAIService,
+    isvc: InferenceService,
+    input_mappings: dict[str, str],
+    output_mappings: dict[str, str],
+) -> None:
+    """
+    Verifies that input and output name mappings are correctly applied to the TrustyAI service.
+
+    Args:
+        client: Kubernetes dynamic client instance
+        token: Authentication token used
+        trustyai_service: TrustyAI service instance
+        isvc: InferenceService instance to verify mappings for
+        input_mappings: Dictionary mapping input names
+        output_mappings: Dictionary mapping output names
+
+    Raises:
+        AssertionError: If mappings don't match expected values
+    """
+    tas_client: TrustyAIServiceClient = TrustyAIServiceClient(client=client, token=token, service=trustyai_service)
+    response: requests.Response = tas_client.apply_name_mappings(
+        model_name=isvc.name, input_mappings=input_mappings, output_mappings=output_mappings
+    )
+    assert response.status_code == HTTPStatus.OK
+    response = tas_client.get_model_metadata()
+
+    metadata = json.loads(response.text)
+    model_data = metadata[isvc.name]["data"]
+
+    response_input_mappings = model_data["inputSchema"]["nameMapping"]
+    assert response_input_mappings == input_mappings, (
+        f"Input mappings mismatch. Expected: {input_mappings}, Got: {response_input_mappings}"
+    )
+
+    response_output_mappings = model_data["outputSchema"]["nameMapping"]
+    assert response_output_mappings == output_mappings, (
+        f"Output mappings mismatch. Expected: {output_mappings}, Got: {response_output_mappings}"
     )

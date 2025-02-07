@@ -8,6 +8,7 @@ from tests.model_explainability.trustyai_service.utils import (
     verify_trustyai_metric_scheduling_request,
     verify_trustyai_metric_delete_request,
 )
+from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
 
 BASE_DATA_PATH: str = "./tests/model_explainability/trustyai_service/drift/model_data"
 
@@ -31,7 +32,7 @@ class TestDriftMetrics:
     4. Send metric deletion request and verify that the scheduled metric has been deleted.
     """
 
-    def test_send_inference_request_and_verify_trustyai_service(
+    def test_drift_send_inference_and_verify_trustyai_service(
         self,
         admin_client,
         current_client_token,
@@ -45,6 +46,7 @@ class TestDriftMetrics:
             data_path=f"{BASE_DATA_PATH}/data_batches",
             trustyai_service=trustyai_service_with_pvc_storage,
             inference_service=gaussian_credit_model,
+            inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
         )
 
     def test_upload_data_to_trustyai_service(

@@ -6,13 +6,15 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
+from ocp_resources.trustyai_service import TrustyAIService
 
+from tests.model_explainability.trustyai_service.utils import wait_for_isvc_deployment_registered_by_trustyaiservice
 from utilities.constants import ModelFormat, KServeDeploymentType
 from utilities.infra import create_isvc
 
 
 @pytest.fixture(scope="class")
-def kserve_ovms_runtime(
+def ovms_runtime(
     admin_client: DynamicClient, minio_data_connection: Secret, model_namespace: Namespace
 ) -> Generator[ServingRuntime, Any, Any]:
     supported_model_formats = [
@@ -82,7 +84,8 @@ def onnx_loan_model(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     minio_data_connection: Secret,
-    kserve_ovms_runtime: ServingRuntime,
+    ovms_runtime: ServingRuntime,
+    trustyai_service_with_pvc_storage: TrustyAIService,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
@@ -90,7 +93,7 @@ def onnx_loan_model(
         namespace=model_namespace.name,
         deployment_mode=KServeDeploymentType.SERVERLESS,
         model_format=ModelFormat.ONNX,
-        runtime=kserve_ovms_runtime.name,
+        runtime=ovms_runtime.name,
         storage_key=minio_data_connection.name,
         storage_path="ovms/loan_model_alpha",
         min_replicas=1,
@@ -99,5 +102,11 @@ def onnx_loan_model(
         model_version="1",
         wait=True,
         wait_for_predictor_pods=False,
-    ) as inference_service:
-        yield inference_service
+    ) as isvc:
+        wait_for_isvc_deployment_registered_by_trustyaiservice(
+            client=admin_client,
+            isvc=isvc,
+            trustyai_service=trustyai_service_with_pvc_storage,
+            runtime_name=ovms_runtime.name,
+        )
+        yield isvc
