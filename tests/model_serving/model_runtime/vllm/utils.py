@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from typing import Generator, Any
+from typing import Generator, Any, List, Dict
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.secret import Secret
 from ocp_resources.inference_service import InferenceService
@@ -90,13 +90,13 @@ def fetch_tgis_response(  # type: ignore
 
 
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(min=1, max=6))
-def run_raw_inference(  # type: ignore
+def run_raw_inference(
     pod_name: str,
     isvc: InferenceService,
     port: int,
     endpoint: str,
-    chat_query=CHAT_QUERY,
-    completion_query=COMPLETION_QUERY,
+    chat_query: List[List[Dict[str, str]]] = CHAT_QUERY,
+    completion_query: List[Dict[str, str]] = COMPLETION_QUERY,
 ) -> tuple[Any, list[Any], list[Any]]:
     LOGGER.info(pod_name)
     with portforward.forward(
