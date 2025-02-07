@@ -26,7 +26,8 @@ from utilities.constants import (
     Protocols,
     RuntimeTemplates,
 )
-from utilities.infra import s3_endpoint_secret, create_isvc
+from utilities.infra import create_isvc
+from utilities.infra import s3_endpoint_secret
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 

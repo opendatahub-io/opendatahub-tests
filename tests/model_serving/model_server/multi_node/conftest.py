@@ -11,11 +11,10 @@ from ocp_resources.pod import Pod
 from ocp_resources.serving_runtime import ServingRuntime
 
 from utilities.constants import KServeDeploymentType
-from utilities.general import download_model_data
+from utilities.infra import download_model_data, create_isvc
 from utilities.infra import (
     get_pods_by_isvc_label,
     wait_for_inference_deployment_replicas,
-    create_isvc,
 )
 
 
