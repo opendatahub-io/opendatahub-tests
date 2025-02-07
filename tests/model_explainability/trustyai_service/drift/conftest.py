@@ -94,6 +94,6 @@ def gaussian_credit_model(
             client=admin_client,
             isvc=isvc,
             trustyai_service=trustyai_service_with_pvc_storage,
-            runtime_name=mlserver_runtime,
+            runtime_name=mlserver_runtime.name,
         )
         yield isvc

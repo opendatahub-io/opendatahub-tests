@@ -208,14 +208,12 @@ def send_inference_and_verify_trustyai_registered(
     token: str,
     inference_service: InferenceService,
     data_batch: str,
-    file_path: str,
     client: DynamicClient,
     trustyai_service: TrustyAIService,
     expected_observations: int,
 ) -> None:
     inference = UserInference(
         inference_service=inference_service,
-        # runtime=ModelInferenceRuntime.OPENVINO_RUNTIME,
         inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
         inference_type=Inference.INFER,
         protocol=Protocols.HTTPS,
@@ -226,7 +224,6 @@ def send_inference_and_verify_trustyai_registered(
         inference_input=data_batch,
         use_default_query=False,
         token=token,
-        insecure=True,
     )
     LOGGER.debug(res)
 
@@ -278,7 +275,6 @@ def send_inference_requests_and_verify_trustyai_service(
                 token=token,
                 inference_service=inference_service,
                 data_batch=data,
-                file_path=file_path,
                 client=client,
                 trustyai_service=trustyai_service,
                 expected_observations=expected_observations,
@@ -317,9 +313,11 @@ def wait_for_isvc_deployment_registered_by_trustyaiservice(
                 == f"http://{trustyai_service.name}.{isvc.namespace}.svc.cluster.local"
             ):
                 deployment.wait_for_replicas()
-                return True
+            else:
+                if deployment.instance.spec.replicas != 0:
+                    return False
 
-        return False
+        return True
 
     samples = TimeoutSampler(
         wait_timeout=TIMEOUT_10MIN,
