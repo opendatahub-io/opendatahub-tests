@@ -15,15 +15,16 @@ from ocp_resources.resource import get_client
 from ocp_resources.service import Service
 from pyhelper_utils.shell import run_command
 from simple_logger.logger import get_logger
-from timeout_sampler import retry, TimeoutSampler
+from timeout_sampler import retry
 
-from utilities.exceptions import InvalidStorageArgumentError, FailedPodsError
+from utilities.exceptions import InvalidStorageArgumentError
 from utilities.infra import (
     get_inference_serving_runtime,
     get_model_mesh_route,
     get_pods_by_isvc_label,
     get_services_by_isvc_label,
     wait_for_inference_deployment_replicas,
+    verify_no_failed_pods,
 )
 from utilities.certificates_utils import get_ca_bundle
 from utilities.constants import (
@@ -32,7 +33,6 @@ from utilities.constants import (
     HTTPRequest,
     Labels,
     Annotations,
-    Timeout,
 )
 import portforward
 
@@ -481,73 +481,6 @@ class UserInference(Inference):
                 return svc_port
 
         raise ValueError(f"No port found for protocol {self.protocol} service {svc.instance}")
-
-
-def verify_no_failed_pods(client: DynamicClient, isvc: InferenceService, runtime_name: str | None) -> None:
-    """
-    Verify no failed pods.
-
-    Args:
-        client (DynamicClient): DynamicClient object
-        isvc (InferenceService): InferenceService object
-        runtime_name (str): ServingRuntime name
-
-    Raises:
-            FailedPodsError: If any pod is in failed state
-
-    """
-    LOGGER.info("Verifying no failed pods")
-    for pods in TimeoutSampler(
-        wait_timeout=Timeout.TIMEOUT_5MIN,
-        sleep=10,
-        func=get_pods_by_isvc_label,
-        client=client,
-        isvc=isvc,
-        runtime_name=runtime_name,
-    ):
-        ready_pods = 0
-        failed_pods: dict[str, Any] = {}
-
-        if pods:
-            for pod in pods:
-                for condition in pod.instance.status.conditions:
-                    if condition.type == pod.Status.READY and condition.status == pod.Condition.Status.TRUE:
-                        ready_pods += 1
-
-            if ready_pods == len(pods):
-                return
-
-            for pod in pods:
-                pod_status = pod.instance.status
-
-                if pod_status.containerStatuses:
-                    for container_status in pod_status.containerStatuses:
-                        is_waiting_pull_back_off = (
-                            wait_state := container_status.state.waiting
-                        ) and wait_state.reason == pod.Status.IMAGE_PULL_BACK_OFF
-
-                        is_terminated_error = (
-                            terminate_state := container_status.state.terminated
-                        ) and terminate_state.reason in (pod.Status.ERROR, pod.Status.CRASH_LOOPBACK_OFF)
-
-                        if is_waiting_pull_back_off or is_terminated_error:
-                            failed_pods[pod.name] = pod_status
-
-                        if init_container_status := pod_status.initContainerStatuses:
-                            if container_terminated := init_container_status[0].lastState.terminated:
-                                if container_terminated.reason == "Error":
-                                    failed_pods[pod.name] = pod_status
-
-                elif pod_status.phase in (
-                    pod.Status.CRASH_LOOPBACK_OFF,
-                    pod.Status.FAILED,
-                    pod.Status.IMAGE_PULL_BACK_OFF,
-                    pod.Status.ERR_IMAGE_PULL,
-                ):
-                    failed_pods[pod.name] = pod_status
-
-            if failed_pods:
-                raise FailedPodsError(pods=failed_pods)
 
 
 @contextmanager

@@ -28,10 +28,11 @@ from ocp_resources.serving_runtime import ServingRuntime
 from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
-from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
-import utilities.general
-from utilities.general import create_isvc_label_selector_str
+from utilities.constants import Timeout
+from utilities.exceptions import FailedPodsError
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
+from utilities.general import create_isvc_label_selector_str, get_s3_secret_dict
 
 LOGGER = get_logger(name=__name__)
 TIMEOUT_2MIN = 2 * 60
@@ -169,7 +170,7 @@ def s3_endpoint_secret(
             annotations={"opendatahub.io/connection-type": "s3"},
             # the labels are needed to set the secret as data connection by odh-model-controller
             label={"opendatahub.io/managed": "true", "opendatahub.io/dashboard": "true"},
-            data_dict=utilities.general.get_s3_secret_dict(
+            data_dict=get_s3_secret_dict(
                 aws_access_key=aws_access_key,
                 aws_secret_access_key=aws_secret_access_key,
                 aws_s3_bucket=aws_s3_bucket,
@@ -472,6 +473,73 @@ def update_configmap_data(
         config_map.data = data
         with config_map as cm:
             yield cm
+
+
+def verify_no_failed_pods(client: DynamicClient, isvc: InferenceService, runtime_name: str | None) -> None:
+    """
+    Verify no failed pods.
+
+    Args:
+        client (DynamicClient): DynamicClient object
+        isvc (InferenceService): InferenceService object
+        runtime_name (str): ServingRuntime name
+
+    Raises:
+            FailedPodsError: If any pod is in failed state
+
+    """
+    LOGGER.info("Verifying no failed pods")
+    for pods in TimeoutSampler(
+        wait_timeout=Timeout.TIMEOUT_5MIN,
+        sleep=10,
+        func=get_pods_by_isvc_label,
+        client=client,
+        isvc=isvc,
+        runtime_name=runtime_name,
+    ):
+        ready_pods = 0
+        failed_pods: dict[str, Any] = {}
+
+        if pods:
+            for pod in pods:
+                for condition in pod.instance.status.conditions:
+                    if condition.type == pod.Status.READY and condition.status == pod.Condition.Status.TRUE:
+                        ready_pods += 1
+
+            if ready_pods == len(pods):
+                return
+
+            for pod in pods:
+                pod_status = pod.instance.status
+
+                if pod_status.containerStatuses:
+                    for container_status in pod_status.containerStatuses:
+                        is_waiting_pull_back_off = (
+                            wait_state := container_status.state.waiting
+                        ) and wait_state.reason == pod.Status.IMAGE_PULL_BACK_OFF
+
+                        is_terminated_error = (
+                            terminate_state := container_status.state.terminated
+                        ) and terminate_state.reason in (pod.Status.ERROR, pod.Status.CRASH_LOOPBACK_OFF)
+
+                        if is_waiting_pull_back_off or is_terminated_error:
+                            failed_pods[pod.name] = pod_status
+
+                        if init_container_status := pod_status.initContainerStatuses:
+                            if container_terminated := init_container_status[0].lastState.terminated:
+                                if container_terminated.reason == "Error":
+                                    failed_pods[pod.name] = pod_status
+
+                elif pod_status.phase in (
+                    pod.Status.CRASH_LOOPBACK_OFF,
+                    pod.Status.FAILED,
+                    pod.Status.IMAGE_PULL_BACK_OFF,
+                    pod.Status.ERR_IMAGE_PULL,
+                ):
+                    failed_pods[pod.name] = pod_status
+
+            if failed_pods:
+                raise FailedPodsError(pods=failed_pods)
 
 
 def check_pod_status_in_time(pod: Pod, status: Set[str], duration: int = TIMEOUT_2MIN, wait: int = 1) -> None:

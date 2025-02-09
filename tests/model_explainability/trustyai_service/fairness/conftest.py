@@ -9,7 +9,7 @@ from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.trustyai_service import TrustyAIService
 
 from tests.model_explainability.trustyai_service.utils import wait_for_isvc_deployment_registered_by_trustyaiservice
-from utilities.constants import ModelFormat, KServeDeploymentType, Labels
+from utilities.constants import ModelFormat, KServeDeploymentType, Labels, ModelAndFormat, ModelVersion
 from utilities.inference_utils import create_isvc
 
 
@@ -18,7 +18,7 @@ def ovms_runtime(
     admin_client: DynamicClient, minio_data_connection: Secret, model_namespace: Namespace
 ) -> Generator[ServingRuntime, Any, Any]:
     supported_model_formats = [
-        {"name": f"{ModelFormat.OPENVINO}_ir", "version": "opset13", "autoSelect": True},
+        {"name": f"{ModelAndFormat.OPENVINO_IR}", "version": ModelVersion.OPSET13, "autoSelect": True},
         {"name": ModelFormat.ONNX, "version": "1"},
         {"name": ModelFormat.TENSORFLOW, "version": "1", "autoSelect": True},
         {"name": ModelFormat.TENSORFLOW, "version": "2", "autoSelect": True},

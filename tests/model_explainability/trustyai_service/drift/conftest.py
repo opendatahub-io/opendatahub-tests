@@ -83,7 +83,7 @@ def gaussian_credit_model(
         namespace=model_namespace.name,
         deployment_mode=KServeDeploymentType.SERVERLESS,
         model_format=XGBOOST,
-        runtime="kserve-mlserver",
+        runtime=mlserver_runtime.name,
         storage_key=minio_data_connection.name,
         storage_path="sklearn/gaussian_credit_model/1",
         enable_auth=True,
