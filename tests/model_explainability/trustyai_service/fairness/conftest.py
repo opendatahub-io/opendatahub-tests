@@ -13,6 +13,7 @@ from utilities.constants import ModelFormat, KServeDeploymentType, Labels, Model
 from utilities.inference_utils import create_isvc
 
 
+# TODO: Use ServingRuntimeFromTemplate
 @pytest.fixture(scope="class")
 def ovms_runtime(
     admin_client: DynamicClient, minio_data_connection: Secret, model_namespace: Namespace
