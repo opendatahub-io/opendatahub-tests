@@ -9,14 +9,15 @@ from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.trustyai_service import TrustyAIService
 
 from tests.model_explainability.trustyai_service.utils import wait_for_isvc_deployment_registered_by_trustyaiservice
-from utilities.constants import KServeDeploymentType, Timeout
+from utilities.constants import KServeDeploymentType, Timeout, Labels
 from utilities.infra import create_isvc
 
 MLSERVER: str = "mlserver"
 MLSERVER_RUNTIME_NAME: str = f"{MLSERVER}-1.x"
-MLSERVER_QUAY_IMAGE: str = "quay.io/rh-ee-mmisiura/mlserver:1.6.1"
 XGBOOST: str = "xgboost"
 SKLEARN: str = "sklearn"
+LIGHTGBM: str = "lightgbm"
+MLFLOW: str = "mlflow"
 TIMEOUT_20MIN: int = 20 * Timeout.TIMEOUT_1MIN
 
 
@@ -25,14 +26,14 @@ def mlserver_runtime(
     admin_client: DynamicClient, minio_data_connection: Secret, model_namespace: Namespace
 ) -> Generator[ServingRuntime, Any, Any]:
     supported_model_formats = [
-        {"name": "sklearn", "version": "0", "autoSelect": True, "priority": 2},
-        {"name": "sklearn", "version": "1", "autoSelect": True, "priority": 2},
-        {"name": "xgboost", "version": "1", "autoSelect": True, "priority": 2},
-        {"name": "xgboost", "version": "2", "autoSelect": True, "priority": 2},
-        {"name": "lightgbm", "version": "3", "autoSelect": True, "priority": 2},
-        {"name": "lightgbm", "version": "4", "autoSelect": True, "priority": 2},
-        {"name": "mlflow", "version": "1", "autoSelect": True, "priority": 1},
-        {"name": "mlflow", "version": "2", "autoSelect": True, "priority": 1},
+        {"name": SKLEARN, "version": "0", "autoSelect": True, "priority": 2},
+        {"name": SKLEARN, "version": "1", "autoSelect": True, "priority": 2},
+        {"name": XGBOOST, "version": "1", "autoSelect": True, "priority": 2},
+        {"name": XGBOOST, "version": "2", "autoSelect": True, "priority": 2},
+        {"name": LIGHTGBM, "version": "3", "autoSelect": True, "priority": 2},
+        {"name": LIGHTGBM, "version": "4", "autoSelect": True, "priority": 2},
+        {"name": MLFLOW, "version": "1", "autoSelect": True, "priority": 1},
+        {"name": MLFLOW, "version": "2", "autoSelect": True, "priority": 1},
     ]
     containers = [
         {
@@ -63,7 +64,7 @@ def mlserver_runtime(
             "prometheus.io/port": "8080",
             "openshift.io/display-name": "mlserver-1.x",
         },
-        label={"opendatahub.io/dashboard": "true"},
+        label={Labels.OpenDataHub.DASHBOARD: "true"},
     ) as mlserver:
         yield mlserver
 

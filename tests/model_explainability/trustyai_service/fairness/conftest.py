@@ -9,7 +9,7 @@ from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.trustyai_service import TrustyAIService
 
 from tests.model_explainability.trustyai_service.utils import wait_for_isvc_deployment_registered_by_trustyaiservice
-from utilities.constants import ModelFormat, KServeDeploymentType
+from utilities.constants import ModelFormat, KServeDeploymentType, Labels
 from utilities.infra import create_isvc
 
 
@@ -73,7 +73,7 @@ def ovms_runtime(
             "prometheus.io/path": "/metrics",
             "prometheus.io/port": "8888",
         },
-        label={"opendatahub.io/dashboard": "true"},
+        label={Labels.OpenDataHub.DASHBOARD: "true"},
         volumes=[{"name": "shm", "emptyDir": {"medium": "Memory", "sizeLimit": "2Gi"}}],
     ) as sr:
         yield sr
