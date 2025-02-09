@@ -16,7 +16,7 @@ from utilities.constants import (
     Protocols,
     RuntimeTemplates,
 )
-from utilities.infra import create_isvc
+from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 

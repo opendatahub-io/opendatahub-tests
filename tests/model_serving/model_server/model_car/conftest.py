@@ -8,7 +8,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.serving_runtime import ServingRuntime
 
 from utilities.constants import KServeDeploymentType
-from utilities.infra import create_isvc
+from utilities.inference_utils import create_isvc
 
 
 @pytest.fixture(scope="class")

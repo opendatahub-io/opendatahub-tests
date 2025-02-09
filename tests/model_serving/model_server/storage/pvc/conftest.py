@@ -11,7 +11,8 @@ from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
 
 from utilities.constants import KServeDeploymentType
-from utilities.infra import download_model_data, create_isvc
+from utilities.general import download_model_data
+from utilities.inference_utils import create_isvc
 from utilities.infra import get_pods_by_isvc_label
 
 

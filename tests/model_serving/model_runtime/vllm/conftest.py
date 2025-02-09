@@ -17,7 +17,7 @@ from syrupy.extensions.json import JSONSnapshotExtension
 from tests.model_serving.model_runtime.vllm.constant import TEMPLATE_MAP, ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES
 from simple_logger.logger import get_logger
 
-from utilities.infra import create_isvc
+from utilities.inference_utils import create_isvc
 from utilities.infra import get_pods_by_isvc_label
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 

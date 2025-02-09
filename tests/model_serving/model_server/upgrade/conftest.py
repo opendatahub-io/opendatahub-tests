@@ -18,7 +18,8 @@ from utilities.constants import (
     ModelVersion,
     RuntimeTemplates,
 )
-from utilities.infra import create_ns, s3_endpoint_secret, create_isvc
+from utilities.inference_utils import create_isvc
+from utilities.infra import create_ns, s3_endpoint_secret
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 

@@ -10,7 +10,7 @@ from ocp_resources.trustyai_service import TrustyAIService
 
 from tests.model_explainability.trustyai_service.utils import wait_for_isvc_deployment_registered_by_trustyaiservice
 from utilities.constants import ModelFormat, KServeDeploymentType, Labels
-from utilities.infra import create_isvc
+from utilities.inference_utils import create_isvc
 
 
 @pytest.fixture(scope="class")

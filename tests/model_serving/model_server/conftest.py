@@ -29,11 +29,11 @@ from utilities.constants import (
     Protocols,
     RuntimeTemplates,
 )
+from utilities.inference_utils import create_isvc
 from utilities.infra import (
     get_openshift_token,
     s3_endpoint_secret,
     update_configmap_data,
-    create_isvc,
 )
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.serving_runtime import ServingRuntimeFromTemplate

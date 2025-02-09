@@ -14,9 +14,9 @@ from timeout_sampler import TimeoutSampler
 
 from utilities.constants import Timeout, Protocols
 from utilities.exceptions import MetricValidationError
+from utilities.general import create_isvc_label_selector_str
 from utilities.inference_utils import UserInference, Inference
 
-from utilities.infra import create_isvc_label_selector_str
 
 LOGGER = get_logger(name=__name__)
 TIMEOUT_30SEC: int = 30
