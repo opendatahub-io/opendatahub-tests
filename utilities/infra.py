@@ -4,7 +4,7 @@ import json
 import shlex
 from contextlib import contextmanager
 from functools import cache
-from typing import Any, Generator, Optional
+from typing import Any, Generator, Optional, Set
 
 import kubernetes
 from kubernetes.dynamic import DynamicClient
@@ -28,6 +28,7 @@ from ocp_resources.serving_runtime import ServingRuntime
 from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 import utilities.general
 from utilities.general import create_isvc_label_selector_str
@@ -471,3 +472,34 @@ def update_configmap_data(
         config_map.data = data
         with config_map as cm:
             yield cm
+
+
+def check_pod_status_in_time(pod: Pod, status: Set[str], duration: int = TIMEOUT_2MIN, wait: int = 1) -> None:
+    """
+    Checks if a pod status is maintained for a given duration. If not, an AssertionError is raised.
+
+    Args:
+        pod (Pod): The pod to check
+        status (Set[Pod.Status]): Expected pod status(es)
+        duration (int): Maximum time to check for in seconds
+        wait (int): Time to wait between checks in seconds
+
+    Raises:
+        AssertionError: If pod status is not in the expected set
+    """
+    LOGGER.info(f"Checking pod status for {pod.name} to be {status} for {duration} seconds")
+
+    sampler = TimeoutSampler(
+        wait_timeout=duration,
+        sleep=wait,
+        func=lambda: pod.instance,
+    )
+
+    try:
+        for sample in sampler:
+            if sample:
+                if sample.status.phase not in status:
+                    raise AssertionError(f"Pod status is not the expected: {pod.status}")
+
+    except TimeoutExpiredError:
+        LOGGER.info(f"Pod status is {pod.status} as expected")
