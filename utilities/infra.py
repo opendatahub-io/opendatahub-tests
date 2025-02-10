@@ -28,12 +28,11 @@ from ocp_resources.serving_runtime import ServingRuntime
 from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
-
+from utilities.constants import Timeout
 import utilities.general
 from utilities.general import create_isvc_label_selector_str
 
 LOGGER = get_logger(name=__name__)
-TIMEOUT_2MIN = 2 * 60
 
 
 @contextmanager
@@ -68,7 +67,7 @@ def create_ns(
                 teardown=teardown,
                 delete_timeout=delete_timeout,
             )
-            project.wait_for_status(status=project.Status.ACTIVE, timeout=TIMEOUT_2MIN)
+            project.wait_for_status(status=project.Status.ACTIVE, timeout=Timeout.TIMEOUT_2MIN)
             yield project
 
     else:
@@ -79,7 +78,7 @@ def create_ns(
             teardown=teardown,
             delete_timeout=delete_timeout,
         ) as ns:
-            ns.wait_for_status(status=Namespace.Status.ACTIVE, timeout=TIMEOUT_2MIN)
+            ns.wait_for_status(status=Namespace.Status.ACTIVE, timeout=Timeout.TIMEOUT_2MIN)
             yield ns
 
 
@@ -88,7 +87,7 @@ def wait_for_inference_deployment_replicas(
     isvc: InferenceService,
     runtime_name: str | None,
     expected_num_deployments: int = 1,
-    timeout: int = 4 * 60,
+    timeout: int = Timeout.TIMEOUT_5MIN,
 ) -> list[Deployment]:
     """
     Wait for inference deployment replicas to complete.
