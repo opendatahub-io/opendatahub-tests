@@ -16,7 +16,6 @@ from utilities.constants import (
     Annotations,
     KServeDeploymentType,
     Labels,
-    Timeout,
 )
 from utilities.exceptions import (
     FailedPodsError,
