@@ -35,7 +35,6 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 from utilities.general import create_isvc_label_selector_str, get_s3_secret_dict
 
 LOGGER = get_logger(name=__name__)
-TIMEOUT_2MIN = 2 * 60
 
 
 @contextmanager
@@ -44,7 +43,7 @@ def create_ns(
     admin_client: Optional[DynamicClient] = None,
     unprivileged_client: Optional[DynamicClient] = None,
     teardown: bool = True,
-    delete_timeout: int = 4 * 60,
+    delete_timeout: int = Timeout.TIMEOUT_4MIN,
     labels: Optional[dict[str, str]] = None,
 ) -> Generator[Namespace | Project, Any, Any]:
     """
@@ -70,7 +69,7 @@ def create_ns(
                 teardown=teardown,
                 delete_timeout=delete_timeout,
             )
-            project.wait_for_status(status=project.Status.ACTIVE, timeout=TIMEOUT_2MIN)
+            project.wait_for_status(status=project.Status.ACTIVE, timeout=Timeout.TIMEOUT_2MIN)
             yield project
 
     else:
@@ -81,7 +80,7 @@ def create_ns(
             teardown=teardown,
             delete_timeout=delete_timeout,
         ) as ns:
-            ns.wait_for_status(status=Namespace.Status.ACTIVE, timeout=TIMEOUT_2MIN)
+            ns.wait_for_status(status=Namespace.Status.ACTIVE, timeout=Timeout.TIMEOUT_2MIN)
             yield ns
 
 
@@ -90,6 +89,7 @@ def wait_for_inference_deployment_replicas(
     isvc: InferenceService,
     runtime_name: str | None,
     expected_num_deployments: int = 1,
+    timeout: int = Timeout.TIMEOUT_5MIN,
 ) -> list[Deployment]:
     """
     Wait for inference deployment replicas to complete.
@@ -99,6 +99,7 @@ def wait_for_inference_deployment_replicas(
         isvc (InferenceService): InferenceService object
         runtime_name (str): ServingRuntime name.
         expected_num_deployments (int): Expected number of deployments per InferenceService.
+        timeout (int): Time to wait for the model deployment.
 
     Returns:
         list[Deployment]: List of Deployment objects for InferenceService.
@@ -119,7 +120,7 @@ def wait_for_inference_deployment_replicas(
     if len(deployments) == expected_num_deployments:
         for deployment in deployments:
             if deployment.exists:
-                deployment.wait_for_replicas()
+                deployment.wait_for_replicas(timeout=timeout)
 
         return deployments
 
@@ -475,7 +476,9 @@ def update_configmap_data(
             yield cm
 
 
-def verify_no_failed_pods(client: DynamicClient, isvc: InferenceService, runtime_name: str | None) -> None:
+def verify_no_failed_pods(
+    client: DynamicClient, isvc: InferenceService, runtime_name: str | None, timeout: int = Timeout.TIMEOUT_5MIN
+) -> None:
     """
     Verify no failed pods.
 
@@ -483,14 +486,14 @@ def verify_no_failed_pods(client: DynamicClient, isvc: InferenceService, runtime
         client (DynamicClient): DynamicClient object
         isvc (InferenceService): InferenceService object
         runtime_name (str): ServingRuntime name
-
+        timeout (int): Time to wait for the pod.
     Raises:
             FailedPodsError: If any pod is in failed state
 
     """
     LOGGER.info("Verifying no failed pods")
     for pods in TimeoutSampler(
-        wait_timeout=Timeout.TIMEOUT_5MIN,
+        wait_timeout=timeout,
         sleep=10,
         func=get_pods_by_isvc_label,
         client=client,
@@ -542,7 +545,7 @@ def verify_no_failed_pods(client: DynamicClient, isvc: InferenceService, runtime
                 raise FailedPodsError(pods=failed_pods)
 
 
-def check_pod_status_in_time(pod: Pod, status: Set[str], duration: int = TIMEOUT_2MIN, wait: int = 1) -> None:
+def check_pod_status_in_time(pod: Pod, status: Set[str], duration: int = Timeout.TIMEOUT_2MIN, wait: int = 1) -> None:
     """
     Checks if a pod status is maintained for a given duration. If not, an AssertionError is raised.
 

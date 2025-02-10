@@ -140,9 +140,12 @@ class Labels:
 
 
 class Timeout:
-    TIMEOUT_1MIN = 60
-    TIMEOUT_10MIN = 10 * TIMEOUT_1MIN
+    TIMEOUT_1MIN: int = 60
+    TIMEOUT_2MIN: int = 2 * TIMEOUT_1MIN
+    TIMEOUT_4MIN: int = 4 * TIMEOUT_1MIN
     TIMEOUT_5MIN: int = 5 * TIMEOUT_1MIN
+    TIMEOUT_10MIN: int = 10 * TIMEOUT_1MIN
+    TIMEOUT_15MIN: int = 15 * TIMEOUT_1MIN
 
 
 MODEL_REGISTRY: str = "model-registry"

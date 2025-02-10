@@ -33,6 +33,7 @@ from utilities.constants import (
     HTTPRequest,
     Labels,
     Annotations,
+    Timeout,
 )
 import portforward
 
@@ -507,6 +508,7 @@ def create_isvc(
     wait_for_predictor_pods: bool = True,
     autoscaler_mode: Optional[str] = None,
     multi_node_worker_spec: Optional[dict[str, int]] = None,
+    timeout: int = Timeout.TIMEOUT_15MIN,
 ) -> Generator[InferenceService, Any, Any]:
     """
     Create InferenceService object.
@@ -535,6 +537,7 @@ def create_isvc(
         autoscaler_mode (str): Autoscaler mode
         multi_node_worker_spec (dict[str, int]): Multi node worker spec
         wait_for_predictor_pods (bool): Wait for predictor pods
+        timeout (int): Time to wait for the model inference,deployment to be ready
 
     Yields:
         InferenceService: InferenceService object
@@ -614,8 +617,10 @@ def create_isvc(
         label=labels,
     ) as inference_service:
         if wait_for_predictor_pods:
-            verify_no_failed_pods(client=client, isvc=inference_service, runtime_name=runtime)
-            wait_for_inference_deployment_replicas(client=client, isvc=inference_service, runtime_name=runtime)
+            verify_no_failed_pods(client=client, isvc=inference_service, runtime_name=runtime, timeout=timeout)
+            wait_for_inference_deployment_replicas(
+                client=client, isvc=inference_service, runtime_name=runtime, timeout=timeout
+            )
 
         if wait:
             # Modelmesh 2nd server in the ns will fail to be Ready; isvc needs to be re-applied
@@ -640,7 +645,7 @@ def create_isvc(
             inference_service.wait_for_condition(
                 condition=inference_service.Condition.READY,
                 status=inference_service.Condition.Status.TRUE,
-                timeout=15 * 60,
+                timeout=timeout,
             )
 
         yield inference_service
