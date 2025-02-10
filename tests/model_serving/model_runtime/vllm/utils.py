@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from typing import Generator, Any, List, Dict
+from typing import Generator, Any
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.secret import Secret
 from ocp_resources.inference_service import InferenceService
@@ -95,8 +95,8 @@ def run_raw_inference(
     isvc: InferenceService,
     port: int,
     endpoint: str,
-    chat_query: List[List[Dict[str, str]]] = CHAT_QUERY,
-    completion_query: List[Dict[str, str]] = COMPLETION_QUERY,
+    chat_query: list[list[dict[str, str]]] = CHAT_QUERY,
+    completion_query: list[dict[str, str]] = COMPLETION_QUERY,
 ) -> tuple[Any, list[Any], list[Any]]:
     LOGGER.info(pod_name)
     with portforward.forward(

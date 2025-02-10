@@ -8,7 +8,7 @@ from tests.model_serving.model_runtime.vllm.utils import (
     run_raw_inference,
     validate_inference_output,
 )
-from tests.model_serving.model_runtime.vllm.constant import MULTI_IMAGE_QUERIES, THREE_IMAGE_QUERY
+from tests.model_serving.model_runtime.vllm.constant import OPENAI_ENDPOINT_NAME, MULTI_IMAGE_QUERIES, THREE_IMAGE_QUERY
 
 LOGGER = get_logger(name=__name__)
 
@@ -16,6 +16,7 @@ LOGGER = get_logger(name=__name__)
 SERVING_ARGUMENT: List[str] = ["--model=/mnt/models", "--uvicorn-log-level=debug", "--limit-mm-per-prompt", "image=2"]
 
 MODEL_PATH: str = "ibm-granite/granite-vision-3.1-2b-preview"
+
 
 pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "valid_aws_config")
 
@@ -49,7 +50,7 @@ class TestGraniteVisionModel:
             pod_name=get_pod_name_resource.name,
             isvc=vllm_inference_service,
             port=8080,
-            endpoint="openai",
+            endpoint=OPENAI_ENDPOINT_NAME,
             chat_query=MULTI_IMAGE_QUERIES,
         )
         validate_inference_output(model_info, chat_responses, completion_responses, response_snapshot=response_snapshot)
@@ -65,7 +66,7 @@ class TestGraniteVisionModel:
             pod_name=get_pod_name_resource.name,
             isvc=vllm_inference_service,
             port=8080,
-            endpoint="openai",
+            endpoint=OPENAI_ENDPOINT_NAME,
             chat_query=THREE_IMAGE_QUERY,
         )
         validate_inference_output(model_info, chat_responses, completion_responses, response_snapshot=response_snapshot)
@@ -100,7 +101,7 @@ class TestGraniteMultiGPUVisionModel:
             pod_name=get_pod_name_resource.name,
             isvc=vllm_inference_service,
             port=8080,
-            endpoint="openai",
+            endpoint=OPENAI_ENDPOINT_NAME,
             chat_query=MULTI_IMAGE_QUERIES,
         )
         validate_inference_output(model_info, chat_responses, completion_responses, response_snapshot=response_snapshot)
