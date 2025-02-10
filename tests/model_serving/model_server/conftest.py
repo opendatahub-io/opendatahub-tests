@@ -19,7 +19,6 @@ from ocp_resources.storage_class import StorageClass
 from ocp_utilities.monitoring import Prometheus
 from pytest_testconfig import config as py_config
 
-from tests.model_serving.model_server.utils import create_isvc
 from utilities.constants import DscComponents, StorageClassName
 from utilities.constants import (
     KServeDeploymentType,
@@ -30,6 +29,7 @@ from utilities.constants import (
     Protocols,
     RuntimeTemplates,
 )
+from utilities.inference_utils import create_isvc
 from utilities.infra import (
     get_openshift_token,
     s3_endpoint_secret,

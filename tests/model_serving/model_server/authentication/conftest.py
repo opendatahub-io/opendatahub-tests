@@ -15,6 +15,7 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from pyhelper_utils.shell import run_command
 
+from utilities.inference_utils import create_isvc
 from utilities.infra import (
     create_isvc_view_role,
     create_ns,
@@ -22,7 +23,6 @@ from utilities.infra import (
     s3_endpoint_secret,
     create_inference_token,
 )
-from tests.model_serving.model_server.utils import create_isvc
 from utilities.constants import (
     KServeDeploymentType,
     ModelFormat,
