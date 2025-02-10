@@ -8,6 +8,7 @@ from model_registry import ModelRegistry
 
 
 LOGGER = get_logger(name=__name__)
+model_name: str = "my-model"
 
 
 @pytest.mark.parametrize(
@@ -45,7 +46,7 @@ class TestModelRegistryCreation:
             is_secure=False,
         )
         model = registry.register_model(
-            name="my-model",
+            name=f"{model_name}",
             uri="https://storage-place.my-company.com",
             version="2.0.0",
             description="lorem ipsum",
@@ -60,7 +61,7 @@ class TestModelRegistryCreation:
                 "str_key": "str_value",
             },
         )
-        registered_model = registry.get_registered_model("my-model")
+        registered_model = registry.get_registered_model(f"{model_name}")
         errors = []
         if not registered_model.id == model.id:
             errors.append(f"Unexpected id, received {registered_model.id}")
