@@ -89,6 +89,7 @@ def wait_for_inference_deployment_replicas(
     isvc: InferenceService,
     runtime_name: str | None,
     expected_num_deployments: int = 1,
+    timeout: int = 4 * 60,
 ) -> list[Deployment]:
     """
     Wait for inference deployment replicas to complete.
@@ -98,6 +99,7 @@ def wait_for_inference_deployment_replicas(
         isvc (InferenceService): InferenceService object
         runtime_name (str): ServingRuntime name.
         expected_num_deployments (int): Expected number of deployments per InferenceService.
+        timeout (int): Time to wait for the deployment.
 
     Returns:
         list[Deployment]: List of Deployment objects for InferenceService.
@@ -118,7 +120,7 @@ def wait_for_inference_deployment_replicas(
     if len(deployments) == expected_num_deployments:
         for deployment in deployments:
             if deployment.exists:
-                deployment.wait_for_replicas()
+                deployment.wait_for_replicas(timeout=timeout)
 
         return deployments
 

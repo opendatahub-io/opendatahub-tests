@@ -32,7 +32,9 @@ from utilities.jira import is_jira_open
 LOGGER = get_logger(name=__name__)
 
 
-def verify_no_failed_pods(client: DynamicClient, isvc: InferenceService, runtime_name: str | None) -> None:
+def verify_no_failed_pods(
+    client: DynamicClient, isvc: InferenceService, runtime_name: str | None, timeout: int = 5 * 60
+) -> None:
     """
     Verify no failed pods.
 
@@ -40,6 +42,7 @@ def verify_no_failed_pods(client: DynamicClient, isvc: InferenceService, runtime
         client (DynamicClient): DynamicClient object
         isvc (InferenceService): InferenceService object
         runtime_name (str): ServingRuntime name
+        timeout (int): Time to wait for the pod.
 
     Raises:
             FailedPodsError: If any pod is in failed state
@@ -49,7 +52,7 @@ def verify_no_failed_pods(client: DynamicClient, isvc: InferenceService, runtime
 
     LOGGER.info("Verifying no failed pods")
     for pods in TimeoutSampler(
-        wait_timeout=5 * 60,
+        wait_timeout=timeout,
         sleep=10,
         func=get_pods_by_isvc_label,
         client=client,
@@ -108,6 +111,7 @@ def create_isvc(
     wait_for_predictor_pods: bool = True,
     autoscaler_mode: Optional[str] = None,
     multi_node_worker_spec: Optional[dict[str, int]] = None,
+    timeout: int = 15 * 60,
 ) -> Generator[InferenceService, Any, Any]:
     """
     Create InferenceService object.
@@ -136,6 +140,7 @@ def create_isvc(
         autoscaler_mode (str): Autoscaler mode
         multi_node_worker_spec (dict[str, int]): Multi node worker spec
         wait_for_predictor_pods (bool): Wait for predictor pods
+        timeout (int): Time to wait for the model inference,deployment to be ready.
 
     Yields:
         InferenceService: InferenceService object
@@ -215,8 +220,10 @@ def create_isvc(
         label=labels,
     ) as inference_service:
         if wait_for_predictor_pods:
-            verify_no_failed_pods(client=client, isvc=inference_service, runtime_name=runtime)
-            wait_for_inference_deployment_replicas(client=client, isvc=inference_service, runtime_name=runtime)
+            verify_no_failed_pods(client=client, isvc=inference_service, runtime_name=runtime, timeout=timeout)
+            wait_for_inference_deployment_replicas(
+                client=client, isvc=inference_service, runtime_name=runtime, timeout=timeout
+            )
 
         if wait:
             # Modelmesh 2nd server in the ns will fail to be Ready; isvc needs to be re-applied
@@ -241,7 +248,7 @@ def create_isvc(
             inference_service.wait_for_condition(
                 condition=inference_service.Condition.READY,
                 status=inference_service.Condition.Status.TRUE,
-                timeout=15 * 60,
+                timeout=timeout,
             )
 
         yield inference_service
