@@ -38,7 +38,8 @@ def mlserver_runtime(
     containers = [
         {
             "name": "kserve-container",
-            "image": "quay.io/rh-ee-mmisiura/mlserver:1.6.1",
+            "image": "quay.io/trustyai_testing/mlserver"
+            "@sha256:68a4cd74fff40a3c4f29caddbdbdc9e54888aba54bf3c5f78c8ffd577c3a1c89",
             "env": [
                 {"name": "MLSERVER_MODEL_IMPLEMENTATION", "value": "{{.Labels.modelClass}}"},
                 {"name": "MLSERVER_HTTP_PORT", "value": "8080"},

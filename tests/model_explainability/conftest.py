@@ -83,7 +83,8 @@ def minio_pod(admin_client: DynamicClient, model_namespace: Namespace) -> Genera
                         "value": "THESECRETKEY",
                     },
                 ],
-                "image": "quay.io/rh-ee-mmisiura/modelmesh-minio-examples:latest",
+                "image": "quay.io/trustyai_testing/modelmesh-minio-examples"
+                "@sha256:d2ccbe92abf9aa5085b594b2cae6c65de2bf06306c30ff5207956eb949bb49da",
                 "name": MINIO,
             }
         ],
