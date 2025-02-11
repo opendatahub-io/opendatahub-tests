@@ -81,7 +81,7 @@ class TestGraniteLabNgramModel:
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [
         pytest.param(
-            {"name": "granite-7b-lab-m-draft"},
+            {"name": "granite-7b-lab-m-ngram"},
             {"model-dir": MODEL_PATH},
             {"deployment_type": KServeDeploymentType.RAW_DEPLOYMENT},
             {
