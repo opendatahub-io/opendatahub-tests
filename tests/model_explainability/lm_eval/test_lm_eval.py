@@ -27,7 +27,10 @@ def test_lmeval_huggingface_model(admin_client, model_namespace, lmevaljob_hf):
     [
         pytest.param(
             {"name": "lmevaljob-local-offline-builtin"},
-            {"image": "quay.io/trustyai_testing/lmeval-assets-flan-arceasy:latest"},
+            {
+                "image": "quay.io/trustyai_testing/lmeval-assets-flan-arceasy"
+                "@sha256:11cc9c2f38ac9cc26c4fab1a01a8c02db81c8f4801b5d2b2b90f90f91b97ac98"
+            },
             {"task_list": {"taskNames": ["arc_easy"]}},
         )
     ],
@@ -48,7 +51,10 @@ def test_lmeval_local_offline_builtin_tasks_flan_arceasy(
     [
         pytest.param(
             {"name": "lmevaljob-local-offline-unitxt"},
-            {"image": "quay.io/trustyai_testing/lmeval-assets-flan-20newsgroups:latest"},
+            {
+                "image": "quay.io/trustyai_testing/lmeval-assets-flan-20newsgroups"
+                "@sha256:3778c15079f11ef338a82ee35ae1aa43d6db52bac7bbfdeab343ccabe2608a0c"
+            },
             {
                 "task_list": {
                     "taskRecipes": [
