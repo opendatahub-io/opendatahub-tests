@@ -7,6 +7,7 @@ REST_PORT_NAME: str = "http1"
 GRPC_PORT_NAME: str = "h2c"
 TCP_PROTOCOL_NAME: str = "TCP"
 OPENAI_ENDPOINT_NAME: str = "openai"
+TGIS_ENDPOINT_NAME: str = "tgis"
 # Quantization
 VLLM_SUPPORTED_QUANTIZATION: list[str] = ["marlin", "awq"]
 # Configurations
