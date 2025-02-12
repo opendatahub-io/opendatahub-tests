@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from typing import Generator, Any
+from typing import Generator, Any, Optional
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.secret import Secret
 from ocp_resources.inference_service import InferenceService
@@ -51,13 +51,16 @@ def fetch_openai_response(  # type: ignore
     model_name: str,
     chat_query=CHAT_QUERY,
     completion_query=COMPLETION_QUERY,
+    tool_calling: Optional[dict[Any, Any]] = None,
 ) -> tuple[Any, list[Any], list[Any]]:
     completion_responses = []
     chat_responses = []
     inference_client = OpenAIClient(host=url, model_name=model_name, streaming=True)
     if chat_query:
         for query in chat_query:
-            chat_response = inference_client.request_http(endpoint=OpenAIEnpoints.CHAT_COMPLETIONS, query=query)
+            chat_response = inference_client.request_http(
+                endpoint=OpenAIEnpoints.CHAT_COMPLETIONS, query=query, extra_param=tool_calling
+            )
             chat_responses.append(chat_response)
     if completion_query:
         for query in COMPLETION_QUERY:
@@ -97,6 +100,7 @@ def run_raw_inference(
     endpoint: str,
     chat_query: list[list[dict[str, str]]] = CHAT_QUERY,
     completion_query: list[dict[str, str]] = COMPLETION_QUERY,
+    tool_calling: Optional[dict[Any, Any]] = None,
 ) -> tuple[Any, list[Any], list[Any]]:
     LOGGER.info(pod_name)
     with portforward.forward(
@@ -118,6 +122,7 @@ def run_raw_inference(
                 model_name=isvc.instance.metadata.name,
                 chat_query=chat_query,
                 completion_query=completion_query,
+                tool_calling=tool_calling,
             )
             return model_info, completion_responses, stream_completion_responses
         else:
