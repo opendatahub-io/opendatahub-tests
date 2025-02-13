@@ -24,6 +24,12 @@ TIMEOUT_30SEC: int = 30
 TRUSTYAI_SERVICE_NAME: str = "trustyai-service"
 
 
+class NoMetricsFoundError(ValueError):
+    """Raised when no metrics are available for the requested operation."""
+
+    pass
+
+
 class TrustyAIServiceMetrics:
     class Fairness:
         SPD: str = "spd"
@@ -287,7 +293,7 @@ def verify_trustyai_service_response(
     response_data: dict[str, Any],
     expected_values: Optional[dict[str, Any]] = None,
     required_fields: Optional[list[str]] = None,
-) -> list[str]:
+) -> None:
     """
     Validates a TrustyAI service response against common criteria.
 
@@ -297,8 +303,8 @@ def verify_trustyai_service_response(
         expected_values: Dictionary of field names and their expected values
         required_fields: List of fields that should not be empty
 
-    Returns:
-        list: List of error messages found during validation
+    Raise:
+        MetricValidationError if some of the response fields does not have the expected value.
     """
     errors = []
 
@@ -324,7 +330,8 @@ def verify_trustyai_service_response(
                     if actual != expected:
                         errors.append(f"Wrong {field}: {actual or 'None'}, expected: {expected}")
 
-    return errors
+    if errors:
+        raise MetricValidationError("\n".join(errors))
 
 
 def verify_trustyai_service_metric_request(
@@ -353,12 +360,9 @@ def verify_trustyai_service_metric_request(
     required_fields = ["timestamp", "value", "specificDefinition", "id", "thresholds"]
     expected_values = {"type": "metric", "name": metric_name}  # TODO: Check other fields
 
-    errors = verify_trustyai_service_response(
+    verify_trustyai_service_response(
         response=response, response_data=response_data, expected_values=expected_values, required_fields=required_fields
     )
-
-    if errors:
-        raise MetricValidationError("\n".join(errors))
 
 
 def verify_trustyai_service_metric_scheduling_request(
@@ -390,9 +394,7 @@ def verify_trustyai_service_metric_scheduling_request(
     LOGGER.info(msg=f"TrustyAI metric scheduling request response: {response_data}")
 
     required_fields = ["requestId", "timestamp"]
-    errors = verify_trustyai_service_response(
-        response=response, response_data=response_data, required_fields=required_fields
-    )
+    verify_trustyai_service_response(response=response, response_data=response_data, required_fields=required_fields)
 
     request_id = response_data.get("requestId", "")
 
@@ -401,9 +403,9 @@ def verify_trustyai_service_metric_scheduling_request(
     get_metrics_data = json.loads(get_metrics_response.text)
     LOGGER.info(msg=f"TrustyAI scheduled metrics: {get_metrics_data}")
 
-    metrics_errors = verify_trustyai_service_response(response=get_metrics_response, response_data=get_metrics_data)
-    errors.extend(metrics_errors)
+    verify_trustyai_service_response(response=get_metrics_response, response_data=get_metrics_data)
 
+    errors = []
     # Validate metrics-specific requirements
     if "requests" not in get_metrics_data or not get_metrics_data["requests"]:
         errors.append("No requests found in metrics response")
@@ -476,7 +478,7 @@ def verify_trustyai_service_metric_delete_request(
     initial_num_metrics: int = len(metrics_data.get("requests", []))
 
     if initial_num_metrics < 1:
-        raise ValueError(f"No metrics found for {metric_name}. Cannot perform deletion.")
+        raise NoMetricsFoundError(f"No metrics found for {metric_name}. Cannot perform deletion.")
 
     request_id: str = metrics_data["requests"][0]["id"]
 
@@ -491,8 +493,9 @@ def verify_trustyai_service_metric_delete_request(
     updated_metrics_data = json.loads(updated_metrics_response.text)
     updated_num_metrics: int = len(updated_metrics_data.get("requests", []))
 
-    assert updated_num_metrics == initial_num_metrics - 1, (
-        f"Number of metrics after deletion is {updated_num_metrics}, expected {initial_num_metrics - 1}"
+    expected_num_metrics: int = initial_num_metrics - 1
+    assert updated_num_metrics == expected_num_metrics, (
+        f"Number of metrics after deletion is {updated_num_metrics}, expected {expected_num_metrics}"
     )
 
 
