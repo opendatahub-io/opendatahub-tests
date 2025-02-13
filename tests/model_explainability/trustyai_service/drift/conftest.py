@@ -88,7 +88,7 @@ def gaussian_credit_model(
         model_format=XGBOOST,
         runtime=mlserver_runtime.name,
         storage_key=minio_data_connection.name,
-        storage_path="sklearn/gaussian_credit_model/1",
+        storage_path="sklearn/gaussian-credit/1",
         enable_auth=True,
         wait_for_predictor_pods=False,
         resources={"requests": {"cpu": "1", "memory": "2Gi"}, "limits": {"cpu": "1", "memory": "2Gi"}},

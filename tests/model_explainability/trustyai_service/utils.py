@@ -54,7 +54,6 @@ def wait_for_mariadb_pods(client: DynamicClient, mariadb: MariaDB, timeout: int 
                 label_selector="app.kubernetes.io/instance=mariadb",
             )
         ]
-        LOGGER.error(bool(pods))
         return pods
 
     sampler = TimeoutSampler(wait_timeout=timeout, sleep=1, func=lambda: bool(_get_mariadb_pods()))

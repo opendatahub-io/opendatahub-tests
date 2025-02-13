@@ -26,22 +26,10 @@ TRUSTYAI_SERVICE_NAME: str = "trustyai-service"
 
 class TrustyAIServiceMetrics:
     class Fairness:
-        BASE_URL = "/metrics/group/fairness"
         SPD: str = "spd"
 
     class Drift:
-        BASE_URL = "/metrics/drift"
         MEANSHIFT: str = "meanshift"
-
-
-def _get_metric_base_url(metric_name: str) -> str:
-    if hasattr(TrustyAIServiceMetrics.Fairness, metric_name.upper()):
-        base_url: str = TrustyAIServiceMetrics.Fairness.BASE_URL
-    elif hasattr(TrustyAIServiceMetrics.Drift, metric_name.upper()):
-        base_url = TrustyAIServiceMetrics.Drift.BASE_URL
-    else:
-        raise MetricValidationError(f"Unknown metric: {metric_name}")
-    return f"{base_url}/{metric_name}"
 
 
 class TrustyAIServiceClient:
@@ -63,8 +51,17 @@ class TrustyAIServiceClient:
         self.service = service
         self.headers = {"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"}
         self.service_route = Route(
-            client=client, namespace=service.namespace, name="trustyai-service", ensure_exists=True
+            client=client, namespace=service.namespace, name=TRUSTYAI_SERVICE_NAME, ensure_exists=True
         )
+
+    def _get_metric_base_url(self, metric_name: str) -> str:
+        if hasattr(TrustyAIServiceMetrics.Fairness, metric_name.upper()):
+            base_url: str = "/metrics/group/fairness"
+        elif hasattr(TrustyAIServiceMetrics.Drift, metric_name.upper()):
+            base_url = "/metrics/drift"
+        else:
+            raise MetricValidationError(f"Unknown metric: {metric_name}")
+        return f"{base_url}/{metric_name}"
 
     def _send_request(
         self,
@@ -74,15 +71,17 @@ class TrustyAIServiceClient:
         json: Optional[dict[str, Any]] = None,
     ) -> Any:
         url = f"https://{self.service_route.host}/{endpoint}"
+        base_kwargs = {"url": url, "headers": self.headers, "verify": False}
 
+        method = method.upper()
         if method not in ("GET", "POST", "DELETE"):
             raise ValueError(f"Unsupported HTTP method: {method}")
         if method == "GET":
-            return requests.get(url=url, headers=self.headers, verify=False)
+            return requests.get(**base_kwargs)  # type: ignore[arg-type]
         elif method == "POST":
-            return requests.post(url=url, headers=self.headers, data=data, json=json, verify=False)
+            return requests.post(**base_kwargs, data=data, json=json)  # type: ignore[arg-type]
         elif method == "DELETE":
-            return requests.delete(url=url, headers=self.headers, json=json, verify=False)
+            return requests.delete(**base_kwargs, json=json)  # type: ignore[arg-type]
 
     def get_model_metadata(self) -> requests.Response:
         return self._send_request(endpoint=self.Endpoints.INFO, method="GET")
@@ -115,7 +114,9 @@ class TrustyAIServiceClient:
         json: Optional[dict[str, Any]] = None,
         schedule: bool = False,
     ) -> requests.Response:
-        endpoint: str = f"/{_get_metric_base_url(metric_name=metric_name)}/{self.Endpoints.REQUEST if schedule else ''}"
+        endpoint: str = (
+            f"/{self._get_metric_base_url(metric_name=metric_name)}/{self.Endpoints.REQUEST if schedule else ''}"
+        )
         LOGGER.info(f"Sending request for metric {metric_name} to endpoint {endpoint}")
         return self._send_request(endpoint=endpoint, method="POST", json=json)
 
@@ -123,7 +124,7 @@ class TrustyAIServiceClient:
         self,
         metric_name: str,
     ) -> requests.Response:
-        endpoint: str = f"{_get_metric_base_url(metric_name=metric_name)}/{self.Endpoints.REQUESTS}"
+        endpoint: str = f"{self._get_metric_base_url(metric_name=metric_name)}/{self.Endpoints.REQUESTS}"
         LOGGER.info(f"Sending request to get drift metrics to endpoint {endpoint}")
         return self._send_request(
             endpoint=endpoint,
@@ -131,7 +132,7 @@ class TrustyAIServiceClient:
         )
 
     def delete_metric(self, metric_name: str, request_id: str) -> requests.Response:
-        endpoint: str = f"{_get_metric_base_url(metric_name=metric_name)}/{self.Endpoints.REQUEST}"
+        endpoint: str = f"{self._get_metric_base_url(metric_name=metric_name)}/{self.Endpoints.REQUEST}"
         LOGGER.info(f"Sending request to delete {metric_name} metric {request_id} to endpoint {endpoint}")
         json_payload = {"requestId": request_id}
         return self._send_request(endpoint=endpoint, method="DELETE", json=json_payload)
@@ -350,7 +351,7 @@ def verify_trustyai_service_metric_request(
     response_data = json.loads(response.text)
 
     required_fields = ["timestamp", "value", "specificDefinition", "id", "thresholds"]
-    expected_values = {"type": "metric", "name": metric_name}
+    expected_values = {"type": "metric", "name": metric_name}  # TODO: Check other fields
 
     errors = verify_trustyai_service_response(
         response=response, response_data=response_data, expected_values=expected_values, required_fields=required_fields

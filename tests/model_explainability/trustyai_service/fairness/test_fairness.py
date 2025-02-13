@@ -29,7 +29,7 @@ INPUT_NAME_MAPPINGS: dict[str, str] = {
     "customer_data_input-9": "Age",
     "customer_data_input-10": "Length of Employment?",
 }
-OUTPUT_NAME_MAPPINGS: dict[str, str] = {"predict": WILL_DEFAULT}
+OUTPUT_NAME_MAPPINGS: dict[str, str] = {"output_0": WILL_DEFAULT}
 
 
 def get_fairness_request_json_data(isvc: InferenceService) -> dict[str, Any]:
