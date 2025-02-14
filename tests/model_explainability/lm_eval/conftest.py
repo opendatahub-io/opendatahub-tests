@@ -12,7 +12,7 @@ from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from pytest_testconfig import py_config
 
-from utilities.constants import Labels, Timeout
+from utilities.constants import Labels, Timeout, Annotations
 
 
 @pytest.fixture(scope="function")
@@ -78,7 +78,7 @@ def patched_trustyai_operator_configmap_allow_online(admin_client: DynamicClient
     with ResourceEditor(
         patches={
             configmap: {
-                "metadata": {"annotations": {"opendatahub.io/managed": "false"}},
+                "metadata": {"annotations": {Annotations.OpenDataHubIo.MANAGED: "false"}},
                 "data": {"lmes-allow-online": "true", "lmes-allow-code-execution": "true"},
             }
         }
