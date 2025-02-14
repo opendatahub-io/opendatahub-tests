@@ -76,7 +76,12 @@ def patched_trustyai_operator_configmap_allow_online(admin_client: DynamicClient
         client=admin_client, name=f"{trustyai_service_operator}-config", namespace=namespace, ensure_exists=True
     )
     with ResourceEditor(
-        patches={configmap: {"data": {"lmes-allow-online": "true", "lmes-allow-code-execution": "true"}}}
+        patches={
+            configmap: {
+                "metadata": {"annotations": {"opendatahub.io/managed": "false"}},
+                "data": {"lmes-allow-online": "true", "lmes-allow-code-execution": "true"},
+            }
+        }
     ):
         deployment: Deployment = Deployment(
             client=admin_client,
