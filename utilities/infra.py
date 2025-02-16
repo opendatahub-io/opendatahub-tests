@@ -28,9 +28,9 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
-from packaging.version import Version
 from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
+from semver import Version
 from simple_logger.logger import get_logger
 
 from utilities.constants import Timeout
@@ -603,4 +603,4 @@ def get_product_version(admin_client: DynamicClient) -> Version:
     if not operator_version:
         raise MissingResourceError("Operator ClusterServiceVersion not found")
 
-    return Version(operator_version)
+    return Version.parse(operator_version)

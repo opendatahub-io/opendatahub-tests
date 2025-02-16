@@ -1,7 +1,7 @@
 import re
 
 import pytest
-from packaging.version import Version
+from semver import Version
 
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import (
@@ -80,7 +80,7 @@ class TestOpenVINOModelMeshMultiModels:
         mm_log = pod.log(container="mm")
 
         if version_match := re.search(r"Registering ModelMesh Service version as \"v(\d\.\d+\.\d+)", mm_log):
-            assert Version(version_match.group(1)) == get_product_version(admin_client=admin_client)
+            assert Version.parse(version_match.group(1)) == get_product_version(admin_client=admin_client)
 
         else:
             raise ValueError("Model mesh container does not contain a product version")
