@@ -1,5 +1,6 @@
 import pytest
 
+from tests.model_explainability.trustyai_service.constants import MODEL_DATA_PATH
 from tests.model_explainability.trustyai_service.utils import (
     send_inference_requests_and_verify_trustyai_service,
     verify_upload_data_to_trustyai_service,
@@ -10,7 +11,7 @@ from tests.model_explainability.trustyai_service.utils import (
 )
 from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
 
-BASE_DATA_PATH: str = "./tests/model_explainability/trustyai_service/drift/model_data"
+BASE_DATA_PATH: str = f"{MODEL_DATA_PATH}/drift/"
 
 
 @pytest.mark.parametrize(

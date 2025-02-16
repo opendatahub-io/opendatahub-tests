@@ -24,12 +24,18 @@ TIMEOUT_30SEC: int = 30
 
 class TrustyAIServiceMetrics:
     class Fairness:
-        BASE_URL = "/metrics/group/fairness"
+        BASE_URL: str = "/metrics/group/fairness"
         SPD: str = "spd"
 
     class Drift:
-        BASE_URL = "/metrics/drift"
+        BASE_URL: str = "/metrics/drift"
         MEANSHIFT: str = "meanshift"
+
+
+class TrustyAIServiceExplainers:
+    BASE_URL: str = "/explainers/local"
+    SHAP: str = "shap"
+    LIME: str = "lime"
 
 
 def _get_metric_base_url(metric_name: str) -> str:
@@ -55,6 +61,7 @@ class TrustyAIServiceClient:
         )
         REQUESTS: str = "requests"  # Endpoint used to get all scheduled metrics for a given metric type
         INFO_NAMES: str = "info/names"  # Endpoint used to apply name mappings
+        INFO_INFERENCE_ID: str = "/info/inference/ids"  # Endpoint used to get inference IDs
 
     def __init__(self, token: str, service: TrustyAIService, client: DynamicClient):
         self.token = token
@@ -107,6 +114,12 @@ class TrustyAIServiceClient:
         LOGGER.info(f"Applying name mappings: {mappings}")
         return self._send_request(endpoint=self.Endpoints.INFO_NAMES, method="POST", json=mappings)
 
+    def get_inference_ids(self, model_name: str) -> requests.Response:
+        LOGGER.info(f"Getting inference IDs for model {model_name}")
+        return self._send_request(
+            endpoint=f"{self.Endpoints.INFO_INFERENCE_ID}/{model_name}?type=organic", method="GET"
+        )
+
     def request_metric(
         self,
         metric_name: str,
@@ -133,6 +146,22 @@ class TrustyAIServiceClient:
         LOGGER.info(f"Sending request to delete {metric_name} metric {request_id} to endpoint {endpoint}")
         json_payload = {"requestId": request_id}
         return self._send_request(endpoint=endpoint, method="DELETE", json=json_payload)
+
+    def request_shap_explanation(
+        self, model_name: str, inference_id: str, target: str, n_samples: int
+    ) -> requests.Response:
+        LOGGER.info(f"Requesting SHAP explanation for inference {inference_id}")
+        return self._send_request(
+            endpoint=f"{TrustyAIServiceExplainers.BASE_URL}/{TrustyAIServiceExplainers.SHAP}",
+            method="POST",
+            json={
+                "predictionId": inference_id,
+                "config": {
+                    "model": {"target": target, "name": model_name, "version": "v1"},
+                    "explainer": {"n_samples": n_samples},
+                },
+            },
+        )
 
 
 def get_trustyai_number_of_observations(client: DynamicClient, token: str, trustyai_service: TrustyAIService) -> int:
@@ -396,8 +425,8 @@ def verify_trustyai_metric_scheduling_request(
         MetricValidationError: If the scheduling response or metrics retrieval response contain invalid
             or unexpected values, including empty required fields or mismatched request IDs.
     """
-    handler = TrustyAIServiceClient(token=token, service=trustyai_service, client=client)
-    response = handler.request_metric(
+    tas_client = TrustyAIServiceClient(token=token, service=trustyai_service, client=client)
+    response = tas_client.request_metric(
         metric_name=metric_name,
         json=json_data,
         schedule=True,
@@ -412,7 +441,7 @@ def verify_trustyai_metric_scheduling_request(
     request_id = response_data.get("requestId", "")
 
     # Get and validate metrics
-    get_metrics_response = handler.get_metrics(metric_name=metric_name)
+    get_metrics_response = tas_client.get_metrics(metric_name=metric_name)
     get_metrics_data = json.loads(get_metrics_response.text)
     LOGGER.info(msg=f"TrustyAI scheduled metrics: {get_metrics_data}")
 
@@ -484,9 +513,9 @@ def verify_trustyai_metric_delete_request(
         ValueError: If there are no metrics to delete.
         AssertionError: If the deletion request fails or the number of metrics after deletion is not as expected.
     """
-    handler = TrustyAIServiceClient(token=token, service=trustyai_service, client=client)
+    tas_client = TrustyAIServiceClient(token=token, service=trustyai_service, client=client)
 
-    metrics_response = handler.get_metrics(metric_name=metric_name)
+    metrics_response = tas_client.get_metrics(metric_name=metric_name)
     metrics_data = json.loads(metrics_response.text)
     initial_num_metrics: int = len(metrics_data.get("requests", []))
 
@@ -495,14 +524,14 @@ def verify_trustyai_metric_delete_request(
 
     request_id: str = metrics_data["requests"][0]["id"]
 
-    delete_response = handler.delete_metric(metric_name=metric_name, request_id=request_id)
+    delete_response = tas_client.delete_metric(metric_name=metric_name, request_id=request_id)
 
     assert delete_response.status_code == HTTPStatus.OK, (
         f"Delete request failed with status code: {delete_response.status_code}"
     )
 
     # Verify the number of metrics after deletion is N-1
-    updated_metrics_response = handler.get_metrics(metric_name=metric_name)
+    updated_metrics_response = tas_client.get_metrics(metric_name=metric_name)
     updated_metrics_data = json.loads(updated_metrics_response.text)
     updated_num_metrics: int = len(updated_metrics_data.get("requests", []))
 
