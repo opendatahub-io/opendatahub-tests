@@ -5,12 +5,10 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
 from utilities.constants import KServeDeploymentType
 from tests.model_serving.model_runtime.vllm.utils import (
-    run_raw_inference,
-    validate_inference_output,
+    validate_raw_openai_inference_request,
+    validate_raw_tgis_inference_request,
 )
 from tests.model_serving.model_runtime.vllm.constant import (
-    OPENAI_ENDPOINT_NAME,
-    TGIS_ENDPOINT_NAME,
     LIGHTSPEED_TOOL_QUERY,
     LIGHTSPEED_TOOL,
     WEATHER_TOOL,
@@ -33,6 +31,12 @@ SERVING_ARGUMENT: List[str] = [
 MODEL_PATH: str = "ibm-granite/granite-3.2-8b-instruct-preview"
 
 
+BASE_DEPLOYMENT_CONFIG: dict[str, str] = {
+    "deployment_mode": KServeDeploymentType.RAW_DEPLOYMENT,
+    "runtime_argument": SERVING_ARGUMENT,
+    "min-replicas": 1,
+}
+
 pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "valid_aws_config")
 
 
@@ -44,78 +48,64 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
             {"model-dir": MODEL_PATH},
             {"deployment_type": KServeDeploymentType.RAW_DEPLOYMENT},
             {
-                "deployment_mode": KServeDeploymentType.RAW_DEPLOYMENT,
-                "runtime_argument": SERVING_ARGUMENT,
+                **BASE_DEPLOYMENT_CONFIG,
                 "gpu_count": 1,
                 "name": "granite-32-8b",
-                "min-replicas": 1,
             },
         ),
     ],
     indirect=True,
 )
 class TestGranite32ToolModel:
-    def test_granite_model_inference(
+    def test_granite_simple_openai_model_inference(
         self,
         vllm_inference_service: Generator[InferenceService, Any, Any],
         get_pod_name_resource: Pod,
         response_snapshot: Any,
     ):
-        pod_name = get_pod_name_resource.name
-        model_info, chat_responses, completion_responses = run_raw_inference(
-            pod_name=pod_name,
+        validate_raw_openai_inference_request(
+            pod_name=get_pod_name_resource.name,
             isvc=vllm_inference_service,
-            port=8080,
-            endpoint=OPENAI_ENDPOINT_NAME,
+            response_snapshot=response_snapshot,
             chat_query=MATH_CHAT_QUERY,
         )
-        model_info_tgis, completion_responses_tgis, completion_responses_tgis_stream = run_raw_inference(
-            pod_name=pod_name,
-            isvc=vllm_inference_service,
-            port=8033,
-            endpoint=TGIS_ENDPOINT_NAME,
-        )
-        validate_inference_output(
-            model_info,
-            chat_responses,
-            completion_responses,
-            model_info_tgis,
-            completion_responses_tgis,
-            completion_responses_tgis_stream,
-            response_snapshot=response_snapshot,
-        )
 
-    def test_granite_model_tool_inference(
+    def test_granite_simple_tgis_model_inference(
         self,
         vllm_inference_service: Generator[InferenceService, Any, Any],
         get_pod_name_resource: Pod,
         response_snapshot: Any,
     ):
-        pod_name = get_pod_name_resource.name
-        model_info_w, chat_responses_w, completion_responses_w = run_raw_inference(
-            pod_name=pod_name,
-            isvc=vllm_inference_service,
-            port=8080,
-            endpoint=OPENAI_ENDPOINT_NAME,
-            chat_query=WEATHER_TOOL_QUERY,
-            tool_calling=WEATHER_TOOL[0],
+        validate_raw_tgis_inference_request(
+            pod_name=get_pod_name_resource.name, isvc=vllm_inference_service, response_snapshot=response_snapshot
         )
-        model_info_l, chat_responses_l, completion_responses_l = run_raw_inference(
-            pod_name=pod_name,
+
+    def test_granite_model_lightspeed_tool_inference(
+        self,
+        vllm_inference_service: Generator[InferenceService, Any, Any],
+        get_pod_name_resource: Pod,
+        response_snapshot: Any,
+    ):
+        validate_raw_openai_inference_request(
+            pod_name=get_pod_name_resource.name,
             isvc=vllm_inference_service,
-            port=8080,
-            endpoint=OPENAI_ENDPOINT_NAME,
+            response_snapshot=response_snapshot,
             chat_query=LIGHTSPEED_TOOL_QUERY,
             tool_calling=LIGHTSPEED_TOOL[0],
         )
-        validate_inference_output(
-            model_info_w,
-            chat_responses_w,
-            completion_responses_w,
-            model_info_l,
-            chat_responses_l,
-            completion_responses_l,
+
+    def test_granite_model_weather_tool_inference(
+        self,
+        vllm_inference_service: Generator[InferenceService, Any, Any],
+        get_pod_name_resource: Pod,
+        response_snapshot: Any,
+    ):
+        validate_raw_openai_inference_request(
+            pod_name=get_pod_name_resource.name,
+            isvc=vllm_inference_service,
             response_snapshot=response_snapshot,
+            chat_query=WEATHER_TOOL_QUERY,
+            tool_calling=WEATHER_TOOL[0],
         )
 
 
@@ -127,75 +117,62 @@ class TestGranite32ToolModel:
             {"model-dir": MODEL_PATH},
             {"deployment_type": KServeDeploymentType.RAW_DEPLOYMENT},
             {
-                "deployment_mode": KServeDeploymentType.RAW_DEPLOYMENT,
-                "runtime_argument": SERVING_ARGUMENT,
+                **BASE_DEPLOYMENT_CONFIG,
                 "gpu_count": 2,
                 "name": "granite-32-8b-multi",
-                "min-replicas": 1,
             },
         ),
     ],
     indirect=True,
 )
 class TestGranite32ToolMultiModel:
-    def test_granite_multi_model_inference(
+    def test_granite_multi_openai_model_inference(
         self,
         vllm_inference_service: Generator[InferenceService, Any, Any],
         get_pod_name_resource: Pod,
         response_snapshot: Any,
     ):
-        pod_name = get_pod_name_resource.name
-        model_info, chat_responses, completion_responses = run_raw_inference(
-            pod_name=pod_name,
+        validate_raw_openai_inference_request(
+            pod_name=get_pod_name_resource.name,
             isvc=vllm_inference_service,
-            port=8080,
-            endpoint=OPENAI_ENDPOINT_NAME,
-        )
-        model_info_tgis, completion_responses_tgis, completion_responses_tgis_stream = run_raw_inference(
-            pod_name=pod_name,
-            isvc=vllm_inference_service,
-            port=8033,
-            endpoint=TGIS_ENDPOINT_NAME,
-        )
-        validate_inference_output(
-            model_info,
-            chat_responses,
-            completion_responses,
-            model_info_tgis,
-            completion_responses_tgis,
-            completion_responses_tgis_stream,
             response_snapshot=response_snapshot,
+            chat_query=MATH_CHAT_QUERY,
         )
 
-    def test_granite_multi_model_tool_inference(
+    def test_granite_multi_tgis_model_inference(
         self,
         vllm_inference_service: Generator[InferenceService, Any, Any],
         get_pod_name_resource: Pod,
         response_snapshot: Any,
     ):
-        pod_name = get_pod_name_resource.name
-        model_info_w, chat_responses_w, completion_responses_w = run_raw_inference(
-            pod_name=pod_name,
-            isvc=vllm_inference_service,
-            port=8080,
-            endpoint=OPENAI_ENDPOINT_NAME,
-            chat_query=WEATHER_TOOL_QUERY,
-            tool_calling=WEATHER_TOOL[0],
+        validate_raw_tgis_inference_request(
+            pod_name=get_pod_name_resource.name, isvc=vllm_inference_service, response_snapshot=response_snapshot
         )
-        model_info_l, chat_responses_l, completion_responses_l = run_raw_inference(
-            pod_name=pod_name,
+
+    def test_granite_multi_model_lightspeed_tool_inference(
+        self,
+        vllm_inference_service: Generator[InferenceService, Any, Any],
+        get_pod_name_resource: Pod,
+        response_snapshot: Any,
+    ):
+        validate_raw_openai_inference_request(
+            pod_name=get_pod_name_resource.name,
             isvc=vllm_inference_service,
-            port=8080,
-            endpoint=OPENAI_ENDPOINT_NAME,
+            response_snapshot=response_snapshot,
             chat_query=LIGHTSPEED_TOOL_QUERY,
             tool_calling=LIGHTSPEED_TOOL[0],
         )
-        validate_inference_output(
-            model_info_w,
-            chat_responses_w,
-            completion_responses_w,
-            model_info_l,
-            chat_responses_l,
-            completion_responses_l,
+
+    def test_granite_multi_model_weather_tool_inference(
+        self,
+        vllm_inference_service: Generator[InferenceService, Any, Any],
+        get_pod_name_resource: Pod,
+        response_snapshot: Any,
+    ):
+        validate_raw_openai_inference_request(
+            pod_name=get_pod_name_resource.name,
+            isvc=vllm_inference_service,
             response_snapshot=response_snapshot,
+            chat_query=WEATHER_TOOL_QUERY,
+            tool_calling=WEATHER_TOOL[0],
         )

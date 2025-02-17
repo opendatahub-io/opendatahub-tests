@@ -13,7 +13,7 @@
             "arguments": "{\"location\": \"Boston\", \"unit\": \"celsius\"}",
             "name": "get_current_weather"
           },
-          "id": "chatcmpl-tool-8e2f11ff5e1041a38194cd0368f98748",
+          "id": "chatcmpl-tool-e4a96b20fed44b16bee91927ec0327a0",
           "type": "function"
         }
       ]
@@ -34,7 +34,7 @@
             "arguments": "{\"location\": \"Japan\", \"unit\": \"celsius\"}",
             "name": "get_current_weather"
           },
-          "id": "chatcmpl-tool-f93cfb78becf4346af25ffeb8f7984a0",
+          "id": "chatcmpl-tool-a95e6dbe5b024cfdb28c58c17daddc86",
           "type": "function"
         }
       ]
