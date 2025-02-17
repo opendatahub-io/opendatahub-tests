@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import json
 import os
 from http import HTTPStatus
-from typing import Optional, Any
+from typing import Any
 
 import requests
 from kubernetes.dynamic import DynamicClient
@@ -40,7 +42,7 @@ class TrustyAIServiceMetrics:
 
 class TrustyAIServiceClient:
     """
-    Class to encapsulate the behaviors associated to the different TrustyAIService requests used in the tests
+    A class to be used as a client to interact with TrustyAIService.
     """
 
     class Endpoints:
@@ -61,6 +63,18 @@ class TrustyAIServiceClient:
         )
 
     def _get_metric_base_url(self, metric_name: str) -> str:
+        """Gets base URL for a given metric type (fairness or drift).
+
+        Args:
+            metric_name (str): Name of the metric to get URL for.
+
+        Returns:
+            str: Base URL for the metric type.
+
+        Raises:
+            MetricValidationError: If metric_name is not a valid fairness or drift metric.
+        """
+
         if hasattr(TrustyAIServiceMetrics.Fairness, metric_name.upper()):
             base_url: str = "/metrics/group/fairness"
         elif hasattr(TrustyAIServiceMetrics.Drift, metric_name.upper()):
@@ -73,9 +87,24 @@ class TrustyAIServiceClient:
         self,
         endpoint: str,
         method: str,
-        data: Optional[str] = None,
-        json: Optional[dict[str, Any]] = None,
+        data: str | None = None,
+        json: dict[str, Any] | None = None,
     ) -> Any:
+        """Sends HTTP request to specified TrustyAIService endpoint.
+
+        Args:
+            endpoint (str): API endpoint to send request to.
+            method (str): HTTP method (GET, POST, DELETE).
+            data (str | None ): Request body data.
+            json (dict[str, Any] | None): JSON data to send.
+
+        Returns:
+            Any: Response from the request.
+
+        Raises:
+            ValueError: If method is not GET, POST or DELETE.
+        """
+
         url = f"https://{self.service_route.host}/{endpoint}"
         base_kwargs = {"url": url, "headers": self.headers, "verify": False}
 
@@ -90,12 +119,26 @@ class TrustyAIServiceClient:
             return requests.delete(**base_kwargs, json=json)  # type: ignore[arg-type]
 
     def get_model_metadata(self) -> requests.Response:
+        """Gets metadata information about the model from TrustyAIService.
+
+        Returns:
+            requests.Response: Response containing model metadata.
+        """
         return self._send_request(endpoint=self.Endpoints.INFO, method="GET")
 
     def upload_data(
         self,
         data_path: str,
     ) -> requests.Response:
+        """Uploads data file to TrustyAIService.
+
+        Args:
+            data_path (str): Path to data file to upload.
+
+        Returns:
+            requests.Response: Response from upload request.
+        """
+
         with open(data_path, "r") as file:
             data = file.read()
 
@@ -105,6 +148,16 @@ class TrustyAIServiceClient:
     def apply_name_mappings(
         self, model_name: str, input_mappings: dict[str, str], output_mappings: dict[str, str]
     ) -> requests.Response:
+        """Applies input and output name mappings for a model registered by TrustyAIService.
+
+        Args:
+            model_name (str): Name of model to apply mappings to.
+            input_mappings (dict[str, str]): Mappings for input names.
+            output_mappings (dict[str, str]): Mappings for output names.
+
+        Returns:
+            requests.Response: Response from mapping request.
+        """
         mappings: dict[str, Any] = {
             "modelId": model_name,
             "inputMapping": input_mappings,
@@ -117,9 +170,19 @@ class TrustyAIServiceClient:
     def request_metric(
         self,
         metric_name: str,
-        json: Optional[dict[str, Any]] = None,
+        json: dict[str, Any] | None = None,
         schedule: bool = False,
     ) -> requests.Response:
+        """Requests calculation of specified metric.
+
+        Args:
+            metric_name (str): Name of metric to calculate.
+            json (dict[str, Any] | None): Additional JSON parameters. Defaults to None.
+            schedule (bool, optional): Whether to schedule a recurrent metric calculation. Defaults to False.
+
+        Returns:
+            requests.Response: Response from metric request.
+        """
         endpoint: str = (
             f"/{self._get_metric_base_url(metric_name=metric_name)}/{self.Endpoints.REQUEST if schedule else ''}"
         )
@@ -130,6 +193,14 @@ class TrustyAIServiceClient:
         self,
         metric_name: str,
     ) -> requests.Response:
+        """Gets all scheduled metrics for specified metric type.
+
+        Args:
+            metric_name (str): Name of metric to retrieve.
+
+        Returns:
+            requests.Response: Response containing metrics data.
+        """
         endpoint: str = f"{self._get_metric_base_url(metric_name=metric_name)}/{self.Endpoints.REQUESTS}"
         LOGGER.info(f"Sending request to get drift metrics to endpoint {endpoint}")
         return self._send_request(
@@ -138,6 +209,15 @@ class TrustyAIServiceClient:
         )
 
     def delete_metric(self, metric_name: str, request_id: str) -> requests.Response:
+        """Deletes specified metric request.
+
+        Args:
+            metric_name (str): Name of metric to delete.
+            request_id (str): ID of specific metric request to delete.
+
+        Returns:
+            requests.Response: Response from delete request.
+        """
         endpoint: str = f"{self._get_metric_base_url(metric_name=metric_name)}/{self.Endpoints.REQUEST}"
         LOGGER.info(f"Sending request to delete {metric_name} metric {request_id} to endpoint {endpoint}")
         json_payload = {"requestId": request_id}
@@ -147,6 +227,19 @@ class TrustyAIServiceClient:
 def get_num_observations_from_trustyai_service(
     client: DynamicClient, token: str, trustyai_service: TrustyAIService
 ) -> int:
+    """Gets the number of observations that TrustyAIService has stored for a given model.
+
+    Args:
+        client (DynamicClient): Dynamic client instance.
+        token (str): Authentication token.
+        trustyai_service (TrustyAIService): TrustyAI service instance.
+
+    Returns:
+        int: Number of observations, 0 if no metadata found.
+
+    Raises:
+        KeyError: If model data or observations not found in metadata.
+    """
     tas_client = TrustyAIServiceClient(token=token, service=trustyai_service, client=client)
     model_metadata: requests.Response = tas_client.get_model_metadata()
 
@@ -155,6 +248,7 @@ def get_num_observations_from_trustyai_service(
 
     try:
         metadata_json: Any = model_metadata.json()
+        LOGGER.debug(f"TrustyAIService model metadata: {metadata_json}")
 
         if not metadata_json:
             return 0
@@ -194,8 +288,8 @@ def send_inferences_and_verify_trustyai_service_registered(
         trustyai_service (TrustyAIService): TrustyAIService that will register the model.
         inference_service (InferenceService): Model to be registered by TrustyAI.
         inference_config (dict[str, Any]): Inference config to be used when sending the inference.
-        inference_type (Optional[str]): Inference type to be used when sending the inference
-        protocol (Optional[str]): Protocol to be used when sending the inference
+        inference_type (str): Inference type to be used when sending the inference
+        protocol (str): Protocol to be used when sending the inference
     """
     for root, _, files in os.walk(data_path):
         for file_name in files:
@@ -254,8 +348,8 @@ def wait_for_isvc_deployment_registered_by_trustyai_service(
     label_selector = create_isvc_label_selector_str(isvc=isvc, resource_type="deployment", runtime_name=runtime_name)
     trustyai_service = TrustyAIService(name=TRUSTYAI_SERVICE_NAME, namespace=isvc.namespace, ensure_exists=True)
 
-    def _check_deployments_ready() -> bool:
-        deployments = list(
+    def _get_deployments() -> list[Deployment]:
+        return list(
             Deployment.get(
                 label_selector=label_selector,
                 client=client,
@@ -263,36 +357,36 @@ def wait_for_isvc_deployment_registered_by_trustyai_service(
             )
         )
 
-        if not deployments:
-            return False
+    samples = TimeoutSampler(
+        wait_timeout=Timeout.TIMEOUT_10MIN,
+        sleep=1,
+        func=_get_deployments,
+    )
 
+    for deployments in samples:
+        if not deployments:
+            continue
+
+        all_ready = True
         for deployment in deployments:
             if (
                 deployment.instance.metadata.annotations.get("internal.serving.kserve.io/logger-sink-url")
                 == f"http://{trustyai_service.name}.{isvc.namespace}.svc.cluster.local"
             ):
                 deployment.wait_for_replicas()
-            else:
-                if deployment.instance.spec.replicas != 0:
-                    return False
+            elif deployment.instance.spec.replicas != 0:
+                all_ready = False
+                break
 
-        return True
-
-    samples = TimeoutSampler(
-        wait_timeout=Timeout.TIMEOUT_10MIN,
-        sleep=1,
-        func=_check_deployments_ready,
-    )
-    for sample in samples:
-        if sample:
+        if all_ready:
             return
 
 
 def verify_trustyai_service_response(
     response: Any,
     response_data: dict[str, Any],
-    expected_values: Optional[dict[str, Any]] = None,
-    required_fields: Optional[list[str]] = None,
+    expected_values: dict[str, Any] | None = None,
+    required_fields: list[str] | None = None,
 ) -> None:
     """
     Validates a TrustyAI service response against common criteria.

@@ -10,7 +10,7 @@ from ocp_resources.serving_runtime import ServingRuntime
 from tests.model_explainability.trustyai_service.trustyai_service_utils import (
     wait_for_isvc_deployment_registered_by_trustyai_service,
 )
-from utilities.constants import ModelFormat, KServeDeploymentType, RuntimeTemplates, ModelAndFormat
+from utilities.constants import ModelFormat, KServeDeploymentType, RuntimeTemplates
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -27,6 +27,10 @@ def ovms_runtime(
         multi_model=False,
         enable_http=False,
         enable_grpc=True,
+        model_format_name={"name": ModelFormat.ONNX, "version": "1"},
+        # TODO: Remove runtime_image once model works with latest ovms
+        runtime_image="quay.io/opendatahub/openvino_model_server"
+        "@sha256:564664371d3a21b9e732a5c1b4b40bacad714a5144c0a9aaf675baec4a04b148",
     ) as sr:
         yield sr
 
@@ -40,14 +44,17 @@ def onnx_loan_model(
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
-        name="loan-model-alpha",
+        name="demo-loan-nn-onnx-alpha",
         namespace=model_namespace.name,
         deployment_mode=KServeDeploymentType.SERVERLESS,
-        model_format=ModelAndFormat.OPENVINO_IR,
+        model_format=ModelFormat.ONNX,
         runtime=ovms_runtime.name,
         storage_key=minio_data_connection.name,
-        storage_path="openvino/loan-model-alpha",
+        storage_path="ovms/loan_model_alpha",
+        min_replicas=1,
+        resources={"limits": {"cpu": "2", "memory": "8Gi"}, "requests": {"cpu": "1", "memory": "4Gi"}},
         enable_auth=True,
+        model_version="1",
         wait=True,
         wait_for_predictor_pods=False,
     ) as isvc:
