@@ -148,8 +148,8 @@ def validate_raw_openai_inference_request(
     pod_name: str,
     isvc: InferenceService,
     response_snapshot: Any,
-    chat_query: list[list[dict[str, str]]] = CHAT_QUERY,
-    completion_query: list[dict[str, str]] = COMPLETION_QUERY,
+    chat_query: list[list[dict[str, str]]],
+    completion_query: list[dict[str, str]],
     tool_calling: dict[Any, Any] | None = None,
 ) -> None:
     model_info, chat_responses, completion_responses = run_raw_inference(
@@ -173,7 +173,7 @@ def validate_raw_tgis_inference_request(
     pod_name: str,
     isvc: InferenceService,
     response_snapshot: Any,
-    completion_query: list[dict[str, str]] = COMPLETION_QUERY,
+    completion_query: list[dict[str, str]],
 ) -> None:
     model_info, chat_responses, completion_responses = run_raw_inference(
         pod_name=pod_name,

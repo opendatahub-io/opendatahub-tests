@@ -14,6 +14,7 @@ from tests.model_serving.model_runtime.vllm.constant import (
     WEATHER_TOOL,
     WEATHER_TOOL_QUERY,
     MATH_CHAT_QUERY,
+    COMPLETION_QUERY,
 )
 
 LOGGER = get_logger(name=__name__)
@@ -68,6 +69,7 @@ class TestGranite32ToolModel:
             isvc=vllm_inference_service,
             response_snapshot=response_snapshot,
             chat_query=MATH_CHAT_QUERY,
+            completion_query=COMPLETION_QUERY,
         )
 
     def test_granite_simple_tgis_model_inference(
@@ -77,7 +79,10 @@ class TestGranite32ToolModel:
         response_snapshot: Any,
     ):
         validate_raw_tgis_inference_request(
-            pod_name=get_pod_name_resource.name, isvc=vllm_inference_service, response_snapshot=response_snapshot
+            pod_name=get_pod_name_resource.name,
+            isvc=vllm_inference_service,
+            response_snapshot=response_snapshot,
+            completion_query=COMPLETION_QUERY,
         )
 
     def test_granite_model_lightspeed_tool_inference(
@@ -91,6 +96,7 @@ class TestGranite32ToolModel:
             isvc=vllm_inference_service,
             response_snapshot=response_snapshot,
             chat_query=LIGHTSPEED_TOOL_QUERY,
+            completion_query=COMPLETION_QUERY,
             tool_calling=LIGHTSPEED_TOOL[0],
         )
 
@@ -105,6 +111,7 @@ class TestGranite32ToolModel:
             isvc=vllm_inference_service,
             response_snapshot=response_snapshot,
             chat_query=WEATHER_TOOL_QUERY,
+            completion_query=COMPLETION_QUERY,
             tool_calling=WEATHER_TOOL[0],
         )
 
@@ -137,6 +144,7 @@ class TestGranite32ToolMultiModel:
             isvc=vllm_inference_service,
             response_snapshot=response_snapshot,
             chat_query=MATH_CHAT_QUERY,
+            completion_query=COMPLETION_QUERY,
         )
 
     def test_granite_multi_tgis_model_inference(
@@ -146,7 +154,10 @@ class TestGranite32ToolMultiModel:
         response_snapshot: Any,
     ):
         validate_raw_tgis_inference_request(
-            pod_name=get_pod_name_resource.name, isvc=vllm_inference_service, response_snapshot=response_snapshot
+            pod_name=get_pod_name_resource.name,
+            isvc=vllm_inference_service,
+            response_snapshot=response_snapshot,
+            completion_query=COMPLETION_QUERY,
         )
 
     def test_granite_multi_model_lightspeed_tool_inference(
@@ -160,6 +171,7 @@ class TestGranite32ToolMultiModel:
             isvc=vllm_inference_service,
             response_snapshot=response_snapshot,
             chat_query=LIGHTSPEED_TOOL_QUERY,
+            completion_query=COMPLETION_QUERY,
             tool_calling=LIGHTSPEED_TOOL[0],
         )
 
@@ -174,5 +186,6 @@ class TestGranite32ToolMultiModel:
             isvc=vllm_inference_service,
             response_snapshot=response_snapshot,
             chat_query=WEATHER_TOOL_QUERY,
+            completion_query=COMPLETION_QUERY,
             tool_calling=WEATHER_TOOL[0],
         )
