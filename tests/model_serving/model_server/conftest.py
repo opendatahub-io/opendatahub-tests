@@ -19,7 +19,6 @@ from ocp_resources.storage_class import StorageClass
 from ocp_utilities.monitoring import Prometheus
 from pytest_testconfig import config as py_config
 
-from tests.model_serving.model_server.utils import create_isvc
 from utilities.constants import DscComponents, StorageClassName
 from utilities.constants import (
     KServeDeploymentType,
@@ -30,6 +29,7 @@ from utilities.constants import (
     Protocols,
     RuntimeTemplates,
 )
+from utilities.inference_utils import create_isvc
 from utilities.infra import (
     get_openshift_token,
     s3_endpoint_secret,
@@ -361,7 +361,7 @@ def ovms_serverless_inference_service(
     model_namespace: Namespace,
     openvino_kserve_serving_runtime: ServingRuntime,
     ci_endpoint_s3_secret: Secret,
-) -> InferenceService:
+) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
         name=f"{request.param['name']}-serverless",
@@ -384,7 +384,7 @@ def http_s3_tensorflow_model_mesh_inference_service(
     http_s3_ovms_model_mesh_serving_runtime: ServingRuntime,
     ci_model_mesh_endpoint_s3_secret: Secret,
     model_mesh_model_service_account: ServiceAccount,
-) -> InferenceService:
+) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
         name=f"{Protocols.HTTP}-{ModelFormat.TENSORFLOW}",

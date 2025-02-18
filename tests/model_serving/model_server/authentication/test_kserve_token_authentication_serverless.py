@@ -1,8 +1,10 @@
 import pytest
+from ocp_resources.resource import ResourceEditor
 
 from tests.model_serving.model_server.utils import verify_inference_response
-from utilities.constants import ModelFormat, ModelStoragePath, Protocols
+from utilities.constants import Annotations, ModelFormat, ModelStoragePath, Protocols
 from utilities.inference_utils import Inference
+from utilities.infra import check_pod_status_in_time, get_pods_by_isvc_label
 from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
 
 pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config")]
@@ -109,3 +111,35 @@ class TestKserveTokenAuthentication:
             token=grpc_inference_token,
             authorized_user=False,
         )
+
+    @pytest.mark.sanity
+    def test_serverless_disable_enable_authentication_no_pod_rollout(self, http_s3_caikit_serverless_inference_service):
+        """Verify no pod rollout when disabling and enabling authentication"""
+        pod = get_pods_by_isvc_label(
+            client=http_s3_caikit_serverless_inference_service.client,
+            isvc=http_s3_caikit_serverless_inference_service,
+        )[0]
+
+        ResourceEditor(
+            patches={
+                http_s3_caikit_serverless_inference_service: {
+                    "metadata": {
+                        "annotations": {Annotations.KserveAuth.SECURITY: "false"},
+                    }
+                }
+            }
+        ).update()
+
+        check_pod_status_in_time(pod=pod, status={pod.Status.RUNNING})
+
+        ResourceEditor(
+            patches={
+                http_s3_caikit_serverless_inference_service: {
+                    "metadata": {
+                        "annotations": {Annotations.KserveAuth.SECURITY: "true"},
+                    }
+                }
+            }
+        ).update()
+
+        check_pod_status_in_time(pod=pod, status={pod.Status.RUNNING})

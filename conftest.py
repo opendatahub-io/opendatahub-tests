@@ -114,7 +114,7 @@ def pytest_collection_modifyitems(session: Session, config: Config, items: list[
         if "pre_upgrade" in item.keywords:
             pre_upgrade_tests.append(item)
 
-        if "post_upgrade" in item.keywords:
+        elif "post_upgrade" in item.keywords:
             post_upgrade_tests.append(item)
 
         else:
@@ -207,6 +207,9 @@ def pytest_report_teststatus(report: CollectReport, config: Config) -> None:
 
 
 def pytest_sessionfinish(session: Session, exitstatus: int) -> None:
+    if session.config.option.setupplan or session.config.option.collectonly:
+        return
+
     base_dir = py_config["tmp_base_dir"]
     LOGGER.info(f"Deleting pytest base dir {base_dir}")
     shutil.rmtree(path=base_dir, ignore_errors=True)

@@ -10,7 +10,6 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from simple_logger.logger import get_logger
 
-from tests.model_serving.model_server.utils import create_isvc
 from utilities.constants import (
     KServeDeploymentType,
     ModelAndFormat,
@@ -19,6 +18,7 @@ from utilities.constants import (
     ModelVersion,
     RuntimeTemplates,
 )
+from utilities.inference_utils import create_isvc
 from utilities.infra import create_ns, s3_endpoint_secret
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 

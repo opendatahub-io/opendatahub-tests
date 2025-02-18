@@ -5,6 +5,7 @@ from ocp_resources.secret import Secret
 from ocp_resources.inference_service import InferenceService
 from simple_logger.logger import get_logger
 from tests.model_serving.model_runtime.vllm.constant import CHAT_QUERY, COMPLETION_QUERY
+from tenacity import retry, stop_after_attempt, wait_exponential
 from utilities.exceptions import NotSupportedError
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.plugins.openai_plugin import OpenAIClient
@@ -88,8 +89,14 @@ def fetch_tgis_response(  # type: ignore
     return model_info, completion_responses, stream_completion_responses
 
 
+@retry(stop=stop_after_attempt(5), wait=wait_exponential(min=1, max=6))
 def run_raw_inference(
-    pod_name: str, isvc: InferenceService, port: int, endpoint: str
+    pod_name: str,
+    isvc: InferenceService,
+    port: int,
+    endpoint: str,
+    chat_query: list[list[dict[str, str]]] = CHAT_QUERY,
+    completion_query: list[dict[str, str]] = COMPLETION_QUERY,
 ) -> tuple[Any, list[Any], list[Any]]:
     LOGGER.info(pod_name)
     with portforward.forward(
@@ -109,6 +116,8 @@ def run_raw_inference(
             model_info, completion_responses, stream_completion_responses = fetch_openai_response(
                 url=f"http://localhost:{port}",
                 model_name=isvc.instance.metadata.name,
+                chat_query=chat_query,
+                completion_query=completion_query,
             )
             return model_info, completion_responses, stream_completion_responses
         else:
@@ -120,6 +129,6 @@ def validate_supported_quantization_schema(q_type: str) -> None:
         raise ValueError(f"Unsupported quantization type: {q_type}")
 
 
-def validate_inferenec_output(*args: tuple[str, ...], response_snapshot: Any) -> None:
+def validate_inference_output(*args: tuple[str, ...], response_snapshot: Any) -> None:
     for data in args:
         assert data == response_snapshot, f"output mismatch for {data}"

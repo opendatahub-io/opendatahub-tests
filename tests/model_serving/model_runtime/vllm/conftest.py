@@ -14,9 +14,10 @@ from tests.model_serving.model_runtime.vllm.utils import (
 from utilities.constants import KServeDeploymentType
 from pytest import FixtureRequest
 from syrupy.extensions.json import JSONSnapshotExtension
-from tests.model_serving.model_server.utils import create_isvc
 from tests.model_serving.model_runtime.vllm.constant import TEMPLATE_MAP, ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES
 from simple_logger.logger import get_logger
+
+from utilities.inference_utils import create_isvc
 from utilities.infra import get_pods_by_isvc_label
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -72,12 +73,14 @@ def vllm_inference_service(
     }
     accelerator_type = supported_accelerator_type.lower()
     gpu_count = request.param.get("gpu_count")
+    timeout = request.param.get("timeout")
     identifier = ACCELERATOR_IDENTIFIER.get(accelerator_type, "nvidia.com/gpu")
     resources: Any = PREDICT_RESOURCES["resources"]
     resources["requests"][identifier] = gpu_count
     resources["limits"][identifier] = gpu_count
     isvc_kwargs["resources"] = resources
-
+    if timeout:
+        isvc_kwargs["timeout"] = timeout
     if gpu_count > 1:
         isvc_kwargs["volumes"] = PREDICT_RESOURCES["volumes"]
         isvc_kwargs["volumes_mounts"] = PREDICT_RESOURCES["volume_mounts"]
