@@ -94,6 +94,7 @@ def model_service_account(
     ) as sa:
         yield sa
 
+
 @pytest.fixture(scope="class")
 def serving_runtime_from_template(
     request: FixtureRequest,

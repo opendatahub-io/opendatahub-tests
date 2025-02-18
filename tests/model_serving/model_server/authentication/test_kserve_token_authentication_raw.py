@@ -3,7 +3,7 @@ from ocp_resources.resource import ResourceEditor
 
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import ModelFormat, ModelStoragePath, Protocols, ModelInferenceRuntime
-from utilities.constants import Labels, ModelFormat, ModelStoragePath, Protocols
+from utilities.constants import Labels
 from utilities.inference_utils import Inference
 from utilities.infra import check_pod_status_in_time, get_pods_by_isvc_label
 from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
@@ -97,8 +97,7 @@ class TestKserveTokenAuthenticationRawForRest:
 
     @pytest.mark.skip(reason="Skipping test_cross_model_authentication_raw: RHOAIRFE-534")
     @pytest.mark.dependency(name="test_cross_model_authentication_raw")
-    def test_cross_model_authentication_raw(self, http_s3_caikit_raw_inference_service_2,
-                                           http_raw_inference_token):
+    def test_cross_model_authentication_raw(self, http_s3_caikit_raw_inference_service_2, http_raw_inference_token):
         """Verify model with another model token"""
 
         verify_inference_response(
