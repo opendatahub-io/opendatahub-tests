@@ -3,7 +3,7 @@ from typing import Self
 from simple_logger.logger import get_logger
 
 from ocp_resources.data_science_cluster import DataScienceCluster
-from utilities.constants import Protocols, DscComponents
+from utilities.constants import Protocols, DscComponents, ModelFormat
 from model_registry import ModelRegistry
 
 
@@ -46,11 +46,11 @@ class TestModelRegistryCreation:
             is_secure=False,
         )
         model = registry.register_model(
-            name=f"{MODEL_NAME}",
+            name=MODEL_NAME,
             uri="https://storage-place.my-company.com",
             version="2.0.0",
             description="lorem ipsum",
-            model_format_name="onnx",
+            model_format_name=ModelFormat.ONNX,
             model_format_version="1",
             storage_key="my-data-connection",
             storage_path="path/to/model",
@@ -61,7 +61,7 @@ class TestModelRegistryCreation:
                 "str_key": "str_value",
             },
         )
-        registered_model = registry.get_registered_model(f"{MODEL_NAME}")
+        registered_model = registry.get_registered_model(MODEL_NAME)
         errors = []
         if not registered_model.id == model.id:
             errors.append(f"Unexpected id, received {registered_model.id}")
@@ -74,7 +74,7 @@ class TestModelRegistryCreation:
         if not registered_model.state == model.state:
             errors.append(f"Unexpected state, received {registered_model.state}")
 
-        assert not errors, "errors occured:\n{}".format("\n".join(errors))
+        assert not errors, "errors found in model registry response validation:\n{}".format("\n".join(errors))
 
     # TODO: Edit a registered model
     # TODO: Add additional versions for a model
