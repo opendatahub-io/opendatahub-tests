@@ -1,6 +1,6 @@
 import pytest
 from simple_logger.logger import get_logger
-from typing import List, Any, Generator
+from typing import Any, Generator
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
 from utilities.constants import KServeDeploymentType
@@ -19,7 +19,7 @@ from tests.model_serving.model_runtime.vllm.constant import (
 LOGGER = get_logger(name=__name__)
 
 
-SERVING_ARGUMENT: List[str] = [
+SERVING_ARGUMENT: list[str] = [
     "--model=/mnt/models",
     "--uvicorn-log-level=debug",
     "--dtype=float16",
@@ -31,7 +31,7 @@ SERVING_ARGUMENT: List[str] = [
 MODEL_PATH: str = "ibm-granite/granite-3.2-8b-instruct-preview"
 
 
-BASE_DEPLOYMENT_CONFIG: dict[str, str] = {
+BASE_DEPLOYMENT_CONFIG: dict[str, Any] = {
     "deployment_mode": KServeDeploymentType.RAW_DEPLOYMENT,
     "runtime_argument": SERVING_ARGUMENT,
     "min-replicas": 1,
