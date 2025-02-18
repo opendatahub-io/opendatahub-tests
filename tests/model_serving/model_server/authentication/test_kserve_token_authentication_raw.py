@@ -95,7 +95,7 @@ class TestKserveTokenAuthenticationRawForRest:
             token=http_raw_inference_token,
         )
 
-    @pytest.mark.skip(reason="Skipping test_cross_model_authentication_raw: RHOAIRFE-534")
+    @pytest.mark.skip(reason="Skipping test_cross_model_authentication_raw: RHOAIENG-19645")
     @pytest.mark.dependency(name="test_cross_model_authentication_raw")
     def test_cross_model_authentication_raw(self, http_s3_caikit_raw_inference_service_2, http_raw_inference_token):
         """Verify model with another model token"""
