@@ -2,7 +2,7 @@ import pytest
 from ocp_resources.resource import ResourceEditor
 
 from tests.model_serving.model_server.utils import verify_inference_response
-from utilities.constants import ModelFormat, ModelStoragePath, Protocols, ModelInferenceRuntime
+from utilities.constants import ModelFormat, ModelStoragePath, Protocols
 from utilities.constants import Labels
 from utilities.inference_utils import Inference, UserInference
 from utilities.infra import check_pod_status_in_time, get_pods_by_isvc_label
@@ -98,7 +98,9 @@ class TestKserveTokenAuthenticationRawForRest:
 
     # @pytest.mark.skip(reason="Skipping test_cross_model_authentication_raw: RHOAIENG-19645")
     @pytest.mark.dependency(name="test_cross_model_authentication_raw")
-    def test_cross_model_authentication_raw(self, http_s3_caikit_raw_inference_service_2, http_raw_inference_token ,admin_client):
+    def test_cross_model_authentication_raw(
+        self, http_s3_caikit_raw_inference_service_2, http_raw_inference_token, admin_client
+    ):
         """Verify model with another model token"""
         if is_jira_open(jira_id="RHOAIENG-19645", admin_client=admin_client):
             inference = UserInference(
@@ -109,13 +111,10 @@ class TestKserveTokenAuthenticationRawForRest:
             )
 
             res = inference.run_inference_flow(
-                model_name=ModelFormat.CAIKIT,
-                use_default_query=True,
-                token=http_raw_inference_token,
-                insecure=False
+                model_name=ModelFormat.CAIKIT, use_default_query=True, token=http_raw_inference_token, insecure=False
             )
-            status_line = res['output'].splitlines()[0]
-            assert '302 Found' in status_line, f"Expected '302 Found' in status line, got: {status_line}"
+            status_line = res["output"].splitlines()[0]
+            assert "302 Found" in status_line, f"Expected '302 Found' in status line, got: {status_line}"
 
             print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
             print(res)
