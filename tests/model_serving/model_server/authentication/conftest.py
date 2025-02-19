@@ -185,11 +185,6 @@ def http_raw_inference_token(model_service_account: ServiceAccount, http_raw_rol
     return create_inference_token(model_service_account=model_service_account)
 
 
-@pytest.fixture(scope="class")
-def http_raw_inference_token_2(model_service_account_2: ServiceAccount, http_raw_role_binding_2: RoleBinding) -> str:
-    return create_inference_token(model_service_account=model_service_account_2)
-
-
 @pytest.fixture()
 def patched_remove_authentication_isvc(
     admin_client: DynamicClient,
