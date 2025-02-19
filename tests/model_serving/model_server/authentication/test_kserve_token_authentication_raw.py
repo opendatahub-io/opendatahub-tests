@@ -115,10 +115,6 @@ class TestKserveTokenAuthenticationRawForRest:
             )
             status_line = res["output"].splitlines()[0]
             assert "302 Found" in status_line, f"Expected '302 Found' in status line, got: {status_line}"
-
-            print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-            print(res)
-            print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
         else:
             verify_inference_response(
                 inference_service=http_s3_caikit_raw_inference_service_2,

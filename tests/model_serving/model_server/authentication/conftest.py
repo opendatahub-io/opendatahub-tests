@@ -119,12 +119,26 @@ def http_raw_view_role(
 
 
 @pytest.fixture(scope="class")
+def http_raw_view_role_2(
+    admin_client: DynamicClient,
+    http_s3_caikit_raw_inference_service_2: InferenceService,
+) -> Generator[Role, Any, Any]:
+    with create_isvc_view_role(
+        client=admin_client,
+        isvc=http_s3_caikit_raw_inference_service_2,
+        name=f"{http_s3_caikit_raw_inference_service_2.name}-view",
+        resource_names=[http_s3_caikit_raw_inference_service_2.name],
+    ) as role:
+        yield role
+
+
+@pytest.fixture(scope="class")
 def http_raw_role_binding_2(
     admin_client: DynamicClient,
     http_raw_view_role_2: Role,
     model_service_account_2: ServiceAccount,
     http_s3_caikit_raw_inference_service_2: InferenceService,
-) -> RoleBinding:
+) -> Generator[RoleBinding, Any, Any]:
     with RoleBinding(
         client=admin_client,
         namespace=model_service_account_2.namespace,
@@ -228,7 +242,9 @@ def patched_remove_raw_authentication_isvc(
 
 
 @pytest.fixture(scope="class")
-def model_service_account_2(admin_client: DynamicClient, models_endpoint_s3_secret: Secret) -> ServiceAccount:
+def model_service_account_2(
+    admin_client: DynamicClient, models_endpoint_s3_secret: Secret
+) -> Generator[ServiceAccount, Any, Any]:
     with ServiceAccount(
         client=admin_client,
         namespace=models_endpoint_s3_secret.namespace,
