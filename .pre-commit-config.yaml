@@ -68,3 +68,4 @@ repos:
         stages: [ commit-msg ]
         args:
           - --subject-min-length=10
+          - --subject-max-length=100
