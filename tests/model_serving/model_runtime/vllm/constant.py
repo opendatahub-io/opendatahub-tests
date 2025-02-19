@@ -130,3 +130,88 @@ THREE_IMAGE_QUERY: list[list[dict[Any, Any]]] = [
         }
     ],
 ]
+
+
+LIGHTSPEED_TOOL_QUERY: list[list[dict[Any, Any]]] = [
+    [
+        {
+            "role": "system",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "You are a helpful assistant with access to the following\nfunction calls. Your task is to produce a list of function calls\nnecessary to generate response to the user utterance. Use the following\nfunction calls as required.",  # noqa: E501
+                }
+            ],
+        },
+        {"role": "user", "content": [{"type": "text", "text": "What pods are in the namespace openshift-lightspeed?"}]},
+    ],
+]
+
+WEATHER_TOOL_QUERY: list[list[dict[Any, Any]]] = [
+    [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "What is the weather like in Boston today in celsius?"},
+    ],
+    [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "What is the weather like in Japan today in celsius?"},
+    ],
+]
+
+LIGHTSPEED_TOOL: list[dict[Any, Any]] = [
+    {
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_object_namespace_list",
+                    "description": "Get the list of all objects in a namespace",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "kind": {"type": "str", "description": "the type of object"},
+                            "namespace": {"type": "str", "description": "the name of the namespace"},
+                        },
+                        "required": ["kind", "namespace"],
+                    },
+                },
+            }
+        ],
+    },
+]
+
+WEATHER_TOOL: list[dict[Any, Any]] = [
+    {
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_current_weather",
+                    "description": "Get the current weather in a given location",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "location": {"type": "string", "description": "The city and state, e.g. San Francisco, CA"},
+                            "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]},
+                        },
+                        "required": ["location"],
+                    },
+                },
+            }
+        ]
+    }
+]
+
+MATH_CHAT_QUERY: list[list[dict[str, str]]] = [
+    [{"role": "user", "content": "what is the sum of numbers between 1..10"}],
+    [
+        {
+            "role": "system",
+            "content": "You are a helpful assistant.",
+        },
+        {
+            "role": "user",
+            "content": "What is the sum of numbers between 1 and 123 using the formula n(n+1)/2? Explain it using chain-of-thought and solve with code",  # noqa: E501
+        },
+    ],
+]
