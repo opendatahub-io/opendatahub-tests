@@ -105,6 +105,9 @@ class Annotations:
     class KserveAuth:
         SECURITY: str = "security.opendatahub.io/enable-auth"
 
+    class OpenDataHubIo:
+        MANAGED: str = "opendatahub.io/managed"
+
 
 class StorageClassName:
     NFS: str = "nfs"

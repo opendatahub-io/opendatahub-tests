@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shlex
 from contextlib import contextmanager
 from functools import cache
@@ -10,8 +11,10 @@ import kubernetes
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError, ResourceNotUniqueError
 from ocp_resources.catalog_source import CatalogSource
+from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
+from ocp_resources.exceptions import MissingResourceError
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.infrastructure import Infrastructure
 from ocp_resources.namespace import Namespace
@@ -27,6 +30,7 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
+from semver import Version
 from simple_logger.logger import get_logger
 
 from utilities.constants import Timeout
@@ -574,3 +578,29 @@ def check_pod_status_in_time(pod: Pod, status: Set[str], duration: int = Timeout
 
     except TimeoutExpiredError:
         LOGGER.info(f"Pod status is {pod.status} as expected")
+
+
+def get_product_version(admin_client: DynamicClient) -> Version:
+    """
+    Get RHOAI/ODH product version
+
+    Args:
+        admin_client (DynamicClient): DynamicClient object
+
+    Returns:
+        Version: RHOAI/ODH product version
+
+    Raises:
+        MissingResourceError: If product's ClusterServiceVersion not found
+
+    """
+    operator_version: str = ""
+    for csv in ClusterServiceVersion.get(dyn_client=admin_client, namespace=py_config["applications_namespace"]):
+        if re.match("rhods|opendatahub", csv.name):
+            operator_version = csv.instance.spec.version
+            break
+
+    if not operator_version:
+        raise MissingResourceError("Operator ClusterServiceVersion not found")
+
+    return Version.parse(operator_version)

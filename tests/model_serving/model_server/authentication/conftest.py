@@ -202,7 +202,7 @@ def patched_remove_raw_authentication_isvc(
             }
         }
     ):
-        if is_jira_open(jira_id="RHOAIENG-19275"):
+        if is_jira_open(jira_id="RHOAIENG-19275", admin_client=admin_client):
             predictor_pod.wait_deleted()
 
         yield http_s3_caikit_raw_inference_service
@@ -279,6 +279,7 @@ def http_s3_caikit_raw_inference_service(
     model_namespace: Namespace,
     http_s3_caikit_tgis_serving_runtime: ServingRuntime,
     s3_models_storage_uri: str,
+    models_endpoint_s3_secret: Secret,
     model_service_account: ServiceAccount,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
@@ -286,7 +287,8 @@ def http_s3_caikit_raw_inference_service(
         name=f"{Protocols.HTTP}-{ModelFormat.CAIKIT}",
         namespace=model_namespace.name,
         runtime=http_s3_caikit_tgis_serving_runtime.name,
-        storage_uri=s3_models_storage_uri,
+        storage_key=models_endpoint_s3_secret.name,
+        storage_path=urlparse(s3_models_storage_uri).path,
         model_format=http_s3_caikit_tgis_serving_runtime.instance.spec.supportedModelFormats[0].name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         model_service_account=model_service_account.name,

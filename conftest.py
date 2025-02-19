@@ -207,6 +207,9 @@ def pytest_report_teststatus(report: CollectReport, config: Config) -> None:
 
 
 def pytest_sessionfinish(session: Session, exitstatus: int) -> None:
+    if session.config.option.setupplan or session.config.option.collectonly:
+        return
+
     base_dir = py_config["tmp_base_dir"]
     LOGGER.info(f"Deleting pytest base dir {base_dir}")
     shutil.rmtree(path=base_dir, ignore_errors=True)

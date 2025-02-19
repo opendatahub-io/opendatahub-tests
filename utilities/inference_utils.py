@@ -53,11 +53,25 @@ class Inference:
             inference_service: InferenceService object
         """
         self.inference_service = inference_service
-        self.deployment_mode = self.inference_service.instance.metadata.annotations["serving.kserve.io/deploymentMode"]
+        self.deployment_mode = self.get_deployment_type()
         self.runtime = get_inference_serving_runtime(isvc=self.inference_service)
         self.visibility_exposed = self.is_service_exposed()
 
         self.inference_url = self.get_inference_url()
+
+    def get_deployment_type(self) -> str:
+        """
+        Get deployment type
+
+        Returns:
+            deployment type
+        """
+        deployment_type = self.inference_service.instance.metadata.annotations.get("serving.kserve.io/deploymentMode")
+
+        if is_jira_open(jira_id="RHOAIENG-16954", admin_client=get_client()) and not deployment_type:
+            return KServeDeploymentType.SERVERLESS
+
+        return deployment_type
 
     def get_inference_url(self) -> str:
         """
@@ -489,25 +503,25 @@ def create_isvc(
     client: DynamicClient,
     name: str,
     namespace: str,
-    deployment_mode: str,
     model_format: str,
     runtime: str,
-    storage_uri: Optional[str] = None,
-    storage_key: Optional[str] = None,
-    storage_path: Optional[str] = None,
+    storage_uri: str | None = None,
+    storage_key: str | None = None,
+    storage_path: str | None = None,
     wait: bool = True,
     enable_auth: bool = False,
-    external_route: Optional[bool] = None,
-    model_service_account: Optional[str] = "",
-    min_replicas: Optional[int] = None,
-    argument: Optional[list[str]] = None,
-    resources: Optional[dict[str, Any]] = None,
-    volumes: Optional[dict[str, Any]] = None,
-    volumes_mounts: Optional[dict[str, Any]] = None,
-    model_version: Optional[str] = None,
+    deployment_mode: str | None = None,
+    external_route: bool | None = None,
+    model_service_account: str | None = None,
+    min_replicas: int | None = None,
+    argument: list[str] | None = None,
+    resources: dict[str, Any] | None = None,
+    volumes: dict[str, Any] | None = None,
+    volumes_mounts: dict[str, Any] | None = None,
+    model_version: str | None = None,
     wait_for_predictor_pods: bool = True,
-    autoscaler_mode: Optional[str] = None,
-    multi_node_worker_spec: Optional[dict[str, int]] = None,
+    autoscaler_mode: str | None = None,
+    multi_node_worker_spec: dict[str, int] | None = None,
     timeout: int = Timeout.TIMEOUT_15MIN,
 ) -> Generator[InferenceService, Any, Any]:
     """
@@ -575,10 +589,13 @@ def create_isvc(
     if volumes:
         predictor_dict["volumes"] = volumes
 
-    annotations = {Annotations.KserveIo.DEPLOYMENT_MODE: deployment_mode}
+    _annotations: dict[str, str] = {}
+
+    if deployment_mode:
+        _annotations = {Annotations.KserveIo.DEPLOYMENT_MODE: deployment_mode}
 
     if deployment_mode == KServeDeploymentType.SERVERLESS:
-        annotations.update({
+        _annotations.update({
             "serving.knative.openshift.io/enablePassthrough": "true",
             "sidecar.istio.io/inject": "true",
             "sidecar.istio.io/rewriteAppHTTPProbers": "true",
@@ -587,7 +604,7 @@ def create_isvc(
     if enable_auth:
         # model mesh auth is set in servingruntime
         if deployment_mode == KServeDeploymentType.SERVERLESS:
-            annotations[Annotations.KserveAuth.SECURITY] = "true"
+            _annotations[Annotations.KserveAuth.SECURITY] = "true"
         elif deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
             labels[Labels.KserveAuth.SECURITY] = "true"
 
@@ -603,7 +620,7 @@ def create_isvc(
         labels["networking.knative.dev/visibility"] = "cluster-local"
 
     if autoscaler_mode:
-        annotations["serving.kserve.io/autoscalerClass"] = autoscaler_mode
+        _annotations["serving.kserve.io/autoscalerClass"] = autoscaler_mode
 
     if multi_node_worker_spec is not None:
         predictor_dict["workerSpec"] = multi_node_worker_spec
@@ -612,7 +629,7 @@ def create_isvc(
         client=client,
         name=name,
         namespace=namespace,
-        annotations=annotations,
+        annotations=_annotations,
         predictor=predictor_dict,
         label=labels,
     ) as inference_service:
@@ -624,7 +641,10 @@ def create_isvc(
 
         if wait:
             # Modelmesh 2nd server in the ns will fail to be Ready; isvc needs to be re-applied
-            if is_jira_open(jira_id="RHOAIENG-13636") and deployment_mode == KServeDeploymentType.MODEL_MESH:
+            if (
+                is_jira_open(jira_id="RHOAIENG-13636", admin_client=client)
+                and deployment_mode == KServeDeploymentType.MODEL_MESH
+            ):
                 for isvc in InferenceService.get(dyn_client=client, namespace=namespace):
                     _runtime = get_inference_serving_runtime(isvc=isvc)
                     isvc_annotations = isvc.instance.metadata.annotations
