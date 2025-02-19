@@ -133,25 +133,6 @@ def http_raw_view_role_2(
 
 
 @pytest.fixture(scope="class")
-def http_raw_role_binding_2(
-    admin_client: DynamicClient,
-    http_raw_view_role_2: Role,
-    model_service_account_2: ServiceAccount,
-    http_s3_caikit_raw_inference_service_2: InferenceService,
-) -> Generator[RoleBinding, Any, Any]:
-    with RoleBinding(
-        client=admin_client,
-        namespace=model_service_account_2.namespace,
-        name=f"{Protocols.HTTP}-{model_service_account_2.name}-view",
-        role_ref_name=http_raw_view_role_2.name,
-        role_ref_kind=http_raw_view_role_2.kind,
-        subjects_kind=model_service_account_2.kind,
-        subjects_name=model_service_account_2.name,
-    ) as rb:
-        yield rb
-
-
-@pytest.fixture(scope="class")
 def http_role_binding(
     admin_client: DynamicClient,
     http_view_role: Role,
