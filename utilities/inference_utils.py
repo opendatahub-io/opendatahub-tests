@@ -65,13 +65,20 @@ class Inference:
 
         Returns:
             deployment type
+
+        Raises:
+            ValueError: If the deployment type is not found
         """
-        deployment_type = self.inference_service.instance.metadata.annotations.get("serving.kserve.io/deploymentMode")
+        if deployment_type := self.inference_service.instance.metadata.annotations.get(
+            "serving.kserve.io/deploymentMode"
+        ):
+            return deployment_type
 
-        if is_jira_open(jira_id="RHOAIENG-16954", admin_client=get_client()) and not deployment_type:
-            return KServeDeploymentType.SERVERLESS
+        elif deployment_type := self.inference_service.instance.status.deploymentMode:
+            return deployment_type
 
-        return deployment_type
+        else:
+            raise ValueError("DeploymentMode is not set annotation or status.deploymentMode")
 
     def get_inference_url(self) -> str:
         """
@@ -634,9 +641,17 @@ def create_isvc(
         label=labels,
     ) as inference_service:
         if wait_for_predictor_pods:
-            verify_no_failed_pods(client=client, isvc=inference_service, runtime_name=runtime, timeout=timeout)
+            verify_no_failed_pods(
+                client=client,
+                isvc=inference_service,
+                runtime_name=runtime,
+                timeout=timeout,
+            )
             wait_for_inference_deployment_replicas(
-                client=client, isvc=inference_service, runtime_name=runtime, timeout=timeout
+                client=client,
+                isvc=inference_service,
+                runtime_name=runtime,
+                timeout=timeout,
             )
 
         if wait:
