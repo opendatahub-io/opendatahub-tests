@@ -1,12 +1,7 @@
 name: Approve PR on /lgtm comment
 
 on:
-  workflow_dispatch:
-    inputs:
-      pullRequestNumber:
-        description: Pull request number to approve
-        required: false
-
+  workflow_dispatch: #manual testing
   issue_comment:
     types: [created]
 
@@ -17,8 +12,11 @@ jobs:
       pull-requests: write
     if: github.event.issue.pull_request && contains(github.event.comment.body, '/lgtm')
     steps:
+      - name: extract PR number
+        run: echo "PR_NUMBER=${{ github.event.issue.number }}" >> $GITHUB_ENV
+
       - name: approve the PR
         uses: hmarr/auto-approve-action@v4
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          pull-request-number: ${{ github.event.inputs.pullRequestNumber }}
+          pull-request-number: ${{ env.PR_NUMBER }}
