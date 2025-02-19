@@ -66,3 +66,5 @@ repos:
     hooks:
       - id: conventional-precommit-linter
         stages: [ commit-msg ]
+        args:
+          - --subject-min-length=10
