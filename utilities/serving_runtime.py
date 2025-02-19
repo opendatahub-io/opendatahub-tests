@@ -1,4 +1,6 @@
-from typing import Any, Optional
+from __future__ import annotations
+
+from typing import Any
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.serving_runtime import ServingRuntime
@@ -14,17 +16,19 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         name: str,
         namespace: str,
         template_name: str,
-        multi_model: Optional[bool] = None,
-        enable_http: Optional[bool] = None,
-        enable_grpc: Optional[bool] = None,
-        resources: Optional[dict[str, Any]] = None,
-        model_format_name: Optional[dict[str, str]] = None,
-        unprivileged_client: Optional[DynamicClient] = None,
-        enable_external_route: Optional[bool] = None,
-        enable_auth: Optional[bool] = None,
-        protocol: Optional[str] = None,
-        deployment_type: Optional[str] = None,
-        runtime_image: Optional[str] = None,
+        multi_model: bool | None = None,
+        enable_http: bool | None = None,
+        enable_grpc: bool | None = None,
+        resources: dict[str, Any] | None = None,
+        model_format_name: dict[str, str] | None = None,
+        unprivileged_client: DynamicClient | None = None,
+        enable_external_route: bool | None = None,
+        enable_auth: bool | None = None,
+        protocol: str | None = None,
+        deployment_type: str | None = None,
+        runtime_image: str | None = None,
+        models_priorities: dict[str, str] | None = None,
+        supported_model_formats: dict[str, list[dict[str, str]]] | None = None,
     ):
         """
         ServingRuntimeFromTemplate class
@@ -43,6 +47,9 @@ class ServingRuntimeFromTemplate(ServingRuntime):
             enable_external_route (bool): Whether to enable external route or not; relevant for model mesh only
             enable_auth (bool): Whether to enable auth or not; relevant for model mesh only
             protocol (str): Protocol to be used for the serving runtime; relevant for model mesh only
+            models_priorities (dict[str, str]): Model priority to be used for the serving runtime
+            supported_model_formats (dict[str, list[dict[str, str]]]): Model formats;
+                overwrites template's `supportedModelFormats`
         """
 
         self.admin_client = client
@@ -57,6 +64,8 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         self.unprivileged_client = unprivileged_client
         self.deployment_type = deployment_type
         self.runtime_image = runtime_image
+        self.models_priorities = models_priorities
+        self.supported_model_formats = supported_model_formats
 
         # model mesh attributes
         self.enable_external_route = enable_external_route
@@ -113,20 +122,23 @@ class ServingRuntimeFromTemplate(ServingRuntime):
 
         """
         _model_dict = self.get_model_dict_from_template()
+        _model_metadata = _model_dict.get("metadata", {})
+        _model_spec = _model_dict.get("spec", {})
+        _model_spec_supported_formats = _model_spec.get("supportedModelFormats", [])
 
         if self.multi_model is not None:
-            _model_dict["spec"]["multiModel"] = self.multi_model
+            _model_spec["multiModel"] = self.multi_model
 
         if self.enable_external_route:
-            _model_dict["metadata"].setdefault("annotations", {})["enable-route"] = "true"
+            _model_metadata.setdefault("annotations", {})["enable-route"] = "true"
 
         if self.enable_auth:
-            _model_dict["metadata"].setdefault("annotations", {})["enable-route"] = "true"
+            _model_metadata.setdefault("annotations", {})["enable-route"] = "true"
 
         if self.protocol is not None:
-            _model_dict["metadata"].setdefault("annotations", {})["opendatahub.io/apiProtocol"] = self.protocol
+            _model_metadata.setdefault("annotations", {})["opendatahub.io/apiProtocol"] = self.protocol
 
-        for container in _model_dict["spec"]["containers"]:
+        for container in _model_spec["containers"]:
             for env in container.get("env", []):
                 if env["name"] == "RUNTIME_HTTP_ENABLED" and self.enable_http is not None:
                     env["value"] = str(self.enable_http).lower()
@@ -157,9 +169,19 @@ class ServingRuntimeFromTemplate(ServingRuntime):
                 elif is_raw:
                     container["ports"] = vLLM_CONFIG["port_configurations"]["raw"]
 
-        if self.model_format_name is not None:
-            for model in _model_dict["spec"]["supportedModelFormats"]:
-                if model["name"] in self.model_format_name:
-                    model["version"] = self.model_format_name[model["name"]]
+        if self.supported_model_formats:
+            _model_spec_supported_formats = self.supported_model_formats
+
+        else:
+            if self.model_format_name is not None:
+                for model in _model_spec_supported_formats:
+                    if model["name"] in self.model_format_name:
+                        model["version"] = self.model_format_name[model["name"]]
+
+            if self.models_priorities:
+                for _model in _model_spec_supported_formats:
+                    _model_name = _model["name"]
+                    if _model_name in self.models_priorities:
+                        _model["priority"] = self.models_priorities[_model_name]
 
         return _model_dict
