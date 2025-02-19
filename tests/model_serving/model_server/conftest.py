@@ -107,6 +107,8 @@ def serving_runtime_from_template(
         "namespace": model_namespace.name,
         "template_name": request.param["template-name"],
         "multi_model": request.param["multi-model"],
+        "models_priorities": request.param.get("models-priorities"),
+        "supported_model_formats": request.param.get("supported-model-formats"),
     }
 
     if (enable_http := request.param.get("enable-http")) is not None:

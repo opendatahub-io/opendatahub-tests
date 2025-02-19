@@ -39,8 +39,7 @@ To install pre-commit:
 
 ```bash
 pip install pre-commit --user
-pre-commit install
-pre-commit install --hook-type commit-msg
+pre-commit install -t pre-commit -t commit-msg
 ```
 
 Run pre-commit:

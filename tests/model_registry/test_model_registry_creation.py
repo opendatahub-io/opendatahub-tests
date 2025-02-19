@@ -1,14 +1,14 @@
 import pytest
-import shlex
-from ast import literal_eval
 from typing import Self
 from simple_logger.logger import get_logger
-from pyhelper_utils.shell import run_command
 
-from tests.model_registry.utils import generate_register_model_command
-from utilities.constants import DscComponents
+from ocp_resources.data_science_cluster import DataScienceCluster
+from utilities.constants import Protocols, DscComponents, ModelFormat
+from model_registry import ModelRegistry
+
 
 LOGGER = get_logger(name=__name__)
+MODEL_NAME: str = "my-model"
 
 
 @pytest.mark.parametrize(
@@ -29,31 +29,54 @@ class TestModelRegistryCreation:
     for the duration of this test module.
     """
 
-    # TODO: Switch to Python client
     @pytest.mark.smoke
     def test_registering_model(
         self: Self,
         model_registry_instance_rest_endpoint: str,
         current_client_token: str,
-        updated_dsc_component_state,
+        updated_dsc_component_state: DataScienceCluster,
     ):
-        cmd = generate_register_model_command(
-            endpoint=model_registry_instance_rest_endpoint, token=current_client_token
+        # address and port need to be split in the client instantiation
+        server, port = model_registry_instance_rest_endpoint.split(":")
+        registry = ModelRegistry(
+            server_address=f"{Protocols.HTTPS}://{server}",
+            port=port,
+            author="opendatahub-test",
+            user_token=current_client_token,
+            is_secure=False,
         )
-        _, out, _ = run_command(command=shlex.split(cmd))
-        out_dict = literal_eval(node_or_string=out)
+        model = registry.register_model(
+            name=MODEL_NAME,
+            uri="https://storage-place.my-company.com",
+            version="2.0.0",
+            description="lorem ipsum",
+            model_format_name=ModelFormat.ONNX,
+            model_format_version="1",
+            storage_key="my-data-connection",
+            storage_path="path/to/model",
+            metadata={
+                "int_key": 1,
+                "bool_key": False,
+                "float_key": 3.14,
+                "str_key": "str_value",
+            },
+        )
+        registered_model = registry.get_registered_model(MODEL_NAME)
         errors = []
-        if not out_dict["name"] == "model-name":
-            errors.append(f"Unexpected name, received {out_dict['name']}")
-        if not out_dict["description"] == "test-model":
-            errors.append(f"Unexpected description, received {out_dict['description']}")
-        if not out_dict["externalId"] == "1":
-            errors.append(f"Unexpected id, received {out_dict['externalId']}")
-        if not out_dict["owner"] == "opendatahub-tests-client":
-            errors.append(f"Unexpected owner, received {out_dict['owner']}")
-        if not out_dict["state"] == "LIVE":
-            errors.append(f"Unexpected state, received {out_dict['state']}")
+        if not registered_model.id == model.id:
+            errors.append(f"Unexpected id, received {registered_model.id}")
+        if not registered_model.name == model.name:
+            errors.append(f"Unexpected name, received {registered_model.name}")
+        if not registered_model.description == model.description:
+            errors.append(f"Unexpected description, received {registered_model.description}")
+        if not registered_model.owner == model.owner:
+            errors.append(f"Unexpected owner, received {registered_model.owner}")
+        if not registered_model.state == model.state:
+            errors.append(f"Unexpected state, received {registered_model.state}")
 
-        assert not errors, "errors occured:\n{}".format("\n".join(errors))
+        assert not errors, "errors found in model registry response validation:\n{}".format("\n".join(errors))
 
-    # TODO: Query for a registered Model
+    # TODO: Edit a registered model
+    # TODO: Add additional versions for a model
+    # TODO: List all available models
+    # TODO: List all versions of a model
