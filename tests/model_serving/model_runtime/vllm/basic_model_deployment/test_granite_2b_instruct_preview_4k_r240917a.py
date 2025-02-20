@@ -42,7 +42,7 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
     indirect=True,
 )
 class TestGranite2BModel:
-    def test_deploy_model_inference(self, vllm_inference_service, get_pod_name_resource, response_snapshot):
+    def test_deploy_model_inference(self, vllm_inference_service, vllm_pod_resource, response_snapshot):
         if (
             vllm_inference_service.instance.metadata.annotations["serving.kserve.io/deploymentMode"]
             == KServeDeploymentType.SERVERLESS
@@ -58,7 +58,7 @@ class TestGranite2BModel:
             vllm_inference_service.instance.metadata.annotations["serving.kserve.io/deploymentMode"]
             == KServeDeploymentType.RAW_DEPLOYMENT
         ):
-            pod = get_pod_name_resource.name
+            pod = vllm_pod_resource.name
             model_details, grpc_chat_response, grpc_chat_stream_responses = run_raw_inference(
                 pod_name=pod, isvc=vllm_inference_service, port=8033, endpoint="tgis"
             )
@@ -104,7 +104,7 @@ class TestGranite2BModel:
     indirect=True,
 )
 class TestGranite2BModelMultiGPU:
-    def test_deploy_model_inference(self, vllm_inference_service, get_pod_name_resource, response_snapshot):
+    def test_deploy_model_inference(self, vllm_inference_service, vllm_pod_resource, response_snapshot):
         if (
             vllm_inference_service.instance.metadata.annotations["serving.kserve.io/deploymentMode"]
             == KServeDeploymentType.SERVERLESS
@@ -120,7 +120,7 @@ class TestGranite2BModelMultiGPU:
             vllm_inference_service.instance.metadata.annotations["serving.kserve.io/deploymentMode"]
             == KServeDeploymentType.RAW_DEPLOYMENT
         ):
-            pod = get_pod_name_resource.name
+            pod = vllm_pod_resource.name
             model_detail, grpc_chat_response, grpc_chat_stream_responses = run_raw_inference(
                 pod_name=pod, isvc=vllm_inference_service, port=8033, endpoint="tgis"
             )
