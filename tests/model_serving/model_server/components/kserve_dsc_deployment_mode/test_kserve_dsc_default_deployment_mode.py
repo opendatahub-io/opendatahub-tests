@@ -170,7 +170,7 @@ class TestKServeDSCRawDefaultDeploymentMode:
         ],
         indirect=True,
     )
-    def test_restarted_pod_is_serverless(
+    def test_restarted_pod_is_raw(
         self,
         patched_default_deployment_mode_in_dsc,
         restarted_inference_pod,

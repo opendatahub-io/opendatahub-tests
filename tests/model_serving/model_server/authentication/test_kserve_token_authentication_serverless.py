@@ -20,7 +20,7 @@ pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config"
     ],
     indirect=True,
 )
-class TestKserveTokenAuthentication:
+class TestKserveServerlessTokenAuthentication:
     @pytest.mark.smoke
     @pytest.mark.dependency(name="test_model_authentication_using_rest")
     def test_model_authentication_using_rest(self, http_s3_caikit_serverless_inference_service, http_inference_token):
