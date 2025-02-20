@@ -126,12 +126,12 @@ class TestOpenHermesAWQModel:
         else:
             pytest.skip("Model deployment is only for kserve serverless")
 
-    def test_deploy_model_inference_raw(self, vllm_inference_service, get_pod_name_resource, response_snapshot):
+    def test_deploy_model_inference_raw(self, vllm_inference_service, vllm_pod_resource, response_snapshot):
         if (
             vllm_inference_service.instance.metadata.annotations["serving.kserve.io/deploymentMode"]
             == KServeDeploymentType.RAW_DEPLOYMENT
         ):
-            pod = get_pod_name_resource.name
+            pod = vllm_pod_resource.name
             model_details, grpc_chat_response, grpc_chat_stream_responses = run_raw_inference(
                 pod_name=pod, isvc=vllm_inference_service, port=8033, endpoint="tgis"
             )
@@ -212,12 +212,12 @@ class TestOpenHermesAWQMultiGPU:
         else:
             pytest.skip("Model deployment is only for kserve serverless")
 
-    def test_deploy_marlin_model_inference_raw(self, vllm_inference_service, get_pod_name_resource, response_snapshot):
+    def test_deploy_marlin_model_inference_raw(self, vllm_inference_service, vllm_pod_resource, response_snapshot):
         if (
             vllm_inference_service.instance.metadata.annotations["serving.kserve.io/deploymentMode"]
             == KServeDeploymentType.RAW_DEPLOYMENT
         ):
-            pod = get_pod_name_resource.name
+            pod = vllm_pod_resource.name
             model_details, grpc_chat_response, grpc_chat_stream_responses = run_raw_inference(
                 pod_name=pod, isvc=vllm_inference_service, port=8033, endpoint="tgis"
             )
