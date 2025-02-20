@@ -8,7 +8,9 @@ from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.trustyai_service import TrustyAIService
 
-from tests.model_explainability.trustyai_service.utils import wait_for_isvc_deployment_registered_by_trustyaiservice
+from tests.model_explainability.trustyai_service.trustyai_service_utils import (
+    wait_for_isvc_deployment_registered_by_trustyai_service,
+)
 from utilities.constants import KServeDeploymentType, Timeout, Labels
 from utilities.inference_utils import create_isvc
 
@@ -38,7 +40,8 @@ def mlserver_runtime(
     containers = [
         {
             "name": "kserve-container",
-            "image": "quay.io/rh-ee-mmisiura/mlserver:1.6.1",
+            "image": "quay.io/trustyai_testing/mlserver"
+            "@sha256:68a4cd74fff40a3c4f29caddbdbdc9e54888aba54bf3c5f78c8ffd577c3a1c89",
             "env": [
                 {"name": "MLSERVER_MODEL_IMPLEMENTATION", "value": "{{.Labels.modelClass}}"},
                 {"name": "MLSERVER_HTTP_PORT", "value": "8080"},
@@ -90,10 +93,9 @@ def gaussian_credit_model(
         wait_for_predictor_pods=False,
         resources={"requests": {"cpu": "1", "memory": "2Gi"}, "limits": {"cpu": "1", "memory": "2Gi"}},
     ) as isvc:
-        wait_for_isvc_deployment_registered_by_trustyaiservice(
+        wait_for_isvc_deployment_registered_by_trustyai_service(
             client=admin_client,
             isvc=isvc,
-            trustyai_service=trustyai_service_with_pvc_storage,
             runtime_name=mlserver_runtime.name,
         )
         yield isvc
