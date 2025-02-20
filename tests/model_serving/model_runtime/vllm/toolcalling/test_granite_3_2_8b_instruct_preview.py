@@ -61,11 +61,11 @@ class TestGranite32ToolModel:
     def test_granite_simple_openai_model_inference(
         self,
         vllm_inference_service: Generator[InferenceService, Any, Any],
-        get_pod_name_resource: Pod,
+        vllm_pod_resource: Pod,
         response_snapshot: Any,
     ):
         validate_raw_openai_inference_request(
-            pod_name=get_pod_name_resource.name,
+            pod_name=vllm_pod_resource.name,
             isvc=vllm_inference_service,
             response_snapshot=response_snapshot,
             chat_query=MATH_CHAT_QUERY,
@@ -75,11 +75,11 @@ class TestGranite32ToolModel:
     def test_granite_simple_tgis_model_inference(
         self,
         vllm_inference_service: Generator[InferenceService, Any, Any],
-        get_pod_name_resource: Pod,
+        vllm_pod_resource: Pod,
         response_snapshot: Any,
     ):
         validate_raw_tgis_inference_request(
-            pod_name=get_pod_name_resource.name,
+            pod_name=vllm_pod_resource.name,
             isvc=vllm_inference_service,
             response_snapshot=response_snapshot,
             completion_query=COMPLETION_QUERY,
@@ -88,11 +88,11 @@ class TestGranite32ToolModel:
     def test_granite_model_lightspeed_tool_inference(
         self,
         vllm_inference_service: Generator[InferenceService, Any, Any],
-        get_pod_name_resource: Pod,
+        vllm_pod_resource: Pod,
         response_snapshot: Any,
     ):
         validate_raw_openai_inference_request(
-            pod_name=get_pod_name_resource.name,
+            pod_name=vllm_pod_resource.name,
             isvc=vllm_inference_service,
             response_snapshot=response_snapshot,
             chat_query=LIGHTSPEED_TOOL_QUERY,
@@ -103,11 +103,11 @@ class TestGranite32ToolModel:
     def test_granite_model_weather_tool_inference(
         self,
         vllm_inference_service: Generator[InferenceService, Any, Any],
-        get_pod_name_resource: Pod,
+        vllm_pod_resource: Pod,
         response_snapshot: Any,
     ):
         validate_raw_openai_inference_request(
-            pod_name=get_pod_name_resource.name,
+            pod_name=vllm_pod_resource.name,
             isvc=vllm_inference_service,
             response_snapshot=response_snapshot,
             chat_query=WEATHER_TOOL_QUERY,
@@ -136,11 +136,11 @@ class TestGranite32ToolMultiModel:
     def test_granite_multi_openai_model_inference(
         self,
         vllm_inference_service: Generator[InferenceService, Any, Any],
-        get_pod_name_resource: Pod,
+        vllm_pod_resource: Pod,
         response_snapshot: Any,
     ):
         validate_raw_openai_inference_request(
-            pod_name=get_pod_name_resource.name,
+            pod_name=vllm_pod_resource.name,
             isvc=vllm_inference_service,
             response_snapshot=response_snapshot,
             chat_query=MATH_CHAT_QUERY,
@@ -150,11 +150,11 @@ class TestGranite32ToolMultiModel:
     def test_granite_multi_tgis_model_inference(
         self,
         vllm_inference_service: Generator[InferenceService, Any, Any],
-        get_pod_name_resource: Pod,
+        vllm_pod_resource: Pod,
         response_snapshot: Any,
     ):
         validate_raw_tgis_inference_request(
-            pod_name=get_pod_name_resource.name,
+            pod_name=vllm_pod_resource.name,
             isvc=vllm_inference_service,
             response_snapshot=response_snapshot,
             completion_query=COMPLETION_QUERY,
@@ -163,11 +163,11 @@ class TestGranite32ToolMultiModel:
     def test_granite_multi_model_lightspeed_tool_inference(
         self,
         vllm_inference_service: Generator[InferenceService, Any, Any],
-        get_pod_name_resource: Pod,
+        vllm_pod_resource: Pod,
         response_snapshot: Any,
     ):
         validate_raw_openai_inference_request(
-            pod_name=get_pod_name_resource.name,
+            pod_name=vllm_pod_resource.name,
             isvc=vllm_inference_service,
             response_snapshot=response_snapshot,
             chat_query=LIGHTSPEED_TOOL_QUERY,
@@ -178,11 +178,11 @@ class TestGranite32ToolMultiModel:
     def test_granite_multi_model_weather_tool_inference(
         self,
         vllm_inference_service: Generator[InferenceService, Any, Any],
-        get_pod_name_resource: Pod,
+        vllm_pod_resource: Pod,
         response_snapshot: Any,
     ):
         validate_raw_openai_inference_request(
-            pod_name=get_pod_name_resource.name,
+            pod_name=vllm_pod_resource.name,
             isvc=vllm_inference_service,
             response_snapshot=response_snapshot,
             chat_query=WEATHER_TOOL_QUERY,
