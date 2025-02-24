@@ -10,13 +10,14 @@ import pathlib
 import kubernetes.client
 from kubernetes.dynamic import DynamicClient
 
+from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 
 import pytest
 from pytest_testconfig import config as py_config
 
 from tests.workbenches.resources import Notebook
-from tests.workbenches.utils import step, PodUtils
+from tests.workbenches.utils import step
 
 
 class TestNotebookST:
@@ -90,12 +91,9 @@ class TestNotebookST:
 
         with step("Wait for Notebook pod readiness"):
             with notebook:
-                PodUtils.wait_for_pods_ready(
-                    client=admin_client,
-                    namespace_name=self.NTB_NAMESPACE,
-                    label_selector=f"app={self.NTB_NAME}",
-                    expect_pods_count=1,
-                )
+                pods = Pod.get(client=unprivileged_client, namespace=self.NTB_NAMESPACE, label_selector=f"app={self.NTB_NAME}")
+                for pod in pods:
+                    pod.wait_for_condition(condition="Ready", status="True")
 
 
 def _get_notebook_image(image_name: str, image_tag: str) -> str:
