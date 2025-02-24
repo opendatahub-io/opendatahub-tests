@@ -18,9 +18,10 @@ from pytest_testconfig import config as py_config
 
 from tests.workbenches.resources import Notebook
 from tests.workbenches.utils import step
+from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH
 
 
-class TestNotebookST:
+class TestNotebook:
     """
     # description
     Verifies deployments of Notebooks via GitOps approach
@@ -91,19 +92,20 @@ class TestNotebookST:
 
         with step("Wait for Notebook pod readiness"):
             with notebook:
-                pods = Pod.get(client=unprivileged_client, namespace=self.NTB_NAMESPACE, label_selector=f"app={self.NTB_NAME}")
+                pods = Pod.get(
+                    client=unprivileged_client, namespace=self.NTB_NAMESPACE, label_selector=f"app={self.NTB_NAME}"
+                )
                 for pod in pods:
                     pod.wait_for_condition(condition="Ready", status="True")
 
 
 def _get_notebook_image(image_name: str, image_tag: str) -> str:
-    registry_path = "image-registry.openshift-image-registry.svc:5000"
     controllers_namespace = py_config["applications_namespace"]
     if py_config.get("distribution") == "upstream":
         image_dict = {"jupyter-minimal-notebook": "jupyter-minimal-notebook"}
     else:
         image_dict = {"jupyter-minimal-notebook": "s2i-minimal-notebook"}
-    return registry_path + "/" + controllers_namespace + "/" + image_dict[image_name] + ":" + image_tag
+    return INTERNAL_IMAGE_REGISTRY_PATH + "/" + controllers_namespace + "/" + image_dict[image_name] + ":" + image_tag
 
 
 def _load_default_notebook(client: DynamicClient, namespace: str, name: str, image: str) -> Notebook:
