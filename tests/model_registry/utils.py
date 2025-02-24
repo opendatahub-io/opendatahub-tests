@@ -5,8 +5,7 @@ from ocp_resources.model_registry import ModelRegistry
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
-from utilities.constants import Protocols, HTTPRequest
-from tests.model_registry.constants import ModelRegistryEndpoints
+from utilities.constants import Protocols
 
 
 ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
@@ -44,12 +43,3 @@ def get_endpoint_from_mr_service(client: DynamicClient, svc: Service, protocol: 
         return svc.instance.metadata.annotations[f"{ADDRESS_ANNOTATION_PREFIX}{protocol}"]
     else:
         raise ProtocolNotSupportedError(protocol)
-
-
-def generate_register_model_command(endpoint: str, token: str) -> str:
-    return (
-        f"curl -k {HTTPRequest.AUTH_HEADER.format(token=token)} {HTTPRequest.CONTENT_JSON} "
-        '-d \'{"name": "model-name", '
-        '"description": "test-model", "owner": "opendatahub-tests-client", "externalId": "1", "state": "LIVE"}\' '
-        f"{Protocols.HTTPS}://{endpoint}{ModelRegistryEndpoints.REGISTERED_MODELS}"
-    )

@@ -27,7 +27,8 @@ fcn_exclude_functions =
     addoption,
     write,
     from_pytest_fixture,
-    QueueListener
+    QueueListener,
+    yaml
 
 
 enable-extensions =

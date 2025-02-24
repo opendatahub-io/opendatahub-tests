@@ -21,6 +21,20 @@ LOGGER = get_logger(name=__name__)
 
 
 def create_ca_bundle_file(client: DynamicClient, ca_type: str) -> str:
+    """
+    Creates a ca bundle file from a secret
+
+    Args:
+        client (DynamicClient): DynamicClient object
+        ca_type (str): The type of ca bundle to create. Can be "knative" or "openshift"
+
+    Returns:
+        str: The path to the ca bundle file. If cert is not created, return empty string
+
+    Raises:
+        ValueError: If ca_type is not "knative" or "openshift"
+
+    """
     if ca_type == "knative":
         certs_secret = Secret(
             client=client,
@@ -54,6 +68,23 @@ def create_ca_bundle_file(client: DynamicClient, ca_type: str) -> str:
 
 @cache
 def get_ca_bundle(client: DynamicClient, deployment_mode: str) -> str:
+    """
+    Get the ca bundle for the given deployment mode.
+
+    If running on managed cluster and deployment in serverless or raw deployment, return empty string.
+    If running on self-managed operator and deployment is model mesh, return ca bundle.
+
+    Args:
+        client (DynamicClient): DynamicClient object
+        deployment_mode (str): The deployment mode. Can be "serverless", "model-mesh" or "raw-deployment"
+
+    Returns:
+        str: The path to the ca bundle file. If cert is not created, return empty string
+
+    Raises:
+            ValueError: If deployment_mode is not "serverless", "model-mesh" or "raw-deployment"
+
+    """
     if deployment_mode in (
         KServeDeploymentType.SERVERLESS,
         KServeDeploymentType.RAW_DEPLOYMENT,

@@ -1,3 +1,5 @@
+from typing import Any, Generator
+
 import pytest
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
@@ -5,8 +7,8 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.serving_runtime import ServingRuntime
 
-from tests.model_serving.model_server.utils import create_isvc
 from utilities.constants import KServeDeploymentType
+from utilities.inference_utils import create_isvc
 
 
 @pytest.fixture(scope="class")
@@ -15,7 +17,7 @@ def model_car_tgis_inference_service(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     serving_runtime_from_template: ServingRuntime,
-) -> InferenceService:
+) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
         name="tgis-model-car",
@@ -24,5 +26,6 @@ def model_car_tgis_inference_service(
         storage_uri=request.param["storage-uri"],
         model_format=serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
         deployment_mode=KServeDeploymentType.SERVERLESS,
+        wait_for_predictor_pods=False,  # Until modelcar initContainer completed, other containers may have Error status
     ) as isvc:
         yield isvc

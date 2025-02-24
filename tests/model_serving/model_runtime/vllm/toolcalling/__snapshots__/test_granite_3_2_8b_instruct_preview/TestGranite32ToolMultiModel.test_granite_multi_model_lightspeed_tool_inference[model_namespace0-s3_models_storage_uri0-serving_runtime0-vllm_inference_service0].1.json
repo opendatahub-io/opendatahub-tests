@@ -1,0 +1,23 @@
+[
+  {
+    "finish_reason": "tool_calls",
+    "index": 0,
+    "logprobs": null,
+    "message": {
+      "content": null,
+      "reasoning_content": null,
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "function": {
+            "arguments": "{\"kind\": \"pod\", \"namespace\": \"openshift-lightspeed\"}",
+            "name": "get_object_namespace_list"
+          },
+          "id": "chatcmpl-tool-c525ae717dd640278f8609129e928e99",
+          "type": "function"
+        }
+      ]
+    },
+    "stop_reason": null
+  }
+]

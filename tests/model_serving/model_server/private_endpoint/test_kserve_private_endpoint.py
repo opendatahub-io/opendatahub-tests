@@ -10,7 +10,7 @@ from utilities.constants import CurlOutput, ModelEndpoint, Protocols, RuntimeTem
 LOGGER = get_logger(name=__name__)
 
 
-pytestmark = pytest.mark.usefixtures("skip_if_no_deployed_openshift_serverless", "valid_aws_config")
+pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config")]
 
 
 @pytest.mark.parametrize(
@@ -27,7 +27,6 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_deployed_openshift_serverless",
     ],
     indirect=True,
 )
-@pytest.mark.serverless
 class TestKserveInternalEndpoint:
     """Tests the internal endpoint of a kserve predictor"""
 

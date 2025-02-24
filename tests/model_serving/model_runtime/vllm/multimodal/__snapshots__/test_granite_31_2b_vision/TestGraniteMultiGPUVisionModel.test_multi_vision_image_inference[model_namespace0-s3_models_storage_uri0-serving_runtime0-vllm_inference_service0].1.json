@@ -1,0 +1,26 @@
+[
+  {
+    "finish_reason": "stop",
+    "index": 0,
+    "logprobs": null,
+    "message": {
+      "content": "The image features a serene landscape with a wooden boardwalk leading through a lush green field. The sky is clear with a few scattered clouds, and the sunlight creates a warm glow on the grass.",
+      "reasoning_content": null,
+      "role": "assistant",
+      "tool_calls": []
+    },
+    "stop_reason": null
+  },
+  {
+    "finish_reason": "stop",
+    "index": 0,
+    "logprobs": null,
+    "message": {
+      "content": "The image features a lion and a duck. The lion is standing in a grassy field, while the duck is swimming in a body of water.",
+      "reasoning_content": null,
+      "role": "assistant",
+      "tool_calls": []
+    },
+    "stop_reason": null
+  }
+]

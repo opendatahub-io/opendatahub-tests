@@ -10,15 +10,15 @@ from ocp_resources.serving_runtime import ServingRuntime
 from simple_logger.logger import get_logger
 
 from tests.model_serving.model_server.private_endpoint.utils import create_sidecar_pod
-from tests.model_serving.model_server.utils import create_isvc
 from utilities.constants import KServeDeploymentType, ModelFormat, ModelStoragePath
+from utilities.inference_utils import create_isvc
 from utilities.infra import create_ns
 
 LOGGER = get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")
-def diff_namespace(admin_client: DynamicClient) -> Generator[Namespace, None, None]:
+def diff_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
     with create_ns(admin_client=admin_client, name="diff-namespace") as ns:
         yield ns
 
@@ -28,14 +28,14 @@ def endpoint_isvc(
     admin_client: DynamicClient,
     serving_runtime_from_template: ServingRuntime,
     models_endpoint_s3_secret: Secret,
-) -> Generator[InferenceService, None, None]:
+) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
         name="endpoint-isvc",
         namespace=serving_runtime_from_template.namespace,
         deployment_mode=KServeDeploymentType.SERVERLESS,
         storage_key=models_endpoint_s3_secret.name,
-        storage_path=ModelStoragePath.FLAN_T5_SMALL,
+        storage_path=ModelStoragePath.FLAN_T5_SMALL_CAIKIT,
         model_format=ModelFormat.CAIKIT,
         runtime=serving_runtime_from_template.name,
         wait_for_predictor_pods=True,

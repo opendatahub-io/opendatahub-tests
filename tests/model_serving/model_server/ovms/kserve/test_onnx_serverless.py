@@ -8,9 +8,9 @@ from utilities.constants import (
     ModelInferenceRuntime,
 )
 from utilities.inference_utils import Inference
+from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
-
-pytestmark = pytest.mark.usefixtures("skip_if_no_deployed_openshift_serverless", "valid_aws_config")
+pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config")]
 
 
 @pytest.mark.serverless
@@ -35,7 +35,7 @@ class TestONNXServerless:
         """Verify that kserve Serverless ONNX model can be queried using REST"""
         verify_inference_response(
             inference_service=ovms_serverless_inference_service,
-            runtime=ModelInferenceRuntime.ONNX_RUNTIME,
+            inference_config=ONNX_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
             use_default_query=True,

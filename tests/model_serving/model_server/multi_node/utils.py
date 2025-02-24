@@ -1,13 +1,22 @@
 import re
 import shlex
-from typing import Dict, List
 
 from ocp_resources.pod import Pod
 
 
-def verify_ray_status(pods: List[Pod]) -> None:
+def verify_ray_status(pods: list[Pod]) -> None:
+    """
+    Verify ray status is correct
+
+    Args:
+        pods (list[Pod]): pods to verify
+
+    Raises:
+        AssertionError: If ray status is not correct
+
+    """
     cmd = shlex.split("ray status")
-    ray_failures: Dict[str, List[str]] = {}
+    ray_failures: dict[str, list[str]] = {}
     res = None
     for pod in pods:
         res = pod.execute(command=cmd)
@@ -30,6 +39,16 @@ def verify_ray_status(pods: List[Pod]) -> None:
 
 
 def verify_nvidia_gpu_status(pod: Pod) -> None:
+    """
+    Verify nvidia-smi status is correct
+
+    Args:
+        pod (Pod): pod to verify
+
+    Raises:
+        AssertionError: If nvidia-smi status is not correct
+
+    """
     res = pod.execute(command=shlex.split("nvidia-smi --query-gpu=memory.used --format=csv"))
     mem_regex = re.search(r"(\d+)", res)
 

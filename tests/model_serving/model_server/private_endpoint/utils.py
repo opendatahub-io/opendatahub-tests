@@ -20,6 +20,19 @@ def curl_from_pod(
     endpoint: str,
     protocol: str = Protocols.HTTP,
 ) -> str:
+    """
+    Curl from pod
+
+    Args:
+        isvc (InferenceService): InferenceService object
+        pod (Pod): Pod object
+        endpoint (str): endpoint
+        protocol (str): protocol
+
+    Returns:
+        str: curl command output
+
+    """
     if protocol not in (Protocols.HTTPS, Protocols.HTTP):
         raise ProtocolNotSupportedError(protocol)
     host = isvc.instance.status.address.url
@@ -36,6 +49,19 @@ def create_sidecar_pod(
     use_istio: bool,
     pod_name: str,
 ) -> Generator[Pod, Any, Any]:
+    """
+    Create a sidecar pod
+
+    Args:
+        admin_client (DynamicClient): DynamicClient object
+        namespace (str): namespace name
+        use_istio (bool): use istio
+        pod_name (str): pod name
+
+    Returns:
+        Generator[Pod, Any, Any]: pod object
+
+    """
     containers = [
         {
             "name": pod_name,

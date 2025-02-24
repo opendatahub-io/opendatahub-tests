@@ -10,6 +10,19 @@ LOGGER = get_logger(name=__name__)
 def validate_metrics_value(
     prometheus: Prometheus, metrics_query: str, expected_value: Any, timeout: int = 60 * 4
 ) -> None:
+    """
+    Validate metrics value against expected value
+
+    Args:
+        prometheus (Prometheus): Prometheus object
+        metrics_query (str): Metrics query string
+        expected_value (Any): Expected value
+        timeout (int): Timeout in seconds
+
+    Raises:
+        TimeoutExpiredError: raised when expected conditions are not met within the timeframe
+
+    """
     sample = None
     try:
         for sample in TimeoutSampler(
@@ -30,6 +43,17 @@ def validate_metrics_value(
 
 
 def get_metrics_value(prometheus: Prometheus, metrics_query: str) -> Any:
+    """
+    Get metrics value from prometheus
+
+    Args:
+        prometheus (Prometheus): Prometheus object
+        metrics_query (str): Metrics query string
+
+    Returns:
+        Any: Metrics value
+
+    """
     metric_results = prometheus.query_sampler(query=metrics_query)
     if metric_values_list := [value for metric_val in metric_results for value in metric_val.get("value")]:
         return metric_values_list[1]

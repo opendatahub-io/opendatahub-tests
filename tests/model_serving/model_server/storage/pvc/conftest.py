@@ -1,4 +1,4 @@
-from typing import Any, Generator, List
+from typing import Any, Generator
 
 import pytest
 from kubernetes.dynamic import DynamicClient
@@ -10,9 +10,9 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
 
-from tests.model_serving.model_server.utils import create_isvc
 from utilities.constants import KServeDeploymentType
 from utilities.general import download_model_data
+from utilities.inference_utils import create_isvc
 from utilities.infra import get_pods_by_isvc_label
 
 
@@ -43,7 +43,7 @@ def ci_bucket_downloaded_model_data(
 
 
 @pytest.fixture()
-def predictor_pods_scope_function(admin_client: DynamicClient, pvc_inference_service: InferenceService) -> List[Pod]:
+def predictor_pods_scope_function(admin_client: DynamicClient, pvc_inference_service: InferenceService) -> list[Pod]:
     return get_pods_by_isvc_label(
         client=admin_client,
         isvc=pvc_inference_service,
@@ -54,7 +54,7 @@ def predictor_pods_scope_function(admin_client: DynamicClient, pvc_inference_ser
 def predictor_pods_scope_class(
     admin_client: DynamicClient,
     pvc_inference_service: InferenceService,
-) -> List[Pod]:
+) -> list[Pod]:
     return get_pods_by_isvc_label(
         client=admin_client,
         isvc=pvc_inference_service,
@@ -63,8 +63,8 @@ def predictor_pods_scope_class(
 
 @pytest.fixture()
 def patched_read_only_isvc(
-    request, pvc_inference_service: InferenceService, first_predictor_pod: Pod
-) -> InferenceService:
+    request: FixtureRequest, pvc_inference_service: InferenceService, first_predictor_pod: Pod
+) -> Generator[InferenceService, Any, Any]:
     with ResourceEditor(
         patches={
             pvc_inference_service: {
@@ -106,5 +106,5 @@ def pvc_inference_service(
 
 
 @pytest.fixture()
-def first_predictor_pod(predictor_pods_scope_function: List[Pod]) -> Pod:
+def first_predictor_pod(predictor_pods_scope_function: list[Pod]) -> Pod:
     return predictor_pods_scope_function[0]
