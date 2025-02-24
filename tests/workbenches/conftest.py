@@ -25,7 +25,7 @@ def users_namespace(
         unprivileged_client=unprivileged_client,
         name=request.param["name"],
         labels={constants.Labels.OpenDataHub.DASHBOARD: "true"},
-        annotations={constants.Annotations.OpenDataHub.SERVICE_MESH: "false"},
+        annotations={constants.Annotations.OpenDataHubIo.SERVICE_MESH: "false"},
     ) as ns:
         yield ns
 

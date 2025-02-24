@@ -139,7 +139,7 @@ class Labels:
     class KserveAuth:
         SECURITY: str = "security.opendatahub.io/enable-auth"
 
-    class OpenDataHubIo:
+    class OpenDataHub:
         DASHBOARD: str = "opendatahub.io/dashboard"
 
     class Notebook:
