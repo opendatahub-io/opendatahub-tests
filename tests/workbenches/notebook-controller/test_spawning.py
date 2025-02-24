@@ -105,7 +105,7 @@ def _get_notebook_image(image_name: str, image_tag: str) -> str:
         image_dict = {"jupyter-minimal-notebook": "jupyter-minimal-notebook"}
     else:
         image_dict = {"jupyter-minimal-notebook": "s2i-minimal-notebook"}
-    return INTERNAL_IMAGE_REGISTRY_PATH + "/" + controllers_namespace + "/" + image_dict[image_name] + ":" + image_tag
+    return f"{INTERNAL_IMAGE_REGISTRY_PATH}/{controllers_namespace}/{image_dict[image_name]}:{image_tag}"
 
 
 def _load_default_notebook(client: DynamicClient, namespace: str, name: str, image: str) -> Notebook:
