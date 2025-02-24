@@ -48,8 +48,8 @@ def create_ns(
     unprivileged_client: Optional[DynamicClient] = None,
     teardown: bool = True,
     delete_timeout: int = Timeout.TIMEOUT_4MIN,
-    labels: Optional[dict[str, str]] = None,
-    annotations: Optional[dict[str, str]] = None,
+    labels: dict[str, str] | None = None,
+    annotations: dict[str, str] | None = None,
 ) -> Generator[Namespace | Project, Any, Any]:
     """
     Create namespace with admin or unprivileged client.

@@ -24,22 +24,22 @@ def users_namespace(
     with create_ns(
         unprivileged_client=unprivileged_client,
         name=request.param["name"],
-        labels={constants.Dashboard.label: "true"},
-        annotations={constants.ServiceMesh.annotation_inject: "false"},
+        labels={constants.Labels.OpenDataHub.DASHBOARD: "true"},
+        annotations={constants.Annotations.OpenDataHub.SERVICE_MESH: "false"},
     ) as ns:
         yield ns
 
 
 @pytest.fixture(scope="function")
 def users_persistent_volume_claim(
-    request: pytest.FixtureRequest, unprivileged_client: DynamicClient
+    request: pytest.FixtureRequest, users_namespace: Namespace, unprivileged_client: DynamicClient
 ) -> Generator[PersistentVolumeClaim, None, None]:
     with PersistentVolumeClaim(
         client=unprivileged_client,
         name=request.param["name"],
-        namespace=request.param["namespace"],
-        label={constants.Dashboard.label: "true"},
-        accessmodes="ReadWriteOnce",
+        namespace=users_namespace.name,
+        label={constants.Labels.OpenDataHub.DASHBOARD: "true"},
+        accessmodes=PersistentVolumeClaim.AccessMode.RWO,
         size="10Gi",
         volume_mode=PersistentVolumeClaim.VolumeMode.FILE,
     ) as pvc:

@@ -1,7 +1,4 @@
 from ocp_resources.resource import Resource
-from pytest_testconfig import config as py_config
-
-OPENDATAHUB_IO: str = "opendatahub.io"
 
 
 class KServeDeploymentType:
@@ -110,23 +107,11 @@ class Annotations:
 
     class OpenDataHubIo:
         MANAGED: str = "opendatahub.io/managed"
+        SERVICE_MESH: str = "opendatahub.io/service-mesh"
 
 
 class StorageClassName:
     NFS: str = "nfs"
-
-
-class Dashboard:
-    route_name = "odh-dashboard" if py_config.get("distribution") == "upstream" else "rhods-dashboard"
-    label = OPENDATAHUB_IO + "/dashboard"
-
-
-class ServiceMesh:
-    annotation_inject = OPENDATAHUB_IO + "/service-mesh"
-
-
-class Notebook:
-    label_oauth = "notebooks." + OPENDATAHUB_IO + "/inject-oauth"
 
 
 class DscComponents:
@@ -151,11 +136,14 @@ class DscComponents:
 
 
 class Labels:
-    class OpenDataHub:
-        DASHBOARD: str = "opendatahub.io/dashboard"
-
     class KserveAuth:
         SECURITY: str = "security.opendatahub.io/enable-auth"
+
+    class OpenDataHubIo:
+        DASHBOARD: str = "opendatahub.io/dashboard"
+
+    class Notebook:
+        INJECT_OAUTH: str = "notebooks.opendatahub.io/inject-oauth"
 
 
 class Timeout:
