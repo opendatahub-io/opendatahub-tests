@@ -77,13 +77,13 @@ class TestNotebook:
         with step("Create Notebook CR"):
             notebook_image: str = get_notebook_image("jupyter-minimal-notebook", "2024.2")
             notebook = load_default_notebook(
-                client=unprivileged_client, namespace=self.NTB_NAMESPACE, name=self.NTB_NAME, image=notebook_image
+                dyn_client=unprivileged_client, namespace=self.NTB_NAMESPACE, name=self.NTB_NAME, image=notebook_image
             )
 
         with step("Wait for Notebook pod readiness"):
             with notebook:
                 pods = Pod.get(
-                    client=unprivileged_client, namespace=self.NTB_NAMESPACE, label_selector=f"app={self.NTB_NAME}"
+                    dyn_client=unprivileged_client, namespace=self.NTB_NAMESPACE, label_selector=f"app={self.NTB_NAME}"
                 )
                 for pod in pods:
                     pod.wait_for_condition(condition="Ready", status="True")
