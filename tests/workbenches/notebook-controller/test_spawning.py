@@ -15,30 +15,27 @@ from ocp_resources.route import Route
 import pytest
 from pytest_testconfig import config as py_config
 
-from tests.workbenches.docs import TestDoc, SuiteDoc, Contact, Desc, Step
 from tests.workbenches.resources import Notebook
-from tests.workbenches.utils import step, PodUtils, OcpResourceManager
-from utilities import constants
+from tests.workbenches.utils import step, PodUtils
 
 
-@SuiteDoc(
-    description=Desc("Verifies deployments of Notebooks via GitOps approach"),
-    before_test_steps={
-        Step(value="Deploy Pipelines Operator", expected="Pipelines operator is available on the cluster"),
-        Step(value="Deploy ServiceMesh Operator", expected="ServiceMesh operator is available on the cluster"),
-        Step(value="Deploy Serverless Operator", expected="Serverless operator is available on the cluster"),
-        Step(value="Install ODH operator", expected="Operator is up and running and is able to serve it's operands"),
-        Step(value="Deploy DSCI", expected="DSCI is created and ready"),
-        Step(value="Deploy DSC", expected="DSC is created and ready"),
-    },
-    after_test_steps={
-        Step(
-            value="Delete all created resources",
-            expected="All created resources are removed",
-        )
-    },
-)
 class TestNotebookST:
+    """
+    # description
+    Verifies deployments of Notebooks via GitOps approach
+
+    # before_test_steps
+        1. Step(value="Deploy Pipelines Operator", expected="Pipelines operator is available on the cluster"),
+        2. Step(value="Deploy ServiceMesh Operator", expected="ServiceMesh operator is available on the cluster"),
+        3. Step(value="Deploy Serverless Operator", expected="Serverless operator is available on the cluster"),
+        4. Step(value="Install ODH operator", expected="Operator is up and running and is able to serve it's operands"),
+        5. Step(value="Deploy DSCI", expected="DSCI is created and ready"),
+        6. Step(value="Deploy DSC", expected="DSC is created and ready"),
+
+    # after_test_steps
+        1. Step(value="Delete all created resources", expected="All created resources are removed"),
+    """
+
     NTB_NAME: str = "test-odh-notebook"
     NTB_NAMESPACE: str = "test-odh-notebook"
 
@@ -55,42 +52,44 @@ class TestNotebookST:
         "users_persistent_volume_claim",
         [
             pytest.param(
-                {"name": NTB_NAME, "namespace": NTB_NAMESPACE},
+                {"name": NTB_NAME},
             )
         ],
         indirect=True,
     )
-    @TestDoc(
-        description=Desc("Create simple Notebook with all needed resources and see if Operator creates it properly"),
-        contact=Contact(name="Jakub Stejskal", email="jstejska@redhat.com"),
-        steps={
-            Step(
-                value="Create namespace for Notebook resources with proper name, labels and annotations",
-                expected="Namespace is created",
-            ),
-            Step(value="Create PVC with proper labels and data for Notebook", expected="PVC is created"),
-            Step(
-                value="Create Notebook resource with Jupyter Minimal image in pre-defined namespace",
-                expected="Notebook resource is created",
-            ),
-            Step(
-                value="Wait for Notebook pods readiness",
-                expected="Notebook pods are up and running, Notebook is in ready state",
-            ),
-        },
-    )
     def test_create_simple_notebook(
         self, admin_client, unprivileged_client, users_namespace, users_persistent_volume_claim
     ):
-        with OcpResourceManager() as test_frame:
-            with step("Create Notebook CR"):
-                notebook_image: str = _get_notebook_image("jupyter-minimal-notebook", "2024.2")
-                notebook = _load_default_notebook(
-                    client=unprivileged_client, namespace=self.NTB_NAMESPACE, name=self.NTB_NAME, image=notebook_image
-                )
-                test_frame.enter(resource=notebook)
+        """
+        # description
+        Create simple Notebook with all needed resources and see if Operator creates it properly
 
-            with step("Wait for Notebook pod readiness"):
+        # contact
+        Contact(name="Jakub Stejskal", email="jstejska@redhat.com"),
+
+        # steps
+            1. Step(
+                value="Create namespace for Notebook resources with proper name, labels and annotations",
+                expected="Namespace is created",
+            ),
+            2. Step(value="Create PVC with proper labels and data for Notebook", expected="PVC is created"),
+            3. Step(
+                value="Create Notebook resource with Jupyter Minimal image in pre-defined namespace",
+                expected="Notebook resource is created",
+            ),
+            4. Step(
+                value="Wait for Notebook pods readiness",
+                expected="Notebook pods are up and running, Notebook is in ready state",
+            ),
+        """
+        with step("Create Notebook CR"):
+            notebook_image: str = _get_notebook_image("jupyter-minimal-notebook", "2024.2")
+            notebook = _load_default_notebook(
+                client=unprivileged_client, namespace=self.NTB_NAMESPACE, name=self.NTB_NAME, image=notebook_image
+            )
+
+        with step("Wait for Notebook pod readiness"):
+            with notebook:
                 PodUtils.wait_for_pods_ready(
                     client=admin_client,
                     namespace_name=self.NTB_NAMESPACE,
@@ -113,9 +112,10 @@ def _load_default_notebook(client: DynamicClient, namespace: str, name: str, ima
     notebook_string = (pathlib.Path(__file__).parent / "test_data/notebook.yaml").read_text()
     notebook_string = notebook_string.replace("my-project", namespace).replace("my-workbench", name)
     # Set new Route url
-    route_host: str = list(
-        Route.get(client=client, name=constants.Dashboard.route_name, namespace=py_config["applications_namespace"])
-    )[0].host
+    route_name = "odh-dashboard" if py_config.get("distribution") == "upstream" else "rhods-dashboard"
+    route_host: str = list(Route.get(client=client, name=route_name, namespace=py_config["applications_namespace"]))[
+        0
+    ].host
     notebook_string = notebook_string.replace("odh_dashboard_route", "https://" + route_host)
     # Set the correct username
     username = _get_username(client=client)

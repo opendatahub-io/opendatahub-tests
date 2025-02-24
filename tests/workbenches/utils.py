@@ -12,43 +12,18 @@ from typing import Any
 
 from typing import Callable, Generator
 
-import kubernetes.dynamic
-from kubernetes.dynamic import DynamicClient, ResourceField
+from kubernetes.dynamic import DynamicClient, ResourceField, Resource
 
-import ocp_resources.pod
-import ocp_resources.resource
+from ocp_resources.pod import Pod
 
 
 class TestFrameConstants:
     GLOBAL_POLL_INTERVAL_MEDIUM = 10
 
 
-class OcpResourceManager:
-    def __init__(self) -> None:
-        self.resources: list[ocp_resources.resource.Resource] = []
-
-    def enter(self, resource: ocp_resources.resource.Resource) -> None:
-        resource.__enter__()
-        self.resources.append(resource)
-
-    def __enter__(self) -> OcpResourceManager:
-        return self
-
-    def __exit__(self, *args: tuple[Any, ...], **kwargs: dict[str, Any]) -> None:
-        exceptions = []
-        for resource in reversed(self.resources):
-            try:
-                resource.__exit__(*args, **kwargs)
-            except Exception as e:
-                exceptions.append(e)
-        if exceptions:
-            raise RuntimeError(f"Exceptions during cleanup: {exceptions}")
-
-
 class PodUtils:
     READINESS_TIMEOUT = 10 * 60
 
-    # consider using timeout_sampler
     @staticmethod
     def wait_for_pods_ready(
         client: DynamicClient, namespace_name: str, label_selector: str, expect_pods_count: int
@@ -61,12 +36,12 @@ class PodUtils:
         """
 
         # it's a dynamic client with the `resource` parameter already filled in
-        class ResourceType(kubernetes.dynamic.Resource, kubernetes.dynamic.DynamicClient):
+        class ResourceType(Resource, DynamicClient):
             pass
 
         resource: ResourceType = client.resources.get(
-            kind=ocp_resources.pod.Pod.kind,
-            api_version=ocp_resources.pod.Pod.api_version,
+            kind=Pod.kind,
+            api_version=Pod.api_version,
         )
 
         def ready() -> bool:
@@ -196,8 +171,8 @@ class Readiness:
     def is_pod_ready(pod: ResourceField) -> bool:
         Utils.check_not_none(value=pod, message="Pod can't be null.")
 
-        condition = ocp_resources.pod.Pod.Condition.READY
-        status = ocp_resources.pod.Pod.Condition.Status.TRUE
+        condition = Pod.Condition.READY
+        status = Pod.Condition.Status.TRUE
         for cond in pod.get("status", {}).get("conditions", []):
             if cond["type"] == condition and cond["status"].casefold() == status.casefold():
                 return True
