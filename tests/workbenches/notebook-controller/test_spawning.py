@@ -4,21 +4,11 @@
 #
 from __future__ import annotations
 
-import io
-import pathlib
-
-import kubernetes.client
-from kubernetes.dynamic import DynamicClient
+import pytest
 
 from ocp_resources.pod import Pod
-from ocp_resources.route import Route
 
-import pytest
-from pytest_testconfig import config as py_config
-
-from tests.workbenches.resources import Notebook
-from tests.workbenches.utils import step
-from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH
+from tests.workbenches.utils import get_notebook_image, load_default_notebook, step
 
 
 class TestNotebook:
@@ -85,8 +75,8 @@ class TestNotebook:
             ),
         """
         with step("Create Notebook CR"):
-            notebook_image: str = _get_notebook_image("jupyter-minimal-notebook", "2024.2")
-            notebook = _load_default_notebook(
+            notebook_image: str = get_notebook_image("jupyter-minimal-notebook", "2024.2")
+            notebook = load_default_notebook(
                 client=unprivileged_client, namespace=self.NTB_NAMESPACE, name=self.NTB_NAME, image=notebook_image
             )
 
@@ -97,42 +87,3 @@ class TestNotebook:
                 )
                 for pod in pods:
                     pod.wait_for_condition(condition="Ready", status="True")
-
-
-def _get_notebook_image(image_name: str, image_tag: str) -> str:
-    controllers_namespace = py_config["applications_namespace"]
-    if py_config.get("distribution") == "upstream":
-        image_dict = {"jupyter-minimal-notebook": "jupyter-minimal-notebook"}
-    else:
-        image_dict = {"jupyter-minimal-notebook": "s2i-minimal-notebook"}
-    return f"{INTERNAL_IMAGE_REGISTRY_PATH}/{controllers_namespace}/{image_dict[image_name]}:{image_tag}"
-
-
-def _load_default_notebook(client: DynamicClient, namespace: str, name: str, image: str) -> Notebook:
-    notebook_string = (pathlib.Path(__file__).parent / "test_data/notebook.yaml").read_text()
-    notebook_string = notebook_string.replace("my-project", namespace).replace("my-workbench", name)
-    # Set new Route url
-    route_name = "odh-dashboard" if py_config.get("distribution") == "upstream" else "rhods-dashboard"
-    route_host: str = list(Route.get(client=client, name=route_name, namespace=py_config["applications_namespace"]))[
-        0
-    ].host
-    notebook_string = notebook_string.replace("odh_dashboard_route", "https://" + route_host)
-    # Set the correct username
-    username = _get_username(client=client)
-    notebook_string = notebook_string.replace("odh_user", username)
-    # Replace image
-    notebook_string = notebook_string.replace("notebook_image_placeholder", image)
-
-    nb = Notebook(yaml_file=io.StringIO(notebook_string))
-
-    return nb
-
-
-def _get_username(client: DynamicClient) -> str:
-    """Gets the username for the client (see kubectl -v8 auth whoami)"""
-    self_subject_review_resource: kubernetes.dynamic.Resource = client.resources.get(
-        api_version="authentication.k8s.io/v1", kind="SelfSubjectReview"
-    )
-    self_subject_review: kubernetes.dynamic.ResourceInstance = client.create(self_subject_review_resource)
-    username: str = self_subject_review.status.userInfo.username
-    return username
