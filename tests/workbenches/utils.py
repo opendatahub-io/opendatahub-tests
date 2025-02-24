@@ -43,9 +43,7 @@ def load_default_notebook(client: DynamicClient, namespace: str, name: str, imag
     # Replace image
     notebook_string = notebook_string.replace("notebook_image_placeholder", image)
 
-    nb = Notebook(yaml_file=io.StringIO(notebook_string))
-
-    return nb
+    return Notebook(yaml_file=io.StringIO(notebook_string))
 
 
 def get_username(client: DynamicClient) -> str:
