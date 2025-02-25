@@ -32,19 +32,12 @@ class TestNotebook:
     NTB_NAMESPACE: str = "test-odh-notebook"
 
     @pytest.mark.parametrize(
-        "users_namespace",
+        "users_namespace, users_persistent_volume_claim",
         [
             pytest.param(
                 {"name": NTB_NAMESPACE},
-            )
-        ],
-        indirect=True,
-    )
-    @pytest.mark.parametrize(
-        "users_persistent_volume_claim",
-        [
-            pytest.param(
                 {"name": NTB_NAME},
+
             )
         ],
         indirect=True,
