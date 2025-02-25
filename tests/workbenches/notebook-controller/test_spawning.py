@@ -79,4 +79,4 @@ class TestNotebook:
                 )
                 assert pods, "The expected notebook pods were not found"
                 for pod in pods:
-                    pod.wait_for_condition(condition="Ready", status="True")
+                    pod.wait_for_condition(condition=pod.Condition.READY, status=pod.Condition.Status.TRUE)
