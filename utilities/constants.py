@@ -136,11 +136,11 @@ class DscComponents:
 
 
 class Labels:
-    class KserveAuth:
-        SECURITY: str = "security.opendatahub.io/enable-auth"
-
     class OpenDataHub:
         DASHBOARD: str = "opendatahub.io/dashboard"
+
+    class KserveAuth:
+        SECURITY: str = "security.opendatahub.io/enable-auth"
 
     class Notebook:
         INJECT_OAUTH: str = "notebooks.opendatahub.io/inject-oauth"
