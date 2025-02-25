@@ -33,10 +33,9 @@ def load_default_notebook(dyn_client: DynamicClient, namespace: str, name: str, 
     notebook_string = notebook_string.replace("my-project", namespace).replace("my-workbench", name)
     # Set new Route url
     route_name = "odh-dashboard" if py_config.get("distribution") == "upstream" else "rhods-dashboard"
-    route_host: str = list(
-        Route.get(dyn_client=dyn_client, name=route_name, namespace=py_config["applications_namespace"])
-    )[0].host
-    notebook_string = notebook_string.replace("odh_dashboard_route", "https://" + route_host)
+    route = Route(client=dyn_client, name=route_name, namespace=py_config["applications_namespace"])
+    assert route.exists, f"Route {route.name} does not exist"
+    notebook_string = notebook_string.replace("odh_dashboard_route", "https://" + route.host)
     # Set the correct username
     username = get_username(dyn_client=dyn_client)
     notebook_string = notebook_string.replace("odh_user", username)

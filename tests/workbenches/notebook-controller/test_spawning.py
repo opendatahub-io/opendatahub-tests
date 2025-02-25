@@ -78,5 +78,6 @@ class TestNotebook:
                 pods = Pod.get(
                     dyn_client=unprivileged_client, namespace=self.NTB_NAMESPACE, label_selector=f"app={self.NTB_NAME}"
                 )
+                assert pods, "The expected notebook pods were not found"
                 for pod in pods:
                     pod.wait_for_condition(condition="Ready", status="True")
