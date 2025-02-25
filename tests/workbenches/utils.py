@@ -14,8 +14,8 @@ from pytest_testconfig import config as py_config
 from kubernetes.dynamic import DynamicClient, Resource, ResourceInstance
 
 from ocp_resources.route import Route
+from ocp_resources.notebook import Notebook
 
-from tests.workbenches.resources import Notebook
 from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH
 
 
