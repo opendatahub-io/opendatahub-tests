@@ -4,11 +4,11 @@
 #
 from __future__ import annotations
 
-import io
 import pathlib
 from contextlib import contextmanager
 from typing import Generator
 
+import yaml
 from pytest_testconfig import config as py_config
 
 from kubernetes.dynamic import DynamicClient, Resource, ResourceInstance
@@ -43,7 +43,7 @@ def load_default_notebook(dyn_client: DynamicClient, namespace: str, name: str, 
     # Replace image
     notebook_string = notebook_string.replace("notebook_image_placeholder", image)
 
-    return Notebook(yaml_file=io.StringIO(notebook_string))
+    return Notebook(kind_dict=yaml.safe_load(notebook_string))
 
 
 def get_username(dyn_client: DynamicClient) -> str:
