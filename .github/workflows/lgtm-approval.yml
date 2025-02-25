@@ -1,0 +1,22 @@
+name: Approve PR on /lgtm comment
+
+on:
+  workflow_dispatch: #manual testing
+  issue_comment:
+    types: [created]
+
+jobs:
+  approve-pr:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    if: github.event.issue.pull_request && contains(github.event.comment.body, '/lgtm')
+    steps:
+      - name: extract PR number
+        run: echo "PR_NUMBER=${{ github.event.issue.number }}" >> $GITHUB_ENV
+
+      - name: approve the PR
+        uses: hmarr/auto-approve-action@v4
+        with:
+          github-token: ${{ secrets.OPENDATAHUB_TESTS_BOT_PAT }}
+          pull-request-number: ${{ env.PR_NUMBER }}
