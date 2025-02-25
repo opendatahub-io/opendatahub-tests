@@ -2,9 +2,11 @@ import pytest
 from ocp_resources.resource import ResourceEditor
 
 from tests.model_serving.model_server.utils import verify_inference_response
-from utilities.constants import Labels, ModelFormat, ModelStoragePath, Protocols
-from utilities.inference_utils import Inference
+from utilities.constants import ModelFormat, ModelStoragePath, Protocols
+from utilities.constants import Labels
+from utilities.inference_utils import Inference, UserInference
 from utilities.infra import check_pod_status_in_time, get_pods_by_isvc_label
+from utilities.jira import is_jira_open
 from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
 
 pytestmark = pytest.mark.usefixtures("valid_aws_config")
@@ -80,3 +82,46 @@ class TestKserveTokenAuthenticationRawForRest:
         ).update()
 
         check_pod_status_in_time(pod=pod, status={pod.Status.RUNNING})
+
+    @pytest.mark.dependency(depends=["test_disabled_raw_model_authentication"])
+    def test_re_enabled_raw_model_authentication(self, http_s3_caikit_raw_inference_service, http_raw_inference_token):
+        """Verify model query after authentication is re-enabled"""
+        verify_inference_response(
+            inference_service=http_s3_caikit_raw_inference_service,
+            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
+            inference_type=Inference.ALL_TOKENS,
+            protocol=Protocols.HTTPS,
+            model_name=ModelFormat.CAIKIT,
+            use_default_query=True,
+            token=http_raw_inference_token,
+        )
+
+    @pytest.mark.dependency(name="test_cross_model_authentication_raw")
+    def test_cross_model_authentication_raw(
+        self, http_s3_caikit_raw_inference_service_2, http_raw_inference_token, admin_client
+    ):
+        """Verify model with another model token"""
+        if is_jira_open(jira_id="RHOAIENG-19645", admin_client=admin_client):
+            inference = UserInference(
+                inference_service=http_s3_caikit_raw_inference_service_2,
+                inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
+                inference_type=Inference.ALL_TOKENS,
+                protocol=Protocols.HTTPS,
+            )
+
+            res = inference.run_inference_flow(
+                model_name=ModelFormat.CAIKIT, use_default_query=True, token=http_raw_inference_token, insecure=False
+            )
+            status_line = res["output"].splitlines()[0]
+            assert "302 Found" in status_line, f"Expected '302 Found' in status line, got: {status_line}"
+        else:
+            verify_inference_response(
+                inference_service=http_s3_caikit_raw_inference_service_2,
+                inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
+                inference_type=Inference.ALL_TOKENS,
+                protocol=Protocols.HTTPS,
+                model_name=ModelFormat.CAIKIT,
+                use_default_query=True,
+                token=http_raw_inference_token,
+                authorized_user=False,
+            )
