@@ -37,7 +37,6 @@ class TestNotebook:
             pytest.param(
                 {"name": NTB_NAMESPACE},
                 {"name": NTB_NAME},
-
             )
         ],
         indirect=True,
