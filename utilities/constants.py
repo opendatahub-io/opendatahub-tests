@@ -107,6 +107,7 @@ class Annotations:
 
     class OpenDataHubIo:
         MANAGED: str = "opendatahub.io/managed"
+        SERVICE_MESH: str = "opendatahub.io/service-mesh"
 
 
 class StorageClassName:
@@ -141,6 +142,9 @@ class Labels:
     class KserveAuth:
         SECURITY: str = "security.opendatahub.io/enable-auth"
 
+    class Notebook:
+        INJECT_OAUTH: str = "notebooks.opendatahub.io/inject-oauth"
+
 
 class Timeout:
     TIMEOUT_1MIN: int = 60
@@ -155,3 +159,4 @@ MODEL_REGISTRY: str = "model-registry"
 MODELMESH_SERVING: str = "modelmesh-serving"
 ISTIO_CA_BUNDLE_FILENAME: str = "istio_knative.crt"
 OPENSHIFT_CA_BUNDLE_FILENAME: str = "openshift_ca.crt"
+INTERNAL_IMAGE_REGISTRY_PATH: str = "image-registry.openshift-image-registry.svc:5000"
