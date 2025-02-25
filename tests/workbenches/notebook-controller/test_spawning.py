@@ -68,7 +68,7 @@ class TestNotebook:
             ),
         """
         with step("Create Notebook CR"):
-            notebook_image: str = get_notebook_image("jupyter-minimal-notebook", "2024.2")
+            notebook_image: str = get_notebook_image(image_name="jupyter-minimal-notebook", image_tag="2024.2")
             notebook = load_default_notebook(
                 dyn_client=admin_client, namespace=self.NTB_NAMESPACE, name=self.NTB_NAME, image=notebook_image
             )
