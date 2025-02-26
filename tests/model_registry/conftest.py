@@ -1,5 +1,9 @@
+import os
+import sys
+import importlib.util
 import pytest
 import schemathesis
+import shutil
 from typing import Generator, Any
 from ocp_resources.secret import Secret
 from ocp_resources.namespace import Namespace
@@ -9,6 +13,7 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.model_registry import ModelRegistry
 from simple_logger.logger import get_logger
 from kubernetes.dynamic import DynamicClient
+from model_registry import ModelRegistry as ModelRegistryClient
 
 from tests.model_registry.utils import get_endpoint_from_mr_service, get_mr_service_by_label
 from utilities.infra import create_ns
@@ -26,6 +31,14 @@ DEFAULT_LABEL_DICT_DB: dict[str, str] = {
     Annotations.KubernetesIo.INSTANCE: DB_RESOURCES_NAME,
     Annotations.KubernetesIo.PART_OF: DB_RESOURCES_NAME,
 }
+# Define upstream repository details
+REPO_API_URL = "https://raw.githubusercontent.com/kubeflow/model-registry/main"
+FILE_PATH = "clients/python/tests"
+# "test_core.py" excluded for relative imports
+# test_patch_model_artifacts_artifact_type fails because of a relative import
+FILES = ["test_client.py", "regression_test.py"]
+PROJECT_TESTS_DIR = os.path.dirname(os.path.abspath(__file__))  # Path of `conftest.py`
+UPSTREAM_TESTS_DIR = os.path.join(PROJECT_TESTS_DIR, "upstream_tests")
 
 
 @pytest.fixture(scope="class")
@@ -303,3 +316,57 @@ def generated_schema(model_registry_instance_rest_endpoint: str) -> Any:
         uri="https://raw.githubusercontent.com/kubeflow/model-registry/main/api/openapi/model-registry.yaml",
         base_url=f"https://{model_registry_instance_rest_endpoint}/",
     )
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """Downloads external tests into the local project structure before test execution."""
+    print("pytest_sessionstart is running")
+    os.makedirs(UPSTREAM_TESTS_DIR, exist_ok=True)
+    for file in FILES:
+        os.system(f"curl -o {UPSTREAM_TESTS_DIR}/{file} {REPO_API_URL}/{FILE_PATH}/{file}")
+        print(f"Downloaded {file} into {UPSTREAM_TESTS_DIR}")
+
+    # Ensure pytest can discover the external tests
+    sys.path.insert(0, UPSTREAM_TESTS_DIR)
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_collection_modifyitems(session: pytest.Session, config: pytest.Config, items: pytest.Item) -> None:
+    """Ensures pytest detects new test modules within the cloned repository."""
+    for root, _, files in os.walk(UPSTREAM_TESTS_DIR):
+        for file in files:
+            if file.endswith(".py"):
+                module_path = os.path.join(root, file)
+                module_name = f"external_tests.{file[:-3]}"
+                spec = importlib.util.spec_from_file_location(module_name, module_path)
+                module = importlib.util.module_from_spec(spec)  # type: ignore
+                spec.loader.exec_module(module)  # type: ignore
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_sessionfinish(session: pytest.Session, exitstatus: pytest.ExitCode) -> None:
+    """Clean up upstream tests from kubeflow/model-registry"""
+    if os.path.exists(UPSTREAM_TESTS_DIR):
+        shutil.rmtree(UPSTREAM_TESTS_DIR)
+        print(f"Removed upstream model registry tests from {UPSTREAM_TESTS_DIR}")
+
+
+# fixture needed for upstream tests
+@pytest.fixture(scope="function")
+def client(model_registry_instance_rest_endpoint: str, current_client_token: str) -> ModelRegistryClient:
+    server, port = model_registry_instance_rest_endpoint.split(":")
+    client = ModelRegistryClient(
+        server_address=f"{Protocols.HTTPS}://{server}",
+        port=port,
+        author="opendatahub-test",
+        user_token=current_client_token,
+        is_secure=False,
+    )
+    return client
+
+
+# fixture needed for upstream tests
+@pytest.fixture(scope="module")
+def setup_env_user_token() -> None:
+    pass
