@@ -4,25 +4,10 @@ import pytest
 
 from ocp_resources.pod import Pod
 
-from tests.workbenches.utils import get_notebook_image, load_default_notebook, step
+from tests.workbenches.utils import get_notebook_image, load_default_notebook
 
 
 class TestNotebook:
-    """
-    # description
-    Verifies deployments of Notebooks via GitOps approach
-
-    # before_test_steps
-        1. Step(value="Deploy Pipelines Operator", expected="Pipelines operator is available on the cluster"),
-        2. Step(value="Deploy ServiceMesh Operator", expected="ServiceMesh operator is available on the cluster"),
-        3. Step(value="Deploy Serverless Operator", expected="Serverless operator is available on the cluster"),
-        4. Step(value="Install ODH operator", expected="Operator is up and running and is able to serve it's operands"),
-        5. Step(value="Deploy DSCI", expected="DSCI is created and ready"),
-        6. Step(value="Deploy DSC", expected="DSC is created and ready"),
-
-    # after_test_steps
-        1. Step(value="Delete all created resources", expected="All created resources are removed"),
-    """
 
     NTB_NAME: str = "test-odh-notebook"
     NTB_NAMESPACE: str = "test-odh-notebook"
@@ -62,17 +47,15 @@ class TestNotebook:
                 expected="Notebook pods are up and running, Notebook is in ready state",
             ),
         """
-        with step("Create Notebook CR"):
-            notebook_image: str = get_notebook_image(image_name="jupyter-minimal-notebook", image_tag="2024.2")
-            notebook = load_default_notebook(
-                dyn_client=admin_client, namespace=self.NTB_NAMESPACE, name=self.NTB_NAME, image=notebook_image
-            )
+        notebook_image: str = get_notebook_image(image_name="jupyter-minimal-notebook", image_tag="2024.2")
+        notebook = load_default_notebook(
+            dyn_client=admin_client, namespace=self.NTB_NAMESPACE, name=self.NTB_NAME, image=notebook_image
+        )
 
-        with step("Wait for Notebook pod readiness"):
-            with notebook:
-                pods = Pod.get(
-                    dyn_client=unprivileged_client, namespace=self.NTB_NAMESPACE, label_selector=f"app={self.NTB_NAME}"
-                )
-                assert pods, "The expected notebook pods were not found"
-                for pod in pods:
-                    pod.wait_for_condition(condition=pod.Condition.READY, status=pod.Condition.Status.TRUE)
+        with notebook:
+            pods = Pod.get(
+                dyn_client=unprivileged_client, namespace=self.NTB_NAMESPACE, label_selector=f"app={self.NTB_NAME}"
+            )
+            assert pods, "The expected notebook pods were not found"
+            for pod in pods:
+                pod.wait_for_condition(condition=pod.Condition.READY, status=pod.Condition.Status.TRUE)

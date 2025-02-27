@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import pathlib
-from contextlib import contextmanager
-from typing import Generator
 
 import yaml
 from pytest_testconfig import config as py_config
@@ -49,8 +47,3 @@ def get_username(dyn_client: DynamicClient) -> str:
     self_subject_review: ResourceInstance = dyn_client.create(self_subject_review_resource)
     username: str = self_subject_review.status.userInfo.username
     return username
-
-
-@contextmanager
-def step(description: str) -> Generator[None, None, None]:
-    yield
