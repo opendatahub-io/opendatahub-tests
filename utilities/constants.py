@@ -1,5 +1,7 @@
 from ocp_resources.resource import Resource
 
+OPENDATAHUB_IO: str = "opendatahub.io"
+
 
 class KServeDeploymentType:
     SERVERLESS: str = "Serverless"
@@ -103,11 +105,11 @@ class Annotations:
         DEPLOYMENT_MODE: str = "serving.kserve.io/deploymentMode"
 
     class KserveAuth:
-        SECURITY: str = "security.opendatahub.io/enable-auth"
+        SECURITY: str = f"security.{OPENDATAHUB_IO}/enable-auth"
 
     class OpenDataHubIo:
-        MANAGED: str = "opendatahub.io/managed"
-        SERVICE_MESH: str = "opendatahub.io/service-mesh"
+        MANAGED: str = f"{OPENDATAHUB_IO}/managed"
+        SERVICE_MESH: str = f"{OPENDATAHUB_IO}/service-mesh"
 
 
 class StorageClassName:
@@ -137,13 +139,13 @@ class DscComponents:
 
 class Labels:
     class OpenDataHub:
-        DASHBOARD: str = "opendatahub.io/dashboard"
+        DASHBOARD: str = f"{OPENDATAHUB_IO}/dashboard"
 
     class KserveAuth:
-        SECURITY: str = "security.opendatahub.io/enable-auth"
+        SECURITY: str = f"security.{OPENDATAHUB_IO}/enable-auth"
 
     class Notebook:
-        INJECT_OAUTH: str = "notebooks.opendatahub.io/inject-oauth"
+        INJECT_OAUTH: str = f"notebooks.{OPENDATAHUB_IO}/inject-oauth"
 
 
 class Timeout:
