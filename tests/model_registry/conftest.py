@@ -321,11 +321,11 @@ def generated_schema(model_registry_instance_rest_endpoint: str) -> Any:
 @pytest.hookimpl(tryfirst=True)
 def pytest_sessionstart(session: pytest.Session) -> None:
     """Downloads external tests into the local project structure before test execution."""
-    print("pytest_sessionstart is running")
+    LOGGER.info("pytest_sessionstart is running")
     os.makedirs(UPSTREAM_TESTS_DIR, exist_ok=True)
     for file in FILES:
         os.system(f"curl -o {UPSTREAM_TESTS_DIR}/{file} {REPO_API_URL}/{FILE_PATH}/{file}")
-        print(f"Downloaded {file} into {UPSTREAM_TESTS_DIR}")
+        LOGGER.info(f"Downloaded {file} into {UPSTREAM_TESTS_DIR}")
 
     # Ensure pytest can discover the external tests
     sys.path.insert(0, UPSTREAM_TESTS_DIR)
@@ -349,7 +349,7 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: pytest.ExitCode) -
     """Clean up upstream tests from kubeflow/model-registry"""
     if os.path.exists(UPSTREAM_TESTS_DIR):
         shutil.rmtree(UPSTREAM_TESTS_DIR)
-        print(f"Removed upstream model registry tests from {UPSTREAM_TESTS_DIR}")
+        LOGGER.info(f"Removed upstream model registry tests from {UPSTREAM_TESTS_DIR}")
 
 
 # fixture needed for upstream tests
