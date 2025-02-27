@@ -370,6 +370,7 @@ def client(model_registry_instance_rest_endpoint: str, current_client_token: str
 
 
 # fixture needed for upstream tests
-@pytest.fixture(scope="module")
+# Marked with autouse to stop tox from complaining
+@pytest.fixture(scope="module", autouse=True)
 def setup_env_user_token() -> None:
     pass
