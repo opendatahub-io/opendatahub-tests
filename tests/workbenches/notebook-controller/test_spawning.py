@@ -8,7 +8,6 @@ from tests.workbenches.utils import get_notebook_image, load_default_notebook
 
 
 class TestNotebook:
-
     @pytest.mark.parametrize(
         "users_namespace, users_persistent_volume_claim",
         [
@@ -51,7 +50,9 @@ class TestNotebook:
 
         with notebook:
             pods = Pod.get(
-                dyn_client=unprivileged_client, namespace=users_namespace.name, label_selector=f"app={users_namespace.name}"
+                dyn_client=unprivileged_client,
+                namespace=users_namespace.name,
+                label_selector=f"app={users_namespace.name}",
             )
             assert pods, "The expected notebook pods were not found"
             for pod in pods:
