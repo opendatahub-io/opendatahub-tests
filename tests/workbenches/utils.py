@@ -7,17 +7,6 @@ from kubernetes.dynamic import DynamicClient, Resource, ResourceInstance
 from ocp_resources.route import Route
 from ocp_resources.notebook import Notebook
 
-from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH
-
-
-def get_notebook_image(image_name: str, image_tag: str) -> str:
-    controllers_namespace = py_config["applications_namespace"]
-    if py_config.get("distribution") == "upstream":
-        image_dict = {"jupyter-minimal-notebook": "jupyter-minimal-notebook"}
-    else:
-        image_dict = {"jupyter-minimal-notebook": "s2i-minimal-notebook"}
-    return f"{INTERNAL_IMAGE_REGISTRY_PATH}/{controllers_namespace}/{image_dict[image_name]}:{image_tag}"
-
 
 def load_default_notebook(dyn_client: DynamicClient, namespace: str, name: str, image: str) -> Notebook:
     # Set new Route url
