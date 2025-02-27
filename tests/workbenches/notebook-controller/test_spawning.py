@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import pytest
+from pytest_testconfig import config as py_config
 
 from ocp_resources.pod import Pod
 
-from tests.workbenches.utils import get_notebook_image, load_default_notebook
+from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH
+from tests.workbenches.utils import load_default_notebook
 
 
 class TestNotebook:
@@ -43,7 +45,12 @@ class TestNotebook:
                 expected="Notebook pods are up and running, Notebook is in ready state",
             ),
         """
-        notebook_image: str = get_notebook_image(image_name="jupyter-minimal-notebook", image_tag="2024.2")
+        image_name = (
+            "jupyter-minimal-notebook" if py_config.get("distribution") == "upstream" else "s2i-minimal-notebook"
+        )
+        notebook_image: str = (
+            f"{INTERNAL_IMAGE_REGISTRY_PATH}/{py_config['applications_namespace']}/{image_name}:{'2024.2'}"
+        )
         notebook = load_default_notebook(
             dyn_client=admin_client, namespace=users_namespace.name, name=users_namespace.name, image=notebook_image
         )
