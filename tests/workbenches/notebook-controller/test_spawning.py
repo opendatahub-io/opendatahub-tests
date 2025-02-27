@@ -9,15 +9,12 @@ from tests.workbenches.utils import get_notebook_image, load_default_notebook
 
 class TestNotebook:
 
-    NTB_NAME: str = "test-odh-notebook"
-    NTB_NAMESPACE: str = "test-odh-notebook"
-
     @pytest.mark.parametrize(
         "users_namespace, users_persistent_volume_claim",
         [
             pytest.param(
-                {"name": NTB_NAMESPACE},
-                {"name": NTB_NAME},
+                {"name": "test-odh-notebook"},
+                {"name": "test-odh-notebook"},
             )
         ],
         indirect=True,
@@ -49,12 +46,12 @@ class TestNotebook:
         """
         notebook_image: str = get_notebook_image(image_name="jupyter-minimal-notebook", image_tag="2024.2")
         notebook = load_default_notebook(
-            dyn_client=admin_client, namespace=self.NTB_NAMESPACE, name=self.NTB_NAME, image=notebook_image
+            dyn_client=admin_client, namespace=users_namespace.name, name=users_namespace.name, image=notebook_image
         )
 
         with notebook:
             pods = Pod.get(
-                dyn_client=unprivileged_client, namespace=self.NTB_NAMESPACE, label_selector=f"app={self.NTB_NAME}"
+                dyn_client=unprivileged_client, namespace=users_namespace.name, label_selector=f"app={users_namespace.name}"
             )
             assert pods, "The expected notebook pods were not found"
             for pod in pods:
