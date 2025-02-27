@@ -1,5 +1,5 @@
 from typing import Any, Union
-from utilities.constants import AcceleratorType
+from utilities.constants import AcceleratorType, KServeDeploymentType
 
 GRPC_PORT: int = 8033
 REST_PORT: int = 8080
@@ -212,6 +212,56 @@ MATH_CHAT_QUERY: list[list[dict[str, str]]] = [
         {
             "role": "user",
             "content": "What is the sum of numbers between 1 and 123 using the formula n(n+1)/2? Explain it using chain-of-thought and solve with code",  # noqa: E501
+        },
+    ],
+]
+
+
+BASE_RAW_DEPLOYMENT_CONFIG: dict[str, Any] = {
+    "deployment_mode": KServeDeploymentType.RAW_DEPLOYMENT,
+    "runtime_argument": None,
+    "min-replicas": 1,
+}
+
+
+BASE_SEVERRLESS_DEPLOYMENT_CONFIG: dict[str, Any] = {
+    "deployment_mode": KServeDeploymentType.SERVERLESS,
+    "runtime_argument": None,
+    "min-replicas": 1,
+}
+
+
+COMPLETION_QUERY_JAPANESE: list[dict[str, str]] = [
+    {
+        "text": "日本で一番高い山をjson形式で教えて。",
+    },
+    {
+        "text": "graphvizで、AからB、BからC、CからAに有向エッジが生えているようなグラフを書きたいです。Markdown形式でコードを教えて"
+    },
+    {
+        "text": "小説に登場させる魔法使いのキャラクターを考えています。主人公の師となるようなキャラクターの案を背景を含めて考えてください。"
+    },
+    {
+        "text": "日本国内で観光に行きたいと思っています。東京、名古屋、大阪、京都、福岡の特徴を表にまとめてください。列名は「都道府県」「おすすめスポット」「おすすめグルメ」にしてください。"
+    },
+]
+
+CHAT_QUERY_JAPANESE: list[list[dict[str, str]]] = [
+    [
+        {
+            "role": "user",
+            "content": "ランダムな10個の要素からなるリストを作成してソートするコードをPythonで書いてください。",
+        }
+    ],
+    [
+        {
+            "role": "system",
+            "content": "Given a target sentence, construct the underlying meaning representation of the input "
+            "sentence as a single function with attributes and attribute values.",
+        },
+        {
+            "role": "user",
+            "content": "ルービックキューブをセンター試験の会場で、休憩時間に回そうと思っています。このような行動をしたときに周囲の人たちが感じるであろう感情について、3パターン程度述べてください。",
         },
     ],
 ]
