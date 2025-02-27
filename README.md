@@ -43,6 +43,10 @@ To see optional CLI arguments run:
 uv run pytest --help
 ```
 
+### Model Registry upstream tests
+Be aware that running all tests will also run upstream tests of Model Registry, which are dinamically fetched at runtime.
+For more information, see the [Model Registry README file](tests/model_registry/README.md).
+
 ### Using CLI arguments
 
 CLI arguments can be passed to pytest by setting them in [pytest.ini](pytest.ini).  
