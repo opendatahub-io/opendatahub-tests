@@ -24,6 +24,7 @@ def pytest_addoption(parser: Parser) -> None:
     buckets_group = parser.getgroup(name="Buckets")
     runtime_group = parser.getgroup(name="Runtime details")
     upgrade_group = parser.getgroup(name="Upgrade options")
+    upstream_group = parser.getgroup(name="Upstream options")
 
     # AWS config and credentials options
     aws_group.addoption(
@@ -90,6 +91,13 @@ def pytest_addoption(parser: Parser) -> None:
         "--delete-pre-upgrade-resources",
         action="store_true",
         help="Delete pre-upgrade resources; useful when debugging pre-upgrade tests",
+    )
+
+    # Upstream options
+    upstream_group.addoption(
+        "--model-registry-upstream",
+        default=False,
+        help="Whether or not to fetch and run upstream Model Registry tests",
     )
 
 

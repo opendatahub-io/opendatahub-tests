@@ -318,38 +318,41 @@ def generated_schema(model_registry_instance_rest_endpoint: str) -> Any:
     )
 
 
-@pytest.hookimpl(tryfirst=True)
 def pytest_sessionstart(session: pytest.Session) -> None:
     """Downloads external tests into the local project structure before test execution."""
-    LOGGER.info("pytest_sessionstart is running")
-    os.makedirs(UPSTREAM_TESTS_DIR, exist_ok=True)
-    for file in FILES:
-        os.system(f"curl -o {UPSTREAM_TESTS_DIR}/{file} {REPO_API_URL}/{FILE_PATH}/{file}")
-        LOGGER.info(f"Downloaded {file} into {UPSTREAM_TESTS_DIR}")
+    if session.config.option.model_registry_upstream:
+        LOGGER.info("pytest_sessionstart is running")
+        os.makedirs(UPSTREAM_TESTS_DIR, exist_ok=True)
+        for file in FILES:
+            os.system(f"curl -o {UPSTREAM_TESTS_DIR}/{file} {REPO_API_URL}/{FILE_PATH}/{file}")
+            LOGGER.info(f"Downloaded {file} into {UPSTREAM_TESTS_DIR}")
 
-    # Ensure pytest can discover the external tests
-    sys.path.insert(0, UPSTREAM_TESTS_DIR)
+        # Ensure pytest can discover the external tests
+        sys.path.insert(0, UPSTREAM_TESTS_DIR)
+    else:
+        LOGGER.info("Skipping upstream test fetching for Model registry. Enable with --model-registry-upstream=True")
 
 
-@pytest.hookimpl(tryfirst=True)
 def pytest_collection_modifyitems(session: pytest.Session, config: pytest.Config, items: pytest.Item) -> None:
     """Ensures pytest detects new test modules within the cloned repository."""
-    for root, _, files in os.walk(UPSTREAM_TESTS_DIR):
-        for file in files:
-            if file.endswith(".py"):
-                module_path = os.path.join(root, file)
-                module_name = f"external_tests.{file[:-3]}"
-                spec = importlib.util.spec_from_file_location(module_name, module_path)
-                module = importlib.util.module_from_spec(spec)  # type: ignore
-                spec.loader.exec_module(module)  # type: ignore
+    if config.option.model_registry_upstream:
+        for root, _, files in os.walk(UPSTREAM_TESTS_DIR):
+            for file in files:
+                if file.endswith(".py"):
+                    module_path = os.path.join(root, file)
+                    module_name = f"external_tests.{file[:-3]}"
+                    spec = importlib.util.spec_from_file_location(module_name, module_path)
+                    module = importlib.util.module_from_spec(spec)  # type: ignore
+                    spec.loader.exec_module(module)  # type: ignore
 
 
 @pytest.hookimpl(trylast=True)
 def pytest_sessionfinish(session: pytest.Session, exitstatus: pytest.ExitCode) -> None:
     """Clean up upstream tests from kubeflow/model-registry"""
-    if os.path.exists(UPSTREAM_TESTS_DIR):
-        shutil.rmtree(UPSTREAM_TESTS_DIR)
-        LOGGER.info(f"Removed upstream model registry tests from {UPSTREAM_TESTS_DIR}")
+    if session.config.option.model_registry_upstream:
+        if os.path.exists(UPSTREAM_TESTS_DIR):
+            shutil.rmtree(UPSTREAM_TESTS_DIR)
+            LOGGER.info(f"Removed upstream model registry tests from {UPSTREAM_TESTS_DIR}")
 
 
 # fixture needed for upstream tests
