@@ -3,7 +3,10 @@ from __future__ import annotations
 import pytest
 from pytest_testconfig import config as py_config
 
+from kubernetes.dynamic import DynamicClient
 from ocp_resources.pod import Pod
+from ocp_resources.namespace import Namespace
+from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 
 from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH
 from tests.workbenches.utils import load_default_notebook
@@ -11,7 +14,7 @@ from tests.workbenches.utils import load_default_notebook
 
 class TestNotebook:
     @pytest.mark.parametrize(
-        "users_namespace, users_persistent_volume_claim",
+        "unprivileged_namespace, users_persistent_volume_claim",
         [
             pytest.param(
                 {"name": "test-odh-notebook"},
@@ -21,7 +24,11 @@ class TestNotebook:
         indirect=True,
     )
     def test_create_simple_notebook(
-        self, admin_client, unprivileged_client, users_namespace, users_persistent_volume_claim
+        self,
+        admin_client: DynamicClient,
+        unprivileged_client: DynamicClient,
+        unprivileged_namespace: Namespace,
+        users_persistent_volume_claim: PersistentVolumeClaim,
     ):
         """
         # description
@@ -52,14 +59,17 @@ class TestNotebook:
             f"{INTERNAL_IMAGE_REGISTRY_PATH}/{py_config['applications_namespace']}/{image_name}:{'2024.2'}"
         )
         notebook = load_default_notebook(
-            dyn_client=admin_client, namespace=users_namespace.name, name=users_namespace.name, image=notebook_image
+            dyn_client=admin_client,
+            namespace=unprivileged_namespace.name,
+            name=unprivileged_namespace.name,
+            image=notebook_image,
         )
 
         with notebook:
             pods = Pod.get(
                 dyn_client=unprivileged_client,
-                namespace=users_namespace.name,
-                label_selector=f"app={users_namespace.name}",
+                namespace=unprivileged_namespace.name,
+                label_selector=f"app={unprivileged_namespace.name}",
             )
             assert pods, "The expected notebook pods were not found"
             for pod in pods:

@@ -10,30 +10,16 @@ from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 import pytest
 
 from utilities import constants
-from utilities.infra import create_ns
-
-
-@pytest.fixture(scope="class")
-def users_namespace(
-    request: pytest.FixtureRequest, unprivileged_client: DynamicClient
-) -> Generator[Namespace, None, None]:
-    with create_ns(
-        unprivileged_client=unprivileged_client,
-        name=request.param["name"],
-        labels={constants.Labels.OpenDataHub.DASHBOARD: "true"},
-        annotations={constants.Annotations.OpenDataHubIo.SERVICE_MESH: "false"},
-    ) as ns:
-        yield ns
 
 
 @pytest.fixture(scope="function")
 def users_persistent_volume_claim(
-    request: pytest.FixtureRequest, users_namespace: Namespace, unprivileged_client: DynamicClient
+    request: pytest.FixtureRequest, unprivileged_namespace: Namespace, unprivileged_client: DynamicClient
 ) -> Generator[PersistentVolumeClaim, None, None]:
     with PersistentVolumeClaim(
         client=unprivileged_client,
         name=request.param["name"],
-        namespace=users_namespace.name,
+        namespace=unprivileged_namespace.name,
         label={constants.Labels.OpenDataHub.DASHBOARD: "true"},
         accessmodes=PersistentVolumeClaim.AccessMode.RWO,
         size="10Gi",
