@@ -149,16 +149,16 @@ def vllm_pod_resource(admin_client: DynamicClient, vllm_inference_service: Infer
 @pytest.fixture
 def skip_if_serverless_deployemnt(vllm_inference_service: InferenceService) -> None:
     skip_if_deployment_mode(
-        vllm_inference_service,
-        KServeDeploymentType.SERVERLESS,
-        "Test is being skipped because model is being deployed in serverless mode",
+        isvc=vllm_inference_service,
+        deployment_type=KServeDeploymentType.SERVERLESS,
+        deployment_message="Test is being skipped because model is being deployed in serverless mode",
     )
 
 
 @pytest.fixture
 def skip_if_raw_deployemnt(vllm_inference_service: InferenceService) -> None:
     skip_if_deployment_mode(
-        vllm_inference_service,
-        KServeDeploymentType.RAW_DEPLOYMENT,
-        "Test is being skipped because model is being deployed in raw mode",
+        isvc=vllm_inference_service,
+        deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
+        deployment_message="Test is being skipped because model is being deployed in raw mode",
     )

@@ -214,8 +214,6 @@ def validate_serverless_openai_inference_request(
     )
 
 
-def skip_if_deployment_mode(
-    vllm_inference_service: InferenceService, deployment_type: str, deployment_message: str
-) -> None:
-    if vllm_inference_service.instance.metadata.annotations["serving.kserve.io/deploymentMode"] == deployment_type:
+def skip_if_deployment_mode(isvc: InferenceService, deployment_type: str, deployment_message: str) -> None:
+    if isvc.instance.metadata.annotations["serving.kserve.io/deploymentMode"] == deployment_type:
         pytest.skip(deployment_message)
