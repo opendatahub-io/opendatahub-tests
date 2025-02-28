@@ -63,7 +63,7 @@ class TestKserveTokenAuthenticationRawForRest:
             patches={
                 http_s3_caikit_raw_inference_service: {
                     "metadata": {
-                         "annotations": {Annotations.KserveAuth.SECURITY: "false"},
+                        "annotations": {Annotations.KserveAuth.SECURITY: "false"},
                     }
                 }
             }
@@ -75,7 +75,7 @@ class TestKserveTokenAuthenticationRawForRest:
             patches={
                 http_s3_caikit_raw_inference_service: {
                     "metadata": {
-                         "annotations": {Annotations.KserveAuth.SECURITY: "true"},
+                        "annotations": {Annotations.KserveAuth.SECURITY: "true"},
                     }
                 }
             }

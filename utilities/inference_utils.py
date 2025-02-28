@@ -31,7 +31,6 @@ from utilities.constants import (
     KServeDeploymentType,
     Protocols,
     HTTPRequest,
-    Labels,
     Annotations,
     Timeout,
 )

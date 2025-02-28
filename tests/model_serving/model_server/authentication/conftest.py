@@ -32,7 +32,6 @@ from utilities.constants import (
 from utilities.jira import is_jira_open
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 from utilities.constants import Annotations
-from utilities.constants import Labels
 
 
 # GRPC model serving
