@@ -16,6 +16,7 @@ from utilities.constants import (
     ModelFormat,
     ModelStoragePath,
     ModelVersion,
+    Protocols,
     RuntimeTemplates,
 )
 from utilities.inference_utils import create_isvc
@@ -133,7 +134,7 @@ def openvino_serverless_serving_runtime_scope_session(
         template_name=RuntimeTemplates.OVMS_KSERVE,
         multi_model=False,
         resources={
-            "ovms": {
+            ModelFormat.OVMS: {
                 "requests": {"cpu": "1", "memory": "4Gi"},
                 "limits": {"cpu": "2", "memory": "8Gi"},
             }
@@ -235,9 +236,9 @@ def s3_ovms_model_mesh_serving_runtime_scope_session(
         namespace=model_namespace_scope_session.name,
         template_name=RuntimeTemplates.OVMS_MODEL_MESH,
         multi_model=True,
-        protocol="REST",
+        protocol=Protocols.REST.upper(),
         resources={
-            "ovms": {
+            ModelFormat.OVMS: {
                 "requests": {"cpu": "1", "memory": "4Gi"},
                 "limits": {"cpu": "2", "memory": "8Gi"},
             }

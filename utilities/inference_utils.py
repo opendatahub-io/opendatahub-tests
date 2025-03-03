@@ -31,7 +31,6 @@ from utilities.constants import (
     KServeDeploymentType,
     Protocols,
     HTTPRequest,
-    Labels,
     Annotations,
     Timeout,
 )
@@ -438,6 +437,8 @@ class UserInference(Inference):
         if not res:
             raise ValueError(f"Inference failed with error: {err}\nOutput: {out}\nCommand: {cmd}")
 
+        LOGGER.info(f"Inference output:\n{out}")
+
         return out
 
     def get_target_port(self, svc: Service) -> int:
@@ -600,13 +601,12 @@ def create_isvc(
             "sidecar.istio.io/inject": "true",
             "sidecar.istio.io/rewriteAppHTTPProbers": "true",
         })
-
     if enable_auth:
         # model mesh auth is set in servingruntime
         if deployment_mode == KServeDeploymentType.SERVERLESS:
             _annotations[Annotations.KserveAuth.SECURITY] = "true"
         elif deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
-            labels[Labels.KserveAuth.SECURITY] = "true"
+            _annotations[Annotations.KserveAuth.SECURITY] = "true"
 
     # default to True if deployment_mode is Serverless (default behavior of Serverless) if was not provided by the user
     # model mesh external route is set in servingruntime
@@ -641,10 +641,7 @@ def create_isvc(
 
         if wait:
             # Modelmesh 2nd server in the ns will fail to be Ready; isvc needs to be re-applied
-            if (
-                is_jira_open(jira_id="RHOAIENG-13636", admin_client=client)
-                and deployment_mode == KServeDeploymentType.MODEL_MESH
-            ):
+            if deployment_mode == KServeDeploymentType.MODEL_MESH:
                 for isvc in InferenceService.get(dyn_client=client, namespace=namespace):
                     _runtime = get_inference_serving_runtime(isvc=isvc)
                     isvc_annotations = isvc.instance.metadata.annotations

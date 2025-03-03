@@ -133,7 +133,7 @@ class ServingRuntimeFromTemplate(ServingRuntime):
             _model_metadata.setdefault("annotations", {})["enable-route"] = "true"
 
         if self.enable_auth:
-            _model_metadata.setdefault("annotations", {})["enable-route"] = "true"
+            _model_metadata.setdefault("annotations", {})["enable-auth"] = "true"
 
         if self.protocol is not None:
             _model_metadata.setdefault("annotations", {})["opendatahub.io/apiProtocol"] = self.protocol
