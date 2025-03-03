@@ -363,6 +363,7 @@ def setup_env_user_token() -> None:
 
 
 # fixture needed for upstream tests from v0.2.15 onwards
+# skip-unused-code
 @pytest.fixture
 def get_model_file() -> Generator[str, Any, Any]:
     with tempfile.NamedTemporaryFile(delete=False, suffix=".onnx") as model_file:
@@ -374,6 +375,7 @@ def get_model_file() -> Generator[str, Any, Any]:
 
 
 # fixture needed for upstream tests from v0.2.15 onwards
+# skip-unused-code
 @pytest.fixture
 def get_temp_dir_with_models() -> Generator[tuple[str, list[str]], Any, Any]:
     temp_dir = tempfile.mkdtemp()
@@ -394,6 +396,7 @@ def get_temp_dir_with_models() -> Generator[tuple[str, list[str]], Any, Any]:
 
 
 # fixture needed for upstream tests from v0.2.15 onwards
+# skip-unused-code
 @pytest.fixture
 def get_temp_dir_with_nested_models() -> Generator[tuple[str, list[str]], Any, Any]:
     temp_dir = tempfile.mkdtemp()
@@ -417,6 +420,7 @@ def get_temp_dir_with_nested_models() -> Generator[tuple[str, list[str]], Any, A
 
 
 # hook needed for upstream tests from v0.2.15 onwards
+# skip-unused-code
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
     """Dynamically parametrize `minio_pod` used by upstream tests"""
     if "minio_pod" in metafunc.fixturenames and metafunc.config.getoption("model_registry_upstream"):
@@ -435,6 +439,7 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
 
 
 # fixture needed for upstream tests from v0.2.15 onwards
+# skip-unused-code
 @pytest.fixture
 def mr_minio_init(admin_client: DynamicClient, minio_namespace: Namespace) -> Generator[Job, Any, Any]:
     with Job(
@@ -469,6 +474,7 @@ def mr_minio_init(admin_client: DynamicClient, minio_namespace: Namespace) -> Ge
 
 
 # fixture needed for upstream tests from v0.2.15 onwards
+# skip-unused-code
 @pytest.fixture
 def patch_s3_env(monkeypatch: pytest.MonkeyPatch, minio_pod: Pod, minio_service: Service, mr_minio_init: Job) -> None:
     monkeypatch.setenv("AWS_S3_ENDPOINT", "http://minio:9000")
