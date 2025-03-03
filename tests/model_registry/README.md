@@ -1,7 +1,7 @@
 # Model Registry
 
 This section outlines specific behaviour of Model Registry testing users should be aware of.
-The following behaviour applies when the user specifies `--model-registry-upstream=True` as a CLI option.
+The following behaviour applies when the user specifies `--model-registry-upstream` as a CLI option.
 
 ## Upstream tests
 

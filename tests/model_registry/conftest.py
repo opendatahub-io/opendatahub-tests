@@ -1,6 +1,5 @@
 import os
-import sys
-import importlib.util
+import tempfile
 import pytest
 import schemathesis
 import shutil
@@ -10,10 +9,13 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.service import Service
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.deployment import Deployment
+from ocp_resources.job import Job
 from ocp_resources.model_registry import ModelRegistry
+from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
 from kubernetes.dynamic import DynamicClient
-from model_registry import ModelRegistry as ModelRegistryClient
+from model_registry import ModelRegistry as ModelRegistryClient, __version__ as mr_client_version
+from utilities.general import fetch_external_tests_from_github
 
 from tests.model_registry.utils import get_endpoint_from_mr_service, get_mr_service_by_label
 from utilities.infra import create_ns
@@ -32,7 +34,8 @@ DEFAULT_LABEL_DICT_DB: dict[str, str] = {
     Annotations.KubernetesIo.PART_OF: DB_RESOURCES_NAME,
 }
 # Define upstream repository details
-REPO_API_URL = "https://raw.githubusercontent.com/kubeflow/model-registry/main"
+REPO_API_URL = "https://raw.githubusercontent.com/kubeflow/model-registry"
+REPO_BRANCH = f"refs/heads/release/v{mr_client_version}"
 FILE_PATH = "clients/python/tests"
 # "test_core.py" excluded for relative imports
 # test_patch_model_artifacts_artifact_type fails because of a relative import
@@ -322,28 +325,11 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     """Downloads external tests into the local project structure before test execution."""
     if session.config.option.model_registry_upstream:
         LOGGER.info("pytest_sessionstart is running")
-        os.makedirs(UPSTREAM_TESTS_DIR, exist_ok=True)
-        for file in FILES:
-            os.system(f"curl -o {UPSTREAM_TESTS_DIR}/{file} {REPO_API_URL}/{FILE_PATH}/{file}")
-            LOGGER.info(f"Downloaded {file} into {UPSTREAM_TESTS_DIR}")
-
-        # Ensure pytest can discover the external tests
-        sys.path.insert(0, UPSTREAM_TESTS_DIR)
+        fetch_external_tests_from_github(
+            dir=UPSTREAM_TESTS_DIR, files=FILES, repo_api_url=REPO_API_URL, branch=REPO_BRANCH, file_path=FILE_PATH
+        )
     else:
         LOGGER.info("Skipping upstream test fetching for Model registry. Enable with --model-registry-upstream=True")
-
-
-def pytest_collection_modifyitems(session: pytest.Session, config: pytest.Config, items: pytest.Item) -> None:
-    """Ensures pytest detects new test modules within the cloned repository."""
-    if config.option.model_registry_upstream:
-        for root, _, files in os.walk(UPSTREAM_TESTS_DIR):
-            for file in files:
-                if file.endswith(".py"):
-                    module_path = os.path.join(root, file)
-                    module_name = f"external_tests.{file[:-3]}"
-                    spec = importlib.util.spec_from_file_location(module_name, module_path)
-                    module = importlib.util.module_from_spec(spec)  # type: ignore
-                    spec.loader.exec_module(module)  # type: ignore
 
 
 @pytest.hookimpl(trylast=True)
@@ -374,3 +360,119 @@ def client(model_registry_instance_rest_endpoint: str, current_client_token: str
 @pytest.fixture(scope="module", autouse=True)
 def setup_env_user_token() -> None:
     pass
+
+
+# fixture needed for upstream tests from v0.2.15 onwards
+@pytest.fixture
+def get_model_file() -> Generator[str, Any, Any]:
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".onnx") as model_file:
+        pass
+
+    yield model_file.name
+
+    os.remove(model_file.name)
+
+
+# fixture needed for upstream tests from v0.2.15 onwards
+@pytest.fixture
+def get_temp_dir_with_models() -> Generator[tuple[str, list[str]], Any, Any]:
+    temp_dir = tempfile.mkdtemp()
+    file_paths = []
+    for _ in range(3):
+        tmp_file = tempfile.NamedTemporaryFile(  # noqa: SIM115
+            delete=False, dir=temp_dir, suffix=".onnx"
+        )
+        file_paths.append(tmp_file.name)
+        tmp_file.close()
+
+    yield temp_dir, file_paths
+
+    for file in file_paths:
+        if os.path.exists(file):
+            os.remove(file)
+    os.rmdir(temp_dir)
+
+
+# fixture needed for upstream tests from v0.2.15 onwards
+@pytest.fixture
+def get_temp_dir_with_nested_models() -> Generator[tuple[str, list[str]], Any, Any]:
+    temp_dir = tempfile.mkdtemp()
+    nested_dir = tempfile.mkdtemp(dir=temp_dir)
+
+    file_paths = []
+    for _ in range(3):
+        tmp_file = tempfile.NamedTemporaryFile(  # noqa: SIM115
+            delete=False, dir=nested_dir, suffix=".onnx"
+        )
+        file_paths.append(tmp_file.name)
+        tmp_file.close()
+
+    yield temp_dir, file_paths
+
+    for file in file_paths:
+        if os.path.exists(file):
+            os.remove(file)
+    os.rmdir(nested_dir)
+    os.rmdir(temp_dir)
+
+
+# hook needed for upstream tests from v0.2.15 onwards
+def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
+    """Dynamically parametrize `minio_pod` used by upstream tests"""
+    if "minio_pod" in metafunc.fixturenames and metafunc.config.getoption("model_registry_upstream"):
+        metafunc.parametrize(
+            "minio_pod",
+            [
+                {
+                    "args": ["server", "/data"],
+                    "image": "minio/minio:latest",
+                    "labels": {"app": "minio"},
+                    "annotations": {},
+                }
+            ],
+            indirect=True,
+        )
+
+
+# fixture needed for upstream tests from v0.2.15 onwards
+@pytest.fixture
+def mr_minio_init(admin_client: DynamicClient, minio_namespace: Namespace) -> Generator[Job, Any, Any]:
+    with Job(
+        client=admin_client,
+        name="minio-init",
+        namespace=minio_namespace.name,
+        restart_policy="OnFailure",
+        containers=[
+            {
+                "args": [
+                    "sleep 5",
+                    "mc alias set local http://minio:9000 $MINIO_ROOT_USER $MINIO_ROOT_PASSWORD",
+                    "mc mb local/default || true",
+                ],
+                "command": ["/bin/sh", "-c"],
+                "env": [
+                    {
+                        "name": "MINIO_ROOT_USER",
+                        "value": "THEACCESSKEY",
+                    },
+                    {
+                        "name": "MINIO_ROOT_PASSWORD",
+                        "value": "THESECRETKEY",
+                    },
+                ],
+                "image": "minio/mc",
+                "name": "mc",
+            }
+        ],
+    ) as mr_job:
+        yield mr_job
+
+
+# fixture needed for upstream tests from v0.2.15 onwards
+@pytest.fixture
+def patch_s3_env(monkeypatch: pytest.MonkeyPatch, minio_pod: Pod, minio_service: Service, mr_minio_init: Job) -> None:
+    monkeypatch.setenv("AWS_S3_ENDPOINT", "http://minio:9000")
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "THEACCESSKEY")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "THESECRETKEY")
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
+    monkeypatch.setenv("AWS_S3_BUCKET", "default-bucket")

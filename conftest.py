@@ -97,6 +97,7 @@ def pytest_addoption(parser: Parser) -> None:
     upstream_group.addoption(
         "--model-registry-upstream",
         default=False,
+        action="store_true",
         help="Whether or not to fetch and run upstream Model Registry tests",
     )
 
