@@ -1,5 +1,4 @@
 version = 1
-revision = 1
 requires-python = ">=3.9"
 resolution-markers = [
     "python_full_version >= '3.11'",
@@ -1465,7 +1464,7 @@ requires-dist = [
     { name = "jira", specifier = ">=3.8.0" },
     { name = "model-registry", specifier = ">=0.2.13" },
     { name = "openshift-python-utilities", specifier = ">=5.0.71" },
-    { name = "openshift-python-wrapper", specifier = ">=11.0.26" },
+    { name = "openshift-python-wrapper", specifier = ">=11.0.33" },
     { name = "portforward", specifier = ">=0.7.1" },
     { name = "protobuf" },
     { name = "pygithub", specifier = ">=2.5.0" },
@@ -1513,7 +1512,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/e4/cc/34cfb46e923281313
 
 [[package]]
 name = "openshift-python-wrapper"
-version = "11.0.28"
+version = "11.0.34"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -1535,7 +1534,7 @@ dependencies = [
     { name = "timeout-sampler" },
     { name = "xmltodict" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9e/40/dea1894708c980c3149f225d43130068c1202ab8d209a8462ec7fd41cced/openshift_python_wrapper-11.0.28.tar.gz", hash = "sha256:fcd17c0fbd3c049616b884bdc0b30f6494685325e628cef5506c731db045ddd9", size = 6653893 }
+sdist = { url = "https://files.pythonhosted.org/packages/c9/d9/467ec8ffacbd06c791a3bf5f00d84b87be12be0d692a6d5414f684a72fb9/openshift_python_wrapper-11.0.34.tar.gz", hash = "sha256:5b952b224bb6021cef08f9ed42124c44c7160a1406cc17cd55b4dc6875737c89", size = 7034315 }
 
 [[package]]
 name = "openshift-python-wrapper-data-collector"
