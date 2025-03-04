@@ -16,7 +16,7 @@ from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 
-from utilities.constants import Labels, Annotations, KServeDeploymentType
+from utilities.constants import Labels, Annotations, KServeDeploymentType, Timeout
 from utilities.inference_utils import create_isvc
 
 MINIO_LLM: str = "minio-llm"
@@ -144,10 +144,10 @@ def vllm_images_configmap(admin_client: DynamicClient, model_namespace: Namespac
         name="gorch-test-config",
         namespace=model_namespace.name,
         data={
-            "regexDetectorImage": "quay.io/csantiago/regex-detector"
-            "@sha256:2dbfa4680938a97d0e0cac75049c43687ad163666cf2c6ddc37643c4f516d144",
-            "vllmGatewayImage": "quay.io/csantiago/vllm-orchestrator-gateway"
-            "@sha256:f37ad653f461080c4ef5f4eb3358d67f9c547a3da4ad40a09fcfa493077a0b9f",
+            "regexDetectorImage": "quay.io/trustyai_testing/regex-detector"
+            "@sha256:e9df9f7e7429e29da9b8d9920d80cdc85a496e7961f6edb19132d604a914049b",
+            "vllmGatewayImage": "quay.io/trustyai_testing/vllm-orchestrator-gateway"
+            "@sha256:d0bbf2de95c69f76215a016820f294202c48721dee452b3939e36133697d5b1d",
         },
     ) as cm:
         yield cm
@@ -221,8 +221,8 @@ def minio_llm_deployment(
                 "initContainers": [
                     {
                         "name": "download-model",
-                        "image": "quay.io/rh-ee-mmisiura/llm-downloader-bootstrap"
-                        "@sha256:0034bebe904eabe40315463702275c6d33a0f22404a59b2c2d9e4d25a6cd750f",
+                        "image": "quay.io/trustyai_testing/llm-downloader-bootstrap"
+                        "@sha256:d3211cc581fe69ca9a1cb75f84e5d08cacd1854cb2d63591439910323b0cbb57",
                         "securityContext": {"fsGroup": 1001},
                         "command": [
                             "bash",
@@ -260,7 +260,7 @@ def minio_llm_deployment(
         label={"app": MINIO_LLM},
         wait_for_resource=True,
     ) as deployment:
-        deployment.wait_for_replicas()
+        deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_10MIN)
         yield deployment
 
 
