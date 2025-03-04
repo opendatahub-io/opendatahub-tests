@@ -7,7 +7,6 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.authorino import Authorino
 from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.config_map import ConfigMap
-from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
@@ -19,7 +18,7 @@ from ocp_resources.storage_class import StorageClass
 from ocp_utilities.monitoring import Prometheus
 from pytest_testconfig import config as py_config
 
-from utilities.constants import DscComponents, StorageClassName
+from utilities.constants import StorageClassName
 from utilities.constants import (
     KServeDeploymentType,
     ModelFormat,
@@ -37,7 +36,6 @@ from utilities.infra import (
     s3_endpoint_secret,
     update_configmap_data,
 )
-from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
@@ -195,17 +193,6 @@ def skip_if_no_deployed_redhat_authorino_operator(admin_client: DynamicClient) -
         namespace=namespace,
     ).exists:
         pytest.skip(f"Authorino {name} CR is missing from {namespace} namespace")
-
-
-@pytest.fixture(scope="package")
-def enabled_kserve_in_dsc(
-    dsc_resource: DataScienceCluster,
-) -> Generator[DataScienceCluster, Any, Any]:
-    with update_components_in_dsc(
-        dsc=dsc_resource,
-        components={DscComponents.KSERVE: DscComponents.ManagementState.MANAGED},
-    ) as dsc:
-        yield dsc
 
 
 @pytest.fixture(scope="package")
