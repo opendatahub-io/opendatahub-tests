@@ -14,6 +14,7 @@ from utilities.constants import Timeout
     ],
     indirect=True,
 )
+@pytest.mark.smoke
 def test_lmeval_huggingface_model(admin_client, model_namespace, lmevaljob_hf):
     """Basic test that verifies that LMEval can run successfully pulling a model from HuggingFace."""
     lmevaljob_pod = Pod(

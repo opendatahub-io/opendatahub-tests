@@ -22,6 +22,7 @@ BASE_DATA_PATH: str = "./tests/model_explainability/trustyai_service/drift/model
     ],
     indirect=True,
 )
+@pytest.mark.smoke
 class TestDriftMetrics:
     """
     Verifies all the basic operations with a drift metric (meanshift) available in TrustyAI, using PVC storage.
