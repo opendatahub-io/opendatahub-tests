@@ -267,6 +267,17 @@ def updated_dsc_component_state(
 
 
 @pytest.fixture(scope="package")
+def enabled_kserve_in_dsc(
+    dsc_resource: DataScienceCluster,
+) -> Generator[DataScienceCluster, Any, Any]:
+    with update_components_in_dsc(
+        dsc=dsc_resource,
+        components={DscComponents.KSERVE: DscComponents.ManagementState.MANAGED},
+    ) as dsc:
+        yield dsc
+
+
+@pytest.fixture(scope="package")
 def enabled_modelmesh_in_dsc(dsc_resource: DataScienceCluster) -> Generator[DataScienceCluster, Any, Any]:
     with update_components_in_dsc(
         dsc=dsc_resource,
