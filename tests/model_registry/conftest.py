@@ -19,7 +19,7 @@ from utilities.general import fetch_external_tests_from_github
 
 from tests.model_registry.utils import get_endpoint_from_mr_service, get_mr_service_by_label
 from utilities.infra import create_ns
-from utilities.constants import Annotations, Protocols
+from utilities.constants import Annotations, Protocols, ModelFormat
 
 
 LOGGER = get_logger(name=__name__)
@@ -356,7 +356,6 @@ def client(model_registry_instance_rest_endpoint: str, current_client_token: str
 
 
 # fixture needed for upstream tests
-# Marked with autouse to stop tox from complaining
 @pytest.fixture(scope="module")
 def setup_env_user_token() -> None:  # skip-unused-code
     pass
@@ -380,7 +379,7 @@ def get_temp_dir_with_models() -> Generator[tuple[str, list[str]], Any, Any]:  #
     file_paths = []
     for _ in range(3):
         tmp_file = tempfile.NamedTemporaryFile(  # noqa: SIM115
-            delete=False, dir=temp_dir, suffix=".onnx"
+            delete=False, dir=temp_dir, suffix=f".{ModelFormat.ONNX}"
         )
         file_paths.append(tmp_file.name)
         tmp_file.close()
@@ -402,7 +401,7 @@ def get_temp_dir_with_nested_models() -> Generator[tuple[str, list[str]], Any, A
     file_paths = []
     for _ in range(3):
         tmp_file = tempfile.NamedTemporaryFile(  # noqa: SIM115
-            delete=False, dir=nested_dir, suffix=".onnx"
+            delete=False, dir=nested_dir, suffix=f".{ModelFormat.ONNX}"
         )
         file_paths.append(tmp_file.name)
         tmp_file.close()
