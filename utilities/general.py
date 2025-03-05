@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import base64
+import os
+import shlex
+import sys
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
+from pyhelper_utils.shell import run_command
 from simple_logger.logger import get_logger
+from subprocess import CalledProcessError
 
 import utilities.infra
 from utilities.constants import Annotations, KServeDeploymentType, MODELMESH_SERVING
@@ -173,3 +178,43 @@ def create_isvc_label_selector_str(isvc: InferenceService, resource_type: str, r
 
     else:
         raise ValueError(f"Unknown deployment mode {deployment_mode}")
+
+
+def fetch_external_tests_from_github(
+    dir: str,
+    files: list[str],
+    repo_api_url: str,
+    file_path: str,
+    branch: str = "main",
+) -> None:
+    """
+    Fetches a list of (test) files from a github repository without cloning the whole repo.
+    The files will be stored in `dir`, cleanup after execution is not handled.
+    The folder `dir` will be added to the system path so that pytest can see the new tests.
+    This only works against public github repos, and the URL has to be the API version (i.e. raw.githubusercontent).
+    For an example call look at tests/model_registry/conftest.py
+
+    Args:
+        dir (str): A directory to be created or that already exists where the files will be placed. Make sure to clean
+        this up after execution if you need to have a clean workspace.
+        files (list[str]): A list of filenames to be downloaded
+        repo_api_url (str): The API url for the repository from where to download the files. This has to be in the
+        format of raw.githubusercontent...
+        file_path (str): the path to the subfolder containing the files you want to download
+        branch (str): the branch to use when pulling files, e.g. `main` or `refs/heads/my-branch`
+    """
+    os.makedirs(dir, exist_ok=True)
+    for file in files:
+        try:
+            # Need to explicitly set verify_stderr to false because curl prints the download progress to stderr
+            # and run_command logs at level ERROR if stderr is not empty (even though RC is 0)
+            run_command(
+                command=shlex.split(f"curl -o {dir}/{file} {repo_api_url}/{branch}/{file_path}/{file}"),
+                verify_stderr=False,
+            )
+            LOGGER.info(f"Downloaded {file} from branch {branch} in {dir}/{file}")
+        except CalledProcessError as e:
+            LOGGER.error(f"Failed to download {file} from branch {branch} in {dir}/{file}", e)
+
+    # Ensure pytest can discover the external tests
+    sys.path.insert(0, dir)
