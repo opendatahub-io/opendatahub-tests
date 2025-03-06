@@ -24,12 +24,11 @@ from simple_logger.logger import get_logger
 
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.infra import create_ns, login_with_user_password, get_openshift_token
-from utilities.constants import AcceleratorType, DscComponents
+from utilities.constants import AcceleratorType, DscComponents, MinioMetadata, Labels, Protocols
 from utilities.infra import update_configmap_data
 
 
 LOGGER = get_logger(name=__name__)
-MINIO: str = "minio"
 OPENDATAHUB_IO: str = "opendatahub.io"
 
 
@@ -295,7 +294,7 @@ def cluster_monitoring_config(admin_client: DynamicClient) -> Generator[ConfigMa
 @pytest.fixture(scope="class")
 def minio_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
     with create_ns(
-        name=MINIO,
+        name=MinioMetadata.NAME,
         admin_client=admin_client,
     ) as ns:
         yield ns
@@ -303,30 +302,30 @@ def minio_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, An
 
 @pytest.fixture(scope="class")
 def minio_pod(
+    request: FixtureRequest,
     admin_client: DynamicClient,
     minio_namespace: Namespace,
-    request: FixtureRequest,
 ) -> Generator[Pod, Any, Any]:
     """Requires parametrization for args, image, label and annotation"""
     with Pod(
         client=admin_client,
-        name=MINIO,
+        name=MinioMetadata.NAME,
         namespace=minio_namespace.name,
         containers=[
             {
                 "args": request.param["args"],
                 "env": [
                     {
-                        "name": "MINIO_ACCESS_KEY",
-                        "value": "THEACCESSKEY",
+                        "name": MinioMetadata.ACCESS_KEY_NAME,
+                        "value": MinioMetadata.ACCESS_KEY_VALUE,
                     },
                     {
-                        "name": "MINIO_SECRET_KEY",
-                        "value": "THESECRETKEY",
+                        "name": MinioMetadata.SECRET_KEY_NAME,
+                        "value": MinioMetadata.SECRET_KEY_VALUE,
                     },
                 ],
                 "image": request.param["image"],
-                "name": MINIO,
+                "name": MinioMetadata.NAME,
             }
         ],
         label=request.param["labels"],
@@ -339,18 +338,18 @@ def minio_pod(
 def minio_service(admin_client: DynamicClient, minio_namespace: Namespace) -> Generator[Service, Any, Any]:
     with Service(
         client=admin_client,
-        name=MINIO,
+        name=MinioMetadata.NAME,
         namespace=minio_namespace.name,
         ports=[
             {
                 "name": "minio-client-port",
                 "port": 9000,
-                "protocol": "TCP",
+                "protocol": Protocols.TCP,
                 "targetPort": 9000,
             }
         ],
         selector={
-            "app": MINIO,
+            Labels.Openshift.APP: MinioMetadata.NAME,
         },
     ) as minio_service:
         yield minio_service

@@ -19,7 +19,7 @@ from utilities.general import fetch_external_tests_from_github
 
 from tests.model_registry.utils import get_endpoint_from_mr_service, get_mr_service_by_label
 from utilities.infra import create_ns
-from utilities.constants import Annotations, Protocols, ModelFormat
+from utilities.constants import Annotations, Protocols, ModelFormat, MinioMetadata, Labels
 
 
 LOGGER = get_logger(name=__name__)
@@ -324,12 +324,12 @@ def generated_schema(model_registry_instance_rest_endpoint: str) -> Any:
 def pytest_sessionstart(session: pytest.Session) -> None:
     """Downloads external tests into the local project structure before test execution."""
     if session.config.option.model_registry_upstream:
-        LOGGER.info("pytest_sessionstart is running")
+        LOGGER.info("Model Registry upstream tests are being fetched due to --model-registry-upstream flag")
         fetch_external_tests_from_github(
             dir=UPSTREAM_TESTS_DIR, files=FILES, repo_api_url=REPO_API_URL, branch=REPO_BRANCH, file_path=FILE_PATH
         )
     else:
-        LOGGER.info("Skipping upstream test fetching for Model registry. Enable with --model-registry-upstream=True")
+        LOGGER.info("Skipping upstream test fetching for Model registry. Enable with --model-registry-upstream")
 
 
 @pytest.hookimpl(trylast=True)
@@ -424,8 +424,8 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:  # skip-unused-cod
             [
                 {
                     "args": ["server", "/data"],
-                    "image": "minio/minio:latest",
-                    "labels": {"app": "minio"},
+                    "image": f"{MinioMetadata.NAME}/{MinioMetadata.NAME}:latest",
+                    "labels": {Labels.Openshift.APP: MinioMetadata.NAME},
                     "annotations": {},
                 }
             ],
@@ -447,18 +447,18 @@ def mr_minio_init(
             {
                 "args": [
                     "sleep 5",
-                    "mc alias set local http://minio:9000 $MINIO_ROOT_USER $MINIO_ROOT_PASSWORD",
+                    f"mc alias set local {MinioMetadata.DEFAULT_ENDPOINT} ${MinioMetadata.Mc.ROOT_USER_KEY} ${MinioMetadata.Mc.ROOT_PASSWORD_KEY}",  # noqa: E501
                     "mc mb local/default || true",
                 ],
                 "command": ["/bin/sh", "-c"],
                 "env": [
                     {
-                        "name": "MINIO_ROOT_USER",
-                        "value": "THEACCESSKEY",
+                        "name": MinioMetadata.Mc.ROOT_USER_KEY,
+                        "value": MinioMetadata.ACCESS_KEY_VALUE,
                     },
                     {
-                        "name": "MINIO_ROOT_PASSWORD",
-                        "value": "THESECRETKEY",
+                        "name": MinioMetadata.Mc.ROOT_PASSWORD_KEY,
+                        "value": MinioMetadata.SECRET_KEY_VALUE,
                     },
                 ],
                 "image": "minio/mc",
@@ -474,8 +474,8 @@ def mr_minio_init(
 def patch_s3_env(
     monkeypatch: pytest.MonkeyPatch, minio_pod: Pod, minio_service: Service, mr_minio_init: Job
 ) -> None:  # skip-unused-code
-    monkeypatch.setenv("AWS_S3_ENDPOINT", "http://minio:9000")
-    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "THEACCESSKEY")
-    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "THESECRETKEY")
+    monkeypatch.setenv("AWS_S3_ENDPOINT", MinioMetadata.DEFAULT_ENDPOINT)
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", MinioMetadata.ACCESS_KEY_VALUE)
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", MinioMetadata.SECRET_KEY_VALUE)
     monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
     monkeypatch.setenv("AWS_S3_BUCKET", "default-bucket")

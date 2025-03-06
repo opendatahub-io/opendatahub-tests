@@ -188,10 +188,10 @@ def fetch_external_tests_from_github(
     branch: str = "main",
 ) -> None:
     """
-    Fetches a list of (test) files from a github repository without cloning the whole repo.
-    The files will be stored in `dir`, cleanup after execution is not handled.
-    The folder `dir` will be added to the system path so that pytest can see the new tests.
-    This only works against public github repos, and the URL has to be the API version (i.e. raw.githubusercontent).
+    Fetches a list of (test) files from a github repository without cloning the whole repo.\n
+    The files will be stored in `dir`, cleanup after execution is not handled.\n
+    The folder `dir` will be added to the system path so that pytest can see the new tests.\n
+    This only works against public github repos, and the URL has to be the API version (i.e. raw.githubusercontent).\n
     For an example call look at tests/model_registry/conftest.py
 
     Args:
