@@ -20,6 +20,7 @@ class ModelName:
     FLAN_T5_SMALL: str = "flan-t5-small"
     FLAN_T5_SMALL_HF: str = f"{FLAN_T5_SMALL}-hf"
     CAIKIT_BGE_LARGE_EN: str = f"bge-large-en-v1.5-{ModelFormat.CAIKIT}"
+    BLOOM_560M: str = "bloom-560m"
 
 
 class ModelAndFormat:
@@ -27,6 +28,7 @@ class ModelAndFormat:
     OPENVINO_IR: str = f"{ModelFormat.OPENVINO}_ir"
     KSERVE_OPENVINO_IR: str = f"{OPENVINO_IR}_kserve"
     ONNX_1: str = f"{ModelFormat.ONNX}-1"
+    BLOOM_560M_CAIKIT: str = f"bloom-560m-{ModelFormat.CAIKIT}"
 
 
 class ModelStoragePath:
@@ -37,6 +39,7 @@ class ModelStoragePath:
     TENSORFLOW_MODEL: str = "inception_resnet_v2.pb"
     OPENVINO_VEHICLE_DETECTION: str = "vehicle-detection"
     FLAN_T5_SMALL_HF: str = f"{ModelName.FLAN_T5_SMALL}/{ModelName.FLAN_T5_SMALL_HF}"
+    BLOOM_560M_CAIKIT: str = f"{ModelName.BLOOM_560M}/{ModelAndFormat.BLOOM_560M_CAIKIT}/artifacts"
 
 
 class CurlOutput:

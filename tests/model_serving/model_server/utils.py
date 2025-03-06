@@ -197,7 +197,10 @@ def run_inference_multiple_times(
                 verify_inference_response(**infer_kwargs)
 
         if futures:
+            exceptions = []
             for result in as_completed(futures):
-                _exception = result.exception()
-                if _exception:
-                    LOGGER.error(f"Failed to run inference. Error: {_exception}")
+                if _exception := result.exception():
+                    exceptions.append(_exception)
+
+            if exceptions:
+                raise InferenceResponseError(f"Failed to run inference. Error: {exceptions}")
