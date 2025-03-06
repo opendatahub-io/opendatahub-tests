@@ -1,18 +1,25 @@
+import os
+import tempfile
 import pytest
 import schemathesis
+import shutil
 from typing import Generator, Any
 from ocp_resources.secret import Secret
 from ocp_resources.namespace import Namespace
 from ocp_resources.service import Service
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.deployment import Deployment
+from ocp_resources.job import Job
 from ocp_resources.model_registry import ModelRegistry
+from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
 from kubernetes.dynamic import DynamicClient
+from model_registry import ModelRegistry as ModelRegistryClient, __version__ as mr_client_version
+from utilities.general import fetch_external_tests_from_github
 
 from tests.model_registry.utils import get_endpoint_from_mr_service, get_mr_service_by_label
 from utilities.infra import create_ns
-from utilities.constants import Annotations, Protocols
+from utilities.constants import Annotations, Protocols, ModelFormat, MinioMetadata, Labels
 
 
 LOGGER = get_logger(name=__name__)
@@ -26,6 +33,15 @@ DEFAULT_LABEL_DICT_DB: dict[str, str] = {
     Annotations.KubernetesIo.INSTANCE: DB_RESOURCES_NAME,
     Annotations.KubernetesIo.PART_OF: DB_RESOURCES_NAME,
 }
+# Define upstream repository details
+REPO_API_URL = "https://raw.githubusercontent.com/kubeflow/model-registry"
+REPO_BRANCH = f"refs/heads/release/v{mr_client_version}"
+FILE_PATH = "clients/python/tests"
+# "test_core.py" excluded for relative imports
+# test_patch_model_artifacts_artifact_type fails because of a relative import
+FILES = ["test_client.py", "regression_test.py"]
+PROJECT_TESTS_DIR = os.path.dirname(os.path.abspath(__file__))  # Path of `conftest.py`
+UPSTREAM_TESTS_DIR = os.path.join(PROJECT_TESTS_DIR, "upstream_tests")
 
 
 @pytest.fixture(scope="class")
@@ -303,3 +319,163 @@ def generated_schema(model_registry_instance_rest_endpoint: str) -> Any:
         uri="https://raw.githubusercontent.com/kubeflow/model-registry/main/api/openapi/model-registry.yaml",
         base_url=f"https://{model_registry_instance_rest_endpoint}/",
     )
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """Downloads external tests into the local project structure before test execution."""
+    if session.config.option.model_registry_upstream:
+        LOGGER.info("Model Registry upstream tests are being fetched due to --model-registry-upstream flag")
+        fetch_external_tests_from_github(
+            dir=UPSTREAM_TESTS_DIR, files=FILES, repo_api_url=REPO_API_URL, branch=REPO_BRANCH, file_path=FILE_PATH
+        )
+    else:
+        LOGGER.info("Skipping upstream test fetching for Model registry. Enable with --model-registry-upstream")
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_sessionfinish(session: pytest.Session, exitstatus: pytest.ExitCode) -> None:
+    """Clean up upstream tests from kubeflow/model-registry"""
+    if session.config.option.model_registry_upstream:
+        if os.path.exists(UPSTREAM_TESTS_DIR):
+            shutil.rmtree(UPSTREAM_TESTS_DIR)
+            LOGGER.info(f"Removed upstream model registry tests from {UPSTREAM_TESTS_DIR}")
+
+
+# fixture needed for upstream tests
+@pytest.fixture(scope="function")
+def client(model_registry_instance_rest_endpoint: str, current_client_token: str) -> ModelRegistryClient:
+    server, port = model_registry_instance_rest_endpoint.split(":")
+    client = ModelRegistryClient(
+        server_address=f"{Protocols.HTTPS}://{server}",
+        port=port,
+        author="opendatahub-test",
+        user_token=current_client_token,
+        is_secure=False,
+    )
+    return client
+
+
+# fixture needed for upstream tests
+@pytest.fixture(scope="module")
+def setup_env_user_token() -> None:  # skip-unused-code
+    pass
+
+
+# fixture needed for upstream tests from v0.2.15 onwards
+@pytest.fixture
+def get_model_file() -> Generator[str, Any, Any]:  # skip-unused-code
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".onnx") as model_file:
+        pass
+
+    yield model_file.name
+
+    os.remove(model_file.name)
+
+
+# fixture needed for upstream tests from v0.2.15 onwards
+@pytest.fixture
+def get_temp_dir_with_models() -> Generator[tuple[str, list[str]], Any, Any]:  # skip-unused-code
+    temp_dir = tempfile.mkdtemp()
+    file_paths = []
+    for _ in range(3):
+        tmp_file = tempfile.NamedTemporaryFile(  # noqa: SIM115
+            delete=False, dir=temp_dir, suffix=f".{ModelFormat.ONNX}"
+        )
+        file_paths.append(tmp_file.name)
+        tmp_file.close()
+
+    yield temp_dir, file_paths
+
+    for file in file_paths:
+        if os.path.exists(file):
+            os.remove(file)
+    os.rmdir(temp_dir)
+
+
+# fixture needed for upstream tests from v0.2.15 onwards
+@pytest.fixture
+def get_temp_dir_with_nested_models() -> Generator[tuple[str, list[str]], Any, Any]:  # skip-unused-code
+    temp_dir = tempfile.mkdtemp()
+    nested_dir = tempfile.mkdtemp(dir=temp_dir)
+
+    file_paths = []
+    for _ in range(3):
+        tmp_file = tempfile.NamedTemporaryFile(  # noqa: SIM115
+            delete=False, dir=nested_dir, suffix=f".{ModelFormat.ONNX}"
+        )
+        file_paths.append(tmp_file.name)
+        tmp_file.close()
+
+    yield temp_dir, file_paths
+
+    for file in file_paths:
+        if os.path.exists(file):
+            os.remove(file)
+    os.rmdir(nested_dir)
+    os.rmdir(temp_dir)
+
+
+# hook needed for upstream tests from v0.2.15 onwards
+def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:  # skip-unused-code
+    """Dynamically parametrize `minio_pod` used by upstream tests"""
+    if "minio_pod" in metafunc.fixturenames and metafunc.config.getoption("model_registry_upstream"):
+        metafunc.parametrize(
+            "minio_pod",
+            [
+                {
+                    "args": ["server", "/data"],
+                    "image": f"{MinioMetadata.NAME}/{MinioMetadata.NAME}:latest",
+                    "labels": {Labels.Openshift.APP: MinioMetadata.NAME},
+                    "annotations": {},
+                }
+            ],
+            indirect=True,
+        )
+
+
+# fixture needed for upstream tests from v0.2.15 onwards
+@pytest.fixture
+def mr_minio_init(
+    admin_client: DynamicClient, minio_namespace: Namespace
+) -> Generator[Job, Any, Any]:  # skip-unused-code
+    with Job(
+        client=admin_client,
+        name="minio-init",
+        namespace=minio_namespace.name,
+        restart_policy="OnFailure",
+        containers=[
+            {
+                "args": [
+                    "sleep 5",
+                    f"mc alias set local {MinioMetadata.DEFAULT_ENDPOINT} ${MinioMetadata.Mc.ROOT_USER_KEY} ${MinioMetadata.Mc.ROOT_PASSWORD_KEY}",  # noqa: E501
+                    "mc mb local/default || true",
+                ],
+                "command": ["/bin/sh", "-c"],
+                "env": [
+                    {
+                        "name": MinioMetadata.Mc.ROOT_USER_KEY,
+                        "value": MinioMetadata.ACCESS_KEY_VALUE,
+                    },
+                    {
+                        "name": MinioMetadata.Mc.ROOT_PASSWORD_KEY,
+                        "value": MinioMetadata.SECRET_KEY_VALUE,
+                    },
+                ],
+                "image": "minio/mc",
+                "name": "mc",
+            }
+        ],
+    ) as mr_job:
+        yield mr_job
+
+
+# fixture needed for upstream tests from v0.2.15 onwards
+@pytest.fixture
+def patch_s3_env(
+    monkeypatch: pytest.MonkeyPatch, minio_pod: Pod, minio_service: Service, mr_minio_init: Job
+) -> None:  # skip-unused-code
+    monkeypatch.setenv("AWS_S3_ENDPOINT", MinioMetadata.DEFAULT_ENDPOINT)
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", MinioMetadata.ACCESS_KEY_VALUE)
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", MinioMetadata.SECRET_KEY_VALUE)
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
+    monkeypatch.setenv("AWS_S3_BUCKET", "default-bucket")

@@ -75,6 +75,7 @@ class Protocols:
     HTTPS: str = "https"
     GRPC: str = "grpc"
     REST: str = "rest"
+    TCP: str = "TCP"
     TCP_PROTOCOLS: set[str] = {HTTP, HTTPS}
     ALL_SUPPORTED_PROTOCOLS: set[str] = TCP_PROTOCOLS.union({GRPC})
 
@@ -141,6 +142,9 @@ class Labels:
     class KserveAuth:
         SECURITY: str = "security.opendatahub.io/enable-auth"
 
+    class Openshift:
+        APP: str = "app"
+
 
 class Timeout:
     TIMEOUT_1MIN: int = 60
@@ -149,6 +153,20 @@ class Timeout:
     TIMEOUT_5MIN: int = 5 * TIMEOUT_1MIN
     TIMEOUT_10MIN: int = 10 * TIMEOUT_1MIN
     TIMEOUT_15MIN: int = 15 * TIMEOUT_1MIN
+
+
+class MinioMetadata:
+    NAME: str = "minio"
+    ACCESS_KEY_NAME: str = "MINIO_ACCESS_KEY"
+    ACCESS_KEY_VALUE: str = "THEACCESSKEY"
+    SECRET_KEY_NAME: str = "MINIO_SECRET_KEY"
+    SECRET_KEY_VALUE: str = "THESECRETKEY"
+    DEFAULT_PORT: int = 9000
+    DEFAULT_ENDPOINT: str = f"{Protocols.HTTP}://{NAME}:{DEFAULT_PORT}"
+
+    class Mc:
+        ROOT_USER_KEY: str = "MINIO_ROOT_USER"
+        ROOT_PASSWORD_KEY: str = "MINIO_ROOT_PASSWORD"
 
 
 MODEL_REGISTRY: str = "model-registry"
