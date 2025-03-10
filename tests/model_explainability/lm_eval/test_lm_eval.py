@@ -78,3 +78,23 @@ def test_lmeval_local_offline_unitxt_tasks_flan_20newsgroups(
 ):
     """Test that verifies that LMEval can run successfully in local, offline mode using unitxt"""
     verify_lmevaljob_running(client=admin_client, lmevaljob=lmevaljob_local_offline)
+
+
+@pytest.mark.parametrize(
+    "model_namespace",
+    [
+        pytest.param(
+            {"name": "test-lmeval-vllm"},
+        )
+    ],
+    indirect=True,
+)
+def test_lmeval_vllm_emulator(admin_client, model_namespace, lmevaljob_vllm_emulator):
+    """Basic test that verifies that LMEval can run successfully pulling a model from HuggingFace."""
+    lmevaljob_pod = Pod(
+        client=admin_client,
+        name=lmevaljob_vllm_emulator.name,
+        namespace=lmevaljob_vllm_emulator.namespace,
+        wait_for_resource=True,
+    )
+    lmevaljob_pod.wait_for_status(status=lmevaljob_pod.Status.SUCCEEDED, timeout=Timeout.TIMEOUT_10MIN)
