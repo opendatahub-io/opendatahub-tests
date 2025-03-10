@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 from typing import Any
 
+from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
@@ -7,6 +10,7 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import Timeout
 from utilities.exceptions import InferenceCanaryTrafficError
+from utilities.infra import get_pods_by_isvc_label
 
 LOGGER = get_logger(name=__name__)
 
@@ -51,7 +55,8 @@ def verify_canary_traffic(
     protocol: str,
     model_name: str,
     iterations: int,
-    percentage: int,
+    expected_percentage: int,
+    tolerance: int = 0,
 ) -> None:
     """
     Verify canary traffic percentage against inference_config.
@@ -63,7 +68,9 @@ def verify_canary_traffic(
         protocol (str): Protocol.
         model_name (str): Model name.
         iterations (int): Number of iterations.
-        percentage (int): Percentage of canary rollout.
+        expected_percentage (int): Percentage of canary rollout.
+        tolerance (int): Tolerance of traffic percentage distribution;
+            difference between actual and expected percentage.
 
     Raises:
         InferenceCanaryTrafficError: If canary rollout is not updated
@@ -71,7 +78,7 @@ def verify_canary_traffic(
     """
     successful_inferences = 0
 
-    for _ in range(iterations):
+    for iteration in range(iterations):
         try:
             verify_inference_response(
                 inference_service=isvc,
@@ -81,16 +88,42 @@ def verify_canary_traffic(
                 model_name=model_name,
                 use_default_query=True,
             )
+            LOGGER.info(f"Successful inference. Iteration: {iteration + 1}")
 
             successful_inferences += 1
 
-        except Exception:
-            continue
+        except Exception as ex:
+            LOGGER.warning(f"Inference failed. Error: {ex}. Previous model was used.")
 
+    LOGGER.info(f"Number of inference requests to the new model: {successful_inferences}")
     successful_inferences_percentage = successful_inferences / iterations * 100
 
-    if successful_inferences_percentage != percentage:
+    diff_percentage = abs(expected_percentage - successful_inferences_percentage)
+
+    if successful_inferences == 0 or diff_percentage > tolerance:
         raise InferenceCanaryTrafficError(
             f"Percentage of inference requests {successful_inferences_percentage} "
-            f"to the new model does not match the expected percentage {percentage}. "
+            f"to the new model does not match the expected percentage {expected_percentage}. "
         )
+
+
+def inference_service_pods_sampler(client: DynamicClient, isvc: InferenceService, timeout: int) -> TimeoutSampler:
+    """
+    Returns TimeoutSampler for inference service.
+
+    Args:
+        client (DynamicClient): DynamicClient object
+        isvc (InferenceService): InferenceService object
+        timeout (int): Timeout in seconds
+
+    Returns:
+        TimeoutSampler: TimeoutSampler object
+
+    """
+    return TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=1,
+        func=get_pods_by_isvc_label,
+        client=client,
+        isvc=isvc,
+    )

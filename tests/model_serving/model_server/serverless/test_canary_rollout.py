@@ -59,7 +59,7 @@ class TestServerlessCanaryRollout:
         "inference_service_updated_canary_config",
         [
             pytest.param(
-                {"canary-traffic-percent": "10", "model-path": ModelStoragePath.FLAN_T5_SMALL_HF},
+                {"canary-traffic-percent": 30, "model-path": ModelStoragePath.FLAN_T5_SMALL_HF},
             )
         ],
         indirect=True,
@@ -72,15 +72,16 @@ class TestServerlessCanaryRollout:
             model_name=ModelAndFormat.FLAN_T5_SMALL_CAIKIT,
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.GRPC,
-            iterations=5,
-            percentage=10,
+            iterations=20,
+            expected_percentage=30,
+            tolerance=10,
         )
 
     @pytest.mark.parametrize(
         "inference_service_updated_canary_config",
         [
             pytest.param(
-                {"canary-traffic-percent": "100"},
+                {"canary-traffic-percent": 100},
             )
         ],
         indirect=True,
@@ -94,5 +95,5 @@ class TestServerlessCanaryRollout:
             inference_type=Inference.ALL_TOKENS,
             protocol=Protocols.GRPC,
             iterations=5,
-            percentage=100,
+            expected_percentage=100,
         )
