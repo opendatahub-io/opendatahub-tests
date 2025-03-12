@@ -5,14 +5,46 @@ from typing import Any
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from simple_logger.logger import get_logger
-from timeout_sampler import TimeoutExpiredError, TimeoutSampler
+from timeout_sampler import TimeoutSampler
+from timeout_sampler import TimeoutExpiredError
 
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import Timeout
 from utilities.exceptions import InferenceCanaryTrafficError
 from utilities.infra import get_pods_by_isvc_label
 
+
 LOGGER = get_logger(name=__name__)
+
+
+def verify_no_inference_pods(client: DynamicClient, isvc: InferenceService) -> None:
+    """
+    Verify that no inference pods are running for the given InferenceService.
+
+    Args:
+        client (DynamicClient): DynamicClient object
+        isvc (InferenceService): InferenceService object
+
+    Raises:
+        TimeoutError: If pods are exist after the timeout.
+
+    """
+    pods = []
+
+    try:
+        pods = TimeoutSampler(
+            wait_timeout=Timeout.TIMEOUT_4MIN,
+            sleep=5,
+            func=get_pods_by_isvc_label,
+            client=client,
+            isvc=isvc,
+        )
+        if not pods:
+            return
+
+    except TimeoutError:
+        LOGGER.error(f"{[pod.name for pod in pods]} were not deleted")
+        raise
 
 
 def wait_for_canary_rollout(isvc: InferenceService, percentage: int, timeout: int = Timeout.TIMEOUT_5MIN) -> None:

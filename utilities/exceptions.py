@@ -70,5 +70,9 @@ class NotSupportedError(Exception):
         return f"The {self.type} is not supported"
 
 
+class DeploymentValidationError(Exception):
+    pass
+
+
 class InferenceCanaryTrafficError(Exception):
     pass

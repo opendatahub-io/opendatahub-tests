@@ -12,6 +12,23 @@ from utilities.inference_utils import Inference
 from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
 
 
+@pytest.fixture(scope="class")
+def inference_service_patched_replicas(
+    request: FixtureRequest, ovms_serverless_inference_service: InferenceService
+) -> InferenceService:
+    ResourceEditor(
+        patches={
+            ovms_serverless_inference_service: {
+                "spec": {
+                    "predictor": {"minReplicas": request.param["min-replicas"]},
+                }
+            }
+        }
+    ).update()
+
+    return ovms_serverless_inference_service
+
+
 @pytest.fixture
 def inference_service_updated_canary_config(
     request: FixtureRequest, s3_models_inference_service: InferenceService
