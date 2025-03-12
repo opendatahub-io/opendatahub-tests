@@ -1,0 +1,9 @@
+name: Dummy run
+on:
+  pull_request:
+
+jobs:
+  test-run:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "this is triggered"
