@@ -30,3 +30,13 @@ uv run pytest --post-upgrade
 ```bash
 uv run pytest --pre-upgrade --post-upgrade
 ```
+
+## To run only specific deployment tests, pass --upgrade-deployment-modes with requested mode(s), for example:
+
+```bash
+uv run pytest --pre-upgrade --post-upgrade --upgrade-deployment-modes=servelerss
+```
+
+```bash
+uv run pytest --pre-upgrade --post-upgrade --upgrade-deployment-modes=servelerss,rawdeployment
+```

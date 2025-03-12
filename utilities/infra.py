@@ -91,7 +91,7 @@ def create_ns(
 def wait_for_inference_deployment_replicas(
     client: DynamicClient,
     isvc: InferenceService,
-    runtime_name: str | None,
+    runtime_name: str | None = None,
     expected_num_deployments: int = 1,
     timeout: int = Timeout.TIMEOUT_5MIN,
 ) -> list[Deployment]:

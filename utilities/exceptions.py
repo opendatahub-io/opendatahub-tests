@@ -68,3 +68,7 @@ class NotSupportedError(Exception):
 
     def __str__(self) -> str:
         return f"The {self.type} is not supported"
+
+
+class DeploymentValidationError(Exception):
+    pass
