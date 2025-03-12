@@ -15,7 +15,6 @@ from ocp_resources.serving_runtime import ServingRuntime
 
 from utilities.inference_utils import create_isvc
 from utilities.infra import (
-    create_ns,
     create_isvc_view_role,
     get_pods_by_isvc_label,
     s3_endpoint_secret,
@@ -330,24 +329,16 @@ def http_s3_caikit_raw_inference_service_2(
 
 # Unprivileged user tests
 @pytest.fixture(scope="class")
-def unprivileged_model_namespace(
-    request: FixtureRequest, unprivileged_client: DynamicClient
-) -> Generator[Namespace, Any, Any]:
-    with create_ns(unprivileged_client=unprivileged_client, name=request.param["name"]) as ns:
-        yield ns
-
-
-@pytest.fixture(scope="class")
 def unprivileged_s3_caikit_serving_runtime(
     admin_client: DynamicClient,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    unprivileged_namespace: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
     with ServingRuntimeFromTemplate(
         client=admin_client,
         unprivileged_client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME}",
-        namespace=unprivileged_model_namespace.name,
+        namespace=unprivileged_namespace.name,
         template_name=RuntimeTemplates.CAIKIT_TGIS_SERVING,
         multi_model=False,
         enable_http=True,
@@ -359,7 +350,7 @@ def unprivileged_s3_caikit_serving_runtime(
 @pytest.fixture(scope="class")
 def unprivileged_models_endpoint_s3_secret(
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    unprivileged_namespace: Namespace,
     aws_access_key_id: str,
     aws_secret_access_key: str,
     models_s3_bucket_name: str,
@@ -369,7 +360,7 @@ def unprivileged_models_endpoint_s3_secret(
     with s3_endpoint_secret(
         admin_client=unprivileged_client,
         name="models-bucket-secret",
-        namespace=unprivileged_model_namespace.name,
+        namespace=unprivileged_namespace.name,
         aws_access_key=aws_access_key_id,
         aws_secret_access_key=aws_secret_access_key,
         aws_s3_region=models_s3_bucket_region,
@@ -383,14 +374,14 @@ def unprivileged_models_endpoint_s3_secret(
 def unprivileged_s3_caikit_serverless_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    unprivileged_namespace: Namespace,
     unprivileged_s3_caikit_serving_runtime: ServingRuntime,
     unprivileged_models_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelFormat.CAIKIT}",
-        namespace=unprivileged_model_namespace.name,
+        namespace=unprivileged_namespace.name,
         runtime=unprivileged_s3_caikit_serving_runtime.name,
         model_format=unprivileged_s3_caikit_serving_runtime.instance.spec.supportedModelFormats[0].name,
         deployment_mode=KServeDeploymentType.SERVERLESS,
@@ -422,14 +413,14 @@ def http_s3_caikit_tgis_serving_runtime(
 def unprivileged_s3_caikit_raw_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    unprivileged_namespace: Namespace,
     unprivileged_s3_caikit_serving_runtime: ServingRuntime,
     unprivileged_models_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelFormat.CAIKIT}-raw",
-        namespace=unprivileged_model_namespace.name,
+        namespace=unprivileged_namespace.name,
         runtime=unprivileged_s3_caikit_serving_runtime.name,
         model_format=unprivileged_s3_caikit_serving_runtime.instance.spec.supportedModelFormats[0].name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,

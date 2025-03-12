@@ -22,7 +22,7 @@ from simple_logger.logger import get_logger
 
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.infra import create_ns, login_with_user_password, get_openshift_token
-from utilities.constants import AcceleratorType, DscComponents
+from utilities.constants import AcceleratorType, Annotations, DscComponents, Labels
 from utilities.infra import update_configmap_data
 
 
@@ -244,6 +244,21 @@ def unprivileged_client(
 
         else:
             yield admin_client
+
+
+@pytest.fixture(scope="class", params=[{"add_dashboard_label": False}, {"disable_service_mesh": False}])
+def unprivileged_namespace(
+    request: FixtureRequest, unprivileged_client: DynamicClient
+) -> Generator[Namespace, Any, Any]:
+    with create_ns(
+        unprivileged_client=unprivileged_client,
+        name=request.param["name"],
+        labels={Labels.OpenDataHub.DASHBOARD: "true"} if request.param["add_dashboard_label"] else None,
+        annotations={Annotations.OpenDataHubIo.SERVICE_MESH: "false"}
+        if request.param["disable_service_mesh"]
+        else None,
+    ) as ns:
+        yield ns
 
 
 @pytest.fixture(scope="session")

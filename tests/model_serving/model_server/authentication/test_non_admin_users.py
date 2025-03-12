@@ -11,7 +11,7 @@ from utilities.monitoring import validate_metrics_value
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, unprivileged_s3_caikit_serverless_inference_service",
+    "unprivileged_namespace, unprivileged_s3_caikit_serverless_inference_service",
     [
         pytest.param(
             {"name": "non-admin-serverless"},
@@ -37,7 +37,7 @@ class TestServerlessUnprivilegedUser:
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, unprivileged_s3_caikit_raw_inference_service",
+    "unprivileged_namespace, unprivileged_s3_caikit_raw_inference_service",
     [
         pytest.param(
             {"name": "non-admin-raw"},
