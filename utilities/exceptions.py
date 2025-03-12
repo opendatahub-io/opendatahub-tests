@@ -72,3 +72,7 @@ class NotSupportedError(Exception):
 
 class DeploymentValidationError(Exception):
     pass
+
+
+class InferenceCanaryTrafficError(Exception):
+    pass

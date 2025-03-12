@@ -36,8 +36,6 @@ from utilities.constants import (
 )
 import portforward
 
-from utilities.jira import is_jira_open
-
 LOGGER = get_logger(name=__name__)
 
 
@@ -65,12 +63,12 @@ class Inference:
         Returns:
             deployment type
         """
-        deployment_type = self.inference_service.instance.metadata.annotations.get("serving.kserve.io/deploymentMode")
+        if deployment_type := self.inference_service.instance.metadata.annotations.get(
+            "serving.kserve.io/deploymentMode"
+        ):
+            return deployment_type
 
-        if is_jira_open(jira_id="RHOAIENG-16954", admin_client=get_client()) and not deployment_type:
-            return KServeDeploymentType.SERVERLESS
-
-        return deployment_type
+        return self.inference_service.instance.status.deploymentMode
 
     def get_inference_url(self) -> str:
         """
@@ -524,6 +522,8 @@ def create_isvc(
     autoscaler_mode: str | None = None,
     multi_node_worker_spec: dict[str, int] | None = None,
     timeout: int = Timeout.TIMEOUT_15MIN,
+    scale_metric: str | None = None,
+    scale_target: int | None = None,
 ) -> Generator[InferenceService, Any, Any]:
     """
     Create InferenceService object.
@@ -553,6 +553,8 @@ def create_isvc(
         multi_node_worker_spec (dict[str, int]): Multi node worker spec
         wait_for_predictor_pods (bool): Wait for predictor pods
         timeout (int): Time to wait for the model inference,deployment to be ready
+        scale_metric (str): Scale metric
+        scale_target (int): Scale target
 
     Yields:
         InferenceService: InferenceService object
@@ -625,6 +627,12 @@ def create_isvc(
     if multi_node_worker_spec is not None:
         predictor_dict["workerSpec"] = multi_node_worker_spec
 
+    if scale_metric is not None:
+        predictor_dict["scaleMetric"] = scale_metric
+
+    if scale_target is not None:
+        predictor_dict["scaleTarget"] = scale_target
+
     with InferenceService(
         client=client,
         name=name,
@@ -634,9 +642,17 @@ def create_isvc(
         label=labels,
     ) as inference_service:
         if wait_for_predictor_pods:
-            verify_no_failed_pods(client=client, isvc=inference_service, runtime_name=runtime, timeout=timeout)
+            verify_no_failed_pods(
+                client=client,
+                isvc=inference_service,
+                runtime_name=runtime,
+                timeout=timeout,
+            )
             wait_for_inference_deployment_replicas(
-                client=client, isvc=inference_service, runtime_name=runtime, timeout=timeout
+                client=client,
+                isvc=inference_service,
+                runtime_name=runtime,
+                timeout=timeout,
             )
 
         if wait:
