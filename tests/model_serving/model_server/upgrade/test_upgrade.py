@@ -7,8 +7,6 @@ from utilities.manifests.caikit_standalone import CAIKIT_STANDALONE_INFERENCE_CO
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 from utilities.manifests.openvino import OPENVINO_INFERENCE_CONFIG
 
-pytestmark = [pytest.mark.serverless, pytest.mark.rawdeployment, pytest.mark.modelmesh]
-
 
 # TODO: add auth, external route and grpc tests
 
@@ -16,6 +14,7 @@ pytestmark = [pytest.mark.serverless, pytest.mark.rawdeployment, pytest.mark.mod
 @pytest.mark.usefixtures("valid_aws_config", "skipped_teardown_resources")
 class TestPreUpgradeModelServer:
     @pytest.mark.pre_upgrade
+    @pytest.mark.serverless
     def test_serverless_onnx_pre_upgrade_inference(self, ovms_serverless_inference_service_scope_session):
         """Verify that kserve Serverless ONNX model can be queried using REST before upgrade"""
         verify_inference_response(
@@ -27,6 +26,7 @@ class TestPreUpgradeModelServer:
         )
 
     @pytest.mark.pre_upgrade
+    @pytest.mark.rawdeployment
     def test_raw_caikit_bge_pre_upgrade_inference(self, caikit_raw_inference_service_scope_session):
         """Test Caikit bge-large-en embedding model inference using internal route before upgrade"""
         verify_inference_response(
@@ -39,6 +39,7 @@ class TestPreUpgradeModelServer:
         )
 
     @pytest.mark.pre_upgrade
+    @pytest.mark.modelmesh
     def test_model_mesh_openvino_pre_upgrade_inference(self, openvino_model_mesh_inference_service_scope_session):
         """Test OpenVINO ModelMesh inference with internal route before upgrade"""
         verify_inference_response(
@@ -53,6 +54,7 @@ class TestPreUpgradeModelServer:
 @pytest.mark.usefixtures("reused_resources")
 class TestPostUpgradeModelServer:
     @pytest.mark.post_upgrade
+    @pytest.mark.serverless
     @pytest.mark.dependency(name="test_serverless_onnx_post_upgrade_inference_service_exists")
     def test_serverless_onnx_post_upgrade_inference_service_exists(
         self, ovms_serverless_inference_service_scope_session
@@ -61,6 +63,7 @@ class TestPostUpgradeModelServer:
         assert ovms_serverless_inference_service_scope_session.exists
 
     @pytest.mark.post_upgrade
+    @pytest.mark.serverless
     @pytest.mark.dependency(depends=["test_serverless_onnx_post_upgrade_inference_service_exists"])
     def test_serverless_onnx_post_upgrade_inference(self, ovms_serverless_inference_service_scope_session):
         """Verify that kserve Serverless ONNX model can be queried using REST after upgrade"""
@@ -73,12 +76,14 @@ class TestPostUpgradeModelServer:
         )
 
     @pytest.mark.post_upgrade
+    @pytest.mark.rawdeployment
     @pytest.mark.dependency(name="test_raw_caikit_bge_post_upgrade_inference_exists")
     def test_raw_caikit_bge_post_upgrade_inference_exists(self, caikit_raw_inference_service_scope_session):
         """Test that raw deployment inference service exists after upgrade"""
         assert caikit_raw_inference_service_scope_session.exists
 
     @pytest.mark.post_upgrade
+    @pytest.mark.rawdeployment
     @pytest.mark.dependency(depends=["test_raw_caikit_bge_post_upgrade_inference_exists"])
     def test_raw_caikit_bge_post_upgrade_inference(self, caikit_raw_inference_service_scope_session):
         """Test Caikit bge-large-en embedding model inference using internal route after upgrade"""
@@ -92,6 +97,7 @@ class TestPostUpgradeModelServer:
         )
 
     @pytest.mark.post_upgrade
+    @pytest.mark.modelmesh
     @pytest.mark.dependency(name="test_model_mesh_openvino_post_upgrade_inference_exists")
     def test_model_mesh_openvino_post_upgrade_inference_exists(
         self, openvino_model_mesh_inference_service_scope_session
@@ -100,6 +106,7 @@ class TestPostUpgradeModelServer:
         assert openvino_model_mesh_inference_service_scope_session.exists
 
     @pytest.mark.post_upgrade
+    @pytest.mark.modelmesh
     @pytest.mark.dependency(depends=["test_model_mesh_openvino_post_upgrade_inference_exists"])
     def test_model_mesh_openvino_post_upgrade_inference(self, openvino_model_mesh_inference_service_scope_session):
         """Test OpenVINO ModelMesh inference with internal route after upgrade"""

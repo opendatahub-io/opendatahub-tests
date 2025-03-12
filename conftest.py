@@ -6,7 +6,15 @@ import pathlib
 import shutil
 
 import shortuuid
-from pytest import Parser, Session, FixtureRequest, FixtureDef, Item, Config, CollectReport
+from pytest import (
+    Parser,
+    Session,
+    FixtureRequest,
+    FixtureDef,
+    Item,
+    Config,
+    CollectReport,
+)
 from _pytest.terminal import TerminalReporter
 from typing import Optional, Any
 from pytest_testconfig import config as py_config
@@ -39,18 +47,26 @@ def pytest_addoption(parser: Parser) -> None:
 
     # Buckets options
     buckets_group.addoption(
-        "--ci-s3-bucket-name", default=os.environ.get("CI_S3_BUCKET_NAME"), help="Ci S3 bucket name"
+        "--ci-s3-bucket-name",
+        default=os.environ.get("CI_S3_BUCKET_NAME"),
+        help="Ci S3 bucket name",
     )
     buckets_group.addoption(
-        "--ci-s3-bucket-region", default=os.environ.get("CI_S3_BUCKET_REGION"), help="Ci S3 bucket region"
+        "--ci-s3-bucket-region",
+        default=os.environ.get("CI_S3_BUCKET_REGION"),
+        help="Ci S3 bucket region",
     )
 
     buckets_group.addoption(
-        "--ci-s3-bucket-endpoint", default=os.environ.get("CI_S3_BUCKET_ENDPOINT"), help="Ci S3 bucket endpoint"
+        "--ci-s3-bucket-endpoint",
+        default=os.environ.get("CI_S3_BUCKET_ENDPOINT"),
+        help="Ci S3 bucket endpoint",
     )
 
     buckets_group.addoption(
-        "--models-s3-bucket-name", default=os.environ.get("MODELS_S3_BUCKET_NAME"), help="Models S3 bucket name"
+        "--models-s3-bucket-name",
+        default=os.environ.get("MODELS_S3_BUCKET_NAME"),
+        help="Models S3 bucket name",
     )
     buckets_group.addoption(
         "--models-s3-bucket-region",
@@ -91,6 +107,11 @@ def pytest_addoption(parser: Parser) -> None:
         action="store_true",
         help="Delete pre-upgrade resources; useful when debugging pre-upgrade tests",
     )
+    upgrade_group.addoption(
+        "--upgrade-deployment-modes",
+        help="Coma-separated str; specify inference service deployment modes tests to run in upgrade tests. "
+        "If not set, all will be tested.",
+    )
 
 
 def pytest_cmdline_main(config: Any) -> None:
@@ -102,19 +123,45 @@ def pytest_collection_modifyitems(session: Session, config: Config, items: list[
     Pytest fixture to filter or re-order the items in-place.
 
     Filters upgrade tests based on '--pre-upgrade' / '--post-upgrade' option and marker.
+    If `--upgrade-deployment-modes` option is set, only tests with the specified deployment modes will be added.
     """
+
+    def _add_upgrade_test(_item: Item, _upgrade_deployment_modes: list[str]) -> bool:
+        """
+        Add upgrade test to the list of tests to run.
+
+        Args:
+            _item (Item): The test item.
+            _upgrade_deployment_modes (list[str]): The deployment modes to test.
+
+        Returns:
+            True if the test should be added, False otherwise.
+
+        """
+        if not _upgrade_deployment_modes:
+            return True
+
+        return any([keyword for keyword in _item.keywords if keyword in _upgrade_deployment_modes])
+
     pre_upgrade_tests: list[Item] = []
     post_upgrade_tests: list[Item] = []
     non_upgrade_tests: list[Item] = []
+    upgrade_deployment_modes: list[str] = []
 
     run_pre_upgrade_tests: str | None = config.getoption(name="pre_upgrade")
     run_post_upgrade_tests: str | None = config.getoption(name="post_upgrade")
+    if config_upgrade_deployment_modes := config.getoption(name="upgrade_deployment_modes"):
+        upgrade_deployment_modes = config_upgrade_deployment_modes.split(",")
 
     for item in items:
-        if "pre_upgrade" in item.keywords:
+        if "pre_upgrade" in item.keywords and _add_upgrade_test(
+            _item=item, _upgrade_deployment_modes=upgrade_deployment_modes
+        ):
             pre_upgrade_tests.append(item)
 
-        elif "post_upgrade" in item.keywords:
+        elif "post_upgrade" in item.keywords and _add_upgrade_test(
+            _item=item, _upgrade_deployment_modes=upgrade_deployment_modes
+        ):
             post_upgrade_tests.append(item)
 
         else:
