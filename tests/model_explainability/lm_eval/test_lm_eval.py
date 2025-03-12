@@ -90,7 +90,7 @@ def test_lmeval_local_offline_unitxt_tasks_flan_20newsgroups(
     indirect=True,
 )
 def test_lmeval_vllm_emulator(admin_client, model_namespace, lmevaljob_vllm_emulator):
-    """Basic test that verifies that LMEval can run successfully pulling a model from HuggingFace."""
+    """Basic test that verifies LMEval works with vLLM using a vLLM emulator for more efficient evaluation"""
     lmevaljob_pod = Pod(
         client=admin_client,
         name=lmevaljob_vllm_emulator.name,
