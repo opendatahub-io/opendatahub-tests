@@ -228,7 +228,7 @@ def vllm_emulator_service(
 ) -> Generator[Service, Any, Any]:
     with Service(
         client=admin_client,
-        namespace=model_namespace.name,
+        namespace=vllm_emulator_deployment.namespace,
         name=f"{VLLM_EMULATOR}-service",
         ports=[
             {
@@ -249,7 +249,7 @@ def vllm_emulator_route(
 ) -> Generator[Route, Any, Any]:
     with Route(
         client=admin_client,
-        namespace=model_namespace.name,
+        namespace=vllm_emulator_service.namespace,
         name=VLLM_EMULATOR,
         service=vllm_emulator_service.name,
     ) as route:
