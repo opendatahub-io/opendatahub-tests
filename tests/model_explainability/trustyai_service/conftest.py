@@ -16,6 +16,14 @@ from ocp_resources.subscription import Subscription
 from ocp_resources.trustyai_service import TrustyAIService
 from ocp_utilities.operators import install_operator, uninstall_operator
 
+from tests.model_explainability.constants import MINIO
+from tests.model_explainability.constants import (
+    MINIO,
+    MINIO_SECRET_KEY,
+    MINIO_ACCESS_KEY,
+    MINIO_SECRET_KEY_VALUE,
+    MINIO_ACCESS_KEY_VALUE,
+)
 from tests.model_explainability.trustyai_service.trustyai_service_utils import TRUSTYAI_SERVICE_NAME
 from tests.model_explainability.trustyai_service.utils import (
     get_cluster_service_version,
@@ -26,8 +34,6 @@ from tests.model_explainability.trustyai_service.utils import (
 from utilities.constants import Timeout
 from utilities.infra import update_configmap_data
 
-MINIO: str = "minio"
-OPENDATAHUB_IO: str = "opendatahub.io"
 OPENSHIFT_OPERATORS: str = "openshift-operators"
 
 MARIADB: str = "mariadb"
@@ -107,12 +113,12 @@ def minio_pod(admin_client: DynamicClient, model_namespace: Namespace) -> Genera
                 ],
                 "env": [
                     {
-                        "name": "MINIO_ACCESS_KEY",
-                        "value": "THEACCESSKEY",
+                        "name": MINIO_ACCESS_KEY,
+                        "value": MINIO_ACCESS_KEY_VALUE,
                     },
                     {
-                        "name": "MINIO_SECRET_KEY",
-                        "value": "THESECRETKEY",
+                        "name": MINIO_SECRET_KEY,
+                        "value": MINIO_SECRET_KEY_VALUE,
                     },
                 ],
                 "image": "quay.io/trustyai_testing/modelmesh-minio-examples"
@@ -120,58 +126,10 @@ def minio_pod(admin_client: DynamicClient, model_namespace: Namespace) -> Genera
                 "name": MINIO,
             }
         ],
-        label={"app": "minio", "maistra.io/expose-route": "true"},
+        label={"app": MINIO, "maistra.io/expose-route": "true"},
         annotations={"sidecar.istio.io/inject": "true"},
     ) as minio_pod:
         yield minio_pod
-
-
-@pytest.fixture(scope="class")
-def minio_service(admin_client: DynamicClient, model_namespace: Namespace) -> Generator[Service, Any, Any]:
-    with Service(
-        client=admin_client,
-        name=MINIO,
-        namespace=model_namespace.name,
-        ports=[
-            {
-                "name": "minio-client-port",
-                "port": 9000,
-                "protocol": "TCP",
-                "targetPort": 9000,
-            }
-        ],
-        selector={
-            "app": MINIO,
-        },
-    ) as minio_service:
-        yield minio_service
-
-
-@pytest.fixture(scope="class")
-def minio_data_connection(
-    admin_client: DynamicClient, model_namespace: Namespace, minio_pod: Pod, minio_service: Service
-) -> Generator[Secret, Any, Any]:
-    with Secret(
-        client=admin_client,
-        name="aws-connection-minio-data-connection",
-        namespace=model_namespace.name,
-        data_dict={
-            "AWS_ACCESS_KEY_ID": "VEhFQUNDRVNTS0VZ",
-            "AWS_DEFAULT_REGION": "dXMtc291dGg=",
-            "AWS_S3_BUCKET": "bW9kZWxtZXNoLWV4YW1wbGUtbW9kZWxz",
-            "AWS_S3_ENDPOINT": "aHR0cDovL21pbmlvOjkwMDA=",
-            "AWS_SECRET_ACCESS_KEY": "VEhFU0VDUkVUS0VZ",  # pragma: allowlist secret
-        },
-        label={
-            f"{OPENDATAHUB_IO}/dashboard": "true",
-            f"{OPENDATAHUB_IO}/managed": "true",
-        },
-        annotations={
-            f"{OPENDATAHUB_IO}/connection-type": "s3",
-            "openshift.io/display-name": "Minio Data Connection",
-        },
-    ) as minio_secret:
-        yield minio_secret
 
 
 @pytest.fixture(scope="class")
