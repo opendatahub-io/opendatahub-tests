@@ -16,11 +16,14 @@ from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 
-from utilities.constants import Labels, Annotations, KServeDeploymentType, Timeout
+from tests.model_explainability.constants import MINIO
+from utilities.constants import KServeDeploymentType, Timeout
 from utilities.inference_utils import create_isvc
+from utilities.serving_runtime import ServingRuntimeFromTemplate
 
-MINIO_LLM: str = "minio-llm"
+
 USER_ONE: str = "user-one"
+GUARDRAILS_ORCHESTRATOR_PORT: int = 8032
 
 
 @pytest.fixture(scope="class")
@@ -31,6 +34,7 @@ def guardrails_orchestrator_health_route(
         name=f"{guardrails_orchestrator.name}-health",
         namespace=guardrails_orchestrator.namespace,
         wait_for_resource=True,
+        ensure_exists=True,
     )
     yield route
 
@@ -61,7 +65,7 @@ def guardrails_orchestrator(
 def qwen_llm_model(
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    minio_llm_data_connection: Secret,
+    minio_data_connection: Secret,
     vllm_runtime: ServingRuntime,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
@@ -71,7 +75,7 @@ def qwen_llm_model(
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         model_format="vLLM",
         runtime=vllm_runtime.name,
-        storage_key=minio_llm_data_connection.name,
+        storage_key=minio_data_connection.name,
         storage_path="Qwen2.5-0.5B-Instruct",
         wait_for_predictor_pods=False,
         enable_auth=True,
@@ -82,59 +86,37 @@ def qwen_llm_model(
 
 @pytest.fixture(scope="class")
 def vllm_runtime(
-    admin_client: DynamicClient, model_namespace: Namespace, minio_llm_data_connection: Secret
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    minio_llm_deployment: Deployment,
+    minio_service: Service,
+    minio_data_connection: Secret,
 ) -> Generator[ServingRuntime, Any, Any]:
-    with ServingRuntime(
+    with ServingRuntimeFromTemplate(
         client=admin_client,
         name="vllm-runtime-cpu-fp16",
         namespace=model_namespace.name,
-        containers=[
-            {
-                "name": "kserve-container",
-                "image": "quay.io/rh-aiservices-bu/vllm-cpu-openai-ubi9"
-                "@sha256:d680ff8becb6bbaf83dfee7b2d9b8a2beb130db7fd5aa7f9a6d8286a58cebbfd",
+        template_name="vllm-runtime-template",
+        deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
+        runtime_image="quay.io/rh-aiservices-bu/vllm-cpu-openai-ubi9"
+        "@sha256:d680ff8becb6bbaf83dfee7b2d9b8a2beb130db7fd5aa7f9a6d8286a58cebbfd",
+        containers={
+            "kserve-container": {
                 "command": ["python", "-m", "vllm.entrypoints.openai.api_server"],
                 "args": [
-                    "--port=8032",
+                    f"--port={str(GUARDRAILS_ORCHESTRATOR_PORT)}",
                     "--model=/mnt/models",
                     "--served-model-name={{.Name}}",
                     "--dtype=float16",
                     "--enforce-eager",
                 ],
-                "env": [
-                    {"name": "HF_HOME", "value": "/tmp/hf_home"},
-                ],
-                "ports": [
-                    {"containerPort": 8032, "protocol": "TCP"},
-                ],
-                "volumeMounts": [
-                    {"name": "shm", "mountPath": "/dev/shm"},
-                ],
+                "ports": [{"containerPort": GUARDRAILS_ORCHESTRATOR_PORT, "protocol": "TCP"}],
+                "volumeMounts": [{"mountPath": "/dev/shm", "name": "shm"}],
             }
-        ],
-        supported_model_formats=[
-            {"name": "vLLM", "autoSelect": True},
-        ],
-        multi_model=False,
-        volumes=[
-            {
-                "name": "shm",
-                "emptyDir": {
-                    "medium": "Memory",
-                    "sizeLimit": "2Gi",
-                },
-            }
-        ],
-        annotations={
-            "openshift.io/display-name": "vLLM ServingRuntime for KServe - Float16",
         },
-        spec_annotations={
-            "prometheus.io/path": "/metrics",
-            "prometheus.io/port": "8080",
-        },
-        label={Labels.OpenDataHub.DASHBOARD: "true"},
-    ) as vllm_runtime:
-        yield vllm_runtime
+        volumes=[{"emptyDir": {"medium": "Memory", "sizeLimit": "2Gi"}, "name": "shm"}],
+    ) as serving_runtime:
+        yield serving_runtime
 
 
 @pytest.fixture(scope="class")
@@ -166,7 +148,7 @@ def orchestrator_configmap(
                 "chat_generation": {
                     "service": {
                         "hostname": f"{qwen_llm_model.name}-predictor.{model_namespace.name}.svc.cluster.local",
-                        "port": 8032,
+                        "port": GUARDRAILS_ORCHESTRATOR_PORT,
                     }
                 },
                 "detectors": {
@@ -192,7 +174,7 @@ def vllm_gateway_config(admin_client: DynamicClient, model_namespace: Namespace)
         label={"app": "fmstack-nlp"},
         data={
             "config.yaml": yaml.dump({
-                "orchestrator": {"host": "localhost", "port": 8032},
+                "orchestrator": {"host": "localhost", "port": GUARDRAILS_ORCHESTRATOR_PORT},
                 "detectors": [
                     {"name": "regex", "detector_params": {"regex": ["email", "ssn"]}},
                     {"name": "other_detector"},
@@ -206,16 +188,18 @@ def vllm_gateway_config(admin_client: DynamicClient, model_namespace: Namespace)
 
 @pytest.fixture(scope="class")
 def minio_llm_deployment(
-    admin_client: DynamicClient, model_namespace: Namespace, llm_models_pvc: PersistentVolumeClaim
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    llm_models_pvc: PersistentVolumeClaim,
 ) -> Generator[Deployment, Any, Any]:
     with Deployment(
         client=admin_client,
         name="llm-container-deployment",
         namespace=model_namespace.name,
         replicas=1,
-        selector={"matchLabels": {"app": MINIO_LLM}},
+        selector={"matchLabels": {"app": MINIO}},
         template={
-            "metadata": {"labels": {"app": MINIO_LLM, "maistra.io/expose-route": "true"}, "name": MINIO_LLM},
+            "metadata": {"labels": {"app": MINIO, "maistra.io/expose-route": "true"}, "name": MINIO},
             "spec": {
                 "volumes": [{"name": "model-volume", "persistentVolumeClaim": {"claimName": "llm-models-claim"}}],
                 "initContainers": [
@@ -246,7 +230,7 @@ def minio_llm_deployment(
                         ],
                         "image": "quay.io/trustyai/modelmesh-minio-examples"
                         "@sha256:65cb22335574b89af15d7409f62feffcc52cc0e870e9419d63586f37706321a5",
-                        "name": MINIO_LLM,
+                        "name": MINIO,
                         "securityContext": {
                             "allowPrivilegeEscalation": False,
                             "capabilities": {"drop": ["ALL"]},
@@ -257,7 +241,7 @@ def minio_llm_deployment(
                 ],
             },
         },
-        label={"app": MINIO_LLM},
+        label={"app": MINIO},
         wait_for_resource=True,
     ) as deployment:
         deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_10MIN)
@@ -277,43 +261,6 @@ def llm_models_pvc(
         size="10Gi",
     ) as pvc:
         yield pvc
-
-
-@pytest.fixture(scope="class")
-def minio_llm_service(admin_client: DynamicClient, model_namespace: Namespace) -> Generator[Service, Any, Any]:
-    with Service(
-        client=admin_client,
-        name=MINIO_LLM,
-        namespace=model_namespace.name,
-        ports=[{"name": "minio-client-port", "port": 9000, "protocol": "TCP", "targetPort": 9000}],
-        selector={"app": MINIO_LLM},
-    ) as service:
-        yield service
-
-
-@pytest.fixture(scope="class")
-def minio_llm_data_connection(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-    minio_llm_deployment: Deployment,
-    minio_llm_service: Service,
-) -> Generator[Secret, Any, Any]:
-    with Secret(
-        client=admin_client,
-        name="aws-connection-minio-data-connection",
-        namespace=model_namespace.name,
-        data_dict={
-            # Dummy AWS values
-            "AWS_ACCESS_KEY_ID": "VEhFQUNDRVNTS0VZ",
-            "AWS_DEFAULT_REGION": "dXMtc291dGg=",
-            "AWS_S3_BUCKET": "bGxtcw==",
-            "AWS_S3_ENDPOINT": "aHR0cDovL21pbmlvLWxsbTo5MDAw",
-            "AWS_SECRET_ACCESS_KEY": "VEhFU0VDUkVUS0VZ",  # pragma: allowlist secret
-        },
-        label={Labels.OpenDataHub.DASHBOARD: "true", Annotations.OpenDataHubIo.MANAGED: "true"},
-        annotations={"opendatahub.io/connection-type": "s3", "openshift.io/display-name": "Minio LLM Data Connection"},
-    ) as secret:
-        yield secret
 
 
 @pytest.fixture(scope="class")
