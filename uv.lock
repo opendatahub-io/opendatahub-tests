@@ -1539,7 +1539,7 @@ requires-dist = [
     { name = "jira", specifier = ">=3.8.0" },
     { name = "model-registry", specifier = ">=0.2.13" },
     { name = "openshift-python-utilities", specifier = ">=5.0.71" },
-    { name = "openshift-python-wrapper", specifier = ">=11.0.26" },
+    { name = "openshift-python-wrapper", specifier = ">=11.0.33" },
     { name = "portforward", specifier = ">=0.7.1" },
     { name = "protobuf" },
     { name = "pygithub", specifier = ">=2.5.0" },

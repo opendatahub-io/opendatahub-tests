@@ -1,20 +1,23 @@
+import base64
 import http
 
 import pytest
 import requests
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
+from tests.model_explainability.constants import MINIO_DATA_DICT
 from utilities.constants import Timeout
 
-LOGGER = get_logger(name=__name__)
+DATA_DICT: dict[str, str] = MINIO_DATA_DICT
+DATA_DICT["AWS_S3_BUCKET"] = base64.b64encode("llms".encode()).decode()
 
 
 @pytest.mark.parametrize(
-    "model_namespace",
+    "model_namespace, minio_data_connection",
     [
         pytest.param(
             {"name": "test-guardrails"},
+            {"data-dict": DATA_DICT},
         )
     ],
     indirect=True,
