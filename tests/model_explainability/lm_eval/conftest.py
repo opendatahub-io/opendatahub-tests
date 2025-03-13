@@ -22,6 +22,17 @@ LMEVALJOB_NAME: str = "lmeval-test-job"
 
 
 @pytest.fixture(scope="function")
+def lmevaljob_hf_pod(admin_client: DynamicClient, lmevaljob_hf: LMEvalJob) -> Generator[Pod, Any, Any]:
+    lmeval_pod = Pod(
+        client=admin_client,
+        namespace=lmevaljob_hf.namespace,
+        name=lmevaljob_hf.name,
+        wait_for_resource=True,
+    )
+    yield lmeval_pod
+
+
+@pytest.fixture(scope="function")
 def lmevaljob_hf(
     admin_client: DynamicClient, model_namespace: Namespace, patched_trustyai_operator_configmap_allow_online: ConfigMap
 ) -> Generator[LMEvalJob, Any, Any]:
@@ -71,6 +82,19 @@ def lmevaljob_local_offline(
         label={Labels.OpenDataHub.DASHBOARD: "true", "lmevaltests": "vllm"},
     ) as job:
         yield job
+
+
+@pytest.fixture(scope="function")
+def lmevaljob_vllm_emulator_pod(
+    admin_client: DynamicClient, lmevaljob_vllm_emulator: LMEvalJob
+) -> Generator[Pod, Any, Any]:
+    lmeval_pod = Pod(
+        client=admin_client,
+        namespace=lmevaljob_vllm_emulator.namespace,
+        name=lmevaljob_vllm_emulator.name,
+        wait_for_resource=True,
+    )
+    yield lmeval_pod
 
 
 @pytest.fixture(scope="function")
