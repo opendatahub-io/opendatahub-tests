@@ -7,7 +7,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 
-from tests.model_explainability.constants import MINIO
+from tests.model_explainability.constants import MINIO, MINIO_PORT
 
 OPENDATAHUB_IO: str = "opendatahub.io"
 
@@ -21,9 +21,9 @@ def minio_service(admin_client: DynamicClient, model_namespace: Namespace) -> Ge
         ports=[
             {
                 "name": "minio-client-port",
-                "port": 9000,
+                "port": MINIO_PORT,
                 "protocol": "TCP",
-                "targetPort": 9000,
+                "targetPort": MINIO_PORT,
             }
         ],
         selector={
