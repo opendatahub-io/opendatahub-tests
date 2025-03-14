@@ -51,17 +51,17 @@ class TestGraniteLabDraftModel:
     def test_spec_draft_inference(
         self,
         vllm_inference_service: Generator[InferenceService, Any, Any],
-        get_pod_name_resource: Pod,
+        vllm_pod_resource: Pod,
         response_snapshot: Any,
     ):
         model_info, chat_responses, completion_responses = run_raw_inference(
-            pod_name=get_pod_name_resource.name,
+            pod_name=vllm_pod_resource.name,
             isvc=vllm_inference_service,
             port=8080,
             endpoint=OPENAI_ENDPOINT_NAME,
         )
         model_info_tgis, completion_responses_tgis, completion_responses_tgis_stream = run_raw_inference(
-            pod_name=get_pod_name_resource.name,
+            pod_name=vllm_pod_resource.name,
             isvc=vllm_inference_service,
             port=8033,
             endpoint=TGIS_ENDPOINT_NAME,
@@ -100,17 +100,17 @@ class TestMultiGraniteLabDraftModel:
     def test_multi_spec_draft_inference(
         self,
         vllm_inference_service: Generator[InferenceService, Any, Any],
-        get_pod_name_resource: Pod,
+        vllm_pod_resource: Pod,
         response_snapshot: Any,
     ):
         model_info, chat_responses, completion_responses = run_raw_inference(
-            pod_name=get_pod_name_resource.name,
+            pod_name=vllm_pod_resource.name,
             isvc=vllm_inference_service,
             port=8080,
             endpoint=OPENAI_ENDPOINT_NAME,
         )
         model_info_tgis, completion_responses_tgis, completion_responses_tgis_stream = run_raw_inference(
-            pod_name=get_pod_name_resource.name,
+            pod_name=vllm_pod_resource.name,
             isvc=vllm_inference_service,
             port=8033,
             endpoint=TGIS_ENDPOINT_NAME,

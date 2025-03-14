@@ -1,0 +1,26 @@
+[
+  {
+    "finish_reason": "stop",
+    "index": 0,
+    "logprobs": null,
+    "message": {
+      "content": "\n```python\ndef is_even(n):\n    return n % 2 == 0\n```",
+      "reasoning_content": null,
+      "role": "assistant",
+      "tool_calls": []
+    },
+    "stop_reason": null
+  },
+  {
+    "finish_reason": "stop",
+    "index": 0,
+    "logprobs": null,
+    "message": {
+      "content": "I'm not sure if you're being serious or not, but I don't have personal opinions about games. However, I can tell you that SpellForce 3 has received mixed to positive reviews, and 2017 was indeed a busy year with many high-quality games released.",
+      "reasoning_content": null,
+      "role": "assistant",
+      "tool_calls": []
+    },
+    "stop_reason": null
+  }
+]

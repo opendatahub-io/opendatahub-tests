@@ -1,12 +1,12 @@
 import pytest
 
-from tests.model_explainability.trustyai_service.utils import (
-    send_inference_requests_and_verify_trustyai_service,
+from tests.model_explainability.trustyai_service.trustyai_service_utils import (
+    send_inferences_and_verify_trustyai_service_registered,
     verify_upload_data_to_trustyai_service,
-    verify_trustyai_metric_request,
+    verify_trustyai_service_metric_request,
     TrustyAIServiceMetrics,
-    verify_trustyai_metric_scheduling_request,
-    verify_trustyai_metric_delete_request,
+    verify_trustyai_service_metric_scheduling_request,
+    verify_trustyai_service_metric_delete_request,
 )
 from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
 
@@ -22,6 +22,7 @@ BASE_DATA_PATH: str = "./tests/model_explainability/trustyai_service/drift/model
     ],
     indirect=True,
 )
+@pytest.mark.smoke
 class TestDriftMetrics:
     """
     Verifies all the basic operations with a drift metric (meanshift) available in TrustyAI, using PVC storage.
@@ -40,7 +41,7 @@ class TestDriftMetrics:
         trustyai_service_with_pvc_storage,
         gaussian_credit_model,
     ) -> None:
-        send_inference_requests_and_verify_trustyai_service(
+        send_inferences_and_verify_trustyai_service_registered(
             client=admin_client,
             token=current_client_token,
             data_path=f"{BASE_DATA_PATH}/data_batches",
@@ -65,7 +66,7 @@ class TestDriftMetrics:
     def test_drift_metric_meanshift(
         self, admin_client, current_client_token, trustyai_service_with_pvc_storage, gaussian_credit_model
     ):
-        verify_trustyai_metric_request(
+        verify_trustyai_service_metric_request(
             client=admin_client,
             trustyai_service=trustyai_service_with_pvc_storage,
             token=current_client_token,
@@ -76,7 +77,7 @@ class TestDriftMetrics:
     def test_drift_metric_schedule_meanshift(
         self, admin_client, current_client_token, trustyai_service_with_pvc_storage, gaussian_credit_model
     ):
-        verify_trustyai_metric_scheduling_request(
+        verify_trustyai_service_metric_scheduling_request(
             client=admin_client,
             trustyai_service=trustyai_service_with_pvc_storage,
             token=current_client_token,
@@ -85,7 +86,7 @@ class TestDriftMetrics:
         )
 
     def test_drift_metric_delete(self, admin_client, current_client_token, trustyai_service_with_pvc_storage):
-        verify_trustyai_metric_delete_request(
+        verify_trustyai_service_metric_delete_request(
             client=admin_client,
             trustyai_service=trustyai_service_with_pvc_storage,
             token=current_client_token,

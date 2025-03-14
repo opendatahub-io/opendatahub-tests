@@ -16,6 +16,7 @@ from tests.model_serving.model_runtime.vllm.constant import (
     TGIS_ENDPOINT_NAME,
 )
 import portforward
+import pytest
 
 LOGGER = get_logger(name=__name__)
 
@@ -139,7 +140,7 @@ def validate_supported_quantization_schema(q_type: str) -> None:
         raise ValueError(f"Unsupported quantization type: {q_type}")
 
 
-def validate_inference_output(*args: tuple[str, ...], response_snapshot: Any) -> None:
+def validate_inference_output(*args: tuple[str, ...] | list[Any], response_snapshot: Any) -> None:
     for data in args:
         assert data == response_snapshot, f"output mismatch for {data}"
 
@@ -188,3 +189,31 @@ def validate_raw_tgis_inference_request(
         completion_responses,
         response_snapshot=response_snapshot,
     )
+
+
+def validate_serverless_openai_inference_request(
+    url: str,
+    model_name: str,
+    response_snapshot: Any,
+    chat_query: list[list[dict[str, str]]],
+    completion_query: list[dict[str, str]],
+    tool_calling: dict[Any, Any] | None = None,
+) -> None:
+    model_info, chat_responses, completion_responses = fetch_openai_response(
+        url=url,
+        model_name=model_name,
+        chat_query=chat_query,
+        completion_query=completion_query,
+        tool_calling=tool_calling,
+    )
+    validate_inference_output(
+        model_info,
+        chat_responses,
+        completion_responses,
+        response_snapshot=response_snapshot,
+    )
+
+
+def skip_if_deployment_mode(isvc: InferenceService, deployment_type: str, deployment_message: str) -> None:
+    if isvc.instance.metadata.annotations["serving.kserve.io/deploymentMode"] == deployment_type:
+        pytest.skip(deployment_message)

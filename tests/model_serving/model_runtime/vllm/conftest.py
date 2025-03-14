@@ -10,6 +10,7 @@ from ocp_resources.service_account import ServiceAccount
 from tests.model_serving.model_runtime.vllm.utils import (
     kserve_s3_endpoint_secret,
     validate_supported_quantization_schema,
+    skip_if_deployment_mode,
 )
 from utilities.constants import KServeDeploymentType
 from pytest import FixtureRequest
@@ -141,5 +142,23 @@ def response_snapshot(snapshot: Any) -> Any:
 
 
 @pytest.fixture
-def get_pod_name_resource(admin_client: DynamicClient, vllm_inference_service: InferenceService) -> Pod:
+def vllm_pod_resource(admin_client: DynamicClient, vllm_inference_service: InferenceService) -> Pod:
     return get_pods_by_isvc_label(client=admin_client, isvc=vllm_inference_service)[0]
+
+
+@pytest.fixture
+def skip_if_serverless_deployemnt(vllm_inference_service: InferenceService) -> None:
+    skip_if_deployment_mode(
+        isvc=vllm_inference_service,
+        deployment_type=KServeDeploymentType.SERVERLESS,
+        deployment_message="Test is being skipped because model is being deployed in serverless mode",
+    )
+
+
+@pytest.fixture
+def skip_if_raw_deployemnt(vllm_inference_service: InferenceService) -> None:
+    skip_if_deployment_mode(
+        isvc=vllm_inference_service,
+        deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
+        deployment_message="Test is being skipped because model is being deployed in raw mode",
+    )

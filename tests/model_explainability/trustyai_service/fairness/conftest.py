@@ -6,76 +6,31 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
-from ocp_resources.trustyai_service import TrustyAIService
 
-from tests.model_explainability.trustyai_service.utils import wait_for_isvc_deployment_registered_by_trustyaiservice
-from utilities.constants import ModelFormat, KServeDeploymentType, Labels, ModelAndFormat, ModelVersion
+from tests.model_explainability.trustyai_service.trustyai_service_utils import (
+    wait_for_isvc_deployment_registered_by_trustyai_service,
+)
+from utilities.constants import ModelFormat, KServeDeploymentType, RuntimeTemplates
 from utilities.inference_utils import create_isvc
+from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
-# TODO: Use ServingRuntimeFromTemplate
 @pytest.fixture(scope="class")
 def ovms_runtime(
     admin_client: DynamicClient, minio_data_connection: Secret, model_namespace: Namespace
 ) -> Generator[ServingRuntime, Any, Any]:
-    supported_model_formats = [
-        {"name": f"{ModelAndFormat.OPENVINO_IR}", "version": ModelVersion.OPSET13, "autoSelect": True},
-        {"name": ModelFormat.ONNX, "version": "1"},
-        {"name": ModelFormat.TENSORFLOW, "version": "1", "autoSelect": True},
-        {"name": ModelFormat.TENSORFLOW, "version": "2", "autoSelect": True},
-        {"name": "paddle", "version": "2", "autoSelect": True},
-        {"name": "pytorch", "version": "2", "autoSelect": True},
-    ]
-    containers = [
-        {
-            "name": "kserve-container",
-            "image": "quay.io/opendatahub/openvino_model_server:stable-nightly-2024-08-04",
-            "args": [
-                "--model_name={{.Name}}",
-                "--port=8001",
-                "--rest_port=8888",
-                "--model_path=/mnt/models",
-                "--file_system_poll_wait_seconds=0",
-                "--grpc_bind_address=0.0.0.0",
-                "--rest_bind_address=0.0.0.0",
-                "--target_device=AUTO",
-                "--metrics_enable",
-            ],
-            "ports": [
-                {
-                    "containerPort": 8888,
-                    "protocol": "TCP",
-                }
-            ],
-            "volumeMounts": [
-                {
-                    "mountPath": "/dev/shm",
-                    "name": "shm",
-                }
-            ],
-        }
-    ]
-
-    with ServingRuntime(
+    with ServingRuntimeFromTemplate(
         client=admin_client,
         name=f"{ModelFormat.OVMS}-1.x",
         namespace=model_namespace.name,
-        containers=containers,
-        supported_model_formats=supported_model_formats,
+        template_name=RuntimeTemplates.OVMS_KSERVE,
         multi_model=False,
-        protocol_versions=["v2", "grpc-v2"],
-        annotations={
-            "opendatahub.io/accelerator-name": "",
-            "opendatahub.io/apiProtocol": "REST",
-            "opendatahub.io/recommended-accelerators": '["nvidia.com/gpu"]',
-            "opendatahub.io/template-display-name": "OpenVINO Model Server",
-            "opendatahub.io/template-name": "kserve-ovms",
-            "openshift.io/display-name": "ovms-1.x",
-            "prometheus.io/path": "/metrics",
-            "prometheus.io/port": "8888",
-        },
-        label={Labels.OpenDataHub.DASHBOARD: "true"},
-        volumes=[{"name": "shm", "emptyDir": {"medium": "Memory", "sizeLimit": "2Gi"}}],
+        enable_http=False,
+        enable_grpc=True,
+        model_format_name={"name": ModelFormat.ONNX, "version": "1"},
+        # TODO: Remove runtime_image once model works with latest ovms
+        runtime_image="quay.io/opendatahub/openvino_model_server"
+        "@sha256:564664371d3a21b9e732a5c1b4b40bacad714a5144c0a9aaf675baec4a04b148",
     ) as sr:
         yield sr
 
@@ -86,7 +41,6 @@ def onnx_loan_model(
     model_namespace: Namespace,
     minio_data_connection: Secret,
     ovms_runtime: ServingRuntime,
-    trustyai_service_with_pvc_storage: TrustyAIService,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
@@ -104,10 +58,9 @@ def onnx_loan_model(
         wait=True,
         wait_for_predictor_pods=False,
     ) as isvc:
-        wait_for_isvc_deployment_registered_by_trustyaiservice(
+        wait_for_isvc_deployment_registered_by_trustyai_service(
             client=admin_client,
             isvc=isvc,
-            trustyai_service=trustyai_service_with_pvc_storage,
             runtime_name=ovms_runtime.name,
         )
         yield isvc
