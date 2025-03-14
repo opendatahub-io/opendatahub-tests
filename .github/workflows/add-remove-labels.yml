@@ -3,8 +3,11 @@ on:
   pull_request_target:
     types: [synchronize]
 
+  pull_request_review:
+    types: [submitted, edited]
+
   pull_request_review_comment:
-    types: [created]
+    types: [created, edited]
 
   issue_comment:
     types: [created, edited, deleted]
@@ -32,6 +35,13 @@ jobs:
           comment-id: ${{ github.event.comment.id }}
           reactions: '+1'
 
+      - name: Acknowledge the review with thumbs up reaction
+        if: ${{ github.event.review }}
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ github.event.review.id }}
+          reactions: '+1'
+
       - uses: actions/checkout@v4
 
       - name: Install uv
@@ -45,6 +55,7 @@ jobs:
           GITHUB_EVENT_REVIEW_STATE: ${{ github.event.review.state }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           COMMENT_BODY: ${{ github.event.comment.body }}
+          REVIEW_COMMENT_BODY: ${{ github.event.review.body }}
           GITHUB_USER_LOGIN: ${{ github.event.sender.login }}
           ACTION: "add-remove-labels"
         run: uv run python .github/workflows/scripts/pr_workflow.py
