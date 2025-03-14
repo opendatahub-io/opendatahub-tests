@@ -21,7 +21,7 @@ jobs:
         run: echo '${{ toJson(github.event) }}'
       - name: extract PR number
         run: |
-          if [ "${{ github.event.issue.number }}" != "" ]; then 
+          if [ "${{ github.event.issue.number }}" != "" ]; then
             echo "PR_NUMBER=${{ github.event.issue.number }}" >> $GITHUB_ENV
           else
             echo "PR_NUMBER=${{ github.event.pull_request.number }}" >> $GITHUB_ENV
