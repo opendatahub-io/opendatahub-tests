@@ -5,7 +5,9 @@ on:
   issue_comment:
     types: [created]
   pull_request_review:
-    types: [created]
+    types: [submitted, edited]
+  pull_request_review_comment:
+    types: [created, edited]
 
 jobs:
   approve-pr:
