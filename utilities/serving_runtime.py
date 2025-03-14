@@ -192,7 +192,9 @@ class ServingRuntimeFromTemplate(ServingRuntime):
                         container["ports"] = vLLM_CONFIG["port_configurations"]["raw"]
 
         if self.containers:
-            template_container_names = {container.get("name"): i for i, container in enumerate(template_containers)}
+            template_container_names = {
+                container.get("name"): index for index, container in enumerate(template_containers)
+            }
 
             for container_name, container_config in self.containers.items():
                 if container_name in template_container_names:

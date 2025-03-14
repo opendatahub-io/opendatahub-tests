@@ -1,11 +1,12 @@
-import base64
+from utilities.general import get_s3_secret_dict
 
 MINIO: str = "minio"
+MINIO_PORT: int = 9000
 
-MINIO_DATA_DICT: dict[str, str] = {
-    "AWS_ACCESS_KEY_ID": base64.b64encode("THEACCESSKEY".encode()).decode(),
-    "AWS_DEFAULT_REGION": base64.b64encode("us-south".encode()).decode(),
-    "AWS_S3_BUCKET": base64.b64encode("modelmesh-example-models".encode()).decode(),
-    "AWS_S3_ENDPOINT": base64.b64encode("http://minio:9000".encode()).decode(),
-    "AWS_SECRET_ACCESS_KEY": base64.b64encode("THESECRETKEY".encode()).decode(),  # pragma: allowlist secret
-}
+MINIO_DATA_DICT: dict[str, str] = get_s3_secret_dict(
+    aws_access_key="THEACCESSKEY",
+    aws_secret_access_key="THESECRETKEY",  # pragma: allowlist secret
+    aws_s3_bucket="modelmesh-example-models",
+    aws_s3_endpoint=f"http://minio:{str(MINIO_PORT)}",
+    aws_s3_region="us-south",
+)
