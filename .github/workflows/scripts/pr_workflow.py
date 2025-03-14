@@ -103,7 +103,9 @@ class PrLabeler(PrBaseClass):
             if not self.user_login:
                 sys.exit("`GITHUB_USER_LOGIN` is not set")
 
-            if (self.event_name == "issue_comment" or self.event_name == "pull_request_review") and not self.comment_body:
+            if (
+                self.event_name == "issue_comment" or self.event_name == "pull_request_review"
+            ) and not self.comment_body:
                 sys.exit("`COMMENT_BODY` is not set")
 
     def run_pr_label_action(self) -> None:
