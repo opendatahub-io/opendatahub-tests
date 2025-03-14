@@ -12,10 +12,19 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
-    if: github.event.issue.pull_request && contains(github.event.comment.body, '/lgtm')
+    if: >
+      (github.event.issue.pull_request && contains(github.event.comment.body, '/lgtm')) ||
+      (github.event.pull_request && contains(github.event.comment.body, '/lgtm'))
     steps:
+      - name: debug
+        run: echo '${{ toJson(github.event) }}'
       - name: extract PR number
-        run: echo "PR_NUMBER=${{ github.event.issue.number }}" >> $GITHUB_ENV
+        run: |
+          if [ "${{ github.event.issue.number }}" != "" ]; then 
+            echo "PR_NUMBER=${{ github.event.issue.number }}" >> $GITHUB_ENV
+          else
+            echo "PR_NUMBER=${{ github.event.pull_request.number }}" >> $GITHUB_ENV
+          fi
 
       - name: approve the PR
         uses: hmarr/auto-approve-action@v4
