@@ -222,6 +222,7 @@ class PrLabeler(PrBaseClass):
 
         elif self.event_name == "pull_request_review":
             self.pull_request_review_label_actions()
+            self.issue_comment_label_actions()
 
             return
 
