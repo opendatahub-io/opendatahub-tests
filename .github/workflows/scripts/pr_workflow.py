@@ -88,6 +88,8 @@ class PrLabeler(PrBaseClass):
         self.user_login = os.getenv("GITHUB_USER_LOGIN")
         self.review_state = os.getenv("GITHUB_EVENT_REVIEW_STATE")
         self.comment_body = os.getenv("COMMENT_BODY", "")
+        if self.comment_body == "":
+            self.comment_body = os.gentenv("REVIEW_COMMENT_BODY", "")
         self.last_commit = list(self.pr.get_commits())[-1]
         self.last_commit_sha = self.last_commit.sha
 
