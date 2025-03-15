@@ -88,6 +88,8 @@ class PrLabeler(PrBaseClass):
         self.user_login = os.getenv("GITHUB_USER_LOGIN")
         self.review_state = os.getenv("GITHUB_EVENT_REVIEW_STATE")
         self.comment_body = os.getenv("COMMENT_BODY", "")
+        if self.comment_body == "":
+            self.comment_body = os.getenv("REVIEW_COMMENT_BODY", "")
         self.last_commit = list(self.pr.get_commits())[-1]
         self.last_commit_sha = self.last_commit.sha
 
@@ -101,11 +103,10 @@ class PrLabeler(PrBaseClass):
             if not self.user_login:
                 sys.exit("`GITHUB_USER_LOGIN` is not set")
 
-            if self.event_name == "issue_comment" and not self.comment_body:
+            if (
+                self.event_name == "issue_comment" or self.event_name == "pull_request_review"
+            ) and not self.comment_body:
                 sys.exit("`COMMENT_BODY` is not set")
-
-            if self.event_name == "pull_request_review" and not self.review_state:
-                sys.exit("`GITHUB_EVENT_REVIEW_STATE` is not set")
 
     def run_pr_label_action(self) -> None:
         if self.action == self.SupportedActions.pr_size_action_name:
@@ -223,6 +224,7 @@ class PrLabeler(PrBaseClass):
 
         elif self.event_name == "pull_request_review":
             self.pull_request_review_label_actions()
+            self.issue_comment_label_actions()
 
             return
 
