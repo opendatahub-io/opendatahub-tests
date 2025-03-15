@@ -39,7 +39,7 @@ jobs:
       - name: Acknowledge the review with thumbs up reaction
         if: ${{ github.event.review }}
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.OPENDATAHUB_TESTS_BOT_PAT }}
           REVIEW_COMMENT_ID: ${{ github.event.review.id }}
           REPO_NAME: ${{ github.event.repository.name }}
           REPO_OWNER: ${{ github.event.repository.owner.login }}
