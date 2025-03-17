@@ -1,6 +1,6 @@
 import pytest
 from simple_logger.logger import get_logger
-from utilities.constants import KServeDeploymentType
+from utilities.constants import KServeDeploymentType, Ports
 from tests.model_serving.model_runtime.vllm.utils import (
     fetch_openai_response,
     run_raw_inference,
@@ -133,14 +133,14 @@ class TestOpenHermesAWQModel:
         ):
             pod = vllm_pod_resource.name
             model_details, grpc_chat_response, grpc_chat_stream_responses = run_raw_inference(
-                pod_name=pod, isvc=vllm_inference_service, port=8033, endpoint="tgis"
+                pod_name=pod, isvc=vllm_inference_service, port=Ports.GRPC_PORT, endpoint="tgis"
             )
             validate_inference_output(
                 model_details, grpc_chat_response, grpc_chat_stream_responses, response_snapshot=response_snapshot
             )
 
             model_info, chat_responses, completion_responses = run_raw_inference(
-                pod_name=pod, isvc=vllm_inference_service, port=8080, endpoint="openai"
+                pod_name=pod, isvc=vllm_inference_service, port=Ports.REST_PORT, endpoint="openai"
             )
             validate_inference_output(
                 model_info, chat_responses, completion_responses, response_snapshot=response_snapshot
@@ -219,14 +219,14 @@ class TestOpenHermesAWQMultiGPU:
         ):
             pod = vllm_pod_resource.name
             model_details, grpc_chat_response, grpc_chat_stream_responses = run_raw_inference(
-                pod_name=pod, isvc=vllm_inference_service, port=8033, endpoint="tgis"
+                pod_name=pod, isvc=vllm_inference_service, port=Ports.GRPC_PORT, endpoint="tgis"
             )
 
             validate_inference_output(
                 model_details, grpc_chat_response, grpc_chat_stream_responses, response_snapshot=response_snapshot
             )
             model_info, chat_responses, completion_responses = run_raw_inference(
-                pod_name=pod, isvc=vllm_inference_service, port=8080, endpoint="openai"
+                pod_name=pod, isvc=vllm_inference_service, port=Ports.REST_PORT, endpoint="openai"
             )
             validate_inference_output(
                 model_info, chat_responses, completion_responses, response_snapshot=response_snapshot

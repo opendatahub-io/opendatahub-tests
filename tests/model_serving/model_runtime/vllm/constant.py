@@ -1,26 +1,11 @@
 from typing import Any, Union
 from utilities.constants import AcceleratorType, KServeDeploymentType
 
-GRPC_PORT: int = 8033
-REST_PORT: int = 8080
-REST_PORT_NAME: str = "http1"
-GRPC_PORT_NAME: str = "h2c"
-TCP_PROTOCOL_NAME: str = "TCP"
 OPENAI_ENDPOINT_NAME: str = "openai"
 TGIS_ENDPOINT_NAME: str = "tgis"
 # Quantization
 VLLM_SUPPORTED_QUANTIZATION: list[str] = ["marlin", "awq"]
 # Configurations
-vLLM_CONFIG: dict[str, dict[str, Any]] = {
-    "port_configurations": {
-        "grpc": [{"containerPort": GRPC_PORT, "name": GRPC_PORT_NAME, "protocol": TCP_PROTOCOL_NAME}],
-        "raw": [
-            {"containerPort": REST_PORT, "name": REST_PORT_NAME, "protocol": TCP_PROTOCOL_NAME},
-            {"containerPort": GRPC_PORT, "name": GRPC_PORT_NAME, "protocol": TCP_PROTOCOL_NAME},
-        ],
-    },
-    "commands": {"GRPC": "vllm_tgis_adapter"},
-}
 TEMPLATE_MAP: dict[str, str] = {
     AcceleratorType.NVIDIA: "vllm-runtime-template",
     AcceleratorType.AMD: "vllm-rocm-runtime-template",

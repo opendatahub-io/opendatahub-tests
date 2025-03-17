@@ -42,6 +42,7 @@ def serving_runtime(
         template_name=template_name,
         deployment_type=request.param["deployment_type"],
         runtime_image=vllm_runtime_image,
+        support_tgis_open_ai_endpoints=True,
     ) as model_runtime:
         yield model_runtime
 
