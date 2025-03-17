@@ -21,6 +21,19 @@ def load_default_notebook(dyn_client: DynamicClient, namespace: str, name: str, 
     # Set the correct username
     username = get_username(dyn_client=dyn_client)
 
+    probe_config = {
+        "failureThreshold": 3,
+        "httpGet": {
+            "path": f"/notebook/{namespace}/{name}/api",
+            "port": "notebook-port",
+            "scheme": "HTTP",
+        },
+        "initialDelaySeconds": 10,
+        "periodSeconds": 5,
+        "successThreshold": 1,
+        "timeoutSeconds": 1,
+    }
+
     notebook = {
         "apiVersion": "kubeflow.org/v1",
         "kind": "Notebook",
@@ -64,32 +77,10 @@ def load_default_notebook(dyn_client: DynamicClient, namespace: str, name: str, 
                             ],
                             "image": image,
                             "imagePullPolicy": "Always",
-                            "livenessProbe": {
-                                "failureThreshold": 3,
-                                "httpGet": {
-                                    "path": f"/notebook/{namespace}/{name}/api",
-                                    "port": "notebook-port",
-                                    "scheme": "HTTP",
-                                },
-                                "initialDelaySeconds": 10,
-                                "periodSeconds": 5,
-                                "successThreshold": 1,
-                                "timeoutSeconds": 1,
-                            },
+                            "livenessProbe": probe_config,
                             "name": name,
                             "ports": [{"containerPort": 8888, "name": "notebook-port", "protocol": "TCP"}],
-                            "readinessProbe": {
-                                "failureThreshold": 3,
-                                "httpGet": {
-                                    "path": f"/notebook/{namespace}/{name}/api",
-                                    "port": "notebook-port",
-                                    "scheme": "HTTP",
-                                },
-                                "initialDelaySeconds": 10,
-                                "periodSeconds": 5,
-                                "successThreshold": 1,
-                                "timeoutSeconds": 1,
-                            },
+                            "readinessProbe": probe_config,
                             "resources": {
                                 "limits": {"cpu": "2", "memory": "4Gi"},
                                 "requests": {"cpu": "1", "memory": "1Gi"},
