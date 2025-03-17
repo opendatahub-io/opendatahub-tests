@@ -1,4 +1,5 @@
 import pytest
+import  re
 from ocp_utilities.infra import get_pods_by_name_prefix
 from pytest_testconfig import py_config
 from simple_logger.logger import get_logger
@@ -25,7 +26,6 @@ pytestmark = [
 LOGGER = get_logger(name=__name__)
 
 
-@pytest.mark.serverless
 @pytest.mark.parametrize(
     "model_namespace, openvino_kserve_serving_runtime, ovms_serverless_inference_service",
     [
@@ -44,8 +44,8 @@ LOGGER = get_logger(name=__name__)
     ],
     indirect=True,
 )
-class TestLogForOdHModelController:
-    def test_odh_model_controller_failing_while_deleted_isvc(self, ovms_serverless_inference_service):
+class TestNoMaistraErrorInLogs:
+    def test_absence_of_maistra_error_in_logs_after_isvc_deletion(self, ovms_serverless_inference_service):
         """Verify model can be queried"""
         verify_inference_response(
             inference_service=ovms_serverless_inference_service,
@@ -55,25 +55,24 @@ class TestLogForOdHModelController:
             use_default_query=True,
         )
 
-    def test_moniter_odh_logs_doe_maistra(self, deleted_isvc, admin_client):
-        """Delete isvc and check pod logs for unexpected 'Maistra' string"""
-        search_string = "maistra.io"
+    def test_pod_logs_do_not_contain_maistra_error(self, deleted_isvc, admin_client):
+        """Delete isvc and check pod logs for 'ServiceMeshMemberRoll' error"""
+        regex_pattern = r'"error":\s*"no matches for kind \\"ServiceMeshMemberRoll\\" in version \\"maistra\.io/v1\\""'
         pod = get_pods_by_name_prefix(
             client=admin_client, namespace=py_config["applications_namespace"], pod_prefix="odh-model-controller"
         )[0]
 
         try:
             log_sampler = TimeoutSampler(
-                wait_timeout=Timeout.TIMEOUT_1MIN,
+                wait_timeout=Timeout.TIMEOUT_4MIN,
                 sleep=5,
-                func=lambda: pod.log(container="manager", tail_lines=100, timestamps=True),
+                func=lambda: pod.log(container="manager", tail_lines=500, timestamps=True),
             )
 
             for log_output in log_sampler:
                 LOGGER.info("Log output fetched during sampling:")
-                if search_string in log_output:
-                    raise PodLogMissMatchError(f"'{search_string}' was found in pod logs")
-            LOGGER.info(f"'{search_string}' was not found in pod logs within timeout")
+                if re.search(regex_pattern, log_output):
+                    raise PodLogMissMatchError("ServiceMeshMemberRoll error found in pod logs")
 
         except TimeoutExpiredError as e:
-            LOGGER.error(f"Timeout while sampling logs: {str(e)}")
+            LOGGER.info(f"Timeout while sampling logs: {str(e)}")

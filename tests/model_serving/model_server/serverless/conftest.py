@@ -86,7 +86,7 @@ def s3_flan_small_hf_caikit_serverless_inference_service(
         deployment_mode=KServeDeploymentType.SERVERLESS,
         external_route=True,
     ) as isvc:
-        yield isvc @ pytest.fixture(scope="class")
+        yield isvc
 
 
 @pytest.fixture(scope="class")
