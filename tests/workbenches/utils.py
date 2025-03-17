@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pytest_testconfig import config as py_config
+from utilities.constants import Labels
 
 from kubernetes.dynamic import DynamicClient, Resource, ResourceInstance
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
@@ -31,7 +32,7 @@ def load_default_notebook(dyn_client: DynamicClient, namespace: str, name: str, 
             },
             "labels": {
                 "app": name,
-                "opendatahub.io/dashboard": "true",
+                Labels.OpenDataHub.DASHBOARD: "true",
                 "opendatahub.io/odh-managed": "true",
                 "sidecar.istio.io/inject": "false",
             },
