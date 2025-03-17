@@ -57,7 +57,7 @@ def test_lmeval_local_offline_builtin_tasks_flan_arceasy(
                     "taskRecipes": [
                         {
                             "card": {"name": "cards.20_newsgroups_short"},
-                            "template": "templates.classification.multi_class.title",
+                            "template": {"name": "templates.classification.multi_class.title"},
                         }
                     ]
                 }
