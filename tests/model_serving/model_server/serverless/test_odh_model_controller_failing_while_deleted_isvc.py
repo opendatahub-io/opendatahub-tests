@@ -66,11 +66,7 @@ class TestNoMaistraErrorInLogs:
             log_sampler = TimeoutSampler(
                 wait_timeout=Timeout.TIMEOUT_4MIN,
                 sleep=5,
-                func=pod.log(
-                    container="manager",
-                    tail_lines=500,
-                    timestamps=True
-                ),
+                func=pod.log(container="manager", tail_lines=500, timestamps=True),
             )
 
             for log_output in log_sampler:
@@ -78,5 +74,5 @@ class TestNoMaistraErrorInLogs:
                 if re.search(regex_pattern, log_output):
                     raise PodLogMissMatchError("ServiceMeshMemberRoll error found in pod logs")
 
-        except TimeoutExpiredError as e:
+        except TimeoutExpiredError:
             LOGGER.info(f"Error {regex_pattern} not found in {pod.name} logs")
