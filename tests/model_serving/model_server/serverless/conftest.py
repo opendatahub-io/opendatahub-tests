@@ -86,4 +86,9 @@ def s3_flan_small_hf_caikit_serverless_inference_service(
         deployment_mode=KServeDeploymentType.SERVERLESS,
         external_route=True,
     ) as isvc:
-        yield isvc
+        yield isvc @ pytest.fixture(scope="class")
+
+
+@pytest.fixture(scope="class")
+def deleted_isvc(ovms_serverless_inference_service: InferenceService) -> None:
+    ovms_serverless_inference_service.clean_up()

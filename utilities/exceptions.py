@@ -76,3 +76,5 @@ class DeploymentValidationError(Exception):
 
 class InferenceCanaryTrafficError(Exception):
     pass
+class PodLogMissMatchError(Exception):
+    pass
