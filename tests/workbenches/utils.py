@@ -3,6 +3,7 @@ from __future__ import annotations
 from pytest_testconfig import config as py_config
 
 from kubernetes.dynamic import DynamicClient, Resource, ResourceInstance
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 
 from ocp_resources.route import Route
 from ocp_resources.notebook import Notebook
@@ -13,7 +14,8 @@ def load_default_notebook(dyn_client: DynamicClient, namespace: str, name: str, 
     # Set new Route url
     route_name = "odh-dashboard" if py_config.get("distribution") == "upstream" else "rhods-dashboard"
     route = Route(client=dyn_client, name=route_name, namespace=py_config["applications_namespace"])
-    assert route.exists, f"Route {route.name} does not exist"
+    if not route.exists:
+        raise ResourceNotFoundError(f"Route {route.name} does not exist")
 
     # Set the correct username
     username = get_username(dyn_client=dyn_client)
