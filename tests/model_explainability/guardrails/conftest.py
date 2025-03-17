@@ -34,6 +34,7 @@ def guardrails_orchestrator_health_route(
         name=f"{guardrails_orchestrator.name}-health",
         namespace=guardrails_orchestrator.namespace,
         wait_for_resource=True,
+        ensure_exists=True,
     )
     yield route
 
