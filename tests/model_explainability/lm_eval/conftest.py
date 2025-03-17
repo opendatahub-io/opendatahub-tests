@@ -13,6 +13,7 @@ from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from pytest_testconfig import py_config
+from timeout_sampler import TimeoutSampler
 
 from utilities.constants import Labels, Timeout, Annotations
 
@@ -28,25 +29,47 @@ def lmevaljob_hf_pod(admin_client: DynamicClient, lmevaljob_hf: LMEvalJob) -> Ge
         client=admin_client,
         namespace=lmevaljob_hf.namespace,
         name=lmevaljob_hf.name,
-        wait_for_resource=True,
     )
+
+    wait_for_pod_to_exist(lmeval_pod)
+
     yield lmeval_pod
 
 
 @pytest.fixture(scope="function")
 def lmevaljob_hf(
     admin_client: DynamicClient, model_namespace: Namespace, patched_trustyai_operator_configmap_allow_online: ConfigMap
-) -> Generator[LMEvalJob, Any, Any]:
+) -> Generator[LMEvalJob, None, None]:
     with LMEvalJob(
         client=admin_client,
-        name=LMEVALJOB_NAME,
+        name="test-job",
         namespace=model_namespace.name,
         model="hf",
         model_args=[{"name": "pretrained", "value": "google/flan-t5-base"}],
         task_list={
+            "custom": {
+                "systemPrompts": [
+                    {"name": "sp_0", "value": "Be concise. At every point give the shortest acceptable answer."}
+                ],
+                "templates": [
+                    {
+                        "name": "tp_0",
+                        "value": '{ "__type__": "input_output_template", '
+                        '"input_format": "{text_a_type}: {text_a}\\n'
+                        '{text_b_type}: {text_b}", '
+                        '"output_format": "{label}", '
+                        '"target_prefix": '
+                        '"The {type_of_relation} class is ", '
+                        '"instruction": "Given a {text_a_type} and {text_b_type} '
+                        'classify the {type_of_relation} of the {text_b_type} to one of {classes}.",'
+                        ' "postprocessors": [ "processors.take_first_non_empty_line",'
+                        ' "processors.lower_case_till_punc" ] }',
+                    }
+                ],
+            },
             "taskRecipes": [
-                {"card": {"name": "cards.wnli"}, "template": "templates.classification.multi_class.relation.default"}
-            ]
+                {"card": {"name": "cards.wnli"}, "systemPrompt": {"ref": "sp_0"}, "template": {"ref": "tp_0"}}
+            ],
         },
         log_samples=True,
         allow_online=True,
@@ -93,8 +116,10 @@ def lmevaljob_vllm_emulator_pod(
         client=admin_client,
         namespace=lmevaljob_vllm_emulator.namespace,
         name=lmevaljob_vllm_emulator.name,
-        wait_for_resource=True,
     )
+
+    wait_for_pod_to_exist(lmeval_pod)
+
     yield lmeval_pod
 
 
@@ -120,7 +145,10 @@ def lmevaljob_vllm_emulator(
         outputs={"pvcManaged": {"size": "5Gi"}},
         model_args=[
             {"name": "model", "value": "emulatedModel"},
-            {"name": "base_url", "value": f"http://{vllm_emulator_service.name}:{str(VLLM_EMULATOR)}/v1/completions"},
+            {
+                "name": "base_url",
+                "value": f"http://{vllm_emulator_service.name}:{str(VLLM_EMULATOR_PORT)}/v1/completions",
+            },
             {"name": "num_concurrent", "value": "1"},
             {"name": "max_retries", "value": "3"},
             {"name": "tokenized_requests", "value": "False"},
@@ -258,9 +286,9 @@ def vllm_emulator_service(
         ports=[
             {
                 "name": f"{VLLM_EMULATOR}-endpoint",
-                "port": {VLLM_EMULATOR_PORT},
+                "port": VLLM_EMULATOR_PORT,
                 "protocol": "TCP",
-                "targetPort": {VLLM_EMULATOR},
+                "targetPort": VLLM_EMULATOR_PORT,
             }
         ],
         selector={"app": VLLM_EMULATOR},
@@ -279,3 +307,9 @@ def vllm_emulator_route(
         service=vllm_emulator_service.name,
     ) as route:
         yield route
+
+
+def wait_for_pod_to_exist(pod: Pod) -> None:
+    for sample in TimeoutSampler(wait_timeout=Timeout.TIMEOUT_2MIN, sleep=1, func=lambda: pod.exists):
+        if sample:
+            return
