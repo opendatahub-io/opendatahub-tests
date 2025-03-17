@@ -29,21 +29,6 @@ class TestNotebook:
 
         # contact
         Contact(name="Jakub Stejskal", email="jstejska@redhat.com"),
-
-        # steps
-            1. Step(
-                value="Create namespace for Notebook resources with proper name, labels and annotations",
-                expected="Namespace is created",
-            ),
-            2. Step(value="Create PVC with proper labels and data for Notebook", expected="PVC is created"),
-            3. Step(
-                value="Create Notebook resource with Jupyter Minimal image in pre-defined namespace",
-                expected="Notebook resource is created",
-            ),
-            4. Step(
-                value="Wait for Notebook pods readiness",
-                expected="Notebook pods are up and running, Notebook is in ready state",
-            ),
         """
         image_name = (
             "jupyter-minimal-notebook" if py_config.get("distribution") == "upstream" else "s2i-minimal-notebook"
