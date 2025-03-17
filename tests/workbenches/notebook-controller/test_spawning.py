@@ -24,11 +24,7 @@ class TestNotebook:
         self, admin_client, unprivileged_client, users_namespace, users_persistent_volume_claim
     ):
         """
-        # description
         Create simple Notebook with all needed resources and see if Operator creates it properly
-
-        # contact
-        Contact(name="Jakub Stejskal", email="jstejska@redhat.com"),
         """
         image_name = (
             "jupyter-minimal-notebook" if py_config.get("distribution") == "upstream" else "s2i-minimal-notebook"
