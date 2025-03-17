@@ -6,6 +6,8 @@ from ocp_resources.inference_service import InferenceService
 from simple_logger.logger import get_logger
 from tests.model_serving.model_runtime.vllm.constant import CHAT_QUERY, COMPLETION_QUERY
 from tenacity import retry, stop_after_attempt, wait_exponential
+
+from utilities.constants import Ports
 from utilities.exceptions import NotSupportedError
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.plugins.openai_plugin import OpenAIClient
@@ -156,7 +158,7 @@ def validate_raw_openai_inference_request(
     model_info, chat_responses, completion_responses = run_raw_inference(
         pod_name=pod_name,
         isvc=isvc,
-        port=8080,
+        port=Ports.REST_PORT,
         endpoint=OPENAI_ENDPOINT_NAME,
         chat_query=chat_query,
         completion_query=completion_query,
@@ -179,7 +181,7 @@ def validate_raw_tgis_inference_request(
     model_info, chat_responses, completion_responses = run_raw_inference(
         pod_name=pod_name,
         isvc=isvc,
-        port=8033,
+        port=Ports.GRPC_PORT,
         endpoint=TGIS_ENDPOINT_NAME,
         completion_query=completion_query,
     )

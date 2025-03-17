@@ -5,7 +5,7 @@ from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.template import Template
-from tests.model_serving.model_runtime.vllm.constant import vLLM_CONFIG
+from utilities.constants import PortNames, Protocols, vLLM_CONFIG
 from pytest_testconfig import config as py_config
 
 
@@ -29,6 +29,7 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         runtime_image: str | None = None,
         models_priorities: dict[str, str] | None = None,
         supported_model_formats: dict[str, list[dict[str, str]]] | None = None,
+        support_tgis_open_ai_endpoints: bool = False,
     ):
         """
         ServingRuntimeFromTemplate class
@@ -50,6 +51,8 @@ class ServingRuntimeFromTemplate(ServingRuntime):
             models_priorities (dict[str, str]): Model priority to be used for the serving runtime
             supported_model_formats (dict[str, list[dict[str, str]]]): Model formats;
                 overwrites template's `supportedModelFormats`
+            support_tgis_open_ai_endpoints (bool): Whether to support TGIS and OpenAI endpoints using
+                a single entry point
         """
 
         self.admin_client = client
@@ -66,6 +69,7 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         self.runtime_image = runtime_image
         self.models_priorities = models_priorities
         self.supported_model_formats = supported_model_formats
+        self.support_tgis_open_ai_endpoints = support_tgis_open_ai_endpoints
 
         # model mesh attributes
         self.enable_external_route = enable_external_route
@@ -74,7 +78,10 @@ class ServingRuntimeFromTemplate(ServingRuntime):
 
         self.model_dict = self.update_model_dict()
 
-        super().__init__(client=self.unprivileged_client or self.admin_client, kind_dict=self.model_dict)
+        super().__init__(
+            client=self.unprivileged_client or self.admin_client,
+            kind_dict=self.model_dict,
+        )
 
     def get_model_template(self) -> Template:
         """
@@ -147,7 +154,11 @@ class ServingRuntimeFromTemplate(ServingRuntime):
                     env["value"] = str(self.enable_grpc).lower()
 
                     if self.enable_grpc is True:
-                        container["ports"][0] = {"containerPort": 8085, "name": "h2c", "protocol": "TCP"}
+                        container["ports"][0] = {
+                            "containerPort": 8085,
+                            "name": PortNames.GRPC_PORT_NAME,
+                            "protocol": Protocols.TCP,
+                        }
 
             if self.resources is not None and (resource_dict := self.resources.get(container["name"])):
                 container["resources"] = resource_dict
@@ -155,19 +166,21 @@ class ServingRuntimeFromTemplate(ServingRuntime):
             if self.runtime_image is not None:
                 container["image"] = self.runtime_image
 
-            if "vllm" in self.template_name and self.runtime_image is not None and self.deployment_type is not None:
-                is_grpc = "grpc" in self.deployment_type.lower()
-                is_raw = "raw" in self.deployment_type.lower()
-                # Remove '--model' from the container args, we will pass this using isvc
-                container["args"] = [arg for arg in container["args"] if "--model" not in arg]
-                # Update command if deployment type is grpc
-                if is_grpc or is_raw:
-                    container["command"][-1] = vLLM_CONFIG["commands"]["GRPC"]
+            # Support single entrypoint for TGIS and OpenAI
+            if self.support_tgis_open_ai_endpoints:
+                if "vllm" in self.template_name and self.runtime_image is not None and self.deployment_type is not None:
+                    is_grpc = "grpc" in self.deployment_type.lower()
+                    is_raw = "raw" in self.deployment_type.lower()
+                    # Remove '--model' from the container args, we will pass this using isvc
+                    container["args"] = [arg for arg in container["args"] if "--model" not in arg]
+                    # Update command if deployment type is grpc
+                    if is_grpc or is_raw:
+                        container["command"][-1] = vLLM_CONFIG["commands"]["GRPC"]
 
-                if is_grpc:
-                    container["ports"] = vLLM_CONFIG["port_configurations"]["grpc"]
-                elif is_raw:
-                    container["ports"] = vLLM_CONFIG["port_configurations"]["raw"]
+                    if is_grpc:
+                        container["ports"] = vLLM_CONFIG["port_configurations"]["grpc"]
+                    elif is_raw:
+                        container["ports"] = vLLM_CONFIG["port_configurations"]["raw"]
 
         if self.supported_model_formats:
             _model_spec_supported_formats = self.supported_model_formats

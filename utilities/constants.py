@@ -1,3 +1,5 @@
+from typing import Any
+
 from ocp_resources.resource import Resource
 
 
@@ -82,6 +84,17 @@ class Protocols:
     REST: str = "rest"
     TCP_PROTOCOLS: set[str] = {HTTP, HTTPS}
     ALL_SUPPORTED_PROTOCOLS: set[str] = TCP_PROTOCOLS.union({GRPC})
+    TCP: str = "TCP"
+
+
+class Ports:
+    GRPC_PORT: int = 8033
+    REST_PORT: int = 8080
+
+
+class PortNames:
+    REST_PORT_NAME: str = "http1"
+    GRPC_PORT_NAME: str = "h2c"
 
 
 class HTTPRequest:
@@ -160,3 +173,14 @@ MODEL_REGISTRY: str = "model-registry"
 MODELMESH_SERVING: str = "modelmesh-serving"
 ISTIO_CA_BUNDLE_FILENAME: str = "istio_knative.crt"
 OPENSHIFT_CA_BUNDLE_FILENAME: str = "openshift_ca.crt"
+
+vLLM_CONFIG: dict[str, dict[str, Any]] = {
+    "port_configurations": {
+        "grpc": [{"containerPort": Ports.GRPC_PORT, "name": PortNames.GRPC_PORT_NAME, "protocol": Protocols.TCP}],
+        "raw": [
+            {"containerPort": Ports.REST_PORT, "name": PortNames.REST_PORT_NAME, "protocol": Protocols.TCP},
+            {"containerPort": Ports.GRPC_PORT, "name": PortNames.GRPC_PORT_NAME, "protocol": Protocols.TCP},
+        ],
+    },
+    "commands": {"GRPC": "vllm_tgis_adapter"},
+}
