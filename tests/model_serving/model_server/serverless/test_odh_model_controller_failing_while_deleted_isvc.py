@@ -1,5 +1,5 @@
 import pytest
-import  re
+import re
 from ocp_utilities.infra import get_pods_by_name_prefix
 from pytest_testconfig import py_config
 from simple_logger.logger import get_logger
