@@ -18,6 +18,7 @@ from utilities.constants import Labels, Timeout, Annotations
 
 
 VLLM_EMULATOR: str = "vllm-emulator"
+VLLM_EMULATOR_PORT: int = 8000
 LMEVALJOB_NAME: str = "lmeval-test-job"
 
 
@@ -119,7 +120,7 @@ def lmevaljob_vllm_emulator(
         outputs={"pvcManaged": {"size": "5Gi"}},
         model_args=[
             {"name": "model", "value": "emulatedModel"},
-            {"name": "base_url", "value": f"http://{vllm_emulator_service.name}:8000/v1/completions"},
+            {"name": "base_url", "value": f"http://{vllm_emulator_service.name}:{str(VLLM_EMULATOR)}/v1/completions"},
             {"name": "num_concurrent", "value": "1"},
             {"name": "max_retries", "value": "3"},
             {"name": "tokenized_requests", "value": "False"},
@@ -257,9 +258,9 @@ def vllm_emulator_service(
         ports=[
             {
                 "name": f"{VLLM_EMULATOR}-endpoint",
-                "port": 8000,
+                "port": {VLLM_EMULATOR_PORT},
                 "protocol": "TCP",
-                "targetPort": 8000,
+                "targetPort": {VLLM_EMULATOR},
             }
         ],
         selector={"app": VLLM_EMULATOR},
