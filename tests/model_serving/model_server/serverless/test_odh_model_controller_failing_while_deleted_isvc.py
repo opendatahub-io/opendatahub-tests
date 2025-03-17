@@ -45,7 +45,7 @@ LOGGER = get_logger(name=__name__)
     indirect=True,
 )
 class TestNoMaistraErrorInLogs:
-    def test_absence_of_maistra_error_in_logs_after_isvc_deletion(self, ovms_serverless_inference_service):
+    def test_inference_before_isvc_deletion(self, ovms_serverless_inference_service):
         """Verify model can be queried"""
         verify_inference_response(
             inference_service=ovms_serverless_inference_service,
@@ -66,7 +66,11 @@ class TestNoMaistraErrorInLogs:
             log_sampler = TimeoutSampler(
                 wait_timeout=Timeout.TIMEOUT_4MIN,
                 sleep=5,
-                func=lambda: pod.log(container="manager", tail_lines=500, timestamps=True),
+                func=pod.log(
+                    container="manager",
+                    tail_lines=500,
+                    timestamps=True
+                ),
             )
 
             for log_output in log_sampler:
@@ -75,4 +79,4 @@ class TestNoMaistraErrorInLogs:
                     raise PodLogMissMatchError("ServiceMeshMemberRoll error found in pod logs")
 
         except TimeoutExpiredError as e:
-            LOGGER.info(f"Timeout while sampling logs: {str(e)}")
+            LOGGER.info(f"Error {regex_pattern} not found in {pod.name} logs")
