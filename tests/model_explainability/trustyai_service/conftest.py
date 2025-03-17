@@ -217,7 +217,7 @@ def installed_mariadb_operator(admin_client: DynamicClient) -> Generator[None, A
         deployment = Deployment(
             client=admin_client,
             namespace=operator_ns.name,
-            name="mariadb-operator-helm-controller-manager",
+            name=f"{operator_name}-helm-controller-manager",
             wait_for_resource=True,
         )
         deployment.wait_for_replicas()
