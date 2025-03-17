@@ -9,6 +9,7 @@ from ocp_resources.notebook import Notebook
 
 
 def load_default_notebook(dyn_client: DynamicClient, namespace: str, name: str, image: str) -> Notebook:
+    """Returns a new Notebook CR for a given namespace, name, and image"""
     # Set new Route url
     route_name = "odh-dashboard" if py_config.get("distribution") == "upstream" else "rhods-dashboard"
     route = Route(client=dyn_client, name=route_name, namespace=py_config["applications_namespace"])
