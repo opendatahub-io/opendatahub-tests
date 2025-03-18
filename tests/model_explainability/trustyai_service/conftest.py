@@ -12,7 +12,6 @@ from ocp_resources.mariadb_operator import MariadbOperator
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
-from ocp_resources.service import Service
 from ocp_resources.subscription import Subscription
 from ocp_resources.trustyai_service import TrustyAIService
 from ocp_utilities.operators import install_operator, uninstall_operator
