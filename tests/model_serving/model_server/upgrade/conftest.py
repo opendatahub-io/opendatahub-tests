@@ -56,9 +56,7 @@ def model_namespace_scope_session(
     admin_client: DynamicClient,
 ) -> Generator[Namespace, Any, Any]:
     with create_ns(
-        admin_client=admin_client,
-        name=UPGRADE_NAMESPACE,
-        labels={"modelmesh-enabled": "true"},
+        admin_client=admin_client, name=UPGRADE_NAMESPACE, model_mesh_enabled=True, add_dashboard_label=True
     ) as ns:
         yield ns
 
