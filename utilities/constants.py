@@ -87,7 +87,6 @@ class Protocols:
     TCP: str = "TCP"
     TCP_PROTOCOLS: set[str] = {HTTP, HTTPS}
     ALL_SUPPORTED_PROTOCOLS: set[str] = TCP_PROTOCOLS.union({GRPC})
-    TCP: str = "TCP"
 
 
 class Ports:

@@ -30,7 +30,7 @@ def lmevaljob_hf_pod(admin_client: DynamicClient, lmevaljob_hf: LMEvalJob) -> Ge
         name=lmevaljob_hf.name,
     )
 
-    wait_for_pod_to_exist(lmeval_pod)
+    wait_for_pod_to_exist(lmeval_pod)  # TODO: Check if we can rely on LMEvalJob instead of pod
 
     yield lmeval_pod
 
