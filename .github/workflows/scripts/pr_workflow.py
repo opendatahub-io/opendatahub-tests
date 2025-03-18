@@ -109,7 +109,8 @@ class PrLabeler(PrBaseClass):
             if (
                 self.event_name == "issue_comment" or self.event_name == "pull_request_review"
             ) and not self.comment_body:
-                sys.exit("`COMMENT_BODY` is not set")
+                LOGGER.info("No comment, nothing to do. Exiting.")
+                sys.exit(0)
 
     def run_pr_label_action(self) -> None:
         if self.action == self.SupportedActions.pr_size_action_name:
