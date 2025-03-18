@@ -18,7 +18,6 @@ from ocp_utilities.operators import install_operator, uninstall_operator
 
 from tests.model_explainability.constants import MINIO
 from tests.model_explainability.constants import (
-    MINIO,
     MINIO_SECRET_KEY,
     MINIO_ACCESS_KEY,
     MINIO_SECRET_KEY_VALUE,
