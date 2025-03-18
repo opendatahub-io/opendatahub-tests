@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from typing import Any
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
@@ -154,6 +155,8 @@ class ServingRuntimeFromTemplate(ServingRuntime):
 
         template_containers = _model_spec.get("containers", [])
 
+        containers_to_add = copy.deepcopy(self.containers) if self.containers else {}
+
         for container in template_containers:
             container_name = container.get("name")
 
@@ -193,17 +196,16 @@ class ServingRuntimeFromTemplate(ServingRuntime):
                     elif is_raw:
                         container["ports"] = vLLM_CONFIG["port_configurations"]["raw"]
 
-            if self.containers and container_name in self.containers:
-                container_config = self.containers.get(container_name, {})
+            if containers_to_add and container_name in containers_to_add:
+                container_config = containers_to_add.pop(container_name)
                 for key, value in container_config.items():
                     container[key] = value
 
-        if self.containers:
-            for container_name, container_config in self.containers.items():
-                if container_name not in {container.get("name") for container in template_containers}:
-                    new_container = {"name": container_name}
-                    new_container.update(container_config)
-                    template_containers.append(new_container)
+        if containers_to_add:
+            for container_name, container_config in containers_to_add.items():
+                new_container = {"name": container_name}
+                new_container.update(container_config)
+                template_containers.append(new_container)
 
         _model_spec["containers"] = template_containers
 
