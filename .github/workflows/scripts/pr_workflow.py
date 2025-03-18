@@ -79,7 +79,7 @@ class PrBaseClass:
 
     def set_gh_config(self) -> None:
         self.gh_client: Github = Github(login_or_token=self.github_token)
-        self.repo: Repository = gh_client.get_repo(full_name_or_id=self.repo_name)
+        self.repo: Repository = self.gh_client.get_repo(full_name_or_id=self.repo_name)
         self.pr: PullRequest = self.repo.get_pull(number=self.pr_number)
 
 
