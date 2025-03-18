@@ -88,8 +88,10 @@ class PrLabeler(PrBaseClass):
         super().__init__()
         self.user_login = os.getenv("GITHUB_USER_LOGIN")
         self.review_state = os.getenv("GITHUB_EVENT_REVIEW_STATE")
+        # We don't care if the body of the comment is in the discussion page or a review
         self.comment_body = os.getenv("COMMENT_BODY", "")
         if self.comment_body == "":
+            # if it wasn't a discussion page comment, try to get a review comment, otherwise keep empty
             self.comment_body = os.getenv("REVIEW_COMMENT_BODY", "")
         self.last_commit = list(self.pr.get_commits())[-1]
         self.last_commit_sha = self.last_commit.sha
@@ -285,10 +287,10 @@ class PrLabeler(PrBaseClass):
                 LOGGER.info(f"Processing label: {label}, action: {action}")
 
                 if action[CANCEL_ACTION] or self.event_action == "deleted":
+                    self.dismiss_pr_approval()
                     if label_in_pr:
                         LOGGER.info(f"Removing label {label}")
                         self.pr.remove_from_labels(label=label)
-                        self.dismiss_pr_approval()
 
                 elif not label_in_pr:
                     self.add_pr_label(label=label)
@@ -307,9 +309,12 @@ class PrLabeler(PrBaseClass):
 
     def dismiss_pr_approval(self) -> None:
         all_reviews = self.pr.get_reviews()
+        current_user = self.gh_client.get_user().login
+        LOGGER.info(f"Looking for approving review by user {current_user}")
         # The reviews are paginated in chronological order. We need to get the newest by our account
         for review in all_reviews.reversed:
-            if review.user.login == self.gh_client.get_user().login:
+            if review.user.login == current_user and review.state == "APPROVED":
+                LOGGER.info(f"found review by user {current_user} with id {review.id}")
                 review.dismiss()
 
 
