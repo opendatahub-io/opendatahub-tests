@@ -23,7 +23,7 @@ from tests.model_explainability.trustyai_service.utils import (
     wait_for_mariadb_pods,
 )
 
-from utilities.constants import Timeout
+from utilities.constants import Timeout, Protocols
 from utilities.infra import update_configmap_data
 
 MINIO: str = "minio"
