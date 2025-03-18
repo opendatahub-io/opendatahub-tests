@@ -1,34 +1,34 @@
-name: Approve PR on /lgtm comment
+# name: Approve PR on /lgtm comment
 
-on:
-  issue_comment:
-    types: [created, edited]
-  pull_request_review:
-    types: [submitted, edited]
-  pull_request_review_comment:
-    types: [created, edited]
+# on:
+#   issue_comment:
+#     types: [created, edited]
+#   pull_request_review:
+#     types: [submitted, edited]
+#   pull_request_review_comment:
+#     types: [created, edited]
 
-jobs:
-  approve-pr:
-    runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-    if: >
-      (github.event.issue.pull_request && contains(github.event.comment.body, '/lgtm')) ||
-      (github.event.review && contains(github.event.review.body, '/lgtm'))
-    steps:
-      - name: debug
-        run: echo '${{ toJson(github.event) }}'
-      - name: extract PR number
-        run: |
-          if [ "${{ github.event.issue.number }}" != "" ]; then
-            echo "PR_NUMBER=${{ github.event.issue.number }}" >> $GITHUB_ENV
-          else
-            echo "PR_NUMBER=${{ github.event.pull_request.number }}" >> $GITHUB_ENV
-          fi
+# jobs:
+#   approve-pr:
+#     runs-on: ubuntu-latest
+#     permissions:
+#       pull-requests: write
+#     if: >
+#       (github.event.issue.pull_request && contains(github.event.comment.body, '/lgtm')) ||
+#       (github.event.review && contains(github.event.review.body, '/lgtm'))
+#     steps:
+#       - name: debug
+#         run: echo '${{ toJson(github.event) }}'
+#       - name: extract PR number
+#         run: |
+#           if [ "${{ github.event.issue.number }}" != "" ]; then
+#             echo "PR_NUMBER=${{ github.event.issue.number }}" >> $GITHUB_ENV
+#           else
+#             echo "PR_NUMBER=${{ github.event.pull_request.number }}" >> $GITHUB_ENV
+#           fi
 
-      - name: approve the PR
-        uses: hmarr/auto-approve-action@v4
-        with:
-          github-token: ${{ secrets.OPENDATAHUB_TESTS_BOT_PAT }}
-          pull-request-number: ${{ env.PR_NUMBER }}
+#       - name: approve the PR
+#         uses: hmarr/auto-approve-action@v4
+#         with:
+#           github-token: ${{ secrets.OPENDATAHUB_TESTS_BOT_PAT }}
+#           pull-request-number: ${{ env.PR_NUMBER }}

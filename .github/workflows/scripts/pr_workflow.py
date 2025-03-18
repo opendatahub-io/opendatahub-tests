@@ -41,6 +41,7 @@ class PrBaseClass:
     def __init__(self) -> None:
         self.repo: Repository
         self.pr: PullRequest
+        self.gh_client: GitHub
 
         self.repo_name = os.environ["GITHUB_REPOSITORY"]
         self.pr_number = int(os.getenv("GITHUB_PR_NUMBER", 0))
@@ -77,9 +78,9 @@ class PrBaseClass:
         )
 
     def set_gh_config(self) -> None:
-        gh_client: Github = Github(login_or_token=self.github_token)
-        self.repo = gh_client.get_repo(full_name_or_id=self.repo_name)
-        self.pr = self.repo.get_pull(number=self.pr_number)
+        self.gh_client: Github = Github(login_or_token=self.github_token)
+        self.repo: Repository = gh_client.get_repo(full_name_or_id=self.repo_name)
+        self.pr: PullRequest = self.repo.get_pull(number=self.pr_number)
 
 
 class PrLabeler(PrBaseClass):
@@ -241,15 +242,15 @@ class PrLabeler(PrBaseClass):
         label_to_remove = None
         label_to_add = None
 
-        if self.review_state == "approved":
+        if self.review_state == "APPROVED":
             label_to_remove = change_requested_label
             label_to_add = lgtm_label
 
-        elif self.review_state == "changes_requested":
+        elif self.review_state == "CHANGES_REQUESTED":
             label_to_add = change_requested_label
             label_to_remove = lgtm_label
 
-        elif self.review_state == "commented":
+        elif self.review_state == "COMMENTED":
             label_to_add = f"{COMMENTED_BY_LABEL_PREFIX}{self.user_login}"
 
         if label_to_add and label_to_add not in self.pr_labels:
@@ -287,9 +288,11 @@ class PrLabeler(PrBaseClass):
                     if label_in_pr:
                         LOGGER.info(f"Removing label {label}")
                         self.pr.remove_from_labels(label=label)
+                        self.dismiss_pr_approval()
 
                 elif not label_in_pr:
                     self.add_pr_label(label=label)
+                    self.approve_pr()
 
         else:
             commented_by_label = f"{COMMENTED_BY_LABEL_PREFIX}{self.user_login}"
@@ -298,6 +301,16 @@ class PrLabeler(PrBaseClass):
 
     def add_welcome_comment(self) -> None:
         self.pr.create_issue_comment(body=WELCOME_COMMENT)
+
+    def approve_pr(self) -> None:
+        self.pr.create_review(event="APPROVE")
+
+    def dismiss_pr_approval(self) -> None:
+        all_reviews = self.pr.get_reviews()
+        # The reviews are paginated in chronological order. We need to get the newest by our account
+        for review in all_reviews.reversed:
+            if review.user.login == self.gh_client.get_user().login:
+                review.dismiss()
 
 
 def main() -> None:

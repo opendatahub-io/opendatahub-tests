@@ -41,6 +41,7 @@ jobs:
       # {"message":"Insufficient scopes for reacting to this Pull Request Review Comment.","documentation_url":"https://docs.github.com/rest/reactions/reactions#create-reaction-for-a-pull-request-review-comment","status":"403"}
       # It could work if we had a token with the proper permissions.
       # See https://github.com/peter-evans/create-or-update-comment/issues/392 for why the action above doesn't work.
+      # Confirmed as a bug, see: https://github.com/github/docs/issues/36899
       # - name: Acknowledge the review with thumbs up reaction
       #   if: ${{ github.event.review }}
       #   env:
