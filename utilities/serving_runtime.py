@@ -155,6 +155,8 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         template_containers = _model_spec.get("containers", [])
 
         for container in template_containers:
+            container_name = container.get("name")
+
             for env in container.get("env", []):
                 if env["name"] == "RUNTIME_HTTP_ENABLED" and self.enable_http is not None:
                     env["value"] = str(self.enable_http).lower()
@@ -169,7 +171,7 @@ class ServingRuntimeFromTemplate(ServingRuntime):
                             "protocol": Protocols.TCP,
                         }
 
-            if self.resources is not None and (resource_dict := self.resources.get(container["name"])):
+            if self.resources is not None and (resource_dict := self.resources.get(container_name)):
                 container["resources"] = resource_dict
 
             if self.runtime_image is not None:
@@ -191,19 +193,14 @@ class ServingRuntimeFromTemplate(ServingRuntime):
                     elif is_raw:
                         container["ports"] = vLLM_CONFIG["port_configurations"]["raw"]
 
+            if self.containers and container_name in self.containers:
+                container_config = self.containers.get(container_name, {})
+                for key, value in container_config.items():
+                    container[key] = value
+
         if self.containers:
-            template_container_names = {
-                container.get("name"): index for index, container in enumerate(template_containers)
-            }
-
             for container_name, container_config in self.containers.items():
-                if container_name in template_container_names:
-                    container_index = template_container_names[container_name]
-                    existing_container = template_containers[container_index]
-
-                    for key, value in container_config.items():
-                        existing_container[key] = value
-                else:
+                if container_name not in {container.get("name") for container in template_containers}:
                     new_container = {"name": container_name}
                     new_container.update(container_config)
                     template_containers.append(new_container)
@@ -212,7 +209,6 @@ class ServingRuntimeFromTemplate(ServingRuntime):
 
         if self.supported_model_formats:
             _model_spec_supported_formats = self.supported_model_formats
-
         else:
             if self.model_format_name is not None:
                 for model in _model_spec_supported_formats:

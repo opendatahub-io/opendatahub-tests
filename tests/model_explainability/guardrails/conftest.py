@@ -16,8 +16,14 @@ from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 
-from tests.model_explainability.constants import MINIO
-from utilities.constants import KServeDeploymentType, Timeout
+from tests.model_explainability.constants import (
+    MINIO,
+    MINIO_ACCESS_KEY,
+    MINIO_SECRET_KEY,
+    MINIO_ACCESS_KEY_VALUE,
+    MINIO_SECRET_KEY_VALUE,
+)
+from utilities.constants import KServeDeploymentType, Timeout, Ports
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -102,13 +108,9 @@ def vllm_runtime(
         "@sha256:d680ff8becb6bbaf83dfee7b2d9b8a2beb130db7fd5aa7f9a6d8286a58cebbfd",
         containers={
             "kserve-container": {
-                "command": ["python", "-m", "vllm.entrypoints.openai.api_server"],
                 "args": [
                     f"--port={str(GUARDRAILS_ORCHESTRATOR_PORT)}",
                     "--model=/mnt/models",
-                    "--served-model-name={{.Name}}",
-                    "--dtype=float16",
-                    "--enforce-eager",
                 ],
                 "ports": [{"containerPort": GUARDRAILS_ORCHESTRATOR_PORT, "protocol": "TCP"}],
                 "volumeMounts": [{"mountPath": "/dev/shm", "name": "shm"}],
@@ -154,7 +156,7 @@ def orchestrator_configmap(
                 "detectors": {
                     "regex": {
                         "type": "text_contents",
-                        "service": {"hostname": "127.0.0.1", "port": 8080},
+                        "service": {"hostname": "127.0.0.1", "port": Ports.REST_PORT},
                         "chunker_id": "whole_doc_chunker",
                         "default_threshold": 0.5,
                     }
@@ -225,8 +227,8 @@ def minio_llm_deployment(
                     {
                         "args": ["server", "/models"],
                         "env": [
-                            {"name": "MINIO_ACCESS_KEY", "value": "THEACCESSKEY"},
-                            {"name": "MINIO_SECRET_KEY", "value": "THESECRETKEY"},
+                            {"name": MINIO_ACCESS_KEY, "value": MINIO_ACCESS_KEY_VALUE},
+                            {"name": MINIO_SECRET_KEY, "value": MINIO_SECRET_KEY_VALUE},
                         ],
                         "image": "quay.io/trustyai/modelmesh-minio-examples"
                         "@sha256:65cb22335574b89af15d7409f62feffcc52cc0e870e9419d63586f37706321a5",
@@ -280,6 +282,6 @@ def user_one_rolebinding(
         name=f"{user_one_service_account.name}-view",
         namespace=model_namespace.name,
         subjects=[{"kind": "ServiceAccount", "name": user_one_service_account.name}],
-        role_ref={"apiGroup": "rbac.authorization.k8s.io", "kind": "ClusterRole", "name": "view"},
+        role_ref={"apiGroup": "rbac.authorization.k8s.io", "kind": "Role", "name": "view"},
     ) as role_binding:
         yield role_binding
