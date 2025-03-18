@@ -32,7 +32,6 @@ from utilities.constants import (
 from utilities.jira import is_jira_open
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 from utilities.constants import Annotations
-from utilities.constants import Labels
 
 
 # GRPC model serving
@@ -195,7 +194,7 @@ def patched_remove_raw_authentication_isvc(
         patches={
             http_s3_caikit_raw_inference_service: {
                 "metadata": {
-                    "labels": {Labels.KserveAuth.SECURITY: "false"},
+                    "annotations": {Annotations.KserveAuth.SECURITY: "false"},
                 }
             }
         }

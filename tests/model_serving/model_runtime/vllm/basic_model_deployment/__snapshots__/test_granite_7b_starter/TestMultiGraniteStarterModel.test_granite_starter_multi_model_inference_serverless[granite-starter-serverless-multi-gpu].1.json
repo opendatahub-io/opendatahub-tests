@@ -1,0 +1,26 @@
+[
+  {
+    "finish_reason": "stop",
+    "index": 0,
+    "logprobs": null,
+    "message": {
+      "content": "\neven = [x for x in numbers if x % 2 == 0]",
+      "reasoning_content": null,
+      "role": "assistant",
+      "tool_calls": []
+    },
+    "stop_reason": null
+  },
+  {
+    "finish_reason": "stop",
+    "index": 0,
+    "logprobs": null,
+    "message": {
+      "content": "[Round 0]",
+      "reasoning_content": null,
+      "role": "assistant",
+      "tool_calls": []
+    },
+    "stop_reason": null
+  }
+]

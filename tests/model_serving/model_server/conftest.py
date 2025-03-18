@@ -148,6 +148,12 @@ def s3_models_inference_service(
     if (enable_auth := request.param.get("enable-auth")) is not None:
         isvc_kwargs["enable_auth"] = enable_auth
 
+    if (scale_metric := request.param.get("scale-metric")) is not None:
+        isvc_kwargs["scale_metric"] = scale_metric
+
+    if (scale_target := request.param.get("scale-target")) is not None:
+        isvc_kwargs["scale_target"] = scale_target
+
     with create_isvc(**isvc_kwargs) as isvc:
         yield isvc
 

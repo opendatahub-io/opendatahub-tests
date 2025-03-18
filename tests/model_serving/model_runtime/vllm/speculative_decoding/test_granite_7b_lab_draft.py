@@ -3,7 +3,7 @@ from simple_logger.logger import get_logger
 from typing import List, Any, Generator
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
-from utilities.constants import KServeDeploymentType
+from utilities.constants import KServeDeploymentType, Ports
 from tests.model_serving.model_runtime.vllm.utils import (
     run_raw_inference,
     validate_inference_output,
@@ -57,13 +57,13 @@ class TestGraniteLabDraftModel:
         model_info, chat_responses, completion_responses = run_raw_inference(
             pod_name=vllm_pod_resource.name,
             isvc=vllm_inference_service,
-            port=8080,
+            port=Ports.REST_PORT,
             endpoint=OPENAI_ENDPOINT_NAME,
         )
         model_info_tgis, completion_responses_tgis, completion_responses_tgis_stream = run_raw_inference(
             pod_name=vllm_pod_resource.name,
             isvc=vllm_inference_service,
-            port=8033,
+            port=Ports.GRPC_PORT,
             endpoint=TGIS_ENDPOINT_NAME,
         )
         validate_inference_output(
@@ -106,13 +106,13 @@ class TestMultiGraniteLabDraftModel:
         model_info, chat_responses, completion_responses = run_raw_inference(
             pod_name=vllm_pod_resource.name,
             isvc=vllm_inference_service,
-            port=8080,
+            port=Ports.REST_PORT,
             endpoint=OPENAI_ENDPOINT_NAME,
         )
         model_info_tgis, completion_responses_tgis, completion_responses_tgis_stream = run_raw_inference(
             pod_name=vllm_pod_resource.name,
             isvc=vllm_inference_service,
-            port=8033,
+            port=Ports.GRPC_PORT,
             endpoint=TGIS_ENDPOINT_NAME,
         )
         validate_inference_output(

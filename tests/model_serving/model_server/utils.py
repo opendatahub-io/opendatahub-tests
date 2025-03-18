@@ -132,17 +132,21 @@ def verify_inference_response(
                     res[inference.inference_response_key_name],
                     re.MULTILINE,
                 ):
-                    assert "".join(output) == expected_response_text
+                    assert "".join(output) == expected_response_text, (
+                        f"Expected: {expected_response_text} does not match response: {output}"
+                    )
 
             elif inference_type == inference.INFER or use_regex:
                 formatted_res = json.dumps(res[inference.inference_response_text_key_name]).replace(" ", "")
                 if use_regex:
-                    assert re.search(expected_response_text, formatted_res)  # type: ignore[arg-type]  # noqa: E501
+                    assert re.search(expected_response_text, formatted_res), (  # type: ignore[arg-type]  # noqa: E501
+                        f"Expected: {expected_response_text} not found in: {formatted_res}"
+                    )
 
                 else:
-                    assert (
-                        json.dumps(res[inference.inference_response_key_name]).replace(" ", "")
-                        == expected_response_text
+                    formatted_res = json.dumps(res[inference.inference_response_key_name]).replace(" ", "")
+                    assert formatted_res == expected_response_text, (
+                        f"Expected: {expected_response_text} does not match output: {formatted_res}"
                     )
 
             else:
@@ -150,7 +154,10 @@ def verify_inference_response(
                 if isinstance(response, list):
                     response = response[0]
 
-                assert response[inference.inference_response_text_key_name] == expected_response_text
+                response_text = response[inference.inference_response_text_key_name]
+                assert response_text == expected_response_text, (
+                    f"Expected: {expected_response_text} does not mathc response: {response_text}"
+                )
 
         else:
             raise InferenceResponseError(f"Inference response output not found in response. Response: {res}")
@@ -197,7 +204,10 @@ def run_inference_multiple_times(
                 verify_inference_response(**infer_kwargs)
 
         if futures:
+            exceptions = []
             for result in as_completed(futures):
-                _exception = result.exception()
-                if _exception:
-                    LOGGER.error(f"Failed to run inference. Error: {_exception}")
+                if _exception := result.exception():
+                    exceptions.append(_exception)
+
+            if exceptions:
+                raise InferenceResponseError(f"Failed to run inference. Error: {exceptions}")

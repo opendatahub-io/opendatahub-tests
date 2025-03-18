@@ -31,12 +31,10 @@ from utilities.constants import (
     KServeDeploymentType,
     Protocols,
     HTTPRequest,
-    Labels,
     Annotations,
     Timeout,
 )
 import portforward
-
 
 LOGGER = get_logger(name=__name__)
 
@@ -64,20 +62,13 @@ class Inference:
 
         Returns:
             deployment type
-
-        Raises:
-            ValueError: If the deployment type is not found
         """
         if deployment_type := self.inference_service.instance.metadata.annotations.get(
             "serving.kserve.io/deploymentMode"
         ):
             return deployment_type
 
-        elif deployment_type := self.inference_service.instance.status.deploymentMode:
-            return deployment_type
-
-        else:
-            raise ValueError("DeploymentMode is not set annotation or status.deploymentMode")
+        return self.inference_service.instance.status.deploymentMode
 
     def get_inference_url(self) -> str:
         """
@@ -531,6 +522,8 @@ def create_isvc(
     autoscaler_mode: str | None = None,
     multi_node_worker_spec: dict[str, int] | None = None,
     timeout: int = Timeout.TIMEOUT_15MIN,
+    scale_metric: str | None = None,
+    scale_target: int | None = None,
 ) -> Generator[InferenceService, Any, Any]:
     """
     Create InferenceService object.
@@ -560,6 +553,8 @@ def create_isvc(
         multi_node_worker_spec (dict[str, int]): Multi node worker spec
         wait_for_predictor_pods (bool): Wait for predictor pods
         timeout (int): Time to wait for the model inference,deployment to be ready
+        scale_metric (str): Scale metric
+        scale_target (int): Scale target
 
     Yields:
         InferenceService: InferenceService object
@@ -608,13 +603,12 @@ def create_isvc(
             "sidecar.istio.io/inject": "true",
             "sidecar.istio.io/rewriteAppHTTPProbers": "true",
         })
-
     if enable_auth:
         # model mesh auth is set in servingruntime
         if deployment_mode == KServeDeploymentType.SERVERLESS:
             _annotations[Annotations.KserveAuth.SECURITY] = "true"
         elif deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
-            labels[Labels.KserveAuth.SECURITY] = "true"
+            _annotations[Annotations.KserveAuth.SECURITY] = "true"
 
     # default to True if deployment_mode is Serverless (default behavior of Serverless) if was not provided by the user
     # model mesh external route is set in servingruntime
@@ -632,6 +626,12 @@ def create_isvc(
 
     if multi_node_worker_spec is not None:
         predictor_dict["workerSpec"] = multi_node_worker_spec
+
+    if scale_metric is not None:
+        predictor_dict["scaleMetric"] = scale_metric
+
+    if scale_target is not None:
+        predictor_dict["scaleTarget"] = scale_target
 
     with InferenceService(
         client=client,

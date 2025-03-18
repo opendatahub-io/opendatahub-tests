@@ -3,7 +3,7 @@ from ocp_resources.resource import ResourceEditor
 
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import ModelFormat, ModelStoragePath, Protocols
-from utilities.constants import Labels
+from utilities.constants import Annotations
 from utilities.inference_utils import Inference, UserInference
 from utilities.infra import check_pod_status_in_time, get_pods_by_isvc_label
 from utilities.jira import is_jira_open
@@ -63,7 +63,7 @@ class TestKserveTokenAuthenticationRawForRest:
             patches={
                 http_s3_caikit_raw_inference_service: {
                     "metadata": {
-                        "labels": {Labels.KserveAuth.SECURITY: "false"},
+                        "annotations": {Annotations.KserveAuth.SECURITY: "false"},
                     }
                 }
             }
@@ -75,7 +75,7 @@ class TestKserveTokenAuthenticationRawForRest:
             patches={
                 http_s3_caikit_raw_inference_service: {
                     "metadata": {
-                        "labels": {Labels.KserveAuth.SECURITY: "true"},
+                        "annotations": {Annotations.KserveAuth.SECURITY: "true"},
                     }
                 }
             }

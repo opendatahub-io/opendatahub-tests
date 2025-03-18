@@ -1,3 +1,5 @@
+from typing import Any
+
 from ocp_resources.resource import Resource
 
 
@@ -14,12 +16,14 @@ class ModelFormat:
     OVMS: str = "ovms"
     VLLM: str = "vllm"
     TENSORFLOW: str = "tensorflow"
+    PYTORCH: str = "pytorch"
 
 
 class ModelName:
     FLAN_T5_SMALL: str = "flan-t5-small"
     FLAN_T5_SMALL_HF: str = f"{FLAN_T5_SMALL}-hf"
     CAIKIT_BGE_LARGE_EN: str = f"bge-large-en-v1.5-{ModelFormat.CAIKIT}"
+    BLOOM_560M: str = "bloom-560m"
 
 
 class ModelAndFormat:
@@ -27,6 +31,7 @@ class ModelAndFormat:
     OPENVINO_IR: str = f"{ModelFormat.OPENVINO}_ir"
     KSERVE_OPENVINO_IR: str = f"{OPENVINO_IR}_kserve"
     ONNX_1: str = f"{ModelFormat.ONNX}-1"
+    BLOOM_560M_CAIKIT: str = f"bloom-560m-{ModelFormat.CAIKIT}"
 
 
 class ModelStoragePath:
@@ -37,6 +42,7 @@ class ModelStoragePath:
     TENSORFLOW_MODEL: str = "inception_resnet_v2.pb"
     OPENVINO_VEHICLE_DETECTION: str = "vehicle-detection"
     FLAN_T5_SMALL_HF: str = f"{ModelName.FLAN_T5_SMALL}/{ModelName.FLAN_T5_SMALL_HF}"
+    BLOOM_560M_CAIKIT: str = f"{ModelName.BLOOM_560M}/{ModelAndFormat.BLOOM_560M_CAIKIT}"
 
 
 class CurlOutput:
@@ -57,6 +63,7 @@ class RuntimeTemplates:
     OVMS_MODEL_MESH: str = ModelFormat.OVMS
     OVMS_KSERVE: str = f"kserve-{ModelFormat.OVMS}"
     CAIKIT_STANDALONE_SERVING: str = "caikit-standalone-serving-template"
+    TGIS_GRPC_SERVING: str = "tgis-grpc-serving-template"
 
 
 class ModelInferenceRuntime:
@@ -77,6 +84,17 @@ class Protocols:
     REST: str = "rest"
     TCP_PROTOCOLS: set[str] = {HTTP, HTTPS}
     ALL_SUPPORTED_PROTOCOLS: set[str] = TCP_PROTOCOLS.union({GRPC})
+    TCP: str = "TCP"
+
+
+class Ports:
+    GRPC_PORT: int = 8033
+    REST_PORT: int = 8080
+
+
+class PortNames:
+    REST_PORT_NAME: str = "http1"
+    GRPC_PORT_NAME: str = "h2c"
 
 
 class HTTPRequest:
@@ -155,3 +173,14 @@ MODEL_REGISTRY: str = "model-registry"
 MODELMESH_SERVING: str = "modelmesh-serving"
 ISTIO_CA_BUNDLE_FILENAME: str = "istio_knative.crt"
 OPENSHIFT_CA_BUNDLE_FILENAME: str = "openshift_ca.crt"
+
+vLLM_CONFIG: dict[str, dict[str, Any]] = {
+    "port_configurations": {
+        "grpc": [{"containerPort": Ports.GRPC_PORT, "name": PortNames.GRPC_PORT_NAME, "protocol": Protocols.TCP}],
+        "raw": [
+            {"containerPort": Ports.REST_PORT, "name": PortNames.REST_PORT_NAME, "protocol": Protocols.TCP},
+            {"containerPort": Ports.GRPC_PORT, "name": PortNames.GRPC_PORT_NAME, "protocol": Protocols.TCP},
+        ],
+    },
+    "commands": {"GRPC": "vllm_tgis_adapter"},
+}

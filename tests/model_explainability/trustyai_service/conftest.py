@@ -13,7 +13,9 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
+from ocp_resources.subscription import Subscription
 from ocp_resources.trustyai_service import TrustyAIService
+from ocp_utilities.operators import install_operator, uninstall_operator
 
 from tests.model_explainability.trustyai_service.trustyai_service_utils import TRUSTYAI_SERVICE_NAME
 from tests.model_explainability.trustyai_service.utils import (
@@ -192,8 +194,44 @@ def db_credentials_secret(admin_client: DynamicClient, model_namespace: Namespac
         yield db_credentials
 
 
+@pytest.fixture(scope="session")
+def installed_mariadb_operator(admin_client: DynamicClient) -> Generator[None, Any, Any]:
+    operator_ns = Namespace(name="openshift-operators", ensure_exists=True)
+    operator_name = "mariadb-operator"
+
+    mariadb_operator_subscription = Subscription(client=admin_client, namespace=operator_ns.name, name=operator_name)
+
+    if not mariadb_operator_subscription.exists:
+        install_operator(
+            admin_client=admin_client,
+            target_namespaces=[],
+            name=operator_name,
+            channel="alpha",
+            source="community-operators",
+            operator_namespace=operator_ns.name,
+            timeout=Timeout.TIMEOUT_15MIN,
+            install_plan_approval="Manual",
+            starting_csv=f"{operator_name}.v0.37.1",
+        )
+
+        deployment = Deployment(
+            client=admin_client,
+            namespace=operator_ns.name,
+            name=f"{operator_name}-helm-controller-manager",
+            wait_for_resource=True,
+        )
+        deployment.wait_for_replicas()
+
+    yield
+    uninstall_operator(
+        admin_client=admin_client, name=operator_name, operator_namespace=operator_ns.name, clean_up_namespace=False
+    )
+
+
 @pytest.fixture(scope="class")
-def mariadb_operator_cr(admin_client: DynamicClient) -> Generator[MariadbOperator, Any, Any]:
+def mariadb_operator_cr(
+    admin_client: DynamicClient, installed_mariadb_operator: None
+) -> Generator[MariadbOperator, Any, Any]:
     mariadb_csv: ClusterServiceVersion = get_cluster_service_version(
         client=admin_client, prefix="mariadb", namespace=OPENSHIFT_OPERATORS
     )
