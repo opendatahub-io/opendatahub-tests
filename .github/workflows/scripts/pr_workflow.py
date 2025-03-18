@@ -316,7 +316,7 @@ class PrLabeler(PrBaseClass):
         for review in all_reviews.reversed:
             if review.user.login == current_user and review.state == "APPROVED":
                 LOGGER.info(f"found review by user {current_user} with id {review.id}")
-                review.dismiss()
+                review.dismiss(message="Dismissing review due to '/lgtm cancel' comment")
 
 
 def main() -> None:
