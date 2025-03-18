@@ -15,8 +15,7 @@ from ocp_resources.resource import ResourceEditor
 from pytest_testconfig import py_config
 from timeout_sampler import TimeoutSampler
 
-from utilities.constants import Labels, Timeout, Annotations
-
+from utilities.constants import Labels, Timeout, Annotations, Protocols
 
 VLLM_EMULATOR: str = "vllm-emulator"
 VLLM_EMULATOR_PORT: int = 8000
@@ -287,7 +286,7 @@ def vllm_emulator_service(
             {
                 "name": f"{VLLM_EMULATOR}-endpoint",
                 "port": VLLM_EMULATOR_PORT,
-                "protocol": "TCP",
+                "protocol": Protocols.TCP,
                 "targetPort": VLLM_EMULATOR_PORT,
             }
         ],
