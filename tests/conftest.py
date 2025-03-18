@@ -296,6 +296,17 @@ def enabled_modelmesh_in_dsc(dsc_resource: DataScienceCluster) -> Generator[Data
         yield dsc
 
 
+@pytest.fixture(scope="package")
+def enabled_kserve_in_dsc(
+    dsc_resource: DataScienceCluster,
+) -> Generator[DataScienceCluster, Any, Any]:
+    with update_components_in_dsc(
+        dsc=dsc_resource,
+        components={DscComponents.KSERVE: DscComponents.ManagementState.MANAGED},
+    ) as dsc:
+        yield dsc
+
+
 @pytest.fixture(scope="session")
 def cluster_monitoring_config(admin_client: DynamicClient) -> Generator[ConfigMap, Any, Any]:
     data = {"config.yaml": yaml.dump({"enableUserWorkload": True})}

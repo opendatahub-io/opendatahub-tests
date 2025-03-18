@@ -63,7 +63,7 @@ dependencies = [
     "timeout-sampler>=1.0.6",
     "shortuuid>=1.0.13",
     "jira>=3.8.0",
-    "openshift-python-wrapper>=11.0.26",
+    "openshift-python-wrapper>=11.0.38",
     "semver>=3.0.4",
 ]
 

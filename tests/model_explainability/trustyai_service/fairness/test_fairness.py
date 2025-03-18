@@ -3,6 +3,7 @@ from typing import Any
 import pytest
 from ocp_resources.inference_service import InferenceService
 
+from tests.model_explainability.constants import MINIO_DATA_DICT
 from tests.model_explainability.trustyai_service.trustyai_service_utils import (
     send_inferences_and_verify_trustyai_service_registered,
     verify_trustyai_service_name_mappings,
@@ -45,10 +46,11 @@ def get_fairness_request_json_data(isvc: InferenceService) -> dict[str, Any]:
 
 
 @pytest.mark.parametrize(
-    "model_namespace",
+    "model_namespace, minio_data_connection",
     [
         pytest.param(
             {"name": "test-fairness-pvc"},
+            {"data-dict": MINIO_DATA_DICT},
         )
     ],
     indirect=True,
@@ -122,10 +124,11 @@ class TestFairnessMetricsWithPVCStorage:
 
 
 @pytest.mark.parametrize(
-    "model_namespace",
+    "model_namespace, minio_data_connection",
     [
         pytest.param(
             {"name": "test-fairness-db"},
+            {"data-dict": MINIO_DATA_DICT},
         )
     ],
     indirect=True,
