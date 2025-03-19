@@ -33,7 +33,7 @@ from pytest_testconfig import config as py_config
 from semver import Version
 from simple_logger.logger import get_logger
 
-from utilities.constants import Timeout
+from utilities.constants import Labels, Timeout
 from utilities.exceptions import FailedPodsError
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 from utilities.general import create_isvc_label_selector_str, get_s3_secret_dict
@@ -44,11 +44,14 @@ LOGGER = get_logger(name=__name__)
 @contextmanager
 def create_ns(
     name: str,
-    admin_client: Optional[DynamicClient] = None,
-    unprivileged_client: Optional[DynamicClient] = None,
+    admin_client: DynamicClient | None = None,
+    unprivileged_client: DynamicClient | None = None,
     teardown: bool = True,
     delete_timeout: int = Timeout.TIMEOUT_4MIN,
-    labels: Optional[dict[str, str]] = None,
+    labels: dict[str, str] | None = None,
+    ns_annotations: dict[str, str] | None = None,
+    model_mesh_enabled: bool = False,
+    add_dashboard_label: bool = False,
 ) -> Generator[Namespace | Project, Any, Any]:
     """
     Create namespace with admin or unprivileged client.
@@ -60,30 +63,39 @@ def create_ns(
         teardown (bool): should run resource teardown
         delete_timeout (int): delete timeout.
         labels (dict[str, str]): labels dict to set for namespace
+        ns_annotations (dict[str, str]): annotations dict to set for namespace
+        model_mesh_enabled (bool): if True, model mesh will be enabled in namespace
+        add_dashboard_label (bool): if True, dashboard label will be added to namespace
 
     Yields:
         Namespace | Project: namespace or project
 
     """
+    namespace_kwargs = {
+        "name": name,
+        "client": admin_client,
+        "teardown": teardown,
+        "delete_timeout": delete_timeout,
+        "label": labels or {},
+    }
+
+    if ns_annotations:
+        namespace_kwargs["annotations"] = ns_annotations
+
+    if model_mesh_enabled:
+        namespace_kwargs["label"]["modelmesh-enabled"] = "true"  # type: ignore
+
+    if add_dashboard_label:
+        namespace_kwargs["label"][Labels.OpenDataHub.DASHBOARD] = "true"  # type: ignore
+
     if unprivileged_client:
         with ProjectRequest(name=name, client=unprivileged_client, teardown=teardown):
-            project = Project(
-                name=name,
-                client=unprivileged_client,
-                teardown=teardown,
-                delete_timeout=delete_timeout,
-            )
+            project = Project(**namespace_kwargs)
             project.wait_for_status(status=project.Status.ACTIVE, timeout=Timeout.TIMEOUT_2MIN)
             yield project
 
     else:
-        with Namespace(
-            client=admin_client,
-            name=name,
-            label=labels,
-            teardown=teardown,
-            delete_timeout=delete_timeout,
-        ) as ns:
+        with Namespace(**namespace_kwargs) as ns:
             ns.wait_for_status(status=Namespace.Status.ACTIVE, timeout=Timeout.TIMEOUT_2MIN)
             yield ns
 
