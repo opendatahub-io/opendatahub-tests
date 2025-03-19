@@ -301,9 +301,13 @@ class PrLabeler(PrBaseClass):
             LOGGER.info(f"Processing labels: {labels}")
             for label, action in labels.items():
                 if label == LGTM_LABEL_STR:
-                    label = f"{LGTM_BY_LABEL_PREFIX}{self.user_login}"
-                    if not action[CANCEL_ACTION] or self.event_action == "deleted":
-                        self.approve_pr()
+                    if self.user_login == self.pr.user.login:
+                        LOGGER.info("PR submitter cannot approve for their own PR")
+                        continue
+                    else:
+                        label = f"{LGTM_BY_LABEL_PREFIX}{self.user_login}"
+                        if not action[CANCEL_ACTION] or self.event_action == "deleted":
+                            self.approve_pr()
 
                 label_in_pr = any([label == _label.lower() for _label in self.pr_labels])
                 LOGGER.info(f"Processing label: {label}, action: {action}")
@@ -327,9 +331,6 @@ class PrLabeler(PrBaseClass):
         self.pr.create_issue_comment(body=WELCOME_COMMENT)
 
     def approve_pr(self) -> None:
-        if self.user_login == self.pr.user.login:
-            LOGGER.info("PR submitter cannot trigger approval for their own PR")
-            return
         self.pr.create_review(event="APPROVE")
 
     def dismiss_pr_approval(self) -> None:
