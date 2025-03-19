@@ -109,10 +109,11 @@ class PrLabeler(PrBaseClass):
         return users
 
     def verify_allowed_user(self) -> None:
-        allowed_users = get_allowed_users()
+        allowed_users = self.get_allowed_users()
         if self.user_login not in users:
-            LOGGER.info("User is not allowed for this action. Exiting.")
+            LOGGER.info(f"User {self.user_login} is not allowed for this action. Exiting.")
             sys.exit(0)
+        LOGGER.info(f"User {self.user_login} is allowed")
 
     def verify_labeler_config(self) -> None:
         if self.action == self.SupportedActions.add_remove_labels_action_name and self.event_name in (
