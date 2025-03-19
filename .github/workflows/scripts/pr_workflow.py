@@ -112,7 +112,7 @@ class PrLabeler(PrBaseClass):
 
     def verify_allowed_user(self) -> None:
         allowed_users = self.get_allowed_users()
-        if self.user_login not in users:
+        if self.user_login not in allowed_users:
             LOGGER.info(f"User {self.user_login} is not allowed for this action. Exiting.")
             sys.exit(0)
         LOGGER.info(f"User {self.user_login} is allowed")
@@ -327,6 +327,9 @@ class PrLabeler(PrBaseClass):
         self.pr.create_issue_comment(body=WELCOME_COMMENT)
 
     def approve_pr(self) -> None:
+        if self.user_login == self.pr.user.login:
+            LOGGER.info("PR submitter cannot trigger approval for their own PR")
+            return
         self.pr.create_review(event="APPROVE")
 
     def dismiss_pr_approval(self) -> None:
