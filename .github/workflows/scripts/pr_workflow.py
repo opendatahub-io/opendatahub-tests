@@ -96,7 +96,23 @@ class PrLabeler(PrBaseClass):
         self.last_commit = list(self.pr.get_commits())[-1]
         self.last_commit_sha = self.last_commit.sha
 
+        self.verify_allowed_user()
         self.verify_labeler_config()
+
+    def get_allowed_users(self) -> list[str]:
+        org: github.Organization = self.gh_client.get_organization("opendatahub-io")
+        # slug is the team name with replaced special characters,
+        # all words to lowercase and spaces replace with a -
+        team: github.Team = org.get_team_by_slug("opendatahub-tests-contributors")
+        members: PaginatedList[github.NamedUser] = team.get_members()
+        users = [m.login for member in members]
+        return users
+
+    def verify_allowed_user(self) -> None:
+        allowed_users = get_allowed_users()
+        if self.user_login not in users:
+            LOGGER.info("User is not allowed for this action. Exiting.")
+            sys.exit(0)
 
     def verify_labeler_config(self) -> None:
         if self.action == self.SupportedActions.add_remove_labels_action_name and self.event_name in (
@@ -283,19 +299,21 @@ class PrLabeler(PrBaseClass):
             for label, action in labels.items():
                 if label == LGTM_LABEL_STR:
                     label = f"{LGTM_BY_LABEL_PREFIX}{self.user_login}"
+                    if not action[CANCEL_ACTION] or self.event_action == "deleted":
+                        self.approve_pr()
 
                 label_in_pr = any([label == _label.lower() for _label in self.pr_labels])
                 LOGGER.info(f"Processing label: {label}, action: {action}")
 
                 if action[CANCEL_ACTION] or self.event_action == "deleted":
-                    self.dismiss_pr_approval()
+                    if label == LGTM_LABEL_STR:
+                        self.dismiss_pr_approval()
                     if label_in_pr:
                         LOGGER.info(f"Removing label {label}")
                         self.pr.remove_from_labels(label=label)
 
                 elif not label_in_pr:
                     self.add_pr_label(label=label)
-                    self.approve_pr()
 
         else:
             commented_by_label = f"{COMMENTED_BY_LABEL_PREFIX}{self.user_login}"
