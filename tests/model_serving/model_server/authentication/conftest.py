@@ -15,7 +15,6 @@ from ocp_resources.serving_runtime import ServingRuntime
 
 from utilities.inference_utils import create_isvc
 from utilities.infra import (
-    create_ns,
     create_isvc_view_role,
     get_pods_by_isvc_label,
     s3_endpoint_secret,
@@ -329,12 +328,6 @@ def http_s3_caikit_raw_inference_service_2(
 
 
 # Unprivileged user tests
-@pytest.fixture(scope="class")
-def unprivileged_model_namespace(
-    request: FixtureRequest, unprivileged_client: DynamicClient
-) -> Generator[Namespace, Any, Any]:
-    with create_ns(unprivileged_client=unprivileged_client, name=request.param["name"]) as ns:
-        yield ns
 
 
 @pytest.fixture(scope="class")
