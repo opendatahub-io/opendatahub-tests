@@ -32,6 +32,7 @@ def pytest_addoption(parser: Parser) -> None:
     buckets_group = parser.getgroup(name="Buckets")
     runtime_group = parser.getgroup(name="Runtime details")
     upgrade_group = parser.getgroup(name="Upgrade options")
+    platform_group = parser.getgroup(name="Platform")
 
     # AWS config and credentials options
     aws_group.addoption(
@@ -111,6 +112,12 @@ def pytest_addoption(parser: Parser) -> None:
         "--upgrade-deployment-modes",
         help="Coma-separated str; specify inference service deployment modes tests to run in upgrade tests. "
         "If not set, all will be tested.",
+    )
+
+    # Platform options
+    platform_group.addoption(
+        "--applications-namespace",
+        help="RHOAI/ODH applications namespace",
     )
 
 
@@ -195,9 +202,6 @@ def pytest_sessionstart(session: Session) -> None:
         log_file=tests_log_file,
         log_level=session.config.getoption("log_cli_level") or logging.INFO,
     )
-
-    if py_config.get("distribution") == "upstream":
-        py_config["applications_namespace"] = "opendatahub"
 
 
 def pytest_fixture_setup(fixturedef: FixtureDef[Any], request: FixtureRequest) -> None:
