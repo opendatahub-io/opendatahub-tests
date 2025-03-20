@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pytest
 
+from timeout_sampler import TimeoutExpiredError
+
 from ocp_resources.pod import Pod
 
 
@@ -40,5 +42,11 @@ class TestNotebook:
                 label_selector=f"app={unprivileged_model_namespace.name}",
             )
             assert pods, "The expected notebook pods were not found"
+
+            failed_pods = []
             for pod in pods:
-                pod.wait_for_condition(condition=pod.Condition.READY, status=pod.Condition.Status.TRUE)
+                try:
+                    pod.wait_for_condition(condition=pod.Condition.READY, status=pod.Condition.Status.TRUE)
+                except TimeoutExpiredError:
+                    failed_pods.append(pod)
+            assert not failed_pods, f"The following pods failed to get READY when starting the notebook: {failed_pods}"
