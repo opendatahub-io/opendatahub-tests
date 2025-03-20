@@ -100,14 +100,14 @@ class PrLabeler(PrBaseClass):
         self.verify_labeler_config()
 
     def get_allowed_users(self) -> list[str]:
-        # org: github.Organization = self.gh_client.get_organization("opendatahub-io")
-        # # slug is the team name with replaced special characters,
-        # # all words to lowercase and spaces replace with a -
-        # team: github.Team = org.get_team_by_slug("opendatahub-tests-contributors")
-        # members: PaginatedList[github.NamedUser] = team.get_members()
-        # users = [m.login for member in members]
+        org: github.Organization = self.gh_client.get_organization("opendatahub-io")
+        # slug is the team name with replaced special characters,
+        # all words to lowercase and spaces replace with a -
+        team: github.Team = org.get_team_by_slug("opendatahub-tests-contributors")
+        members: PaginatedList[github.NamedUser] = team.get_members()
+        users = [m.login for member in members]
         # TODO: replace once bot user is part of the org and team
-        users = ["lugi0", "rnetser", "adolfo-ab", "tarukumar", "dbasunag", "mwaykole"]
+        # users = ["lugi0", "rnetser", "adolfo-ab", "tarukumar", "dbasunag", "mwaykole"]
         return users
 
     def verify_allowed_user(self) -> None:
