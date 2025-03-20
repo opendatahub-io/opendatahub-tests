@@ -25,7 +25,6 @@ class TestNotebook:
     )
     def test_create_simple_notebook(
         self,
-        admin_client,
         unprivileged_client,
         unprivileged_model_namespace,
         users_persistent_volume_claim,
