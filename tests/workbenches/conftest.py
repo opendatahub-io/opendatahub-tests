@@ -200,4 +200,5 @@ def default_notebook(
         },
     }
 
-    yield Notebook(kind_dict=notebook)
+    with Notebook(kind_dict=notebook) as nb:
+        yield nb
