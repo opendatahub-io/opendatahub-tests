@@ -33,7 +33,7 @@ class TestNotebook:
         default_notebook,
     ):
         """
-        Create simple Notebook with all needed resources and see if Operator creates it properly
+        Create a simple Notebook CR with all necessary resources and see if the Notebook Operator creates it properly
         """
         with default_notebook:
             pods = Pod.get(
