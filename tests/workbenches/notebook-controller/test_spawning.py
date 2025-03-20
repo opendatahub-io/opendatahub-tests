@@ -35,18 +35,17 @@ class TestNotebook:
         """
         Create a simple Notebook CR with all necessary resources and see if the Notebook Operator creates it properly
         """
-        with default_notebook:
-            pods = Pod.get(
-                dyn_client=unprivileged_client,
-                namespace=unprivileged_model_namespace.name,
-                label_selector=f"app={unprivileged_model_namespace.name}",
-            )
-            assert pods, "The expected notebook pods were not found"
+        pods = Pod.get(
+            dyn_client=unprivileged_client,
+            namespace=unprivileged_model_namespace.name,
+            label_selector=f"app={unprivileged_model_namespace.name}",
+        )
+        assert pods, "The expected notebook pods were not found"
 
-            failed_pods = []
-            for pod in pods:
-                try:
-                    pod.wait_for_condition(condition=pod.Condition.READY, status=pod.Condition.Status.TRUE)
-                except TimeoutExpiredError:
-                    failed_pods.append(pod)
-            assert not failed_pods, f"The following pods failed to get READY when starting the notebook: {failed_pods}"
+        failed_pods = []
+        for pod in pods:
+            try:
+                pod.wait_for_condition(condition=pod.Condition.READY, status=pod.Condition.Status.TRUE)
+            except TimeoutExpiredError:
+                failed_pods.append(pod)
+        assert not failed_pods, f"The following pods failed to get READY when starting the notebook: {failed_pods}"
