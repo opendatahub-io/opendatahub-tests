@@ -105,7 +105,7 @@ class PrLabeler(PrBaseClass):
         # all words to lowercase and spaces replace with a -
         team: github.Team = org.get_team_by_slug("opendatahub-tests-contributors")
         members: PaginatedList[github.NamedUser] = team.get_members()
-        users = [m.login for member in members]
+        users = [member.login for member in members]
         # TODO: replace once bot user is part of the org and team
         # users = ["lugi0", "rnetser", "adolfo-ab", "tarukumar", "dbasunag", "mwaykole"]
         return users
