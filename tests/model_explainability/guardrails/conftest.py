@@ -9,11 +9,9 @@ from ocp_resources.guardrails_orchestrator import GuardrailsOrchestrator
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
-from ocp_resources.role_binding import RoleBinding
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
-from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 
 from tests.model_explainability.constants import (
@@ -263,25 +261,3 @@ def llm_models_pvc(
         size="10Gi",
     ) as pvc:
         yield pvc
-
-
-@pytest.fixture(scope="class")
-def user_one_service_account(
-    admin_client: DynamicClient, model_namespace: Namespace
-) -> Generator[ServiceAccount, Any, Any]:
-    with ServiceAccount(client=admin_client, name=USER_ONE, namespace=model_namespace.name) as service_account:
-        yield service_account
-
-
-@pytest.fixture(scope="class")
-def user_one_rolebinding(
-    admin_client: DynamicClient, model_namespace: Namespace, user_one_service_account: ServiceAccount
-) -> Generator[RoleBinding, Any, Any]:
-    with RoleBinding(
-        client=admin_client,
-        name=f"{user_one_service_account.name}-view",
-        namespace=model_namespace.name,
-        subjects=[{"kind": "ServiceAccount", "name": user_one_service_account.name}],
-        role_ref={"apiGroup": "rbac.authorization.k8s.io", "kind": "Role", "name": "view"},
-    ) as role_binding:
-        yield role_binding
