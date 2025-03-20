@@ -21,7 +21,13 @@ from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 
 from utilities.data_science_cluster_utils import update_components_in_dsc
-from utilities.infra import create_ns, login_with_user_password, get_openshift_token
+from utilities.infra import (
+    create_ns,
+    get_dsci_applications_namespace,
+    get_operator_distribution,
+    login_with_user_password,
+    get_openshift_token,
+)
 from utilities.constants import AcceleratorType, DscComponents
 from utilities.infra import update_configmap_data
 
@@ -43,6 +49,21 @@ def tests_tmp_dir(request: FixtureRequest, tmp_path_factory: TempPathFactory) ->
     yield
 
     shutil.rmtree(path=str(tests_tmp_path), ignore_errors=True)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def updated_global_config(request: FixtureRequest, admin_client: DynamicClient) -> None:
+    if get_operator_distribution(client=admin_client) == "Open Data Hub":
+        py_config["distribution"] = "upstream"
+
+    else:
+        py_config["distribution"] = "downstream"
+
+    if applications_namespace := request.config.getoption("applications_namespace"):
+        py_config["applications_namespace"] = applications_namespace
+
+    else:
+        py_config["applications_namespace"] = get_dsci_applications_namespace(client=admin_client)
 
 
 @pytest.fixture(scope="session")
@@ -271,6 +292,17 @@ def enabled_modelmesh_in_dsc(dsc_resource: DataScienceCluster) -> Generator[Data
     with update_components_in_dsc(
         dsc=dsc_resource,
         components={DscComponents.MODELMESHSERVING: DscComponents.ManagementState.MANAGED},
+    ) as dsc:
+        yield dsc
+
+
+@pytest.fixture(scope="package")
+def enabled_kserve_in_dsc(
+    dsc_resource: DataScienceCluster,
+) -> Generator[DataScienceCluster, Any, Any]:
+    with update_components_in_dsc(
+        dsc=dsc_resource,
+        components={DscComponents.KSERVE: DscComponents.ManagementState.MANAGED},
     ) as dsc:
         yield dsc
 

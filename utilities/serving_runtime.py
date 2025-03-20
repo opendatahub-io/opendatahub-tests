@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from typing import Any
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
@@ -29,6 +30,8 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         runtime_image: str | None = None,
         models_priorities: dict[str, str] | None = None,
         supported_model_formats: dict[str, list[dict[str, str]]] | None = None,
+        volumes: list[dict[str, Any]] | None = None,
+        containers: dict[str, dict[str, Any]] | None = None,
         support_tgis_open_ai_endpoints: bool = False,
     ):
         """
@@ -51,6 +54,9 @@ class ServingRuntimeFromTemplate(ServingRuntime):
             models_priorities (dict[str, str]): Model priority to be used for the serving runtime
             supported_model_formats (dict[str, list[dict[str, str]]]): Model formats;
                 overwrites template's `supportedModelFormats`
+            volumes (list[dict[str, Any]]): Volumes to be used with the serving runtime
+            containers (dict[str, dict[str, Any]]): Containers configurations to override or add
+                to the serving runtime
             support_tgis_open_ai_endpoints (bool): Whether to support TGIS and OpenAI endpoints using
                 a single entry point
         """
@@ -69,6 +75,8 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         self.runtime_image = runtime_image
         self.models_priorities = models_priorities
         self.supported_model_formats = supported_model_formats
+        self.volumes = volumes
+        self.containers = containers
         self.support_tgis_open_ai_endpoints = support_tgis_open_ai_endpoints
 
         # model mesh attributes
@@ -145,7 +153,13 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         if self.protocol is not None:
             _model_metadata.setdefault("annotations", {})["opendatahub.io/apiProtocol"] = self.protocol
 
-        for container in _model_spec["containers"]:
+        template_containers = _model_spec.get("containers", [])
+
+        containers_to_add = copy.deepcopy(self.containers) if self.containers else {}
+
+        for container in template_containers:
+            container_name = container.get("name")
+
             for env in container.get("env", []):
                 if env["name"] == "RUNTIME_HTTP_ENABLED" and self.enable_http is not None:
                     env["value"] = str(self.enable_http).lower()
@@ -160,7 +174,7 @@ class ServingRuntimeFromTemplate(ServingRuntime):
                             "protocol": Protocols.TCP,
                         }
 
-            if self.resources is not None and (resource_dict := self.resources.get(container["name"])):
+            if self.resources is not None and (resource_dict := self.resources.get(container_name)):
                 container["resources"] = resource_dict
 
             if self.runtime_image is not None:
@@ -182,9 +196,21 @@ class ServingRuntimeFromTemplate(ServingRuntime):
                     elif is_raw:
                         container["ports"] = vLLM_CONFIG["port_configurations"]["raw"]
 
+            if containers_to_add and container_name in containers_to_add:
+                container_config = containers_to_add.pop(container_name)
+                for key, value in container_config.items():
+                    container[key] = value
+
+        if containers_to_add:
+            for container_name, container_config in containers_to_add.items():
+                new_container = {"name": container_name}
+                new_container.update(container_config)
+                template_containers.append(new_container)
+
+        _model_spec["containers"] = template_containers
+
         if self.supported_model_formats:
             _model_spec_supported_formats = self.supported_model_formats
-
         else:
             if self.model_format_name is not None:
                 for model in _model_spec_supported_formats:
@@ -196,5 +222,8 @@ class ServingRuntimeFromTemplate(ServingRuntime):
                     _model_name = _model["name"]
                     if _model_name in self.models_priorities:
                         _model["priority"] = self.models_priorities[_model_name]
+
+        if self.volumes:
+            _model_spec["volumes"] = self.volumes
 
         return _model_dict

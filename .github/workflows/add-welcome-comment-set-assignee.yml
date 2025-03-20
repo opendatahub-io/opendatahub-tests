@@ -1,4 +1,4 @@
-name: Add Welcome Comment
+name: Add Welcome Comment And Set PR Assignee
 on:
   pull_request_target:
     types: [opened]
@@ -8,7 +8,7 @@ permissions:
   contents: write
 
 jobs:
-  add-welcome-comment:
+  add-welcome-comment-set-assignee:
     runs-on: ubuntu-latest
 
     steps:
@@ -23,5 +23,5 @@ jobs:
           GITHUB_PR_NUMBER: ${{github.event.pull_request.number}}
           GITHUB_EVENT_ACTION: ${{github.event.action}}
           GITHUB_EVENT_NAME: ${{github.event_name}}
-          ACTION: "add-welcome-comment"
+          ACTION: "add-welcome-comment-set-assignee"
         run: uv run python .github/workflows/scripts/pr_workflow.py
