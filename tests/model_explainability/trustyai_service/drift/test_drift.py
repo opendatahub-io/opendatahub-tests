@@ -1,5 +1,6 @@
 import pytest
 
+from tests.model_explainability.constants import MINIO_DATA_DICT
 from tests.model_explainability.trustyai_service.trustyai_service_utils import (
     send_inferences_and_verify_trustyai_service_registered,
     verify_upload_data_to_trustyai_service,
@@ -14,10 +15,11 @@ BASE_DATA_PATH: str = "./tests/model_explainability/trustyai_service/drift/model
 
 
 @pytest.mark.parametrize(
-    "model_namespace",
+    "model_namespace, minio_data_connection",
     [
         pytest.param(
             {"name": "test-drift"},
+            {"data-dict": MINIO_DATA_DICT},
         )
     ],
     indirect=True,
@@ -53,6 +55,7 @@ class TestDriftMetrics:
     def test_upload_data_to_trustyai_service(
         self,
         admin_client,
+        minio_data_connection,
         current_client_token,
         trustyai_service_with_pvc_storage,
     ) -> None:
@@ -85,7 +88,9 @@ class TestDriftMetrics:
             json_data={"modelId": gaussian_credit_model.name, "referenceTag": "TRAINING"},
         )
 
-    def test_drift_metric_delete(self, admin_client, current_client_token, trustyai_service_with_pvc_storage):
+    def test_drift_metric_delete(
+        self, admin_client, minio_data_connection, current_client_token, trustyai_service_with_pvc_storage
+    ):
         verify_trustyai_service_metric_delete_request(
             client=admin_client,
             trustyai_service=trustyai_service_with_pvc_storage,

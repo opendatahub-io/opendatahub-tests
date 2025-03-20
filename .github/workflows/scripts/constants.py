@@ -25,6 +25,7 @@ The following are automatically added/executed:
  * PR size label.
  * Run [pre-commit](https://pre-commit.ci/)
  * Run [tox](https://tox.wiki/)
+ * Add PR author as the PR assignee
 
 Available user actions:
  * To mark a PR as `WIP`, add `/wip` in a comment. To remove it from the PR comment `/wip cancel` to the PR.
