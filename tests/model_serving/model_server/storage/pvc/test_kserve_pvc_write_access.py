@@ -5,10 +5,9 @@ import pytest
 
 from tests.model_serving.model_server.storage.constants import (
     INFERENCE_SERVICE_PARAMS,
-    KSERVE_CONTAINER_NAME,
     KSERVE_OVMS_SERVING_RUNTIME_PARAMS,
 )
-from utilities.constants import StorageClassName
+from utilities.constants import Containers, StorageClassName
 from utilities.infra import get_pods_by_isvc_label
 
 pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("skip_if_no_nfs_storage_class", "valid_aws_config")]
@@ -50,7 +49,7 @@ class TestKservePVCWriteAccess:
         """Test that write access is denied by default"""
         with pytest.raises(ExecOnPodError):
             first_predictor_pod.execute(
-                container=KSERVE_CONTAINER_NAME,
+                container=Containers.KSERVE_CONTAINER_NAME,
                 command=POD_TOUCH_SPLIT_COMMAND,
             )
 
@@ -70,7 +69,7 @@ class TestKservePVCWriteAccess:
             isvc=patched_read_only_isvc,
         )[0]
         new_pod.execute(
-            container=KSERVE_CONTAINER_NAME,
+            container=Containers.KSERVE_CONTAINER_NAME,
             command=POD_TOUCH_SPLIT_COMMAND,
         )
 
@@ -91,6 +90,6 @@ class TestKservePVCWriteAccess:
         )[0]
         with pytest.raises(ExecOnPodError):
             new_pod.execute(
-                container=KSERVE_CONTAINER_NAME,
+                container=Containers.KSERVE_CONTAINER_NAME,
                 command=POD_TOUCH_SPLIT_COMMAND,
             )

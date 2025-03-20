@@ -20,11 +20,11 @@ from utilities.inference_utils import create_isvc
 
 @pytest.fixture(scope="class")
 def inference_service_patched_replicas(
-    request: FixtureRequest, ovms_serverless_inference_service: InferenceService
+    request: FixtureRequest, ovms_kserve_inference_service: InferenceService
 ) -> InferenceService:
     ResourceEditor(
         patches={
-            ovms_serverless_inference_service: {
+            ovms_kserve_inference_service: {
                 "spec": {
                     "predictor": {"minReplicas": request.param["min-replicas"]},
                 }
@@ -32,7 +32,7 @@ def inference_service_patched_replicas(
         }
     ).update()
 
-    return ovms_serverless_inference_service
+    return ovms_kserve_inference_service
 
 
 @pytest.fixture

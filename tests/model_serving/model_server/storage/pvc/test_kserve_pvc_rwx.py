@@ -1,11 +1,10 @@
 import shlex
-from utilities.constants import KServeDeploymentType, StorageClassName
+from utilities.constants import Containers, KServeDeploymentType, StorageClassName
 
 import pytest
 
 from tests.model_serving.model_server.storage.constants import (
     INFERENCE_SERVICE_PARAMS,
-    KSERVE_CONTAINER_NAME,
     KSERVE_OVMS_SERVING_RUNTIME_PARAMS,
 )
 
@@ -32,13 +31,13 @@ class TestKservePVCReadWriteManyAccess:
     def test_first_isvc_pvc_read_access(self, predictor_pods_scope_class):
         """Test that the first predictor pod has read access to the PVC"""
         predictor_pods_scope_class[0].execute(
-            container=KSERVE_CONTAINER_NAME,
+            container=Containers.KSERVE_CONTAINER_NAME,
             command=POD_LS_SPLIT_COMMAND,
         )
 
     def test_second_isvc_pvc_read_access(self, predictor_pods_scope_class):
         """Test that the second predictor pod has read access to the PVC"""
         predictor_pods_scope_class[1].execute(
-            container=KSERVE_CONTAINER_NAME,
+            container=Containers.KSERVE_CONTAINER_NAME,
             command=POD_LS_SPLIT_COMMAND,
         )

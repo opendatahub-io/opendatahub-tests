@@ -513,6 +513,7 @@ def create_isvc(
     external_route: bool | None = None,
     model_service_account: str | None = None,
     min_replicas: int | None = None,
+    max_replicas: int | None = None,
     argument: list[str] | None = None,
     resources: dict[str, Any] | None = None,
     volumes: dict[str, Any] | None = None,
@@ -524,6 +525,7 @@ def create_isvc(
     timeout: int = Timeout.TIMEOUT_15MIN,
     scale_metric: str | None = None,
     scale_target: int | None = None,
+    model_env_variables: list[dict[str, str]] | None = None,
 ) -> Generator[InferenceService, Any, Any]:
     """
     Create InferenceService object.
@@ -543,6 +545,7 @@ def create_isvc(
         external_route (bool): External route
         model_service_account (str): Model service account
         min_replicas (int): Minimum replicas
+        max_replicas (int): Maximum replicas
         argument (list[str]): Argument
         resources (dict[str, Any]): Resources
         volumes (dict[str, Any]): Volumes
@@ -551,10 +554,10 @@ def create_isvc(
         wait_for_predictor_pods (bool): Wait for predictor pods
         autoscaler_mode (str): Autoscaler mode
         multi_node_worker_spec (dict[str, int]): Multi node worker spec
-        wait_for_predictor_pods (bool): Wait for predictor pods
         timeout (int): Time to wait for the model inference,deployment to be ready
         scale_metric (str): Scale metric
         scale_target (int): Scale target
+        model_env_variables (list[dict[str, str]]): Model environment variables
 
     Yields:
         InferenceService: InferenceService object
@@ -562,13 +565,18 @@ def create_isvc(
     """
     labels: dict[str, str] = {}
     predictor_dict: dict[str, Any] = {
-        "minReplicas": min_replicas,
         "model": {
             "modelFormat": {"name": model_format},
             "version": "1",
             "runtime": runtime,
         },
     }
+
+    if min_replicas is not None:
+        predictor_dict["minReplicas"] = min_replicas
+
+    if max_replicas is not None:
+        predictor_dict["maxReplicas"] = max_replicas
 
     if model_version:
         predictor_dict["model"]["modelFormat"]["version"] = model_version
@@ -591,6 +599,8 @@ def create_isvc(
         predictor_dict["model"]["volumeMounts"] = volumes_mounts
     if volumes:
         predictor_dict["volumes"] = volumes
+    if model_env_variables:
+        predictor_dict["model"]["env"] = model_env_variables
 
     _annotations: dict[str, str] = {}
 
