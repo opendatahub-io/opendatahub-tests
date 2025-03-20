@@ -13,7 +13,6 @@ from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from pytest_testconfig import py_config
-from timeout_sampler import TimeoutSampler
 
 from utilities.constants import Labels, Timeout, Annotations, Protocols
 
@@ -31,7 +30,7 @@ def lmevaljob_hf_pod(admin_client: DynamicClient, lmevaljob_hf: LMEvalJob) -> Ge
     )
 
     # TODO: Check if we can rely on LMEvalJob instead of pod
-    wait_for_pod_to_exist(lmeval_pod)
+    lmeval_pod.wait(timeout=Timeout.TIMEOUT_2MIN)
 
     yield lmeval_pod
 
@@ -118,7 +117,8 @@ def lmevaljob_vllm_emulator_pod(
         name=lmevaljob_vllm_emulator.name,
     )
 
-    wait_for_pod_to_exist(lmeval_pod)
+    # TODO: Check if we can rely on LMEvalJob instead of pod
+    lmeval_pod.wait(timeout=Timeout.TIMEOUT_2MIN)
 
     yield lmeval_pod
 
@@ -307,9 +307,3 @@ def vllm_emulator_route(
         service=vllm_emulator_service.name,
     ) as route:
         yield route
-
-
-def wait_for_pod_to_exist(pod: Pod) -> None:
-    for sample in TimeoutSampler(wait_timeout=Timeout.TIMEOUT_2MIN, sleep=1, func=lambda: pod.exists):
-        if sample:
-            return
