@@ -7,11 +7,6 @@ on:
 
   issue_comment:
     types: [created, edited, deleted]
-    if: |
-      contains(github.event.comment.body, '/wip') ||
-      contains(github.event.comment.body, '/verified') ||
-      contains(github.event.comment.body, '/lgtm') ||
-      contains(github.event.comment.body, '/hold')
 
 
 permissions:
@@ -21,6 +16,12 @@ permissions:
 
 jobs:
   add-remove-labels:
+    if: |
+      contains(github.event.comment.body, '/wip') ||
+      contains(github.event.comment.body, '/verified') ||
+      contains(github.event.comment.body, '/lgtm') ||
+      contains(github.event.comment.body, '/hold') ||
+      contains(github.event.comment.body, '/cherry-pick')
     runs-on: ubuntu-latest
 
     steps:
