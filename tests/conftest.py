@@ -51,7 +51,7 @@ def tests_tmp_dir(request: FixtureRequest, tmp_path_factory: TempPathFactory) ->
     shutil.rmtree(path=str(tests_tmp_path), ignore_errors=True)
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="session")
 def updated_global_config(request: FixtureRequest, admin_client: DynamicClient) -> None:
     if get_operator_distribution(client=admin_client) == "Open Data Hub":
         py_config["distribution"] = "upstream"

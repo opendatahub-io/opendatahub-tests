@@ -211,8 +211,9 @@ def pytest_fixture_setup(fixturedef: FixtureDef[Any], request: FixtureRequest) -
 def pytest_runtest_setup(item: Item) -> None:
     """
     Performs the following actions:
-    1. Adds skip fixture for kserve if serverless or authorino operators are not installed.
-    2. Adds skip fixture for serverless if authorino/serverless/service mesh are not deployed.
+    1. Updates global config (`updated_global_config`)
+    2. Adds skip fixture for kserve if serverless or authorino operators are not installed.
+    3. Adds skip fixture for serverless if authorino/serverless/service mesh are not deployed.
     """
 
     BASIC_LOGGER.info(f"\n{separator(symbol_='-', val=item.name)}")
@@ -229,6 +230,9 @@ def pytest_runtest_setup(item: Item) -> None:
 
     elif KServeDeploymentType.MODEL_MESH.lower() in item.keywords:
         item.fixturenames.insert(0, "enabled_modelmesh_in_dsc")
+
+    # The above fixtures require the global config to be updated before being called
+    item.fixturenames.insert(0, "updated_global_config")
 
 
 def pytest_runtest_call(item: Item) -> None:
