@@ -41,6 +41,7 @@ class PrBaseClass:
     def __init__(self) -> None:
         self.repo: Repository
         self.pr: PullRequest
+        self.gh_client: GitHub
 
         self.repo_name = os.environ["GITHUB_REPOSITORY"]
         self.pr_number = int(os.getenv("GITHUB_PR_NUMBER", 0))
@@ -77,9 +78,9 @@ class PrBaseClass:
         )
 
     def set_gh_config(self) -> None:
-        gh_client: Github = Github(login_or_token=self.github_token)
-        self.repo = gh_client.get_repo(full_name_or_id=self.repo_name)
-        self.pr = self.repo.get_pull(number=self.pr_number)
+        self.gh_client: Github = Github(login_or_token=self.github_token)
+        self.repo: Repository = self.gh_client.get_repo(full_name_or_id=self.repo_name)
+        self.pr: PullRequest = self.repo.get_pull(number=self.pr_number)
 
 
 class PrLabeler(PrBaseClass):
@@ -87,11 +88,34 @@ class PrLabeler(PrBaseClass):
         super().__init__()
         self.user_login = os.getenv("GITHUB_USER_LOGIN")
         self.review_state = os.getenv("GITHUB_EVENT_REVIEW_STATE")
+        # We don't care if the body of the comment is in the discussion page or a review
         self.comment_body = os.getenv("COMMENT_BODY", "")
+        if self.comment_body == "":
+            # if it wasn't a discussion page comment, try to get a review comment, otherwise keep empty
+            self.comment_body = os.getenv("REVIEW_COMMENT_BODY", "")
         self.last_commit = list(self.pr.get_commits())[-1]
         self.last_commit_sha = self.last_commit.sha
 
+        self.verify_allowed_user()
         self.verify_labeler_config()
+
+    def get_allowed_users(self) -> list[str]:
+        org: github.Organization = self.gh_client.get_organization("opendatahub-io")
+        # slug is the team name with replaced special characters,
+        # all words to lowercase and spaces replace with a -
+        team: github.Team = org.get_team_by_slug("opendatahub-tests-contributors")
+        members: PaginatedList[github.NamedUser] = team.get_members()
+        users = [member.login for member in members]
+        # TODO: replace once bot user is part of the org and team
+        # users = ["lugi0", "rnetser", "adolfo-ab", "tarukumar", "dbasunag", "mwaykole"]
+        return users
+
+    def verify_allowed_user(self) -> None:
+        allowed_users = self.get_allowed_users()
+        if self.user_login not in allowed_users:
+            LOGGER.info(f"User {self.user_login} is not allowed for this action. Exiting.")
+            sys.exit(0)
+        LOGGER.info(f"User {self.user_login} is allowed")
 
     def verify_labeler_config(self) -> None:
         if self.action == self.SupportedActions.add_remove_labels_action_name and self.event_name in (
@@ -101,11 +125,11 @@ class PrLabeler(PrBaseClass):
             if not self.user_login:
                 sys.exit("`GITHUB_USER_LOGIN` is not set")
 
-            if self.event_name == "issue_comment" and not self.comment_body:
-                sys.exit("`COMMENT_BODY` is not set")
-
-            if self.event_name == "pull_request_review" and not self.review_state:
-                sys.exit("`GITHUB_EVENT_REVIEW_STATE` is not set")
+            if (
+                self.event_name == "issue_comment" or self.event_name == "pull_request_review"
+            ) and not self.comment_body:
+                LOGGER.info("No comment, nothing to do. Exiting.")
+                sys.exit(0)
 
     def run_pr_label_action(self) -> None:
         if self.action == self.SupportedActions.pr_size_action_name:
@@ -223,6 +247,7 @@ class PrLabeler(PrBaseClass):
 
         elif self.event_name == "pull_request_review":
             self.pull_request_review_label_actions()
+            self.issue_comment_label_actions()
 
             return
 
@@ -239,15 +264,15 @@ class PrLabeler(PrBaseClass):
         label_to_remove = None
         label_to_add = None
 
-        if self.review_state == "approved":
+        if self.review_state == "APPROVED":
             label_to_remove = change_requested_label
             label_to_add = lgtm_label
 
-        elif self.review_state == "changes_requested":
+        elif self.review_state == "CHANGES_REQUESTED":
             label_to_add = change_requested_label
             label_to_remove = lgtm_label
 
-        elif self.review_state == "commented":
+        elif self.review_state == "COMMENTED":
             label_to_add = f"{COMMENTED_BY_LABEL_PREFIX}{self.user_login}"
 
         if label_to_add and label_to_add not in self.pr_labels:
@@ -276,12 +301,20 @@ class PrLabeler(PrBaseClass):
             LOGGER.info(f"Processing labels: {labels}")
             for label, action in labels.items():
                 if label == LGTM_LABEL_STR:
-                    label = f"{LGTM_BY_LABEL_PREFIX}{self.user_login}"
+                    if self.user_login == self.pr.user.login:
+                        LOGGER.info("PR submitter cannot approve for their own PR")
+                        continue
+                    else:
+                        label = f"{LGTM_BY_LABEL_PREFIX}{self.user_login}"
+                        if not action[CANCEL_ACTION] or self.event_action == "deleted":
+                            self.approve_pr()
 
                 label_in_pr = any([label == _label.lower() for _label in self.pr_labels])
                 LOGGER.info(f"Processing label: {label}, action: {action}")
 
                 if action[CANCEL_ACTION] or self.event_action == "deleted":
+                    if label == LGTM_LABEL_STR:
+                        self.dismiss_pr_approval()
                     if label_in_pr:
                         LOGGER.info(f"Removing label {label}")
                         self.pr.remove_from_labels(label=label)
@@ -297,6 +330,19 @@ class PrLabeler(PrBaseClass):
     def add_welcome_comment_set_assignee(self) -> None:
         self.pr.create_issue_comment(body=WELCOME_COMMENT)
         self.pr.add_to_assignees(self.pr.user.login)
+
+    def approve_pr(self) -> None:
+        self.pr.create_review(event="APPROVE")
+
+    def dismiss_pr_approval(self) -> None:
+        all_reviews = self.pr.get_reviews()
+        current_user = self.gh_client.get_user().login
+        LOGGER.info(f"Looking for approving review by user {current_user}")
+        # The reviews are paginated in chronological order. We need to get the newest by our account
+        for review in all_reviews.reversed:
+            if review.user.login == current_user and review.state == "APPROVED":
+                LOGGER.info(f"found review by user {current_user} with id {review.id}")
+                review.dismiss(message="Dismissing review due to '/lgtm cancel' comment")
 
 
 def main() -> None:
