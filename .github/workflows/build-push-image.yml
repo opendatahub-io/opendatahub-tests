@@ -1,0 +1,36 @@
+name: Build and push
+on:
+  workflow_run:
+    workflows: ["Dummy run"]
+    types:
+      - completed
+
+permissions:
+  pull-requests: write
+  contents: write
+
+jobs:
+  test-run:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - run: echo "this is triggered"
+    - name: Install latest podman
+      run: |
+        bash .github/workflows/scripts/install_latest_podman.sh
+    - name: Build Image
+      id: build_image
+      uses: redhat-actions/buildah-build@v2
+      with:
+        image: "opendatahub-tests"
+        layers: false
+        tags: ${{ github.event.pull_request.number }}
+        containerfiles: |
+          Dockerfile
+    - name: Podman Login
+      uses: redhat-actions/podman-login@v1
+      with:
+        registry: ${{ secrets.IMAGE_REGISTRY }}
+        username: ${{ secrets.TEMP_USER }}
+        password: ${{ secrets.TEMP_TOKEN }}
