@@ -336,5 +336,8 @@ def unprivileged_model_namespace(
         request.getfixturevalue(argname="enabled_modelmesh_in_dsc")
         ns_kwargs["model_mesh_enabled"] = True
 
+    if (_dashboard_label := request.param.get("dashboard-label")) is not None:
+        ns_kwargs["add_dashboard_label"] = _dashboard_label
+
     with create_ns(**ns_kwargs) as ns:
         yield ns
