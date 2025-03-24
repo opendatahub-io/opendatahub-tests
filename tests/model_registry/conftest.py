@@ -186,7 +186,7 @@ def model_registry_db_deployment(
                             "/var/lib/mysql/datadir",
                             "--default-authentication-plugin=mysql_native_password",
                         ],
-                        "image": "mysql:8.3.0",
+                        "image": "public.ecr.aws/docker/library/mysql:8.3.0",
                         "imagePullPolicy": "IfNotPresent",
                         "livenessProbe": {
                             "exec": {
