@@ -66,6 +66,7 @@ def trustyai_service_with_db_storage(
     cluster_monitoring_config: ConfigMap,
     user_workload_monitoring_config: ConfigMap,
     mariadb: MariaDB,
+    trustyai_db_ca_secret: None,
 ) -> Generator[TrustyAIService, Any, Any]:
     with TrustyAIService(
         client=admin_client,
@@ -226,12 +227,28 @@ def mariadb(
     mariadb_dict["spec"]["replicas"] = 1
     mariadb_dict["spec"]["galera"]["enabled"] = False
     mariadb_dict["spec"]["metrics"]["enabled"] = False
+    mariadb_dict["spec"]["tls"] = {"enabled": True, "required": True}
 
     password_secret_key_ref = {"generate": False, "key": "databasePassword", "name": DB_CREDENTIALS_SECRET_NAME}
 
     mariadb_dict["spec"]["rootPasswordSecretKeyRef"] = password_secret_key_ref
     mariadb_dict["spec"]["passwordSecretKeyRef"] = password_secret_key_ref
-
     with MariaDB(kind_dict=mariadb_dict) as mariadb:
         wait_for_mariadb_pods(client=admin_client, mariadb=mariadb)
         yield mariadb
+
+
+@pytest.fixture(scope="class")
+def trustyai_db_ca_secret(
+    admin_client: DynamicClient, model_namespace: Namespace, mariadb: MariaDB
+) -> Generator[None, Any, None]:
+    mariadb_ca_secret = Secret(
+        client=admin_client, name=f"{mariadb.name}-ca", namespace=model_namespace.name, ensure_exists=True
+    )
+    with Secret(
+        client=admin_client,
+        name=f"{TRUSTYAI_SERVICE_NAME}-db-ca",
+        namespace=model_namespace.name,
+        data_dict={"ca.crt": mariadb_ca_secret.instance.data["ca.crt"]},
+    ):
+        yield
