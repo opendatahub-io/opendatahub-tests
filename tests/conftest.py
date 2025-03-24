@@ -51,7 +51,7 @@ def tests_tmp_dir(request: FixtureRequest, tmp_path_factory: TempPathFactory) ->
     shutil.rmtree(path=str(tests_tmp_path), ignore_errors=True)
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="session")
 def updated_global_config(request: FixtureRequest, admin_client: DynamicClient) -> None:
     if get_operator_distribution(client=admin_client) == "Open Data Hub":
         py_config["distribution"] = "upstream"
@@ -335,6 +335,9 @@ def unprivileged_model_namespace(
     if request.param.get("modelmesh-enabled"):
         request.getfixturevalue(argname="enabled_modelmesh_in_dsc")
         ns_kwargs["model_mesh_enabled"] = True
+
+    if (_dashboard_label := request.param.get("dashboard-label")) is not None:
+        ns_kwargs["add_dashboard_label"] = _dashboard_label
 
     with create_ns(**ns_kwargs) as ns:
         yield ns
