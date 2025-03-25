@@ -1,7 +1,18 @@
 import pytest
+from ocp_resources.lm_eval_job import LMEvalJob
 
+from tests.model_explainability.constants import MINIO_PORT
 from tests.model_explainability.lm_eval.utils import verify_lmevaljob_running
 from utilities.constants import Timeout
+from utilities.general import get_s3_secret_dict
+
+DATA_DICT: dict[str, str] = get_s3_secret_dict(
+    aws_access_key="minioadmin",
+    aws_secret_access_key="minioadmin",  # pragma: allowlist secret
+    aws_s3_bucket="models",
+    aws_s3_endpoint=f"http://minio:{str(MINIO_PORT)}",
+    aws_s3_region="us-south",
+)
 
 
 @pytest.mark.parametrize(
@@ -90,3 +101,27 @@ def test_lmeval_vllm_emulator(admin_client, model_namespace, lmevaljob_vllm_emul
     lmevaljob_vllm_emulator_pod.wait_for_status(
         status=lmevaljob_vllm_emulator_pod.Status.SUCCEEDED, timeout=Timeout.TIMEOUT_10MIN
     )
+
+
+@pytest.mark.parametrize(
+    "model_namespace, minio_data_connection",
+    [
+        pytest.param(
+            {"name": "test-s3-lmeval"},
+            {"data-dict": DATA_DICT},
+        )
+    ],
+    indirect=True,
+)
+def test_lmeval_s3_storage(
+    admin_client,
+    model_namespace,
+    lmeval_minio_pvc,
+    lmeval_minio_deployment,
+    minio_service,
+    lmeval_minio_copy_pod,
+    minio_data_connection,
+    lmevaljob_s3_offline,
+):
+    """Test to verify that LMEval works with a model stored in a S3 bucket"""
+    lmevaljob_s3_offline.wait_for_status(status=LMEvalJob.Status.COMPLETED, timeout=Timeout.TIMEOUT_15MIN)
