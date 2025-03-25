@@ -32,6 +32,7 @@ def pytest_addoption(parser: Parser) -> None:
     buckets_group = parser.getgroup(name="Buckets")
     runtime_group = parser.getgroup(name="Runtime details")
     upgrade_group = parser.getgroup(name="Upgrade options")
+    platform_group = parser.getgroup(name="Platform")
 
     # AWS config and credentials options
     aws_group.addoption(
@@ -111,6 +112,12 @@ def pytest_addoption(parser: Parser) -> None:
         "--upgrade-deployment-modes",
         help="Coma-separated str; specify inference service deployment modes tests to run in upgrade tests. "
         "If not set, all will be tested.",
+    )
+
+    # Platform options
+    platform_group.addoption(
+        "--applications-namespace",
+        help="RHOAI/ODH applications namespace",
     )
 
 
@@ -196,9 +203,6 @@ def pytest_sessionstart(session: Session) -> None:
         log_level=session.config.getoption("log_cli_level") or logging.INFO,
     )
 
-    if py_config.get("distribution") == "upstream":
-        py_config["applications_namespace"] = "opendatahub"
-
 
 def pytest_fixture_setup(fixturedef: FixtureDef[Any], request: FixtureRequest) -> None:
     LOGGER.info(f"Executing {fixturedef.scope} fixture: {fixturedef.argname}")
@@ -207,8 +211,9 @@ def pytest_fixture_setup(fixturedef: FixtureDef[Any], request: FixtureRequest) -
 def pytest_runtest_setup(item: Item) -> None:
     """
     Performs the following actions:
-    1. Adds skip fixture for kserve if serverless or authorino operators are not installed.
-    2. Adds skip fixture for serverless if authorino/serverless/service mesh are not deployed.
+    1. Updates global config (`updated_global_config`)
+    2. Adds skip fixture for kserve if serverless or authorino operators are not installed.
+    3. Adds skip fixture for serverless if authorino/serverless/service mesh are not deployed.
     """
 
     BASIC_LOGGER.info(f"\n{separator(symbol_='-', val=item.name)}")
@@ -225,6 +230,9 @@ def pytest_runtest_setup(item: Item) -> None:
 
     elif KServeDeploymentType.MODEL_MESH.lower() in item.keywords:
         item.fixturenames.insert(0, "enabled_modelmesh_in_dsc")
+
+    # The above fixtures require the global config to be updated before being called
+    item.fixturenames.insert(0, "updated_global_config")
 
 
 def pytest_runtest_call(item: Item) -> None:

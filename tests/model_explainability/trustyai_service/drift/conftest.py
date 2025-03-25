@@ -4,7 +4,9 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
+from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
+from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.trustyai_service import TrustyAIService
 
@@ -76,6 +78,8 @@ def mlserver_runtime(
 def gaussian_credit_model(
     admin_client: DynamicClient,
     model_namespace: Namespace,
+    minio_pod: Pod,
+    minio_service: Service,
     minio_data_connection: Secret,
     mlserver_runtime: ServingRuntime,
     trustyai_service_with_pvc_storage: TrustyAIService,
