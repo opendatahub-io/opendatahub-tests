@@ -296,7 +296,10 @@ class PrLabeler(PrBaseClass):
 
     def add_welcome_comment_set_assignee(self) -> None:
         self.pr.create_issue_comment(body=WELCOME_COMMENT)
-        self.pr.add_to_assignees(self.pr.user.login)
+        try:
+            self.pr.add_to_assignees(self.pr.user.login)
+        except UnknownObjectException:
+            LOGGER.warning(f"User {self.pr.user.login} can not be assigned to the PR.")
 
 
 def main() -> None:
