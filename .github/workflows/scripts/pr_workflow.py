@@ -20,6 +20,7 @@ from constants import (
     SUPPORTED_LABELS,
     VERIFIED_LABEL_STR,
     WELCOME_COMMENT,
+    APPROVED,
 )
 from github import Github, UnknownObjectException
 from simple_logger.logger import get_logger
@@ -264,7 +265,7 @@ class PrLabeler(PrBaseClass):
         label_to_remove = None
         label_to_add = None
 
-        if self.review_state == "APPROVED":
+        if self.review_state == APPROVED:
             label_to_remove = change_requested_label
             label_to_add = lgtm_label
 
@@ -339,7 +340,7 @@ class PrLabeler(PrBaseClass):
         LOGGER.info(f"Looking for approving review by user {current_user}")
         # The reviews are paginated in chronological order. We need to get the newest by our account
         for review in all_reviews.reversed:
-            if review.user.login == current_user and review.state == "APPROVED":
+            if review.user.login == current_user and review.state == APPROVED:
                 LOGGER.info(f"found review by user {current_user} with id {review.id}")
                 review.dismiss(message="Dismissing review due to '/lgtm cancel' comment")
 
