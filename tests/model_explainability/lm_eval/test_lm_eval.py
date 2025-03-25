@@ -1,11 +1,10 @@
 import pytest
-from ocp_resources.lm_eval_job import LMEvalJob
 
 from tests.model_explainability.constants import MINIO_PORT
-from tests.model_explainability.lm_eval.utils import verify_lmevaljob_running
-from utilities.constants import Timeout
+from tests.model_explainability.lm_eval.utils import verify_lmevaljob_running, wait_for_lmevaljob_state
 from utilities.general import get_s3_secret_dict
 
+LMEVALJOB_COMPLETE_STATE: str = "Complete"
 DATA_DICT: dict[str, str] = get_s3_secret_dict(
     aws_access_key="minioadmin",
     aws_secret_access_key="minioadmin",  # pragma: allowlist secret
@@ -25,9 +24,9 @@ DATA_DICT: dict[str, str] = get_s3_secret_dict(
     indirect=True,
 )
 @pytest.mark.smoke
-def test_lmeval_huggingface_model(admin_client, model_namespace, lmevaljob_hf_pod):
+def test_lmeval_huggingface_model(admin_client, model_namespace, lmevaljob_hf):
     """Basic test that verifies that LMEval can run successfully pulling a model from HuggingFace."""
-    lmevaljob_hf_pod.wait_for_status(status=lmevaljob_hf_pod.Status.SUCCEEDED, timeout=Timeout.TIMEOUT_10MIN)
+    wait_for_lmevaljob_state(lmevaljob=lmevaljob_hf, state=LMEVALJOB_COMPLETE_STATE)
 
 
 @pytest.mark.parametrize(
@@ -96,11 +95,9 @@ def test_lmeval_local_offline_unitxt_tasks_flan_20newsgroups(
     ],
     indirect=True,
 )
-def test_lmeval_vllm_emulator(admin_client, model_namespace, lmevaljob_vllm_emulator_pod):
+def test_lmeval_vllm_emulator(admin_client, model_namespace, lmevaljob_vllm_emulator):
     """Basic test that verifies LMEval works with vLLM using a vLLM emulator for more efficient evaluation"""
-    lmevaljob_vllm_emulator_pod.wait_for_status(
-        status=lmevaljob_vllm_emulator_pod.Status.SUCCEEDED, timeout=Timeout.TIMEOUT_10MIN
-    )
+    wait_for_lmevaljob_state(lmevaljob=lmevaljob_vllm_emulator, state=LMEVALJOB_COMPLETE_STATE)
 
 
 @pytest.mark.parametrize(
@@ -116,12 +113,7 @@ def test_lmeval_vllm_emulator(admin_client, model_namespace, lmevaljob_vllm_emul
 def test_lmeval_s3_storage(
     admin_client,
     model_namespace,
-    lmeval_minio_pvc,
-    lmeval_minio_deployment,
-    minio_service,
-    lmeval_minio_copy_pod,
-    minio_data_connection,
     lmevaljob_s3_offline,
 ):
     """Test to verify that LMEval works with a model stored in a S3 bucket"""
-    lmevaljob_s3_offline.wait_for_status(status=LMEvalJob.Status.COMPLETED, timeout=Timeout.TIMEOUT_15MIN)
+    wait_for_lmevaljob_state(lmevaljob=lmevaljob_s3_offline, state=LMEVALJOB_COMPLETE_STATE)

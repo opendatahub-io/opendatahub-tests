@@ -1,7 +1,7 @@
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.lm_eval_job import LMEvalJob
 from ocp_resources.pod import Pod
-
+from timeout_sampler import TimeoutSampler
 
 from utilities.constants import Timeout
 from utilities.infra import check_pod_status_in_time
@@ -9,6 +9,7 @@ from simple_logger.logger import get_logger
 
 
 LOGGER = get_logger(name=__name__)
+MINIOADMIN: str = "minioadmin"
 
 
 def verify_lmevaljob_running(client: DynamicClient, lmevaljob: LMEvalJob) -> None:
@@ -29,3 +30,20 @@ def verify_lmevaljob_running(client: DynamicClient, lmevaljob: LMEvalJob) -> Non
     lmevaljob_pod.wait_for_status(status=lmevaljob_pod.Status.RUNNING, timeout=Timeout.TIMEOUT_10MIN)
 
     check_pod_status_in_time(pod=lmevaljob_pod, status={lmevaljob_pod.Status.RUNNING, lmevaljob_pod.Status.SUCCEEDED})
+
+
+def wait_for_lmevaljob_state(
+    lmevaljob: LMEvalJob, state: str, wait_timeout: int = Timeout.TIMEOUT_15MIN, sleep: int = 5
+) -> None:
+    LOGGER.info(f"Checking LMEvalJob state for {lmevaljob.name} to be {state}")
+
+    sampler = TimeoutSampler(
+        wait_timeout=wait_timeout,
+        sleep=sleep,
+        func=lambda: lmevaljob.instance.status.state,
+    )
+
+    for sample in sampler:
+        if sample:
+            if sample == state:
+                return
