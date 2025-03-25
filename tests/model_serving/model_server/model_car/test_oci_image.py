@@ -2,7 +2,7 @@ import pytest
 
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.infra import get_pods_by_isvc_label
-from utilities.constants import ModelName, Protocols
+from utilities.constants import ModelInferenceRuntime, ModelName, Protocols
 from utilities.inference_utils import Inference
 from utilities.manifests.tgis_grpc import TGIS_INFERENCE_CONFIG
 
@@ -13,14 +13,14 @@ pytestmark = pytest.mark.serverless
     "model_namespace, serving_runtime_from_template, model_car_tgis_inference_service",
     [
         pytest.param(
-            {"name": "tgsi-model-car"},
+            {"name": "openvino-model-car"},
             {
                 "name": "tgis-runtime",
-                "template-name": "tgis-grpc-serving-template",
+                "template-name": ModelInferenceRuntime.ONNX_RUNTIME,
                 "multi-model": False,
             },
             {
-                "storage-uri": "oci://quay.io/mwaykole/test@sha256:c526a1a3697253eb09adc65da6efaf7f36150205c3a51ab8d13b92b6a3af9c1c"  # noqa: E501
+                "storage-uri": "oci://quay.io/mwaykole/test:mnist-8-1"  # noqa: E501
             },
         )
     ],
