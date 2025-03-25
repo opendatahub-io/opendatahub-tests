@@ -11,11 +11,11 @@ from ocp_resources.serving_runtime import ServingRuntime
 
 from tests.model_serving.model_server.serverless.utils import wait_for_canary_rollout
 from tests.model_serving.model_server.utils import run_inference_multiple_times
-from utilities.constants import ModelFormat, Protocols
+from utilities.constants import Protocols
 from utilities.inference_utils import Inference
-from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
 from utilities.constants import KServeDeploymentType, ModelName, ModelStoragePath
 from utilities.inference_utils import create_isvc
+from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 
 @pytest.fixture(scope="class")
@@ -37,7 +37,7 @@ def inference_service_patched_replicas(
 
 @pytest.fixture
 def inference_service_updated_canary_config(
-    request: FixtureRequest, s3_models_inference_service: InferenceService
+    request: FixtureRequest, ovms_serverless_inference_service: InferenceService
 ) -> Generator[InferenceService, Any, Any]:
     canary_percent = request.param["canary-traffic-percent"]
     predictor_config = {
@@ -49,19 +49,20 @@ def inference_service_updated_canary_config(
     if model_path := request.param.get("model-path"):
         predictor_config["spec"]["predictor"]["model"] = {"storage": {"path": model_path}}
 
-    with ResourceEditor(patches={s3_models_inference_service: predictor_config}):
-        wait_for_canary_rollout(isvc=s3_models_inference_service, percentage=canary_percent)
-        yield s3_models_inference_service
+    with ResourceEditor(patches={ovms_serverless_inference_service: predictor_config}):
+        wait_for_canary_rollout(isvc=ovms_serverless_inference_service, percentage=canary_percent)
+        yield ovms_serverless_inference_service
 
 
 @pytest.fixture
-def multiple_tgis_inference_requests(s3_models_inference_service: InferenceService) -> None:
+def multiple_onnx_inference_requests(
+    ovms_serverless_inference_service: InferenceService,
+) -> None:
     run_inference_multiple_times(
-        isvc=s3_models_inference_service,
-        inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
-        inference_type=Inference.ALL_TOKENS,
+        isvc=ovms_serverless_inference_service,
+        inference_config=ONNX_INFERENCE_CONFIG,
+        inference_type=Inference.INFER,
         protocol=Protocols.HTTPS,
-        model_name=ModelFormat.CAIKIT,
         iterations=50,
         run_in_parallel=True,
     )

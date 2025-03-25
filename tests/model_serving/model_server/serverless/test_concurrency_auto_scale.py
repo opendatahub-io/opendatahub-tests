@@ -4,11 +4,9 @@ from tests.model_serving.model_server.serverless.utils import (
     inference_service_pods_sampler,
 )
 from utilities.constants import (
-    KServeDeploymentType,
     ModelFormat,
     ModelInferenceRuntime,
-    ModelStoragePath,
-    RuntimeTemplates,
+    ModelVersion,
     Timeout,
 )
 
@@ -20,22 +18,21 @@ pytestmark = [
 
 
 @pytest.mark.parametrize(
-    "model_namespace, serving_runtime_from_template, s3_models_inference_service",
+    "model_namespace, openvino_kserve_serving_runtime, ovms_serverless_inference_service",
     [
         pytest.param(
             {"name": "serverless-auto-scale"},
             {
-                "name": f"{ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME}",
-                "template-name": RuntimeTemplates.CAIKIT_TGIS_SERVING,
-                "multi-model": False,
-                "enable-http": True,
+                "runtime-name": ModelInferenceRuntime.ONNX_RUNTIME,
+                "model-format": {ModelFormat.ONNX: ModelVersion.OPSET13},
             },
             {
-                "name": f"{ModelFormat.CAIKIT}-auto-scale",
-                "deployment-mode": KServeDeploymentType.SERVERLESS,
-                "model-dir": ModelStoragePath.FLAN_T5_SMALL_CAIKIT,
+                "name": {ModelFormat.ONNX},
+                "model-version": ModelVersion.OPSET13,
+                "model-dir": "test-dir",
                 "scale-metric": "concurrency",
                 "scale-target": 1,
+                # "deployment-mode": KServeDeploymentType.SERVERLESS,
             },
         )
     ],
@@ -46,13 +43,13 @@ class TestConcurrencyAutoScale:
     def test_auto_scale_using_concurrency(
         self,
         admin_client,
-        s3_models_inference_service,
-        multiple_tgis_inference_requests,
+        ovms_serverless_inference_service,
+        multiple_onnx_inference_requests,
     ):
         """Verify model is successfully scaled up based on concurrency metrics (KPA)"""
         for pods in inference_service_pods_sampler(
             client=admin_client,
-            isvc=s3_models_inference_service,
+            isvc=ovms_serverless_inference_service,
             timeout=Timeout.TIMEOUT_1MIN,
         ):
             if pods:
@@ -60,11 +57,11 @@ class TestConcurrencyAutoScale:
                     return
 
     @pytest.mark.dependency(requires=["test_auto_scale_using_concurrency"])
-    def test_pods_scaled_down_when_no_requests(self, admin_client, s3_models_inference_service):
+    def test_pods_scaled_down_when_no_requests(self, admin_client, ovms_serverless_inference_service):
         """Verify auto-scaled pods are deleted when there are no inference requests"""
         for pods in inference_service_pods_sampler(
             client=admin_client,
-            isvc=s3_models_inference_service,
+            isvc=ovms_serverless_inference_service,
             timeout=Timeout.TIMEOUT_4MIN,
         ):
             if pods and len(pods) == 1:
