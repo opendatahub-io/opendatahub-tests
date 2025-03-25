@@ -2,6 +2,7 @@ from typing import Generator, Any
 
 import pytest
 from ocp_resources.route import Route
+from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from pytest import FixtureRequest
 from kubernetes.dynamic import DynamicClient
@@ -307,3 +308,133 @@ def vllm_emulator_route(
         service=vllm_emulator_service.name,
     ) as route:
         yield route
+
+
+@pytest.fixture(scope="function")
+def lmeval_minio_pvc(
+    admin_client: DynamicClient, model_namespace: Namespace
+) -> Generator[PersistentVolumeClaim, Any, Any]:
+    with PersistentVolumeClaim(
+        client=admin_client,
+        name="minio-pvc",
+        namespace=model_namespace.name,
+        annotations={
+            "helm.sh/hook": "pre-install",
+            "helm.sh/hook-weight": "0",
+        },
+        accessmodes=PersistentVolumeClaim.AccessMode.RWO,
+        size="10Gi",
+    ) as pvc:
+        yield pvc
+
+
+@pytest.fixture(scope="function")
+def lmeval_minio_deployment(
+    admin_client: DynamicClient, model_namespace: Namespace, lmeval_minio_pvc: PersistentVolumeClaim
+) -> Generator[Deployment, Any, Any]:
+    with Deployment(
+        client=admin_client,
+        name="minio",
+        namespace=model_namespace.name,
+        annotations={
+            "helm.sh/hook": "pre-install",
+            "helm.sh/hook-weight": "0",
+        },
+        replicas=1,
+        selector={"matchLabels": {"app": "minio"}},
+        template={
+            "metadata": {"labels": {"app": "minio"}},
+            "spec": {
+                "volumes": [{"name": "minio-storage", "persistentVolumeClaim": {"claimName": "minio-pvc"}}],
+                "containers": [
+                    {
+                        "name": "minio",
+                        "image": "quay.io/minio/minio:latest",
+                        "args": ["server", "/data", "--console-address", ":9001"],
+                        "env": [
+                            {"name": "MINIO_ROOT_USER", "value": "minioadmin"},
+                            {"name": "MINIO_ROOT_PASSWORD", "value": "minioadmin"},
+                        ],
+                        "ports": [{"containerPort": 9000}, {"containerPort": 9001}],
+                        "volumeMounts": [{"name": "minio-storage", "mountPath": "/data"}],
+                    }
+                ],
+            },
+        },
+        label={"app": "minio"},
+        wait_for_resource=True,
+    ) as deployment:
+        deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_10MIN)
+        yield deployment
+
+
+@pytest.fixture(scope="function")
+def lmeval_minio_copy_pod(
+    admin_client: DynamicClient, model_namespace: Namespace, lmeval_minio_deployment: Deployment, minio_service: Service
+) -> Generator[Pod, Any, Any]:
+    with Pod(
+        client=admin_client,
+        name="copy-to-minio",
+        namespace=model_namespace.name,
+        restart_policy="Never",
+        volumes=[{"name": "shared-data", "emptyDir": {}}],
+        init_containers=[
+            {
+                "name": "copy-data",
+                "image": "quay.io/ruimvieira/lmeval-assets-flan-arceasy:latest",
+                "command": ["/bin/sh", "-c"],
+                "args": ["cp -r /mnt/data /shared"],
+                "volumeMounts": [{"name": "shared-data", "mountPath": "/shared"}],
+            }
+        ],
+        containers=[
+            {
+                "name": "minio-uploader",
+                "image": "quay.io/minio/mc:latest",
+                "command": ["/bin/sh", "-c"],
+                "args": [
+                    "mc alias set myminio http://minio:9000 minioadmin minioadmin &&\n"
+                    "mc mb --ignore-existing myminio/models &&\n"
+                    "mc cp --recursive /shared/data/ myminio/models"
+                ],
+                "volumeMounts": [{"name": "shared-data", "mountPath": "/shared"}],
+            }
+        ],
+        wait_for_resource=True,
+    ) as pod:
+        pod.wait_for_status(status=Pod.Status.SUCCEEDED)
+        yield pod
+
+
+@pytest.fixture(scope="function")
+def lmevaljob_s3_offline(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    lmeval_minio_deployment: Deployment,
+    lmeval_minio_copy_pod: Pod,
+    minio_data_connection: Secret,
+) -> Generator[LMEvalJob, Any, Any]:
+    with LMEvalJob(
+        client=admin_client,
+        name="evaljob-sample",
+        namespace=model_namespace.name,
+        model="hf",
+        model_args=[{"name": "pretrained", "value": "/opt/app-root/src/hf_home/flan"}],
+        task_list={"taskNames": ["arc_easy"]},
+        log_samples=True,
+        allow_online=False,
+        offline={
+            "storage": {
+                "s3": {
+                    "accessKeyId": {"name": minio_data_connection.name, "key": "AWS_ACCESS_KEY_ID"},
+                    "secretAccessKey": {"name": minio_data_connection.name, "key": "AWS_SECRET_ACCESS_KEY"},
+                    "bucket": {"name": minio_data_connection.name, "key": "AWS_S3_BUCKET"},
+                    "endpoint": {"name": minio_data_connection.name, "key": "AWS_S3_ENDPOINT"},
+                    "region": {"name": minio_data_connection.name, "key": "AWS_DEFAULT_REGION"},
+                    "path": "",
+                    "verifySSL": False,
+                }
+            }
+        },
+    ) as job:
+        yield job
