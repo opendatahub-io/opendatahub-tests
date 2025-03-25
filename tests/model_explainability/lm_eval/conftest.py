@@ -15,25 +15,13 @@ from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from pytest_testconfig import py_config
 
+from tests.model_explainability.constants import MINIO_PORT, MINIO
+from tests.model_explainability.lm_eval.utils import MINIOADMIN
 from utilities.constants import Labels, Timeout, Annotations, Protocols
 
 VLLM_EMULATOR: str = "vllm-emulator"
 VLLM_EMULATOR_PORT: int = 8000
 LMEVALJOB_NAME: str = "lmeval-test-job"
-
-
-@pytest.fixture(scope="function")
-def lmevaljob_hf_pod(admin_client: DynamicClient, lmevaljob_hf: LMEvalJob) -> Generator[Pod, Any, Any]:
-    lmeval_pod = Pod(
-        client=admin_client,
-        namespace=lmevaljob_hf.namespace,
-        name=lmevaljob_hf.name,
-    )
-
-    # TODO: Check if we can rely on LMEvalJob instead of pod
-    lmeval_pod.wait(timeout=Timeout.TIMEOUT_2MIN)
-
-    yield lmeval_pod
 
 
 @pytest.fixture(scope="function")
@@ -106,22 +94,6 @@ def lmevaljob_local_offline(
         label={Labels.OpenDataHub.DASHBOARD: "true", "lmevaltests": "vllm"},
     ) as job:
         yield job
-
-
-@pytest.fixture(scope="function")
-def lmevaljob_vllm_emulator_pod(
-    admin_client: DynamicClient, lmevaljob_vllm_emulator: LMEvalJob
-) -> Generator[Pod, Any, Any]:
-    lmeval_pod = Pod(
-        client=admin_client,
-        namespace=lmevaljob_vllm_emulator.namespace,
-        name=lmevaljob_vllm_emulator.name,
-    )
-
-    # TODO: Check if we can rely on LMEvalJob instead of pod
-    lmeval_pod.wait(timeout=Timeout.TIMEOUT_2MIN)
-
-    yield lmeval_pod
 
 
 @pytest.fixture(scope="function")
@@ -316,12 +288,8 @@ def lmeval_minio_pvc(
 ) -> Generator[PersistentVolumeClaim, Any, Any]:
     with PersistentVolumeClaim(
         client=admin_client,
-        name="minio-pvc",
+        name=f"{MINIO}-pvc",
         namespace=model_namespace.name,
-        annotations={
-            "helm.sh/hook": "pre-install",
-            "helm.sh/hook-weight": "0",
-        },
         accessmodes=PersistentVolumeClaim.AccessMode.RWO,
         size="10Gi",
     ) as pvc:
@@ -334,28 +302,25 @@ def lmeval_minio_deployment(
 ) -> Generator[Deployment, Any, Any]:
     with Deployment(
         client=admin_client,
-        name="minio",
+        name=MINIO,
         namespace=model_namespace.name,
-        annotations={
-            "helm.sh/hook": "pre-install",
-            "helm.sh/hook-weight": "0",
-        },
         replicas=1,
-        selector={"matchLabels": {"app": "minio"}},
+        selector={"matchLabels": {"app": MINIO}},
         template={
-            "metadata": {"labels": {"app": "minio"}},
+            "metadata": {"labels": {"app": MINIO}},
             "spec": {
-                "volumes": [{"name": "minio-storage", "persistentVolumeClaim": {"claimName": "minio-pvc"}}],
+                "volumes": [{"name": "minio-storage", "persistentVolumeClaim": {"claimName": lmeval_minio_pvc.name}}],
                 "containers": [
                     {
-                        "name": "minio",
-                        "image": "quay.io/minio/minio:latest",
+                        "name": MINIO,
+                        "image": "quay.io/minio/minio"
+                        "@sha256:46b3009bf7041eefbd90bd0d2b38c6ddc24d20a35d609551a1802c558c1c958f",
                         "args": ["server", "/data", "--console-address", ":9001"],
                         "env": [
-                            {"name": "MINIO_ROOT_USER", "value": "minioadmin"},
-                            {"name": "MINIO_ROOT_PASSWORD", "value": "minioadmin"},
+                            {"name": "MINIO_ROOT_USER", "value": MINIOADMIN},
+                            {"name": "MINIO_ROOT_PASSWORD", "value": MINIOADMIN},
                         ],
-                        "ports": [{"containerPort": 9000}, {"containerPort": 9001}],
+                        "ports": [{"containerPort": MINIO_PORT}, {"containerPort": 9001}],
                         "volumeMounts": [{"name": "minio-storage", "mountPath": "/data"}],
                     }
                 ],
@@ -381,7 +346,8 @@ def lmeval_minio_copy_pod(
         init_containers=[
             {
                 "name": "copy-data",
-                "image": "quay.io/ruimvieira/lmeval-assets-flan-arceasy:latest",
+                "image": "quay.io/trustyai_testing/lmeval-assets-flan-arceasy"
+                "@sha256:11cc9c2f38ac9cc26c4fab1a01a8c02db81c8f4801b5d2b2b90f90f91b97ac98",
                 "command": ["/bin/sh", "-c"],
                 "args": ["cp -r /mnt/data /shared"],
                 "volumeMounts": [{"name": "shared-data", "mountPath": "/shared"}],
@@ -390,10 +356,10 @@ def lmeval_minio_copy_pod(
         containers=[
             {
                 "name": "minio-uploader",
-                "image": "quay.io/minio/mc:latest",
+                "image": "quay.io/minio/mc@sha256:470f5546b596e16c7816b9c3fa7a78ce4076bb73c2c73f7faeec0c8043923123",
                 "command": ["/bin/sh", "-c"],
                 "args": [
-                    "mc alias set myminio http://minio:9000 minioadmin minioadmin &&\n"
+                    f"mc alias set myminio http://{minio_service.name}:{MINIO_PORT} {MINIOADMIN} {MINIOADMIN} &&\n"
                     "mc mb --ignore-existing myminio/models &&\n"
                     "mc cp --recursive /shared/data/ myminio/models"
                 ],
@@ -411,6 +377,7 @@ def lmevaljob_s3_offline(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     lmeval_minio_deployment: Deployment,
+    minio_service: Service,
     lmeval_minio_copy_pod: Pod,
     minio_data_connection: Secret,
 ) -> Generator[LMEvalJob, Any, Any]:
