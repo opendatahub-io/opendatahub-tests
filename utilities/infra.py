@@ -35,7 +35,8 @@ from pytest_testconfig import config as py_config
 from semver import Version
 from simple_logger.logger import get_logger
 
-from utilities.constants import Labels, Timeout
+from utilities.constants import ApiGroups, Labels, Timeout
+from utilities.constants import KServeDeploymentType
 from utilities.exceptions import FailedPodsError
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 from utilities.general import create_isvc_label_selector_str, get_s3_secret_dict
@@ -102,6 +103,36 @@ def create_ns(
             yield ns
 
 
+def wait_for_replicas_in_deployment(deployment: Deployment, replicas: int) -> None:
+    """
+    Wait for replicas in deployment to updated in spec.
+
+    Args:
+        deployment (Deployment): Deployment object
+        replicas (int): number of replicas to be set in spec.replicas
+
+    Raises:
+        TimeoutExpiredError: If replicas are not updated in spec.
+
+    """
+    _replicas: int | None = None
+
+    try:
+        for sample in TimeoutSampler(
+            wait_timeout=Timeout.TIMEOUT_2MIN,
+            sleep=5,
+            func=lambda: deployment.instance,
+        ):
+            if sample and (_replicas := sample.spec.replicas) == replicas:
+                return
+
+    except TimeoutExpiredError:
+        LOGGER.error(
+            f"Replicas are not updated in spec.replicas for deployment {deployment.name}.Current replicas: {_replicas}"
+        )
+        raise
+
+
 def wait_for_inference_deployment_replicas(
     client: DynamicClient,
     isvc: InferenceService,
@@ -138,6 +169,17 @@ def wait_for_inference_deployment_replicas(
     if len(deployments) == expected_num_deployments:
         for deployment in deployments:
             if deployment.exists:
+                # Raw deployment: if min replicas is more than 1, wait for min replicas
+                # to be set in deployment spec by HPA
+                if (
+                    isvc.instance.metadata.annotations.get("serving.kserve.io/deploymentMode")
+                    == KServeDeploymentType.RAW_DEPLOYMENT
+                ):
+                    wait_for_replicas_in_deployment(
+                        deployment=deployments[0],
+                        replicas=isvc.instance.spec.predictor.get("minReplicas", 1),
+                    )
+
                 deployment.wait_for_replicas(timeout=timeout)
 
         return deployments
@@ -186,9 +228,12 @@ def s3_endpoint_secret(
 
     else:
         with Secret(
-            annotations={"opendatahub.io/connection-type": "s3"},
+            annotations={f"{ApiGroups.OPENDATAHUB_IO}/connection-type": "s3"},
             # the labels are needed to set the secret as data connection by odh-model-controller
-            label={"opendatahub.io/managed": "true", "opendatahub.io/dashboard": "true"},
+            label={
+                Labels.OpenDataHubIo.MANAGED: "true",
+                Labels.OpenDataHub.DASHBOARD: "true",
+            },
             data_dict=get_s3_secret_dict(
                 aws_access_key=aws_access_key,
                 aws_secret_access_key=aws_secret_access_key,
@@ -495,7 +540,10 @@ def update_configmap_data(
 
 
 def verify_no_failed_pods(
-    client: DynamicClient, isvc: InferenceService, runtime_name: str | None, timeout: int = Timeout.TIMEOUT_5MIN
+    client: DynamicClient,
+    isvc: InferenceService,
+    runtime_name: str | None,
+    timeout: int = Timeout.TIMEOUT_5MIN,
 ) -> None:
     """
     Verify no failed pods.
@@ -541,7 +589,10 @@ def verify_no_failed_pods(
 
                         is_terminated_error = (
                             terminate_state := container_status.state.terminated
-                        ) and terminate_state.reason in (pod.Status.ERROR, pod.Status.CRASH_LOOPBACK_OFF)
+                        ) and terminate_state.reason in (
+                            pod.Status.ERROR,
+                            pod.Status.CRASH_LOOPBACK_OFF,
+                        )
 
                         if is_waiting_pull_back_off or is_terminated_error:
                             failed_pods[pod.name] = pod_status
