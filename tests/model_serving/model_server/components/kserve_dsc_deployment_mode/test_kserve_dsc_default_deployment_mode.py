@@ -50,10 +50,7 @@ class TestKServeDSCServerlessDefaultDeploymentMode:
         ovms_inference_service,
     ):
         """Verify that default deployment mode is set to serverless in inference service."""
-        assert (
-            ovms_inference_service.instance.metadata.annotations[Annotations.KserveIo.DEPLOYMENT_MODE]
-            == KServeDeploymentType.SERVERLESS
-        )
+        assert ovms_inference_service.instance.status.deploymentMode == KServeDeploymentType.SERVERLESS
 
     def test_kserve_dsc_serverless_default_deployment_mode(
         self, default_deployment_mode_in_dsc, ovms_inference_service
@@ -83,10 +80,7 @@ class TestKServeDSCServerlessDefaultDeploymentMode:
         ovms_inference_service,
     ):
         """Verify that Serverless isvc not changed after dsc default deployment mode is changed to raw"""
-        assert (
-            ovms_inference_service.instance.metadata.annotations[Annotations.KserveIo.DEPLOYMENT_MODE]
-            == KServeDeploymentType.SERVERLESS
-        )
+        assert ovms_inference_service.instance.status.deploymentMode == KServeDeploymentType.SERVERLESS
 
     @pytest.mark.parametrize(
         "patched_default_deployment_mode_in_dsc",

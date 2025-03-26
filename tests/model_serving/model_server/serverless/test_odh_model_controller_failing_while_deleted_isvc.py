@@ -7,10 +7,11 @@ from timeout_sampler import TimeoutSampler, TimeoutExpiredError
 
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import (
+    KServeDeploymentType,
     ModelFormat,
-    ModelInferenceRuntime,
     ModelVersion,
     Protocols,
+    RunTimeConfigs,
     Timeout,
 )
 from utilities.exceptions import PodLogMissMatchError
@@ -27,28 +28,26 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(
-    "model_namespace, openvino_kserve_serving_runtime, ovms_serverless_inference_service",
+    "model_namespace, openvino_kserve_serving_runtime, ovms_kserve_inference_service",
     [
         pytest.param(
             {"name": "serverless-maistra"},
-            {
-                "runtime-name": ModelInferenceRuntime.ONNX_RUNTIME,
-                "model-format": {ModelFormat.ONNX: ModelVersion.OPSET13},
-            },
+            RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
             {
                 "name": ModelFormat.ONNX,
                 "model-version": ModelVersion.OPSET13,
                 "model-dir": "test-dir",
+                "deployment-mode": KServeDeploymentType.SERVERLESS,
             },
         )
     ],
     indirect=True,
 )
 class TestNoMaistraErrorInLogs:
-    def test_inference_before_isvc_deletion(self, ovms_serverless_inference_service):
+    def test_inference_before_isvc_deletion(self, ovms_kserve_inference_service):
         """Verify model can be queried"""
         verify_inference_response(
-            inference_service=ovms_serverless_inference_service,
+            inference_service=ovms_kserve_inference_service,
             inference_config=ONNX_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
