@@ -20,7 +20,8 @@ pytestmark = pytest.mark.serverless
                 "multi-model": False,
             },
             {
-                "storage-uri": "oci://quay.io/mwaykole/test:mnist-8-1:sha256:8a3217bcfa2cc5fa3d07496cff8b234acdf2c9725dd307dc0a80401f55e1a11c"  # noqa: E501
+                # Using mnist-8-1 model from OCI image
+                "storage-uri": "oci://quay.io/mwaykole/test@sha256:8a3217bcfa2cc5fa3d07496cff8b234acdf2c9725dd307dc0a80401f55e1a11c"  # noqa: E501
             },
         )
     ],

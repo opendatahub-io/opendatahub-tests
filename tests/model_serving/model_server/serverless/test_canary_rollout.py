@@ -4,6 +4,7 @@ from tests.model_serving.model_server.serverless.constants import ONNX_SERVERLES
 from tests.model_serving.model_server.serverless.utils import verify_canary_traffic
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import (
+    ModelStoragePath,
     Protocols,
     RunTimeConfigs,
 )
@@ -43,7 +44,7 @@ class TestServerlessCanaryRollout:
         "inference_service_updated_canary_config",
         [
             pytest.param(
-                {"canary-traffic-percent": 30, "model-path": "mnist-8.onnx"},
+                {"canary-traffic-percent": 30, "model-path": ModelStoragePath.MNIST_8_ONNX},
             )
         ],
         indirect=True,

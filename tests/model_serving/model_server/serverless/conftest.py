@@ -13,7 +13,7 @@ from tests.model_serving.model_server.serverless.utils import wait_for_canary_ro
 from tests.model_serving.model_server.utils import run_inference_multiple_times
 from utilities.constants import Protocols
 from utilities.inference_utils import Inference
-from utilities.constants import KServeDeploymentType, ModelName, ModelStoragePath
+from utilities.constants import KServeDeploymentType, ModelStoragePath
 from utilities.inference_utils import create_isvc
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
@@ -69,21 +69,21 @@ def multiple_onnx_inference_requests(
 
 
 @pytest.fixture(scope="class")
-def s3_flan_small_hf_caikit_serverless_inference_service(
+def s3_mnist_serverless_inference_service(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    serving_runtime_from_template: ServingRuntime,
+    openvino_kserve_serving_runtime: ServingRuntime,
     models_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
-        name=f"{ModelName.FLAN_T5_SMALL}-model",
+        name="mnist-model",
         namespace=model_namespace.name,
-        runtime=serving_runtime_from_template.name,
+        runtime=openvino_kserve_serving_runtime.name,
         storage_key=models_endpoint_s3_secret.name,
-        storage_path=ModelStoragePath.FLAN_T5_SMALL_HF,
-        model_format=serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
+        storage_path=ModelStoragePath.MNIST_8_ONNX,
+        model_format=openvino_kserve_serving_runtime.instance.spec.supportedModelFormats[0].name,
         deployment_mode=KServeDeploymentType.SERVERLESS,
         external_route=True,
     ) as isvc:
