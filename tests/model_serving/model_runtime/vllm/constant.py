@@ -7,7 +7,7 @@ TGIS_ENDPOINT_NAME: str = "tgis"
 VLLM_SUPPORTED_QUANTIZATION: list[str] = ["marlin", "awq"]
 # Configurations
 TEMPLATE_MAP: dict[str, str] = {
-    AcceleratorType.NVIDIA: "vllm-runtime-template",
+    AcceleratorType.NVIDIA: "vllm-cuda-runtime-template",
     AcceleratorType.AMD: "vllm-rocm-runtime-template",
     AcceleratorType.GAUDI: "vllm-gaudi-runtime-template",
 }

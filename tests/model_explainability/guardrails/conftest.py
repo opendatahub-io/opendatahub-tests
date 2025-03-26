@@ -100,7 +100,7 @@ def vllm_runtime(
         client=admin_client,
         name="vllm-runtime-cpu-fp16",
         namespace=model_namespace.name,
-        template_name="vllm-cpu-runtime-template",
+        template_name="vllm-cuda-runtime-template",
         deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
         runtime_image="quay.io/rh-aiservices-bu/vllm-cpu-openai-ubi9"
         "@sha256:d680ff8becb6bbaf83dfee7b2d9b8a2beb130db7fd5aa7f9a6d8286a58cebbfd",
