@@ -12,7 +12,7 @@ from tests.model_serving.model_runtime.vllm.utils import (
     validate_supported_quantization_schema,
     skip_if_deployment_mode,
 )
-from utilities.constants import KServeDeploymentType, TEMPLATE_MAP
+from utilities.constants import KServeDeploymentType, VLLM_TEMPLATE_MAP
 from pytest import FixtureRequest
 from syrupy.extensions.json import JSONSnapshotExtension
 from tests.model_serving.model_runtime.vllm.constant import ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES
@@ -34,7 +34,7 @@ def serving_runtime(
     vllm_runtime_image: str,
 ) -> Generator[ServingRuntime, None, None]:
     accelerator_type = supported_accelerator_type.lower()
-    template_name = TEMPLATE_MAP.get(accelerator_type, "vllm-runtime-template")
+    template_name = VLLM_TEMPLATE_MAP.get(accelerator_type, "vllm-runtime-template")
     with ServingRuntimeFromTemplate(
         client=admin_client,
         name="vllm-runtime",

@@ -21,7 +21,7 @@ from tests.model_explainability.constants import (
     MINIO_ACCESS_KEY_VALUE,
     MINIO_SECRET_KEY_VALUE,
 )
-from utilities.constants import KServeDeploymentType, Timeout, Ports, AcceleratorType, TEMPLATE_MAP
+from utilities.constants import KServeDeploymentType, Timeout, Ports, AcceleratorType, VLLM_TEMPLATE_MAP
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -100,7 +100,7 @@ def vllm_runtime(
         client=admin_client,
         name="vllm-runtime-cpu-fp16",
         namespace=model_namespace.name,
-        template_name=TEMPLATE_MAP[AcceleratorType.NVIDIA],
+        template_name=VLLM_TEMPLATE_MAP[AcceleratorType.NVIDIA],
         deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
         runtime_image="quay.io/rh-aiservices-bu/vllm-cpu-openai-ubi9"
         "@sha256:d680ff8becb6bbaf83dfee7b2d9b8a2beb130db7fd5aa7f9a6d8286a58cebbfd",
