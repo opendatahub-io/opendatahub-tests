@@ -74,14 +74,14 @@ def s3_mnist_serverless_inference_service(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     openvino_kserve_serving_runtime: ServingRuntime,
-    models_endpoint_s3_secret: Secret,
+    ci_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
         name="mnist-model",
         namespace=model_namespace.name,
         runtime=openvino_kserve_serving_runtime.name,
-        storage_key=models_endpoint_s3_secret.name,
+        storage_key=ci_endpoint_s3_secret.name,
         storage_path=ModelStoragePath.MNIST_8_ONNX,
         model_format=openvino_kserve_serving_runtime.instance.spec.supportedModelFormats[0].name,
         deployment_mode=KServeDeploymentType.SERVERLESS,
