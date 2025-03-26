@@ -37,7 +37,7 @@ def inference_service_patched_replicas(
 
 @pytest.fixture
 def inference_service_updated_canary_config(
-    request: FixtureRequest, ovms_serverless_inference_service: InferenceService
+    request: FixtureRequest, ovms_kserve_inference_service: InferenceService
 ) -> Generator[InferenceService, Any, Any]:
     canary_percent = request.param["canary-traffic-percent"]
     predictor_config = {
@@ -49,17 +49,17 @@ def inference_service_updated_canary_config(
     if model_path := request.param.get("model-path"):
         predictor_config["spec"]["predictor"]["model"] = {"storage": {"path": model_path}}
 
-    with ResourceEditor(patches={ovms_serverless_inference_service: predictor_config}):
-        wait_for_canary_rollout(isvc=ovms_serverless_inference_service, percentage=canary_percent)
-        yield ovms_serverless_inference_service
+    with ResourceEditor(patches={ovms_kserve_inference_service: predictor_config}):
+        wait_for_canary_rollout(isvc=ovms_kserve_inference_service, percentage=canary_percent)
+        yield ovms_kserve_inference_service
 
 
 @pytest.fixture
 def multiple_onnx_inference_requests(
-    ovms_serverless_inference_service: InferenceService,
+    ovms_kserve_inference_service: InferenceService,
 ) -> None:
     run_inference_multiple_times(
-        isvc=ovms_serverless_inference_service,
+        isvc=ovms_kserve_inference_service,
         inference_config=ONNX_INFERENCE_CONFIG,
         inference_type=Inference.INFER,
         protocol=Protocols.HTTPS,
