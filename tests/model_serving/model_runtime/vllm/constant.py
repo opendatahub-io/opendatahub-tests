@@ -6,12 +6,6 @@ TGIS_ENDPOINT_NAME: str = "tgis"
 # Quantization
 VLLM_SUPPORTED_QUANTIZATION: list[str] = ["marlin", "awq"]
 # Configurations
-TEMPLATE_MAP: dict[str, str] = {
-    AcceleratorType.NVIDIA: "vllm-cuda-runtime-template",
-    AcceleratorType.AMD: "vllm-rocm-runtime-template",
-    AcceleratorType.GAUDI: "vllm-gaudi-runtime-template",
-}
-
 ACCELERATOR_IDENTIFIER: dict[str, str] = {
     AcceleratorType.NVIDIA: "nvidia.com/gpu",
     AcceleratorType.AMD: "amd.com/gpu",

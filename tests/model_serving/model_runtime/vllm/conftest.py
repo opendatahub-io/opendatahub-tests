@@ -12,10 +12,10 @@ from tests.model_serving.model_runtime.vllm.utils import (
     validate_supported_quantization_schema,
     skip_if_deployment_mode,
 )
-from utilities.constants import KServeDeploymentType
+from utilities.constants import KServeDeploymentType, TEMPLATE_MAP
 from pytest import FixtureRequest
 from syrupy.extensions.json import JSONSnapshotExtension
-from tests.model_serving.model_runtime.vllm.constant import TEMPLATE_MAP, ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES
+from tests.model_serving.model_runtime.vllm.constant import ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES
 from simple_logger.logger import get_logger
 
 from utilities.inference_utils import create_isvc
