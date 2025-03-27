@@ -9,13 +9,13 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 
+from tests.model_serving.model_server.serverless.constants import MNIST_INFERENCE_TYPE
 from tests.model_serving.model_server.serverless.utils import wait_for_canary_rollout
 from tests.model_serving.model_server.utils import run_inference_multiple_times
 from utilities.constants import Protocols
-from utilities.inference_utils import Inference
 from utilities.constants import KServeDeploymentType, ModelStoragePath
 from utilities.inference_utils import create_isvc
-from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
+from utilities.manifests.openvino import OPENVINO_INFERENCE_CONFIG
 
 
 @pytest.fixture(scope="class")
@@ -60,8 +60,8 @@ def multiple_onnx_inference_requests(
 ) -> None:
     run_inference_multiple_times(
         isvc=ovms_kserve_inference_service,
-        inference_config=ONNX_INFERENCE_CONFIG,
-        inference_type=Inference.INFER,
+        inference_config=OPENVINO_INFERENCE_CONFIG,
+        inference_type=MNIST_INFERENCE_TYPE,
         protocol=Protocols.HTTPS,
         iterations=50,
         run_in_parallel=True,

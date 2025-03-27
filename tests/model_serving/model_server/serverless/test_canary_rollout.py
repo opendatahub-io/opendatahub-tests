@@ -1,6 +1,9 @@
 import pytest
 
-from tests.model_serving.model_server.serverless.constants import ONNX_SERVERLESS_INFERENCE_SERVICE_CONFIG
+from tests.model_serving.model_server.serverless.constants import (
+    MNIST_INFERENCE_TYPE,
+    ONNX_SERVERLESS_INFERENCE_SERVICE_CONFIG,
+)
 from tests.model_serving.model_server.serverless.utils import verify_canary_traffic
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import (
@@ -8,8 +11,8 @@ from utilities.constants import (
     Protocols,
     RunTimeConfigs,
 )
-from utilities.inference_utils import Inference
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
+from utilities.manifests.openvino import OPENVINO_INFERENCE_CONFIG
 
 pytestmark = [pytest.mark.serverless, pytest.mark.sanity]
 
@@ -35,7 +38,7 @@ class TestServerlessCanaryRollout:
         verify_inference_response(
             inference_service=ovms_kserve_inference_service,
             inference_config=ONNX_INFERENCE_CONFIG,
-            inference_type=Inference.INFER,
+            inference_type=MNIST_INFERENCE_TYPE,
             protocol=Protocols.HTTPS,
             use_default_query=True,
         )
@@ -53,8 +56,8 @@ class TestServerlessCanaryRollout:
         """Test inference during canary rollout"""
         verify_canary_traffic(
             isvc=inference_service_updated_canary_config,
-            inference_config=ONNX_INFERENCE_CONFIG,
-            inference_type=Inference.INFER,
+            inference_config=OPENVINO_INFERENCE_CONFIG,
+            inference_type=MNIST_INFERENCE_TYPE,
             protocol=Protocols.HTTPS,
             iterations=20,
             expected_percentage=30,
@@ -74,8 +77,8 @@ class TestServerlessCanaryRollout:
         """Test inference after canary rollout"""
         verify_canary_traffic(
             isvc=inference_service_updated_canary_config,
-            inference_config=ONNX_INFERENCE_CONFIG,
-            inference_type=Inference.INFER,
+            inference_config=OPENVINO_INFERENCE_CONFIG,
+            inference_type=MNIST_INFERENCE_TYPE,
             protocol=Protocols.HTTPS,
             iterations=5,
             expected_percentage=100,
