@@ -1,24 +1,23 @@
 import pytest
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.inference_service import InferenceService
 
 from tests.model_serving.model_server.utils import verify_inference_response
-from utilities.constants import ModelFormat, ModelVersion, Protocols, ModelInferenceRuntime
+from utilities.constants import ModelFormat, ModelVersion, Protocols, RunTimeConfigs
+from utilities.exceptions import ResourceNotFound
 from utilities.inference_utils import Inference
-from utilities.infra import get_model_mesh_route
+from utilities.infra import get_model_route
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_config")]
 
 
-@pytest.mark.rawdeployment
 @pytest.mark.parametrize(
     "model_namespace, openvino_kserve_serving_runtime, ovms_raw_inference_service",
     [
         pytest.param(
-            {"name": "raw-deployment-onnx"},
-            {
-                "runtime-name": ModelInferenceRuntime.ONNX_RUNTIME,
-                "model-format": {ModelFormat.ONNX: ModelVersion.OPSET13},
-            },
+            {"name": "kserve-raw-route-reconciliation"},
+            RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
             {"name": ModelFormat.ONNX, "model-version": ModelVersion.OPSET13, "model-dir": "test-dir"},
         )
     ],
@@ -28,7 +27,6 @@ class TestONNXRaw:
     """Test suite for  Validating reconciliation"""
 
     @pytest.mark.smoke
-    @pytest.mark.jira("RHOAIENG-9045")
     def test_raw_onnx_rout_reconciliation(self, admin_client, ovms_raw_inference_service):
         """
         Verify that the KServe Raw ONNX model can be queried using REST
@@ -56,11 +54,23 @@ class TestONNXRaw:
         )
 
     @staticmethod
-    def assert_ingress_status_changed(admin_client, inference_service):
+    def assert_ingress_status_changed(admin_client: DynamicClient, inference_service: InferenceService):
         """
         Validates that the ingress status changes correctly after route deletion.
+
+        Args:
+            admin_client (DynamicClient): The administrative client used to manage the model route.
+            inference_service (InferenceService): The inference service whose route status is being checked.
+
+        Raises:
+            AssertionError: If any of the validation checks fail.
+
+        Returns:
+            None
         """
-        route = get_model_mesh_route(admin_client, inference_service)
+        route = get_model_route(admin_client, inference_service)
+        if not route.exists:
+            raise ResourceNotFound("Route before deletion not found: No active route is currently available.")
 
         initial_status = route.instance.status["ingress"][0]["conditions"][0]
         initial_host = route.host
@@ -68,6 +78,9 @@ class TestONNXRaw:
         initial_status_value = initial_status["status"]
 
         route.delete()
+
+        if not route.exists:
+            raise ResourceNotFound("Route after deletion not found: No active route is currently available.")
 
         updated_status = route.instance.status["ingress"][0]["conditions"][0]
         updated_host = route.host

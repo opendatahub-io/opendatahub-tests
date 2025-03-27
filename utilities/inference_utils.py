@@ -20,7 +20,7 @@ from timeout_sampler import TimeoutWatch, retry
 from utilities.exceptions import InvalidStorageArgumentError
 from utilities.infra import (
     get_inference_serving_runtime,
-    get_model_mesh_route,
+    get_model_route,
     get_pods_by_isvc_label,
     get_services_by_isvc_label,
     wait_for_inference_deployment_replicas,
@@ -93,7 +93,7 @@ class Inference:
                 return urlparse(url=url).netloc
 
             elif self.deployment_mode == KServeDeploymentType.MODEL_MESH:
-                route = get_model_mesh_route(client=self.inference_service.client, isvc=self.inference_service)
+                route = get_model_route(client=self.inference_service.client, isvc=self.inference_service)
                 return route.instance.spec.host
 
             else:

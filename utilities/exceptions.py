@@ -84,3 +84,7 @@ class PodLogMissMatchError(Exception):
 
 class ResourceMismatch(Exception):
     pass
+
+
+class ResourceNotFound(Exception):
+    pass
