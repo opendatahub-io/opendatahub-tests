@@ -64,6 +64,9 @@ class RuntimeTemplates:
     OVMS_KSERVE: str = f"kserve-{ModelFormat.OVMS}"
     CAIKIT_STANDALONE_SERVING: str = "caikit-standalone-serving-template"
     TGIS_GRPC_SERVING: str = "tgis-grpc-serving-template"
+    VLLM_CUDA: str = "vllm-cuda-runtime-template"
+    VLLM_ROCM: str = "vllm-rocm-runtime-template"
+    VLLM_GAUDUI: str = "vllm-gaudi-runtime-template"
 
 
 class ModelInferenceRuntime:

@@ -1,5 +1,5 @@
 from typing import Any, Union
-from utilities.constants import AcceleratorType, KServeDeploymentType
+from utilities.constants import AcceleratorType, KServeDeploymentType, RuntimeTemplates
 
 OPENAI_ENDPOINT_NAME: str = "openai"
 TGIS_ENDPOINT_NAME: str = "tgis"
@@ -10,6 +10,12 @@ ACCELERATOR_IDENTIFIER: dict[str, str] = {
     AcceleratorType.NVIDIA: "nvidia.com/gpu",
     AcceleratorType.AMD: "amd.com/gpu",
     AcceleratorType.GAUDI: "habana.ai/gaudi",
+}
+
+TEMPLATE_MAP: dict[str, str] = {
+    AcceleratorType.NVIDIA: RuntimeTemplates.VLLM_CUDA,
+    AcceleratorType.AMD: RuntimeTemplates.VLLM_ROCM,
+    AcceleratorType.GAUDI: RuntimeTemplates.VLLM_GAUDUI,
 }
 
 PREDICT_RESOURCES: dict[str, Union[list[dict[str, Union[str, dict[str, str]]]], dict[str, dict[str, str]]]] = {
