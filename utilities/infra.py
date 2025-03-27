@@ -470,6 +470,7 @@ def get_inference_serving_runtime(isvc: InferenceService) -> ServingRuntime:
 
 def get_model_route(client: DynamicClient, isvc: InferenceService) -> Route:
     """
+    Get model route using  InferenceService 
     Args:
         client (DynamicClient): OCP Client to use.
         isvc (InferenceService):InferenceService object.
