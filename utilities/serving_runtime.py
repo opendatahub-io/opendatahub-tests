@@ -6,7 +6,7 @@ from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.template import Template
-from utilities.constants import PortNames, Protocols, vLLM_CONFIG
+from utilities.constants import ApiGroups, PortNames, Protocols, vLLM_CONFIG
 from pytest_testconfig import config as py_config
 
 
@@ -151,7 +151,7 @@ class ServingRuntimeFromTemplate(ServingRuntime):
             _model_metadata.setdefault("annotations", {})["enable-auth"] = "true"
 
         if self.protocol is not None:
-            _model_metadata.setdefault("annotations", {})["opendatahub.io/apiProtocol"] = self.protocol
+            _model_metadata.setdefault("annotations", {})[f"{ApiGroups.OPENDATAHUB_IO}/apiProtocol"] = self.protocol
 
         template_containers = _model_spec.get("containers", [])
 

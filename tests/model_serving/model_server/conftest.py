@@ -329,24 +329,36 @@ def ci_service_account(
 
 
 @pytest.fixture(scope="class")
-def ovms_serverless_inference_service(
+def ovms_kserve_inference_service(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
     openvino_kserve_serving_runtime: ServingRuntime,
     ci_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
-    with create_isvc(
-        client=admin_client,
-        name=f"{request.param['name']}-serverless",
-        namespace=model_namespace.name,
-        runtime=openvino_kserve_serving_runtime.name,
-        storage_path=request.param["model-dir"],
-        storage_key=ci_endpoint_s3_secret.name,
-        model_format=ModelAndFormat.OPENVINO_IR,
-        deployment_mode=KServeDeploymentType.SERVERLESS,
-        model_version=request.param["model-version"],
-    ) as isvc:
+    deployment_mode = request.param["deployment-mode"]
+    isvc_kwargs = {
+        "client": admin_client,
+        "name": f"{request.param['name']}-{deployment_mode.lower()}",
+        "namespace": model_namespace.name,
+        "runtime": openvino_kserve_serving_runtime.name,
+        "storage_path": request.param["model-dir"],
+        "storage_key": ci_endpoint_s3_secret.name,
+        "model_format": ModelAndFormat.OPENVINO_IR,
+        "deployment_mode": deployment_mode,
+        "model_version": request.param["model-version"],
+    }
+
+    if env_vars := request.param.get("env-vars"):
+        isvc_kwargs["model_env_variables"] = env_vars
+
+    if min_replicas := request.param.get("min-replicas"):
+        isvc_kwargs["min_replicas"] = min_replicas
+
+    if max_replicas := request.param.get("max-replicas"):
+        isvc_kwargs["max_replicas"] = max_replicas
+
+    with create_isvc(**isvc_kwargs) as isvc:
         yield isvc
 
 
