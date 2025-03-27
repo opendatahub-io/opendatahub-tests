@@ -39,7 +39,7 @@ class TestONNXRawRouteReconciliation:
             use_default_query=True,
         )
 
-    def test_route_value_before_and_after_deletion(self, admin_client,ovms_raw_inference_service):
+    def test_route_value_before_and_after_deletion(self, admin_client, ovms_raw_inference_service):
         # Validate ingress status before and after route deletion
         assert_ingress_status_changed(admin_client, ovms_raw_inference_service)
 
