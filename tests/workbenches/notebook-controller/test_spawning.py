@@ -14,7 +14,7 @@ class TestNotebook:
             pytest.param(
                 {
                     "name": "test-odh-notebook",
-                    "dashboard-label": True,
+                    "add-dashboard-label": True,
                 },
                 {"name": "test-odh-notebook"},
                 {

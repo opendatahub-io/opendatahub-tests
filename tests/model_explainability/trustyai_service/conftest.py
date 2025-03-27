@@ -27,7 +27,6 @@ from utilities.constants import Timeout
 from utilities.infra import update_configmap_data
 
 MINIO: str = "minio"
-OPENDATAHUB_IO: str = "opendatahub.io"
 OPENSHIFT_OPERATORS: str = "openshift-operators"
 
 MARIADB: str = "mariadb"

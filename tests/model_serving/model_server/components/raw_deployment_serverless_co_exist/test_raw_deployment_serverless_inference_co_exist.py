@@ -1,14 +1,13 @@
 import pytest
 
+from tests.model_serving.model_server.components.constants import KSERVE_RUNTIME_PARAMS, SERVERLESS_ISVC_PARAMS
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import (
     KServeDeploymentType,
-    ModelAndFormat,
     ModelFormat,
     ModelInferenceRuntime,
     ModelName,
     ModelStoragePath,
-    ModelVersion,
     Protocols,
     RuntimeTemplates,
 )
@@ -20,16 +19,6 @@ from utilities.manifests.openvino import (
 
 pytestmark = [pytest.mark.serverless, pytest.mark.rawdeployment, pytest.mark.sanity]
 
-
-SERVERLESS_RUNTIME_PARAMS = {
-    "runtime-name": ModelInferenceRuntime.OPENVINO_KSERVE_RUNTIME,
-    "model-format": {ModelAndFormat.OPENVINO_IR: ModelVersion.OPSET1},
-}
-SERVERLESS_ISVC_PARAMS = {
-    "name": ModelFormat.OPENVINO,
-    "model-version": ModelVersion.OPSET1,
-    "model-dir": ModelStoragePath.KSERVE_OPENVINO_EXAMPLE_MODEL,
-}
 RAW_RUNTIME_PARAMS = {
     "name": f"{Protocols.HTTP}-{ModelInferenceRuntime.CAIKIT_STANDALONE_RUNTIME}".lower(),
     "template-name": RuntimeTemplates.CAIKIT_STANDALONE_SERVING,
@@ -44,12 +33,12 @@ RAW_ISVC_PARAMS = {
 
 
 @pytest.mark.parametrize(
-    "model_namespace, openvino_kserve_serving_runtime, ovms_serverless_inference_service, "
+    "model_namespace, openvino_kserve_serving_runtime, ovms_kserve_inference_service, "
     "serving_runtime_from_template, s3_models_inference_service",
     [
         pytest.param(
             {"name": "serverless-raw-deployment"},
-            SERVERLESS_RUNTIME_PARAMS,
+            KSERVE_RUNTIME_PARAMS,
             SERVERLESS_ISVC_PARAMS,
             RAW_RUNTIME_PARAMS,
             RAW_ISVC_PARAMS,
@@ -59,11 +48,11 @@ RAW_ISVC_PARAMS = {
 )
 class TestServerlessRawInternalDeploymentInferenceCoExist:
     def test_serverless_openvino_created_before_raw_internal_deployment_caikit_inference(
-        self, ovms_serverless_inference_service, s3_models_inference_service
+        self, ovms_kserve_inference_service, s3_models_inference_service
     ):
         """Verify that Serverless model can be queried when running with raw deployment inference service"""
         verify_inference_response(
-            inference_service=ovms_serverless_inference_service,
+            inference_service=ovms_kserve_inference_service,
             inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
@@ -72,7 +61,7 @@ class TestServerlessRawInternalDeploymentInferenceCoExist:
 
     def test_raw_internal_deployment_caikit_created_after_serverless_in_namespace_rest_inference(
         self,
-        ovms_serverless_inference_service,
+        ovms_kserve_inference_service,
         s3_models_inference_service,
     ):
         """Verify that raw deployment model can be queried when running with kserve inference service"""
@@ -87,12 +76,12 @@ class TestServerlessRawInternalDeploymentInferenceCoExist:
 
 
 @pytest.mark.parametrize(
-    "model_namespace, openvino_kserve_serving_runtime, ovms_serverless_inference_service, "
+    "model_namespace, openvino_kserve_serving_runtime, ovms_kserve_inference_service, "
     "serving_runtime_from_template, s3_models_inference_service",
     [
         pytest.param(
             {"name": "serverless-raw-ext-deployment"},
-            SERVERLESS_RUNTIME_PARAMS,
+            KSERVE_RUNTIME_PARAMS,
             SERVERLESS_ISVC_PARAMS,
             RAW_RUNTIME_PARAMS,
             {**RAW_ISVC_PARAMS, "external-route": True},
@@ -102,11 +91,11 @@ class TestServerlessRawInternalDeploymentInferenceCoExist:
 )
 class TestServerlessRawExternalDeploymentInferenceCoExist:
     def test_serverless_openvino_created_before_raw_external_deployment_caikit_inference(
-        self, ovms_serverless_inference_service, s3_models_inference_service
+        self, ovms_kserve_inference_service, s3_models_inference_service
     ):
         """Verify that Serverless model can be queried when running with raw deployment inference service"""
         verify_inference_response(
-            inference_service=ovms_serverless_inference_service,
+            inference_service=ovms_kserve_inference_service,
             inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
@@ -115,7 +104,7 @@ class TestServerlessRawExternalDeploymentInferenceCoExist:
 
     def test_raw_external_deployment_caikit_created_after_serverless_in_namespace_rest_inference(
         self,
-        ovms_serverless_inference_service,
+        ovms_kserve_inference_service,
         s3_models_inference_service,
     ):
         """Verify that raw deployment model can be queried when running with kserve inference service"""
@@ -131,13 +120,13 @@ class TestServerlessRawExternalDeploymentInferenceCoExist:
 
 @pytest.mark.parametrize(
     "model_namespace, serving_runtime_from_template, s3_models_inference_service,"
-    "openvino_kserve_serving_runtime, ovms_serverless_inference_service",
+    "openvino_kserve_serving_runtime, ovms_kserve_inference_service",
     [
         pytest.param(
             {"name": "raw-deployment-serverless"},
             RAW_RUNTIME_PARAMS,
             RAW_ISVC_PARAMS,
-            SERVERLESS_RUNTIME_PARAMS,
+            KSERVE_RUNTIME_PARAMS,
             SERVERLESS_ISVC_PARAMS,
         )
     ],
@@ -147,7 +136,7 @@ class TestRawInternalDeploymentServerlessInferenceCoExist:
     def test_raw_internal_deployment_caikit_created_before_serverless_openvino_in_namespace_rest_inference(
         self,
         s3_models_inference_service,
-        ovms_serverless_inference_service,
+        ovms_kserve_inference_service,
     ):
         """Verify that raw deployment model can be queried when running with kserve inference service"""
         verify_inference_response(
@@ -162,11 +151,11 @@ class TestRawInternalDeploymentServerlessInferenceCoExist:
     def test_serverless_openvino_created_after_raw_internal_deployment_caikit_ns_rest_inference(
         self,
         s3_models_inference_service,
-        ovms_serverless_inference_service,
+        ovms_kserve_inference_service,
     ):
         """Verify that Serverless model can be queried when running with raw deployment exists"""
         verify_inference_response(
-            inference_service=ovms_serverless_inference_service,
+            inference_service=ovms_kserve_inference_service,
             inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
@@ -176,13 +165,13 @@ class TestRawInternalDeploymentServerlessInferenceCoExist:
 
 @pytest.mark.parametrize(
     "model_namespace, serving_runtime_from_template, s3_models_inference_service,"
-    "openvino_kserve_serving_runtime, ovms_serverless_inference_service",
+    "openvino_kserve_serving_runtime, ovms_kserve_inference_service",
     [
         pytest.param(
             {"name": "raw-etx-deployment-serverless"},
             RAW_RUNTIME_PARAMS,
             {**RAW_ISVC_PARAMS, "external-route": True},
-            SERVERLESS_RUNTIME_PARAMS,
+            KSERVE_RUNTIME_PARAMS,
             SERVERLESS_ISVC_PARAMS,
         ),
     ],
@@ -192,7 +181,7 @@ class TestRawExternalDeploymentServerlessInferenceCoExist:
     def test_raw_external_deployment_caikit_created_before_serverless_openvino_in_namespace_rest_inference(
         self,
         s3_models_inference_service,
-        ovms_serverless_inference_service,
+        ovms_kserve_inference_service,
     ):
         """Verify that raw deployment model can be queried when running with kserve inference service"""
         verify_inference_response(
@@ -205,11 +194,11 @@ class TestRawExternalDeploymentServerlessInferenceCoExist:
         )
 
     def test_serverless_openvino_created_after_raw_external_deployment_caikit_ns_rest_inference(
-        self, s3_models_inference_service, ovms_serverless_inference_service
+        self, s3_models_inference_service, ovms_kserve_inference_service
     ):
         """Verify that Serverless model can be queried when running with raw deployment exists"""
         verify_inference_response(
-            inference_service=ovms_serverless_inference_service,
+            inference_service=ovms_kserve_inference_service,
             inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,

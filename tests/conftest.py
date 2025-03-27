@@ -73,13 +73,10 @@ def current_client_token(admin_client: DynamicClient) -> str:
 
 @pytest.fixture(scope="class")
 def model_namespace(request: FixtureRequest, admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
-    ns_kwargs = {"admin_client": admin_client, "name": request.param["name"]}
-
     if request.param.get("modelmesh-enabled"):
         request.getfixturevalue(argname="enabled_modelmesh_in_dsc")
-        ns_kwargs["model_mesh_enabled"] = True
 
-    with create_ns(**ns_kwargs) as ns:
+    with create_ns(admin_client=admin_client, pytest_request=request) as ns:
         yield ns
 
 
@@ -324,20 +321,8 @@ def cluster_monitoring_config(admin_client: DynamicClient) -> Generator[ConfigMa
 def unprivileged_model_namespace(
     request: FixtureRequest, unprivileged_client: DynamicClient
 ) -> Generator[Namespace, Any, Any]:
-    ns_kwargs = {
-        "name": request.param["name"],
-        "unprivileged_client": unprivileged_client,
-    }
-
-    if _annotations := request.param.get("annotations"):
-        ns_kwargs["ns_annotations"] = _annotations
-
     if request.param.get("modelmesh-enabled"):
         request.getfixturevalue(argname="enabled_modelmesh_in_dsc")
-        ns_kwargs["model_mesh_enabled"] = True
 
-    if (_dashboard_label := request.param.get("dashboard-label")) is not None:
-        ns_kwargs["add_dashboard_label"] = _dashboard_label
-
-    with create_ns(**ns_kwargs) as ns:
+    with create_ns(unprivileged_client=unprivileged_client, pytest_request=request) as ns:
         yield ns
