@@ -23,7 +23,7 @@ pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_conf
     ],
     indirect=True,
 )
-class TestONNXRaw:
+class TestONNXRawRouteReconciliation:
     """Test suite for  Validating reconciliation"""
 
     @pytest.mark.smoke
