@@ -372,7 +372,7 @@ def ovms_raw_inference_service(
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
-        name=f"{request.param['name']}-serverless",
+        name=f"{request.param['name']}-raw",
         namespace=model_namespace.name,
         external_route=True,
         runtime=openvino_kserve_serving_runtime.name,
