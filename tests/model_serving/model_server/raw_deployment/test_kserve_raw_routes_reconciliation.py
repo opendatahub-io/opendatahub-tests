@@ -63,6 +63,7 @@ class TestONNXRaw:
             inference_service (InferenceService): The inference service whose route status is being checked.
 
         Raises:
+            ResourceNotFound: If the route does not exist before or after deletion.
             AssertionError: If any of the validation checks fail.
 
         Returns:
@@ -87,7 +88,26 @@ class TestONNXRaw:
         updated_transition_time = updated_status["lastTransitionTime"]
         updated_status_value = updated_status["status"]
 
-        assert updated_host == initial_host, "Host should remain the same after route update"
-        assert updated_transition_time != initial_transition_time, "Transition time should change"
-        assert updated_status_value == "True", "Updated ingress status should be True"
-        assert initial_status_value == "True", "Initial ingress status should be True"
+        # Collect failures instead of stopping at the first failed assertion
+        failures = []
+
+        if updated_host != initial_host:
+            failures.append(f"Host mismatch: before={initial_host}, after={updated_host}")
+
+        if updated_transition_time == initial_transition_time:
+            failures.append(
+                f"Transition time did not change: before={initial_transition_time}, after={updated_transition_time}"
+            )
+
+        if updated_status_value != "True":
+            failures.append(
+                f"Updated ingress status incorrect: expected=True, actual={updated_status_value}"
+            )
+
+        if initial_status_value != "True":
+            failures.append(
+                f"Initial ingress status incorrect: expected=True, actual={initial_status_value}"
+            )
+
+        # Assert all failures at once
+        assert not failures, "Ingress status validation failed:\n" + "\n".join(failures)
