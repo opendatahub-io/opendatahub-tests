@@ -25,7 +25,7 @@ pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_conf
     indirect=True,
 )
 class TestONNXRaw:
-    """Test suite for  Validating reconciliation """
+    """Test suite for  Validating reconciliation"""
 
     @pytest.mark.smoke
     @pytest.mark.jira("RHOAIENG-9045")
