@@ -11,6 +11,7 @@ from utilities.constants import (
     Protocols,
     RunTimeConfigs,
 )
+from utilities.inference_utils import Inference
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 from utilities.manifests.openvino import OPENVINO_INFERENCE_CONFIG
 
@@ -38,7 +39,7 @@ class TestServerlessCanaryRollout:
         verify_inference_response(
             inference_service=ovms_kserve_inference_service,
             inference_config=ONNX_INFERENCE_CONFIG,
-            inference_type=MNIST_INFERENCE_TYPE,
+            inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
             use_default_query=True,
         )

@@ -12,9 +12,10 @@ from ocp_resources.serving_runtime import ServingRuntime
 from tests.model_serving.model_server.serverless.constants import MNIST_INFERENCE_TYPE
 from tests.model_serving.model_server.serverless.utils import wait_for_canary_rollout
 from tests.model_serving.model_server.utils import run_inference_multiple_times
-from utilities.constants import Protocols
+from utilities.constants import Protocols, Timeout
 from utilities.constants import KServeDeploymentType, ModelStoragePath
 from utilities.inference_utils import create_isvc
+from utilities.infra import verify_no_failed_pods
 from utilities.manifests.openvino import OPENVINO_INFERENCE_CONFIG
 
 
@@ -37,7 +38,7 @@ def inference_service_patched_replicas(
 
 @pytest.fixture
 def inference_service_updated_canary_config(
-    request: FixtureRequest, ovms_kserve_inference_service: InferenceService
+    request: FixtureRequest, admin_client: DynamicClient, ovms_kserve_inference_service: InferenceService
 ) -> Generator[InferenceService, Any, Any]:
     canary_percent = request.param["canary-traffic-percent"]
     predictor_config = {
@@ -51,6 +52,11 @@ def inference_service_updated_canary_config(
 
     with ResourceEditor(patches={ovms_kserve_inference_service: predictor_config}):
         wait_for_canary_rollout(isvc=ovms_kserve_inference_service, percentage=canary_percent)
+        verify_no_failed_pods(
+            client=admin_client,
+            isvc=ovms_kserve_inference_service,
+            timeout=Timeout.TIMEOUT_2MIN,
+        )
         yield ovms_kserve_inference_service
 
 
@@ -63,7 +69,7 @@ def multiple_onnx_inference_requests(
         inference_config=OPENVINO_INFERENCE_CONFIG,
         inference_type=MNIST_INFERENCE_TYPE,
         protocol=Protocols.HTTPS,
-        iterations=50,
+        iterations=100,
         run_in_parallel=True,
     )
 
