@@ -100,14 +100,10 @@ class TestONNXRaw:
             )
 
         if updated_status_value != "True":
-            failures.append(
-                f"Updated ingress status incorrect: expected=True, actual={updated_status_value}"
-            )
+            failures.append(f"Updated ingress status incorrect: expected=True, actual={updated_status_value}")
 
         if initial_status_value != "True":
-            failures.append(
-                f"Initial ingress status incorrect: expected=True, actual={initial_status_value}"
-            )
+            failures.append(f"Initial ingress status incorrect: expected=True, actual={initial_status_value}")
 
         # Assert all failures at once
         assert not failures, "Ingress status validation failed:\n" + "\n".join(failures)
