@@ -1,0 +1,56 @@
+name: Build and Push Container Image On PR Merge
+
+on:
+  pull_request_target:
+    types: [closed]
+
+permissions:
+  pull-requests: write
+  contents: write
+  issues: write
+
+jobs:
+  if_merged:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      - name: Set env TAG
+        run: |
+          if [ ${{ github.event.pull_request.base.ref }} == "main" ]; then
+              echo "TAG=latest" >> $GITHUB_ENV
+          else
+              echo "TAG=${{ github.event.pull_request.base.ref }}" >> "$GITHUB_ENV"
+          fi
+      - name: Build Image
+        id: build-image
+        uses: redhat-actions/buildah-build@v2
+        with:
+          image: opendatahub-tests
+          tags: ${{ env.TAG }}
+          containerfiles: |
+            ./Dockerfile
+
+      - name: Push To Image Registry
+        id: push-to-registry
+        uses: redhat-actions/push-to-registry@v2
+        with:
+          image: ${{ steps.build-image.outputs.image }}
+          tags: ${{ steps.build-image.outputs.tags }}
+          registry: quay.io/opendatahub
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_PASSWORD }}
+
+      - name: Add comment to PR
+        if: always()
+        env:
+          URL: ${{ github.event.pull_request.comments_url }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl \
+            -X POST \
+            $URL \
+            -H "Content-Type: application/json" \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            --data '{ "body": "Status of building tag ${{ env.TAG }}: ${{ steps.build-image.outcome }}. \nStatus of pushing tag ${{ env.TAG }} to image registry: ${{ steps.push-to-registry.outcome }}." }'
