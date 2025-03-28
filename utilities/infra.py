@@ -491,8 +491,9 @@ def get_inference_serving_runtime(isvc: InferenceService) -> ServingRuntime:
     raise ResourceNotFoundError(f"{isvc.name} runtime {runtime.name} does not exist")
 
 
-def get_model_mesh_route(client: DynamicClient, isvc: InferenceService) -> Route:
+def get_model_route(client: DynamicClient, isvc: InferenceService) -> Route:
     """
+    Get model route using  InferenceService
     Args:
         client (DynamicClient): OCP Client to use.
         isvc (InferenceService):InferenceService object.
