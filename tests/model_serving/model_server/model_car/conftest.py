@@ -12,7 +12,7 @@ from utilities.inference_utils import create_isvc
 
 
 @pytest.fixture(scope="class")
-def model_car_tgis_inference_service(
+def model_car_serverless_inference_service(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
@@ -20,7 +20,7 @@ def model_car_tgis_inference_service(
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
-        name="tgis-model-car",
+        name="serverless-model-car",
         namespace=model_namespace.name,
         runtime=serving_runtime_from_template.name,
         storage_uri=request.param["storage-uri"],

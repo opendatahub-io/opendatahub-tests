@@ -43,6 +43,7 @@ class ModelStoragePath:
     OPENVINO_VEHICLE_DETECTION: str = "vehicle-detection"
     FLAN_T5_SMALL_HF: str = f"{ModelName.FLAN_T5_SMALL}/{ModelName.FLAN_T5_SMALL_HF}"
     BLOOM_560M_CAIKIT: str = f"{ModelName.BLOOM_560M}/{ModelAndFormat.BLOOM_560M_CAIKIT}"
+    MNIST_8_ONNX: str = "mnist-8.onnx"
 
 
 class CurlOutput:

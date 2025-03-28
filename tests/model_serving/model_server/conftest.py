@@ -358,6 +358,12 @@ def ovms_kserve_inference_service(
     if max_replicas := request.param.get("max-replicas"):
         isvc_kwargs["max_replicas"] = max_replicas
 
+    if scale_metric := request.param.get("scale-metric"):
+        isvc_kwargs["scale_metric"] = scale_metric
+
+    if scale_target := request.param.get("scale-target"):
+        isvc_kwargs["scale_target"] = scale_target
+
     with create_isvc(**isvc_kwargs) as isvc:
         yield isvc
 
