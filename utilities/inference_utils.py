@@ -29,6 +29,7 @@ from utilities.infra import (
 from utilities.certificates_utils import get_ca_bundle
 from utilities.constants import (
     KServeDeploymentType,
+    ModelName,
     Protocols,
     HTTPRequest,
     Annotations,
@@ -43,6 +44,7 @@ class Inference:
     ALL_TOKENS: str = "all-tokens"
     STREAMING: str = "streaming"
     INFER: str = "infer"
+    MNIST: str = f"infer-{ModelName.MNIST}"
 
     def __init__(self, inference_service: InferenceService):
         """

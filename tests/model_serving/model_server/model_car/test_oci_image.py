@@ -2,7 +2,7 @@ import pytest
 
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.infra import get_pods_by_isvc_label
-from utilities.constants import Protocols, RuntimeTemplates
+from utilities.constants import ModelFormat, ModelName, Protocols, RuntimeTemplates
 from utilities.inference_utils import Inference
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
@@ -13,9 +13,9 @@ pytestmark = pytest.mark.serverless
     "model_namespace, serving_runtime_from_template, model_car_serverless_inference_service",
     [
         pytest.param(
-            {"name": "openvino-model-car"},
+            {"name": f"{ModelFormat.OPENVINO}-model-car"},
             {
-                "name": "mnist-runtime",
+                "name": f"{ModelName.MNIST}-runtime",
                 "template-name": RuntimeTemplates.OVMS_KSERVE,
                 "multi-model": False,
             },

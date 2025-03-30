@@ -11,5 +11,3 @@ ONNX_SERVERLESS_INFERENCE_SERVICE_CONFIG: dict[str, str] = {
     **ONNX_SERVERLESS_BASE_INFERENCE_SERVICE_CONFIG,
     "model-dir": "test-dir",
 }
-
-MNIST_INFERENCE_TYPE: str = "infer-mnist"

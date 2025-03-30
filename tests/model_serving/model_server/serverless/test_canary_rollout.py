@@ -1,7 +1,6 @@
 import pytest
 
 from tests.model_serving.model_server.serverless.constants import (
-    MNIST_INFERENCE_TYPE,
     ONNX_SERVERLESS_INFERENCE_SERVICE_CONFIG,
 )
 from tests.model_serving.model_server.serverless.utils import verify_canary_traffic
@@ -58,7 +57,7 @@ class TestServerlessCanaryRollout:
         verify_canary_traffic(
             isvc=inference_service_updated_canary_config,
             inference_config=OPENVINO_INFERENCE_CONFIG,
-            inference_type=MNIST_INFERENCE_TYPE,
+            inference_type=Inference.MNIST,
             protocol=Protocols.HTTPS,
             iterations=20,
             expected_percentage=30,
@@ -79,7 +78,7 @@ class TestServerlessCanaryRollout:
         verify_canary_traffic(
             isvc=inference_service_updated_canary_config,
             inference_config=OPENVINO_INFERENCE_CONFIG,
-            inference_type=MNIST_INFERENCE_TYPE,
+            inference_type=Inference.MNIST,
             protocol=Protocols.HTTPS,
             iterations=5,
             expected_percentage=100,
