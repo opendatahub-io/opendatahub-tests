@@ -47,7 +47,7 @@ class PrBaseClass:
     def __init__(self) -> None:
         self.repo: Repository
         self.pr: PullRequest
-        self.gh_client: GitHub
+        self.gh_client: Github
 
         self.repo_name = os.environ["GITHUB_REPOSITORY"]
         self.pr_number = int(os.getenv("GITHUB_PR_NUMBER", 0))
