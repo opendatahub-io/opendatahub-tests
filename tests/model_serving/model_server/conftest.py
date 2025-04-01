@@ -358,7 +358,36 @@ def ovms_kserve_inference_service(
     if max_replicas := request.param.get("max-replicas"):
         isvc_kwargs["max_replicas"] = max_replicas
 
+    if scale_metric := request.param.get("scale-metric"):
+        isvc_kwargs["scale_metric"] = scale_metric
+
+    if scale_target := request.param.get("scale-target"):
+        isvc_kwargs["scale_target"] = scale_target
+
     with create_isvc(**isvc_kwargs) as isvc:
+        yield isvc
+
+
+@pytest.fixture(scope="class")
+def ovms_raw_inference_service(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    openvino_kserve_serving_runtime: ServingRuntime,
+    ci_endpoint_s3_secret: Secret,
+) -> Generator[InferenceService, Any, Any]:
+    with create_isvc(
+        client=admin_client,
+        name=f"{request.param['name']}-raw",
+        namespace=model_namespace.name,
+        external_route=True,
+        runtime=openvino_kserve_serving_runtime.name,
+        storage_path=request.param["model-dir"],
+        storage_key=ci_endpoint_s3_secret.name,
+        model_format=ModelAndFormat.OPENVINO_IR,
+        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+        model_version=request.param["model-version"],
+    ) as isvc:
         yield isvc
 
 

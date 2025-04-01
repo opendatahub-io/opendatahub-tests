@@ -24,6 +24,7 @@ class ModelName:
     FLAN_T5_SMALL_HF: str = f"{FLAN_T5_SMALL}-hf"
     CAIKIT_BGE_LARGE_EN: str = f"bge-large-en-v1.5-{ModelFormat.CAIKIT}"
     BLOOM_560M: str = "bloom-560m"
+    MNIST: str = "mnist"
 
 
 class ModelAndFormat:
@@ -43,6 +44,7 @@ class ModelStoragePath:
     OPENVINO_VEHICLE_DETECTION: str = "vehicle-detection"
     FLAN_T5_SMALL_HF: str = f"{ModelName.FLAN_T5_SMALL}/{ModelName.FLAN_T5_SMALL_HF}"
     BLOOM_560M_CAIKIT: str = f"{ModelName.BLOOM_560M}/{ModelAndFormat.BLOOM_560M_CAIKIT}"
+    MNIST_8_ONNX: str = f"{ModelName.MNIST}-8.onnx"
 
 
 class CurlOutput:

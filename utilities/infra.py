@@ -491,8 +491,9 @@ def get_inference_serving_runtime(isvc: InferenceService) -> ServingRuntime:
     raise ResourceNotFoundError(f"{isvc.name} runtime {runtime.name} does not exist")
 
 
-def get_model_mesh_route(client: DynamicClient, isvc: InferenceService) -> Route:
+def get_model_route(client: DynamicClient, isvc: InferenceService) -> Route:
     """
+    Get model route using  InferenceService
     Args:
         client (DynamicClient): OCP Client to use.
         isvc (InferenceService):InferenceService object.
@@ -565,7 +566,7 @@ def update_configmap_data(
 def verify_no_failed_pods(
     client: DynamicClient,
     isvc: InferenceService,
-    runtime_name: str | None,
+    runtime_name: str | None = None,
     timeout: int = Timeout.TIMEOUT_5MIN,
 ) -> None:
     """
