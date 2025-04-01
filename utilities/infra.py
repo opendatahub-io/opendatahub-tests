@@ -8,12 +8,15 @@ from functools import cache
 from typing import Any, Generator, Optional, Set
 
 import kubernetes
+from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError, ResourceNotUniqueError
 from ocp_resources.catalog_source import CatalogSource
 from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
+from ocp_resources.dsc_initialization import DSCInitialization
 from ocp_resources.exceptions import MissingResourceError
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.infrastructure import Infrastructure
@@ -21,7 +24,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.project_project_openshift_io import Project
 from ocp_resources.project_request import ProjectRequest
-from ocp_resources.resource import ResourceEditor
+from ocp_resources.resource import ResourceEditor, get_client
 from ocp_resources.role import Role
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
@@ -33,7 +36,9 @@ from pytest_testconfig import config as py_config
 from semver import Version
 from simple_logger.logger import get_logger
 
-from utilities.constants import Labels, Timeout
+from utilities.constants import ApiGroups, Labels, Timeout
+from utilities.constants import KServeDeploymentType
+from utilities.constants import Annotations
 from utilities.exceptions import FailedPodsError
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 from utilities.general import create_isvc_label_selector_str, get_s3_secret_dict
@@ -43,7 +48,7 @@ LOGGER = get_logger(name=__name__)
 
 @contextmanager
 def create_ns(
-    name: str,
+    name: str | None = None,
     admin_client: DynamicClient | None = None,
     unprivileged_client: DynamicClient | None = None,
     teardown: bool = True,
@@ -52,25 +57,42 @@ def create_ns(
     ns_annotations: dict[str, str] | None = None,
     model_mesh_enabled: bool = False,
     add_dashboard_label: bool = False,
+    pytest_request: FixtureRequest | None = None,
 ) -> Generator[Namespace | Project, Any, Any]:
     """
     Create namespace with admin or unprivileged client.
 
+    For a namespace / project which contains Serverless ISVC,  there is a workaround for RHOAIENG-19969.
+    Currently, when Serverless ISVC is deleted and the namespace is deleted, namespace "SomeResourcesRemain" is True.
+    This is because the serverless pods are not immediately deleted resulting in prolonged namespace deletion.
+    Waiting for the pod(s) to be deleted before cleanup, eliminates the issue.
+
     Args:
         name (str): namespace name.
+            Can be overwritten by `request.param["name"]`
         admin_client (DynamicClient): admin client.
         unprivileged_client (UnprivilegedClient): unprivileged client.
         teardown (bool): should run resource teardown
         delete_timeout (int): delete timeout.
         labels (dict[str, str]): labels dict to set for namespace
         ns_annotations (dict[str, str]): annotations dict to set for namespace
-        model_mesh_enabled (bool): if True, model mesh will be enabled in namespace
+            Can be overwritten by `request.param["annotations"]`
+        model_mesh_enabled (bool): if True, model mesh will be enabled in namespace.
+            Can be overwritten by `request.param["modelmesh-enabled"]`
         add_dashboard_label (bool): if True, dashboard label will be added to namespace
+            Can be overwritten by `request.param["add-dashboard-label"]`
+        pytest_request (FixtureRequest): pytest request
 
     Yields:
         Namespace | Project: namespace or project
 
     """
+    if pytest_request:
+        name = pytest_request.param.get("name", name)
+        ns_annotations = pytest_request.param.get("annotations", ns_annotations)
+        model_mesh_enabled = pytest_request.param.get("modelmesh-enabled", model_mesh_enabled)
+        add_dashboard_label = pytest_request.param.get("add-dashboard-label", add_dashboard_label)
+
     namespace_kwargs = {
         "name": name,
         "client": admin_client,
@@ -94,10 +116,44 @@ def create_ns(
             project.wait_for_status(status=project.Status.ACTIVE, timeout=Timeout.TIMEOUT_2MIN)
             yield project
 
+            wait_for_serverless_pods_deletion(resource=project, admin_client=admin_client)
+
     else:
         with Namespace(**namespace_kwargs) as ns:
             ns.wait_for_status(status=Namespace.Status.ACTIVE, timeout=Timeout.TIMEOUT_2MIN)
             yield ns
+
+            wait_for_serverless_pods_deletion(resource=ns, admin_client=admin_client)
+
+
+def wait_for_replicas_in_deployment(deployment: Deployment, replicas: int) -> None:
+    """
+    Wait for replicas in deployment to updated in spec.
+
+    Args:
+        deployment (Deployment): Deployment object
+        replicas (int): number of replicas to be set in spec.replicas
+
+    Raises:
+        TimeoutExpiredError: If replicas are not updated in spec.
+
+    """
+    _replicas: int | None = None
+
+    try:
+        for sample in TimeoutSampler(
+            wait_timeout=Timeout.TIMEOUT_2MIN,
+            sleep=5,
+            func=lambda: deployment.instance,
+        ):
+            if sample and (_replicas := sample.spec.replicas) == replicas:
+                return
+
+    except TimeoutExpiredError:
+        LOGGER.error(
+            f"Replicas are not updated in spec.replicas for deployment {deployment.name}.Current replicas: {_replicas}"
+        )
+        raise
 
 
 def wait_for_inference_deployment_replicas(
@@ -136,6 +192,17 @@ def wait_for_inference_deployment_replicas(
     if len(deployments) == expected_num_deployments:
         for deployment in deployments:
             if deployment.exists:
+                # Raw deployment: if min replicas is more than 1, wait for min replicas
+                # to be set in deployment spec by HPA
+                if (
+                    isvc.instance.metadata.annotations.get("serving.kserve.io/deploymentMode")
+                    == KServeDeploymentType.RAW_DEPLOYMENT
+                ):
+                    wait_for_replicas_in_deployment(
+                        deployment=deployments[0],
+                        replicas=isvc.instance.spec.predictor.get("minReplicas", 1),
+                    )
+
                 deployment.wait_for_replicas(timeout=timeout)
 
         return deployments
@@ -184,9 +251,12 @@ def s3_endpoint_secret(
 
     else:
         with Secret(
-            annotations={"opendatahub.io/connection-type": "s3"},
+            annotations={f"{ApiGroups.OPENDATAHUB_IO}/connection-type": "s3"},
             # the labels are needed to set the secret as data connection by odh-model-controller
-            label={"opendatahub.io/managed": "true", "opendatahub.io/dashboard": "true"},
+            label={
+                Labels.OpenDataHubIo.MANAGED: "true",
+                Labels.OpenDataHub.DASHBOARD: "true",
+            },
             data_dict=get_s3_secret_dict(
                 aws_access_key=aws_access_key,
                 aws_secret_access_key=aws_secret_access_key,
@@ -493,7 +563,10 @@ def update_configmap_data(
 
 
 def verify_no_failed_pods(
-    client: DynamicClient, isvc: InferenceService, runtime_name: str | None, timeout: int = Timeout.TIMEOUT_5MIN
+    client: DynamicClient,
+    isvc: InferenceService,
+    runtime_name: str | None,
+    timeout: int = Timeout.TIMEOUT_5MIN,
 ) -> None:
     """
     Verify no failed pods.
@@ -539,7 +612,10 @@ def verify_no_failed_pods(
 
                         is_terminated_error = (
                             terminate_state := container_status.state.terminated
-                        ) and terminate_state.reason in (pod.Status.ERROR, pod.Status.CRASH_LOOPBACK_OFF)
+                        ) and terminate_state.reason in (
+                            pod.Status.ERROR,
+                            pod.Status.CRASH_LOOPBACK_OFF,
+                        )
 
                         if is_waiting_pull_back_off or is_terminated_error:
                             failed_pods[pod.name] = pod_status
@@ -616,3 +692,82 @@ def get_product_version(admin_client: DynamicClient) -> Version:
         raise MissingResourceError("Operator ClusterServiceVersion not found")
 
     return Version.parse(operator_version)
+
+
+def get_dsci_applications_namespace(client: DynamicClient, dsci_name: str = "default-dsci") -> str:
+    """
+    Get the namespace where DSCI applications are deployed.
+
+    Args:
+        client (DynamicClient): DynamicClient object
+        dsci_name (str): DSCI name
+
+    Returns:
+        str: Namespace where DSCI applications are deployed.
+
+    Raises:
+            ValueError: If DSCI applications namespace not found
+            MissingResourceError: If DSCI not found
+
+    """
+    dsci = DSCInitialization(client=client, name=dsci_name)
+
+    if dsci.exists:
+        if app_namespace := dsci.instance.spec.get("applicationsNamespace"):
+            return app_namespace
+
+        else:
+            raise ValueError("DSCI applications namespace not found in {dsci_name}")
+
+    raise MissingResourceError(f"DSCI {dsci_name} not found")
+
+
+def get_operator_distribution(client: DynamicClient, dsc_name: str = "default-dsc") -> str:
+    """
+    Get the operator distribution.
+
+    Args:
+        client (DynamicClient): DynamicClient object
+        dsc_name (str): DSC name
+
+    Returns:
+        str: Operator distribution.
+
+    Raises:
+            ValueError: If DSC release name not found
+            MissingResourceError: If DSC not found
+
+    """
+    dsc = DataScienceCluster(client=client, name=dsc_name)
+
+    if dsc.exists:
+        if dsc_release_name := dsc.instance.status.get("release", {}).get("name"):
+            return dsc_release_name
+
+        else:
+            raise ValueError("DSC release name not found in {dsc_name}")
+
+    raise MissingResourceError(f"DSC {dsc_name} not found")
+
+
+def wait_for_serverless_pods_deletion(resource: Project | Namespace, admin_client: DynamicClient | None) -> None:
+    """
+    Wait for serverless pods deletion.
+
+    Args:
+        resource (Project | Namespace): project or namespace
+        admin_client (DynamicClient): admin client.
+
+    Returns:
+        bool: True if we should wait for namespace deletion else False
+
+    """
+    client = admin_client or get_client()
+    for pod in Pod.get(dyn_client=client, namespace=resource.name):
+        if (
+            pod.exists
+            and pod.instance.metadata.annotations.get(Annotations.KserveIo.DEPLOYMENT_MODE)
+            == KServeDeploymentType.SERVERLESS
+        ):
+            LOGGER.info(f"Waiting for {KServeDeploymentType.SERVERLESS} pod {pod.name} to be deleted")
+            pod.wait_deleted(timeout=Timeout.TIMEOUT_1MIN)

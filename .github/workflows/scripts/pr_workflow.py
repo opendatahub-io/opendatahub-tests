@@ -31,7 +31,7 @@ class PrBaseClass:
     class SupportedActions:
         add_remove_labels_action_name: str = "add-remove-labels"
         pr_size_action_name: str = "add-pr-size-label"
-        welcome_comment_action_name: str = "add-welcome-comment"
+        welcome_comment_action_name: str = "add-welcome-comment-set-assignee"
         supported_actions: set[str] = {
             pr_size_action_name,
             add_remove_labels_action_name,
@@ -115,7 +115,7 @@ class PrLabeler(PrBaseClass):
             self.add_remove_pr_labels()
 
         if self.action == self.SupportedActions.welcome_comment_action_name:
-            self.add_welcome_comment()
+            self.add_welcome_comment_set_assignee()
 
     def get_pr_size(self) -> int:
         additions: int = 0
@@ -294,8 +294,12 @@ class PrLabeler(PrBaseClass):
             if commented_by_label not in self.pr_labels:
                 self.add_pr_label(label=commented_by_label)
 
-    def add_welcome_comment(self) -> None:
+    def add_welcome_comment_set_assignee(self) -> None:
         self.pr.create_issue_comment(body=WELCOME_COMMENT)
+        try:
+            self.pr.add_to_assignees(self.pr.user.login)
+        except UnknownObjectException:
+            LOGGER.warning(f"User {self.pr.user.login} can not be assigned to the PR.")
 
 
 def main() -> None:

@@ -7,7 +7,6 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.authorino import Authorino
 from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.config_map import ConfigMap
-from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
@@ -19,7 +18,7 @@ from ocp_resources.storage_class import StorageClass
 from ocp_utilities.monitoring import Prometheus
 from pytest_testconfig import config as py_config
 
-from utilities.constants import DscComponents, StorageClassName
+from utilities.constants import StorageClassName
 from utilities.constants import (
     KServeDeploymentType,
     ModelFormat,
@@ -37,7 +36,6 @@ from utilities.infra import (
     s3_endpoint_secret,
     update_configmap_data,
 )
-from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
@@ -204,17 +202,6 @@ def skip_if_no_deployed_redhat_authorino_operator(admin_client: DynamicClient) -
 
 
 @pytest.fixture(scope="package")
-def enabled_kserve_in_dsc(
-    dsc_resource: DataScienceCluster,
-) -> Generator[DataScienceCluster, Any, Any]:
-    with update_components_in_dsc(
-        dsc=dsc_resource,
-        components={DscComponents.KSERVE: DscComponents.ManagementState.MANAGED},
-    ) as dsc:
-        yield dsc
-
-
-@pytest.fixture(scope="package")
 def skip_if_no_deployed_openshift_service_mesh(admin_client: DynamicClient) -> None:
     smcp = ServiceMeshControlPlane(client=admin_client, name="data-science-smcp", namespace="istio-system")
     if not smcp or not smcp.exists:
@@ -342,24 +329,36 @@ def ci_service_account(
 
 
 @pytest.fixture(scope="class")
-def ovms_serverless_inference_service(
+def ovms_kserve_inference_service(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
     openvino_kserve_serving_runtime: ServingRuntime,
     ci_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
-    with create_isvc(
-        client=admin_client,
-        name=f"{request.param['name']}-serverless",
-        namespace=model_namespace.name,
-        runtime=openvino_kserve_serving_runtime.name,
-        storage_path=request.param["model-dir"],
-        storage_key=ci_endpoint_s3_secret.name,
-        model_format=ModelAndFormat.OPENVINO_IR,
-        deployment_mode=KServeDeploymentType.SERVERLESS,
-        model_version=request.param["model-version"],
-    ) as isvc:
+    deployment_mode = request.param["deployment-mode"]
+    isvc_kwargs = {
+        "client": admin_client,
+        "name": f"{request.param['name']}-{deployment_mode.lower()}",
+        "namespace": model_namespace.name,
+        "runtime": openvino_kserve_serving_runtime.name,
+        "storage_path": request.param["model-dir"],
+        "storage_key": ci_endpoint_s3_secret.name,
+        "model_format": ModelAndFormat.OPENVINO_IR,
+        "deployment_mode": deployment_mode,
+        "model_version": request.param["model-version"],
+    }
+
+    if env_vars := request.param.get("env-vars"):
+        isvc_kwargs["model_env_variables"] = env_vars
+
+    if min_replicas := request.param.get("min-replicas"):
+        isvc_kwargs["min_replicas"] = min_replicas
+
+    if max_replicas := request.param.get("max-replicas"):
+        isvc_kwargs["max_replicas"] = max_replicas
+
+    with create_isvc(**isvc_kwargs) as isvc:
         yield isvc
 
 
