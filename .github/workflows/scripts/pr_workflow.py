@@ -6,6 +6,12 @@ import sys
 
 from github.PullRequest import PullRequest
 from github.Repository import Repository
+from github.PaginatedList import PaginatedList
+from github.MainClass import Github
+from github.GithubException import UnknownObjectException
+from github.Organization import Organization
+from github.Team import Team
+from github.NamedUser import NamedUser
 
 from constants import (
     ALL_LABELS_DICT,
@@ -22,7 +28,6 @@ from constants import (
     WELCOME_COMMENT,
     APPROVED,
 )
-from github import Github, UnknownObjectException
 from simple_logger.logger import get_logger
 
 LOGGER = get_logger(name="pr_labeler")
@@ -79,9 +84,9 @@ class PrBaseClass:
         )
 
     def set_gh_config(self) -> None:
-        self.gh_client: Github = Github(login_or_token=self.github_token)
-        self.repo: Repository = self.gh_client.get_repo(full_name_or_id=self.repo_name)
-        self.pr: PullRequest = self.repo.get_pull(number=self.pr_number)
+        self.gh_client = Github(login_or_token=self.github_token)
+        self.repo = self.gh_client.get_repo(full_name_or_id=self.repo_name)
+        self.pr = self.repo.get_pull(number=self.pr_number)
 
 
 class PrLabeler(PrBaseClass):
@@ -101,11 +106,11 @@ class PrLabeler(PrBaseClass):
         self.verify_labeler_config()
 
     def get_allowed_users(self) -> list[str]:
-        org: github.Organization = self.gh_client.get_organization("opendatahub-io")
+        org: Organization = self.gh_client.get_organization("opendatahub-io")
         # slug is the team name with replaced special characters,
         # all words to lowercase and spaces replace with a -
-        team: github.Team = org.get_team_by_slug("opendatahub-tests-contributors")
-        members: PaginatedList[github.NamedUser] = team.get_members()
+        team: Team = org.get_team_by_slug("opendatahub-tests-contributors")
+        members: PaginatedList[NamedUser] = team.get_members()
         users = [member.login for member in members]
         # TODO: replace once bot user is part of the org and team
         # users = ["lugi0", "rnetser", "adolfo-ab", "tarukumar", "dbasunag", "mwaykole"]
