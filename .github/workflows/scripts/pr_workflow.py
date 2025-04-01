@@ -6,12 +6,10 @@ import sys
 
 from github.PullRequest import PullRequest
 from github.Repository import Repository
-from github.PaginatedList import PaginatedList
 from github.MainClass import Github
 from github.GithubException import UnknownObjectException
 from github.Organization import Organization
 from github.Team import Team
-from github.NamedUser import NamedUser
 
 from constants import (
     ALL_LABELS_DICT,
@@ -102,26 +100,20 @@ class PrLabeler(PrBaseClass):
         self.last_commit = list(self.pr.get_commits())[-1]
         self.last_commit_sha = self.last_commit.sha
 
-        self.verify_allowed_user()
         self.verify_labeler_config()
 
-    def get_allowed_users(self) -> list[str]:
+    def verify_allowed_user(self) -> None:
         org: Organization = self.gh_client.get_organization("opendatahub-io")
         # slug is the team name with replaced special characters,
         # all words to lowercase and spaces replace with a -
         team: Team = org.get_team_by_slug("opendatahub-tests-contributors")
-        members: PaginatedList[NamedUser] = team.get_members()
-        users = [member.login for member in members]
-        # TODO: replace once bot user is part of the org and team
-        # users = ["lugi0", "rnetser", "adolfo-ab", "tarukumar", "dbasunag", "mwaykole"]
-        return users
-
-    def verify_allowed_user(self) -> None:
-        allowed_users = self.get_allowed_users()
-        if self.user_login not in allowed_users:
-            LOGGER.info(f"User {self.user_login} is not allowed for this action. Exiting.")
+        try:
+            # check if the user is a member of opendatahub-tests-contributors
+            membership = team.get_team_membership(self.user_login)
+            LOGGER.info(f"User {self.user_login} is a member of the test contributor team. {membership}")
+        except UnknownObjectException:
+            LOGGER.error(f"User {self.user_login} is not allowed for this action. Exiting.")
             sys.exit(0)
-        LOGGER.info(f"User {self.user_login} is allowed")
 
     def verify_labeler_config(self) -> None:
         if self.action == self.SupportedActions.add_remove_labels_action_name and self.event_name in (
@@ -142,6 +134,7 @@ class PrLabeler(PrBaseClass):
             self.set_pr_size()
 
         if self.action == self.SupportedActions.add_remove_labels_action_name:
+            self.verify_allowed_user()
             self.add_remove_pr_labels()
 
         if self.action == self.SupportedActions.welcome_comment_action_name:
