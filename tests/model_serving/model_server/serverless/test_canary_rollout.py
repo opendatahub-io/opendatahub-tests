@@ -19,7 +19,7 @@ pytestmark = [pytest.mark.serverless, pytest.mark.sanity]
 
 @pytest.mark.polarion("ODS-2371")
 @pytest.mark.parametrize(
-    "model_namespace, openvino_kserve_serving_runtime, ovms_kserve_inference_service",
+    "model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service",
     [
         pytest.param(
             {"name": "serverless-canary-rollout"},

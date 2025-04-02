@@ -17,7 +17,7 @@ pytestmark = [
 
 
 @pytest.mark.parametrize(
-    "model_namespace, openvino_kserve_serving_runtime, ovms_kserve_inference_service",
+    "model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service",
     [
         pytest.param(
             {"name": "serverless-auto-scale"},

@@ -240,7 +240,7 @@ def lmeval_data_downloader_pod(
 def vllm_emulator_deployment(
     admin_client: DynamicClient, model_namespace: Namespace
 ) -> Generator[Deployment, Any, Any]:
-    label = {"app": VLLM_EMULATOR}
+    label = {Labels.Openshift.APP: VLLM_EMULATOR}
     with Deployment(
         client=admin_client,
         namespace=model_namespace.name,
@@ -250,7 +250,7 @@ def vllm_emulator_deployment(
         template={
             "metadata": {
                 "labels": {
-                    "app": VLLM_EMULATOR,
+                    Labels.Openshift.APP: VLLM_EMULATOR,
                     "maistra.io/expose-route": "true",
                 },
                 "name": VLLM_EMULATOR,
@@ -291,7 +291,7 @@ def vllm_emulator_service(
                 "targetPort": VLLM_EMULATOR_PORT,
             }
         ],
-        selector={"app": VLLM_EMULATOR},
+        selector={Labels.Openshift.APP: VLLM_EMULATOR},
     ) as service:
         yield service
 

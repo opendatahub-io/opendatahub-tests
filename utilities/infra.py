@@ -41,7 +41,7 @@ from utilities.constants import KServeDeploymentType
 from utilities.constants import Annotations
 from utilities.exceptions import FailedPodsError
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
-from utilities.general import create_isvc_label_selector_str, get_s3_secret_dict
+import utilities.general
 
 LOGGER = get_logger(name=__name__)
 
@@ -178,7 +178,9 @@ def wait_for_inference_deployment_replicas(
 
     """
     ns = isvc.namespace
-    label_selector = create_isvc_label_selector_str(isvc=isvc, resource_type="deployment", runtime_name=runtime_name)
+    label_selector = utilities.general.create_isvc_label_selector_str(
+        isvc=isvc, resource_type="deployment", runtime_name=runtime_name
+    )
 
     deployments = list(
         Deployment.get(
@@ -257,7 +259,7 @@ def s3_endpoint_secret(
                 Labels.OpenDataHubIo.MANAGED: "true",
                 Labels.OpenDataHub.DASHBOARD: "true",
             },
-            data_dict=get_s3_secret_dict(
+            data_dict=utilities.general.get_s3_secret_dict(
                 aws_access_key=aws_access_key,
                 aws_secret_access_key=aws_secret_access_key,
                 aws_s3_bucket=aws_s3_bucket,
@@ -385,7 +387,9 @@ def get_services_by_isvc_label(
     Raises:
         ResourceNotFoundError: if no services are found.
     """
-    label_selector = create_isvc_label_selector_str(isvc=isvc, resource_type="service", runtime_name=runtime_name)
+    label_selector = utilities.general.create_isvc_label_selector_str(
+        isvc=isvc, resource_type="service", runtime_name=runtime_name
+    )
 
     if svcs := [
         svc
@@ -413,7 +417,9 @@ def get_pods_by_isvc_label(client: DynamicClient, isvc: InferenceService, runtim
     Raises:
         ResourceNotFoundError: if no pods are found.
     """
-    label_selector = create_isvc_label_selector_str(isvc=isvc, resource_type="pod", runtime_name=runtime_name)
+    label_selector = utilities.general.create_isvc_label_selector_str(
+        isvc=isvc, resource_type="pod", runtime_name=runtime_name
+    )
 
     if pods := [
         pod
@@ -609,7 +615,10 @@ def verify_no_failed_pods(
                     for container_status in pod_status.containerStatuses:
                         is_waiting_pull_back_off = (
                             wait_state := container_status.state.waiting
-                        ) and wait_state.reason == pod.Status.IMAGE_PULL_BACK_OFF
+                        ) and wait_state.reason in (
+                            pod.Status.IMAGE_PULL_BACK_OFF,
+                            pod.Status.CRASH_LOOPBACK_OFF,
+                        )
 
                         is_terminated_error = (
                             terminate_state := container_status.state.terminated

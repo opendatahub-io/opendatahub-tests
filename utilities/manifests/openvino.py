@@ -46,6 +46,12 @@ OPENVINO_INFERENCE_CONFIG = {
             "query_output": r'{"model_name":"${model_name}","model_version":"1","outputs":\[{"name":"Plus214_Output_0","shape":\[1,10\],"datatype":"FP32","data":\[.*\]}\]}',
             "use_regex": True
         },
+        "age-gender-recognition": {
+            "query_input": "@utilities/manifests/openvino/age-gender-recognition-retail-0001.jpg",
+            "query_output": r'{"outputs":{(?=.*"age_conv3":\[\[\[\[0.\d+\]\]\]\])(?=.*"prob":\[\[\[\[0.\d+\]\],\[\[0.\d+\]\]\]\].*)',
+            "use_regex": True
+        },
+
     },
     "infer": {
         "http": DEFAULT_HTTP_QUERY,
@@ -55,7 +61,25 @@ OPENVINO_INFERENCE_CONFIG = {
             "http": DEFAULT_FORM_QUERY,
         },
     "infer-mnist": {
-            "http": DEFAULT_FORM_QUERY,
+            "http": {
+                "endpoint": "v2/models/$model_name/infer",
+                "header": "application/x-www-form-urlencoded",
+                "body": '$query_input',
+                "response_fields_map": {
+                    "response_output": "output",
+                },
+            },
+        },
+    "age-gender-recognition":
+        {
+            "http": {
+                "endpoint": "v1/models/$model_name:predict",
+                "header": "Content-type:application/json",
+                "body": '$query_input',
+                "response_fields_map": {
+                    "response_output": "output",
+                },
+            },
         }
 }
 

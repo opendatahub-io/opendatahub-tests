@@ -11,7 +11,7 @@ pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_conf
 
 
 @pytest.mark.parametrize(
-    "model_namespace, openvino_kserve_serving_runtime, ovms_raw_inference_service",
+    "model_namespace, ovms_kserve_serving_runtime, ovms_raw_inference_service",
     [
         pytest.param(
             {"name": "kserve-raw-route-reconciliation"},
