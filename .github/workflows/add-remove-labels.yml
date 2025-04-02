@@ -58,6 +58,9 @@ jobs:
       #     -f "content=+1"
 
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.ref || 'main' }}
+          repository: ${{ github.repository }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
