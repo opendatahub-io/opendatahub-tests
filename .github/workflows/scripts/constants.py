@@ -11,7 +11,7 @@ COMMENTED_BY_LABEL_PREFIX: str = "commented-by-"
 SUCCESS_STR: str = "success"
 FAILURE_STR: str = "failure"
 QUEUED_STR: str = "queued"
-APPROVED: str = "APPROVED"
+APPROVED: str = "approved"
 
 SUPPORTED_LABELS: set[str] = {
     f"{LABEL_PREFIX}{WIP_LABEL_STR}",
