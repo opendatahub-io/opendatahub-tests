@@ -1,7 +1,21 @@
+from __future__ import annotations
+
 import re
 import shlex
 
+from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
+from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
+from simple_logger.logger import get_logger
+from timeout_sampler import retry
+
+from tests.model_serving.model_server.multi_node.constants import HEAD_POD_ROLE, SUPPORTED_ROLES, WORKER_POD_ROLE
+from utilities.constants import Timeout
+from utilities.infra import get_pods_by_isvc_label
+
+
+LOGGER = get_logger(name=__name__)
 
 
 def verify_ray_status(pods: list[Pod]) -> None:
@@ -57,3 +71,56 @@ def verify_nvidia_gpu_status(pod: Pod) -> None:
 
     elif mem_regex and int(mem_regex.group(1)) == 0:
         raise ValueError(f"GPU memory is not used, {res}")
+
+
+def delete_multi_node_pod_by_role(client: DynamicClient, isvc: InferenceService, role: str) -> None:
+    f"""
+    Delete multi node pod by role
+
+    Worker pods have {WORKER_POD_ROLE} str in their name, head pod does not have an identifier in the name.
+
+    Args:
+        client (DynamicClient): Dynamic client
+        isvc (InferenceService): InferenceService object
+        role (str): pod role
+
+    """
+    if role not in SUPPORTED_ROLES:
+        raise ValueError(f"Role {role} is not supported; supported roles are {SUPPORTED_ROLES}")
+
+    pods = get_pods_by_isvc_label(client=client, isvc=isvc)
+
+    for pod in pods:
+        if role == WORKER_POD_ROLE and WORKER_POD_ROLE in pod.name:
+            pod.delete()
+
+        elif role == HEAD_POD_ROLE and WORKER_POD_ROLE not in pod.name:
+            pod.delete()
+
+
+@retry(wait_timeout=Timeout.TIMEOUT_2MIN, sleep=5)
+def get_pods_by_isvc_generation(client: DynamicClient, isvc: InferenceService) -> list[Pod]:
+    """
+    Args:
+        client (DynamicClient): OCP Client to use.
+        isvc (InferenceService):InferenceService object.
+
+    Returns:
+            list[Pod]: A list of all matching pods
+
+    Raises:
+            ResourceNotFoundError: if no pods are found.
+
+    """
+    isvc_generation = str(isvc.instance.metadata.generation)
+
+    if pods := list(
+        Pod.get(
+            dyn_client=client,
+            namespace=isvc.namespace,
+            label_selector=f"isvc.generation={isvc_generation}",
+        )
+    ):
+        return pods
+
+    raise ResourceNotFoundError(f"InferenceService {isvc.name} generation {isvc_generation} has no pods")

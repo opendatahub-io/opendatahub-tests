@@ -12,7 +12,7 @@ from tests.model_serving.model_runtime.vllm.utils import (
     validate_supported_quantization_schema,
     skip_if_deployment_mode,
 )
-from utilities.constants import KServeDeploymentType, RuntimeTemplates
+from utilities.constants import KServeDeploymentType, Labels, RuntimeTemplates
 from pytest import FixtureRequest
 from syrupy.extensions.json import JSONSnapshotExtension
 from tests.model_serving.model_runtime.vllm.constant import ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES, TEMPLATE_MAP
@@ -76,7 +76,7 @@ def vllm_inference_service(
     accelerator_type = supported_accelerator_type.lower()
     gpu_count = request.param.get("gpu_count")
     timeout = request.param.get("timeout")
-    identifier = ACCELERATOR_IDENTIFIER.get(accelerator_type, "nvidia.com/gpu")
+    identifier = ACCELERATOR_IDENTIFIER.get(accelerator_type, Labels.Nvidia.NVIDIA_COM_GPU)
     resources: Any = PREDICT_RESOURCES["resources"]
     resources["requests"][identifier] = gpu_count
     resources["limits"][identifier] = gpu_count

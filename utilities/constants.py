@@ -178,6 +178,13 @@ class Labels:
     class Openshift:
         APP: str = "app"
 
+    class Kserve:
+        NETWORKING_KSERVE_IO: str = "networking.kserve.io/visibility"
+        EXPOSED: str = "exposed"
+
+    class Nvidia:
+        NVIDIA_COM_GPU: str = "nvidia.com/gpu"
+
 
 class Timeout:
     TIMEOUT_1MIN: int = 60

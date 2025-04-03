@@ -1,5 +1,5 @@
 from typing import Any, Union
-from utilities.constants import AcceleratorType, KServeDeploymentType, RuntimeTemplates
+from utilities.constants import AcceleratorType, KServeDeploymentType, Labels, RuntimeTemplates
 
 OPENAI_ENDPOINT_NAME: str = "openai"
 TGIS_ENDPOINT_NAME: str = "tgis"
@@ -7,7 +7,7 @@ TGIS_ENDPOINT_NAME: str = "tgis"
 VLLM_SUPPORTED_QUANTIZATION: list[str] = ["marlin", "awq"]
 # Configurations
 ACCELERATOR_IDENTIFIER: dict[str, str] = {
-    AcceleratorType.NVIDIA: "nvidia.com/gpu",
+    AcceleratorType.NVIDIA: Labels.Nvidia.NVIDIA_COM_GPU,
     AcceleratorType.AMD: "amd.com/gpu",
     AcceleratorType.GAUDI: "habana.ai/gaudi",
 }
