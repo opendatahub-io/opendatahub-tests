@@ -16,7 +16,6 @@ from utilities.constants import Annotations, Protocols
 from .constants import MR_DB_IMAGE_DIGEST
 
 
-
 LOGGER = get_logger(name=__name__)
 
 DB_RESOURCES_NAME: str = "model-registry-db"
