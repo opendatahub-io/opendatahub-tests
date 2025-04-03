@@ -219,7 +219,7 @@ def lmeval_data_downloader_pod(
             {
                 "name": "data",
                 "image": request.param.get("image"),
-                "command": ["/bin/sh", "-c", "cp -r /mnt/data/. /mnt/pvc/"],
+                "command": ["/bin/sh", "-c", "cp -r /mnt/data/. /mnt/pvc/ && chmod -R g+w /mnt/pvc/datasets"],
                 "securityContext": {
                     "runAsUser": 1000,
                     "runAsNonRoot": True,
