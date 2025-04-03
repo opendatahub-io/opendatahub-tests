@@ -574,6 +574,7 @@ def verify_no_failed_pods(
     isvc: InferenceService,
     runtime_name: str | None = None,
     timeout: int = Timeout.TIMEOUT_5MIN,
+    timeout_wait_for_pods: int = Timeout.TIMEOUT_1MIN,
 ) -> None:
     """
     Verify no failed pods.
@@ -583,10 +584,31 @@ def verify_no_failed_pods(
         isvc (InferenceService): InferenceService object
         runtime_name (str): ServingRuntime name
         timeout (int): Time to wait for the pod.
+        timeout_wait_for_pods (int): Time to wait for the pods.
+
     Raises:
-            FailedPodsError: If any pod is in failed state
+        FailedPodsError: If any pod is in failed state
+        TimeoutExpiredError: If no pods were created within `timeout_wait_for_pods` seconds.
 
     """
+    LOGGER.info("Wait for pods creation")
+
+    try:
+        for pods in TimeoutSampler(
+            wait_timeout=timeout_wait_for_pods,
+            sleep=10,
+            func=get_pods_by_isvc_label,
+            client=client,
+            isvc=isvc,
+            runtime_name=runtime_name,
+        ):
+            if pods:
+                break
+
+    except TimeoutExpiredError:
+        LOGGER.error(f"No pods were created for {isvc.name} in {timeout_wait_for_pods} seconds")
+        raise
+
     LOGGER.info("Verifying no failed pods")
     for pods in TimeoutSampler(
         wait_timeout=timeout,
@@ -618,6 +640,7 @@ def verify_no_failed_pods(
                         ) and wait_state.reason in (
                             pod.Status.IMAGE_PULL_BACK_OFF,
                             pod.Status.CRASH_LOOPBACK_OFF,
+                            "InvalidImageName",
                         )
 
                         is_terminated_error = (
