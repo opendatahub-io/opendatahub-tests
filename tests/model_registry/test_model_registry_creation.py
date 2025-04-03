@@ -13,7 +13,7 @@ from kubernetes.dynamic import DynamicClient
 
 LOGGER = get_logger(name=__name__)
 
-CUSTOM_NAMESPACE = "model-registry-custon-ns"
+CUSTOM_NAMESPACE = "model-registry-custom-ns"
 
 
 @pytest.mark.parametrize(
