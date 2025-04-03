@@ -13,7 +13,7 @@ from kubernetes.dynamic import DynamicClient
 from tests.model_registry.utils import get_endpoint_from_mr_service, get_mr_service_by_label
 from utilities.infra import create_ns
 from utilities.constants import Annotations, Protocols
-from constants import MR_DB_IMAGE_DIGEST
+from .constants import MR_DB_IMAGE_DIGEST
 
 
 LOGGER = get_logger(name=__name__)
