@@ -13,7 +13,6 @@ from utilities.constants import Timeout
     ],
     indirect=True,
 )
-@pytest.mark.smoke
 def test_lmeval_huggingface_model(admin_client, model_namespace, lmevaljob_hf_pod):
     """Basic test that verifies that LMEval can run successfully pulling a model from HuggingFace."""
     lmevaljob_hf_pod.wait_for_status(status=lmevaljob_hf_pod.Status.SUCCEEDED, timeout=Timeout.TIMEOUT_10MIN)
@@ -33,6 +32,7 @@ def test_lmeval_huggingface_model(admin_client, model_namespace, lmevaljob_hf_po
     ],
     indirect=True,
 )
+@pytest.mark.smoke
 def test_lmeval_local_offline_builtin_tasks_flan_arceasy(
     admin_client,
     model_namespace,
