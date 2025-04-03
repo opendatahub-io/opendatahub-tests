@@ -13,6 +13,7 @@ from kubernetes.dynamic import DynamicClient
 from tests.model_registry.utils import get_endpoint_from_mr_service, get_mr_service_by_label
 from utilities.infra import create_ns
 from utilities.constants import Annotations, Protocols
+from .constants import MR_DB_IMAGE_DIGEST
 
 
 LOGGER = get_logger(name=__name__)
@@ -186,7 +187,7 @@ def model_registry_db_deployment(
                             "/var/lib/mysql/datadir",
                             "--default-authentication-plugin=mysql_native_password",
                         ],
-                        "image": "public.ecr.aws/docker/library/mysql:8.3.0",
+                        "image": MR_DB_IMAGE_DIGEST,
                         "imagePullPolicy": "IfNotPresent",
                         "livenessProbe": {
                             "exec": {
