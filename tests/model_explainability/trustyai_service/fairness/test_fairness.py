@@ -3,7 +3,6 @@ from typing import Any
 import pytest
 from ocp_resources.inference_service import InferenceService
 
-from tests.model_explainability.constants import MINIO_DATA_DICT
 from tests.model_explainability.trustyai_service.trustyai_service_utils import (
     send_inferences_and_verify_trustyai_service_registered,
     verify_trustyai_service_name_mappings,
@@ -12,6 +11,7 @@ from tests.model_explainability.trustyai_service.trustyai_service_utils import (
     verify_trustyai_service_metric_delete_request,
     verify_trustyai_service_metric_scheduling_request,
 )
+from utilities.constants import MinIo
 from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
 
 BASE_DATA_PATH: str = "./tests/model_explainability/trustyai_service/fairness/model_data"
@@ -45,16 +45,19 @@ def get_fairness_request_json_data(isvc: InferenceService) -> dict[str, Any]:
     }
 
 
+@pytest.mark.usefixtures("minio_pod")
 @pytest.mark.parametrize(
-    "model_namespace, minio_data_connection",
+    "model_namespace, minio_pod, minio_data_connection",
     [
         pytest.param(
             {"name": "test-fairness-pvc"},
-            {"data-dict": MINIO_DATA_DICT},
+            MinIo.PodConfig.MODEL_MESH_MINIO_CONFIG,
+            {"bucket": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
         )
     ],
     indirect=True,
 )
+@pytest.mark.usefixtures("minio_pod")
 class TestFairnessMetricsWithPVCStorage:
     """
     Verifies all the basic operations with a fairness metric (spd) available in TrustyAI, using PVC storage.
@@ -124,15 +127,17 @@ class TestFairnessMetricsWithPVCStorage:
 
 
 @pytest.mark.parametrize(
-    "model_namespace, minio_data_connection",
+    "model_namespace, minio_pod, minio_data_connection",
     [
         pytest.param(
             {"name": "test-fairness-db"},
-            {"data-dict": MINIO_DATA_DICT},
+            MinIo.PodConfig.MODEL_MESH_MINIO_CONFIG,
+            {"bucket": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
         )
     ],
     indirect=True,
 )
+@pytest.mark.usefixtures("minio_pod")
 class TestFairnessMetricsWithDBStorage:
     """
     Verifies all the basic operations with a fairness metric (spd) available in TrustyAI, using MariaDB storage.

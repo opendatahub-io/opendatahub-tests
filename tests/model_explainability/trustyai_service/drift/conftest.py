@@ -13,7 +13,7 @@ from ocp_resources.trustyai_service import TrustyAIService
 from tests.model_explainability.trustyai_service.trustyai_service_utils import (
     wait_for_isvc_deployment_registered_by_trustyai_service,
 )
-from utilities.constants import KServeDeploymentType, Ports, Timeout, Labels
+from utilities.constants import ApiGroups, KServeDeploymentType, Ports, Timeout, Labels
 from utilities.inference_utils import create_isvc
 
 MLSERVER: str = "mlserver"
@@ -62,9 +62,9 @@ def mlserver_runtime(
         supported_model_formats=supported_model_formats,
         protocol_versions=["v2"],
         annotations={
-            "opendatahub.io/accelerator-name": "",
-            "opendatahub.io/recommended-accelerators": '["nvidia.com/gpu"]',
-            "opendatahub.io/template-display-name": "KServe MLServer",
+            f"{ApiGroups.OPENDATAHUB_IO}/accelerator-name": "",
+            f"{ApiGroups.OPENDATAHUB_IO}/recommended-accelerators": '["nvidia.com/gpu"]',
+            f"{ApiGroups.OPENDATAHUB_IO}/template-display-name": "KServe MLServer",
             "prometheus.kserve.io/path": "/metrics",
             "prometheus.io/port": str(Ports.REST_PORT),
             "openshift.io/display-name": "mlserver-1.x",

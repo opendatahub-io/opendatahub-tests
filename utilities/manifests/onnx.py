@@ -1,5 +1,7 @@
 ONNX_INFERENCE_CONFIG = {
+        "support_multi_default_queries": True,
         "default_query_model": {
+            "infer": {
             "query_input": [
             {
                 "name": "Input3",
@@ -11,6 +13,12 @@ ONNX_INFERENCE_CONFIG = {
             "query_output": r'{"model_name":"$model_name","model_version":"1","outputs":\[\{"name":"Plus214_Output_0","shape":\[1,10\],"datatype":"FP32","data":\[.*\]}]}',
             "use_regex": True
         },
+        "infer-mnist": {
+            "query_input": "@utilities/manifests/openvino/mnist-input.json",
+            "query_output": r'{"model_name":"mnist-model__isvc-[0-9a-z]+","model_version":"1","outputs":\[{"name":"Plus214_Output_0","datatype":"FP32","shape":\[1,10\],"data":\[.*\]}\]}',
+            "use_regex": True
+        },
+        },
         "infer": {
             "http": {
                 "endpoint": "v2/models/$model_name/infer",
@@ -21,4 +29,14 @@ ONNX_INFERENCE_CONFIG = {
                 },
             },
         },
+        "infer-mnist": {
+            "http":{
+                "endpoint": "v2/models/$model_name/infer",
+                "header": "application/x-www-form-urlencoded",
+                "body": '$query_input',
+                "response_fields_map": {
+                    "response_output": "output",
+                },
+            }
+            },
     }

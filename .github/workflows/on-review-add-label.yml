@@ -1,0 +1,88 @@
+name: Run Label Action on PR Review Event
+on:
+  workflow_run:
+    workflows: ["Dummy Workflow on review"]
+    types:
+      - completed
+permissions:
+  pull-requests: write
+  contents: write
+  issues: write
+
+jobs:
+  run_on_workflow_a_success:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run this on Dummy workflow success
+        run: echo "Dummy Workflow on review completes successfully"
+  download_context_artifact:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Download artifact'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            let allArtifacts = await github.rest.actions.listWorkflowRunArtifacts({
+               owner: context.repo.owner,
+               repo: context.repo.repo,
+               run_id: context.payload.workflow_run.id,
+            });
+
+            let matchArtifact = allArtifacts.data.artifacts.filter((artifact) => {
+              return artifact.name == "context.json"
+            })[0];
+
+            let download = await github.rest.actions.downloadArtifact({
+               owner: context.repo.owner,
+               repo: context.repo.repo,
+               artifact_id: matchArtifact.id,
+               archive_format: 'zip',
+            });
+
+            let fs = require('fs');
+            fs.writeFileSync(`${process.env.GITHUB_WORKSPACE}/context.zip`, Buffer.from(download.data));
+
+      - name: 'Unzip artifact'
+        run: unzip context.zip
+      - name: 'Return Parsed JSON'
+        uses: actions/github-script@v7
+        id: return-parsed-json
+        with:
+          script: |
+            let fs = require('fs');
+            let data = fs.readFileSync('./context.json');
+            return JSON.parse(data);
+    outputs:
+      pr_num: ${{fromJSON(steps.return-parsed-json.outputs.result).pr_num}}
+      event_action: ${{fromJSON(steps.return-parsed-json.outputs.result).event_action}}
+      review_state: ${{fromJSON(steps.return-parsed-json.outputs.result).review_state}}
+      event_name: ${{fromJSON(steps.return-parsed-json.outputs.result).event_name}}
+      comment_body: ${{fromJSON(steps.return-parsed-json.outputs.result).comment_body}}
+      review_comment_body: ${{fromJSON(steps.return-parsed-json.outputs.result).review_comment_body}}
+      user_login: ${{fromJSON(steps.return-parsed-json.outputs.result).user_login}}
+      action: ${{fromJSON(steps.return-parsed-json.outputs.result).action}}
+  log_context_values:
+    needs:
+      - download_context_artifact
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Set all Env Variable'
+        run: |
+          echo "GITHUB_PR_NUMBER=${{ needs.download_context_artifact.outputs.pr_num }}" >> "$GITHUB_ENV"
+          echo "GITHUB_EVENT_ACTION=${{ needs.download_context_artifact.outputs.event_action }}"  >> "$GITHUB_ENV"
+          echo "GITHUB_EVENT_REVIEW_STATE=${{ needs.download_context_artifact.outputs.review_state }}"  >> "$GITHUB_ENV"
+          echo "GITHUB_EVENT_NAME=${{ needs.download_context_artifact.outputs.event_name }}"  >> "$GITHUB_ENV"
+          echo "COMMENT_BODY=${{ needs.download_context_artifact.outputs.comment_body }}"  >> "$GITHUB_ENV"
+          echo "REVIEW_COMMENT_BODY=${{ needs.download_context_artifact.outputs.review_comment_body }}"  >> "$GITHUB_ENV"
+          echo "GITHUB_USER_LOGIN=${{ needs.download_context_artifact.outputs.user_login }}"  >> "$GITHUB_ENV"
+          echo "ACTION=${{ needs.download_context_artifact.outputs.action }}"  >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: 'Run add-remove-labels action'
+        env:
+          GITHUB_TOKEN: ${{ secrets.OPENDATAHUB_TESTS_BOT_PAT }}
+          GITHUB_EVENT_NAME: ${{ needs.download_context_artifact.outputs.event_name }}
+        run: uv run python .github/workflows/scripts/pr_workflow.py

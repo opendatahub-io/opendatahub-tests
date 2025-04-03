@@ -168,8 +168,8 @@ def run_inference_multiple_times(
     inference_config: dict[str, Any],
     inference_type: str,
     protocol: str,
-    model_name: str,
     iterations: int,
+    model_name: str | None = None,
     run_in_parallel: bool = False,
 ) -> None:
     """

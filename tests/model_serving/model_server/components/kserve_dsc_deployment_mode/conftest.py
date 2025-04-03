@@ -17,17 +17,6 @@ from tests.model_serving.model_server.components.kserve_dsc_deployment_mode.util
 )
 from utilities.constants import ModelAndFormat
 from utilities.inference_utils import create_isvc
-from utilities.jira import is_jira_open
-
-
-@pytest.fixture(scope="class")
-def skip_if_serverless_annotation_bug_present(
-    admin_client: DynamicClient,
-) -> None:
-    jira_id = "RHOAIENG-19654"
-
-    if is_jira_open(jira_id=jira_id, admin_client=admin_client):
-        pytest.skip(reason=f"Bug {jira_id} is not fixed")
 
 
 @pytest.fixture(scope="class")
@@ -70,14 +59,14 @@ def ovms_inference_service(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    openvino_kserve_serving_runtime: ServingRuntime,
+    ovms_kserve_serving_runtime: ServingRuntime,
     ci_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
         name=request.param["name"],
         namespace=model_namespace.name,
-        runtime=openvino_kserve_serving_runtime.name,
+        runtime=ovms_kserve_serving_runtime.name,
         storage_path=request.param["model-dir"],
         storage_key=ci_endpoint_s3_secret.name,
         model_format=ModelAndFormat.OPENVINO_IR,

@@ -10,7 +10,6 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.maria_db import MariaDB
 from ocp_resources.mariadb_operator import MariadbOperator
 from ocp_resources.namespace import Namespace
-from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.subscription import Subscription
 from ocp_resources.trustyai_service import TrustyAIService
@@ -26,8 +25,6 @@ from tests.model_explainability.trustyai_service.utils import (
 from utilities.constants import Timeout
 from utilities.infra import update_configmap_data
 
-MINIO: str = "minio"
-OPENDATAHUB_IO: str = "opendatahub.io"
 OPENSHIFT_OPERATORS: str = "openshift-operators"
 
 MARIADB: str = "mariadb"
@@ -66,6 +63,7 @@ def trustyai_service_with_db_storage(
     cluster_monitoring_config: ConfigMap,
     user_workload_monitoring_config: ConfigMap,
     mariadb: MariaDB,
+    trustyai_db_ca_secret: None,
 ) -> Generator[TrustyAIService, Any, Any]:
     with TrustyAIService(
         client=admin_client,
@@ -91,39 +89,6 @@ def user_workload_monitoring_config(admin_client: DynamicClient) -> Generator[Co
         data=data,
     ) as cm:
         yield cm
-
-
-@pytest.fixture(scope="class")
-def minio_pod(admin_client: DynamicClient, model_namespace: Namespace) -> Generator[Pod, Any, Any]:
-    with Pod(
-        client=admin_client,
-        name=MINIO,
-        namespace=model_namespace.name,
-        containers=[
-            {
-                "args": [
-                    "server",
-                    "/data1",
-                ],
-                "env": [
-                    {
-                        "name": "MINIO_ACCESS_KEY",
-                        "value": "THEACCESSKEY",
-                    },
-                    {
-                        "name": "MINIO_SECRET_KEY",
-                        "value": "THESECRETKEY",
-                    },
-                ],
-                "image": "quay.io/trustyai_testing/modelmesh-minio-examples"
-                "@sha256:d2ccbe92abf9aa5085b594b2cae6c65de2bf06306c30ff5207956eb949bb49da",
-                "name": MINIO,
-            }
-        ],
-        label={"app": "minio", "maistra.io/expose-route": "true"},
-        annotations={"sidecar.istio.io/inject": "true"},
-    ) as minio_pod:
-        yield minio_pod
 
 
 @pytest.fixture(scope="class")
@@ -226,12 +191,28 @@ def mariadb(
     mariadb_dict["spec"]["replicas"] = 1
     mariadb_dict["spec"]["galera"]["enabled"] = False
     mariadb_dict["spec"]["metrics"]["enabled"] = False
+    mariadb_dict["spec"]["tls"] = {"enabled": True, "required": True}
 
     password_secret_key_ref = {"generate": False, "key": "databasePassword", "name": DB_CREDENTIALS_SECRET_NAME}
 
     mariadb_dict["spec"]["rootPasswordSecretKeyRef"] = password_secret_key_ref
     mariadb_dict["spec"]["passwordSecretKeyRef"] = password_secret_key_ref
-
     with MariaDB(kind_dict=mariadb_dict) as mariadb:
         wait_for_mariadb_pods(client=admin_client, mariadb=mariadb)
         yield mariadb
+
+
+@pytest.fixture(scope="class")
+def trustyai_db_ca_secret(
+    admin_client: DynamicClient, model_namespace: Namespace, mariadb: MariaDB
+) -> Generator[None, Any, None]:
+    mariadb_ca_secret = Secret(
+        client=admin_client, name=f"{mariadb.name}-ca", namespace=model_namespace.name, ensure_exists=True
+    )
+    with Secret(
+        client=admin_client,
+        name=f"{TRUSTYAI_SERVICE_NAME}-db-ca",
+        namespace=model_namespace.name,
+        data_dict={"ca.crt": mariadb_ca_secret.instance.data["ca.crt"]},
+    ):
+        yield

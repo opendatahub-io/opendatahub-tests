@@ -85,9 +85,9 @@ def verify_canary_traffic(
     inference_config: dict[str, Any],
     inference_type: str,
     protocol: str,
-    model_name: str,
     iterations: int,
     expected_percentage: int,
+    model_name: str | None = None,
     tolerance: int = 0,
 ) -> None:
     """

@@ -1,0 +1,33 @@
+name: Dummy Workflow on review
+
+on:
+  pull_request_review:
+    types: [submitted, edited]
+
+permissions:
+  pull-requests: write
+  contents: write
+  issues: write
+
+jobs:
+
+  dummy-workflow:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: save the pr information
+        run: |
+            printf '{
+              "pr_num": "${{ github.event.pull_request.number || github.event.issue.number }}",
+              "event_action": "${{ github.event.action }}",
+              "review_state": "${{ github.event.review.state }}",
+              "event_name": "${{ github.event_name }}",
+              "comment_body": "${{ github.event.comment.body }}",
+              "review_comment_body": "${{ github.event.review.body }}",
+              "user_login": "${{ github.event.sender.login }}",
+              "action": "add-remove-labels"
+            }' >> context.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: context.json
+          path: ./
