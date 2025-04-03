@@ -87,7 +87,7 @@ def default_notebook(
                 "opendatahub.io/service-mesh": "false",
             },
             "labels": {
-                "app": name,
+                Labels.Openshift.APP: name,
                 Labels.OpenDataHub.DASHBOARD: "true",
                 "opendatahub.io/odh-managed": "true",
                 "sidecar.istio.io/inject": "false",

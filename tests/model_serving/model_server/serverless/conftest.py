@@ -11,11 +11,11 @@ from ocp_resources.serving_runtime import ServingRuntime
 
 from tests.model_serving.model_server.serverless.utils import wait_for_canary_rollout
 from tests.model_serving.model_server.utils import run_inference_multiple_times
-from utilities.constants import ModelFormat, Protocols
-from utilities.inference_utils import Inference
-from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
-from utilities.constants import KServeDeploymentType, ModelName, ModelStoragePath
-from utilities.inference_utils import create_isvc
+from utilities.constants import Protocols, Timeout
+from utilities.constants import KServeDeploymentType, ModelStoragePath
+from utilities.inference_utils import Inference, create_isvc
+from utilities.infra import verify_no_failed_pods
+from utilities.manifests.openvino import OPENVINO_INFERENCE_CONFIG
 
 
 @pytest.fixture(scope="class")
@@ -37,7 +37,7 @@ def inference_service_patched_replicas(
 
 @pytest.fixture
 def inference_service_updated_canary_config(
-    request: FixtureRequest, s3_models_inference_service: InferenceService
+    request: FixtureRequest, admin_client: DynamicClient, ovms_kserve_inference_service: InferenceService
 ) -> Generator[InferenceService, Any, Any]:
     canary_percent = request.param["canary-traffic-percent"]
     predictor_config = {
@@ -49,40 +49,46 @@ def inference_service_updated_canary_config(
     if model_path := request.param.get("model-path"):
         predictor_config["spec"]["predictor"]["model"] = {"storage": {"path": model_path}}
 
-    with ResourceEditor(patches={s3_models_inference_service: predictor_config}):
-        wait_for_canary_rollout(isvc=s3_models_inference_service, percentage=canary_percent)
-        yield s3_models_inference_service
+    with ResourceEditor(patches={ovms_kserve_inference_service: predictor_config}):
+        wait_for_canary_rollout(isvc=ovms_kserve_inference_service, percentage=canary_percent)
+        verify_no_failed_pods(
+            client=admin_client,
+            isvc=ovms_kserve_inference_service,
+            timeout=Timeout.TIMEOUT_2MIN,
+        )
+        yield ovms_kserve_inference_service
 
 
 @pytest.fixture
-def multiple_tgis_inference_requests(s3_models_inference_service: InferenceService) -> None:
+def multiple_onnx_inference_requests(
+    ovms_kserve_inference_service: InferenceService,
+) -> None:
     run_inference_multiple_times(
-        isvc=s3_models_inference_service,
-        inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
-        inference_type=Inference.ALL_TOKENS,
+        isvc=ovms_kserve_inference_service,
+        inference_config=OPENVINO_INFERENCE_CONFIG,
+        inference_type=Inference.MNIST,
         protocol=Protocols.HTTPS,
-        model_name=ModelFormat.CAIKIT,
-        iterations=50,
+        iterations=100,
         run_in_parallel=True,
     )
 
 
 @pytest.fixture(scope="class")
-def s3_flan_small_hf_caikit_serverless_inference_service(
+def s3_mnist_serverless_inference_service(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    serving_runtime_from_template: ServingRuntime,
-    models_endpoint_s3_secret: Secret,
+    ovms_kserve_serving_runtime: ServingRuntime,
+    ci_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
-        name=f"{ModelName.FLAN_T5_SMALL}-model",
+        name="mnist-model",
         namespace=model_namespace.name,
-        runtime=serving_runtime_from_template.name,
-        storage_key=models_endpoint_s3_secret.name,
-        storage_path=ModelStoragePath.FLAN_T5_SMALL_HF,
-        model_format=serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
+        runtime=ovms_kserve_serving_runtime.name,
+        storage_key=ci_endpoint_s3_secret.name,
+        storage_path=ModelStoragePath.MNIST_8_ONNX,
+        model_format=ovms_kserve_serving_runtime.instance.spec.supportedModelFormats[0].name,
         deployment_mode=KServeDeploymentType.SERVERLESS,
         external_route=True,
     ) as isvc:

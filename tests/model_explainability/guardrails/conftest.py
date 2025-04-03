@@ -14,14 +14,14 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
 
-from tests.model_explainability.constants import (
-    MINIO,
-    MINIO_ACCESS_KEY,
-    MINIO_SECRET_KEY,
-    MINIO_ACCESS_KEY_VALUE,
-    MINIO_SECRET_KEY_VALUE,
+from utilities.constants import (
+    KServeDeploymentType,
+    Labels,
+    MinIo,
+    Timeout,
+    Ports,
+    RuntimeTemplates,
 )
-from utilities.constants import KServeDeploymentType, Timeout, Ports, RuntimeTemplates
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -32,7 +32,9 @@ GUARDRAILS_ORCHESTRATOR_PORT: int = 8032
 
 @pytest.fixture(scope="class")
 def guardrails_orchestrator_health_route(
-    admin_client: DynamicClient, model_namespace: Namespace, guardrails_orchestrator: GuardrailsOrchestrator
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    guardrails_orchestrator: GuardrailsOrchestrator,
 ) -> Generator[Route, Any, Any]:
     route = Route(
         name=f"{guardrails_orchestrator.name}-health",
@@ -83,7 +85,10 @@ def qwen_llm_model(
         storage_path="Qwen2.5-0.5B-Instruct",
         wait_for_predictor_pods=False,
         enable_auth=True,
-        resources={"requests": {"cpu": "1", "memory": "8Gi"}, "limits": {"cpu": "2", "memory": "10Gi"}},
+        resources={
+            "requests": {"cpu": "1", "memory": "8Gi"},
+            "limits": {"cpu": "2", "memory": "10Gi"},
+        },
     ) as isvc:
         yield isvc
 
@@ -137,7 +142,9 @@ def vllm_images_configmap(admin_client: DynamicClient, model_namespace: Namespac
 
 @pytest.fixture(scope="class")
 def orchestrator_configmap(
-    admin_client: DynamicClient, model_namespace: Namespace, qwen_llm_model: InferenceService
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    qwen_llm_model: InferenceService,
 ) -> Generator[ConfigMap, Any, Any]:
     with ConfigMap(
         client=admin_client,
@@ -154,7 +161,10 @@ def orchestrator_configmap(
                 "detectors": {
                     "regex": {
                         "type": "text_contents",
-                        "service": {"hostname": "127.0.0.1", "port": Ports.REST_PORT},
+                        "service": {
+                            "hostname": "127.0.0.1",
+                            "port": Ports.REST_PORT,
+                        },
                         "chunker_id": "whole_doc_chunker",
                         "default_threshold": 0.5,
                     }
@@ -171,15 +181,24 @@ def vllm_gateway_config(admin_client: DynamicClient, model_namespace: Namespace)
         client=admin_client,
         name="fms-orchestr8-config-gateway",
         namespace=model_namespace.name,
-        label={"app": "fmstack-nlp"},
+        label={Labels.Openshift.APP: "fmstack-nlp"},
         data={
             "config.yaml": yaml.dump({
-                "orchestrator": {"host": "localhost", "port": GUARDRAILS_ORCHESTRATOR_PORT},
+                "orchestrator": {
+                    "host": "localhost",
+                    "port": GUARDRAILS_ORCHESTRATOR_PORT,
+                },
                 "detectors": [
-                    {"name": "regex", "detector_params": {"regex": ["email", "ssn"]}},
+                    {
+                        "name": "regex",
+                        "detector_params": {"regex": ["email", "ssn"]},
+                    },
                     {"name": "other_detector"},
                 ],
-                "routes": [{"name": "pii", "detectors": ["regex"]}, {"name": "passthrough", "detectors": []}],
+                "routes": [
+                    {"name": "pii", "detectors": ["regex"]},
+                    {"name": "passthrough", "detectors": []},
+                ],
             })
         },
     ) as cm:
@@ -189,19 +208,30 @@ def vllm_gateway_config(admin_client: DynamicClient, model_namespace: Namespace)
 @pytest.fixture(scope="class")
 def minio_llm_deployment(
     admin_client: DynamicClient,
-    model_namespace: Namespace,
+    minio_namespace: Namespace,
     llm_models_pvc: PersistentVolumeClaim,
 ) -> Generator[Deployment, Any, Any]:
     with Deployment(
         client=admin_client,
         name="llm-container-deployment",
-        namespace=model_namespace.name,
+        namespace=minio_namespace.name,
         replicas=1,
-        selector={"matchLabels": {"app": MINIO}},
+        selector={"matchLabels": {Labels.Openshift.APP: MinIo.Metadata.NAME}},
         template={
-            "metadata": {"labels": {"app": MINIO, "maistra.io/expose-route": "true"}, "name": MINIO},
+            "metadata": {
+                "labels": {
+                    Labels.Openshift.APP: MinIo.Metadata.NAME,
+                    "maistra.io/expose-route": "true",
+                },
+                "name": MinIo.Metadata.NAME,
+            },
             "spec": {
-                "volumes": [{"name": "model-volume", "persistentVolumeClaim": {"claimName": "llm-models-claim"}}],
+                "volumes": [
+                    {
+                        "name": "model-volume",
+                        "persistentVolumeClaim": {"claimName": "llm-models-claim"},
+                    }
+                ],
                 "initContainers": [
                     {
                         "name": "download-model",
@@ -225,12 +255,18 @@ def minio_llm_deployment(
                     {
                         "args": ["server", "/models"],
                         "env": [
-                            {"name": MINIO_ACCESS_KEY, "value": MINIO_ACCESS_KEY_VALUE},
-                            {"name": MINIO_SECRET_KEY, "value": MINIO_SECRET_KEY_VALUE},
+                            {
+                                "name": MinIo.Credentials.ACCESS_KEY_NAME,
+                                "value": MinIo.Credentials.ACCESS_KEY_VALUE,
+                            },
+                            {
+                                "name": MinIo.Credentials.SECRET_KEY_NAME,
+                                "value": MinIo.Credentials.SECRET_KEY_VALUE,
+                            },
                         ],
                         "image": "quay.io/trustyai/modelmesh-minio-examples"
                         "@sha256:65cb22335574b89af15d7409f62feffcc52cc0e870e9419d63586f37706321a5",
-                        "name": MINIO,
+                        "name": MinIo.Metadata.NAME,
                         "securityContext": {
                             "allowPrivilegeEscalation": False,
                             "capabilities": {"drop": ["ALL"]},
@@ -241,7 +277,7 @@ def minio_llm_deployment(
                 ],
             },
         },
-        label={"app": MINIO},
+        label={Labels.Openshift.APP: MinIo.Metadata.NAME},
         wait_for_resource=True,
     ) as deployment:
         deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_10MIN)
@@ -250,12 +286,12 @@ def minio_llm_deployment(
 
 @pytest.fixture(scope="class")
 def llm_models_pvc(
-    admin_client: DynamicClient, model_namespace: Namespace
+    admin_client: DynamicClient, minio_namespace: Namespace
 ) -> Generator[PersistentVolumeClaim, Any, Any]:
     with PersistentVolumeClaim(
         client=admin_client,
         name="llm-models-claim",
-        namespace=model_namespace.name,
+        namespace=minio_namespace.name,
         accessmodes=PersistentVolumeClaim.AccessMode.RWO,
         volume_mode=PersistentVolumeClaim.VolumeMode.FILE,
         size="10Gi",

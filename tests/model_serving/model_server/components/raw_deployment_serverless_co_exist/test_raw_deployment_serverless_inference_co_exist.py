@@ -33,7 +33,7 @@ RAW_ISVC_PARAMS = {
 
 
 @pytest.mark.parametrize(
-    "model_namespace, openvino_kserve_serving_runtime, ovms_kserve_inference_service, "
+    "model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service, "
     "serving_runtime_from_template, s3_models_inference_service",
     [
         pytest.param(
@@ -76,7 +76,7 @@ class TestServerlessRawInternalDeploymentInferenceCoExist:
 
 
 @pytest.mark.parametrize(
-    "model_namespace, openvino_kserve_serving_runtime, ovms_kserve_inference_service, "
+    "model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service, "
     "serving_runtime_from_template, s3_models_inference_service",
     [
         pytest.param(
@@ -120,7 +120,7 @@ class TestServerlessRawExternalDeploymentInferenceCoExist:
 
 @pytest.mark.parametrize(
     "model_namespace, serving_runtime_from_template, s3_models_inference_service,"
-    "openvino_kserve_serving_runtime, ovms_kserve_inference_service",
+    "ovms_kserve_serving_runtime, ovms_kserve_inference_service",
     [
         pytest.param(
             {"name": "raw-deployment-serverless"},
@@ -165,7 +165,7 @@ class TestRawInternalDeploymentServerlessInferenceCoExist:
 
 @pytest.mark.parametrize(
     "model_namespace, serving_runtime_from_template, s3_models_inference_service,"
-    "openvino_kserve_serving_runtime, ovms_kserve_inference_service",
+    "ovms_kserve_serving_runtime, ovms_kserve_inference_service",
     [
         pytest.param(
             {"name": "raw-etx-deployment-serverless"},

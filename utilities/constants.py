@@ -24,6 +24,7 @@ class ModelName:
     FLAN_T5_SMALL_HF: str = f"{FLAN_T5_SMALL}-hf"
     CAIKIT_BGE_LARGE_EN: str = f"bge-large-en-v1.5-{ModelFormat.CAIKIT}"
     BLOOM_560M: str = "bloom-560m"
+    MNIST: str = "mnist"
 
 
 class ModelAndFormat:
@@ -43,6 +44,7 @@ class ModelStoragePath:
     OPENVINO_VEHICLE_DETECTION: str = "vehicle-detection"
     FLAN_T5_SMALL_HF: str = f"{ModelName.FLAN_T5_SMALL}/{ModelName.FLAN_T5_SMALL_HF}"
     BLOOM_560M_CAIKIT: str = f"{ModelName.BLOOM_560M}/{ModelAndFormat.BLOOM_560M_CAIKIT}"
+    MNIST_8_ONNX: str = f"{ModelName.MNIST}-8.onnx"
 
 
 class CurlOutput:
@@ -173,6 +175,9 @@ class Labels:
     class OpenDataHubIo:
         MANAGED: str = Annotations.OpenDataHubIo.MANAGED
 
+    class Openshift:
+        APP: str = "app"
+
 
 class Timeout:
     TIMEOUT_1MIN: int = 60
@@ -192,6 +197,52 @@ class RunTimeConfigs:
         "runtime-name": ModelInferenceRuntime.ONNX_RUNTIME,
         "model-format": {ModelFormat.ONNX: ModelVersion.OPSET13},
     }
+
+
+class MinIo:
+    class Metadata:
+        NAME: str = "minio"
+        DEFAULT_PORT: int = 9000
+        DEFAULT_ENDPOINT: str = f"{Protocols.HTTP}://{NAME}:{DEFAULT_PORT}"
+
+    class Credentials:
+        ACCESS_KEY_NAME: str = "MINIO_ROOT_USER"
+        ACCESS_KEY_VALUE: str = "THEACCESSKEY"
+        SECRET_KEY_NAME: str = "MINIO_ROOT_PASSWORD"
+        SECRET_KEY_VALUE: str = "THESECRETKEY"
+
+    class Buckets:
+        EXAMPLE_MODELS: str = "example-models"
+        MODELMESH_EXAMPLE_MODELS: str = f"modelmesh-{EXAMPLE_MODELS}"
+
+    class PodConfig:
+        KSERVE_MINIO_IMAGE: str = (
+            "quay.io/jooholee/model-minio@sha256:b50aa0fbfea740debb314ece8e925b3e8e761979f345b6cd12a6833efd04e2c2"  # noqa: E501
+        )
+
+        MINIO_BASE_CONFIG: dict[str, Any] = {
+            "args": ["server", "/data1"],
+            "labels": {
+                "maistra.io/expose-route": "true",
+            },
+            "annotations": {
+                "sidecar.istio.io/inject": "true",
+            },
+        }
+
+        MODEL_MESH_MINIO_CONFIG: dict[str, Any] = {
+            "image": "quay.io/trustyai_testing/modelmesh-minio-examples@sha256:d2ccbe92abf9aa5085b594b2cae6c65de2bf06306c30ff5207956eb949bb49da",  # noqa: E501
+            **MINIO_BASE_CONFIG,
+        }
+
+        KSERVE_MINIO_CONFIG: dict[str, Any] = {
+            "image": KSERVE_MINIO_IMAGE,
+            **MINIO_BASE_CONFIG,
+        }
+
+    class RunTimeConfig:
+        # TODO: Remove runtime_image once ovms/loan_model_alpha model works with latest ovms
+        IMAGE = "quay.io/opendatahub/openvino_model_server@sha256:564664371d3a21b9e732a5c1b4b40bacad714a5144c0a9aaf675baec4a04b148"  # noqa: E501
 
 
 MODEL_REGISTRY: str = "model-registry"

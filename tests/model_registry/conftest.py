@@ -25,12 +25,13 @@ from tests.model_registry.constants import (
     MR_INSTANCE_NAME,
     ISTIO_CONFIG_DICT,
     DB_RESOURCES_NAME,
+    MR_DB_IMAGE_DIGEST,
 )
 from tests.model_registry.utils import get_endpoint_from_mr_service, get_mr_service_by_label
 from utilities.infra import create_ns
-from utilities.constants import Annotations
-from utilities.constants import Protocols, DscComponents
+from utilities.constants import Annotations, Protocols, DscComponents
 from model_registry import ModelRegistry as ModelRegistryClient
+
 
 LOGGER = get_logger(name=__name__)
 
@@ -191,7 +192,7 @@ def model_registry_db_deployment(
                             "/var/lib/mysql/datadir",
                             "--default-authentication-plugin=mysql_native_password",
                         ],
-                        "image": "public.ecr.aws/docker/library/mysql:8.3.0",
+                        "image": MR_DB_IMAGE_DIGEST,
                         "imagePullPolicy": "IfNotPresent",
                         "livenessProbe": {
                             "exec": {
@@ -316,17 +317,13 @@ def updated_dsc_component_state_scope_class(
     original_components = dsc_resource.instance.spec.components
     with ResourceEditor(patches={dsc_resource: {"spec": {"components": request.param["component_patch"]}}}):
         for component_name in request.param["component_patch"]:
-            dsc_resource.wait_for_condition(
-                condition=DscComponents.COMPONENT_MAPPING[component_name], status="True"
-            )
+            dsc_resource.wait_for_condition(condition=DscComponents.COMPONENT_MAPPING[component_name], status="True")
         yield dsc_resource
 
     for component_name, value in request.param["component_patch"].items():
         LOGGER.info(f"Waiting for component {component_name} to be updated.")
         if original_components[component_name]["managementState"] == DscComponents.ManagementState.MANAGED:
-            dsc_resource.wait_for_condition(
-                condition=DscComponents.COMPONENT_MAPPING[component_name], status="True"
-            )
+            dsc_resource.wait_for_condition(condition=DscComponents.COMPONENT_MAPPING[component_name], status="True")
         if (
             component_name == DscComponents.MODELREGISTRY
             and value.get("managementState") == DscComponents.ManagementState.MANAGED

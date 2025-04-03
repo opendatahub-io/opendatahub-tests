@@ -29,7 +29,7 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         deployment_type: str | None = None,
         runtime_image: str | None = None,
         models_priorities: dict[str, str] | None = None,
-        supported_model_formats: dict[str, list[dict[str, str]]] | None = None,
+        supported_model_formats: list[dict[str, Any]] | None = None,
         volumes: list[dict[str, Any]] | None = None,
         containers: dict[str, dict[str, Any]] | None = None,
         support_tgis_open_ai_endpoints: bool = False,
@@ -52,7 +52,7 @@ class ServingRuntimeFromTemplate(ServingRuntime):
             enable_auth (bool): Whether to enable auth or not; relevant for model mesh only
             protocol (str): Protocol to be used for the serving runtime; relevant for model mesh only
             models_priorities (dict[str, str]): Model priority to be used for the serving runtime
-            supported_model_formats (dict[str, list[dict[str, str]]]): Model formats;
+            supported_model_formats (list[dict[str, Any]]): Model formats;
                 overwrites template's `supportedModelFormats`
             volumes (list[dict[str, Any]]): Volumes to be used with the serving runtime
             containers (dict[str, dict[str, Any]]): Containers configurations to override or add
@@ -139,7 +139,6 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         _model_dict = self.get_model_dict_from_template()
         _model_metadata = _model_dict.get("metadata", {})
         _model_spec = _model_dict.get("spec", {})
-        _model_spec_supported_formats = _model_spec.get("supportedModelFormats", [])
 
         if self.multi_model is not None:
             _model_spec["multiModel"] = self.multi_model
@@ -210,8 +209,9 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         _model_spec["containers"] = template_containers
 
         if self.supported_model_formats:
-            _model_spec_supported_formats = self.supported_model_formats
+            _model_spec["supportedModelFormats"] = self.supported_model_formats
         else:
+            _model_spec_supported_formats = _model_spec.get("supportedModelFormats", [])
             if self.model_format_name is not None:
                 for model in _model_spec_supported_formats:
                     if model["name"] in self.model_format_name:
