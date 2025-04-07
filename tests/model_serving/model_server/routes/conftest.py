@@ -8,6 +8,7 @@ from ocp_resources.resource import ResourceEditor
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
+from utilities.constants import Labels
 
 LOGGER = get_logger(name=__name__)
 
@@ -24,7 +25,7 @@ def patched_s3_caikit_kserve_isvc_visibility_label(
 
     # If no label is applied, visibility is "local-cluster"
     if (not labels and visibility == "local-cluster") or (
-        labels and labels.get("networking.kserve.io/visibility") == visibility
+        labels and labels.get(Labels.Kserve.NETWORKING_KSERVE_IO) == visibility
     ):
         LOGGER.info(f"Inference service visibility is set to {visibility}. Skipping update.")
         yield s3_models_inference_service
@@ -36,7 +37,7 @@ def patched_s3_caikit_kserve_isvc_visibility_label(
             patches={
                 s3_models_inference_service: {
                     "metadata": {
-                        "labels": {"networking.kserve.io/visibility": visibility},
+                        "labels": {Labels.Kserve.NETWORKING_KSERVE_IO: visibility},
                     }
                 }
             }
@@ -48,7 +49,7 @@ def patched_s3_caikit_kserve_isvc_visibility_label(
                 func=lambda: s3_models_inference_service.instance.status.url,
             ):
                 if sample:
-                    if visibility == "exposed" and isvc_orig_url == sample:
+                    if visibility == Labels.Kserve.EXPOSED and isvc_orig_url == sample:
                         break
 
                     elif sample != isvc_orig_url:

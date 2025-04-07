@@ -4,12 +4,7 @@ import pytest
 import requests
 from timeout_sampler import retry
 
-from tests.model_explainability.constants import MINIO_DATA_DICT
 from utilities.constants import Timeout
-from utilities.general import b64_encoded_string
-
-DATA_DICT: dict[str, str] = MINIO_DATA_DICT
-DATA_DICT["AWS_S3_BUCKET"] = b64_encoded_string(string_to_encode="llms")
 
 
 @pytest.mark.parametrize(
@@ -17,7 +12,7 @@ DATA_DICT["AWS_S3_BUCKET"] = b64_encoded_string(string_to_encode="llms")
     [
         pytest.param(
             {"name": "test-guardrails"},
-            {"data-dict": DATA_DICT},
+            {"bucket": "llms"},
         )
     ],
     indirect=True,
