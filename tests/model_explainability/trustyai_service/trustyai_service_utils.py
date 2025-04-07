@@ -634,17 +634,3 @@ def verify_trustyai_service_name_mappings(
     assert response_output_mappings == output_mappings, (
         f"Output mappings mismatch. Expected: {output_mappings}, Got: {response_output_mappings}"
     )
-
-
-def invalid_db_cert_trustyai_service_with_db_storage(
-    client: DynamicClient, token: str, data_path: str, trustyai_service: TrustyAIService
-) -> None:
-    """
-    Creates a MariaDB pod with TLS enabled but sets the wrong certificate as a secret to trustyai_service.
-    Args:
-        client (DynamicClient): The client instance for making API calls.
-        token (str): Authentication token for API access.
-        data_path (str): Directory path containing data batch files.
-        trustyai_service (TrustyAIService): TrustyAIService that will register the model.
-    """
-    return
