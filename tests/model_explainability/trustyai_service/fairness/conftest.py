@@ -4,13 +4,15 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
+from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
+from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
 
 from tests.model_explainability.trustyai_service.trustyai_service_utils import (
     wait_for_isvc_deployment_registered_by_trustyai_service,
 )
-from utilities.constants import ModelFormat, KServeDeploymentType, RuntimeTemplates
+from utilities.constants import MinIo, ModelFormat, KServeDeploymentType, RuntimeTemplates
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -29,8 +31,7 @@ def ovms_runtime(
         enable_grpc=True,
         model_format_name={"name": ModelFormat.ONNX, "version": "1"},
         # TODO: Remove runtime_image once model works with latest ovms
-        runtime_image="quay.io/opendatahub/openvino_model_server"
-        "@sha256:564664371d3a21b9e732a5c1b4b40bacad714a5144c0a9aaf675baec4a04b148",
+        runtime_image=MinIo.RunTimeConfig.IMAGE,
     ) as sr:
         yield sr
 
@@ -39,6 +40,8 @@ def ovms_runtime(
 def onnx_loan_model(
     admin_client: DynamicClient,
     model_namespace: Namespace,
+    minio_pod: Pod,
+    minio_service: Service,
     minio_data_connection: Secret,
     ovms_runtime: ServingRuntime,
 ) -> Generator[InferenceService, Any, Any]:

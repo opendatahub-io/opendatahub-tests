@@ -3,26 +3,48 @@ from typing import Self
 from simple_logger.logger import get_logger
 
 from ocp_resources.data_science_cluster import DataScienceCluster
-from utilities.constants import Protocols, DscComponents, ModelFormat
-from model_registry import ModelRegistry
-
+from ocp_resources.pod import Pod
+from ocp_resources.namespace import Namespace
+from utilities.constants import DscComponents
+from tests.model_registry.constants import MR_NAMESPACE, MODEL_NAME, MODEL_DICT
+from model_registry import ModelRegistry as ModelRegistryClient
+from model_registry.types import RegisteredModel
+from kubernetes.dynamic import DynamicClient
 
 LOGGER = get_logger(name=__name__)
-MODEL_NAME: str = "my-model"
+
+CUSTOM_NAMESPACE = "model-registry-custom-ns"
 
 
 @pytest.mark.parametrize(
-    "updated_dsc_component_state",
+    "model_registry_namespace, updated_dsc_component_state_scope_class",
     [
         pytest.param(
+            {"namespace_name": CUSTOM_NAMESPACE},
             {
-                "component_name": DscComponents.MODELREGISTRY,
-                "desired_state": DscComponents.ManagementState.MANAGED,
+                "component_patch": {
+                    DscComponents.MODELREGISTRY: {
+                        "managementState": DscComponents.ManagementState.MANAGED,
+                        "registriesNamespace": CUSTOM_NAMESPACE,
+                    },
+                }
             },
-        )
+        ),
+        pytest.param(
+            {"namespace_name": MR_NAMESPACE},
+            {
+                "component_patch": {
+                    DscComponents.MODELREGISTRY: {
+                        "managementState": DscComponents.ManagementState.MANAGED,
+                        "registriesNamespace": MR_NAMESPACE,
+                    },
+                },
+            },
+        ),
     ],
     indirect=True,
 )
+@pytest.mark.usefixtures("model_registry_namespace", "updated_dsc_component_state_scope_class")
 class TestModelRegistryCreation:
     """
     Tests the creation of a model registry. If the component is set to 'Removed' it will be switched to 'Managed'
@@ -30,51 +52,49 @@ class TestModelRegistryCreation:
     """
 
     @pytest.mark.smoke
+    @pytest.mark.parametrize(
+        "registered_model",
+        [
+            pytest.param(
+                MODEL_DICT,
+            )
+        ],
+        indirect=True,
+    )
     def test_registering_model(
         self: Self,
-        model_registry_instance_rest_endpoint: str,
-        current_client_token: str,
-        updated_dsc_component_state: DataScienceCluster,
+        model_registry_client: ModelRegistryClient,
+        registered_model: RegisteredModel,
     ):
-        # address and port need to be split in the client instantiation
-        server, port = model_registry_instance_rest_endpoint.split(":")
-        registry = ModelRegistry(
-            server_address=f"{Protocols.HTTPS}://{server}",
-            port=port,
-            author="opendatahub-test",
-            user_token=current_client_token,
-            is_secure=False,
-        )
-        model = registry.register_model(
-            name=MODEL_NAME,
-            uri="https://storage-place.my-company.com",
-            version="2.0.0",
-            description="lorem ipsum",
-            model_format_name=ModelFormat.ONNX,
-            model_format_version="1",
-            storage_key="my-data-connection",
-            storage_path="path/to/model",
-            metadata={
-                "int_key": 1,
-                "bool_key": False,
-                "float_key": 3.14,
-                "str_key": "str_value",
-            },
-        )
-        registered_model = registry.get_registered_model(MODEL_NAME)
+        model = model_registry_client.get_registered_model(MODEL_NAME)
         errors = []
         if not registered_model.id == model.id:
-            errors.append(f"Unexpected id, received {registered_model.id}")
+            errors.append(f"Unexpected id, received {model.id}")
         if not registered_model.name == model.name:
-            errors.append(f"Unexpected name, received {registered_model.name}")
+            errors.append(f"Unexpected name, received {model.name}")
         if not registered_model.description == model.description:
-            errors.append(f"Unexpected description, received {registered_model.description}")
+            errors.append(f"Unexpected description, received {model.description}")
         if not registered_model.owner == model.owner:
-            errors.append(f"Unexpected owner, received {registered_model.owner}")
+            errors.append(f"Unexpected owner, received {model.owner}")
         if not registered_model.state == model.state:
-            errors.append(f"Unexpected state, received {registered_model.state}")
+            errors.append(f"Unexpected state, received {model.state}")
 
         assert not errors, "errors found in model registry response validation:\n{}".format("\n".join(errors))
+
+    def test_model_registry_operator_env(
+        self,
+        admin_client: DynamicClient,
+        model_registry_namespace: Namespace,
+        updated_dsc_component_state_scope_class: DataScienceCluster,
+        model_registry_operator_pod: Pod,
+    ):
+        namespace_env = []
+        for container in model_registry_operator_pod.instance.spec.containers:
+            for env in container.env:
+                if env.name == "REGISTRIES_NAMESPACE" and env.value == model_registry_namespace.name:
+                    namespace_env.append({container.name: env})
+        if not namespace_env:
+            pytest.fail("Missing environment variable REGISTRIES_NAMESPACE")
 
     # TODO: Edit a registered model
     # TODO: Add additional versions for a model

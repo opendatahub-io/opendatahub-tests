@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import copy
 from typing import Any
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.template import Template
-from tests.model_serving.model_runtime.vllm.constant import vLLM_CONFIG
+from utilities.constants import ApiGroups, PortNames, Protocols, vLLM_CONFIG
 from pytest_testconfig import config as py_config
 
 
@@ -28,7 +29,10 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         deployment_type: str | None = None,
         runtime_image: str | None = None,
         models_priorities: dict[str, str] | None = None,
-        supported_model_formats: dict[str, list[dict[str, str]]] | None = None,
+        supported_model_formats: list[dict[str, Any]] | None = None,
+        volumes: list[dict[str, Any]] | None = None,
+        containers: dict[str, dict[str, Any]] | None = None,
+        support_tgis_open_ai_endpoints: bool = False,
     ):
         """
         ServingRuntimeFromTemplate class
@@ -48,8 +52,13 @@ class ServingRuntimeFromTemplate(ServingRuntime):
             enable_auth (bool): Whether to enable auth or not; relevant for model mesh only
             protocol (str): Protocol to be used for the serving runtime; relevant for model mesh only
             models_priorities (dict[str, str]): Model priority to be used for the serving runtime
-            supported_model_formats (dict[str, list[dict[str, str]]]): Model formats;
+            supported_model_formats (list[dict[str, Any]]): Model formats;
                 overwrites template's `supportedModelFormats`
+            volumes (list[dict[str, Any]]): Volumes to be used with the serving runtime
+            containers (dict[str, dict[str, Any]]): Containers configurations to override or add
+                to the serving runtime
+            support_tgis_open_ai_endpoints (bool): Whether to support TGIS and OpenAI endpoints using
+                a single entry point
         """
 
         self.admin_client = client
@@ -66,6 +75,9 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         self.runtime_image = runtime_image
         self.models_priorities = models_priorities
         self.supported_model_formats = supported_model_formats
+        self.volumes = volumes
+        self.containers = containers
+        self.support_tgis_open_ai_endpoints = support_tgis_open_ai_endpoints
 
         # model mesh attributes
         self.enable_external_route = enable_external_route
@@ -74,7 +86,10 @@ class ServingRuntimeFromTemplate(ServingRuntime):
 
         self.model_dict = self.update_model_dict()
 
-        super().__init__(client=self.unprivileged_client or self.admin_client, kind_dict=self.model_dict)
+        super().__init__(
+            client=self.unprivileged_client or self.admin_client,
+            kind_dict=self.model_dict,
+        )
 
     def get_model_template(self) -> Template:
         """
@@ -124,7 +139,6 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         _model_dict = self.get_model_dict_from_template()
         _model_metadata = _model_dict.get("metadata", {})
         _model_spec = _model_dict.get("spec", {})
-        _model_spec_supported_formats = _model_spec.get("supportedModelFormats", [])
 
         if self.multi_model is not None:
             _model_spec["multiModel"] = self.multi_model
@@ -136,9 +150,15 @@ class ServingRuntimeFromTemplate(ServingRuntime):
             _model_metadata.setdefault("annotations", {})["enable-auth"] = "true"
 
         if self.protocol is not None:
-            _model_metadata.setdefault("annotations", {})["opendatahub.io/apiProtocol"] = self.protocol
+            _model_metadata.setdefault("annotations", {})[f"{ApiGroups.OPENDATAHUB_IO}/apiProtocol"] = self.protocol
 
-        for container in _model_spec["containers"]:
+        template_containers = _model_spec.get("containers", [])
+
+        containers_to_add = copy.deepcopy(self.containers) if self.containers else {}
+
+        for container in template_containers:
+            container_name = container.get("name")
+
             for env in container.get("env", []):
                 if env["name"] == "RUNTIME_HTTP_ENABLED" and self.enable_http is not None:
                     env["value"] = str(self.enable_http).lower()
@@ -147,32 +167,51 @@ class ServingRuntimeFromTemplate(ServingRuntime):
                     env["value"] = str(self.enable_grpc).lower()
 
                     if self.enable_grpc is True:
-                        container["ports"][0] = {"containerPort": 8085, "name": "h2c", "protocol": "TCP"}
+                        container["ports"][0] = {
+                            "containerPort": 8085,
+                            "name": PortNames.GRPC_PORT_NAME,
+                            "protocol": Protocols.TCP,
+                        }
 
-            if self.resources is not None and (resource_dict := self.resources.get(container["name"])):
+            if self.resources is not None and (resource_dict := self.resources.get(container_name)):
                 container["resources"] = resource_dict
 
             if self.runtime_image is not None:
                 container["image"] = self.runtime_image
 
-            if "vllm" in self.template_name and self.runtime_image is not None and self.deployment_type is not None:
-                is_grpc = "grpc" in self.deployment_type.lower()
-                is_raw = "raw" in self.deployment_type.lower()
-                # Remove '--model' from the container args, we will pass this using isvc
-                container["args"] = [arg for arg in container["args"] if "--model" not in arg]
-                # Update command if deployment type is grpc
-                if is_grpc or is_raw:
-                    container["command"][-1] = vLLM_CONFIG["commands"]["GRPC"]
+            # Support single entrypoint for TGIS and OpenAI
+            if self.support_tgis_open_ai_endpoints:
+                if "vllm" in self.template_name and self.runtime_image is not None and self.deployment_type is not None:
+                    is_grpc = "grpc" in self.deployment_type.lower()
+                    is_raw = "raw" in self.deployment_type.lower()
+                    # Remove '--model' from the container args, we will pass this using isvc
+                    container["args"] = [arg for arg in container["args"] if "--model" not in arg]
+                    # Update command if deployment type is grpc
+                    if is_grpc or is_raw:
+                        container["command"][-1] = vLLM_CONFIG["commands"]["GRPC"]
 
-                if is_grpc:
-                    container["ports"] = vLLM_CONFIG["port_configurations"]["grpc"]
-                elif is_raw:
-                    container["ports"] = vLLM_CONFIG["port_configurations"]["raw"]
+                    if is_grpc:
+                        container["ports"] = vLLM_CONFIG["port_configurations"]["grpc"]
+                    elif is_raw:
+                        container["ports"] = vLLM_CONFIG["port_configurations"]["raw"]
+
+            if containers_to_add and container_name in containers_to_add:
+                container_config = containers_to_add.pop(container_name)
+                for key, value in container_config.items():
+                    container[key] = value
+
+        if containers_to_add:
+            for container_name, container_config in containers_to_add.items():
+                new_container = {"name": container_name}
+                new_container.update(container_config)
+                template_containers.append(new_container)
+
+        _model_spec["containers"] = template_containers
 
         if self.supported_model_formats:
-            _model_spec_supported_formats = self.supported_model_formats
-
+            _model_spec["supportedModelFormats"] = self.supported_model_formats
         else:
+            _model_spec_supported_formats = _model_spec.get("supportedModelFormats", [])
             if self.model_format_name is not None:
                 for model in _model_spec_supported_formats:
                     if model["name"] in self.model_format_name:
@@ -183,5 +222,8 @@ class ServingRuntimeFromTemplate(ServingRuntime):
                     _model_name = _model["name"]
                     if _model_name in self.models_priorities:
                         _model["priority"] = self.models_priorities[_model_name]
+
+        if self.volumes:
+            _model_spec["volumes"] = self.volumes
 
         return _model_dict

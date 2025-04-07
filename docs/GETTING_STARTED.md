@@ -66,3 +66,12 @@ To run on ODH, pass `--tc=distribution:upstream` to pytest.
 To skip running tests which have open bugs, [pytest_jira](https://github.com/rhevm-qe-automation/pytest_jira) plugin is used.
 To run tests with jira integration, you need to set `PYTEST_JIRA_URL` and `PYTEST_JIRA_TOKEN` environment variables.
 To make a test with jira marker, add: `@pytest.mark.jira(jira_id="RHOAIENG-0000", run=False)` to the test.
+
+
+### Running containerized tests
+Save kubeconfig file to a local directory, for example: `$HOME/kubeconfig`
+To run tests in containerized environment:
+
+```bash
+podman run  -v $HOME:/mnt/host:Z  -e KUBECONFIG=/mnt/host/kubeconfig quay.io/opendatahub/opendatahub-tests
+```

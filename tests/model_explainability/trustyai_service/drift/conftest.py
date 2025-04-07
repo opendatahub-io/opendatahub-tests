@@ -4,14 +4,16 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
+from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
+from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.trustyai_service import TrustyAIService
 
 from tests.model_explainability.trustyai_service.trustyai_service_utils import (
     wait_for_isvc_deployment_registered_by_trustyai_service,
 )
-from utilities.constants import KServeDeploymentType, Timeout, Labels
+from utilities.constants import ApiGroups, KServeDeploymentType, Ports, Timeout, Labels
 from utilities.inference_utils import create_isvc
 
 MLSERVER: str = "mlserver"
@@ -44,7 +46,7 @@ def mlserver_runtime(
             "@sha256:68a4cd74fff40a3c4f29caddbdbdc9e54888aba54bf3c5f78c8ffd577c3a1c89",
             "env": [
                 {"name": "MLSERVER_MODEL_IMPLEMENTATION", "value": "{{.Labels.modelClass}}"},
-                {"name": "MLSERVER_HTTP_PORT", "value": "8080"},
+                {"name": "MLSERVER_HTTP_PORT", "value": str(Ports.REST_PORT)},
                 {"name": "MLSERVER_GRPC_PORT", "value": "9000"},
                 {"name": "MODELS_DIR", "value": "/mnt/models/"},
             ],
@@ -60,11 +62,10 @@ def mlserver_runtime(
         supported_model_formats=supported_model_formats,
         protocol_versions=["v2"],
         annotations={
-            "opendatahub.io/accelerator-name": "",
-            "opendatahub.io/recommended-accelerators": '["nvidia.com/gpu"]',
-            "opendatahub.io/template-display-name": "KServe MLServer",
+            f"{ApiGroups.OPENDATAHUB_IO}/accelerator-name": "",
+            f"{ApiGroups.OPENDATAHUB_IO}/template-display-name": "KServe MLServer",
             "prometheus.kserve.io/path": "/metrics",
-            "prometheus.io/port": "8080",
+            "prometheus.io/port": str(Ports.REST_PORT),
             "openshift.io/display-name": "mlserver-1.x",
         },
         label={Labels.OpenDataHub.DASHBOARD: "true"},
@@ -76,6 +77,8 @@ def mlserver_runtime(
 def gaussian_credit_model(
     admin_client: DynamicClient,
     model_namespace: Namespace,
+    minio_pod: Pod,
+    minio_service: Service,
     minio_data_connection: Secret,
     mlserver_runtime: ServingRuntime,
     trustyai_service_with_pvc_storage: TrustyAIService,

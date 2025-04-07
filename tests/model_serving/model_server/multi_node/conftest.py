@@ -8,15 +8,24 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.node import Node
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
+from ocp_resources.resource import ResourceEditor
+from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
+from pytest_testconfig import config as py_config
+from timeout_sampler import TimeoutSampler
 
-from utilities.constants import KServeDeploymentType
+from tests.model_serving.model_server.multi_node.utils import (
+    delete_multi_node_pod_by_role,
+)
+from utilities.constants import KServeDeploymentType, Labels, Protocols, Timeout
 from utilities.general import download_model_data
 from utilities.inference_utils import create_isvc
 from utilities.infra import (
     get_pods_by_isvc_label,
+    verify_no_failed_pods,
     wait_for_inference_deployment_replicas,
 )
+from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
 @pytest.fixture(scope="session")
@@ -61,28 +70,47 @@ def models_bucket_downloaded_model_data(
 
 
 @pytest.fixture(scope="class")
-def multi_node_inference_service(
+def multi_node_serving_runtime(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    serving_runtime_from_template: ServingRuntime,
+) -> Generator[ServingRuntime, Any, Any]:
+    with ServingRuntimeFromTemplate(
+        client=admin_client,
+        name="vllm-multinode-runtime",  # TODO: rename servingruntime when RHOAIENG-16147 is resolved
+        namespace=model_namespace.name,
+        template_name="vllm-multinode-runtime-template",
+        multi_model=False,
+        enable_http=True,
+    ) as model_runtime:
+        yield model_runtime
+
+
+@pytest.fixture(scope="class")
+def multi_node_inference_service(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    multi_node_serving_runtime: ServingRuntime,
     model_pvc: PersistentVolumeClaim,
     models_bucket_downloaded_model_data: str,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
         name=request.param["name"],
-        namespace=model_namespace.name,
-        runtime=serving_runtime_from_template.name,
+        namespace=multi_node_serving_runtime.namespace,
+        runtime=multi_node_serving_runtime.name,
         storage_uri=f"pvc://{model_pvc.name}/{models_bucket_downloaded_model_data}",
-        model_format=serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
+        model_format=multi_node_serving_runtime.instance.spec.supportedModelFormats[0].name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         autoscaler_mode="external",
         multi_node_worker_spec={},
         wait_for_predictor_pods=False,
     ) as isvc:
         wait_for_inference_deployment_replicas(
-            client=admin_client, isvc=isvc, expected_num_deployments=2, runtime_name=serving_runtime_from_template.name
+            client=admin_client,
+            isvc=isvc,
+            expected_num_deployments=2,
+            runtime_name=multi_node_serving_runtime.name,
         )
         yield isvc
 
@@ -95,4 +123,91 @@ def multi_node_predictor_pods_scope_class(
     return get_pods_by_isvc_label(
         client=admin_client,
         isvc=multi_node_inference_service,
+    )
+
+
+@pytest.fixture(scope="function")
+def patched_multi_node_isvc_external_route(
+    multi_node_inference_service: InferenceService,
+) -> Generator[InferenceService, Any, Any]:
+    with ResourceEditor(
+        patches={
+            multi_node_inference_service: {
+                "metadata": {"labels": {Labels.Kserve.NETWORKING_KSERVE_IO: Labels.Kserve.EXPOSED}},
+            }
+        }
+    ):
+        for sample in TimeoutSampler(
+            wait_timeout=Timeout.TIMEOUT_1MIN,
+            sleep=1,
+            func=lambda: multi_node_inference_service.instance.status,
+        ):
+            if sample and sample.get("url", "").startswith(Protocols.HTTPS):
+                break
+
+        yield multi_node_inference_service
+
+
+@pytest.fixture(scope="function")
+def patched_multi_node_worker_spec(
+    request: FixtureRequest,
+    multi_node_inference_service: InferenceService,
+) -> Generator[InferenceService, Any, Any]:
+    with ResourceEditor(
+        patches={
+            multi_node_inference_service: {
+                "spec": {
+                    "predictor": {"workerSpec": request.param["worker-spec"]},
+                },
+            }
+        }
+    ):
+        yield multi_node_inference_service
+
+
+@pytest.fixture()
+def ray_ca_tls_secret(admin_client: DynamicClient) -> Secret:
+    return Secret(
+        client=admin_client,
+        name="ray-ca-tls",
+        namespace=py_config["applications_namespace"],
+    )
+
+
+@pytest.fixture()
+def ray_tls_secret(admin_client: DynamicClient, multi_node_inference_service: InferenceService) -> Secret:
+    return Secret(
+        client=admin_client,
+        name="ray-tls",
+        namespace=multi_node_inference_service.namespace,
+    )
+
+
+@pytest.fixture()
+def deleted_serving_runtime(
+    multi_node_serving_runtime: ServingRuntime,
+) -> Generator[None, Any, None]:
+    multi_node_serving_runtime.clean_up()
+
+    yield
+
+    multi_node_serving_runtime.deploy()
+
+
+@pytest.fixture()
+def deleted_multi_node_pod(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    multi_node_inference_service: InferenceService,
+) -> None:
+    delete_multi_node_pod_by_role(
+        client=admin_client,
+        isvc=multi_node_inference_service,
+        role=request.param["pod-role"],
+    )
+
+    verify_no_failed_pods(
+        client=admin_client,
+        isvc=multi_node_inference_service,
+        timeout=Timeout.TIMEOUT_10MIN,
     )

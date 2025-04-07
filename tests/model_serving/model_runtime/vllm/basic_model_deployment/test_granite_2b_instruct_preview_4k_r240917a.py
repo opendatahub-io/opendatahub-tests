@@ -1,6 +1,6 @@
 import pytest
 from simple_logger.logger import get_logger
-from utilities.constants import KServeDeploymentType
+from utilities.constants import KServeDeploymentType, Ports
 from tests.model_serving.model_runtime.vllm.utils import fetch_openai_response, run_raw_inference
 
 LOGGER = get_logger(name=__name__)
@@ -60,13 +60,13 @@ class TestGranite2BModel:
         ):
             pod = vllm_pod_resource.name
             model_details, grpc_chat_response, grpc_chat_stream_responses = run_raw_inference(
-                pod_name=pod, isvc=vllm_inference_service, port=8033, endpoint="tgis"
+                pod_name=pod, isvc=vllm_inference_service, port=Ports.GRPC_PORT, endpoint="tgis"
             )
             assert model_details == response_snapshot
             assert grpc_chat_response == response_snapshot
             assert grpc_chat_stream_responses == response_snapshot
             model_info, chat_responses, completion_responses = run_raw_inference(
-                pod_name=pod, isvc=vllm_inference_service, port=8080, endpoint="openai"
+                pod_name=pod, isvc=vllm_inference_service, port=Ports.REST_PORT, endpoint="openai"
             )
             assert model_info == response_snapshot
             assert chat_responses == response_snapshot
@@ -122,13 +122,13 @@ class TestGranite2BModelMultiGPU:
         ):
             pod = vllm_pod_resource.name
             model_detail, grpc_chat_response, grpc_chat_stream_responses = run_raw_inference(
-                pod_name=pod, isvc=vllm_inference_service, port=8033, endpoint="tgis"
+                pod_name=pod, isvc=vllm_inference_service, port=Ports.GRPC_PORT, endpoint="tgis"
             )
             assert model_detail == response_snapshot
             assert grpc_chat_response == response_snapshot
             assert grpc_chat_stream_responses == response_snapshot
             model_info, chat_responses, completion_responses = run_raw_inference(
-                pod_name=pod, isvc=vllm_inference_service, port=8080, endpoint="openai"
+                pod_name=pod, isvc=vllm_inference_service, port=Ports.REST_PORT, endpoint="openai"
             )
             assert model_info == response_snapshot
             assert chat_responses == response_snapshot
