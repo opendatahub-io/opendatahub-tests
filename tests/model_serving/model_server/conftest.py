@@ -35,6 +35,7 @@ from utilities.infra import (
     get_openshift_token,
     s3_endpoint_secret,
     update_configmap_data,
+    create_pvc,
 )
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -162,23 +163,7 @@ def model_pvc(
     admin_client: DynamicClient,
     model_namespace: Namespace,
 ) -> Generator[PersistentVolumeClaim, Any, Any]:
-    access_mode = "ReadWriteOnce"
-    pvc_kwargs = {
-        "name": "model-pvc",
-        "namespace": model_namespace.name,
-        "client": admin_client,
-        "size": request.param["pvc-size"],
-    }
-    if hasattr(request, "param"):
-        access_mode = request.param.get("access-modes")
-
-        if storage_class_name := request.param.get("storage-class-name"):
-            pvc_kwargs["storage_class"] = storage_class_name
-
-    pvc_kwargs["accessmodes"] = access_mode
-
-    with PersistentVolumeClaim(**pvc_kwargs) as pvc:
-        pvc.wait_for_status(status=pvc.Status.BOUND, timeout=120)
+    with create_pvc(request=request, admin_client=admin_client, namespace=model_namespace) as pvc:
         yield pvc
 
 
