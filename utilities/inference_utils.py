@@ -399,7 +399,7 @@ class UserInference(Inference):
         except JSONDecodeError:
             return {"output": out}
 
-    @retry(wait_timeout=30, sleep=5)
+    @retry(wait_timeout=Timeout.TIMEOUT_30SEC, sleep=5)
     def run_inference(self, cmd: str) -> str:
         """
         Run inference command

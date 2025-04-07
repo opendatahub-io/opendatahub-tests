@@ -40,7 +40,7 @@ from utilities.constants import ApiGroups, Labels, Timeout
 from utilities.constants import KServeDeploymentType
 from utilities.constants import Annotations
 from utilities.exceptions import FailedPodsError
-from timeout_sampler import TimeoutExpiredError, TimeoutSampler
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 import utilities.general
 
 LOGGER = get_logger(name=__name__)
@@ -576,17 +576,20 @@ def verify_no_failed_pods(
     timeout: int = Timeout.TIMEOUT_5MIN,
 ) -> None:
     """
-    Verify no failed pods.
+    Verify pods created and no failed pods.
 
     Args:
         client (DynamicClient): DynamicClient object
         isvc (InferenceService): InferenceService object
         runtime_name (str): ServingRuntime name
         timeout (int): Time to wait for the pod.
+
     Raises:
-            FailedPodsError: If any pod is in failed state
+        FailedPodsError: If any pod is in failed state
 
     """
+    wait_for_isvc_pods(client=client, isvc=isvc, runtime_name=runtime_name)
+
     LOGGER.info("Verifying no failed pods")
     for pods in TimeoutSampler(
         wait_timeout=timeout,
@@ -612,12 +615,16 @@ def verify_no_failed_pods(
                 pod_status = pod.instance.status
 
                 if pod_status.containerStatuses:
-                    for container_status in pod_status.containerStatuses:
+                    for container_status in pod_status.get("containerStatuses", []) + pod_status.get(
+                        "initContainerStatuses", []
+                    ):
                         is_waiting_pull_back_off = (
                             wait_state := container_status.state.waiting
                         ) and wait_state.reason in (
                             pod.Status.IMAGE_PULL_BACK_OFF,
                             pod.Status.CRASH_LOOPBACK_OFF,
+                            pod.Status.ERR_IMAGE_PULL,
+                            "InvalidImageName",
                         )
 
                         is_terminated_error = (
@@ -629,11 +636,6 @@ def verify_no_failed_pods(
 
                         if is_waiting_pull_back_off or is_terminated_error:
                             failed_pods[pod.name] = pod_status
-
-                        if init_container_status := pod_status.initContainerStatuses:
-                            if container_terminated := init_container_status[0].lastState.terminated:
-                                if container_terminated.reason == "Error":
-                                    failed_pods[pod.name] = pod_status
 
                 elif pod_status.phase in (
                     pod.Status.CRASH_LOOPBACK_OFF,
@@ -781,3 +783,23 @@ def wait_for_serverless_pods_deletion(resource: Project | Namespace, admin_clien
         ):
             LOGGER.info(f"Waiting for {KServeDeploymentType.SERVERLESS} pod {pod.name} to be deleted")
             pod.wait_deleted(timeout=Timeout.TIMEOUT_1MIN)
+
+
+@retry(wait_timeout=Timeout.TIMEOUT_30SEC, sleep=1, exceptions_dict={ResourceNotFoundError: []})
+def wait_for_isvc_pods(client: DynamicClient, isvc: InferenceService, runtime_name: str | None = None) -> list[Pod]:
+    """
+    Wait for ISVC pods.
+
+    Args:
+        client (DynamicClient): DynamicClient object
+        isvc (InferenceService): InferenceService object
+        runtime_name (ServingRuntime): ServingRuntime name
+
+    Returns:
+        list[Pod]: A list of all matching pods
+
+    Raises:
+        TimeoutExpiredError: If pods do not exist
+    """
+    LOGGER.info("Waiting for pods to be created")
+    return get_pods_by_isvc_label(client=client, isvc=isvc, runtime_name=runtime_name)
