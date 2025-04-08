@@ -1,27 +1,40 @@
 import pytest
+import re
 import schemathesis
 from typing import Generator, Any
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
+from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.namespace import Namespace
 from ocp_resources.service import Service
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
+from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
+
 from ocp_resources.model_registry import ModelRegistry
+from ocp_resources.resource import ResourceEditor
+
+from pytest import FixtureRequest
 from simple_logger.logger import get_logger
 from kubernetes.dynamic import DynamicClient
-
+from pytest_testconfig import config as py_config
+from model_registry.types import RegisteredModel
+from tests.model_registry.constants import (
+    MR_NAMESPACE,
+    MR_OPERATOR_NAME,
+    MR_INSTANCE_NAME,
+    ISTIO_CONFIG_DICT,
+    DB_RESOURCES_NAME,
+    MR_DB_IMAGE_DIGEST,
+)
 from tests.model_registry.utils import get_endpoint_from_mr_service, get_mr_service_by_label
 from utilities.infra import create_ns
-from utilities.constants import Annotations, Protocols
-from .constants import MR_DB_IMAGE_DIGEST
+from utilities.constants import Annotations, Protocols, DscComponents
+from model_registry import ModelRegistry as ModelRegistryClient
 
 
 LOGGER = get_logger(name=__name__)
 
-DB_RESOURCES_NAME: str = "model-registry-db"
-MR_INSTANCE_NAME: str = "model-registry"
-MR_OPERATOR_NAME: str = "model-registry-operator"
-MR_NAMESPACE: str = "rhoai-model-registries"
 DEFAULT_LABEL_DICT_DB: dict[str, str] = {
     Annotations.KubernetesIo.NAME: DB_RESOURCES_NAME,
     Annotations.KubernetesIo.INSTANCE: DB_RESOURCES_NAME,
@@ -30,20 +43,12 @@ DEFAULT_LABEL_DICT_DB: dict[str, str] = {
 
 
 @pytest.fixture(scope="class")
-def model_registry_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
-    # This namespace should exist after Model Registry is enabled, but it can also be deleted
-    # from the cluster and does not get reconciled. Fetch if it exists, create otherwise.
-    ns = Namespace(name=MR_NAMESPACE, client=admin_client)
-    if ns.exists:
+def model_registry_namespace(request: FixtureRequest, admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
+    with create_ns(
+        name=request.param.get("namespace_name", MR_NAMESPACE),
+        admin_client=admin_client,
+    ) as ns:
         yield ns
-    else:
-        LOGGER.warning(f"{MR_NAMESPACE} namespace was not present, creating it")
-        with create_ns(
-            name=MR_NAMESPACE,
-            admin_client=admin_client,
-            teardown=False,
-        ) as ns:
-            yield ns
 
 
 @pytest.fixture(scope="class")
@@ -259,10 +264,7 @@ def model_registry_instance(
         },
         grpc={},
         rest={},
-        istio={
-            "authProvider": "redhat-ods-applications-auth-provider",
-            "gateway": {"grpc": {"tls": {}}, "rest": {"tls": {}}},
-        },
+        istio=ISTIO_CONFIG_DICT,
         mysql={
             "host": f"{model_registry_db_deployment.name}.{model_registry_db_deployment.namespace}.svc.cluster.local",
             "database": model_registry_db_secret.string_data["database-name"],
@@ -304,3 +306,70 @@ def generated_schema(model_registry_instance_rest_endpoint: str) -> Any:
         uri="https://raw.githubusercontent.com/kubeflow/model-registry/main/api/openapi/model-registry.yaml",
         base_url=f"https://{model_registry_instance_rest_endpoint}/",
     )
+
+
+@pytest.fixture(scope="class")
+def updated_dsc_component_state_scope_class(
+    request: FixtureRequest,
+    model_registry_namespace: Namespace,
+    dsc_resource: DataScienceCluster,
+) -> Generator[DataScienceCluster, Any, Any]:
+    original_components = dsc_resource.instance.spec.components
+    with ResourceEditor(patches={dsc_resource: {"spec": {"components": request.param["component_patch"]}}}):
+        for component_name in request.param["component_patch"]:
+            dsc_resource.wait_for_condition(condition=DscComponents.COMPONENT_MAPPING[component_name], status="True")
+        yield dsc_resource
+
+    for component_name, value in request.param["component_patch"].items():
+        LOGGER.info(f"Waiting for component {component_name} to be updated.")
+        if original_components[component_name]["managementState"] == DscComponents.ManagementState.MANAGED:
+            dsc_resource.wait_for_condition(condition=DscComponents.COMPONENT_MAPPING[component_name], status="True")
+        if (
+            component_name == DscComponents.MODELREGISTRY
+            and value.get("managementState") == DscComponents.ManagementState.MANAGED
+        ):
+            # Since namespace specified in registriesNamespace is automatically created after setting
+            # managementStateto Managed. We need to explicitly delete it on clean up.
+            namespace = Namespace(name=value["registriesNamespace"], ensure_exists=True)
+            if namespace:
+                namespace.delete(wait=True)
+
+
+@pytest.fixture(scope="class")
+def model_registry_client(current_client_token: str, model_registry_instance_rest_endpoint: str) -> ModelRegistryClient:
+    # address and port need to be split in the client instantiation
+    server, port = model_registry_instance_rest_endpoint.split(":")
+    return ModelRegistryClient(
+        server_address=f"{Protocols.HTTPS}://{server}",
+        port=port,
+        author="opendatahub-test",
+        user_token=current_client_token,
+        is_secure=False,
+    )
+
+
+@pytest.fixture(scope="class")
+def registered_model(request: FixtureRequest, model_registry_client: ModelRegistryClient) -> RegisteredModel:
+    return model_registry_client.register_model(
+        name=request.param.get("model_name"),
+        uri=request.param.get("model_uri"),
+        version=request.param.get("model_version"),
+        description=request.param.get("model_description"),
+        model_format_name=request.param.get("model_format"),
+        model_format_version=request.param.get("model_format_version"),
+        storage_key=request.param.get("model_storage_key"),
+        storage_path=request.param.get("model_storage_path"),
+        metadata=request.param.get("model_metadata"),
+    )
+
+
+@pytest.fixture()
+def model_registry_operator_pod(admin_client: DynamicClient) -> Pod:
+    model_registry_operator_pods = [
+        pod
+        for pod in Pod.get(dyn_client=admin_client, namespace=py_config["applications_namespace"])
+        if re.match(MR_OPERATOR_NAME, pod.name)
+    ]
+    if not model_registry_operator_pods:
+        raise ResourceNotFoundError("Model registry operator pod not found")
+    return model_registry_operator_pods[0]

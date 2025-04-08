@@ -187,6 +187,7 @@ class Labels:
 
 
 class Timeout:
+    TIMEOUT_30SEC: int = 30
     TIMEOUT_1MIN: int = 60
     TIMEOUT_2MIN: int = 2 * TIMEOUT_1MIN
     TIMEOUT_4MIN: int = 4 * TIMEOUT_1MIN
