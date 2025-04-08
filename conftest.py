@@ -6,7 +6,15 @@ import pathlib
 import shutil
 
 import shortuuid
-from pytest import Parser, Session, FixtureRequest, FixtureDef, Item, Config, CollectReport
+from pytest import (
+    Parser,
+    Session,
+    FixtureRequest,
+    FixtureDef,
+    Item,
+    Config,
+    CollectReport,
+)
 from _pytest.terminal import TerminalReporter
 from typing import Optional, Any
 from pytest_testconfig import config as py_config
@@ -24,6 +32,7 @@ def pytest_addoption(parser: Parser) -> None:
     buckets_group = parser.getgroup(name="Buckets")
     runtime_group = parser.getgroup(name="Runtime details")
     upgrade_group = parser.getgroup(name="Upgrade options")
+    platform_group = parser.getgroup(name="Platform")
 
     # AWS config and credentials options
     aws_group.addoption(
@@ -39,18 +48,26 @@ def pytest_addoption(parser: Parser) -> None:
 
     # Buckets options
     buckets_group.addoption(
-        "--ci-s3-bucket-name", default=os.environ.get("CI_S3_BUCKET_NAME"), help="Ci S3 bucket name"
+        "--ci-s3-bucket-name",
+        default=os.environ.get("CI_S3_BUCKET_NAME"),
+        help="Ci S3 bucket name",
     )
     buckets_group.addoption(
-        "--ci-s3-bucket-region", default=os.environ.get("CI_S3_BUCKET_REGION"), help="Ci S3 bucket region"
+        "--ci-s3-bucket-region",
+        default=os.environ.get("CI_S3_BUCKET_REGION"),
+        help="Ci S3 bucket region",
     )
 
     buckets_group.addoption(
-        "--ci-s3-bucket-endpoint", default=os.environ.get("CI_S3_BUCKET_ENDPOINT"), help="Ci S3 bucket endpoint"
+        "--ci-s3-bucket-endpoint",
+        default=os.environ.get("CI_S3_BUCKET_ENDPOINT"),
+        help="Ci S3 bucket endpoint",
     )
 
     buckets_group.addoption(
-        "--models-s3-bucket-name", default=os.environ.get("MODELS_S3_BUCKET_NAME"), help="Models S3 bucket name"
+        "--models-s3-bucket-name",
+        default=os.environ.get("MODELS_S3_BUCKET_NAME"),
+        help="Models S3 bucket name",
     )
     buckets_group.addoption(
         "--models-s3-bucket-region",
@@ -91,6 +108,17 @@ def pytest_addoption(parser: Parser) -> None:
         action="store_true",
         help="Delete pre-upgrade resources; useful when debugging pre-upgrade tests",
     )
+    upgrade_group.addoption(
+        "--upgrade-deployment-modes",
+        help="Coma-separated str; specify inference service deployment modes tests to run in upgrade tests. "
+        "If not set, all will be tested.",
+    )
+
+    # Platform options
+    platform_group.addoption(
+        "--applications-namespace",
+        help="RHOAI/ODH applications namespace",
+    )
 
 
 def pytest_cmdline_main(config: Any) -> None:
@@ -102,19 +130,45 @@ def pytest_collection_modifyitems(session: Session, config: Config, items: list[
     Pytest fixture to filter or re-order the items in-place.
 
     Filters upgrade tests based on '--pre-upgrade' / '--post-upgrade' option and marker.
+    If `--upgrade-deployment-modes` option is set, only tests with the specified deployment modes will be added.
     """
+
+    def _add_upgrade_test(_item: Item, _upgrade_deployment_modes: list[str]) -> bool:
+        """
+        Add upgrade test to the list of tests to run.
+
+        Args:
+            _item (Item): The test item.
+            _upgrade_deployment_modes (list[str]): The deployment modes to test.
+
+        Returns:
+            True if the test should be added, False otherwise.
+
+        """
+        if not _upgrade_deployment_modes:
+            return True
+
+        return any([keyword for keyword in _item.keywords if keyword in _upgrade_deployment_modes])
+
     pre_upgrade_tests: list[Item] = []
     post_upgrade_tests: list[Item] = []
     non_upgrade_tests: list[Item] = []
+    upgrade_deployment_modes: list[str] = []
 
     run_pre_upgrade_tests: str | None = config.getoption(name="pre_upgrade")
     run_post_upgrade_tests: str | None = config.getoption(name="post_upgrade")
+    if config_upgrade_deployment_modes := config.getoption(name="upgrade_deployment_modes"):
+        upgrade_deployment_modes = config_upgrade_deployment_modes.split(",")
 
     for item in items:
-        if "pre_upgrade" in item.keywords:
+        if "pre_upgrade" in item.keywords and _add_upgrade_test(
+            _item=item, _upgrade_deployment_modes=upgrade_deployment_modes
+        ):
             pre_upgrade_tests.append(item)
 
-        if "post_upgrade" in item.keywords:
+        elif "post_upgrade" in item.keywords and _add_upgrade_test(
+            _item=item, _upgrade_deployment_modes=upgrade_deployment_modes
+        ):
             post_upgrade_tests.append(item)
 
         else:
@@ -149,9 +203,6 @@ def pytest_sessionstart(session: Session) -> None:
         log_level=session.config.getoption("log_cli_level") or logging.INFO,
     )
 
-    if py_config.get("distribution") == "upstream":
-        py_config["applications_namespace"] = "opendatahub"
-
 
 def pytest_fixture_setup(fixturedef: FixtureDef[Any], request: FixtureRequest) -> None:
     LOGGER.info(f"Executing {fixturedef.scope} fixture: {fixturedef.argname}")
@@ -160,8 +211,9 @@ def pytest_fixture_setup(fixturedef: FixtureDef[Any], request: FixtureRequest) -
 def pytest_runtest_setup(item: Item) -> None:
     """
     Performs the following actions:
-    1. Adds skip fixture for kserve if serverless or authorino operators are not installed.
-    2. Adds skip fixture for serverless if authorino/serverless/service mesh are not deployed.
+    1. Updates global config (`updated_global_config`)
+    2. Adds skip fixture for kserve if serverless or authorino operators are not installed.
+    3. Adds skip fixture for serverless if authorino/serverless/service mesh are not deployed.
     """
 
     BASIC_LOGGER.info(f"\n{separator(symbol_='-', val=item.name)}")
@@ -178,6 +230,9 @@ def pytest_runtest_setup(item: Item) -> None:
 
     elif KServeDeploymentType.MODEL_MESH.lower() in item.keywords:
         item.fixturenames.insert(0, "enabled_modelmesh_in_dsc")
+
+    # The above fixtures require the global config to be updated before being called
+    item.fixturenames.insert(0, "updated_global_config")
 
 
 def pytest_runtest_call(item: Item) -> None:
@@ -207,6 +262,9 @@ def pytest_report_teststatus(report: CollectReport, config: Config) -> None:
 
 
 def pytest_sessionfinish(session: Session, exitstatus: int) -> None:
+    if session.config.option.setupplan or session.config.option.collectonly:
+        return
+
     base_dir = py_config["tmp_base_dir"]
     LOGGER.info(f"Deleting pytest base dir {base_dir}")
     shutil.rmtree(path=base_dir, ignore_errors=True)

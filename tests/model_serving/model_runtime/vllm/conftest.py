@@ -10,13 +10,15 @@ from ocp_resources.service_account import ServiceAccount
 from tests.model_serving.model_runtime.vllm.utils import (
     kserve_s3_endpoint_secret,
     validate_supported_quantization_schema,
+    skip_if_deployment_mode,
 )
-from utilities.constants import KServeDeploymentType
+from utilities.constants import KServeDeploymentType, Labels, RuntimeTemplates
 from pytest import FixtureRequest
 from syrupy.extensions.json import JSONSnapshotExtension
-from tests.model_serving.model_server.utils import create_isvc
-from tests.model_serving.model_runtime.vllm.constant import TEMPLATE_MAP, ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES
+from tests.model_serving.model_runtime.vllm.constant import ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES, TEMPLATE_MAP
 from simple_logger.logger import get_logger
+
+from utilities.inference_utils import create_isvc
 from utilities.infra import get_pods_by_isvc_label
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -32,7 +34,7 @@ def serving_runtime(
     vllm_runtime_image: str,
 ) -> Generator[ServingRuntime, None, None]:
     accelerator_type = supported_accelerator_type.lower()
-    template_name = TEMPLATE_MAP.get(accelerator_type, "vllm-runtime-template")
+    template_name = TEMPLATE_MAP.get(accelerator_type, RuntimeTemplates.VLLM_CUDA)
     with ServingRuntimeFromTemplate(
         client=admin_client,
         name="vllm-runtime",
@@ -40,6 +42,7 @@ def serving_runtime(
         template_name=template_name,
         deployment_type=request.param["deployment_type"],
         runtime_image=vllm_runtime_image,
+        support_tgis_open_ai_endpoints=True,
     ) as model_runtime:
         yield model_runtime
 
@@ -72,12 +75,14 @@ def vllm_inference_service(
     }
     accelerator_type = supported_accelerator_type.lower()
     gpu_count = request.param.get("gpu_count")
-    identifier = ACCELERATOR_IDENTIFIER.get(accelerator_type, "nvidia.com/gpu")
+    timeout = request.param.get("timeout")
+    identifier = ACCELERATOR_IDENTIFIER.get(accelerator_type, Labels.Nvidia.NVIDIA_COM_GPU)
     resources: Any = PREDICT_RESOURCES["resources"]
     resources["requests"][identifier] = gpu_count
     resources["limits"][identifier] = gpu_count
     isvc_kwargs["resources"] = resources
-
+    if timeout:
+        isvc_kwargs["timeout"] = timeout
     if gpu_count > 1:
         isvc_kwargs["volumes"] = PREDICT_RESOURCES["volumes"]
         isvc_kwargs["volumes_mounts"] = PREDICT_RESOURCES["volume_mounts"]
@@ -138,5 +143,23 @@ def response_snapshot(snapshot: Any) -> Any:
 
 
 @pytest.fixture
-def get_pod_name_resource(admin_client: DynamicClient, vllm_inference_service: InferenceService) -> Pod:
+def vllm_pod_resource(admin_client: DynamicClient, vllm_inference_service: InferenceService) -> Pod:
     return get_pods_by_isvc_label(client=admin_client, isvc=vllm_inference_service)[0]
+
+
+@pytest.fixture
+def skip_if_serverless_deployemnt(vllm_inference_service: InferenceService) -> None:
+    skip_if_deployment_mode(
+        isvc=vllm_inference_service,
+        deployment_type=KServeDeploymentType.SERVERLESS,
+        deployment_message="Test is being skipped because model is being deployed in serverless mode",
+    )
+
+
+@pytest.fixture
+def skip_if_raw_deployemnt(vllm_inference_service: InferenceService) -> None:
+    skip_if_deployment_mode(
+        isvc=vllm_inference_service,
+        deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
+        deployment_message="Test is being skipped because model is being deployed in raw mode",
+    )

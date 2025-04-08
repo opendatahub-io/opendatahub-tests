@@ -6,6 +6,10 @@ import sys
 
 from github.PullRequest import PullRequest
 from github.Repository import Repository
+from github.MainClass import Github
+from github.GithubException import UnknownObjectException
+from github.Organization import Organization
+from github.Team import Team
 
 from constants import (
     ALL_LABELS_DICT,
@@ -20,8 +24,8 @@ from constants import (
     SUPPORTED_LABELS,
     VERIFIED_LABEL_STR,
     WELCOME_COMMENT,
+    APPROVED,
 )
-from github import Github, UnknownObjectException
 from simple_logger.logger import get_logger
 
 LOGGER = get_logger(name="pr_labeler")
@@ -31,7 +35,7 @@ class PrBaseClass:
     class SupportedActions:
         add_remove_labels_action_name: str = "add-remove-labels"
         pr_size_action_name: str = "add-pr-size-label"
-        welcome_comment_action_name: str = "add-welcome-comment"
+        welcome_comment_action_name: str = "add-welcome-comment-set-assignee"
         supported_actions: set[str] = {
             pr_size_action_name,
             add_remove_labels_action_name,
@@ -41,6 +45,7 @@ class PrBaseClass:
     def __init__(self) -> None:
         self.repo: Repository
         self.pr: PullRequest
+        self.gh_client: Github
 
         self.repo_name = os.environ["GITHUB_REPOSITORY"]
         self.pr_number = int(os.getenv("GITHUB_PR_NUMBER", 0))
@@ -77,8 +82,8 @@ class PrBaseClass:
         )
 
     def set_gh_config(self) -> None:
-        gh_client: Github = Github(login_or_token=self.github_token)
-        self.repo = gh_client.get_repo(full_name_or_id=self.repo_name)
+        self.gh_client = Github(login_or_token=self.github_token)
+        self.repo = self.gh_client.get_repo(full_name_or_id=self.repo_name)
         self.pr = self.repo.get_pull(number=self.pr_number)
 
 
@@ -87,11 +92,28 @@ class PrLabeler(PrBaseClass):
         super().__init__()
         self.user_login = os.getenv("GITHUB_USER_LOGIN")
         self.review_state = os.getenv("GITHUB_EVENT_REVIEW_STATE")
+        # We don't care if the body of the comment is in the discussion page or a review
         self.comment_body = os.getenv("COMMENT_BODY", "")
+        if self.comment_body == "":
+            # if it wasn't a discussion page comment, try to get a review comment, otherwise keep empty
+            self.comment_body = os.getenv("REVIEW_COMMENT_BODY", "")
         self.last_commit = list(self.pr.get_commits())[-1]
         self.last_commit_sha = self.last_commit.sha
 
         self.verify_labeler_config()
+
+    def verify_allowed_user(self) -> None:
+        org: Organization = self.gh_client.get_organization("opendatahub-io")
+        # slug is the team name with replaced special characters,
+        # all words to lowercase and spaces replace with a -
+        team: Team = org.get_team_by_slug("opendatahub-tests-contributors")
+        try:
+            # check if the user is a member of opendatahub-tests-contributors
+            membership = team.get_team_membership(self.user_login)
+            LOGGER.info(f"User {self.user_login} is a member of the test contributor team. {membership}")
+        except UnknownObjectException:
+            LOGGER.error(f"User {self.user_login} is not allowed for this action. Exiting.")
+            sys.exit(0)
 
     def verify_labeler_config(self) -> None:
         if self.action == self.SupportedActions.add_remove_labels_action_name and self.event_name in (
@@ -101,21 +123,22 @@ class PrLabeler(PrBaseClass):
             if not self.user_login:
                 sys.exit("`GITHUB_USER_LOGIN` is not set")
 
-            if self.event_name == "issue_comment" and not self.comment_body:
-                sys.exit("`COMMENT_BODY` is not set")
-
-            if self.event_name == "pull_request_review" and not self.review_state:
-                sys.exit("`GITHUB_EVENT_REVIEW_STATE` is not set")
+            if (
+                self.event_name == "issue_comment" or self.event_name == "pull_request_review"
+            ) and not self.comment_body:
+                LOGGER.info("No comment, nothing to do. Exiting.")
+                sys.exit(0)
 
     def run_pr_label_action(self) -> None:
         if self.action == self.SupportedActions.pr_size_action_name:
             self.set_pr_size()
 
         if self.action == self.SupportedActions.add_remove_labels_action_name:
+            self.verify_allowed_user()
             self.add_remove_pr_labels()
 
         if self.action == self.SupportedActions.welcome_comment_action_name:
-            self.add_welcome_comment()
+            self.add_welcome_comment_set_assignee()
 
     def get_pr_size(self) -> int:
         additions: int = 0
@@ -226,6 +249,10 @@ class PrLabeler(PrBaseClass):
 
             return
 
+        # We will only reach here if the PR was created from a fork
+        elif self.event_name == "workflow_run" and self.event_action == "submitted":
+            self.pull_request_review_label_actions()
+
         LOGGER.warning("`add_remove_pr_label` called without a supported event")
 
     def pull_request_review_label_actions(
@@ -239,7 +266,7 @@ class PrLabeler(PrBaseClass):
         label_to_remove = None
         label_to_add = None
 
-        if self.review_state == "approved":
+        if self.review_state == APPROVED:
             label_to_remove = change_requested_label
             label_to_add = lgtm_label
 
@@ -276,12 +303,20 @@ class PrLabeler(PrBaseClass):
             LOGGER.info(f"Processing labels: {labels}")
             for label, action in labels.items():
                 if label == LGTM_LABEL_STR:
-                    label = f"{LGTM_BY_LABEL_PREFIX}{self.user_login}"
+                    if self.user_login == self.pr.user.login:
+                        LOGGER.info("PR submitter cannot approve for their own PR")
+                        continue
+                    else:
+                        label = f"{LGTM_BY_LABEL_PREFIX}{self.user_login}"
+                        if not action[CANCEL_ACTION] or self.event_action == "deleted":
+                            self.approve_pr()
 
                 label_in_pr = any([label == _label.lower() for _label in self.pr_labels])
                 LOGGER.info(f"Processing label: {label}, action: {action}")
 
                 if action[CANCEL_ACTION] or self.event_action == "deleted":
+                    if label == LGTM_LABEL_STR:
+                        self.dismiss_pr_approval()
                     if label_in_pr:
                         LOGGER.info(f"Removing label {label}")
                         self.pr.remove_from_labels(label=label)
@@ -294,8 +329,25 @@ class PrLabeler(PrBaseClass):
             if commented_by_label not in self.pr_labels:
                 self.add_pr_label(label=commented_by_label)
 
-    def add_welcome_comment(self) -> None:
+    def add_welcome_comment_set_assignee(self) -> None:
         self.pr.create_issue_comment(body=WELCOME_COMMENT)
+        try:
+            self.pr.add_to_assignees(self.pr.user.login)
+        except UnknownObjectException:
+            LOGGER.warning(f"User {self.pr.user.login} can not be assigned to the PR.")
+
+    def approve_pr(self) -> None:
+        self.pr.create_review(event="APPROVE")
+
+    def dismiss_pr_approval(self) -> None:
+        all_reviews = self.pr.get_reviews()
+        current_user = self.gh_client.get_user().login
+        LOGGER.info(f"Looking for approving review by user {current_user}")
+        # The reviews are paginated in chronological order. We need to get the newest by our account
+        for review in all_reviews.reversed:
+            if review.user.login == current_user and review.state == APPROVED:
+                LOGGER.info(f"found review by user {current_user} with id {review.id}")
+                review.dismiss(message="Dismissing review due to '/lgtm cancel' comment")
 
 
 def main() -> None:

@@ -1,3 +1,6 @@
+minimum_pre_commit_version: 3.3.0
+default_install_hook_types: [pre-commit, commit-msg]
+
 default_language_version:
   python: python3
 
@@ -16,7 +19,7 @@ repos:
       - id: check-toml
 
   - repo: https://github.com/PyCQA/flake8
-    rev: "7.1.1"
+    rev: "7.2.0"
     hooks:
       - id: flake8
         args: [--config=.flake8, '--ignore=FCN001,W503']
@@ -32,7 +35,7 @@ repos:
       - id: detect-secrets
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.4
+    rev: v0.11.4
     hooks:
       - id: ruff
       - id: ruff-format
@@ -46,13 +49,23 @@ repos:
   #     - id: renovate-config-validator
 
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.23.3
+    rev: v8.24.2
     hooks:
       - id: gitleaks
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.14.1
+    rev: v1.15.0
     hooks:
       - id: mypy
         additional_dependencies: ["types-PyYAML", "types-requests"]
         exclude: ^(docs/|.*/test_.*|utilities/manifests/*|utilities/plugins/tgis_grpc/*)
+
+
+  - repo: https://github.com/espressif/conventional-precommit-linter
+    rev: v1.10.0
+    hooks:
+      - id: conventional-precommit-linter
+        stages: [ commit-msg ]
+        args:
+          - --subject-min-length=10
+          - --subject-max-length=80

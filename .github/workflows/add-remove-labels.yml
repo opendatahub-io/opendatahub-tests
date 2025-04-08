@@ -4,14 +4,13 @@ on:
     types: [synchronize]
 
   pull_request_review:
+    types: [submitted, edited]
+
+  pull_request_review_comment:
+    types: [created, edited]
 
   issue_comment:
     types: [created, edited, deleted]
-    if: |
-      contains(github.event.comment.body, '/wip') ||
-      contains(github.event.comment.body, '/verified') ||
-      contains(github.event.comment.body, '/lgtm') ||
-      contains(github.event.comment.body, '/hold')
 
 
 permissions:
@@ -21,6 +20,12 @@ permissions:
 
 jobs:
   add-remove-labels:
+    if: |
+      contains(github.event.comment.body, '/wip') ||
+      contains(github.event.comment.body, '/verified') ||
+      contains(github.event.comment.body, '/lgtm') ||
+      contains(github.event.comment.body, '/hold') ||
+      contains(github.event.comment.body, '/cherry-pick')
     runs-on: ubuntu-latest
 
     steps:
@@ -38,12 +43,13 @@ jobs:
 
       - name: Run add remove labels
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.OPENDATAHUB_TESTS_BOT_PAT }}
           GITHUB_PR_NUMBER: "${{ github.event.pull_request.number || github.event.issue.number }}"
           GITHUB_EVENT_ACTION: ${{ github.event.action }}
           GITHUB_EVENT_REVIEW_STATE: ${{ github.event.review.state }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           COMMENT_BODY: ${{ github.event.comment.body }}
+          REVIEW_COMMENT_BODY: ${{ github.event.review.body }}
           GITHUB_USER_LOGIN: ${{ github.event.sender.login }}
           ACTION: "add-remove-labels"
         run: uv run python .github/workflows/scripts/pr_workflow.py

@@ -42,8 +42,8 @@ classifiers = [
 
 dependencies = [
     "ipython>=8.18.1",
+    "model-registry>=0.2.13",
     "openshift-python-utilities>=5.0.71",
-    "openshift-python-wrapper>=11.0.7",
     "pytest-dependency>=0.6.0",
     "pytest-progress",
     "python-simple-logger",
@@ -63,6 +63,8 @@ dependencies = [
     "timeout-sampler>=1.0.6",
     "shortuuid>=1.0.13",
     "jira>=3.8.0",
+    "openshift-python-wrapper>=11.0.38",
+    "semver>=3.0.4",
 ]
 
 [project.urls]
