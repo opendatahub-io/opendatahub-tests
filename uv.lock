@@ -1078,7 +1078,7 @@ requires-dist = [
     { name = "python-simple-logger" },
     { name = "pyyaml" },
     { name = "requests" },
-    { name = "schemathesis", specifier = ">=4.0.0a4" },
+    { name = "schemathesis", specifier = ">=4.0.0a8" },
     { name = "shortuuid", specifier = ">=1.0.13" },
     { name = "syrupy" },
     { name = "tenacity" },
@@ -2000,7 +2000,7 @@ wheels = [
 
 [[package]]
 name = "schemathesis"
-version = "4.0.0a4"
+version = "4.0.0a8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "backoff" },
@@ -2023,9 +2023,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "werkzeug" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/68/84/3152e7b0b22f33076f7790df30424e4232b2e7e240cdb2e0b039e0105cfd/schemathesis-4.0.0a4.tar.gz", hash = "sha256:1c957e305042d3cac7c269fec4e5085553a2052028113ad565cdf8ddf50d6b29", size = 57661951 }
+sdist = { url = "https://files.pythonhosted.org/packages/64/8b/a265394a234b2185aa3a952f7ddd5ba687db18c25e8e72bdbca33f300ff7/schemathesis-4.0.0a8.tar.gz", hash = "sha256:37e0903dd608a88c958f5ba62ac1f2090904e5331cce7289d2a468e0ff9e7907", size = 57679700 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c3/10/8287f0ca753878ba54a50e14b1ae00dad7843a21c098372c7cae591e722d/schemathesis-4.0.0a4-py3-none-any.whl", hash = "sha256:69eec3d2e1de17e02ff49f1ebac01d1088c8cdee15937e8dc1e3b2f5b6e0bcea", size = 273495 },
+    { url = "https://files.pythonhosted.org/packages/b7/e2/f49541ef65376a97280e70e8eb7b1a7a49fb024873b2cfcf22ac96fd461e/schemathesis-4.0.0a8-py3-none-any.whl", hash = "sha256:fdd44414dbe96bdf4b0e7f1f54b0ccb7343e0a095ed48a4e8ba6475fb2ed408f", size = 276672 },
 ]
 
 [[package]]

@@ -311,16 +311,6 @@ def generated_schema(model_registry_instance_rest_endpoint: str) -> BaseOpenAPIS
     return schema
 
 
-# Used when testing local changes
-# @pytest.fixture(scope="class")
-# def generated_schema_local(model_registry_instance_rest_endpoint):
-#     schema = schemathesis.openapi.from_path(
-#         path="utilities/manifests/model-registry-api.yaml",
-#     )
-#     schema.configure(base_url=f"https://{model_registry_instance_rest_endpoint}/")
-#     return schema
-
-
 @pytest.fixture
 def state_machine(generated_schema: BaseOpenAPISchema, current_client_token: str) -> APIStateMachine:
     BaseAPIWorkflow = generated_schema.as_state_machine()
@@ -336,11 +326,7 @@ def state_machine(generated_schema: BaseOpenAPISchema, current_client_token: str
             return {"verify": False, "headers": self.headers}
 
         def after_call(self, response: Response, case: Case) -> None:
-            LOGGER.info(
-                "%s %s -> %d",
-                case.method,
-                case.path,
-                response.status_code,
-            )
+            LOGGER.info(f"{case.method} {case.path} -> {response.status_code}")
+            LOGGER.info("This is the after_call function")
 
     return APIWorkflow
