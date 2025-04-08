@@ -1,5 +1,7 @@
 import pytest
 from simple_logger.logger import get_logger
+from tests.model_registry.constants import MR_NAMESPACE
+from utilities.constants import DscComponents
 
 LOGGER = get_logger(name=__name__)
 
@@ -7,17 +9,23 @@ LOGGER = get_logger(name=__name__)
 @pytest.mark.fuzzer
 @pytest.mark.sanity
 @pytest.mark.parametrize(
-    "updated_dsc_component_state",
+    "model_registry_namespace, updated_dsc_component_state_scope_class",
     [
         pytest.param(
+            {"namespace_name": MR_NAMESPACE},
             {
-                "component_name": "modelregistry",
-                "desired_state": "Managed",
-                "condition_type": "model-registry-operatorReady",
+                "component_patch": {
+                    DscComponents.MODELREGISTRY: {
+                        "managementState": DscComponents.ManagementState.MANAGED,
+                        "registriesNamespace": MR_NAMESPACE,
+                    },
+                },
             },
         )
     ],
     indirect=True,
 )
-def test_mr_api(state_machine, updated_dsc_component_state):
-    state_machine.run()
+@pytest.mark.usefixtures("model_registry_namespace", "updated_dsc_component_state_scope_class")
+class TestRestAPIStateful:
+    def test_mr_api(self, state_machine):
+        state_machine.run()
