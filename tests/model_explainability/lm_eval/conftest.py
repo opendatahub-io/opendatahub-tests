@@ -399,16 +399,16 @@ def lmevaljob_s3_offline(
 
 @pytest.fixture(scope="function")
 def lmevaljob_hf_pod(admin_client: DynamicClient, lmevaljob_hf: LMEvalJob) -> Generator[Pod, Any, Any]:
-    yield get_lmevaljob_pod(admin_client, lmevaljob_hf)
+    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_hf)
 
 
 @pytest.fixture(scope="function")
 def lmevaljob_vllm_emulator_pod(
     admin_client: DynamicClient, lmevaljob_vllm_emulator: LMEvalJob
 ) -> Generator[Pod, Any, Any]:
-    yield get_lmevaljob_pod(admin_client, lmevaljob_vllm_emulator)
+    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_vllm_emulator)
 
 
 @pytest.fixture(scope="function")
 def lmevaljob_s3_offline_pod(admin_client: DynamicClient, lmevaljob_s3_offline: LMEvalJob) -> Generator[Pod, Any, Any]:
-    yield get_lmevaljob_pod(admin_client, lmevaljob_s3_offline)
+    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_s3_offline)
