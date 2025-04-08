@@ -63,7 +63,6 @@ def mlserver_runtime(
         protocol_versions=["v2"],
         annotations={
             f"{ApiGroups.OPENDATAHUB_IO}/accelerator-name": "",
-            f"{ApiGroups.OPENDATAHUB_IO}/recommended-accelerators": [Labels.Nvidia.NVIDIA_COM_GPU],
             f"{ApiGroups.OPENDATAHUB_IO}/template-display-name": "KServe MLServer",
             "prometheus.kserve.io/path": "/metrics",
             "prometheus.io/port": str(Ports.REST_PORT),

@@ -84,3 +84,11 @@ class PodLogMissMatchError(Exception):
 
 class ResourceMismatch(Exception):
     pass
+
+
+class ClusterLoginError(Exception):
+    def __init__(self, user: str):
+        self.user = user
+
+    def __str__(self) -> str:
+        return f"Failed to log in as user {self.user}."

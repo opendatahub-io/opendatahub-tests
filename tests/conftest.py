@@ -24,6 +24,7 @@ from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 
 from utilities.data_science_cluster_utils import update_components_in_dsc
+from utilities.exceptions import ClusterLoginError
 from utilities.general import get_s3_secret_dict
 from utilities.infra import (
     create_ns,
@@ -246,17 +247,18 @@ def unprivileged_client(
     non_admin_user_password: tuple[str, str],
 ) -> Generator[DynamicClient, Any, Any]:
     """
-    Provides none privileged API client. If non_admin_user_password is None, then it will yield admin_client.
+    Provides none privileged API client. If non_admin_user_password is None, then it will raise.
     """
     if non_admin_user_password is None:
-        yield admin_client
+        raise ValueError("Unprivileged user not provisioned")
 
     else:
         current_user = run_command(command=["oc", "whoami"])[1].strip()
+        non_admin_user_name = non_admin_user_password[0]
 
         if login_with_user_password(
             api_address=admin_client.configuration.host,
-            user=non_admin_user_password[0],
+            user=non_admin_user_name,
             password=non_admin_user_password[1],
         ):
             with open(kubconfig_filepath) as fd:
@@ -264,15 +266,17 @@ def unprivileged_client(
 
             unprivileged_context = kubeconfig_content["current-context"]
 
+            unprivileged_client = get_client(config_file=kubconfig_filepath, context=unprivileged_context)
+
             # Get back to admin account
             login_with_user_password(
                 api_address=admin_client.configuration.host,
                 user=current_user.strip(),
             )
-            yield get_client(config_file=kubconfig_filepath, context=unprivileged_context)
+            yield unprivileged_client
 
         else:
-            yield admin_client
+            raise ClusterLoginError(user=non_admin_user_name)
 
 
 @pytest.fixture(scope="session")
