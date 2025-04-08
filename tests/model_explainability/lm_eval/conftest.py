@@ -17,7 +17,6 @@ from pytest_testconfig import py_config
 
 from tests.model_explainability.lm_eval.utils import get_lmevaljob_pod
 from utilities.constants import Labels, Timeout, Annotations, Protocols, MinIo
-from utilities.infra import create_pvc
 
 VLLM_EMULATOR: str = "vllm-emulator"
 VLLM_EMULATOR_PORT: int = 8000
@@ -280,16 +279,6 @@ def vllm_emulator_route(
         service=vllm_emulator_service.name,
     ) as route:
         yield route
-
-
-@pytest.fixture(scope="function")
-def pvc_minio_namespace(
-    request: FixtureRequest,
-    admin_client: DynamicClient,
-    minio_namespace: Namespace,
-) -> Generator[PersistentVolumeClaim, Any, Any]:
-    with create_pvc(request=request, admin_client=admin_client, namespace=minio_namespace) as pvc:
-        yield pvc
 
 
 @pytest.fixture(scope="function")

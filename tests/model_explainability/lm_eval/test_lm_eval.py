@@ -95,12 +95,11 @@ def test_lmeval_vllm_emulator(admin_client, model_namespace, lmevaljob_vllm_emul
 
 
 @pytest.mark.parametrize(
-    "model_namespace, minio_data_connection, pvc_minio_namespace",
+    "model_namespace, minio_data_connection",
     [
         pytest.param(
             {"name": "test-s3-lmeval"},
             {"bucket": "models"},
-            {"access-modes": "ReadWriteOnce", "pvc-size": "10Gi", "wait-bound": False},
         )
     ],
     indirect=True,

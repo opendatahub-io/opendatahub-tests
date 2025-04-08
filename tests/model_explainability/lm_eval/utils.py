@@ -32,7 +32,7 @@ def verify_lmevaljob_running(client: DynamicClient, lmevaljob: LMEvalJob) -> Non
 
 def get_lmevaljob_pod(admin_client: DynamicClient, lmevaljob: LMEvalJob, timeout: int = Timeout.TIMEOUT_2MIN) -> Pod:
     """
-    Creates a Pod object based on the given LMEvalJob and waits for it to be ready.
+    Gets the pod corresponding to a given LMEvalJob and waits for it to be ready.
 
     Args:
         admin_client: The Kubernetes client to use
@@ -40,7 +40,7 @@ def get_lmevaljob_pod(admin_client: DynamicClient, lmevaljob: LMEvalJob, timeout
         timeout: How long to wait for the pod, defaults to TIMEOUT_2MIN
 
     Returns:
-        The ready Pod object
+        Pod resource
     """
     lmeval_pod = Pod(
         client=admin_client,
