@@ -1,13 +1,18 @@
+from typing import Generator, Any
+
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError, ResourceNotUniqueError
 from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.deployment import Deployment
 from ocp_resources.maria_db import MariaDB
 from ocp_resources.mariadb_operator import MariadbOperator
+from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
+from ocp_resources.secret import Secret
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
+from tests.model_explainability.trustyai_service.trustyai_service_utils import TRUSTYAI_SERVICE_NAME
 from utilities.constants import Timeout
 
 LOGGER = get_logger(name=__name__)
@@ -68,3 +73,15 @@ def wait_for_mariadb_pods(client: DynamicClient, mariadb: MariaDB, timeout: int 
             condition=Pod.Condition.READY,
             status="True",
         )
+
+
+def create_trustyai_db_ca_secret(
+    client: DynamicClient, mariadb_ca_cert: str, namespace: Namespace
+) -> Generator[None, Any, None]:
+    with Secret(
+        client=client,
+        name=f"{TRUSTYAI_SERVICE_NAME}-db-ca",
+        namespace=namespace.name,
+        data_dict={"ca.crt": mariadb_ca_cert},
+    ):
+        yield

@@ -14,15 +14,14 @@ from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.subscription import Subscription
 from ocp_resources.trustyai_service import TrustyAIService
-from ocp_resources.utils.constants import TIMEOUT_2MINUTES
 from ocp_utilities.operators import install_operator, uninstall_operator
-from timeout_sampler import TimeoutExpiredError
 
 from tests.model_explainability.trustyai_service.trustyai_service_utils import TRUSTYAI_SERVICE_NAME
 from tests.model_explainability.trustyai_service.utils import (
     get_cluster_service_version,
     wait_for_mariadb_operator_deployments,
     wait_for_mariadb_pods,
+    create_trustyai_db_ca_secret,
 )
 
 from utilities.constants import Timeout
@@ -37,7 +36,7 @@ DB_CREDENTIALS_SECRET_NAME: str = "db-credentials"
 DB_NAME: str = "trustyai_db"
 DB_USERNAME: str = "trustyai_user"
 DB_PASSWORD: str = "trustyai_password"
-FAKE_TLS_CERTIFICATE: str = (
+INVALID_TLS_CERTIFICATE: str = (
     "LS0tLS1CRUdJTiBDRVJUSUZJQ0FUR"
     "S0tLS0tXG5kMzRkYjMzZlxuLS0tLS"
     "1FTkQgQ0VSVElGSUNBVEUtLS0tLQ=="
@@ -66,14 +65,8 @@ def trustyai_service_with_pvc_storage(
         yield trustyai_service
 
 
-@pytest.fixture(scope="class")
-def trustyai_service_with_db_storage(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-    cluster_monitoring_config: ConfigMap,
-    user_workload_monitoring_config: ConfigMap,
-    mariadb: MariaDB,
-    trustyai_db_ca_secret: None,
+def create_trustyai_service(
+    admin_client: DynamicClient, model_namespace: Namespace, wait_for_replicas: bool = True
 ) -> Generator[TrustyAIService, Any, Any]:
     with TrustyAIService(
         client=admin_client,
@@ -85,31 +78,33 @@ def trustyai_service_with_db_storage(
         trustyai_deployment = Deployment(
             namespace=model_namespace.name, name=TRUSTYAI_SERVICE_NAME, wait_for_resource=True
         )
-        trustyai_deployment.wait_for_replicas()
+        if wait_for_replicas:
+            trustyai_deployment.wait_for_replicas()
         yield trustyai_service
 
 
 @pytest.fixture(scope="class")
-def trustyai_service_with_invalid_cert_db_storage(
+def trustyai_service_with_db_storage(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    cluster_monitoring_config: ConfigMap,
+    user_workload_monitoring_config: ConfigMap,
+    mariadb: MariaDB,
+    trustyai_db_ca_secret: None,
+) -> Generator[TrustyAIService, Any, Any]:
+    yield from create_trustyai_service(admin_client, model_namespace, wait_for_replicas=True)
+
+
+@pytest.fixture(scope="class")
+def trustyai_service_with_invalid_db_cert(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     cluster_monitoring_config: ConfigMap,
     user_workload_monitoring_config: ConfigMap,
     mariadb: MariaDB,
     trustyai_invalid_db_ca_secret: None,
-) -> None:
-    with TrustyAIService(
-        client=admin_client,
-        name=TRUSTYAI_SERVICE_NAME,
-        namespace=model_namespace.name,
-        storage={"format": "DATABASE", "size": "1Gi", "databaseConfigurations": "db-credentials"},
-        metrics={"schedule": "5s"},
-    ):
-        trustyai_deployment = Deployment(
-            namespace=model_namespace.name, name=TRUSTYAI_SERVICE_NAME, wait_for_resource=True
-        )
-        with pytest.raises(TimeoutExpiredError):
-            trustyai_deployment.wait_for_replicas(timeout=TIMEOUT_2MINUTES)
+) -> Generator[TrustyAIService, None, None]:
+    yield from create_trustyai_service(admin_client, model_namespace, wait_for_replicas=False)
 
 
 @pytest.fixture(scope="session")
@@ -268,18 +263,6 @@ def mariadb(
         yield mariadb
 
 
-def set_trustyai_db_ca_secret(
-    admin_client: DynamicClient, mariadb_ca_cert: str, model_namespace: Namespace
-) -> Generator[None, Any, None]:
-    with Secret(
-        client=admin_client,
-        name=f"{TRUSTYAI_SERVICE_NAME}-db-ca",
-        namespace=model_namespace.name,
-        data_dict={"ca.crt": mariadb_ca_cert},
-    ):
-        yield
-
-
 @pytest.fixture(scope="class")
 def trustyai_db_ca_secret(
     admin_client: DynamicClient, model_namespace: Namespace, mariadb: MariaDB
@@ -287,13 +270,15 @@ def trustyai_db_ca_secret(
     mariadb_ca_secret = Secret(
         client=admin_client, name=f"{mariadb.name}-ca", namespace=model_namespace.name, ensure_exists=True
     )
-    mariadb_ca_cert = mariadb_ca_secret.instance.data["ca.crt"]
-    yield from set_trustyai_db_ca_secret(admin_client, mariadb_ca_cert, model_namespace)
+    yield from create_trustyai_db_ca_secret(
+        client=admin_client, mariadb_ca_cert=mariadb_ca_secret.instance.data["ca.crt"], namespace=model_namespace
+    )
 
 
 @pytest.fixture(scope="class")
 def trustyai_invalid_db_ca_secret(
     admin_client: DynamicClient, model_namespace: Namespace, mariadb: MariaDB
 ) -> Generator[None, Any, None]:
-    mariadb_ca_cert = FAKE_TLS_CERTIFICATE
-    yield from set_trustyai_db_ca_secret(admin_client, mariadb_ca_cert, model_namespace)
+    yield from create_trustyai_db_ca_secret(
+        client=admin_client, mariadb_ca_cert=INVALID_TLS_CERTIFICATE, namespace=model_namespace
+    )

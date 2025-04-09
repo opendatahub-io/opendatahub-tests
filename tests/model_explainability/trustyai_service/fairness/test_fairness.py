@@ -156,16 +156,6 @@ class TestFairnessMetricsWithDBStorage:
             inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
         )
 
-    def test_invalid_db_certificate_trustyai_service_with_db_storage(
-        self,
-        admin_client,
-        current_client_token,
-        model_namespace,
-        trustyai_service_with_invalid_cert_db_storage,
-        minio_data_connection,
-    ):
-        return
-
     def test_name_mappings_with_db_storage(
         self, admin_client, current_client_token, model_namespace, trustyai_service_with_db_storage, onnx_loan_model
     ):
