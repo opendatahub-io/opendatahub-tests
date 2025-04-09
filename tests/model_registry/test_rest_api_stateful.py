@@ -7,7 +7,6 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.mark.fuzzer
-@pytest.mark.sanity
 @pytest.mark.parametrize(
     "model_registry_namespace, updated_dsc_component_state_scope_class",
     [
@@ -27,5 +26,5 @@ LOGGER = get_logger(name=__name__)
 )
 @pytest.mark.usefixtures("model_registry_namespace", "updated_dsc_component_state_scope_class")
 class TestRestAPIStateful:
-    def test_mr_api(self, state_machine):
+    def test_mr_api_stateful(self, state_machine):
         state_machine.run()

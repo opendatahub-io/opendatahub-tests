@@ -330,7 +330,6 @@ def state_machine(generated_schema: BaseOpenAPISchema, current_client_token: str
 
         def after_call(self, response: Response, case: Case) -> None:
             LOGGER.info(f"{case.method} {case.path} -> {response.status_code}")
-            # LOGGER.info("This is the after_call function")
 
     return APIWorkflow
 
