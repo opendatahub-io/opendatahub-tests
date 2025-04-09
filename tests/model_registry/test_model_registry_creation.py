@@ -67,19 +67,20 @@ class TestModelRegistryCreation:
         registered_model: RegisteredModel,
     ):
         model = model_registry_client.get_registered_model(MODEL_NAME)
-        errors = []
-        if not registered_model.id == model.id:
-            errors.append(f"Unexpected id, received {model.id}")
-        if not registered_model.name == model.name:
-            errors.append(f"Unexpected name, received {model.name}")
-        if not registered_model.description == model.description:
-            errors.append(f"Unexpected description, received {model.description}")
-        if not registered_model.owner == model.owner:
-            errors.append(f"Unexpected owner, received {model.owner}")
-        if not registered_model.state == model.state:
-            errors.append(f"Unexpected state, received {model.state}")
-
-        assert not errors, "errors found in model registry response validation:\n{}".format("\n".join(errors))
+        expected_attrs = {
+            "id": registered_model.id,
+            "name": registered_model.name,
+            "description": registered_model.description,
+            "owner": registered_model.owner,
+            "state": registered_model.state,
+        }
+        errors = [
+            f"Unexpected {attr} expected: {expected}, received {getattr(model, attr)}"
+            for attr, expected in expected_attrs.items()
+            if getattr(model, attr) != expected
+        ]
+        if errors:
+            pytest.fail("errors found in model registry response validation:\n{}".format("\n".join(errors)))
 
     def test_model_registry_operator_env(
         self,

@@ -209,7 +209,7 @@ def vllm_gateway_config(admin_client: DynamicClient, model_namespace: Namespace)
 def minio_llm_deployment(
     admin_client: DynamicClient,
     minio_namespace: Namespace,
-    llm_models_pvc: PersistentVolumeClaim,
+    pvc_minio_namespace: PersistentVolumeClaim,
 ) -> Generator[Deployment, Any, Any]:
     with Deployment(
         client=admin_client,
@@ -229,7 +229,7 @@ def minio_llm_deployment(
                 "volumes": [
                     {
                         "name": "model-volume",
-                        "persistentVolumeClaim": {"claimName": "llm-models-claim"},
+                        "persistentVolumeClaim": {"claimName": pvc_minio_namespace.name},
                     }
                 ],
                 "initContainers": [
@@ -282,18 +282,3 @@ def minio_llm_deployment(
     ) as deployment:
         deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_10MIN)
         yield deployment
-
-
-@pytest.fixture(scope="class")
-def llm_models_pvc(
-    admin_client: DynamicClient, minio_namespace: Namespace
-) -> Generator[PersistentVolumeClaim, Any, Any]:
-    with PersistentVolumeClaim(
-        client=admin_client,
-        name="llm-models-claim",
-        namespace=minio_namespace.name,
-        accessmodes=PersistentVolumeClaim.AccessMode.RWO,
-        volume_mode=PersistentVolumeClaim.VolumeMode.FILE,
-        size="10Gi",
-    ) as pvc:
-        yield pvc
