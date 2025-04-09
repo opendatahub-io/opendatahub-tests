@@ -20,6 +20,9 @@ def test_trustyai_service_with_invalid_db_cert(
     trustyai_service_name,
     trustyai_service_with_invalid_db_cert,
 ):
+    """
+    Makes sure trustyAI container fails when incorrect database TLS certificate is used.
+    """
     if pod := list(
         Pod.get(
             dyn_client=admin_client,
