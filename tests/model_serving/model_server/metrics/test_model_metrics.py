@@ -19,6 +19,7 @@ from utilities.monitoring import get_metrics_value, validate_metrics_value
 pytestmark = [
     pytest.mark.serverless,
     pytest.mark.usefixtures("valid_aws_config", "user_workload_monitoring_config_map"),
+    pytest.mark.metrics,
 ]
 
 
@@ -46,8 +47,7 @@ pytestmark = [
 class TestModelMetrics:
     @pytest.mark.smoke
     @pytest.mark.polarion("ODS-2555")
-    @pytest.mark.dependency(name="test_model_metrics_num_success_requests")
-    def test_model_metrics_num_success_requests(self, s3_models_inference_service, deleted_metrics, prometheus):
+    def test_model_metrics_num_success_requests(self, s3_models_inference_service, prometheus):
         """Verify number of successful model requests in OpenShift monitoring system (UserWorkloadMonitoring) metrics"""
         verify_inference_response(
             inference_service=s3_models_inference_service,
@@ -65,10 +65,6 @@ class TestModelMetrics:
 
     @pytest.mark.smoke
     @pytest.mark.polarion("ODS-2555")
-    @pytest.mark.dependency(
-        name="test_model_metrics_num_total_requests",
-        depends=["test_model_metrics_num_success_requests"],
-    )
     def test_model_metrics_num_total_requests(self, s3_models_inference_service, prometheus):
         """Verify number of total model requests in OpenShift monitoring system (UserWorkloadMonitoring) metrics"""
         total_runs = 5
@@ -90,7 +86,6 @@ class TestModelMetrics:
 
     @pytest.mark.smoke
     @pytest.mark.polarion("ODS-2555")
-    @pytest.mark.dependency(depends=["test_model_metrics_num_total_requests"])
     def test_model_metrics_cpu_utilization(self, s3_models_inference_service, prometheus):
         """Verify CPU utilization data in OpenShift monitoring system (UserWorkloadMonitoring) metrics"""
         assert get_metrics_value(
