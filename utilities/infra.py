@@ -39,7 +39,7 @@ from simple_logger.logger import get_logger
 from utilities.constants import ApiGroups, Labels, Timeout
 from utilities.constants import KServeDeploymentType
 from utilities.constants import Annotations
-from utilities.exceptions import FailedPodsError
+from utilities.exceptions import ClusterLoginError, FailedPodsError
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 import utilities.general
 
@@ -328,9 +328,15 @@ def login_with_user_password(api_address: str, user: str, password: str | None =
     if password:
         login_command += f" -p '{password}'"
 
-    _, out, _ = run_command(command=shlex.split(login_command), hide_log_command=True)
+    _, out, err = run_command(command=shlex.split(login_command), hide_log_command=True)
 
-    return "Login successful" in out
+    if err and err.lower().startswith("error"):
+        raise ClusterLoginError(user=user)
+
+    if re.search(r"Login successful|Logged into", out):
+        return True
+
+    return False
 
 
 @cache
