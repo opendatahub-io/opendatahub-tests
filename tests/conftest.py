@@ -3,13 +3,15 @@ from __future__ import annotations
 import base64
 import os
 import shutil
-from typing import Any, Generator
+from typing import Any, Callable, Generator
 
 import pytest
 import shortuuid
 import yaml
 from _pytest.tmpdir import TempPathFactory
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.dsc_initialization import DSCInitialization
+from ocp_resources.node import Node
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
@@ -27,6 +29,7 @@ from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.exceptions import ClusterLoginError
 from utilities.general import get_s3_secret_dict
 from utilities.infra import (
+    cluster_sanity,
     create_ns,
     get_dsci_applications_namespace,
     get_operator_distribution,
@@ -280,10 +283,22 @@ def unprivileged_client(
 
 
 @pytest.fixture(scope="session")
+def dsci_resource(admin_client: DynamicClient) -> DSCInitialization:
+    name = py_config["dsci_name"]
+    dsci = DSCInitialization(client=admin_client, name=name)
+    if dsci.exists:
+        return dsci
+
+    raise ResourceNotFoundError(f"DSCI resource {name} not found")
+
+
+@pytest.fixture(scope="session")
 def dsc_resource(admin_client: DynamicClient) -> DataScienceCluster:
     name = py_config["dsc_name"]
-    for dsc in DataScienceCluster.get(dyn_client=admin_client, name=name):
+    dsc = DataScienceCluster(client=admin_client, name=name)
+    if dsc.exists:
         return dsc
+
     raise ResourceNotFoundError(f"DSC resource {name} not found")
 
 
@@ -446,3 +461,33 @@ def minio_data_connection(
         },
     ) as minio_secret:
         yield minio_secret
+
+
+@pytest.fixture(scope="session")
+def nodes(admin_client: DynamicClient) -> Generator[list[Node], Any, Any]:
+    yield list(Node.get(dyn_client=admin_client))
+
+
+@pytest.fixture(scope="session")
+def junitxml_plugin(
+    request: FixtureRequest, record_testsuite_property: Callable[[str, object], None]
+) -> Callable[[str, object], None] | None:
+    return record_testsuite_property if request.config.pluginmanager.has_plugin("junitxml") else None
+
+
+@pytest.fixture(scope="session", autouse=True)
+@pytest.mark.early(order=0)
+def cluster_sanity_scope_session(
+    request: FixtureRequest,
+    nodes: list[Node],
+    dsci_resource: DSCInitialization,
+    dsc_resource: DataScienceCluster,
+    junitxml_plugin: Callable[[str, object], None],
+) -> None:
+    cluster_sanity(
+        request=request,
+        nodes=nodes,
+        dsc_resource=dsc_resource,
+        dsci_resource=dsci_resource,
+        junitxml_property=junitxml_plugin,
+    )

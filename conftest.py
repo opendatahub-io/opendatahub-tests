@@ -33,6 +33,7 @@ def pytest_addoption(parser: Parser) -> None:
     runtime_group = parser.getgroup(name="Runtime details")
     upgrade_group = parser.getgroup(name="Upgrade options")
     platform_group = parser.getgroup(name="Platform")
+    cluster_sanity_group = parser.getgroup(name="ClusterSanity")
 
     # AWS config and credentials options
     aws_group.addoption(
@@ -118,6 +119,18 @@ def pytest_addoption(parser: Parser) -> None:
     platform_group.addoption(
         "--applications-namespace",
         help="RHOAI/ODH applications namespace",
+    )
+
+    # Cluster sanity options
+    cluster_sanity_group.addoption(
+        "--cluster-sanity-skip-check",
+        help="Skip cluster_sanity check",
+        action="store_true",
+    )
+    cluster_sanity_group.addoption(
+        "--cluster-sanity-skip-rhoai-check",
+        help="Skip RHOAI/ODH-related resources (DSCI and DSC) checks",
+        action="store_true",
     )
 
 

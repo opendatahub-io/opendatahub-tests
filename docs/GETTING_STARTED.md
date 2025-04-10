@@ -62,6 +62,11 @@ uv run pytest -k test_name
 Bt default, RHOAI distribution is set.  
 To run on ODH, pass `--tc=distribution:upstream` to pytest.
 
+### Skip cluster sanity checks
+By default, cluster sanity checks are run to make cluster ready for tests.
+To skip cluster sanity checks, pass `--cluster-sanity-skip-check` to skip all tests.
+To skip RHOAI/ODH-related tests (for example when running in upstream), pass `--cluster-sanity-skip-rhoai-check`.
+
 ### jira integration
 To skip running tests which have open bugs, [pytest_jira](https://github.com/rhevm-qe-automation/pytest_jira) plugin is used.
 To run tests with jira integration, you need to set `PYTEST_JIRA_URL` and `PYTEST_JIRA_TOKEN` environment variables.
