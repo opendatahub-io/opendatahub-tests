@@ -17,13 +17,11 @@ from utilities.inference_utils import create_isvc
 from utilities.infra import (
     create_isvc_view_role,
     get_pods_by_isvc_label,
-    s3_endpoint_secret,
     create_inference_token,
 )
 from utilities.constants import (
     KServeDeploymentType,
     ModelFormat,
-    ModelStoragePath,
     Protocols,
     ModelInferenceRuntime,
     RuntimeTemplates,
@@ -327,72 +325,6 @@ def http_s3_caikit_raw_inference_service_2(
         yield isvc
 
 
-# Unprivileged user tests
-
-
-@pytest.fixture(scope="class")
-def unprivileged_s3_caikit_serving_runtime(
-    admin_client: DynamicClient,
-    unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
-) -> Generator[ServingRuntime, Any, Any]:
-    with ServingRuntimeFromTemplate(
-        client=admin_client,
-        unprivileged_client=unprivileged_client,
-        name=f"{Protocols.HTTP}-{ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME}",
-        namespace=unprivileged_model_namespace.name,
-        template_name=RuntimeTemplates.CAIKIT_TGIS_SERVING,
-        multi_model=False,
-        enable_http=True,
-        enable_grpc=False,
-    ) as model_runtime:
-        yield model_runtime
-
-
-@pytest.fixture(scope="class")
-def unprivileged_models_endpoint_s3_secret(
-    unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
-    aws_access_key_id: str,
-    aws_secret_access_key: str,
-    models_s3_bucket_name: str,
-    models_s3_bucket_region: str,
-    models_s3_bucket_endpoint: str,
-) -> Generator[Secret, Any, Any]:
-    with s3_endpoint_secret(
-        admin_client=unprivileged_client,
-        name="models-bucket-secret",
-        namespace=unprivileged_model_namespace.name,
-        aws_access_key=aws_access_key_id,
-        aws_secret_access_key=aws_secret_access_key,
-        aws_s3_region=models_s3_bucket_region,
-        aws_s3_bucket=models_s3_bucket_name,
-        aws_s3_endpoint=models_s3_bucket_endpoint,
-    ) as secret:
-        yield secret
-
-
-@pytest.fixture(scope="class")
-def unprivileged_s3_caikit_serverless_inference_service(
-    request: FixtureRequest,
-    unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
-    unprivileged_s3_caikit_serving_runtime: ServingRuntime,
-    unprivileged_models_endpoint_s3_secret: Secret,
-) -> Generator[InferenceService, Any, Any]:
-    with create_isvc(
-        client=unprivileged_client,
-        name=f"{Protocols.HTTP}-{ModelFormat.CAIKIT}",
-        namespace=unprivileged_model_namespace.name,
-        runtime=unprivileged_s3_caikit_serving_runtime.name,
-        model_format=unprivileged_s3_caikit_serving_runtime.instance.spec.supportedModelFormats[0].name,
-        deployment_mode=KServeDeploymentType.SERVERLESS,
-        storage_key=unprivileged_models_endpoint_s3_secret.name,
-        storage_path=request.param["model-dir"],
-    ) as isvc:
-        yield isvc
-
-
 @pytest.fixture(scope="class")
 def http_s3_caikit_tgis_serving_runtime(
     request: FixtureRequest,
@@ -409,27 +341,6 @@ def http_s3_caikit_tgis_serving_runtime(
         enable_grpc=False,
     ) as model_runtime:
         yield model_runtime
-
-
-@pytest.fixture(scope="class")
-def unprivileged_s3_caikit_raw_inference_service(
-    request: FixtureRequest,
-    unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
-    unprivileged_s3_caikit_serving_runtime: ServingRuntime,
-    unprivileged_models_endpoint_s3_secret: Secret,
-) -> Generator[InferenceService, Any, Any]:
-    with create_isvc(
-        client=unprivileged_client,
-        name=f"{Protocols.HTTP}-{ModelFormat.CAIKIT}-raw",
-        namespace=unprivileged_model_namespace.name,
-        runtime=unprivileged_s3_caikit_serving_runtime.name,
-        model_format=unprivileged_s3_caikit_serving_runtime.instance.spec.supportedModelFormats[0].name,
-        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-        storage_key=unprivileged_models_endpoint_s3_secret.name,
-        storage_path=ModelStoragePath.FLAN_T5_SMALL_CAIKIT,
-    ) as isvc:
-        yield isvc
 
 
 @pytest.fixture()
