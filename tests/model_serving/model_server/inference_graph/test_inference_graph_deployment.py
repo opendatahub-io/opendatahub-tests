@@ -1,19 +1,14 @@
 import pytest
 
-from tests.model_serving.model_server.inference_graph.conftest import dog_breed_inference_graph
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.inference_utils import Inference
 from utilities.constants import ModelInferenceRuntime, Protocols
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
+
 @pytest.mark.parametrize(
     "model_namespace,ovms_kserve_serving_runtime",
-    [
-        pytest.param(
-            {"name": "kserve-inference-graph-deploy"},
-            {"runtime-name": ModelInferenceRuntime.ONNX_RUNTIME}
-        )
-    ],
+    [pytest.param({"name": "kserve-inference-graph-deploy"}, {"runtime-name": ModelInferenceRuntime.ONNX_RUNTIME})],
     indirect=True,
 )
 class TestInferenceGraphDeployment:

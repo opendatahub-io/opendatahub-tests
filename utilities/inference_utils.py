@@ -114,7 +114,10 @@ class Inference:
         """
         labels = self.inference_service.labels
 
-        if isinstance(self.inference_service, InferenceService) and self.deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT:
+        if (
+            isinstance(self.inference_service, InferenceService)
+            and self.deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT
+        ):
             return labels and labels.get(Labels.Kserve.NETWORKING_KSERVE_IO) == Labels.Kserve.EXPOSED
 
         if self.deployment_mode == KServeDeploymentType.SERVERLESS:
