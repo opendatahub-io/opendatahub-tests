@@ -49,11 +49,15 @@ DEFAULT_LABEL_DICT_DB: dict[str, str] = {
 
 @pytest.fixture(scope="class")
 def model_registry_namespace(request: FixtureRequest, admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
-    with create_ns(
-        name=request.param.get("namespace_name", MR_NAMESPACE),
-        admin_client=admin_client,
-    ) as ns:
+    ns = Namespace(name=MR_NAMESPACE, client=admin_client)
+    if ns.exists:
         yield ns
+    else:
+        with create_ns(
+            name=request.param.get("namespace_name", MR_NAMESPACE),
+            admin_client=admin_client,
+        ) as ns:
+            yield ns
 
 
 @pytest.fixture(scope="class")
