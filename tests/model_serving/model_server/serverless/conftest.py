@@ -11,11 +11,11 @@ from ocp_resources.serving_runtime import ServingRuntime
 
 from tests.model_serving.model_server.serverless.utils import wait_for_canary_rollout
 from tests.model_serving.model_server.utils import run_inference_multiple_times
-from utilities.constants import Protocols, Timeout
+from utilities.constants import ModelFormat, Protocols, Timeout
 from utilities.constants import KServeDeploymentType, ModelStoragePath
 from utilities.inference_utils import Inference, create_isvc
 from utilities.infra import verify_no_failed_pods
-from utilities.manifests.openvino import OPENVINO_INFERENCE_CONFIG
+from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
 
 
 @pytest.fixture(scope="class")
@@ -61,14 +61,15 @@ def inference_service_updated_canary_config(
 
 @pytest.fixture
 def multiple_onnx_inference_requests(
-    ovms_kserve_inference_service: InferenceService,
+    s3_models_inference_service: InferenceService,
 ) -> None:
     run_inference_multiple_times(
-        isvc=ovms_kserve_inference_service,
-        inference_config=OPENVINO_INFERENCE_CONFIG,
-        inference_type=Inference.MNIST,
+        isvc=s3_models_inference_service,
+        inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
+        inference_type=Inference.ALL_TOKENS,
         protocol=Protocols.HTTPS,
-        iterations=100,
+        model_name=ModelFormat.CAIKIT,
+        iterations=20,
         run_in_parallel=True,
     )
 
