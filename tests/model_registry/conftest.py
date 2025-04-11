@@ -49,15 +49,15 @@ DEFAULT_LABEL_DICT_DB: dict[str, str] = {
 
 @pytest.fixture(scope="class")
 def model_registry_namespace(request: FixtureRequest, admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
-    ns = Namespace(name=MR_NAMESPACE, client=admin_client)
-    if ns.exists:
+    # TODO: model_registry_namespace fixture should basically be doing this 1) check the ns exists, 2) it is in ACTIVE
+    # state and return. But it should not create the ns. If DSC manages registriesNamespace, and namespace was not
+    # created when mr is updated to Managed state, it would be a bug and we should catch it
+    # To be handled in upcoming PR.
+    with create_ns(
+        name=request.param.get("namespace_name", MR_NAMESPACE),
+        admin_client=admin_client,
+    ) as ns:
         yield ns
-    else:
-        with create_ns(
-            name=request.param.get("namespace_name", MR_NAMESPACE),
-            admin_client=admin_client,
-        ) as ns:
-            yield ns
 
 
 @pytest.fixture(scope="class")
