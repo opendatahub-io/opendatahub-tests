@@ -27,4 +27,5 @@ LOGGER = get_logger(name=__name__)
 @pytest.mark.usefixtures("model_registry_namespace", "updated_dsc_component_state_scope_class")
 class TestRestAPIStateful:
     def test_mr_api_stateful(self, state_machine):
+        """Launches stateful tests against the Model Registry API endpoints defined in its openAPI yaml spec file"""
         state_machine.run()
