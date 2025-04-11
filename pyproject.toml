@@ -27,7 +27,7 @@ dev-dependencies = [
 [tool.uv.sources]
 
 [project]
-requires-python = ">=3.9"
+requires-python = "==3.12.*"
 name = "opendatahub-tests"
 version = "0.1.0"
 description = "Tests repository for Open Data Hub (ODH)"
