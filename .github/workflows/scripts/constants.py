@@ -35,6 +35,8 @@ Available user actions:
         `lgtm` label removed on each new commit push.
  * To mark PR as verified comment `/verified` to the PR, to un-verify comment `/verified cancel` to the PR.
         `verified` label removed on each new commit push.
+ * To Cherry-pick a merged PR `/cherry-pick <target_branch_name>` to the PR. If <target_branch_name> is valid,
+         and the current PR is merged, a cherry-picked PR would be created and linked to the current PR.
 
 <details>
 <summary>Supported labels</summary>

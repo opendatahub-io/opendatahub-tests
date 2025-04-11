@@ -3,6 +3,8 @@ import pytest
 from tests.model_explainability.lm_eval.utils import verify_lmevaljob_running
 from utilities.constants import Timeout
 
+LMEVALJOB_COMPLETE_STATE: str = "Complete"
+
 
 @pytest.mark.parametrize(
     "model_namespace",
@@ -89,4 +91,25 @@ def test_lmeval_vllm_emulator(admin_client, model_namespace, lmevaljob_vllm_emul
     """Basic test that verifies LMEval works with vLLM using a vLLM emulator for more efficient evaluation"""
     lmevaljob_vllm_emulator_pod.wait_for_status(
         status=lmevaljob_vllm_emulator_pod.Status.SUCCEEDED, timeout=Timeout.TIMEOUT_10MIN
+    )
+
+
+@pytest.mark.parametrize(
+    "model_namespace, minio_data_connection",
+    [
+        pytest.param(
+            {"name": "test-s3-lmeval"},
+            {"bucket": "models"},
+        )
+    ],
+    indirect=True,
+)
+def test_lmeval_s3_storage(
+    admin_client,
+    model_namespace,
+    lmevaljob_s3_offline_pod,
+):
+    """Test to verify that LMEval works with a model stored in a S3 bucket"""
+    lmevaljob_s3_offline_pod.wait_for_status(
+        status=lmevaljob_s3_offline_pod.Status.SUCCEEDED, timeout=Timeout.TIMEOUT_10MIN
     )
