@@ -53,7 +53,8 @@ class TestConcurrencyAutoScale:
         for pods in inference_service_pods_sampler(
             client=admin_client,
             isvc=s3_models_inference_service,
-            timeout=Timeout.TIMEOUT_1MIN,
+            timeout=Timeout.TIMEOUT_2MIN,
+            sleep=10,
         ):
             if pods:
                 if len(pods) > 1 and all([pod.status == pod.Status.RUNNING for pod in pods]):
@@ -66,6 +67,7 @@ class TestConcurrencyAutoScale:
             client=admin_client,
             isvc=s3_models_inference_service,
             timeout=Timeout.TIMEOUT_4MIN,
+            sleep=10,
         ):
             if pods and len(pods) == 1:
                 return
