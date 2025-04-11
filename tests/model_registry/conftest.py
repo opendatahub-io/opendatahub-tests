@@ -12,6 +12,11 @@ from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 
 from ocp_resources.model_registry import ModelRegistry
+import schemathesis.schemas
+from schemathesis.specs.openapi.schemas import BaseOpenAPISchema
+from schemathesis.generation.stateful.state_machine import APIStateMachine
+from schemathesis.core.transport import Response
+from schemathesis.generation.case import Case
 from ocp_resources.resource import ResourceEditor
 
 from pytest import FixtureRequest
@@ -44,6 +49,10 @@ DEFAULT_LABEL_DICT_DB: dict[str, str] = {
 
 @pytest.fixture(scope="class")
 def model_registry_namespace(request: FixtureRequest, admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
+    # TODO: model_registry_namespace fixture should basically be doing this 1) check the ns exists, 2) it is in ACTIVE
+    # state and return. But it should not create the ns. If DSC manages registriesNamespace, and namespace was not
+    # created when mr is updated to Managed state, it would be a bug and we should catch it
+    # To be handled in upcoming PR.
     with create_ns(
         name=request.param.get("namespace_name", MR_NAMESPACE),
         admin_client=admin_client,
@@ -301,11 +310,32 @@ def model_registry_instance_rest_endpoint(
 
 
 @pytest.fixture(scope="class")
-def generated_schema(model_registry_instance_rest_endpoint: str) -> Any:
-    return schemathesis.from_uri(
-        uri="https://raw.githubusercontent.com/kubeflow/model-registry/main/api/openapi/model-registry.yaml",
-        base_url=f"https://{model_registry_instance_rest_endpoint}/",
+def generated_schema(model_registry_instance_rest_endpoint: str) -> BaseOpenAPISchema:
+    schema = schemathesis.openapi.from_url(
+        url="https://raw.githubusercontent.com/kubeflow/model-registry/main/api/openapi/model-registry.yaml"
     )
+    schema.configure(base_url=f"https://{model_registry_instance_rest_endpoint}/")
+    return schema
+
+
+@pytest.fixture
+def state_machine(generated_schema: BaseOpenAPISchema, current_client_token: str) -> APIStateMachine:
+    BaseAPIWorkflow = generated_schema.as_state_machine()
+
+    class APIWorkflow(BaseAPIWorkflow):  # type: ignore
+        headers: dict[str, str]
+
+        def setup(self) -> None:
+            self.headers = {"Authorization": f"Bearer {current_client_token}", "Content-Type": "application/json"}
+
+        # these kwargs are passed to requests.request()
+        def get_call_kwargs(self, case: Case) -> dict[str, Any]:
+            return {"verify": False, "headers": self.headers}
+
+        def after_call(self, response: Response, case: Case) -> None:
+            LOGGER.info(f"{case.method} {case.path} -> {response.status_code}")
+
+    return APIWorkflow
 
 
 @pytest.fixture(scope="class")

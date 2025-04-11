@@ -40,7 +40,7 @@ class TestServerlessUnprivilegedUser:
     "unprivileged_model_namespace, unprivileged_s3_caikit_raw_inference_service",
     [
         pytest.param(
-            {"name": "non-admin-raw"},
+            {"name": "non-admin-metrics"},
             {"model-dir": ModelStoragePath.FLAN_T5_SMALL_HF},
         )
     ],
