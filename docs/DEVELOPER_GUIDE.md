@@ -143,6 +143,13 @@ Check [pytest.ini](../pytest.ini) for available markers; additional markers can 
 You should NOT group unrelated tests in one class (because it is misleading the reader).
 
 
+## Markers
+Do not forget to add the relevant marker(s) to your test(s)
+Check [pytest.ini](../pytest.ini) for available markers; additional markers can always be added when needed.
+For features which are only supported in upstream, add the `upstream` marker.  Tests that are marked as `upstream` will be skipped by default.
+For features which are only supported in ODH (`midstream`, add the `odh` marker.  Tests that are marked as `odh` will be skipped by default.
+
+
 ## Check the code
 ### pre-commit
 
