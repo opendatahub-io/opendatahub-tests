@@ -1,15 +1,16 @@
-from __future__ import annotations
-
 import base64
 import os
 import shutil
 from typing import Any, Generator
 
 import pytest
+import shortuuid
 import yaml
 from _pytest.tmpdir import TempPathFactory
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
+from ocp_resources.service import Service
 from pyhelper_utils.shell import run_command
 from pytest import FixtureRequest, Config
 from kubernetes.dynamic import DynamicClient
@@ -21,6 +22,8 @@ from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 
 from utilities.data_science_cluster_utils import update_components_in_dsc
+from utilities.exceptions import ClusterLoginError
+from utilities.general import get_s3_secret_dict
 from utilities.infra import (
     create_ns,
     get_dsci_applications_namespace,
@@ -28,7 +31,14 @@ from utilities.infra import (
     login_with_user_password,
     get_openshift_token,
 )
-from utilities.constants import AcceleratorType, DscComponents
+from utilities.constants import (
+    AcceleratorType,
+    ApiGroups,
+    DscComponents,
+    Labels,
+    MinIo,
+    Protocols,
+)
 from utilities.infra import update_configmap_data
 
 
@@ -73,13 +83,10 @@ def current_client_token(admin_client: DynamicClient) -> str:
 
 @pytest.fixture(scope="class")
 def model_namespace(request: FixtureRequest, admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
-    ns_kwargs = {"admin_client": admin_client, "name": request.param["name"]}
-
     if request.param.get("modelmesh-enabled"):
         request.getfixturevalue(argname="enabled_modelmesh_in_dsc")
-        ns_kwargs["model_mesh_enabled"] = True
 
-    with create_ns(**ns_kwargs) as ns:
+    with create_ns(admin_client=admin_client, pytest_request=request) as ns:
         yield ns
 
 
@@ -238,17 +245,18 @@ def unprivileged_client(
     non_admin_user_password: tuple[str, str],
 ) -> Generator[DynamicClient, Any, Any]:
     """
-    Provides none privileged API client. If non_admin_user_password is None, then it will yield admin_client.
+    Provides none privileged API client. If non_admin_user_password is None, then it will raise.
     """
     if non_admin_user_password is None:
-        yield admin_client
+        raise ValueError("Unprivileged user not provisioned")
 
     else:
         current_user = run_command(command=["oc", "whoami"])[1].strip()
+        non_admin_user_name = non_admin_user_password[0]
 
         if login_with_user_password(
             api_address=admin_client.configuration.host,
-            user=non_admin_user_password[0],
+            user=non_admin_user_name,
             password=non_admin_user_password[1],
         ):
             with open(kubconfig_filepath) as fd:
@@ -256,15 +264,17 @@ def unprivileged_client(
 
             unprivileged_context = kubeconfig_content["current-context"]
 
+            unprivileged_client = get_client(config_file=kubconfig_filepath, context=unprivileged_context)
+
             # Get back to admin account
             login_with_user_password(
                 api_address=admin_client.configuration.host,
                 user=current_user.strip(),
             )
-            yield get_client(config_file=kubconfig_filepath, context=unprivileged_context)
+            yield unprivileged_client
 
         else:
-            yield admin_client
+            raise ClusterLoginError(user=non_admin_user_name)
 
 
 @pytest.fixture(scope="session")
@@ -288,7 +298,9 @@ def updated_dsc_component_state(
 
 
 @pytest.fixture(scope="package")
-def enabled_modelmesh_in_dsc(dsc_resource: DataScienceCluster) -> Generator[DataScienceCluster, Any, Any]:
+def enabled_modelmesh_in_dsc(
+    dsc_resource: DataScienceCluster,
+) -> Generator[DataScienceCluster, Any, Any]:
     with update_components_in_dsc(
         dsc=dsc_resource,
         components={DscComponents.MODELMESHSERVING: DscComponents.ManagementState.MANAGED},
@@ -308,7 +320,9 @@ def enabled_kserve_in_dsc(
 
 
 @pytest.fixture(scope="session")
-def cluster_monitoring_config(admin_client: DynamicClient) -> Generator[ConfigMap, Any, Any]:
+def cluster_monitoring_config(
+    admin_client: DynamicClient,
+) -> Generator[ConfigMap, Any, Any]:
     data = {"config.yaml": yaml.dump({"enableUserWorkload": True})}
 
     with update_configmap_data(
@@ -324,20 +338,109 @@ def cluster_monitoring_config(admin_client: DynamicClient) -> Generator[ConfigMa
 def unprivileged_model_namespace(
     request: FixtureRequest, unprivileged_client: DynamicClient
 ) -> Generator[Namespace, Any, Any]:
-    ns_kwargs = {
-        "name": request.param["name"],
-        "unprivileged_client": unprivileged_client,
-    }
-
-    if _annotations := request.param.get("annotations"):
-        ns_kwargs["ns_annotations"] = _annotations
-
     if request.param.get("modelmesh-enabled"):
         request.getfixturevalue(argname="enabled_modelmesh_in_dsc")
-        ns_kwargs["model_mesh_enabled"] = True
 
-    if (_dashboard_label := request.param.get("dashboard-label")) is not None:
-        ns_kwargs["add_dashboard_label"] = _dashboard_label
-
-    with create_ns(**ns_kwargs) as ns:
+    with create_ns(unprivileged_client=unprivileged_client, pytest_request=request) as ns:
         yield ns
+
+
+# MinIo
+@pytest.fixture(scope="class")
+def minio_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
+    with create_ns(
+        name=f"{MinIo.Metadata.NAME}-{shortuuid.uuid().lower()}",
+        admin_client=admin_client,
+    ) as ns:
+        yield ns
+
+
+@pytest.fixture(scope="class")
+def minio_pod(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    minio_namespace: Namespace,
+) -> Generator[Pod, Any, Any]:
+    pod_labels = {Labels.Openshift.APP: MinIo.Metadata.NAME}
+
+    if labels := request.param.get("labels"):
+        pod_labels.update(labels)
+
+    with Pod(
+        client=admin_client,
+        name=MinIo.Metadata.NAME,
+        namespace=minio_namespace.name,
+        containers=[
+            {
+                "args": request.param.get("args"),
+                "env": [
+                    {
+                        "name": MinIo.Credentials.ACCESS_KEY_NAME,
+                        "value": MinIo.Credentials.ACCESS_KEY_VALUE,
+                    },
+                    {
+                        "name": MinIo.Credentials.SECRET_KEY_NAME,
+                        "value": MinIo.Credentials.SECRET_KEY_VALUE,
+                    },
+                ],
+                "image": request.param.get("image"),
+                "name": MinIo.Metadata.NAME,
+            }
+        ],
+        label=pod_labels,
+        annotations=request.param.get("annotations"),
+    ) as minio_pod:
+        yield minio_pod
+
+
+@pytest.fixture(scope="class")
+def minio_service(admin_client: DynamicClient, minio_namespace: Namespace) -> Generator[Service, Any, Any]:
+    with Service(
+        client=admin_client,
+        name=MinIo.Metadata.NAME,
+        namespace=minio_namespace.name,
+        ports=[
+            {
+                "name": f"{MinIo.Metadata.NAME}-client-port",
+                "port": MinIo.Metadata.DEFAULT_PORT,
+                "protocol": Protocols.TCP,
+                "targetPort": MinIo.Metadata.DEFAULT_PORT,
+            }
+        ],
+        selector={
+            Labels.Openshift.APP: MinIo.Metadata.NAME,
+        },
+    ) as minio_service:
+        yield minio_service
+
+
+@pytest.fixture(scope="class")
+def minio_data_connection(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    minio_service: Service,
+) -> Generator[Secret, Any, Any]:
+    data_dict = get_s3_secret_dict(
+        aws_access_key=MinIo.Credentials.ACCESS_KEY_VALUE,
+        aws_secret_access_key=MinIo.Credentials.SECRET_KEY_VALUE,  # pragma: allowlist secret
+        aws_s3_bucket=request.param["bucket"],
+        aws_s3_endpoint=f"{Protocols.HTTP}://{minio_service.instance.spec.clusterIP}:{str(MinIo.Metadata.DEFAULT_PORT)}",  # noqa: E501
+        aws_s3_region="us-south",
+    )
+
+    with Secret(
+        client=admin_client,
+        name="aws-connection-minio-data-connection",
+        namespace=model_namespace.name,
+        data_dict=data_dict,
+        label={
+            Labels.OpenDataHub.DASHBOARD: "true",
+            Labels.OpenDataHubIo.MANAGED: "true",
+        },
+        annotations={
+            f"{ApiGroups.OPENDATAHUB_IO}/connection-type": "s3",
+            "openshift.io/display-name": "Minio Data Connection",
+        },
+    ) as minio_secret:
+        yield minio_secret

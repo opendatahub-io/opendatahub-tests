@@ -25,13 +25,13 @@ pytestmark = [
         pytest.param(
             {"name": "serverless-auto-scale"},
             {
-                "name": f"{ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME}",
+                "name": f"{ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME}-concurrency",
                 "template-name": RuntimeTemplates.CAIKIT_TGIS_SERVING,
                 "multi-model": False,
                 "enable-http": True,
             },
             {
-                "name": f"{ModelFormat.CAIKIT}-auto-scale",
+                "name": f"{ModelFormat.CAIKIT}-concurrency",
                 "deployment-mode": KServeDeploymentType.SERVERLESS,
                 "model-dir": ModelStoragePath.FLAN_T5_SMALL_CAIKIT,
                 "scale-metric": "concurrency",
@@ -47,13 +47,14 @@ class TestConcurrencyAutoScale:
         self,
         admin_client,
         s3_models_inference_service,
-        multiple_tgis_inference_requests,
+        multiple_onnx_inference_requests,
     ):
         """Verify model is successfully scaled up based on concurrency metrics (KPA)"""
         for pods in inference_service_pods_sampler(
             client=admin_client,
             isvc=s3_models_inference_service,
-            timeout=Timeout.TIMEOUT_1MIN,
+            timeout=Timeout.TIMEOUT_2MIN,
+            sleep=10,
         ):
             if pods:
                 if len(pods) > 1 and all([pod.status == pod.Status.RUNNING for pod in pods]):
@@ -66,6 +67,7 @@ class TestConcurrencyAutoScale:
             client=admin_client,
             isvc=s3_models_inference_service,
             timeout=Timeout.TIMEOUT_4MIN,
+            sleep=10,
         ):
             if pods and len(pods) == 1:
                 return

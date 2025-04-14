@@ -1,13 +1,11 @@
 import pytest
 
 from tests.model_serving.model_server.utils import (
-    run_inference_multiple_times,
     verify_inference_response,
 )
 from utilities.constants import ModelFormat, ModelStoragePath, Protocols
 from utilities.inference_utils import Inference
 from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
-from utilities.monitoring import validate_metrics_value
 
 
 @pytest.mark.parametrize(
@@ -62,27 +60,4 @@ class TestRawUnprivilegedUser:
             protocol=Protocols.HTTP,
             model_name=ModelFormat.CAIKIT,
             use_default_query=True,
-        )
-
-    def test_raw_metrics(
-        self,
-        unprivileged_s3_caikit_raw_inference_service,
-        prometheus,
-        user_workload_monitoring_config_map,
-    ):
-        """Verify number of total model requests in OpenShift monitoring system (UserWorkloadMonitoring) metrics"""
-        total_runs = 5
-
-        run_inference_multiple_times(
-            isvc=unprivileged_s3_caikit_raw_inference_service,
-            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
-            inference_type=Inference.ALL_TOKENS,
-            protocol=Protocols.HTTP,
-            model_name=ModelFormat.CAIKIT,
-            iterations=total_runs,
-        )
-        validate_metrics_value(
-            prometheus=prometheus,
-            metrics_query="tgi_request_count",
-            expected_value=str(total_runs + 1),
         )

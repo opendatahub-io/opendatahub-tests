@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Any
 
 from kubernetes.dynamic import DynamicClient
@@ -85,9 +83,9 @@ def verify_canary_traffic(
     inference_config: dict[str, Any],
     inference_type: str,
     protocol: str,
-    model_name: str,
     iterations: int,
     expected_percentage: int,
+    model_name: str | None = None,
     tolerance: int = 0,
 ) -> None:
     """
@@ -139,7 +137,9 @@ def verify_canary_traffic(
         )
 
 
-def inference_service_pods_sampler(client: DynamicClient, isvc: InferenceService, timeout: int) -> TimeoutSampler:
+def inference_service_pods_sampler(
+    client: DynamicClient, isvc: InferenceService, timeout: int, sleep: int = 1
+) -> TimeoutSampler:
     """
     Returns TimeoutSampler for inference service.
 
@@ -147,6 +147,7 @@ def inference_service_pods_sampler(client: DynamicClient, isvc: InferenceService
         client (DynamicClient): DynamicClient object
         isvc (InferenceService): InferenceService object
         timeout (int): Timeout in seconds
+        sleep (int): Sleep time in seconds
 
     Returns:
         TimeoutSampler: TimeoutSampler object
@@ -154,7 +155,7 @@ def inference_service_pods_sampler(client: DynamicClient, isvc: InferenceService
     """
     return TimeoutSampler(
         wait_timeout=timeout,
-        sleep=1,
+        sleep=sleep,
         func=get_pods_by_isvc_label,
         client=client,
         isvc=isvc,

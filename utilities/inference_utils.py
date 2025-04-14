@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import json
 import re
 import shlex
@@ -15,12 +13,12 @@ from ocp_resources.resource import get_client
 from ocp_resources.service import Service
 from pyhelper_utils.shell import run_command
 from simple_logger.logger import get_logger
-from timeout_sampler import retry
+from timeout_sampler import TimeoutWatch, retry
 
 from utilities.exceptions import InvalidStorageArgumentError
 from utilities.infra import (
     get_inference_serving_runtime,
-    get_model_mesh_route,
+    get_model_route,
     get_pods_by_isvc_label,
     get_services_by_isvc_label,
     wait_for_inference_deployment_replicas,
@@ -29,6 +27,8 @@ from utilities.infra import (
 from utilities.certificates_utils import get_ca_bundle
 from utilities.constants import (
     KServeDeploymentType,
+    Labels,
+    ModelName,
     Protocols,
     HTTPRequest,
     Annotations,
@@ -43,6 +43,7 @@ class Inference:
     ALL_TOKENS: str = "all-tokens"
     STREAMING: str = "streaming"
     INFER: str = "infer"
+    MNIST: str = f"infer-{ModelName.MNIST}"
 
     def __init__(self, inference_service: InferenceService):
         """
@@ -93,7 +94,7 @@ class Inference:
                 return urlparse(url=url).netloc
 
             elif self.deployment_mode == KServeDeploymentType.MODEL_MESH:
-                route = get_model_mesh_route(client=self.inference_service.client, isvc=self.inference_service)
+                route = get_model_route(client=self.inference_service.client, isvc=self.inference_service)
                 return route.instance.spec.host
 
             else:
@@ -113,7 +114,7 @@ class Inference:
         labels = self.inference_service.labels
 
         if self.deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT:
-            return labels and labels.get("networking.kserve.io/visibility") == "exposed"
+            return labels and labels.get(Labels.Kserve.NETWORKING_KSERVE_IO) == Labels.Kserve.EXPOSED
 
         if self.deployment_mode == KServeDeploymentType.SERVERLESS:
             if labels and labels.get("networking.knative.dev/visibility") == "cluster-local":
@@ -396,7 +397,7 @@ class UserInference(Inference):
         except JSONDecodeError:
             return {"output": out}
 
-    @retry(wait_timeout=30, sleep=5)
+    @retry(wait_timeout=Timeout.TIMEOUT_30SEC, sleep=5)
     def run_inference(self, cmd: str) -> str:
         """
         Run inference command
@@ -513,6 +514,7 @@ def create_isvc(
     external_route: bool | None = None,
     model_service_account: str | None = None,
     min_replicas: int | None = None,
+    max_replicas: int | None = None,
     argument: list[str] | None = None,
     resources: dict[str, Any] | None = None,
     volumes: dict[str, Any] | None = None,
@@ -524,6 +526,7 @@ def create_isvc(
     timeout: int = Timeout.TIMEOUT_15MIN,
     scale_metric: str | None = None,
     scale_target: int | None = None,
+    model_env_variables: list[dict[str, str]] | None = None,
 ) -> Generator[InferenceService, Any, Any]:
     """
     Create InferenceService object.
@@ -543,6 +546,7 @@ def create_isvc(
         external_route (bool): External route
         model_service_account (str): Model service account
         min_replicas (int): Minimum replicas
+        max_replicas (int): Maximum replicas
         argument (list[str]): Argument
         resources (dict[str, Any]): Resources
         volumes (dict[str, Any]): Volumes
@@ -551,10 +555,10 @@ def create_isvc(
         wait_for_predictor_pods (bool): Wait for predictor pods
         autoscaler_mode (str): Autoscaler mode
         multi_node_worker_spec (dict[str, int]): Multi node worker spec
-        wait_for_predictor_pods (bool): Wait for predictor pods
         timeout (int): Time to wait for the model inference,deployment to be ready
         scale_metric (str): Scale metric
         scale_target (int): Scale target
+        model_env_variables (list[dict[str, str]]): Model environment variables
 
     Yields:
         InferenceService: InferenceService object
@@ -562,13 +566,18 @@ def create_isvc(
     """
     labels: dict[str, str] = {}
     predictor_dict: dict[str, Any] = {
-        "minReplicas": min_replicas,
         "model": {
             "modelFormat": {"name": model_format},
-            "version": "1",
+            "version": model_version,
             "runtime": runtime,
         },
     }
+
+    if min_replicas is not None:
+        predictor_dict["minReplicas"] = min_replicas
+
+    if max_replicas is not None:
+        predictor_dict["maxReplicas"] = max_replicas
 
     if model_version:
         predictor_dict["model"]["modelFormat"]["version"] = model_version
@@ -591,6 +600,8 @@ def create_isvc(
         predictor_dict["model"]["volumeMounts"] = volumes_mounts
     if volumes:
         predictor_dict["volumes"] = volumes
+    if model_env_variables:
+        predictor_dict["model"]["env"] = model_env_variables
 
     _annotations: dict[str, str] = {}
 
@@ -604,19 +615,19 @@ def create_isvc(
             "sidecar.istio.io/rewriteAppHTTPProbers": "true",
         })
     if enable_auth:
-        # model mesh auth is set in servingruntime
+        # model mesh auth is set in ServingRuntime
         if deployment_mode == KServeDeploymentType.SERVERLESS:
             _annotations[Annotations.KserveAuth.SECURITY] = "true"
         elif deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
             _annotations[Annotations.KserveAuth.SECURITY] = "true"
 
     # default to True if deployment_mode is Serverless (default behavior of Serverless) if was not provided by the user
-    # model mesh external route is set in servingruntime
+    # model mesh external route is set in ServingRuntime
     if external_route is None and deployment_mode == KServeDeploymentType.SERVERLESS:
         external_route = True
 
     if external_route and deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
-        labels["networking.kserve.io/visibility"] = "exposed"
+        labels[Labels.Kserve.NETWORKING_KSERVE_IO] = Labels.Kserve.EXPOSED
 
     if deployment_mode == KServeDeploymentType.SERVERLESS and external_route is False:
         labels["networking.knative.dev/visibility"] = "cluster-local"
@@ -641,18 +652,20 @@ def create_isvc(
         predictor=predictor_dict,
         label=labels,
     ) as inference_service:
+        timeout_watch = TimeoutWatch(timeout=timeout)
+
         if wait_for_predictor_pods:
             verify_no_failed_pods(
                 client=client,
                 isvc=inference_service,
                 runtime_name=runtime,
-                timeout=timeout,
+                timeout=timeout_watch.remaining_time(),
             )
             wait_for_inference_deployment_replicas(
                 client=client,
                 isvc=inference_service,
                 runtime_name=runtime,
-                timeout=timeout,
+                timeout=timeout_watch.remaining_time(),
             )
 
         if wait:
@@ -678,7 +691,7 @@ def create_isvc(
             inference_service.wait_for_condition(
                 condition=inference_service.Condition.READY,
                 status=inference_service.Condition.Status.TRUE,
-                timeout=timeout,
+                timeout=timeout_watch.remaining_time(),
             )
 
         yield inference_service

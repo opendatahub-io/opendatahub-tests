@@ -12,7 +12,7 @@ from ocp_resources.serving_runtime import ServingRuntime
 from tests.model_explainability.trustyai_service.trustyai_service_utils import (
     wait_for_isvc_deployment_registered_by_trustyai_service,
 )
-from utilities.constants import ModelFormat, KServeDeploymentType, RuntimeTemplates
+from utilities.constants import MinIo, ModelFormat, KServeDeploymentType, RuntimeTemplates
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -31,8 +31,7 @@ def ovms_runtime(
         enable_grpc=True,
         model_format_name={"name": ModelFormat.ONNX, "version": "1"},
         # TODO: Remove runtime_image once model works with latest ovms
-        runtime_image="quay.io/opendatahub/openvino_model_server"
-        "@sha256:564664371d3a21b9e732a5c1b4b40bacad714a5144c0a9aaf675baec4a04b148",
+        runtime_image=MinIo.RunTimeConfig.IMAGE,
     ) as sr:
         yield sr
 

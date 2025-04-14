@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import json
 import os
 from http import HTTPStatus
@@ -21,7 +19,6 @@ from utilities.general import create_isvc_label_selector_str
 from utilities.inference_utils import Inference, UserInference
 
 LOGGER = get_logger(name=__name__)
-TIMEOUT_30SEC: int = 30
 
 TRUSTYAI_SERVICE_NAME: str = "trustyai-service"
 

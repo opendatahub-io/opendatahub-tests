@@ -27,7 +27,7 @@ dev-dependencies = [
 [tool.uv.sources]
 
 [project]
-requires-python = ">=3.9"
+requires-python = "==3.12.*"
 name = "opendatahub-tests"
 version = "0.1.0"
 description = "Tests repository for Open Data Hub (ODH)"
@@ -50,7 +50,7 @@ dependencies = [
     "pyyaml",
     "tenacity",
     "types-requests>=2.32.0.20241016",
-    "schemathesis>=3.38.10",
+    "schemathesis>=4.0.0a8",
     "requests",
     "pytest-asyncio",
     "syrupy",
