@@ -6,7 +6,6 @@ from _pytest.fixtures import FixtureRequest
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.deployment import Deployment
-from ocp_resources.resource import NamespacedResource
 from tests.model_registry.scc.utils import (
     get_uid_from_namespace,
     validate_pod_security_context,
@@ -23,8 +22,8 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")
-def model_registry_scc_namespace(model_registry_namespace: Namespace):
-    mr_annotations = model_registry_namespace.instance.metadata.annotations
+def model_registry_scc_namespace(model_registry_namespace: str):
+    mr_annotations = Namespace(name=model_registry_namespace).instance.metadata.annotations
     return {
         "seLinuxOptions": mr_annotations.get("openshift.io/sa.scc.mcs"),
         "uid-range": mr_annotations.get("openshift.io/sa.scc.uid-range"),
@@ -33,13 +32,13 @@ def model_registry_scc_namespace(model_registry_namespace: Namespace):
 
 @pytest.fixture(scope="class")
 def model_registry_resource(
-    request: FixtureRequest, admin_client: DynamicClient, model_registry_namespace: Namespace
-) -> NamespacedResource:
+    request: FixtureRequest, admin_client: DynamicClient, model_registry_namespace: str
+) -> Deployment | Pod:
     if request.param["kind"] == Deployment:
-        return Deployment(name=MR_INSTANCE_NAME, namespace=model_registry_namespace.name, ensure_exists=True)
+        return Deployment(name=MR_INSTANCE_NAME, namespace=model_registry_namespace, ensure_exists=True)
     elif request.param["kind"] == Pod:
         pods = get_pods_by_name_prefix(
-            client=admin_client, pod_prefix=MR_INSTANCE_NAME, namespace=model_registry_namespace.name
+            client=admin_client, pod_prefix=MR_INSTANCE_NAME, namespace=model_registry_namespace
         )
         if len(pods) != 1:
             pytest.fail(
@@ -51,10 +50,9 @@ def model_registry_resource(
 
 
 @pytest.mark.parametrize(
-    "model_registry_namespace, updated_dsc_component_state_scope_class, registered_model",
+    "updated_dsc_component_state_scope_class, registered_model",
     [
         pytest.param(
-            {"namespace_name": MR_NAMESPACE},
             {
                 "component_patch": {
                     DscComponents.MODELREGISTRY: {
@@ -68,7 +66,7 @@ def model_registry_resource(
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("model_registry_namespace", "updated_dsc_component_state_scope_class", "registered_model")
+@pytest.mark.usefixtures("updated_dsc_component_state_scope_class", "registered_model")
 class TestModelRegistrySecurityContextValidation:
     @pytest.mark.parametrize(
         "model_registry_resource",
@@ -79,8 +77,7 @@ class TestModelRegistrySecurityContextValidation:
     )
     def test_model_registry_deployment_security_context_validation(
         self: Self,
-        model_registry_resource: NamespacedResource,
-        model_registry_namespace: Namespace,
+        model_registry_resource: Deployment,
     ):
         """
         Validate that model registry deployment does not set runAsUser/runAsGroup
@@ -105,7 +102,7 @@ class TestModelRegistrySecurityContextValidation:
     )
     def test_model_registry_pod_security_context_validation(
         self: Self,
-        model_registry_resource: NamespacedResource,
+        model_registry_resource: Pod,
         model_registry_scc_namespace: dict[str, str],
     ):
         """
