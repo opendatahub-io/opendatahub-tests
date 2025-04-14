@@ -1,14 +1,14 @@
-from typing import Generator, Any
+from typing import Generator, Any, List, Callable, Optional
 
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError, ResourceNotUniqueError
 from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.deployment import Deployment
-from ocp_resources.maria_db import MariaDB
 from ocp_resources.mariadb_operator import MariadbOperator
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
+from ocp_resources.trustyai_service import TrustyAIService
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
@@ -49,30 +49,60 @@ def wait_for_mariadb_operator_deployments(mariadb_operator: MariadbOperator) -> 
         deployment.wait_for_replicas()
 
 
-def wait_for_mariadb_pods(client: DynamicClient, mariadb: MariaDB, timeout: int = Timeout.TIMEOUT_5MIN) -> None:
-    def _get_mariadb_pods() -> list[Pod]:
+def get_pods_func(client: DynamicClient, namespace: str, label_selector: Optional[str]) -> Callable[[], list[Pod]]:
+    def _get_pods() -> List[Pod]:
         pods = [
             pod
             for pod in Pod.get(
                 dyn_client=client,
-                namespace=mariadb.namespace,
-                label_selector="app.kubernetes.io/instance=mariadb",
+                namespace=namespace,
+                label_selector=label_selector,
             )
         ]
         return pods
 
-    sampler = TimeoutSampler(wait_timeout=timeout, sleep=1, func=lambda: bool(_get_mariadb_pods()))
+    return _get_pods
+
+
+def wait_for_pods(
+    client: DynamicClient,
+    namespace: str,
+    label_selector: Optional[str] = None,
+    timeout: int = Timeout.TIMEOUT_5MIN,
+    wait_for_condition: str = Pod.Condition.READY,
+    condition_status: str = Pod.Condition.Status.TRUE,
+) -> List[Pod]:
+    get_pods = get_pods_func(client=client, namespace=namespace, label_selector=label_selector)
+    sampler = TimeoutSampler(wait_timeout=timeout, sleep=1, func=lambda: bool(get_pods()))
 
     for sample in sampler:
         if sample:
             break
 
-    pods = _get_mariadb_pods()
+    pods = get_pods()
     for pod in pods:
         pod.wait_for_condition(
-            condition=Pod.Condition.READY,
-            status="True",
+            condition=wait_for_condition,
+            status=condition_status,
+            timeout=timeout,  # IDEA: using two different timeouts might be worth considering
         )
+    return pods
+
+
+def wait_for_trustyai_container_failure_and_get_status(
+    client: DynamicClient, namespace: str, label_selector: Optional[str] = None, timeout: int = Timeout.TIMEOUT_5MIN
+) -> Any | None:
+    get_pods = get_pods_func(client, namespace=namespace, label_selector=label_selector)
+    sampler = TimeoutSampler(wait_timeout=timeout, sleep=1, func=get_pods)
+    for pods in sampler:
+        for pod in pods:
+            for container_status in pod.instance.status.containerStatuses:
+                if (terminate_state := container_status.lastState.terminated) and terminate_state.reason in (
+                    pod.Status.ERROR,
+                    pod.Status.CRASH_LOOPBACK_OFF,
+                ):
+                    return terminate_state
+    return None
 
 
 def create_trustyai_db_ca_secret(
@@ -85,3 +115,25 @@ def create_trustyai_db_ca_secret(
         data_dict={"ca.crt": mariadb_ca_cert},
     ):
         yield
+
+
+def create_trustyai_service(
+    client: DynamicClient,
+    namespace: Namespace,
+    storage: dict[Any, Any],
+    metrics: dict[Any, Any],
+    data: Optional[dict[Any, Any]] = None,
+    wait_for_replicas: bool = True,
+) -> Generator[TrustyAIService, Any, Any]:
+    with TrustyAIService(
+        client=client,
+        name=TRUSTYAI_SERVICE_NAME,
+        namespace=namespace.name,
+        storage=storage,
+        metrics=metrics,
+        data=data,
+    ) as trustyai_service:
+        trustyai_deployment = Deployment(namespace=namespace, name=TRUSTYAI_SERVICE_NAME, wait_for_resource=True)
+        if wait_for_replicas:
+            trustyai_deployment.wait_for_replicas()
+        yield trustyai_service

@@ -1,38 +1,32 @@
 import pytest
-from ocp_resources.pod import Pod
 from ocp_resources.namespace import Namespace
+
+from tests.model_explainability.trustyai_service.utils import wait_for_trustyai_container_failure_and_get_status
 
 
 @pytest.mark.parametrize(
-    "model_namespace, trustyai_service_name",
+    "model_namespace",
     [
         pytest.param(
             {"name": "test-trustyai-service"},
-            "trustyai-service",
         )
     ],
-    indirect=["model_namespace"],
+    indirect=True,
 )
 def test_trustyai_service_with_invalid_db_cert(
     admin_client,
     current_client_token,
     model_namespace: Namespace,
-    trustyai_service_name,
     trustyai_service_with_invalid_db_cert,
 ):
     """
-    Makes sure trustyAI container fails when incorrect database TLS certificate is used.
+    Makes sure TrustyAIService pod fails when incorrect database TLS certificate is used.
     """
-    if pod := list(
-        Pod.get(
-            dyn_client=admin_client,
-            namespace=model_namespace.name,
-            label_selector=f"app.kubernetes.io/instance={trustyai_service_name}",
-        )
+    if terminate_state := wait_for_trustyai_container_failure_and_get_status(
+        client=admin_client,
+        namespace=model_namespace.name,
+        label_selector=f"app.kubernetes.io/instance={trustyai_service_with_invalid_db_cert.name}",
     ):
-        for container_status in pod[0].instance.status.containerStatuses:
-            if container_status.name == "trustyai-service":
-                if container_status.ready and container_status.started:
-                    pytest.fail("TrustyAI service is ready when TLS config is invalid.")
+        assert "Failed to store certificate" in terminate_state.message
     else:
-        pytest.fail(f"No pods found for service {trustyai_service_name}.")
+        pytest.fail(f"TrustyAI Service Pod did not fail for {trustyai_service_with_invalid_db_cert.name}.")

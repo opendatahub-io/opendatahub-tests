@@ -16,12 +16,12 @@ from ocp_resources.subscription import Subscription
 from ocp_resources.trustyai_service import TrustyAIService
 from ocp_utilities.operators import install_operator, uninstall_operator
 
-from tests.model_explainability.trustyai_service.trustyai_service_utils import TRUSTYAI_SERVICE_NAME
 from tests.model_explainability.trustyai_service.utils import (
     get_cluster_service_version,
     wait_for_mariadb_operator_deployments,
-    wait_for_mariadb_pods,
+    wait_for_pods,
     create_trustyai_db_ca_secret,
+    create_trustyai_service,
 )
 
 from utilities.constants import Timeout
@@ -50,37 +50,14 @@ def trustyai_service_with_pvc_storage(
     cluster_monitoring_config: ConfigMap,
     user_workload_monitoring_config: ConfigMap,
 ) -> Generator[TrustyAIService, Any, Any]:
-    with TrustyAIService(
+    yield from create_trustyai_service(
         client=admin_client,
-        name=TRUSTYAI_SERVICE_NAME,
-        namespace=model_namespace.name,
+        namespace=model_namespace,
         storage={"format": "PVC", "folder": "/inputs", "size": "1Gi"},
         data={"filename": "data.csv", "format": "CSV"},
         metrics={"schedule": "5s"},
-    ) as trustyai_service:
-        trustyai_deployment = Deployment(
-            namespace=model_namespace.name, name=TRUSTYAI_SERVICE_NAME, wait_for_resource=True
-        )
-        trustyai_deployment.wait_for_replicas()
-        yield trustyai_service
-
-
-def create_trustyai_service(
-    admin_client: DynamicClient, model_namespace: Namespace, wait_for_replicas: bool = True
-) -> Generator[TrustyAIService, Any, Any]:
-    with TrustyAIService(
-        client=admin_client,
-        name=TRUSTYAI_SERVICE_NAME,
-        namespace=model_namespace.name,
-        storage={"format": "DATABASE", "size": "1Gi", "databaseConfigurations": "db-credentials"},
-        metrics={"schedule": "5s"},
-    ) as trustyai_service:
-        trustyai_deployment = Deployment(
-            namespace=model_namespace.name, name=TRUSTYAI_SERVICE_NAME, wait_for_resource=True
-        )
-        if wait_for_replicas:
-            trustyai_deployment.wait_for_replicas()
-        yield trustyai_service
+        wait_for_replicas=True,
+    )
 
 
 @pytest.fixture(scope="class")
@@ -92,7 +69,13 @@ def trustyai_service_with_db_storage(
     mariadb: MariaDB,
     trustyai_db_ca_secret: None,
 ) -> Generator[TrustyAIService, Any, Any]:
-    yield from create_trustyai_service(admin_client, model_namespace, wait_for_replicas=True)
+    yield from create_trustyai_service(
+        client=admin_client,
+        namespace=model_namespace,
+        storage={"format": "DATABASE", "size": "1Gi", "databaseConfigurations": "db-credentials"},
+        metrics={"schedule": "5s"},
+        wait_for_replicas=True,
+    )
 
 
 @pytest.fixture(scope="class")
@@ -104,7 +87,13 @@ def trustyai_service_with_invalid_db_cert(
     mariadb: MariaDB,
     trustyai_invalid_db_ca_secret: None,
 ) -> Generator[TrustyAIService, None, None]:
-    yield from create_trustyai_service(admin_client, model_namespace, wait_for_replicas=False)
+    yield from create_trustyai_service(
+        client=admin_client,
+        namespace=model_namespace,
+        storage={"format": "DATABASE", "size": "1Gi", "databaseConfigurations": "db-credentials"},
+        metrics={"schedule": "5s"},
+        wait_for_replicas=False,
+    )
 
 
 @pytest.fixture(scope="session")
@@ -259,7 +248,9 @@ def mariadb(
     mariadb_dict["spec"]["rootPasswordSecretKeyRef"] = password_secret_key_ref
     mariadb_dict["spec"]["passwordSecretKeyRef"] = password_secret_key_ref
     with MariaDB(kind_dict=mariadb_dict) as mariadb:
-        wait_for_mariadb_pods(client=admin_client, mariadb=mariadb)
+        wait_for_pods(
+            client=admin_client, namespace=mariadb.namespace, label_selector="app.kubernetes.io/instance=mariadb"
+        )
         yield mariadb
 
 
