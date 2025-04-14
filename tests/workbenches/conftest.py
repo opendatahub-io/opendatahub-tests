@@ -13,9 +13,10 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.route import Route
 from ocp_resources.notebook import Notebook
+from ocp_resources.cluster_operator import ClusterOperator
 
 
-from utilities.constants import Labels
+from utilities.constants import Labels, Timeout
 from utilities import constants
 from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH
 
@@ -37,16 +38,37 @@ def users_persistent_volume_claim(
 
 
 @pytest.fixture(scope="function")
+def internal_image_registry(
+    admin_client: DynamicClient,
+) -> Generator[ClusterOperator | None, None, None]:
+    try:
+        image_registry = ClusterOperator(
+            client=admin_client,
+            name="image-registry",
+            ensure_exists=True,
+        )
+        image_registry.wait_for_condition(
+            condition=ClusterOperator.Condition.AVAILABLE,
+            status=ClusterOperator.Condition.Status.TRUE,
+            timeout=Timeout.TIMEOUT_30SEC,
+        )
+        yield image_registry
+    except ResourceNotFoundError:
+        yield None
+
+
+@pytest.fixture(scope="function")
 def minimal_image() -> Generator[str, None, None]:
     """Provides a full image name of a minimal workbench image"""
     image_name = "jupyter-minimal-notebook" if py_config.get("distribution") == "upstream" else "s2i-minimal-notebook"
-    yield f"{INTERNAL_IMAGE_REGISTRY_PATH}/{py_config['applications_namespace']}/{image_name}:{'2024.2'}"
+    yield f"{image_name}:{'2024.2'}"
 
 
 @pytest.fixture(scope="function")
 def default_notebook(
     request: pytest.FixtureRequest,
     admin_client: DynamicClient,
+    internal_image_registry: ClusterOperator | None,
     minimal_image: str,
 ) -> Generator[Notebook, None, None]:
     """Returns a new Notebook CR for a given namespace, name, and image"""
@@ -61,6 +83,13 @@ def default_notebook(
 
     # Set the correct username
     username = get_username(dyn_client=admin_client)
+
+    # Set the image path based on internal image registry status
+    minimal_image_path = (
+        f"{INTERNAL_IMAGE_REGISTRY_PATH}/{py_config['applications_namespace']}/{minimal_image}"
+        if internal_image_registry
+        else ":" + minimal_image.rsplit(":", maxsplit=1)[1]
+    )
 
     probe_config = {
         "failureThreshold": 3,
@@ -83,6 +112,7 @@ def default_notebook(
                 "notebooks.opendatahub.io/inject-oauth": "true",
                 "opendatahub.io/accelerator-name": "",
                 "opendatahub.io/service-mesh": "false",
+                "notebooks.opendatahub.io/last-image-selection": minimal_image,
             },
             "labels": {
                 Labels.Openshift.APP: name,
@@ -114,9 +144,9 @@ def default_notebook(
                                     "                  "
                                     f'--ServerApp.tornado_settings={{"user":"{username}","hub_host":"https://{route.host}","hub_prefix":"/projects/{namespace}"}}',  # noqa: E501 line too long
                                 },
-                                {"name": "JUPYTER_IMAGE", "value": minimal_image},
+                                {"name": "JUPYTER_IMAGE", "value": minimal_image_path},
                             ],
-                            "image": minimal_image,
+                            "image": minimal_image_path,
                             "imagePullPolicy": "Always",
                             "livenessProbe": probe_config,
                             "name": name,
