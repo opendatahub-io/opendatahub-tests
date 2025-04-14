@@ -92,3 +92,23 @@ class ClusterLoginError(Exception):
 
     def __str__(self) -> str:
         return f"Failed to log in as user {self.user}."
+
+
+class InvalidArguments(Exception):
+    pass
+
+
+class ResourceNotReadyError(Exception):
+    pass
+
+
+class PodContainersRestartError(Exception):
+    pass
+
+
+class TooManyPodsError(Exception):
+    pass
+
+
+class UnexpectedFailureError(Exception):
+    pass

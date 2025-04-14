@@ -1,9 +1,13 @@
+import base64
 import json
+import os
 import re
 import shlex
+import tempfile
 from contextlib import contextmanager
 from functools import cache
-from typing import Any, Generator, Optional, Set
+    from typing import Any, Generator, Optional, Set, Callable
+from json import JSONDecodeError
 
 import kubernetes
 from _pytest.fixtures import FixtureRequest
@@ -19,6 +23,7 @@ from ocp_resources.exceptions import MissingResourceError
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.infrastructure import Infrastructure
 from ocp_resources.namespace import Namespace
+from ocp_resources.node import Node
 from ocp_resources.pod import Pod
 from ocp_resources.project_project_openshift_io import Project
 from ocp_resources.project_request import ProjectRequest
@@ -31,13 +36,16 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
-from semver import Version
+from packaging.version import parse, Version
 from simple_logger.logger import get_logger
 
-from utilities.constants import ApiGroups, Labels, Timeout
+from ocp_resources.subscription import Subscription
+from ocp_utilities.exceptions import NodeUnschedulableError, NodeNotReadyError
+from ocp_utilities.infra import assert_nodes_in_healthy_condition, assert_nodes_schedulable
+from utilities.constants import ApiGroups, Labels, Timeout, RHOAI_OPERATOR_NAMESPACE, RHOAI_SUBSCRIPTION_NAME
 from utilities.constants import KServeDeploymentType
 from utilities.constants import Annotations
-from utilities.exceptions import ClusterLoginError, FailedPodsError
+from utilities.exceptions import ClusterLoginError, FailedPodsError, ResourceNotReadyError
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 import utilities.general
 
@@ -807,3 +815,149 @@ def wait_for_isvc_pods(client: DynamicClient, isvc: InferenceService, runtime_na
     """
     LOGGER.info("Waiting for pods to be created")
     return get_pods_by_isvc_label(client=client, isvc=isvc, runtime_name=runtime_name)
+
+
+def get_rhods_subscription() -> Subscription:
+    return Subscription(name=RHOAI_SUBSCRIPTION_NAME, namespace=RHOAI_OPERATOR_NAMESPACE, ensure_exists=True)
+
+
+def get_rhods_operator_installed_csv() -> ClusterServiceVersion:
+    subscription = get_rhods_subscription()
+    return ClusterServiceVersion(
+        name=subscription.instance.status.installedCSV, namespace=RHOAI_OPERATOR_NAMESPACE, ensure_exists=True
+    )
+
+
+def get_rhods_csv_version() -> Version:
+    return parse(version=get_rhods_operator_installed_csv().instance.spec.version)
+
+
+@retry(
+    wait_timeout=120,
+    sleep=5,
+    exceptions_dict={ResourceNotReadyError: []},
+)
+def wait_for_dsci_status_ready(dsci_resource: DSCInitialization) -> bool:
+    LOGGER.info(f"Wait for DSCI {dsci_resource.name} to be in {dsci_resource.Status.READY} status.")
+    if dsci_resource.status == dsci_resource.Status.READY:
+        return True
+
+    raise ResourceNotReadyError(
+        f"DSCI {dsci_resource.name} is not ready.\nCurrent status: {dsci_resource.instance.status}"
+    )
+
+
+@retry(
+    wait_timeout=120,
+    sleep=5,
+    exceptions_dict={ResourceNotReadyError: []},
+)
+def wait_for_dsc_status_ready(dsc_resource: DataScienceCluster) -> bool:
+    LOGGER.info(f"Wait for DSC {dsc_resource.name} are {dsc_resource.Status.READY}.")
+    if dsc_resource.status == dsc_resource.Status.READY:
+        return True
+    raise ResourceNotReadyError(
+        f"DSC {dsc_resource.name} is not ready.\nCurrent status: {dsc_resource.instance.status}"
+    )
+
+
+def verify_cluster_sanity(
+    request: FixtureRequest,
+    nodes: list[Node],
+    dsci_resource: DSCInitialization,
+    dsc_resource: DataScienceCluster,
+    junitxml_property: Callable[[str, object], None] | None = None,
+) -> None:
+    """
+    Check that cluster resources (Nodes, DSCI, DSC) are healthy and exists pytest execution on failure.
+
+    Args:
+        request (FixtureRequest): pytest request
+        nodes (list[Node]): list of nodes
+        dsci_resource (DSCInitialization): dsci resource
+        dsc_resource (DataScienceCluster): dsc resource
+        junitxml_property (property): Junitxml property
+
+    """
+    skip_cluster_sanity_check = "--cluster-sanity-skip-check"
+    skip_rhoai_check = "--cluster-sanity-skip-rhoai-check"
+
+    if request.session.config.getoption(skip_cluster_sanity_check):
+        LOGGER.warning(f"Skipping cluster sanity check, got {skip_cluster_sanity_check}")
+        return
+
+    try:
+        LOGGER.info("Check cluster sanity.")
+
+        assert_nodes_in_healthy_condition(nodes=nodes, healthy_node_condition_type={"KubeletReady": "True"})
+        assert_nodes_schedulable(nodes=nodes)
+
+        if request.session.config.getoption(skip_rhoai_check):
+            LOGGER.warning(f"Skipping RHOAI resource checks, got {skip_rhoai_check}")
+
+        else:
+            wait_for_dsci_status_ready(dsci_resource=dsci_resource)
+            wait_for_dsc_status_ready(dsc_resource=dsc_resource)
+
+    except (ResourceNotReadyError, NodeUnschedulableError, NodeNotReadyError) as ex:
+        error_msg = f"Cluster sanity check failed: {str(ex)}"
+        # return_code set to 99 to not collide with https://docs.pytest.org/en/stable/reference/exit-codes.html
+        return_code = 99
+
+        LOGGER.error(error_msg)
+
+        if junitxml_property:
+            junitxml_property(name="exit_code", value=return_code)  # type: ignore[call-arg]
+
+        # TODO: Write to file to easily report the failure in jenkins
+        pytest.exit(reason=error_msg, returncode=return_code)
+
+
+def get_openshift_pull_secret(client: DynamicClient = None) -> Secret:
+    openshift_config_namespace = "openshift-config"
+    pull_secret_name = "pull-secret"  # pragma: allowlist secret
+    secret = Secret(
+        client=client or get_client(),
+        name=pull_secret_name,
+        namespace=openshift_config_namespace,
+    )
+    assert secret.exists, f"Pull-secret {pull_secret_name} not found in namespace {openshift_config_namespace}"
+    return secret
+
+
+def generate_openshift_pull_secret_file(client: DynamicClient = None) -> str:
+    pull_secret = get_openshift_pull_secret(client=client)
+    pull_secret_path = tempfile.mkdtemp(suffix="odh-pull-secret")
+    json_file = os.path.join(pull_secret_path, "pull-secrets.json")
+    secret = base64.b64decode(pull_secret.instance.data[".dockerconfigjson"]).decode(encoding="utf-8")
+    with open(file=json_file, mode="w") as outfile:
+        outfile.write(secret)
+    return json_file
+
+
+def get_oc_image_info(
+    image: str,
+    architecture: str,
+    pull_secret: str | None = None,
+) -> Any:
+    def _get_image_json(cmd: str) -> Any:
+        return json.loads(run_command(command=shlex.split(cmd), check=False)[1])
+
+    base_command = f"oc image -o json info {image} --filter-by-os {architecture}"
+    if pull_secret:
+        base_command = f"{base_command} --registry-config={pull_secret}"
+
+    sample = None
+    try:
+        for sample in TimeoutSampler(
+            wait_timeout=10,
+            sleep=5,
+            exceptions_dict={JSONDecodeError: [], TypeError: []},
+            func=_get_image_json,
+            cmd=base_command,
+        ):
+            if sample:
+                return sample
+    except TimeoutExpiredError:
+        LOGGER.error(f"Failed to parse {base_command}")
+        raise
