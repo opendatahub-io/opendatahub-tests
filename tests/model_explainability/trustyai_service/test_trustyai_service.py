@@ -27,6 +27,7 @@ def test_trustyai_service_with_invalid_db_cert(
         namespace=model_namespace.name,
         label_selector=f"app.kubernetes.io/instance={trustyai_service_with_invalid_db_cert.name}",
     ):
-        assert "Failed to store certificate" in terminate_state.message
+        assert "Could not connect to mariadb:3306" in terminate_state.message
+        assert "signature check failed" in terminate_state.message
     else:
         pytest.fail(f"TrustyAI Service Pod did not fail for {trustyai_service_with_invalid_db_cert.name}.")
