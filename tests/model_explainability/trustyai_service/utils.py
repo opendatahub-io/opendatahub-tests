@@ -89,7 +89,7 @@ def wait_for_pods(
     return pods
 
 
-def wait_for_trustyai_container_failure_and_get_status(
+def wait_for_trustyai_container_terminal_state(
     client: DynamicClient, namespace: str, label_selector: Optional[str] = None, timeout: int = Timeout.TIMEOUT_5MIN
 ) -> Any | None:
     get_pods = get_pods_func(client, namespace=namespace, label_selector=label_selector)
