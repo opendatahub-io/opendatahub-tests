@@ -6,6 +6,7 @@ from ocp_resources.pod import Pod
 
 
 class TestNotebook:
+    @pytest.mark.smoke
     @pytest.mark.parametrize(
         "unprivileged_model_namespace,users_persistent_volume_claim,default_notebook",
         [
