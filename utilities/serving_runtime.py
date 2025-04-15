@@ -31,6 +31,7 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         volumes: list[dict[str, Any]] | None = None,
         containers: dict[str, dict[str, Any]] | None = None,
         support_tgis_open_ai_endpoints: bool = False,
+        teardown: bool = True,
     ):
         """
         ServingRuntimeFromTemplate class
@@ -57,6 +58,7 @@ class ServingRuntimeFromTemplate(ServingRuntime):
                 to the serving runtime
             support_tgis_open_ai_endpoints (bool): Whether to support TGIS and OpenAI endpoints using
                 a single entry point
+            teardown (bool): Whether to teardown the serving runtime or not
         """
 
         self.admin_client = client
@@ -87,6 +89,7 @@ class ServingRuntimeFromTemplate(ServingRuntime):
         super().__init__(
             client=self.unprivileged_client or self.admin_client,
             kind_dict=self.model_dict,
+            teardown=teardown,
         )
 
     def get_model_template(self) -> Template:

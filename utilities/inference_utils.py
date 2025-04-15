@@ -527,6 +527,7 @@ def create_isvc(
     scale_metric: str | None = None,
     scale_target: int | None = None,
     model_env_variables: list[dict[str, str]] | None = None,
+    teardown: bool = True,
 ) -> Generator[InferenceService, Any, Any]:
     """
     Create InferenceService object.
@@ -559,6 +560,7 @@ def create_isvc(
         scale_metric (str): Scale metric
         scale_target (int): Scale target
         model_env_variables (list[dict[str, str]]): Model environment variables
+        teardown (bool): Teardown
 
     Yields:
         InferenceService: InferenceService object
@@ -651,6 +653,7 @@ def create_isvc(
         annotations=_annotations,
         predictor=predictor_dict,
         label=labels,
+        teardown=teardown,
     ) as inference_service:
         timeout_watch = TimeoutWatch(timeout=timeout)
 

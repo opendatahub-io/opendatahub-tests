@@ -70,7 +70,7 @@ def models_endpoint_s3_secret(
     models_s3_bucket_endpoint: str,
 ) -> Generator[Secret, Any, Any]:
     with s3_endpoint_secret(
-        admin_client=admin_client,
+        client=admin_client,
         name="models-bucket-secret",
         namespace=model_namespace.name,
         aws_access_key=aws_access_key_id,
@@ -319,7 +319,7 @@ def ci_endpoint_s3_secret(
     ci_s3_bucket_endpoint: str,
 ) -> Generator[Secret, Any, Any]:
     with s3_endpoint_secret(
-        admin_client=admin_client,
+        client=admin_client,
         name="ci-bucket-secret",
         namespace=model_namespace.name,
         aws_access_key=aws_access_key_id,
@@ -575,7 +575,7 @@ def unprivileged_models_endpoint_s3_secret(
     models_s3_bucket_endpoint: str,
 ) -> Generator[Secret, Any, Any]:
     with s3_endpoint_secret(
-        admin_client=unprivileged_client,
+        client=unprivileged_client,
         name="models-bucket-secret",
         namespace=unprivileged_model_namespace.name,
         aws_access_key=aws_access_key_id,

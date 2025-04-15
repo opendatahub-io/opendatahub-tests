@@ -3,12 +3,6 @@ on:
   pull_request_target:
     types: [synchronize]
 
-  pull_request_review:
-    types: [submitted, edited]
-
-  pull_request_review_comment:
-    types: [created, edited]
-
   issue_comment:
     types: [created, edited, deleted]
 
@@ -19,7 +13,7 @@ permissions:
   issues: write
 
 jobs:
-  add-remove-labels:
+  add-remove-labels-reactions:
     if: |
       contains(github.event.comment.body, '/wip') ||
       contains(github.event.comment.body, '/verified') ||
@@ -36,6 +30,10 @@ jobs:
           comment-id: ${{ github.event.comment.id }}
           reactions: '+1'
 
+  add-remove-labels:
+    runs-on: ubuntu-latest
+
+    steps:
       - uses: actions/checkout@v4
 
       - name: Install uv
