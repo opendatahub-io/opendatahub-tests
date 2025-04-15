@@ -250,6 +250,7 @@ class PrLabeler(PrBaseClass):
         # We will only reach here if the PR was created from a fork
         elif self.event_name == "workflow_run" and self.event_action == "submitted":
             self.pull_request_review_label_actions()
+            return
 
         LOGGER.warning("`add_remove_pr_label` called without a supported event")
 
