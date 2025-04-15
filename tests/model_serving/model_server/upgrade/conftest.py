@@ -1,10 +1,11 @@
-import os
 from typing import Any, Generator
 
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
+from ocp_resources.role import Role
+from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
@@ -20,49 +21,48 @@ from utilities.constants import (
     RuntimeTemplates,
 )
 from utilities.inference_utils import create_isvc
-from utilities.infra import create_ns, s3_endpoint_secret
+from utilities.infra import create_inference_token, create_isvc_view_role, create_ns, s3_endpoint_secret
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
 LOGGER = get_logger(name=__name__)
-UPGRADE_NAMESPACE: str = "upgrade-model-server"
-
-UPGRADE_RESOURCES: str = (
-    f"{{Namespace: {{{UPGRADE_NAMESPACE:}}},"
-    f"ServingRuntime: {{onnx-serverless: {UPGRADE_NAMESPACE},"
-    f"caikit-raw: {UPGRADE_NAMESPACE},ovms-model-mesh: {UPGRADE_NAMESPACE}}},"
-    f"InferenceService: {{onnx-serverless: {UPGRADE_NAMESPACE},"
-    f"caikit-raw: {UPGRADE_NAMESPACE}, ovms-model-mesh: {UPGRADE_NAMESPACE}}},"
-    f"Secret: {{ci-bucket-secret: {UPGRADE_NAMESPACE}, models-bucket-secret: {UPGRADE_NAMESPACE}}},"
-    f"ServiceAccount: {{models-bucket-sa: {UPGRADE_NAMESPACE}}}}}"
-)
 
 
 @pytest.fixture(scope="session")
-def skipped_teardown_resources(pytestconfig: pytest.Config) -> None:
-    if not pytestconfig.option.delete_pre_upgrade_resources:
-        LOGGER.info(f"Setting `SKIP_RESOURCE_TEARDOWN` environment variable to {UPGRADE_RESOURCES}")
-        os.environ["SKIP_RESOURCE_TEARDOWN"] = UPGRADE_RESOURCES
+def teardown_resources(pytestconfig: pytest.Config) -> bool:
+    if delete_pre_upgrade_resources := pytestconfig.option.delete_pre_upgrade_resources:
+        LOGGER.warning("Resources will be deleted")
 
-
-@pytest.fixture(scope="session")
-def reused_resources() -> None:
-    LOGGER.info(f"Setting `REUSE_IF_RESOURCE_EXISTS` environment variable to {UPGRADE_RESOURCES}")
-    os.environ["REUSE_IF_RESOURCE_EXISTS"] = UPGRADE_RESOURCES
+    return delete_pre_upgrade_resources
 
 
 @pytest.fixture(scope="session")
 def model_namespace_scope_session(
+    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
+    teardown_resources: bool,
 ) -> Generator[Namespace, Any, Any]:
-    with create_ns(
-        admin_client=admin_client, name=UPGRADE_NAMESPACE, model_mesh_enabled=True, add_dashboard_label=True
-    ) as ns:
+    name = "upgrade-model-server"
+    ns = Namespace(client=admin_client, name=name)
+
+    if pytestconfig.option.post_upgrade:
         yield ns
+        ns.clean_up()
+
+    else:
+        with create_ns(
+            admin_client=admin_client,
+            name=name,
+            model_mesh_enabled=True,
+            add_dashboard_label=True,
+            teardown=teardown_resources,
+        ) as ns:
+            yield ns
 
 
 @pytest.fixture(scope="session")
 def models_endpoint_s3_secret_scope_session(
+    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace_scope_session: Namespace,
     aws_access_key_id: str,
@@ -70,22 +70,36 @@ def models_endpoint_s3_secret_scope_session(
     models_s3_bucket_name: str,
     models_s3_bucket_region: str,
     models_s3_bucket_endpoint: str,
+    teardown_resources: bool,
 ) -> Generator[Secret, Any, Any]:
-    with s3_endpoint_secret(
-        admin_client=admin_client,
-        name="models-bucket-secret",
-        namespace=model_namespace_scope_session.name,
-        aws_access_key=aws_access_key_id,
-        aws_secret_access_key=aws_secret_access_key,
-        aws_s3_region=models_s3_bucket_region,
-        aws_s3_bucket=models_s3_bucket_name,
-        aws_s3_endpoint=models_s3_bucket_endpoint,
-    ) as secret:
+    secret_kwargs = {
+        "client": admin_client,
+        "name": "models-bucket-secret",
+        "namespace": model_namespace_scope_session.name,
+    }
+
+    secret = Secret(**secret_kwargs)
+
+    if pytestconfig.option.post_upgrade:
         yield secret
+        secret.clean_up()
+
+    else:
+        with s3_endpoint_secret(
+            **secret_kwargs,
+            aws_access_key=aws_access_key_id,
+            aws_secret_access_key=aws_secret_access_key,
+            aws_s3_region=models_s3_bucket_region,
+            aws_s3_bucket=models_s3_bucket_name,
+            aws_s3_endpoint=models_s3_bucket_endpoint,
+            teardown=teardown_resources,
+        ) as secret:
+            yield secret
 
 
 @pytest.fixture(scope="session")
 def ci_endpoint_s3_secret_scope_session(
+    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace_scope_session: Namespace,
     aws_access_key_id: str,
@@ -93,53 +107,95 @@ def ci_endpoint_s3_secret_scope_session(
     ci_s3_bucket_name: str,
     ci_s3_bucket_region: str,
     ci_s3_bucket_endpoint: str,
+    teardown_resources: bool,
 ) -> Generator[Secret, Any, Any]:
-    with s3_endpoint_secret(
-        admin_client=admin_client,
-        name="ci-bucket-secret",
-        namespace=model_namespace_scope_session.name,
-        aws_access_key=aws_access_key_id,
-        aws_secret_access_key=aws_secret_access_key,
-        aws_s3_region=ci_s3_bucket_region,
-        aws_s3_bucket=ci_s3_bucket_name,
-        aws_s3_endpoint=ci_s3_bucket_endpoint,
-    ) as secret:
+    secret_kwargs = {
+        "client": admin_client,
+        "name": "ci-bucket-secret",
+        "namespace": model_namespace_scope_session.name,
+    }
+
+    secret = Secret(**secret_kwargs)
+
+    if pytestconfig.option.post_upgrade:
         yield secret
+        secret.clean_up()
+
+    else:
+        with s3_endpoint_secret(
+            **secret_kwargs,
+            aws_access_key=aws_access_key_id,
+            aws_secret_access_key=aws_secret_access_key,
+            aws_s3_region=ci_s3_bucket_region,
+            aws_s3_bucket=ci_s3_bucket_name,
+            aws_s3_endpoint=ci_s3_bucket_endpoint,
+            teardown=teardown_resources,
+        ) as secret:
+            yield secret
 
 
 @pytest.fixture(scope="session")
 def model_mesh_model_service_account_scope_session(
-    admin_client: DynamicClient, ci_endpoint_s3_secret_scope_session: Secret
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    ci_endpoint_s3_secret_scope_session: Secret,
+    teardown_resources: bool,
 ) -> Generator[ServiceAccount, Any, Any]:
-    with ServiceAccount(
-        client=admin_client,
-        namespace=ci_endpoint_s3_secret_scope_session.namespace,
-        name="models-bucket-sa",
-        secrets=[{"name": ci_endpoint_s3_secret_scope_session.name}],
-    ) as sa:
+    sa_kwargs = {
+        "client": admin_client,
+        "name": "models-bucket-sa",
+        "namespace": ci_endpoint_s3_secret_scope_session.namespace,
+    }
+
+    sa = ServiceAccount(**sa_kwargs)
+
+    if pytestconfig.option.post_upgrade:
         yield sa
+        sa.clean_up()
+
+    else:
+        with ServiceAccount(
+            **sa_kwargs,
+            secrets=[{"name": ci_endpoint_s3_secret_scope_session.name}],
+            teardown=teardown_resources,
+        ) as sa:
+            yield sa
 
 
 @pytest.fixture(scope="session")
 def openvino_serverless_serving_runtime_scope_session(
+    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace_scope_session: Namespace,
+    teardown_resources: bool,
 ) -> Generator[ServingRuntime, Any, Any]:
-    with ServingRuntimeFromTemplate(
-        client=admin_client,
-        name="onnx-serverless",
-        namespace=model_namespace_scope_session.name,
-        template_name=RuntimeTemplates.OVMS_KSERVE,
-        multi_model=False,
-        resources={
-            ModelFormat.OVMS: {
-                "requests": {"cpu": "1", "memory": "4Gi"},
-                "limits": {"cpu": "2", "memory": "8Gi"},
-            }
-        },
-        model_format_name={ModelFormat.ONNX: ModelVersion.OPSET13},
-    ) as model_runtime:
+    runtime_kwargs = {
+        "client": admin_client,
+        "name": "onnx-serverless",
+        "namespace": model_namespace_scope_session.name,
+    }
+
+    model_runtime = ServingRuntime(**runtime_kwargs)
+
+    if pytestconfig.option.post_upgrade:
         yield model_runtime
+        model_runtime.clean_up()
+
+    else:
+        with ServingRuntimeFromTemplate(
+            **runtime_kwargs,
+            template_name=RuntimeTemplates.OVMS_KSERVE,
+            multi_model=False,
+            resources={
+                ModelFormat.OVMS: {
+                    "requests": {"cpu": "1", "memory": "4Gi"},
+                    "limits": {"cpu": "2", "memory": "8Gi"},
+                }
+            },
+            model_format_name={ModelFormat.ONNX: ModelVersion.OPSET13},
+            teardown=teardown_resources,
+        ) as model_runtime:
+            yield model_runtime
 
 
 @pytest.fixture(scope="session")
@@ -148,6 +204,7 @@ def ovms_serverless_inference_service_scope_session(
     admin_client: DynamicClient,
     openvino_serverless_serving_runtime_scope_session: ServingRuntime,
     ci_endpoint_s3_secret_scope_session: Secret,
+    teardown_resources: bool,
 ) -> Generator[InferenceService, Any, Any]:
     isvc_kwargs = {
         "client": admin_client,
@@ -169,6 +226,7 @@ def ovms_serverless_inference_service_scope_session(
             model_format=ModelAndFormat.OPENVINO_IR,
             deployment_mode=KServeDeploymentType.SERVERLESS,
             model_version=ModelVersion.OPSET13,
+            teardown=teardown_resources,
             **isvc_kwargs,
         ) as isvc:
             yield isvc
@@ -176,18 +234,32 @@ def ovms_serverless_inference_service_scope_session(
 
 @pytest.fixture(scope="session")
 def caikit_raw_serving_runtime_scope_session(
+    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace_scope_session: Namespace,
+    teardown_resources: bool,
 ) -> Generator[ServingRuntime, Any, Any]:
-    with ServingRuntimeFromTemplate(
-        client=admin_client,
-        name="caikit-raw",
-        namespace=model_namespace_scope_session.name,
-        template_name=RuntimeTemplates.CAIKIT_STANDALONE_SERVING,
-        multi_model=False,
-        enable_http=True,
-    ) as model_runtime:
+    runtime_kwargs = {
+        "client": admin_client,
+        "name": "caikit-raw",
+        "namespace": model_namespace_scope_session.name,
+    }
+
+    model_runtime = ServingRuntime(**runtime_kwargs)
+
+    if pytestconfig.option.post_upgrade:
         yield model_runtime
+        model_runtime.clean_up()
+
+    else:
+        with ServingRuntimeFromTemplate(
+            **runtime_kwargs,
+            template_name=RuntimeTemplates.CAIKIT_STANDALONE_SERVING,
+            multi_model=False,
+            enable_http=True,
+            teardown=teardown_resources,
+        ) as model_runtime:
+            yield model_runtime
 
 
 @pytest.fixture(scope="session")
@@ -196,6 +268,7 @@ def caikit_raw_inference_service_scope_session(
     admin_client: DynamicClient,
     caikit_raw_serving_runtime_scope_session: ServingRuntime,
     models_endpoint_s3_secret_scope_session: Secret,
+    teardown_resources: bool,
 ) -> Generator[InferenceService, Any, Any]:
     isvc_kwargs = {
         "client": admin_client,
@@ -218,6 +291,7 @@ def caikit_raw_inference_service_scope_session(
             storage_key=models_endpoint_s3_secret_scope_session.name,
             storage_path=ModelStoragePath.EMBEDDING_MODEL,
             external_route=True,
+            teardown=teardown_resources,
             **isvc_kwargs,
         ) as isvc:
             yield isvc
@@ -225,24 +299,38 @@ def caikit_raw_inference_service_scope_session(
 
 @pytest.fixture(scope="session")
 def s3_ovms_model_mesh_serving_runtime_scope_session(
+    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace_scope_session: Namespace,
+    teardown_resources: bool,
 ) -> Generator[ServingRuntime, Any, Any]:
-    with ServingRuntimeFromTemplate(
-        client=admin_client,
-        name="ovms-model-mesh",
-        namespace=model_namespace_scope_session.name,
-        template_name=RuntimeTemplates.OVMS_MODEL_MESH,
-        multi_model=True,
-        protocol=Protocols.REST.upper(),
-        resources={
-            ModelFormat.OVMS: {
-                "requests": {"cpu": "1", "memory": "4Gi"},
-                "limits": {"cpu": "2", "memory": "8Gi"},
-            }
-        },
-    ) as model_runtime:
+    runtime_kwargs = {
+        "client": admin_client,
+        "name": "ovms-model-mesh",
+        "namespace": model_namespace_scope_session.name,
+    }
+
+    model_runtime = ServingRuntime(**runtime_kwargs)
+
+    if pytestconfig.option.post_upgrade:
         yield model_runtime
+        model_runtime.clean_up()
+
+    else:
+        with ServingRuntimeFromTemplate(
+            **runtime_kwargs,
+            template_name=RuntimeTemplates.OVMS_MODEL_MESH,
+            multi_model=True,
+            protocol=Protocols.REST.upper(),
+            resources={
+                ModelFormat.OVMS: {
+                    "requests": {"cpu": "1", "memory": "4Gi"},
+                    "limits": {"cpu": "2", "memory": "8Gi"},
+                }
+            },
+            teardown=teardown_resources,
+        ) as model_runtime:
+            yield model_runtime
 
 
 @pytest.fixture(scope="session")
@@ -252,6 +340,7 @@ def openvino_model_mesh_inference_service_scope_session(
     s3_ovms_model_mesh_serving_runtime_scope_session: ServingRuntime,
     ci_endpoint_s3_secret_scope_session: Secret,
     model_mesh_model_service_account_scope_session: ServiceAccount,
+    teardown_resources: bool,
 ) -> Generator[InferenceService, Any, Any]:
     isvc_kwargs = {
         "client": admin_client,
@@ -274,6 +363,143 @@ def openvino_model_mesh_inference_service_scope_session(
             model_format=ModelAndFormat.OPENVINO_IR,
             deployment_mode=KServeDeploymentType.MODEL_MESH,
             model_version=ModelVersion.OPSET1,
+            teardown=teardown_resources,
+            **isvc_kwargs,
+        ) as isvc:
+            yield isvc
+
+
+@pytest.fixture(scope="session")
+def model_service_account_scope_session(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    ci_endpoint_s3_secret_scope_session: Secret,
+    teardown_resources: bool,
+) -> Generator[ServiceAccount, Any, Any]:
+    sa_kwargs = {
+        "client": admin_client,
+        "name": "upgrade-models-bucket-sa",
+        "namespace": ci_endpoint_s3_secret_scope_session.namespace,
+    }
+
+    sa = ServiceAccount(**sa_kwargs)
+
+    if pytestconfig.option.post_upgrade:
+        yield sa
+        sa.clean_up()
+
+    else:
+        with ServiceAccount(
+            client=admin_client,
+            namespace=ci_endpoint_s3_secret_scope_session.namespace,
+            name="upgrade-models-bucket-sa",
+            secrets=[{"name": ci_endpoint_s3_secret_scope_session.name}],
+            teardown=teardown_resources,
+        ) as sa:
+            yield sa
+
+
+@pytest.fixture(scope="session")
+def http_view_role_scope_session(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    ovms_authenticated_serverless_inference_service_scope_session: InferenceService,
+    teardown_resources: bool,
+) -> Generator[Role, Any, Any]:
+    role_kwargs = {
+        "client": admin_client,
+        "name": f"{ovms_authenticated_serverless_inference_service_scope_session.name}-view",
+    }
+
+    role = Role(
+        **role_kwargs,
+        namespace=ovms_authenticated_serverless_inference_service_scope_session.namespace,
+    )
+
+    if pytestconfig.option.post_upgrade:
+        yield role
+        role.clean_up()
+
+    else:
+        with create_isvc_view_role(
+            **role_kwargs,
+            isvc=ovms_authenticated_serverless_inference_service_scope_session,
+            resource_names=[ovms_authenticated_serverless_inference_service_scope_session.name],
+            teardown=teardown_resources,
+        ) as role:
+            yield role
+
+
+@pytest.fixture(scope="session")
+def http_role_binding_scope_session(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    http_view_role_scope_session: Role,
+    model_service_account_scope_session: ServiceAccount,
+    ovms_authenticated_serverless_inference_service_scope_session: InferenceService,
+    teardown_resources: bool,
+) -> Generator[RoleBinding, Any, Any]:
+    rb_kwargs = {
+        "client": admin_client,
+        "name": f"{model_service_account_scope_session.name}-view",
+        "namespace": ovms_authenticated_serverless_inference_service_scope_session.namespace,
+    }
+
+    rb = RoleBinding(**rb_kwargs)
+
+    if pytestconfig.option.post_upgrade:
+        yield rb
+        rb.clean_up()
+
+    else:
+        with RoleBinding(
+            **rb_kwargs,
+            role_ref_name=http_view_role_scope_session.name,
+            role_ref_kind=http_view_role_scope_session.kind,
+            subjects_kind=model_service_account_scope_session.kind,
+            subjects_name=model_service_account_scope_session.name,
+            teardown=teardown_resources,
+        ) as rb:
+            yield rb
+
+
+@pytest.fixture(scope="session")
+def http_inference_token_scope_session(
+    model_service_account_scope_session: ServiceAccount, http_role_binding_scope_session: RoleBinding
+) -> str:
+    return create_inference_token(model_service_account=model_service_account_scope_session)
+
+
+@pytest.fixture(scope="session")
+def ovms_authenticated_serverless_inference_service_scope_session(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    openvino_serverless_serving_runtime_scope_session: ServingRuntime,
+    ci_endpoint_s3_secret_scope_session: Secret,
+    teardown_resources: bool,
+) -> Generator[InferenceService, Any, Any]:
+    isvc_kwargs = {
+        "client": admin_client,
+        "name": f"{openvino_serverless_serving_runtime_scope_session.name}-auth",
+        "namespace": openvino_serverless_serving_runtime_scope_session.namespace,
+    }
+
+    isvc = InferenceService(**isvc_kwargs)
+
+    if pytestconfig.option.post_upgrade:
+        yield isvc
+        isvc.clean_up()
+
+    else:
+        with create_isvc(
+            runtime=openvino_serverless_serving_runtime_scope_session.name,
+            storage_path="test-dir",
+            storage_key=ci_endpoint_s3_secret_scope_session.name,
+            model_format=ModelAndFormat.OPENVINO_IR,
+            deployment_mode=KServeDeploymentType.SERVERLESS,
+            model_version=ModelVersion.OPSET13,
+            enable_auth=True,
+            teardown=teardown_resources,
             **isvc_kwargs,
         ) as isvc:
             yield isvc

@@ -3,9 +3,10 @@ import re
 import shlex
 from contextlib import contextmanager
 from functools import cache
-from typing import Any, Generator, Optional, Set
+from typing import Any, Callable, Generator, Optional, Set
 
 import kubernetes
+import pytest
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError, ResourceNotUniqueError
@@ -19,6 +20,7 @@ from ocp_resources.exceptions import MissingResourceError
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.infrastructure import Infrastructure
 from ocp_resources.namespace import Namespace
+from ocp_resources.node_config_openshift_io import Node
 from ocp_resources.pod import Pod
 from ocp_resources.project_project_openshift_io import Project
 from ocp_resources.project_request import ProjectRequest
@@ -29,6 +31,11 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
+from ocp_utilities.exceptions import NodeNotReadyError, NodeUnschedulableError
+from ocp_utilities.infra import (
+    assert_nodes_in_healthy_condition,
+    assert_nodes_schedulable,
+)
 from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
 from semver import Version
@@ -37,7 +44,11 @@ from simple_logger.logger import get_logger
 from utilities.constants import ApiGroups, Labels, Timeout
 from utilities.constants import KServeDeploymentType
 from utilities.constants import Annotations
-from utilities.exceptions import ClusterLoginError, FailedPodsError
+from utilities.exceptions import (
+    ClusterLoginError,
+    FailedPodsError,
+    ResourceNotReadyError,
+)
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 import utilities.general
 
@@ -114,14 +125,16 @@ def create_ns(
             project.wait_for_status(status=project.Status.ACTIVE, timeout=Timeout.TIMEOUT_2MIN)
             yield project
 
-            wait_for_serverless_pods_deletion(resource=project, admin_client=admin_client)
+            if teardown:
+                wait_for_serverless_pods_deletion(resource=project, admin_client=admin_client)
 
     else:
         with Namespace(**namespace_kwargs) as ns:
             ns.wait_for_status(status=Namespace.Status.ACTIVE, timeout=Timeout.TIMEOUT_2MIN)
             yield ns
 
-            wait_for_serverless_pods_deletion(resource=ns, admin_client=admin_client)
+            if teardown:
+                wait_for_serverless_pods_deletion(resource=ns, admin_client=admin_client)
 
 
 def wait_for_replicas_in_deployment(deployment: Deployment, replicas: int) -> None:
@@ -216,7 +229,7 @@ def wait_for_inference_deployment_replicas(
 
 @contextmanager
 def s3_endpoint_secret(
-    admin_client: DynamicClient,
+    client: DynamicClient,
     name: str,
     namespace: str,
     aws_access_key: str,
@@ -224,12 +237,13 @@ def s3_endpoint_secret(
     aws_s3_bucket: str,
     aws_s3_endpoint: str,
     aws_s3_region: str,
+    teardown: bool = True,
 ) -> Generator[Secret, Any, Any]:
     """
     Create S3 endpoint secret.
 
     Args:
-        admin_client (DynamicClient): Dynamic client.
+        client (DynamicClient): Dynamic client.
         name (str): Secret name.
         namespace (str): Secret namespace name.
         aws_access_key (str): Secret access key.
@@ -237,12 +251,13 @@ def s3_endpoint_secret(
         aws_s3_bucket (str): Secret s3 bucket.
         aws_s3_endpoint (str): Secret s3 endpoint.
         aws_s3_region (str): Secret s3 region.
+        teardown (bool): Whether to delete the secret.
 
     Yield:
         Secret: Secret object
 
     """
-    secret_kwargs = {"client": admin_client, "name": name, "namespace": namespace}
+    secret_kwargs = {"client": client, "name": name, "namespace": namespace}
     secret = Secret(**secret_kwargs)
 
     if secret.exists:
@@ -265,6 +280,7 @@ def s3_endpoint_secret(
                 aws_s3_region=aws_s3_region,
             ),
             wait_for_resource=True,
+            teardown=teardown,
             **secret_kwargs,
         ) as secret:
             yield secret
@@ -276,6 +292,7 @@ def create_isvc_view_role(
     isvc: InferenceService,
     name: str,
     resource_names: Optional[list[str]] = None,
+    teardown: bool = True,
 ) -> Generator[Role, Any, Any]:
     """
     Create a view role for an InferenceService.
@@ -285,6 +302,7 @@ def create_isvc_view_role(
         isvc (InferenceService): InferenceService object.
         name (str): Role name.
         resource_names (list[str]): Resource names to be attached to role.
+        teardown (bool): Whether to delete the role.
 
     Yields:
         Role: Role object.
@@ -306,6 +324,7 @@ def create_isvc_view_role(
         name=name,
         namespace=isvc.namespace,
         rules=rules,
+        teardown=teardown,
     ) as role:
         yield role
 
@@ -368,10 +387,11 @@ def is_managed_cluster(client: DynamicClient) -> bool:
 
     platform_statuses = infra.instance.status.platformStatus
 
-    for entries in platform_statuses.values():
-        if isinstance(entries, kubernetes.dynamic.resource.ResourceField):
-            if tags := entries.resourceTags:
-                return next(b["value"] == "true" for b in tags if b["key"] == "red-hat-managed")
+    for entry in platform_statuses.values():
+        if isinstance(entry, kubernetes.dynamic.resource.ResourceField):
+            if tags := entry.resourceTags:
+                LOGGER.info(f"Infrastructure {infra.name} resource tags: {tags}")
+                return any([tag["value"] == "true" for tag in tags if tag["key"] == "red-hat-managed"])
 
     return False
 
@@ -710,13 +730,12 @@ def get_product_version(admin_client: DynamicClient) -> Version:
     return Version.parse(operator_version)
 
 
-def get_dsci_applications_namespace(client: DynamicClient, dsci_name: str = "default-dsci") -> str:
+def get_dsci_applications_namespace(client: DynamicClient) -> str:
     """
     Get the namespace where DSCI applications are deployed.
 
     Args:
         client (DynamicClient): DynamicClient object
-        dsci_name (str): DSCI name
 
     Returns:
         str: Namespace where DSCI applications are deployed.
@@ -726,6 +745,7 @@ def get_dsci_applications_namespace(client: DynamicClient, dsci_name: str = "def
             MissingResourceError: If DSCI not found
 
     """
+    dsci_name = py_config["dsci_name"]
     dsci = DSCInitialization(client=client, name=dsci_name)
 
     if dsci.exists:
@@ -789,7 +809,11 @@ def wait_for_serverless_pods_deletion(resource: Project | Namespace, admin_clien
             pod.wait_deleted(timeout=Timeout.TIMEOUT_1MIN)
 
 
-@retry(wait_timeout=Timeout.TIMEOUT_30SEC, sleep=1, exceptions_dict={ResourceNotFoundError: []})
+@retry(
+    wait_timeout=Timeout.TIMEOUT_30SEC,
+    sleep=1,
+    exceptions_dict={ResourceNotFoundError: []},
+)
 def wait_for_isvc_pods(client: DynamicClient, isvc: InferenceService, runtime_name: str | None = None) -> list[Pod]:
     """
     Wait for ISVC pods.
@@ -807,3 +831,67 @@ def wait_for_isvc_pods(client: DynamicClient, isvc: InferenceService, runtime_na
     """
     LOGGER.info("Waiting for pods to be created")
     return get_pods_by_isvc_label(client=client, isvc=isvc, runtime_name=runtime_name)
+
+
+def verify_dsci_status_ready(dsci_resource: DSCInitialization) -> None:
+    LOGGER.info(f"Verify DSCI {dsci_resource.name} are {dsci_resource.Status.READY}.")
+    if dsci_resource.status != dsci_resource.Status.READY:
+        raise ResourceNotReadyError(f"DSCI {dsci_resource.name} is not ready.\nStatus: {dsci_resource.instance.status}")
+
+
+def verify_dsc_status_ready(dsc_resource: DataScienceCluster) -> None:
+    LOGGER.info(f"Verify DSC {dsc_resource.name} are {dsc_resource.Status.READY}.")
+    if dsc_resource.status != dsc_resource.Status.READY:
+        raise ResourceNotReadyError(f"DSC {dsc_resource.name} is not ready.\nStatus: {dsc_resource.instance.status}")
+
+
+def verify_cluster_sanity(
+    request: FixtureRequest,
+    nodes: list[Node],
+    dsci_resource: DSCInitialization,
+    dsc_resource: DataScienceCluster,
+    junitxml_property: Callable[[str, object], None] | None = None,
+) -> None:
+    """
+    Check that cluster resources (Nodes, DSCI, DSC) are healthy and exists pytest execution on failure.
+
+    Args:
+        request (FixtureRequest): pytest request
+        nodes (list[Node]): list of nodes
+        dsci_resource (DSCInitialization): dsci resource
+        dsc_resource (DataScienceCluster): dsc resource
+        junitxml_property (property): Junitxml property
+
+    """
+    skip_cluster_sanity_check = "--cluster-sanity-skip-check"
+    skip_rhoai_check = "--cluster-sanity-skip-rhoai-check"
+
+    if request.session.config.getoption(skip_cluster_sanity_check):
+        LOGGER.warning(f"Skipping cluster sanity check, got {skip_cluster_sanity_check}")
+        return
+
+    try:
+        LOGGER.info("Check cluster sanity.")
+
+        assert_nodes_in_healthy_condition(nodes=nodes, healthy_node_condition_type={"KubeletReady": "True"})
+        assert_nodes_schedulable(nodes=nodes)
+
+        if request.session.config.getoption(skip_rhoai_check):
+            LOGGER.warning(f"Skipping RHOAI resource checks, got {skip_rhoai_check}")
+
+        else:
+            verify_dsci_status_ready(dsci_resource=dsci_resource)
+            verify_dsc_status_ready(dsc_resource=dsc_resource)
+
+    except (ResourceNotReadyError, NodeUnschedulableError, NodeNotReadyError) as ex:
+        error_msg = f"Cluster sanity check failed: {str(ex)}"
+        # return_code set to 99 to not collide with https://docs.pytest.org/en/stable/reference/exit-codes.html
+        return_code = 99
+
+        LOGGER.error(error_msg)
+
+        if junitxml_property:
+            junitxml_property(name="exit_code", value=return_code)  # type: ignore[call-arg]
+
+        # TODO: Write to file to easily report the failure in jenkins
+        pytest.exit(reason=error_msg, returncode=return_code)
