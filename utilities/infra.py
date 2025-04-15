@@ -4,7 +4,6 @@ import shlex
 from contextlib import contextmanager
 from functools import cache
 from typing import Any, Generator, Optional, Set
-
 import kubernetes
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
@@ -34,7 +33,8 @@ from pytest_testconfig import config as py_config
 from semver import Version
 from simple_logger.logger import get_logger
 
-from utilities.constants import ApiGroups, Labels, Timeout
+from ocp_resources.subscription import Subscription
+from utilities.constants import ApiGroups, Labels, Timeout, RHOAI_OPERATOR_NAMESPACE, RHOAI_SUBSCRIPTION_NAME
 from utilities.constants import KServeDeploymentType
 from utilities.constants import Annotations
 from utilities.exceptions import ClusterLoginError, FailedPodsError
@@ -808,3 +808,18 @@ def wait_for_isvc_pods(client: DynamicClient, isvc: InferenceService, runtime_na
     """
     LOGGER.info("Waiting for pods to be created")
     return get_pods_by_isvc_label(client=client, isvc=isvc, runtime_name=runtime_name)
+
+
+def get_rhods_subscription() -> Subscription:
+    return Subscription(name=RHOAI_SUBSCRIPTION_NAME, namespace_name=RHOAI_OPERATOR_NAMESPACE, ensure_exists=True)
+
+
+def get_rhods_operator_installed_csv(namespace_name: str = RHOAI_OPERATOR_NAMESPACE) -> ClusterServiceVersion:
+    subscription = get_rhods_subscription()
+    return ClusterServiceVersion(
+        name=subscription.instance.status.installedCSV, namespace=namespace_name, ensure_exists=True
+    )
+
+
+def get_rhods_csv_version() -> Version:
+    return Version(version=get_rhods_operator_installed_csv().instance.spec.version)
