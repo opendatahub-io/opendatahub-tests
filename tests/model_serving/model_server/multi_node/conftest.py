@@ -29,11 +29,6 @@ from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
 @pytest.fixture(scope="session")
-def nodes(admin_client: DynamicClient) -> list[Node]:
-    return list(Node.get(dyn_client=admin_client))
-
-
-@pytest.fixture(scope="session")
 def nvidia_gpu_nodes(nodes: list[Node]) -> list[Node]:
     return [node for node in nodes if "nvidia.com/gpu.present" in node.labels.keys()]
 

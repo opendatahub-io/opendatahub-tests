@@ -6,10 +6,11 @@ import shlex
 import tempfile
 from contextlib import contextmanager
 from functools import cache
-    from typing import Any, Generator, Optional, Set, Callable
+from typing import Any, Generator, Optional, Set, Callable
 from json import JSONDecodeError
 
 import kubernetes
+import pytest
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError, ResourceNotUniqueError
@@ -34,6 +35,7 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
+
 from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
 from packaging.version import parse, Version
@@ -727,13 +729,12 @@ def get_product_version(admin_client: DynamicClient) -> Version:
     return Version.parse(operator_version)
 
 
-def get_dsci_applications_namespace(client: DynamicClient, dsci_name: str = "default-dsci") -> str:
+def get_dsci_applications_namespace(client: DynamicClient) -> str:
     """
     Get the namespace where DSCI applications are deployed.
 
     Args:
         client (DynamicClient): DynamicClient object
-        dsci_name (str): DSCI name
 
     Returns:
         str: Namespace where DSCI applications are deployed.
@@ -743,6 +744,7 @@ def get_dsci_applications_namespace(client: DynamicClient, dsci_name: str = "def
             MissingResourceError: If DSCI not found
 
     """
+    dsci_name = py_config["dsci_name"]
     dsci = DSCInitialization(client=client, name=dsci_name)
 
     if dsci.exists:
@@ -806,7 +808,11 @@ def wait_for_serverless_pods_deletion(resource: Project | Namespace, admin_clien
             pod.wait_deleted(timeout=Timeout.TIMEOUT_1MIN)
 
 
-@retry(wait_timeout=Timeout.TIMEOUT_30SEC, sleep=1, exceptions_dict={ResourceNotFoundError: []})
+@retry(
+    wait_timeout=Timeout.TIMEOUT_30SEC,
+    sleep=1,
+    exceptions_dict={ResourceNotFoundError: []},
+)
 def wait_for_isvc_pods(client: DynamicClient, isvc: InferenceService, runtime_name: str | None = None) -> list[Pod]:
     """
     Wait for ISVC pods.
@@ -907,6 +913,7 @@ def verify_cluster_sanity(
         else:
             wait_for_dsci_status_ready(dsci_resource=dsci_resource)
             wait_for_dsc_status_ready(dsc_resource=dsc_resource)
+
 
     except (ResourceNotReadyError, NodeUnschedulableError, NodeNotReadyError) as ex:
         error_msg = f"Cluster sanity check failed: {str(ex)}"

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Optional
 
 from ocp_resources.service import Service
@@ -111,4 +113,7 @@ class TooManyPodsError(Exception):
 
 
 class UnexpectedFailureError(Exception):
+    pass
+
+class ResourceNotReadyError(Exception):
     pass

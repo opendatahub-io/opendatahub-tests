@@ -137,6 +137,18 @@ def pytest_addoption(parser: Parser) -> None:
         default=False,
     )
 
+    # Cluster sanity options
+    cluster_sanity_group.addoption(
+        "--cluster-sanity-skip-check",
+        help="Skip cluster_sanity check",
+        action="store_true",
+    )
+    cluster_sanity_group.addoption(
+        "--cluster-sanity-skip-rhoai-check",
+        help="Skip RHOAI/ODH-related resources (DSCI and DSC) checks",
+        action="store_true",
+    )
+
 
 def pytest_cmdline_main(config: Any) -> None:
     config.option.basetemp = py_config["tmp_base_dir"] = f"{config.option.basetemp}-{shortuuid.uuid()}"
