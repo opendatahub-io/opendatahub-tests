@@ -231,6 +231,7 @@ class PrLabeler(PrBaseClass):
                     label.lower() == VERIFIED_LABEL_STR
                     or label.lower().startswith(LGTM_BY_LABEL_PREFIX)
                     or label.lower().startswith(CHANGED_REQUESTED_BY_LABEL_PREFIX)
+                    or label.lower().startswith(COMMENTED_BY_LABEL_PREFIX)
                 ):
                     LOGGER.info(f"Removing label {label}")
                     self.pr.remove_from_labels(label=label)
