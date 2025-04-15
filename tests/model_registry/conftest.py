@@ -25,49 +25,39 @@ from kubernetes.dynamic import DynamicClient
 from pytest_testconfig import config as py_config
 from model_registry.types import RegisteredModel
 from tests.model_registry.constants import (
-    MR_NAMESPACE,
     MR_OPERATOR_NAME,
     MR_INSTANCE_NAME,
     ISTIO_CONFIG_DICT,
     DB_RESOURCES_NAME,
-    MR_DB_IMAGE_DIGEST,
+    MODEL_REGISTRY_DB_SECRET_STR_DATA,
+    MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
 )
-from tests.model_registry.utils import get_endpoint_from_mr_service, get_mr_service_by_label
-from utilities.infra import create_ns
+from tests.model_registry.utils import (
+    get_endpoint_from_mr_service,
+    get_mr_service_by_label,
+    get_model_registry_deployment_template_dict,
+    get_model_registry_db_label_dict,
+)
 from utilities.constants import Annotations, Protocols, DscComponents
 from model_registry import ModelRegistry as ModelRegistryClient
 
 
 LOGGER = get_logger(name=__name__)
 
-DEFAULT_LABEL_DICT_DB: dict[str, str] = {
-    Annotations.KubernetesIo.NAME: DB_RESOURCES_NAME,
-    Annotations.KubernetesIo.INSTANCE: DB_RESOURCES_NAME,
-    Annotations.KubernetesIo.PART_OF: DB_RESOURCES_NAME,
-}
-
 
 @pytest.fixture(scope="class")
-def model_registry_namespace(request: FixtureRequest, admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
-    # TODO: model_registry_namespace fixture should basically be doing this 1) check the ns exists, 2) it is in ACTIVE
-    # state and return. But it should not create the ns. If DSC manages registriesNamespace, and namespace was not
-    # created when mr is updated to Managed state, it would be a bug and we should catch it
-    # To be handled in upcoming PR.
-    with create_ns(
-        name=request.param.get("namespace_name", MR_NAMESPACE),
-        admin_client=admin_client,
-    ) as ns:
-        yield ns
+def model_registry_namespace(updated_dsc_component_state_scope_class: DataScienceCluster) -> str:
+    return updated_dsc_component_state_scope_class.instance.spec.components.modelregistry.registriesNamespace
 
 
 @pytest.fixture(scope="class")
 def model_registry_db_service(
-    admin_client: DynamicClient, model_registry_namespace: Namespace
+    admin_client: DynamicClient, model_registry_namespace: str
 ) -> Generator[Service, Any, Any]:
     with Service(
         client=admin_client,
         name=DB_RESOURCES_NAME,
-        namespace=model_registry_namespace.name,
+        namespace=model_registry_namespace,
         ports=[
             {
                 "name": "mysql",
@@ -81,7 +71,7 @@ def model_registry_db_service(
         selector={
             "name": DB_RESOURCES_NAME,
         },
-        label=DEFAULT_LABEL_DICT_DB,
+        label=get_model_registry_db_label_dict(db_resource_name=DB_RESOURCES_NAME),
         annotations={
             "template.openshift.io/expose-uri": r"mysql://{.spec.clusterIP}:{.spec.ports[?(.name==\mysql\)].port}",
         },
@@ -91,16 +81,15 @@ def model_registry_db_service(
 
 @pytest.fixture(scope="class")
 def model_registry_db_pvc(
-    admin_client: DynamicClient,
-    model_registry_namespace: Namespace,
+    admin_client: DynamicClient, model_registry_namespace: str
 ) -> Generator[PersistentVolumeClaim, Any, Any]:
     with PersistentVolumeClaim(
         accessmodes="ReadWriteOnce",
         name=DB_RESOURCES_NAME,
-        namespace=model_registry_namespace.name,
+        namespace=model_registry_namespace,
         client=admin_client,
         size="5Gi",
-        label=DEFAULT_LABEL_DICT_DB,
+        label=get_model_registry_db_label_dict(db_resource_name=DB_RESOURCES_NAME),
     ) as pvc:
         yield pvc
 
@@ -108,23 +97,15 @@ def model_registry_db_pvc(
 @pytest.fixture(scope="class")
 def model_registry_db_secret(
     admin_client: DynamicClient,
-    model_registry_namespace: Namespace,
+    model_registry_namespace: str,
 ) -> Generator[Secret, Any, Any]:
     with Secret(
         client=admin_client,
         name=DB_RESOURCES_NAME,
-        namespace=model_registry_namespace.name,
-        string_data={
-            "database-name": "model_registry",
-            "database-password": "TheBlurstOfTimes",  # pragma: allowlist secret
-            "database-user": "mlmduser",  # pragma: allowlist secret
-        },
-        label=DEFAULT_LABEL_DICT_DB,
-        annotations={
-            "template.openshift.io/expose-database_name": "'{.data[''database-name'']}'",
-            "template.openshift.io/expose-password": "'{.data[''database-password'']}'",
-            "template.openshift.io/expose-username": "'{.data[''database-user'']}'",
-        },
+        namespace=model_registry_namespace,
+        string_data=MODEL_REGISTRY_DB_SECRET_STR_DATA,
+        label=get_model_registry_db_label_dict(db_resource_name=DB_RESOURCES_NAME),
+        annotations=MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
     ) as mr_db_secret:
         yield mr_db_secret
 
@@ -132,122 +113,25 @@ def model_registry_db_secret(
 @pytest.fixture(scope="class")
 def model_registry_db_deployment(
     admin_client: DynamicClient,
-    model_registry_namespace: Namespace,
+    model_registry_namespace: str,
     model_registry_db_secret: Secret,
     model_registry_db_pvc: PersistentVolumeClaim,
     model_registry_db_service: Service,
 ) -> Generator[Deployment, Any, Any]:
     with Deployment(
         name=DB_RESOURCES_NAME,
-        namespace=model_registry_namespace.name,
+        namespace=model_registry_namespace,
         annotations={
             "template.alpha.openshift.io/wait-for-ready": "true",
         },
-        label=DEFAULT_LABEL_DICT_DB,
+        label=get_model_registry_db_label_dict(db_resource_name=DB_RESOURCES_NAME),
         replicas=1,
         revision_history_limit=0,
         selector={"matchLabels": {"name": DB_RESOURCES_NAME}},
         strategy={"type": "Recreate"},
-        template={
-            "metadata": {
-                "labels": {
-                    "name": DB_RESOURCES_NAME,
-                    "sidecar.istio.io/inject": "false",
-                }
-            },
-            "spec": {
-                "containers": [
-                    {
-                        "env": [
-                            {
-                                "name": "MYSQL_USER",
-                                "valueFrom": {
-                                    "secretKeyRef": {
-                                        "key": "database-user",
-                                        "name": f"{model_registry_db_secret.name}",
-                                    }
-                                },
-                            },
-                            {
-                                "name": "MYSQL_PASSWORD",
-                                "valueFrom": {
-                                    "secretKeyRef": {
-                                        "key": "database-password",
-                                        "name": f"{model_registry_db_secret.name}",
-                                    }
-                                },
-                            },
-                            {
-                                "name": "MYSQL_ROOT_PASSWORD",
-                                "valueFrom": {
-                                    "secretKeyRef": {
-                                        "key": "database-password",
-                                        "name": f"{model_registry_db_secret.name}",
-                                    }
-                                },
-                            },
-                            {
-                                "name": "MYSQL_DATABASE",
-                                "valueFrom": {
-                                    "secretKeyRef": {
-                                        "key": "database-name",
-                                        "name": f"{model_registry_db_secret.name}",
-                                    }
-                                },
-                            },
-                        ],
-                        "args": [
-                            "--datadir",
-                            "/var/lib/mysql/datadir",
-                            "--default-authentication-plugin=mysql_native_password",
-                        ],
-                        "image": MR_DB_IMAGE_DIGEST,
-                        "imagePullPolicy": "IfNotPresent",
-                        "livenessProbe": {
-                            "exec": {
-                                "command": [
-                                    "/bin/bash",
-                                    "-c",
-                                    "mysqladmin -u${MYSQL_USER} -p${MYSQL_ROOT_PASSWORD} ping",
-                                ]
-                            },
-                            "initialDelaySeconds": 15,
-                            "periodSeconds": 10,
-                            "timeoutSeconds": 5,
-                        },
-                        "name": "mysql",
-                        "ports": [{"containerPort": 3306, "protocol": "TCP"}],
-                        "readinessProbe": {
-                            "exec": {
-                                "command": [
-                                    "/bin/bash",
-                                    "-c",
-                                    'mysql -D ${MYSQL_DATABASE} -u${MYSQL_USER} -p${MYSQL_ROOT_PASSWORD} -e "SELECT 1"',
-                                ]
-                            },
-                            "initialDelaySeconds": 10,
-                            "timeoutSeconds": 5,
-                        },
-                        "securityContext": {"capabilities": {}, "privileged": False},
-                        "terminationMessagePath": "/dev/termination-log",
-                        "volumeMounts": [
-                            {
-                                "mountPath": "/var/lib/mysql",
-                                "name": f"{DB_RESOURCES_NAME}-data",
-                            }
-                        ],
-                    }
-                ],
-                "dnsPolicy": "ClusterFirst",
-                "restartPolicy": "Always",
-                "volumes": [
-                    {
-                        "name": f"{DB_RESOURCES_NAME}-data",
-                        "persistentVolumeClaim": {"claimName": DB_RESOURCES_NAME},
-                    }
-                ],
-            },
-        },
+        template=get_model_registry_deployment_template_dict(
+            secret_name=model_registry_db_secret.name, resource_name=DB_RESOURCES_NAME
+        ),
         wait_for_resource=True,
     ) as mr_db_deployment:
         mr_db_deployment.wait_for_replicas(deployed=True)
@@ -257,14 +141,14 @@ def model_registry_db_deployment(
 @pytest.fixture(scope="class")
 def model_registry_instance(
     admin_client: DynamicClient,
-    model_registry_namespace: Namespace,
+    model_registry_namespace: str,
     model_registry_db_deployment: Deployment,
     model_registry_db_secret: Secret,
     model_registry_db_service: Service,
 ) -> Generator[ModelRegistry, Any, Any]:
     with ModelRegistry(
         name=MR_INSTANCE_NAME,
-        namespace=model_registry_namespace.name,
+        namespace=model_registry_namespace,
         label={
             Annotations.KubernetesIo.NAME: MR_INSTANCE_NAME,
             Annotations.KubernetesIo.INSTANCE: MR_INSTANCE_NAME,
@@ -291,11 +175,11 @@ def model_registry_instance(
 @pytest.fixture(scope="class")
 def model_registry_instance_service(
     admin_client: DynamicClient,
-    model_registry_namespace: Namespace,
+    model_registry_namespace: str,
     model_registry_instance: ModelRegistry,
 ) -> Service:
     return get_mr_service_by_label(
-        client=admin_client, ns=model_registry_namespace, mr_instance=model_registry_instance
+        client=admin_client, ns=Namespace(name=model_registry_namespace), mr_instance=model_registry_instance
     )
 
 
@@ -341,13 +225,17 @@ def state_machine(generated_schema: BaseOpenAPISchema, current_client_token: str
 @pytest.fixture(scope="class")
 def updated_dsc_component_state_scope_class(
     request: FixtureRequest,
-    model_registry_namespace: Namespace,
     dsc_resource: DataScienceCluster,
 ) -> Generator[DataScienceCluster, Any, Any]:
     original_components = dsc_resource.instance.spec.components
     with ResourceEditor(patches={dsc_resource: {"spec": {"components": request.param["component_patch"]}}}):
         for component_name in request.param["component_patch"]:
             dsc_resource.wait_for_condition(condition=DscComponents.COMPONENT_MAPPING[component_name], status="True")
+        if request.param["component_patch"].get(DscComponents.MODELREGISTRY):
+            namespace = Namespace(
+                name=dsc_resource.instance.spec.components.modelregistry.registriesNamespace, ensure_exists=True
+            )
+            namespace.wait_for_status(status=Namespace.Status.ACTIVE)
         yield dsc_resource
 
     for component_name, value in request.param["component_patch"].items():
