@@ -83,13 +83,29 @@ def current_client_token(admin_client: DynamicClient) -> str:
     return get_openshift_token()
 
 
+@pytest.fixture(scope="session")
+def teardown_resources(pytestconfig: pytest.Config) -> bool:
+    if delete_pre_upgrade_resources := pytestconfig.option.delete_pre_upgrade_resources:
+        LOGGER.warning("Resources will be deleted")
+
+    return delete_pre_upgrade_resources
+
+
 @pytest.fixture(scope="class")
-def model_namespace(request: FixtureRequest, admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
+def model_namespace(
+    request: FixtureRequest, pytestconfig: pytest.Config, admin_client: DynamicClient, teardown_resources: bool
+) -> Generator[Namespace, Any, Any]:
     if request.param.get("modelmesh-enabled"):
         request.getfixturevalue(argname="enabled_modelmesh_in_dsc")
 
-    with create_ns(admin_client=admin_client, pytest_request=request) as ns:
+    ns = Namespace(client=admin_client, name=request.param["name"])
+
+    if pytestconfig.option.post_upgrade:
         yield ns
+        ns.clean_up()
+    else:
+        with create_ns(admin_client=admin_client, pytest_request=request, teardown=teardown_resources) as ns:
+            yield ns
 
 
 @pytest.fixture(scope="session")

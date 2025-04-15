@@ -29,14 +29,6 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.fixture(scope="session")
-def teardown_resources(pytestconfig: pytest.Config) -> bool:
-    if delete_pre_upgrade_resources := pytestconfig.option.delete_pre_upgrade_resources:
-        LOGGER.warning("Resources will be deleted")
-
-    return delete_pre_upgrade_resources
-
-
-@pytest.fixture(scope="session")
 def model_namespace_scope_session(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
