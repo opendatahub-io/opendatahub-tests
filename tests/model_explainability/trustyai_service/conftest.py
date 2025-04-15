@@ -58,7 +58,8 @@ def trustyai_service_with_pvc_storage(
     user_workload_monitoring_config: ConfigMap,
     teardown_resources: bool,
 ) -> Generator[TrustyAIService, Any, Any]:
-    trustyai_service = TrustyAIService(client=admin_client, namespace=model_namespace.name, name=TRUSTYAI_SERVICE_NAME)
+    trustyai_service_kwargs = {"client": admin_client, "namespace": model_namespace.name, "name": TRUSTYAI_SERVICE_NAME}
+    trustyai_service = TrustyAIService(**trustyai_service_kwargs)
 
     if pytestconfig.option.post_upgrade:
         yield trustyai_service
@@ -66,9 +67,7 @@ def trustyai_service_with_pvc_storage(
 
     else:
         with TrustyAIService(
-            client=admin_client,
-            name=TRUSTYAI_SERVICE_NAME,
-            namespace=model_namespace.name,
+            **trustyai_service_kwargs,
             storage={"format": "PVC", "folder": "/inputs", "size": "1Gi"},
             data={"filename": "data.csv", "format": "CSV"},
             metrics={"schedule": "5s"},
