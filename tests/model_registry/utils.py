@@ -40,7 +40,7 @@ def get_mr_service_by_label(client: DynamicClient, ns: Namespace, mr_instance: M
     raise ResourceNotFoundError(f"{mr_instance.name} has no Service")
 
 
-def get_endpoint_from_mr_service(client: DynamicClient, svc: Service, protocol: str) -> str:
+def get_endpoint_from_mr_service(svc: Service, protocol: str) -> str:
     if protocol in (Protocols.REST, Protocols.GRPC):
         return svc.instance.metadata.annotations[f"{ADDRESS_ANNOTATION_PREFIX}{protocol}"]
     else:
