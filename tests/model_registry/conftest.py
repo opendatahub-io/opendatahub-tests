@@ -185,12 +185,9 @@ def model_registry_instance_service(
 
 @pytest.fixture(scope="class")
 def model_registry_instance_rest_endpoint(
-    admin_client: DynamicClient,
     model_registry_instance_service: Service,
 ) -> str:
-    return get_endpoint_from_mr_service(
-        client=admin_client, svc=model_registry_instance_service, protocol=Protocols.REST
-    )
+    return get_endpoint_from_mr_service(svc=model_registry_instance_service, protocol=Protocols.REST)
 
 
 @pytest.fixture(scope="class")
