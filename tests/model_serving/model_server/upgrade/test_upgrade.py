@@ -33,7 +33,7 @@ class TestPreUpgradeModelServer:
             inference_service=caikit_raw_inference_service_scope_session,
             inference_config=CAIKIT_STANDALONE_INFERENCE_CONFIG,
             inference_type="embedding",
-            protocol=Protocols.HTTPS,
+            protocol=Protocols.HTTP,
             model_name=ModelName.CAIKIT_BGE_LARGE_EN,
             use_default_query=True,
         )
@@ -105,7 +105,7 @@ class TestPostUpgradeModelServer:
             inference_service=caikit_raw_inference_service_scope_session,
             inference_config=CAIKIT_STANDALONE_INFERENCE_CONFIG,
             inference_type="embedding",
-            protocol=Protocols.HTTPS,
+            protocol=Protocols.HTTP,
             model_name=ModelName.CAIKIT_BGE_LARGE_EN,
             use_default_query=True,
         )

@@ -290,7 +290,7 @@ def caikit_raw_inference_service_scope_session(
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             storage_key=models_endpoint_s3_secret_scope_session.name,
             storage_path=ModelStoragePath.EMBEDDING_MODEL,
-            external_route=True,
+            external_route=False,
             teardown=teardown_resources,
             **isvc_kwargs,
         ) as isvc:

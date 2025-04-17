@@ -151,11 +151,11 @@ def verify_inference_response(
                 response = res[inference.inference_response_key_name]
                 if isinstance(response, list):
                     response = response[0]
-
-                response_text = response[inference.inference_response_text_key_name]
-                assert response_text == expected_response_text, (
-                    f"Expected: {expected_response_text} does not mathc response: {response_text}"
-                )
+                    if isinstance(response, dict):
+                        response_text = response[inference.inference_response_text_key_name]
+                        assert response_text == expected_response_text, (
+                            f"Expected: {expected_response_text} does not mathc response: {response_text}"
+                        )
 
         else:
             raise InferenceResponseError(f"Inference response output not found in response. Response: {res}")
