@@ -7,6 +7,7 @@ import pytest
 import shortuuid
 import yaml
 from _pytest.tmpdir import TempPathFactory
+from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.dsc_initialization import DSCInitialization
 from ocp_resources.node import Node
@@ -478,3 +479,30 @@ def cluster_sanity_scope_session(
         dsci_resource=dsci_resource,
         junitxml_property=junitxml_plugin,
     )
+
+
+@pytest.fixture(scope="session")
+def fail_if_missing_dependent_operators(admin_client: DynamicClient) -> None:
+    missing_operators: list[str] = []
+    csvs = list(
+        ClusterServiceVersion.get(
+            dyn_client=admin_client,
+            namespace=py_config["applications_namespace"],
+        )
+    )
+
+    for operator_name in py_config.get("dependent_operators", []).split(","):
+        LOGGER.info(f"Verifying if {operator_name} is installed")
+        for csv in csvs:
+            if csv.name.startswith(operator_name):
+                if csv.status == csv.Status.SUCCEEDED:
+                    break
+
+                else:
+                    missing_operators.append(operator_name)
+
+        else:
+            missing_operators.append(operator_name)
+
+    if missing_operators:
+        pytest.fail(f"Missing dependent operators: {missing_operators}")

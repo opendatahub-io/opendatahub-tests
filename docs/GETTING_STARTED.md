@@ -67,6 +67,13 @@ By default, cluster sanity checks are run to make cluster ready for tests.
 To skip cluster sanity checks, pass `--cluster-sanity-skip-check` to skip all tests.
 To skip RHOAI/ODH-related tests (for example when running in upstream), pass `--cluster-sanity-skip-rhoai-check`.
 
+### Check dependent operators
+By default, `Serveless` (serverless-operator), `Authorino` (authorino-operator) and `Service Mesh` (servicemeshoperator) operators are checked to be installed when  
+running model registry or model server Serverless tests.
+To check only specific operator, pass `--tc=dependent_operators:<operator_name>` to pytest.
+For example, to check only `Serveless` and `Service Mesh` operators, pass `--tc=dependent_operators:serverless-operator,servicemeshoperator`.
+
+
 ### jira integration
 To skip running tests which have open bugs, [pytest_jira](https://github.com/rhevm-qe-automation/pytest_jira) plugin is used.
 To run tests with jira integration, you need to set `PYTEST_JIRA_URL` and `PYTEST_JIRA_TOKEN` environment variables.

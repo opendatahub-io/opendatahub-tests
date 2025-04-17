@@ -4,19 +4,15 @@ import pytest
 import yaml
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.authorino import Authorino
-from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
-from ocp_resources.service_mesh_control_plane import ServiceMeshControlPlane
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.storage_class import StorageClass
 from ocp_utilities.monitoring import Prometheus
-from pytest_testconfig import config as py_config
 
 from utilities.constants import (
     KServeDeploymentType,
@@ -38,25 +34,6 @@ from utilities.infra import (
     update_configmap_data,
 )
 from utilities.serving_runtime import ServingRuntimeFromTemplate
-
-
-@pytest.fixture(scope="package")
-def skip_if_no_deployed_openshift_serverless(admin_client: DynamicClient) -> None:
-    name = "openshift-serverless"
-    csvs = list(
-        ClusterServiceVersion.get(
-            client=admin_client,
-            namespace=name,
-            label_selector=f"operators.coreos.com/serverless-operator.{name}",
-        )
-    )
-    if not csvs:
-        pytest.skip("OpenShift Serverless is not deployed")
-
-    csv = csvs[0]
-
-    if not (csv.exists and csv.status == csv.Status.SUCCEEDED):
-        pytest.skip("OpenShift Serverless is not deployed")
 
 
 @pytest.fixture(scope="class")
@@ -187,28 +164,6 @@ def model_pvc(
 def skip_if_no_nfs_storage_class(admin_client: DynamicClient) -> None:
     if not StorageClass(client=admin_client, name=StorageClassName.NFS).exists:
         pytest.skip(f"StorageClass {StorageClassName.NFS} is missing from the cluster")
-
-
-@pytest.fixture(scope="package")
-def skip_if_no_deployed_redhat_authorino_operator(admin_client: DynamicClient) -> None:
-    name = "authorino"
-    namespace = f"{py_config['applications_namespace']}-auth-provider"
-
-    if not Authorino(
-        client=admin_client,
-        name=name,
-        namespace=namespace,
-    ).exists:
-        pytest.skip(f"Authorino {name} CR is missing from {namespace} namespace")
-
-
-@pytest.fixture(scope="package")
-def skip_if_no_deployed_openshift_service_mesh(admin_client: DynamicClient) -> None:
-    smcp = ServiceMeshControlPlane(client=admin_client, name="data-science-smcp", namespace="istio-system")
-    if not smcp or not smcp.exists:
-        pytest.skip("OpenShift service mesh operator is not deployed")
-
-    smcp.wait_for_condition(condition=smcp.Condition.READY, status="True")
 
 
 @pytest.fixture(scope="class")
