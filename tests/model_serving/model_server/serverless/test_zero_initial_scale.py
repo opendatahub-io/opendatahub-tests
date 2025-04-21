@@ -33,7 +33,7 @@ pytestmark = [
                 "model-version": ModelVersion.OPSET13,
                 "model-dir": "test-dir",
                 "deployment-mode": KServeDeploymentType.SERVERLESS,
-                "min-replicas": 0
+                "min-replicas": 0,
             },
         )
     ],
@@ -58,13 +58,18 @@ class TestServerlessInitialScaleZero:
                     return
                 raise DeploymentValidationError(
                     f"Inference Service {ovms_kserve_inference_service.name} deployment should have 0 replicas"
-                )  
+                )
 
         raise DeploymentValidationError(
             f"Inference Service {ovms_kserve_inference_service.name} new deployment not found"
         )
-    
-    @pytest.mark.dependency(depends=["test_no_serverless_pods_created_for_zero_initial_scale", "test_no_serverless_replicas_created_for_zero_initial_scale"])
+
+    @pytest.mark.dependency(
+        depends=[
+            "test_no_serverless_pods_created_for_zero_initial_scale",
+            "test_no_serverless_replicas_created_for_zero_initial_scale",
+        ]
+    )
     def test_serverless_inference_after_zero_initial_scale(self, ovms_kserve_inference_service):
         """Verify model can be queried after being created with an initial scale of zero."""
         verify_inference_response(
