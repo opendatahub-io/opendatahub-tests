@@ -25,6 +25,7 @@ pytestmark = [pytest.mark.modelmesh, pytest.mark.sanity]
 class TestModelMeshAuthentication:
     """Model Mesh Authentication is based on the created Service; cross-model authentication is not blocked"""
 
+    @pytest.mark.ocp_interop
     @pytest.mark.dependency(name="test_model_mesh_model_authentication_openvino_inference_with_tensorflow")
     def test_model_mesh_model_authentication_openvino_inference_with_tensorflow(
         self,
