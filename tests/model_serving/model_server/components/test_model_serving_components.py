@@ -41,6 +41,7 @@ def component_deployment(
 
 
 @pytest.mark.smoke
+@pytest.mark.ocp_interop
 @pytest.mark.parametrize(
     "component_deployment",
     [

@@ -25,6 +25,7 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
 )
 class TestKserveTokenAuthenticationRawForRest:
     @pytest.mark.smoke
+    @pytest.mark.ocp_interop
     @pytest.mark.dependency(name="test_model_authentication_using_rest_raw")
     def test_model_authentication_using_rest_raw(self, http_s3_caikit_raw_inference_service, http_raw_inference_token):
         """Verify RAW Kserve model query with token using REST"""
