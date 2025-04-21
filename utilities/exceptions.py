@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Optional
 
 from ocp_resources.service import Service
@@ -92,3 +94,7 @@ class ClusterLoginError(Exception):
 
     def __str__(self) -> str:
         return f"Failed to log in as user {self.user}."
+
+
+class ResourceNotReadyError(Exception):
+    pass
