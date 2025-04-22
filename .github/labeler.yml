@@ -1,0 +1,27 @@
+"ModelExplainability":
+- changed-files:
+  - any-glob-to-any-file: "tests/model_explainability/**"
+
+"ModelRegistry":
+- changed-files:
+  - any-glob-to-any-file: "tests/model_registry/**"
+
+"ModelServing":
+- changed-files:
+  - any-glob-to-any-file: "tests/model_serving/**"
+
+"Workbenches":
+- changed-files:
+  - any-glob-to-any-file: "tests/workbenches/**"
+
+"GitHub":
+- changed-files:
+  - any-glob-to-any-file: ".github/**"
+
+"Documentation":
+- changed-files:
+  - any-glob-to-any-file: "docs/**"
+
+"Utilities":
+- changed-files:
+  - any-glob-to-any-file: "utilities/**"

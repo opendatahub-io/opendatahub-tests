@@ -2,14 +2,12 @@ import pytest
 from typing import Self
 from simple_logger.logger import get_logger
 
-from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.pod import Pod
 from ocp_resources.namespace import Namespace
 from utilities.constants import DscComponents
-from tests.model_registry.constants import MR_NAMESPACE, MODEL_NAME, MODEL_DICT
+from tests.model_registry.constants import MODEL_NAME, MODEL_DICT, MR_NAMESPACE
 from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
-from kubernetes.dynamic import DynamicClient
 
 LOGGER = get_logger(name=__name__)
 
@@ -17,10 +15,9 @@ CUSTOM_NAMESPACE = "model-registry-custom-ns"
 
 
 @pytest.mark.parametrize(
-    "model_registry_namespace, updated_dsc_component_state_scope_class",
+    "updated_dsc_component_state_scope_class, registered_model",
     [
         pytest.param(
-            {"namespace_name": CUSTOM_NAMESPACE},
             {
                 "component_patch": {
                     DscComponents.MODELREGISTRY: {
@@ -29,9 +26,9 @@ CUSTOM_NAMESPACE = "model-registry-custom-ns"
                     },
                 }
             },
+            MODEL_DICT,
         ),
         pytest.param(
-            {"namespace_name": MR_NAMESPACE},
             {
                 "component_patch": {
                     DscComponents.MODELREGISTRY: {
@@ -40,11 +37,12 @@ CUSTOM_NAMESPACE = "model-registry-custom-ns"
                     },
                 },
             },
+            MODEL_DICT,
         ),
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("model_registry_namespace", "updated_dsc_component_state_scope_class")
+@pytest.mark.usefixtures("updated_dsc_component_state_scope_class", "registered_model")
 class TestModelRegistryCreation:
     """
     Tests the creation of a model registry. If the component is set to 'Removed' it will be switched to 'Managed'
@@ -52,15 +50,6 @@ class TestModelRegistryCreation:
     """
 
     @pytest.mark.smoke
-    @pytest.mark.parametrize(
-        "registered_model",
-        [
-            pytest.param(
-                MODEL_DICT,
-            )
-        ],
-        indirect=True,
-    )
     def test_registering_model(
         self: Self,
         model_registry_client: ModelRegistryClient,
@@ -84,15 +73,14 @@ class TestModelRegistryCreation:
 
     def test_model_registry_operator_env(
         self,
-        admin_client: DynamicClient,
-        model_registry_namespace: Namespace,
-        updated_dsc_component_state_scope_class: DataScienceCluster,
+        updated_dsc_component_state_scope_class: Namespace,
+        model_registry_namespace: str,
         model_registry_operator_pod: Pod,
     ):
         namespace_env = []
         for container in model_registry_operator_pod.instance.spec.containers:
             for env in container.env:
-                if env.name == "REGISTRIES_NAMESPACE" and env.value == model_registry_namespace.name:
+                if env.name == "REGISTRIES_NAMESPACE" and env.value == model_registry_namespace:
                     namespace_env.append({container.name: env})
         if not namespace_env:
             pytest.fail("Missing environment variable REGISTRIES_NAMESPACE")

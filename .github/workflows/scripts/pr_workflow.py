@@ -231,6 +231,7 @@ class PrLabeler(PrBaseClass):
                     label.lower() == VERIFIED_LABEL_STR
                     or label.lower().startswith(LGTM_BY_LABEL_PREFIX)
                     or label.lower().startswith(CHANGED_REQUESTED_BY_LABEL_PREFIX)
+                    or label.lower().startswith(COMMENTED_BY_LABEL_PREFIX)
                 ):
                     LOGGER.info(f"Removing label {label}")
                     self.pr.remove_from_labels(label=label)
@@ -250,6 +251,7 @@ class PrLabeler(PrBaseClass):
         # We will only reach here if the PR was created from a fork
         elif self.event_name == "workflow_run" and self.event_action == "submitted":
             self.pull_request_review_label_actions()
+            return
 
         LOGGER.warning("`add_remove_pr_label` called without a supported event")
 
