@@ -18,9 +18,9 @@ from ocp_utilities.operators import install_operator, uninstall_operator
 from tests.model_explainability.trustyai_service.utils import (
     get_cluster_service_version,
     wait_for_mariadb_operator_deployments,
-    wait_for_pods,
-    create_trustyai_db_ca_secret,
     create_trustyai_service,
+    wait_for_mariadb_pods,
+    TRUSTYAI_SERVICE_NAME,
 )
 
 from utilities.constants import Timeout
@@ -215,28 +215,34 @@ def mariadb(
     mariadb_dict["spec"]["rootPasswordSecretKeyRef"] = password_secret_key_ref
     mariadb_dict["spec"]["passwordSecretKeyRef"] = password_secret_key_ref
     with MariaDB(kind_dict=mariadb_dict) as mariadb:
-        wait_for_pods(
-            client=admin_client, namespace=mariadb.namespace, label_selector="app.kubernetes.io/instance=mariadb"
-        )
+        wait_for_mariadb_pods(client=admin_client, mariadb=mariadb)
         yield mariadb
 
 
 @pytest.fixture(scope="class")
 def trustyai_db_ca_secret(
     admin_client: DynamicClient, model_namespace: Namespace, mariadb: MariaDB
-) -> Generator[None, Any, None]:
+) -> Generator[Secret | None, Any, None]:
     mariadb_ca_secret = Secret(
         client=admin_client, name=f"{mariadb.name}-ca", namespace=model_namespace.name, ensure_exists=True
     )
-    yield from create_trustyai_db_ca_secret(
-        client=admin_client, mariadb_ca_cert=mariadb_ca_secret.instance.data["ca.crt"], namespace=model_namespace
-    )
+    with Secret(
+        client=admin_client,
+        name=f"{TRUSTYAI_SERVICE_NAME}-db-ca",
+        namespace=model_namespace.name,
+        data_dict={"ca.crt": mariadb_ca_secret.instance.data["ca.crt"]},
+    ) as secret:
+        yield secret
 
 
 @pytest.fixture(scope="class")
 def trustyai_invalid_db_ca_secret(
     admin_client: DynamicClient, model_namespace: Namespace, mariadb: MariaDB
-) -> Generator[None, Any, None]:
-    yield from create_trustyai_db_ca_secret(
-        client=admin_client, mariadb_ca_cert=INVALID_TLS_CERTIFICATE, namespace=model_namespace
-    )
+) -> Generator[Secret, Any, None]:
+    with Secret(
+        client=admin_client,
+        name=f"{TRUSTYAI_SERVICE_NAME}-db-ca",
+        namespace=model_namespace.name,
+        data_dict={"ca.crt": INVALID_TLS_CERTIFICATE},
+    ) as secret:
+        yield secret

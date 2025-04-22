@@ -1,17 +1,17 @@
-from typing import Generator, Any, List, Callable, Optional
+from typing import Generator, Any, Optional
+import pytest
 
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError, ResourceNotUniqueError
 from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.deployment import Deployment
 from ocp_resources.mariadb_operator import MariadbOperator
+from ocp_resources.maria_db import MariaDB
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
-from ocp_resources.secret import Secret
 from ocp_resources.trustyai_service import TrustyAIService
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
-
 from tests.model_explainability.trustyai_service.trustyai_service_utils import TRUSTYAI_SERVICE_NAME
 from utilities.constants import Timeout
 
@@ -49,72 +49,70 @@ def wait_for_mariadb_operator_deployments(mariadb_operator: MariadbOperator) -> 
         deployment.wait_for_replicas()
 
 
-def get_pods_func(client: DynamicClient, namespace: str, label_selector: Optional[str]) -> Callable[[], list[Pod]]:
-    def _get_pods() -> List[Pod]:
+def wait_for_mariadb_pods(client: DynamicClient, mariadb: MariaDB, timeout: int = Timeout.TIMEOUT_5MIN) -> None:
+    def _get_mariadb_pods() -> list[Pod]:
         pods = [
             pod
             for pod in Pod.get(
                 dyn_client=client,
-                namespace=namespace,
-                label_selector=label_selector,
+                namespace=mariadb.namespace,
+                label_selector="app.kubernetes.io/instance=mariadb",
             )
         ]
         return pods
 
-    return _get_pods
-
-
-def wait_for_pods(
-    client: DynamicClient,
-    namespace: str,
-    label_selector: Optional[str] = None,
-    timeout: int = Timeout.TIMEOUT_5MIN,
-    wait_for_condition: str = Pod.Condition.READY,
-    condition_status: str = Pod.Condition.Status.TRUE,
-) -> List[Pod]:
-    get_pods = get_pods_func(client=client, namespace=namespace, label_selector=label_selector)
-    sampler = TimeoutSampler(wait_timeout=timeout, sleep=1, func=lambda: bool(get_pods()))
+    sampler = TimeoutSampler(wait_timeout=timeout, sleep=1, func=lambda: bool(_get_mariadb_pods()))
 
     for sample in sampler:
         if sample:
             break
 
-    pods = get_pods()
+    pods = _get_mariadb_pods()
     for pod in pods:
         pod.wait_for_condition(
-            condition=wait_for_condition,
-            status=condition_status,
-            timeout=timeout,  # IDEA: using two different timeouts might be worth considering
+            condition=Pod.Condition.READY,
+            status="True",
         )
-    return pods
 
 
-def wait_for_trustyai_container_terminal_state(
-    client: DynamicClient, namespace: str, label_selector: Optional[str] = None, timeout: int = Timeout.TIMEOUT_5MIN
-) -> Any | None:
-    get_pods = get_pods_func(client, namespace=namespace, label_selector=label_selector)
-    sampler = TimeoutSampler(wait_timeout=timeout, sleep=1, func=get_pods)
+def validate_trustyai_service_db_conn_failure(
+    client: DynamicClient, namespace: str, label_selector: Optional[str] = None, timeout: int = Timeout.TIMEOUT_2MIN
+) -> None:
+    """
+    Waits for TrustyAIService pod to fail and checks if the pod is:-
+    * in a CrashLoopBackOff state
+    * The LastState is in terminated state and the cause was a MariaDB TLS certificate exception
+
+    Args:
+        client: DynamicClient
+        namespace: Namespace
+        label_selector: Optional(str)
+        timeout: int(secs)
+
+    Returns: None
+
+    """
+    sampler = TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=5,
+        func=lambda: list(Pod.get(dyn_client=client, namespace=namespace, label_selector=label_selector)),
+    )
     for pods in sampler:
-        for pod in pods:
-            for container_status in pod.instance.status.containerStatuses:
-                if (terminate_state := container_status.lastState.terminated) and terminate_state.reason in (
-                    pod.Status.ERROR,
-                    pod.Status.CRASH_LOOPBACK_OFF,
+        for container_status in pods[0].instance.status.containerStatuses:
+            if (terminate_state := container_status.lastState.terminated) and terminate_state.reason in (
+                pods[0].Status.ERROR,
+                pods[0].Status.CRASH_LOOPBACK_OFF,
+            ):
+                if (
+                    "Could not connect to mariadb:" not in terminate_state.message
+                    and "java.security.cert.CertPathValidatorException: signature check failed"
+                    not in terminate_state.message
                 ):
-                    return terminate_state
-    return None
-
-
-def create_trustyai_db_ca_secret(
-    client: DynamicClient, mariadb_ca_cert: str, namespace: Namespace
-) -> Generator[None, Any, None]:
-    with Secret(
-        client=client,
-        name=f"{TRUSTYAI_SERVICE_NAME}-db-ca",
-        namespace=namespace.name,
-        data_dict={"ca.crt": mariadb_ca_cert},
-    ):
-        yield
+                    pytest.fail(
+                        f"Service {TRUSTYAI_SERVICE_NAME} did not fail with a mariadb connection failure as expected."
+                        f"\n\n{terminate_state.message}"
+                    )
+                return
 
 
 def create_trustyai_service(
