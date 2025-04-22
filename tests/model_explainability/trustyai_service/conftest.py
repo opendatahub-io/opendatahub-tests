@@ -225,7 +225,7 @@ def mariadb(
 @pytest.fixture(scope="class")
 def trustyai_db_ca_secret(
     admin_client: DynamicClient, model_namespace: Namespace, mariadb: MariaDB
-) -> Generator[Secret | None, Any, None]:
+) -> Generator[Secret, Any, None]:
     mariadb_ca_secret = Secret(
         client=admin_client, name=f"{mariadb.name}-ca", namespace=model_namespace.name, ensure_exists=True
     )
