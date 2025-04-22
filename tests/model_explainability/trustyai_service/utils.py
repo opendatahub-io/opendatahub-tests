@@ -85,10 +85,12 @@ def validate_trustyai_service_db_conn_failure(
     * in a CrashLoopBackOff state
     * The LastState is in terminated state and the cause was a MariaDB TLS certificate exception
     Also checks if there are more than one pod for the service.
+
     Args:
         client: DynamicClient
         namespace: Namespace
         label_selector: Optional(str)
+
     Returns: bool
     """
     pods = list(Pod.get(dyn_client=client, namespace=namespace, label_selector=label_selector))
