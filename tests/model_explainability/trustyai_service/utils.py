@@ -123,6 +123,11 @@ def create_trustyai_service(
     data: Optional[dict[Any, Any]] = None,
     wait_for_replicas: bool = True,
 ) -> Generator[TrustyAIService, Any, Any]:
+    """
+    Creates TrustyAIService and TrustyAI deployment
+    Returns:
+         Generator[TrustyAIService, Any, Any]:
+    """
     with TrustyAIService(
         client=client,
         name=TRUSTYAI_SERVICE_NAME,
