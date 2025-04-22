@@ -14,6 +14,7 @@ from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 from tests.model_explainability.trustyai_service.trustyai_service_utils import TRUSTYAI_SERVICE_NAME
 from utilities.constants import Timeout
+from timeout_sampler import retry
 
 LOGGER = get_logger(name=__name__)
 
@@ -75,29 +76,25 @@ def wait_for_mariadb_pods(client: DynamicClient, mariadb: MariaDB, timeout: int 
         )
 
 
+@retry(wait_timeout=Timeout.TIMEOUT_2MIN, sleep=5)
 def validate_trustyai_service_db_conn_failure(
-    client: DynamicClient, namespace: str, label_selector: Optional[str] = None, timeout: int = Timeout.TIMEOUT_2MIN
-) -> None:
+    client: DynamicClient, namespace: str, label_selector: Optional[str]
+) -> bool:
     """
     Waits for TrustyAIService pod to fail and checks if the pod is:-
     * in a CrashLoopBackOff state
     * The LastState is in terminated state and the cause was a MariaDB TLS certificate exception
-
+    Also checks if there are more than one pod for the service.
     Args:
         client: DynamicClient
         namespace: Namespace
         label_selector: Optional(str)
-        timeout: int(secs)
-
-    Returns: None
-
+    Returns: bool
     """
-    sampler = TimeoutSampler(
-        wait_timeout=timeout,
-        sleep=5,
-        func=lambda: list(Pod.get(dyn_client=client, namespace=namespace, label_selector=label_selector)),
-    )
-    for pods in sampler:
+    pods = list(Pod.get(dyn_client=client, namespace=namespace, label_selector=label_selector))
+    if len(pods) != 0:
+        if len(pods) > 1:
+            pytest.fail("More than one pod found in TrustyAIService.")
         for container_status in pods[0].instance.status.containerStatuses:
             if (terminate_state := container_status.lastState.terminated) and terminate_state.reason in (
                 pods[0].Status.ERROR,
@@ -112,7 +109,9 @@ def validate_trustyai_service_db_conn_failure(
                         f"Service {TRUSTYAI_SERVICE_NAME} did not fail with a mariadb connection failure as expected."
                         f"\n\n{terminate_state.message}"
                     )
-                return
+                return True
+        return False
+    return False
 
 
 def create_trustyai_service(
