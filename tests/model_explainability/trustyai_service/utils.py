@@ -110,7 +110,6 @@ def validate_trustyai_service_db_conn_failure(
                         f"\n\n{terminate_state.message}"
                     )
                 return True
-        return False
     return False
 
 
