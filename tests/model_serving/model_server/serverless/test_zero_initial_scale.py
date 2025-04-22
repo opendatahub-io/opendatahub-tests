@@ -1,6 +1,9 @@
 import pytest
 from ocp_resources.deployment import Deployment
 
+from tests.model_serving.model_server.serverless.constants import (
+    ONNX_SERVERLESS_INFERENCE_SERVICE_CONFIG,
+)
 from tests.model_serving.model_server.serverless.utils import verify_no_inference_pods
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import (
@@ -11,6 +14,7 @@ from utilities.constants import (
     RunTimeConfigs,
 )
 from utilities.exceptions import DeploymentValidationError
+from utilities.general import create_isvc_label_selector_str
 from utilities.inference_utils import Inference
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
@@ -29,10 +33,7 @@ pytestmark = [
             {"name": "serverless-initial-scale-zero"},
             RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
             {
-                "name": ModelFormat.ONNX,
-                "model-version": ModelVersion.OPSET13,
-                "model-dir": "test-dir",
-                "deployment-mode": KServeDeploymentType.SERVERLESS,
+                **ONNX_SERVERLESS_INFERENCE_SERVICE_CONFIG,
                 "min-replicas": 0,
             },
         )
@@ -46,22 +47,41 @@ class TestServerlessInitialScaleZero:
         verify_no_inference_pods(client=admin_client, isvc=ovms_kserve_inference_service)
 
     @pytest.mark.dependency(name="test_no_serverless_replicas_created_for_zero_initial_scale")
-    def test_no_serverless_replicas_created_for_zero_initial_scale(self, admin_client, ovms_kserve_inference_service):
+    def test_no_serverless_replicas_created_for_zero_initial_scale(
+        self, 
+        admin_client, 
+        ovms_kserve_inference_service, 
+        ovms_kserve_serving_runtime
+    ):
         """Verify replica count is zero when inference service initial scale is zero"""
-        for deployment in Deployment.get(
-            client=admin_client,
-            namespace=ovms_kserve_inference_service.namespace,
-        ):
-            if deployment.labels["serving.knative.dev/configurationGeneration"] == "1":
-                if deployment.replicas == 0:
-                    deployment.wait_for_replicas()
-                    return
-                raise DeploymentValidationError(
-                    f"Inference Service {ovms_kserve_inference_service.name} deployment should have 0 replicas"
-                )
+        labels = [
+            "serving.knative.dev/configurationGeneration=1",
+            create_isvc_label_selector_str(
+                ovms_kserve_inference_service, 
+                "depoyment",
+                ovms_kserve_serving_runtime.name
+            )
+        ]
+        
+        deployments = list(
+            Deployment.get(
+                label_selector=",".join(labels),
+                client=admin_client,
+                namespace=ovms_kserve_inference_service.namespace
+            )
+        )
+
+        if not deployments:
+            raise DeploymentValidationError(
+                f"Inference Service {ovms_kserve_inference_service.name} new deployment not found"
+            )
+
+        if deployments[0].instance.spec.replicas == 0:
+            deployments[0].wait_for_replicas()
+            return
 
         raise DeploymentValidationError(
-            f"Inference Service {ovms_kserve_inference_service.name} new deployment not found"
+            f"Inference Service {ovms_kserve_inference_service.name} deployment should have 0 replicas when created"
         )
 
     @pytest.mark.dependency(
