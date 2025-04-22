@@ -7,9 +7,6 @@ from tests.model_serving.model_server.serverless.constants import (
 from tests.model_serving.model_server.serverless.utils import verify_no_inference_pods
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import (
-    KServeDeploymentType,
-    ModelFormat,
-    ModelVersion,
     Protocols,
     RunTimeConfigs,
 )
@@ -48,26 +45,19 @@ class TestServerlessInitialScaleZero:
 
     @pytest.mark.dependency(name="test_no_serverless_replicas_created_for_zero_initial_scale")
     def test_no_serverless_replicas_created_for_zero_initial_scale(
-        self, 
-        admin_client, 
-        ovms_kserve_inference_service, 
-        ovms_kserve_serving_runtime
+        self, admin_client, ovms_kserve_inference_service, ovms_kserve_serving_runtime
     ):
         """Verify replica count is zero when inference service initial scale is zero"""
         labels = [
             "serving.knative.dev/configurationGeneration=1",
             create_isvc_label_selector_str(
-                ovms_kserve_inference_service, 
-                "depoyment",
-                ovms_kserve_serving_runtime.name
-            )
+                ovms_kserve_inference_service, "depoyment", ovms_kserve_serving_runtime.name
+            ),
         ]
-        
+
         deployments = list(
             Deployment.get(
-                label_selector=",".join(labels),
-                client=admin_client,
-                namespace=ovms_kserve_inference_service.namespace
+                label_selector=",".join(labels), client=admin_client, namespace=ovms_kserve_inference_service.namespace
             )
         )
 
