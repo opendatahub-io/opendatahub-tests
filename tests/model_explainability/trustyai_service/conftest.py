@@ -28,6 +28,8 @@ from utilities.infra import update_configmap_data
 
 OPENSHIFT_OPERATORS: str = "openshift-operators"
 
+TAI_METRICS_CONFIG = {"schedule": "5s"}
+TAI_DB_STORAGE_CONFIG = {"format": "DATABASE", "size": "1Gi", "databaseConfigurations": "db-credentials"}
 MARIADB: str = "mariadb"
 DB_CREDENTIALS_SECRET_NAME: str = "db-credentials"
 DB_NAME: str = "trustyai_db"
@@ -55,7 +57,7 @@ def trustyai_service_with_pvc_storage(
         namespace=model_namespace,
         storage={"format": "PVC", "folder": "/inputs", "size": "1Gi"},
         data={"filename": "data.csv", "format": "CSV"},
-        metrics={"schedule": "5s"},
+        metrics=TAI_METRICS_CONFIG,
         wait_for_replicas=True,
     )
 
@@ -72,8 +74,8 @@ def trustyai_service_with_db_storage(
     yield from create_trustyai_service(
         client=admin_client,
         namespace=model_namespace,
-        storage={"format": "DATABASE", "size": "1Gi", "databaseConfigurations": "db-credentials"},
-        metrics={"schedule": "5s"},
+        storage=TAI_DB_STORAGE_CONFIG,
+        metrics=TAI_METRICS_CONFIG,
         wait_for_replicas=True,
     )
 
@@ -93,8 +95,8 @@ def trustyai_service_with_invalid_db_cert(
     yield from create_trustyai_service(
         client=admin_client,
         namespace=model_namespace,
-        storage={"format": "DATABASE", "size": "1Gi", "databaseConfigurations": "db-credentials"},
-        metrics={"schedule": "5s"},
+        storage=TAI_DB_STORAGE_CONFIG,
+        metrics=TAI_METRICS_CONFIG,
         wait_for_replicas=False,
     )
 
