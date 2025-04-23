@@ -726,7 +726,7 @@ def get_product_version(admin_client: DynamicClient) -> Version:
     if not operator_version:
         raise MissingResourceError("Operator ClusterServiceVersion not found")
 
-    return Version.parse(operator_version)
+    return Version.parse(version=operator_version)
 
 
 def get_dsci_applications_namespace(client: DynamicClient) -> str:

@@ -107,7 +107,7 @@ class PrLabeler(PrBaseClass):
         team: Team = org.get_team_by_slug("opendatahub-tests-contributors")
         try:
             # check if the user is a member of opendatahub-tests-contributors
-            membership = team.get_team_membership(self.user_login)
+            membership = team.get_team_membership(member=self.user_login)
             LOGGER.info(f"User {self.user_login} is a member of the test contributor team. {membership}")
         except UnknownObjectException:
             LOGGER.error(f"User {self.user_login} is not allowed for this action. Exiting.")

@@ -67,7 +67,7 @@ def is_jira_open(jira_id: str, admin_client: DynamicClient) -> bool:
         if not operator_version:
             raise MissingResourceError("Operator ClusterServiceVersion not found")
 
-        csv_version = Version(operator_version)
+        csv_version = Version(version=operator_version)
         if all([csv_version < fix_version for fix_version in jira_fix_versions]):
             LOGGER.info(
                 f"Bug is open: Jira {jira_id}: status is {jira_status}, "

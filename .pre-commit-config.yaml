@@ -22,7 +22,7 @@ repos:
     rev: "7.2.0"
     hooks:
       - id: flake8
-        args: [--config=.flake8, '--ignore=FCN001,W503']
+        args: [--config=.flake8]
         additional_dependencies:
           [
             "git+https://github.com/RedHatQE/flake8-plugins.git@v0.0.6",
