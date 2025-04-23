@@ -84,7 +84,7 @@ class PodLogMissMatchError(Exception):
     pass
 
 
-class ResourceMismatch(Exception):
+class ResourceMismatchError(Exception):
     pass
 
 
@@ -97,4 +97,8 @@ class ClusterLoginError(Exception):
 
 
 class ResourceNotReadyError(Exception):
+    pass
+
+
+class PodContainersRestartError(Exception):
     pass

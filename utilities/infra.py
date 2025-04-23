@@ -9,7 +9,7 @@ import kubernetes
 import pytest
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
-from kubernetes.dynamic.exceptions import ResourceNotFoundError, ResourceNotUniqueError
+from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError, ResourceNotUniqueError
 from ocp_resources.catalog_source import CatalogSource
 from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.config_map import ConfigMap
@@ -645,9 +645,7 @@ def verify_no_failed_pods(
                         is_waiting_pull_back_off = (
                             wait_state := container_status.state.waiting
                         ) and wait_state.reason in (
-                            pod.Status.IMAGE_PULL_BACK_OFF,
                             pod.Status.CRASH_LOOPBACK_OFF,
-                            pod.Status.ERR_IMAGE_PULL,
                             "InvalidImageName",
                         )
 
@@ -664,8 +662,6 @@ def verify_no_failed_pods(
                 elif pod_status.phase in (
                     pod.Status.CRASH_LOOPBACK_OFF,
                     pod.Status.FAILED,
-                    pod.Status.IMAGE_PULL_BACK_OFF,
-                    pod.Status.ERR_IMAGE_PULL,
                 ):
                     failed_pods[pod.name] = pod_status
 
@@ -727,7 +723,7 @@ def get_product_version(admin_client: DynamicClient) -> Version:
     if not operator_version:
         raise MissingResourceError("Operator ClusterServiceVersion not found")
 
-    return Version.parse(operator_version)
+    return Version.parse(version=operator_version)
 
 
 def get_dsci_applications_namespace(client: DynamicClient) -> str:
@@ -800,13 +796,17 @@ def wait_for_serverless_pods_deletion(resource: Project | Namespace, admin_clien
     """
     client = admin_client or get_client()
     for pod in Pod.get(dyn_client=client, namespace=resource.name):
-        if (
-            pod.exists
-            and pod.instance.metadata.annotations.get(Annotations.KserveIo.DEPLOYMENT_MODE)
-            == KServeDeploymentType.SERVERLESS
-        ):
-            LOGGER.info(f"Waiting for {KServeDeploymentType.SERVERLESS} pod {pod.name} to be deleted")
-            pod.wait_deleted(timeout=Timeout.TIMEOUT_1MIN)
+        try:
+            if (
+                pod.exists
+                and pod.instance.metadata.annotations.get(Annotations.KserveIo.DEPLOYMENT_MODE)
+                == KServeDeploymentType.SERVERLESS
+            ):
+                LOGGER.info(f"Waiting for {KServeDeploymentType.SERVERLESS} pod {pod.name} to be deleted")
+                pod.wait_deleted(timeout=Timeout.TIMEOUT_1MIN)
+
+        except (ResourceNotFoundError, NotFoundError):
+            LOGGER.info(f"Pod {pod.name} is deleted")
 
 
 @retry(
