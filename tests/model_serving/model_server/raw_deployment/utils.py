@@ -20,7 +20,7 @@ def assert_ingress_status_changed(admin_client: DynamicClient, inference_service
     Returns:
         None
     """
-    route = get_model_route(admin_client, inference_service)
+    route = get_model_route(client=admin_client, isvc=inference_service)
     if not route.exists:
         raise ResourceNotFoundError("Route before deletion not found: No active route is currently available.")
 

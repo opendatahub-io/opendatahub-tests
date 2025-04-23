@@ -28,8 +28,10 @@ fcn_exclude_functions =
     write,
     from_pytest_fixture,
     QueueListener,
-    yaml
-
+    yaml,
+    add_to_assignees,
+    validate_inference_output,  # TODO: function should be fixed to get rid of this
+    group
 
 enable-extensions =
     FCN,
