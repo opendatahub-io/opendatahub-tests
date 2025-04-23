@@ -51,7 +51,9 @@ class TestServerlessInitialScaleZero:
         labels = [
             "serving.knative.dev/configurationGeneration=1",
             create_isvc_label_selector_str(
-                ovms_kserve_inference_service, "depoyment", ovms_kserve_serving_runtime.name
+                isvc=ovms_kserve_inference_service,
+                resource_type="depoyment",
+                runtime_name=ovms_kserve_serving_runtime.name,
             ),
         ]
 
