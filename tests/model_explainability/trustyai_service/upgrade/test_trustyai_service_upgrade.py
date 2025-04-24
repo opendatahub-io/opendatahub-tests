@@ -52,7 +52,7 @@ class TestPreUpgradeTrustyAIService:
         current_client_token,
         trustyai_service_with_pvc_storage,
     ) -> None:
-        """"""
+        """Upload data to TrustyAIService before upgrade."""
         verify_upload_data_to_trustyai_service(
             client=admin_client,
             trustyai_service=trustyai_service_with_pvc_storage,
@@ -61,13 +61,14 @@ class TestPreUpgradeTrustyAIService:
         )
 
     @pytest.mark.pre_upgrade
-    def test_drift_metric_schedule_meanshift(
+    def test_trustyai_service_pre_upgrade_drift_metric_schedule_meanshift(
         self,
         admin_client,
         current_client_token,
         trustyai_service_with_pvc_storage,
         gaussian_credit_model,
     ):
+        """Schedule a drift metric before upgrade."""
         verify_trustyai_service_metric_scheduling_request(
             client=admin_client,
             trustyai_service=trustyai_service_with_pvc_storage,
@@ -101,6 +102,7 @@ class TestPostUpgradeTrustyAIService:
         current_client_token,
         trustyai_service_with_pvc_storage,
     ):
+        """Retrieve the metric scheduled before upgrade and delete it."""
         verify_trustyai_service_metric_delete_request(
             client=admin_client,
             trustyai_service=trustyai_service_with_pvc_storage,

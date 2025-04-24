@@ -250,8 +250,13 @@ def mlserver_runtime(
     model_namespace: Namespace,
     teardown_resources: bool,
 ) -> Generator[ServingRuntime, Any, Any]:
-    name = "kserve-mlserver"
-    serving_runtime = ServingRuntime(client=admin_client, namespace=model_namespace.name, name=name)
+    mlserver_runtime_kwargs = {
+        "client": admin_client,
+        "namespace": model_namespace.name,
+        "name": "kserve-mlserver",
+    }
+
+    serving_runtime = ServingRuntime(**mlserver_runtime_kwargs)
 
     if pytestconfig.option.post_upgrade:
         yield serving_runtime
@@ -283,9 +288,6 @@ def mlserver_runtime(
     ]
 
     with ServingRuntime(
-        client=admin_client,
-        name=name,
-        namespace=model_namespace.name,
         containers=containers,
         supported_model_formats=supported_model_formats,
         protocol_versions=["v2"],
@@ -298,6 +300,7 @@ def mlserver_runtime(
         },
         label={Labels.OpenDataHub.DASHBOARD: "true"},
         teardown=teardown_resources,
+        **mlserver_runtime_kwargs,
     ) as mlserver:
         yield mlserver
 
@@ -314,18 +317,19 @@ def gaussian_credit_model(
     trustyai_service_with_pvc_storage: TrustyAIService,
     teardown_resources: bool,
 ) -> Generator[InferenceService, Any, Any]:
-    name = ("gaussian-credit-model",)
-    isvc = InferenceService(client=admin_client, namespace=model_namespace.name, name=name)
+    gaussian_credit_model_kwargs = {
+        "client": admin_client,
+        "namespace": model_namespace.name,
+        "name": "gaussian-credit-model",
+    }
+
+    isvc = InferenceService(**gaussian_credit_model_kwargs)
 
     if pytestconfig.option.post_upgrade:
         yield isvc
         isvc.clean_up()
-
     else:
         with create_isvc(
-            client=admin_client,
-            name="gaussian-credit-model",
-            namespace=model_namespace.name,
             deployment_mode=KServeDeploymentType.SERVERLESS,
             model_format=XGBOOST,
             runtime=mlserver_runtime.name,
@@ -335,6 +339,7 @@ def gaussian_credit_model(
             wait_for_predictor_pods=False,
             resources={"requests": {"cpu": "1", "memory": "2Gi"}, "limits": {"cpu": "1", "memory": "2Gi"}},
             teardown=teardown_resources,
+            **gaussian_credit_model_kwargs,
         ) as isvc:
             wait_for_isvc_deployment_registered_by_trustyai_service(
                 client=admin_client,
