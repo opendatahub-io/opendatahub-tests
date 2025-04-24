@@ -52,7 +52,7 @@ class TestServerlessInitialScaleZero:
             "serving.knative.dev/configurationGeneration=1",
             create_isvc_label_selector_str(
                 isvc=ovms_kserve_inference_service,
-                resource_type="depoyment",
+                resource_type="deployment",
                 runtime_name=ovms_kserve_serving_runtime.name,
             ),
         ]
@@ -69,7 +69,7 @@ class TestServerlessInitialScaleZero:
             )
 
         if deployments[0].instance.spec.replicas == 0:
-            deployments[0].wait_for_replicas()
+            deployments[0].wait_for_replicas(deployed=False)
             return
 
         raise DeploymentValidationError(
