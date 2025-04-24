@@ -1,5 +1,6 @@
 from typing import Generator, Any, Optional
 import pytest
+import re
 
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError, ResourceNotUniqueError
@@ -52,15 +53,15 @@ def wait_for_mariadb_operator_deployments(mariadb_operator: MariadbOperator) -> 
 
 def wait_for_mariadb_pods(client: DynamicClient, mariadb: MariaDB, timeout: int = Timeout.TIMEOUT_5MIN) -> None:
     def _get_mariadb_pods() -> list[Pod]:
-        pods = [
-            pod
-            for pod in Pod.get(
+        _pods = [
+            _pod
+            for _pod in Pod.get(
                 dyn_client=client,
                 namespace=mariadb.namespace,
                 label_selector="app.kubernetes.io/instance=mariadb",
             )
         ]
-        return pods
+        return _pods
 
     sampler = TimeoutSampler(wait_timeout=timeout, sleep=1, func=lambda: bool(_get_mariadb_pods()))
 
@@ -93,6 +94,10 @@ def validate_trustyai_service_db_conn_failure(
     Returns: bool
     """
     pods = list(Pod.get(dyn_client=client, namespace=namespace, label_selector=label_selector))
+    mariadb_conn_failure_regex = (
+        r"^.+ERROR.+Could\snot\sconnect\sto\smariadb:.+\sPKIX\spath\svalidation\sfailed:\s"
+        r"java\.security.cert.CertPathValidatorException:\ssignature\scheck\sfailed"
+    )
     if pods:
         if len(pods) > 1:
             pytest.fail("More than one pod found in TrustyAIService.")
@@ -101,14 +106,11 @@ def validate_trustyai_service_db_conn_failure(
                 pods[0].Status.ERROR,
                 pods[0].Status.CRASH_LOOPBACK_OFF,
             ):
-                if (
-                    "Could not connect to mariadb:" not in terminate_state.message
-                    and "java.security.cert.CertPathValidatorException: signature check failed"
-                    not in terminate_state.message
-                ):
+                if not re.search(mariadb_conn_failure_regex, terminate_state.message):
                     pytest.fail(
-                        f"Service did not fail with a mariadb connection failure as expected."
-                        f"\n\n{terminate_state.message}"
+                        f"Service {TRUSTYAI_SERVICE_NAME} did not fail with a mariadb connection failure as expected.",
+                        f"\nExpected format: {mariadb_conn_failure_regex}",
+                        f"\nGot: {terminate_state.message}",
                     )
                 return True
     return False
