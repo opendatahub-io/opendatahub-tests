@@ -310,6 +310,7 @@ def ovms_kserve_serving_runtime(
 
 @pytest.fixture(scope="class")
 def ci_endpoint_s3_secret(
+    request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
     aws_access_key_id: str,
@@ -318,9 +319,14 @@ def ci_endpoint_s3_secret(
     ci_s3_bucket_region: str,
     ci_s3_bucket_endpoint: str,
 ) -> Generator[Secret, Any, Any]:
+    secret_name = "ci-bucket-secret"  # pragma: allowlist secret
+
+    if hasattr(request, "param"):
+        secret_name = request.param.get("name")
+
     with s3_endpoint_secret(
         client=admin_client,
-        name="ci-bucket-secret",
+        name=secret_name,
         namespace=model_namespace.name,
         aws_access_key=aws_access_key_id,
         aws_secret_access_key=aws_secret_access_key,

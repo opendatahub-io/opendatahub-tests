@@ -11,7 +11,7 @@ from ocp_resources.serving_runtime import ServingRuntime
 
 from tests.model_serving.model_server.serverless.utils import wait_for_canary_rollout
 from tests.model_serving.model_server.utils import run_inference_multiple_times
-from utilities.constants import ModelFormat, Protocols, Timeout
+from utilities.constants import ModelAndFormat, ModelFormat, Protocols, Timeout
 from utilities.constants import KServeDeploymentType, ModelStoragePath
 from utilities.inference_utils import Inference, create_isvc
 from utilities.infra import verify_no_failed_pods
@@ -100,3 +100,26 @@ def s3_mnist_serverless_inference_service(
 @pytest.fixture(scope="class")
 def deleted_isvc(ovms_kserve_inference_service: InferenceService) -> None:
     ovms_kserve_inference_service.clean_up()
+
+
+@pytest.fixture(scope="class")
+def ovms_kserve_serverless_inference_service(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    ovms_kserve_serving_runtime: ServingRuntime,
+    ci_endpoint_s3_secret: Secret,
+) -> Generator[InferenceService, Any, Any]:
+    with create_isvc(
+        client=admin_client,
+        name=request.param["name"],
+        namespace=ovms_kserve_serving_runtime.namespace,
+        runtime=ovms_kserve_serving_runtime.name,
+        storage_path=request.param["model-dir"],
+        storage_key=ci_endpoint_s3_secret.name,
+        model_format=ModelAndFormat.OPENVINO_IR,
+        deployment_mode=KServeDeploymentType.SERVERLESS,
+        model_version=request.param["model-version"],
+        external_route=request.param["enable-external-route"],
+    ) as isvc:
+        yield isvc
