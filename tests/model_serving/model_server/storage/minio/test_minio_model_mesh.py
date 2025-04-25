@@ -29,7 +29,11 @@ pytestmark = [pytest.mark.modelmesh, pytest.mark.minio, pytest.mark.sanity]
             },
             MinIo.PodConfig.KSERVE_MINIO_CONFIG,
             MINIO_DATA_CONNECTION_CONFIG,
-            {"runtime_image": MinIo.PodConfig.KSERVE_MINIO_IMAGE, **RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG},
+            {
+                "runtime_image": MinIo.PodConfig.KSERVE_MINIO_IMAGE,
+                "external-route": True,
+                **RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
+            },
             {
                 "name": f"{ModelName.MNIST}-model",
                 "model-format": ModelAndFormat.OPENVINO_IR,

@@ -55,7 +55,7 @@ class TestModelRegistryCreation:
         model_registry_client: ModelRegistryClient,
         registered_model: RegisteredModel,
     ):
-        model = model_registry_client.get_registered_model(MODEL_NAME)
+        model = model_registry_client.get_registered_model(name=MODEL_NAME)
         expected_attrs = {
             "id": registered_model.id,
             "name": registered_model.name,
