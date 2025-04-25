@@ -96,8 +96,8 @@ def validate_trustyai_service_db_conn_failure(
     """
     pods = list(Pod.get(dyn_client=client, namespace=namespace.name, label_selector=label_selector))
     mariadb_conn_failure_regex = (
-        r"^.+ERROR.+Could\snot\sconnect\sto\smariadb:.+\sPKIX\spath\svalidation\sfailed:\s"
-        r"java\.security.cert.CertPathValidatorException:\ssignature\scheck\sfailed"
+        r"^.+ERROR.+Could not connect to mariadb:.+ PKIX path validation failed: "
+        r"java\.security\.cert\.CertPathValidatorException: signature check failed"
     )
     if pods:
         if len(pods) > 1:
