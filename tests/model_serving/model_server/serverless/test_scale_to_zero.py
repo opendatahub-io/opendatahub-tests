@@ -1,7 +1,6 @@
 import pytest
-from ocp_resources.deployment import Deployment
 
-from tests.model_serving.model_server.serverless.utils import verify_no_inference_pods
+from tests.model_serving.model_server.serverless.utils import verify_no_inference_pods, wait_for_deployments
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import (
     KServeDeploymentType,
@@ -10,7 +9,6 @@ from utilities.constants import (
     Protocols,
     RunTimeConfigs,
 )
-from utilities.exceptions import DeploymentValidationError
 from utilities.inference_utils import Inference
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
@@ -95,14 +93,9 @@ class TestServerlessScaleToZero:
     @pytest.mark.order(5)
     def test_serverless_pods_after_scale_to_one_replica(self, admin_client, inference_service_patched_replicas):
         """Verify pod is running after scaling to 1 replica"""
-        for deployment in Deployment.get(
+        wait_for_deployments(
             client=admin_client,
             namespace=inference_service_patched_replicas.namespace,
-        ):
-            if deployment.labels["serving.knative.dev/configurationGeneration"] == "3":
-                deployment.wait_for_replicas()
-                return
-
-        raise DeploymentValidationError(
-            f"Inference Service {inference_service_patched_replicas.name} new deployment not found"
-        )
+            expected_deployments=1,
+            label_selector="serving.knative.dev/configurationGeneration=3",
+        )[0].wait_for_replicas()
