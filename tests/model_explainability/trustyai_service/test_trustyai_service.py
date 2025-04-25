@@ -19,11 +19,9 @@ def test_trustyai_service_with_invalid_db_cert(
     model_namespace: Namespace,
     trustyai_service_with_invalid_db_cert,
 ):
-    """
-    Test to make sure TrustyAIService pod fails when incorrect database TLS certificate is used.
-    """
+    """Test to make sure TrustyAIService pod fails when incorrect database TLS certificate is used."""
     validate_trustyai_service_db_conn_failure(
         client=admin_client,
-        namespace=model_namespace.name,
+        namespace=model_namespace,
         label_selector=f"app.kubernetes.io/instance={trustyai_service_with_invalid_db_cert.name}",
     )

@@ -79,19 +79,20 @@ def wait_for_mariadb_pods(client: DynamicClient, mariadb: MariaDB, timeout: int 
 
 @retry(wait_timeout=Timeout.TIMEOUT_2MIN, sleep=5)
 def validate_trustyai_service_db_conn_failure(
-    client: DynamicClient, namespace: str, label_selector: Optional[str]
+    client: DynamicClient, namespace: Namespace, label_selector: Optional[str]
 ) -> bool:
-    """
+    """Validate if invalid DB Certificate leads to pod crash loop.
+
     Waits for TrustyAIService pod to fail and checks if the pod is in a CrashLoopBackOff state and
     the LastState is in terminated state and the cause was a MariaDB TLS certificate exception.
     Also checks if there are more than one pod for the service.
 
     Args:
-        client: DynamicClient
-        namespace: Namespace
-        label_selector: Optional(str)
+        client: The OpenShift client.
+        namespace: Namespace under which the pod is created.
+        label_selector: The label selector used to select the correct pod(s) to monitor.
 
-    Returns: bool
+    Returns: True if pod failure is of expected state else False.
     """
     pods = list(Pod.get(dyn_client=client, namespace=namespace, label_selector=label_selector))
     mariadb_conn_failure_regex = (
@@ -119,15 +120,23 @@ def validate_trustyai_service_db_conn_failure(
 def create_trustyai_service(
     client: DynamicClient,
     namespace: Namespace,
-    storage: dict[Any, Any],
-    metrics: dict[Any, Any],
-    data: Optional[dict[Any, Any]] = None,
+    storage: dict[str, str],
+    metrics: dict[str, str],
+    data: Optional[dict[str, str]] = None,
     wait_for_replicas: bool = True,
 ) -> Generator[TrustyAIService, Any, Any]:
-    """
-    Creates TrustyAIService and TrustyAI deployment
-    Returns:
-         Generator[TrustyAIService, Any, Any]:
+    """Creates TrustyAIService and TrustyAI deployment.
+
+    Args:
+         client: the client.
+         namespace: Namespace to create the service in.
+         storage: Dict with storage configuration.
+         metrics: Dict with metrics configuration.
+         data: An optional dict with data.
+         wait_for_replicas: Wait until replicas are available (default True).
+
+    Yields:
+         Generator[TrustyAIService, Any, Any]: The TrustyAI service.
     """
     with TrustyAIService(
         client=client,

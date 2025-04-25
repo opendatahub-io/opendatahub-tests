@@ -89,8 +89,9 @@ def trustyai_service_with_invalid_db_cert(
     mariadb: MariaDB,
     trustyai_invalid_db_ca_secret: None,
 ) -> Generator[TrustyAIService, None, None]:
-    """
-    Creates a TrustyAIService deployment with an invalid database certificate set as a secret.
+    """Create a TrustyAIService deployment with an invalid database certificate set as secret.
+
+    Yields: A secret with invalid database certificate set.
     """
     yield from create_trustyai_service(
         client=admin_client,
