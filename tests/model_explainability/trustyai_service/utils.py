@@ -94,7 +94,7 @@ def validate_trustyai_service_db_conn_failure(
 
     Returns: True if pod failure is of expected state else False.
     """
-    pods = list(Pod.get(dyn_client=client, namespace=namespace, label_selector=label_selector))
+    pods = list(Pod.get(dyn_client=client, namespace=namespace.name, label_selector=label_selector))
     mariadb_conn_failure_regex = (
         r"^.+ERROR.+Could\snot\sconnect\sto\smariadb:.+\sPKIX\spath\svalidation\sfailed:\s"
         r"java\.security.cert.CertPathValidatorException:\ssignature\scheck\sfailed"
