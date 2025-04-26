@@ -15,8 +15,9 @@ from ocp_resources.service import Service
 from pyhelper_utils.shell import run_command
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutWatch, retry
+from http import HTTPStatus
 
-from utilities.exceptions import InvalidStorageArgumentError
+from utilities.exceptions import InferenceResponseError, InvalidStorageArgumentError
 from utilities.infra import (
     get_inference_serving_runtime,
     get_model_route,
@@ -75,10 +76,12 @@ class Inference:
         if isinstance(self.inference_service, InferenceService):
             return self.inference_service.instance.status.deploymentMode
 
-        if isinstance(self.inference_service, InferenceGraph):
+        elif isinstance(self.inference_service, InferenceGraph):
+            # TODO: Get deployment type from InferenceGraph once it is supported and added as `status.deploymentMode`
             return KServeDeploymentType.SERVERLESS
 
-        return KServeDeploymentType.SERVERLESS
+        else:
+            raise ValueError(f"Unknown inference service type: {self.inference_service.name}")
 
     def get_inference_url(self) -> str:
         """
@@ -402,7 +405,10 @@ class UserInference(Inference):
         except JSONDecodeError:
             return {"output": out}
 
-    @retry(wait_timeout=Timeout.TIMEOUT_30SEC, sleep=5, exceptions_dict={AssertionError: []})
+    @retry(
+        wait_timeout=Timeout.TIMEOUT_30SEC,
+        sleep=5,
+    )
     def run_inference(self, cmd: str) -> str:
         """
         Run inference command
@@ -437,9 +443,11 @@ class UserInference(Inference):
 
         else:
             res, out, err = run_command(command=shlex.split(cmd), verify_stderr=False, check=False)
-            if res and "http/1.0 503 service unavailable" in out.lower():
-                LOGGER.info(f"The Route for {self.get_inference_url()} is not ready yet (503 error)")
-                raise AssertionError("The Route is not ready yet")
+            if res and f"http/1.0 {HTTPStatus.SERVICE_UNAVAILABLE}" in out.lower():
+                raise InferenceResponseError(
+                    f"The Route for {self.get_inference_url()} is not ready yet. "
+                    f"Got {HTTPStatus.SERVICE_UNAVAILABLE} error."
+                )
 
         if not res:
             raise ValueError(f"Inference failed with error: {err}\nOutput: {out}\nCommand: {cmd}")
