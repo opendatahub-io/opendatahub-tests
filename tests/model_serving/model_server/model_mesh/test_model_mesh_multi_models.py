@@ -10,15 +10,16 @@ from utilities.constants import (
 from utilities.inference_utils import Inference
 from utilities.manifests.openvino import OPENVINO_INFERENCE_CONFIG
 
-pytestmark = [pytest.mark.modelmesh, pytest.mark.sanity]
+pytestmark = [pytest.mark.modelmesh, pytest.mark.sanity, pytest.mark.ocp_interop]
 
 
 @pytest.mark.parametrize(
-    "model_namespace, http_s3_openvino_model_mesh_inference_service, "
+    "model_namespace, http_s3_ovms_model_mesh_serving_runtime, http_s3_openvino_model_mesh_inference_service, "
     "http_s3_openvino_second_model_mesh_inference_service",
     [
         pytest.param(
             {"name": "model-mesh-multi-model", "modelmesh-enabled": True},
+            {"enable_external_route": True},
             {"model-path": ModelStoragePath.OPENVINO_EXAMPLE_MODEL},
             {
                 "model-path": ModelStoragePath.OPENVINO_VEHICLE_DETECTION,
