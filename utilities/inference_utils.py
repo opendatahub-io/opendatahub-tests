@@ -15,9 +15,8 @@ from ocp_resources.service import Service
 from pyhelper_utils.shell import run_command
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutWatch, retry
-from http import HTTPStatus
 
-from utilities.exceptions import InferenceResponseError, InvalidStorageArgumentError
+from utilities.exceptions import InvalidStorageArgumentError
 from utilities.infra import (
     get_inference_serving_runtime,
     get_model_route,
