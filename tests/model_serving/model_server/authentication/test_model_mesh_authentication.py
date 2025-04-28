@@ -12,7 +12,8 @@ pytestmark = [pytest.mark.modelmesh, pytest.mark.sanity]
 
 
 @pytest.mark.parametrize(
-    "model_namespace, http_s3_ovms_model_mesh_serving_runtime, http_s3_openvino_model_mesh_inference_service",
+    "unprivileged_model_namespace, http_s3_ovms_model_mesh_serving_runtime, "
+    "http_s3_openvino_model_mesh_inference_service",
     [
         pytest.param(
             {"name": "model-mesh-authentication", "modelmesh-enabled": True},
@@ -25,7 +26,6 @@ pytestmark = [pytest.mark.modelmesh, pytest.mark.sanity]
 class TestModelMeshAuthentication:
     """Model Mesh Authentication is based on the created Service; cross-model authentication is not blocked"""
 
-    @pytest.mark.ocp_interop
     @pytest.mark.dependency(name="test_model_mesh_model_authentication_openvino_inference_with_tensorflow")
     def test_model_mesh_model_authentication_openvino_inference_with_tensorflow(
         self,

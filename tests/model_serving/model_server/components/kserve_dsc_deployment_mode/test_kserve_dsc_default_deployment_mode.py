@@ -28,7 +28,7 @@ INFERENCE_SERVICE_PARAMS = {
 
 @pytest.mark.serverless
 @pytest.mark.parametrize(
-    "default_deployment_mode_in_dsc, model_namespace, ovms_kserve_serving_runtime, ovms_inference_service",
+    "default_deployment_mode_in_dsc, unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_inference_service",
     [
         pytest.param(
             {"default-deployment-mode": KServeDeploymentType.SERVERLESS},
@@ -102,7 +102,7 @@ class TestKServeDSCServerlessDefaultDeploymentMode:
 
 @pytest.mark.rawdeployment
 @pytest.mark.parametrize(
-    "default_deployment_mode_in_dsc, model_namespace, ovms_kserve_serving_runtime, ovms_inference_service",
+    "default_deployment_mode_in_dsc, unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_inference_service",
     [
         pytest.param(
             {"default-deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT},

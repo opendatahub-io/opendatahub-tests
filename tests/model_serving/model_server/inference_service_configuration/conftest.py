@@ -17,7 +17,7 @@ from utilities.infra import get_pods_by_isvc_label
 @pytest.fixture(scope="class")
 def removed_isvc_env_vars(
     request: pytest.FixtureRequest,
-    admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
     ovms_kserve_inference_service: InferenceService,
 ) -> Generator[InferenceService, Any, Any]:
     if isvc_predictor_spec_model_env := ovms_kserve_inference_service.instance.spec.predictor.model.get("env"):
@@ -26,7 +26,7 @@ def removed_isvc_env_vars(
         ]
 
         with update_inference_service(
-            client=admin_client,
+            client=unprivileged_client,
             isvc=ovms_kserve_inference_service,
             isvc_updated_dict={"spec": {"predictor": {"model": {"env": isvc_predictor_spec_model_env}}}},
         ):
@@ -40,19 +40,19 @@ def removed_isvc_env_vars(
 
 @pytest.fixture
 def isvc_pods(
-    admin_client: DynamicClient, ovms_kserve_inference_service: InferenceService
+    unprivileged_client: DynamicClient, ovms_kserve_inference_service: InferenceService
 ) -> Generator[list[Pod], Any, Any]:
-    yield get_pods_by_isvc_label(client=admin_client, isvc=ovms_kserve_inference_service)
+    yield get_pods_by_isvc_label(client=unprivileged_client, isvc=ovms_kserve_inference_service)
 
 
 @pytest.fixture(scope="class")
 def patched_isvc_replicas(
     request: pytest.FixtureRequest,
-    admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
     ovms_kserve_inference_service: InferenceService,
 ) -> Generator[InferenceService, Any, Any]:
     with update_inference_service(
-        client=admin_client,
+        client=unprivileged_client,
         isvc=ovms_kserve_inference_service,
         isvc_updated_dict={
             "spec": {

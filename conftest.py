@@ -223,17 +223,17 @@ def pytest_runtest_setup(item: Item) -> None:
     """
     Performs the following actions:
     1. Updates global config (`updated_global_config`)
-    2. Adds skip fixture for kserve if serverless or authorino operators are not installed.
-    3. Adds skip fixture for serverless if authorino/serverless/service mesh are not deployed.
+    2. Adds `fail_if_missing_dependent_operators` fixture for Serverless tests.
+    3. Adds fixtures to enable KServe/model mesh in DSC for model server tests.
     """
 
     BASIC_LOGGER.info(f"\n{separator(symbol_='-', val=item.name)}")
     BASIC_LOGGER.info(f"{separator(symbol_='-', val='SETUP')}")
 
     if KServeDeploymentType.SERVERLESS.lower() in item.keywords:
-        item.fixturenames.insert(0, "skip_if_no_deployed_redhat_authorino_operator")
-        item.fixturenames.insert(0, "skip_if_no_deployed_openshift_serverless")
-        item.fixturenames.insert(0, "skip_if_no_deployed_openshift_service_mesh")
+        item.fixturenames.insert(0, "fail_if_missing_dependent_operators")
+
+    if KServeDeploymentType.SERVERLESS.lower() in item.keywords:
         item.fixturenames.insert(0, "enabled_kserve_in_dsc")
 
     elif KServeDeploymentType.RAW_DEPLOYMENT.lower() in item.keywords:

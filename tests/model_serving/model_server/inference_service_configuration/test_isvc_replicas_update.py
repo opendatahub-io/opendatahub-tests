@@ -24,7 +24,7 @@ pytestmark = [pytest.mark.sanity, pytest.mark.usefixtures("valid_aws_config")]
 
 @pytest.mark.rawdeployment
 @pytest.mark.parametrize(
-    "model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service",
+    "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service",
     [
         pytest.param(
             {"name": "raw-isvc-replicas"},
@@ -64,7 +64,7 @@ class TestRawISVCReplicasUpdates:
         indirect=True,
     )
     @pytest.mark.dependency(name="test_raw_decrease_isvc_replicas")
-    def test_raw_decrease_isvc_replicas(self, admin_client, isvc_pods, patched_isvc_replicas):
+    def test_raw_decrease_isvc_replicas(self, unprivileged_client, isvc_pods, patched_isvc_replicas):
         """Test replicas decrease"""
         orig_pod_names = [pod.name for pod in isvc_pods]
         pods = []
@@ -74,7 +74,7 @@ class TestRawISVCReplicasUpdates:
                 wait_timeout=Timeout.TIMEOUT_2MIN,
                 sleep=1,
                 func=get_pods_by_isvc_label,
-                client=admin_client,
+                client=unprivileged_client,
                 isvc=patched_isvc_replicas,
             ):
                 if len(pods) == 1 and pods[0].name in orig_pod_names:

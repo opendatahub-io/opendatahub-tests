@@ -14,7 +14,7 @@ pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config"
 
 
 @pytest.mark.parametrize(
-    "model_namespace, serving_runtime_from_template",
+    "unprivileged_model_namespace, serving_runtime_from_template",
     [
         pytest.param(
             {"name": "endpoint"},
