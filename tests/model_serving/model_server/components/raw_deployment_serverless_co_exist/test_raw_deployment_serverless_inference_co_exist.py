@@ -33,7 +33,7 @@ RAW_ISVC_PARAMS = {
 
 
 @pytest.mark.parametrize(
-    "model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service, "
+    "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service, "
     "serving_runtime_from_template, s3_models_inference_service",
     [
         pytest.param(
@@ -76,7 +76,7 @@ class TestServerlessRawInternalDeploymentInferenceCoExist:
 
 
 @pytest.mark.parametrize(
-    "model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service, "
+    "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service, "
     "serving_runtime_from_template, s3_models_inference_service",
     [
         pytest.param(
@@ -119,7 +119,7 @@ class TestServerlessRawExternalDeploymentInferenceCoExist:
 
 
 @pytest.mark.parametrize(
-    "model_namespace, serving_runtime_from_template, s3_models_inference_service,"
+    "unprivileged_model_namespace, serving_runtime_from_template, s3_models_inference_service,"
     "ovms_kserve_serving_runtime, ovms_kserve_inference_service",
     [
         pytest.param(
@@ -164,7 +164,7 @@ class TestRawInternalDeploymentServerlessInferenceCoExist:
 
 
 @pytest.mark.parametrize(
-    "model_namespace, serving_runtime_from_template, s3_models_inference_service,"
+    "unprivileged_model_namespace, serving_runtime_from_template, s3_models_inference_service,"
     "ovms_kserve_serving_runtime, ovms_kserve_inference_service",
     [
         pytest.param(

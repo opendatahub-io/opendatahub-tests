@@ -74,6 +74,10 @@ To check only specific operator, pass `--tc=dependent_operators:<operator_name>`
 For example, to check only `Serveless` and `Service Mesh` operators, pass `--tc=dependent_operators:serverless-operator,servicemeshoperator`.
 
 
+### Running tests with admin client instead of unprivileged client
+To run tests with admin client only, pass `--tc=use_unprivileged_client:False` to pytest.
+
+
 ### jira integration
 To skip running tests which have open bugs, [pytest_jira](https://github.com/rhevm-qe-automation/pytest_jira) plugin is used.
 To run tests with jira integration, you need to set `PYTEST_JIRA_URL` and `PYTEST_JIRA_TOKEN` environment variables.

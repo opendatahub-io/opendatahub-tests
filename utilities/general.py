@@ -58,7 +58,7 @@ def b64_encoded_string(string_to_encode: str) -> str:
 
 
 def download_model_data(
-    admin_client: DynamicClient,
+    client: DynamicClient,
     aws_access_key_id: str,
     aws_secret_access_key: str,
     model_namespace: str,
@@ -73,7 +73,7 @@ def download_model_data(
     Downloads the model data from the bucket to the PVC
 
     Args:
-        admin_client (DynamicClient): Admin client
+        client (DynamicClient): Admin client
         aws_access_key_id (str): AWS access key
         aws_secret_access_key (str): AWS secret key
         model_namespace (str): Namespace of the model
@@ -105,7 +105,7 @@ def download_model_data(
     containers = [
         {
             "name": "model-downloader",
-            "image": utilities.infra.get_kserve_storage_initialize_image(client=admin_client),
+            "image": utilities.infra.get_kserve_storage_initialize_image(client=client),
             "args": [
                 f"s3://{bucket_name}/{model_path}/",
                 pvc_model_path,
@@ -125,7 +125,7 @@ def download_model_data(
     volumes = [{"name": model_pvc_name, "persistentVolumeClaim": {"claimName": model_pvc_name}}]
 
     with Pod(
-        client=admin_client,
+        client=client,
         namespace=model_namespace,
         name="download-model-data",
         init_containers=init_containers,

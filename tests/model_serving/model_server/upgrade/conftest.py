@@ -43,7 +43,7 @@ def model_namespace_scope_session(
 
     else:
         with create_ns(
-            admin_client=admin_client,
+            client=admin_client,
             name=name,
             model_mesh_enabled=True,
             add_dashboard_label=True,

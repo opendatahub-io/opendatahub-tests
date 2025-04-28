@@ -1,6 +1,7 @@
 import base64
 import os
 import shutil
+from ast import literal_eval
 from typing import Any, Callable, Generator
 
 import pytest
@@ -24,7 +25,6 @@ from simple_logger.logger import get_logger
 
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.exceptions import ClusterLoginError
-from utilities.general import get_s3_secret_dict
 from utilities.infra import (
     verify_cluster_sanity,
     create_ns,
@@ -35,14 +35,13 @@ from utilities.infra import (
 )
 from utilities.constants import (
     AcceleratorType,
-    ApiGroups,
     DscComponents,
     Labels,
     MinIo,
     Protocols,
 )
 from utilities.infra import update_configmap_data
-
+from utilities.minio import create_minio_data_connection_secret
 
 LOGGER = get_logger(name=__name__)
 
@@ -111,7 +110,7 @@ def model_namespace(
         ns.clean_up()
     else:
         with create_ns(
-            admin_client=admin_client,
+            client=admin_client,
             pytest_request=request,
             teardown=teardown_resources,
         ) as ns:
@@ -233,9 +232,30 @@ def vllm_runtime_image(pytestconfig: pytest.Config) -> str | None:
 
 
 @pytest.fixture(scope="session")
-def non_admin_user_password(admin_client: DynamicClient) -> tuple[str, str] | None:
+def use_unprivileged_client(pytestconfig: pytest.Config) -> bool:
+    _use_unprivileged_client = py_config.get("use_unprivileged_client")
+
+    if isinstance(_use_unprivileged_client, bool):
+        return _use_unprivileged_client
+
+    elif isinstance(_use_unprivileged_client, str):
+        return literal_eval(_use_unprivileged_client)
+
+    else:
+        raise ValueError(
+            "use_unprivileged_client is not defined.\n"
+            "Either pass with `--use-unprivileged-client` or "
+            "set in `use_unprivileged_client` in `tests/global_config.py`"
+        )
+
+
+@pytest.fixture(scope="session")
+def non_admin_user_password(admin_client: DynamicClient, use_unprivileged_client: bool) -> tuple[str, str] | None:
     def _decode_split_data(_data: str) -> list[str]:
         return base64.b64decode(_data).decode().split(",")
+
+    if not use_unprivileged_client:
+        return None
 
     if ldap_Secret := list(
         Secret.get(
@@ -269,13 +289,18 @@ def kubconfig_filepath() -> str:
 @pytest.fixture(scope="session")
 def unprivileged_client(
     admin_client: DynamicClient,
+    use_unprivileged_client: bool,
     kubconfig_filepath: str,
     non_admin_user_password: tuple[str, str],
 ) -> Generator[DynamicClient, Any, Any]:
     """
     Provides none privileged API client. If non_admin_user_password is None, then it will raise.
     """
-    if non_admin_user_password is None:
+    if not use_unprivileged_client:
+        LOGGER.warning("Unprivileged client is not enabled, using admin client")
+        yield admin_client
+
+    elif non_admin_user_password is None:
         raise ValueError("Unprivileged user not provisioned")
 
     else:
@@ -380,7 +405,7 @@ def unprivileged_model_namespace(
 def minio_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
     with create_ns(
         name=f"{MinIo.Metadata.NAME}-{shortuuid.uuid().lower()}",
-        admin_client=admin_client,
+        client=admin_client,
     ) as ns:
         yield ns
 
@@ -451,29 +476,13 @@ def minio_data_connection(
     model_namespace: Namespace,
     minio_service: Service,
 ) -> Generator[Secret, Any, Any]:
-    data_dict = get_s3_secret_dict(
-        aws_access_key=MinIo.Credentials.ACCESS_KEY_VALUE,
-        aws_secret_access_key=MinIo.Credentials.SECRET_KEY_VALUE,  # pragma: allowlist secret
+    with create_minio_data_connection_secret(
+        minio_service=minio_service,
+        model_namespace=model_namespace.name,
         aws_s3_bucket=request.param["bucket"],
-        aws_s3_endpoint=f"{Protocols.HTTP}://{minio_service.instance.spec.clusterIP}:{str(MinIo.Metadata.DEFAULT_PORT)}",  # noqa: E501
-        aws_s3_region="us-south",
-    )
-
-    with Secret(
         client=admin_client,
-        name="aws-connection-minio-data-connection",
-        namespace=model_namespace.name,
-        data_dict=data_dict,
-        label={
-            Labels.OpenDataHub.DASHBOARD: "true",
-            Labels.OpenDataHubIo.MANAGED: "true",
-        },
-        annotations={
-            f"{ApiGroups.OPENDATAHUB_IO}/connection-type": "s3",
-            "openshift.io/display-name": "Minio Data Connection",
-        },
-    ) as minio_secret:
-        yield minio_secret
+    ) as secret:
+        yield secret
 
 
 @pytest.fixture(scope="session")

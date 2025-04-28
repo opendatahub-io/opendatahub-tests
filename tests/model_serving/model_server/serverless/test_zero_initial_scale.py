@@ -24,7 +24,7 @@ pytestmark = [
 
 @pytest.mark.serverless
 @pytest.mark.parametrize(
-    "model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service",
+    "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service",
     [
         pytest.param(
             {"name": "serverless-initial-scale-zero"},
