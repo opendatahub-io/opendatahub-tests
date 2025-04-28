@@ -101,8 +101,9 @@ def validate_trustyai_service_db_conn_failure(
         bool: True if pod failure is of expected state else False.
 
     Raises:
-        TimeoutExpiredError: if the method takes longer than `wait_timeout` to return a value
-        pytest.fail.Exception: if more than one TrustyAIService pods are found or the exception is not of expected type
+        TimeoutExpiredError: if the method takes longer than `wait_timeout` to return a value.
+        TooManyPodsError: if the number of pods exceeds 1.
+        UnexpectedFailureError: if the pod failure is different from the expected failure mode.
 
     """
     pods = list(Pod.get(dyn_client=client, namespace=namespace.name, label_selector=label_selector))
