@@ -22,6 +22,7 @@ pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config"
 )
 class TestKserveServerlessTokenAuthentication:
     @pytest.mark.smoke
+    @pytest.mark.ocp_interop
     @pytest.mark.dependency(name="test_model_authentication_using_rest")
     def test_model_authentication_using_rest(self, http_s3_caikit_serverless_inference_service, http_inference_token):
         """Verify model query with token using REST"""
@@ -36,6 +37,7 @@ class TestKserveServerlessTokenAuthentication:
         )
 
     @pytest.mark.smoke
+    @pytest.mark.ocp_interop
     def test_model_authentication_using_grpc(self, grpc_s3_inference_service, grpc_inference_token):
         """Verify model query with token using GRPC"""
         verify_inference_response(

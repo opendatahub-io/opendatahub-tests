@@ -22,7 +22,7 @@ repos:
     rev: "7.2.0"
     hooks:
       - id: flake8
-        args: [--config=.flake8, '--ignore=FCN001,W503']
+        args: [--config=.flake8]
         additional_dependencies:
           [
             "git+https://github.com/RedHatQE/flake8-plugins.git@v0.0.6",
@@ -35,7 +35,7 @@ repos:
       - id: detect-secrets
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.11.5
+    rev: v0.11.6
     hooks:
       - id: ruff
       - id: ruff-format

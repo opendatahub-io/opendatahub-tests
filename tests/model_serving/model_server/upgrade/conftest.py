@@ -29,14 +29,6 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.fixture(scope="session")
-def teardown_resources(pytestconfig: pytest.Config) -> bool:
-    if delete_pre_upgrade_resources := pytestconfig.option.delete_pre_upgrade_resources:
-        LOGGER.warning("Resources will be deleted")
-
-    return delete_pre_upgrade_resources
-
-
-@pytest.fixture(scope="session")
 def model_namespace_scope_session(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
@@ -290,7 +282,7 @@ def caikit_raw_inference_service_scope_session(
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             storage_key=models_endpoint_s3_secret_scope_session.name,
             storage_path=ModelStoragePath.EMBEDDING_MODEL,
-            external_route=True,
+            external_route=False,
             teardown=teardown_resources,
             **isvc_kwargs,
         ) as isvc:
