@@ -1,5 +1,4 @@
 from typing import Generator, Any, Optional
-import pytest
 import re
 
 from kubernetes.dynamic import DynamicClient
@@ -16,6 +15,8 @@ from timeout_sampler import TimeoutSampler
 from tests.model_explainability.trustyai_service.trustyai_service_utils import TRUSTYAI_SERVICE_NAME
 from utilities.constants import Timeout
 from timeout_sampler import retry
+
+from utilities.exceptions import TooManyPodsError, UnexpectedFailureError
 
 LOGGER = get_logger(name=__name__)
 
@@ -77,7 +78,11 @@ def wait_for_mariadb_pods(client: DynamicClient, mariadb: MariaDB, timeout: int 
         )
 
 
-@retry(wait_timeout=Timeout.TIMEOUT_2MIN, sleep=5)
+@retry(
+    wait_timeout=Timeout.TIMEOUT_2MIN,
+    sleep=5,
+    exceptions_dict={TooManyPodsError: list(), UnexpectedFailureError: list()},
+)
 def validate_trustyai_service_db_conn_failure(
     client: DynamicClient, namespace: Namespace, label_selector: Optional[str]
 ) -> bool:
@@ -107,17 +112,17 @@ def validate_trustyai_service_db_conn_failure(
     )
     if pods:
         if len(pods) > 1:
-            pytest.fail("More than one pod found in TrustyAIService.")
+            raise TooManyPodsError("More than one pod found in TrustyAIService.")
         for container_status in pods[0].instance.status.containerStatuses:
             if (terminate_state := container_status.lastState.terminated) and terminate_state.reason in (
                 pods[0].Status.ERROR,
                 pods[0].Status.CRASH_LOOPBACK_OFF,
             ):
                 if not re.search(mariadb_conn_failure_regex, terminate_state.message):
-                    pytest.fail(
+                    raise UnexpectedFailureError(
                         f"Service {TRUSTYAI_SERVICE_NAME} did not fail with a mariadb connection failure as expected.\
-                        \nExpected format: {mariadb_conn_failure_regex}\
-                        \nGot: {terminate_state.message}"
+                                  \nExpected format: {mariadb_conn_failure_regex}\
+                                  \nGot: {terminate_state.message}"
                     )
                 return True
     return False
