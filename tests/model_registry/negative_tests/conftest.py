@@ -27,7 +27,7 @@ def model_registry_namespace_for_negative_tests(
 ) -> Generator[Namespace, Any, Any]:
     with create_ns(
         name=request.param.get("namespace_name", CUSTOM_NEGATIVE_NS),
-        admin_client=admin_client,
+        client=admin_client,
     ) as ns:
         yield ns
 

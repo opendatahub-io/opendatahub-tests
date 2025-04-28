@@ -16,11 +16,11 @@ from utilities.infra import create_inference_token, create_isvc_view_role
 
 @pytest.fixture(scope="class")
 def model_mesh_view_role(
-    admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
     http_s3_openvino_model_mesh_inference_service: ServingRuntime,
 ) -> Generator[Role, Any, Any]:
     with create_isvc_view_role(
-        client=admin_client,
+        client=unprivileged_client,
         isvc=http_s3_openvino_model_mesh_inference_service,
         name=f"{http_s3_openvino_model_mesh_inference_service.name}-view",
         resource_names=[http_s3_openvino_model_mesh_inference_service.name],
@@ -30,12 +30,12 @@ def model_mesh_view_role(
 
 @pytest.fixture(scope="class")
 def model_mesh_role_binding(
-    admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
     model_mesh_view_role: Role,
     ci_service_account: ServiceAccount,
 ) -> Generator[RoleBinding, Any, Any]:
     with RoleBinding(
-        client=admin_client,
+        client=unprivileged_client,
         namespace=ci_service_account.namespace,
         name=f"{Protocols.HTTP}-{ci_service_account.name}-view",
         role_ref_name=model_mesh_view_role.name,
@@ -56,7 +56,6 @@ def model_mesh_inference_token(
 
 @pytest.fixture()
 def patched_model_mesh_sr_with_authentication(
-    admin_client: DynamicClient,
     http_s3_ovms_model_mesh_serving_runtime: ServingRuntime,
 ) -> Generator[None, None, None]:
     with ResourceEditor(

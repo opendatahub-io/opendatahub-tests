@@ -34,10 +34,10 @@ from utilities.constants import Annotations
 # GRPC model serving
 @pytest.fixture(scope="class")
 def grpc_model_service_account(
-    admin_client: DynamicClient, models_endpoint_s3_secret: Secret
+    unprivileged_client: DynamicClient, models_endpoint_s3_secret: Secret
 ) -> Generator[ServiceAccount, Any, Any]:
     with ServiceAccount(
-        client=admin_client,
+        client=unprivileged_client,
         namespace=models_endpoint_s3_secret.namespace,
         name=f"{Protocols.GRPC}-models-bucket-sa",
         secrets=[{"name": models_endpoint_s3_secret.name}],
@@ -47,13 +47,13 @@ def grpc_model_service_account(
 
 @pytest.fixture(scope="class")
 def grpc_s3_caikit_serving_runtime(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
     with ServingRuntimeFromTemplate(
-        client=admin_client,
+        client=unprivileged_client,
         name=f"{Protocols.GRPC}-{ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME}",
-        namespace=model_namespace.name,
+        namespace=unprivileged_model_namespace.name,
         template_name=RuntimeTemplates.CAIKIT_TGIS_SERVING,
         multi_model=False,
         enable_http=False,
@@ -64,16 +64,16 @@ def grpc_s3_caikit_serving_runtime(
 
 @pytest.fixture(scope="class")
 def grpc_s3_inference_service(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
     grpc_s3_caikit_serving_runtime: ServingRuntime,
     s3_models_storage_uri: str,
     models_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
-        client=admin_client,
+        client=unprivileged_client,
         name=f"{Protocols.GRPC}-{ModelFormat.CAIKIT}",
-        namespace=model_namespace.name,
+        namespace=unprivileged_model_namespace.name,
         runtime=grpc_s3_caikit_serving_runtime.name,
         model_format=grpc_s3_caikit_serving_runtime.instance.spec.supportedModelFormats[0].name,
         storage_key=models_endpoint_s3_secret.name,
@@ -86,11 +86,11 @@ def grpc_s3_inference_service(
 
 @pytest.fixture(scope="class")
 def http_view_role(
-    admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
     http_s3_caikit_serverless_inference_service: InferenceService,
 ) -> Generator[Role, Any, Any]:
     with create_isvc_view_role(
-        client=admin_client,
+        client=unprivileged_client,
         isvc=http_s3_caikit_serverless_inference_service,
         name=f"{http_s3_caikit_serverless_inference_service.name}-view",
         resource_names=[http_s3_caikit_serverless_inference_service.name],
@@ -100,11 +100,11 @@ def http_view_role(
 
 @pytest.fixture(scope="class")
 def http_raw_view_role(
-    admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
     http_s3_caikit_raw_inference_service: InferenceService,
 ) -> Generator[Role, Any, Any]:
     with create_isvc_view_role(
-        client=admin_client,
+        client=unprivileged_client,
         isvc=http_s3_caikit_raw_inference_service,
         name=f"{http_s3_caikit_raw_inference_service.name}-view",
         resource_names=[http_s3_caikit_raw_inference_service.name],
@@ -114,13 +114,13 @@ def http_raw_view_role(
 
 @pytest.fixture(scope="class")
 def http_role_binding(
-    admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
     http_view_role: Role,
     model_service_account: ServiceAccount,
     http_s3_caikit_serverless_inference_service: InferenceService,
 ) -> Generator[RoleBinding, Any, Any]:
     with RoleBinding(
-        client=admin_client,
+        client=unprivileged_client,
         namespace=model_service_account.namespace,
         name=f"{Protocols.HTTP}-{model_service_account.name}-view",
         role_ref_name=http_view_role.name,
@@ -133,13 +133,13 @@ def http_role_binding(
 
 @pytest.fixture(scope="class")
 def http_raw_role_binding(
-    admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
     http_raw_view_role: Role,
     model_service_account: ServiceAccount,
     http_s3_caikit_raw_inference_service: InferenceService,
 ) -> Generator[RoleBinding, Any, Any]:
     with RoleBinding(
-        client=admin_client,
+        client=unprivileged_client,
         namespace=model_service_account.namespace,
         name=f"{Protocols.HTTP}-{model_service_account.name}-view",
         role_ref_name=http_raw_view_role.name,
@@ -162,7 +162,6 @@ def http_raw_inference_token(model_service_account: ServiceAccount, http_raw_rol
 
 @pytest.fixture()
 def patched_remove_authentication_isvc(
-    admin_client: DynamicClient,
     http_s3_caikit_serverless_inference_service: InferenceService,
 ) -> Generator[InferenceService, Any, Any]:
     with ResourceEditor(
@@ -180,10 +179,11 @@ def patched_remove_authentication_isvc(
 @pytest.fixture()
 def patched_remove_raw_authentication_isvc(
     admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
     http_s3_caikit_raw_inference_service: InferenceService,
 ) -> Generator[InferenceService, Any, Any]:
     predictor_pod = get_pods_by_isvc_label(
-        client=admin_client,
+        client=unprivileged_client,
         isvc=http_s3_caikit_raw_inference_service,
     )[0]
 
@@ -204,10 +204,10 @@ def patched_remove_raw_authentication_isvc(
 
 @pytest.fixture(scope="class")
 def model_service_account_2(
-    admin_client: DynamicClient, models_endpoint_s3_secret: Secret
+    unprivileged_client: DynamicClient, models_endpoint_s3_secret: Secret
 ) -> Generator[ServiceAccount, Any, Any]:
     with ServiceAccount(
-        client=admin_client,
+        client=unprivileged_client,
         namespace=models_endpoint_s3_secret.namespace,
         name="models-bucket-sa-2",
         secrets=[{"name": models_endpoint_s3_secret.name}],
@@ -217,10 +217,10 @@ def model_service_account_2(
 
 @pytest.fixture(scope="class")
 def grpc_view_role(
-    admin_client: DynamicClient, grpc_s3_inference_service: InferenceService
+    unprivileged_client: DynamicClient, grpc_s3_inference_service: InferenceService
 ) -> Generator[Role, Any, Any]:
     with create_isvc_view_role(
-        client=admin_client,
+        client=unprivileged_client,
         isvc=grpc_s3_inference_service,
         name=f"{grpc_s3_inference_service.name}-view",
         resource_names=[grpc_s3_inference_service.name],
@@ -230,13 +230,13 @@ def grpc_view_role(
 
 @pytest.fixture(scope="class")
 def grpc_role_binding(
-    admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
     grpc_view_role: Role,
     grpc_model_service_account: ServiceAccount,
     grpc_s3_inference_service: InferenceService,
 ) -> Generator[RoleBinding, Any, Any]:
     with RoleBinding(
-        client=admin_client,
+        client=unprivileged_client,
         namespace=grpc_model_service_account.namespace,
         name=f"{Protocols.GRPC}-{grpc_model_service_account.name}-view",
         role_ref_name=grpc_view_role.name,
@@ -255,16 +255,16 @@ def grpc_inference_token(grpc_model_service_account: ServiceAccount, grpc_role_b
 @pytest.fixture(scope="class")
 def http_s3_caikit_serverless_inference_service(
     request: FixtureRequest,
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
     http_s3_caikit_tgis_serving_runtime: ServingRuntime,
     s3_models_storage_uri: str,
     models_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
-        client=admin_client,
+        client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelFormat.CAIKIT}",
-        namespace=model_namespace.name,
+        namespace=unprivileged_model_namespace.name,
         runtime=http_s3_caikit_tgis_serving_runtime.name,
         model_format=http_s3_caikit_tgis_serving_runtime.instance.spec.supportedModelFormats[0].name,
         deployment_mode=KServeDeploymentType.SERVERLESS,
@@ -278,17 +278,17 @@ def http_s3_caikit_serverless_inference_service(
 @pytest.fixture(scope="class")
 def http_s3_caikit_raw_inference_service(
     request: FixtureRequest,
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
     http_s3_caikit_tgis_serving_runtime: ServingRuntime,
     s3_models_storage_uri: str,
     models_endpoint_s3_secret: Secret,
     model_service_account: ServiceAccount,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
-        client=admin_client,
+        client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelFormat.CAIKIT}",
-        namespace=model_namespace.name,
+        namespace=unprivileged_model_namespace.name,
         runtime=http_s3_caikit_tgis_serving_runtime.name,
         storage_key=models_endpoint_s3_secret.name,
         storage_path=urlparse(s3_models_storage_uri).path,
@@ -304,16 +304,16 @@ def http_s3_caikit_raw_inference_service(
 @pytest.fixture(scope="class")
 def http_s3_caikit_raw_inference_service_2(
     request: FixtureRequest,
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
     http_s3_caikit_tgis_serving_runtime: ServingRuntime,
     s3_models_storage_uri: str,
     model_service_account_2: ServiceAccount,
-) -> InferenceService:
+) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
-        client=admin_client,
+        client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelFormat.CAIKIT}-2",
-        namespace=model_namespace.name,
+        namespace=unprivileged_model_namespace.name,
         runtime=http_s3_caikit_tgis_serving_runtime.name,
         storage_uri=s3_models_storage_uri,
         model_format=http_s3_caikit_tgis_serving_runtime.instance.spec.supportedModelFormats[0].name,
@@ -328,13 +328,13 @@ def http_s3_caikit_raw_inference_service_2(
 @pytest.fixture(scope="class")
 def http_s3_caikit_tgis_serving_runtime(
     request: FixtureRequest,
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
     with ServingRuntimeFromTemplate(
-        client=admin_client,
+        client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME}",
-        namespace=model_namespace.name,
+        namespace=unprivileged_model_namespace.name,
         template_name=RuntimeTemplates.CAIKIT_TGIS_SERVING,
         multi_model=False,
         enable_http=True,
@@ -345,7 +345,6 @@ def http_s3_caikit_tgis_serving_runtime(
 
 @pytest.fixture()
 def patched_remove_authentication_model_mesh_runtime(
-    admin_client: DynamicClient,
     http_s3_ovms_model_mesh_serving_runtime: ServingRuntime,
 ) -> Generator[ServingRuntime, Any, Any]:
     with ResourceEditor(
@@ -362,12 +361,12 @@ def patched_remove_authentication_model_mesh_runtime(
 
 @pytest.fixture(scope="class")
 def http_model_mesh_view_role(
-    admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
     http_s3_openvino_model_mesh_inference_service: InferenceService,
     http_s3_ovms_model_mesh_serving_runtime: ServingRuntime,
 ) -> Generator[Role, Any, Any]:
     with Role(
-        client=admin_client,
+        client=unprivileged_client,
         name=f"{http_s3_openvino_model_mesh_inference_service.name}-view",
         namespace=http_s3_openvino_model_mesh_inference_service.namespace,
         rules=[
@@ -379,12 +378,12 @@ def http_model_mesh_view_role(
 
 @pytest.fixture(scope="class")
 def http_model_mesh_role_binding(
-    admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
     http_model_mesh_view_role: Role,
     ci_service_account: ServiceAccount,
 ) -> Generator[RoleBinding, Any, Any]:
     with RoleBinding(
-        client=admin_client,
+        client=unprivileged_client,
         namespace=ci_service_account.namespace,
         name=f"{Protocols.HTTP}-{ci_service_account.name}-view",
         role_ref_name=http_model_mesh_view_role.name,

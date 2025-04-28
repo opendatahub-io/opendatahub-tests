@@ -5,12 +5,12 @@ from utilities.constants import Timeout
 from utilities.infra import get_model_route
 
 
-def assert_ingress_status_changed(admin_client: DynamicClient, inference_service: InferenceService) -> None:
+def assert_ingress_status_changed(client: DynamicClient, inference_service: InferenceService) -> None:
     """
     Validates that the ingress status changes correctly after route deletion.
 
     Args:
-        admin_client (DynamicClient): The administrative client used to manage the model route.
+        client (DynamicClient): The administrative client used to manage the model route.
         inference_service (InferenceService): The inference service whose route status is being checked.
 
     Raises:
@@ -20,7 +20,7 @@ def assert_ingress_status_changed(admin_client: DynamicClient, inference_service
     Returns:
         None
     """
-    route = get_model_route(client=admin_client, isvc=inference_service)
+    route = get_model_route(client=client, isvc=inference_service)
     if not route.exists:
         raise ResourceNotFoundError("Route before deletion not found: No active route is currently available.")
 

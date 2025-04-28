@@ -4,7 +4,6 @@ import pytest
 import yaml
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.authorino import Authorino
 from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.inference_service import InferenceService
@@ -12,11 +11,11 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
-from ocp_resources.service_mesh_control_plane import ServiceMeshControlPlane
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.storage_class import StorageClass
 from ocp_utilities.monitoring import Prometheus
 from pytest_testconfig import config as py_config
+from simple_logger.logger import get_logger
 
 from utilities.constants import (
     KServeDeploymentType,
@@ -40,29 +39,13 @@ from utilities.infra import (
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
-@pytest.fixture(scope="package")
-def skip_if_no_deployed_openshift_serverless(admin_client: DynamicClient) -> None:
-    name = "openshift-serverless"
-    csvs = list(
-        ClusterServiceVersion.get(
-            client=admin_client,
-            namespace=name,
-            label_selector=f"operators.coreos.com/serverless-operator.{name}",
-        )
-    )
-    if not csvs:
-        pytest.skip("OpenShift Serverless is not deployed")
-
-    csv = csvs[0]
-
-    if not (csv.exists and csv.status == csv.Status.SUCCEEDED):
-        pytest.skip("OpenShift Serverless is not deployed")
+LOGGER = get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")
 def models_endpoint_s3_secret(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
     aws_access_key_id: str,
     aws_secret_access_key: str,
     models_s3_bucket_name: str,
@@ -70,9 +53,9 @@ def models_endpoint_s3_secret(
     models_s3_bucket_endpoint: str,
 ) -> Generator[Secret, Any, Any]:
     with s3_endpoint_secret(
-        client=admin_client,
+        client=unprivileged_client,
         name="models-bucket-secret",
-        namespace=model_namespace.name,
+        namespace=unprivileged_model_namespace.name,
         aws_access_key=aws_access_key_id,
         aws_secret_access_key=aws_secret_access_key,
         aws_s3_region=models_s3_bucket_region,
@@ -85,10 +68,10 @@ def models_endpoint_s3_secret(
 # HTTP model serving
 @pytest.fixture(scope="class")
 def model_service_account(
-    admin_client: DynamicClient, models_endpoint_s3_secret: Secret
+    unprivileged_client: DynamicClient, models_endpoint_s3_secret: Secret
 ) -> Generator[ServiceAccount, Any, Any]:
     with ServiceAccount(
-        client=admin_client,
+        client=unprivileged_client,
         namespace=models_endpoint_s3_secret.namespace,
         name="models-bucket-sa",
         secrets=[{"name": models_endpoint_s3_secret.name}],
@@ -99,13 +82,13 @@ def model_service_account(
 @pytest.fixture(scope="class")
 def serving_runtime_from_template(
     request: FixtureRequest,
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
     runtime_kwargs = {
-        "client": admin_client,
+        "client": unprivileged_client,
         "name": request.param["name"],
-        "namespace": model_namespace.name,
+        "namespace": unprivileged_model_namespace.name,
         "template_name": request.param["template-name"],
         "multi_model": request.param["multi-model"],
         "models_priorities": request.param.get("models-priorities"),
@@ -125,15 +108,15 @@ def serving_runtime_from_template(
 @pytest.fixture(scope="class")
 def s3_models_inference_service(
     request: FixtureRequest,
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
     serving_runtime_from_template: ServingRuntime,
     models_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     isvc_kwargs = {
-        "client": admin_client,
+        "client": unprivileged_client,
         "name": request.param["name"],
-        "namespace": model_namespace.name,
+        "namespace": unprivileged_model_namespace.name,
         "runtime": serving_runtime_from_template.name,
         "model_format": serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
         "deployment_mode": request.param["deployment-mode"],
@@ -160,14 +143,14 @@ def s3_models_inference_service(
 @pytest.fixture(scope="class")
 def model_pvc(
     request: FixtureRequest,
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
 ) -> Generator[PersistentVolumeClaim, Any, Any]:
     access_mode = "ReadWriteOnce"
     pvc_kwargs = {
         "name": "model-pvc",
-        "namespace": model_namespace.name,
-        "client": admin_client,
+        "namespace": unprivileged_model_namespace.name,
+        "client": unprivileged_client,
         "size": request.param["pvc-size"],
     }
     if hasattr(request, "param"):
@@ -189,41 +172,19 @@ def skip_if_no_nfs_storage_class(admin_client: DynamicClient) -> None:
         pytest.skip(f"StorageClass {StorageClassName.NFS} is missing from the cluster")
 
 
-@pytest.fixture(scope="package")
-def skip_if_no_deployed_redhat_authorino_operator(admin_client: DynamicClient) -> None:
-    name = "authorino"
-    namespace = f"{py_config['applications_namespace']}-auth-provider"
-
-    if not Authorino(
-        client=admin_client,
-        name=name,
-        namespace=namespace,
-    ).exists:
-        pytest.skip(f"Authorino {name} CR is missing from {namespace} namespace")
-
-
-@pytest.fixture(scope="package")
-def skip_if_no_deployed_openshift_service_mesh(admin_client: DynamicClient) -> None:
-    smcp = ServiceMeshControlPlane(client=admin_client, name="data-science-smcp", namespace="istio-system")
-    if not smcp or not smcp.exists:
-        pytest.skip("OpenShift service mesh operator is not deployed")
-
-    smcp.wait_for_condition(condition=smcp.Condition.READY, status="True")
-
-
 @pytest.fixture(scope="class")
 def http_s3_openvino_model_mesh_inference_service(
     request: FixtureRequest,
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
     http_s3_ovms_model_mesh_serving_runtime: ServingRuntime,
     ci_endpoint_s3_secret: Secret,
     ci_service_account: ServiceAccount,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
-        client=admin_client,
+        client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelFormat.OPENVINO}",
-        namespace=model_namespace.name,
+        namespace=unprivileged_model_namespace.name,
         runtime=http_s3_ovms_model_mesh_serving_runtime.name,
         model_service_account=ci_service_account.name,
         storage_key=ci_endpoint_s3_secret.name,
@@ -238,12 +199,12 @@ def http_s3_openvino_model_mesh_inference_service(
 @pytest.fixture(scope="class")
 def http_s3_ovms_model_mesh_serving_runtime(
     request: FixtureRequest,
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
     runtime_kwargs = {
-        "client": admin_client,
-        "namespace": model_namespace.name,
+        "client": unprivileged_client,
+        "namespace": unprivileged_model_namespace.name,
         "name": f"{Protocols.HTTP}-{ModelInferenceRuntime.OPENVINO_RUNTIME}",
         "template_name": RuntimeTemplates.OVMS_MODEL_MESH,
         "multi_model": True,
@@ -278,12 +239,12 @@ def http_s3_ovms_model_mesh_serving_runtime(
 @pytest.fixture(scope="class")
 def ovms_kserve_serving_runtime(
     request: FixtureRequest,
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
     runtime_kwargs = {
-        "client": admin_client,
-        "namespace": model_namespace.name,
+        "client": unprivileged_client,
+        "namespace": unprivileged_model_namespace.name,
         "name": request.param["runtime-name"],
         "template_name": RuntimeTemplates.OVMS_KSERVE,
         "multi_model": False,
@@ -310,8 +271,8 @@ def ovms_kserve_serving_runtime(
 
 @pytest.fixture(scope="class")
 def ci_endpoint_s3_secret(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
     aws_access_key_id: str,
     aws_secret_access_key: str,
     ci_s3_bucket_name: str,
@@ -319,9 +280,9 @@ def ci_endpoint_s3_secret(
     ci_s3_bucket_endpoint: str,
 ) -> Generator[Secret, Any, Any]:
     with s3_endpoint_secret(
-        client=admin_client,
+        client=unprivileged_client,
         name="ci-bucket-secret",
-        namespace=model_namespace.name,
+        namespace=unprivileged_model_namespace.name,
         aws_access_key=aws_access_key_id,
         aws_secret_access_key=aws_secret_access_key,
         aws_s3_region=ci_s3_bucket_region,
@@ -333,10 +294,10 @@ def ci_endpoint_s3_secret(
 
 @pytest.fixture(scope="class")
 def ci_service_account(
-    admin_client: DynamicClient, ci_endpoint_s3_secret: Secret
+    unprivileged_client: DynamicClient, ci_endpoint_s3_secret: Secret
 ) -> Generator[ServiceAccount, Any, Any]:
     with ServiceAccount(
-        client=admin_client,
+        client=unprivileged_client,
         namespace=ci_endpoint_s3_secret.namespace,
         name="ci-models-bucket-sa",
         secrets=[{"name": ci_endpoint_s3_secret.name}],
@@ -347,16 +308,16 @@ def ci_service_account(
 @pytest.fixture(scope="class")
 def ovms_kserve_inference_service(
     request: FixtureRequest,
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
     ovms_kserve_serving_runtime: ServingRuntime,
     ci_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     deployment_mode = request.param["deployment-mode"]
     isvc_kwargs = {
-        "client": admin_client,
+        "client": unprivileged_client,
         "name": f"{request.param['name']}-{deployment_mode.lower()}",
-        "namespace": model_namespace.name,
+        "namespace": unprivileged_model_namespace.name,
         "runtime": ovms_kserve_serving_runtime.name,
         "storage_path": request.param["model-dir"],
         "storage_key": ci_endpoint_s3_secret.name,
@@ -389,15 +350,15 @@ def ovms_kserve_inference_service(
 @pytest.fixture(scope="class")
 def ovms_raw_inference_service(
     request: FixtureRequest,
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
     ovms_kserve_serving_runtime: ServingRuntime,
     ci_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
-        client=admin_client,
+        client=unprivileged_client,
         name=f"{request.param['name']}-raw",
-        namespace=model_namespace.name,
+        namespace=unprivileged_model_namespace.name,
         external_route=True,
         runtime=ovms_kserve_serving_runtime.name,
         storage_path=request.param["model-dir"],
@@ -412,16 +373,16 @@ def ovms_raw_inference_service(
 @pytest.fixture(scope="class")
 def http_s3_tensorflow_model_mesh_inference_service(
     request: FixtureRequest,
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
     http_s3_ovms_model_mesh_serving_runtime: ServingRuntime,
     ci_endpoint_s3_secret: Secret,
     ci_service_account: ServiceAccount,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
-        client=admin_client,
+        client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelFormat.TENSORFLOW}",
-        namespace=model_namespace.name,
+        namespace=unprivileged_model_namespace.name,
         runtime=http_s3_ovms_model_mesh_serving_runtime.name,
         model_service_account=ci_service_account.name,
         storage_key=ci_endpoint_s3_secret.name,
@@ -475,12 +436,12 @@ def user_workload_monitoring_config_map(
 @pytest.fixture(scope="class")
 def http_s3_ovms_external_route_model_mesh_serving_runtime(
     request: FixtureRequest,
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
     runtime_kwargs = {
-        "client": admin_client,
-        "namespace": model_namespace.name,
+        "client": unprivileged_client,
+        "namespace": unprivileged_model_namespace.name,
         "name": f"{Protocols.HTTP}-{ModelInferenceRuntime.OPENVINO_RUNTIME}-exposed",
         "template_name": RuntimeTemplates.OVMS_MODEL_MESH,
         "multi_model": True,
@@ -504,17 +465,17 @@ def http_s3_ovms_external_route_model_mesh_serving_runtime(
 @pytest.fixture(scope="class")
 def http_s3_openvino_second_model_mesh_inference_service(
     request: FixtureRequest,
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
     ci_endpoint_s3_secret: Secret,
     ci_service_account: ServiceAccount,
 ) -> Generator[InferenceService, Any, Any]:
     # Dynamically select the used ServingRuntime by passing "runtime-fixture-name" request.param
     runtime = request.getfixturevalue(argname=request.param["runtime-fixture-name"])
     with create_isvc(
-        client=admin_client,
+        client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelFormat.OPENVINO}-2",
-        namespace=model_namespace.name,
+        namespace=unprivileged_model_namespace.name,
         runtime=runtime.name,
         model_service_account=ci_service_account.name,
         storage_key=ci_endpoint_s3_secret.name,
@@ -608,3 +569,32 @@ def unprivileged_s3_caikit_serverless_inference_service(
         storage_path=request.param["model-dir"],
     ) as isvc:
         yield isvc
+
+
+@pytest.fixture(scope="package")
+def fail_if_missing_dependent_operators(admin_client: DynamicClient) -> None:
+    missing_operators: list[str] = []
+    csvs = list(
+        ClusterServiceVersion.get(
+            dyn_client=admin_client,
+            namespace=py_config["applications_namespace"],
+        )
+    )
+
+    for operator_name in py_config.get("dependent_operators", []).split(","):
+        LOGGER.info(f"Verifying if {operator_name} is installed")
+        for csv in csvs:
+            if csv.name.startswith(operator_name):
+                if csv.status == csv.Status.SUCCEEDED:
+                    break
+
+                else:
+                    missing_operators.append(
+                        f"Operator {operator_name} is installed but CSV is not in {csv.Status.SUCCEEDED} state"
+                    )
+
+        else:
+            missing_operators.append(f"{operator_name} is not installed")
+
+    if missing_operators:
+        pytest.fail(str(missing_operators))

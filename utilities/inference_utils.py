@@ -2,12 +2,14 @@ import json
 import re
 import shlex
 from contextlib import contextmanager
+from http import HTTPStatus
 from json import JSONDecodeError
 from string import Template
 from typing import Any, Optional, Generator
 from urllib.parse import urlparse
 
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.resource import get_client
 from ocp_resources.service import Service
@@ -15,7 +17,7 @@ from pyhelper_utils.shell import run_command
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutWatch, retry
 
-from utilities.exceptions import InvalidStorageArgumentError
+from utilities.exceptions import InferenceResponseError, InvalidStorageArgumentError
 from utilities.infra import (
     get_inference_serving_runtime,
     get_model_route,
@@ -44,15 +46,17 @@ class Inference:
     STREAMING: str = "streaming"
     INFER: str = "infer"
     MNIST: str = f"infer-{ModelName.MNIST}"
+    GRAPH: str = "graph"
 
-    def __init__(self, inference_service: InferenceService):
+    def __init__(self, inference_service: InferenceService | InferenceGraph):
         """
         Args:
             inference_service: InferenceService object
         """
         self.inference_service = inference_service
         self.deployment_mode = self.get_deployment_type()
-        self.runtime = get_inference_serving_runtime(isvc=self.inference_service)
+        if isinstance(self.inference_service, InferenceService):
+            self.runtime = get_inference_serving_runtime(isvc=self.inference_service)
         self.visibility_exposed = self.is_service_exposed()
 
         self.inference_url = self.get_inference_url()
@@ -69,7 +73,15 @@ class Inference:
         ):
             return deployment_type
 
-        return self.inference_service.instance.status.deploymentMode
+        if isinstance(self.inference_service, InferenceService):
+            return self.inference_service.instance.status.deploymentMode
+
+        elif isinstance(self.inference_service, InferenceGraph):
+            # TODO: Get deployment type from InferenceGraph once it is supported and added as `status.deploymentMode`
+            return KServeDeploymentType.SERVERLESS
+
+        else:
+            raise ValueError(f"Unknown inference service type: {self.inference_service.name}")
 
     def get_inference_url(self) -> str:
         """
@@ -83,19 +95,12 @@ class Inference:
 
         """
         if self.visibility_exposed:
-            if self.deployment_mode == KServeDeploymentType.SERVERLESS and (
-                url := self.inference_service.instance.status.components.predictor.url
-            ):
-                return urlparse(url=url).netloc
-
-            elif self.deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT and (
-                url := self.inference_service.instance.status.url
-            ):
-                return urlparse(url=url).netloc
-
-            elif self.deployment_mode == KServeDeploymentType.MODEL_MESH:
+            if self.deployment_mode == KServeDeploymentType.MODEL_MESH:
                 route = get_model_route(client=self.inference_service.client, isvc=self.inference_service)
                 return route.instance.spec.host
+
+            elif url := self.inference_service.instance.status.url:
+                return urlparse(url=url).netloc
 
             else:
                 raise ValueError(f"{self.inference_service.name}: No url found for inference")
@@ -113,7 +118,10 @@ class Inference:
         """
         labels = self.inference_service.labels
 
-        if self.deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT:
+        if (
+            isinstance(self.inference_service, InferenceService)
+            and self.deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT
+        ):
             return labels and labels.get(Labels.Kserve.NETWORKING_KSERVE_IO) == Labels.Kserve.EXPOSED
 
         if self.deployment_mode == KServeDeploymentType.SERVERLESS:
@@ -433,7 +441,14 @@ class UserInference(Inference):
         else:
             res, out, err = run_command(command=shlex.split(cmd), verify_stderr=False, check=False)
 
-        if not res:
+        if res:
+            if f"http/1.0 {HTTPStatus.SERVICE_UNAVAILABLE}" in out.lower():
+                raise InferenceResponseError(
+                    f"The Route for {self.get_inference_url()} is not ready yet. "
+                    f"Got {HTTPStatus.SERVICE_UNAVAILABLE} error."
+                )
+
+        else:
             raise ValueError(f"Inference failed with error: {err}\nOutput: {out}\nCommand: {cmd}")
 
         LOGGER.info(f"Inference output:\n{out}")
@@ -528,6 +543,7 @@ def create_isvc(
     scale_target: int | None = None,
     model_env_variables: list[dict[str, str]] | None = None,
     teardown: bool = True,
+    protocol_version: str | None = None,
 ) -> Generator[InferenceService, Any, Any]:
     """
     Create InferenceService object.
@@ -561,6 +577,7 @@ def create_isvc(
         scale_target (int): Scale target
         model_env_variables (list[dict[str, str]]): Model environment variables
         teardown (bool): Teardown
+        protocol_version (str): Protocol version of the model server
 
     Yields:
         InferenceService: InferenceService object
@@ -610,12 +627,6 @@ def create_isvc(
     if deployment_mode:
         _annotations = {Annotations.KserveIo.DEPLOYMENT_MODE: deployment_mode}
 
-    if deployment_mode == KServeDeploymentType.SERVERLESS:
-        _annotations.update({
-            "serving.knative.openshift.io/enablePassthrough": "true",
-            "sidecar.istio.io/inject": "true",
-            "sidecar.istio.io/rewriteAppHTTPProbers": "true",
-        })
     if enable_auth:
         # model mesh auth is set in ServingRuntime
         if deployment_mode == KServeDeploymentType.SERVERLESS:
@@ -645,6 +656,9 @@ def create_isvc(
 
     if scale_target is not None:
         predictor_dict["scaleTarget"] = scale_target
+
+    if protocol_version is not None:
+        predictor_dict["model"]["protocolVersion"] = protocol_version
 
     with InferenceService(
         client=client,
