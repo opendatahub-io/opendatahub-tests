@@ -131,7 +131,7 @@ def validate_trustyai_service_db_conn_failure(
 
 def create_trustyai_service(
     client: DynamicClient,
-    namespace: Namespace,
+    namespace: str,
     storage: dict[str, str],
     metrics: dict[str, str],
     name: str = TRUSTYAI_SERVICE_NAME,
@@ -157,7 +157,7 @@ def create_trustyai_service(
     with TrustyAIService(
         client=client,
         name=name,
-        namespace=namespace.name,
+        namespace=namespace,
         storage=storage,
         metrics=metrics,
         data=data,

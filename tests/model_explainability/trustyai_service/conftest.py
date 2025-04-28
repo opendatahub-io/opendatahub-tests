@@ -80,8 +80,7 @@ def trustyai_service_with_pvc_storage(
 
     else:
         yield from create_trustyai_service(
-            client=admin_client,
-            namespace=model_namespace,
+            **trustyai_service_kwargs,
             storage={"format": "PVC", "folder": "/inputs", "size": "1Gi"},
             metrics=TAI_METRICS_CONFIG,
             data=TAI_DATA_CONFIG,
@@ -101,7 +100,7 @@ def trustyai_service_with_db_storage(
 ) -> Generator[TrustyAIService, Any, Any]:
     yield from create_trustyai_service(
         client=admin_client,
-        namespace=model_namespace,
+        namespace=model_namespace.name,
         storage=TAI_DB_STORAGE_CONFIG,
         metrics=TAI_METRICS_CONFIG,
         wait_for_replicas=True,
@@ -123,7 +122,7 @@ def trustyai_service_with_invalid_db_cert(
     """
     yield from create_trustyai_service(
         client=admin_client,
-        namespace=model_namespace,
+        namespace=model_namespace.name,
         storage=TAI_DB_STORAGE_CONFIG,
         metrics=TAI_METRICS_CONFIG,
         wait_for_replicas=False,
