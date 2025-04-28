@@ -33,16 +33,16 @@ def managed_modelmesh_kserve_in_dsc(
 @pytest.fixture(scope="class")
 def invalid_s3_models_inference_service(
     request: FixtureRequest,
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
     serving_runtime_from_template: ServingRuntime,
     models_s3_bucket_name: str,
     model_service_account: ServiceAccount,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
-        client=admin_client,
+        client=unprivileged_client,
         name=request.param["name"],
-        namespace=model_namespace.name,
+        namespace=unprivileged_model_namespace.name,
         runtime=serving_runtime_from_template.name,
         storage_uri=f"s3://{models_s3_bucket_name}/non-existing-path/",
         model_format=serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,

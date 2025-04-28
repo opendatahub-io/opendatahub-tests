@@ -26,7 +26,7 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(
-    "model_namespace, models_bucket_downloaded_model_data, model_pvc, multi_node_inference_service",
+    "unprivileged_model_namespace, models_bucket_downloaded_model_data, model_pvc, multi_node_inference_service",
     [
         pytest.param(
             {"name": "gpu-multi-node"},
@@ -105,7 +105,7 @@ class TestMultiNode:
         [pytest.param({"pod-role": HEAD_POD_ROLE})],
         indirect=True,
     )
-    def test_multi_node_head_pod_deletion(self, admin_client, multi_node_inference_service, deleted_multi_node_pod):
+    def test_multi_node_head_pod_deletion(self, multi_node_inference_service, deleted_multi_node_pod):
         """Test multi node when head pod is deleted"""
         verify_inference_response(
             inference_service=multi_node_inference_service,
@@ -120,7 +120,7 @@ class TestMultiNode:
         [pytest.param({"pod-role": WORKER_POD_ROLE})],
         indirect=True,
     )
-    def test_multi_node_worker_pod_deletion(self, admin_client, multi_node_inference_service, deleted_multi_node_pod):
+    def test_multi_node_worker_pod_deletion(self, multi_node_inference_service, deleted_multi_node_pod):
         """Test multi node when worker pod is deleted"""
         verify_inference_response(
             inference_service=multi_node_inference_service,
@@ -172,13 +172,13 @@ class TestMultiNode:
         [pytest.param({"worker-spec": {"pipelineParallelSize": 2, "tensorParallelSize": 4}})],
         indirect=True,
     )
-    def test_multi_node_tensor_parallel_size_propagation(self, admin_client, patched_multi_node_worker_spec):
+    def test_multi_node_tensor_parallel_size_propagation(self, unprivileged_client, patched_multi_node_worker_spec):
         """Test multi node tensor parallel size (number of GPUs per pod) propagation to pod config"""
         isvc_parallel_size = str(patched_multi_node_worker_spec.instance.spec.predictor.workerSpec.tensorParallelSize)
 
         failed_pods: list[dict[str, Any]] = []
 
-        for pod in get_pods_by_isvc_generation(client=admin_client, isvc=patched_multi_node_worker_spec):
+        for pod in get_pods_by_isvc_generation(client=unprivileged_client, isvc=patched_multi_node_worker_spec):
             pod_resources = pod.instance.spec.containers[0].resources
             if not (
                 isvc_parallel_size
@@ -195,10 +195,10 @@ class TestMultiNode:
         [pytest.param({"worker-spec": {"pipelineParallelSize": 2, "tensorParallelSize": 1}})],
         indirect=True,
     )
-    def test_multi_node_pipeline_parallel_size_propagation(self, admin_client, patched_multi_node_worker_spec):
+    def test_multi_node_pipeline_parallel_size_propagation(self, unprivileged_client, patched_multi_node_worker_spec):
         """Test multi node pipeline parallel size (number of pods) propagation to pod config"""
         isvc_parallel_size = patched_multi_node_worker_spec.instance.spec.predictor.workerSpec.pipelineParallelSize
-        isvc_num_pods = get_pods_by_isvc_generation(client=admin_client, isvc=patched_multi_node_worker_spec)
+        isvc_num_pods = get_pods_by_isvc_generation(client=unprivileged_client, isvc=patched_multi_node_worker_spec)
 
         if isvc_parallel_size != len(isvc_num_pods):
             pytest.fail(

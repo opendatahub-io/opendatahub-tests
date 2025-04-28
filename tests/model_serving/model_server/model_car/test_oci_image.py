@@ -10,7 +10,7 @@ pytestmark = pytest.mark.serverless
 
 
 @pytest.mark.parametrize(
-    "model_namespace, serving_runtime_from_template, model_car_serverless_inference_service",
+    "unprivileged_model_namespace, serving_runtime_from_template, model_car_serverless_inference_service",
     [
         pytest.param(
             {"name": f"{ModelFormat.OPENVINO}-model-car"},

@@ -18,19 +18,19 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")
-def diff_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
-    with create_ns(admin_client=admin_client, name="diff-namespace") as ns:
+def diff_namespace(unprivileged_client: DynamicClient) -> Generator[Namespace, Any, Any]:
+    with create_ns(unprivileged_client=unprivileged_client, name="diff-namespace") as ns:
         yield ns
 
 
 @pytest.fixture(scope="class")
 def endpoint_isvc(
-    admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
     serving_runtime_from_template: ServingRuntime,
     models_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
-        client=admin_client,
+        client=unprivileged_client,
         name="endpoint-isvc",
         namespace=serving_runtime_from_template.namespace,
         deployment_mode=KServeDeploymentType.SERVERLESS,
@@ -45,11 +45,11 @@ def endpoint_isvc(
 
 @pytest.fixture()
 def endpoint_pod_with_istio_sidecar(
-    admin_client: DynamicClient, model_namespace: Namespace
+    unprivileged_client: DynamicClient, unprivileged_model_namespace: Namespace
 ) -> Generator[Pod, Any, Any]:
     with create_sidecar_pod(
-        admin_client=admin_client,
-        namespace=model_namespace.name,
+        client=unprivileged_client,
+        namespace=unprivileged_model_namespace.name,
         use_istio=True,
         pod_name="test-with-istio",
     ) as pod:
@@ -58,11 +58,11 @@ def endpoint_pod_with_istio_sidecar(
 
 @pytest.fixture()
 def endpoint_pod_without_istio_sidecar(
-    admin_client: DynamicClient, model_namespace: Namespace
+    unprivileged_client: DynamicClient, unprivileged_model_namespace: Namespace
 ) -> Generator[Pod, Any, Any]:
     with create_sidecar_pod(
-        admin_client=admin_client,
-        namespace=model_namespace.name,
+        client=unprivileged_client,
+        namespace=unprivileged_model_namespace.name,
         use_istio=False,
         pod_name="test",
     ) as pod:
@@ -71,11 +71,11 @@ def endpoint_pod_without_istio_sidecar(
 
 @pytest.fixture()
 def diff_pod_with_istio_sidecar(
-    admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
     diff_namespace: Namespace,
 ) -> Generator[Pod, Any, Any]:
     with create_sidecar_pod(
-        admin_client=admin_client,
+        client=unprivileged_client,
         namespace=diff_namespace.name,
         use_istio=True,
         pod_name="test-with-istio",
@@ -85,11 +85,11 @@ def diff_pod_with_istio_sidecar(
 
 @pytest.fixture()
 def diff_pod_without_istio_sidecar(
-    admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
     diff_namespace: Namespace,
 ) -> Generator[Pod, Any, Any]:
     with create_sidecar_pod(
-        admin_client=admin_client,
+        client=unprivileged_client,
         namespace=diff_namespace.name,
         use_istio=False,
         pod_name="test",

@@ -16,7 +16,7 @@ LOGGER = get_logger(name=__name__)
 @pytest.fixture()
 def patched_s3_caikit_kserve_isvc_visibility_label(
     request: FixtureRequest,
-    admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
     s3_models_inference_service: InferenceService,
 ) -> Generator[InferenceService, Any, Any]:
     visibility = request.param["visibility"]

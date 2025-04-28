@@ -44,7 +44,7 @@ def curl_from_pod(
 
 @contextmanager
 def create_sidecar_pod(
-    admin_client: DynamicClient,
+    client: DynamicClient,
     namespace: str,
     use_istio: bool,
     pod_name: str,
@@ -53,7 +53,7 @@ def create_sidecar_pod(
     Create a sidecar pod
 
     Args:
-        admin_client (DynamicClient): DynamicClient object
+        client (DynamicClient): DynamicClient object
         namespace (str): namespace name
         use_istio (bool): use istio
         pod_name (str): pod name
@@ -76,7 +76,7 @@ def create_sidecar_pod(
         }
     ]
 
-    pod_kwargs = {"client": admin_client, "name": pod_name, "namespace": namespace, "containers": containers}
+    pod_kwargs = {"client": client, "name": pod_name, "namespace": namespace, "containers": containers}
 
     if use_istio:
         pod_kwargs.update({"annotations": {"sidecar.istio.io/inject": "true"}})

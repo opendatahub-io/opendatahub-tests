@@ -26,7 +26,7 @@ INFERENCE_AFTER_SCALE_TEST_NAME: str = "test_serverless_inference_after_scale_to
 
 @pytest.mark.serverless
 @pytest.mark.parametrize(
-    "model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service",
+    "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service",
     [
         pytest.param(
             {"name": "serverless-scale-zero"},
@@ -60,9 +60,9 @@ class TestServerlessScaleToZero:
     )
     @pytest.mark.order(2)
     @pytest.mark.dependency(name=NO_PODS_AFTER_SCALE_TEST_NAME)
-    def test_no_serverless_pods_after_scale_to_zero(self, admin_client, inference_service_patched_replicas):
+    def test_no_serverless_pods_after_scale_to_zero(self, unprivileged_client, inference_service_patched_replicas):
         """Verify pods are scaled to zero"""
-        verify_no_inference_pods(client=admin_client, isvc=inference_service_patched_replicas)
+        verify_no_inference_pods(client=unprivileged_client, isvc=inference_service_patched_replicas)
 
     @pytest.mark.dependency(
         name=INFERENCE_AFTER_SCALE_TEST_NAME,
@@ -83,9 +83,9 @@ class TestServerlessScaleToZero:
         depends=[INFERENCE_AFTER_SCALE_TEST_NAME],
     )
     @pytest.mark.order(4)
-    def test_no_serverless_pods_when_no_traffic(self, admin_client, inference_service_patched_replicas):
+    def test_no_serverless_pods_when_no_traffic(self, unprivileged_client, inference_service_patched_replicas):
         """Verify pods are scaled to zero when no traffic is sent"""
-        verify_no_inference_pods(client=admin_client, isvc=inference_service_patched_replicas)
+        verify_no_inference_pods(client=unprivileged_client, isvc=inference_service_patched_replicas)
 
     @pytest.mark.parametrize(
         "inference_service_patched_replicas",
@@ -93,10 +93,10 @@ class TestServerlessScaleToZero:
         indirect=True,
     )
     @pytest.mark.order(5)
-    def test_serverless_pods_after_scale_to_one_replica(self, admin_client, inference_service_patched_replicas):
+    def test_serverless_pods_after_scale_to_one_replica(self, unprivileged_client, inference_service_patched_replicas):
         """Verify pod is running after scaling to 1 replica"""
         for deployment in Deployment.get(
-            client=admin_client,
+            client=unprivileged_client,
             namespace=inference_service_patched_replicas.namespace,
         ):
             if deployment.labels["serving.knative.dev/configurationGeneration"] == "3":

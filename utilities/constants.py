@@ -45,6 +45,8 @@ class ModelStoragePath:
     FLAN_T5_SMALL_HF: str = f"{ModelName.FLAN_T5_SMALL}/{ModelName.FLAN_T5_SMALL_HF}"
     BLOOM_560M_CAIKIT: str = f"{ModelName.BLOOM_560M}/{ModelAndFormat.BLOOM_560M_CAIKIT}"
     MNIST_8_ONNX: str = f"{ModelName.MNIST}-8.onnx"
+    DOG_BREED_ONNX: str = "dog_breed_classification"
+    CAT_DOG_ONNX: str = "cat_dog_classification"
 
 
 class CurlOutput:
