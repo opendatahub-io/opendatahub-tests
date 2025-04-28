@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from string import Template
 from typing import Any, Optional
 
+from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
 from simple_logger.logger import get_logger
 
@@ -17,7 +18,7 @@ LOGGER = get_logger(name=__name__)
 
 
 def verify_inference_response(
-    inference_service: InferenceService,
+    inference_service: InferenceService | InferenceGraph,
     inference_config: dict[str, Any],
     inference_type: str,
     protocol: str,
