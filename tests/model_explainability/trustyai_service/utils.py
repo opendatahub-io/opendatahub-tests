@@ -145,7 +145,7 @@ def create_trustyai_service(
          namespace: Namespace to create the service in.
          storage: Dict with storage configuration.
          metrics: Dict with metrics configuration.
-         name: Name of the trustyai service and deployment.
+         name: Name of the TrustyAI service and deployment.
          data: An optional dict with data.
          wait_for_replicas: Wait until replicas are available (default True).
          teardown: Teardown the service (default True).
