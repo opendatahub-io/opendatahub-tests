@@ -2,6 +2,7 @@ import json
 import re
 import shlex
 from contextlib import contextmanager
+from http import HTTPStatus
 from json import JSONDecodeError
 from string import Template
 from typing import Any, Optional, Generator
@@ -16,7 +17,7 @@ from pyhelper_utils.shell import run_command
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutWatch, retry
 
-from utilities.exceptions import InvalidStorageArgumentError
+from utilities.exceptions import InferenceResponseError, InvalidStorageArgumentError
 from utilities.infra import (
     get_inference_serving_runtime,
     get_model_route,
@@ -440,7 +441,14 @@ class UserInference(Inference):
         else:
             res, out, err = run_command(command=shlex.split(cmd), verify_stderr=False, check=False)
 
-        if not res:
+        if res:
+            if f"http/1.0 {HTTPStatus.SERVICE_UNAVAILABLE}" in out.lower():
+                raise InferenceResponseError(
+                    f"The Route for {self.get_inference_url()} is not ready yet. "
+                    f"Got {HTTPStatus.SERVICE_UNAVAILABLE} error."
+                )
+
+        else:
             raise ValueError(f"Inference failed with error: {err}\nOutput: {out}\nCommand: {cmd}")
 
         LOGGER.info(f"Inference output:\n{out}")
