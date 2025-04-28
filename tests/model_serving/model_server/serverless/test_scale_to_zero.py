@@ -1,6 +1,6 @@
 import pytest
 
-from tests.model_serving.model_server.serverless.utils import verify_no_inference_pods, wait_for_deployments
+from tests.model_serving.model_server.serverless.utils import verify_no_inference_pods
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import (
     KServeDeploymentType,
@@ -11,6 +11,7 @@ from utilities.constants import (
 )
 from utilities.inference_utils import Inference
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
+from utilities.infra import wait_for_inference_deployment_replicas
 
 pytestmark = [
     pytest.mark.serverless,
@@ -93,9 +94,9 @@ class TestServerlessScaleToZero:
     @pytest.mark.order(5)
     def test_serverless_pods_after_scale_to_one_replica(self, admin_client, inference_service_patched_replicas):
         """Verify pod is running after scaling to 1 replica"""
-        wait_for_deployments(
+        wait_for_inference_deployment_replicas(
             client=admin_client,
-            namespace=inference_service_patched_replicas.namespace,
-            expected_deployments=1,
-            label_selector="serving.knative.dev/configurationGeneration=3",
-        )[0].wait_for_replicas()
+            isvc=inference_service_patched_replicas,
+            expected_num_deployments=1,
+            labels="serving.knative.dev/configurationGeneration=3",
+        )

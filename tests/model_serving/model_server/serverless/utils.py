@@ -1,6 +1,5 @@
 from typing import Any
 
-from ocp_resources.deployment import Deployment
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.inference_service import InferenceService
@@ -49,56 +48,6 @@ def verify_no_inference_pods(client: DynamicClient, isvc: InferenceService) -> N
             return
         LOGGER.error(f"{[pod.name for pod in pods]} were not deleted")
         raise
-
-
-def wait_for_deployments(
-    client: DynamicClient,
-    namespace: str,
-    expected_deployments: int,
-    label_selector: str = "",
-    timeout: int = Timeout.TIMEOUT_4MIN,
-) -> list[Deployment]:
-    """
-    Wait for deployments to exist.
-
-    Args:
-        client (DynamicClient): DynamicClient object
-        namespace (str): Namespace of the deployment(s)
-        expected_deployments (int): Number of expected deployments based on the namespace and label selectors
-        label_selector (str): Comma seperated list of labels, in key=value format, used to select the deployment(s)
-        timeout (int): Timeout in seconds
-
-    Returns:
-        list[Deployment]: A list of the retrieved deployments
-
-    Raises:
-        TimeoutError: If deployment(s) not found after timeout expires
-
-    """
-    deployment_list = []
-    try:
-        for deployments in TimeoutSampler(
-            wait_timeout=timeout,
-            sleep=5,
-            exceptions_dict=DEFAULT_CLUSTER_RETRY_EXCEPTIONS,
-            func=Deployment.get,
-            label_selector=label_selector,
-            client=client,
-            namespace=namespace,
-        ):
-            deployment_list = list(deployments)
-            if len(deployment_list) == expected_deployments:
-                break
-    except TimeoutExpiredError:
-        LOGGER.error(
-            (
-                f"Expect {expected_deployments} deployment(s) in namespace {namespace}, "
-                f"but {len(deployment_list)} exist after timeout."
-            )
-        )
-        raise
-
-    return deployment_list
 
 
 def wait_for_canary_rollout(isvc: InferenceService, percentage: int, timeout: int = Timeout.TIMEOUT_5MIN) -> None:
