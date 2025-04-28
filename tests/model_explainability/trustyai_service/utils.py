@@ -92,7 +92,13 @@ def validate_trustyai_service_db_conn_failure(
         namespace: Namespace under which the pod is created.
         label_selector: The label selector used to select the correct pod(s) to monitor.
 
-    Returns: True if pod failure is of expected state else False.
+    Returns:
+        bool: True if pod failure is of expected state else False.
+
+    Raises:
+        TimeoutExpiredError: if the method takes longer than `wait_timeout` to return a value
+        pytest.fail.Exception: if more than one TrustyAIService pods are found or the exception is not of expected type
+
     """
     pods = list(Pod.get(dyn_client=client, namespace=namespace.name, label_selector=label_selector))
     mariadb_conn_failure_regex = (
@@ -109,9 +115,9 @@ def validate_trustyai_service_db_conn_failure(
             ):
                 if not re.search(mariadb_conn_failure_regex, terminate_state.message):
                     pytest.fail(
-                        f"Service {TRUSTYAI_SERVICE_NAME} did not fail with a mariadb connection failure as expected.",
-                        f"\nExpected format: {mariadb_conn_failure_regex}",
-                        f"\nGot: {terminate_state.message}",
+                        f"Service {TRUSTYAI_SERVICE_NAME} did not fail with a mariadb connection failure as expected.\
+                        \nExpected format: {mariadb_conn_failure_regex}\
+                        \nGot: {terminate_state.message}"
                     )
                 return True
     return False
