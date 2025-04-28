@@ -133,9 +133,10 @@ def create_trustyai_service(
     namespace: Namespace,
     storage: dict[str, str],
     metrics: dict[str, str],
+    name: str = TRUSTYAI_SERVICE_NAME,
     data: Optional[dict[str, str]] = None,
     wait_for_replicas: bool = True,
-    teardown: bool = False,
+    teardown: bool = True,
 ) -> Generator[TrustyAIService, Any, Any]:
     """Creates TrustyAIService and TrustyAI deployment.
 
@@ -144,23 +145,24 @@ def create_trustyai_service(
          namespace: Namespace to create the service in.
          storage: Dict with storage configuration.
          metrics: Dict with metrics configuration.
+         name: Name of the trustyai service and deployment.
          data: An optional dict with data.
          wait_for_replicas: Wait until replicas are available (default True).
-         teardown: Teardown the service (default False).
+         teardown: Teardown the service (default True).
 
     Yields:
          Generator[TrustyAIService, Any, Any]: The TrustyAI service.
     """
     with TrustyAIService(
         client=client,
-        name=TRUSTYAI_SERVICE_NAME,
+        name=name,
         namespace=namespace.name,
         storage=storage,
         metrics=metrics,
         data=data,
         teardown=teardown,
     ) as trustyai_service:
-        trustyai_deployment = Deployment(namespace=namespace, name=TRUSTYAI_SERVICE_NAME, wait_for_resource=True)
+        trustyai_deployment = Deployment(namespace=namespace, name=name, wait_for_resource=True)
         if wait_for_replicas:
             trustyai_deployment.wait_for_replicas()
         yield trustyai_service
