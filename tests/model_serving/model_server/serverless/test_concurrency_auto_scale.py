@@ -20,7 +20,7 @@ pytestmark = [
 
 
 @pytest.mark.parametrize(
-    "model_namespace, serving_runtime_from_template, s3_models_inference_service",
+    "unprivileged_model_namespace, serving_runtime_from_template, s3_models_inference_service",
     [
         pytest.param(
             {"name": "serverless-auto-scale"},
@@ -45,13 +45,13 @@ class TestConcurrencyAutoScale:
     @pytest.mark.dependency(name="test_auto_scale_using_concurrency")
     def test_auto_scale_using_concurrency(
         self,
-        admin_client,
+        unprivileged_client,
         s3_models_inference_service,
         multiple_onnx_inference_requests,
     ):
         """Verify model is successfully scaled up based on concurrency metrics (KPA)"""
         for pods in inference_service_pods_sampler(
-            client=admin_client,
+            client=unprivileged_client,
             isvc=s3_models_inference_service,
             timeout=Timeout.TIMEOUT_2MIN,
             sleep=10,
@@ -61,10 +61,10 @@ class TestConcurrencyAutoScale:
                     return
 
     @pytest.mark.dependency(requires=["test_auto_scale_using_concurrency"])
-    def test_pods_scaled_down_when_no_requests(self, admin_client, s3_models_inference_service):
+    def test_pods_scaled_down_when_no_requests(self, unprivileged_client, s3_models_inference_service):
         """Verify auto-scaled pods are deleted when there are no inference requests"""
         for pods in inference_service_pods_sampler(
-            client=admin_client,
+            client=unprivileged_client,
             isvc=s3_models_inference_service,
             timeout=Timeout.TIMEOUT_4MIN,
             sleep=10,

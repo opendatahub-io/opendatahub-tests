@@ -18,7 +18,7 @@ MODELMESH_ISVC_PARAMS = {
 
 
 @pytest.mark.parametrize(
-    "model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service, "
+    "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service, "
     "http_s3_openvino_model_mesh_inference_service",
     [
         pytest.param(
@@ -57,7 +57,7 @@ class TestOpenVINOServerlessModelMesh:
 
 
 @pytest.mark.parametrize(
-    "model_namespace, http_s3_openvino_model_mesh_inference_service, ovms_kserve_serving_runtime, "
+    "unprivileged_model_namespace, http_s3_openvino_model_mesh_inference_service, ovms_kserve_serving_runtime, "
     "ovms_kserve_inference_service, ",
     [
         pytest.param(

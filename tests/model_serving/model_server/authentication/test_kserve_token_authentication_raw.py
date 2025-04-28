@@ -14,7 +14,7 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
 
 @pytest.mark.rawdeployment
 @pytest.mark.parametrize(
-    "model_namespace, s3_models_storage_uri",
+    "unprivileged_model_namespace, s3_models_storage_uri",
     [
         pytest.param(
             {"name": "kserve-raw-token-authentication"},

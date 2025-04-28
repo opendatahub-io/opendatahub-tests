@@ -17,7 +17,7 @@ pytestmark = [pytest.mark.modelmesh]
 
 
 @pytest.mark.parametrize(
-    "model_namespace, http_s3_openvino_model_mesh_inference_service",
+    "unprivileged_model_namespace, http_s3_openvino_model_mesh_inference_service",
     [
         pytest.param(
             {"name": "model-mesh-openvino", "modelmesh-enabled": True},
