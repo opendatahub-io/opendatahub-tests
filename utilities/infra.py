@@ -28,7 +28,7 @@ from ocp_resources.node_config_openshift_io import Node
 from ocp_resources.pod import Pod
 from ocp_resources.project_project_openshift_io import Project
 from ocp_resources.project_request import ProjectRequest
-from ocp_resources.resource import ResourceEditor, get_client
+from ocp_resources.resource import Resource, ResourceEditor, get_client
 from ocp_resources.role import Role
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
@@ -640,6 +640,16 @@ def verify_no_failed_pods(
         ready_pods = 0
         failed_pods: dict[str, Any] = {}
 
+        container_wait_base_errors = ["InvalidImageName"]
+        container_terminated_base_errors = [Resource.Status.ERROR]
+
+        # For Model Mesh, if image pulling takes longer, pod may be in CrashLoopBackOff state but recover with retries.
+        if (
+            deployment_mode := isvc.instance.metadata.annotations.get("serving.kserve.io/deploymentMode")
+        ) and deployment_mode != KServeDeploymentType.MODEL_MESH:
+            container_wait_base_errors.append(Resource.Status.CRASH_LOOPBACK_OFF)
+            container_terminated_base_errors.append(Resource.Status.CRASH_LOOPBACK_OFF)
+
         if pods:
             for pod in pods:
                 for condition in pod.instance.status.conditions:
@@ -658,17 +668,11 @@ def verify_no_failed_pods(
                     ):
                         is_waiting_pull_back_off = (
                             wait_state := container_status.state.waiting
-                        ) and wait_state.reason in (
-                            pod.Status.CRASH_LOOPBACK_OFF,
-                            "InvalidImageName",
-                        )
+                        ) and wait_state.reason in container_wait_base_errors
 
                         is_terminated_error = (
                             terminate_state := container_status.state.terminated
-                        ) and terminate_state.reason in (
-                            pod.Status.ERROR,
-                            pod.Status.CRASH_LOOPBACK_OFF,
-                        )
+                        ) and terminate_state.reason in container_terminated_base_errors
 
                         if is_waiting_pull_back_off or is_terminated_error:
                             failed_pods[pod.name] = pod_status
