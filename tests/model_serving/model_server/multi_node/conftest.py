@@ -144,7 +144,7 @@ def patched_multi_node_isvc_external_route(
 
 
 @pytest.fixture(scope="function")
-def patched_multi_node_worker_spec(
+def patched_multi_node_spec(
     request: FixtureRequest,
     multi_node_inference_service: InferenceService,
 ) -> Generator[InferenceService, Any, Any]:
@@ -152,7 +152,7 @@ def patched_multi_node_worker_spec(
         patches={
             multi_node_inference_service: {
                 "spec": {
-                    "predictor": {"workerSpec": request.param["worker-spec"]},
+                    "predictor": request.param["spec"],
                 },
             }
         }
