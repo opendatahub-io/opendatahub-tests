@@ -17,7 +17,7 @@ from _pytest.terminal import TerminalReporter
 from typing import Optional, Any
 from pytest_testconfig import config as py_config
 
-from utilities.constants import KServeDeploymentType
+from utilities.constants import Distributions, KServeDeploymentType
 from utilities.logger import separator, setup_logging
 
 
@@ -171,7 +171,32 @@ def pytest_collection_modifyitems(session: Session, config: Config, items: list[
     if config_upgrade_deployment_modes := config.getoption(name="upgrade_deployment_modes"):
         upgrade_deployment_modes = config_upgrade_deployment_modes.split(",")
 
+    # Check if odh or upstream marker was passed from invocation command
+    skip_upstream = True
+    skip_odh = True
+
+    if user_markers_index := next(
+        (index for index, elem in enumerate(config.invocation_params.args) if elem == "-m"),
+        None,
+    ):
+        user_markers = config.invocation_params.args[user_markers_index + 1]
+        if Distributions.ODH in user_markers:
+            skip_odh = False
+
+        if Distributions.UPSTREAM in user_markers:
+            skip_upstream = False
+
     for item in items:
+        # Filter out `upstream` and `odh` tests if were not explicitly requested
+        if Distributions.UPSTREAM in item.keywords and skip_upstream:
+            items.remove(item)
+            continue
+
+        if Distributions.ODH in item.keywords and skip_odh:
+            items.remove(item)
+            continue
+
+        # Upgrade tests filtering
         if "pre_upgrade" in item.keywords and _add_upgrade_test(
             _item=item, _upgrade_deployment_modes=upgrade_deployment_modes
         ):
