@@ -534,6 +534,7 @@ def create_isvc(
     resources: dict[str, Any] | None = None,
     volumes: dict[str, Any] | None = None,
     volumes_mounts: dict[str, Any] | None = None,
+    image_pull_secrets: list[str] | None = None,
     model_version: str | None = None,
     wait_for_predictor_pods: bool = True,
     autoscaler_mode: str | None = None,
@@ -608,6 +609,8 @@ def create_isvc(
         predictor_dict["model"]["storage"] = {"key": storage_key, "path": storage_path}
     if model_service_account:
         predictor_dict["serviceAccountName"] = model_service_account
+    if image_pull_secrets:
+        predictor_dict["imagePullSecrets"] = [{"name": name} for name in image_pull_secrets]
 
     if min_replicas:
         predictor_dict["minReplicas"] = min_replicas
