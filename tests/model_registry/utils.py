@@ -2,15 +2,20 @@ from typing import Any
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
+from ocp_resources.pod import Pod
 from ocp_resources.service import Service
 from ocp_resources.model_registry import ModelRegistry
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
-
+from simple_logger.logger import get_logger
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
+from kubernetes.dynamic.exceptions import NotFoundError
 from tests.model_registry.constants import MR_DB_IMAGE_DIGEST
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
 from utilities.constants import Protocols, Annotations
 
 ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
+
+LOGGER = get_logger(name=__name__)
 
 
 def get_mr_service_by_label(client: DynamicClient, ns: Namespace, mr_instance: ModelRegistry) -> Service:
@@ -156,3 +161,71 @@ def get_model_registry_db_label_dict(db_resource_name: str) -> dict[str, str]:
         Annotations.KubernetesIo.INSTANCE: db_resource_name,
         Annotations.KubernetesIo.PART_OF: db_resource_name,
     }
+
+
+def get_pod_container_error_status(pod: Pod) -> str | None:
+    """
+    Check container error status for a given pod and if any containers is in waiting state, return that information
+    """
+    pod_instance_status = pod.instance.status
+    for container_status in pod_instance_status.get("containerStatuses", []):
+        if waiting_container := container_status.get("state", {}).get("waiting"):
+            return waiting_container["reason"] if waiting_container.get("reason") else waiting_container
+    return ""
+
+
+def get_not_running_pods(pods: list[Pod]) -> list[dict[str, Any]]:
+    # Gets all the non-running pods from a given namespace.
+    # Note: We need to keep track of pods marked for deletion as not running. This would ensure any
+    # pod that was spun up in place of pod marked for deletion, are not ignored
+    pods_not_running = []
+    try:
+        for pod in pods:
+            pod_instance = pod.instance
+            if container_status_error := get_pod_container_error_status(pod=pod):
+                pods_not_running.append({pod.name: container_status_error})
+
+            if pod_instance.metadata.get("deletionTimestamp") or pod_instance.status.phase not in (
+                pod.Status.RUNNING,
+                pod.Status.SUCCEEDED,
+            ):
+                pods_not_running.append({pod.name: pod.status})
+    except (ResourceNotFoundError, NotFoundError) as exc:
+        LOGGER.warning("Ignoring pod that disappeared during cluster sanity check: %s", exc)
+    return pods_not_running
+
+
+def wait_for_pods_running(
+    admin_client: DynamicClient,
+    namespace_name: str,
+    number_of_consecutive_checks: int = 1,
+) -> bool | None:
+    """
+    Waits for all pods in a given namespace to reach Running/Completed state. To avoid catching all pods in running
+    state too soon, use number_of_consecutive_checks with appropriate values.
+    """
+    samples = TimeoutSampler(
+        wait_timeout=180,
+        sleep=5,
+        func=get_not_running_pods,
+        pods=list(Pod.get(dyn_client=admin_client, namespace=namespace_name)),
+        exceptions_dict={NotFoundError: [], ResourceNotFoundError: []},
+    )
+    sample = None
+    try:
+        current_check = 0
+        for sample in samples:
+            if not sample:
+                current_check += 1
+                if current_check >= number_of_consecutive_checks:
+                    return True
+            else:
+                current_check = 0
+    except TimeoutExpiredError:
+        if sample:
+            LOGGER.error(
+                f"timeout waiting for all pods in namespace {namespace_name} to reach "
+                f"running state, following pods are in not running state: {sample}"
+            )
+            raise
+    return None

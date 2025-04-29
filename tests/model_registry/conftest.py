@@ -37,6 +37,7 @@ from tests.model_registry.utils import (
     get_mr_service_by_label,
     get_model_registry_deployment_template_dict,
     get_model_registry_db_label_dict,
+    wait_for_pods_running,
 )
 from utilities.constants import Annotations, Protocols, DscComponents
 from model_registry import ModelRegistry as ModelRegistryClient
@@ -221,8 +222,7 @@ def state_machine(generated_schema: BaseOpenAPISchema, current_client_token: str
 
 @pytest.fixture(scope="class")
 def updated_dsc_component_state_scope_class(
-    request: FixtureRequest,
-    dsc_resource: DataScienceCluster,
+    request: FixtureRequest, dsc_resource: DataScienceCluster, admin_client: DynamicClient
 ) -> Generator[DataScienceCluster, Any, Any]:
     original_components = dsc_resource.instance.spec.components
     with ResourceEditor(patches={dsc_resource: {"spec": {"components": request.param["component_patch"]}}}):
@@ -233,6 +233,11 @@ def updated_dsc_component_state_scope_class(
                 name=dsc_resource.instance.spec.components.modelregistry.registriesNamespace, ensure_exists=True
             )
             namespace.wait_for_status(status=Namespace.Status.ACTIVE)
+        wait_for_pods_running(
+            admin_client=admin_client,
+            namespace_name=py_config["applications_namespace"],
+            number_of_consecutive_checks=6,
+        )
         yield dsc_resource
 
     for component_name, value in request.param["component_patch"].items():

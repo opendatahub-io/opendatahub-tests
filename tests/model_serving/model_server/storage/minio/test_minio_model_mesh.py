@@ -31,7 +31,7 @@ pytestmark = [pytest.mark.modelmesh, pytest.mark.minio, pytest.mark.sanity]
             MINIO_DATA_CONNECTION_CONFIG,
             {
                 "runtime_image": MinIo.PodConfig.KSERVE_MINIO_IMAGE,
-                "external-route": True,
+                "enable-external-route": True,
                 **RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
             },
             {
@@ -56,6 +56,6 @@ class TestMinioModelMesh:
             inference_service=model_mesh_ovms_minio_inference_service,
             inference_config=ONNX_INFERENCE_CONFIG,
             inference_type=f"infer-{ModelName.MNIST}",
-            protocol=Protocols.HTTP,
+            protocol=Protocols.HTTPS,
             use_default_query=True,
         )
