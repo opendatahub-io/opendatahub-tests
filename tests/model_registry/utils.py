@@ -156,3 +156,29 @@ def get_model_registry_db_label_dict(db_resource_name: str) -> dict[str, str]:
         Annotations.KubernetesIo.INSTANCE: db_resource_name,
         Annotations.KubernetesIo.PART_OF: db_resource_name,
     }
+
+
+def get_model_registry_service(admin_client: DynamicClient, namespace: str) -> Service:
+    """
+    Get the Model Registry service.
+
+    Retrieves the Model Registry service from the specified namespace.
+    Args:
+        admin_client (DynamicClient): OCP Client to use.
+        namespace (str): Namespace where the Model Registry service is located.
+
+    Returns:
+        Service: The Model Registry service.
+
+    Raises:
+        RuntimeError: if no Model Registry service is found.
+    """
+
+    services = list(
+        Service.get(
+            dyn_client=admin_client, namespace=namespace, label_selector="app=model-registry,component=model-registry"
+        )
+    )
+    if not services:
+        raise RuntimeError(f"Model Registry service not found in namespace {namespace}")
+    return services[0]
