@@ -9,14 +9,15 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 
-from utilities.constants import ModelFormat, KServeDeploymentType, ModelStoragePath
+from utilities.constants import ModelFormat, KServeDeploymentType, ModelStoragePath, Annotations
 from utilities.inference_utils import create_isvc
 
 
 @pytest.fixture
 def dog_breed_inference_graph(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
+    request: FixtureRequest,
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
     dog_cat_inference_service: InferenceService,
     dog_breed_inference_service: InferenceService,
 ) -> Generator[InferenceGraph, Any, Any]:
@@ -34,11 +35,20 @@ def dog_breed_inference_graph(
             ],
         }
     }
+
+    annotations = {}
+    try:
+        if request.param.get("deployment-mode"):
+            annotations[Annotations.KserveIo.DEPLOYMENT_MODE] = request.param["deployment-mode"]
+    except AttributeError:
+        pass
+
     with InferenceGraph(
-        client=admin_client,
+        client=unprivileged_client,
         name="dog-breed-pipeline",
-        namespace=model_namespace.name,
+        namespace=unprivileged_model_namespace.name,
         nodes=nodes,
+        annotations=annotations,
     ) as inference_graph:
         inference_graph.wait_for_condition(condition=inference_graph.Condition.READY, status="True")
         yield inference_graph
@@ -47,15 +57,15 @@ def dog_breed_inference_graph(
 @pytest.fixture
 def dog_cat_inference_service(
     request: FixtureRequest,
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
     ovms_kserve_serving_runtime: ServingRuntime,
     models_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
-        client=admin_client,
+        client=unprivileged_client,
         name="dog-cat-classifier",
-        namespace=model_namespace.name,
+        namespace=unprivileged_model_namespace.name,
         runtime=ovms_kserve_serving_runtime.name,
         storage_key=models_endpoint_s3_secret.name,
         storage_path=ModelStoragePath.CAT_DOG_ONNX,
@@ -69,15 +79,15 @@ def dog_cat_inference_service(
 @pytest.fixture
 def dog_breed_inference_service(
     request: FixtureRequest,
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
     ovms_kserve_serving_runtime: ServingRuntime,
     models_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
-        client=admin_client,
+        client=unprivileged_client,
         name="dog-breed-classifier",
-        namespace=model_namespace.name,
+        namespace=unprivileged_model_namespace.name,
         runtime=ovms_kserve_serving_runtime.name,
         storage_key=models_endpoint_s3_secret.name,
         storage_path=ModelStoragePath.DOG_BREED_ONNX,
