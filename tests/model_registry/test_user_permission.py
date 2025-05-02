@@ -33,6 +33,23 @@ def get_token(user_name: str, password: str, admin_client: DynamicClient) -> str
     return token
 
 
+def assert_mr_client(user_token, admin_client, context):
+    """
+    Initiate MR client
+    """
+    svc = get_model_registry_service(admin_client=admin_client, namespace=TEST_NAMESPACE)
+    server, port = get_endpoint_from_mr_service(svc, Protocols.REST).split(":")
+
+    with context:
+        ModelRegistryClient(
+            server_address=f"https://{server}",
+            port=int(port),
+            author="opendatahub-test",
+            user_token=user_token,
+            is_secure=False,
+        )
+
+
 @pytest.fixture(scope="session", autouse=True)
 def check_env_vars():
     missing = []
@@ -84,13 +101,37 @@ class TestUserPermission:
         assert model_registry_instance.name == MR_INSTANCE_NAME
         user_token = get_token(user_name=user_name, password=password, admin_client=admin_client)
 
-        svc = get_model_registry_service(admin_client=admin_client, namespace=TEST_NAMESPACE)
-        server, port = get_endpoint_from_mr_service(svc, Protocols.REST).split(":")
-        with context_manager:
-            ModelRegistryClient(
-                server_address=f"https://{server}",
-                port=int(port),
-                author="opendatahub-test",
-                user_token=user_token,
-                is_secure=False,
-            )
+        assert_mr_client(user_token=user_token, admin_client=admin_client, context=context_manager)
+
+    @pytest.mark.smoke
+    @pytest.mark.parametrize(
+        "user_name, password",
+        [
+            ("ldap-user1", os.environ.get("NON_ADMIN_PASSWORD")),
+        ],
+    )
+    def test_user_added_to_group(
+        self: Self,
+        updated_dsc_component_state_scope_class,
+        model_registry_instance,
+        admin_client: DynamicClient,
+        user_name,
+        password,
+    ):
+        """
+        User can initiate MR only when they are added to the model-registry-users group
+        """
+        assert model_registry_instance.name == MR_INSTANCE_NAME
+
+        user_token = get_token(user_name=user_name, password=password, admin_client=admin_client)
+
+        LOGGER.info("User has no acces to MR")
+        assert_mr_client(user_token=user_token, admin_client=admin_client, context=pytest.raises(ForbiddenException))
+
+        LOGGER.info("Add user hthe model registry users group")
+        run_command(command=["oc", "adm", "groups", "add-users", "model-registry-users", user_name])
+
+        user_token = get_token(user_name=user_name, password=password, admin_client=admin_client)
+
+        LOGGER.info("User has acces to MR")
+        assert_mr_client(user_token=user_token, admin_client=admin_client, context=nullcontext())
