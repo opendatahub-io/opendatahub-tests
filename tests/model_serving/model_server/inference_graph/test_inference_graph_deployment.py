@@ -1,5 +1,3 @@
-from time import sleep
-
 import pytest
 
 from tests.model_serving.model_server.utils import verify_inference_response
@@ -10,10 +8,12 @@ from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 @pytest.mark.parametrize(
     "unprivileged_model_namespace,ovms_kserve_serving_runtime",
-    [pytest.param(
-        {"name": "kserve-inference-graph-deploy"},
-        {"runtime-name": ModelInferenceRuntime.ONNX_RUNTIME},
-    )],
+    [
+        pytest.param(
+            {"name": "kserve-inference-graph-deploy"},
+            {"runtime-name": ModelInferenceRuntime.ONNX_RUNTIME},
+        )
+    ],
     indirect=True,
 )
 class TestInferenceGraphDeployment:
@@ -27,7 +27,8 @@ class TestInferenceGraphDeployment:
             use_default_query=True,
         )
 
-    @pytest.mark.parametrize("dog_breed_inference_graph",
+    @pytest.mark.parametrize(
+        "dog_breed_inference_graph",
         [pytest.param({"deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT})],
         indirect=True,
     )
