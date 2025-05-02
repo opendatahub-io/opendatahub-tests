@@ -125,13 +125,13 @@ class TestUserPermission:
 
         user_token = get_token(user_name=user_name, password=password, admin_client=admin_client)
 
-        LOGGER.info("User has no acces to MR")
+        LOGGER.info("User has no access to MR")
         assert_mr_client(user_token=user_token, admin_client=admin_client, context=pytest.raises(ForbiddenException))
 
-        LOGGER.info("Add user hthe model registry users group")
+        LOGGER.info("Add user to the model registry users group")
         run_command(command=["oc", "adm", "groups", "add-users", "model-registry-users", user_name])
 
         user_token = get_token(user_name=user_name, password=password, admin_client=admin_client)
 
-        LOGGER.info("User has acces to MR")
+        LOGGER.info("User has access to MR")
         assert_mr_client(user_token=user_token, admin_client=admin_client, context=nullcontext())
