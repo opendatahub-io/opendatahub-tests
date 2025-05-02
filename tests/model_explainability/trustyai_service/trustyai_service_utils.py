@@ -315,7 +315,6 @@ def send_inferences_and_verify_trustyai_service_registered(
                 token=token,
             )
             LOGGER.debug(f"Inference response: {res}")
-
             samples = TimeoutSampler(
                 wait_timeout=Timeout.TIMEOUT_5MIN,
                 sleep=1,
@@ -496,7 +495,6 @@ def verify_trustyai_service_metric_scheduling_request(
     LOGGER.info(msg=f"TrustyAI scheduled metrics: {get_metrics_data}")
 
     verify_trustyai_service_response(response=get_metrics_response, response_data=get_metrics_data)
-
     errors = []
     # Validate metrics-specific requirements
     if "requests" not in get_metrics_data or not get_metrics_data["requests"]:
