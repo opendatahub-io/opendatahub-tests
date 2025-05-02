@@ -12,7 +12,7 @@ from ocp_resources.trustyai_service import TrustyAIService
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
-
+from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import Protocols, Timeout
 from utilities.exceptions import MetricValidationError
 from utilities.general import create_isvc_label_selector_str
@@ -58,6 +58,7 @@ class TrustyAIServiceClient:
         self.service_route = Route(
             client=client, namespace=service.namespace, name=TRUSTYAI_SERVICE_NAME, ensure_exists=True
         )
+        self.cert_path = create_ca_bundle_file(client=client, ca_type="openshift")
 
     def _get_metric_base_url(self, metric_name: str) -> str:
         """Gets base URL for a given metric type (fairness or drift).
@@ -103,7 +104,7 @@ class TrustyAIServiceClient:
         """
 
         url = f"https://{self.service_route.host}/{endpoint}"
-        base_kwargs = {"url": url, "headers": self.headers, "verify": False}
+        base_kwargs = {"url": url, "headers": self.headers, "verify": self.cert_path}
 
         method = method.upper()
         if method not in ("GET", "POST", "DELETE"):
