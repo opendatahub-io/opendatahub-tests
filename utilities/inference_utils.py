@@ -25,6 +25,7 @@ from utilities.infra import (
     get_services_by_isvc_label,
     wait_for_inference_deployment_replicas,
     verify_no_failed_pods,
+    get_pods_by_ig_label,
 )
 from utilities.certificates_utils import get_ca_bundle
 from utilities.constants import (
@@ -118,11 +119,12 @@ class Inference:
         """
         labels = self.inference_service.labels
 
-        if (
-            isinstance(self.inference_service, InferenceService)
-            and self.deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT
-        ):
-            return labels and labels.get(Labels.Kserve.NETWORKING_KSERVE_IO) == Labels.Kserve.EXPOSED
+        if self.deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT:
+            if isinstance(self.inference_service, InferenceGraph):
+                # For InferenceGraph, the logic is similar as in Serverless. Only the label is different.
+                return not(labels and labels.get(Labels.Kserve.NETWORKING_KSERVE_IO) == "cluster-local")
+            else:
+                return labels and labels.get(Labels.Kserve.NETWORKING_KSERVE_IO) == Labels.Kserve.EXPOSED
 
         if self.deployment_mode == KServeDeploymentType.SERVERLESS:
             if labels and labels.get("networking.knative.dev/visibility") == "cluster-local":
@@ -422,12 +424,20 @@ class UserInference(Inference):
         """
         # For internal inference, we need to use port forwarding to the service
         if not self.visibility_exposed:
-            svc = get_services_by_isvc_label(
-                client=self.inference_service.client,
-                isvc=self.inference_service,
-                runtime_name=self.runtime.name,
-            )[0]
-            port = self.get_target_port(svc=svc)
+            if isinstance(self.inference_service, InferenceService):
+                svc = get_services_by_isvc_label(
+                    client=self.inference_service.client,
+                    isvc=self.inference_service,
+                    runtime_name=self.runtime.name,
+                )[0]
+                port = self.get_target_port(svc=svc)
+            else:
+                svc = get_pods_by_ig_label(
+                    client=self.inference_service.client,
+                    ig=self.inference_service,
+                )[0]
+                port = 8080
+
             cmd = cmd.replace("localhost", f"localhost:{port}")
 
             with portforward.forward(
@@ -478,7 +488,7 @@ class UserInference(Inference):
 
         # For multi node with headless service, we need to get the pod to get the port
         # TODO: check behavior for both normal and headless service
-        if self.inference_service.instance.spec.predictor.workerSpec and not self.visibility_exposed:
+        if isinstance(self.inference_service, InferenceService) and self.inference_service.instance.spec.predictor.workerSpec and not self.visibility_exposed:
             pod = get_pods_by_isvc_label(
                 client=self.inference_service.client,
                 isvc=self.inference_service,
