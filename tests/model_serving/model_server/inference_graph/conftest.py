@@ -54,7 +54,7 @@ def dog_breed_inference_graph(
         yield inference_graph
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def dog_cat_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
@@ -76,7 +76,7 @@ def dog_cat_inference_service(
         yield isvc
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def dog_breed_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
