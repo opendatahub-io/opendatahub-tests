@@ -34,10 +34,12 @@ class PrBaseClass:
         add_remove_labels_action_name: str = "add-remove-labels"
         pr_size_action_name: str = "add-pr-size-label"
         welcome_comment_action_name: str = "add-welcome-comment-set-assignee"
+        build_push_pr_image_action_name: str = "push-container-on-comment"
         supported_actions: set[str] = {
             pr_size_action_name,
             add_remove_labels_action_name,
             welcome_comment_action_name,
+            build_push_pr_image_action_name,
         }
 
     def __init__(self) -> None:
@@ -58,7 +60,7 @@ class PrBaseClass:
     def verify_base_config(self) -> None:
         if not self.action or self.action not in self.SupportedActions.supported_actions:
             sys.exit(
-                "`ACTION` is not set in workflow or is not supported. "
+                f"{self.action} is not set in workflow or is not supported. "
                 f"Supported actions: {self.SupportedActions.supported_actions}"
             )
 
@@ -97,10 +99,9 @@ class PrLabeler(PrBaseClass):
             self.comment_body = os.getenv("REVIEW_COMMENT_BODY", "")
         self.last_commit = list(self.pr.get_commits())[-1]
         self.last_commit_sha = self.last_commit.sha
-
         self.verify_labeler_config()
 
-    def verify_allowed_user(self) -> None:
+    def verify_allowed_user(self) -> bool:
         org: Organization = self.gh_client.get_organization("opendatahub-io")
         # slug is the team name with replaced special characters,
         # all words to lowercase and spaces replace with a -
@@ -109,9 +110,10 @@ class PrLabeler(PrBaseClass):
             # check if the user is a member of opendatahub-tests-contributors
             membership = team.get_team_membership(member=self.user_login)
             LOGGER.info(f"User {self.user_login} is a member of the test contributor team. {membership}")
+            return True
         except UnknownObjectException:
             LOGGER.error(f"User {self.user_login} is not allowed for this action. Exiting.")
-            sys.exit(0)
+            return False
 
     def verify_labeler_config(self) -> None:
         if self.action == self.SupportedActions.add_remove_labels_action_name and self.event_name in (
@@ -131,9 +133,13 @@ class PrLabeler(PrBaseClass):
         if self.action == self.SupportedActions.pr_size_action_name:
             self.set_pr_size()
 
+        if self.action == self.SupportedActions.build_push_pr_image_action_name:
+            if not self.verify_allowed_user():
+                sys.exit(1)
+
         if self.action == self.SupportedActions.add_remove_labels_action_name:
-            self.verify_allowed_user()
-            self.add_remove_pr_labels()
+            if self.verify_allowed_user():
+                self.add_remove_pr_labels()
 
         if self.action == self.SupportedActions.welcome_comment_action_name:
             self.add_welcome_comment_set_assignee()

@@ -19,7 +19,8 @@ jobs:
       contains(github.event.comment.body, '/verified') ||
       contains(github.event.comment.body, '/lgtm') ||
       contains(github.event.comment.body, '/hold') ||
-      contains(github.event.comment.body, '/cherry-pick')
+      contains(github.event.comment.body, '/cherry-pick') ||
+      contains(github.event.comment.body, '/build-push-pr-image')
     runs-on: ubuntu-latest
 
     steps:
