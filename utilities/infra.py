@@ -871,7 +871,10 @@ def verify_cluster_sanity(
     junitxml_property: Callable[[str, object], None] | None = None,
 ) -> None:
     """
-    Check that cluster resources (Nodes, DSCI, DSC) are healthy and exists pytest execution on failure.
+    Always runs cluster sanity checks (Nodes, DSCI, DSC).
+     If checks fail:
+       - Default behavior: Logs error and exits.
+       - If --cluster-sanity-continue-on-failure is set: Logs warning and allows tests to run.
 
     Args:
         request (FixtureRequest): pytest request
@@ -881,35 +884,48 @@ def verify_cluster_sanity(
         junitxml_property (property): Junitxml property
 
     """
-    skip_cluster_sanity_check = "--cluster-sanity-skip-check"
-    skip_rhoai_check = "--cluster-sanity-skip-rhoai-check"
+    # Option to completely skip the check (can co-exist)
+    skip_check_opt = "--cluster-sanity-skip-check"
+    # Option to skip specific RHOAI parts
+    skip_rhoai_check_opt = "--cluster-sanity-skip-rhoai-check"
+    # Option to control behavior *on failure*
+    continue_on_failure_opt = "--cluster-sanity-continue-on-failure"
 
-    if request.session.config.getoption(skip_cluster_sanity_check):
-        LOGGER.warning(f"Skipping cluster sanity check, got {skip_cluster_sanity_check}")
-        return
+    # Handle the option to completely skip the check first
+    if request.session.config.getoption(skip_check_opt):
+        LOGGER.warning(f"Skipping cluster sanity check entirely due to {skip_check_opt} flag.")
+        return  # Exit the function early, tests will run without checks
 
     try:
-        LOGGER.info("Check cluster sanity.")
-
+        LOGGER.info("Running cluster sanity check...")
         assert_nodes_in_healthy_condition(nodes=nodes, healthy_node_condition_type={"KubeletReady": "True"})
         assert_nodes_schedulable(nodes=nodes)
-
-        if request.session.config.getoption(skip_rhoai_check):
-            LOGGER.warning(f"Skipping RHOAI resource checks, got {skip_rhoai_check}")
-
+        if request.session.config.getoption(skip_rhoai_check_opt):
+            LOGGER.warning(f"Skipping RHOAI resource checks due to {skip_rhoai_check_opt} flag.")
         else:
             verify_dsci_status_ready(dsci_resource=dsci_resource)
             verify_dsc_status_ready(dsc_resource=dsc_resource)
+        # If we reach here, checks passed
+        LOGGER.info("Cluster sanity check passed.")
 
     except (ResourceNotReadyError, NodeUnschedulableError, NodeNotReadyError) as ex:
         error_msg = f"Cluster sanity check failed: {str(ex)}"
-        # return_code set to 99 to not collide with https://docs.pytest.org/en/stable/reference/exit-codes.html
-        return_code = 99
-
-        LOGGER.error(error_msg)
-
-        if junitxml_property:
-            junitxml_property(name="exit_code", value=return_code)  # type: ignore[call-arg]
-
-        # TODO: Write to file to easily report the failure in jenkins
-        pytest.exit(reason=error_msg, returncode=return_code)
+        # Check if the flag to continue *despite* failure is set
+        if request.session.config.getoption(continue_on_failure_opt):
+            # Flag is set: Log warning, then return normally to allow tests to run
+            LOGGER.warning(f"{error_msg}. Proceeding with tests anyway due to {continue_on_failure_opt} flag.")
+            # Optional: Add JUnit property to mark that sanity failed but tests continued
+            if junitxml_property:
+                junitxml_property(name="cluster_sanity_check_failed", value=True)  # type: ignore[call-arg]
+                junitxml_property(name="cluster_sanity_forced_continue", value=True)  # type: ignore[call-arg]
+            # Return normally from the fixture setup
+        else:
+            # return_code set to 99 to not collide with https://docs.pytest.org/en/stable/reference/exit-codes.html
+            return_code = 99
+            LOGGER.error(error_msg)
+            if junitxml_property:
+                junitxml_property(name="cluster_sanity_check_failed", value=True)  # type: ignore[call-arg]
+                junitxml_property(name="cluster_sanity_forced_continue", value=False)  # type: ignore[call-arg]
+                junitxml_property(name="exit_code", value=return_code)  # type: ignore[call-arg]
+            # TODO: Write to file to easily report the failure in jenkins
+            pytest.exit(reason=error_msg, returncode=return_code)
