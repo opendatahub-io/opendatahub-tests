@@ -913,7 +913,7 @@ def verify_cluster_sanity(
         # Check if the flag to continue *despite* failure is set
         if request.session.config.getoption(continue_on_failure_opt):
             # Flag is set: Log warning, then return normally to allow tests to run
-            LOGGER.warning(f"{error_msg}. Proceeding with tests anyway due to {continue_on_failure_opt} flag.")
+            LOGGER.error(f"{error_msg}. Proceeding with tests anyway due to {continue_on_failure_opt} flag.")
             # Optional: Add JUnit property to mark that sanity failed but tests continued
             if junitxml_property:
                 junitxml_property(name="cluster_sanity_check_failed", value=True)  # type: ignore[call-arg]
