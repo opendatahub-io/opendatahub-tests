@@ -44,7 +44,7 @@ def execute_model_registry_post_command(url: str, headers: dict[str, str], data_
         raise
 
 
-def execute_model_registry_get_command(url: str, headers: dict[str, str]) -> dict[Any, Any]: # skip-unused-code
+def execute_model_registry_get_command(url: str, headers: dict[str, str]) -> dict[Any, Any]:  # skip-unused-code
     resp = requests.get(url=url, headers=headers, verify=False)
     LOGGER.info(f"url: {url}, status code: {resp.status_code}, rep: {resp.text}")
     if resp.status_code not in [200, 201]:
