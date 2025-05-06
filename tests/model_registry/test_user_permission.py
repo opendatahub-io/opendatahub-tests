@@ -1,5 +1,5 @@
 import pytest
-from typing import Self, Callable, ContextManager
+from typing import Self, Callable, ContextManager, Generator
 import shlex
 import os
 from simple_logger.logger import get_logger
@@ -12,17 +12,19 @@ from tests.model_registry.utils import get_endpoint_from_mr_service, get_mr_serv
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 from ocp_resources.model_registry import ModelRegistry
+from ocp_resources.role_binding import RoleBinding
 from utilities.constants import DscComponents, Protocols
 from mr_openapi.exceptions import ForbiddenException
 from model_registry import ModelRegistry as ModelRegistryClient
 
 LOGGER = get_logger(name=__name__)
 TEST_NAMESPACE = "model-registry-test-ns"
+NEW_GROUP_NAME = "test-model-registry-group"
 
 
 def get_token(user_name: str, password: str, admin_client: DynamicClient) -> str:
     """
-    Get a token for a user
+    Get an OpenShift token for a user
     """
 
     current_context = run_command(command=["oc", "config", "current-context"])[1].strip()
@@ -44,13 +46,13 @@ def assert_mr_client(
     admin_client: DynamicClient,
     context: ContextManager,
     mr_instance: ModelRegistry,
-    mr_namespace: Namespace,
+    mr_namespace_name: str,
 ) -> None:
     """
-    Initiate MR client
+    Assert that the Model Registry client can be created and used
     """
 
-    namespace_instance = admin_client.resources.get(api_version="v1", kind="Namespace").get(name=mr_namespace)
+    namespace_instance = admin_client.resources.get(api_version="v1", kind="Namespace").get(name=mr_namespace_name)
     svc = get_mr_service_by_label(client=admin_client, ns=namespace_instance, mr_instance=mr_instance)
     server, port = get_endpoint_from_mr_service(svc, Protocols.REST).split(":")
 
@@ -93,6 +95,20 @@ def user_in_group_context() -> Callable[[str], ContextManager]:
     return _context
 
 
+@pytest.fixture
+def new_group(request: pytest.FixtureRequest) -> Generator[str, None, None]:
+    """
+    Fixture to create a new OpenShift group and add a user, then delete the group after the test.
+    """
+
+    group_name, user_name = request.param
+    run_command(command=["oc", "adm", "groups", "new", group_name, user_name])
+    try:
+        yield group_name
+    finally:
+        run_command(command=["oc", "delete", "group", group_name])
+
+
 @pytest.mark.parametrize(
     "updated_dsc_component_state_scope_class",
     [
@@ -109,7 +125,7 @@ def user_in_group_context() -> Callable[[str], ContextManager]:
 )
 class TestUserPermission:
     """
-    Test Role-based access control
+    Test suite for verifying user and group permissions for the Model Registry.
     """
 
     @pytest.mark.smoke
@@ -124,15 +140,15 @@ class TestUserPermission:
         self: Self,
         updated_dsc_component_state_scope_class: Namespace,
         model_registry_instance: ModelRegistry,
-        model_registry_namespace: Namespace,
+        model_registry_namespace: str,
         admin_client: DynamicClient,
         user_name: str,
         password: str,
         context_manager: ContextManager,
     ):
         """
-        Cluster admin user should be able to access the model registry,
-        other users should not be able to access the model registry
+        Test that a user with permission can access the Model Registry,
+        and a user without permission receives a ForbiddenException.
         """
         assert model_registry_instance.name == MR_INSTANCE_NAME
         user_token = get_token(user_name=user_name, password=password, admin_client=admin_client)
@@ -142,7 +158,7 @@ class TestUserPermission:
             admin_client=admin_client,
             context=context_manager,
             mr_instance=model_registry_instance,
-            mr_namespace=model_registry_namespace,
+            mr_namespace_name=model_registry_namespace,
         )
 
     @pytest.mark.smoke
@@ -156,14 +172,15 @@ class TestUserPermission:
         self: Self,
         updated_dsc_component_state_scope_class: Namespace,
         model_registry_instance: ModelRegistry,
-        model_registry_namespace: Namespace,
+        model_registry_namespace: str,
         admin_client: DynamicClient,
         user_name: str,
         password: str,
         user_in_group_context: Callable[[str], ContextManager],
     ):
         """
-        User can initiate MR only when they are added to the model-registry-users group
+        Test that a user cannot access the Model Registry before being added to a group,
+        and can access it after being added to the group.
         """
         assert model_registry_instance.name == MR_INSTANCE_NAME
 
@@ -175,7 +192,7 @@ class TestUserPermission:
             admin_client=admin_client,
             context=pytest.raises(ForbiddenException),
             mr_instance=model_registry_instance,
-            mr_namespace=model_registry_namespace,
+            mr_namespace_name=model_registry_namespace,
         )
 
         LOGGER.info("Add user to the model registry users group")
@@ -188,5 +205,47 @@ class TestUserPermission:
                 admin_client=admin_client,
                 context=nullcontext(),
                 mr_instance=model_registry_instance,
-                mr_namespace=model_registry_namespace,
+                mr_namespace_name=model_registry_namespace,
+            )
+
+    @pytest.mark.smoke
+    @pytest.mark.parametrize(
+        "user_name, password, new_group",
+        [
+            ("ldap-user1", os.environ.get("NON_ADMIN_PASSWORD"), (NEW_GROUP_NAME, "ldap-user1")),
+        ],
+        indirect=["new_group"],
+    )
+    def test_create_group(
+        self: Self,
+        updated_dsc_component_state_scope_class: Namespace,
+        model_registry_instance: ModelRegistry,
+        model_registry_namespace: str,
+        admin_client: DynamicClient,
+        user_name: str,
+        password: str,
+        new_group: str,
+    ):
+        """
+        Test creating a group, granting it model registry access, and verifying user access.
+        """
+
+        LOGGER.info("Group created and user added to it")
+
+        with RoleBinding(
+            client=admin_client,
+            namespace=model_registry_namespace,
+            name="test-model-registry-group-edit",
+            role_ref_name="edit",
+            role_ref_kind="ClusterRole",
+            subjects_kind="Group",
+            subjects_name=NEW_GROUP_NAME,
+        ):
+            user_token = get_token(user_name=user_name, password=password, admin_client=admin_client)
+            assert_mr_client(
+                user_token=user_token,
+                admin_client=admin_client,
+                context=nullcontext(),
+                mr_instance=model_registry_instance,
+                mr_namespace_name=model_registry_namespace,
             )
