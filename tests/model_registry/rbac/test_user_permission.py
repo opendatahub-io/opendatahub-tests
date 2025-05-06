@@ -1,112 +1,22 @@
 import pytest
-from typing import Self, Callable, ContextManager, Generator
-import shlex
+from typing import Self, Callable, ContextManager
 import os
 from simple_logger.logger import get_logger
-from contextlib import nullcontext, contextmanager
-from pyhelper_utils.shell import run_command
+from contextlib import nullcontext
 
 
-from tests.model_registry.constants import MR_INSTANCE_NAME
-from tests.model_registry.utils import get_endpoint_from_mr_service, get_mr_service_by_label
+from tests.model_registry.constants import MR_INSTANCE_NAME, MR_NAMESPACE
+from tests.model_registry.rbac.utils import get_token, assert_mr_client
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 from ocp_resources.model_registry import ModelRegistry
 from ocp_resources.role_binding import RoleBinding
-from utilities.constants import DscComponents, Protocols
+from utilities.constants import DscComponents
 from mr_openapi.exceptions import ForbiddenException
-from model_registry import ModelRegistry as ModelRegistryClient
+
 
 LOGGER = get_logger(name=__name__)
-TEST_NAMESPACE = "model-registry-test-ns"
 NEW_GROUP_NAME = "test-model-registry-group"
-
-
-def get_token(user_name: str, password: str, admin_client: DynamicClient) -> str:
-    """
-    Get an OpenShift token for a user
-    """
-
-    current_context = run_command(command=["oc", "config", "current-context"])[1].strip()
-
-    command: str = (
-        f"oc login  --insecure-skip-tls-verify=true {admin_client.configuration.host} -u {user_name} -p {password}"
-    )
-    run_command(command=shlex.split(command), hide_log_command=True)
-
-    token = run_command(command=["oc", "whoami", "-t"])[1].strip()
-
-    run_command(command=["oc", "config", "use-context", current_context])
-
-    return token
-
-
-def assert_mr_client(
-    user_token: str,
-    admin_client: DynamicClient,
-    context: ContextManager,
-    mr_instance: ModelRegistry,
-    mr_namespace_name: str,
-) -> None:
-    """
-    Assert that the Model Registry client can be created and used
-    """
-
-    namespace_instance = admin_client.resources.get(api_version="v1", kind="Namespace").get(name=mr_namespace_name)
-    svc = get_mr_service_by_label(client=admin_client, ns=namespace_instance, mr_instance=mr_instance)
-    server, port = get_endpoint_from_mr_service(svc, Protocols.REST).split(":")
-
-    with context:
-        ModelRegistryClient(
-            server_address=f"https://{server}",
-            port=int(port),
-            author="opendatahub-test",
-            user_token=user_token,
-            is_secure=False,
-        )
-
-
-@pytest.fixture(scope="session", autouse=True)
-def check_env_vars() -> None:
-    """
-    Check if the required environment variables are set
-    """
-
-    missing = []
-    missing.extend(var for var in ["ADMIN_PASSWORD", "NON_ADMIN_PASSWORD"] if not os.environ.get(var))
-    if missing:
-        pytest.fail(f"Required environment variables not set: {', '.join(missing)}")
-
-
-@pytest.fixture
-def user_in_group_context() -> Callable[[str], ContextManager]:
-    """
-    Fixture to add and remove a user from the model-registry-users group.
-    """
-
-    @contextmanager
-    def _context(user_name: str):
-        run_command(command=["oc", "adm", "groups", "add-users", "model-registry-users", user_name])
-        try:
-            yield
-        finally:
-            run_command(command=["oc", "adm", "groups", "remove-users", "model-registry-users", user_name])
-
-    return _context
-
-
-@pytest.fixture
-def new_group(request: pytest.FixtureRequest) -> Generator[str, None, None]:
-    """
-    Fixture to create a new OpenShift group and add a user, then delete the group after the test.
-    """
-
-    group_name, user_name = request.param
-    run_command(command=["oc", "adm", "groups", "new", group_name, user_name])
-    try:
-        yield group_name
-    finally:
-        run_command(command=["oc", "delete", "group", group_name])
 
 
 @pytest.mark.parametrize(
@@ -116,7 +26,7 @@ def new_group(request: pytest.FixtureRequest) -> Generator[str, None, None]:
             "component_patch": {
                 DscComponents.MODELREGISTRY: {
                     "managementState": DscComponents.ManagementState.MANAGED,
-                    "registriesNamespace": TEST_NAMESPACE,
+                    "registriesNamespace": MR_NAMESPACE,
                 },
             }
         })
