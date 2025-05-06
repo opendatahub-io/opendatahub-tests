@@ -241,6 +241,47 @@ class TestUserPermission:
             subjects_kind="Group",
             subjects_name=NEW_GROUP_NAME,
         ):
+            LOGGER.info("User should have access to MR after the group is granted edit access via a RoleBinding")
+            user_token = get_token(user_name=user_name, password=password, admin_client=admin_client)
+            assert_mr_client(
+                user_token=user_token,
+                admin_client=admin_client,
+                context=nullcontext(),
+                mr_instance=model_registry_instance,
+                mr_namespace_name=model_registry_namespace,
+            )
+
+    @pytest.mark.smoke
+    @pytest.mark.parametrize(
+        "user_name, password",
+        [
+            ("ldap-user1", os.environ.get("NON_ADMIN_PASSWORD")),
+        ],
+    )
+    def test_add_single_user(
+        self: Self,
+        updated_dsc_component_state_scope_class: Namespace,
+        model_registry_instance: ModelRegistry,
+        model_registry_namespace: str,
+        admin_client: DynamicClient,
+        user_name: str,
+        password: str,
+    ):
+        """
+        Test that adding a single user to the Model Registry's permitted list allows
+        that user to access the Model Registry.
+        """
+
+        with RoleBinding(
+            client=admin_client,
+            namespace=model_registry_namespace,
+            name="test-model-registry-access",
+            role_ref_name="edit",
+            role_ref_kind="ClusterRole",
+            subjects_kind="User",
+            subjects_name=user_name,
+        ):
+            LOGGER.info("User should have access to MR after the RoleBinding for the user is created")
             user_token = get_token(user_name=user_name, password=password, admin_client=admin_client)
             assert_mr_client(
                 user_token=user_token,
