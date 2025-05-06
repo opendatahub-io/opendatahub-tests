@@ -109,7 +109,7 @@ def pytest_addoption(parser: Parser) -> None:
     )
     upgrade_group.addoption(
         "--upgrade-deployment-modes",
-        help="Coma-separated str; specify inference service deployment modes tests to run in upgrade tests. "
+        help="Comma-separated str; specify inference service deployment modes tests to run in upgrade tests. "
         "If not set, all will be tested.",
     )
 
@@ -129,6 +129,13 @@ def pytest_addoption(parser: Parser) -> None:
         "--cluster-sanity-skip-rhoai-check",
         help="Skip RHOAI/ODH-related resources (DSCI and DSC) checks",
         action="store_true",
+    )
+    cluster_sanity_group.addoption(
+        "--cluster-sanity-continue-on-failure",
+        action="store_true",
+        default=False,
+        help="If set, log a warning on cluster sanity failure but continue running tests. "
+        "Default is to skip tests on failure.",
     )
 
 
