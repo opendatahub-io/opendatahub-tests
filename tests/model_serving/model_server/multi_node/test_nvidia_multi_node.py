@@ -9,6 +9,7 @@ from tests.model_serving.model_server.multi_node.constants import (
 )
 from tests.model_serving.model_server.multi_node.utils import (
     get_pods_by_isvc_generation,
+    is_arg_in_model_spec,
     verify_nvidia_gpu_status,
     verify_ray_status,
 )
@@ -23,6 +24,7 @@ pytestmark = [
 
 
 LOGGER = get_logger(name=__name__)
+MAX_NUM_BATCHED_TOKENS_ARG: str = "--max-num-batched-tokens=256"
 
 
 @pytest.mark.parametrize(
@@ -168,17 +170,26 @@ class TestMultiNode:
         )
 
     @pytest.mark.parametrize(
-        "patched_multi_node_worker_spec",
-        [pytest.param({"worker-spec": {"pipelineParallelSize": 2, "tensorParallelSize": 4}})],
+        "patched_multi_node_spec",
+        [
+            pytest.param({
+                "spec": {
+                    "workerSpec": {
+                        "pipelineParallelSize": 2,
+                        "tensorParallelSize": 4,
+                    }
+                }
+            })
+        ],
         indirect=True,
     )
-    def test_multi_node_tensor_parallel_size_propagation(self, unprivileged_client, patched_multi_node_worker_spec):
+    def test_multi_node_tensor_parallel_size_propagation(self, unprivileged_client, patched_multi_node_spec):
         """Test multi node tensor parallel size (number of GPUs per pod) propagation to pod config"""
-        isvc_parallel_size = str(patched_multi_node_worker_spec.instance.spec.predictor.workerSpec.tensorParallelSize)
+        isvc_parallel_size = str(patched_multi_node_spec.instance.spec.predictor.workerSpec.tensorParallelSize)
 
         failed_pods: list[dict[str, Any]] = []
 
-        for pod in get_pods_by_isvc_generation(client=unprivileged_client, isvc=patched_multi_node_worker_spec):
+        for pod in get_pods_by_isvc_generation(client=unprivileged_client, isvc=patched_multi_node_spec):
             pod_resources = pod.instance.spec.containers[0].resources
             if not (
                 isvc_parallel_size
@@ -191,17 +202,47 @@ class TestMultiNode:
             pytest.fail(f"Failed pods resources : {failed_pods}, expected tesnor parallel size {isvc_parallel_size}")
 
     @pytest.mark.parametrize(
-        "patched_multi_node_worker_spec",
-        [pytest.param({"worker-spec": {"pipelineParallelSize": 2, "tensorParallelSize": 1}})],
+        "patched_multi_node_spec",
+        [
+            pytest.param({
+                "spec": {
+                    "workerSpec": {
+                        "pipelineParallelSize": 2,
+                        "tensorParallelSize": 1,
+                    }
+                }
+            })
+        ],
         indirect=True,
     )
-    def test_multi_node_pipeline_parallel_size_propagation(self, unprivileged_client, patched_multi_node_worker_spec):
+    def test_multi_node_pipeline_parallel_size_propagation(self, unprivileged_client, patched_multi_node_spec):
         """Test multi node pipeline parallel size (number of pods) propagation to pod config"""
-        isvc_parallel_size = patched_multi_node_worker_spec.instance.spec.predictor.workerSpec.pipelineParallelSize
-        isvc_num_pods = get_pods_by_isvc_generation(client=unprivileged_client, isvc=patched_multi_node_worker_spec)
+        isvc_parallel_size = patched_multi_node_spec.instance.spec.predictor.workerSpec.pipelineParallelSize
+        isvc_num_pods = get_pods_by_isvc_generation(client=unprivileged_client, isvc=patched_multi_node_spec)
 
         if isvc_parallel_size != len(isvc_num_pods):
             pytest.fail(
                 f"Expected pipeline parallel size {isvc_parallel_size} "
                 f"does not match number of pods {len(isvc_num_pods)}"
             )
+
+    @pytest.mark.parametrize(
+        "patched_multi_node_spec",
+        [pytest.param({"spec": {"model": {"args": [MAX_NUM_BATCHED_TOKENS_ARG]}}})],
+        indirect=True,
+    )
+    @pytest.mark.dependency(name="test_model_args_added_to_vllm_command")
+    def test_model_args_added_to_model_spec(self, unprivileged_client, patched_multi_node_spec):
+        """Test model args added to vllm command"""
+        if not is_arg_in_model_spec(
+            client=unprivileged_client, isvc=patched_multi_node_spec, arg=MAX_NUM_BATCHED_TOKENS_ARG
+        ):
+            pytest.fail(f"{MAX_NUM_BATCHED_TOKENS_ARG} model args is not set in spec")
+
+    @pytest.mark.dependency(depends=["test_model_args_added_to_vllm_command"])
+    def test_model_args_removed_from_model_spec(self, unprivileged_client, multi_node_inference_service):
+        """Test model args removed from vllm command"""
+        if is_arg_in_model_spec(
+            client=unprivileged_client, isvc=multi_node_inference_service, arg=MAX_NUM_BATCHED_TOKENS_ARG
+        ):
+            pytest.fail(f"{MAX_NUM_BATCHED_TOKENS_ARG} model args is not removed from spec")

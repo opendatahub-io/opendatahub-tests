@@ -83,6 +83,7 @@ def default_notebook(
 
     # Set the correct username
     username = get_username(dyn_client=admin_client)
+    assert username, "Failed to determine username from the cluster"
 
     # Set the image path based on internal image registry status
     minimal_image_path = (

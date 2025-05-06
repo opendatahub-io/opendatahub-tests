@@ -102,3 +102,11 @@ class ResourceNotReadyError(Exception):
 
 class PodContainersRestartError(Exception):
     pass
+
+
+class TooManyPodsError(Exception):
+    pass
+
+
+class UnexpectedFailureError(Exception):
+    pass

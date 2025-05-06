@@ -28,7 +28,7 @@ from ocp_resources.node_config_openshift_io import Node
 from ocp_resources.pod import Pod
 from ocp_resources.project_project_openshift_io import Project
 from ocp_resources.project_request import ProjectRequest
-from ocp_resources.resource import ResourceEditor, get_client
+from ocp_resources.resource import Resource, ResourceEditor, get_client
 from ocp_resources.role import Role
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
@@ -640,6 +640,16 @@ def verify_no_failed_pods(
         ready_pods = 0
         failed_pods: dict[str, Any] = {}
 
+        container_wait_base_errors = ["InvalidImageName"]
+        container_terminated_base_errors = [Resource.Status.ERROR]
+
+        # For Model Mesh, if image pulling takes longer, pod may be in CrashLoopBackOff state but recover with retries.
+        if (
+            deployment_mode := isvc.instance.metadata.annotations.get("serving.kserve.io/deploymentMode")
+        ) and deployment_mode != KServeDeploymentType.MODEL_MESH:
+            container_wait_base_errors.append(Resource.Status.CRASH_LOOPBACK_OFF)
+            container_terminated_base_errors.append(Resource.Status.CRASH_LOOPBACK_OFF)
+
         if pods:
             for pod in pods:
                 for condition in pod.instance.status.conditions:
@@ -658,17 +668,11 @@ def verify_no_failed_pods(
                     ):
                         is_waiting_pull_back_off = (
                             wait_state := container_status.state.waiting
-                        ) and wait_state.reason in (
-                            pod.Status.CRASH_LOOPBACK_OFF,
-                            "InvalidImageName",
-                        )
+                        ) and wait_state.reason in container_wait_base_errors
 
                         is_terminated_error = (
                             terminate_state := container_status.state.terminated
-                        ) and terminate_state.reason in (
-                            pod.Status.ERROR,
-                            pod.Status.CRASH_LOOPBACK_OFF,
-                        )
+                        ) and terminate_state.reason in container_terminated_base_errors
 
                         if is_waiting_pull_back_off or is_terminated_error:
                             failed_pods[pod.name] = pod_status
@@ -847,16 +851,33 @@ def wait_for_isvc_pods(client: DynamicClient, isvc: InferenceService, runtime_na
     return get_pods_by_isvc_label(client=client, isvc=isvc, runtime_name=runtime_name)
 
 
-def verify_dsci_status_ready(dsci_resource: DSCInitialization) -> None:
-    LOGGER.info(f"Verify DSCI {dsci_resource.name} are {dsci_resource.Status.READY}.")
-    if dsci_resource.status != dsci_resource.Status.READY:
-        raise ResourceNotReadyError(f"DSCI {dsci_resource.name} is not ready.\nStatus: {dsci_resource.instance.status}")
+@retry(
+    wait_timeout=120,
+    sleep=5,
+    exceptions_dict={ResourceNotReadyError: []},
+)
+def wait_for_dsci_status_ready(dsci_resource: DSCInitialization) -> bool:
+    LOGGER.info(f"Wait for DSCI {dsci_resource.name} to be in {dsci_resource.Status.READY} status.")
+    if dsci_resource.status == dsci_resource.Status.READY:
+        return True
+
+    raise ResourceNotReadyError(
+        f"DSCI {dsci_resource.name} is not ready.\nCurrent status: {dsci_resource.instance.status}"
+    )
 
 
-def verify_dsc_status_ready(dsc_resource: DataScienceCluster) -> None:
-    LOGGER.info(f"Verify DSC {dsc_resource.name} are {dsc_resource.Status.READY}.")
-    if dsc_resource.status != dsc_resource.Status.READY:
-        raise ResourceNotReadyError(f"DSC {dsc_resource.name} is not ready.\nStatus: {dsc_resource.instance.status}")
+@retry(
+    wait_timeout=120,
+    sleep=5,
+    exceptions_dict={ResourceNotReadyError: []},
+)
+def wait_for_dsc_status_ready(dsc_resource: DataScienceCluster) -> bool:
+    LOGGER.info(f"Wait for DSC {dsc_resource.name} are {dsc_resource.Status.READY}.")
+    if dsc_resource.status == dsc_resource.Status.READY:
+        return True
+    raise ResourceNotReadyError(
+        f"DSC {dsc_resource.name} is not ready.\nCurrent status: {dsc_resource.instance.status}"
+    )
 
 
 def verify_cluster_sanity(
@@ -894,8 +915,8 @@ def verify_cluster_sanity(
             LOGGER.warning(f"Skipping RHOAI resource checks, got {skip_rhoai_check}")
 
         else:
-            verify_dsci_status_ready(dsci_resource=dsci_resource)
-            verify_dsc_status_ready(dsc_resource=dsc_resource)
+            wait_for_dsci_status_ready(dsci_resource=dsci_resource)
+            wait_for_dsc_status_ready(dsc_resource=dsc_resource)
 
     except (ResourceNotReadyError, NodeUnschedulableError, NodeNotReadyError) as ex:
         error_msg = f"Cluster sanity check failed: {str(ex)}"
