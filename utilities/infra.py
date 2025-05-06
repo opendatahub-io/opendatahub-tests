@@ -885,6 +885,21 @@ def wait_for_dsci_status_ready(dsci_resource: DSCInitialization) -> bool:
     sleep=5,
     exceptions_dict={ResourceNotReadyError: []},
 )
+def wait_for_dsci_status_ready(dsci_resource: DSCInitialization) -> bool:
+    LOGGER.info(f"Wait for DSCI {dsci_resource.name} to be in {dsci_resource.Status.READY} status.")
+    if dsci_resource.status == dsci_resource.Status.READY:
+        return True
+
+    raise ResourceNotReadyError(
+        f"DSCI {dsci_resource.name} is not ready.\nCurrent status: {dsci_resource.instance.status}"
+    )
+
+
+@retry(
+    wait_timeout=120,
+    sleep=5,
+    exceptions_dict={ResourceNotReadyError: []},
+)
 def wait_for_dsc_status_ready(dsc_resource: DataScienceCluster) -> bool:
     LOGGER.info(f"Wait for DSC {dsc_resource.name} are {dsc_resource.Status.READY}.")
     if dsc_resource.status == dsc_resource.Status.READY:
@@ -931,7 +946,6 @@ def verify_cluster_sanity(
         else:
             wait_for_dsci_status_ready(dsci_resource=dsci_resource)
             wait_for_dsc_status_ready(dsc_resource=dsc_resource)
-
 
     except (ResourceNotReadyError, NodeUnschedulableError, NodeNotReadyError) as ex:
         error_msg = f"Cluster sanity check failed: {str(ex)}"
