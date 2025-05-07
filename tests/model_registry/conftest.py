@@ -1,11 +1,7 @@
 import pytest
 import re
-import random
-import string
-import subprocess
 import schemathesis
-import shlex
-from typing import Generator, Any, List, Dict
+from typing import Generator, Any
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
@@ -14,12 +10,8 @@ from ocp_resources.service import Service
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
-from ocp_resources.service_account import ServiceAccount
-from ocp_resources.role import Role
-from ocp_resources.role_binding import RoleBinding
 
 from ocp_resources.model_registry import ModelRegistry
-import schemathesis.schemas
 from schemathesis.specs.openapi.schemas import BaseOpenAPISchema
 from schemathesis.generation.stateful.state_machine import APIStateMachine
 from schemathesis.core.transport import Response
@@ -30,7 +22,6 @@ from pytest import FixtureRequest
 from simple_logger.logger import get_logger
 from kubernetes.dynamic import DynamicClient
 from pytest_testconfig import config as py_config
-from pyhelper_utils.shell import run_command
 from model_registry.types import RegisteredModel
 from tests.model_registry.constants import (
     MR_OPERATOR_NAME,
@@ -52,7 +43,6 @@ from model_registry import ModelRegistry as ModelRegistryClient
 
 
 LOGGER = get_logger(name=__name__)
-DEFAULT_TOKEN_DURATION = "10m"
 
 
 @pytest.fixture(scope="class")
@@ -302,194 +292,3 @@ def model_registry_operator_pod(admin_client: DynamicClient) -> Pod:
     if not model_registry_operator_pods:
         raise ResourceNotFoundError("Model registry operator pod not found")
     return model_registry_operator_pods[0]
-
-
-# --- Fixture Helper Function ---
-
-
-def generate_random_name(prefix: str = "test", length: int = 8) -> str:
-    """Generates a random string for resource names."""
-    suffix = "".join(random.choices(string.ascii_lowercase + string.digits, k=length))
-    return f"{prefix}-{suffix}"
-
-
-# --- Service Account and Namespace Fixtures (Function Scoped for Isolation) ---
-
-
-@pytest.fixture(scope="function")
-def sa_namespace(admin_client: DynamicClient) -> Generator[Namespace, None, None]:
-    """
-    Creates a temporary namespace using a context manager for automatic cleanup.
-    Function scope ensures a fresh namespace for each test needing it.
-    """
-    ns_name = generate_random_name(prefix="mr-rbac-test-ns")
-    LOGGER.info(f"Creating temporary namespace: {ns_name}")
-    # Use context manager for creation and deletion
-    with Namespace(client=admin_client, name=ns_name) as ns:
-        try:
-            ns.wait_for_status(status=Namespace.Status.ACTIVE, timeout=120)
-            LOGGER.info(f"Namespace {ns_name} is active.")
-            yield ns
-            # Cleanup happens automatically when exiting 'with' block
-            LOGGER.info(f"Namespace {ns_name} deletion initiated by context manager.")
-            # Add a final wait within the fixture if immediate confirmation is needed,
-            # but context manager handles the delete call. Let's rely on the manager.
-            # Consider adding ns.wait_deleted(timeout=180) here if needed AFTER yield returns.
-        except Exception:
-            LOGGER.error(f"Timeout waiting for namespace {ns_name} to become active.")
-            pytest.fail(f"Namespace {ns_name} failed to become active.")
-
-
-@pytest.fixture(scope="function")
-def service_account(admin_client: DynamicClient, sa_namespace: Namespace) -> Generator[ServiceAccount, None, None]:
-    """
-    Creates a ServiceAccount within the temporary namespace using a context manager.
-    Function scope ensures it's tied to the lifetime of sa_namespace for that test.
-    """
-    sa_name = generate_random_name(prefix="mr-test-user")
-    LOGGER.info(f"Creating ServiceAccount: {sa_name} in namespace {sa_namespace.name}")
-    # Use context manager for creation and deletion
-    with ServiceAccount(client=admin_client, name=sa_name, namespace=sa_namespace.name) as sa:
-        try:
-            sa.wait(timeout=60)  # Wait for SA object to exist
-            LOGGER.info(f"ServiceAccount {sa_name} created.")
-            yield sa
-            # Cleanup happens automatically when exiting 'with' block
-            LOGGER.info(f"ServiceAccount {sa_name} deletion initiated by context manager.")
-        except Exception:
-            LOGGER.error(f"Timeout waiting for ServiceAccount {sa_name} to be created.")
-            pytest.fail(f"ServiceAccount {sa_name} failed to be created.")
-
-
-@pytest.fixture(scope="function")
-def sa_token(service_account: ServiceAccount) -> str:  # type: ignore[return]
-    """
-    Retrieves a short-lived token for the ServiceAccount using 'oc create token'.
-    Function scope because token is temporary and tied to the SA for that test.
-    """
-    sa_name = service_account.name
-    namespace = service_account.namespace  # Get namespace name from SA object
-    LOGGER.info(f"Retrieving token for ServiceAccount: {sa_name} in namespace {namespace}")
-    # (Keep the subprocess logic from previous version - it's appropriate here)
-    try:
-        cmd = f"oc create token {sa_name} -n {namespace} --duration={DEFAULT_TOKEN_DURATION}"
-        LOGGER.debug(f"Executing command: {cmd}")
-        res, out, err = run_command(command=shlex.split(cmd), verify_stderr=False, check=True)
-        token = out.strip()
-        if not token:
-            pytest.fail(f"Retrieved token is empty for SA {sa_name} in {namespace}.")
-        LOGGER.info(f"Successfully retrieved token for SA {sa_name}")
-        return token
-    except subprocess.CalledProcessError as e:
-        LOGGER.error(f"Failed to create token for SA {sa_name} ns {namespace}: {e.stderr}")
-        pytest.fail(f"Failed to create token for SA {sa_name}: {e.stderr}")
-    except subprocess.TimeoutExpired:
-        LOGGER.error(f"Timeout creating token for SA {sa_name} ns {namespace}")
-        pytest.fail(f"Timeout creating token for SA {sa_name}")
-    except Exception as e:
-        LOGGER.error(
-            f"An unexpected error occurred during token retrieval for SA {sa_name} ns {namespace}: {e}", exc_info=True
-        )
-        pytest.fail(f"Unexpected error getting token for SA {sa_name}: {e}")
-
-
-# --- RBAC Fixtures (Using Context Managers, Function Scoped) ---
-
-
-@pytest.fixture(scope="function")
-def mr_access_role(
-    admin_client: DynamicClient,
-    model_registry_namespace: str,  # Existing fixture from main conftest
-    sa_namespace: Namespace,  # Used for unique naming
-) -> Generator[Role, None, None]:
-    """
-    Creates the MR Access Role using direct constructor parameters and a context manager.
-    """
-    role_name = f"registry-user-{MR_INSTANCE_NAME}-{sa_namespace.name[:8]}"
-    LOGGER.info(f"Defining Role: {role_name} in namespace {model_registry_namespace}")
-
-    # Define rules directly as required by the Role constructor's 'rules' parameter
-    role_rules: List[Dict[str, Any]] = [
-        {
-            "apiGroups": [""],  # Core API group
-            "resources": ["services"],  # As per last refinement for REST access
-            "resourceNames": [MR_INSTANCE_NAME],  # Grant access only to the specific MR service object
-            "verbs": ["get"],
-        }
-    ]
-
-    # Define labels, to be passed via **kwargs
-    role_labels = {
-        "app.kubernetes.io/component": "model-registry-test-rbac",
-        "test.opendatahub.io/namespace": sa_namespace.name,
-    }
-
-    LOGGER.info(f"Attempting to create Role: {role_name} with rules and labels.")
-    # Use context manager for creation and deletion
-    # Pass rules and labels directly
-    with Role(
-        client=admin_client,
-        name=role_name,
-        namespace=model_registry_namespace,
-        rules=role_rules,
-        label=role_labels,  # Pass labels via kwargs
-    ) as role:
-        try:
-            role.wait(timeout=60)  # Wait for role object to exist
-            LOGGER.info(f"Role {role.name} created successfully.")
-            yield role
-            LOGGER.info(f"Role {role.name} deletion initiated by context manager.")
-        except Exception as e:  # Catch other potential errors during Role instantiation or wait
-            LOGGER.error(f"Error during Role {role_name} creation or wait: {e}", exc_info=True)
-            pytest.fail(f"Failed during Role {role_name} creation: {e}")
-
-
-@pytest.fixture(scope="function")
-def mr_access_role_binding(
-    admin_client: DynamicClient,
-    model_registry_namespace: str,  # Existing fixture from main conftest
-    mr_access_role: Role,  # Depend on the role fixture to get its name
-    sa_namespace: Namespace,  # The namespace containing the test SA
-) -> Generator[RoleBinding, None, None]:
-    """
-    Creates the MR Access RoleBinding using direct constructor parameters and a context manager.
-    """
-    binding_name = f"{mr_access_role.name}-binding"  # Simplify name slightly, role name is already unique
-    role_name_ref = mr_access_role.name  # Get the actual name from the created Role object
-
-    LOGGER.info(
-        f"Defining RoleBinding: {binding_name} linking Group 'system:serviceaccounts:{sa_namespace.name}' "
-        f"to Role '{role_name_ref}' in namespace {model_registry_namespace}"
-    )
-
-    # Define labels, to be passed via **kwargs
-    binding_labels = {
-        "app.kubernetes.io/component": "model-registry-test-rbac",
-        "test.opendatahub.io/namespace": sa_namespace.name,
-    }
-
-    LOGGER.info(f"Attempting to create RoleBinding: {binding_name} with labels.")
-    # Use context manager for creation and deletion
-    # Pass subject and role_ref details directly to constructor
-    with RoleBinding(
-        client=admin_client,
-        name=binding_name,
-        namespace=model_registry_namespace,
-        # Subject parameters
-        subjects_kind="Group",
-        subjects_name=f"system:serviceaccounts:{sa_namespace.name}",
-        subjects_api_group="rbac.authorization.k8s.io",  # This is the default apiGroup for Group kind
-        # Role reference parameters
-        role_ref_kind="Role",
-        role_ref_name=role_name_ref,
-        # role_ref_api_group="rbac.authorization.k8s.io", # This is automatically set by the class
-        label=binding_labels,  # Pass labels via kwargs
-    ) as binding:
-        try:
-            binding.wait(timeout=60)  # Wait for binding object to exist
-            LOGGER.info(f"RoleBinding {binding.name} created successfully.")
-            yield binding
-            LOGGER.info(f"RoleBinding {binding.name} deletion initiated by context manager.")
-        except Exception as e:  # Catch other potential errors
-            LOGGER.error(f"Error during RoleBinding {binding_name} creation or wait: {e}", exc_info=True)
-            pytest.fail(f"Failed during RoleBinding {binding_name} creation: {e}")
