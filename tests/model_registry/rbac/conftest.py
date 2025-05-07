@@ -146,11 +146,10 @@ def mr_access_role_binding(
     Creates the MR Access RoleBinding using direct constructor parameters and a context manager.
     """
     binding_name = f"{mr_access_role.name}-binding"
-    role_name_ref = mr_access_role.name
 
     LOGGER.info(
         f"Defining RoleBinding: {binding_name} linking Group 'system:serviceaccounts:{sa_namespace.name}' "
-        f"to Role '{role_name_ref}' in namespace {model_registry_namespace}"
+        f"to Role '{mr_access_role.name}' in namespace {model_registry_namespace}"
     )
     binding_labels = {
         "app.kubernetes.io/component": "model-registry-test-rbac",
@@ -168,7 +167,7 @@ def mr_access_role_binding(
         subjects_api_group="rbac.authorization.k8s.io",  # This is the default apiGroup for Group kind
         # Role reference parameters
         role_ref_kind="Role",
-        role_ref_name=role_name_ref,
+        role_ref_name=mr_access_role.name,
         label=binding_labels,
         wait_for_resource=True,
     ) as binding:
