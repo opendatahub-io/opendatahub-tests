@@ -4,6 +4,13 @@ from typing import Callable, ContextManager, Generator
 from contextlib import contextmanager
 from pyhelper_utils.shell import run_command
 
+from tests.model_registry.constants import MR_INSTANCE_NAME
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.role import Role
+from simple_logger.logger import get_logger
+
+LOGGER = get_logger(name=__name__)
+
 
 @pytest.fixture(scope="session", autouse=True)
 def check_env_vars() -> None:
@@ -17,7 +24,7 @@ def check_env_vars() -> None:
         pytest.skip(f"Required environment variables not set: {', '.join(missing)}")
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def user_in_group_context() -> Callable[[str], ContextManager[None]]:
     """
     Fixture to add and remove a user from the model-registry-users group.
@@ -47,3 +54,38 @@ def new_group(request: pytest.FixtureRequest) -> Generator[str, None, None]:
         yield group_name
     finally:
         run_command(command=["oc", "delete", "group", group_name])
+
+
+@pytest.fixture(scope="function")
+def model_registry_role(
+    admin_client: DynamicClient,
+    model_registry_namespace: str,
+) -> Generator[Role, None, None]:
+    """
+    Fixture to create a Role for Model Registry access.
+    """
+    with Role(
+        client=admin_client,
+        namespace=model_registry_namespace,
+        name="test-model-registry-get",
+        rules=[
+            {
+                "apiGroups": [""],
+                "resources": ["services"],
+                "resourceNames": [MR_INSTANCE_NAME],
+                "verbs": ["get"],
+            },
+        ],
+        label={
+            "app.kubernetes.io/component": "model-registry-test-rbac",
+            "test.opendatahub.io/namespace": model_registry_namespace,
+        },
+        wait_for_resource=True,
+    ) as role:
+        try:
+            LOGGER.info(f"Role {role.name} created successfully.")
+            yield role
+            LOGGER.info(f"Role {role.name} deleted successfully.")
+        except Exception as e:  # Catch other potential errors during Role instantiation or wait
+            LOGGER.error(f"Error during Role {role.name} creation or wait: {e}", exc_info=True)
+            pytest.fail(f"Failed during Role {role.name} creation: {e}")
