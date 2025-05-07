@@ -263,4 +263,4 @@ def generate_random_name(prefix: str, length: int = 8) -> str:
 
 
 def generate_namespace_name(file_path: str) -> str:
-    return (file_path.strip(".py").replace("/", "-").replace("_", "-"))[-63:].split("-", 1)[-1]
+    return (file_path.removesuffix(".py").replace("/", "-").replace("_", "-"))[-63:].split("-", 1)[-1]

@@ -24,7 +24,8 @@ def sa_namespace(request: pytest.FixtureRequest, admin_client: DynamicClient) ->
     Creates a temporary namespace using a context manager for automatic cleanup.
     Function scope ensures a fresh namespace for each test needing it.
     """
-    ns_name = generate_namespace_name(file_path=request.fspath.strpath.split(f"{os.path.dirname(__file__)}/")[1])
+    test_file = os.path.relpath(request.fspath.strpath, start=os.path.dirname(__file__))
+    ns_name = generate_namespace_name(file_path=test_file)
     LOGGER.info(f"Creating temporary namespace: {ns_name}")
     with Namespace(client=admin_client, name=ns_name) as ns:
         ns.wait_for_status(status=Namespace.Status.ACTIVE, timeout=120)
