@@ -9,7 +9,10 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.role import Role
 from simple_logger.logger import get_logger
 
+import time
+
 LOGGER = get_logger(name=__name__)
+SLEEP_TIME = 5
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -34,6 +37,16 @@ def user_in_group_context() -> Callable[[str], ContextManager[None]]:
     @contextmanager
     def _context(user_name: str) -> Generator[None, None, None]:
         run_command(command=["oc", "adm", "groups", "add-users", "model-registry-users", user_name])
+        max_attempts = 5
+        for attempt in range(max_attempts):
+            result = run_command(command=["oc", "get", "group", "model-registry-users", "-o", "jsonpath='{.users}'"])
+            if user_name in result[1]:
+                LOGGER.info(f"User {user_name} added to model-registry-users group successfully.")
+                break
+            if attempt <= max_attempts - 1:
+                time.sleep(SLEEP_TIME)  # noqa: FCN001
+        else:
+            pytest.fail(f"User {user_name} not added to model-registry-users group after {max_attempts} attempts.")
         try:
             yield
         finally:
