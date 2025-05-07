@@ -29,9 +29,7 @@ def sa_namespace(request: pytest.FixtureRequest, admin_client: DynamicClient) ->
     LOGGER.info(f"Creating temporary namespace: {ns_name}")
     with Namespace(client=admin_client, name=ns_name) as ns:
         ns.wait_for_status(status=Namespace.Status.ACTIVE, timeout=120)
-        LOGGER.info(f"Namespace {ns_name} is active.")
         yield ns
-        LOGGER.info(f"Namespace {ns_name} deletion initiated by context manager.")
 
 
 @pytest.fixture(scope="function")
@@ -43,9 +41,7 @@ def service_account(admin_client: DynamicClient, sa_namespace: Namespace) -> Gen
     sa_name = generate_random_name(prefix="mr-test-user")
     LOGGER.info(f"Creating ServiceAccount: {sa_name} in namespace {sa_namespace.name}")
     with ServiceAccount(client=admin_client, name=sa_name, namespace=sa_namespace.name, wait_for_resource=True) as sa:
-        LOGGER.info(f"ServiceAccount {sa_name} created.")
         yield sa
-        LOGGER.info(f"ServiceAccount {sa_name} deletion initiated by context manager.")
 
 
 @pytest.fixture(scope="function")
