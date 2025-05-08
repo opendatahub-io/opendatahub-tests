@@ -150,7 +150,6 @@ def pytest_addoption(parser: Parser) -> None:
     )
 
 
-
 def pytest_cmdline_main(config: Any) -> None:
     config.option.basetemp = py_config["tmp_base_dir"] = f"{config.option.basetemp}-{shortuuid.uuid()}"
 
