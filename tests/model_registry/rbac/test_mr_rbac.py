@@ -20,13 +20,22 @@ LOGGER = get_logger(name=__name__)
 NEW_GROUP_NAME = "test-model-registry-group"
 
 
-def assert_positive_mr_registry(model_registry_instance, model_registry_namespace, admin_client, user_name, password):
+def assert_positive_mr_registry(
+    model_registry_instance: ModelRegistry,
+    model_registry_namespace: str,
+    admin_client: DynamicClient,
+    user_name: str,
+    password: str,
+) -> None:
+    """
+    Assert that a user has access to the Model Registry.
+    """
     user_token = get_token(user_name=user_name, password=password, admin_client=admin_client)
     namespace_instance = admin_client.resources.get(api_version="v1", kind="Namespace").get(
         name=model_registry_namespace
     )
     svc = get_mr_service_by_label(client=admin_client, ns=namespace_instance, mr_instance=model_registry_instance)
-    endpoint = get_endpoint_from_mr_service(service=svc, protocol=Protocols.REST)
+    endpoint = get_endpoint_from_mr_service(svc=svc, protocol=Protocols.REST)
     client_args = build_mr_client_args(rest_endpoint=endpoint, token=user_token, author="rbac-test-user-granted")
     mr_client = ModelRegistryClient(**client_args)
     assert mr_client is not None, "Client initialization failed after granting permissions"
@@ -82,7 +91,7 @@ class TestUserPermission:
             name=model_registry_namespace
         )
         svc = get_mr_service_by_label(client=admin_client, ns=namespace_instance, mr_instance=model_registry_instance)
-        endpoint = get_endpoint_from_mr_service(service=svc, protocol=Protocols.REST)
+        endpoint = get_endpoint_from_mr_service(svc=svc, protocol=Protocols.REST)
         client_args = build_mr_client_args(rest_endpoint=endpoint, token=user_token, author="rbac-test")
         with context_manager as exc:
             _ = ModelRegistryClient(**client_args)
@@ -103,7 +112,7 @@ class TestUserPermission:
             ("ldap-user1", os.environ.get("NON_ADMIN_PASSWORD")),
         ],
     )
-    @pytest.mark.usefixtures("updated_dsc_component_state_scope_class", "user_in_group_context")
+    @pytest.mark.usefixtures("updated_dsc_component_state_scope_class")
     def test_user_added_to_group(
         self: Self,
         model_registry_instance: ModelRegistry,
@@ -128,7 +137,7 @@ class TestUserPermission:
             name=model_registry_namespace
         )
         svc = get_mr_service_by_label(client=admin_client, ns=namespace_instance, mr_instance=model_registry_instance)
-        endpoint = get_endpoint_from_mr_service(service=svc, protocol=Protocols.REST)
+        endpoint = get_endpoint_from_mr_service(svc=svc, protocol=Protocols.REST)
         client_args = build_mr_client_args(rest_endpoint=endpoint, token=user_token, author="rbac-test-denied")
 
         LOGGER.info("User has no access to MR")
