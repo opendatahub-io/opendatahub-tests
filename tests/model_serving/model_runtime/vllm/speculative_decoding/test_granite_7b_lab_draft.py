@@ -17,8 +17,8 @@ SERVING_ARGUMENT: List[str] = [
     "--model=/mnt/models/granite-7b-instruct",
     "--uvicorn-log-level=debug",
     "--dtype=float16",
-    "--speculative-model=/mnt/models/granite-7b-instruct-accelerator",
-    "--num-speculative-tokens=5",
+    "--speculative_config",
+    '{ "model": "/mnt/models/granite-7b-instruct-accelerator", "num_speculative_tokens": 5 }',
     "--use-v2-block-manager",
 ]
 
