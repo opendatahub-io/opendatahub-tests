@@ -28,7 +28,7 @@ from ocp_resources.exceptions import MissingResourceError
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.infrastructure import Infrastructure
 from ocp_resources.namespace import Namespace
-from ocp_resources.node import Node
+from ocp_resources.node_config_openshift_io import Node
 from ocp_resources.pod import Pod
 from ocp_resources.project_project_openshift_io import Project
 from ocp_resources.project_request import ProjectRequest
@@ -39,7 +39,11 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
-
+from ocp_utilities.exceptions import NodeNotReadyError, NodeUnschedulableError
+from ocp_utilities.infra import (
+    assert_nodes_in_healthy_condition,
+    assert_nodes_schedulable,
+)
 from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
 from packaging.version import parse, Version
@@ -51,7 +55,11 @@ from ocp_utilities.infra import assert_nodes_in_healthy_condition, assert_nodes_
 from utilities.constants import ApiGroups, Labels, Timeout, RHOAI_OPERATOR_NAMESPACE, RHOAI_SUBSCRIPTION_NAME
 from utilities.constants import KServeDeploymentType
 from utilities.constants import Annotations
-from utilities.exceptions import ClusterLoginError, FailedPodsError, ResourceNotReadyError
+from utilities.exceptions import (
+    ClusterLoginError,
+    FailedPodsError,
+    ResourceNotReadyError,
+)
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 import utilities.general
 

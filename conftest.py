@@ -149,6 +149,18 @@ def pytest_addoption(parser: Parser) -> None:
         action="store_true",
     )
 
+    # Cluster sanity options
+    cluster_sanity_group.addoption(
+        "--cluster-sanity-skip-check",
+        help="Skip cluster_sanity check",
+        action="store_true",
+    )
+    cluster_sanity_group.addoption(
+        "--cluster-sanity-skip-rhoai-check",
+        help="Skip RHOAI/ODH-related resources (DSCI and DSC) checks",
+        action="store_true",
+    )
+
 
 def pytest_cmdline_main(config: Any) -> None:
     config.option.basetemp = py_config["tmp_base_dir"] = f"{config.option.basetemp}-{shortuuid.uuid()}"
@@ -270,7 +282,7 @@ def pytest_runtest_setup(item: Item) -> None:
 
     if KServeDeploymentType.SERVERLESS.lower() in item.keywords:
         item.fixturenames.insert(0, "fail_if_missing_dependent_operators")
-
+        
     if KServeDeploymentType.SERVERLESS.lower() in item.keywords:
         item.fixturenames.insert(0, "enabled_kserve_in_dsc")
 

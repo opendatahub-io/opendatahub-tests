@@ -114,18 +114,3 @@ class TooManyPodsError(Exception):
 
 class UnexpectedFailureError(Exception):
     pass
-
-class ResourceNotReadyError(Exception):
-    pass
-
-
-class PodContainersRestartError(Exception):
-    pass
-
-
-class TooManyPodsError(Exception):
-    pass
-
-
-class UnexpectedFailureError(Exception):
-    pass

@@ -8,8 +8,6 @@ dsci_name: str = "default-dsci"
 dependent_operators: str = "servicemeshoperator,authorino-operator,serverless-operator"
 use_unprivileged_client: bool = True
 
-use_unprivileged_client: bool = True
-
 for _dir in dir():
     val = locals()[_dir]
     if type(val) not in [bool, list, dict, str, int]:
