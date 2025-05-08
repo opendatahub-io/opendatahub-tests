@@ -282,7 +282,7 @@ def pytest_runtest_setup(item: Item) -> None:
 
     if KServeDeploymentType.SERVERLESS.lower() in item.keywords:
         item.fixturenames.insert(0, "fail_if_missing_dependent_operators")
-        
+
     if KServeDeploymentType.SERVERLESS.lower() in item.keywords:
         item.fixturenames.insert(0, "enabled_kserve_in_dsc")
 

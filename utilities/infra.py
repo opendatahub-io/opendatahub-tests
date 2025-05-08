@@ -50,8 +50,6 @@ from packaging.version import parse, Version
 from simple_logger.logger import get_logger
 
 from ocp_resources.subscription import Subscription
-from ocp_utilities.exceptions import NodeUnschedulableError, NodeNotReadyError
-from ocp_utilities.infra import assert_nodes_in_healthy_condition, assert_nodes_schedulable
 from utilities.constants import ApiGroups, Labels, Timeout, RHOAI_OPERATOR_NAMESPACE, RHOAI_SUBSCRIPTION_NAME
 from utilities.constants import KServeDeploymentType
 from utilities.constants import Annotations
