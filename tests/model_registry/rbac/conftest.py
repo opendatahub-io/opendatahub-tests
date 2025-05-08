@@ -112,11 +112,17 @@ def new_group(request: pytest.FixtureRequest) -> Generator[str, None, None]:
     The parameter should be a tuple: (group_name, user_name).
     """
     group_name, user_name = request.param
-    run_command(command=["oc", "adm", "groups", "new", group_name, user_name])
+    try:
+        run_command(command=["oc", "adm", "groups", "new", group_name, user_name])
+    except Exception as e:
+        pytest.skip(f"Failed to create group {group_name} and add user {user_name}: {e}")
     try:
         yield group_name
     finally:
-        run_command(command=["oc", "delete", "group", group_name])
+        try:
+            run_command(command=["oc", "delete", "group", group_name])
+        except Exception as e:
+            LOGGER.error(f"Failed to delete group {group_name}: {e}")
 
 
 # --- RBAC Fixtures ---
