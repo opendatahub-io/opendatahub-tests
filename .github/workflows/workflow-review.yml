@@ -1,3 +1,4 @@
+# https://stackoverflow.com/questions/67247752/how-to-use-secret-in-pull-request-review-similar-to-pull-request-target
 name: Dummy Workflow on review
 
 on:
