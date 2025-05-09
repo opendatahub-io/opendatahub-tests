@@ -25,7 +25,6 @@ from utilities.constants import (
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
-
 USER_ONE: str = "user-one"
 GUARDRAILS_ORCHESTRATOR_PORT: int = 8032
 
@@ -50,15 +49,16 @@ def guardrails_orchestrator(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     orchestrator_configmap: ConfigMap,
-    vllm_gateway_config: ConfigMap,
-    vllm_images_configmap: ConfigMap,
+    guardrails_gateway_config: ConfigMap,
 ) -> Generator[GuardrailsOrchestrator, Any, Any]:
     with GuardrailsOrchestrator(
         client=admin_client,
         name="gorch-test",
         namespace=model_namespace.name,
+        enable_built_in_detectors=True,
+        enable_guardrails_gateway=True,
         orchestrator_config=orchestrator_configmap.name,
-        vllm_gateway_config=vllm_gateway_config.name,
+        guardrails_gateway_config=guardrails_gateway_config.name,
         replicas=1,
         wait_for_resource=True,
     ) as gorch:
@@ -125,22 +125,6 @@ def vllm_runtime(
 
 
 @pytest.fixture(scope="class")
-def vllm_images_configmap(admin_client: DynamicClient, model_namespace: Namespace) -> Generator[ConfigMap, Any, Any]:
-    with ConfigMap(
-        client=admin_client,
-        name="gorch-test-config",
-        namespace=model_namespace.name,
-        data={
-            "regexDetectorImage": "quay.io/trustyai_testing/regex-detector"
-            "@sha256:e9df9f7e7429e29da9b8d9920d80cdc85a496e7961f6edb19132d604a914049b",
-            "vllmGatewayImage": "quay.io/trustyai_testing/vllm-orchestrator-gateway"
-            "@sha256:d0bbf2de95c69f76215a016820f294202c48721dee452b3939e36133697d5b1d",
-        },
-    ) as cm:
-        yield cm
-
-
-@pytest.fixture(scope="class")
 def orchestrator_configmap(
     admin_client: DynamicClient,
     model_namespace: Namespace,
@@ -176,7 +160,9 @@ def orchestrator_configmap(
 
 
 @pytest.fixture(scope="class")
-def vllm_gateway_config(admin_client: DynamicClient, model_namespace: Namespace) -> Generator[ConfigMap, Any, Any]:
+def guardrails_gateway_config(
+    admin_client: DynamicClient, model_namespace: Namespace
+) -> Generator[ConfigMap, Any, Any]:
     with ConfigMap(
         client=admin_client,
         name="fms-orchestr8-config-gateway",
@@ -191,9 +177,15 @@ def vllm_gateway_config(admin_client: DynamicClient, model_namespace: Namespace)
                 "detectors": [
                     {
                         "name": "regex",
+                        "input": True,
+                        "output": True,
                         "detector_params": {"regex": ["email", "ssn"]},
                     },
-                    {"name": "other_detector"},
+                    {
+                        "name": "other_detector",
+                        "input": True,
+                        "output": True,
+                    },
                 ],
                 "routes": [
                     {"name": "pii", "detectors": ["regex"]},
