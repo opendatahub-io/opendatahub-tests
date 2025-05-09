@@ -2,7 +2,10 @@ import pytest
 import shlex
 import subprocess
 import os
-from typing import Generator, List, Dict, Any
+import time
+from contextlib import contextmanager
+
+from typing import Callable, ContextManager, Generator, List, Dict, Any
 from ocp_resources.namespace import Namespace
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.role_binding import RoleBinding
@@ -10,12 +13,13 @@ from ocp_resources.role import Role
 from kubernetes.dynamic import DynamicClient
 from pyhelper_utils.shell import run_command
 from tests.model_registry.utils import generate_random_name, generate_namespace_name
-from simple_logger.logger import get_logger
 from tests.model_registry.constants import MR_INSTANCE_NAME
+from simple_logger.logger import get_logger
 
 
 LOGGER = get_logger(name=__name__)
 DEFAULT_TOKEN_DURATION = "10m"
+SLEEP_TIME = 5
 
 
 @pytest.fixture(scope="function")
@@ -87,6 +91,38 @@ def sa_token(service_account: ServiceAccount) -> str:
 
         LOGGER.error(log_message, exc_info=True)  # exc_info=True adds stack trace to the log
         raise
+
+
+@pytest.fixture(scope="session", autouse=True)
+def check_env_vars() -> None:
+    """
+    Check if the required environment variables are set.
+    Fails the test session if any are missing.
+    """
+    missing: list[str] = []
+    missing.extend(var for var in ["ADMIN_PASSWORD", "NON_ADMIN_PASSWORD"] if not os.environ.get(var))
+    if missing:
+        pytest.skip(f"Required environment variables not set: {', '.join(missing)}")
+
+
+@pytest.fixture(scope="function")
+def new_group(request: pytest.FixtureRequest) -> Generator[str, None, None]:
+    """
+    Fixture to create a new OpenShift group and add a user, then delete the group after the test.
+    The parameter should be a tuple: (group_name, user_name).
+    """
+    group_name, user_name = request.param
+    try:
+        run_command(command=["oc", "adm", "groups", "new", group_name, user_name])
+    except Exception as e:
+        pytest.skip(f"Failed to create group {group_name} and add user {user_name}: {e}")
+    try:
+        yield group_name
+    finally:
+        try:
+            run_command(command=["oc", "delete", "group", group_name])
+        except Exception as e:
+            LOGGER.error(f"Failed to delete group {group_name}: {e}")
 
 
 # --- RBAC Fixtures ---
@@ -162,7 +198,7 @@ def mr_access_role_binding(
         subjects_name=f"system:serviceaccounts:{sa_namespace.name}",
         subjects_api_group="rbac.authorization.k8s.io",  # This is the default apiGroup for Group kind
         # Role reference parameters
-        role_ref_kind="Role",
+        role_ref_kind=mr_access_role.kind,
         role_ref_name=mr_access_role.name,
         label=binding_labels,
         wait_for_resource=True,
@@ -170,3 +206,31 @@ def mr_access_role_binding(
         LOGGER.info(f"RoleBinding {binding.name} created successfully.")
         yield binding
         LOGGER.info(f"RoleBinding {binding.name} deletion initiated by context manager.")
+
+
+@pytest.fixture(scope="function")
+def user_in_group_context() -> Callable[[str], ContextManager[None]]:
+    """
+    Fixture to add and remove a user from the model-registry-users group.
+    Returns a context manager that adds the user on entry and removes on exit.
+    """
+
+    @contextmanager
+    def _context(user_name: str) -> Generator[None, None, None]:
+        run_command(command=["oc", "adm", "groups", "add-users", "model-registry-users", user_name])
+        max_attempts = 5
+        for attempt in range(max_attempts):
+            result = run_command(command=["oc", "get", "group", "model-registry-users", "-o", "jsonpath='{.users}'"])
+            if user_name in result[1]:
+                LOGGER.info(f"User {user_name} added to model-registry-users group successfully.")
+                break
+            if attempt <= max_attempts - 1:
+                time.sleep(SLEEP_TIME)  # noqa: FCN001
+        else:
+            pytest.fail(f"User {user_name} not added to model-registry-users group after {max_attempts} attempts.")
+        try:
+            yield
+        finally:
+            run_command(command=["oc", "adm", "groups", "remove-users", "model-registry-users", user_name])
+
+    return _context
