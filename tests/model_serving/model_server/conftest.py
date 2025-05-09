@@ -13,7 +13,6 @@ from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.storage_class import StorageClass
-from ocp_utilities.monitoring import Prometheus
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 
@@ -32,7 +31,6 @@ from utilities.constants import (
 )
 from utilities.inference_utils import create_isvc
 from utilities.infra import (
-    get_openshift_token,
     s3_endpoint_secret,
     update_configmap_data,
 )
@@ -392,16 +390,6 @@ def http_s3_tensorflow_model_mesh_inference_service(
         model_version="2",
     ) as isvc:
         yield isvc
-
-
-@pytest.fixture(scope="session")
-def prometheus(admin_client: DynamicClient) -> Prometheus:
-    return Prometheus(
-        client=admin_client,
-        resource_name="thanos-querier",
-        verify_ssl=False,
-        bearer_token=get_openshift_token(),
-    )
 
 
 @pytest.fixture(scope="class")
