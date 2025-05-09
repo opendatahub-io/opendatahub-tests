@@ -573,28 +573,33 @@ def unprivileged_s3_caikit_serverless_inference_service(
 
 @pytest.fixture(scope="package")
 def fail_if_missing_dependent_operators(admin_client: DynamicClient) -> None:
-    missing_operators: list[str] = []
-    csvs = list(
-        ClusterServiceVersion.get(
-            dyn_client=admin_client,
-            namespace=py_config["applications_namespace"],
-        )
-    )
+    if dependent_operators := py_config.get("dependent_operators"):
+        missing_operators: list[str] = []
 
-    for operator_name in py_config.get("dependent_operators", []).split(","):
-        LOGGER.info(f"Verifying if {operator_name} is installed")
-        for csv in csvs:
-            if csv.name.startswith(operator_name):
-                if csv.status == csv.Status.SUCCEEDED:
-                    break
+        for operator_name in dependent_operators.split(","):
+            csvs = list(
+                ClusterServiceVersion.get(
+                    dyn_client=admin_client,
+                    namespace=py_config["applications_namespace"],
+                )
+            )
 
-                else:
-                    missing_operators.append(
-                        f"Operator {operator_name} is installed but CSV is not in {csv.Status.SUCCEEDED} state"
-                    )
+            LOGGER.info(f"Verifying if {operator_name} is installed")
+            for csv in csvs:
+                if csv.name.startswith(operator_name):
+                    if csv.status == csv.Status.SUCCEEDED:
+                        break
 
-        else:
-            missing_operators.append(f"{operator_name} is not installed")
+                    else:
+                        missing_operators.append(
+                            f"Operator {operator_name} is installed but CSV is not in {csv.Status.SUCCEEDED} state"
+                        )
 
-    if missing_operators:
-        pytest.fail(str(missing_operators))
+            else:
+                missing_operators.append(f"{operator_name} is not installed")
+
+        if missing_operators:
+            pytest.fail(str(missing_operators))
+
+    else:
+        LOGGER.info("No dependent operators to verify")

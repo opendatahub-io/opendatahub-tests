@@ -851,16 +851,33 @@ def wait_for_isvc_pods(client: DynamicClient, isvc: InferenceService, runtime_na
     return get_pods_by_isvc_label(client=client, isvc=isvc, runtime_name=runtime_name)
 
 
-def verify_dsci_status_ready(dsci_resource: DSCInitialization) -> None:
-    LOGGER.info(f"Verify DSCI {dsci_resource.name} are {dsci_resource.Status.READY}.")
-    if dsci_resource.status != dsci_resource.Status.READY:
-        raise ResourceNotReadyError(f"DSCI {dsci_resource.name} is not ready.\nStatus: {dsci_resource.instance.status}")
+@retry(
+    wait_timeout=120,
+    sleep=5,
+    exceptions_dict={ResourceNotReadyError: []},
+)
+def wait_for_dsci_status_ready(dsci_resource: DSCInitialization) -> bool:
+    LOGGER.info(f"Wait for DSCI {dsci_resource.name} to be in {dsci_resource.Status.READY} status.")
+    if dsci_resource.status == dsci_resource.Status.READY:
+        return True
+
+    raise ResourceNotReadyError(
+        f"DSCI {dsci_resource.name} is not ready.\nCurrent status: {dsci_resource.instance.status}"
+    )
 
 
-def verify_dsc_status_ready(dsc_resource: DataScienceCluster) -> None:
-    LOGGER.info(f"Verify DSC {dsc_resource.name} are {dsc_resource.Status.READY}.")
-    if dsc_resource.status != dsc_resource.Status.READY:
-        raise ResourceNotReadyError(f"DSC {dsc_resource.name} is not ready.\nStatus: {dsc_resource.instance.status}")
+@retry(
+    wait_timeout=120,
+    sleep=5,
+    exceptions_dict={ResourceNotReadyError: []},
+)
+def wait_for_dsc_status_ready(dsc_resource: DataScienceCluster) -> bool:
+    LOGGER.info(f"Wait for DSC {dsc_resource.name} are {dsc_resource.Status.READY}.")
+    if dsc_resource.status == dsc_resource.Status.READY:
+        return True
+    raise ResourceNotReadyError(
+        f"DSC {dsc_resource.name} is not ready.\nCurrent status: {dsc_resource.instance.status}"
+    )
 
 
 def verify_cluster_sanity(
@@ -898,8 +915,8 @@ def verify_cluster_sanity(
             LOGGER.warning(f"Skipping RHOAI resource checks, got {skip_rhoai_check}")
 
         else:
-            verify_dsci_status_ready(dsci_resource=dsci_resource)
-            verify_dsc_status_ready(dsc_resource=dsc_resource)
+            wait_for_dsci_status_ready(dsci_resource=dsci_resource)
+            wait_for_dsc_status_ready(dsc_resource=dsc_resource)
 
     except (ResourceNotReadyError, NodeUnschedulableError, NodeNotReadyError) as ex:
         error_msg = f"Cluster sanity check failed: {str(ex)}"
