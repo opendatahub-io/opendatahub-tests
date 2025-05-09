@@ -15,10 +15,6 @@ def get_must_gather_base_dir() -> str:
     return f"{'' if os.environ.get('LOCAL_RUN') else '/home/odh/opendatahub-tests/results/'}"
 
 
-def get_must_gather_collector_base_directory() -> str:
-    return py_config["must_gather_collector"]["must_gather_base_directory"]
-
-
 def set_must_gather_collector_values() -> dict[str, str]:
     py_config["must_gather_collector"] = {
         "must_gather_base_directory": f"{get_must_gather_base_dir()}{BASE_DIRECTORY_NAME}",
@@ -129,14 +125,6 @@ def collect_rhoai_must_gather(
 ) -> str:
     must_gather_image = get_must_gather_image_info(architecture=architecture)
     output = run_must_gather(image_url=must_gather_image, target_dir=target_dir, since=f"{since}s")
-    if save_collection_output:
-        with open(os.path.join(target_dir, "output.log"), "w") as _file:
-            _file.write(output)
-    return get_must_gather_output_dir(must_gather_path=target_dir)
-
-
-def collect_ocp_gather(target_dir: str, since: str, save_collection_output: bool = True) -> str:
-    output = run_must_gather(target_dir=target_dir, since=since)
     if save_collection_output:
         with open(os.path.join(target_dir, "output.log"), "w") as _file:
             _file.write(output)
