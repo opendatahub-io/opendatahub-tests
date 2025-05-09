@@ -1,3 +1,4 @@
+from functools import partial
 from typing import Any
 
 import pytest
@@ -13,6 +14,7 @@ from tests.model_explainability.trustyai_service.trustyai_service_utils import (
 )
 from utilities.constants import MinIo
 from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
+from utilities.monitoring import validate_metrics_field, get_metric_label
 
 BASE_DATA_PATH: str = "./tests/model_explainability/trustyai_service/fairness/model_data"
 IS_MALE_IDENTIFYING: str = "Is Male-Identifying?"
@@ -113,6 +115,21 @@ class TestFairnessMetricsWithPVCStorage:
             token=current_client_token,
             metric_name=TrustyAIServiceMetrics.Fairness.SPD,
             json_data=get_fairness_request_json_data(isvc=onnx_loan_model),
+        )
+
+    def test_fairness_metric_prometheus(
+        self,
+        admin_client,
+        model_namespace,
+        trustyai_service_with_pvc_storage,
+        onnx_loan_model,
+        prometheus,
+    ):
+        validate_metrics_field(
+            prometheus=prometheus,
+            metrics_query=f'trustyai_{TrustyAIServiceMetrics.Fairness.SPD}{{namespace="{model_namespace.name}"}}',
+            expected_value=TrustyAIServiceMetrics.Fairness.SPD.upper(),
+            field_getter=partial(get_metric_label, label_name="metricName"),
         )
 
     def test_fairness_metric_delete_with_pvc_storage(
