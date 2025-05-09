@@ -96,6 +96,10 @@ class ClusterLoginError(Exception):
         return f"Failed to log in as user {self.user}."
 
 
+class InvalidArguments(Exception):
+    pass
+
+
 class ResourceNotReadyError(Exception):
     pass
 

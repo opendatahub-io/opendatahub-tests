@@ -1,9 +1,13 @@
+import base64
 import json
+import os
 import re
 import shlex
+import tempfile
 from contextlib import contextmanager
 from functools import cache
-from typing import Any, Callable, Generator, Optional, Set
+from typing import Any, Generator, Optional, Set, Callable
+from json import JSONDecodeError
 
 import kubernetes
 import pytest
@@ -42,10 +46,11 @@ from ocp_utilities.infra import (
 )
 from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
-from semver import Version
+from packaging.version import parse, Version
 from simple_logger.logger import get_logger
 
-from utilities.constants import ApiGroups, Labels, Timeout
+from ocp_resources.subscription import Subscription
+from utilities.constants import ApiGroups, Labels, Timeout, RHOAI_OPERATOR_NAMESPACE, RHOAI_SUBSCRIPTION_NAME
 from utilities.constants import KServeDeploymentType
 from utilities.constants import Annotations
 from utilities.exceptions import (
@@ -851,6 +856,21 @@ def wait_for_isvc_pods(client: DynamicClient, isvc: InferenceService, runtime_na
     return get_pods_by_isvc_label(client=client, isvc=isvc, runtime_name=runtime_name)
 
 
+def get_rhods_subscription() -> Subscription:
+    return Subscription(name=RHOAI_SUBSCRIPTION_NAME, namespace=RHOAI_OPERATOR_NAMESPACE, ensure_exists=True)
+
+
+def get_rhods_operator_installed_csv() -> ClusterServiceVersion:
+    subscription = get_rhods_subscription()
+    return ClusterServiceVersion(
+        name=subscription.instance.status.installedCSV, namespace=RHOAI_OPERATOR_NAMESPACE, ensure_exists=True
+    )
+
+
+def get_rhods_csv_version() -> Version:
+    return parse(version=get_rhods_operator_installed_csv().instance.spec.version)
+
+
 @retry(
     wait_timeout=120,
     sleep=5,
@@ -930,3 +950,53 @@ def verify_cluster_sanity(
 
         # TODO: Write to file to easily report the failure in jenkins
         pytest.exit(reason=error_msg, returncode=return_code)
+
+
+def get_openshift_pull_secret(client: DynamicClient = None) -> Secret:
+    openshift_config_namespace = "openshift-config"
+    pull_secret_name = "pull-secret"  # pragma: allowlist secret
+    secret = Secret(
+        client=client or get_client(),
+        name=pull_secret_name,
+        namespace=openshift_config_namespace,
+    )
+    assert secret.exists, f"Pull-secret {pull_secret_name} not found in namespace {openshift_config_namespace}"
+    return secret
+
+
+def generate_openshift_pull_secret_file(client: DynamicClient = None) -> str:
+    pull_secret = get_openshift_pull_secret(client=client)
+    pull_secret_path = tempfile.mkdtemp(suffix="odh-pull-secret")
+    json_file = os.path.join(pull_secret_path, "pull-secrets.json")
+    secret = base64.b64decode(pull_secret.instance.data[".dockerconfigjson"]).decode(encoding="utf-8")
+    with open(file=json_file, mode="w") as outfile:
+        outfile.write(secret)
+    return json_file
+
+
+def get_oc_image_info(
+    image: str,
+    architecture: str,
+    pull_secret: str | None = None,
+) -> Any:
+    def _get_image_json(cmd: str) -> Any:
+        return json.loads(run_command(command=shlex.split(cmd), check=False)[1])
+
+    base_command = f"oc image -o json info {image} --filter-by-os {architecture}"
+    if pull_secret:
+        base_command = f"{base_command} --registry-config={pull_secret}"
+
+    sample = None
+    try:
+        for sample in TimeoutSampler(
+            wait_timeout=10,
+            sleep=5,
+            exceptions_dict={JSONDecodeError: [], TypeError: []},
+            func=_get_image_json,
+            cmd=base_command,
+        ):
+            if sample:
+                return sample
+    except TimeoutExpiredError:
+        LOGGER.error(f"Failed to parse {base_command}")
+        raise
