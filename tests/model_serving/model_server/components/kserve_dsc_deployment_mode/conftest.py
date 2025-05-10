@@ -14,6 +14,7 @@ from pytest_testconfig import config as py_config
 
 from tests.model_serving.model_server.components.kserve_dsc_deployment_mode.utils import (
     patch_dsc_default_deployment_mode,
+    patch_raw_default_deployment_config,
 )
 from utilities.constants import ModelAndFormat
 from utilities.inference_utils import create_isvc
@@ -51,6 +52,54 @@ def patched_default_deployment_mode_in_dsc(
         dsc_resource=default_deployment_mode_in_dsc,
         inferenceservice_config_cm=inferenceservice_config_cm,
         request_default_deployment_mode=request.param["updated-deployment-mode"],
+    )
+
+
+@pytest.fixture(scope="class")
+def default_deployment_serviceconfig_in_dsc(
+    request: FixtureRequest,
+    default_deployment_mode_in_dsc: DataScienceCluster,
+    inferenceservice_config_cm: ConfigMap,
+) -> Generator[DataScienceCluster, Any, Any]:
+    """
+    Fixture to set the default deployment service configuration in DSC.
+
+    Args:
+        request: Fixture request object
+        default_deployment_mode_in_dsc: DataScienceCluster resource with deployment mode set
+        inferenceservice_config_cm: ConfigMap for inference service configuration
+
+    Yields:
+        DataScienceCluster: The DSC resource with updated service configuration
+    """
+    yield from patch_raw_default_deployment_config(
+        dsc_resource=default_deployment_mode_in_dsc,
+        inferenceservice_config_cm=inferenceservice_config_cm,
+        request_default_deployment_config=request.param["default-deployment-config"],
+    )
+
+
+@pytest.fixture(scope="class")
+def patched_default_deployment_serviceconfig_in_dsc(
+    request: FixtureRequest,
+    default_deployment_serviceconfig_in_dsc: DataScienceCluster,
+    inferenceservice_config_cm: ConfigMap,
+) -> Generator[DataScienceCluster, Any, Any]:
+    """
+    Fixture to patch the default deployment service configuration in DSC.
+
+    Args:
+        request: Fixture request object
+        default_deployment_serviceconfig_in_dsc: DSC resource with initial service configuration
+        inferenceservice_config_cm: ConfigMap for inference service configuration
+
+    Yields:
+        DataScienceCluster: The DSC resource with patched service configuration
+    """
+    yield from patch_raw_default_deployment_config(
+        dsc_resource=default_deployment_serviceconfig_in_dsc,
+        inferenceservice_config_cm=inferenceservice_config_cm,
+        request_default_deployment_config=request.param["updated-deployment-config"],
     )
 
 
