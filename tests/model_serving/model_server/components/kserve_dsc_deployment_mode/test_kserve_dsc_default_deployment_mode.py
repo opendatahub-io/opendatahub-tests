@@ -1,5 +1,6 @@
 import pytest
 
+from tests.model_serving.model_server.components.kserve_dsc_deployment_mode.utils import get_service_cluster_ip
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import (
     Annotations,
@@ -170,3 +171,39 @@ class TestKServeDSCRawDefaultDeploymentMode:
         pod_containers = {container.name for container in restarted_inference_pod.instance.spec.containers}
 
         assert pod_containers == {"kserve-container"}
+
+    def test_default_service_config_is_headless(
+        self, admin_client, default_deployment_mode_in_dsc, ovms_inference_service
+    ):
+        """
+        Verify that the default service configuration is set to Headless mode
+        (serviceClusterIPNone=True).
+        """
+        assert get_service_cluster_ip(admin_client) is True, (
+            "Default service config should be Headless (serviceClusterIPNone=True)"
+        )
+
+    @pytest.mark.parametrize(
+        "patched_default_deployment_serviceconfig_in_dsc,default_deployment_serviceconfig_in_dsc",
+        [
+            pytest.param(
+                {"updated-deployment-config": "Headed"},
+                {"default-deployment-config": "Headless"},
+            )
+        ],
+        indirect=True,
+    )
+    def test_service_config_can_be_updated_to_headed(
+        self,
+        default_deployment_mode_in_dsc,
+        default_deployment_serviceconfig_in_dsc,
+        patched_default_deployment_serviceconfig_in_dsc,
+        ovms_inference_service,
+        admin_client,
+    ):
+        """
+        Verify that the service configuration can be updated from Headless to Headed mode.
+        """
+        assert get_service_cluster_ip(admin_client) is False, (
+            "Service config should be Headed (serviceClusterIPNone=False) after update"
+        )
