@@ -24,6 +24,7 @@ from ocp_resources.resource import get_client
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 
+from utilities.certificates_utils import create_ca_bundle_file
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.exceptions import ClusterLoginError
 from utilities.infra import (
@@ -528,6 +529,8 @@ def prometheus(admin_client: DynamicClient) -> Prometheus:
     return Prometheus(
         client=admin_client,
         resource_name="thanos-querier",
-        verify_ssl=False,
+        verify_ssl=create_ca_bundle_file(
+            client=admin_client, ca_type="openshift"
+        ),  # TODO: Verify SSL with appropriate certs
         bearer_token=get_openshift_token(),
     )
