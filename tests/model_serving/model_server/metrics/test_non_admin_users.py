@@ -7,7 +7,7 @@ from tests.model_serving.model_server.utils import (
 from utilities.constants import ModelFormat, ModelStoragePath, Protocols
 from utilities.inference_utils import Inference
 from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
-from utilities.monitoring import validate_metrics_value
+from utilities.monitoring import validate_metrics_field
 
 
 @pytest.mark.parametrize(
@@ -67,7 +67,7 @@ class TestRawUnprivilegedUserMetrics:
             model_name=ModelFormat.CAIKIT,
             iterations=total_runs,
         )
-        validate_metrics_value(
+        validate_metrics_field(
             prometheus=prometheus,
             metrics_query="tgi_request_count",
             expected_value=str(total_runs),

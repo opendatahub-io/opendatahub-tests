@@ -12,7 +12,6 @@ from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 
 from ocp_resources.model_registry import ModelRegistry
-import schemathesis.schemas
 from schemathesis.specs.openapi.schemas import BaseOpenAPISchema
 from schemathesis.generation.stateful.state_machine import APIStateMachine
 from schemathesis.core.transport import Response
