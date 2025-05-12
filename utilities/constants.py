@@ -163,6 +163,10 @@ class DscComponents:
         MODELREGISTRY: ConditionType.MODEL_REGISTRY_READY,
     }
 
+    class RawDeploymentServiceConfig:
+        HEADLESS = "Headless"
+        HEADED = "Headed"
+
 
 class Labels:
     class OpenDataHub:
@@ -227,7 +231,8 @@ class MinIo:
 
     class PodConfig:
         KSERVE_MINIO_IMAGE: str = (
-            "quay.io/jooholee/model-minio@sha256:b50aa0fbfea740debb314ece8e925b3e8e761979f345b6cd12a6833efd04e2c2"  # noqa: E501
+            "quay.io/jooholee/model-minio@sha256:b50aa0fbfea740debb314ece8e925b3e8e761979f345b6cd12a6833efd04e2c2"
+            # noqa: E501
         )
 
         MINIO_BASE_CONFIG: dict[str, Any] = {

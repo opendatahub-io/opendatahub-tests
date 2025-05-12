@@ -11,6 +11,7 @@ from utilities.constants import (
     ModelStoragePath,
     ModelVersion,
     Protocols,
+    DscComponents,
 )
 from utilities.inference_utils import Inference
 from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
@@ -184,11 +185,10 @@ class TestKServeDSCRawDefaultDeploymentMode:
         )
 
     @pytest.mark.parametrize(
-        "patched_default_deployment_serviceconfig_in_dsc,default_deployment_serviceconfig_in_dsc",
+        "patched_default_deployment_serviceconfig_in_dsc",
         [
             pytest.param(
-                {"updated-deployment-config": "Headed"},
-                {"default-deployment-config": "Headless"},
+                {"updated-deployment-config": DscComponents.RawDeploymentServiceConfig.HEADED},
             )
         ],
         indirect=True,
@@ -196,7 +196,6 @@ class TestKServeDSCRawDefaultDeploymentMode:
     def test_service_config_can_be_updated_to_headed(
         self,
         default_deployment_mode_in_dsc,
-        default_deployment_serviceconfig_in_dsc,
         patched_default_deployment_serviceconfig_in_dsc,
         ovms_inference_service,
         admin_client,

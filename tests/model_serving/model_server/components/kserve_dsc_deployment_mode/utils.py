@@ -8,7 +8,9 @@ from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from kubernetes.dynamic import DynamicClient
-from utilities.constants import Timeout
+from utilities.constants import Timeout, DscComponents
+from pytest_testconfig import config as py_config
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 
 LOGGER = get_logger(name=__name__)
 
@@ -82,21 +84,18 @@ def wait_for_service_config_in_cm(config_map: ConfigMap, service_config: str) ->
         TimeoutExpiredError: If service config value is not set in configmap
     """
     LOGGER.info(f"Waiting for {service_config} service config to be set in {config_map.name} configmap")
-    expected_value = service_config == "Headless"
+    expected_value = service_config == DscComponents.RawDeploymentServiceConfig.HEADLESS
     for sample in TimeoutSampler(
         wait_timeout=Timeout.TIMEOUT_5MIN,
         sleep=5,
         func=lambda: config_map.instance.data,
     ):
         if sample:
-            try:
-                cm_service_config = json.loads(sample.service)["serviceClusterIPNone"]
-                if cm_service_config == expected_value:
-                    LOGGER.info(f"Service config successfully set to {service_config}")
-                    break
-            except (KeyError, json.JSONDecodeError) as e:
-                LOGGER.warning(f"Error reading service config: {e}")
-                continue
+            service_data = json.loads(sample.get("service", "{}"))
+            cm_service_config = service_data.get("serviceClusterIPNone")
+            if cm_service_config == expected_value:
+                LOGGER.info(f"Service config successfully set to {service_config}")
+                break
 
 
 def patch_raw_default_deployment_config(
@@ -137,17 +136,20 @@ def get_service_cluster_ip(admin_client: DynamicClient) -> bool:
     Get the service cluster IP configuration from the inferenceservice-config configmap.
 
     Args:
-        admin_client: Admin client for accessing the cluster
+        admin_client (DynamicClient): Admin client for accessing the cluster
 
     Returns:
-        dict: Service configuration from the configmap
+        bool: True if service is Headless (serviceClusterIPNone=True), False if Headed
 
     Raises:
-        ValueError: If the configmap or service configuration cannot be read
+        ResourceNotFoundError: If the configmap or service configuration cannot be read
     """
     try:
-        config_map = ConfigMap(client=admin_client, namespace="redhat-ods-applications", name="inferenceservice-config")
-        config_map = json.loads(config_map.instance["data"]["service"])
-        return config_map["serviceClusterIPNone"]
+        config_map = ConfigMap(
+            client=admin_client, namespace=py_config["applications_namespace"], name="inferenceservice-config"
+        )
+        service_data = json.loads(config_map.instance.get("data", {}).get("service", "{}"))
+        service_cluster_ip = service_data.get("serviceClusterIPNone")
+        return service_cluster_ip
     except (KeyError, json.JSONDecodeError) as e:
-        raise ValueError(f"Failed to read service configuration: {e}")
+        raise ResourceNotFoundError(f"Failed to read service configuration: {e} from inferenceservice-config")
