@@ -29,7 +29,8 @@ from utilities.must_gather_collector import (
     set_must_gather_collector_directory,
     set_must_gather_collector_values,
     get_must_gather_collector_dir,
-    collect_rhoai_must_gather, get_base_dir,
+    collect_rhoai_must_gather,
+    get_base_dir,
 )
 
 LOGGER = logging.getLogger(name=__name__)

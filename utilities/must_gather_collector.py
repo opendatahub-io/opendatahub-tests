@@ -12,7 +12,7 @@ BASE_DIRECTORY_NAME = "must-gather-collected"
 
 
 def get_base_dir() -> str:
-    if os.path.exists('/home/odh/opendatahub-tests/'):
+    if os.path.exists("/home/odh/opendatahub-tests/"):
         # we are running from jenkins.
         return "/home/odh/opendatahub-tests/results"
     else:
