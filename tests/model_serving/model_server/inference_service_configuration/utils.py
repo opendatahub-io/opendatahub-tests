@@ -108,3 +108,32 @@ def wait_for_new_running_inference_pods(
     except TimeoutError:
         LOGGER.error(f"Timeout waiting for pods {oring_pods_names} to be replaced")
         raise
+
+
+def verify_pull_secret(isvc: InferenceService, pull_secret: str, secret_exists: bool) -> None:
+    """
+    Verify that the ImagePullSecret in the InferenceService pods match the expected values.
+
+    Args:
+        isvc (InferenceService): InferenceService object.
+        pull_secret (str): Pull secret to verify
+        secret_exists (bool): False if the pull secret should not exist in the pod.
+
+    Raises:
+        AssertionError: If the imagePullSecrets do not match the expected presence or name.
+    """
+    pod = get_pods_by_isvc_label(
+        client=isvc.client,
+        isvc=isvc,
+    )[0]
+    image_pull_secrets = pod.instance.spec.imagePullSecrets or []
+
+    secrets = [s.name for s in image_pull_secrets]
+
+    if secret_exists:
+        assert secrets, "Expected imagePullSecrets to exist, but none were found."
+        assert pull_secret in secrets, f"Expected pull secret '{pull_secret}' not found in imagePullSecrets: {secrets}"
+    else:
+        assert pull_secret not in secrets, (
+            f"Did not expect pull secret '{pull_secret}', but found in imagePullSecrets: {secrets}"
+        )

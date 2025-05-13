@@ -14,6 +14,7 @@ from ocp_resources.node import Node
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
+from ocp_utilities.monitoring import Prometheus
 from pyhelper_utils.shell import run_command
 from pytest import FixtureRequest, Config
 from kubernetes.dynamic import DynamicClient
@@ -23,6 +24,7 @@ from ocp_resources.resource import get_client
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 
+from utilities.certificates_utils import create_ca_bundle_file
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.exceptions import ClusterLoginError
 from utilities.infra import (
@@ -519,4 +521,16 @@ def cluster_sanity_scope_session(
         dsc_resource=dsc_resource,
         dsci_resource=dsci_resource,
         junitxml_property=junitxml_plugin,
+    )
+
+
+@pytest.fixture(scope="session")
+def prometheus(admin_client: DynamicClient) -> Prometheus:
+    return Prometheus(
+        client=admin_client,
+        resource_name="thanos-querier",
+        verify_ssl=create_ca_bundle_file(
+            client=admin_client, ca_type="openshift"
+        ),  # TODO: Verify SSL with appropriate certs
+        bearer_token=get_openshift_token(),
     )
