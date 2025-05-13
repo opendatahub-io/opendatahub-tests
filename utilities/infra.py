@@ -12,7 +12,6 @@ from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import (
     NotFoundError,
     ResourceNotFoundError,
-    ResourceNotUniqueError,
 )
 from ocp_resources.catalog_source import CatalogSource
 from ocp_resources.cluster_service_version import ClusterServiceVersion
@@ -48,11 +47,7 @@ from simple_logger.logger import get_logger
 from utilities.constants import ApiGroups, Labels, Timeout
 from utilities.constants import KServeDeploymentType
 from utilities.constants import Annotations
-from utilities.exceptions import (
-    ClusterLoginError,
-    FailedPodsError,
-    ResourceNotReadyError,
-)
+from utilities.exceptions import ClusterLoginError, FailedPodsError, ResourceNotReadyError, UnexpectedResourceCountError
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, TimeoutWatch, retry
 import utilities.general
 from ocp_resources.utils.constants import DEFAULT_CLUSTER_RETRY_EXCEPTIONS
@@ -210,9 +205,8 @@ def wait_for_inference_deployment_replicas(
     Raises:
         TimeoutExpiredError: If an exception is raised when retrieving deployments or
                              timeout expires when checking replicas.
-        ResourceNotUniqueError: If a greater number of deployments exist than expected after timeout.
-        ResourceNotFoundError: If a less number of deployments exist than expected after timeout.
-
+        UnexpectedResourceCountError: If the expected number of deployments is not found after timeout.
+        ResourceNotFoundError: If any of the retrieved deployments are found to no longer exist.
     """
     timeout_watcher = TimeoutWatch(timeout=timeout)
     ns = isvc.namespace
@@ -230,7 +224,7 @@ def wait_for_inference_deployment_replicas(
             exceptions_dict=DEFAULT_CLUSTER_RETRY_EXCEPTIONS,
             func=Deployment.get,
             label_selector=label_selector,
-            client=client,
+            dyn_client=client,
             namespace=ns,
         ):
             deployment_list = list(deployments)
@@ -240,14 +234,9 @@ def wait_for_inference_deployment_replicas(
         # If the last exception raised prior to the timeout expiring is None, this means that
         # the deployments were successfully retrieved, but the expected number was not found.
         if e.last_exp is None:
-            if len(deployment_list) > expected_num_deployments:
-                raise ResourceNotUniqueError(
-                    f"Too many predictor deployments found in namespace {ns} after timeout. "
-                    f"Expected {expected_num_deployments}, but found {len(deployment_list)}."
-                )
-            raise ResourceNotFoundError(
-                f"Predictor deployment(s) not found in namespace {ns} after timeout. "
-                f"Expected {expected_num_deployments}, but found {len(deployment_list)}."
+            raise UnexpectedResourceCountError(
+                f"Expected {expected_num_deployments} predictor deployments to be found in "
+                f"namespace {ns} after timeout, but found {len(deployment_list)}."
             )
         raise
 
@@ -267,6 +256,8 @@ def wait_for_inference_deployment_replicas(
                 )
 
             deployment.wait_for_replicas(deployed=deployed, timeout=timeout_watcher.remaining_time())
+        else:
+            raise ResourceNotFoundError(f"Predictor deployment {deployment.name} does not exist on the server.")
 
     return deployment_list
 

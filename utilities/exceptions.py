@@ -110,3 +110,7 @@ class TooManyPodsError(Exception):
 
 class UnexpectedFailureError(Exception):
     pass
+
+
+class UnexpectedResourceCountError(Exception):
+    """Unexpected number of API resources found"""
