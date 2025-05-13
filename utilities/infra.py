@@ -46,11 +46,11 @@ from ocp_utilities.infra import (
 )
 from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
-from packaging.version import parse, Version
+from semver import Version
 from simple_logger.logger import get_logger
 
 from ocp_resources.subscription import Subscription
-from utilities.constants import ApiGroups, Labels, Timeout, RHOAI_OPERATOR_NAMESPACE, RHOAI_SUBSCRIPTION_NAME
+from utilities.constants import ApiGroups, Labels, Timeout, RHOAI_OPERATOR_NAMESPACE
 from utilities.constants import KServeDeploymentType
 from utilities.constants import Annotations
 from utilities.exceptions import (
@@ -856,19 +856,34 @@ def wait_for_isvc_pods(client: DynamicClient, isvc: InferenceService, runtime_na
     return get_pods_by_isvc_label(client=client, isvc=isvc, runtime_name=runtime_name)
 
 
-def get_rhods_subscription() -> Subscription:
-    return Subscription(name=RHOAI_SUBSCRIPTION_NAME, namespace=RHOAI_OPERATOR_NAMESPACE, ensure_exists=True)
+def get_rhods_subscription() -> Subscription | None:
+    subscriptions = Subscription.get(dyn_client=get_client(), namespace=RHOAI_OPERATOR_NAMESPACE)
+    if subscriptions:
+        for subscription in subscriptions:
+            LOGGER.info(f"Checking subscription {subscription.name}")
+            if subscription.name.startswith(tuple(["rhods-operator", "rhoai-operator"])):
+                return subscription
+
+    LOGGER.warning("No RHOAI subscription found. Potentially ODH cluster")
+    return None
 
 
-def get_rhods_operator_installed_csv() -> ClusterServiceVersion:
+def get_rhods_operator_installed_csv() -> ClusterServiceVersion | None:
     subscription = get_rhods_subscription()
-    return ClusterServiceVersion(
-        name=subscription.instance.status.installedCSV, namespace=RHOAI_OPERATOR_NAMESPACE, ensure_exists=True
-    )
+    if subscription:
+        csv_name = subscription.instance.status.installedCSV
+        LOGGER.info(f"Expected CSV: {csv_name}")
+        return ClusterServiceVersion(name=csv_name, namespace=RHOAI_OPERATOR_NAMESPACE, ensure_exists=True)
+    return None
 
 
-def get_rhods_csv_version() -> Version:
-    return parse(version=get_rhods_operator_installed_csv().instance.spec.version)
+def get_rhods_csv_version() -> Version | None:
+    rhoai_csv = get_rhods_operator_installed_csv()
+    if rhoai_csv:
+        LOGGER.info(f"RHOAI CSV version: {rhoai_csv.instance.spec.version}")
+        return Version.parse(version=rhoai_csv.instance.spec.version)
+    LOGGER.warning("No RHOAI CSV found. Potentially ODH cluster")
+    return None
 
 
 @retry(

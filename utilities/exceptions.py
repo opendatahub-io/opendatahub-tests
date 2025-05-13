@@ -96,7 +96,9 @@ class ClusterLoginError(Exception):
         return f"Failed to log in as user {self.user}."
 
 
-class InvalidArguments(Exception):
+class InvalidArgumentsError(Exception):
+    """Raised when mutually exclusive or invalid argument combinations are passed."""
+
     pass
 
 

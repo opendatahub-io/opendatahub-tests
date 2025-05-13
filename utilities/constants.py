@@ -273,4 +273,3 @@ vLLM_CONFIG: dict[str, dict[str, Any]] = {
 }
 
 RHOAI_OPERATOR_NAMESPACE = "redhat-ods-operator"
-RHOAI_SUBSCRIPTION_NAME = "rhoai-operator-dev"

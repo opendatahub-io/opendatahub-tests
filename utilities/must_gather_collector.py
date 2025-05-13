@@ -4,17 +4,19 @@ import shlex
 from pytest_testconfig import config as py_config
 from pytest import Item
 from pyhelper_utils.shell import run_command
-
-from utilities.exceptions import InvalidArguments
+from simple_logger.logger import get_logger
+from utilities.exceptions import InvalidArgumentsError
 from utilities.infra import get_rhods_csv_version, get_oc_image_info, generate_openshift_pull_secret_file
 
 BASE_DIRECTORY_NAME = "must-gather-collected"
+BASE_RESULTS_DIR = "/home/odh/opendatahub-tests/"
+LOGGER = get_logger(name=__name__)
 
 
 def get_base_dir() -> str:
-    if os.path.exists("/home/odh/opendatahub-tests/"):
+    if os.path.exists(BASE_RESULTS_DIR):
         # we are running from jenkins.
-        return "/home/odh/opendatahub-tests/results"
+        return os.path.join(BASE_RESULTS_DIR, "results")
     else:
         # this is local run
         return ""
@@ -22,7 +24,7 @@ def get_base_dir() -> str:
 
 def set_must_gather_collector_values() -> dict[str, str]:
     py_config["must_gather_collector"] = {
-        "must_gather_base_directory": f"{get_base_dir()}{BASE_DIRECTORY_NAME}",
+        "must_gather_base_directory": os.path.join(get_base_dir(), BASE_DIRECTORY_NAME),
     }
     return py_config["must_gather_collector"]
 
@@ -81,8 +83,22 @@ def run_must_gather(
     component_name: str = "",
     namespaces_dict: dict[str, str] | None = None,
 ) -> str:
+    """
+    Process the arguments to build must-gather command and run the same
+
+    Args:
+         image_url (str): must-gather image url
+         target_dir (str): must-gather target directory
+         since (str): duration in seconds for must-gather log collection
+         component_name (str): must-gather component name
+         namespaces_dict (dict[str, str] | None): namespaces dict for extra data collection from different component
+            namespaces
+
+    Returns:
+        str: must-gather output
+    """
     if component_name and namespaces_dict:
-        raise InvalidArguments("component name and namespaces can't be passed together")
+        raise InvalidArgumentsError("component name and namespaces can't be passed together")
 
     must_gather_command = "oc adm must-gather"
     if target_dir:
@@ -96,41 +112,68 @@ def run_must_gather(
     elif namespaces_dict:
         namespace_str = ""
         if namespaces_dict.get("operator"):
-            namespace_str += f"export OPERATOR_NAMESPACE={namespaces_dict['operator']};"
+            namespace_str += f"export OPERATOR_NAMESPACE={shlex.quote(namespaces_dict['operator'])};"
         if namespaces_dict.get("notebooks"):
-            namespace_str += f"export NOTEBOOKS_NAMESPACE={namespaces_dict['notebooks']};"
+            namespace_str += f"export NOTEBOOKS_NAMESPACE={shlex.quote(namespaces_dict['notebooks'])};"
         if namespaces_dict.get("monitoring"):
-            namespace_str += f"export MONITORING_NAMESPACE={namespaces_dict['monitoring']};"
+            namespace_str += f"export MONITORING_NAMESPACE={shlex.quote(namespaces_dict['monitoring'])};"
         if namespaces_dict.get("application"):
-            namespace_str += f"export APPLICATIONS_NAMESPACE={namespaces_dict['application']};"
+            namespace_str += f"export APPLICATIONS_NAMESPACE={shlex.quote(namespaces_dict['application'])};"
         if namespaces_dict.get("model_registries"):
-            namespace_str += f"export MODEL_REGISTRIES_NAMESPACE={namespaces_dict['model_registries']};"
+            namespace_str += f"export MODEL_REGISTRIES_NAMESPACE={shlex.quote(namespaces_dict['model_registries'])};"
         if namespaces_dict.get("ossm"):
-            namespace_str += f"export OSSM_NS={namespaces_dict['ossm']};"
+            namespace_str += f"export OSSM_NS={shlex.quote(namespaces_dict['ossm'])};"
         if namespaces_dict.get("knative"):
-            namespace_str += f"export KNATIVE_NS={namespaces_dict['knative']};"
+            namespace_str += f"export KNATIVE_NS={shlex.quote(namespaces_dict['knative'])};"
         if namespaces_dict.get("auth"):
-            namespace_str += f"export AUTH_NS={namespaces_dict['auth']};"
-        must_gather_command += " /usr/bin/gather"
+            namespace_str += f"export AUTH_NS={shlex.quote(namespaces_dict['auth'])};"
+        must_gather_command += f" -- '{namespace_str} /usr/bin/gather'"
 
     return run_command(command=shlex.split(must_gather_command), check=False)[1]
 
 
 def get_must_gather_image_info(architecture: str = "linux/amd64") -> str:
-    csv_version = get_rhods_csv_version()
-    must_gather_image_manifest = f"quay.io/modh/must-gather:rhoai-{csv_version.major}.{csv_version.minor}"
-    image_info = get_oc_image_info(
-        image=must_gather_image_manifest, architecture=architecture, pull_secret=generate_openshift_pull_secret_file()
-    )
-    return f"quay.io/modh/must-gather@{image_info['digest']}"
+    try:
+        csv_version = get_rhods_csv_version()
+        if csv_version:
+            must_gather_image_manifest = f"quay.io/modh/must-gather:rhoai-{csv_version.major}.{csv_version.minor}"
+            pull_secret = generate_openshift_pull_secret_file()
+            image_info = get_oc_image_info(
+                image=must_gather_image_manifest, architecture=architecture, pull_secret=pull_secret
+            )
+            return f"quay.io/modh/must-gather@{image_info['digest']}"
+        else:
+            LOGGER.warning(
+                "No RHAOI CSV found. Potentially ODH cluster and must-gather collection is not "
+                "relevant for this cluster"
+            )
+            return ""
+    except Exception as exec:
+        raise RuntimeError(f"Failed to retrieve must-gather image info: {str(exec)}") from exec
 
 
 def collect_rhoai_must_gather(
     target_dir: str, since: int, save_collection_output: bool = True, architecture: str = "linux/amd64"
 ) -> str:
+    """
+    Collect must-gather data for RHOAI cluster.
+
+    Args:
+        target_dir (str): Directory to store the must-gather output
+        since (int): Time in seconds to collect logs from
+        save_collection_output (bool, optional): Whether to save must-gather command output. Defaults to True.
+        architecture (str, optional): Target architecture for must-gather image. Defaults to "linux/amd64".
+
+    Returns:
+        str: Path to the must-gather output directory, or empty string if collection is skipped
+    """
     must_gather_image = get_must_gather_image_info(architecture=architecture)
-    output = run_must_gather(image_url=must_gather_image, target_dir=target_dir, since=f"{since}s")
-    if save_collection_output:
-        with open(os.path.join(target_dir, "output.log"), "w") as _file:
-            _file.write(output)
-    return get_must_gather_output_dir(must_gather_path=target_dir)
+    if must_gather_image:
+        output = run_must_gather(image_url=must_gather_image, target_dir=target_dir, since=f"{since}s")
+        if save_collection_output:
+            with open(os.path.join(target_dir, "output.log"), "w") as _file:
+                _file.write(output)
+        return get_must_gather_output_dir(must_gather_path=target_dir)
+    else:
+        LOGGER.warning("Must-gather collection would be skipped.")
+        return ""

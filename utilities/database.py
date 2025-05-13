@@ -1,4 +1,5 @@
 import logging
+import os
 
 from sqlalchemy import Integer, String, create_engine
 from sqlalchemy.orm import Mapped, Session, mapped_column
@@ -24,7 +25,7 @@ class OpenDataHubTestTable(Base):
 
 class Database:
     def __init__(self, database_file_name: str = TEST_DB, verbose: bool = True) -> None:
-        self.database_file_path = f"{get_base_dir()}{database_file_name}"
+        self.database_file_path = os.path.join(get_base_dir(), database_file_name)
         self.connection_string = f"sqlite:///{self.database_file_path}"
         self.verbose = verbose
         self.engine = create_engine(url=self.connection_string, echo=self.verbose)
@@ -38,9 +39,15 @@ class Database:
 
     def get_test_start_time(self, test_name: str) -> int:
         with Session(bind=self.engine) as db_session:
-            return (
+            result_row = (
                 db_session.query(OpenDataHubTestTable)
                 .with_entities(OpenDataHubTestTable.start_time)
                 .filter_by(test_name=test_name)
-                .one()[0]
+                .first()
             )
+            if result_row:
+                start_time_value = result_row[0]
+            else:
+                start_time_value = 0
+                LOGGER.warning(f"No test found with name: {test_name}")
+            return start_time_value

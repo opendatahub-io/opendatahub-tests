@@ -226,9 +226,11 @@ def pytest_collection_modifyitems(session: Session, config: Config, items: list[
 def pytest_sessionstart(session: Session) -> None:
     log_file = session.config.getoption("log_file") or "pytest-tests.log"
     tests_log_file = os.path.join(get_base_dir(), log_file)
+    LOGGER.info(f"Writing tests log to {tests_log_file}")
     if os.path.exists(tests_log_file):
         pathlib.Path(tests_log_file).unlink()
-
+    if session.config.getoption("--collect-must-gather"):
+        session.config.option.must_gather_db = Database()
     session.config.option.log_listener = setup_logging(
         log_file=tests_log_file,
         log_level=session.config.getoption("log_cli_level") or logging.INFO,
@@ -261,10 +263,10 @@ def pytest_runtest_setup(item: Item) -> None:
         # start time
 
         try:
-            db = Database()
+            db = item.config.option.must_gather_db
             db.insert_test_start_time(
                 test_name=f"{item.fspath}::{item.name}",
-                start_time=int(datetime.datetime.now().strftime("%s")),
+                start_time=int(datetime.datetime.now().timestamp()),
             )
         except Exception as db_exception:
             LOGGER.error(f"Database error: {db_exception}. Must-gather collection may not be accurate")
@@ -320,10 +322,11 @@ def pytest_sessionfinish(session: Session, exitstatus: int) -> None:
     if session.config.option.setupplan or session.config.option.collectonly:
         return
     if session.config.getoption("--collect-must-gather"):
-        db = Database()
+        db = session.config.option.must_gather_db
         file_path = db.database_file_path
         LOGGER.info(f"Removing database file path {file_path}")
-        os.remove(file_path)
+        if os.path.exists(file_path):
+            os.remove(file_path)
         # clean up the empty folders
     collector_directory = py_config["must_gather_collector"]["must_gather_base_directory"]
     if os.path.exists(collector_directory):
@@ -343,7 +346,7 @@ def pytest_sessionfinish(session: Session, exitstatus: int) -> None:
 def calculate_must_gather_timer(test_start_time: int) -> int:
     default_duration = 300
     if test_start_time > 0:
-        duration = int(datetime.datetime.now().strftime("%s")) - test_start_time
+        duration = int(datetime.datetime.now().timestamp()) - test_start_time
         return duration if duration > 60 else default_duration
     else:
         LOGGER.warning(f"Could not get start time of test. Collecting must-gather for last {default_duration}s")
@@ -357,7 +360,7 @@ def pytest_exception_interact(node: Item | Collector, call: CallInfo[Any], repor
         LOGGER.info(f"Must-gather collection is enabled for {test_name}.")
 
         try:
-            db = Database()
+            db = node.config.option.must_gather_db
             test_start_time = db.get_test_start_time(test_name=test_name)
         except Exception as db_exception:
             test_start_time = 0
