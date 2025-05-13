@@ -3,7 +3,7 @@ import logging
 from sqlalchemy import Integer, String, create_engine
 from sqlalchemy.orm import Mapped, Session, mapped_column
 from sqlalchemy.orm import DeclarativeBase
-from utilities.must_gather_collector import get_must_gather_base_dir
+from utilities.must_gather_collector import get_base_dir
 
 LOGGER = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ class OpenDataHubTestTable(Base):
 
 class Database:
     def __init__(self, database_file_name: str = TEST_DB, verbose: bool = True) -> None:
-        self.database_file_path = f"{get_must_gather_base_dir()}{database_file_name}"
+        self.database_file_path = f"{get_base_dir()}{database_file_name}"
         self.connection_string = f"sqlite:///{self.database_file_path}"
         self.verbose = verbose
         self.engine = create_engine(url=self.connection_string, echo=self.verbose)

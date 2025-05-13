@@ -29,7 +29,7 @@ from utilities.must_gather_collector import (
     set_must_gather_collector_directory,
     set_must_gather_collector_values,
     get_must_gather_collector_dir,
-    collect_rhoai_must_gather,
+    collect_rhoai_must_gather, get_base_dir,
 )
 
 LOGGER = logging.getLogger(name=__name__)
@@ -223,7 +223,8 @@ def pytest_collection_modifyitems(session: Session, config: Config, items: list[
 
 
 def pytest_sessionstart(session: Session) -> None:
-    tests_log_file = session.config.getoption("log_file") or "pytest-tests.log"
+    log_file = session.config.getoption("log_file") or "pytest-tests.log"
+    tests_log_file = os.path.join(get_base_dir(), log_file)
     if os.path.exists(tests_log_file):
         pathlib.Path(tests_log_file).unlink()
 
@@ -252,7 +253,6 @@ def pytest_runtest_setup(item: Item) -> None:
     BASIC_LOGGER.info(f"\n{separator(symbol_='-', val=item.name)}")
     BASIC_LOGGER.info(f"{separator(symbol_='-', val='SETUP')}")
     if item.config.getoption("--collect-must-gather"):
-        BASIC_LOGGER.info("I am here")
         # set must-gather collection directory:
         set_must_gather_collector_directory(item=item, directory_path=get_must_gather_collector_dir())
 
@@ -342,7 +342,8 @@ def pytest_sessionfinish(session: Session, exitstatus: int) -> None:
 def calculate_must_gather_timer(test_start_time: int) -> int:
     default_duration = 300
     if test_start_time > 0:
-        return int(datetime.datetime.now().strftime("%s")) - test_start_time
+        duration = int(datetime.datetime.now().strftime("%s")) - test_start_time
+        return duration if duration > 60 else default_duration
     else:
         LOGGER.warning(f"Could not get start time of test. Collecting must-gather for last {default_duration}s")
         return default_duration

@@ -11,13 +11,18 @@ from utilities.infra import get_rhods_csv_version, get_oc_image_info, generate_o
 BASE_DIRECTORY_NAME = "must-gather-collected"
 
 
-def get_must_gather_base_dir() -> str:
-    return f"{'' if os.environ.get('LOCAL_RUN') else '/home/odh/opendatahub-tests/results/'}"
+def get_base_dir() -> str:
+    if os.path.exists('/home/odh/opendatahub-tests/'):
+        # we are running from jenkins.
+        return "/home/odh/opendatahub-tests/results"
+    else:
+        # this is local run
+        return ""
 
 
 def set_must_gather_collector_values() -> dict[str, str]:
     py_config["must_gather_collector"] = {
-        "must_gather_base_directory": f"{get_must_gather_base_dir()}{BASE_DIRECTORY_NAME}",
+        "must_gather_base_directory": f"{get_base_dir()}{BASE_DIRECTORY_NAME}",
     }
     return py_config["must_gather_collector"]
 
