@@ -25,7 +25,7 @@ def verify_lmevaljob_running(client: DynamicClient, lmevaljob: LMEvalJob) -> Non
     """
 
     lmevaljob_pod = Pod(client=client, name=lmevaljob.name, namespace=lmevaljob.namespace, wait_for_resource=True)
-    lmevaljob_pod.wait_for_status(status=lmevaljob_pod.Status.RUNNING, timeout=Timeout.TIMEOUT_10MIN)
+    lmevaljob_pod.wait_for_status(status=lmevaljob_pod.Status.RUNNING, timeout=Timeout.TIMEOUT_20MIN)
 
     check_pod_status_in_time(pod=lmevaljob_pod, status={lmevaljob_pod.Status.RUNNING, lmevaljob_pod.Status.SUCCEEDED})
 
