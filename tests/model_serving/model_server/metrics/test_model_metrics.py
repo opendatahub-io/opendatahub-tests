@@ -14,7 +14,7 @@ from utilities.constants import (
 )
 from utilities.inference_utils import Inference
 from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
-from utilities.monitoring import get_metrics_value, validate_metrics_value
+from utilities.monitoring import get_metrics_value, validate_metrics_field
 
 pytestmark = [
     pytest.mark.serverless,
@@ -57,7 +57,7 @@ class TestModelMetrics:
             model_name=ModelFormat.CAIKIT,
             use_default_query=True,
         )
-        validate_metrics_value(
+        validate_metrics_field(
             prometheus=prometheus,
             metrics_query="tgi_request_success",
             expected_value="1",
@@ -78,7 +78,7 @@ class TestModelMetrics:
             iterations=total_runs,
             run_in_parallel=True,
         )
-        validate_metrics_value(
+        validate_metrics_field(
             prometheus=prometheus,
             metrics_query="tgi_request_count",
             expected_value=str(total_runs + 1),
