@@ -33,7 +33,7 @@ INFERENCE_SERVICE_PARAMS = {
     "default_deployment_mode_in_dsc, unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_inference_service",
     [
         pytest.param(
-            {"default-deployment-mode": {"defaultDeploymentMode": KServeDeploymentType.SERVERLESS}},
+            {"default-deployment-mode": KServeDeploymentType.SERVERLESS},
             {"name": "dsc-serverless"},
             RUNTIME_PARAMS,
             {
@@ -67,7 +67,7 @@ class TestKServeDSCServerlessDefaultDeploymentMode:
 
     @pytest.mark.parametrize(
         "patched_default_deployment_mode_in_dsc",
-        [pytest.param({"updated-deployment-mode": {"defaultDeploymentMode": KServeDeploymentType.RAW_DEPLOYMENT}})],
+        [pytest.param({"updated-deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT})],
         indirect=True,
     )
     def test_isvc_on_dsc_default_deployment_mode_change_to_raw(
@@ -80,7 +80,7 @@ class TestKServeDSCServerlessDefaultDeploymentMode:
 
     @pytest.mark.parametrize(
         "patched_default_deployment_mode_in_dsc",
-        [pytest.param({"updated-deployment-mode": {"defaultDeploymentMode": KServeDeploymentType.RAW_DEPLOYMENT}})],
+        [pytest.param({"updated-deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT})],
         indirect=True,
     )
     def test_restarted_pod_is_serverless(
@@ -99,7 +99,7 @@ class TestKServeDSCServerlessDefaultDeploymentMode:
     "default_deployment_mode_in_dsc, unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_inference_service",
     [
         pytest.param(
-            {"default-deployment-mode": {"defaultDeploymentMode": KServeDeploymentType.RAW_DEPLOYMENT}},
+            {"default-deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT},
             {"name": "dsc-raw"},
             RUNTIME_PARAMS,
             {
@@ -130,7 +130,7 @@ class TestKServeDSCRawDefaultDeploymentMode:
 
     @pytest.mark.parametrize(
         "patched_default_deployment_mode_in_dsc",
-        [pytest.param({"updated-deployment-mode": {"defaultDeploymentMode": KServeDeploymentType.SERVERLESS}})],
+        [pytest.param({"updated-deployment-mode": KServeDeploymentType.SERVERLESS})],
         indirect=True,
     )
     def test_isvc_on_dsc_default_deployment_mode_change_to_serverless(
@@ -144,7 +144,7 @@ class TestKServeDSCRawDefaultDeploymentMode:
 
     @pytest.mark.parametrize(
         "patched_default_deployment_mode_in_dsc",
-        [pytest.param({"updated-deployment-mode": {"defaultDeploymentMode": KServeDeploymentType.SERVERLESS}})],
+        [pytest.param({"updated-deployment-mode": KServeDeploymentType.SERVERLESS})],
         indirect=True,
     )
     def test_restarted_pod_is_raw(
@@ -161,11 +161,7 @@ class TestKServeDSCRawDefaultDeploymentMode:
         "patched_default_deployment_mode_in_dsc",
         [
             pytest.param(
-                {
-                    "updated-deployment-mode": {
-                        "rawDeploymentServiceConfig": DscComponents.RawDeploymentServiceConfig.HEADLESS
-                    }
-                },
+                {"updated-deployment-mode": DscComponents.RawDeploymentServiceConfig.HEADLESS},
             )
         ],
         indirect=True,
@@ -190,11 +186,7 @@ class TestKServeDSCRawDefaultDeploymentMode:
         "patched_default_deployment_mode_in_dsc",
         [
             pytest.param(
-                {
-                    "updated-deployment-mode": {
-                        "rawDeploymentServiceConfig": DscComponents.RawDeploymentServiceConfig.HEADED
-                    }
-                },
+                {"updated-deployment-mode": DscComponents.RawDeploymentServiceConfig.HEADED},
             )
         ],
         indirect=True,
