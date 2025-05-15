@@ -1,5 +1,6 @@
 import pytest
 
+from tests.model_serving.model_server.components.kserve_dsc_deployment_mode.utils import get_service_cluster_ip
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import (
     Annotations,
@@ -10,6 +11,7 @@ from utilities.constants import (
     ModelStoragePath,
     ModelVersion,
     Protocols,
+    DscComponents,
 )
 from utilities.inference_utils import Inference
 from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
@@ -65,11 +67,7 @@ class TestKServeDSCServerlessDefaultDeploymentMode:
 
     @pytest.mark.parametrize(
         "patched_default_deployment_mode_in_dsc",
-        [
-            pytest.param(
-                {"updated-deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT},
-            )
-        ],
+        [pytest.param({"updated-deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT})],
         indirect=True,
     )
     def test_isvc_on_dsc_default_deployment_mode_change_to_raw(
@@ -82,11 +80,7 @@ class TestKServeDSCServerlessDefaultDeploymentMode:
 
     @pytest.mark.parametrize(
         "patched_default_deployment_mode_in_dsc",
-        [
-            pytest.param(
-                {"updated-deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT},
-            )
-        ],
+        [pytest.param({"updated-deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT})],
         indirect=True,
     )
     def test_restarted_pod_is_serverless(
@@ -136,11 +130,7 @@ class TestKServeDSCRawDefaultDeploymentMode:
 
     @pytest.mark.parametrize(
         "patched_default_deployment_mode_in_dsc",
-        [
-            pytest.param(
-                {"updated-deployment-mode": KServeDeploymentType.SERVERLESS},
-            )
-        ],
+        [pytest.param({"updated-deployment-mode": KServeDeploymentType.SERVERLESS})],
         indirect=True,
     )
     def test_isvc_on_dsc_default_deployment_mode_change_to_serverless(
@@ -154,11 +144,7 @@ class TestKServeDSCRawDefaultDeploymentMode:
 
     @pytest.mark.parametrize(
         "patched_default_deployment_mode_in_dsc",
-        [
-            pytest.param(
-                {"updated-deployment-mode": KServeDeploymentType.SERVERLESS},
-            )
-        ],
+        [pytest.param({"updated-deployment-mode": KServeDeploymentType.SERVERLESS})],
         indirect=True,
     )
     def test_restarted_pod_is_raw(
@@ -170,3 +156,51 @@ class TestKServeDSCRawDefaultDeploymentMode:
         pod_containers = {container.name for container in restarted_inference_pod.instance.spec.containers}
 
         assert pod_containers == {"kserve-container"}
+
+    @pytest.mark.parametrize(
+        "patched_default_deployment_mode_in_dsc",
+        [
+            pytest.param(
+                {"updated-deployment-mode": DscComponents.RawDeploymentServiceConfig.HEADLESS},
+            )
+        ],
+        indirect=True,
+    )
+    def test_default_service_config_is_headless(
+        self,
+        admin_client,
+        default_deployment_mode_in_dsc,
+        ovms_inference_service,
+        patched_default_deployment_mode_in_dsc,
+    ):
+        """
+        Verify that the default service configuration is set to Headless mode
+        (serviceClusterIPNone=True).
+        """
+
+        assert get_service_cluster_ip(admin_client=admin_client) is True, (
+            "Default service config should be Headless (serviceClusterIPNone=True)"
+        )
+
+    @pytest.mark.parametrize(
+        "patched_default_deployment_mode_in_dsc",
+        [
+            pytest.param(
+                {"updated-deployment-mode": DscComponents.RawDeploymentServiceConfig.HEADED},
+            )
+        ],
+        indirect=True,
+    )
+    def test_service_config_can_be_updated_to_headed(
+        self,
+        default_deployment_mode_in_dsc,
+        patched_default_deployment_mode_in_dsc,
+        ovms_inference_service,
+        admin_client,
+    ):
+        """
+        Verify that the service configuration can be updated from Headless to Headed mode.
+        """
+        assert get_service_cluster_ip(admin_client=admin_client) is False, (
+            "Service config should be Headed (serviceClusterIPNone=False) after update"
+        )

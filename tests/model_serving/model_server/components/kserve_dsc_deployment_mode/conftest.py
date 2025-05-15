@@ -15,21 +15,9 @@ from pytest_testconfig import config as py_config
 from tests.model_serving.model_server.components.kserve_dsc_deployment_mode.utils import (
     patch_dsc_default_deployment_mode,
 )
+from utilities import constants
 from utilities.constants import ModelAndFormat
 from utilities.inference_utils import create_isvc
-
-
-@pytest.fixture(scope="class")
-def default_deployment_mode_in_dsc(
-    request: FixtureRequest,
-    dsc_resource: DataScienceCluster,
-    inferenceservice_config_cm: ConfigMap,
-) -> Generator[DataScienceCluster, Any, Any]:
-    yield from patch_dsc_default_deployment_mode(
-        dsc_resource=dsc_resource,
-        inferenceservice_config_cm=inferenceservice_config_cm,
-        request_default_deployment_mode=request.param["default-deployment-mode"],
-    )
 
 
 @pytest.fixture(scope="class")
@@ -42,16 +30,83 @@ def inferenceservice_config_cm(admin_client: DynamicClient) -> ConfigMap:
 
 
 @pytest.fixture(scope="class")
+def default_deployment_mode_in_dsc(
+    request: FixtureRequest,
+    dsc_resource: DataScienceCluster,
+    inferenceservice_config_cm: ConfigMap,
+) -> Generator[DataScienceCluster, Any, Any]:
+    patch_value = request.param["default-deployment-mode"]
+
+    if patch_value in (
+        constants.KServeDeploymentType.RAW_DEPLOYMENT,
+        constants.KServeDeploymentType.SERVERLESS,
+    ):
+        spec_key = "defaultDeploymentMode"
+        nested_path = ["defaultDeploymentMode"]
+        config_key = "deploy"
+        expected_value = patch_value
+
+    elif patch_value in (
+        constants.DscComponents.RawDeploymentServiceConfig.HEADED,
+        constants.DscComponents.RawDeploymentServiceConfig.HEADLESS,
+    ):
+        spec_key = "rawDeploymentServiceConfig"
+        nested_path = ["serviceClusterIPNone"]
+        config_key = "service"
+        expected_value = patch_value == constants.DscComponents.RawDeploymentServiceConfig.HEADLESS
+
+    else:
+        raise ValueError(f"Unsupported deployment mode value: {patch_value}")
+
+    patch_generator = patch_dsc_default_deployment_mode(
+        dsc_resource=dsc_resource,
+        config_map=inferenceservice_config_cm,
+        spec_key=spec_key,
+        config_key=config_key,
+        expected_value=expected_value,
+        nested_key_path=nested_path,
+    )
+    yield from patch_generator
+
+
+@pytest.fixture(scope="class")
 def patched_default_deployment_mode_in_dsc(
     request: FixtureRequest,
     default_deployment_mode_in_dsc: DataScienceCluster,
     inferenceservice_config_cm: ConfigMap,
 ) -> Generator[DataScienceCluster, Any, Any]:
-    yield from patch_dsc_default_deployment_mode(
+    patch_value = request.param["updated-deployment-mode"]
+
+    if patch_value in (
+        constants.KServeDeploymentType.RAW_DEPLOYMENT,
+        constants.KServeDeploymentType.SERVERLESS,
+    ):
+        spec_key = "defaultDeploymentMode"
+        nested_path = ["defaultDeploymentMode"]
+        config_key = "deploy"
+        expected_value = patch_value
+
+    elif patch_value in (
+        constants.DscComponents.RawDeploymentServiceConfig.HEADED,
+        constants.DscComponents.RawDeploymentServiceConfig.HEADLESS,
+    ):
+        spec_key = "rawDeploymentServiceConfig"
+        nested_path = ["serviceClusterIPNone"]
+        config_key = "service"
+        expected_value = patch_value == constants.DscComponents.RawDeploymentServiceConfig.HEADLESS
+
+    else:
+        raise ValueError(f"Unsupported deployment mode value: {patch_value}")
+
+    patch_generator = patch_dsc_default_deployment_mode(
         dsc_resource=default_deployment_mode_in_dsc,
-        inferenceservice_config_cm=inferenceservice_config_cm,
-        request_default_deployment_mode=request.param["updated-deployment-mode"],
+        config_map=inferenceservice_config_cm,
+        spec_key=spec_key,
+        config_key=config_key,
+        expected_value=expected_value,
+        nested_key_path=nested_path,
     )
+    yield from patch_generator
 
 
 @pytest.fixture(scope="class")
