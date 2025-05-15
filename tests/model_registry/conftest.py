@@ -10,6 +10,8 @@ from ocp_resources.service import Service
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
+from ocp_resources.cluster_service_version import ClusterServiceVersion
+from ocp_resources.subscription import Subscription
 
 from ocp_resources.model_registry import ModelRegistry
 from schemathesis.specs.openapi.schemas import BaseOpenAPISchema
@@ -292,3 +294,60 @@ def model_registry_operator_pod(admin_client: DynamicClient) -> Pod:
     if not model_registry_operator_pods:
         raise ResourceNotFoundError("Model registry operator pod not found")
     return model_registry_operator_pods[0]
+
+
+@pytest.fixture(scope="package")
+def fail_if_missing_authorino_operator(admin_client: DynamicClient) -> None:
+    """Check if Authorino operator is installed with required version and channel."""
+    operator_name = "authorino-operator"
+    required_channel = "stable"
+    min_version = "1.2.1"
+
+    # First check if operator is installed and in SUCCEEDED state
+    csvs = list(
+        ClusterServiceVersion.get(
+            dyn_client=admin_client,
+            namespace=py_config["applications_namespace"],
+        )
+    )
+
+    LOGGER.info(f"Verifying if {operator_name} is installed with required version and channel")
+
+    # Find the CSV for the operator
+    authorino_csvs = [csv for csv in csvs if csv.name.startswith(operator_name)]
+    if not authorino_csvs:
+        pytest.fail(f"{operator_name} is not installed")
+
+    authorino_csv = authorino_csvs[0]
+    if authorino_csv.status != authorino_csv.Status.SUCCEEDED:
+        pytest.fail(f"Operator {operator_name} is installed but CSV is not in {authorino_csv.Status.SUCCEEDED} state")
+
+    # Get version from CSV instance
+    assert authorino_csv.instance is not None, f"CSV {authorino_csv.name} has no instance data"
+    version = authorino_csv.instance.spec.version
+
+    # Check channel from Subscription in openshift-operators namespace
+    subscriptions = list(
+        Subscription.get(
+            dyn_client=admin_client,
+            namespace="openshift-operators",
+        )
+    )
+
+    subscription_found = False
+    for sub in subscriptions:
+        assert sub.instance is not None, f"Subscription {sub.name} has no instance data"
+        if sub.instance.spec.name == operator_name:
+            subscription_found = True
+            channel = sub.instance.spec.channel
+            if channel != required_channel or version < min_version:
+                pytest.fail(
+                    f"Operator {operator_name} requirements not met:\n"
+                    f"- Current version: {version} (required >= {min_version})\n"
+                    f"- Current channel: {channel} (required: {required_channel})"
+                )
+            LOGGER.info(f"Found {operator_name} with version {version} in channel {channel}")
+            break
+
+    if not subscription_found:
+        pytest.fail(f"Could not find Subscription for {operator_name} in openshift-operators namespace")
