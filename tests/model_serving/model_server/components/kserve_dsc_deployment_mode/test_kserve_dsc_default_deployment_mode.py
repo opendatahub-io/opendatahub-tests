@@ -1,7 +1,7 @@
 import pytest
 
 from tests.model_serving.model_server.components.kserve_dsc_deployment_mode.utils import get_service_cluster_ip
-from tests.model_serving.model_server.utils import verify_inference_response
+from tests.model_serving.model_server.utils import verify_inference_response, LOGGER
 from utilities.constants import (
     Annotations,
     KServeDeploymentType,
@@ -33,7 +33,7 @@ INFERENCE_SERVICE_PARAMS = {
     "default_deployment_mode_in_dsc, unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_inference_service",
     [
         pytest.param(
-            {"default-deployment-mode": KServeDeploymentType.SERVERLESS},
+            {"default-deployment-mode": {"defaultDeploymentMode": KServeDeploymentType.SERVERLESS}},
             {"name": "dsc-serverless"},
             RUNTIME_PARAMS,
             {
@@ -67,11 +67,7 @@ class TestKServeDSCServerlessDefaultDeploymentMode:
 
     @pytest.mark.parametrize(
         "patched_default_deployment_mode_in_dsc",
-        [
-            pytest.param(
-                {"updated-deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT},
-            )
-        ],
+        [pytest.param({"updated-deployment-mode": {"defaultDeploymentMode": KServeDeploymentType.RAW_DEPLOYMENT}})],
         indirect=True,
     )
     def test_isvc_on_dsc_default_deployment_mode_change_to_raw(
@@ -84,11 +80,7 @@ class TestKServeDSCServerlessDefaultDeploymentMode:
 
     @pytest.mark.parametrize(
         "patched_default_deployment_mode_in_dsc",
-        [
-            pytest.param(
-                {"updated-deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT},
-            )
-        ],
+        [pytest.param({"updated-deployment-mode": {"defaultDeploymentMode": KServeDeploymentType.RAW_DEPLOYMENT}})],
         indirect=True,
     )
     def test_restarted_pod_is_serverless(
@@ -107,7 +99,7 @@ class TestKServeDSCServerlessDefaultDeploymentMode:
     "default_deployment_mode_in_dsc, unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_inference_service",
     [
         pytest.param(
-            {"default-deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT},
+            {"default-deployment-mode": {"defaultDeploymentMode": KServeDeploymentType.RAW_DEPLOYMENT}},
             {"name": "dsc-raw"},
             RUNTIME_PARAMS,
             {
@@ -138,11 +130,7 @@ class TestKServeDSCRawDefaultDeploymentMode:
 
     @pytest.mark.parametrize(
         "patched_default_deployment_mode_in_dsc",
-        [
-            pytest.param(
-                {"updated-deployment-mode": KServeDeploymentType.SERVERLESS},
-            )
-        ],
+        [pytest.param({"updated-deployment-mode": {"defaultDeploymentMode": KServeDeploymentType.SERVERLESS}})],
         indirect=True,
     )
     def test_isvc_on_dsc_default_deployment_mode_change_to_serverless(
@@ -156,11 +144,7 @@ class TestKServeDSCRawDefaultDeploymentMode:
 
     @pytest.mark.parametrize(
         "patched_default_deployment_mode_in_dsc",
-        [
-            pytest.param(
-                {"updated-deployment-mode": KServeDeploymentType.SERVERLESS},
-            )
-        ],
+        [pytest.param({"updated-deployment-mode": {"defaultDeploymentMode": KServeDeploymentType.SERVERLESS}})],
         indirect=True,
     )
     def test_restarted_pod_is_raw(
@@ -173,22 +157,47 @@ class TestKServeDSCRawDefaultDeploymentMode:
 
         assert pod_containers == {"kserve-container"}
 
+    @pytest.mark.parametrize(
+        "patched_default_deployment_mode_in_dsc",
+        [
+            pytest.param(
+                {
+                    "updated-deployment-mode": {
+                        "rawDeploymentServiceConfig": DscComponents.RawDeploymentServiceConfig.HEADLESS
+                    }
+                },
+            )
+        ],
+        indirect=True,
+    )
     def test_default_service_config_is_headless(
-        self, admin_client, default_deployment_mode_in_dsc, ovms_inference_service
+        self,
+        admin_client,
+        default_deployment_mode_in_dsc,
+        ovms_inference_service,
+        patched_default_deployment_mode_in_dsc,
     ):
         """
         Verify that the default service configuration is set to Headless mode
         (serviceClusterIPNone=True).
         """
-        assert get_service_cluster_ip(admin_client) is True, (
+
+        LOGGER.warning(
+            f"::::::::::::::::::::{get_service_cluster_ip(admin_client=admin_client)}:::::::::::::::::::::::::"
+        )
+        assert get_service_cluster_ip(admin_client=admin_client) is True, (
             "Default service config should be Headless (serviceClusterIPNone=True)"
         )
 
     @pytest.mark.parametrize(
-        "patched_default_deployment_serviceconfig_in_dsc",
+        "patched_default_deployment_mode_in_dsc",
         [
             pytest.param(
-                {"updated-deployment-config": DscComponents.RawDeploymentServiceConfig.HEADED},
+                {
+                    "updated-deployment-mode": {
+                        "rawDeploymentServiceConfig": DscComponents.RawDeploymentServiceConfig.HEADED
+                    }
+                },
             )
         ],
         indirect=True,
@@ -196,13 +205,13 @@ class TestKServeDSCRawDefaultDeploymentMode:
     def test_service_config_can_be_updated_to_headed(
         self,
         default_deployment_mode_in_dsc,
-        patched_default_deployment_serviceconfig_in_dsc,
+        patched_default_deployment_mode_in_dsc,
         ovms_inference_service,
         admin_client,
     ):
         """
         Verify that the service configuration can be updated from Headless to Headed mode.
         """
-        assert get_service_cluster_ip(admin_client) is False, (
+        assert get_service_cluster_ip(admin_client=admin_client) is False, (
             "Service config should be Headed (serviceClusterIPNone=False) after update"
         )
