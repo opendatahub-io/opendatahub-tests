@@ -1,7 +1,7 @@
 import pytest
 
 from tests.model_serving.model_server.components.kserve_dsc_deployment_mode.utils import get_service_cluster_ip
-from tests.model_serving.model_server.utils import verify_inference_response, LOGGER
+from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import (
     Annotations,
     KServeDeploymentType,
@@ -182,9 +182,6 @@ class TestKServeDSCRawDefaultDeploymentMode:
         (serviceClusterIPNone=True).
         """
 
-        LOGGER.warning(
-            f"::::::::::::::::::::{get_service_cluster_ip(admin_client=admin_client)}:::::::::::::::::::::::::"
-        )
         assert get_service_cluster_ip(admin_client=admin_client) is True, (
             "Default service config should be Headless (serviceClusterIPNone=True)"
         )
