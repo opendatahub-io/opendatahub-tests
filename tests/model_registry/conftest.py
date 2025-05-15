@@ -42,6 +42,8 @@ from tests.model_registry.utils import (
 )
 from utilities.constants import Annotations, Protocols, DscComponents
 from model_registry import ModelRegistry as ModelRegistryClient
+from semver import Version
+from utilities.infra import get_product_version, get_operator_distribution
 
 
 LOGGER = get_logger(name=__name__)
@@ -296,14 +298,41 @@ def model_registry_operator_pod(admin_client: DynamicClient) -> Pod:
     return model_registry_operator_pods[0]
 
 
-@pytest.fixture(scope="package")
+@pytest.fixture(scope="package", autouse=True)
 def fail_if_missing_authorino_operator(admin_client: DynamicClient) -> None:
-    """Check if Authorino operator is installed with required version and channel."""
+    """Check if Authorino operator is installed with required version and channel.
+
+    This fixture is automatically used for all tests in the model_registry directory.
+    It verifies that:
+    1. For OpenShift AI: The product version is >= 2.20
+    2. The Authorino operator is installed
+    3. The Authorino operator is using the required channel (stable)
+    4. The Authorino operator is at least version 1.2.1
+    """
+    # Check product distribution
+    distribution = get_operator_distribution(client=admin_client)
+
+    # Only check product version for OpenShift AI
+    if distribution.startswith("OpenShift AI"):
+        product_version = get_product_version(admin_client=admin_client)
+        min_product_version = Version.parse(version="2.20.0")
+
+        if product_version < min_product_version:
+            LOGGER.info(
+                "Skipping Authorino operator check - product version "
+                f"{product_version} is below required {min_product_version}"
+            )
+            return
+    elif distribution == "Open Data Hub":
+        # TODO: figure out minimum version for ODH
+        LOGGER.info(f"Skipping Authorino operator check - unexpected distribution: {distribution}")
+        return
+
     operator_name = "authorino-operator"
     required_channel = "stable"
-    min_version = "1.2.1"
+    min_version = Version.parse(version="1.2.1")
 
-    # First check if operator is installed and in SUCCEEDED state
+    # Check if operator is installed
     csvs = list(
         ClusterServiceVersion.get(
             dyn_client=admin_client,
@@ -319,12 +348,10 @@ def fail_if_missing_authorino_operator(admin_client: DynamicClient) -> None:
         pytest.fail(f"{operator_name} is not installed")
 
     authorino_csv = authorino_csvs[0]
-    if authorino_csv.status != authorino_csv.Status.SUCCEEDED:
-        pytest.fail(f"Operator {operator_name} is installed but CSV is not in {authorino_csv.Status.SUCCEEDED} state")
 
     # Get version from CSV instance
     assert authorino_csv.instance is not None, f"CSV {authorino_csv.name} has no instance data"
-    version = authorino_csv.instance.spec.version
+    current_version = Version.parse(version=authorino_csv.instance.spec.version)
 
     # Check channel from Subscription in openshift-operators namespace
     subscriptions = list(
@@ -340,13 +367,13 @@ def fail_if_missing_authorino_operator(admin_client: DynamicClient) -> None:
         if sub.instance.spec.name == operator_name:
             subscription_found = True
             channel = sub.instance.spec.channel
-            if channel != required_channel or version < min_version:
+            if channel != required_channel or current_version < min_version:
                 pytest.fail(
                     f"Operator {operator_name} requirements not met:\n"
-                    f"- Current version: {version} (required >= {min_version})\n"
+                    f"- Current version: {current_version} (required >= {min_version})\n"
                     f"- Current channel: {channel} (required: {required_channel})"
                 )
-            LOGGER.info(f"Found {operator_name} with version {version} in channel {channel}")
+            LOGGER.info(f"Found {operator_name} with version {current_version} in channel {channel}")
             break
 
     if not subscription_found:

@@ -225,15 +225,10 @@ def pytest_runtest_setup(item: Item) -> None:
     1. Updates global config (`updated_global_config`)
     2. Adds `fail_if_missing_dependent_operators` fixture for Serverless tests.
     3. Adds fixtures to enable KServe/model mesh in DSC for model server tests.
-    4. Adds `fail_if_missing_authorino_operator` fixture for model registry tests.
     """
 
     BASIC_LOGGER.info(f"\n{separator(symbol_='-', val=item.name)}")
     BASIC_LOGGER.info(f"{separator(symbol_='-', val='SETUP')}")
-
-    # Add Authorino operator check for model registry tests
-    if "model_registry" in str(item.fspath):
-        item.fixturenames.insert(0, "fail_if_missing_authorino_operator")
 
     if KServeDeploymentType.SERVERLESS.lower() in item.keywords:
         item.fixturenames.insert(0, "fail_if_missing_dependent_operators")
