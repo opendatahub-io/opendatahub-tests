@@ -141,6 +141,7 @@ secret = Secret(name=request.param["name"], model_dir=request.param["model-dir"]
 Check [pytest.ini](../pytest.ini) for available markers; additional markers can always be added when needed.
 - Classes are good to group related tests together, for example when they share a fixture.  
 You should NOT group unrelated tests in one class (because it is misleading the reader).
+- All the tests should be properly documented. Every test (or test class), should have a docstring explaning what the test does so that anyone (engineers from other components, managers, PMs, or non-technical users) can have a basic understanding of what the code is trying to test without having to dive into the technical details of related functions or fixtures.
 
 
 ## Check the code
