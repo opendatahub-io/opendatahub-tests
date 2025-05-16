@@ -183,17 +183,17 @@ def mlserver_runtime_2(
     if pytestconfig.option.post_upgrade:
         yield serving_runtime
         serving_runtime.clean_up()
-
-    with ServingRuntime(
-        containers=KSERVE_MLSERVER_CONTAINERS,
-        supported_model_formats=KSERVE_MLSERVER_SUPPORTED_MODEL_FORMATS,
-        protocol_versions=["v2"],
-        annotations=KSERVE_MLSERVER_ANNOTATIONS,
-        label={Labels.OpenDataHub.DASHBOARD: "true"},
-        teardown=teardown_resources,
-        **mlserver_runtime_kwargs,
-    ) as mlserver:
-        yield mlserver
+    else:
+        with ServingRuntime(
+            containers=KSERVE_MLSERVER_CONTAINERS,
+            supported_model_formats=KSERVE_MLSERVER_SUPPORTED_MODEL_FORMATS,
+            protocol_versions=["v2"],
+            annotations=KSERVE_MLSERVER_ANNOTATIONS,
+            label={Labels.OpenDataHub.DASHBOARD: "true"},
+            teardown=teardown_resources,
+            **mlserver_runtime_kwargs,
+        ) as mlserver:
+            yield mlserver
 
 
 @pytest.fixture(scope="class")
