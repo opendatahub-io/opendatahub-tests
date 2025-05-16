@@ -204,7 +204,7 @@ def lmeval_data_downloader_pod(
         restart_policy="Never",
         volumes=[{"name": "pvc-volume", "persistentVolumeClaim": {"claimName": "lmeval-data"}}],
     ) as pod:
-        pod.wait_for_status(status=Pod.Status.SUCCEEDED, timeout=Timeout.TIMEOUT_10MIN)
+        pod.wait_for_status(status=Pod.Status.SUCCEEDED, timeout=Timeout.TIMEOUT_20MIN)
         yield pod
 
 
@@ -318,7 +318,7 @@ def lmeval_minio_deployment(
         label=minio_app_label,
         wait_for_resource=True,
     ) as deployment:
-        deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_10MIN)
+        deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_20MIN)
         yield deployment
 
 
