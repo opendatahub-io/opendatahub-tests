@@ -1,0 +1,68 @@
+name: Push Container Image On PR Comment
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  pull-requests: write
+  contents: write
+  issues: write
+
+jobs:
+  push-container-on-comment:
+    if: contains(github.event.comment.body, '/build-push-pr-image')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pull request
+        uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ github.event.issue.number }}/head
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Check if the user is authorized
+        env:
+          GITHUB_TOKEN: ${{ secrets.RHODS_CI_BOT_PAT }}
+          GITHUB_PR_NUMBER: ${{ github.event.issue.number }}
+          GITHUB_EVENT_ACTION: ${{ github.event.action }}
+          GITHUB_EVENT_REVIEW_STATE: ${{ github.event.review.state }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          REVIEW_COMMENT_BODY: ${{ github.event.review.body }}
+          GITHUB_USER_LOGIN: ${{ github.event.sender.login }}
+          ACTION: "push-container-on-comment"
+        run: uv run python .github/workflows/scripts/pr_workflow.py
+      - name: Set env TAG for image
+        run: |
+          echo "TAG=pr-${{ github.event.issue.number }}" >> "$GITHUB_ENV"
+      - name: Build Image to push
+        id: build-image
+        uses: redhat-actions/buildah-build@v2
+        with:
+          image: opendatahub-tests
+          tags: ${{ env.TAG }}
+          containerfiles: |
+            ./Dockerfile
+      - name: Push To Image Registry
+        id: push-to-registry
+        uses: redhat-actions/push-to-registry@v2
+        with:
+          image: ${{ steps.build-image.outputs.image }}
+          tags: ${{ steps.build-image.outputs.tags }}
+          registry: quay.io/opendatahub
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_PASSWORD }}
+
+      - name: Add comment to PR
+        if: always()
+        env:
+          URL: ${{ github.event.issue.comments_url }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl \
+            -X POST \
+            $URL \
+            -H "Content-Type: application/json" \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            --data '{ "body": "Status of building tag ${{ env.TAG }}: ${{ steps.build-image.outcome }}. \nStatus of pushing tag ${{ env.TAG }} to image registry: ${{ steps.push-to-registry.outcome }}." }'

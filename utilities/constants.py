@@ -196,6 +196,7 @@ class Timeout:
     TIMEOUT_5MIN: int = 5 * TIMEOUT_1MIN
     TIMEOUT_10MIN: int = 10 * TIMEOUT_1MIN
     TIMEOUT_15MIN: int = 15 * TIMEOUT_1MIN
+    TIMEOUT_20MIN: int = 20 * TIMEOUT_1MIN
 
 
 class Containers:

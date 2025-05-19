@@ -17,9 +17,8 @@ SERVING_ARGUMENT: List[str] = [
     "--model=/mnt/models",
     "--uvicorn-log-level=debug",
     "--dtype=float16",
-    "--speculative-model=[ngram]",
-    "--num-speculative-tokens=5",
-    "--ngram-prompt-lookup-max=4",
+    "--speculative_config",
+    '{"model": "ngram", "num_speculative_tokens": 5, "prompt_lookup_max": 4}',
     "--use-v2-block-manager",
 ]
 

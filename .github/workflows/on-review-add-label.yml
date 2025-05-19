@@ -83,6 +83,6 @@ jobs:
         uses: astral-sh/setup-uv@v6
       - name: 'Run add-remove-labels action'
         env:
-          GITHUB_TOKEN: ${{ secrets.OPENDATAHUB_TESTS_BOT_PAT }}
+          GITHUB_TOKEN: ${{ secrets.RHODS_CI_BOT_PAT }}
           GITHUB_EVENT_NAME: ${{ needs.download_context_artifact.outputs.event_name }}
         run: uv run python .github/workflows/scripts/pr_workflow.py

@@ -1,3 +1,5 @@
+from functools import partial
+
 import pytest
 
 from tests.model_explainability.trustyai_service.constants import DRIFT_BASE_DATA_PATH
@@ -11,6 +13,7 @@ from tests.model_explainability.trustyai_service.trustyai_service_utils import (
 )
 from utilities.constants import MinIo
 from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
+from utilities.monitoring import validate_metrics_field, get_metric_label
 
 
 @pytest.mark.parametrize(
@@ -101,6 +104,21 @@ class TestDriftMetrics:
                 "modelId": gaussian_credit_model.name,
                 "referenceTag": "TRAINING",
             },
+        )
+
+    def test_drift_metric_prometheus(
+        self,
+        admin_client,
+        model_namespace,
+        trustyai_service_with_pvc_storage,
+        gaussian_credit_model,
+        prometheus,
+    ):
+        validate_metrics_field(
+            prometheus=prometheus,
+            metrics_query=f'trustyai_{TrustyAIServiceMetrics.Drift.MEANSHIFT}{{namespace="{model_namespace.name}"}}',
+            expected_value=TrustyAIServiceMetrics.Drift.MEANSHIFT.upper(),
+            field_getter=partial(get_metric_label, label_name="metricName"),
         )
 
     def test_drift_metric_delete(

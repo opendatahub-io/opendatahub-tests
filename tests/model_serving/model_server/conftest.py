@@ -13,7 +13,6 @@ from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.storage_class import StorageClass
-from ocp_utilities.monitoring import Prometheus
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 
@@ -32,7 +31,6 @@ from utilities.constants import (
 )
 from utilities.inference_utils import create_isvc
 from utilities.infra import (
-    get_openshift_token,
     s3_endpoint_secret,
     update_configmap_data,
 )
@@ -394,16 +392,6 @@ def http_s3_tensorflow_model_mesh_inference_service(
         yield isvc
 
 
-@pytest.fixture(scope="session")
-def prometheus(admin_client: DynamicClient) -> Prometheus:
-    return Prometheus(
-        client=admin_client,
-        resource_name="thanos-querier",
-        verify_ssl=False,
-        bearer_token=get_openshift_token(),
-    )
-
-
 @pytest.fixture(scope="class")
 def user_workload_monitoring_config_map(
     admin_client: DynamicClient, cluster_monitoring_config: ConfigMap
@@ -573,28 +561,33 @@ def unprivileged_s3_caikit_serverless_inference_service(
 
 @pytest.fixture(scope="package")
 def fail_if_missing_dependent_operators(admin_client: DynamicClient) -> None:
-    missing_operators: list[str] = []
-    csvs = list(
-        ClusterServiceVersion.get(
-            dyn_client=admin_client,
-            namespace=py_config["applications_namespace"],
-        )
-    )
+    if dependent_operators := py_config.get("dependent_operators"):
+        missing_operators: list[str] = []
 
-    for operator_name in py_config.get("dependent_operators", []).split(","):
-        LOGGER.info(f"Verifying if {operator_name} is installed")
-        for csv in csvs:
-            if csv.name.startswith(operator_name):
-                if csv.status == csv.Status.SUCCEEDED:
-                    break
+        for operator_name in dependent_operators.split(","):
+            csvs = list(
+                ClusterServiceVersion.get(
+                    dyn_client=admin_client,
+                    namespace=py_config["applications_namespace"],
+                )
+            )
 
-                else:
-                    missing_operators.append(
-                        f"Operator {operator_name} is installed but CSV is not in {csv.Status.SUCCEEDED} state"
-                    )
+            LOGGER.info(f"Verifying if {operator_name} is installed")
+            for csv in csvs:
+                if csv.name.startswith(operator_name):
+                    if csv.status == csv.Status.SUCCEEDED:
+                        break
 
-        else:
-            missing_operators.append(f"{operator_name} is not installed")
+                    else:
+                        missing_operators.append(
+                            f"Operator {operator_name} is installed but CSV is not in {csv.Status.SUCCEEDED} state"
+                        )
 
-    if missing_operators:
-        pytest.fail(str(missing_operators))
+            else:
+                missing_operators.append(f"{operator_name} is not installed")
+
+        if missing_operators:
+            pytest.fail(str(missing_operators))
+
+    else:
+        LOGGER.info("No dependent operators to verify")
