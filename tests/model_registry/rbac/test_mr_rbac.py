@@ -4,7 +4,12 @@ from simple_logger.logger import get_logger
 
 from model_registry import ModelRegistry as ModelRegistryClient
 from tests.model_registry.constants import MR_INSTANCE_NAME, MR_NAMESPACE
-from tests.model_registry.rbac.utils import use_context, assert_positive_mr_registry, setup_mr_client
+from tests.model_registry.rbac.utils import (
+    switch_context,
+    assert_positive_mr_registry,
+    setup_mr_client,
+    verify_group_membership,
+)
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.group import Group
 from ocp_resources.model_registry import ModelRegistry
@@ -80,12 +85,17 @@ class TestUserPermission:
             AssertionError: If access permissions don't match expectations
             ForbiddenException: Expected for normal users, unexpected for admin users
         """
+
         assert model_registry_instance.name == MR_INSTANCE_NAME
 
         context_to_use = (
             test_idp_user_session.original_context if use_admin_context else test_idp_user_session.user_context
         )
-        with use_context(context_to_use):
+        LOGGER.info(
+            f"-----Testing Model Registry access for user '{test_idp_user_session.username}' "
+            f"- Expected Access: {'Granted' if use_admin_context else 'Denied'}-----"
+        )
+        with switch_context(context_to_use):
             _, client_args = setup_mr_client(
                 model_registry_instance=model_registry_instance,
                 model_registry_namespace=model_registry_namespace,
@@ -136,7 +146,7 @@ class TestUserPermission:
         model_registry_users_group = f"{MR_INSTANCE_NAME}-users"
 
         # Verify initial access denied
-        with use_context(test_idp_user_session.user_context):
+        with switch_context(test_idp_user_session.user_context):
             _, client_args = setup_mr_client(
                 model_registry_instance=model_registry_instance,
                 model_registry_namespace=model_registry_namespace,
@@ -151,21 +161,21 @@ class TestUserPermission:
         group = Group(
             client=admin_client,
             name=model_registry_users_group,
+            wait_for_resource=True,
         )
         group.update(
             resource_dict={"metadata": {"name": model_registry_users_group}, "users": [test_idp_user_session.username]}
         )
 
         # Verify group membership
-        group = Group(client=admin_client, name=model_registry_users_group)
-        users = group.instance.get("users", []) or []
-        assert test_idp_user_session.username in users, (
-            f"User {test_idp_user_session.username} not in group {model_registry_users_group}. Current users: {users}"
+        verify_group_membership(
+            group=group,
+            username=test_idp_user_session.username,
         )
-        LOGGER.info(f"Added user {test_idp_user_session.username} to {model_registry_users_group} group")
+
         try:
             # Wait for access to be granted
-            with use_context(test_idp_user_session.user_context):
+            with switch_context(test_idp_user_session.user_context):
                 _, client_args = setup_mr_client(
                     model_registry_instance=model_registry_instance,
                     model_registry_namespace=model_registry_namespace,
@@ -184,10 +194,6 @@ class TestUserPermission:
                     break  # Break after first successful iteration
                 LOGGER.info("Successfully accessed Model Registry")
         finally:
-            group = Group(
-                client=admin_client,
-                name=model_registry_users_group,
-            )
             group.update(resource_dict={"metadata": {"name": model_registry_users_group}, "users": []})
             LOGGER.info(f"Removed user {test_idp_user_session.username} from {model_registry_users_group} group")
 
@@ -244,7 +250,7 @@ class TestUserPermission:
             subjects_name=NEW_GROUP_NAME,
         ):
             LOGGER.info("User should have access to MR after the group is granted edit access via a RoleBinding")
-            with use_context(test_idp_user_session.user_context):
+            with switch_context(test_idp_user_session.user_context):
                 assert_positive_mr_registry(
                     model_registry_instance=model_registry_instance,
                     model_registry_namespace=model_registry_namespace,
@@ -291,7 +297,7 @@ class TestUserPermission:
             subjects_kind="User",
             subjects_name=test_idp_user_session.username,
         ):
-            with use_context(test_idp_user_session.user_context):
+            with switch_context(test_idp_user_session.user_context):
                 assert_positive_mr_registry(
                     model_registry_instance=model_registry_instance,
                     model_registry_namespace=model_registry_namespace,

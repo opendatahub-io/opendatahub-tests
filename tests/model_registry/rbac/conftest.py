@@ -94,11 +94,13 @@ def sa_token(service_account: ServiceAccount) -> str:
 
 @pytest.fixture(scope="function")
 def new_group(
-    request: pytest.FixtureRequest, test_idp_user_session: TestUserSession, admin_client: DynamicClient
+    request: pytest.FixtureRequest,
+    admin_client: DynamicClient,
+    test_idp_user_session: TestUserSession,
 ) -> Generator[str, None, None]:
     """
     Fixture to create a new OpenShift group and add a user, then delete the group after the test.
-    The parameter should be a tuple: (group_name, user_name).
+    The group name is passed as a parameter to the fixture and the user is taken from test_idp_user_session.
     """
 
     group_name = request.param
@@ -120,20 +122,20 @@ def test_idp_user_session() -> Generator[TestUserSession, None, None]:
     Returns a TestUserSession object that contains all necessary credentials and contexts.
     """
     # Create the test IDP and user
-    session = create_test_idp()
-    LOGGER.info(f"Created session test IDP user: {session.username}")
+    idp_session = create_test_idp()
+    LOGGER.info(f"Created session test IDP user: {idp_session.username}")
 
     try:
         # Yield the session object to all tests in the session
-        yield session
+        yield idp_session
     finally:
         # Clean up after all tests are done
-        LOGGER.info(f"Cleaning up session test IDP user: {session.username}")
+        LOGGER.info(f"Cleaning up session test IDP user: {idp_session.username}")
         cleanup_test_idp(
-            idp_name=session.idp_name,
-            secret_name=session.secret_name,
-            original_context=session.original_context,
-            user_context=session.user_context,
+            idp_name=idp_session.idp_name,
+            secret_name=idp_session.secret_name,
+            original_context=idp_session.original_context,
+            user_context=idp_session.user_context,
         )
 
 
