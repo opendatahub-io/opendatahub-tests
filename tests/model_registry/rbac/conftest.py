@@ -2,24 +2,23 @@ import pytest
 import shlex
 import subprocess
 import os
-import time
-from contextlib import contextmanager
+from typing import Generator, List, Dict, Any
+from simple_logger.logger import get_logger
 
-from typing import Callable, ContextManager, Generator, List, Dict, Any
 from ocp_resources.namespace import Namespace
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.role import Role
+from ocp_resources.group import Group
 from kubernetes.dynamic import DynamicClient
 from pyhelper_utils.shell import run_command
 from tests.model_registry.utils import generate_random_name, generate_namespace_name
+from utilities.user_utils import create_test_idp, cleanup_test_idp, TestUserSession
 from tests.model_registry.constants import MR_INSTANCE_NAME
-from simple_logger.logger import get_logger
 
 
 LOGGER = get_logger(name=__name__)
 DEFAULT_TOKEN_DURATION = "10m"
-SLEEP_TIME = 5
 
 
 @pytest.fixture(scope="function")
@@ -93,36 +92,50 @@ def sa_token(service_account: ServiceAccount) -> str:
         raise
 
 
-@pytest.fixture(scope="session", autouse=True)
-def check_env_vars() -> None:
-    """
-    Check if the required environment variables are set.
-    Fails the test session if any are missing.
-    """
-    missing: list[str] = []
-    missing.extend(var for var in ["ADMIN_PASSWORD", "NON_ADMIN_PASSWORD"] if not os.environ.get(var))
-    if missing:
-        pytest.skip(f"Required environment variables not set: {', '.join(missing)}")
-
-
 @pytest.fixture(scope="function")
-def new_group(request: pytest.FixtureRequest) -> Generator[str, None, None]:
+def new_group(
+    request: pytest.FixtureRequest, test_idp_user_session: TestUserSession, admin_client: DynamicClient
+) -> Generator[str, None, None]:
     """
     Fixture to create a new OpenShift group and add a user, then delete the group after the test.
     The parameter should be a tuple: (group_name, user_name).
     """
-    group_name, user_name = request.param
+    group_name = request.param
     try:
-        run_command(command=["oc", "adm", "groups", "new", group_name, user_name])
-    except Exception as e:
-        pytest.skip(f"Failed to create group {group_name} and add user {user_name}: {e}")
-    try:
+        # Replace oc adm groups new with Group resource
+        group = Group(client=admin_client, name=group_name, users=[test_idp_user_session.username])
+        group.create()
         yield group_name
     finally:
         try:
-            run_command(command=["oc", "delete", "group", group_name])
+            # Replace oc delete group with Group resource cleanup
+            group.delete()
         except Exception as e:
             LOGGER.error(f"Failed to delete group {group_name}: {e}")
+
+
+@pytest.fixture(scope="session")
+def test_idp_user_session() -> Generator[TestUserSession, None, None]:
+    """
+    Session-scoped fixture that creates a test IDP user and cleans it up after all tests.
+    Returns a TestUserSession object that contains all necessary credentials and contexts.
+    """
+    # Create the test IDP and user
+    session = create_test_idp()
+    LOGGER.info(f"Created session test IDP user: {session.username}")
+
+    try:
+        # Yield the session object to all tests in the session
+        yield session
+    finally:
+        # Clean up after all tests are done
+        LOGGER.info(f"Cleaning up session test IDP user: {session.username}")
+        cleanup_test_idp(
+            idp_name=session.idp_name,
+            secret_name=session.secret_name,
+            original_context=session.original_context,
+            user_context=session.user_context,
+        )
 
 
 # --- RBAC Fixtures ---
@@ -206,31 +219,3 @@ def mr_access_role_binding(
         LOGGER.info(f"RoleBinding {binding.name} created successfully.")
         yield binding
         LOGGER.info(f"RoleBinding {binding.name} deletion initiated by context manager.")
-
-
-@pytest.fixture(scope="function")
-def user_in_group_context() -> Callable[[str], ContextManager[None]]:
-    """
-    Fixture to add and remove a user from the model-registry-users group.
-    Returns a context manager that adds the user on entry and removes on exit.
-    """
-
-    @contextmanager
-    def _context(user_name: str) -> Generator[None, None, None]:
-        run_command(command=["oc", "adm", "groups", "add-users", "model-registry-users", user_name])
-        max_attempts = 5
-        for attempt in range(max_attempts):
-            result = run_command(command=["oc", "get", "group", "model-registry-users", "-o", "jsonpath='{.users}'"])
-            if user_name in result[1]:
-                LOGGER.info(f"User {user_name} added to model-registry-users group successfully.")
-                break
-            if attempt <= max_attempts - 1:
-                time.sleep(SLEEP_TIME)  # noqa: FCN001
-        else:
-            pytest.fail(f"User {user_name} not added to model-registry-users group after {max_attempts} attempts.")
-        try:
-            yield
-        finally:
-            run_command(command=["oc", "adm", "groups", "remove-users", "model-registry-users", user_name])
-
-    return _context

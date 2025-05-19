@@ -1,33 +1,10 @@
-import shlex
-from typing import Any, Dict
-from kubernetes.dynamic import DynamicClient
+from typing import Any, Dict, Generator
 from pyhelper_utils.shell import run_command
 from utilities.constants import Protocols
+import logging
+from contextlib import contextmanager
 
-
-def get_token(user_name: str, password: str, admin_client: DynamicClient) -> str:
-    """
-    Get an OpenShift token for a user.
-
-    Args:
-        user_name: The name of the user.
-        password: The password of the user.
-        admin_client: The admin client.
-
-    Returns:
-        A token for the user.
-
-    Note: Uses --insecure-skip-tls-verify=true for testing purposes.
-    """
-    current_context = run_command(command=["oc", "config", "current-context"])[1].strip()
-    try:
-        command: str = (
-            f"oc login  --insecure-skip-tls-verify=true {admin_client.configuration.host} -u {user_name} -p {password}"
-        )
-        run_command(command=shlex.split(command), hide_log_command=True)
-        return run_command(command=["oc", "whoami", "-t"], hide_log_command=True)[1].strip()
-    finally:
-        run_command(command=["oc", "config", "use-context", current_context])
+LOGGER = logging.getLogger(__name__)
 
 
 def build_mr_client_args(rest_endpoint: str, token: str, author: str) -> Dict[str, Any]:
@@ -52,3 +29,34 @@ def build_mr_client_args(rest_endpoint: str, token: str, author: str) -> Dict[st
         "is_secure": False,
         "author": author,
     }
+
+
+@contextmanager
+def use_context(context_name: str) -> Generator[None, None, None]:
+    """
+    Context manager to temporarily switch to a specific context.
+
+    Args:
+        context_name: The name of the context to switch to
+
+    Yields:
+        None
+
+    Example:
+        with use_context("my-context"):
+            # Commands here will run in my-context
+            run_command(["oc", "get", "pods"])
+    """
+    # Store current context
+    _, current_context, _ = run_command(command=["oc", "config", "current-context"], check=True)
+    current_context = current_context.strip()
+
+    try:
+        # Switch to the test context
+        run_command(command=["oc", "config", "use-context", context_name], check=True)
+        LOGGER.info(f"Switched to context: {context_name}")
+        yield
+    finally:
+        # Restore original context
+        run_command(command=["oc", "config", "use-context", current_context], check=True)
+        LOGGER.info(f"Restored context: {current_context}")

@@ -1,20 +1,21 @@
 import pytest
-from typing import Self, Callable, ContextManager
-import os
+from typing import Self
 from simple_logger.logger import get_logger
-from contextlib import nullcontext
 
 from model_registry import ModelRegistry as ModelRegistryClient
 from tests.model_registry.constants import MR_INSTANCE_NAME, MR_NAMESPACE
-from tests.model_registry.rbac.utils import get_token, build_mr_client_args
+from tests.model_registry.rbac.utils import build_mr_client_args, use_context
 from tests.model_registry.utils import get_endpoint_from_mr_service, get_mr_service_by_label
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.group import Group
 from ocp_resources.model_registry import ModelRegistry
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from utilities.constants import DscComponents, Protocols
 from mr_openapi.exceptions import ForbiddenException
-
+from utilities.user_utils import TestUserSession
+from utilities.infra import get_openshift_token
+from timeout_sampler import TimeoutSampler
 
 LOGGER = get_logger(name=__name__)
 NEW_GROUP_NAME = "test-model-registry-group"
@@ -24,22 +25,64 @@ def assert_positive_mr_registry(
     model_registry_instance: ModelRegistry,
     model_registry_namespace: str,
     admin_client: DynamicClient,
-    user_name: str,
-    password: str,
 ) -> None:
     """
     Assert that a user has access to the Model Registry.
+
+    Args:
+        model_registry_instance: The Model Registry instance to check access for
+        model_registry_namespace: The namespace where Model Registry is deployed
+        admin_client: The admin client for accessing the cluster
+
+    Raises:
+        AssertionError: If client initialization fails
+        Exception: If any other error occurs during the check
+
+    Note:
+        This function should be called within the appropriate context (admin or user)
+        as it uses the current context to get the token.
     """
-    user_token = get_token(user_name=user_name, password=password, admin_client=admin_client)
+    token = get_openshift_token()
     namespace_instance = admin_client.resources.get(api_version="v1", kind="Namespace").get(
         name=model_registry_namespace
     )
     svc = get_mr_service_by_label(client=admin_client, ns=namespace_instance, mr_instance=model_registry_instance)
     endpoint = get_endpoint_from_mr_service(svc=svc, protocol=Protocols.REST)
-    client_args = build_mr_client_args(rest_endpoint=endpoint, token=user_token, author="rbac-test-user-granted")
+    client_args = build_mr_client_args(rest_endpoint=endpoint, token=token, author="rbac-test-user-granted")
     mr_client = ModelRegistryClient(**client_args)
     assert mr_client is not None, "Client initialization failed after granting permissions"
     LOGGER.info("Client instantiated successfully after granting permissions.")
+
+
+def setup_mr_client(
+    model_registry_instance: ModelRegistry,
+    model_registry_namespace: str,
+    admin_client: DynamicClient,
+    author: str = "rbac-test",
+) -> tuple[str, dict]:
+    """
+    Setup Model Registry client arguments within the current context.
+
+    Args:
+        model_registry_instance: The Model Registry instance to connect to
+        model_registry_namespace: The namespace where Model Registry is deployed
+        admin_client: The admin client for accessing the cluster
+        author: The author name for the client (default: "rbac-test")
+
+    Returns:
+        Tuple of (token, client_args) for Model Registry client
+
+    Note:
+        This function should be called within the appropriate context (admin or user)
+        as it uses the current context to get the token.
+    """
+    token = get_openshift_token()
+    namespace_instance = admin_client.resources.get(api_version="v1", kind="Namespace").get(
+        name=model_registry_namespace
+    )
+    svc = get_mr_service_by_label(client=admin_client, ns=namespace_instance, mr_instance=model_registry_instance)
+    endpoint = get_endpoint_from_mr_service(svc=svc, protocol=Protocols.REST)
+    return token, build_mr_client_args(rest_endpoint=endpoint, token=token, author=author)
 
 
 @pytest.mark.parametrize(
@@ -61,14 +104,20 @@ def assert_positive_mr_registry(
 class TestUserPermission:
     """
     Test suite for verifying user and group permissions for the Model Registry.
+
+    This suite tests various RBAC scenarios including:
+    - Basic user access permissions (admin vs normal user)
+    - Group-based access control
+    - User addition to groups and permission changes
+    - Role and RoleBinding management
     """
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     @pytest.mark.parametrize(
-        "user_name, password, context_manager",
+        "use_admin_context",
         [
-            ("htpasswd-cluster-admin-user", os.environ.get("ADMIN_PASSWORD"), nullcontext()),
-            ("ldap-user1", os.environ.get("NON_ADMIN_PASSWORD"), pytest.raises(ForbiddenException)),
+            pytest.param(True, id="admin_user"),
+            pytest.param(False, id="normal_user"),
         ],
     )
     def test_user_permission(
@@ -76,115 +125,180 @@ class TestUserPermission:
         model_registry_instance: ModelRegistry,
         model_registry_namespace: str,
         admin_client: DynamicClient,
-        user_name: str,
-        password: str,
-        context_manager: ContextManager,
+        test_idp_user_session: TestUserSession,
+        use_admin_context: bool,
     ):
         """
-        Test that a user with permission can access the Model Registry,
-        and a user without permission receives a ForbiddenException.
-        """
-        LOGGER.info("-----Test that a user with permission can access the Model Registry-----")
-        assert model_registry_instance.name == MR_INSTANCE_NAME
-        user_token = get_token(user_name=user_name, password=password, admin_client=admin_client)
-        namespace_instance = admin_client.resources.get(api_version="v1", kind="Namespace").get(
-            name=model_registry_namespace
-        )
-        svc = get_mr_service_by_label(client=admin_client, ns=namespace_instance, mr_instance=model_registry_instance)
-        endpoint = get_endpoint_from_mr_service(svc=svc, protocol=Protocols.REST)
-        client_args = build_mr_client_args(rest_endpoint=endpoint, token=user_token, author="rbac-test")
-        with context_manager as exc:
-            _ = ModelRegistryClient(**client_args)
+        Test basic user access permissions to the Model Registry.
 
-        if exc:
-            http_error = exc.value
-            assert http_error.body is not None, "HTTPError should have a response object"
-            LOGGER.info(f"Received expected HTTP error: Status Code {http_error.status}")
-            assert http_error.status == 403, f"Expected HTTP 403 Forbidden, but got {http_error.status}"
-            LOGGER.info("Successfully received expected HTTP 403 status code.")
-        else:  # If no exception was raised
-            LOGGER.info("Successfully created Model Registry client")
+        This test verifies that:
+        - Admin users can access the Model Registry
+        - Normal users cannot access the Model Registry (403 Forbidden)
+
+        Args:
+            model_registry_instance: The Model Registry instance to test against
+            model_registry_namespace: The namespace where Model Registry is deployed
+            admin_client: The admin client for accessing the cluster
+            test_idp_user_session: The test user session containing both admin and user contexts
+            use_admin_context: Whether to use admin context (True) or user context (False)
+
+        Raises:
+            AssertionError: If access permissions don't match expectations
+            ForbiddenException: Expected for normal users, unexpected for admin users
+        """
+        assert model_registry_instance.name == MR_INSTANCE_NAME
+
+        context_to_use = (
+            test_idp_user_session.original_context if use_admin_context else test_idp_user_session.user_context
+        )
+        with use_context(context_to_use):
+            _, client_args = setup_mr_client(
+                model_registry_instance=model_registry_instance,
+                model_registry_namespace=model_registry_namespace,
+                admin_client=admin_client,
+            )
+
+            if use_admin_context:
+                mr_client = ModelRegistryClient(**client_args)
+                assert mr_client is not None, "Client initialization failed for admin user"
+                LOGGER.info("Successfully created Model Registry client for admin user")
+            else:
+                with pytest.raises(ForbiddenException) as exc_info:
+                    _ = ModelRegistryClient(**client_args)
+                assert exc_info.value.status == 403, f"Expected HTTP 403 Forbidden, but got {exc_info.value.status}"
+                LOGGER.info("Successfully received expected HTTP 403 status code")
 
     @pytest.mark.smoke
-    @pytest.mark.parametrize(
-        "user_name, password",
-        [
-            ("ldap-user1", os.environ.get("NON_ADMIN_PASSWORD")),
-        ],
-    )
-    @pytest.mark.usefixtures("updated_dsc_component_state_scope_class")
     def test_user_added_to_group(
         self: Self,
         model_registry_instance: ModelRegistry,
         model_registry_namespace: str,
         admin_client: DynamicClient,
-        user_name: str,
-        password: str,
-        user_in_group_context: Callable[[str], ContextManager],
+        test_idp_user_session: TestUserSession,
     ):
         """
-        Test that a user cannot access the Model Registry before being added to a group,
-        and can access it after being added to the group.
+        Test that a user's access to Model Registry changes when added to a group.
+
+        This test verifies that:
+        1. A normal user cannot access the Model Registry initially
+        2. After adding the user to the appropriate group, they gain access
+        3. After removing the user from the group, they lose access
+
+        Args:
+            model_registry_instance: The Model Registry instance to test against
+            model_registry_namespace: The namespace where Model Registry is deployed
+            admin_client: The admin client for accessing the cluster
+            test_idp_user_session: The test user session containing both admin and user contexts
+
+        Raises:
+            AssertionError: If access permissions don't match expectations
+            ForbiddenException: Expected before group addition, unexpected after
         """
         LOGGER.info(
             "-----Test that a user can access to the Model Registry once added to a "
             "group that has the permissions to access it-----"
         )
         assert model_registry_instance.name == MR_INSTANCE_NAME
+        model_registry_users_group = f"{MR_INSTANCE_NAME}-users"
 
-        user_token = get_token(user_name=user_name, password=password, admin_client=admin_client)
-        namespace_instance = admin_client.resources.get(api_version="v1", kind="Namespace").get(
-            name=model_registry_namespace
-        )
-        svc = get_mr_service_by_label(client=admin_client, ns=namespace_instance, mr_instance=model_registry_instance)
-        endpoint = get_endpoint_from_mr_service(svc=svc, protocol=Protocols.REST)
-        client_args = build_mr_client_args(rest_endpoint=endpoint, token=user_token, author="rbac-test-denied")
-
-        LOGGER.info("User has no access to MR")
-        with pytest.raises(ForbiddenException) as exc_info:
-            _ = ModelRegistryClient(**client_args)
-
-        http_error = exc_info.value
-        assert http_error.body is not None, "HTTPError should have a response object"
-        LOGGER.info(f"Received expected HTTP error: Status Code {http_error.status}")
-        assert http_error.status == 403, f"Expected HTTP 403 Forbidden, but got {http_error.status}"
-        LOGGER.info("Successfully received expected HTTP 403 status code.")
-
-        LOGGER.info("Add user to the model registry users group")
-        with user_in_group_context(user_name):
-            assert_positive_mr_registry(
+        # Verify initial access denied
+        with use_context(test_idp_user_session.user_context):
+            _, client_args = setup_mr_client(
                 model_registry_instance=model_registry_instance,
                 model_registry_namespace=model_registry_namespace,
                 admin_client=admin_client,
-                user_name=user_name,
-                password=password,
             )
+
+            with pytest.raises(ForbiddenException) as exc_info:
+                _ = ModelRegistryClient(**client_args)
+            assert exc_info.value.status == 403
+
+        # Add user to group
+        group = Group(
+            client=admin_client,
+            name=model_registry_users_group,
+        )
+        group.update(
+            resource_dict={"metadata": {"name": model_registry_users_group}, "users": [test_idp_user_session.username]}
+        )
+
+        # Verify group membership
+        group = Group(client=admin_client, name=model_registry_users_group)
+        users = group.instance.get("users", []) or []
+        assert test_idp_user_session.username in users, (
+            f"User {test_idp_user_session.username} not in group {model_registry_users_group}. Current users: {users}"
+        )
+        LOGGER.info(f"Added user {test_idp_user_session.username} to {model_registry_users_group} group")
+        try:
+            # Wait for access to be granted
+            with use_context(test_idp_user_session.user_context):
+                _, client_args = setup_mr_client(
+                    model_registry_instance=model_registry_instance,
+                    model_registry_namespace=model_registry_namespace,
+                    admin_client=admin_client,
+                )
+
+                sampler = TimeoutSampler(
+                    wait_timeout=240,
+                    sleep=5,
+                    func=assert_positive_mr_registry,
+                    model_registry_instance=model_registry_instance,
+                    model_registry_namespace=model_registry_namespace,
+                    admin_client=admin_client,
+                )
+                for _ in sampler:
+                    break  # Break after first successful iteration
+                LOGGER.info("Successfully accessed Model Registry")
+        finally:
+            group = Group(
+                client=admin_client,
+                name=model_registry_users_group,
+            )
+            group.update(resource_dict={"metadata": {"name": model_registry_users_group}, "users": []})
+            LOGGER.info(f"Removed user {test_idp_user_session.username} from {model_registry_users_group} group")
 
     @pytest.mark.smoke
     @pytest.mark.parametrize(
-        "user_name, password, new_group",
+        "new_group",
         [
-            ("ldap-user1", os.environ.get("NON_ADMIN_PASSWORD"), (NEW_GROUP_NAME, "ldap-user1")),
+            pytest.param(
+                NEW_GROUP_NAME,
+                id="new_group",
+            ),
         ],
         indirect=["new_group"],
     )
-    @pytest.mark.usefixtures("updated_dsc_component_state_scope_class", "mr_access_role", "new_group")
+    @pytest.mark.usefixtures("mr_access_role", "new_group")
     def test_create_group(
         self: Self,
         model_registry_instance: ModelRegistry,
         model_registry_namespace: str,
         admin_client: DynamicClient,
-        user_name: str,
-        password: str,
+        test_idp_user_session: TestUserSession,
         mr_access_role: Role,
     ):
         """
-        Test creating a group, granting it model registry access, and verifying user access.
+        Test creating a new group and granting it Model Registry access.
+
+        This test verifies that:
+        1. A new group can be created
+        2. The group can be granted Model Registry access via RoleBinding
+        3. Users in the group can access the Model Registry
+
+        Args:
+            model_registry_instance: The Model Registry instance to test against
+            model_registry_namespace: The namespace where Model Registry is deployed
+            admin_client: The admin client for accessing the cluster
+            test_idp_user_session: The test user session containing both admin and user contexts
+            mr_access_role: The Role that grants Model Registry access
+
+        Raises:
+            AssertionError: If group creation or access permissions don't match expectations
         """
         LOGGER.info(
             "-----Test that a new group can be granted access to Model Registry and user added to it can access MR-----"
         )
-        LOGGER.info("Group created and user added to it")
+        LOGGER.info(f"Group {NEW_GROUP_NAME} created and user {test_idp_user_session.username} added to it")
 
         with RoleBinding(
             client=admin_client,
@@ -196,34 +310,39 @@ class TestUserPermission:
             subjects_name=NEW_GROUP_NAME,
         ):
             LOGGER.info("User should have access to MR after the group is granted edit access via a RoleBinding")
-            assert_positive_mr_registry(
-                model_registry_instance=model_registry_instance,
-                model_registry_namespace=model_registry_namespace,
-                admin_client=admin_client,
-                user_name=user_name,
-                password=password,
-            )
+            with use_context(test_idp_user_session.user_context):
+                assert_positive_mr_registry(
+                    model_registry_instance=model_registry_instance,
+                    model_registry_namespace=model_registry_namespace,
+                    admin_client=admin_client,
+                )
 
-    @pytest.mark.smoke
-    @pytest.mark.parametrize(
-        "user_name, password",
-        [
-            ("ldap-user1", os.environ.get("NON_ADMIN_PASSWORD")),
-        ],
-    )
-    @pytest.mark.usefixtures("updated_dsc_component_state_scope_class", "mr_access_role")
+    @pytest.mark.sanity
+    @pytest.mark.usefixtures("mr_access_role")
     def test_add_single_user(
         self: Self,
         model_registry_instance: ModelRegistry,
         model_registry_namespace: str,
         admin_client: DynamicClient,
-        user_name: str,
-        password: str,
+        test_idp_user_session: TestUserSession,
         mr_access_role: Role,
     ):
         """
-        Test that adding a single user to the Model Registry's permitted list allows
-        that user to access the Model Registry.
+        Test granting Model Registry access to a single user.
+
+        This test verifies that:
+        1. A single user can be granted Model Registry access via RoleBinding
+        2. The user can access the Model Registry after being granted access
+
+        Args:
+            model_registry_instance: The Model Registry instance to test against
+            model_registry_namespace: The namespace where Model Registry is deployed
+            admin_client: The admin client for accessing the cluster
+            test_idp_user_session: The test user session containing both admin and user contexts
+            mr_access_role: The Role that grants Model Registry access
+
+        Raises:
+            AssertionError: If access permissions don't match expectations
         """
         LOGGER.info(
             "-----Test that adding a single user to the Model Registry's permitted list allows "
@@ -236,13 +355,11 @@ class TestUserPermission:
             role_ref_name=mr_access_role.name,
             role_ref_kind=mr_access_role.kind,
             subjects_kind="User",
-            subjects_name=user_name,
+            subjects_name=test_idp_user_session.username,
         ):
-            LOGGER.info("User should have access to MR after the RoleBinding for the user is created")
-            assert_positive_mr_registry(
-                model_registry_instance=model_registry_instance,
-                model_registry_namespace=model_registry_namespace,
-                admin_client=admin_client,
-                user_name=user_name,
-                password=password,
-            )
+            with use_context(test_idp_user_session.user_context):
+                assert_positive_mr_registry(
+                    model_registry_instance=model_registry_instance,
+                    model_registry_namespace=model_registry_namespace,
+                    admin_client=admin_client,
+                )
