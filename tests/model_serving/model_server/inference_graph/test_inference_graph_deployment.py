@@ -2,7 +2,7 @@ import pytest
 
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.inference_utils import Inference
-from utilities.constants import ModelInferenceRuntime, Protocols, KServeDeploymentType
+from utilities.constants import ModelInferenceRuntime, Protocols
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 
@@ -53,8 +53,8 @@ class TestInferenceGraphDeployment:
         indirect=True,
     )
     def test_inference_graph_serverless_authentication(
-        self, dog_breed_inference_graph,
-        inference_graph_sa_token_with_access):
+        self, dog_breed_inference_graph, inference_graph_sa_token_with_access
+    ):
         verify_inference_response(
             inference_service=dog_breed_inference_graph,
             inference_config=ONNX_INFERENCE_CONFIG,
@@ -70,7 +70,9 @@ class TestInferenceGraphDeployment:
         [{"name": "dog-breed-bad-auth-serverless-ig", "enable-auth": True}],
         indirect=True,
     )
-    def test_inference_graph_serverless_authentication_without_privileges(self, dog_breed_inference_graph, inference_graph_unprivileged_sa_token):
+    def test_inference_graph_serverless_authentication_without_privileges(
+        self, dog_breed_inference_graph, inference_graph_unprivileged_sa_token
+    ):
         verify_inference_response(
             inference_service=dog_breed_inference_graph,
             inference_config=ONNX_INFERENCE_CONFIG,

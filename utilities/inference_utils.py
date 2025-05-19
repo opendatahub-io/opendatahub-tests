@@ -122,7 +122,7 @@ class Inference:
         if self.deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT:
             if isinstance(self.inference_service, InferenceGraph):
                 # For InferenceGraph, the logic is similar as in Serverless. Only the label is different.
-                return not(labels and labels.get(Labels.Kserve.NETWORKING_KSERVE_IO) == "cluster-local")
+                return not (labels and labels.get(Labels.Kserve.NETWORKING_KSERVE_IO) == "cluster-local")
             else:
                 return labels and labels.get(Labels.Kserve.NETWORKING_KSERVE_IO) == Labels.Kserve.EXPOSED
 
@@ -488,7 +488,11 @@ class UserInference(Inference):
 
         # For multi node with headless service, we need to get the pod to get the port
         # TODO: check behavior for both normal and headless service
-        if isinstance(self.inference_service, InferenceService) and self.inference_service.instance.spec.predictor.workerSpec and not self.visibility_exposed:
+        if (
+            isinstance(self.inference_service, InferenceService)
+            and self.inference_service.instance.spec.predictor.workerSpec
+            and not self.visibility_exposed
+        ):
             pod = get_pods_by_isvc_label(
                 client=self.inference_service.client,
                 isvc=self.inference_service,

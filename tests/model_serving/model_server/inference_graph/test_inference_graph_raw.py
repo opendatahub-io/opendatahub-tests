@@ -34,7 +34,13 @@ class TestInferenceGraphRaw:
 
     @pytest.mark.parametrize(
         "dog_breed_inference_graph",
-        [{"name": "dog-breed-private-raw-pipeline", "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT, "external-route": False}],
+        [
+            {
+                "name": "dog-breed-private-raw-pipeline",
+                "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
+                "external-route": False,
+            }
+        ],
         indirect=True,
     )
     def test_private_inference_graph_raw_deployment(self, dog_breed_inference_graph):
@@ -50,12 +56,16 @@ class TestInferenceGraphRaw:
 
     @pytest.mark.parametrize(
         "dog_breed_inference_graph",
-        [{"name": "dog-breed-auth-raw-ig", "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT, "enable-auth": True}],
+        [
+            {
+                "name": "dog-breed-auth-raw-ig",
+                "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
+                "enable-auth": True,
+            }
+        ],
         indirect=True,
     )
-    def test_inference_graph_raw_authentication(
-            self, dog_breed_inference_graph,
-            inference_graph_sa_token_with_access):
+    def test_inference_graph_raw_authentication(self, dog_breed_inference_graph, inference_graph_sa_token_with_access):
         verify_inference_response(
             inference_service=dog_breed_inference_graph,
             inference_config=ONNX_INFERENCE_CONFIG,
@@ -68,13 +78,19 @@ class TestInferenceGraphRaw:
 
     @pytest.mark.parametrize(
         "dog_breed_inference_graph",
-        [{"name": "dog-breed-private-auth-raw-ig", "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
-          "enable-auth": True, "external-route": False}],
+        [
+            {
+                "name": "dog-breed-private-auth-raw-ig",
+                "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
+                "enable-auth": True,
+                "external-route": False,
+            }
+        ],
         indirect=True,
     )
     def test_private_inference_graph_raw_authentication(
-            self, dog_breed_inference_graph,
-            inference_graph_sa_token_with_access):
+        self, dog_breed_inference_graph, inference_graph_sa_token_with_access
+    ):
         verify_inference_response(
             inference_service=dog_breed_inference_graph,
             inference_config=ONNX_INFERENCE_CONFIG,
@@ -88,13 +104,18 @@ class TestInferenceGraphRaw:
 
     @pytest.mark.parametrize(
         "dog_breed_inference_graph",
-        [{"name": "dog-breed-bad-auth-raw-ig", "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
-          "enable-auth": True}],
+        [
+            {
+                "name": "dog-breed-bad-auth-raw-ig",
+                "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
+                "enable-auth": True,
+            }
+        ],
         indirect=True,
     )
     def test_inference_graph_raw_authentication_without_privileges(
-            self, dog_breed_inference_graph,
-            inference_graph_unprivileged_sa_token):
+        self, dog_breed_inference_graph, inference_graph_unprivileged_sa_token
+    ):
         verify_inference_response(
             inference_service=dog_breed_inference_graph,
             inference_config=ONNX_INFERENCE_CONFIG,
@@ -108,13 +129,19 @@ class TestInferenceGraphRaw:
 
     @pytest.mark.parametrize(
         "dog_breed_inference_graph",
-        [{"name": "dog-breed-private-bad-auth-raw-ig", "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
-          "enable-auth": True, "external-route": False}],
+        [
+            {
+                "name": "dog-breed-private-bad-auth-raw-ig",
+                "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
+                "enable-auth": True,
+                "external-route": False,
+            }
+        ],
         indirect=True,
     )
     def test_private_inference_graph_raw_authentication_without_privileges(
-            self, dog_breed_inference_graph,
-            inference_graph_unprivileged_sa_token):
+        self, dog_breed_inference_graph, inference_graph_unprivileged_sa_token
+    ):
         verify_inference_response(
             inference_service=dog_breed_inference_graph,
             inference_config=ONNX_INFERENCE_CONFIG,

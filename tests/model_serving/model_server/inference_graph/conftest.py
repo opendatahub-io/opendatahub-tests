@@ -60,7 +60,7 @@ def dog_breed_inference_graph(
     try:
         name = request.param["name"]
     except (AttributeError, KeyError):
-        name = 'dog-breed-pipeline'
+        name = "dog-breed-pipeline"
 
     try:
         if not request.param["external-route"]:
@@ -124,17 +124,20 @@ def dog_breed_inference_service(
     ) as isvc:
         yield isvc
 
+
 @pytest.fixture
 def inference_graph_unprivileged_sa_token(
     bare_service_account: ServiceAccount,
 ) -> str:
     return create_inference_token(model_service_account=bare_service_account)
 
+
 @pytest.fixture
 def inference_graph_sa_token_with_access(
     service_account_with_access: ServiceAccount,
 ) -> str:
     return create_inference_token(model_service_account=service_account_with_access)
+
 
 @pytest.fixture
 def service_account_with_access(
@@ -150,15 +153,16 @@ def service_account_with_access(
         resource_names=[dog_breed_inference_graph.name],
     ) as role:
         with RoleBinding(
-                client=unprivileged_client,
-                namespace=unprivileged_model_namespace.name,
-                name=f"{bare_service_account.name}-view",
-                role_ref_name=role.name,
-                role_ref_kind=role.kind,
-                subjects_kind=bare_service_account.kind,
-                subjects_name=bare_service_account.name,
+            client=unprivileged_client,
+            namespace=unprivileged_model_namespace.name,
+            name=f"{bare_service_account.name}-view",
+            role_ref_name=role.name,
+            role_ref_kind=role.kind,
+            subjects_kind=bare_service_account.kind,
+            subjects_name=bare_service_account.name,
         ):
             yield bare_service_account
+
 
 @pytest.fixture
 def bare_service_account(
