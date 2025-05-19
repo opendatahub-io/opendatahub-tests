@@ -4,85 +4,19 @@ from simple_logger.logger import get_logger
 
 from model_registry import ModelRegistry as ModelRegistryClient
 from tests.model_registry.constants import MR_INSTANCE_NAME, MR_NAMESPACE
-from tests.model_registry.rbac.utils import build_mr_client_args, use_context
-from tests.model_registry.utils import get_endpoint_from_mr_service, get_mr_service_by_label
+from tests.model_registry.rbac.utils import use_context, assert_positive_mr_registry, setup_mr_client
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.group import Group
 from ocp_resources.model_registry import ModelRegistry
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
-from utilities.constants import DscComponents, Protocols
+from utilities.constants import DscComponents
 from mr_openapi.exceptions import ForbiddenException
 from utilities.user_utils import TestUserSession
-from utilities.infra import get_openshift_token
 from timeout_sampler import TimeoutSampler
 
 LOGGER = get_logger(name=__name__)
 NEW_GROUP_NAME = "test-model-registry-group"
-
-
-def assert_positive_mr_registry(
-    model_registry_instance: ModelRegistry,
-    model_registry_namespace: str,
-    admin_client: DynamicClient,
-) -> None:
-    """
-    Assert that a user has access to the Model Registry.
-
-    Args:
-        model_registry_instance: The Model Registry instance to check access for
-        model_registry_namespace: The namespace where Model Registry is deployed
-        admin_client: The admin client for accessing the cluster
-
-    Raises:
-        AssertionError: If client initialization fails
-        Exception: If any other error occurs during the check
-
-    Note:
-        This function should be called within the appropriate context (admin or user)
-        as it uses the current context to get the token.
-    """
-    token = get_openshift_token()
-    namespace_instance = admin_client.resources.get(api_version="v1", kind="Namespace").get(
-        name=model_registry_namespace
-    )
-    svc = get_mr_service_by_label(client=admin_client, ns=namespace_instance, mr_instance=model_registry_instance)
-    endpoint = get_endpoint_from_mr_service(svc=svc, protocol=Protocols.REST)
-    client_args = build_mr_client_args(rest_endpoint=endpoint, token=token, author="rbac-test-user-granted")
-    mr_client = ModelRegistryClient(**client_args)
-    assert mr_client is not None, "Client initialization failed after granting permissions"
-    LOGGER.info("Client instantiated successfully after granting permissions.")
-
-
-def setup_mr_client(
-    model_registry_instance: ModelRegistry,
-    model_registry_namespace: str,
-    admin_client: DynamicClient,
-    author: str = "rbac-test",
-) -> tuple[str, dict]:
-    """
-    Setup Model Registry client arguments within the current context.
-
-    Args:
-        model_registry_instance: The Model Registry instance to connect to
-        model_registry_namespace: The namespace where Model Registry is deployed
-        admin_client: The admin client for accessing the cluster
-        author: The author name for the client (default: "rbac-test")
-
-    Returns:
-        Tuple of (token, client_args) for Model Registry client
-
-    Note:
-        This function should be called within the appropriate context (admin or user)
-        as it uses the current context to get the token.
-    """
-    token = get_openshift_token()
-    namespace_instance = admin_client.resources.get(api_version="v1", kind="Namespace").get(
-        name=model_registry_namespace
-    )
-    svc = get_mr_service_by_label(client=admin_client, ns=namespace_instance, mr_instance=model_registry_instance)
-    endpoint = get_endpoint_from_mr_service(svc=svc, protocol=Protocols.REST)
-    return token, build_mr_client_args(rest_endpoint=endpoint, token=token, author=author)
 
 
 @pytest.mark.parametrize(
@@ -168,7 +102,7 @@ class TestUserPermission:
                 assert exc_info.value.status == 403, f"Expected HTTP 403 Forbidden, but got {exc_info.value.status}"
                 LOGGER.info("Successfully received expected HTTP 403 status code")
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_user_added_to_group(
         self: Self,
         model_registry_instance: ModelRegistry,
@@ -257,7 +191,7 @@ class TestUserPermission:
             group.update(resource_dict={"metadata": {"name": model_registry_users_group}, "users": []})
             LOGGER.info(f"Removed user {test_idp_user_session.username} from {model_registry_users_group} group")
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     @pytest.mark.parametrize(
         "new_group",
         [

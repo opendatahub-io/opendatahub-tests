@@ -100,18 +100,17 @@ def new_group(
     Fixture to create a new OpenShift group and add a user, then delete the group after the test.
     The parameter should be a tuple: (group_name, user_name).
     """
+
     group_name = request.param
-    try:
-        # Replace oc adm groups new with Group resource
-        group = Group(client=admin_client, name=group_name, users=[test_idp_user_session.username])
-        group.create()
+    with Group(
+        client=admin_client,
+        name=group_name,
+        users=[test_idp_user_session.username],
+        wait_for_resource=True,
+    ) as _:
+        LOGGER.info(f"Group {group_name} created successfully.")
         yield group_name
-    finally:
-        try:
-            # Replace oc delete group with Group resource cleanup
-            group.delete()
-        except Exception as e:
-            LOGGER.error(f"Failed to delete group {group_name}: {e}")
+        LOGGER.info(f"Group {group_name} deletion initiated by context manager.")
 
 
 @pytest.fixture(scope="session")
