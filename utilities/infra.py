@@ -369,6 +369,7 @@ def create_isvc_view_role(
     ) as role:
         yield role
 
+
 @contextmanager
 def create_inference_graph_view_role(
     client: DynamicClient,
@@ -378,19 +379,19 @@ def create_inference_graph_view_role(
     teardown: bool = True,
 ) -> Generator[Role, Any, Any]:
     """
-        Create a view role for an InferenceGraph.
+    Create a view role for an InferenceGraph.
 
-        Args:
-            client (DynamicClient): Dynamic client.
-            namespace (str): Namespace to create the Role.
-            name (str): Role name.
-            resource_names (list[str]): Resource names to be attached to role.
-            teardown (bool): Whether to delete the role.
+    Args:
+        client (DynamicClient): Dynamic client.
+        namespace (str): Namespace to create the Role.
+        name (str): Role name.
+        resource_names (list[str]): Resource names to be attached to role.
+        teardown (bool): Whether to delete the role.
 
-        Yields:
-            Role: Role object.
+    Yields:
+        Role: Role object.
 
-        """
+    """
     dummy_ig = InferenceGraph(name="dummy", namespace="dummy", nodes=dict())
     rules = [
         {
@@ -404,13 +405,14 @@ def create_inference_graph_view_role(
         rules[0].update({"resourceNames": resource_names})
 
     with Role(
-            client=client,
-            name=name,
-            namespace=namespace,
-            rules=rules,
-            teardown=teardown,
+        client=client,
+        name=name,
+        namespace=namespace,
+        rules=rules,
+        teardown=teardown,
     ) as role:
         yield role
+
 
 def login_with_user_password(api_address: str, user: str, password: str | None = None) -> bool:
     """
@@ -510,9 +512,8 @@ def get_services_by_isvc_label(
 
     raise ResourceNotFoundError(f"{isvc.name} has no services")
 
-def get_pods_by_ig_label(
-    client: DynamicClient, ig: InferenceGraph
-) -> list[Pod]:
+
+def get_pods_by_ig_label(client: DynamicClient, ig: InferenceGraph) -> list[Pod]:
     """
     Args:
         client (DynamicClient): OCP Client to use.
