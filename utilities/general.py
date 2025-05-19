@@ -173,6 +173,7 @@ def create_isvc_label_selector_str(isvc: InferenceService, resource_type: str, r
     else:
         raise ValueError(f"Unknown deployment mode {deployment_mode}")
 
+
 def create_ig_pod_label_selector_str(ig: InferenceGraph) -> str:
     """
     Creates a pod label selector string for the given InferenceGraph.
