@@ -122,9 +122,7 @@ def setup_mr_client(
         as it uses the current context to get the token.
     """
     token = get_openshift_token()
-    namespace_instance = admin_client.resources.get(api_version="v1", kind="Namespace").get(
-        name=model_registry_namespace
-    )
+    namespace_instance = Namespace(client=admin_client, name=model_registry_namespace)
     svc = get_mr_service_by_label(client=admin_client, ns=namespace_instance, mr_instance=model_registry_instance)
     endpoint = get_endpoint_from_mr_service(svc=svc, protocol=Protocols.REST)
     return token, build_mr_client_args(rest_endpoint=endpoint, token=token, author=author)
