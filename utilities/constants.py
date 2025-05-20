@@ -272,3 +272,5 @@ vLLM_CONFIG: dict[str, dict[str, Any]] = {
     },
     "commands": {"GRPC": "vllm_tgis_adapter"},
 }
+
+RHOAI_OPERATOR_NAMESPACE = "redhat-ods-operator"
