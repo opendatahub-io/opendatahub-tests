@@ -20,7 +20,7 @@ LOGGER = get_logger(name=__name__)
             "component_patch": {
                 DscComponents.MODELREGISTRY: {
                     "managementState": DscComponents.ManagementState.MANAGED,
-                    "registriesNamespace": "odh-model-registries",
+                    "registriesNamespace": MR_NAMESPACE,
                 }
             }
         }
@@ -96,6 +96,11 @@ class TestModelRegistryImages:
             if not is_valid:
                 validation_errors.append(f"Pod {instance_pod.name} image validation failed: {error_msg}")
 
+            # If it's a sidecar image defined correctly (comes from registry and uses sha256 digest)
+            # we don't need to check that it is in our relatedImages
+            if "openshift-service-mesh" in image:
+                LOGGER.warning(f"Skipping image {image} as it is a service mesh sidecar image")
+                continue
             # Check if image is in relatedImages
             if image not in related_image_refs:
                 validation_errors.append(f"Pod {instance_pod.name} image {image} is not listed in CSV's relatedImages")
