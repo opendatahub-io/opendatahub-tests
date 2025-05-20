@@ -17,7 +17,7 @@ from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from utilities.constants import DscComponents
 from mr_openapi.exceptions import ForbiddenException
-from utilities.user_utils import TestUserSession
+from utilities.user_utils import UserTestSession
 from timeout_sampler import TimeoutSampler
 
 LOGGER = get_logger(name=__name__)
@@ -64,7 +64,7 @@ class TestUserPermission:
         model_registry_instance: ModelRegistry,
         model_registry_namespace: str,
         admin_client: DynamicClient,
-        test_idp_user_session: TestUserSession,
+        test_idp_user_session: UserTestSession,
         use_admin_context: bool,
     ):
         """
@@ -118,7 +118,7 @@ class TestUserPermission:
         model_registry_instance: ModelRegistry,
         model_registry_namespace: str,
         admin_client: DynamicClient,
-        test_idp_user_session: TestUserSession,
+        test_idp_user_session: UserTestSession,
     ):
         """
         Test that a user's access to Model Registry changes when added to a group.
@@ -214,7 +214,7 @@ class TestUserPermission:
         model_registry_instance: ModelRegistry,
         model_registry_namespace: str,
         admin_client: DynamicClient,
-        test_idp_user_session: TestUserSession,
+        test_idp_user_session: UserTestSession,
         mr_access_role: Role,
     ):
         """
@@ -264,7 +264,7 @@ class TestUserPermission:
         model_registry_instance: ModelRegistry,
         model_registry_namespace: str,
         admin_client: DynamicClient,
-        test_idp_user_session: TestUserSession,
+        test_idp_user_session: UserTestSession,
         mr_access_role: Role,
     ):
         """

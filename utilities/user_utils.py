@@ -1,4 +1,3 @@
-import pytest
 import secrets
 import string
 import random
@@ -17,9 +16,8 @@ LOGGER = logging.getLogger(__name__)
 SLEEP_TIME = 5
 
 
-@pytest.mark.no_collect
 @dataclass
-class TestUserSession:
+class UserTestSession:
     """Represents a test user session with all necessary credentials and contexts."""
 
     __test__ = False
@@ -31,7 +29,7 @@ class TestUserSession:
     original_context: str
 
 
-def create_test_idp(idp_name: str = "test-htpasswd-idp", secret_name: str = "test-htpasswd-secret") -> TestUserSession:
+def create_test_idp(idp_name: str = "test-htpasswd-idp", secret_name: str = "test-htpasswd-secret") -> UserTestSession:
     """
     Creates a new HTPasswd IDP in OpenShift and adds a test user.
 
@@ -40,7 +38,7 @@ def create_test_idp(idp_name: str = "test-htpasswd-idp", secret_name: str = "tes
         secret_name: Name for the secret
 
     Returns:
-        TestUserSession object
+        UserTestSession object
     """
     user_context = ""
     try:
@@ -88,7 +86,7 @@ def create_test_idp(idp_name: str = "test-htpasswd-idp", secret_name: str = "tes
         run_command(command=["oc", "config", "use-context", original_context], check=True)
         LOGGER.info(f"Switched back to original context: {original_context}")
 
-        return TestUserSession(
+        return UserTestSession(
             idp_name=idp_name,
             secret_name=secret_name,
             username=username,

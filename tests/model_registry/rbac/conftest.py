@@ -13,7 +13,7 @@ from ocp_resources.group import Group
 from kubernetes.dynamic import DynamicClient
 from pyhelper_utils.shell import run_command
 from tests.model_registry.utils import generate_random_name, generate_namespace_name
-from utilities.user_utils import create_test_idp, cleanup_test_idp, TestUserSession
+from utilities.user_utils import create_test_idp, cleanup_test_idp, UserTestSession
 from tests.model_registry.constants import MR_INSTANCE_NAME
 
 
@@ -96,7 +96,7 @@ def sa_token(service_account: ServiceAccount) -> str:
 def new_group(
     request: pytest.FixtureRequest,
     admin_client: DynamicClient,
-    test_idp_user_session: TestUserSession,
+    test_idp_user_session: UserTestSession,
 ) -> Generator[str, None, None]:
     """
     Fixture to create a new OpenShift group and add a user, then delete the group after the test.
@@ -116,10 +116,10 @@ def new_group(
 
 
 @pytest.fixture(scope="session")
-def test_idp_user_session() -> Generator[TestUserSession, None, None]:
+def test_idp_user_session() -> Generator[UserTestSession, None, None]:
     """
     Session-scoped fixture that creates a test IDP user and cleans it up after all tests.
-    Returns a TestUserSession object that contains all necessary credentials and contexts.
+    Returns a UserTestSession object that contains all necessary credentials and contexts.
     """
     # Create the test IDP and user
     idp_session = create_test_idp()
