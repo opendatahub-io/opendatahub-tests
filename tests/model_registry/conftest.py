@@ -231,6 +231,12 @@ def updated_dsc_component_state_scope_class(
     original_components = dsc_resource.instance.spec.components
     component_patch = request.param["component_patch"]
 
+    if (
+        get_operator_distribution(client=admin_client) == "OpenShift AI"
+        and original_components[DscComponents.MODELREGISTRY]["managementState"] == DscComponents.ManagementState.MANAGED
+    ):
+        pytest.fail("Model Registry component should not be Managed by default when OpenShift AI is installed")
+
     # Check if ModelRegistry component is already Managed and patch includes registriesNamespace
     if (
         DscComponents.MODELREGISTRY in component_patch
