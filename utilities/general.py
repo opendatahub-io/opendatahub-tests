@@ -1,6 +1,7 @@
 import base64
 
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
@@ -171,3 +172,27 @@ def create_isvc_label_selector_str(isvc: InferenceService, resource_type: str, r
 
     else:
         raise ValueError(f"Unknown deployment mode {deployment_mode}")
+
+
+def create_ig_pod_label_selector_str(ig: InferenceGraph) -> str:
+    """
+    Creates a pod label selector string for the given InferenceGraph.
+
+    Args:
+        ig (InferenceGraph): InferenceService object
+
+    Returns:
+        str: Label selector string for fetching IG pods
+
+    Raises:
+        ValueError: If the deployment mode is not supported
+
+    """
+    deployment_mode = ig.instance.metadata.annotations.get(Annotations.KserveIo.DEPLOYMENT_MODE)
+    if deployment_mode == KServeDeploymentType.SERVERLESS:
+        return f"serving.kserve.io/inferencegraph={ig.name}"
+    elif deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
+        return f"serving.kserve.io/inferencegraph={ig.name}"
+    else:
+        # Assume Serverless mode
+        return f"serving.kserve.io/inferencegraph={ig.name}"
