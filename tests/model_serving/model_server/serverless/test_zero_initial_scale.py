@@ -59,7 +59,9 @@ class TestServerlessInitialScaleZero:
 
         deployments = list(
             Deployment.get(
-                label_selector=",".join(labels), client=admin_client, namespace=ovms_kserve_inference_service.namespace
+                label_selector=",".join(labels),
+                dyn_client=admin_client,
+                namespace=ovms_kserve_inference_service.namespace,
             )
         )
 

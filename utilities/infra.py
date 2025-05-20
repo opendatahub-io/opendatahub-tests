@@ -16,7 +16,6 @@ from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import (
     NotFoundError,
     ResourceNotFoundError,
-    ResourceNotUniqueError,
 )
 from ocp_resources.catalog_source import CatalogSource
 from ocp_resources.cluster_service_version import ClusterServiceVersion
@@ -53,13 +52,10 @@ from ocp_resources.subscription import Subscription
 from utilities.constants import ApiGroups, Labels, Timeout, RHOAI_OPERATOR_NAMESPACE
 from utilities.constants import KServeDeploymentType
 from utilities.constants import Annotations
-from utilities.exceptions import (
-    ClusterLoginError,
-    FailedPodsError,
-    ResourceNotReadyError,
-)
-from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
+from utilities.exceptions import ClusterLoginError, FailedPodsError, ResourceNotReadyError, UnexpectedResourceCountError
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler, TimeoutWatch, retry
 import utilities.general
+from ocp_resources.utils.constants import DEFAULT_CLUSTER_RETRY_EXCEPTIONS
 
 LOGGER = get_logger(name=__name__)
 
@@ -156,13 +152,14 @@ def create_ns(
                 wait_for_serverless_pods_deletion(resource=ns, admin_client=client)
 
 
-def wait_for_replicas_in_deployment(deployment: Deployment, replicas: int) -> None:
+def wait_for_replicas_in_deployment(deployment: Deployment, replicas: int, timeout: int = Timeout.TIMEOUT_2MIN) -> None:
     """
     Wait for replicas in deployment to updated in spec.
 
     Args:
         deployment (Deployment): Deployment object
         replicas (int): number of replicas to be set in spec.replicas
+        timeout (int): Time to wait for the model deployment.
 
     Raises:
         TimeoutExpiredError: If replicas are not updated in spec.
@@ -172,7 +169,7 @@ def wait_for_replicas_in_deployment(deployment: Deployment, replicas: int) -> No
 
     try:
         for sample in TimeoutSampler(
-            wait_timeout=Timeout.TIMEOUT_2MIN,
+            wait_timeout=timeout,
             sleep=5,
             func=lambda: deployment.instance,
         ):
@@ -191,6 +188,8 @@ def wait_for_inference_deployment_replicas(
     isvc: InferenceService,
     runtime_name: str | None = None,
     expected_num_deployments: int = 1,
+    labels: str = "",
+    deployed: bool = True,
     timeout: int = Timeout.TIMEOUT_5MIN,
 ) -> list[Deployment]:
     """
@@ -201,49 +200,71 @@ def wait_for_inference_deployment_replicas(
         isvc (InferenceService): InferenceService object
         runtime_name (str): ServingRuntime name.
         expected_num_deployments (int): Expected number of deployments per InferenceService.
+        labels (str): Comma seperated list of labels, in key=value format, used to filter deployments.
+        deployed (bool): True for replicas deployed, False for no replicas.
         timeout (int): Time to wait for the model deployment.
 
     Returns:
         list[Deployment]: List of Deployment objects for InferenceService.
 
+    Raises:
+        TimeoutExpiredError: If an exception is raised when retrieving deployments or
+                             timeout expires when checking replicas.
+        UnexpectedResourceCountError: If the expected number of deployments is not found after timeout.
+        ResourceNotFoundError: If any of the retrieved deployments are found to no longer exist.
     """
+    timeout_watcher = TimeoutWatch(timeout=timeout)
     ns = isvc.namespace
     label_selector = utilities.general.create_isvc_label_selector_str(
         isvc=isvc, resource_type="deployment", runtime_name=runtime_name
     )
+    if labels:
+        label_selector += f",{labels}"
 
-    deployments = list(
-        Deployment.get(
+    deployment_list = []
+    try:
+        for deployments in TimeoutSampler(
+            wait_timeout=timeout_watcher.remaining_time(),
+            sleep=5,
+            exceptions_dict=DEFAULT_CLUSTER_RETRY_EXCEPTIONS,
+            func=Deployment.get,
             label_selector=label_selector,
-            client=client,
-            namespace=isvc.namespace,
-        )
-    )
+            dyn_client=client,
+            namespace=ns,
+        ):
+            deployment_list = list(deployments)
+            if len(deployment_list) == expected_num_deployments:
+                break
+    except TimeoutExpiredError as e:
+        # If the last exception raised prior to the timeout expiring is None, this means that
+        # the deployments were successfully retrieved, but the expected number was not found.
+        if e.last_exp is None:
+            raise UnexpectedResourceCountError(
+                f"Expected {expected_num_deployments} predictor deployments to be found in "
+                f"namespace {ns} after timeout, but found {len(deployment_list)}."
+            )
+        raise
 
     LOGGER.info("Waiting for inference deployment replicas to complete")
-    if len(deployments) == expected_num_deployments:
-        for deployment in deployments:
-            if deployment.exists:
-                # Raw deployment: if min replicas is more than 1, wait for min replicas
-                # to be set in deployment spec by HPA
-                if (
-                    isvc.instance.metadata.annotations.get("serving.kserve.io/deploymentMode")
-                    == KServeDeploymentType.RAW_DEPLOYMENT
-                ):
-                    wait_for_replicas_in_deployment(
-                        deployment=deployments[0],
-                        replicas=isvc.instance.spec.predictor.get("minReplicas", 1),
-                    )
+    for deployment in deployment_list:
+        if deployment.exists:
+            # Raw deployment: if min replicas is more than 1, wait for min replicas
+            # to be set in deployment spec by HPA
+            if (
+                isvc.instance.metadata.annotations.get("serving.kserve.io/deploymentMode")
+                == KServeDeploymentType.RAW_DEPLOYMENT
+            ):
+                wait_for_replicas_in_deployment(
+                    deployment=deployment,
+                    replicas=isvc.instance.spec.predictor.get("minReplicas", 1),
+                    timeout=timeout_watcher.remaining_time(),
+                )
 
-                deployment.wait_for_replicas(timeout=timeout)
+            deployment.wait_for_replicas(deployed=deployed, timeout=timeout_watcher.remaining_time())
+        else:
+            raise ResourceNotFoundError(f"Predictor deployment {deployment.name} does not exist on the server.")
 
-        return deployments
-
-    elif len(deployments) > expected_num_deployments:
-        raise ResourceNotUniqueError(f"Multiple predictor deployments found in namespace {ns}")
-
-    else:
-        raise ResourceNotFoundError(f"Predictor deployment not found in namespace {ns}")
+    return deployment_list
 
 
 @contextmanager
