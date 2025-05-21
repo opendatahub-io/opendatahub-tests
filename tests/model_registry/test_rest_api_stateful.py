@@ -1,7 +1,7 @@
 import pytest
 from simple_logger.logger import get_logger
-from tests.model_registry.constants import MR_NAMESPACE
 from utilities.constants import DscComponents
+from pytest_testconfig import config as py_config
 
 LOGGER = get_logger(name=__name__)
 
@@ -15,7 +15,7 @@ LOGGER = get_logger(name=__name__)
                 "component_patch": {
                     DscComponents.MODELREGISTRY: {
                         "managementState": DscComponents.ManagementState.MANAGED,
-                        "registriesNamespace": MR_NAMESPACE,
+                        "registriesNamespace": py_config["model_registry_namespace"],
                     },
                 },
             },

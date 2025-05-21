@@ -10,8 +10,6 @@ from ocp_resources.service import Service
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
-from ocp_resources.cluster_service_version import ClusterServiceVersion
-from ocp_resources.subscription import Subscription
 
 from ocp_resources.model_registry import ModelRegistry
 from schemathesis.specs.openapi.schemas import BaseOpenAPISchema
@@ -25,6 +23,7 @@ from simple_logger.logger import get_logger
 from kubernetes.dynamic import DynamicClient
 from pytest_testconfig import config as py_config
 from model_registry.types import RegisteredModel
+
 from tests.model_registry.constants import (
     MR_OPERATOR_NAME,
     MR_INSTANCE_NAME,
@@ -43,10 +42,12 @@ from tests.model_registry.utils import (
 from utilities.constants import Annotations, Protocols, DscComponents
 from model_registry import ModelRegistry as ModelRegistryClient
 from semver import Version
-from utilities.infra import get_product_version, get_operator_distribution
-
+from utilities.infra import get_product_version
+from utilities.operator_utils import get_cluster_service_version, validate_operator_subscription_channel
 
 LOGGER = get_logger(name=__name__)
+
+MIN_MR_VERSION = Version.parse(version="2.20.0")
 
 
 @pytest.fixture(scope="class")
@@ -299,7 +300,7 @@ def model_registry_operator_pod(admin_client: DynamicClient) -> Pod:
 
 
 @pytest.fixture(scope="package", autouse=True)
-def fail_if_missing_authorino_operator(admin_client: DynamicClient) -> None:
+def validate_authorino_operator_version_channel(admin_client: DynamicClient) -> None:
     """Check if Authorino operator is installed with required version and channel.
 
     This fixture is automatically used for all tests in the model_registry directory.
@@ -309,72 +310,31 @@ def fail_if_missing_authorino_operator(admin_client: DynamicClient) -> None:
     3. The Authorino operator is using the required channel (stable)
     4. The Authorino operator is at least version 1.2.1
     """
-    # Check product distribution
-    distribution = get_operator_distribution(client=admin_client)
-
+    distribution = py_config["distribution"]
+    if distribution == "upstream":
+        # TODO: figure out minimum version for ODH
+        LOGGER.info(f"Skipping Authorino operator check for {distribution} distribution")
+        return
     # Only check product version for OpenShift AI
-    if distribution.startswith("OpenShift AI"):
+    if distribution == "downstream":
         product_version = get_product_version(admin_client=admin_client)
-        min_product_version = Version.parse(version="2.20.0")
-
-        if product_version < min_product_version:
+        if product_version < MIN_MR_VERSION:
             LOGGER.info(
                 "Skipping Authorino operator check - product version "
-                f"{product_version} is below required {min_product_version}"
+                f"{product_version} is below required {MIN_MR_VERSION}"
             )
             return
-    elif distribution == "Open Data Hub":
-        # TODO: figure out minimum version for ODH
-        LOGGER.info(f"Skipping Authorino operator check - unexpected distribution: {distribution}")
-        return
-
-    operator_name = "authorino-operator"
-    required_channel = "stable"
-    min_version = Version.parse(version="1.2.1")
-
-    # Check if operator is installed
-    csvs = list(
-        ClusterServiceVersion.get(
-            dyn_client=admin_client,
-            namespace=py_config["applications_namespace"],
+        operator_name = "authorino-operator"
+        # Find the CSV for the operator
+        authorino_csv = get_cluster_service_version(
+            client=admin_client, prefix=operator_name, namespace=py_config["applications_namespace"]
         )
-    )
+        current_authorino_version = authorino_csv.instance.spec.version
+        if Version.parse(version="1.2.1") > Version.parse(version=current_authorino_version):
+            pytest.exit(
+                f"Authorino operator is not at least version 1.2.1. Current version: {current_authorino_version}"
+            )
 
-    LOGGER.info(f"Verifying if {operator_name} is installed with required version and channel")
-
-    # Find the CSV for the operator
-    authorino_csvs = [csv for csv in csvs if csv.name.startswith(operator_name)]
-    if not authorino_csvs:
-        pytest.fail(f"{operator_name} is not installed")
-
-    authorino_csv = authorino_csvs[0]
-
-    # Get version from CSV instance
-    assert authorino_csv.instance is not None, f"CSV {authorino_csv.name} has no instance data"
-    current_version = Version.parse(version=authorino_csv.instance.spec.version)
-
-    # Check channel from Subscription in openshift-operators namespace
-    subscriptions = list(
-        Subscription.get(
-            dyn_client=admin_client,
-            namespace="openshift-operators",
+        validate_operator_subscription_channel(
+            client=admin_client, namespace="openshift-operators", operator_name=operator_name, channel_name="stable"
         )
-    )
-
-    subscription_found = False
-    for sub in subscriptions:
-        assert sub.instance is not None, f"Subscription {sub.name} has no instance data"
-        if sub.instance.spec.name == operator_name:
-            subscription_found = True
-            channel = sub.instance.spec.channel
-            if channel != required_channel or current_version < min_version:
-                pytest.fail(
-                    f"Operator {operator_name} requirements not met:\n"
-                    f"- Current version: {current_version} (required >= {min_version})\n"
-                    f"- Current channel: {channel} (required: {required_channel})"
-                )
-            LOGGER.info(f"Found {operator_name} with version {current_version} in channel {channel}")
-            break
-
-    if not subscription_found:
-        pytest.fail(f"Could not find Subscription for {operator_name} in openshift-operators namespace")
