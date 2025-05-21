@@ -32,7 +32,6 @@ from tests.model_registry.constants import (
     DB_RESOURCES_NAME,
     MODEL_REGISTRY_DB_SECRET_STR_DATA,
     MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
-    init_mr_namespace,
 )
 from tests.model_registry.utils import (
     get_endpoint_from_mr_service,
@@ -231,24 +230,10 @@ def updated_dsc_component_state_scope_class(
     original_components = dsc_resource.instance.spec.components
     component_patch = request.param["component_patch"]
 
-    if (
-        get_operator_distribution(client=admin_client) == "OpenShift AI"
-        and original_components[DscComponents.MODELREGISTRY]["managementState"] == DscComponents.ManagementState.MANAGED
-    ):
-        pytest.fail("Model Registry component should not be Managed by default when OpenShift AI is installed")
-
-    # Check if ModelRegistry component is already Managed and patch includes registriesNamespace
-    if (
-        DscComponents.MODELREGISTRY in component_patch
-        and original_components[DscComponents.MODELREGISTRY]["managementState"] == DscComponents.ManagementState.MANAGED
-        and "registriesNamespace" in component_patch[DscComponents.MODELREGISTRY]
-    ):
-        LOGGER.warning(
-            "Cannot patch registriesNamespace when ModelRegistry component is already set to Managed state. "
-            "Current namespace will be used."
-        )
-        # Remove registriesNamespace from patch to avoid the update
-        component_patch[DscComponents.MODELREGISTRY].pop("registriesNamespace")
+    if get_operator_distribution(client=admin_client) == "Open Data Hub":
+        LOGGER.warning("Open Data Hub detected, skipping DSC patching")
+        yield dsc_resource
+        return
 
     with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
         for component_name in component_patch:
@@ -265,27 +250,21 @@ def updated_dsc_component_state_scope_class(
         )
         yield dsc_resource
 
-    # I don't understand this code block. If the component is set to MANAGED, the namespace cannot be deleted.
-    # This should only be done if 1) the component was set to Removed originally, 2) we set it to Managed, and
-    # 3) we decide to reset it to Removed and delete the namespace. Commenting out for now otherwise the namespace
-    # deletion hangs for 4 minutes on every teardown and doesn't work.
-
-    # for component_name, value in component_patch.items():
-    #     LOGGER.info(f"Waiting for component {component_name} to be updated.")
-    #     if original_components[component_name]["managementState"] == DscComponents.ManagementState.MANAGED:
-    #         dsc_resource.wait_for_condition(condition=DscComponents.COMPONENT_MAPPING[component_name], status="True")
-    #     if (
-    #         component_name == DscComponents.MODELREGISTRY
-    #         and value.get("managementState") == DscComponents.ManagementState.MANAGED
-    #     ):
-    #         # Since namespace specified in registriesNamespace is automatically created after setting
-    #         # managementStateto Managed. We need to explicitly delete it on clean up.
-    #         namespace = Namespace(
-    #             name=dsc_resource.instance.spec.components.modelregistry.registriesNamespace,
-    #             ensure_exists=True
-    #         )
-    #         if namespace:
-    #             namespace.delete(wait=True)
+    for component_name, value in component_patch.items():
+        LOGGER.info(f"Waiting for component {component_name} to be updated.")
+        if original_components[component_name]["managementState"] == DscComponents.ManagementState.MANAGED:
+            dsc_resource.wait_for_condition(condition=DscComponents.COMPONENT_MAPPING[component_name], status="True")
+        if (
+            component_name == DscComponents.MODELREGISTRY
+            and value.get("managementState") == DscComponents.ManagementState.MANAGED
+        ):
+            # Since namespace specified in registriesNamespace is automatically created after setting
+            # managementStateto Managed. We need to explicitly delete it on clean up.
+            namespace = Namespace(
+                name=dsc_resource.instance.spec.components.modelregistry.registriesNamespace, ensure_exists=True
+            )
+            if namespace:
+                namespace.delete(wait=True)
 
 
 @pytest.fixture(scope="class")
@@ -408,13 +387,3 @@ def fail_if_missing_authorino_operator(admin_client: DynamicClient) -> None:
 
     if not subscription_found:
         pytest.fail(f"Could not find Subscription for {operator_name} in openshift-operators namespace")
-
-
-@pytest.fixture(scope="session", autouse=True)
-def init_model_registry_namespace(admin_client: DynamicClient) -> None:
-    """Initialize MR_NAMESPACE with the admin client.
-
-    This fixture runs automatically at session start to ensure MR_NAMESPACE
-    is properly initialized before any tests run.
-    """
-    init_mr_namespace(admin_client=admin_client)
