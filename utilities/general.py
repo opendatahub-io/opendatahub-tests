@@ -1,5 +1,6 @@
 import base64
 import re
+import pytest
 from typing import List, Dict, Tuple
 
 from kubernetes.dynamic import DynamicClient
@@ -251,3 +252,72 @@ def validate_image_format(image: str) -> Tuple[bool, str]:
         return False, f"Image {image} does not use sha256 digest"
 
     return True, ""
+
+
+def get_pods_by_labels(
+    admin_client: DynamicClient,
+    namespace: str,
+    label_selector: str,
+) -> list[Pod]:
+    """
+    Get pods by label selector in a namespace.
+
+    Args:
+        admin_client: The admin client to use for pod retrieval
+        namespace: The namespace to search in
+        label_selector: The label selector to filter pods
+
+    Returns:
+        List of matching pods
+
+    Raises:
+        pytest.fail: If no pods are found
+    """
+    pods = list(
+        Pod.get(
+            dyn_client=admin_client,
+            namespace=namespace,
+            label_selector=label_selector,
+        )
+    )
+    if not pods:
+        pytest.fail(f"No pods found with label selector {label_selector} in namespace {namespace}")
+    return pods
+
+
+def validate_container_images(
+    pod: Pod,
+    valid_image_refs: set[str],
+    skip_patterns: list[str] | None = None,
+) -> list[str]:
+    """
+    Validate all container images in a pod against a set of valid image references.
+
+    Args:
+        pod: The pod whose images to validate
+        valid_image_refs: Set of valid image references to check against
+        skip_patterns: List of patterns to skip validation for (e.g. ["openshift-service-mesh"])
+
+    Returns:
+        List of validation error messages, empty if all validations pass
+    """
+    validation_errors = []
+    skip_patterns = skip_patterns or []
+
+    pod_images = get_pod_images(pod=pod)
+    for image in pod_images:
+        # Skip images matching any skip patterns
+        if any(pattern in image for pattern in skip_patterns):
+            LOGGER.warning(f"Skipping image {image} as it matches skip patterns")
+            continue
+
+        # Validate image format
+        is_valid, error_msg = validate_image_format(image=image)
+        if not is_valid:
+            validation_errors.append(f"Pod {pod.name} image validation failed: {error_msg}")
+
+        # Check if image is in valid references
+        if image not in valid_image_refs:
+            validation_errors.append(f"Pod {pod.name} image {image} is not in valid image references")
+
+    return validation_errors

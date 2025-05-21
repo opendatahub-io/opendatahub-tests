@@ -2,11 +2,14 @@ import pytest
 from typing import Self
 from simple_logger.logger import get_logger
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.pod import Pod
 from pytest_testconfig import config as py_config
 
 from utilities.constants import DscComponents, Labels
-from utilities.general import get_csv_related_images, get_pod_images, validate_image_format
+from utilities.general import (
+    get_csv_related_images,
+    get_pods_by_labels,
+    validate_container_images,
+)
 from tests.model_registry.constants import MR_OPERATOR_NAME, MR_INSTANCE_NAME, MR_NAMESPACE
 from ocp_resources.model_registry import ModelRegistry
 
@@ -45,64 +48,41 @@ class TestModelRegistryImages:
         related_images = get_csv_related_images(admin_client=admin_client)
         related_image_refs = {img["image"] for img in related_images}
 
-        # Get operator pod from applications namespace
-        operator_pods = list(
-            Pod.get(
-                dyn_client=admin_client,
-                namespace=py_config["applications_namespace"],
-                label_selector=f"{Labels.OpenDataHubIo.NAME}={MR_OPERATOR_NAME}",
-            )
+        # Get operator pod
+        operator_pod_list = get_pods_by_labels(
+            admin_client=admin_client,
+            namespace=py_config["applications_namespace"],
+            label_selector=f"{Labels.OpenDataHubIo.NAME}={MR_OPERATOR_NAME}",
         )
-        if not operator_pods:
-            pytest.fail(f"Operator pod not found in namespace {py_config['applications_namespace']}")
-        if len(operator_pods) > 1:
-            LOGGER.warning("Multiple operator pods found, using the first one")
-        operator_pod = operator_pods[0]
+        if len(operator_pod_list) > 1:
+            LOGGER.warning(f"Expected 1 operator pod, found {len(operator_pod_list)}. Using first one.")
+        operator_pod = operator_pod_list[0]
 
-        # Get MR instance pod(s)
-        instance_pods = list(
-            Pod.get(
-                dyn_client=admin_client,
-                namespace=MR_NAMESPACE,
-                label_selector=f"app={MR_INSTANCE_NAME}",
-            )
+        # Get instance pod
+        instance_pod_list = get_pods_by_labels(
+            admin_client=admin_client,
+            namespace=MR_NAMESPACE,
+            label_selector=f"app={MR_INSTANCE_NAME}",
         )
-        if not instance_pods:
-            pytest.fail(f"Instance pod not found in namespace {MR_NAMESPACE}")
-        if len(instance_pods) > 1:
-            LOGGER.warning("Multiple instance pods found, using the first one")
-        instance_pod = instance_pods[0]
+        if len(instance_pod_list) > 1:
+            LOGGER.warning(f"Expected 1 instance pod, found {len(instance_pod_list)}. Using first one.")
+        instance_pod = instance_pod_list[0]
 
-        # Collect all validation errors
+        # Validate images in both pods
         validation_errors = []
-
-        # Verify operator pod images
-        operator_images = get_pod_images(pod=operator_pod)
-        for image in operator_images:
-            # Validate image format
-            is_valid, error_msg = validate_image_format(image=image)
-            if not is_valid:
-                validation_errors.append(f"Operator pod image validation failed: {error_msg}")
-
-            # Check if image is in relatedImages
-            if image not in related_image_refs:
-                validation_errors.append(f"Operator pod image {image} is not listed in CSV's relatedImages")
-
-        # Verify instance pods images
-        pod_images = get_pod_images(pod=instance_pod)
-        for image in pod_images:
-            # Validate image format
-            is_valid, error_msg = validate_image_format(image=image)
-            if not is_valid:
-                validation_errors.append(f"Pod {instance_pod.name} image validation failed: {error_msg}")
-
-            # If it's a sidecar image defined correctly we don't need to check that it is in our relatedImages
-            if "openshift-service-mesh" in image:
-                LOGGER.warning(f"Skipping image {image} as it is a service mesh sidecar image")
-                continue
-            # Check if image is in relatedImages
-            if image not in related_image_refs:
-                validation_errors.append(f"Pod {instance_pod.name} image {image} is not listed in CSV's relatedImages")
+        validation_errors.extend(
+            validate_container_images(
+                pod=operator_pod,
+                valid_image_refs=related_image_refs,
+            )
+        )
+        validation_errors.extend(
+            validate_container_images(
+                pod=instance_pod,
+                valid_image_refs=related_image_refs,
+                skip_patterns=["openshift-service-mesh"],
+            )
+        )
 
         if validation_errors:
             pytest.fail("\n".join(validation_errors))
