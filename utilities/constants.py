@@ -200,6 +200,7 @@ class Timeout:
     TIMEOUT_5MIN: int = 5 * TIMEOUT_1MIN
     TIMEOUT_10MIN: int = 10 * TIMEOUT_1MIN
     TIMEOUT_15MIN: int = 15 * TIMEOUT_1MIN
+    TIMEOUT_20MIN: int = 20 * TIMEOUT_1MIN
 
 
 class Containers:
@@ -276,3 +277,5 @@ vLLM_CONFIG: dict[str, dict[str, Any]] = {
     },
     "commands": {"GRPC": "vllm_tgis_adapter"},
 }
+
+RHOAI_OPERATOR_NAMESPACE = "redhat-ods-operator"
