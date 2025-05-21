@@ -5,9 +5,9 @@ from simple_logger.logger import get_logger
 from model_registry import ModelRegistry as ModelRegistryClient
 from tests.model_registry.constants import MR_INSTANCE_NAME, MR_NAMESPACE
 from tests.model_registry.rbac.utils import (
-    switch_context,
+    switch_user_context,
     assert_positive_mr_registry,
-    setup_mr_client,
+    get_mr_client_args,
     verify_group_membership,
 )
 from kubernetes.dynamic import DynamicClient
@@ -95,8 +95,8 @@ class TestUserPermission:
             f"-----Testing Model Registry access for user '{test_idp_user_session.username}' "
             f"- Expected Access: {'Granted' if use_admin_context else 'Denied'}-----"
         )
-        with switch_context(context_to_use):
-            _, client_args = setup_mr_client(
+        with switch_user_context(context_to_use):
+            _, client_args = get_mr_client_args(
                 model_registry_instance=model_registry_instance,
                 model_registry_namespace=model_registry_namespace,
                 admin_client=admin_client,
@@ -113,12 +113,14 @@ class TestUserPermission:
                 LOGGER.info("Successfully received expected HTTP 403 status code")
 
     @pytest.mark.sanity
+    @pytest.mark.usefixtures("model_registry_group_with_user")
     def test_user_added_to_group(
         self: Self,
         model_registry_instance: ModelRegistry,
         model_registry_namespace: str,
         admin_client: DynamicClient,
         test_idp_user_session: UserTestSession,
+        model_registry_group_with_user: Group,
     ):
         """
         Test that a user's access to Model Registry changes when added to a group.
@@ -133,6 +135,7 @@ class TestUserPermission:
             model_registry_namespace: The namespace where Model Registry is deployed
             admin_client: The admin client for accessing the cluster
             test_idp_user_session: The test user session containing both admin and user contexts
+            model_registry_group_with_user: The Model Registry group with the test user added
 
         Raises:
             AssertionError: If access permissions don't match expectations
@@ -143,59 +146,26 @@ class TestUserPermission:
             "group that has the permissions to access it-----"
         )
         assert model_registry_instance.name == MR_INSTANCE_NAME
-        model_registry_users_group = f"{MR_INSTANCE_NAME}-users"
 
-        # Verify initial access denied
-        with switch_context(test_idp_user_session.user_context):
-            _, client_args = setup_mr_client(
+        # Verify group membership
+        verify_group_membership(
+            group=model_registry_group_with_user,
+            username=test_idp_user_session.username,
+        )
+
+        # Wait for access to be granted
+        with switch_user_context(test_idp_user_session.user_context):
+            sampler = TimeoutSampler(
+                wait_timeout=240,
+                sleep=5,
+                func=assert_positive_mr_registry,
                 model_registry_instance=model_registry_instance,
                 model_registry_namespace=model_registry_namespace,
                 admin_client=admin_client,
             )
-
-            with pytest.raises(ForbiddenException) as exc_info:
-                _ = ModelRegistryClient(**client_args)
-            assert exc_info.value.status == 403
-
-        # Add user to group
-        group = Group(
-            client=admin_client,
-            name=model_registry_users_group,
-            wait_for_resource=True,
-        )
-        group.update(
-            resource_dict={"metadata": {"name": model_registry_users_group}, "users": [test_idp_user_session.username]}
-        )
-
-        # Verify group membership
-        verify_group_membership(
-            group=group,
-            username=test_idp_user_session.username,
-        )
-
-        try:
-            # Wait for access to be granted
-            with switch_context(test_idp_user_session.user_context):
-                _, client_args = setup_mr_client(
-                    model_registry_instance=model_registry_instance,
-                    model_registry_namespace=model_registry_namespace,
-                    admin_client=admin_client,
-                )
-
-                sampler = TimeoutSampler(
-                    wait_timeout=240,
-                    sleep=5,
-                    func=assert_positive_mr_registry,
-                    model_registry_instance=model_registry_instance,
-                    model_registry_namespace=model_registry_namespace,
-                    admin_client=admin_client,
-                )
-                for _ in sampler:
-                    break  # Break after first successful iteration
-                LOGGER.info("Successfully accessed Model Registry")
-        finally:
-            group.update(resource_dict={"metadata": {"name": model_registry_users_group}, "users": []})
-            LOGGER.info(f"Removed user {test_idp_user_session.username} from {model_registry_users_group} group")
+            for _ in sampler:
+                break  # Break after first successful iteration
+            LOGGER.info("Successfully accessed Model Registry")
 
     @pytest.mark.sanity
     @pytest.mark.parametrize(
@@ -250,14 +220,14 @@ class TestUserPermission:
             subjects_name=NEW_GROUP_NAME,
         ):
             LOGGER.info("User should have access to MR after the group is granted edit access via a RoleBinding")
-            with switch_context(test_idp_user_session.user_context):
+            with switch_user_context(test_idp_user_session.user_context):
                 assert_positive_mr_registry(
                     model_registry_instance=model_registry_instance,
                     model_registry_namespace=model_registry_namespace,
                     admin_client=admin_client,
                 )
 
-    @pytest.mark.sanity
+    @pytest.mark.smoke
     @pytest.mark.usefixtures("mr_access_role")
     def test_add_single_user(
         self: Self,
@@ -297,7 +267,7 @@ class TestUserPermission:
             subjects_kind="User",
             subjects_name=test_idp_user_session.username,
         ):
-            with switch_context(test_idp_user_session.user_context):
+            with switch_user_context(test_idp_user_session.user_context):
                 assert_positive_mr_registry(
                     model_registry_instance=model_registry_instance,
                     model_registry_namespace=model_registry_namespace,

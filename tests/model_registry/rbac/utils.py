@@ -39,7 +39,7 @@ def build_mr_client_args(rest_endpoint: str, token: str, author: str) -> Dict[st
 
 
 @contextmanager
-def switch_context(context_name: str) -> Generator[None, None, None]:
+def switch_user_context(context_name: str) -> Generator[None, None, None]:
     """
     Context manager to temporarily switch to a specific context.
 
@@ -50,7 +50,7 @@ def switch_context(context_name: str) -> Generator[None, None, None]:
         None
 
     Example:
-        with switch_context("my-context"):
+        with switch_user_context("my-context"):
             # Commands here will run in my-context
             run_command(["oc", "get", "pods"])
     """
@@ -100,14 +100,14 @@ def assert_positive_mr_registry(
     LOGGER.info("Client instantiated successfully after granting permissions.")
 
 
-def setup_mr_client(
+def get_mr_client_args(
     model_registry_instance: ModelRegistry,
     model_registry_namespace: str,
     admin_client: DynamicClient,
     author: str = "rbac-test",
 ) -> tuple[str, Dict[str, Any]]:
     """
-    Setup Model Registry client arguments within the current context.
+    Get Model Registry client arguments using the current context.
 
     Args:
         model_registry_instance: The Model Registry instance to connect to
@@ -143,7 +143,8 @@ def verify_group_membership(
     Raises:
         AssertionError: If the user is not a member of the group
     """
-    LOGGER.info(f"Verifying user {username} is in group")
+    group_name = group.instance.get("metadata", {}).get("name")
+    LOGGER.info(f"Verifying user {username} is in group {group_name}")
     users = group.instance.get("users", []) or []
-    assert username in users, f"User {username} not in group {group.instance.get('name')}. Current users: {users}"
-    LOGGER.info(f"Verified user {username} is in {group.instance.get('name')} group")
+    assert username in users, f"User {username} not in group {group_name}. Current users: {users}"
+    LOGGER.info(f"Verified user {username} is in {group_name} group")

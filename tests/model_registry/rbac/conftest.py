@@ -13,7 +13,7 @@ from ocp_resources.group import Group
 from kubernetes.dynamic import DynamicClient
 from pyhelper_utils.shell import run_command
 from tests.model_registry.utils import generate_random_name, generate_namespace_name
-from utilities.user_utils import create_test_idp, cleanup_test_idp, UserTestSession
+from utilities.user_utils import create_test_idp, UserTestSession
 from tests.model_registry.constants import MR_INSTANCE_NAME
 
 
@@ -115,28 +115,52 @@ def new_group(
         LOGGER.info(f"Group {group_name} deletion initiated by context manager.")
 
 
+@pytest.fixture(scope="function")
+def model_registry_group_with_user(
+    admin_client: DynamicClient,
+    test_idp_user_session: UserTestSession,
+) -> Generator[Group, None, None]:
+    """
+    Fixture to manage a test user in the Model Registry group.
+    Adds the user to the group before the test, then removes them after.
+
+    Args:
+        admin_client: The admin client for accessing the cluster
+        test_idp_user_session: The test user session containing user information
+
+    Yields:
+        Group: The Model Registry group with the test user added
+    """
+    model_registry_users_group = f"{MR_INSTANCE_NAME}-users"
+    group = Group(
+        client=admin_client,
+        name=model_registry_users_group,
+        wait_for_resource=True,
+    )
+
+    # Add user to group
+    group.update(
+        resource_dict={"metadata": {"name": model_registry_users_group}, "users": [test_idp_user_session.username]}
+    )
+    LOGGER.info(f"Added user {test_idp_user_session.username} to {model_registry_users_group} group")
+
+    try:
+        yield group
+    finally:
+        # Remove user from group
+        group.update(resource_dict={"metadata": {"name": model_registry_users_group}, "users": []})
+        LOGGER.info(f"Removed user {test_idp_user_session.username} from {model_registry_users_group} group")
+
+
 @pytest.fixture(scope="session")
 def test_idp_user_session() -> Generator[UserTestSession, None, None]:
     """
     Session-scoped fixture that creates a test IDP user and cleans it up after all tests.
     Returns a UserTestSession object that contains all necessary credentials and contexts.
     """
-    # Create the test IDP and user
-    idp_session = create_test_idp()
-    LOGGER.info(f"Created session test IDP user: {idp_session.username}")
-
-    try:
-        # Yield the session object to all tests in the session
+    with create_test_idp() as idp_session:
+        LOGGER.info(f"Created session test IDP user: {idp_session.username}")
         yield idp_session
-    finally:
-        # Clean up after all tests are done
-        LOGGER.info(f"Cleaning up session test IDP user: {idp_session.username}")
-        cleanup_test_idp(
-            idp_name=idp_session.idp_name,
-            secret_name=idp_session.secret_name,
-            original_context=idp_session.original_context,
-            user_context=idp_session.user_context,
-        )
 
 
 # --- RBAC Fixtures ---
