@@ -96,6 +96,12 @@ class ClusterLoginError(Exception):
         return f"Failed to log in as user {self.user}."
 
 
+class InvalidArgumentsError(Exception):
+    """Raised when mutually exclusive or invalid argument combinations are passed."""
+
+    pass
+
+
 class ResourceNotReadyError(Exception):
     pass
 
@@ -110,3 +116,7 @@ class TooManyPodsError(Exception):
 
 class UnexpectedFailureError(Exception):
     pass
+
+
+class UnexpectedResourceCountError(Exception):
+    """Unexpected number of API resources found"""

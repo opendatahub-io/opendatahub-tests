@@ -3,9 +3,9 @@ global config  # type:ignore[unused-ignore]
 distribution: str = "downstream"
 applications_namespace: str = "redhat-ods-applications"  # overwritten in conftest.py if distribution is upstream
 dsc_name: str = "default-dsc"
+must_gather_base_dir: str = "must-gather-base-dir"
 dsci_name: str = "default-dsci"
 dependent_operators: str = "servicemeshoperator,authorino-operator,serverless-operator"
-
 use_unprivileged_client: bool = True
 
 for _dir in dir():
