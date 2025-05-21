@@ -260,9 +260,7 @@ def updated_dsc_component_state_scope_class(
         ):
             # Since namespace specified in registriesNamespace is automatically created after setting
             # managementStateto Managed. We need to explicitly delete it on clean up.
-            namespace = Namespace(
-                name=dsc_resource.instance.spec.components.modelregistry.registriesNamespace, ensure_exists=True
-            )
+            namespace = Namespace(name=value["registriesNamespace"], ensure_exists=True)
             if namespace:
                 namespace.delete(wait=True)
 
