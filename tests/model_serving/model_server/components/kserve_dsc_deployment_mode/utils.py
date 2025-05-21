@@ -44,13 +44,12 @@ def wait_for_configmap_key_value(
                 for key in nested_key_path:
                     parsed = parsed.get(key, {})
                 if parsed == expected_value:
-                    LOGGER.info(f"{data_key} set successfully to {expected_value}")
-                    break
+                    return
             except json.JSONDecodeError as e:
                 LOGGER.warning(f"Could not decode {data_key}: {e}")
 
 
-def patch_dsc_default_deployment_mode(
+def patch_deployment_in_dsc(
     dsc_resource: DataScienceCluster,
     config_map: ConfigMap,
     spec_key: str,
