@@ -770,20 +770,20 @@ def get_product_version(admin_client: DynamicClient) -> Version:
     return Version.parse(version=operator_version)
 
 
+def get_data_science_cluster(client: DynamicClient, dsc_name: str = "default-dsc") -> DataScienceCluster:
+    return DataScienceCluster(client=client, name=dsc_name, ensure_exists=True)
+
+
 def get_dsci_applications_namespace(client: DynamicClient) -> str:
     """
     Get the namespace where DSCI applications are deployed.
-
     Args:
         client (DynamicClient): DynamicClient object
-
     Returns:
         str: Namespace where DSCI applications are deployed.
-
     Raises:
             ValueError: If DSCI applications namespace not found
             MissingResourceError: If DSCI not found
-
     """
     dsci_name = py_config["dsci_name"]
     dsci = DSCInitialization(client=client, name=dsci_name)
@@ -811,19 +811,15 @@ def get_operator_distribution(client: DynamicClient, dsc_name: str = "default-ds
 
     Raises:
             ValueError: If DSC release name not found
-            MissingResourceError: If DSC not found
 
     """
-    dsc = DataScienceCluster(client=client, name=dsc_name)
+    dsc = get_data_science_cluster(client=client, dsc_name=dsc_name)
 
-    if dsc.exists:
-        if dsc_release_name := dsc.instance.status.get("release", {}).get("name"):
-            return dsc_release_name
+    if dsc_release_name := dsc.instance.status.get("release", {}).get("name"):
+        return dsc_release_name
 
-        else:
-            raise ValueError("DSC release name not found in {dsc_name}")
-
-    raise MissingResourceError(f"DSC {dsc_name} not found")
+    else:
+        raise ValueError("DSC release name not found in {dsc_name}")
 
 
 def wait_for_serverless_pods_deletion(resource: Project | Namespace, admin_client: DynamicClient | None) -> None:

@@ -1,11 +1,12 @@
 import pytest
 from typing import Self
 from simple_logger.logger import get_logger
+from pytest_testconfig import config as py_config
 
 from ocp_resources.pod import Pod
 from ocp_resources.namespace import Namespace
 from utilities.constants import DscComponents
-from tests.model_registry.constants import MODEL_NAME, MODEL_DICT, MR_NAMESPACE
+from tests.model_registry.constants import MODEL_NAME, MODEL_DICT
 from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
 
@@ -33,7 +34,7 @@ CUSTOM_NAMESPACE = "model-registry-custom-ns"
                 "component_patch": {
                     DscComponents.MODELREGISTRY: {
                         "managementState": DscComponents.ManagementState.MANAGED,
-                        "registriesNamespace": MR_NAMESPACE,
+                        "registriesNamespace": py_config["model_registry_namespace"],
                     },
                 },
             },
