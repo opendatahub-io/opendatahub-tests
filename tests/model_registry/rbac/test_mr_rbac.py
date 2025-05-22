@@ -1,9 +1,10 @@
 import pytest
+from pytest_testconfig import config as py_config
 from typing import Self
 from simple_logger.logger import get_logger
 
 from model_registry import ModelRegistry as ModelRegistryClient
-from tests.model_registry.constants import MR_NAMESPACE, MR_INSTANCE_NAME
+from tests.model_registry.constants import MR_INSTANCE_NAME
 from tests.model_registry.rbac.utils import assert_positive_mr_registry, get_mr_client_args
 from utilities.infra import switch_user_context
 from kubernetes.dynamic import DynamicClient
@@ -27,7 +28,7 @@ NEW_GROUP_NAME = "test-model-registry-group"
             "component_patch": {
                 DscComponents.MODELREGISTRY: {
                     "managementState": DscComponents.ManagementState.MANAGED,
-                    "registriesNamespace": MR_NAMESPACE,
+                    "registriesNamespace": py_config["model_registry_namespace"],
                 },
             }
         })
