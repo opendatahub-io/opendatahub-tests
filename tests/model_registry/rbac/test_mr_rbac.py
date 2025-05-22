@@ -5,11 +5,11 @@ from simple_logger.logger import get_logger
 from model_registry import ModelRegistry as ModelRegistryClient
 from tests.model_registry.constants import MR_INSTANCE_NAME, MR_NAMESPACE
 from tests.model_registry.rbac.utils import (
-    switch_user_context,
     assert_positive_mr_registry,
     get_mr_client_args,
     verify_group_membership,
 )
+from utilities.infra import switch_user_context
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.group import Group
 from ocp_resources.model_registry import ModelRegistry
@@ -227,7 +227,7 @@ class TestUserPermission:
                     admin_client=admin_client,
                 )
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     @pytest.mark.usefixtures("mr_access_role")
     def test_add_single_user(
         self: Self,

@@ -4,12 +4,15 @@ import subprocess
 from dataclasses import dataclass
 from pyhelper_utils.shell import run_command
 from timeout_sampler import TimeoutSampler
-from utilities.infra import login_with_user_password, get_client
+from utilities.infra import login_with_user_password, get_client, switch_user_context
 from tests.model_registry.utils import generate_random_name, wait_for_pods_running
 from contextlib import contextmanager
-from typing import Generator
+from typing import Generator, Optional
 from ocp_resources.oauth import OAuth
 from ocp_resources.resource import ResourceEditor
+from ocp_resources.secret import Secret
+import base64
+from pathlib import Path
 
 
 LOGGER = logging.getLogger(__name__)
@@ -27,6 +30,26 @@ class UserTestSession:
     password: str
     user_context: str
     original_context: str
+
+    def __post_init__(self) -> None:
+        """Validate the session data after initialization."""
+        if not all([self.idp_name, self.secret_name, self.username, self.password]):
+            raise ValueError("All session fields must be non-empty")
+        if not self.user_context or not self.original_context:
+            raise ValueError("Both user and original contexts must be set")
+
+    def cleanup(self) -> None:
+        """Clean up the user context."""
+        if self.user_context:
+            # First switch to original context
+            run_command(command=["oc", "config", "use-context", self.original_context], check=True)
+            LOGGER.info(f"Switched to original context: {self.original_context}")
+            # Then delete the user context
+            LOGGER.info(f"Deleting user context: {self.user_context}")
+            run_command(
+                command=["oc", "config", "delete-context", self.user_context],
+                check=False,  # Don't fail if context doesn't exist
+            )
 
 
 @contextmanager
@@ -49,59 +72,56 @@ def create_test_idp(
             # Use idp_session here
             # Cleanup happens automatically after the with block
     """
-    user_context = ""
-    idp_session = None
     # Save the current context (cluster admin)
     _, original_context, _ = run_command(command=["oc", "config", "current-context"], check=True)
     original_context = original_context.strip()
     LOGGER.info(f"Original context (cluster admin): {original_context}")
-    # Generate a unique suffix for this test run
+
+    # Generate unique names
     idp_name = generate_random_name(prefix=idp_name)
     secret_name = generate_random_name(prefix=secret_name)
-
-    # Generate username and password
     username = generate_random_name(prefix="test-user")
     password = generate_random_name(prefix="test-password")
 
+    idp_session = None
     try:
         LOGGER.info(f"Creating user with username: {username}")
 
-        _create_htpasswd_secret(username=username, password=password, secret_name=secret_name)
-        with _update_oauth_config(idp_name=idp_name, secret_name=secret_name):
-            # Get the cluster URL
-            _, cluster_url, _ = run_command(command=["oc", "whoami", "--show-server"], check=True)
-            cluster_url = cluster_url.strip()
+        with _create_htpasswd_secret(username=username, password=password, secret_name=secret_name):
+            with _update_oauth_config(idp_name=idp_name, secret_name=secret_name):
+                # Get the cluster URL
+                _, cluster_url, _ = run_command(command=["oc", "whoami", "--show-server"], check=True)
+                cluster_url = cluster_url.strip()
 
-            # Use TimeoutSampler to retry user context creation
-            sampler = TimeoutSampler(
-                wait_timeout=240,
-                sleep=10,
-                func=_create_user_context,
-                username=username,
-                password=password,
-                cluster_url=cluster_url,
-            )
+                # Use TimeoutSampler to retry user context creation
+                sampler = TimeoutSampler(
+                    wait_timeout=240,
+                    sleep=10,
+                    func=_create_user_context,
+                    username=username,
+                    password=password,
+                    cluster_url=cluster_url,
+                )
 
-            for user_context in sampler:
-                if user_context:  # If context creation was successful
-                    break
+                user_context = None
+                for user_context in sampler:
+                    if user_context:  # If context creation was successful
+                        break
 
-            if not user_context:
-                raise Exception(f"Could not create context for user {username} after timeout")
+                if not user_context:
+                    raise Exception(f"Could not create context for user {username} after timeout")
 
-            # Switch back to original context after creating user context
-            run_command(command=["oc", "config", "use-context", original_context], check=True)
-            LOGGER.info(f"Switched back to original context: {original_context}")
-
-            idp_session = UserTestSession(
-                idp_name=idp_name,
-                secret_name=secret_name,
-                username=username,
-                password=password,
-                user_context=user_context,
-                original_context=original_context,
-            )
-            yield idp_session
+                # Switch back to original context after creating user context
+                with switch_user_context(original_context):
+                    idp_session = UserTestSession(
+                        idp_name=idp_name,
+                        secret_name=secret_name,
+                        username=username,
+                        password=password,
+                        user_context=user_context,
+                        original_context=original_context,
+                    )
+                    yield idp_session
 
     except Exception as e:
         LOGGER.error(f"Error during setup: {e}")
@@ -109,136 +129,60 @@ def create_test_idp(
     finally:
         if idp_session:
             LOGGER.info(f"Cleaning up test IDP user: {idp_session.username}")
-            cleanup_test_idp(
-                idp_name=idp_session.idp_name,
-                secret_name=idp_session.secret_name,
-                original_context=original_context,
-                user_context=user_context,
-            )
+            idp_session.cleanup()
 
 
-def cleanup_test_idp(idp_name: str, secret_name: str, original_context: str, user_context: str) -> None:
+def _create_htpasswd_file(username: str, password: str) -> tuple[Path, str]:
     """
-    Cleans up test IDP resources and restores the original context.
-    Note: The OAuth configuration is automatically restored by ResourceEditor's context manager.
+    Create an htpasswd file for a user.
 
     Args:
-        idp_name: Name of the IDP to remove (not used, kept for compatibility)
-        secret_name: Name of the secret to delete
-        original_context: Name of the original context (cluster admin) to restore
-        user_context: Name of the user context to delete
-    """
-    cleanup_errors = []
-
-    try:
-        # Restore the original context
-        _restore_context_and_delete_user_context(original_context=original_context, user_context=user_context)
-
-        # Delete the secret
-        LOGGER.info(f"Deleting secret {secret_name}...")
-        try:
-            run_command(
-                command=["oc", "delete", "secret", secret_name, "-n", "openshift-config"],
-                check=False,  # Don't fail if secret doesn't exist
-            )
-        except Exception as e:
-            cleanup_errors.append(f"Failed to delete secret {secret_name}: {str(e)}")
-            LOGGER.error(f"Error deleting secret: {e}")
-
-        if cleanup_errors:
-            LOGGER.warning("Cleanup completed with some errors:")
-            for error in cleanup_errors:
-                LOGGER.warning(f"- {error}")
-        else:
-            LOGGER.info("Cleanup completed successfully")
-
-    except Exception as e:
-        LOGGER.error(f"Critical error during cleanup: {e}")
-        # Try to restore the original context even if cleanup fails
-        if original_context:
-            try:
-                run_command(command=["oc", "config", "use-context", original_context], check=True)
-                LOGGER.info(f"Restored original context after error: {original_context}")
-            except Exception as restore_error:
-                LOGGER.error(f"Failed to restore original context: {restore_error}")
-        raise
-
-    # If we had any cleanup errors, raise them now
-    if cleanup_errors:
-        raise Exception("Cleanup completed with errors:\n" + "\n".join(cleanup_errors))
-
-
-def _create_user_context(
-    username: str,
-    password: str,
-    cluster_url: str,
-) -> str | None:
-    """
-    Attempts to login to OpenShift to create a user context.
-
-    Args:
-        username: The username to login with
-        password: The password to login with
-        cluster_url: The OpenShift cluster URL
+        username: The username to add to the htpasswd file
+        password: The password for the user
 
     Returns:
-        The user context name if login successful, None otherwise
-
-    Note:
-        This function is meant to be used with TimeoutSampler for retries.
-        It will return None on failure, allowing the sampler to retry.
+        Tuple of (temp file path, base64 encoded content)
     """
-    LOGGER.info(f"Attempting to login as {username}")
+    with tempfile.NamedTemporaryFile(mode="w+", delete=False) as temp_file:
+        temp_path = Path(path=temp_file.name)
+        subprocess.run(args=["htpasswd", "-c", "-b", str(temp_path), username, password], check=True)
 
-    if login_with_user_password(api_address=cluster_url, user=username, password=password):
-        # Login was successful, get the current context
-        _, stdout, _ = run_command(command=["oc", "config", "current-context"], check=True)
-        user_context = stdout.strip()
-        LOGGER.info(f"Successfully created context for user {username}: {user_context}")
-        return user_context
+        # Read the htpasswd file content and encode it
+        temp_path.read_text()
+        htpasswd_content = temp_path.read_text()
+        htpasswd_b64 = base64.b64encode(htpasswd_content.encode()).decode()
 
-    LOGGER.error(f"Login failed for user {username}")
-    return None
+        return temp_path, htpasswd_b64
 
 
-def _create_htpasswd_secret(username: str, password: str, secret_name: str) -> None:
+@contextmanager
+def _create_htpasswd_secret(username: str, password: str, secret_name: str) -> Generator[Secret, None, None]:
     """
     Creates an htpasswd file and corresponding OpenShift secret for a user.
-
-    This function generates an htpasswd file for the given username and password,
-    then creates a Kubernetes secret in the 'openshift-config' namespace using that file.
+    Uses context manager to ensure proper cleanup.
 
     Args:
-        username: The username to add to the htpasswd file.
-        password: The password for the user.
-        secret_name: The name of the secret to create.
+        username: The username to add to the htpasswd file
+        password: The password for the user
+        secret_name: The name of the secret to create
+
+    Yields:
+        Secret: The created Secret resource
     """
-    with tempfile.NamedTemporaryFile(mode="w+") as temp_file:
-        subprocess.run(args=["htpasswd", "-c", "-b", temp_file.name, username, password], check=True)
+    temp_path, htpasswd_b64 = _create_htpasswd_file(username=username, password=password)
+    try:
         LOGGER.info(f"Creating secret {secret_name} in openshift-config namespace")
-        run_command(
-            command=[
-                "oc",
-                "create",
-                "secret",
-                "generic",
-                secret_name,
-                f"--from-file=htpasswd={temp_file.name}",
-                "-n",
-                "openshift-config",
-            ],
-            check=True,
-        )
-
-        # Verify the secret was created correctly
-        _, secret_data, _ = run_command(
-            command=["oc", "get", "secret", secret_name, "-n", "openshift-config", "-o", "jsonpath={.data.htpasswd}"],
-            check=True,
-        )
-        if not secret_data:
-            raise Exception(f"Secret {secret_name} was created but has no htpasswd data")
-
-        LOGGER.info(f"Created secret: {secret_name}")
+        with Secret(
+            name=secret_name,
+            namespace="openshift-config",
+            htpasswd=htpasswd_b64,
+            type="Opaque",
+            wait_for_resource=True,
+        ) as secret:
+            yield secret
+    finally:
+        # Clean up the temporary file
+        temp_path.unlink(missing_ok=True)
 
 
 @contextmanager
@@ -248,8 +192,8 @@ def _update_oauth_config(idp_name: str, secret_name: str) -> Generator[None, Non
     Uses ResourceEditor context manager to handle cleanup.
 
     Args:
-        idp_name: The name of the identity provider to add.
-        secret_name: The name of the secret containing the htpasswd file.
+        idp_name: The name of the identity provider to add
+        secret_name: The name of the secret containing the htpasswd file
 
     Yields:
         None, but ensures cleanup through ResourceEditor context manager
@@ -277,20 +221,30 @@ def _update_oauth_config(idp_name: str, secret_name: str) -> Generator[None, Non
         yield
 
 
-def _restore_context_and_delete_user_context(original_context: str, user_context: str) -> None:
+def _create_user_context(username: str, password: str, cluster_url: str) -> Optional[str]:
     """
-    Restores the original OpenShift context and deletes the specified user context.
+    Attempts to login to OpenShift to create a user context.
 
     Args:
-        original_context: The name of the context to restore.
-        user_context: The name of the user context to delete.
+        username: The username to login with
+        password: The password to login with
+        cluster_url: The OpenShift cluster URL
+
+    Returns:
+        The user context name if login successful, None otherwise
+
+    Note:
+        This function is meant to be used with TimeoutSampler for retries.
+        It will return None on failure, allowing the sampler to retry.
     """
-    LOGGER.info(f"Restoring original context: {original_context}")
-    run_command(command=["oc", "config", "use-context", original_context], check=True)
-    if user_context:
-        # Delete the user context if created
-        LOGGER.info(f"Deleting user context: {user_context}")
-        run_command(
-            command=["oc", "config", "delete-context", user_context],
-            check=False,  # Don't fail if context doesn't exist
-        )
+    LOGGER.info(f"Attempting to login as {username}")
+
+    if login_with_user_password(api_address=cluster_url, user=username, password=password):
+        # Login was successful, get the current context
+        _, stdout, _ = run_command(command=["oc", "config", "current-context"], check=True)
+        user_context = stdout.strip()
+        LOGGER.info(f"Successfully created context for user {username}: {user_context}")
+        return user_context
+
+    LOGGER.error(f"Login failed for user {username}")
+    return None
