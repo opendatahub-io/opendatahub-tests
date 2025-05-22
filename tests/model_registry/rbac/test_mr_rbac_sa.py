@@ -1,26 +1,14 @@
 # AI Disclaimer: Google Gemini 2.5 pro has been used to generate a majority of this code, with human review and editing.
 import pytest
 from pytest_testconfig import config as py_config
-from typing import Self, Dict, Any
+from typing import Self
 from simple_logger.logger import get_logger
 from model_registry import ModelRegistry as ModelRegistryClient
+from tests.model_registry.rbac.utils import build_mr_client_args
+from utilities.constants import DscComponents
 from mr_openapi.exceptions import ForbiddenException
-from utilities.constants import DscComponents, Protocols
-
 
 LOGGER = get_logger(name=__name__)
-
-
-def build_mr_client_args(rest_endpoint: str, token: str, author: str) -> Dict[str, Any]:
-    """Builds arguments for ModelRegistryClient based on REST endpoint and token."""
-    server, port = rest_endpoint.split(":")
-    return {
-        "server_address": f"{Protocols.HTTPS}://{server}",
-        "port": port,
-        "user_token": token,
-        "is_secure": False,
-        "author": author,
-    }
 
 
 @pytest.mark.parametrize(
