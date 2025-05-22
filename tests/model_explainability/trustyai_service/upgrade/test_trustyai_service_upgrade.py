@@ -31,6 +31,7 @@ class TestPreUpgradeTrustyAIService:
         admin_client,
         current_client_token,
         model_namespace,
+        isvc_getter_token,
         trustyai_service_with_pvc_storage,
         gaussian_credit_model,
     ) -> None:
@@ -42,6 +43,7 @@ class TestPreUpgradeTrustyAIService:
             trustyai_service=trustyai_service_with_pvc_storage,
             inference_service=gaussian_credit_model,
             inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
+            inference_token=isvc_getter_token,
         )
 
     @pytest.mark.pre_upgrade
