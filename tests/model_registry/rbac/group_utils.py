@@ -26,12 +26,6 @@ def create_group(
 
     Yields:
         The group name
-
-    Example:
-        with create_group(admin_client, "my-group", users=["user1", "user2"]) as group_name:
-            # Use the group
-            pass
-        # Group is automatically deleted
     """
     with Group(
         client=admin_client,

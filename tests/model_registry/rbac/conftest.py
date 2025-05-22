@@ -100,6 +100,18 @@ def add_user_to_group(
     admin_client: DynamicClient,
     test_idp_user_session: UserTestSession,
 ) -> Generator[str, None, None]:
+    """
+    Fixture to create a group and add a test user to it.
+    Uses create_group context manager to ensure proper cleanup.
+
+    Args:
+        request: The pytest request object containing the group name parameter
+        admin_client: The admin client for accessing the cluster
+        test_idp_user_session: The test user session containing user information
+
+    Yields:
+        str: The name of the created group
+    """
     group_name = request.param
     with create_group(
         admin_client=admin_client,
@@ -126,9 +138,6 @@ def model_registry_group_with_user(
 
     Yields:
         Group: The group with the test user added
-
-    Note:
-        The group name should be passed as a parameter to the fixture using pytest.mark.parametrize
     """
     group_name = request.param
     group = Group(
