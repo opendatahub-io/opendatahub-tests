@@ -72,7 +72,13 @@ class TestFairnessMetricsWithPVCStorage:
     """
 
     def test_fairness_send_inference_and_verify_trustyai_service_with_pvc_storage(
-        self, admin_client, current_client_token, model_namespace, trustyai_service_with_pvc_storage, onnx_loan_model
+        self,
+        admin_client,
+        current_client_token,
+        model_namespace,
+        trustyai_service_with_pvc_storage,
+        onnx_loan_model,
+        isvc_getter_token,
     ):
         send_inferences_and_verify_trustyai_service_registered(
             client=admin_client,
@@ -81,6 +87,7 @@ class TestFairnessMetricsWithPVCStorage:
             trustyai_service=trustyai_service_with_pvc_storage,
             inference_service=onnx_loan_model,
             inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
+            inference_token=isvc_getter_token,
         )
 
     def test_name_mappings_with_pvc_storage(
@@ -167,7 +174,13 @@ class TestFairnessMetricsWithDBStorage:
     """
 
     def test_fairness_send_inference_and_verify_trustyai_service_with_db_storage(
-        self, admin_client, current_client_token, model_namespace, trustyai_service_with_db_storage, onnx_loan_model
+        self,
+        admin_client,
+        current_client_token,
+        model_namespace,
+        isvc_getter_token,
+        trustyai_service_with_db_storage,
+        onnx_loan_model,
     ):
         send_inferences_and_verify_trustyai_service_registered(
             client=admin_client,
@@ -176,6 +189,7 @@ class TestFairnessMetricsWithDBStorage:
             trustyai_service=trustyai_service_with_db_storage,
             inference_service=onnx_loan_model,
             inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
+            inference_token=isvc_getter_token,
         )
 
     def test_name_mappings_with_db_storage(

@@ -12,8 +12,11 @@ from ocp_resources.maria_db import MariaDB
 from ocp_resources.mariadb_operator import MariadbOperator
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
+from ocp_resources.role import Role
+from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
+from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.subscription import Subscription
 from ocp_resources.trustyai_service import TrustyAIService
@@ -32,8 +35,7 @@ from utilities.operator_utils import get_cluster_service_version
 
 from utilities.constants import Timeout, KServeDeploymentType, ApiGroups, Labels, Ports
 from utilities.inference_utils import create_isvc
-from utilities.infra import update_configmap_data
-
+from utilities.infra import update_configmap_data, create_inference_token
 
 OPENSHIFT_OPERATORS: str = "openshift-operators"
 
@@ -60,6 +62,7 @@ Ivd1FFQXdJQ0JEQVBCZ05WSFJNQgpBZjhFQlRBREFRSC9NQjBHQTFVZERnUVdCQlNUa2tzSU9pL1pTbC
 U1nZ3B0WVhKcFlXUmlMV05oTUFvR0NDcUdTTTQ5QkFNQ0EwY0FNRVFDSUI1Q2F6VW1WWUZQYTFkS2txUGkKbitKSEQvNVZTTGd4aHVPclgzUGcxQnlzQWlB\
 RmcvTXlNWW9CZUNrUVRWdS9rUkIwK2N2Qy9RMDB4NExvVGpJaQpGdCtKMGc9PQotLS0tLUVORCBDRVJUSUZJQ0FURS0t\
 LS0t"  # pragma: allowlist secret
+ISVC_GETTER: str = "isvc-getter"
 
 
 @pytest.fixture(scope="class")
@@ -386,3 +389,69 @@ def gaussian_credit_model(
                 runtime_name=mlserver_runtime.name,
             )
             yield isvc
+
+
+@pytest.fixture(scope="class")
+def isvc_getter_service_account(
+    admin_client: DynamicClient, model_namespace: Namespace
+) -> Generator[ServiceAccount, Any, Any]:
+    with ServiceAccount(client=admin_client, name=ISVC_GETTER, namespace=model_namespace.name) as sa:
+        yield sa
+
+
+@pytest.fixture(scope="class")
+def isvc_getter_role(admin_client: DynamicClient, model_namespace: Namespace) -> Generator[Role, Any, Any]:
+    with Role(
+        client=admin_client,
+        name=ISVC_GETTER,
+        namespace=model_namespace.name,
+        rules=[
+            {
+                "apiGroups": ["serving.kserve.io"],
+                "resources": ["inferenceservices"],
+                "verbs": ["get", "list", "watch"],
+            }
+        ],
+    ) as role:
+        yield role
+
+
+@pytest.fixture(scope="class")
+def isvc_getter_role_binding(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    isvc_getter_role: Role,
+    isvc_getter_service_account: ServiceAccount,
+) -> Generator[RoleBinding, Any, Any]:
+    with RoleBinding(
+        client=admin_client,
+        name=ISVC_GETTER,
+        namespace=model_namespace.name,
+        subjects_kind="ServiceAccount",
+        subjects_name=isvc_getter_service_account.name,
+        role_ref_kind="Role",
+        role_ref_name=isvc_getter_role.name,
+    ) as rb:
+        yield rb
+
+
+@pytest.fixture(scope="class")
+def isvc_getter_token_secret(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    isvc_getter_service_account: ServiceAccount,
+    isvc_getter_role_binding: RoleBinding,
+) -> Generator[Secret, Any, Any]:
+    with Secret(
+        client=admin_client,
+        name="sa-token",
+        namespace=model_namespace.name,
+        annotations={"kubernetes.io/service-account.name": ISVC_GETTER},
+        type="kubernetes.io/service-account-token",
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
+def isvc_getter_token(isvc_getter_service_account: ServiceAccount, isvc_getter_token_secret: Secret) -> str:
+    return create_inference_token(model_service_account=isvc_getter_service_account)
