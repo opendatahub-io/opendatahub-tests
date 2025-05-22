@@ -68,7 +68,8 @@ class TestFairnessMetricsWithPVCStorage:
     2. Apply name mappings
     3. Send metric request (spd) and verify the response.
     4. Send metric scheduling request and verify the response.
-    5. Send metric deletion request and verify that the scheduled metric has been deleted.
+    5. Verify integration with Prometheus.
+    6. Send metric deletion request and verify that the scheduled metric has been deleted.
     """
 
     def test_fairness_send_inference_and_verify_trustyai_service_with_pvc_storage(
