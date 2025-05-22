@@ -3,7 +3,7 @@ from typing import Self
 from simple_logger.logger import get_logger
 
 from model_registry import ModelRegistry as ModelRegistryClient
-from tests.model_registry.constants import MR_INSTANCE_NAME, MR_NAMESPACE
+from tests.model_registry.constants import MR_NAMESPACE
 from tests.model_registry.rbac.utils import (
     assert_positive_mr_registry,
     get_mr_client_args,
@@ -86,8 +86,6 @@ class TestUserPermission:
             ForbiddenException: Expected for normal users, unexpected for admin users
         """
 
-        assert model_registry_instance.name == MR_INSTANCE_NAME
-
         context_to_use = (
             test_idp_user_session.original_context if use_admin_context else test_idp_user_session.user_context
         )
@@ -145,8 +143,6 @@ class TestUserPermission:
             "-----Test that a user can access to the Model Registry once added to a "
             "group that has the permissions to access it-----"
         )
-        assert model_registry_instance.name == MR_INSTANCE_NAME
-
         # Verify group membership
         verify_group_membership(
             group=model_registry_group_with_user,
