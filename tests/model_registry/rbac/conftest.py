@@ -3,14 +3,19 @@ import shlex
 import subprocess
 import os
 from typing import Generator, List, Dict, Any
+from simple_logger.logger import get_logger
+
 from ocp_resources.namespace import Namespace
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.role import Role
+from ocp_resources.group import Group
+from ocp_resources.resource import ResourceEditor
 from kubernetes.dynamic import DynamicClient
 from pyhelper_utils.shell import run_command
 from tests.model_registry.utils import generate_random_name, generate_namespace_name
-from simple_logger.logger import get_logger
+from utilities.user_utils import create_test_idp, UserTestSession
+from tests.model_registry.rbac.group_utils import create_group
 from tests.model_registry.constants import MR_INSTANCE_NAME
 
 
@@ -89,6 +94,82 @@ def sa_token(service_account: ServiceAccount) -> str:
         raise
 
 
+@pytest.fixture(scope="function")
+def add_user_to_group(
+    request: pytest.FixtureRequest,
+    admin_client: DynamicClient,
+    test_idp_user_session: UserTestSession,
+) -> Generator[str, None, None]:
+    """
+    Fixture to create a group and add a test user to it.
+    Uses create_group context manager to ensure proper cleanup.
+
+    Args:
+        request: The pytest request object containing the group name parameter
+        admin_client: The admin client for accessing the cluster
+        test_idp_user_session: The test user session containing user information
+
+    Yields:
+        str: The name of the created group
+    """
+    group_name = request.param
+    with create_group(
+        admin_client=admin_client,
+        group_name=group_name,
+        users=[test_idp_user_session.username],
+    ) as group_name:
+        yield group_name
+
+
+@pytest.fixture(scope="function")
+def model_registry_group_with_user(
+    request: pytest.FixtureRequest,
+    admin_client: DynamicClient,
+    test_idp_user_session: UserTestSession,
+) -> Generator[Group, None, None]:
+    """
+    Fixture to manage a test user in a specified group.
+    Adds the user to the group before the test, then removes them after.
+
+    Args:
+        request: The pytest request object containing the group name parameter
+        admin_client: The admin client for accessing the cluster
+        test_idp_user_session: The test user session containing user information
+
+    Yields:
+        Group: The group with the test user added
+    """
+    group_name = request.param
+    group = Group(
+        client=admin_client,
+        name=group_name,
+        wait_for_resource=True,
+    )
+
+    # Add user to group
+    with ResourceEditor(
+        patches={
+            group: {
+                "metadata": {"name": group_name},
+                "users": [test_idp_user_session.username],
+            }
+        }
+    ) as _:
+        LOGGER.info(f"Added user {test_idp_user_session.username} to {group_name} group")
+        yield group
+
+
+@pytest.fixture(scope="session")
+def test_idp_user_session() -> Generator[UserTestSession, None, None]:
+    """
+    Session-scoped fixture that creates a test IDP user and cleans it up after all tests.
+    Returns a UserTestSession object that contains all necessary credentials and contexts.
+    """
+    with create_test_idp() as idp_session:
+        LOGGER.info(f"Created session test IDP user: {idp_session.username}")
+        yield idp_session
+
+
 # --- RBAC Fixtures ---
 
 
@@ -128,7 +209,6 @@ def mr_access_role(
     ) as role:
         LOGGER.info(f"Role {role.name} created successfully.")
         yield role
-        LOGGER.info(f"Role {role.name} deletion initiated by context manager.")
 
 
 @pytest.fixture(scope="function")
@@ -162,7 +242,7 @@ def mr_access_role_binding(
         subjects_name=f"system:serviceaccounts:{sa_namespace.name}",
         subjects_api_group="rbac.authorization.k8s.io",  # This is the default apiGroup for Group kind
         # Role reference parameters
-        role_ref_kind="Role",
+        role_ref_kind=mr_access_role.kind,
         role_ref_name=mr_access_role.name,
         label=binding_labels,
         wait_for_resource=True,
