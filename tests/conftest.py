@@ -34,6 +34,7 @@ from utilities.infra import (
     get_operator_distribution,
     login_with_user_password,
     get_openshift_token,
+    get_data_science_cluster,
 )
 from utilities.constants import (
     AcceleratorType,
@@ -66,17 +67,19 @@ def tests_tmp_dir(request: FixtureRequest, tmp_path_factory: TempPathFactory) ->
 
 @pytest.fixture(scope="session")
 def updated_global_config(request: FixtureRequest, admin_client: DynamicClient) -> None:
-    if get_operator_distribution(client=admin_client) == "Open Data Hub":
+    distribution = get_operator_distribution(client=admin_client)
+    if distribution == "Open Data Hub":
         py_config["distribution"] = "upstream"
 
-    else:
+    elif distribution.startswith("OpenShift AI"):
         py_config["distribution"] = "downstream"
-
-    if applications_namespace := request.config.getoption("applications_namespace"):
-        py_config["applications_namespace"] = applications_namespace
-
     else:
-        py_config["applications_namespace"] = get_dsci_applications_namespace(client=admin_client)
+        pytest.exit(f"Unknown distribution: {distribution}")
+
+    py_config["applications_namespace"] = get_dsci_applications_namespace(client=admin_client)
+    py_config["model_registry_namespace"] = get_data_science_cluster(
+        client=admin_client
+    ).instance.spec.components.modelregistry.registriesNamespace
 
 
 @pytest.fixture(scope="session")

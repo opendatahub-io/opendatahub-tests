@@ -7,7 +7,6 @@ class ModelRegistryEndpoints:
     REGISTERED_MODELS: str = "/api/model_registry/v1alpha3/registered_models"
 
 
-MR_NAMESPACE: str = "rhoai-model-registries"
 MR_OPERATOR_NAME: str = "model-registry-operator"
 MODEL_NAME: str = "my-model"
 MODEL_DICT: dict[str, Any] = {
@@ -28,7 +27,6 @@ MODEL_DICT: dict[str, Any] = {
 }
 MR_INSTANCE_NAME: str = "model-registry"
 ISTIO_CONFIG_DICT: dict[str, Any] = {
-    "authProvider": "redhat-ods-applications-auth-provider",
     "gateway": {"grpc": {"tls": {}}, "rest": {"tls": {}}},
 }
 DB_RESOURCES_NAME: str = "db-model-registry"

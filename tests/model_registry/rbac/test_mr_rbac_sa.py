@@ -1,12 +1,12 @@
 # AI Disclaimer: Google Gemini 2.5 pro has been used to generate a majority of this code, with human review and editing.
 import pytest
+from pytest_testconfig import config as py_config
 from typing import Self
 from simple_logger.logger import get_logger
 from model_registry import ModelRegistry as ModelRegistryClient
-from mr_openapi.exceptions import ForbiddenException
+from tests.model_registry.rbac.utils import get_mr_client_args
 from utilities.constants import DscComponents
-from tests.model_registry.constants import MR_NAMESPACE
-from tests.model_registry.rbac.utils import build_mr_client_args
+from mr_openapi.exceptions import ForbiddenException
 
 LOGGER = get_logger(name=__name__)
 
@@ -19,7 +19,7 @@ LOGGER = get_logger(name=__name__)
                 "component_patch": {
                     DscComponents.MODELREGISTRY: {
                         "managementState": DscComponents.ManagementState.MANAGED,
-                        "registriesNamespace": MR_NAMESPACE,
+                        "registriesNamespace": py_config["model_registry_namespace"],
                     },
                 }
             },
@@ -50,7 +50,7 @@ class TestModelRegistryRBAC:
         LOGGER.info(f"Targeting Model Registry REST endpoint: {model_registry_instance_rest_endpoint}")
         LOGGER.info("Expecting initial access DENIAL (403 Forbidden)")
 
-        client_args = build_mr_client_args(
+        client_args = get_mr_client_args(
             rest_endpoint=model_registry_instance_rest_endpoint, token=sa_token, author="rbac-test-denied"
         )
         LOGGER.debug(f"Attempting client connection with args: {client_args}")
@@ -82,7 +82,7 @@ class TestModelRegistryRBAC:
         LOGGER.info("Applied RBAC Role/Binding via fixtures. Expecting access GRANT.")
 
         try:
-            client_args = build_mr_client_args(
+            client_args = get_mr_client_args(
                 rest_endpoint=model_registry_instance_rest_endpoint, token=sa_token, author="rbac-test-granted"
             )
             LOGGER.debug(f"Attempting client connection with args: {client_args}")

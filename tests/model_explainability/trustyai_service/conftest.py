@@ -23,12 +23,12 @@ from tests.model_explainability.trustyai_service.trustyai_service_utils import (
     wait_for_isvc_deployment_registered_by_trustyai_service,
 )
 from tests.model_explainability.trustyai_service.utils import (
-    get_cluster_service_version,
     wait_for_mariadb_operator_deployments,
     create_trustyai_service,
     wait_for_mariadb_pods,
     TRUSTYAI_SERVICE_NAME,
 )
+from utilities.operator_utils import get_cluster_service_version
 
 from utilities.constants import Timeout, KServeDeploymentType, ApiGroups, Labels, Ports
 from utilities.inference_utils import create_isvc
