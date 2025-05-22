@@ -12,9 +12,9 @@ from pytest_testconfig import config as py_config
 
 import utilities.infra
 from utilities.constants import Annotations, KServeDeploymentType, MODELMESH_SERVING
+from ocp_resources.resource import Resource
 
 # Constants for image validation
-REGISTRY_REDHAT_IO = "registry.redhat.io"
 SHA256_DIGEST_PATTERN = r"@sha256:[a-f0-9]{64}$"
 
 LOGGER = get_logger(name=__name__)
@@ -245,8 +245,8 @@ def validate_image_format(image: str) -> Tuple[bool, str]:
     Returns:
         Tuple of (is_valid, error_message)
     """
-    if not image.startswith(REGISTRY_REDHAT_IO):
-        return False, f"Image {image} is not from {REGISTRY_REDHAT_IO}"
+    if not image.startswith(Resource.ApiGroup.IMAGE_REGISTRY):
+        return False, f"Image {image} is not from {Resource.ApiGroup.IMAGE_REGISTRY}"
 
     if not re.search(SHA256_DIGEST_PATTERN, image):
         return False, f"Image {image} does not use sha256 digest"

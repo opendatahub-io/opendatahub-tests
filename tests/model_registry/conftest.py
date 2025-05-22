@@ -230,11 +230,6 @@ def updated_dsc_component_state_scope_class(
     original_components = dsc_resource.instance.spec.components
     component_patch = request.param["component_patch"]
 
-    if get_operator_distribution(client=admin_client) == "Open Data Hub":
-        LOGGER.warning("Open Data Hub detected, skipping DSC patching")
-        yield dsc_resource
-        return
-
     with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
         for component_name in component_patch:
             dsc_resource.wait_for_condition(condition=DscComponents.COMPONENT_MAPPING[component_name], status="True")
