@@ -42,7 +42,6 @@ def pytest_addoption(parser: Parser) -> None:
     buckets_group = parser.getgroup(name="Buckets")
     runtime_group = parser.getgroup(name="Runtime details")
     upgrade_group = parser.getgroup(name="Upgrade options")
-    platform_group = parser.getgroup(name="Platform")
     must_gather_group = parser.getgroup(name="MustGather")
     cluster_sanity_group = parser.getgroup(name="ClusterSanity")
 
@@ -124,12 +123,6 @@ def pytest_addoption(parser: Parser) -> None:
         "--upgrade-deployment-modes",
         help="Coma-separated str; specify inference service deployment modes tests to run in upgrade tests. "
         "If not set, all will be tested.",
-    )
-
-    # Platform options
-    platform_group.addoption(
-        "--applications-namespace",
-        help="RHOAI/ODH applications namespace",
     )
     must_gather_group.addoption(
         "--collect-must-gather",
