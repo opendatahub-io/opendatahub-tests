@@ -20,6 +20,9 @@ from utilities.exceptions import TooManyPodsError, UnexpectedFailureError
 
 LOGGER = get_logger(name=__name__)
 
+TRUSTYAI_OPERATOR_NAMESPACE = "redhat-ods-applications"
+TRUSTYAI_OPERATOR_DEPLOYMENT_NAME = "trustyai-service-operator-controller-manager"
+
 
 def get_cluster_service_version(client: DynamicClient, prefix: str, namespace: str) -> ClusterServiceVersion:
     csvs = ClusterServiceVersion.get(dyn_client=client, namespace=namespace)
@@ -167,3 +170,31 @@ def create_trustyai_service(
         if wait_for_replicas:
             trustyai_deployment.wait_for_replicas()
         yield trustyai_service
+
+
+def validate_trustyai_operator_and_service_images(
+    client: DynamicClient, model_namespace: str, configmap_data_dict: dict[str, str]
+) -> None:
+    """Validate if the TrustyAI operator deployment and service pods use the correct images from the configmap."""
+    trustyai_deployment = Deployment(
+        name=TRUSTYAI_OPERATOR_DEPLOYMENT_NAME, namespace=TRUSTYAI_OPERATOR_NAMESPACE, wait_for_resource=True
+    )
+    assert (
+        trustyai_deployment.instance.spec.template.spec.containers[0].image
+        == configmap_data_dict["trustyaiOperatorImage"]
+    )
+    service_pods = list(
+        Pod.get(
+            dyn_client=client,
+            namespace=model_namespace,
+            label_selector=f"app.kubernetes.io/instance={TRUSTYAI_SERVICE_NAME}",
+        )
+    )
+    if service_pods:
+        if len(service_pods) > 1:
+            raise TooManyPodsError("More than one pod found in TrustyAIService.")
+        for container_status in service_pods[0].instance.status.containerStatuses:
+            if container_status.name == "oauth-proxy":
+                assert configmap_data_dict["oauthProxyImage"] == container_status.image
+            if container_status.name == TRUSTYAI_SERVICE_NAME:
+                assert configmap_data_dict["trustyaiServiceImage"] == container_status.image
