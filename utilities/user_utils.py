@@ -144,12 +144,12 @@ def _create_htpasswd_file(username: str, password: str) -> tuple[Path, str]:
         Tuple of (temp file path, base64 encoded content)
     """
     with tempfile.NamedTemporaryFile(mode="w+", delete=False) as temp_file:
-        temp_path = Path(path=temp_file.name)
-        subprocess.run(args=["htpasswd", "-c", "-b", str(temp_path), username, password], check=True)
+        temp_path = Path(temp_file.name).resolve()  # Get absolute path
+        subprocess.run(args=["htpasswd", "-c", "-b", str(temp_path.absolute()), username, password], check=True)
 
         # Read the htpasswd file content and encode it
-        temp_path.read_text()
-        htpasswd_content = temp_path.read_text()
+        temp_file.seek(0)  # noqa: FCN001 - TextIOWrapper.seek() doesn't accept keyword arguments
+        htpasswd_content = temp_file.read()
         htpasswd_b64 = base64.b64encode(htpasswd_content.encode()).decode()
 
         return temp_path, htpasswd_b64
