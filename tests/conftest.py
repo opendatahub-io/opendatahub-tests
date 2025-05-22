@@ -119,6 +119,16 @@ def model_namespace(
             yield ns
 
 
+@pytest.fixture(scope="class")
+def trustyai_operator_configmap(
+    request: FixtureRequest,
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    teardown_resources: bool,
+) -> ConfigMap:
+    return ConfigMap(client=admin_client, namespace="redhat-ods-applications", name="trustyai-service-operator-config")
+
+
 @pytest.fixture(scope="session")
 def aws_access_key_id(pytestconfig: Config) -> str:
     access_key = pytestconfig.option.aws_access_key_id
