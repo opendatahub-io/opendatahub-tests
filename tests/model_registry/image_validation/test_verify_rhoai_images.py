@@ -11,7 +11,7 @@ from utilities.general import (
     get_pods_by_labels,
     validate_container_images,
 )
-from tests.model_registry.constants import MR_OPERATOR_NAME, MR_INSTANCE_NAME, MR_NAMESPACE
+from tests.model_registry.constants import MR_OPERATOR_NAME, MR_INSTANCE_NAME
 from ocp_resources.model_registry import ModelRegistry
 
 LOGGER = get_logger(name=__name__)
@@ -24,7 +24,7 @@ LOGGER = get_logger(name=__name__)
             "component_patch": {
                 DscComponents.MODELREGISTRY: {
                     "managementState": DscComponents.ManagementState.MANAGED,
-                    "registriesNamespace": MR_NAMESPACE,
+                    "registriesNamespace": py_config["model_registry_namespace"],
                 }
             }
         }
@@ -74,7 +74,7 @@ class TestModelRegistryImages:
                 sleep=5,
                 func=get_pods_by_labels,
                 admin_client=admin_client,
-                namespace=MR_NAMESPACE,
+                namespace=py_config["model_registry_namespace"],
                 label_selector=f"app={MR_INSTANCE_NAME}",
             ):
                 if len(instance_pod_list) == 1:
