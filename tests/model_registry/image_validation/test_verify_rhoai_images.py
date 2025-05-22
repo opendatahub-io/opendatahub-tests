@@ -3,6 +3,7 @@ from typing import Self
 from simple_logger.logger import get_logger
 from kubernetes.dynamic import DynamicClient
 from pytest_testconfig import config as py_config
+from timeout_sampler import TimeoutSampler, TimeoutExpiredError
 
 from utilities.constants import DscComponents, Labels
 from utilities.general import (
@@ -49,24 +50,38 @@ class TestModelRegistryImages:
         related_image_refs = {img["image"] for img in related_images}
 
         # Get operator pod
-        operator_pod_list = get_pods_by_labels(
-            admin_client=admin_client,
-            namespace=py_config["applications_namespace"],
-            label_selector=f"{Labels.OpenDataHubIo.NAME}={MR_OPERATOR_NAME}",
-        )
-        if len(operator_pod_list) > 1:
-            LOGGER.warning(f"Expected 1 operator pod, found {len(operator_pod_list)}. Using first one.")
-        operator_pod = operator_pod_list[0]
+        operator_pod = None
+        try:
+            for operator_pod_list in TimeoutSampler(
+                wait_timeout=60,
+                sleep=5,
+                func=get_pods_by_labels,
+                admin_client=admin_client,
+                namespace=py_config["applications_namespace"],
+                label_selector=f"{Labels.OpenDataHubIo.NAME}={MR_OPERATOR_NAME}",
+            ):
+                if len(operator_pod_list) == 1:
+                    operator_pod = operator_pod_list[0]
+                    break
+        except TimeoutExpiredError:
+            pytest.fail("Failed to find exactly one operator pod after 60 seconds")
 
         # Get instance pod
-        instance_pod_list = get_pods_by_labels(
-            admin_client=admin_client,
-            namespace=MR_NAMESPACE,
-            label_selector=f"app={MR_INSTANCE_NAME}",
-        )
-        if len(instance_pod_list) > 1:
-            LOGGER.warning(f"Expected 1 instance pod, found {len(instance_pod_list)}. Using first one.")
-        instance_pod = instance_pod_list[0]
+        instance_pod = None
+        try:
+            for instance_pod_list in TimeoutSampler(
+                wait_timeout=60,
+                sleep=5,
+                func=get_pods_by_labels,
+                admin_client=admin_client,
+                namespace=MR_NAMESPACE,
+                label_selector=f"app={MR_INSTANCE_NAME}",
+            ):
+                if len(instance_pod_list) == 1:
+                    instance_pod = instance_pod_list[0]
+                    break
+        except TimeoutExpiredError:
+            pytest.fail("Failed to find exactly one instance pod after 60 seconds")
 
         # Validate images in both pods
         validation_errors = []
