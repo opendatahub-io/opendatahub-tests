@@ -4,13 +4,12 @@ from simple_logger.logger import get_logger
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.model_registry import ModelRegistry
-
+from pytest_testconfig import config as py_config
 from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
 from tests.model_registry.negative_tests.constants import CUSTOM_NEGATIVE_NS
 from utilities.constants import DscComponents, Annotations
 from tests.model_registry.constants import (
-    MR_NAMESPACE,
     MR_OPERATOR_NAME,
     MR_INSTANCE_NAME,
     ISTIO_CONFIG_DICT,
@@ -31,14 +30,14 @@ LOGGER = get_logger(name=__name__)
                 "component_patch": {
                     DscComponents.MODELREGISTRY: {
                         "managementState": DscComponents.ManagementState.MANAGED,
-                        "registriesNamespace": MR_NAMESPACE,
+                        "registriesNamespace": py_config["model_registry_namespace"],
                     },
                 }
             },
-            MR_NAMESPACE,
+            py_config["model_registry_namespace"],
         ),
         pytest.param(
-            {"namespace_name": MR_NAMESPACE},
+            {"namespace_name": py_config["model_registry_namespace"]},
             {
                 "component_patch": {
                     DscComponents.MODELREGISTRY: {

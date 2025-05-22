@@ -2,8 +2,6 @@ from typing import Generator, Any, Optional
 import re
 
 from kubernetes.dynamic import DynamicClient
-from kubernetes.dynamic.exceptions import ResourceNotFoundError, ResourceNotUniqueError
-from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.deployment import Deployment
 from ocp_resources.mariadb_operator import MariadbOperator
 from ocp_resources.maria_db import MariaDB
@@ -19,24 +17,6 @@ from timeout_sampler import retry
 from utilities.exceptions import TooManyPodsError, UnexpectedFailureError
 
 LOGGER = get_logger(name=__name__)
-
-
-def get_cluster_service_version(client: DynamicClient, prefix: str, namespace: str) -> ClusterServiceVersion:
-    csvs = ClusterServiceVersion.get(dyn_client=client, namespace=namespace)
-
-    matching_csvs = [csv for csv in csvs if csv.name.startswith(prefix)]
-
-    if not matching_csvs:
-        raise ResourceNotFoundError(f"No ClusterServiceVersion found starting with prefix '{prefix}'")
-
-    if len(matching_csvs) > 1:
-        raise ResourceNotUniqueError(
-            f"Multiple ClusterServiceVersions found"
-            f" starting with prefix '{prefix}':"
-            f" {[csv.name for csv in matching_csvs]}"
-        )
-
-    return matching_csvs[0]
 
 
 def wait_for_mariadb_operator_deployments(mariadb_operator: MariadbOperator) -> None:
