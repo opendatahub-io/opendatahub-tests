@@ -44,6 +44,8 @@ from model_registry import ModelRegistry as ModelRegistryClient
 from semver import Version
 from utilities.infra import get_product_version
 from utilities.operator_utils import get_cluster_service_version, validate_operator_subscription_channel
+from timeout_sampler import TimeoutSampler, TimeoutExpiredError
+from utilities.general import get_pods_by_labels
 
 LOGGER = get_logger(name=__name__)
 
@@ -291,14 +293,38 @@ def registered_model(request: FixtureRequest, model_registry_client: ModelRegist
 
 @pytest.fixture()
 def model_registry_operator_pod(admin_client: DynamicClient) -> Pod:
-    model_registry_operator_pods = [
-        pod
-        for pod in Pod.get(dyn_client=admin_client, namespace=py_config["applications_namespace"])
-        if re.match(MR_OPERATOR_NAME, pod.name)
-    ]
-    if not model_registry_operator_pods:
+    """Get the model registry operator pod."""
+    try:
+        for pod_list in TimeoutSampler(
+            wait_timeout=60,
+            sleep=5,
+            func=Pod.get,
+            dyn_client=admin_client,
+            namespace=py_config["applications_namespace"],
+        ):
+            for pod in pod_list:
+                if re.match(MR_OPERATOR_NAME, pod.name):
+                    return pod
+    except TimeoutExpiredError:
         raise ResourceNotFoundError("Model registry operator pod not found")
-    return model_registry_operator_pods[0]
+
+
+@pytest.fixture()
+def model_registry_instance_pod(admin_client: DynamicClient) -> Pod:
+    """Get the model registry instance pod."""
+    try:
+        for instance_pod_list in TimeoutSampler(
+            wait_timeout=60,
+            sleep=5,
+            func=get_pods_by_labels,
+            admin_client=admin_client,
+            namespace=py_config["model_registry_namespace"],
+            label_selector=f"app={MR_INSTANCE_NAME}",
+        ):
+            if len(instance_pod_list) == 1:
+                return instance_pod_list[0]
+    except TimeoutExpiredError:
+        raise ResourceNotFoundError("Model registry instance pod not found")
 
 
 @pytest.fixture(scope="package", autouse=True)

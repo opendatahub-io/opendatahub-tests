@@ -1,14 +1,12 @@
 import base64
 import re
-import pytest
-from typing import List, Dict, Tuple
+from typing import List, Tuple
 
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
-from ocp_resources.cluster_service_version import ClusterServiceVersion
-from pytest_testconfig import config as py_config
 
 import utilities.infra
 from utilities.constants import Annotations, KServeDeploymentType, MODELMESH_SERVING
@@ -182,48 +180,6 @@ def create_isvc_label_selector_str(isvc: InferenceService, resource_type: str, r
         raise ValueError(f"Unknown deployment mode {deployment_mode}")
 
 
-def get_csv_related_images(admin_client: DynamicClient, csv_name: str | None = None) -> List[Dict[str, str]]:
-    """Get relatedImages from the CSV.
-
-    Args:
-        admin_client: The kubernetes client
-        csv_name: Optional CSV name. If not provided, will use {operator_name}.{version}
-                 where operator_name is determined by the distribution (rhods-operator for OpenShift AI,
-                 opendatahub-operator for Open Data Hub)
-
-    Returns:
-        List of related images from the CSV
-    """
-    from utilities.infra import (
-        get_product_version,
-        get_operator_distribution,
-    )  # Import here to avoid circular dependency
-
-    if csv_name is None:
-        distribution = get_operator_distribution(client=admin_client)
-        operator_name = "opendatahub-operator" if distribution == "Open Data Hub" else "rhods-operator"
-        csv_name = f"{operator_name}.{get_product_version(admin_client=admin_client)}"
-
-    csvs = list(
-        ClusterServiceVersion.get(
-            dyn_client=admin_client,
-            name=csv_name,
-            namespace=py_config["applications_namespace"],
-        )
-    )
-
-    if not csvs:
-        raise ValueError(f"CSV {csv_name} not found in namespace {py_config['applications_namespace']}")
-
-    csv = csvs[0]  # Get the first (and should be only) CSV instance
-    if len(csvs) > 1:
-        LOGGER.warning(f"Multiple CSV instances found for {csv_name}, using the first one")
-    if not csv.instance:
-        raise ValueError(f"CSV {csv_name} has no instance data")
-
-    return csv.instance.spec.relatedImages
-
-
 def get_pod_images(pod: Pod) -> List[str]:
     """Get all container images from a pod.
 
@@ -271,7 +227,7 @@ def get_pods_by_labels(
         List of matching pods
 
     Raises:
-        pytest.fail: If no pods are found
+        ResourceNotFoundError: If no pods are found
     """
     pods = list(
         Pod.get(
@@ -281,7 +237,7 @@ def get_pods_by_labels(
         )
     )
     if not pods:
-        pytest.fail(f"No pods found with label selector {label_selector} in namespace {namespace}")
+        raise ResourceNotFoundError(f"No pods found with label selector {label_selector} in namespace {namespace}")
     return pods
 
 
