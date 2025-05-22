@@ -157,7 +157,6 @@ def model_registry_group_with_user(
     ) as _:
         LOGGER.info(f"Added user {test_idp_user_session.username} to {group_name} group")
         yield group
-        LOGGER.info(f"Removed user {test_idp_user_session.username} from {group_name} group")
 
 
 @pytest.fixture(scope="session")
@@ -210,7 +209,6 @@ def mr_access_role(
     ) as role:
         LOGGER.info(f"Role {role.name} created successfully.")
         yield role
-        LOGGER.info(f"Role {role.name} deletion initiated by context manager.")
 
 
 @pytest.fixture(scope="function")

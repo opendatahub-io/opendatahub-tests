@@ -35,4 +35,3 @@ def create_group(
     ) as _:
         LOGGER.info(f"Group {group_name} created successfully.")
         yield group_name
-        LOGGER.info(f"Group {group_name} deletion initiated by context manager.")
