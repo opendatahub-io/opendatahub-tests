@@ -27,6 +27,7 @@ The following are automatically added/executed:
  * Run [pre-commit](https://pre-commit.ci/)
  * Run [tox](https://tox.wiki/)
  * Add PR author as the PR assignee
+ * Build image based on the PR
 
 Available user actions:
  * To mark a PR as `WIP`, add `/wip` in a comment. To remove it from the PR comment `/wip cancel` to the PR.
@@ -37,6 +38,8 @@ Available user actions:
         `verified` label removed on each new commit push.
  * To Cherry-pick a merged PR `/cherry-pick <target_branch_name>` to the PR. If <target_branch_name> is valid,
          and the current PR is merged, a cherry-picked PR would be created and linked to the current PR.
+ * To build and push image to quay, add /build-push-pr-image in a comment. This would create an image with tag
+ pr-<pr_number> to quay repository. This image tag, however would be deleted on PR merge or close action.
 
 <details>
 <summary>Supported labels</summary>
