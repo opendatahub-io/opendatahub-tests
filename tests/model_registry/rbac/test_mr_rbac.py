@@ -3,12 +3,8 @@ from typing import Self
 from simple_logger.logger import get_logger
 
 from model_registry import ModelRegistry as ModelRegistryClient
-from tests.model_registry.constants import MR_NAMESPACE
-from tests.model_registry.rbac.utils import (
-    assert_positive_mr_registry,
-    get_mr_client_args,
-    verify_group_membership,
-)
+from tests.model_registry.constants import MR_NAMESPACE, MR_INSTANCE_NAME
+from tests.model_registry.rbac.utils import assert_positive_mr_registry, get_mr_client_args
 from utilities.infra import switch_user_context
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.group import Group
@@ -37,7 +33,6 @@ NEW_GROUP_NAME = "test-model-registry-group"
         })
     ],
     indirect=True,
-    scope="class",
 )
 @pytest.mark.usefixtures("updated_dsc_component_state_scope_class")
 class TestUserPermission:
@@ -89,10 +84,7 @@ class TestUserPermission:
         context_to_use = (
             test_idp_user_session.original_context if use_admin_context else test_idp_user_session.user_context
         )
-        LOGGER.info(
-            f"-----Testing Model Registry access for user '{test_idp_user_session.username}' "
-            f"- Expected Access: {'Granted' if use_admin_context else 'Denied'}-----"
-        )
+
         with switch_user_context(context_to_use):
             _, client_args = get_mr_client_args(
                 model_registry_instance=model_registry_instance,
@@ -111,7 +103,16 @@ class TestUserPermission:
                 LOGGER.info("Successfully received expected HTTP 403 status code")
 
     @pytest.mark.sanity
-    @pytest.mark.usefixtures("model_registry_group_with_user")
+    @pytest.mark.parametrize(
+        "model_registry_group_with_user",
+        [
+            pytest.param(
+                f"{MR_INSTANCE_NAME}-users",
+                id="model_registry_users",
+            ),
+        ],
+        indirect=["model_registry_group_with_user"],
+    )
     def test_user_added_to_group(
         self: Self,
         model_registry_instance: ModelRegistry,
@@ -139,15 +140,6 @@ class TestUserPermission:
             AssertionError: If access permissions don't match expectations
             ForbiddenException: Expected before group addition, unexpected after
         """
-        LOGGER.info(
-            "-----Test that a user can access to the Model Registry once added to a "
-            "group that has the permissions to access it-----"
-        )
-        # Verify group membership
-        verify_group_membership(
-            group=model_registry_group_with_user,
-            username=test_idp_user_session.username,
-        )
 
         # Wait for access to be granted
         with switch_user_context(test_idp_user_session.user_context):
@@ -165,16 +157,16 @@ class TestUserPermission:
 
     @pytest.mark.sanity
     @pytest.mark.parametrize(
-        "new_group",
+        "add_user_to_group",
         [
             pytest.param(
                 NEW_GROUP_NAME,
                 id="new_group",
             ),
         ],
-        indirect=["new_group"],
+        indirect=["add_user_to_group"],
     )
-    @pytest.mark.usefixtures("mr_access_role", "new_group")
+    @pytest.mark.usefixtures("mr_access_role", "add_user_to_group")
     def test_create_group(
         self: Self,
         model_registry_instance: ModelRegistry,
@@ -187,7 +179,7 @@ class TestUserPermission:
         Test creating a new group and granting it Model Registry access.
 
         This test verifies that:
-        1. A new group can be created
+        1. A new group can be created and user added to it
         2. The group can be granted Model Registry access via RoleBinding
         3. Users in the group can access the Model Registry
 
@@ -201,10 +193,6 @@ class TestUserPermission:
         Raises:
             AssertionError: If group creation or access permissions don't match expectations
         """
-        LOGGER.info(
-            "-----Test that a new group can be granted access to Model Registry and user added to it can access MR-----"
-        )
-        LOGGER.info(f"Group {NEW_GROUP_NAME} created and user {test_idp_user_session.username} added to it")
 
         with RoleBinding(
             client=admin_client,
@@ -250,10 +238,7 @@ class TestUserPermission:
         Raises:
             AssertionError: If access permissions don't match expectations
         """
-        LOGGER.info(
-            "-----Test that adding a single user to the Model Registry's permitted list allows "
-            "that user to access the MR-----"
-        )
+
         with RoleBinding(
             client=admin_client,
             namespace=model_registry_namespace,

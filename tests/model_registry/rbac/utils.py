@@ -7,7 +7,6 @@ from tests.model_registry.utils import get_endpoint_from_mr_service, get_mr_serv
 from ocp_resources.model_registry import ModelRegistry
 from utilities.infra import get_openshift_token
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.group import Group
 
 LOGGER = logging.getLogger(__name__)
 
@@ -94,24 +93,3 @@ def get_mr_client_args(
     svc = get_mr_service_by_label(client=admin_client, ns=namespace_instance, mr_instance=model_registry_instance)
     endpoint = get_endpoint_from_mr_service(svc=svc, protocol=Protocols.REST)
     return token, build_mr_client_args(rest_endpoint=endpoint, token=token, author=author)
-
-
-def verify_group_membership(
-    group: Group,
-    username: str,
-) -> None:
-    """
-    Verify that a user is a member of a group.
-
-    Args:
-        group: The Group object to check membership in
-        username: The username to verify membership for
-
-    Raises:
-        AssertionError: If the user is not a member of the group
-    """
-    group_name = group.instance.get("metadata", {}).get("name")
-    LOGGER.info(f"Verifying user {username} is in group {group_name}")
-    users = group.instance.get("users", []) or []
-    assert username in users, f"User {username} not in group {group_name}. Current users: {users}"
-    LOGGER.info(f"Verified user {username} is in {group_name} group")

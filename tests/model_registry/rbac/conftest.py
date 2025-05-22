@@ -10,10 +10,12 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.role import Role
 from ocp_resources.group import Group
+from ocp_resources.resource import ResourceEditor
 from kubernetes.dynamic import DynamicClient
 from pyhelper_utils.shell import run_command
 from tests.model_registry.utils import generate_random_name, generate_namespace_name
 from utilities.user_utils import create_test_idp, UserTestSession
+from tests.model_registry.rbac.group_utils import create_group
 from tests.model_registry.constants import MR_INSTANCE_NAME
 
 
@@ -93,63 +95,60 @@ def sa_token(service_account: ServiceAccount) -> str:
 
 
 @pytest.fixture(scope="function")
-def new_group(
+def add_user_to_group(
     request: pytest.FixtureRequest,
     admin_client: DynamicClient,
     test_idp_user_session: UserTestSession,
 ) -> Generator[str, None, None]:
-    """
-    Fixture to create a new OpenShift group and add a user, then delete the group after the test.
-    The group name is passed as a parameter to the fixture and the user is taken from test_idp_user_session.
-    """
-
     group_name = request.param
-    with Group(
-        client=admin_client,
-        name=group_name,
+    with create_group(
+        admin_client=admin_client,
+        group_name=group_name,
         users=[test_idp_user_session.username],
-        wait_for_resource=True,
-    ) as _:
-        LOGGER.info(f"Group {group_name} created successfully.")
+    ) as group_name:
         yield group_name
-        LOGGER.info(f"Group {group_name} deletion initiated by context manager.")
 
 
 @pytest.fixture(scope="function")
 def model_registry_group_with_user(
+    request: pytest.FixtureRequest,
     admin_client: DynamicClient,
     test_idp_user_session: UserTestSession,
 ) -> Generator[Group, None, None]:
     """
-    Fixture to manage a test user in the Model Registry group.
+    Fixture to manage a test user in a specified group.
     Adds the user to the group before the test, then removes them after.
 
     Args:
+        request: The pytest request object containing the group name parameter
         admin_client: The admin client for accessing the cluster
         test_idp_user_session: The test user session containing user information
 
     Yields:
-        Group: The Model Registry group with the test user added
+        Group: The group with the test user added
+
+    Note:
+        The group name should be passed as a parameter to the fixture using pytest.mark.parametrize
     """
-    model_registry_users_group = f"{MR_INSTANCE_NAME}-users"
+    group_name = request.param
     group = Group(
         client=admin_client,
-        name=model_registry_users_group,
+        name=group_name,
         wait_for_resource=True,
     )
 
     # Add user to group
-    group.update(
-        resource_dict={"metadata": {"name": model_registry_users_group}, "users": [test_idp_user_session.username]}
-    )
-    LOGGER.info(f"Added user {test_idp_user_session.username} to {model_registry_users_group} group")
-
-    try:
+    with ResourceEditor(
+        patches={
+            group: {
+                "metadata": {"name": group_name},
+                "users": [test_idp_user_session.username],
+            }
+        }
+    ) as _:
+        LOGGER.info(f"Added user {test_idp_user_session.username} to {group_name} group")
         yield group
-    finally:
-        # Remove user from group
-        group.update(resource_dict={"metadata": {"name": model_registry_users_group}, "users": []})
-        LOGGER.info(f"Removed user {test_idp_user_session.username} from {model_registry_users_group} group")
+        LOGGER.info(f"Removed user {test_idp_user_session.username} from {group_name} group")
 
 
 @pytest.fixture(scope="session")
