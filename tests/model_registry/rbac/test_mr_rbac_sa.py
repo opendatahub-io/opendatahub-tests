@@ -1,11 +1,11 @@
 # AI Disclaimer: Google Gemini 2.5 pro has been used to generate a majority of this code, with human review and editing.
 import pytest
+from pytest_testconfig import config as py_config
 from typing import Self, Dict, Any
 from simple_logger.logger import get_logger
 from model_registry import ModelRegistry as ModelRegistryClient
 from mr_openapi.exceptions import ForbiddenException
 from utilities.constants import DscComponents, Protocols
-from tests.model_registry.constants import MR_NAMESPACE
 
 
 LOGGER = get_logger(name=__name__)
@@ -31,7 +31,7 @@ def build_mr_client_args(rest_endpoint: str, token: str, author: str) -> Dict[st
                 "component_patch": {
                     DscComponents.MODELREGISTRY: {
                         "managementState": DscComponents.ManagementState.MANAGED,
-                        "registriesNamespace": MR_NAMESPACE,
+                        "registriesNamespace": py_config["model_registry_namespace"],
                     },
                 }
             },
