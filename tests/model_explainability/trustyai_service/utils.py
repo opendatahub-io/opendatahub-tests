@@ -196,5 +196,7 @@ def validate_trustyai_operator_and_service_images(
         for container_status in service_pods[0].instance.status.containerStatuses:
             if container_status.name == "oauth-proxy":
                 assert configmap_data_dict["oauthProxyImage"] == container_status.image
-            if container_status.name == TRUSTYAI_SERVICE_NAME:
+            elif container_status.name == TRUSTYAI_SERVICE_NAME:
                 assert configmap_data_dict["trustyaiServiceImage"] == container_status.image
+            else:
+                raise TooManyPodsError(f"An unknown/unhandled service pod {container_status.name} was found.")
