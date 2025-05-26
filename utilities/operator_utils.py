@@ -5,6 +5,7 @@ from simple_logger.logger import get_logger
 from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.subscription import Subscription
 from utilities.exceptions import ResourceMismatchError
+from utilities.infra import get_product_version
 from pytest_testconfig import config as py_config
 
 from typing import List, Dict
@@ -63,9 +64,6 @@ def get_csv_related_images(admin_client: DynamicClient, csv_name: str | None = N
     Returns:
         List of related images from the CSV
     """
-    from utilities.infra import (
-        get_product_version,
-    )  # Import here to avoid circular dependency
 
     if csv_name is None:
         distribution = py_config["distribution"]

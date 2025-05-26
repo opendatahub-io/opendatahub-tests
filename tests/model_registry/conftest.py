@@ -1,5 +1,4 @@
 import pytest
-import re
 import schemathesis
 from typing import Generator, Any
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
@@ -32,6 +31,7 @@ from tests.model_registry.constants import (
     MODEL_REGISTRY_DB_SECRET_STR_DATA,
     MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
 )
+from utilities.constants import Labels
 from tests.model_registry.utils import (
     get_endpoint_from_mr_service,
     get_mr_service_by_label,
@@ -298,13 +298,13 @@ def model_registry_operator_pod(admin_client: DynamicClient) -> Pod:
         for pod_list in TimeoutSampler(
             wait_timeout=60,
             sleep=5,
-            func=Pod.get,
-            dyn_client=admin_client,
+            func=get_pods_by_labels,
+            admin_client=admin_client,
             namespace=py_config["applications_namespace"],
+            label_selector=f"{Labels.OpenDataHubIo.NAME}={MR_OPERATOR_NAME}",
         ):
-            for pod in pod_list:
-                if re.match(MR_OPERATOR_NAME, pod.name):
-                    return pod
+            if len(pod_list) == 1:
+                return pod_list[0]
     except TimeoutExpiredError:
         raise ResourceNotFoundError("Model registry operator pod not found")
 
