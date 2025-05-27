@@ -45,13 +45,13 @@ class TestModelRegistryImages:
         model_registry_instance: ModelRegistry,
         model_registry_operator_pod: Pod,
         model_registry_instance_pod: Pod,
-        related_image_refs: Set[str],
+        related_images_refs: Set[str],
     ):
         validation_errors = []
         for pod in [model_registry_operator_pod, model_registry_instance_pod]:
             validation_errors.extend(
                 validate_container_images(
-                    pod=pod, valid_image_refs=related_image_refs, skip_patterns=["openshift-service-mesh"]
+                    pod=pod, valid_image_refs=related_images_refs, skip_patterns=["openshift-service-mesh"]
                 )
             )
 
