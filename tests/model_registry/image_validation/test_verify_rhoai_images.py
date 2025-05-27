@@ -1,5 +1,5 @@
 import pytest
-from typing import Self
+from typing import Self, Set
 from simple_logger.logger import get_logger
 from kubernetes.dynamic import DynamicClient
 from pytest_testconfig import config as py_config
@@ -8,7 +8,6 @@ from utilities.constants import DscComponents
 from utilities.general import (
     validate_container_images,
 )
-from utilities.operator_utils import get_csv_related_images
 from ocp_resources.model_registry import ModelRegistry
 from ocp_resources.pod import Pod
 
@@ -46,11 +45,8 @@ class TestModelRegistryImages:
         model_registry_instance: ModelRegistry,
         model_registry_operator_pod: Pod,
         model_registry_instance_pod: Pod,
+        related_image_refs: Set[str],
     ):
-        # Get related images from CSV
-        related_images = get_csv_related_images(admin_client=admin_client)
-        related_image_refs = {img["image"] for img in related_images}
-
         validation_errors = []
         for pod in [model_registry_operator_pod, model_registry_instance_pod]:
             validation_errors.extend(
