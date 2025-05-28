@@ -46,6 +46,7 @@ class TestDriftMetrics:
         model_namespace,
         trustyai_service_with_pvc_storage,
         gaussian_credit_model,
+        isvc_getter_token,
     ) -> None:
         send_inferences_and_verify_trustyai_service_registered(
             client=admin_client,
@@ -54,6 +55,7 @@ class TestDriftMetrics:
             trustyai_service=trustyai_service_with_pvc_storage,
             inference_service=gaussian_credit_model,
             inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
+            inference_token=isvc_getter_token,
         )
 
     def test_upload_data_to_trustyai_service(
