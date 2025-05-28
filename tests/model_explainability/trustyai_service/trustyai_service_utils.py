@@ -268,6 +268,7 @@ def get_num_observations_from_trustyai_service(
 def send_inferences_and_verify_trustyai_service_registered(
     client: DynamicClient,
     token: str,
+    inference_token: str,
     data_path: str,
     trustyai_service: TrustyAIService,
     inference_service: InferenceService,
@@ -287,6 +288,7 @@ def send_inferences_and_verify_trustyai_service_registered(
         inference_service (InferenceService): Model to be registered by TrustyAI.
         inference_config (dict[str, Any]): Inference config to be used when sending the inference.
         inference_type (str): Inference type to be used when sending the inference
+        inference_token(str): Token to be used in the inference request
         protocol (str): Protocol to be used when sending the inference
     """
     for root, _, files in os.walk(data_path):
@@ -312,7 +314,7 @@ def send_inferences_and_verify_trustyai_service_registered(
                 model_name=inference_service.name,
                 inference_input=data,
                 use_default_query=False,
-                token=token,
+                token=inference_token,
             )
             LOGGER.debug(f"Inference response: {res}")
             samples = TimeoutSampler(
