@@ -212,8 +212,12 @@ def validate_image_format(image: str) -> Tuple[bool, str]:
     return True, ""
 
 
-@retry(wait_timeout=60, sleep=5)
-def get_pods_by_labels(
+@retry(
+    wait_timeout=60,
+    sleep=5,
+    exceptions_dict={ResourceNotFoundError: [], UnexpectedResourceCountError: []},
+)
+def wait_for_pods_by_labels(
     admin_client: DynamicClient,
     namespace: str,
     label_selector: str,

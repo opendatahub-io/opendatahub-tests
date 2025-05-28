@@ -43,7 +43,7 @@ from model_registry import ModelRegistry as ModelRegistryClient
 from semver import Version
 from utilities.infra import get_product_version
 from utilities.operator_utils import get_cluster_service_version, validate_operator_subscription_channel
-from utilities.general import get_pods_by_labels
+from utilities.general import wait_for_pods_by_labels
 
 LOGGER = get_logger(name=__name__)
 
@@ -292,7 +292,7 @@ def registered_model(request: FixtureRequest, model_registry_client: ModelRegist
 @pytest.fixture()
 def model_registry_operator_pod(admin_client: DynamicClient) -> Generator[Pod, Any, Any]:
     """Get the model registry operator pod."""
-    yield get_pods_by_labels(
+    yield wait_for_pods_by_labels(
         admin_client=admin_client,
         namespace=py_config["applications_namespace"],
         label_selector=f"{Labels.OpenDataHubIo.NAME}={MR_OPERATOR_NAME}",
@@ -303,7 +303,7 @@ def model_registry_operator_pod(admin_client: DynamicClient) -> Generator[Pod, A
 @pytest.fixture()
 def model_registry_instance_pod(admin_client: DynamicClient) -> Generator[Pod, Any, Any]:
     """Get the model registry instance pod."""
-    yield get_pods_by_labels(
+    yield wait_for_pods_by_labels(
         admin_client=admin_client,
         namespace=py_config["model_registry_namespace"],
         label_selector=f"app={MR_INSTANCE_NAME}",
