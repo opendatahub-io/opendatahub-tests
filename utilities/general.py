@@ -10,7 +10,9 @@ from simple_logger.logger import get_logger
 
 import utilities.infra
 from utilities.constants import Annotations, KServeDeploymentType, MODELMESH_SERVING
+from utilities.exceptions import UnexpectedResourceCountError
 from ocp_resources.resource import Resource
+from timeout_sampler import retry
 
 # Constants for image validation
 SHA256_DIGEST_PATTERN = r"@sha256:[a-f0-9]{64}$"
@@ -210,10 +212,12 @@ def validate_image_format(image: str) -> Tuple[bool, str]:
     return True, ""
 
 
+@retry(wait_timeout=60, sleep=5)
 def get_pods_by_labels(
     admin_client: DynamicClient,
     namespace: str,
     label_selector: str,
+    expected_num_pods: int,
 ) -> list[Pod]:
     """
     Get pods by label selector in a namespace.
@@ -222,7 +226,7 @@ def get_pods_by_labels(
         admin_client: The admin client to use for pod retrieval
         namespace: The namespace to search in
         label_selector: The label selector to filter pods
-
+        expected_num_pods: The expected number of pods to be found
     Returns:
         List of matching pods
 
@@ -238,6 +242,8 @@ def get_pods_by_labels(
     )
     if not pods:
         raise ResourceNotFoundError(f"No pods found with label selector {label_selector} in namespace {namespace}")
+    if len(pods) != expected_num_pods:
+        raise UnexpectedResourceCountError(f"Expected {expected_num_pods} pods, found {len(pods)}")
     return pods
 
 

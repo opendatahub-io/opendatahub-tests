@@ -1,7 +1,6 @@
 import pytest
 import schemathesis
 from typing import Generator, Any
-from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.namespace import Namespace
@@ -44,7 +43,6 @@ from model_registry import ModelRegistry as ModelRegistryClient
 from semver import Version
 from utilities.infra import get_product_version
 from utilities.operator_utils import get_cluster_service_version, validate_operator_subscription_channel
-from timeout_sampler import TimeoutSampler, TimeoutExpiredError
 from utilities.general import get_pods_by_labels
 
 LOGGER = get_logger(name=__name__)
@@ -292,39 +290,25 @@ def registered_model(request: FixtureRequest, model_registry_client: ModelRegist
 
 
 @pytest.fixture()
-def model_registry_operator_pod(admin_client: DynamicClient) -> Pod:
+def model_registry_operator_pod(admin_client: DynamicClient) -> Generator[Pod, Any, Any]:
     """Get the model registry operator pod."""
-    try:
-        for pod_list in TimeoutSampler(
-            wait_timeout=60,
-            sleep=5,
-            func=get_pods_by_labels,
-            admin_client=admin_client,
-            namespace=py_config["applications_namespace"],
-            label_selector=f"{Labels.OpenDataHubIo.NAME}={MR_OPERATOR_NAME}",
-        ):
-            if len(pod_list) == 1:
-                return pod_list[0]
-    except TimeoutExpiredError:
-        raise ResourceNotFoundError("Model registry operator pod not found")
+    yield get_pods_by_labels(
+        admin_client=admin_client,
+        namespace=py_config["applications_namespace"],
+        label_selector=f"{Labels.OpenDataHubIo.NAME}={MR_OPERATOR_NAME}",
+        expected_num_pods=1,
+    )[0]
 
 
 @pytest.fixture()
-def model_registry_instance_pod(admin_client: DynamicClient) -> Pod:
+def model_registry_instance_pod(admin_client: DynamicClient) -> Generator[Pod, Any, Any]:
     """Get the model registry instance pod."""
-    try:
-        for instance_pod_list in TimeoutSampler(
-            wait_timeout=60,
-            sleep=5,
-            func=get_pods_by_labels,
-            admin_client=admin_client,
-            namespace=py_config["model_registry_namespace"],
-            label_selector=f"app={MR_INSTANCE_NAME}",
-        ):
-            if len(instance_pod_list) == 1:
-                return instance_pod_list[0]
-    except TimeoutExpiredError:
-        raise ResourceNotFoundError("Model registry instance pod not found")
+    yield get_pods_by_labels(
+        admin_client=admin_client,
+        namespace=py_config["model_registry_namespace"],
+        label_selector=f"app={MR_INSTANCE_NAME}",
+        expected_num_pods=1,
+    )[0]
 
 
 @pytest.fixture(scope="package", autouse=True)
