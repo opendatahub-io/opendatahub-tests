@@ -183,6 +183,7 @@ class Labels:
 
     class Kserve:
         NETWORKING_KSERVE_IO: str = "networking.kserve.io/visibility"
+        NETWORKING_KNATIVE_IO: str = "networking.knative.dev/visibility"
         EXPOSED: str = "exposed"
 
     class Nvidia:

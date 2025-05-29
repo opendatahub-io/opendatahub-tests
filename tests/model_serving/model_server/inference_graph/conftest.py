@@ -42,7 +42,7 @@ def dog_breed_inference_graph(
 
     annotations = {}
     labels = {}
-    networking_label = "networking.knative.dev/visibility"
+    networking_label = Labels.Kserve.NETWORKING_KNATIVE_IO
     try:
         if request.param.get("deployment-mode"):
             annotations[Annotations.KserveIo.DEPLOYMENT_MODE] = request.param["deployment-mode"]
@@ -65,7 +65,6 @@ def dog_breed_inference_graph(
     try:
         if not request.param["external-route"]:
             labels[networking_label] = "cluster-local"
-            "networking.knative.dev/visibility"
     except (AttributeError, KeyError):
         pass
 
@@ -83,7 +82,6 @@ def dog_breed_inference_graph(
 
 @pytest.fixture(scope="class")
 def dog_cat_inference_service(
-    request: FixtureRequest,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     ovms_kserve_serving_runtime: ServingRuntime,
@@ -105,7 +103,6 @@ def dog_cat_inference_service(
 
 @pytest.fixture(scope="class")
 def dog_breed_inference_service(
-    request: FixtureRequest,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     ovms_kserve_serving_runtime: ServingRuntime,
