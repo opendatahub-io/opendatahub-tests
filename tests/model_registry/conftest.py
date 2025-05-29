@@ -1,6 +1,6 @@
 import pytest
 import schemathesis
-from typing import Generator, Any
+from typing import Generator, Any, Dict
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.namespace import Namespace
@@ -9,7 +9,7 @@ from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 
-from ocp_resources.model_registry import ModelRegistry
+from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from schemathesis.specs.openapi.schemas import BaseOpenAPISchema
 from schemathesis.generation.stateful.state_machine import APIStateMachine
 from schemathesis.core.transport import Response
@@ -29,6 +29,7 @@ from tests.model_registry.constants import (
     DB_RESOURCES_NAME,
     MODEL_REGISTRY_DB_SECRET_STR_DATA,
     MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
+    OAUTH_PROXY_CONFIG_DICT,
 )
 from utilities.constants import Labels
 from tests.model_registry.utils import (
@@ -143,34 +144,130 @@ def model_registry_db_deployment(
         yield mr_db_deployment
 
 
+def create_model_registry_instance(
+    admin_client: DynamicClient,
+    namespace: str,
+    name: str,
+    labels: dict[str, str],
+    grpc: Dict[str, Any],
+    rest: Dict[str, Any],
+    istio: Dict[str, Any] | None = None,
+    oauth_proxy: Dict[str, Any] | None = None,
+    mysql: Dict[str, Any] | None = None,
+    postgres: Dict[str, Any] | None = None,
+    downgrade_db_schema_version: int | None = None,
+    enable_database_upgrade: bool | None = None,
+    wait_for_resource: bool = True,
+) -> ModelRegistry:
+    """
+    Factory function to create a ModelRegistry instance with the given parameters.
+
+    Args:
+        admin_client: The Kubernetes client to use
+        namespace: The namespace to create the model registry in
+        name: The name of the model registry instance
+        labels: Labels for the model registry
+        grpc: gRPC configuration
+        rest: REST configuration
+        istio: Optional Istio configuration
+        oauth_proxy: Optional OAuth proxy configuration
+        mysql: Optional MySQL configuration
+        postgres: Optional PostgreSQL configuration
+        downgrade_db_schema_version: Optional database downgrade schema version
+        enable_database_upgrade: Optional flag to enable database migration
+        wait_for_resource: Whether to wait for the resource to be ready
+
+    Returns:
+        A configured ModelRegistry instance
+    """
+    return ModelRegistry(
+        name=name,
+        namespace=namespace,
+        label=labels,
+        grpc=grpc,
+        rest=rest,
+        istio=istio,
+        oauth_proxy=oauth_proxy,
+        mysql=mysql,
+        postgres=postgres,
+        downgrade_db_schema_version=downgrade_db_schema_version,
+        enable_database_upgrade=enable_database_upgrade,
+        wait_for_resource=wait_for_resource,
+    )
+
+
 @pytest.fixture(scope="class")
 def model_registry_instance(
     admin_client: DynamicClient,
     model_registry_namespace: str,
     model_registry_db_deployment: Deployment,
     model_registry_db_secret: Secret,
-    model_registry_db_service: Service,
 ) -> Generator[ModelRegistry, Any, Any]:
-    with ModelRegistry(
-        name=MR_INSTANCE_NAME,
+    """Creates a model registry instance with service mesh configuration."""
+    labels = {
+        Annotations.KubernetesIo.NAME: MR_INSTANCE_NAME,
+        Annotations.KubernetesIo.INSTANCE: MR_INSTANCE_NAME,
+        Annotations.KubernetesIo.PART_OF: MR_OPERATOR_NAME,
+        Annotations.KubernetesIo.CREATED_BY: MR_OPERATOR_NAME,
+    }
+
+    mysql_config = {
+        "host": f"{model_registry_db_deployment.name}.{model_registry_db_deployment.namespace}.svc.cluster.local",
+        "database": model_registry_db_secret.string_data["database-name"],
+        "passwordSecret": {"key": "database-password", "name": model_registry_db_deployment.name},
+        "port": 3306,
+        "skipDBCreation": False,
+        "username": model_registry_db_secret.string_data["database-user"],
+    }
+
+    with create_model_registry_instance(
+        admin_client=admin_client,
         namespace=model_registry_namespace,
-        label={
-            Annotations.KubernetesIo.NAME: MR_INSTANCE_NAME,
-            Annotations.KubernetesIo.INSTANCE: MR_INSTANCE_NAME,
-            Annotations.KubernetesIo.PART_OF: MR_OPERATOR_NAME,
-            Annotations.KubernetesIo.CREATED_BY: MR_OPERATOR_NAME,
-        },
+        name=MR_INSTANCE_NAME,
+        labels=labels,
         grpc={},
         rest={},
         istio=ISTIO_CONFIG_DICT,
-        mysql={
-            "host": f"{model_registry_db_deployment.name}.{model_registry_db_deployment.namespace}.svc.cluster.local",
-            "database": model_registry_db_secret.string_data["database-name"],
-            "passwordSecret": {"key": "database-password", "name": DB_RESOURCES_NAME},
-            "port": 3306,
-            "skipDBCreation": False,
-            "username": model_registry_db_secret.string_data["database-user"],
-        },
+        mysql=mysql_config,
+        wait_for_resource=True,
+    ) as mr:
+        mr.wait_for_condition(condition="Available", status="True")
+        yield mr
+
+
+@pytest.fixture(scope="class")
+def model_registry_instance_oauth_proxy(
+    admin_client: DynamicClient,
+    model_registry_namespace: str,
+    model_registry_db_deployment: Deployment,
+    model_registry_db_secret: Secret,
+) -> Generator[ModelRegistry, Any, Any]:
+    """Creates a model registry instance with oauth proxy configuration."""
+    labels = {
+        Annotations.KubernetesIo.NAME: MR_INSTANCE_NAME,
+        Annotations.KubernetesIo.INSTANCE: MR_INSTANCE_NAME,
+        Annotations.KubernetesIo.PART_OF: MR_OPERATOR_NAME,
+        Annotations.KubernetesIo.CREATED_BY: MR_OPERATOR_NAME,
+    }
+
+    mysql_config = {
+        "host": f"{model_registry_db_deployment.name}.{model_registry_db_deployment.namespace}.svc.cluster.local",
+        "database": model_registry_db_secret.string_data["database-name"],
+        "passwordSecret": {"key": "database-password", "name": model_registry_db_deployment.name},
+        "port": 3306,
+        "skipDBCreation": False,
+        "username": model_registry_db_secret.string_data["database-user"],
+    }
+
+    with create_model_registry_instance(
+        admin_client=admin_client,
+        namespace=model_registry_namespace,
+        name=MR_INSTANCE_NAME,
+        labels=labels,
+        grpc={},
+        rest={},
+        oauth_proxy=OAUTH_PROXY_CONFIG_DICT,
+        mysql=mysql_config,
         wait_for_resource=True,
     ) as mr:
         mr.wait_for_condition(condition="Available", status="True")

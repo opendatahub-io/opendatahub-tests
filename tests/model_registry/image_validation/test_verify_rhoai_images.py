@@ -8,7 +8,7 @@ from utilities.constants import DscComponents
 from utilities.general import (
     validate_container_images,
 )
-from ocp_resources.model_registry import ModelRegistry
+from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from ocp_resources.pod import Pod
 
 LOGGER = get_logger(name=__name__)
