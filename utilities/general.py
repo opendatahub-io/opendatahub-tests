@@ -294,20 +294,10 @@ def create_ig_pod_label_selector_str(ig: InferenceGraph) -> str:
     Creates a pod label selector string for the given InferenceGraph.
 
     Args:
-        ig (InferenceGraph): InferenceService object
+        ig (InferenceGraph): InferenceGraph object
 
     Returns:
         str: Label selector string for fetching IG pods
 
-    Raises:
-        ValueError: If the deployment mode is not supported
-
     """
-    deployment_mode = ig.instance.metadata.annotations.get(Annotations.KserveIo.DEPLOYMENT_MODE)
-    if deployment_mode == KServeDeploymentType.SERVERLESS:
-        return f"serving.kserve.io/inferencegraph={ig.name}"
-    elif deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
-        return f"serving.kserve.io/inferencegraph={ig.name}"
-    else:
-        # Assume Serverless mode
-        return f"serving.kserve.io/inferencegraph={ig.name}"
+    return f"serving.kserve.io/inferencegraph={ig.name}"

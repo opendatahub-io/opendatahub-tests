@@ -60,8 +60,6 @@ class Inference:
             self.runtime = get_inference_serving_runtime(isvc=self.inference_service)
         self.visibility_exposed = self.is_service_exposed()
 
-        self.inference_url = self.get_inference_url()
-
     def get_deployment_type(self) -> str:
         """
         Get deployment type
@@ -119,7 +117,7 @@ class Inference:
         """
         labels = self.inference_service.labels
 
-        if self.deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT:
+        if self.deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
             if isinstance(self.inference_service, InferenceGraph):
                 # For InferenceGraph, the logic is similar as in Serverless. Only the label is different.
                 return not (labels and labels.get(Labels.Kserve.NETWORKING_KSERVE_IO) == "cluster-local")
@@ -269,10 +267,10 @@ class UserInference(Inference):
         endpoint = Template(self.runtime_config["endpoint"]).safe_substitute(model_name=self.inference_service.name)
 
         if self.protocol in Protocols.TCP_PROTOCOLS:
-            return f"{self.protocol}://{self.inference_url}/{endpoint}"
+            return f"{self.protocol}://{self.get_inference_url()}/{endpoint}"
 
         elif self.protocol == "grpc":
-            return f"{self.inference_url}{':443' if self.visibility_exposed else ''} {endpoint}"
+            return f"{self.get_inference_url()}{':443' if self.visibility_exposed else ''} {endpoint}"
 
         else:
             raise ValueError(f"Protocol {self.protocol} not supported")
@@ -368,15 +366,12 @@ class UserInference(Inference):
             dict: inference response dict with response headers and response output
 
         """
-        cmd = self.generate_command(
+        out = self.run_inference(
             model_name=model_name,
             inference_input=inference_input,
             use_default_query=use_default_query,
             insecure=insecure,
-            token=token,
-        )
-
-        out = self.run_inference(cmd=cmd)
+            token=token)
 
         try:
             if self.protocol in Protocols.TCP_PROTOCOLS:
@@ -408,12 +403,23 @@ class UserInference(Inference):
             return {"output": out}
 
     @retry(wait_timeout=Timeout.TIMEOUT_30SEC, sleep=5)
-    def run_inference(self, cmd: str) -> str:
+    def run_inference(
+        self,
+        model_name: str,
+        inference_input: Optional[str] = None,
+        use_default_query: bool = False,
+        insecure: bool = False,
+        token: Optional[str] = None,
+    ) -> str:
         """
         Run inference command
 
         Args:
-            cmd (str): inference command
+            model_name (str): inference model name
+            inference_input (str): inference input
+            use_default_query (bool): use default query from inference config
+            insecure (bool): Use insecure connection
+            token (str): Token to use for authentication
 
         Returns:
             str: inference output
@@ -422,6 +428,15 @@ class UserInference(Inference):
             ValueError: If inference fails
 
         """
+
+        cmd = self.generate_command(
+            model_name=model_name,
+            inference_input=inference_input,
+            use_default_query=use_default_query,
+            insecure=insecure,
+            token=token,
+        )
+
         # For internal inference, we need to use port forwarding to the service
         if not self.visibility_exposed:
             if isinstance(self.inference_service, InferenceService):

@@ -392,10 +392,9 @@ def create_inference_graph_view_role(
         Role: Role object.
 
     """
-    dummy_ig = InferenceGraph(name="dummy", namespace="dummy", nodes=dict())
     rules = [
         {
-            "apiGroups": [dummy_ig.api_group],
+            "apiGroups": [InferenceGraph.api_group],
             "resources": ["inferencegraphs"],
             "verbs": ["get"],
         },
@@ -517,10 +516,10 @@ def get_pods_by_ig_label(client: DynamicClient, ig: InferenceGraph) -> list[Pod]
     """
     Args:
         client (DynamicClient): OCP Client to use.
-        ig (InferenceGrahp): InferenceGraph object.
+        ig (InferenceGraph): InferenceGraph object.
 
     Returns:
-        list[Service]: A list of all matching services
+        list[Pod]: A list of all matching pods
 
     Raises:
         ResourceNotFoundError: if no services are found.
