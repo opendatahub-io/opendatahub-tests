@@ -9,7 +9,7 @@ from tests.model_registry.rbac.utils import assert_positive_mr_registry, get_mr_
 from utilities.infra import switch_user_context
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.group import Group
-from ocp_resources.model_registry import ModelRegistry
+from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from utilities.constants import DscComponents

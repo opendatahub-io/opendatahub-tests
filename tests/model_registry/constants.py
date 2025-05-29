@@ -29,6 +29,11 @@ MR_INSTANCE_NAME: str = "model-registry"
 ISTIO_CONFIG_DICT: dict[str, Any] = {
     "gateway": {"grpc": {"tls": {}}, "rest": {"tls": {}}},
 }
+OAUTH_PROXY_CONFIG_DICT: dict[str, Any] = {
+    "port": 8443,
+    "routePort": 443,
+    "serviceRoute": "enabled",
+}
 DB_RESOURCES_NAME: str = "db-model-registry"
 MR_DB_IMAGE_DIGEST: str = (
     "public.ecr.aws/docker/library/mysql@sha256:9de9d54fecee6253130e65154b930978b1fcc336bcc86dfd06e89b72a2588ebe"
