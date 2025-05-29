@@ -176,6 +176,7 @@ class Labels:
 
     class OpenDataHubIo:
         MANAGED: str = Annotations.OpenDataHubIo.MANAGED
+        NAME: str = f"component.{ApiGroups.OPENDATAHUB_IO}/name"
 
     class Openshift:
         APP: str = "app"
