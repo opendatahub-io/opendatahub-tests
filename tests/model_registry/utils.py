@@ -10,9 +10,10 @@ from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 from kubernetes.dynamic.exceptions import NotFoundError
-from tests.model_registry.constants import MR_DB_IMAGE_DIGEST
+from tests.model_registry.constants import MR_DB_IMAGE_DIGEST, ISTIO_CONFIG_DICT, DB_RESOURCES_NAME
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
 from utilities.constants import Protocols, Annotations
+from ocp_resources.secret import Secret
 
 ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
 
@@ -264,3 +265,39 @@ def generate_random_name(prefix: str, length: int = 8) -> str:
 
 def generate_namespace_name(file_path: str) -> str:
     return (file_path.removesuffix(".py").replace("/", "-").replace("_", "-"))[-63:].split("-", 1)[-1]
+
+
+def create_secure_model_registry(
+    model_registry_namespace: str,
+    model_registry_db_service: Service,
+    model_registry_db_secret: Secret,
+    ca_file_path: str,
+) -> ModelRegistry:
+    """
+    Helper to create a ModelRegistry with secure MySQL connection.
+    Returns a context manager yielding the ModelRegistry resource.
+    """
+    mr_name = "secure-db-mr"
+    return ModelRegistry(
+        name=mr_name,
+        namespace=model_registry_namespace,
+        label={
+            Annotations.KubernetesIo.NAME: mr_name,
+            Annotations.KubernetesIo.INSTANCE: mr_name,
+            Annotations.KubernetesIo.PART_OF: "model-registry-operator",
+            Annotations.KubernetesIo.CREATED_BY: "model-registry-operator",
+        },
+        grpc={},
+        rest={},
+        istio=ISTIO_CONFIG_DICT,
+        mysql={
+            "host": f"{model_registry_db_service.name}.{model_registry_db_service.namespace}.svc.cluster.local",
+            "database": model_registry_db_secret.string_data["database-name"],
+            "passwordSecret": {"key": "database-password", "name": DB_RESOURCES_NAME},
+            "port": 3306,
+            "skipDBCreation": False,
+            "username": model_registry_db_secret.string_data["database-user"],
+            "ssl_ca": ca_file_path,
+        },
+        wait_for_resource=True,
+    )
