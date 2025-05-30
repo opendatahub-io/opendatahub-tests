@@ -371,7 +371,8 @@ class UserInference(Inference):
             inference_input=inference_input,
             use_default_query=use_default_query,
             insecure=insecure,
-            token=token)
+            token=token,
+        )
 
         try:
             if self.protocol in Protocols.TCP_PROTOCOLS:
