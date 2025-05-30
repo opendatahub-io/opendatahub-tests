@@ -25,42 +25,26 @@ LMEVALJOB_NAME: str = "lmeval-test-job"
 
 @pytest.fixture(scope="function")
 def lmevaljob_hf(
-    admin_client: DynamicClient, model_namespace: Namespace, patched_trustyai_operator_configmap_allow_online: ConfigMap
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    patched_trustyai_operator_configmap_allow_online: ConfigMap,
 ) -> Generator[LMEvalJob, None, None]:
     with LMEvalJob(
         client=admin_client,
-        name="test-job",
+        name=LMEVALJOB_NAME,
         namespace=model_namespace.name,
         model="hf",
-        model_args=[{"name": "pretrained", "value": "google/flan-t5-base"}],
-        task_list={
-            "custom": {
-                "systemPrompts": [
-                    {"name": "sp_0", "value": "Be concise. At every point give the shortest acceptable answer."}
-                ],
-                "templates": [
-                    {
-                        "name": "tp_0",
-                        "value": '{ "__type__": "input_output_template", '
-                        '"input_format": "{text_a_type}: {text_a}\\n'
-                        '{text_b_type}: {text_b}", '
-                        '"output_format": "{label}", '
-                        '"target_prefix": '
-                        '"The {type_of_relation} class is ", '
-                        '"instruction": "Given a {text_a_type} and {text_b_type} '
-                        'classify the {type_of_relation} of the {text_b_type} to one of {classes}.",'
-                        ' "postprocessors": [ "processors.take_first_non_empty_line",'
-                        ' "processors.lower_case_till_punc" ] }',
-                    }
-                ],
-            },
-            "taskRecipes": [
-                {"card": {"name": "cards.wnli"}, "systemPrompt": {"ref": "sp_0"}, "template": {"ref": "tp_0"}}
-            ],
-        },
+        model_args=[{"name": "pretrained", "value": "Qwen/Qwen2.5-0.5B"}],
+        task_list=request.param.get("task_list"),
         log_samples=True,
         allow_online=True,
         allow_code_execution=True,
+        system_instruction="Be concise. At every point give the shortest acceptable answer.",
+        chat_template={
+            "enabled": True,
+        },
+        limit="0.01",
     ) as job:
         yield job
 
@@ -80,6 +64,7 @@ def lmevaljob_local_offline(
         model="hf",
         model_args=[{"name": "pretrained", "value": "/opt/app-root/src/hf_home/flan"}],
         task_list=request.param.get("task_list"),
+        limit="0.01",
         log_samples=True,
         offline={"storage": {"pvcName": "lmeval-data"}},
         pod={
@@ -400,6 +385,13 @@ def lmevaljob_s3_offline(
 @pytest.fixture(scope="function")
 def lmevaljob_hf_pod(admin_client: DynamicClient, lmevaljob_hf: LMEvalJob) -> Generator[Pod, Any, Any]:
     yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_hf)
+
+
+@pytest.fixture(scope="function")
+def lmevaljob_local_offline_pod(
+    admin_client: DynamicClient, lmevaljob_local_offline: LMEvalJob
+) -> Generator[Pod, Any, Any]:
+    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_local_offline)
 
 
 @pytest.fixture(scope="function")
