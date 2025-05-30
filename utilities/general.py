@@ -289,6 +289,7 @@ def validate_container_images(
 
     return validation_errors
 
+
 def create_ig_pod_label_selector_str(ig: InferenceGraph) -> str:
     """
     Creates a pod label selector string for the given InferenceGraph.
