@@ -159,14 +159,15 @@ class OpenAIClient:
         """
         data = {}
         if OpenAIEnpoints.CHAT_COMPLETIONS in endpoint:
-            data = {"messages": query, "temperature": 0.1, "seed": 1037, "stream": streaming}
+            data = {"messages": query, "temperature": 0, "seed": 1037, "stream": streaming}
         elif OpenAIEnpoints.EMBEDDINGS in endpoint:
             data = {
                 "input": query["text"],
                 "encoding_format": 0.1,
+                "temperature": 0,
             }
         else:
-            data = {"prompt": query["text"], "temperature": 1.0, "top_p": 0.9, "seed": 1037, "stream": streaming}
+            data = {"prompt": query["text"], "temperature": 0, "top_p": 0.9, "seed": 1037, "stream": streaming}
 
         if self.model_name:
             data["model"] = self.model_name

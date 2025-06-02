@@ -1,9 +1,13 @@
+import base64
 import json
+import os
 import re
 import shlex
+import tempfile
 from contextlib import contextmanager
 from functools import cache
-from typing import Any, Callable, Generator, Optional, Set
+from typing import Any, Generator, Optional, Set, Callable
+from json import JSONDecodeError
 
 import kubernetes
 import pytest
@@ -12,7 +16,6 @@ from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import (
     NotFoundError,
     ResourceNotFoundError,
-    ResourceNotUniqueError,
 )
 from ocp_resources.catalog_source import CatalogSource
 from ocp_resources.cluster_service_version import ClusterServiceVersion
@@ -45,16 +48,14 @@ from pytest_testconfig import config as py_config
 from semver import Version
 from simple_logger.logger import get_logger
 
-from utilities.constants import ApiGroups, Labels, Timeout
+from ocp_resources.subscription import Subscription
+from utilities.constants import ApiGroups, Labels, Timeout, RHOAI_OPERATOR_NAMESPACE
 from utilities.constants import KServeDeploymentType
 from utilities.constants import Annotations
-from utilities.exceptions import (
-    ClusterLoginError,
-    FailedPodsError,
-    ResourceNotReadyError,
-)
-from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
+from utilities.exceptions import ClusterLoginError, FailedPodsError, ResourceNotReadyError, UnexpectedResourceCountError
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler, TimeoutWatch, retry
 import utilities.general
+from ocp_resources.utils.constants import DEFAULT_CLUSTER_RETRY_EXCEPTIONS
 
 LOGGER = get_logger(name=__name__)
 
@@ -151,13 +152,14 @@ def create_ns(
                 wait_for_serverless_pods_deletion(resource=ns, admin_client=client)
 
 
-def wait_for_replicas_in_deployment(deployment: Deployment, replicas: int) -> None:
+def wait_for_replicas_in_deployment(deployment: Deployment, replicas: int, timeout: int = Timeout.TIMEOUT_2MIN) -> None:
     """
     Wait for replicas in deployment to updated in spec.
 
     Args:
         deployment (Deployment): Deployment object
         replicas (int): number of replicas to be set in spec.replicas
+        timeout (int): Time to wait for the model deployment.
 
     Raises:
         TimeoutExpiredError: If replicas are not updated in spec.
@@ -167,7 +169,7 @@ def wait_for_replicas_in_deployment(deployment: Deployment, replicas: int) -> No
 
     try:
         for sample in TimeoutSampler(
-            wait_timeout=Timeout.TIMEOUT_2MIN,
+            wait_timeout=timeout,
             sleep=5,
             func=lambda: deployment.instance,
         ):
@@ -186,6 +188,8 @@ def wait_for_inference_deployment_replicas(
     isvc: InferenceService,
     runtime_name: str | None = None,
     expected_num_deployments: int = 1,
+    labels: str = "",
+    deployed: bool = True,
     timeout: int = Timeout.TIMEOUT_5MIN,
 ) -> list[Deployment]:
     """
@@ -196,49 +200,71 @@ def wait_for_inference_deployment_replicas(
         isvc (InferenceService): InferenceService object
         runtime_name (str): ServingRuntime name.
         expected_num_deployments (int): Expected number of deployments per InferenceService.
+        labels (str): Comma seperated list of labels, in key=value format, used to filter deployments.
+        deployed (bool): True for replicas deployed, False for no replicas.
         timeout (int): Time to wait for the model deployment.
 
     Returns:
         list[Deployment]: List of Deployment objects for InferenceService.
 
+    Raises:
+        TimeoutExpiredError: If an exception is raised when retrieving deployments or
+                             timeout expires when checking replicas.
+        UnexpectedResourceCountError: If the expected number of deployments is not found after timeout.
+        ResourceNotFoundError: If any of the retrieved deployments are found to no longer exist.
     """
+    timeout_watcher = TimeoutWatch(timeout=timeout)
     ns = isvc.namespace
     label_selector = utilities.general.create_isvc_label_selector_str(
         isvc=isvc, resource_type="deployment", runtime_name=runtime_name
     )
+    if labels:
+        label_selector += f",{labels}"
 
-    deployments = list(
-        Deployment.get(
+    deployment_list = []
+    try:
+        for deployments in TimeoutSampler(
+            wait_timeout=timeout_watcher.remaining_time(),
+            sleep=5,
+            exceptions_dict=DEFAULT_CLUSTER_RETRY_EXCEPTIONS,
+            func=Deployment.get,
             label_selector=label_selector,
-            client=client,
-            namespace=isvc.namespace,
-        )
-    )
+            dyn_client=client,
+            namespace=ns,
+        ):
+            deployment_list = list(deployments)
+            if len(deployment_list) == expected_num_deployments:
+                break
+    except TimeoutExpiredError as e:
+        # If the last exception raised prior to the timeout expiring is None, this means that
+        # the deployments were successfully retrieved, but the expected number was not found.
+        if e.last_exp is None:
+            raise UnexpectedResourceCountError(
+                f"Expected {expected_num_deployments} predictor deployments to be found in "
+                f"namespace {ns} after timeout, but found {len(deployment_list)}."
+            )
+        raise
 
     LOGGER.info("Waiting for inference deployment replicas to complete")
-    if len(deployments) == expected_num_deployments:
-        for deployment in deployments:
-            if deployment.exists:
-                # Raw deployment: if min replicas is more than 1, wait for min replicas
-                # to be set in deployment spec by HPA
-                if (
-                    isvc.instance.metadata.annotations.get("serving.kserve.io/deploymentMode")
-                    == KServeDeploymentType.RAW_DEPLOYMENT
-                ):
-                    wait_for_replicas_in_deployment(
-                        deployment=deployments[0],
-                        replicas=isvc.instance.spec.predictor.get("minReplicas", 1),
-                    )
+    for deployment in deployment_list:
+        if deployment.exists:
+            # Raw deployment: if min replicas is more than 1, wait for min replicas
+            # to be set in deployment spec by HPA
+            if (
+                isvc.instance.metadata.annotations.get("serving.kserve.io/deploymentMode")
+                == KServeDeploymentType.RAW_DEPLOYMENT
+            ):
+                wait_for_replicas_in_deployment(
+                    deployment=deployment,
+                    replicas=isvc.instance.spec.predictor.get("minReplicas", 1),
+                    timeout=timeout_watcher.remaining_time(),
+                )
 
-                deployment.wait_for_replicas(timeout=timeout)
+            deployment.wait_for_replicas(deployed=deployed, timeout=timeout_watcher.remaining_time())
+        else:
+            raise ResourceNotFoundError(f"Predictor deployment {deployment.name} does not exist on the server.")
 
-        return deployments
-
-    elif len(deployments) > expected_num_deployments:
-        raise ResourceNotUniqueError(f"Multiple predictor deployments found in namespace {ns}")
-
-    else:
-        raise ResourceNotFoundError(f"Predictor deployment not found in namespace {ns}")
+    return deployment_list
 
 
 @contextmanager
@@ -744,20 +770,20 @@ def get_product_version(admin_client: DynamicClient) -> Version:
     return Version.parse(version=operator_version)
 
 
+def get_data_science_cluster(client: DynamicClient, dsc_name: str = "default-dsc") -> DataScienceCluster:
+    return DataScienceCluster(client=client, name=dsc_name, ensure_exists=True)
+
+
 def get_dsci_applications_namespace(client: DynamicClient) -> str:
     """
     Get the namespace where DSCI applications are deployed.
-
     Args:
         client (DynamicClient): DynamicClient object
-
     Returns:
         str: Namespace where DSCI applications are deployed.
-
     Raises:
             ValueError: If DSCI applications namespace not found
             MissingResourceError: If DSCI not found
-
     """
     dsci_name = py_config["dsci_name"]
     dsci = DSCInitialization(client=client, name=dsci_name)
@@ -781,23 +807,19 @@ def get_operator_distribution(client: DynamicClient, dsc_name: str = "default-ds
         dsc_name (str): DSC name
 
     Returns:
-        str: Operator distribution.
+        str: Operator distribution. One of Open Data Hub or OpenShift AI.
 
     Raises:
             ValueError: If DSC release name not found
-            MissingResourceError: If DSC not found
 
     """
-    dsc = DataScienceCluster(client=client, name=dsc_name)
+    dsc = get_data_science_cluster(client=client, dsc_name=dsc_name)
 
-    if dsc.exists:
-        if dsc_release_name := dsc.instance.status.get("release", {}).get("name"):
-            return dsc_release_name
+    if dsc_release_name := dsc.instance.status.get("release", {}).get("name"):
+        return dsc_release_name
 
-        else:
-            raise ValueError("DSC release name not found in {dsc_name}")
-
-    raise MissingResourceError(f"DSC {dsc_name} not found")
+    else:
+        raise ValueError("DSC release name not found in {dsc_name}")
 
 
 def wait_for_serverless_pods_deletion(resource: Project | Namespace, admin_client: DynamicClient | None) -> None:
@@ -849,6 +871,36 @@ def wait_for_isvc_pods(client: DynamicClient, isvc: InferenceService, runtime_na
     """
     LOGGER.info("Waiting for pods to be created")
     return get_pods_by_isvc_label(client=client, isvc=isvc, runtime_name=runtime_name)
+
+
+def get_rhods_subscription() -> Subscription | None:
+    subscriptions = Subscription.get(dyn_client=get_client(), namespace=RHOAI_OPERATOR_NAMESPACE)
+    if subscriptions:
+        for subscription in subscriptions:
+            LOGGER.info(f"Checking subscription {subscription.name}")
+            if subscription.name.startswith(tuple(["rhods-operator", "rhoai-operator"])):
+                return subscription
+
+    LOGGER.warning("No RHOAI subscription found. Potentially ODH cluster")
+    return None
+
+
+def get_rhods_operator_installed_csv() -> ClusterServiceVersion | None:
+    subscription = get_rhods_subscription()
+    if subscription:
+        csv_name = subscription.instance.status.installedCSV
+        LOGGER.info(f"Expected CSV: {csv_name}")
+        return ClusterServiceVersion(name=csv_name, namespace=RHOAI_OPERATOR_NAMESPACE, ensure_exists=True)
+    return None
+
+
+def get_rhods_csv_version() -> Version | None:
+    rhoai_csv = get_rhods_operator_installed_csv()
+    if rhoai_csv:
+        LOGGER.info(f"RHOAI CSV version: {rhoai_csv.instance.spec.version}")
+        return Version.parse(version=rhoai_csv.instance.spec.version)
+    LOGGER.warning("No RHOAI CSV found. Potentially ODH cluster")
+    return None
 
 
 @retry(
@@ -930,3 +982,85 @@ def verify_cluster_sanity(
 
         # TODO: Write to file to easily report the failure in jenkins
         pytest.exit(reason=error_msg, returncode=return_code)
+
+
+def get_openshift_pull_secret(client: DynamicClient = None) -> Secret:
+    openshift_config_namespace = "openshift-config"
+    pull_secret_name = "pull-secret"  # pragma: allowlist secret
+    secret = Secret(
+        client=client or get_client(),
+        name=pull_secret_name,
+        namespace=openshift_config_namespace,
+    )
+    assert secret.exists, f"Pull-secret {pull_secret_name} not found in namespace {openshift_config_namespace}"
+    return secret
+
+
+def generate_openshift_pull_secret_file(client: DynamicClient = None) -> str:
+    pull_secret = get_openshift_pull_secret(client=client)
+    pull_secret_path = tempfile.mkdtemp(suffix="odh-pull-secret")
+    json_file = os.path.join(pull_secret_path, "pull-secrets.json")
+    secret = base64.b64decode(pull_secret.instance.data[".dockerconfigjson"]).decode(encoding="utf-8")
+    with open(file=json_file, mode="w") as outfile:
+        outfile.write(secret)
+    return json_file
+
+
+def get_oc_image_info(
+    image: str,
+    architecture: str,
+    pull_secret: str | None = None,
+) -> Any:
+    def _get_image_json(cmd: str) -> Any:
+        return json.loads(run_command(command=shlex.split(cmd), check=False)[1])
+
+    base_command = f"oc image -o json info {image} --filter-by-os {architecture}"
+    if pull_secret:
+        base_command = f"{base_command} --registry-config={pull_secret}"
+
+    sample = None
+    try:
+        for sample in TimeoutSampler(
+            wait_timeout=10,
+            sleep=5,
+            exceptions_dict={JSONDecodeError: [], TypeError: []},
+            func=_get_image_json,
+            cmd=base_command,
+        ):
+            if sample:
+                return sample
+    except TimeoutExpiredError:
+        LOGGER.error(f"Failed to parse {base_command}")
+        raise
+
+
+@contextmanager
+def switch_user_context(context_name: str) -> Generator[None, None, None]:
+    """
+    Context manager to temporarily switch to a specific OpenShift context.
+    Ensures the original context is restored after use, even if an error occurs.
+
+    Args:
+        context_name: The name of the context to switch to
+
+    Yields:
+        None
+
+    Example:
+        with switch_user_context("my-context"):
+            # Commands here will run in my-context
+            run_command(["oc", "get", "pods"])
+    """
+    # Store current context
+    _, current_context, _ = run_command(command=["oc", "config", "current-context"], check=True)
+    current_context = current_context.strip()
+
+    try:
+        # Switch to the requested context
+        run_command(command=["oc", "config", "use-context", context_name], check=True)
+        LOGGER.info(f"Switched to context: {context_name}")
+        yield
+    finally:
+        # Restore original context
+        run_command(command=["oc", "config", "use-context", current_context], check=True)
+        LOGGER.info(f"Restored context: {current_context}")

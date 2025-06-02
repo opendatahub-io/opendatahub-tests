@@ -35,6 +35,12 @@ RUN curl -sSL "https://github.com/fullstorydev/grpcurl/releases/download/v1.9.2/
     && tar xvf /tmp/grpcurl_1.2.tar.gz --no-same-owner \
     && mv grpcurl /usr/bin/grpcurl
 
+# Install htpasswd
+RUN apt-get update && \
+    apt-get install -y apache2-utils && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
 RUN useradd -ms /bin/bash $USER
 USER $USER
 WORKDIR $HOME_DIR

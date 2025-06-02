@@ -2,6 +2,7 @@ import pytest
 from typing import Self
 from simple_logger.logger import get_logger
 from _pytest.fixtures import FixtureRequest
+from pytest_testconfig import config as py_config
 
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
@@ -13,7 +14,7 @@ from tests.model_registry.scc.utils import (
     validate_containers_pod_security_context,
 )
 from utilities.constants import DscComponents
-from tests.model_registry.constants import MR_NAMESPACE, MODEL_DICT, MR_INSTANCE_NAME
+from tests.model_registry.constants import MODEL_DICT, MR_INSTANCE_NAME
 
 from kubernetes.dynamic import DynamicClient
 from ocp_utilities.infra import get_pods_by_name_prefix
@@ -57,7 +58,7 @@ def model_registry_resource(
                 "component_patch": {
                     DscComponents.MODELREGISTRY: {
                         "managementState": DscComponents.ManagementState.MANAGED,
-                        "registriesNamespace": MR_NAMESPACE,
+                        "registriesNamespace": py_config["model_registry_namespace"],
                     },
                 },
             },

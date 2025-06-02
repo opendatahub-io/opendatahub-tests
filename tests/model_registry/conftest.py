@@ -1,8 +1,6 @@
 import pytest
-import re
 import schemathesis
 from typing import Generator, Any
-from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.namespace import Namespace
@@ -23,6 +21,7 @@ from simple_logger.logger import get_logger
 from kubernetes.dynamic import DynamicClient
 from pytest_testconfig import config as py_config
 from model_registry.types import RegisteredModel
+
 from tests.model_registry.constants import (
     MR_OPERATOR_NAME,
     MR_INSTANCE_NAME,
@@ -31,6 +30,7 @@ from tests.model_registry.constants import (
     MODEL_REGISTRY_DB_SECRET_STR_DATA,
     MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
 )
+from utilities.constants import Labels
 from tests.model_registry.utils import (
     get_endpoint_from_mr_service,
     get_mr_service_by_label,
@@ -40,9 +40,14 @@ from tests.model_registry.utils import (
 )
 from utilities.constants import Annotations, Protocols, DscComponents
 from model_registry import ModelRegistry as ModelRegistryClient
-
+from semver import Version
+from utilities.infra import get_product_version
+from utilities.operator_utils import get_cluster_service_version, validate_operator_subscription_channel
+from utilities.general import wait_for_pods_by_labels
 
 LOGGER = get_logger(name=__name__)
+
+MIN_MR_VERSION = Version.parse(version="2.20.0")
 
 
 @pytest.fixture(scope="class")
@@ -224,10 +229,12 @@ def updated_dsc_component_state_scope_class(
     request: FixtureRequest, dsc_resource: DataScienceCluster, admin_client: DynamicClient
 ) -> Generator[DataScienceCluster, Any, Any]:
     original_components = dsc_resource.instance.spec.components
-    with ResourceEditor(patches={dsc_resource: {"spec": {"components": request.param["component_patch"]}}}):
-        for component_name in request.param["component_patch"]:
+    component_patch = request.param["component_patch"]
+
+    with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
+        for component_name in component_patch:
             dsc_resource.wait_for_condition(condition=DscComponents.COMPONENT_MAPPING[component_name], status="True")
-        if request.param["component_patch"].get(DscComponents.MODELREGISTRY):
+        if component_patch.get(DscComponents.MODELREGISTRY):
             namespace = Namespace(
                 name=dsc_resource.instance.spec.components.modelregistry.registriesNamespace, ensure_exists=True
             )
@@ -239,7 +246,7 @@ def updated_dsc_component_state_scope_class(
         )
         yield dsc_resource
 
-    for component_name, value in request.param["component_patch"].items():
+    for component_name, value in component_patch.items():
         LOGGER.info(f"Waiting for component {component_name} to be updated.")
         if original_components[component_name]["managementState"] == DscComponents.ManagementState.MANAGED:
             dsc_resource.wait_for_condition(condition=DscComponents.COMPONENT_MAPPING[component_name], status="True")
@@ -283,12 +290,63 @@ def registered_model(request: FixtureRequest, model_registry_client: ModelRegist
 
 
 @pytest.fixture()
-def model_registry_operator_pod(admin_client: DynamicClient) -> Pod:
-    model_registry_operator_pods = [
-        pod
-        for pod in Pod.get(dyn_client=admin_client, namespace=py_config["applications_namespace"])
-        if re.match(MR_OPERATOR_NAME, pod.name)
-    ]
-    if not model_registry_operator_pods:
-        raise ResourceNotFoundError("Model registry operator pod not found")
-    return model_registry_operator_pods[0]
+def model_registry_operator_pod(admin_client: DynamicClient) -> Generator[Pod, Any, Any]:
+    """Get the model registry operator pod."""
+    yield wait_for_pods_by_labels(
+        admin_client=admin_client,
+        namespace=py_config["applications_namespace"],
+        label_selector=f"{Labels.OpenDataHubIo.NAME}={MR_OPERATOR_NAME}",
+        expected_num_pods=1,
+    )[0]
+
+
+@pytest.fixture()
+def model_registry_instance_pod(admin_client: DynamicClient) -> Generator[Pod, Any, Any]:
+    """Get the model registry instance pod."""
+    yield wait_for_pods_by_labels(
+        admin_client=admin_client,
+        namespace=py_config["model_registry_namespace"],
+        label_selector=f"app={MR_INSTANCE_NAME}",
+        expected_num_pods=1,
+    )[0]
+
+
+@pytest.fixture(scope="package", autouse=True)
+def validate_authorino_operator_version_channel(admin_client: DynamicClient) -> None:
+    """Check if Authorino operator is installed with required version and channel.
+
+    This fixture is automatically used for all tests in the model_registry directory.
+    It verifies that:
+    1. For OpenShift AI: The product version is >= 2.20
+    2. The Authorino operator is installed
+    3. The Authorino operator is using the required channel (stable)
+    4. The Authorino operator is at least version 1.2.1
+    """
+    distribution = py_config["distribution"]
+    if distribution == "upstream":
+        # TODO: figure out minimum version for ODH
+        LOGGER.info(f"Skipping Authorino operator check for {distribution} distribution")
+        return
+    # Only check product version for OpenShift AI
+    if distribution == "downstream":
+        product_version = get_product_version(admin_client=admin_client)
+        if product_version < MIN_MR_VERSION:
+            LOGGER.info(
+                "Skipping Authorino operator check - product version "
+                f"{product_version} is below required {MIN_MR_VERSION}"
+            )
+            return
+        operator_name = "authorino-operator"
+        # Find the CSV for the operator
+        authorino_csv = get_cluster_service_version(
+            client=admin_client, prefix=operator_name, namespace=py_config["applications_namespace"]
+        )
+        current_authorino_version = authorino_csv.instance.spec.version
+        if Version.parse(version="1.2.1") > Version.parse(version=current_authorino_version):
+            pytest.exit(
+                f"Authorino operator is not at least version 1.2.1. Current version: {current_authorino_version}"
+            )
+
+        validate_operator_subscription_channel(
+            client=admin_client, namespace="openshift-operators", operator_name=operator_name, channel_name="stable"
+        )
