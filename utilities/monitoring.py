@@ -56,6 +56,7 @@ def validate_metrics_field(
     expected_value: Any,
     field_getter: Callable[..., Any] = get_metrics_value,
     timeout: int = 60 * 4,
+    greater_than: bool = False,
 ) -> None:
     """
     Validate any metric field or label using a custom getter function.
@@ -67,6 +68,7 @@ def validate_metrics_field(
         expected_value (Any): Expected value
         field_getter (Callable): Function to extract the desired field/label/value
         timeout (int): Timeout in seconds
+        greater_than (bool): If True, validates that the metric value is greater than or equal to expected_value
 
     Raises:
         TimeoutExpiredError: If expected value isn't met within the timeout
@@ -79,9 +81,14 @@ def validate_metrics_field(
             prometheus=prometheus,
             metrics_query=metrics_query,
         ):
-            if sample == expected_value:
-                LOGGER.info("Metric field matches the expected value!")
-                return
+            if greater_than:
+                if float(sample) >= float(expected_value):
+                    LOGGER.info(f"Metric field {sample} is greater than or equal to expected value {expected_value}!")
+                    return
+            else:
+                if sample == expected_value:
+                    LOGGER.info("Metric field matches the expected value!")
+                    return
             LOGGER.info(f"Current value: {sample}, waiting for: {expected_value}")
     except TimeoutExpiredError:
         LOGGER.error(f"Timed out. Last value: {sample}, expected: {expected_value}")

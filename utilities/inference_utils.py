@@ -546,6 +546,7 @@ def create_isvc(
     teardown: bool = True,
     protocol_version: str | None = None,
     labels: dict[str, str] | None = None,
+    auto_scaling: dict[str, Any] | None = None,
 ) -> Generator[InferenceService, Any, Any]:
     """
     Create InferenceService object.
@@ -580,6 +581,7 @@ def create_isvc(
         model_env_variables (list[dict[str, str]]): Model environment variables
         teardown (bool): Teardown
         protocol_version (str): Protocol version of the model server
+        auto_scaling (dict[str, Any]): Auto scaling configuration for the model
 
     Yields:
         InferenceService: InferenceService object
@@ -629,6 +631,8 @@ def create_isvc(
         predictor_dict["volumes"] = volumes
     if model_env_variables:
         predictor_dict["model"]["env"] = model_env_variables
+    if auto_scaling:
+        predictor_dict["autoScaling"] = auto_scaling
 
     _annotations: dict[str, str] = {}
 
