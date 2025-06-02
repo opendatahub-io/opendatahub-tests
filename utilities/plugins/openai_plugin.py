@@ -99,7 +99,7 @@ class OpenAIClient:
             for line in response.iter_lines():
                 _, found, data = line.partition(b"data: ")
                 if found and data != b"[DONE]":
-                    message = json.loads(data)  # type: ignore
+                    message = json.loads(data)
                     token = self._parse_streaming_response(endpoint, message)
                     tokens.append(token)
         except (requests.exceptions.RequestException, json.JSONDecodeError):
