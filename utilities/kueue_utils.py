@@ -13,7 +13,7 @@ class ResourceFlavor(Resource):
             kwargs: Keyword arguments to pass to the ResourceFlavor constructor
         """
         super().__init__(
-         **kwargs,
+            **kwargs,
         )
 
     def to_dict(self) -> None:

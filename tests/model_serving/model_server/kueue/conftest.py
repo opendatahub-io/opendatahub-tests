@@ -3,7 +3,14 @@ from typing import Generator, Any, Dict
 import pytest
 from kubernetes.dynamic import DynamicClient
 from _pytest.fixtures import FixtureRequest
-from utilities.kueue_utils import create_local_queue, create_cluster_queue, create_resource_flavor, LocalQueue, ClusterQueue, ResourceFlavor
+from utilities.kueue_utils import (
+    create_local_queue,
+    create_cluster_queue,
+    create_resource_flavor,
+    LocalQueue,
+    ClusterQueue,
+    ResourceFlavor,
+)
 from ocp_resources.namespace import Namespace
 from utilities.constants import ModelAndFormat, KServeDeploymentType
 from utilities.inference_utils import create_isvc
@@ -16,23 +23,27 @@ import logging
 
 BASIC_LOGGER = logging.getLogger(name="basic")
 
+
 def kueue_resource_groups(
     flavor_name: str,
     cpu_quota: int,
     memory_quota: str,
 ) -> list[Dict[str, Any]]:
-    return [{
-        "coveredResources": ["cpu", "memory"],
-        "flavors": [
-            {
-                "name": flavor_name,
-                "resources": [
-                    {"name": "cpu", "nominalQuota": cpu_quota},
-                    {"name": "memory", "nominalQuota": memory_quota}
-                ]
-            }
-        ]
-    }]
+    return [
+        {
+            "coveredResources": ["cpu", "memory"],
+            "flavors": [
+                {
+                    "name": flavor_name,
+                    "resources": [
+                        {"name": "cpu", "nominalQuota": cpu_quota},
+                        {"name": "memory", "nominalQuota": memory_quota},
+                    ],
+                }
+            ],
+        }
+    ]
+
 
 @pytest.fixture(scope="class")
 def kueue_cluster_queue_from_template(
@@ -44,7 +55,9 @@ def kueue_cluster_queue_from_template(
     with create_cluster_queue(
         name=request.param.get("name"),
         client=admin_client,
-        resource_groups=kueue_resource_groups(request.param.get("resource_flavor_name"), request.param.get("cpu_quota"), request.param.get("memory_quota")),
+        resource_groups=kueue_resource_groups(
+            request.param.get("resource_flavor_name"), request.param.get("cpu_quota"), request.param.get("memory_quota")
+        ),
         namespace_selector=request.param.get("namespace_selector", {}),
     ) as cluster_queue:
         yield cluster_queue
@@ -63,6 +76,7 @@ def kueue_resource_flavor_from_template(
     ) as resource_flavor:
         yield resource_flavor
 
+
 @pytest.fixture(scope="class")
 def kueue_local_queue_from_template(
     request: FixtureRequest,
@@ -80,6 +94,7 @@ def kueue_local_queue_from_template(
         client=admin_client,
     ) as local_queue:
         yield local_queue
+
 
 @pytest.fixture(scope="class")
 def kueue_raw_inference_service(
@@ -101,12 +116,15 @@ def kueue_raw_inference_service(
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         model_version=request.param["model-version"],
         labels=request.param.get("labels", {}),
-        resources=request.param.get("resources", {"requests": {"cpu": "1", "memory": "8Gi"}, "limits": {"cpu": "2", "memory": "10Gi"}}),
+        resources=request.param.get(
+            "resources", {"requests": {"cpu": "1", "memory": "8Gi"}, "limits": {"cpu": "2", "memory": "10Gi"}}
+        ),
         min_replicas=request.param.get("min-replicas", 1),
         max_replicas=request.param.get("max-replicas", 2),
     ) as isvc:
         yield isvc
-        
+
+
 @pytest.fixture(scope="class")
 def kueue_kserve_inference_service(
     request: FixtureRequest,
@@ -127,7 +145,9 @@ def kueue_kserve_inference_service(
         "deployment_mode": deployment_mode,
         "model_version": request.param["model-version"],
         "labels": request.param.get("labels", {}),
-        "resources": request.param.get("resources", {"requests": {"cpu": "1", "memory": "8Gi"}, "limits": {"cpu": "2", "memory": "10Gi"}}),
+        "resources": request.param.get(
+            "resources", {"requests": {"cpu": "1", "memory": "8Gi"}, "limits": {"cpu": "2", "memory": "10Gi"}}
+        ),
         "min_replicas": request.param.get("min-replicas", 1),
         "max_replicas": request.param.get("max-replicas", 2),
     }
@@ -145,10 +165,10 @@ def kueue_kserve_inference_service(
 
     if (scale_target := request.param.get("scale-target")) is not None:
         isvc_kwargs["scale_target"] = scale_target
-    
+
     if (resources := request.param.get("resources")) is not None:
         isvc_kwargs["resources"] = resources
-    
+
     print("isvc_kwargs before create_isvc", isvc_kwargs)
     with create_isvc(**isvc_kwargs) as isvc:
         yield isvc
@@ -185,4 +205,3 @@ def kueue_kserve_serving_runtime(
 
     with ServingRuntimeFromTemplate(**runtime_kwargs) as model_runtime:
         yield model_runtime
-        
