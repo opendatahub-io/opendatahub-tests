@@ -139,7 +139,7 @@ class TestRestRawDeploymentRoutesTimeout:
         )
 
     @pytest.mark.dependency(depends=["test_rest_raw_deployment_exposed_route"])
-    def test_rest_raw_deployment_exposed_route_with_timeout(self, admin_client, s3_models_inference_service):
+    def test_rest_raw_deployment_exposed_route_with_timeout(self, s3_models_inference_service):
         """Test HTTP inference using exposed (external) route fails when timeout is set too low"""
         ResourceEditor(
             patches={
@@ -257,7 +257,7 @@ class TestGrpcRawDeploymentTimeout:
         )
 
     @pytest.mark.dependency(depends=["test_rest_raw_deployment_exposed_route"])
-    def test_grpc_raw_deployment_exposed_route_with_timeout(self, test_grpc_raw_deployment_exposed_route):
+    def test_grpc_raw_deployment_exposed_route_with_timeout(self, s3_models_inference_service):
         """Test GRPC inference using exposed (external) route fails when timeout is set too low"""
         ResourceEditor(
             patches={
