@@ -6,6 +6,8 @@ from utilities.constants import ModelInferenceRuntime, Protocols
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 
+@pytest.mark.serverless
+@pytest.mark.sanity
 @pytest.mark.parametrize(
     "unprivileged_model_namespace,ovms_kserve_serving_runtime",
     [
@@ -47,6 +49,7 @@ class TestInferenceGraphDeployment:
             use_default_query=True,
         )
 
+    @pytest.mark.smoke
     @pytest.mark.parametrize(
         "dog_breed_inference_graph",
         [{"name": "dog-breed-auth-serverless-ig", "enable-auth": True}],
