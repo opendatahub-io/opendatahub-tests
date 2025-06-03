@@ -43,7 +43,7 @@ class TestModelRegistryCreationOAuth:
         admin_client,
         model_registry_client: ModelRegistryClient,
     ):
-        if py_config["distribution"] == "downstream" and MINVER < get_product_version(admin_client=admin_client):
+        if py_config["distribution"] == "downstream" and get_product_version(admin_client=admin_client) < MINVER:
             pytest.skip("Skipping test for RHOAI < 2.21")
 
         # Register a new model
