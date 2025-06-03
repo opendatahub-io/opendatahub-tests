@@ -1,4 +1,3 @@
-
 from typing import Any, Generator
 import copy
 
@@ -89,7 +88,6 @@ def serving_runtime(
         runtime_image=mlserver_runtime_image,
     ) as model_runtime:
         yield model_runtime
-
 
 
 @pytest.fixture(scope="class")

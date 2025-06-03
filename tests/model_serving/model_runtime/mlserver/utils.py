@@ -119,10 +119,7 @@ def run_mlserver_inference(
     return f"Invalid deployment_mode {deployment_mode}"
 
 
-def get_grpc_url(
-    base_url:str, 
-    port: int
-) -> str:
+def get_grpc_url(base_url: str, port: int) -> str:
     return f"{base_url.replace('https://', '').replace('http://', '')}:{port}"
 
 

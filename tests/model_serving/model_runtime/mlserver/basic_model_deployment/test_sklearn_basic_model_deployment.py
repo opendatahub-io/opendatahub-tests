@@ -87,7 +87,7 @@ pytestmark = pytest.mark.usefixtures(
 )
 class TestSkLearnModel:
     """Test class for sklearn model inference with MLServer runtime.
-    
+
     Tests cover multiple deployment scenarios:
     - REST and gRPC protocols
     - Raw and serverless deployment modes
@@ -103,7 +103,7 @@ class TestSkLearnModel:
         root_dir: str,
     ):
         """Test sklearn model inference across different protocols and deployment types.
-        
+
         Args:
             mlserver_inference_service: The deployed inference service
             mlserver_pod_resource: Pod running the model server
