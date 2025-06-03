@@ -807,7 +807,7 @@ def get_operator_distribution(client: DynamicClient, dsc_name: str = "default-ds
         dsc_name (str): DSC name
 
     Returns:
-        str: Operator distribution.
+        str: Operator distribution. One of Open Data Hub or OpenShift AI.
 
     Raises:
             ValueError: If DSC release name not found

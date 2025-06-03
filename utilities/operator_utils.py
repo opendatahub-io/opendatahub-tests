@@ -5,6 +5,10 @@ from simple_logger.logger import get_logger
 from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.subscription import Subscription
 from utilities.exceptions import ResourceMismatchError
+from utilities.infra import get_product_version
+from pytest_testconfig import config as py_config
+
+from typing import List, Dict
 
 LOGGER = get_logger(name=__name__)
 
@@ -46,3 +50,28 @@ def validate_operator_subscription_channel(
             f"For Operator {operator_name}, Subscription points to {subscription_channel}, expected: {channel_name}"
         )
     LOGGER.info(f"Operator {operator_name} subscription channel is {subscription_channel}")
+
+
+def get_csv_related_images(admin_client: DynamicClient, csv_name: str | None = None) -> List[Dict[str, str]]:
+    """Get relatedImages from the CSV.
+
+    Args:
+        admin_client: The kubernetes client
+        csv_name: Optional CSV name. If not provided, will use {operator_name}.{version}
+                 where operator_name is determined by the distribution (rhods-operator for OpenShift AI,
+                 opendatahub-operator for Open Data Hub)
+
+    Returns:
+        List of related images from the CSV
+    """
+
+    if csv_name is None:
+        distribution = py_config["distribution"]
+        operator_name = "opendatahub-operator" if distribution == "upstream" else "rhods-operator"
+        csv_name = f"{operator_name}.{get_product_version(admin_client=admin_client)}"
+
+    return get_cluster_service_version(
+        client=admin_client,
+        prefix=csv_name,
+        namespace=py_config["applications_namespace"],
+    ).instance.spec.relatedImages
