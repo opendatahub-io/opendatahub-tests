@@ -118,6 +118,7 @@ class AcceleratorType:
 
 
 class ApiGroups:
+    HAPROXY_ROUTER_OPENSHIFT_IO: str = "haproxy.router.openshift.io"
     OPENDATAHUB_IO: str = "opendatahub.io"
 
 
@@ -137,6 +138,9 @@ class Annotations:
     class OpenDataHubIo:
         MANAGED: str = f"{ApiGroups.OPENDATAHUB_IO}/managed"
         SERVICE_MESH: str = f"{ApiGroups.OPENDATAHUB_IO}/service-mesh"
+
+    class HaproxyRouterOpenshiftIo:
+        TIMEOUT: str = f"{ApiGroups.HAPROXY_ROUTER_OPENSHIFT_IO}/timeout"
 
 
 class StorageClassName:
