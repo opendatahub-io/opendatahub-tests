@@ -95,15 +95,12 @@ def create_resource_flavor(
     """
     Context manager to create and optionally delete a ResourceFlavor.
     """
-    try:
-        with ResourceFlavor(
-            client=client,
-            name=name,
-            teardown=teardown,
-        ) as resource_flavor:
-            yield resource_flavor
-    finally:
-        resource_flavor.remove_fin
+    with ResourceFlavor(
+        client=client,
+        name=name,
+        teardown=teardown,
+    ) as resource_flavor:
+        yield resource_flavor
 
 
 @contextmanager
