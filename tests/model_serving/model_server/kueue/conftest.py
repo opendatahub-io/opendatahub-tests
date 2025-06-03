@@ -14,11 +14,11 @@ from utilities.kueue_utils import (
 from ocp_resources.namespace import Namespace
 from utilities.constants import ModelAndFormat, KServeDeploymentType
 from utilities.inference_utils import create_isvc
+from utilities.serving_runtime import ServingRuntimeFromTemplate
 from ocp_resources.secret import Secret
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.serving_runtime import ServingRuntime
 from utilities.constants import RuntimeTemplates, ModelFormat
-from tests.model_serving.model_server.conftest import ServingRuntimeFromTemplate
 import logging
 
 BASIC_LOGGER = logging.getLogger(name="basic")
