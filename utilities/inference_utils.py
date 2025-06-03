@@ -586,7 +586,7 @@ def create_isvc(
 
     """
     if labels is None:
-        labels: dict[str, str] = {}
+        labels = {}
 
     predictor_dict: dict[str, Any] = {
         "model": {

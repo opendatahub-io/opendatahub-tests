@@ -5,9 +5,9 @@ from kubernetes.dynamic import DynamicClient
 
 
 class ResourceFlavor(Resource):
-    api_group = "kueue.x-k8s.io"
+    api_group: str = "kueue.x-k8s.io"
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any):
         """
         Args:
             kwargs: Keyword arguments to pass to the ResourceFlavor constructor
@@ -23,12 +23,12 @@ class ResourceFlavor(Resource):
 
 
 class LocalQueue(NamespacedResource):
-    api_group = "kueue.x-k8s.io"
+    api_group: str = "kueue.x-k8s.io"
 
     def __init__(
         self,
         cluster_queue: str,
-        **kwargs,
+        **kwargs: Any,
     ):
         """
         Args:
@@ -51,13 +51,13 @@ class LocalQueue(NamespacedResource):
 
 
 class ClusterQueue(Resource):
-    api_group = "kueue.x-k8s.io"
+    api_group: str = "kueue.x-k8s.io"
 
     def __init__(
         self,
-        namespace_selector: Optional[Dict[str, Any]] = None,
-        resource_groups: List[Dict[str, Any]] = None,
-        **kwargs,
+        namespace_selector: Dict[str, Any] | None = None,
+        resource_groups: List[Dict[str, Any]] | None = None,
+        **kwargs: Any,
     ):
         """
         Args:

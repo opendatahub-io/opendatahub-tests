@@ -102,7 +102,7 @@ class TestKueueInferenceServiceServerless:
         kueue_kserve_inference_service.update(isvc_to_update)
 
         # Give time for updated deployment
-        time.sleep(seconds=10)
+        time.sleep(10)
         # Verify deployment still has 1 pod due to Kueue admission control
         deployments = list(
             Deployment.get(
