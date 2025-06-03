@@ -32,7 +32,8 @@ max_replicas = 2
 
 @pytest.mark.serverless
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, kueue_kserve_serving_runtime, kueue_kserve_inference_service, kueue_cluster_queue_from_template, kueue_resource_flavor_from_template, kueue_local_queue_from_template",
+    "unprivileged_model_namespace, kueue_kserve_serving_runtime, kueue_kserve_inference_service, "
+    "kueue_cluster_queue_from_template, kueue_resource_flavor_from_template, kueue_local_queue_from_template",
     [
         pytest.param(
             {"name": "kueue-isvc-serverless-test", "add-kueue-label": True},
@@ -60,6 +61,7 @@ max_replicas = 2
     indirect=True,
 )
 class TestKueueInferenceServiceServerless:
+    """Test inference service with serverless deployment"""
     def test_kueue_inference_service_model_mesh(
         self,
         admin_client,
@@ -113,7 +115,8 @@ class TestKueueInferenceServiceServerless:
             for deployment in deployments:
                 # This will raise TimeoutExpiredError if the deployment is not available
                 # If it is available, we will add the number of replicas to the total, since the deployment is available
-                # it means spec.replicas == status.replicas == status.updatedReplicas == status.availableReplicas == status.readyReplicas
+                # it means spec.replicas == status.replicas == status.updatedReplicas ==
+                # status.availableReplicas == status.readyReplicas
                 deployment.wait_for_replicas(deployed=True, timeout=Timeout.TIMEOUT_30SEC)
                 total_available_replicas += deployment.instance.spec.replicas
         except TimeoutExpiredError:
