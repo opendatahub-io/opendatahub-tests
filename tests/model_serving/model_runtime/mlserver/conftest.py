@@ -2,7 +2,6 @@ from typing import cast, Any, Generator
 import copy
 
 import pytest
-from pytest import FixtureRequest
 from syrupy.extensions.json import JSONSnapshotExtension
 from pytest_testconfig import config as py_config
 
@@ -94,12 +93,12 @@ def mlserver_rest_serving_runtime_template(admin_client: DynamicClient) -> Gener
 
 
 @pytest.fixture(scope="class")
-def protocol(request: FixtureRequest) -> str:
+def protocol(request: pytest.FixtureRequest) -> str:
     """
     Provides the protocol type parameter for the test class.
 
     Args:
-        request (FixtureRequest): The pytest fixture request object.
+        request (pytest.FixtureRequest): The pytest fixture request object.
 
     Returns:
         str: The protocol type specified in the test parameter.
@@ -109,7 +108,7 @@ def protocol(request: FixtureRequest) -> str:
 
 @pytest.fixture(scope="class")
 def mlserver_serving_runtime(
-    request: FixtureRequest,
+    request: pytest.FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
     mlserver_runtime_image: str,
@@ -119,7 +118,7 @@ def mlserver_serving_runtime(
     Provides a ServingRuntime resource for MLServer with the specified protocol and deployment type.
 
     Args:
-        request (FixtureRequest): Pytest fixture request containing parameters.
+        request (pytest.FixtureRequest): Pytest fixture request containing parameters.
         admin_client (DynamicClient): Kubernetes dynamic client.
         model_namespace (Namespace): Kubernetes namespace for model deployment.
         mlserver_runtime_image (str): The container image for the MLServer runtime.
@@ -142,7 +141,7 @@ def mlserver_serving_runtime(
 
 @pytest.fixture(scope="class")
 def mlserver_inference_service(
-    request: FixtureRequest,
+    request: pytest.FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
     mlserver_serving_runtime: ServingRuntime,
@@ -153,7 +152,7 @@ def mlserver_inference_service(
     Creates and yields a configured InferenceService instance for MLServer testing.
 
     Args:
-        request (FixtureRequest): Pytest fixture request containing test parameters.
+        request (pytest.FixtureRequest): Pytest fixture request containing test parameters.
         admin_client (DynamicClient): Kubernetes dynamic client.
         model_namespace (Namespace): Kubernetes namespace for model deployment.
         mlserver_serving_runtime (ServingRuntime): The MLServer ServingRuntime instance.
@@ -181,17 +180,16 @@ def mlserver_inference_service(
     min_replicas = params.get("min-replicas")
 
     resources = copy.deepcopy(cast(dict[str, dict[str, str]], PREDICT_RESOURCES["resources"]))
-    identifier = Labels.Nvidia.NVIDIA_COM_GPU
-    resources["requests"][identifier] = gpu_count
-    resources["limits"][identifier] = gpu_count
+    if gpu_count > 0:
+        identifier = Labels.Nvidia.NVIDIA_COM_GPU
+        resources["requests"][identifier] = gpu_count
+        resources["limits"][identifier] = gpu_count
+        service_config["volumes"] = PREDICT_RESOURCES["volumes"]
+        service_config["volumes_mounts"] = PREDICT_RESOURCES["volume_mounts"]
     service_config["resources"] = resources
 
     if timeout:
         service_config["timeout"] = timeout
-
-    if gpu_count > 1:
-        service_config["volumes"] = PREDICT_RESOURCES["volumes"]
-        service_config["volumes_mounts"] = PREDICT_RESOURCES["volume_mounts"]
 
     if min_replicas:
         service_config["min_replicas"] = min_replicas
