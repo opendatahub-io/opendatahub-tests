@@ -1,6 +1,6 @@
 from typing import Any
 from ocp_resources.resource import Resource
-from utilities.constants import ModelFormat
+from utilities.constants import ModelFormat, Annotations
 
 
 class ModelRegistryEndpoints:
@@ -47,4 +47,10 @@ MODEL_REGISTRY_DB_SECRET_ANNOTATIONS = {
     f"{Resource.ApiGroup.TEMPLATE_OPENSHIFT_IO}/expose-database_name": "'{.data[''database-name'']}'",
     f"{Resource.ApiGroup.TEMPLATE_OPENSHIFT_IO}/expose-password": "'{.data[''database-password'']}'",
     f"{Resource.ApiGroup.TEMPLATE_OPENSHIFT_IO}/expose-username": "'{.data[''database-user'']}'",
+}
+MODEL_REGISTRY_STANDARD_LABELS = {
+    Annotations.KubernetesIo.NAME: MR_INSTANCE_NAME,
+    Annotations.KubernetesIo.INSTANCE: MR_INSTANCE_NAME,
+    Annotations.KubernetesIo.PART_OF: MR_OPERATOR_NAME,
+    Annotations.KubernetesIo.CREATED_BY: MR_OPERATOR_NAME,
 }

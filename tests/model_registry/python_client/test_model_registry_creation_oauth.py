@@ -2,18 +2,18 @@ import pytest
 from typing import Self
 from simple_logger.logger import get_logger
 from pytest_testconfig import config as py_config
-
-from ocp_resources.namespace import Namespace
-from utilities.constants import DscComponents, Protocols
+from semver import Version
+from utilities.infra import get_product_version
+from utilities.constants import DscComponents
 from tests.model_registry.constants import MODEL_NAME, MODEL_DICT
 from model_registry import ModelRegistry as ModelRegistryClient
-from tests.model_registry.utils import get_endpoint_from_mr_service, get_mr_service_by_label
 
 LOGGER = get_logger(name=__name__)
+MINVER = Version.parse(version="2.21.0")
 
 
 @pytest.mark.parametrize(
-    "updated_dsc_component_state_scope_class",
+    "updated_dsc_component_state_scope_class, model_registry_client",
     [
         pytest.param(
             {
@@ -24,6 +24,8 @@ LOGGER = get_logger(name=__name__)
                     },
                 },
             },
+            {"service_fixture": "model_registry_instance_oauth_service"},
+            id="oauth_proxy",
         ),
     ],
     indirect=True,
@@ -32,38 +34,20 @@ LOGGER = get_logger(name=__name__)
 class TestModelRegistryCreationOAuth:
     """
     Tests the creation of a model registry with OAuth proxy configuration.
+    Jira ID: RHOAIENG-26194
     """
 
     @pytest.mark.smoke
     def test_registering_model_with_oauth(
         self: Self,
         admin_client,
-        model_registry_namespace: str,
-        model_registry_instance_oauth_proxy,
-        current_client_token: str,
+        model_registry_client: ModelRegistryClient,
     ):
-        # Get the service for the OAuth proxy configured model registry
-        mr_service = get_mr_service_by_label(
-            client=admin_client,
-            ns=Namespace(name=model_registry_namespace),
-            mr_instance=model_registry_instance_oauth_proxy,
-        )
-
-        # Get the REST endpoint
-        rest_endpoint = get_endpoint_from_mr_service(svc=mr_service, protocol=Protocols.REST)
-
-        # Create client with OAuth proxy endpoint
-        server, port = rest_endpoint.split(":")
-        client = ModelRegistryClient(
-            server_address=f"{Protocols.HTTPS}://{server}",
-            port=port,
-            author="opendatahub-test",
-            user_token=current_client_token,
-            is_secure=False,
-        )
+        if py_config["distribution"] == "downstream" and MINVER < get_product_version(admin_client=admin_client):
+            pytest.skip("Skipping test for RHOAI < 2.21")
 
         # Register a new model
-        registered_model = client.register_model(
+        registered_model = model_registry_client.register_model(
             name=MODEL_DICT["model_name"],
             uri=MODEL_DICT["model_uri"],
             version=MODEL_DICT["model_version"],
@@ -76,7 +60,7 @@ class TestModelRegistryCreationOAuth:
         )
 
         # Get and verify the model
-        model = client.get_registered_model(name=MODEL_NAME)
+        model = model_registry_client.get_registered_model(name=MODEL_NAME)
         expected_attrs = {
             "id": registered_model.id,
             "name": registered_model.name,
