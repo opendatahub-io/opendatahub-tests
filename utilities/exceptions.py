@@ -120,3 +120,15 @@ class UnexpectedFailureError(Exception):
 
 class UnexpectedResourceCountError(Exception):
     """Unexpected number of API resources found"""
+
+
+class ResourceValueMismatch(Exception):
+    """Resource value mismatch"""
+
+    pass
+
+
+class MissingParameter(Exception):
+    """Raised required argument is not passed."""
+
+    pass
