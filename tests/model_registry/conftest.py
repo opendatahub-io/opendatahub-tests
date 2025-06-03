@@ -148,13 +148,11 @@ def model_registry_db_deployment(
 
 @pytest.fixture(scope="class")
 def model_registry_instance(
-    admin_client: DynamicClient,
     model_registry_namespace: str,
     model_registry_mysql_config: dict[str, Any],
 ) -> Generator[ModelRegistry, Any, Any]:
     """Creates a model registry instance with service mesh configuration."""
     with create_model_registry_instance(
-        admin_client=admin_client,
         namespace=model_registry_namespace,
         name=MR_INSTANCE_NAME,
         labels=MODEL_REGISTRY_STANDARD_LABELS,
@@ -170,13 +168,11 @@ def model_registry_instance(
 
 @pytest.fixture(scope="class")
 def model_registry_instance_oauth_proxy(
-    admin_client: DynamicClient,
     model_registry_namespace: str,
     model_registry_mysql_config: dict[str, Any],
 ) -> Generator[ModelRegistry, Any, Any]:
     """Creates a model registry instance with oauth proxy configuration."""
     with create_model_registry_instance(
-        admin_client=admin_client,
         namespace=model_registry_namespace,
         name=MR_INSTANCE_NAME,
         labels=MODEL_REGISTRY_STANDARD_LABELS,
