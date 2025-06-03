@@ -125,7 +125,7 @@ def create_ns(
 
     if add_dashboard_label:
         namespace_kwargs["label"][Labels.OpenDataHub.DASHBOARD] = "true"  # type: ignore
-    
+
     if add_kueue_label:
         namespace_kwargs["label"]["kueue-managed"] = "true"  # type: ignore
 

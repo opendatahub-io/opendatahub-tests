@@ -587,7 +587,7 @@ def create_isvc(
     """
     if labels is None:
         labels: dict[str, str] = {}
-        
+
     predictor_dict: dict[str, Any] = {
         "model": {
             "modelFormat": {"name": model_format},
