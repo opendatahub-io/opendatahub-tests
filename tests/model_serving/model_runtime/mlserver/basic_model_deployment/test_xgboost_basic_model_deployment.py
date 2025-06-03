@@ -1,7 +1,7 @@
 """
-Test module for sklearn model deployment using MLServer runtime.
+Test module for xgboost model deployment using MLServer runtime.
 
-This module contains parameterized tests that validate sklearn model inference
+This module contains parameterized tests that validate xgboost model inference
 across different protocols (REST/gRPC) and deployment types (raw/serverless).
 """
 
@@ -19,21 +19,21 @@ from tests.model_serving.model_runtime.mlserver.constant import (
     BASE_RAW_DEPLOYMENT_CONFIG,
     BASE_SERVERLESS_DEPLOYMENT_CONFIG,
     MODEL_PATH_PREFIX,
-    SKLEARN_GRPC_INPUT_QUERY,
-    SKLEARN_REST_INPUT_QUERY,
+    XGBOOST_GRPC_INPUT_QUERY,
+    XGBOOST_REST_INPUT_QUERY,
 )
 from tests.model_serving.model_runtime.mlserver.utils import validate_inference_request
 
 
 LOGGER = get_logger(name=__name__)
 
-MODEL_NAME: str = "sklearn-iris"
+MODEL_NAME: str = "xgboost-iris"
 
 MODEL_VERSION: str = "v1.0.0"
 
 MODEL_NAME_DICT: dict[str, str] = {"name": MODEL_NAME}
 
-MODEL_STORAGE_URI_DICT: dict[str, str] = {"model-dir": f"{MODEL_PATH_PREFIX}/sklearn"}
+MODEL_STORAGE_URI_DICT: dict[str, str] = {"model-dir": f"{MODEL_PATH_PREFIX}/xgboost"}
 
 
 pytestmark = pytest.mark.usefixtures(
@@ -46,48 +46,48 @@ pytestmark = pytest.mark.usefixtures(
     [
         pytest.param(
             {"protocol_type": Protocols.REST},
-            {"name": "sklearn-iris-raw-rest"},
+            {"name": "xgboost-iris-raw-rest"},
             {
                 **BASE_RAW_DEPLOYMENT_CONFIG,
                 **MODEL_NAME_DICT,
             },
             MODEL_STORAGE_URI_DICT,
             BASE_RAW_DEPLOYMENT_CONFIG,
-            id="sklearn-iris-raw-rest-deployment",
+            id="xgboost-iris-raw-rest-deployment",
         ),
         pytest.param(
             {"protocol_type": Protocols.GRPC},
-            {"name": "sklearn-iris-raw-grpc"},
+            {"name": "xgboost-iris-raw-grpc"},
             {
                 **BASE_RAW_DEPLOYMENT_CONFIG,
                 **MODEL_NAME_DICT,
             },
             MODEL_STORAGE_URI_DICT,
             BASE_RAW_DEPLOYMENT_CONFIG,
-            id="sklearn-iris-raw-grpc-deployment",
+            id="xgboost-iris-raw-grpc-deployment",
         ),
         pytest.param(
             {"protocol_type": Protocols.REST},
-            {"name": "sklearn-iris-serverless-rest"},
+            {"name": "xgboost-iris-serverless-rest"},
             {**BASE_SERVERLESS_DEPLOYMENT_CONFIG, **MODEL_NAME_DICT},
             MODEL_STORAGE_URI_DICT,
             BASE_SERVERLESS_DEPLOYMENT_CONFIG,
-            id="sklearn-iris-serverless-rest-deployment",
+            id="xgboost-iris-serverless-rest-deployment",
         ),
         pytest.param(
             {"protocol_type": Protocols.GRPC},
-            {"name": "sklearn-iris-serverless-grpc"},
+            {"name": "xgboost-iris-serverless-grpc"},
             {**BASE_SERVERLESS_DEPLOYMENT_CONFIG, **MODEL_NAME_DICT},
             MODEL_STORAGE_URI_DICT,
             BASE_SERVERLESS_DEPLOYMENT_CONFIG,
-            id="sklearn-iris-serverless-grpc-deployment",
+            id="xgboost-iris-serverless-grpc-deployment",
         ),
     ],
     indirect=True,
 )
-class TestSkLearnModel:
+class TestXGBoostModel:
     """
-    Test class for sklearn model inference with MLServer runtime.
+    Test class for xgboost model inference with MLServer runtime.
 
     Covers multiple deployment scenarios:
     - REST and gRPC protocols
@@ -95,7 +95,7 @@ class TestSkLearnModel:
     - Response validation against snapshots
     """
 
-    def test_sklearn_model_inference(
+    def test_xgboost_model_inference(
         self,
         mlserver_inference_service: InferenceService,
         mlserver_pod_resource: Pod,
@@ -104,7 +104,7 @@ class TestSkLearnModel:
         root_dir: str,
     ) -> None:
         """
-        Test sklearn model inference across different protocols and deployment types.
+        Test xgboost model inference across different protocols and deployment types.
 
         Args:
             mlserver_inference_service (InferenceService): The deployed inference service.
@@ -113,7 +113,7 @@ class TestSkLearnModel:
             protocol (str): Communication protocol (REST or gRPC).
             root_dir (str): Test root directory path.
         """
-        input_query = SKLEARN_REST_INPUT_QUERY if protocol == Protocols.REST else SKLEARN_GRPC_INPUT_QUERY
+        input_query = XGBOOST_REST_INPUT_QUERY if protocol == Protocols.REST else XGBOOST_GRPC_INPUT_QUERY
 
         validate_inference_request(
             pod_name=mlserver_pod_resource.name,
