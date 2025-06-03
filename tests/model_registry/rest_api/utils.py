@@ -29,8 +29,10 @@ def execute_model_registry_patch_command(
         raise
 
 
-def execute_model_registry_post_command(url: str, headers: dict[str, str], data_json: dict[str, Any]) -> dict[Any, Any]:
-    resp = requests.post(url=url, json=data_json, headers=headers, verify=False, timeout=60)
+def execute_model_registry_post_command(
+    url: str, headers: dict[str, str], data_json: dict[str, Any], verify: bool | str = False
+) -> dict[Any, Any]:
+    resp = requests.post(url=url, json=data_json, headers=headers, verify=verify, timeout=60)
     LOGGER.info(f"url: {url}, status code: {resp.status_code}, rep: {resp.text}")
 
     if resp.status_code not in [200, 201]:
@@ -60,13 +62,17 @@ def execute_model_registry_get_command(url: str, headers: dict[str, str]) -> dic
 
 
 def register_model_rest_api(
-    model_registry_rest_url: str, model_registry_rest_headers: dict[str, str], data_dict: dict[str, Any]
+    model_registry_rest_url: str,
+    model_registry_rest_headers: dict[str, str],
+    data_dict: dict[str, Any],
+    verify: bool | str = False,
 ) -> dict[str, Any]:
     # register a model
     register_model = execute_model_registry_post_command(
         url=f"{model_registry_rest_url}{MODEL_REGISTRY_BASE_URI}registered_models",
         headers=model_registry_rest_headers,
         data_json=data_dict["register_model_data"],
+        verify=verify,
     )
     # create associated model version:
     model_data = data_dict["model_version_data"]
@@ -75,12 +81,14 @@ def register_model_rest_api(
         url=f"{model_registry_rest_url}{MODEL_REGISTRY_BASE_URI}model_versions",
         headers=model_registry_rest_headers,
         data_json=model_data,
+        verify=verify,
     )
     # create associated model artifact
     model_artifact = execute_model_registry_post_command(
         url=f"{model_registry_rest_url}{MODEL_REGISTRY_BASE_URI}model_versions/{model_version['id']}/artifacts",
         headers=model_registry_rest_headers,
         data_json=data_dict["model_artifact_data"],
+        verify=verify,
     )
     LOGGER.info(
         f"Successfully registered model: {register_model}, with version: {model_version} and "

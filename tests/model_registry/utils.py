@@ -10,7 +10,7 @@ from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 from kubernetes.dynamic.exceptions import NotFoundError
-from tests.model_registry.constants import MR_DB_IMAGE_DIGEST, ISTIO_CONFIG_DICT, DB_RESOURCES_NAME
+from tests.model_registry.constants import MR_DB_IMAGE_DIGEST, ISTIO_CONFIG_DICT, DB_RESOURCES_NAME, SECURE_MR_NAME
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
 from utilities.constants import Protocols, Annotations
 from ocp_resources.secret import Secret
@@ -277,13 +277,12 @@ def create_secure_model_registry(
     Helper to create a ModelRegistry with secure MySQL connection.
     Returns a context manager yielding the ModelRegistry resource.
     """
-    mr_name = "secure-db-mr"
     return ModelRegistry(
-        name=mr_name,
+        name=SECURE_MR_NAME,
         namespace=model_registry_namespace,
         label={
-            Annotations.KubernetesIo.NAME: mr_name,
-            Annotations.KubernetesIo.INSTANCE: mr_name,
+            Annotations.KubernetesIo.NAME: SECURE_MR_NAME,
+            Annotations.KubernetesIo.INSTANCE: SECURE_MR_NAME,
             Annotations.KubernetesIo.PART_OF: "model-registry-operator",
             Annotations.KubernetesIo.CREATED_BY: "model-registry-operator",
         },

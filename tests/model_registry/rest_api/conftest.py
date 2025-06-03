@@ -1,22 +1,23 @@
 from typing import Any, Generator
-
+import os
+import base64
+from kubernetes.dynamic import DynamicClient
 import pytest
-
 from tests.model_registry.rest_api.constants import MODEL_REGISTRY_BASE_URI
 from tests.model_registry.rest_api.utils import register_model_rest_api, execute_model_registry_patch_command
 from utilities.constants import Protocols
 from ocp_resources.deployment import Deployment
 from ocp_resources.service import Service
 from tests.model_registry.utils import get_model_registry_deployment_template_dict, create_secure_model_registry
-
-from tests.model_registry.constants import (
-    DB_RESOURCES_NAME,
-    CA_CONFIGMAP_NAME,
-    CA_MOUNT_PATH,
-    CA_FILE_PATH,
-)
+from tests.model_registry.constants import DB_RESOURCES_NAME, CA_MOUNT_PATH, CA_FILE_PATH, CA_CONFIGMAP_NAME
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
+from ocp_resources.config_map import ConfigMap
+from simple_logger.logger import get_logger
+from ocp_resources.model_registry import ModelRegistry
+
+
+LOGGER = get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")
@@ -61,36 +62,80 @@ def updated_model_artifact(
     )
 
 
+@pytest.fixture(scope="function")
+def patch_invalid_ca(
+    admin_client: DynamicClient,
+    model_registry_namespace: str,
+    request: pytest.FixtureRequest,
+) -> Generator[str, Any, Any]:
+    """
+    Patches the odh-trusted-ca-bundle ConfigMap with an invalid CA certificate.
+    """
+    ca_configmap_name = request.param.get("ca_configmap_name", "odh-trusted-ca-bundle")
+    ca_file_name = request.param.get("ca_file_name", "invalid-ca.crt")
+    ca_file_path = f"{CA_MOUNT_PATH}/{ca_file_name}"
+    ca_data = {ca_file_name: "-----BEGIN CERTIFICATE-----\nINVALIDCERTIFICATE\n-----END CERTIFICATE-----"}
+    ca_configmap = ConfigMap(
+        client=admin_client,
+        name=ca_configmap_name,
+        namespace=model_registry_namespace,
+    )
+    patch = {
+        "metadata": {
+            "name": ca_configmap_name,
+            "namespace": model_registry_namespace,
+        },
+        "data": ca_data,
+    }
+    with ResourceEditor(patches={ca_configmap: patch}):
+        yield ca_file_path
+
+
+@pytest.fixture(scope="function")
+def model_registry_instance_ca(
+    model_registry_namespace: str,
+    model_registry_db_secret: Secret,
+    model_registry_db_service: Service,
+    patch_invalid_ca: str,
+) -> Generator[ModelRegistry, Any, Any]:
+    """
+    Deploys a Model Registry instance with a custom CA certificate.
+    """
+    ca_file_path = patch_invalid_ca
+    mr = create_secure_model_registry(
+        model_registry_namespace=model_registry_namespace,
+        model_registry_db_service=model_registry_db_service,
+        model_registry_db_secret=model_registry_db_secret,
+        ca_file_path=ca_file_path,
+    )
+    yield mr
+
+
 @pytest.fixture(scope="class")
 def deploy_secure_mysql_and_mr(
     model_registry_namespace: str,
     model_registry_db_secret: Secret,
     model_registry_db_service: Service,
     model_registry_db_deployment: Deployment,
-) -> Generator[None, None, None]:
+) -> Generator[ModelRegistry, None, None]:
     """
-    Fixture to deploy MySQL with SSL/TLS and a Model Registry configured to use a secure DB connection.
+    Deploys MySQL with SSL/TLS and a Model Registry configured to use a secure DB connection.
 
-    Parameters:
-        admin_client (object): Kubernetes/OpenShift admin client for resource operations.
-        model_registry_namespace (str): Namespace where resources are deployed.
-        model_registry_db_secret (Secret): Secret resource for MySQL credentials.
-        model_registry_db_service (Service): Service resource for MySQL DB.
-        model_registry_db_deployment (Deployment): Deployment resource for MySQL DB.
+    Ensures the odh-trusted-ca-bundle ConfigMap is mounted in both MySQL and Model Registry deployments,
+    and the --ssl-ca argument is set to the correct path.
     """
-
     mysql_template = get_model_registry_deployment_template_dict(
         secret_name=model_registry_db_secret.name,
         resource_name=DB_RESOURCES_NAME,
     )
 
-    ssl_ca_arg = f"--ssl-ca={CA_FILE_PATH}"
-    ca_volume_mount = {"mountPath": CA_MOUNT_PATH, "name": CA_CONFIGMAP_NAME, "readOnly": True}
-    ca_volume = {"name": CA_CONFIGMAP_NAME, "configMap": {"name": CA_CONFIGMAP_NAME}}
-
-    mysql_template["spec"]["containers"][0]["args"] += [ssl_ca_arg]
-    mysql_template["spec"]["containers"][0]["volumeMounts"].append(ca_volume_mount)
-    mysql_template["spec"]["volumes"].append(ca_volume)
+    mysql_template["spec"]["containers"][0]["args"].append(f"--ssl-ca={CA_FILE_PATH}")
+    mysql_template["spec"]["containers"][0]["volumeMounts"].append({
+        "mountPath": CA_MOUNT_PATH,
+        "name": CA_CONFIGMAP_NAME,
+        "readOnly": True,
+    })
+    mysql_template["spec"]["volumes"].append({"name": CA_CONFIGMAP_NAME, "configMap": {"name": CA_CONFIGMAP_NAME}})
 
     patch = {"spec": {"template": mysql_template["spec"]}}
 
@@ -103,3 +148,39 @@ def deploy_secure_mysql_and_mr(
         ) as mr:
             mr.wait_for_condition(condition="Available", status="True")
             yield mr
+
+
+@pytest.fixture
+def local_ca_bundle(request: pytest.FixtureRequest, admin_client: DynamicClient) -> Generator[str, Any, Any]:
+    """
+    Creates a local CA bundle file by fetching the CA bundle from a ConfigMap and appending the router CA from a Secret.
+    """
+    namespace = getattr(request, "param", {}).get("namespace", "test-model-registry-namespace")
+    ca_bundle_path = getattr(request, "param", {}).get("ca_bundle_path", "ca-bundle.crt")
+    cert_name = getattr(request, "param", {}).get("cert_name", "ca-bundle.crt")
+
+    cm = ConfigMap(client=admin_client, name="odh-trusted-ca-bundle", namespace=namespace)
+    ca_bundle_content = cm.instance.data.get(cert_name)
+    with open(ca_bundle_path, "w") as f:
+        f.write(ca_bundle_content)
+
+    try:
+        router_secret = Secret(client=admin_client, name="router-ca", namespace="openshift-ingress-operator")
+        router_ca_b64 = router_secret.instance.data.get("tls.crt")
+        if router_ca_b64:
+            router_ca_content = base64.b64decode(router_ca_b64).decode("utf-8")
+            with open(ca_bundle_path, "r") as bundle:
+                bundle_content = bundle.read()
+            if router_ca_content not in bundle_content:
+                with open(ca_bundle_path, "a") as bundle_append:
+                    bundle_append.write("\n" + router_ca_content)
+    except Exception:
+        pytest.fail(
+            "router-ca secret not found in openshift-ingress-operator. Proceeding without appending ingress CA."
+        )
+    yield ca_bundle_path
+
+    try:
+        os.remove(ca_bundle_path)
+    except FileNotFoundError:
+        pass
