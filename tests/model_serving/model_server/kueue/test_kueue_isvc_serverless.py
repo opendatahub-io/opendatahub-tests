@@ -63,7 +63,7 @@ max_replicas = 2
 class TestKueueInferenceServiceServerless:
     """Test inference service with serverless deployment"""
 
-    def test_kueue_inference_service_model_mesh(
+    def test_kueue_inference_service_serverless(
         self,
         admin_client,
         kueue_cluster_queue_from_template,

@@ -120,4 +120,4 @@ class TestKueueInferenceServiceRaw:
             deployment.wait_for_replicas(deployed=True, timeout=Timeout.TIMEOUT_30SEC)
         except TimeoutExpiredError:
             if deployment.instance.status.availableReplicas != 1:
-                raise DeploymentValidationError("Deployment should have 1 available replica")
+                raise DeploymentValidationError("Deployment should have 1 available replica") from None
