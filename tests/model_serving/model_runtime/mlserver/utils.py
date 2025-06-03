@@ -91,22 +91,12 @@ def send_rest_request(url: str, input_data: dict[str, Any]) -> Any:
     Raises:
         requests.HTTPError: If the response contains an HTTP error status.
     """
-    response = requests.post(
-        url=url,
-        json=input_data,
-        verify=False,
-        timeout=60
-    )
+    response = requests.post(url=url, json=input_data, verify=False, timeout=60)
     response.raise_for_status()
     return response.json()
 
 
-def send_grpc_request(
-    url: str,
-    input_data: dict[str, Any],
-    root_dir: str,
-    insecure: bool = False
-) -> Any:
+def send_grpc_request(url: str, input_data: dict[str, Any], root_dir: str, insecure: bool = False) -> Any:
     """
     Sends a gRPC request to the specified URL using grpcurl with the given input data.
 
@@ -128,32 +118,25 @@ def send_grpc_request(
     args = [
         "grpcurl",
         "-insecure" if insecure else "-plaintext",
-        "-import-path", proto_import_path,
-        "-proto", grpc_proto_path,
-        "-d", input_str,
+        "-import-path",
+        proto_import_path,
+        "-proto",
+        grpc_proto_path,
+        "-d",
+        input_str,
         url,
         grpc_method,
     ]
 
     try:
-        result = subprocess.run(
-            args=args,
-            capture_output=True,
-            text=True,
-            check=True
-        )
+        result = subprocess.run(args=args, capture_output=True, text=True, check=True)
         return json.loads(result.stdout)
     except subprocess.CalledProcessError as e:
         return f"gRPC request failed: {e.stderr or e.stdout}"
 
 
 def run_mlserver_inference(
-    pod_name: str,
-    isvc: InferenceService,
-    input_data: dict[str, Any],
-    model_version: str,
-    protocol: str,
-    root_dir: str
+    pod_name: str, isvc: InferenceService, input_data: dict[str, Any], model_version: str, protocol: str, root_dir: str
 ) -> Any:
     """
     Run inference against an MLServer-hosted model using either REST or gRPC protocol.
@@ -175,9 +158,7 @@ def run_mlserver_inference(
         - gRPC calls use `grpcurl` and require the appropriate `.proto` files.
         - RAW deployments use port-forwarding; SERVERLESS assumes accessible endpoints.
     """
-    deployment_mode = isvc.instance.metadata.annotations.get(
-        "serving.kserve.io/deploymentMode"
-    )
+    deployment_mode = isvc.instance.metadata.annotations.get("serving.kserve.io/deploymentMode")
     model_name = isvc.instance.metadata.name
     version_suffix = f"/versions/{model_version}" if model_version else ""
     rest_endpoint = f"/v2/models/{model_name}{version_suffix}/infer"
@@ -189,17 +170,8 @@ def run_mlserver_inference(
 
     if deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
         port = MLSERVER_REST_PORT if is_rest else MLSERVER_GRPC_PORT
-        with portforward.forward(
-            pod_or_service=pod_name,
-            namespace=isvc.namespace,
-            from_port=port,
-            to_port=port
-        ):
-            host = (
-                f"{LOCAL_HOST_URL}:{port}"
-                if is_rest
-                else get_grpc_url(base_url=LOCAL_HOST_URL, port=port)
-            )
+        with portforward.forward(pod_or_service=pod_name, namespace=isvc.namespace, from_port=port, to_port=port):
+            host = f"{LOCAL_HOST_URL}:{port}" if is_rest else get_grpc_url(base_url=LOCAL_HOST_URL, port=port)
             return (
                 send_rest_request(f"{host}{rest_endpoint}", input_data)
                 if is_rest
@@ -211,10 +183,7 @@ def run_mlserver_inference(
         if is_rest:
             return send_rest_request(f"{base_url}{rest_endpoint}", input_data)
         else:
-            grpc_url = get_grpc_url(
-                base_url=base_url,
-                port=MLSERVER_GRPC_REMOTE_PORT
-            )
+            grpc_url = get_grpc_url(base_url=base_url, port=MLSERVER_GRPC_REMOTE_PORT)
             return send_grpc_request(grpc_url, input_data, root_dir, insecure=True)
 
     return f"Invalid deployment_mode {deployment_mode}"
