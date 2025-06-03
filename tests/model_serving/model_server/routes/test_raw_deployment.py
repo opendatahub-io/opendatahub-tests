@@ -138,6 +138,7 @@ class TestRestRawDeploymentRoutesTimeout:
             use_default_query=True,
         )
 
+    @pytest.mark.dependency(depends=["test_rest_raw_deployment_exposed_route"])
     def test_rest_raw_deployment_exposed_route_with_timeout(self, admin_client, s3_models_inference_service):
         """Test HTTP inference using exposed (external) route fails when timeout is set too low"""
         ResourceEditor(
@@ -151,7 +152,7 @@ class TestRestRawDeploymentRoutesTimeout:
         ).update()
 
         # Wait for route to be updated with the annotation and timeout to be applied
-        time.sleep(seconds=10)
+        time.sleep(10)
 
         with pytest.raises(InferenceResponseError) as ire:
             verify_inference_response(
@@ -255,7 +256,8 @@ class TestGrpcRawDeploymentTimeout:
             use_default_query=True,
         )
 
-    def test_grpc_raw_deployment_exposed_route_with_timeout(self, s3_models_inference_service):
+    @pytest.mark.dependency(depends=["test_rest_raw_deployment_exposed_route"])
+    def test_grpc_raw_deployment_exposed_route_with_timeout(self, test_grpc_raw_deployment_exposed_route):
         """Test GRPC inference using exposed (external) route fails when timeout is set too low"""
         ResourceEditor(
             patches={
@@ -268,7 +270,7 @@ class TestGrpcRawDeploymentTimeout:
         ).update()
 
         # Wait for route to be updated with the annotation and timeout to be applied
-        time.sleep(seconds=10)
+        time.sleep(10)
 
         with pytest.raises(InferenceResponseError) as ire:
             verify_inference_response(

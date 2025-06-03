@@ -146,7 +146,7 @@ class TestRestServerlessRoutesTimeout:
         ).update()
 
         # Wait for route to be updated with the annotation
-        time.sleep(seconds=10)
+        time.sleep(10)
 
         with pytest.raises(TimeoutExpiredError):
             verify_inference_response(
