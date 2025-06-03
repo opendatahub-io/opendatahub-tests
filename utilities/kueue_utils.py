@@ -3,22 +3,27 @@ from typing import Optional, Dict, Any, List, Generator
 from ocp_resources.resource import NamespacedResource, Resource, MissingRequiredArgumentError
 from kubernetes.dynamic import DynamicClient
 
+
 class ResourceFlavor(Resource):
     api_group = "kueue.x-k8s.io"
+
     def __init__(self, **kwargs):
         """
         ResourceFlavor object
         """
         super().__init__(
-         **kwargs,
+            **kwargs,
         )
+
     def to_dict(self) -> None:
         super().to_dict()
         if not self.kind_dict and not self.yaml_file:
             self.res["spec"] = {}
 
+
 class LocalQueue(NamespacedResource):
     api_group = "kueue.x-k8s.io"
+
     def __init__(
         self,
         cluster_queue: str,
@@ -41,8 +46,10 @@ class LocalQueue(NamespacedResource):
             _spec = self.res["spec"]
             _spec["clusterQueue"] = self.cluster_queue
 
+
 class ClusterQueue(Resource):
     api_group = "kueue.x-k8s.io"
+
     def __init__(
         self,
         namespace_selector: Optional[Dict[str, Any]] = None,
@@ -73,7 +80,6 @@ class ClusterQueue(Resource):
                 _spec["resourceGroups"] = self.resource_groups
 
 
-
 @contextmanager
 def create_resource_flavor(
     client: DynamicClient,
@@ -85,13 +91,14 @@ def create_resource_flavor(
     """
     try:
         with ResourceFlavor(
-        client=client,
-        name=name,
+            client=client,
+            name=name,
             teardown=teardown,
         ) as resource_flavor:
             yield resource_flavor
     finally:
         resource_flavor.remove_fin
+
 
 @contextmanager
 def create_local_queue(
@@ -112,6 +119,7 @@ def create_local_queue(
         teardown=teardown,
     ) as local_queue:
         yield local_queue
+
 
 @contextmanager
 def create_cluster_queue(
