@@ -121,6 +121,7 @@ class TestRestServerlessRoutes:
     indirect=True,
 )
 class TestRestServerlessRoutesTimeout:
+    @pytest.mark.dependency(name="test_rest_serverless_external_route")
     def test_rest_serverless_external_route(self, s3_models_inference_service):
         """Test HTTP inference using exposed (external) route"""
         verify_inference_response(
@@ -132,7 +133,7 @@ class TestRestServerlessRoutesTimeout:
             use_default_query=True,
         )
 
-    @pytest.mark.dependency(name="test_rest_serverless_external_route")
+    @pytest.mark.dependency(depends=["test_rest_serverless_external_route"])
     def test_rest_serverless_external_route_with_timeout(self, s3_models_inference_service):
         """Test HTTP inference using external route fails when timeout is set too low"""
         ResourceEditor(
