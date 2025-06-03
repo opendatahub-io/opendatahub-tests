@@ -54,9 +54,7 @@ def root_dir(pytestconfig: pytest.Config) -> Any:
 
 
 @pytest.fixture(scope="class")
-def mlserver_grpc_serving_runtime_template(
-    admin_client: DynamicClient
-) -> Generator[Template, None, None]:
+def mlserver_grpc_serving_runtime_template(admin_client: DynamicClient) -> Generator[Template, None, None]:
     """
     Provides a gRPC serving runtime Template for MLServer within the test class scope.
 
@@ -76,9 +74,7 @@ def mlserver_grpc_serving_runtime_template(
 
 
 @pytest.fixture(scope="class")
-def mlserver_rest_serving_runtime_template(
-    admin_client: DynamicClient
-) -> Generator[Template, None, None]:
+def mlserver_rest_serving_runtime_template(admin_client: DynamicClient) -> Generator[Template, None, None]:
     """
     Provides a REST serving runtime Template for MLServer within the test class scope.
 
@@ -205,10 +201,7 @@ def mlserver_inference_service(
 
 
 @pytest.fixture(scope="class")
-def mlserver_model_service_account(
-    admin_client: DynamicClient,
-    kserve_s3_secret: Secret
-) -> ServiceAccount:
+def mlserver_model_service_account(admin_client: DynamicClient, kserve_s3_secret: Secret) -> ServiceAccount:
     """
     Creates and yields a ServiceAccount linked to the provided S3 secret for MLServer models.
 
