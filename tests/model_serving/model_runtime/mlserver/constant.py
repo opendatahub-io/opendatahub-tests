@@ -84,3 +84,28 @@ SKLEARN_GRPC_INPUT_QUERY: dict[str, Any] = {
         }
     ],
 }
+
+XGBOOST_REST_INPUT_QUERY: dict[str, Any] = {
+    "id": "xgboost-iris",
+    "inputs": [
+        {
+            "name": "xgboost-iris-input-0",
+            "shape": [2, 4],
+            "datatype": "FP32",
+            "data": [[6.8, 2.8, 4.8, 1.4], [6, 3.4, 4.5, 1.6]],
+        }
+    ],
+}
+
+XGBOOST_GRPC_INPUT_QUERY: dict[str, Any] = {
+    "model_name": "xgboost-iris",
+    "model_version": "v1.0.0",
+    "inputs": [
+        {
+            "name": "xgboost-iris-input-0",
+            "datatype": "FP32",
+            "shape": [2, 4],
+            "contents": {"fp32_contents": [6.8, 2.8, 4.8, 1.4, 6, 3.4, 4.5, 1.6]},
+        }
+    ],
+}
