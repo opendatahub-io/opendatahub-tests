@@ -267,7 +267,6 @@ def generate_namespace_name(file_path: str) -> str:
 
 
 def create_model_registry_instance(
-    admin_client: DynamicClient,
     namespace: str,
     name: str,
     labels: dict[str, str],
