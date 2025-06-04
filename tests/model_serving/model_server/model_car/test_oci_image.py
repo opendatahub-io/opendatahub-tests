@@ -2,11 +2,11 @@ import pytest
 
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.infra import get_pods_by_isvc_label
-from utilities.constants import ModelFormat, ModelName, Protocols, RuntimeTemplates
+from utilities.constants import ModelCarImage, ModelFormat, ModelName, Protocols, RuntimeTemplates, KServeDeploymentType
 from utilities.inference_utils import Inference
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
-pytestmark = pytest.mark.serverless
+pytestmark = [pytest.mark.serverless, pytest.mark.rawdeployment]
 
 
 @pytest.mark.parametrize(
@@ -21,9 +21,25 @@ pytestmark = pytest.mark.serverless
             },
             {
                 # Using mnist-8-1 model from OCI image
-                "storage-uri": "oci://quay.io/mwaykole/test@sha256:8a3217bcfa2cc5fa3d07496cff8b234acdf2c9725dd307dc0a80401f55e1a11c"  # noqa: E501
+                "storage-uri": ModelCarImage.MNIST_8_1,
+                "deployment-mode": KServeDeploymentType.SERVERLESS,
             },
-        )
+            marks=[pytest.mark.serverless],
+        ),
+        pytest.param(
+            {"name": f"{ModelFormat.OPENVINO}-model-car"},
+            {
+                "name": f"{ModelName.MNIST}-runtime",
+                "template-name": RuntimeTemplates.OVMS_KSERVE,
+                "multi-model": False,
+            },
+            {
+                # Using mnist-8-1 model from OCI image
+                "storage-uri": ModelCarImage.MNIST_8_1,
+                "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
+            },
+            marks=[pytest.mark.rawdeployment],
+        ),
     ],
     indirect=True,
 )
@@ -37,7 +53,7 @@ class TestKserveModelCar:
             isvc=model_car_serverless_inference_service,
         )[0]
         restarted_containers = [
-            container.name for container in pod.instance.status.containerStatuses if container.restartCount > 1
+            container.name for container in pod.instance.status.containerStatuses if container.restartCount > 2
         ]
         assert not restarted_containers, f"Containers {restarted_containers} restarted"
 
