@@ -187,6 +187,11 @@ class Labels:
     class Nvidia:
         NVIDIA_COM_GPU: str = "nvidia.com/gpu"
 
+    class Kueue:
+        # TODO: Change to kueue.openshift.io/managed once it's working
+        MANAGED: str = "kueue-managed"
+        # MANAGED: str = "kueue.openshift.io/managed"
+
 
 class Timeout:
     TIMEOUT_30SEC: int = 30

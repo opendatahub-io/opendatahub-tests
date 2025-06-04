@@ -127,7 +127,7 @@ def create_ns(
         namespace_kwargs["label"][Labels.OpenDataHub.DASHBOARD] = "true"  # type: ignore
 
     if add_kueue_label:
-        namespace_kwargs["label"]["kueue-managed"] = "true"  # type: ignore
+        namespace_kwargs["label"][Labels.Kueue.MANAGED] = "true"  # type: ignore
 
     if unprivileged_client:
         with ProjectRequest(name=name, client=unprivileged_client, teardown=teardown):
