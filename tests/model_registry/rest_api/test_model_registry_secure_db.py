@@ -41,9 +41,9 @@ class TestModelRegistryWithSecureDB:
         [{"ca_configmap_name": "odh-trusted-ca-bundle", "ca_file_name": "invalid-ca.crt"}],
         indirect=True,
     )
+    @pytest.mark.smoke
     def test_register_model_with_invalid_ca(
         self: Self,
-        patch_invalid_ca: dict[str, str],
         model_registry_rest_url: str,
         model_registry_rest_headers: dict[str, str],
     ) -> None:
@@ -71,6 +71,7 @@ class TestModelRegistryWithSecureDB:
         [{"cert_name": "ca-bundle.crt"}, {"cert_name": "odh-ca-bundle.crt"}],
         indirect=True,
     )
+    @pytest.mark.smoke
     def test_register_model_with_default_ca(
         self: Self,
         model_registry_rest_url: str,

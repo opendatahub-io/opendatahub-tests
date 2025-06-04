@@ -113,11 +113,10 @@ def model_registry_instance_ca(
     """
     Deploys a Model Registry instance with a custom CA certificate.
     """
-    ca_file_path = patch_invalid_ca
     mysql_config = make_mysql_config(
         db_service=model_registry_db_service,
         db_secret=model_registry_db_secret,
-        ssl_ca=ca_file_path,
+        ssl_ca=patch_invalid_ca,
     )
     with create_model_registry_instance(
         namespace=model_registry_namespace,
@@ -192,7 +191,7 @@ def local_ca_bundle(request: pytest.FixtureRequest, admin_client: DynamicClient)
 
     cm = ConfigMap(client=admin_client, name="odh-trusted-ca-bundle", namespace=namespace)
     ca_bundle_content = cm.instance.data.get(cert_name)
-    with open(ca_bundle_path, "w") as f:
+    with open(ca_bundle_path, "w", encoding="utf-8") as f:
         f.write(ca_bundle_content)
 
     try:
@@ -200,15 +199,13 @@ def local_ca_bundle(request: pytest.FixtureRequest, admin_client: DynamicClient)
         router_ca_b64 = router_secret.instance.data.get("tls.crt")
         if router_ca_b64:
             router_ca_content = base64.b64decode(router_ca_b64).decode("utf-8")
-            with open(ca_bundle_path, "r") as bundle:
+            with open(ca_bundle_path, "r", encoding="utf-8") as bundle:
                 bundle_content = bundle.read()
             if router_ca_content not in bundle_content:
-                with open(ca_bundle_path, "a") as bundle_append:
+                with open(ca_bundle_path, "a", encoding="utf-8") as bundle_append:
                     bundle_append.write("\n" + router_ca_content)
-    except Exception:
-        pytest.fail(
-            "router-ca secret not found in openshift-ingress-operator. Proceeding without appending ingress CA."
-        )
+    except Exception as e:
+        pytest.fail(f"router-ca secret not found in openshift-ingress-operator. Error: {e}")
     yield ca_bundle_path
 
     try:
