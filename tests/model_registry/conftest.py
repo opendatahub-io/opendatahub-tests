@@ -9,7 +9,7 @@ from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 
-from ocp_resources.model_registry import ModelRegistry
+from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from schemathesis.specs.openapi.schemas import BaseOpenAPISchema
 from schemathesis.generation.stateful.state_machine import APIStateMachine
 from schemathesis.core.transport import Response
@@ -29,6 +29,8 @@ from tests.model_registry.constants import (
     DB_RESOURCES_NAME,
     MODEL_REGISTRY_DB_SECRET_STR_DATA,
     MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
+    OAUTH_PROXY_CONFIG_DICT,
+    MODEL_REGISTRY_STANDARD_LABELS,
 )
 from utilities.constants import Labels
 from tests.model_registry.utils import (
@@ -37,8 +39,9 @@ from tests.model_registry.utils import (
     get_model_registry_deployment_template_dict,
     get_model_registry_db_label_dict,
     wait_for_pods_running,
+    create_model_registry_instance,
 )
-from utilities.constants import Annotations, Protocols, DscComponents
+from utilities.constants import Protocols, DscComponents
 from model_registry import ModelRegistry as ModelRegistryClient
 from semver import Version
 from utilities.infra import get_product_version
@@ -145,36 +148,56 @@ def model_registry_db_deployment(
 
 @pytest.fixture(scope="class")
 def model_registry_instance(
-    admin_client: DynamicClient,
     model_registry_namespace: str,
-    model_registry_db_deployment: Deployment,
-    model_registry_db_secret: Secret,
-    model_registry_db_service: Service,
+    model_registry_mysql_config: dict[str, Any],
 ) -> Generator[ModelRegistry, Any, Any]:
-    with ModelRegistry(
-        name=MR_INSTANCE_NAME,
+    """Creates a model registry instance with service mesh configuration."""
+    with create_model_registry_instance(
         namespace=model_registry_namespace,
-        label={
-            Annotations.KubernetesIo.NAME: MR_INSTANCE_NAME,
-            Annotations.KubernetesIo.INSTANCE: MR_INSTANCE_NAME,
-            Annotations.KubernetesIo.PART_OF: MR_OPERATOR_NAME,
-            Annotations.KubernetesIo.CREATED_BY: MR_OPERATOR_NAME,
-        },
+        name=MR_INSTANCE_NAME,
+        labels=MODEL_REGISTRY_STANDARD_LABELS,
         grpc={},
         rest={},
         istio=ISTIO_CONFIG_DICT,
-        mysql={
-            "host": f"{model_registry_db_deployment.name}.{model_registry_db_deployment.namespace}.svc.cluster.local",
-            "database": model_registry_db_secret.string_data["database-name"],
-            "passwordSecret": {"key": "database-password", "name": DB_RESOURCES_NAME},
-            "port": 3306,
-            "skipDBCreation": False,
-            "username": model_registry_db_secret.string_data["database-user"],
-        },
+        mysql=model_registry_mysql_config,
         wait_for_resource=True,
     ) as mr:
         mr.wait_for_condition(condition="Available", status="True")
         yield mr
+
+
+@pytest.fixture(scope="class")
+def model_registry_instance_oauth_proxy(
+    model_registry_namespace: str,
+    model_registry_mysql_config: dict[str, Any],
+) -> Generator[ModelRegistry, Any, Any]:
+    """Creates a model registry instance with oauth proxy configuration."""
+    with create_model_registry_instance(
+        namespace=model_registry_namespace,
+        name=MR_INSTANCE_NAME,
+        labels=MODEL_REGISTRY_STANDARD_LABELS,
+        grpc={},
+        rest={},
+        oauth_proxy=OAUTH_PROXY_CONFIG_DICT,
+        mysql=model_registry_mysql_config,
+        wait_for_resource=True,
+    ) as mr:
+        mr.wait_for_condition(condition="Available", status="True")
+        yield mr
+
+
+@pytest.fixture(scope="class")
+def model_registry_mysql_config(
+    model_registry_db_deployment: Deployment, model_registry_db_secret: Secret
+) -> dict[str, Any]:
+    return {
+        "host": f"{model_registry_db_deployment.name}.{model_registry_db_deployment.namespace}.svc.cluster.local",
+        "database": model_registry_db_secret.string_data["database-name"],
+        "passwordSecret": {"key": "database-password", "name": model_registry_db_deployment.name},
+        "port": 3306,
+        "skipDBCreation": False,
+        "username": model_registry_db_secret.string_data["database-user"],
+    }
 
 
 @pytest.fixture(scope="class")
@@ -183,8 +206,41 @@ def model_registry_instance_service(
     model_registry_namespace: str,
     model_registry_instance: ModelRegistry,
 ) -> Service:
+    """
+    Get the service for the regular model registry instance.
+    Args:
+        admin_client: The admin client
+        model_registry_namespace: The namespace where the model registry is deployed
+        model_registry_instance: The model registry instance to get the service for
+    Returns:
+        Service: The service for the model registry instance
+    """
     return get_mr_service_by_label(
-        client=admin_client, ns=Namespace(name=model_registry_namespace), mr_instance=model_registry_instance
+        client=admin_client,
+        ns=Namespace(name=model_registry_namespace),
+        mr_instance=model_registry_instance,
+    )
+
+
+@pytest.fixture(scope="class")
+def model_registry_instance_oauth_service(
+    admin_client: DynamicClient,
+    model_registry_namespace: str,
+    model_registry_instance_oauth_proxy: ModelRegistry,
+) -> Service:
+    """
+    Get the service for the OAuth proxy model registry instance.
+    Args:
+        admin_client: The admin client
+        model_registry_namespace: The namespace where the model registry is deployed
+        model_registry_instance_oauth_proxy: The OAuth proxy model registry instance
+    Returns:
+        Service: The service for the OAuth proxy model registry instance
+    """
+    return get_mr_service_by_label(
+        client=admin_client,
+        ns=Namespace(name=model_registry_namespace),
+        mr_instance=model_registry_instance_oauth_proxy,
     )
 
 
@@ -192,6 +248,13 @@ def model_registry_instance_service(
 def model_registry_instance_rest_endpoint(
     model_registry_instance_service: Service,
 ) -> str:
+    """
+    Get the REST endpoint for the model registry instance.
+    Args:
+        model_registry_instance_service: The service for the model registry instance
+    Returns:
+        str: The REST endpoint for the model registry instance
+    """
     return get_endpoint_from_mr_service(svc=model_registry_instance_service, protocol=Protocols.REST)
 
 
@@ -262,9 +325,29 @@ def updated_dsc_component_state_scope_class(
 
 
 @pytest.fixture(scope="class")
-def model_registry_client(current_client_token: str, model_registry_instance_rest_endpoint: str) -> ModelRegistryClient:
-    # address and port need to be split in the client instantiation
-    server, port = model_registry_instance_rest_endpoint.split(":")
+def model_registry_client(
+    request: FixtureRequest,
+    current_client_token: str,
+) -> ModelRegistryClient:
+    """
+    Get a client for the model registry instance.
+    Args:
+        request: The pytest request object
+        current_client_token: The current client token
+    Returns:
+        ModelRegistryClient: A client for the model registry instance
+    """
+    # Get the service fixture name from the request
+    service_fixture = getattr(request, "param", {}).get("service_fixture", "model_registry_instance_service")
+
+    # Get the service from the fixture
+    service = request.getfixturevalue(argname=service_fixture)
+
+    # Get the REST endpoint
+    rest_endpoint = get_endpoint_from_mr_service(svc=service, protocol=Protocols.REST)
+
+    # Create the client
+    server, port = rest_endpoint.split(":")
     return ModelRegistryClient(
         server_address=f"{Protocols.HTTPS}://{server}",
         port=port,
