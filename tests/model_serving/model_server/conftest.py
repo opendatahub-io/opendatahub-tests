@@ -35,8 +35,6 @@ from utilities.infra import (
 )
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
-SERVER_ADDRESS = "http://thanos-querier.openshift-monitoring.svc:9092"
-
 LOGGER = get_logger(name=__name__)
 
 

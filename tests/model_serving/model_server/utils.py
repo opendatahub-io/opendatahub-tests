@@ -267,6 +267,8 @@ def run_vllm_concurrent_load(
     response_snapshot: Any,
     chat_query: list[list[dict[str, str]]],
     completion_query: list[dict[str, str]],
+    num_concurrent: int = 5,
+    duration: int = 120,
 ) -> None:
     """
     Test VLLM concurrent load.
@@ -278,8 +280,6 @@ def run_vllm_concurrent_load(
         chat_query: Chat query
         completion_query: Completion query
     """
-    num_concurrent = 5
-    duration = 30
 
     def make_request() -> None:
         validate_raw_openai_inference_request(
@@ -297,15 +297,17 @@ def run_vllm_concurrent_load(
             concurrent.futures.wait(fs=futures)
 
 
-def run_ovms_concurrent_load(isvc: InferenceService) -> None:
+def run_ovms_concurrent_load(
+    isvc: InferenceService,
+    num_concurrent: int = 5,
+    duration: int = 120,
+) -> None:
     """
     Test OVMS concurrent load.
 
     Args:
         isvc: InferenceService instance
     """
-    num_concurrent = 2
-    duration = 10
 
     def make_request() -> None:
         verify_inference_response(

@@ -287,3 +287,5 @@ vLLM_CONFIG: dict[str, dict[str, Any]] = {
 }
 
 RHOAI_OPERATOR_NAMESPACE = "redhat-ods-operator"
+
+THANOS_QUERIER_ADDRESS = "https://thanos-querier.openshift-monitoring.svc:9092"

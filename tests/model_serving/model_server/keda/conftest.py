@@ -25,10 +25,8 @@ from utilities.constants import (
 )
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
+from utilities.constants import THANOS_QUERIER_ADDRESS
 from syrupy.extensions.json import JSONSnapshotExtension
-
-
-SERVER_ADDRESS = "http://thanos-querier.openshift-monitoring.svc:9092"
 
 LOGGER = get_logger(name=__name__)
 
@@ -147,8 +145,19 @@ def keda_vllm_inference_service(
                 "external": {
                     "metric": {
                         "backend": "prometheus",
-                        "serverAddress": SERVER_ADDRESS,
-                        "query": "vllm:num_requests_running",
+                        "serverAddress": THANOS_QUERIER_ADDRESS,
+                        "query": "vllm:num_requests_running{namespace='"
+                        + model_namespace.name
+                        + "'\
+                                ,model_name='"
+                        + request.param["name"]
+                        + "'}",
+                        "namespace": model_namespace.name,
+                        "authModes": "bearer",
+                    },
+                    "authenticationRef": {
+                        # https://github.com/opendatahub-io/odh-model-controller/blob/6c83a07e764be8a6bb77b1b36589ed029605b186/internal/controller/serving/reconcilers/kserve_keda_reconciler.go#L47
+                        "name": "inference-prometheus-auth",
                     },
                     "target": {"type": "Value", "value": "2"},
                 },
@@ -189,8 +198,19 @@ def ovms_keda_inference_service(
                     "external": {
                         "metric": {
                             "backend": "prometheus",
-                            "serverAddress": SERVER_ADDRESS,
-                            "query": "ovms_requests_success",
+                            "serverAddress": THANOS_QUERIER_ADDRESS,
+                            "query": "ovms_requests_success{namespace='"
+                            + unprivileged_model_namespace.name
+                            + "'\
+                                ,model_name='"
+                            + f"{request.param['name']}-raw"
+                            + "'}",
+                            "namespace": unprivileged_model_namespace.name,
+                            "authModes": "bearer",
+                        },
+                        "authenticationRef": {
+                            # https://github.com/opendatahub-io/odh-model-controller/blob/6c83a07e764be8a6bb77b1b36589ed029605b186/internal/controller/serving/reconcilers/kserve_keda_reconciler.go#L47
+                            "name": "inference-prometheus-auth",
                         },
                         "target": {"type": "Value", "value": "50"},
                     },
