@@ -8,8 +8,20 @@ from tests.model_registry.rest_api.utils import register_model_rest_api, execute
 from utilities.constants import Protocols
 from ocp_resources.deployment import Deployment
 from ocp_resources.service import Service
-from tests.model_registry.utils import get_model_registry_deployment_template_dict, create_secure_model_registry
-from tests.model_registry.constants import DB_RESOURCES_NAME, CA_MOUNT_PATH, CA_FILE_PATH, CA_CONFIGMAP_NAME
+from tests.model_registry.utils import (
+    get_model_registry_deployment_template_dict,
+    create_model_registry_instance,
+    make_mysql_config,
+)
+from tests.model_registry.constants import (
+    DB_RESOURCES_NAME,
+    CA_MOUNT_PATH,
+    CA_FILE_PATH,
+    CA_CONFIGMAP_NAME,
+    SECURE_MR_NAME,
+    ISTIO_CONFIG_DICT,
+    MODEL_REGISTRY_STANDARD_LABELS,
+)
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.config_map import ConfigMap
@@ -102,13 +114,23 @@ def model_registry_instance_ca(
     Deploys a Model Registry instance with a custom CA certificate.
     """
     ca_file_path = patch_invalid_ca
-    mr = create_secure_model_registry(
-        model_registry_namespace=model_registry_namespace,
-        model_registry_db_service=model_registry_db_service,
-        model_registry_db_secret=model_registry_db_secret,
-        ca_file_path=ca_file_path,
+    mysql_config = make_mysql_config(
+        db_service=model_registry_db_service,
+        db_secret=model_registry_db_secret,
+        ssl_ca=ca_file_path,
     )
-    yield mr
+    with create_model_registry_instance(
+        namespace=model_registry_namespace,
+        name=SECURE_MR_NAME,
+        labels=MODEL_REGISTRY_STANDARD_LABELS,
+        grpc={},
+        rest={},
+        istio=ISTIO_CONFIG_DICT,
+        mysql=mysql_config,
+        wait_for_resource=True,
+    ) as mr:
+        mr.wait_for_condition(condition="Available", status="True")
+        yield mr
 
 
 @pytest.fixture(scope="class")
@@ -140,11 +162,20 @@ def deploy_secure_mysql_and_mr(
     patch = {"spec": {"template": mysql_template["spec"]}}
 
     with ResourceEditor(patches={model_registry_db_deployment: patch}):
-        with create_secure_model_registry(
-            model_registry_namespace=model_registry_namespace,
-            model_registry_db_service=model_registry_db_service,
-            model_registry_db_secret=model_registry_db_secret,
-            ca_file_path=CA_FILE_PATH,
+        mysql_config = make_mysql_config(
+            db_service=model_registry_db_service,
+            db_secret=model_registry_db_secret,
+            ssl_ca=CA_FILE_PATH,
+        )
+        with create_model_registry_instance(
+            namespace=model_registry_namespace,
+            name=SECURE_MR_NAME,
+            labels=MODEL_REGISTRY_STANDARD_LABELS,
+            grpc={},
+            rest={},
+            istio=ISTIO_CONFIG_DICT,
+            mysql=mysql_config,
+            wait_for_resource=True,
         ) as mr:
             mr.wait_for_condition(condition="Available", status="True")
             yield mr

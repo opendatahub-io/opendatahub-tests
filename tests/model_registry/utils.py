@@ -10,7 +10,7 @@ from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 from kubernetes.dynamic.exceptions import NotFoundError
-from tests.model_registry.constants import MR_DB_IMAGE_DIGEST, ISTIO_CONFIG_DICT, DB_RESOURCES_NAME, SECURE_MR_NAME
+from tests.model_registry.constants import MR_DB_IMAGE_DIGEST, DB_RESOURCES_NAME
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
 from utilities.constants import Protocols, Annotations
 from ocp_resources.secret import Secret
@@ -267,41 +267,6 @@ def generate_namespace_name(file_path: str) -> str:
     return (file_path.removesuffix(".py").replace("/", "-").replace("_", "-"))[-63:].split("-", 1)[-1]
 
 
-def create_secure_model_registry(
-    model_registry_namespace: str,
-    model_registry_db_service: Service,
-    model_registry_db_secret: Secret,
-    ca_file_path: str,
-) -> ModelRegistry:
-    """
-    Helper to create a ModelRegistry with secure MySQL connection.
-    Returns a context manager yielding the ModelRegistry resource.
-    """
-    return ModelRegistry(
-        name=SECURE_MR_NAME,
-        namespace=model_registry_namespace,
-        label={
-            Annotations.KubernetesIo.NAME: SECURE_MR_NAME,
-            Annotations.KubernetesIo.INSTANCE: SECURE_MR_NAME,
-            Annotations.KubernetesIo.PART_OF: "model-registry-operator",
-            Annotations.KubernetesIo.CREATED_BY: "model-registry-operator",
-        },
-        grpc={},
-        rest={},
-        istio=ISTIO_CONFIG_DICT,
-        mysql={
-            "host": f"{model_registry_db_service.name}.{model_registry_db_service.namespace}.svc.cluster.local",
-            "database": model_registry_db_secret.string_data["database-name"],
-            "passwordSecret": {"key": "database-password", "name": DB_RESOURCES_NAME},
-            "port": 3306,
-            "skipDBCreation": False,
-            "username": model_registry_db_secret.string_data["database-user"],
-            "ssl_ca": ca_file_path,
-        },
-        wait_for_resource=True,
-    )
-
-
 def create_model_registry_instance(
     namespace: str,
     name: str,
@@ -351,3 +316,34 @@ def create_model_registry_instance(
         enable_database_upgrade=enable_database_upgrade,
         wait_for_resource=wait_for_resource,
     )
+
+
+def make_mysql_config(
+    db_service: Service,
+    db_secret: Secret,
+    ssl_ca: str,
+    db_resource_name: str = DB_RESOURCES_NAME,
+    port: int = 3306,
+) -> dict[str, Any]:
+    """
+    Factory to create a MySQL config dictionary for Model Registry.
+
+    Args:
+        db_service: The MySQL Service resource.
+        db_secret : The MySQL Secret resource.
+        ssl_ca: Path to the CA bundle file.
+        db_resource_name: Name of the DB resource (default: DB_RESOURCES_NAME).
+        port: Port number for the MySQL connection (default: 3306).
+
+    Returns:
+        dict: MySQL configuration dictionary.
+    """
+    return {
+        "host": f"{db_service.name}.{db_service.namespace}.svc.cluster.local",
+        "database": db_secret.string_data["database-name"],
+        "passwordSecret": {"key": "database-password", "name": db_resource_name},
+        "port": port,
+        "skipDBCreation": False,
+        "username": db_secret.string_data["database-user"],
+        "ssl_ca": ssl_ca,
+    }
