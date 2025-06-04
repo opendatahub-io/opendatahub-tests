@@ -1,4 +1,6 @@
+import os
 import pytest
+from pytest import Config
 import schemathesis
 from typing import Generator, Any
 from ocp_resources.pod import Pod
@@ -259,15 +261,17 @@ def model_registry_instance_rest_endpoint(
 
 
 @pytest.fixture(scope="class")
-def generated_schema(model_registry_instance_rest_endpoint: str) -> BaseOpenAPISchema:
+def generated_schema(pytestconfig: Config, model_registry_instance_rest_endpoint: str) -> BaseOpenAPISchema:
+    os.environ["API_HOST"] = model_registry_instance_rest_endpoint
+    config = schemathesis.config.SchemathesisConfig.from_path(f"{pytestconfig.rootpath}/schemathesis.toml")
     schema = schemathesis.openapi.from_url(
-        url="https://raw.githubusercontent.com/kubeflow/model-registry/main/api/openapi/model-registry.yaml"
+        url="https://raw.githubusercontent.com/kubeflow/model-registry/main/api/openapi/model-registry.yaml",
+        config=config,
     )
-    schema.configure(base_url=f"https://{model_registry_instance_rest_endpoint}/")
     return schema
 
 
-@pytest.fixture
+@pytest.fixture()
 def state_machine(generated_schema: BaseOpenAPISchema, current_client_token: str) -> APIStateMachine:
     BaseAPIWorkflow = generated_schema.as_state_machine()
 
@@ -277,12 +281,18 @@ def state_machine(generated_schema: BaseOpenAPISchema, current_client_token: str
         def setup(self) -> None:
             self.headers = {"Authorization": f"Bearer {current_client_token}", "Content-Type": "application/json"}
 
+        def before_call(self, case: Case) -> None:
+            LOGGER.info(f"Checking: {case.method} {case.path}")
+
         # these kwargs are passed to requests.request()
         def get_call_kwargs(self, case: Case) -> dict[str, Any]:
             return {"verify": False, "headers": self.headers}
 
         def after_call(self, response: Response, case: Case) -> None:
-            LOGGER.info(f"{case.method} {case.path} -> {response.status_code}")
+            LOGGER.info(
+                f"Method tested: {case.method}, API: {case.path}, response code:{response.status_code},"
+                f" Full Response:{response.text}"
+            )
 
     return APIWorkflow
 
