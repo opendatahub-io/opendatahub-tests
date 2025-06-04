@@ -7,7 +7,6 @@ from tests.model_registry.rest_api.constants import MODEL_REGISTRY_BASE_URI
 from tests.model_registry.rest_api.utils import register_model_rest_api, execute_model_registry_patch_command
 from utilities.constants import Protocols
 from ocp_resources.deployment import Deployment
-from ocp_resources.service import Service
 from tests.model_registry.utils import (
     get_model_registry_deployment_template_dict,
     create_model_registry_instance,
@@ -26,6 +25,7 @@ from ocp_resources.secret import Secret
 from ocp_resources.config_map import ConfigMap
 from simple_logger.logger import get_logger
 from ocp_resources.model_registry import ModelRegistry
+from pytest_testconfig import config as py_config
 
 
 LOGGER = get_logger(name=__name__)
@@ -73,7 +73,7 @@ def updated_model_artifact(
     )
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="class")
 def patch_invalid_ca(
     admin_client: DynamicClient,
     model_registry_namespace: str,
@@ -102,7 +102,7 @@ def patch_invalid_ca(
         yield ca_file_path
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="class")
 def model_registry_instance_ca(
     model_registry_namespace: str,
     model_registry_mysql_config: dict[str, Any],
@@ -128,7 +128,6 @@ def model_registry_instance_ca(
 def deploy_secure_mysql_and_mr(
     model_registry_namespace: str,
     model_registry_db_secret: Secret,
-    model_registry_db_service: Service,
     model_registry_db_deployment: Deployment,
     model_registry_mysql_config: dict[str, Any],
 ) -> Generator[ModelRegistry, None, None]:
@@ -173,30 +172,30 @@ def local_ca_bundle(request: pytest.FixtureRequest, admin_client: DynamicClient)
     """
     Creates a local CA bundle file by fetching the CA bundle from a ConfigMap and appending the router CA from a Secret.
     """
-    namespace = getattr(request, "param", {}).get("namespace", "test-model-registry-namespace")
+    namespace = getattr(request, "param", {}).get("namespace", py_config["model_registry_namespace"])
     ca_bundle_path = getattr(request, "param", {}).get("ca_bundle_path", "ca-bundle.crt")
     cert_name = getattr(request, "param", {}).get("cert_name", "ca-bundle.crt")
 
-    cm = ConfigMap(client=admin_client, name="odh-trusted-ca-bundle", namespace=namespace)
+    cm = ConfigMap(client=admin_client, name="odh-trusted-ca-bundle", namespace=namespace, ensure_exists=True)
     ca_bundle_content = cm.instance.data.get(cert_name)
     with open(ca_bundle_path, "w", encoding="utf-8") as f:
         f.write(ca_bundle_content)
 
-    try:
-        router_secret = Secret(client=admin_client, name="router-ca", namespace="openshift-ingress-operator")
-        router_ca_b64 = router_secret.instance.data.get("tls.crt")
-        if router_ca_b64:
-            router_ca_content = base64.b64decode(router_ca_b64).decode("utf-8")
-            with open(ca_bundle_path, "r", encoding="utf-8") as bundle:
-                bundle_content = bundle.read()
-            if router_ca_content not in bundle_content:
-                with open(ca_bundle_path, "a", encoding="utf-8") as bundle_append:
-                    bundle_append.write("\n" + router_ca_content)
-    except Exception as e:
-        pytest.fail(f"router-ca secret not found in openshift-ingress-operator. Error: {e}")
+    router_secret = Secret(
+        client=admin_client, name="router-ca", namespace="openshift-ingress-operator", ensure_exists=True
+    )
+    router_ca_b64 = router_secret.instance.data.get("tls.crt")
+    if router_ca_b64:
+        router_ca_content = base64.b64decode(router_ca_b64).decode("utf-8")
+        with open(ca_bundle_path, "r", encoding="utf-8") as bundle:
+            bundle_content = bundle.read()
+        if router_ca_content not in bundle_content:
+            with open(ca_bundle_path, "a", encoding="utf-8") as bundle_append:
+                bundle_append.write("\n" + router_ca_content)
+
     yield ca_bundle_path
 
     try:
         os.remove(ca_bundle_path)
     except FileNotFoundError:
-        pass
+        pytest.fail(f"CA bundle file not removed: {ca_bundle_path}")

@@ -1,11 +1,13 @@
 import pytest
 import requests
 from typing import Self
+from pytest_testconfig import config as py_config
 from tests.model_registry.rest_api.utils import register_model_rest_api
 from tests.model_registry.rest_api.constants import MODEL_REGISTER_DATA
 from utilities.constants import DscComponents
 from simple_logger.logger import get_logger
 from tests.model_registry.utils import generate_random_name
+from tests.model_registry.constants import CA_MOUNT_PATH
 
 
 LOGGER = get_logger(name=__name__)
@@ -19,7 +21,7 @@ LOGGER = get_logger(name=__name__)
                 "component_patch": {
                     DscComponents.MODELREGISTRY: {
                         "managementState": DscComponents.ManagementState.MANAGED,
-                        "registriesNamespace": "test-model-registry-namespace",
+                        "registriesNamespace": py_config["model_registry_namespace"],
                     },
                 },
             },
@@ -34,13 +36,6 @@ class TestModelRegistryWithSecureDB:
     Includes tests for both invalid and valid CA certificate scenarios.
     """
 
-    @pytest.fixture
-    def invalid_ca_mysql_config(patch_invalid_ca):
-        """
-        Fixture that returns a dict for model_registry_mysql_config with ssl_ca set to the value from patch_invalid_ca.
-        """
-        return {"ssl_ca": patch_invalid_ca}
-
     # Implements RHOAIENG-26150
     @pytest.mark.parametrize(
         "patch_invalid_ca",
@@ -49,7 +44,7 @@ class TestModelRegistryWithSecureDB:
     )
     @pytest.mark.parametrize(
         "model_registry_mysql_config",
-        [pytest.param("invalid_ca_mysql_config")],
+        [{"ssl_ca": f"{CA_MOUNT_PATH}/invalid-ca.crt"}],
         indirect=True,
     )
     @pytest.mark.smoke
@@ -57,8 +52,8 @@ class TestModelRegistryWithSecureDB:
         self: Self,
         model_registry_rest_url: str,
         model_registry_rest_headers: dict[str, str],
-        model_registry_instance_ca,
         patch_invalid_ca,
+        model_registry_mysql_config,
     ) -> None:
         """
         Test that model registration fails with an SSLError when the Model Registry is deployed

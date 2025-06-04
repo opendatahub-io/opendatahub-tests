@@ -188,22 +188,26 @@ def model_registry_instance_oauth_proxy(
 
 @pytest.fixture(scope="class")
 def model_registry_mysql_config(
+    request: FixtureRequest,
     model_registry_db_deployment: Deployment,
     model_registry_db_secret: Secret,
-    ssl_ca: str | None = None,
-    port: int = 3306,
 ) -> dict[str, Any]:
-    config = {
+    """
+    Fixture to build the MySQL config dictionary for Model Registry.
+    Expects request.param to be a dict. If 'ssl_ca' is not present, it defaults to None.
+    """
+    param = request.param if hasattr(request, "param") else {}
+    ssl_ca = param.get("ssl_ca", None)
+    port = param.get("port", 3306)
+    return {
         "host": f"{model_registry_db_deployment.name}.{model_registry_db_deployment.namespace}.svc.cluster.local",
         "database": model_registry_db_secret.string_data["database-name"],
         "passwordSecret": {"key": "database-password", "name": model_registry_db_deployment.name},
         "port": port,
         "skipDBCreation": False,
         "username": model_registry_db_secret.string_data["database-user"],
+        "ssl_ca": ssl_ca,
     }
-    if ssl_ca is not None:
-        config["ssl_ca"] = ssl_ca
-    return config
 
 
 @pytest.fixture(scope="class")
