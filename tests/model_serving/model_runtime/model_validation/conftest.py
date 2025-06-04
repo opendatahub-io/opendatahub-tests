@@ -115,7 +115,6 @@ def vllm_model_service_account(admin_client: DynamicClient, kserve_endpoint_s3_s
         yield sa
 
 
-
 @pytest.fixture
 def response_snapshot(snapshot: Any) -> Any:
     return snapshot.use_extension(extension_class=JSONSnapshotExtension)
@@ -133,6 +132,3 @@ def skip_if_serverless_deployemnt(vllm_inference_service: InferenceService) -> N
         deployment_type=KServeDeploymentType.SERVERLESS,
         deployment_message="Test is being skipped because model is being deployed in serverless mode",
     )
-
-
-

@@ -92,17 +92,17 @@ def pytest_addoption(parser: Parser) -> None:
         default=os.environ.get("MODELS_S3_BUCKET_ENDPOINT"),
         help="Models S3 bucket endpoint",
     )
-    #OCI Registry options
+    # OCI Registry options
     ociregistry_group.addoption(
-    "--registry-pull-secret",
-    default=os.environ.get("REGISTRY_PULL_SECRET"),
-    help="Registry pull secret  to pull oci container images",
-)
+        "--registry-pull-secret",
+        default=os.environ.get("REGISTRY_PULL_SECRET"),
+        help="Registry pull secret  to pull oci container images",
+    )
     ociregistry_group.addoption(
-    "--registry-host",
-    default=os.environ.get("REGISTRY_HOST"),
-    help="Registry host to pull oci container images",
-)
+        "--registry-host",
+        default=os.environ.get("REGISTRY_HOST"),
+        help="Registry host to pull oci container images",
+    )
     # Runtime options
     runtime_group.addoption(
         "--supported-accelerator-type",

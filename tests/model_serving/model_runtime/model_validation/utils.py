@@ -1,16 +1,12 @@
-import pytest
 import requests
-import portforward
 from simple_logger.logger import get_logger
-import json 
 from contextlib import contextmanager
 from typing import Generator, Any
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.secret import Secret
 from ocp_resources.inference_service import InferenceService
 from utilities.constants import KServeDeploymentType, Protocols
-from tests.model_serving.model_runtime.model_validation.constant import PULL_SECRET_ACCESS_TYPE, COMPLETION_QUERY
-
+from tests.model_serving.model_runtime.model_validation.constant import PULL_SECRET_ACCESS_TYPE
 
 
 LOGGER = get_logger(name=__name__)
@@ -38,15 +34,10 @@ def kserve_registry_pull_secret(
         yield secret
 
 
-def send_rest_request(
-    url: str,
-    input_data: dict
-) -> Any:
+def send_rest_request(url: str, input_data: dict) -> Any:
     response = requests.post(url=url, json=input_data, verify=False, timeout=60)
     response.raise_for_status()
     return response.json()
-
-
 
 
 def run_modelcar_inference(
@@ -61,28 +52,28 @@ def run_modelcar_inference(
     """
     deployment_mode = isvc.instance.metadata.annotations.get("serving.kserve.io/deploymentMode")
     model_name = isvc.instance.metadata.name
-    
+
     if protocol not in (Protocols.HTTP, Protocols.HTTPS):
         return f"Invalid protocol {protocol}"
-        
+
     if deployment_mode == KServeDeploymentType.SERVERLESS:
-        base_url = isvc.instance.status.url.rstrip('/')
+        base_url = isvc.instance.status.url.rstrip("/")
         completion_endpoint = "/v1/completions"
         model_name = isvc.instance.metadata.name
         # Prepare the request payload
         payload = {
             "model": model_name,
             "prompt": input_data.get("prompt", ""),
-            "max_tokens": input_data.get("max_tokens", 256)
+            "max_tokens": input_data.get("max_tokens", 256),
         }
-        
+
         # Add any additional parameters from input_data
         for key, value in input_data.items():
             if key not in ["prompt", "max_tokens"]:
                 payload[key] = value
-                
+
         return send_rest_request(f"{base_url}{completion_endpoint}", payload)
-        
+
     return f"Invalid deployment_mode {deployment_mode}"
 
 
@@ -98,5 +89,5 @@ def validate_inference_request(
         isvc=isvc,
         input_data=input_query,
         protocol=protocol,
-        )
+    )
     assert response == response_snapshot, f"Output mismatch: {response} != {response_snapshot}"
