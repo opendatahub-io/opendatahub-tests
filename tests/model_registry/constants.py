@@ -1,6 +1,6 @@
 from typing import Any
 from ocp_resources.resource import Resource
-from utilities.constants import ModelFormat
+from utilities.constants import ModelFormat, Annotations
 
 
 class ModelRegistryEndpoints:
@@ -29,6 +29,11 @@ MR_INSTANCE_NAME: str = "model-registry"
 ISTIO_CONFIG_DICT: dict[str, Any] = {
     "gateway": {"grpc": {"tls": {}}, "rest": {"tls": {}}},
 }
+OAUTH_PROXY_CONFIG_DICT: dict[str, Any] = {
+    "port": 8443,
+    "routePort": 443,
+    "serviceRoute": "enabled",
+}
 DB_RESOURCES_NAME: str = "db-model-registry"
 MR_DB_IMAGE_DIGEST: str = (
     "public.ecr.aws/docker/library/mysql@sha256:9de9d54fecee6253130e65154b930978b1fcc336bcc86dfd06e89b72a2588ebe"
@@ -48,3 +53,10 @@ SECURE_MR_NAME = "secure-db-mr"
 CA_CONFIGMAP_NAME = "odh-trusted-ca-bundle"
 CA_MOUNT_PATH = "/etc/pki/ca-trust/extracted/pem"
 CA_FILE_PATH = f"{CA_MOUNT_PATH}/ca-bundle.crt"
+
+MODEL_REGISTRY_STANDARD_LABELS = {
+    Annotations.KubernetesIo.NAME: MR_INSTANCE_NAME,
+    Annotations.KubernetesIo.INSTANCE: MR_INSTANCE_NAME,
+    Annotations.KubernetesIo.PART_OF: MR_OPERATOR_NAME,
+    Annotations.KubernetesIo.CREATED_BY: MR_OPERATOR_NAME,
+}
