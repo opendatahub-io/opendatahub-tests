@@ -40,6 +40,7 @@ BASIC_LOGGER = logging.getLogger(name="basic")
 def pytest_addoption(parser: Parser) -> None:
     aws_group = parser.getgroup(name="AWS")
     buckets_group = parser.getgroup(name="Buckets")
+    ociregistry_group = parser.getgroup(name="OCI Registry")
     runtime_group = parser.getgroup(name="Runtime details")
     upgrade_group = parser.getgroup(name="Upgrade options")
     must_gather_group = parser.getgroup(name="MustGather")
@@ -91,6 +92,17 @@ def pytest_addoption(parser: Parser) -> None:
         default=os.environ.get("MODELS_S3_BUCKET_ENDPOINT"),
         help="Models S3 bucket endpoint",
     )
+    #OCI Registry options
+    ociregistry_group.addoption(
+    "--registry-pull-secret",
+    default=os.environ.get("REGISTRY_PULL_SECRET"),
+    help="Registry pull secret  to pull oci container images",
+)
+    ociregistry_group.addoption(
+    "--registry-host",
+    default=os.environ.get("REGISTRY_HOST"),
+    help="Registry host to pull oci container images",
+)
     # Runtime options
     runtime_group.addoption(
         "--supported-accelerator-type",

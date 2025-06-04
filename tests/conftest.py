@@ -150,6 +150,10 @@ def valid_aws_config(aws_access_key_id: str, aws_secret_access_key: str) -> tupl
 
 
 @pytest.fixture(scope="session")
+def valid_registry_pullsecret(registry_pullsecret: str) -> str:
+    return registry_pullsecret
+
+@pytest.fixture(scope="session")
 def ci_s3_bucket_name(pytestconfig: Config) -> str:
     bucket_name = pytestconfig.option.ci_s3_bucket_name
     if not bucket_name:
@@ -180,6 +184,26 @@ def ci_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str:
             "Either pass with `--ci-s3-bucket-endpoint` or set `CI_S3_BUCKET_ENDPOINT` environment variable"
         )
     return ci_bucket_endpoint
+
+@pytest.fixture(scope="session")
+def registry_pull_secret(pytestconfig: pytest.Config) -> str:    
+    registry_pull_secret  = pytestconfig.option.registry_pull_secret
+    if not registry_pull_secret:
+        raise ValueError(
+            "Registry pull secret is not defined."
+            "Either pass with `--registry-pull-secret` or set `REGISTRY_PULL_SECRET` environment variable"
+        )
+    return registry_pull_secret
+
+@pytest.fixture(scope="session")
+def registry_host(pytestconfig: pytest.Config) -> str:    
+    registry_host  = pytestconfig.option.registry_host
+    if not registry_host:
+        raise ValueError(
+            "Registry host is not defined."
+            "Either pass with `--registry-host` or set `REGISTRY_HOST` environment variable"
+        )
+    return registry_host
 
 
 @pytest.fixture(scope="session")
