@@ -34,11 +34,22 @@ class TestModelRegistryWithSecureDB:
     Includes tests for both invalid and valid CA certificate scenarios.
     """
 
+    @pytest.fixture
+    def invalid_ca_mysql_config(patch_invalid_ca):
+        """
+        Fixture that returns a dict for model_registry_mysql_config with ssl_ca set to the value from patch_invalid_ca.
+        """
+        return {"ssl_ca": patch_invalid_ca}
+
     # Implements RHOAIENG-26150
-    @pytest.mark.usefixtures("model_registry_instance_ca")
     @pytest.mark.parametrize(
         "patch_invalid_ca",
         [{"ca_configmap_name": "odh-trusted-ca-bundle", "ca_file_name": "invalid-ca.crt"}],
+        indirect=True,
+    )
+    @pytest.mark.parametrize(
+        "model_registry_mysql_config",
+        [pytest.param("invalid_ca_mysql_config")],
         indirect=True,
     )
     @pytest.mark.smoke
@@ -46,6 +57,8 @@ class TestModelRegistryWithSecureDB:
         self: Self,
         model_registry_rest_url: str,
         model_registry_rest_headers: dict[str, str],
+        model_registry_instance_ca,
+        patch_invalid_ca,
     ) -> None:
         """
         Test that model registration fails with an SSLError when the Model Registry is deployed

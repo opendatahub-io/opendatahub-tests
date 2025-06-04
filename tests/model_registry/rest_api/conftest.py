@@ -11,7 +11,6 @@ from ocp_resources.service import Service
 from tests.model_registry.utils import (
     get_model_registry_deployment_template_dict,
     create_model_registry_instance,
-    make_mysql_config,
 )
 from tests.model_registry.constants import (
     DB_RESOURCES_NAME,
@@ -106,18 +105,11 @@ def patch_invalid_ca(
 @pytest.fixture(scope="function")
 def model_registry_instance_ca(
     model_registry_namespace: str,
-    model_registry_db_secret: Secret,
-    model_registry_db_service: Service,
-    patch_invalid_ca: str,
+    model_registry_mysql_config: dict[str, Any],
 ) -> Generator[ModelRegistry, Any, Any]:
     """
     Deploys a Model Registry instance with a custom CA certificate.
     """
-    mysql_config = make_mysql_config(
-        db_service=model_registry_db_service,
-        db_secret=model_registry_db_secret,
-        ssl_ca=patch_invalid_ca,
-    )
     with create_model_registry_instance(
         namespace=model_registry_namespace,
         name=SECURE_MR_NAME,
@@ -125,7 +117,7 @@ def model_registry_instance_ca(
         grpc={},
         rest={},
         istio=ISTIO_CONFIG_DICT,
-        mysql=mysql_config,
+        mysql=model_registry_mysql_config,
         wait_for_resource=True,
     ) as mr:
         mr.wait_for_condition(condition="Available", status="True")
@@ -138,6 +130,7 @@ def deploy_secure_mysql_and_mr(
     model_registry_db_secret: Secret,
     model_registry_db_service: Service,
     model_registry_db_deployment: Deployment,
+    model_registry_mysql_config: dict[str, Any],
 ) -> Generator[ModelRegistry, None, None]:
     """
     Deploys MySQL with SSL/TLS and a Model Registry configured to use a secure DB connection.
@@ -161,11 +154,6 @@ def deploy_secure_mysql_and_mr(
     patch = {"spec": {"template": mysql_template["spec"]}}
 
     with ResourceEditor(patches={model_registry_db_deployment: patch}):
-        mysql_config = make_mysql_config(
-            db_service=model_registry_db_service,
-            db_secret=model_registry_db_secret,
-            ssl_ca=CA_FILE_PATH,
-        )
         with create_model_registry_instance(
             namespace=model_registry_namespace,
             name=SECURE_MR_NAME,
@@ -173,7 +161,7 @@ def deploy_secure_mysql_and_mr(
             grpc={},
             rest={},
             istio=ISTIO_CONFIG_DICT,
-            mysql=mysql_config,
+            mysql=model_registry_mysql_config,
             wait_for_resource=True,
         ) as mr:
             mr.wait_for_condition(condition="Available", status="True")

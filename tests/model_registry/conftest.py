@@ -188,16 +188,22 @@ def model_registry_instance_oauth_proxy(
 
 @pytest.fixture(scope="class")
 def model_registry_mysql_config(
-    model_registry_db_deployment: Deployment, model_registry_db_secret: Secret
+    model_registry_db_deployment: Deployment,
+    model_registry_db_secret: Secret,
+    ssl_ca: str | None = None,
+    port: int = 3306,
 ) -> dict[str, Any]:
-    return {
+    config = {
         "host": f"{model_registry_db_deployment.name}.{model_registry_db_deployment.namespace}.svc.cluster.local",
         "database": model_registry_db_secret.string_data["database-name"],
         "passwordSecret": {"key": "database-password", "name": model_registry_db_deployment.name},
-        "port": 3306,
+        "port": port,
         "skipDBCreation": False,
         "username": model_registry_db_secret.string_data["database-user"],
     }
+    if ssl_ca is not None:
+        config["ssl_ca"] = ssl_ca
+    return config
 
 
 @pytest.fixture(scope="class")
