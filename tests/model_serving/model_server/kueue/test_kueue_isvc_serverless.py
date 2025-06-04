@@ -162,10 +162,10 @@ class TestKueueInferenceServiceServerless:
                 f"Expected 1 Running pod and 2 SchedulingGated pods, "
                 f"got {running_pods} Running and {gated_pods} SchedulingGated"
             )
-                    # Refresh the isvc instance to get latest status
+            # Refresh the isvc instance to get latest status
         kueue_kserve_inference_service.get()
         isvc = kueue_kserve_inference_service.instance
         if isvc.status.modelStatus.copies.totalCopies != 1:
             raise DeploymentValidationError(
                 f"InferenceService should have 1 total model copy, got {isvc.status.modelStatus.copies.totalCopies}"
-            ) 
+            )
