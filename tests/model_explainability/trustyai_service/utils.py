@@ -159,7 +159,7 @@ def validate_trustyai_operator_image(
     Checks if:
         - container image matches that of the operator configmap.
         - image is present in relatedImages of CSV.
-        - image complies with model registry requirements i.e. sourced from registry.redhat.io and pinned w/o tags.
+        - image complies with OpenShift AI requirements i.e. sourced from registry.redhat.io and pinned w/o tags.
     """
     tai_operator_deployment = Deployment(
         client=client,
