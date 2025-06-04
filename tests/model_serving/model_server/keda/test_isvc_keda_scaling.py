@@ -34,7 +34,7 @@ BASE_RAW_DEPLOYMENT_CONFIG["runtime_argument"] = SERVING_ARGUMENT
 INITIAL_POD_COUNT = 1
 FINAL_POD_COUNT = 5
 
-pytestmark = pytest.mark.usefixtures("skip_if_no_supported_gpu_type", "valid_aws_config")
+pytestmark = [pytest.mark.keda, pytest.mark.usefixtures("skip_if_no_supported_gpu_type", "valid_aws_config")]
 
 
 @pytest.mark.parametrize(
