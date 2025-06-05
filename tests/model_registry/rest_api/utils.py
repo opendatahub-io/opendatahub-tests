@@ -8,6 +8,10 @@ from tests.model_registry.exceptions import (
     ModelRegistryResourceNotUpdated,
 )
 from tests.model_registry.rest_api.constants import MODEL_REGISTRY_BASE_URI
+from ocp_resources.config_map import ConfigMap
+from ocp_resources.secret import Secret
+from kubernetes.dynamic import DynamicClient
+import base64
 
 LOGGER = get_logger(name=__name__)
 
@@ -95,3 +99,35 @@ def register_model_rest_api(
         f"associated artifact: {model_artifact}"
     )
     return {"register_model": register_model, "model_version": model_version, "model_artifact": model_artifact}
+
+
+def create_ca_bundle_file(
+    admin_client: DynamicClient,
+    namespace: str,
+    ca_bundle_path: str,
+    cert_name: str,
+) -> None:
+    """
+    Creates a CA bundle file by fetching the CA bundle from a ConfigMap and appending the router CA from a Secret.
+    Args:
+        admin_client: The admin client to get the CA bundle from a ConfigMap and append the router CA from a Secret.
+        namespace: The namespace of the ConfigMap and Secret.
+        ca_bundle_path: The path to the CA bundle file.
+        cert_name: The name of the certificate in the ConfigMap.
+    """
+    cm = ConfigMap(client=admin_client, name="odh-trusted-ca-bundle", namespace=namespace, ensure_exists=True)
+    ca_bundle_content = cm.instance.data.get(cert_name)
+    with open(ca_bundle_path, "w", encoding="utf-8") as f:
+        f.write(ca_bundle_content)
+
+    router_secret = Secret(
+        client=admin_client, name="router-ca", namespace="openshift-ingress-operator", ensure_exists=True
+    )
+    router_ca_b64 = router_secret.instance.data.get("tls.crt")
+    if router_ca_b64:
+        router_ca_content = base64.b64decode(router_ca_b64).decode("utf-8")
+        with open(ca_bundle_path, "r", encoding="utf-8") as bundle:
+            bundle_content = bundle.read()
+        if router_ca_content not in bundle_content:
+            with open(ca_bundle_path, "a", encoding="utf-8") as bundle_append:
+                bundle_append.write("\n" + router_ca_content)
