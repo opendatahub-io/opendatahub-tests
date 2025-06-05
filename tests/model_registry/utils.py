@@ -1,5 +1,5 @@
 import uuid
-from typing import Any, Dict
+from typing import Any
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
@@ -241,7 +241,7 @@ def generate_random_name(prefix: str, length: int = 8) -> str:
 
     Args:
         prefix (str): The required prefix for the generated name.
-        ength (int, optional): The desired length for the UUID-derived suffix.
+        length (int, optional): The desired length for the UUID-derived suffix.
                                Defaults to 8. Must be between 1 and 32.
 
     Returns:
@@ -264,54 +264,3 @@ def generate_random_name(prefix: str, length: int = 8) -> str:
 
 def generate_namespace_name(file_path: str) -> str:
     return (file_path.removesuffix(".py").replace("/", "-").replace("_", "-"))[-63:].split("-", 1)[-1]
-
-
-def create_model_registry_instance(
-    namespace: str,
-    name: str,
-    labels: dict[str, str],
-    grpc: Dict[str, Any],
-    rest: Dict[str, Any],
-    istio: Dict[str, Any] | None = None,
-    oauth_proxy: Dict[str, Any] | None = None,
-    mysql: Dict[str, Any] | None = None,
-    postgres: Dict[str, Any] | None = None,
-    downgrade_db_schema_version: int | None = None,
-    enable_database_upgrade: bool | None = None,
-    wait_for_resource: bool = True,
-) -> ModelRegistry:
-    """
-    Factory function to create a ModelRegistry instance with the given parameters.
-
-    Args:
-        admin_client: The Kubernetes client to use
-        namespace: The namespace to create the model registry in
-        name: The name of the model registry instance
-        labels: Labels for the model registry
-        grpc: gRPC configuration
-        rest: REST configuration
-        istio: Optional Istio configuration
-        oauth_proxy: Optional OAuth proxy configuration
-        mysql: Optional MySQL configuration
-        postgres: Optional PostgreSQL configuration
-        downgrade_db_schema_version: Optional database downgrade schema version
-        enable_database_upgrade: Optional flag to enable database migration
-        wait_for_resource: Whether to wait for the resource to be ready
-
-    Returns:
-        A configured ModelRegistry instance
-    """
-    return ModelRegistry(
-        name=name,
-        namespace=namespace,
-        label=labels,
-        grpc=grpc,
-        rest=rest,
-        istio=istio,
-        oauth_proxy=oauth_proxy,
-        mysql=mysql,
-        postgres=postgres,
-        downgrade_db_schema_version=downgrade_db_schema_version,
-        enable_database_upgrade=enable_database_upgrade,
-        wait_for_resource=wait_for_resource,
-    )

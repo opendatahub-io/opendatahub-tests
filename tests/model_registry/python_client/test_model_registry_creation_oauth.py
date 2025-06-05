@@ -8,9 +8,7 @@ from utilities.constants import DscComponents
 from tests.model_registry.constants import MODEL_NAME, MODEL_DICT
 from model_registry import ModelRegistry as ModelRegistryClient
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.service import Service
 from utilities.constants import Protocols
-from tests.model_registry.utils import get_endpoint_from_mr_service
 from aiohttp.client_exceptions import ServerDisconnectedError
 
 LOGGER = get_logger(name=__name__)
@@ -18,7 +16,7 @@ MINVER = Version.parse(version="2.21.0")
 
 
 @pytest.mark.parametrize(
-    "updated_dsc_component_state_scope_class",
+    "updated_dsc_component_state_scope_class, is_model_registry_oauth",
     [
         pytest.param(
             {
@@ -29,12 +27,13 @@ MINVER = Version.parse(version="2.21.0")
                     },
                 },
             },
+            {"use_oauth_proxy": True},
             id="oauth_proxy",
         ),
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("updated_dsc_component_state_scope_class")
+@pytest.mark.usefixtures("updated_dsc_component_state_scope_class", "is_model_registry_oauth")
 class TestModelRegistryCreationOAuth:
     """
     Validate model registry with OAuth proxy configuration.
@@ -42,15 +41,6 @@ class TestModelRegistryCreationOAuth:
     """
 
     # Tests RHOAIENG-26194
-    @pytest.mark.parametrize(
-        "model_registry_client",
-        [
-            pytest.param(
-                {"service_fixture": "model_registry_instance_oauth_service"},
-            )
-        ],
-        indirect=True,
-    )
     @pytest.mark.smoke
     def test_registering_model_with_oauth(
         self: Self,
@@ -94,22 +84,19 @@ class TestModelRegistryCreationOAuth:
     def test_encrypted_oauth_proxy(
         self: Self,
         admin_client: DynamicClient,
-        model_registry_instance_oauth_service: Service,
+        model_registry_instance_rest_endpoint: str,
         current_client_token: str,
     ):
         """Test that connecting to encrypted OAuth proxy with HTTP protocol fails appropriately."""
         if py_config["distribution"] == "downstream" and get_product_version(admin_client=admin_client) < MINVER:
             pytest.skip(f"Skipping test for RHOAI < {MINVER}")
 
-        # Get the REST endpoint
-        rest_endpoint = get_endpoint_from_mr_service(svc=model_registry_instance_oauth_service, protocol=Protocols.REST)
-
         # Create the client
-        server, port = rest_endpoint.split(":")
+        server, port = model_registry_instance_rest_endpoint.split(":")
         with pytest.raises(ServerDisconnectedError) as exc_info:
             _ = ModelRegistryClient(
                 server_address=f"{Protocols.HTTP}://{server}",
-                port=port,
+                port=int(port),
                 author="opendatahub-test",
                 user_token=current_client_token,
                 is_secure=False,
