@@ -5,6 +5,7 @@ import pytest
 from tests.model_registry.rest_api.constants import MODEL_REGISTRY_BASE_URI
 from tests.model_registry.rest_api.utils import register_model_rest_api, execute_model_registry_patch_command
 from utilities.constants import Protocols
+from utilities.exceptions import MissingParameter
 
 
 @pytest.fixture(scope="class")
@@ -33,17 +34,32 @@ def registered_model_rest_api(
     )
 
 
-@pytest.fixture(scope="class")
-def updated_model_artifact(
+@pytest.fixture()
+def updated_model_registry_resource(
     request: pytest.FixtureRequest,
     model_registry_rest_url: str,
     model_registry_rest_headers: dict[str, str],
     registered_model_rest_api: dict[str, Any],
 ) -> dict[str, Any]:
-    model_artifact_id = registered_model_rest_api["model_artifact"]["id"]
-    assert model_artifact_id, f"Model artifact id not found: {registered_model_rest_api['model_artifact']}"
+    """
+    Generic fixture to update any model registry resource via PATCH request.
+
+    Expects request.param to contain:
+        - resource_name: Key to identify the resource in registered_model_rest_api
+        - api_name: API endpoint name for the resource type
+        - data: JSON data to send in the PATCH request
+
+    Returns:
+       Dictionary containing the updated resource data
+    """
+    resource_name = request.param.get("resource_name")
+    api_name = request.param.get("api_name")
+    if not (api_name and resource_name):
+        raise MissingParameter("resource_name and api_name are required parameters for this fixture.")
+    resource_id = registered_model_rest_api[resource_name]["id"]
+    assert resource_id, f"Resource id not found: {registered_model_rest_api[resource_name]}"
     return execute_model_registry_patch_command(
-        url=f"{model_registry_rest_url}{MODEL_REGISTRY_BASE_URI}model_artifacts/{model_artifact_id}",
+        url=f"{model_registry_rest_url}{MODEL_REGISTRY_BASE_URI}{api_name}/{resource_id}",
         headers=model_registry_rest_headers,
-        data_json=request.param,
+        data_json=request.param["data"],
     )
