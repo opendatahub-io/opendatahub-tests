@@ -31,6 +31,46 @@ from syrupy.extensions.json import JSONSnapshotExtension
 LOGGER = get_logger(name=__name__)
 
 
+def create_keda_auto_scaling_config(
+    query: str,
+    model_name: str,
+    namespace: str,
+    target_value: str,
+) -> dict[str, Any]:
+    """Create KEDA auto-scaling configuration for inference services.
+
+    Args:
+        query: The Prometheus query to use for scaling
+        model_name: Name of the model
+        namespace: Kubernetes namespace
+        target_value: Target value for the metric
+
+    Returns:
+        dict: Auto-scaling configuration
+    """
+    return {
+        "metrics": [
+            {
+                "type": "External",
+                "external": {
+                    "metric": {
+                        "backend": "prometheus",
+                        "serverAddress": THANOS_QUERIER_ADDRESS,
+                        "query": query,
+                        "namespace": namespace,
+                        "authModes": "bearer",
+                    },
+                    "authenticationRef": {
+                        # https://github.com/opendatahub-io/odh-model-controller/blob/6c83a07e764be8a6bb77b1b36589ed029605b186/internal/controller/serving/reconcilers/kserve_keda_reconciler.go#L47
+                        "name": "inference-prometheus-auth",
+                    },
+                    "target": {"type": "Value", "value": target_value},
+                },
+            }
+        ]
+    }
+
+
 @pytest.fixture(scope="class")
 def vllm_serving_runtime(
     request: FixtureRequest,
@@ -135,37 +175,17 @@ def keda_vllm_inference_service(
             arguments.append(f"--quantization={quantization}")
         isvc_kwargs["argument"] = arguments
 
-    isvc_kwargs["min_replicas"] = 1
-    isvc_kwargs["max_replicas"] = 5
+    isvc_kwargs["min_replicas"] = request.param.get("initial_pod_count")
+    isvc_kwargs["max_replicas"] = request.param.get("final_pod_count")
 
-    isvc_kwargs["auto_scaling"] = {
-        "metrics": [
-            {
-                "type": "External",
-                "external": {
-                    "metric": {
-                        "backend": "prometheus",
-                        "serverAddress": THANOS_QUERIER_ADDRESS,
-                        "query": "vllm:num_requests_running{namespace='"
-                        + model_namespace.name
-                        + "'\
-                                ,model_name='"
-                        + request.param["name"]
-                        + "'}",
-                        "namespace": model_namespace.name,
-                        "authModes": "bearer",
-                    },
-                    "authenticationRef": {
-                        # https://github.com/opendatahub-io/odh-model-controller/blob/6c83a07e764be8a6bb77b1b36589ed029605b186/internal/controller/serving/reconcilers/kserve_keda_reconciler.go#L47
-                        "name": "inference-prometheus-auth",
-                    },
-                    "target": {"type": "Value", "value": "2"},
-                },
-            }
-        ]
-    }
+    isvc_kwargs["auto_scaling"] = create_keda_auto_scaling_config(
+        query=request.param.get("metrics_query"),
+        model_name=request.param["name"],
+        namespace=model_namespace.name,
+        target_value=str(request.param.get("metrics_threshold")),
+    )
 
-    with create_isvc(**isvc_kwargs, teardown=False) as isvc:
+    with create_isvc(**isvc_kwargs) as isvc:
         yield isvc
 
 
@@ -177,9 +197,10 @@ def ovms_keda_inference_service(
     ovms_kserve_serving_runtime: ServingRuntime,
     ci_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
+    model_name = f"{request.param['name']}-raw"
     with create_isvc(
         client=unprivileged_client,
-        name=f"{request.param['name']}-raw",
+        name=model_name,
         namespace=unprivileged_model_namespace.name,
         external_route=True,
         runtime=ovms_kserve_serving_runtime.name,
@@ -188,35 +209,15 @@ def ovms_keda_inference_service(
         model_format=ModelAndFormat.OPENVINO_IR,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         model_version=request.param["model-version"],
-        min_replicas=1,
-        max_replicas=5,
+        min_replicas=request.param["initial_pod_count"],
+        max_replicas=request.param["final_pod_count"],
         autoscaler_mode="keda",
-        auto_scaling={
-            "metrics": [
-                {
-                    "type": "External",
-                    "external": {
-                        "metric": {
-                            "backend": "prometheus",
-                            "serverAddress": THANOS_QUERIER_ADDRESS,
-                            "query": "ovms_requests_success{namespace='"
-                            + unprivileged_model_namespace.name
-                            + "'\
-                                ,model_name='"
-                            + f"{request.param['name']}-raw"
-                            + "'}",
-                            "namespace": unprivileged_model_namespace.name,
-                            "authModes": "bearer",
-                        },
-                        "authenticationRef": {
-                            # https://github.com/opendatahub-io/odh-model-controller/blob/6c83a07e764be8a6bb77b1b36589ed029605b186/internal/controller/serving/reconcilers/kserve_keda_reconciler.go#L47
-                            "name": "inference-prometheus-auth",
-                        },
-                        "target": {"type": "Value", "value": "50"},
-                    },
-                }
-            ]
-        },
+        auto_scaling=create_keda_auto_scaling_config(
+            query=request.param["metrics_query"],
+            model_name=model_name,
+            namespace=unprivileged_model_namespace.name,
+            target_value=str(request.param["metrics_threshold"]),
+        ),
     ) as isvc:
         yield isvc
 
