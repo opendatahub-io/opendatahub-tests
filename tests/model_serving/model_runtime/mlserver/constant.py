@@ -109,3 +109,28 @@ XGBOOST_GRPC_INPUT_QUERY: dict[str, Any] = {
         }
     ],
 }
+
+LIGHTGBM_REST_INPUT_QUERY: dict[str, Any] = {
+    "id": "lightgbm-iris",
+    "inputs": [
+        {
+            "name": "lightgbm-iris-input-0",
+            "shape": [1, 4],
+            "datatype": "FP32",
+            "data": [[6.7, 3.3, 5.7, 2.1]],
+        }
+    ],
+}
+
+LIGHTGBM_GRPC_INPUT_QUERY: dict[str, Any] = {
+    "model_name": "lightgbm-iris",
+    "model_version": "v0.1.0",
+    "inputs": [
+        {
+            "name": "lightgbm-iris-input-0",
+            "datatype": "FP32",
+            "shape": [1, 4],
+            "contents": {"fp32_contents": [6.7, 3.3, 5.7, 2.1]},
+        }
+    ],
+}
