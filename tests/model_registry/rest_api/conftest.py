@@ -210,7 +210,4 @@ def local_ca_bundle(request: pytest.FixtureRequest, admin_client: DynamicClient)
     )
     yield ca_bundle_path
 
-    try:
-        os.remove(ca_bundle_path)
-    except FileNotFoundError as e:
-        raise FileNotFoundError(f"CA bundle file not removed: {ca_bundle_path}, Error: {e}")
+    os.remove(ca_bundle_path)
