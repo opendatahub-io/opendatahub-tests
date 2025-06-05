@@ -211,6 +211,12 @@ class RunTimeConfigs:
     }
 
 
+class ModelCarImage:
+    MNIST_8_1: str = (
+        "oci://quay.io/mwaykole/test@sha256:8a3217bcfa2cc5fa3d07496cff8b234acdf2c9725dd307dc0a80401f55e1a11c"  # noqa: E501
+    )
+
+
 class MinIo:
     class Metadata:
         NAME: str = "minio"
