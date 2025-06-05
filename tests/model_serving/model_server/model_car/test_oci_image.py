@@ -10,7 +10,7 @@ pytestmark = [pytest.mark.serverless, pytest.mark.rawdeployment]
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, serving_runtime_from_template, model_car_serverless_inference_service",
+    "unprivileged_model_namespace, serving_runtime_from_template, model_car_inference_service",
     [
         pytest.param(
             {"name": f"{ModelFormat.OPENVINO}-model-car"},
@@ -46,11 +46,11 @@ pytestmark = [pytest.mark.serverless, pytest.mark.rawdeployment]
 class TestKserveModelCar:
     @pytest.mark.smoke
     @pytest.mark.jira("RHOAIENG-13465")
-    def test_model_car_no_restarts(self, model_car_serverless_inference_service):
+    def test_model_car_no_restarts(self, model_car_inference_service):
         """Verify that model pod doesn't restart"""
         pod = get_pods_by_isvc_label(
-            client=model_car_serverless_inference_service.client,
-            isvc=model_car_serverless_inference_service,
+            client=model_car_inference_service.client,
+            isvc=model_car_inference_service,
         )[0]
         restarted_containers = [
             container.name for container in pod.instance.status.containerStatuses if container.restartCount > 2
@@ -60,10 +60,10 @@ class TestKserveModelCar:
     @pytest.mark.smoke
     @pytest.mark.ocp_interop
     @pytest.mark.jira("RHOAIENG-12306")
-    def test_model_car_using_rest(self, model_car_serverless_inference_service):
+    def test_model_car_using_rest(self, model_car_inference_service):
         """Verify model query with token using REST"""
         verify_inference_response(
-            inference_service=model_car_serverless_inference_service,
+            inference_service=model_car_inference_service,
             inference_config=ONNX_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
