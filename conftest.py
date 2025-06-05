@@ -236,6 +236,9 @@ def pytest_sessionstart(session: Session) -> None:
         path=must_gather_dict["must_gather_base_directory"],
         ignore_errors=True,
     )
+    config = session.config
+    if config.getoption("collectonly") or config.getoption("setupplan", default=False):
+        return  #
     updated_global_config(admin_client=get_client())
 
 
