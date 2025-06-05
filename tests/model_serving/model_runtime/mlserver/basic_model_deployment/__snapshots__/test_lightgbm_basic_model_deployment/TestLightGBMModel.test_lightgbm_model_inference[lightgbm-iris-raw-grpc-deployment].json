@@ -1,0 +1,26 @@
+{
+  "modelName": "lightgbm-iris",
+  "modelVersion": "v0.1.0",
+  "outputs": [
+    {
+      "contents": {
+        "fp64Contents": [
+          1.5461848371087045e-05,
+          0.00019280402569017216,
+          0.9997917341259387
+        ]
+      },
+      "datatype": "FP64",
+      "name": "predict",
+      "parameters": {
+        "content_type": {
+          "stringParam": "np"
+        }
+      },
+      "shape": [
+        "1",
+        "3"
+      ]
+    }
+  ]
+}
