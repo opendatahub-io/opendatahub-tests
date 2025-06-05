@@ -237,7 +237,8 @@ def pytest_sessionstart(session: Session) -> None:
         ignore_errors=True,
     )
     config = session.config
-    if config.getoption("--collect-only") or config.getoption("--setup-plan", default=False):
+    if config.getoption("--collect-only") or config.getoption("--setup-plan"):
+        LOGGER.info("Skipping global config update for collect-only or setup-plan")
         return
     updated_global_config(admin_client=get_client())
 
