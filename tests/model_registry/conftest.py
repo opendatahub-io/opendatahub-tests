@@ -248,16 +248,22 @@ def model_registry_instance_oauth_service(
 
 @pytest.fixture(scope="class")
 def model_registry_instance_rest_endpoint(
-    model_registry_instance_service: Service,
+    request: FixtureRequest,
 ) -> str:
     """
     Get the REST endpoint for the model registry instance.
     Args:
-        model_registry_instance_service: The service for the model registry instance
+        request: The pytest request object containing the service_fixture parameter
     Returns:
         str: The REST endpoint for the model registry instance
     """
-    return get_endpoint_from_mr_service(svc=model_registry_instance_service, protocol=Protocols.REST)
+    # Get the service fixture name from the request
+    service_fixture = getattr(request, "param", {}).get("service_fixture", "model_registry_instance_service")
+
+    # Get the service from the fixture
+    service = request.getfixturevalue(argname=service_fixture)
+
+    return get_endpoint_from_mr_service(svc=service, protocol=Protocols.REST)
 
 
 @pytest.fixture(scope="class")

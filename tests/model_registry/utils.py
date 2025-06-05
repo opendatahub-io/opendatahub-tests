@@ -266,6 +266,26 @@ def generate_namespace_name(file_path: str) -> str:
     return (file_path.removesuffix(".py").replace("/", "-").replace("_", "-"))[-63:].split("-", 1)[-1]
 
 
+def cleanup_existing_model_registry(namespace: str, name: str) -> None:
+    """
+    Clean up any existing model registry instance with the given name in the specified namespace.
+
+    Args:
+        namespace: The namespace where the model registry is deployed
+        name: The name of the model registry instance to clean up
+    """
+    try:
+        existing_mr = ModelRegistry(
+            name=name,
+            namespace=namespace,
+            ensure_exists=False,
+        )
+        if existing_mr.exists:
+            existing_mr.delete(wait=True, timeout=120)
+    except Exception as e:
+        LOGGER.warning(f"Error cleaning up existing model registry instance: {e}")
+
+
 def create_model_registry_instance(
     namespace: str,
     name: str,
@@ -282,9 +302,9 @@ def create_model_registry_instance(
 ) -> ModelRegistry:
     """
     Factory function to create a ModelRegistry instance with the given parameters.
+    Cleans up any existing instance with the same name before creating a new one.
 
     Args:
-        admin_client: The Kubernetes client to use
         namespace: The namespace to create the model registry in
         name: The name of the model registry instance
         labels: Labels for the model registry
@@ -301,6 +321,9 @@ def create_model_registry_instance(
     Returns:
         A configured ModelRegistry instance
     """
+    # Clean up any existing instance before creating a new one
+    cleanup_existing_model_registry(namespace=namespace, name=name)
+
     return ModelRegistry(
         name=name,
         namespace=namespace,
