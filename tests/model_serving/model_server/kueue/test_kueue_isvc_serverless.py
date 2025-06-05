@@ -25,10 +25,7 @@ CLUSTER_QUEUE_NAME = "cluster-queue-serverless"
 RESOURCE_FLAVOR_NAME = "default-flavor-serverless"
 CPU_QUOTA = 2
 MEMORY_QUOTA = "10Gi"
-ISVC_RESOURCES = {
-    "requests": {"cpu": "1", "memory": "8Gi"},
-    "limits": {"cpu": CPU_QUOTA, "memory": MEMORY_QUOTA}
-}
+ISVC_RESOURCES = {"requests": {"cpu": "1", "memory": "8Gi"}, "limits": {"cpu": CPU_QUOTA, "memory": MEMORY_QUOTA}}
 # min_replicas needs to be 1 or you need to change the test to check for the number of
 # available replicas
 MIN_REPLICAS = 1
@@ -129,9 +126,7 @@ class TestKueueInferenceServiceServerless:
             wait_timeout=30,
             sleep=2,
             func=lambda: wait_for_deployments(
-                deployment_labels,
-                kueue_kserve_inference_service.namespace,
-                admin_client
+                deployment_labels, kueue_kserve_inference_service.namespace, admin_client
             ),
         ):
             if deployments == EXPECTED_UPDATED_DEPLOYMENTS:
@@ -142,9 +137,7 @@ class TestKueueInferenceServiceServerless:
                 wait_timeout=30,
                 sleep=2,
                 func=lambda: check_gated_pods_and_running_pods(
-                    pod_labels,
-                    kueue_kserve_inference_service.namespace,
-                    admin_client
+                    pod_labels, kueue_kserve_inference_service.namespace, admin_client
                 ),
             ):
                 if running_pods == EXPECTED_RUNNING_PODS and gated_pods == EXPECTED_GATED_PODS:
@@ -160,6 +153,5 @@ class TestKueueInferenceServiceServerless:
         isvc = kueue_kserve_inference_service.instance
         total_copies = isvc.status.modelStatus.copies.totalCopies
         assert total_copies == EXPECTED_RUNNING_PODS, (
-            f"InferenceService should have {EXPECTED_RUNNING_PODS} total model copy, "
-            f"got {total_copies}"
+            f"InferenceService should have {EXPECTED_RUNNING_PODS} total model copy, got {total_copies}"
         )

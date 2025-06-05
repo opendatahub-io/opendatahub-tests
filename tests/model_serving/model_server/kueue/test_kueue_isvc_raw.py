@@ -137,9 +137,7 @@ class TestKueueInferenceServiceRaw:
                 wait_timeout=30,
                 sleep=2,
                 func=lambda: check_gated_pods_and_running_pods(
-                    pod_labels,
-                    kueue_raw_inference_service.namespace,
-                    admin_client
+                    pod_labels, kueue_raw_inference_service.namespace, admin_client
                 ),
             ):
                 if running_pods == EXPECTED_RUNNING_PODS and gated_pods == EXPECTED_GATED_PODS:
@@ -155,6 +153,5 @@ class TestKueueInferenceServiceRaw:
         isvc = kueue_raw_inference_service.instance
         total_copies = isvc.status.modelStatus.copies.totalCopies
         assert total_copies == EXPECTED_RUNNING_PODS, (
-            f"InferenceService should have {EXPECTED_RUNNING_PODS} total model copy, "
-            f"got {total_copies}"
+            f"InferenceService should have {EXPECTED_RUNNING_PODS} total model copy, got {total_copies}"
         )
