@@ -12,7 +12,7 @@ from utilities.inference_utils import create_isvc
 
 
 @pytest.fixture(scope="class")
-def model_car_serverless_inference_service(
+def model_car_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
