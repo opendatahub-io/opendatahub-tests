@@ -5,18 +5,18 @@ This test imports the reusable test logic from utilities.kueue_utils.
 
 import pytest
 from ocp_resources.deployment import Deployment
-from ocp_resources.pod import Pod
-from timeout_sampler import TimeoutExpiredError
-from utilities.exceptions import DeploymentValidationError
-from utilities.constants import RunTimeConfigs, KServeDeploymentType, Timeout
-from tests.model_serving.model_server.serverless.constants import ONNX_SERVERLESS_INFERENCE_SERVICE_CONFIG
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
+from utilities.constants import RunTimeConfigs, KServeDeploymentType
 from utilities.general import create_isvc_label_selector_str
-import time
+from utilities.kueue_utils import wait_for_deployments, check_gated_pods_and_running_pods
+from tests.model_serving.model_server.serverless.constants import ONNX_SERVERLESS_INFERENCE_SERVICE_CONFIG
 
 pytestmark = [
     pytest.mark.serverless,
     pytest.mark.sanity,
     pytest.mark.usefixtures("valid_aws_config"),
+    pytest.mark.kueue,
+    pytest.mark.smoke,
 ]
 
 NAMESPACE_NAME = "kueue-isvc-serverless-test"
@@ -25,11 +25,20 @@ CLUSTER_QUEUE_NAME = "cluster-queue-serverless"
 RESOURCE_FLAVOR_NAME = "default-flavor-serverless"
 CPU_QUOTA = 2
 MEMORY_QUOTA = "10Gi"
-ISVC_RESOURCES = {"requests": {"cpu": "1", "memory": "8Gi"}, "limits": {"cpu": CPU_QUOTA, "memory": MEMORY_QUOTA}}
-MIN_REPLICAS = (
-    1  # min_replicas needs to be 1 or you need to change the test to check for the number of available replicas
-)
+ISVC_RESOURCES = {
+    "requests": {"cpu": "1", "memory": "8Gi"},
+    "limits": {"cpu": CPU_QUOTA, "memory": MEMORY_QUOTA}
+}
+# min_replicas needs to be 1 or you need to change the test to check for the number of
+# available replicas
+MIN_REPLICAS = 1
 MAX_REPLICAS = 2
+EXPECTED_RUNNING_PODS = 1
+EXPECTED_GATED_PODS = 2
+EXPECTED_INITIAL_REPLICAS = 1
+EXPECTED_UPDATED_REPLICAS = 2
+EXPECTED_INITIAL_DEPLOYMENTS = 1
+EXPECTED_UPDATED_DEPLOYMENTS = 2
 
 
 @pytest.mark.serverless
@@ -76,96 +85,81 @@ class TestKueueInferenceServiceServerless:
     ):
         """Test inference service with serverless deployment"""
         # Verify initial deployment has 1 pod
-        labels = [
+        deployment_labels = [
             create_isvc_label_selector_str(
                 isvc=kueue_kserve_inference_service,
                 resource_type="deployment",
                 runtime_name=kueue_kserve_serving_runtime.name,
             )
         ]
+        pod_labels = [
+            create_isvc_label_selector_str(
+                isvc=kueue_kserve_inference_service,
+                resource_type="pod",
+                runtime_name=kueue_kserve_serving_runtime.name,
+            )
+        ]
         deployments = list(
             Deployment.get(
-                label_selector=",".join(labels),
+                label_selector=",".join(deployment_labels),
                 namespace=kueue_kserve_inference_service.namespace,
                 dyn_client=admin_client,
             )
         )
-        if len(deployments) != 1:
+        if len(deployments) != EXPECTED_INITIAL_DEPLOYMENTS:
             deployment_names = [deployment.instance.metadata.name for deployment in deployments]
-            raise DeploymentValidationError(f"Expected 1 deployment, got {len(deployments)}: {deployment_names}")
+            assert len(deployments) == EXPECTED_INITIAL_DEPLOYMENTS, (
+                f"Expected {EXPECTED_INITIAL_DEPLOYMENTS} deployment, got {len(deployments)}: {deployment_names}"
+            )
 
         deployment = deployments[0]
         deployment.wait_for_replicas(deployed=True)
         replicas = deployment.instance.spec.replicas
-        if replicas != 1:
-            raise DeploymentValidationError(f"Deployment should have 1 replica, got {replicas}")
+        assert replicas == EXPECTED_INITIAL_REPLICAS, (
+            f"Deployment should have {EXPECTED_INITIAL_REPLICAS} replica, got {replicas}"
+        )
 
         # Update inference service to request 2 replicas
         isvc_to_update = kueue_kserve_inference_service.instance.to_dict()
-        isvc_to_update["spec"]["predictor"]["minReplicas"] = 2
+        isvc_to_update["spec"]["predictor"]["minReplicas"] = EXPECTED_UPDATED_REPLICAS
         kueue_kserve_inference_service.update(isvc_to_update)
 
-        # Give time for updated deployment
-        time.sleep(10)  # noqa: FCN001
-        # Verify deployment still has 1 pod due to Kueue admission control
-        deployments = list(
-            Deployment.get(
-                label_selector=",".join(labels),
-                namespace=kueue_kserve_inference_service.namespace,
-                dyn_client=admin_client,
-            )
-        )
+        # wait for the new deployment to be created
+        for deployments in TimeoutSampler(
+            wait_timeout=30,
+            sleep=2,
+            func=lambda: wait_for_deployments(
+                deployment_labels,
+                kueue_kserve_inference_service.namespace,
+                admin_client
+            ),
+        ):
+            if deployments == EXPECTED_UPDATED_DEPLOYMENTS:
+                break
+        # Verify only 1 pod is running due to Kueue admission control, 2 pods are pending due to Kueue admission control
         try:
-            total_available_replicas = 0
-            for deployment in deployments:
-                # This will raise TimeoutExpiredError if the deployment is not available
-                # If it is available, we will add the number of replicas to the total, since the deployment is available
-                # it means spec.replicas == status.replicas == status.updatedReplicas ==
-                # status.availableReplicas == status.readyReplicas
-                deployment.wait_for_replicas(deployed=True, timeout=Timeout.TIMEOUT_30SEC)
-                total_available_replicas += deployment.instance.status.availableReplicas
-        except TimeoutExpiredError:
-            pass
-        if total_available_replicas != 1:
-            raise DeploymentValidationError(
-                f"Total available replicas across all deployments should be 1, got {total_available_replicas}"
-            )
-        # Get pods that match isvc labels and verify their status
-        pods = list(
-            Pod.get(
-                label_selector=",".join(labels),
-                namespace=kueue_kserve_inference_service.namespace,
-                dyn_client=admin_client,
-            )
-        )
-
-        if len(pods) != 3:
-            pod_names = [pod.instance.metadata.name for pod in pods]
-            raise DeploymentValidationError(f"Expected 3 pods, got {len(pods)}: {pod_names}")
-
-        running_pods = 0
-        gated_pods = 0
-        for pod in pods:
-            pod_phase = pod.instance.status.phase
-            if pod_phase == "Running":
-                running_pods += 1
-            elif pod_phase == "Pending" and all(
-                condition.type == "PodScheduled"
-                and condition.status == "False"
-                and condition.reason == "SchedulingGated"
-                for condition in pod.instance.status.conditions
+            for running_pods, gated_pods in TimeoutSampler(
+                wait_timeout=30,
+                sleep=2,
+                func=lambda: check_gated_pods_and_running_pods(
+                    pod_labels,
+                    kueue_kserve_inference_service.namespace,
+                    admin_client
+                ),
             ):
-                gated_pods += 1
-
-        if running_pods != 1 or gated_pods != 2:
-            raise DeploymentValidationError(
-                f"Expected 1 Running pod and 2 SchedulingGated pods, "
-                f"got {running_pods} Running and {gated_pods} SchedulingGated"
+                if running_pods == EXPECTED_RUNNING_PODS and gated_pods == EXPECTED_GATED_PODS:
+                    break
+        except TimeoutExpiredError:
+            assert False, (
+                f"Timeout waiting for {EXPECTED_RUNNING_PODS} running pods and "
+                f"{EXPECTED_GATED_PODS} gated pods, got {running_pods} running pods and {gated_pods} gated pods"
             )
-                    # Refresh the isvc instance to get latest status
+
+        # Refresh the isvc instance to get latest status
         kueue_kserve_inference_service.get()
         isvc = kueue_kserve_inference_service.instance
-        if isvc.status.modelStatus.copies.totalCopies != 1:
-            raise DeploymentValidationError(
-                f"InferenceService should have 1 total model copy, got {isvc.status.modelStatus.copies.totalCopies}"
-            ) 
+        total_copies = isvc.status.modelStatus.copies.totalCopies
+        assert total_copies == EXPECTED_RUNNING_PODS, (
+            f"InferenceService should have {EXPECTED_RUNNING_PODS} total model copy, "
+            f"got {total_copies}"
+        )

@@ -1,7 +1,9 @@
 from contextlib import contextmanager
 from typing import Optional, Dict, Any, List, Generator
-from ocp_resources.resource import NamespacedResource, Resource, MissingRequiredArgumentError
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.resource import NamespacedResource, Resource, MissingRequiredArgumentError
+from ocp_resources.deployment import Deployment
+from ocp_resources.pod import Pod
 
 
 class ResourceFlavor(Resource):
@@ -143,3 +145,40 @@ def create_cluster_queue(
         teardown=teardown,
     ) as cluster_queue:
         yield cluster_queue
+
+
+def wait_for_deployments(labels: list[str], namespace: str, admin_client: DynamicClient) -> int:
+    deployments = list(
+        Deployment.get(
+            label_selector=",".join(labels),
+            namespace=namespace,
+            dyn_client=admin_client,
+        )
+    )
+    return len(deployments)
+
+
+def check_gated_pods_and_running_pods(
+    labels: list[str], namespace: str, admin_client: DynamicClient
+) -> tuple[int, int]:
+    running_pods = 0
+    gated_pods = 0
+    pods = list(
+        Pod.get(
+            label_selector=",".join(labels),
+            namespace=namespace,
+            dyn_client=admin_client,
+        )
+    )
+    for pod in pods:
+        if pod.instance.status.phase == "Running":
+            running_pods += 1
+        elif pod.instance.status.phase == "Pending":
+            if all(
+                condition.type == "PodScheduled"
+                and condition.status == "False"
+                and condition.reason == "SchedulingGated"
+                for condition in pod.instance.status.conditions
+            ):
+                gated_pods += 1
+    return running_pods, gated_pods
