@@ -58,7 +58,7 @@ class TestModelRegistryCreationOAuth:
         model_registry_client: ModelRegistryClient,
     ):
         if py_config["distribution"] == "downstream" and get_product_version(admin_client=admin_client) < MINVER:
-            pytest.skip("Skipping test for RHOAI < 2.21")
+            pytest.skip(f"Skipping test for RHOAI < {MINVER}")
 
         # Register a new model
         registered_model = model_registry_client.register_model(
@@ -91,14 +91,15 @@ class TestModelRegistryCreationOAuth:
             pytest.fail("errors found in model registry response validation:\n{}".format("\n".join(errors)))
 
     # Tests RHOAIENG-26195
-    def test_encripted_oauth_proxy(
+    def test_encrypted_oauth_proxy(
         self: Self,
         admin_client: DynamicClient,
         model_registry_instance_oauth_service: Service,
         current_client_token: str,
     ):
+        """Test that connecting to encrypted OAuth proxy with HTTP protocol fails appropriately."""
         if py_config["distribution"] == "downstream" and get_product_version(admin_client=admin_client) < MINVER:
-            pytest.skip("Skipping test for RHOAI < 2.21")
+            pytest.skip(f"Skipping test for RHOAI < {MINVER}")
 
         # Get the REST endpoint
         rest_endpoint = get_endpoint_from_mr_service(svc=model_registry_instance_oauth_service, protocol=Protocols.REST)
