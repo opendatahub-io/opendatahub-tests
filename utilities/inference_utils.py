@@ -125,7 +125,7 @@ class Inference:
                 return labels and labels.get(Labels.Kserve.NETWORKING_KSERVE_IO) == Labels.Kserve.EXPOSED
 
         if self.deployment_mode == KServeDeploymentType.SERVERLESS:
-            if labels and labels.get("networking.knative.dev/visibility") == "cluster-local":
+            if labels and labels.get(Labels.Kserve.NETWORKING_KNATIVE_IO) == "cluster-local":
                 return False
             else:
                 return True
