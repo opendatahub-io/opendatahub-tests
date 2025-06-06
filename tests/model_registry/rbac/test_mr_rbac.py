@@ -22,20 +22,36 @@ NEW_GROUP_NAME = "test-model-registry-group"
 
 
 @pytest.mark.parametrize(
-    "updated_dsc_component_state_scope_class",
+    "updated_dsc_component_state_scope_class, is_model_registry_oauth",
     [
-        pytest.param({
-            "component_patch": {
-                DscComponents.MODELREGISTRY: {
-                    "managementState": DscComponents.ManagementState.MANAGED,
-                    "registriesNamespace": py_config["model_registry_namespace"],
-                },
-            }
-        })
+        pytest.param(
+            {
+                "component_patch": {
+                    DscComponents.MODELREGISTRY: {
+                        "managementState": DscComponents.ManagementState.MANAGED,
+                        "registriesNamespace": py_config["model_registry_namespace"],
+                    },
+                }
+            },
+            {"use_oauth_proxy": False},
+            id="servicemesh",
+        ),
+        pytest.param(
+            {
+                "component_patch": {
+                    DscComponents.MODELREGISTRY: {
+                        "managementState": DscComponents.ManagementState.MANAGED,
+                        "registriesNamespace": py_config["model_registry_namespace"],
+                    },
+                }
+            },
+            {"use_oauth_proxy": True},
+            id="oauth",
+        ),
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("updated_dsc_component_state_scope_class")
+@pytest.mark.usefixtures("updated_dsc_component_state_scope_class", "is_model_registry_oauth")
 class TestUserPermission:
     """
     Test suite for verifying user and group permissions for the Model Registry.
