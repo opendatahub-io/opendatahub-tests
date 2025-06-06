@@ -176,6 +176,7 @@ class Labels:
 
     class OpenDataHubIo:
         MANAGED: str = Annotations.OpenDataHubIo.MANAGED
+        NAME: str = f"component.{ApiGroups.OPENDATAHUB_IO}/name"
 
     class Openshift:
         APP: str = "app"
@@ -214,6 +215,12 @@ class RunTimeConfigs:
         "runtime-name": ModelInferenceRuntime.ONNX_RUNTIME,
         "model-format": {ModelFormat.ONNX: ModelVersion.OPSET13},
     }
+
+
+class ModelCarImage:
+    MNIST_8_1: str = (
+        "oci://quay.io/mwaykole/test@sha256:8a3217bcfa2cc5fa3d07496cff8b234acdf2c9725dd307dc0a80401f55e1a11c"  # noqa: E501
+    )
 
 
 class MinIo:

@@ -4,7 +4,7 @@ import logging
 from ocp_resources.namespace import Namespace
 from model_registry import ModelRegistry as ModelRegistryClient
 from tests.model_registry.utils import get_endpoint_from_mr_service, get_mr_service_by_label
-from ocp_resources.model_registry import ModelRegistry
+from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from utilities.infra import get_openshift_token
 from kubernetes.dynamic import DynamicClient
 

@@ -3,7 +3,7 @@ from typing import Self
 from simple_logger.logger import get_logger
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
-from ocp_resources.model_registry import ModelRegistry
+from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from pytest_testconfig import config as py_config
 from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
