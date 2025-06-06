@@ -47,7 +47,7 @@ class TestModelRegistryWithSecureDB:
         [{"ssl_ca": f"{CA_MOUNT_PATH}/invalid-ca.crt"}],
         indirect=True,
     )
-    @pytest.mark.usefixtures("model_registry_instance_ca")
+    @pytest.mark.usefixtures("deploy_secure_mysql_and_mr")
     @pytest.mark.smoke
     def test_register_model_with_invalid_ca(
         self: Self,

@@ -12,7 +12,6 @@ from utilities.constants import Protocols
 from ocp_resources.deployment import Deployment
 from tests.model_registry.utils import (
     get_model_registry_deployment_template_dict,
-    create_model_registry_instance,
 )
 from tests.model_registry.constants import (
     DB_RESOURCES_NAME,
@@ -122,28 +121,6 @@ def patch_invalid_ca(
 
 
 @pytest.fixture(scope="class")
-def model_registry_instance_ca(
-    model_registry_namespace: str,
-    model_registry_mysql_config: dict[str, Any],
-) -> Generator[ModelRegistry, Any, Any]:
-    """
-    Deploys a Model Registry instance with a custom CA certificate.
-    """
-    with create_model_registry_instance(
-        namespace=model_registry_namespace,
-        name=SECURE_MR_NAME,
-        labels=MODEL_REGISTRY_STANDARD_LABELS,
-        grpc={},
-        rest={},
-        istio=ISTIO_CONFIG_DICT,
-        mysql=model_registry_mysql_config,
-        wait_for_resource=True,
-    ) as mr:
-        mr.wait_for_condition(condition="Available", status="True")
-        yield mr
-
-
-@pytest.fixture(scope="class")
 def mysql_template_with_ca(model_registry_db_secret: Secret) -> dict[str, Any]:
     """
     Patches the MySQL template with the CA file path and volume mount.
@@ -183,10 +160,10 @@ def deploy_secure_mysql_and_mr(
     patch = {"spec": {"template": mysql_template_with_ca["spec"]}}
 
     with ResourceEditor(patches={model_registry_db_deployment: patch}):
-        with create_model_registry_instance(
-            namespace=model_registry_namespace,
+        with ModelRegistry(
             name=SECURE_MR_NAME,
-            labels=MODEL_REGISTRY_STANDARD_LABELS,
+            namespace=model_registry_namespace,
+            label=MODEL_REGISTRY_STANDARD_LABELS,
             grpc={},
             rest={},
             istio=ISTIO_CONFIG_DICT,
