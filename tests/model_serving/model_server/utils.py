@@ -2,7 +2,6 @@ import json
 import re
 import concurrent.futures
 from string import Template
-import time
 from typing import Any, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from kubernetes.dynamic import DynamicClient
@@ -21,6 +20,7 @@ from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 from utilities.constants import Protocols
 from utilities.inference_utils import Inference
 from utilities.manifests.vllm import VLLM_INFERENCE_CONFIG
+from timeout_sampler import TimeoutWatch
 
 LOGGER = get_logger(name=__name__)
 
@@ -276,16 +276,11 @@ def run_vllm_concurrent_load(
         response_snapshot: Response snapshot
         chat_query: Chat query
         completion_query: Completion query
+        num_concurrent: Number of concurrent requests
+        duration: Duration in seconds to run the load test
     """
 
     def _make_request() -> None:
-        # validate_raw_openai_inference_request(
-        #     pod_name=pod_name,
-        #     isvc=isvc,
-        #     response_snapshot=response_snapshot,
-        #     chat_query=chat_query,
-        #     completion_query=completion_query,
-        # )
         verify_inference_response(
             inference_service=isvc,
             inference_config=VLLM_INFERENCE_CONFIG,
@@ -294,9 +289,9 @@ def run_vllm_concurrent_load(
             use_default_query=True,
         )
 
-    start_time = time.time()
+    timeout_watch = TimeoutWatch(timeout=duration)
     with concurrent.futures.ThreadPoolExecutor(max_workers=num_concurrent) as executor:
-        while time.time() - start_time < duration:
+        while timeout_watch.remaining_time() > 0:
             futures = [executor.submit(_make_request) for _ in range(num_concurrent)]
             concurrent.futures.wait(fs=futures)
 
@@ -322,8 +317,8 @@ def run_ovms_concurrent_load(
             use_default_query=True,
         )
 
-    start_time = time.time()
+    timeout_watch = TimeoutWatch(timeout=duration)
     with concurrent.futures.ThreadPoolExecutor(max_workers=num_concurrent) as executor:
-        while time.time() - start_time < duration:
+        while timeout_watch.remaining_time() > 0:
             futures = [executor.submit(make_request) for _ in range(num_concurrent)]
             concurrent.futures.wait(fs=futures)
