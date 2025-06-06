@@ -545,6 +545,7 @@ def create_isvc(
     model_env_variables: list[dict[str, str]] | None = None,
     teardown: bool = True,
     protocol_version: str | None = None,
+    labels: dict[str, str] | None = None,
 ) -> Generator[InferenceService, Any, Any]:
     """
     Create InferenceService object.
@@ -584,7 +585,9 @@ def create_isvc(
         InferenceService: InferenceService object
 
     """
-    labels: dict[str, str] = {}
+    if labels is None:
+        labels = {}
+
     predictor_dict: dict[str, Any] = {
         "model": {
             "modelFormat": {"name": model_format},
@@ -614,6 +617,8 @@ def create_isvc(
 
     if min_replicas:
         predictor_dict["minReplicas"] = min_replicas
+    if max_replicas:
+        predictor_dict["maxReplicas"] = max_replicas
     if argument:
         predictor_dict["model"]["args"] = argument
     if resources:

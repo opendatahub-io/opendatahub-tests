@@ -71,6 +71,7 @@ def create_ns(
     ns_annotations: dict[str, str] | None = None,
     model_mesh_enabled: bool = False,
     add_dashboard_label: bool = False,
+    add_kueue_label: bool = False,
     pytest_request: FixtureRequest | None = None,
 ) -> Generator[Namespace | Project, Any, Any]:
     """
@@ -106,6 +107,7 @@ def create_ns(
         ns_annotations = pytest_request.param.get("annotations", ns_annotations)
         model_mesh_enabled = pytest_request.param.get("modelmesh-enabled", model_mesh_enabled)
         add_dashboard_label = pytest_request.param.get("add-dashboard-label", add_dashboard_label)
+        add_kueue_label = pytest_request.param.get("add-kueue-label", add_kueue_label)
 
     namespace_kwargs = {
         "name": name,
@@ -123,6 +125,9 @@ def create_ns(
 
     if add_dashboard_label:
         namespace_kwargs["label"][Labels.OpenDataHub.DASHBOARD] = "true"  # type: ignore
+
+    if add_kueue_label:
+        namespace_kwargs["label"][Labels.Kueue.MANAGED] = "true"  # type: ignore
 
     if unprivileged_client:
         with ProjectRequest(name=name, client=unprivileged_client, teardown=teardown):
