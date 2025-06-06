@@ -2,12 +2,13 @@ import pytest
 import requests
 from typing import Self
 from pytest_testconfig import config as py_config
-from tests.model_registry.rest_api.utils import register_model_rest_api
+from tests.model_registry.rest_api.utils import register_model_rest_api, validate_resource_attributes
 from tests.model_registry.rest_api.constants import MODEL_REGISTER_DATA
 from utilities.constants import DscComponents
 from simple_logger.logger import get_logger
 from tests.model_registry.utils import generate_random_name
 from tests.model_registry.constants import CA_MOUNT_PATH
+import copy
 
 
 LOGGER = get_logger(name=__name__)
@@ -48,7 +49,6 @@ class TestModelRegistryWithSecureDB:
         indirect=True,
     )
     @pytest.mark.usefixtures("deploy_secure_mysql_and_mr")
-    @pytest.mark.smoke
     def test_register_model_with_invalid_ca(
         self: Self,
         model_registry_rest_url: str,
@@ -61,12 +61,13 @@ class TestModelRegistryWithSecureDB:
         with an invalid CA certificate.
         """
         model_name = generate_random_name(prefix="model-rest-api")
-        MODEL_REGISTER_DATA["register_model_data"]["name"] = model_name
+        model_data = copy.deepcopy(MODEL_REGISTER_DATA)
+        model_data["register_model_data"]["name"] = model_name
         with pytest.raises(requests.exceptions.SSLError) as exc_info:
             register_model_rest_api(
                 model_registry_rest_url=model_registry_rest_url,
                 model_registry_rest_headers=model_registry_rest_headers,
-                data_dict=MODEL_REGISTER_DATA,
+                data_dict=model_data,
                 verify=True,
             )
         assert "certificate verify failed" in str(exc_info.value), (
@@ -92,14 +93,47 @@ class TestModelRegistryWithSecureDB:
         Uses a CA bundle file for SSL verification by passing it directly to the verify parameter.
         """
         model_name = generate_random_name(prefix="model-rest-api")
-        MODEL_REGISTER_DATA["register_model_data"]["name"] = model_name
+        model_data = copy.deepcopy(MODEL_REGISTER_DATA)
+        model_data["register_model_data"]["name"] = model_name
         result = register_model_rest_api(
             model_registry_rest_url=model_registry_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
-            data_dict=MODEL_REGISTER_DATA,
+            data_dict=model_data,
             verify=local_ca_bundle,
         )
         assert result["register_model"].get("id"), "Model registration failed with secure DB connection."
-        for k, v in MODEL_REGISTER_DATA["register_model_data"].items():
-            assert result["register_model"][k] == v, f"Expected {k}={v}, got {result[k]}"
+        validate_resource_attributes(
+            expected_params=model_data["register_model_data"],
+            actual_resource_data=result["register_model"],
+            resource_name="register_model",
+        )
         LOGGER.info(f"Model registered successfully with secure DB using {local_ca_bundle}")
+
+    # Implements RHOAIENG-26150
+    @pytest.mark.usefixtures("deploy_secure_mysql_and_mr")
+    @pytest.mark.parametrize("model_registry_mysql_config", [{}], indirect=True)
+    @pytest.mark.sanity
+    def test_register_model_without_ssl_ca(
+        self: Self,
+        model_registry_rest_url: str,
+        model_registry_rest_headers: dict[str, str],
+    ):
+        """
+        Test Model Registry registration when MySQL config does NOT include ssl_ca.
+        Verify that the Model Registry can connect to the MySQL DB without a custom CA certificate.
+        """
+        model_name = generate_random_name(prefix="model-rest-api")
+        model_data = copy.deepcopy(MODEL_REGISTER_DATA)
+        model_data["register_model_data"]["name"] = model_name
+        result = register_model_rest_api(
+            model_registry_rest_url=model_registry_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            data_dict=model_data,
+            verify=False,
+        )
+        assert result["register_model"].get("id"), "Model registration failed with no ssl_ca provided."
+        validate_resource_attributes(
+            expected_params=model_data["register_model_data"],
+            actual_resource_data=result["register_model"],
+            resource_name="register_model",
+        )

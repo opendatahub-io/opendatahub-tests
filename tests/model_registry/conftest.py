@@ -186,15 +186,17 @@ def model_registry_mysql_config(
     Expects request.param to be a dict. If 'ssl_ca' is not present, it defaults to None.
     """
     param = request.param if hasattr(request, "param") else {}
-    return {
+    config = {
         "host": f"{model_registry_db_deployment.name}.{model_registry_db_deployment.namespace}.svc.cluster.local",
         "database": model_registry_db_secret.string_data["database-name"],
         "passwordSecret": {"key": "database-password", "name": model_registry_db_deployment.name},
         "port": param.get("port", 3306),
         "skipDBCreation": False,
         "username": model_registry_db_secret.string_data["database-user"],
-        "ssl_ca": param.get("ssl_ca"),
     }
+    if param.get("ssl_ca"):
+        config["ssl_ca"] = param.get("ssl_ca")
+    return config
 
 
 @pytest.fixture(scope="class")
