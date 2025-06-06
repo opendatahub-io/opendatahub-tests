@@ -177,16 +177,26 @@ def model_registry_instance(
 
 @pytest.fixture(scope="class")
 def model_registry_mysql_config(
-    model_registry_db_deployment: Deployment, model_registry_db_secret: Secret
+    request: FixtureRequest,
+    model_registry_db_deployment: Deployment,
+    model_registry_db_secret: Secret,
 ) -> dict[str, Any]:
-    return {
+    """
+    Fixture to build the MySQL config dictionary for Model Registry.
+    Expects request.param to be a dict. If 'ssl_ca' is not present, it defaults to None.
+    """
+    param = request.param if hasattr(request, "param") else {}
+    config = {
         "host": f"{model_registry_db_deployment.name}.{model_registry_db_deployment.namespace}.svc.cluster.local",
         "database": model_registry_db_secret.string_data["database-name"],
         "passwordSecret": {"key": "database-password", "name": model_registry_db_deployment.name},
-        "port": 3306,
+        "port": param.get("port", 3306),
         "skipDBCreation": False,
         "username": model_registry_db_secret.string_data["database-user"],
     }
+    if param.get("ssl_ca"):
+        config["ssl_ca"] = param.get("ssl_ca")
+    return config
 
 
 @pytest.fixture(scope="class")
