@@ -53,16 +53,14 @@ def create_keda_auto_scaling_config(
             {
                 "type": "External",
                 "external": {
+                    "authenticationRef": {
+                        "name": "inference-prometheus-auth",
+                    },
                     "metric": {
+                        "authModes": "bearer",
                         "backend": "prometheus",
                         "serverAddress": THANOS_QUERIER_ADDRESS,
                         "query": query,
-                        "namespace": namespace,
-                        "authModes": "bearer",
-                    },
-                    "authenticationRef": {
-                        # https://github.com/opendatahub-io/odh-model-controller/blob/6c83a07e764be8a6bb77b1b36589ed029605b186/internal/controller/serving/reconcilers/kserve_keda_reconciler.go#L47
-                        "name": "inference-prometheus-auth",
                     },
                     "target": {"type": "Value", "value": target_value},
                 },

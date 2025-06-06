@@ -33,9 +33,11 @@ INITIAL_POD_COUNT = 1
 FINAL_POD_COUNT = 5
 
 VLLM_MODEL_NAME = "granite-vllm-keda"
-VLLM_METRICS_QUERY = f'sum_over_time(vllm:gpu_cache_usage_perc \
+VLLM_METRICS_QUERY_GPU = f'sum_over_time(vllm:gpu_cache_usage_perc \
     {{namespace="{VLLM_MODEL_NAME}",pod=~"{VLLM_MODEL_NAME}.*"}}[5m])'
-VLLM_METRICS_THRESHOLD = 0.02
+VLLM_METRICS_THRESHOLD_GPU = 0.02
+VLLM_METRICS_QUERY_REQUESTS = f'vllm:num_requests_running{{namespace="{VLLM_MODEL_NAME}",pod=~"{VLLM_MODEL_NAME}.*"}}'
+VLLM_METRICS_THRESHOLD_REQUESTS = 4
 
 OVMS_MODEL_NAMESPACE = "ovms-keda"
 OVMS_MODEL_NAME = "onnx-raw"
@@ -102,8 +104,8 @@ def pod_resource(unprivileged_client: DynamicClient, keda_vllm_inference_service
                 "name": VLLM_MODEL_NAME,
                 "initial_pod_count": INITIAL_POD_COUNT,
                 "final_pod_count": FINAL_POD_COUNT,
-                "metrics_query": VLLM_METRICS_QUERY,
-                "metrics_threshold": VLLM_METRICS_THRESHOLD,
+                "metrics_query": VLLM_METRICS_QUERY_REQUESTS,
+                "metrics_threshold": VLLM_METRICS_THRESHOLD_REQUESTS,
             },
             id=f"{VLLM_MODEL_NAME}-single-gpu",
         ),
@@ -135,8 +137,8 @@ class TestVllmKedaScaling:
 
         validate_metrics_field(
             prometheus=prometheus,
-            metrics_query=VLLM_METRICS_QUERY,
-            expected_value=str(VLLM_METRICS_THRESHOLD),
+            metrics_query=VLLM_METRICS_QUERY_REQUESTS,
+            expected_value=str(VLLM_METRICS_THRESHOLD_REQUESTS),
             greater_than=True,
         )
 
@@ -144,8 +146,8 @@ class TestVllmKedaScaling:
             client=unprivileged_client,
             isvc=keda_vllm_inference_service,
             expected_trigger_type="prometheus",
-            expected_query=VLLM_METRICS_QUERY,
-            expected_threshold=VLLM_METRICS_THRESHOLD,
+            expected_query=VLLM_METRICS_QUERY_REQUESTS,
+            expected_threshold=VLLM_METRICS_THRESHOLD_REQUESTS,
         )
 
 
@@ -161,8 +163,8 @@ class TestVllmKedaScaling:
                 "model-dir": "test-dir",
                 "initial_pod_count": INITIAL_POD_COUNT,
                 "final_pod_count": FINAL_POD_COUNT,
-                "metrics_query": VLLM_METRICS_QUERY,
-                "metrics_threshold": VLLM_METRICS_THRESHOLD,
+                "metrics_query": OVMS_METRICS_QUERY,
+                "metrics_threshold": OVMS_METRICS_THRESHOLD,
             },
         )
     ],
@@ -183,7 +185,12 @@ class TestOVMSKedaScaling:
 
         verify_final_pod_count(isvc=ovms_keda_inference_service)
 
-        # TODO: Add metrics validation
+        validate_metrics_field(
+            prometheus=prometheus,
+            metrics_query=OVMS_METRICS_QUERY,
+            expected_value=str(OVMS_METRICS_THRESHOLD),
+            greater_than=True,
+        )
 
         verify_keda_scaledobject(
             client=unprivileged_client,
