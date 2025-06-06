@@ -41,7 +41,6 @@ from tests.model_registry.utils import (
     get_model_registry_deployment_template_dict,
     get_model_registry_db_label_dict,
     wait_for_pods_running,
-    create_model_registry_instance,
 )
 from utilities.constants import Protocols, DscComponents
 from model_registry import ModelRegistry as ModelRegistryClient
@@ -150,37 +149,25 @@ def model_registry_db_deployment(
 
 @pytest.fixture(scope="class")
 def model_registry_instance(
-    model_registry_namespace: str,
-    model_registry_mysql_config: dict[str, Any],
+    model_registry_namespace: str, model_registry_mysql_config: dict[str, Any], is_model_registry_oauth: bool
 ) -> Generator[ModelRegistry, Any, Any]:
-    """Creates a model registry instance with service mesh configuration."""
-    with create_model_registry_instance(
-        namespace=model_registry_namespace,
+    istio_config = None
+    oauth_config = None
+    if is_model_registry_oauth:
+        LOGGER.warning("Requested Ouath Proxy configuration:")
+        oauth_config = OAUTH_PROXY_CONFIG_DICT
+    else:
+        LOGGER.warning("Requested OSSM configuration:")
+        istio_config = ISTIO_CONFIG_DICT
+    """Creates a model registry instance with oauth proxy/service mesh configuration."""
+    with ModelRegistry(
         name=MR_INSTANCE_NAME,
-        labels=MODEL_REGISTRY_STANDARD_LABELS,
+        namespace=model_registry_namespace,
+        label=MODEL_REGISTRY_STANDARD_LABELS,
         grpc={},
         rest={},
-        istio=ISTIO_CONFIG_DICT,
-        mysql=model_registry_mysql_config,
-        wait_for_resource=True,
-    ) as mr:
-        mr.wait_for_condition(condition="Available", status="True")
-        yield mr
-
-
-@pytest.fixture(scope="class")
-def model_registry_instance_oauth_proxy(
-    model_registry_namespace: str,
-    model_registry_mysql_config: dict[str, Any],
-) -> Generator[ModelRegistry, Any, Any]:
-    """Creates a model registry instance with oauth proxy configuration."""
-    with create_model_registry_instance(
-        namespace=model_registry_namespace,
-        name=MR_INSTANCE_NAME,
-        labels=MODEL_REGISTRY_STANDARD_LABELS,
-        grpc={},
-        rest={},
-        oauth_proxy=OAUTH_PROXY_CONFIG_DICT,
+        istio=istio_config,
+        oauth_proxy=oauth_config,
         mysql=model_registry_mysql_config,
         wait_for_resource=True,
     ) as mr:
@@ -221,28 +208,6 @@ def model_registry_instance_service(
         client=admin_client,
         ns=Namespace(name=model_registry_namespace),
         mr_instance=model_registry_instance,
-    )
-
-
-@pytest.fixture(scope="class")
-def model_registry_instance_oauth_service(
-    admin_client: DynamicClient,
-    model_registry_namespace: str,
-    model_registry_instance_oauth_proxy: ModelRegistry,
-) -> Service:
-    """
-    Get the service for the OAuth proxy model registry instance.
-    Args:
-        admin_client: The admin client
-        model_registry_namespace: The namespace where the model registry is deployed
-        model_registry_instance_oauth_proxy: The OAuth proxy model registry instance
-    Returns:
-        Service: The service for the OAuth proxy model registry instance
-    """
-    return get_mr_service_by_label(
-        client=admin_client,
-        ns=Namespace(name=model_registry_namespace),
-        mr_instance=model_registry_instance_oauth_proxy,
     )
 
 
@@ -335,10 +300,7 @@ def updated_dsc_component_state_scope_class(
 
 
 @pytest.fixture(scope="class")
-def model_registry_client(
-    request: FixtureRequest,
-    current_client_token: str,
-) -> ModelRegistryClient:
+def model_registry_client(current_client_token: str, model_registry_instance_rest_endpoint: str) -> ModelRegistryClient:
     """
     Get a client for the model registry instance.
     Args:
@@ -347,20 +309,10 @@ def model_registry_client(
     Returns:
         ModelRegistryClient: A client for the model registry instance
     """
-    # Get the service fixture name from the request
-    service_fixture = getattr(request, "param", {}).get("service_fixture", "model_registry_instance_service")
-
-    # Get the service from the fixture
-    service = request.getfixturevalue(argname=service_fixture)
-
-    # Get the REST endpoint
-    rest_endpoint = get_endpoint_from_mr_service(svc=service, protocol=Protocols.REST)
-
-    # Create the client
-    server, port = rest_endpoint.split(":")
+    server, port = model_registry_instance_rest_endpoint.split(":")
     return ModelRegistryClient(
         server_address=f"{Protocols.HTTPS}://{server}",
-        port=port,
+        port=int(port),
         author="opendatahub-test",
         user_token=current_client_token,
         is_secure=False,
@@ -443,3 +395,8 @@ def validate_authorino_operator_version_channel(admin_client: DynamicClient) -> 
         validate_operator_subscription_channel(
             client=admin_client, namespace="openshift-operators", operator_name=operator_name, channel_name="stable"
         )
+
+
+@pytest.fixture(scope="class")
+def is_model_registry_oauth(request: FixtureRequest) -> bool:
+    return getattr(request, "param", {}).get("use_oauth_proxy", False)
