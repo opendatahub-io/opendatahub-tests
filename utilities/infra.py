@@ -24,6 +24,7 @@ from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.dsc_initialization import DSCInitialization
 from ocp_resources.exceptions import MissingResourceError
+from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.infrastructure import Infrastructure
 from ocp_resources.namespace import Namespace
@@ -374,6 +375,49 @@ def create_isvc_view_role(
         yield role
 
 
+@contextmanager
+def create_inference_graph_view_role(
+    client: DynamicClient,
+    namespace: str,
+    name: str,
+    resource_names: Optional[list[str]] = None,
+    teardown: bool = True,
+) -> Generator[Role, Any, Any]:
+    """
+    Create a view role for an InferenceGraph.
+
+    Args:
+        client (DynamicClient): Dynamic client.
+        namespace (str): Namespace to create the Role.
+        name (str): Role name.
+        resource_names (list[str]): Resource names to be attached to role.
+        teardown (bool): Whether to delete the role.
+
+    Yields:
+        Role: Role object.
+
+    """
+    rules = [
+        {
+            "apiGroups": [InferenceGraph.api_group],
+            "resources": ["inferencegraphs"],
+            "verbs": ["get"],
+        },
+    ]
+
+    if resource_names:
+        rules[0].update({"resourceNames": resource_names})
+
+    with Role(
+        client=client,
+        name=name,
+        namespace=namespace,
+        rules=rules,
+        teardown=teardown,
+    ) as role:
+        yield role
+
+
 def login_with_user_password(api_address: str, user: str, password: str | None = None) -> bool:
     """
     Log in to an OpenShift cluster using a username and password.
@@ -471,6 +515,33 @@ def get_services_by_isvc_label(
         return svcs
 
     raise ResourceNotFoundError(f"{isvc.name} has no services")
+
+
+def get_pods_by_ig_label(client: DynamicClient, ig: InferenceGraph) -> list[Pod]:
+    """
+    Args:
+        client (DynamicClient): OCP Client to use.
+        ig (InferenceGraph): InferenceGraph object.
+
+    Returns:
+        list[Pod]: A list of all matching pods
+
+    Raises:
+        ResourceNotFoundError: if no services are found.
+    """
+    label_selector = utilities.general.create_ig_pod_label_selector_str(ig=ig)
+
+    if pods := [
+        pod
+        for pod in Pod.get(
+            dyn_client=client,
+            namespace=ig.namespace,
+            label_selector=label_selector,
+        )
+    ]:
+        return pods
+
+    raise ResourceNotFoundError(f"{ig.name} has no pods")
 
 
 def get_pods_by_isvc_label(client: DynamicClient, isvc: InferenceService, runtime_name: str | None = None) -> list[Pod]:
