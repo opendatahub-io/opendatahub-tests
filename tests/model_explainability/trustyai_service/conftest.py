@@ -1,4 +1,4 @@
-from typing import Generator, Any
+from typing import Any, Generator
 
 import pytest
 import yaml
@@ -21,21 +21,21 @@ from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.subscription import Subscription
 from ocp_resources.trustyai_service import TrustyAIService
 from ocp_utilities.operators import install_operator, uninstall_operator
+from pytest_testconfig import config as py_config
 
 from tests.model_explainability.trustyai_service.trustyai_service_utils import (
     wait_for_isvc_deployment_registered_by_trustyai_service,
 )
 from tests.model_explainability.trustyai_service.utils import (
-    wait_for_mariadb_operator_deployments,
-    create_trustyai_service,
-    wait_for_mariadb_pods,
     TRUSTYAI_SERVICE_NAME,
+    create_trustyai_service,
+    wait_for_mariadb_operator_deployments,
+    wait_for_mariadb_pods,
 )
-from utilities.operator_utils import get_cluster_service_version
-
-from utilities.constants import Timeout, KServeDeploymentType, ApiGroups, Labels, Ports
+from utilities.constants import ApiGroups, KServeDeploymentType, Labels, Ports, Timeout
 from utilities.inference_utils import create_isvc
-from utilities.infra import update_configmap_data, create_inference_token
+from utilities.infra import create_inference_token, update_configmap_data
+from utilities.operator_utils import get_cluster_service_version
 
 OPENSHIFT_OPERATORS: str = "openshift-operators"
 
@@ -455,3 +455,15 @@ def isvc_getter_token_secret(
 @pytest.fixture(scope="class")
 def isvc_getter_token(isvc_getter_service_account: ServiceAccount, isvc_getter_token_secret: Secret) -> str:
     return create_inference_token(model_service_account=isvc_getter_service_account)
+
+
+@pytest.fixture(scope="class")
+def trustyai_operator_configmap(
+    admin_client: DynamicClient,
+) -> ConfigMap:
+    return ConfigMap(
+        client=admin_client,
+        namespace=py_config["applications_namespace"],
+        name=f"{TRUSTYAI_SERVICE_NAME}-operator-config",
+        ensure_exists=True,
+    )

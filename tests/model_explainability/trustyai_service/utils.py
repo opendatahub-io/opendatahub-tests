@@ -1,22 +1,25 @@
-from typing import Generator, Any, Optional
 import re
+from typing import Any, Generator, Optional, Set
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
-from ocp_resources.mariadb_operator import MariadbOperator
 from ocp_resources.maria_db import MariaDB
+from ocp_resources.mariadb_operator import MariadbOperator
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.trustyai_service import TrustyAIService
+from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
-from timeout_sampler import TimeoutSampler
+from timeout_sampler import TimeoutSampler, retry
+
 from tests.model_explainability.trustyai_service.trustyai_service_utils import TRUSTYAI_SERVICE_NAME
 from utilities.constants import Timeout
-from timeout_sampler import retry
-
 from utilities.exceptions import TooManyPodsError, UnexpectedFailureError
+from utilities.general import validate_image_format
 
 LOGGER = get_logger(name=__name__)
+
+TAI_OPERATOR_DEPLOYMENT_NAME = f"{TRUSTYAI_SERVICE_NAME}-operator-controller-manager"
 
 
 def wait_for_mariadb_operator_deployments(mariadb_operator: MariadbOperator) -> None:
@@ -147,3 +150,24 @@ def create_trustyai_service(
         if wait_for_replicas:
             trustyai_deployment.wait_for_replicas()
         yield trustyai_service
+
+
+def validate_trustyai_operator_image(
+    client: DynamicClient, related_images_refs: Set[str], tai_operator_configmap_data: dict[str, str]
+) -> None:
+    """Validates the TrustyAI operator image.
+    Checks if:
+        - container image matches that of the operator configmap.
+        - image is present in relatedImages of CSV.
+        - image complies with OpenShift AI requirements i.e. sourced from registry.redhat.io and pinned w/o tags.
+    """
+    tai_operator_deployment = Deployment(
+        client=client,
+        name=TAI_OPERATOR_DEPLOYMENT_NAME,
+        namespace=py_config["applications_namespace"],
+        wait_for_resource=True,
+    )
+    tai_operator_image = tai_operator_deployment.instance.spec.template.spec.containers[0].image
+    assert tai_operator_image == tai_operator_configmap_data["trustyaiOperatorImage"]
+    assert tai_operator_image in related_images_refs
+    assert validate_image_format(image=tai_operator_image)
