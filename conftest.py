@@ -309,6 +309,10 @@ def pytest_runtest_setup(item: Item) -> None:
     elif KServeDeploymentType.MODEL_MESH.lower() in item.keywords:
         item.fixturenames.insert(0, "enabled_modelmesh_in_dsc")
 
+    config = item.session.config
+    if config.getoption("--collect-only") or config.getoption("--setup-plan"):
+        LOGGER.info("Skipping global config update for collect-only or setup-plan")
+        return
     # The above fixtures require the global config to be updated before being called
     updated_global_config(admin_client=get_client())
 
