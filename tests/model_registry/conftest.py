@@ -213,22 +213,16 @@ def model_registry_instance_service(
 
 @pytest.fixture(scope="class")
 def model_registry_instance_rest_endpoint(
-    request: FixtureRequest,
+    model_registry_instance_service: Service,
 ) -> str:
     """
     Get the REST endpoint for the model registry instance.
     Args:
-        request: The pytest request object containing the service_fixture parameter
+        model_registry_instance_service: The service for the model registry instance
     Returns:
         str: The REST endpoint for the model registry instance
     """
-    # Get the service fixture name from the request
-    service_fixture = getattr(request, "param", {}).get("service_fixture", "model_registry_instance_service")
-
-    # Get the service from the fixture
-    service = request.getfixturevalue(argname=service_fixture)
-
-    return get_endpoint_from_mr_service(svc=service, protocol=Protocols.REST)
+    return get_endpoint_from_mr_service(svc=model_registry_instance_service, protocol=Protocols.REST)
 
 
 @pytest.fixture(scope="class")

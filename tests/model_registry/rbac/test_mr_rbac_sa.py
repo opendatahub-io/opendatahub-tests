@@ -12,7 +12,7 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(
-    "updated_dsc_component_state_scope_class, model_registry_instance_rest_endpoint",
+    "updated_dsc_component_state_scope_class, is_model_registry_oauth",
     [
         pytest.param(
             {
@@ -23,8 +23,8 @@ LOGGER = get_logger(name=__name__)
                     },
                 }
             },
-            {"service_fixture": "model_registry_instance_service"},
-            id="standard_endpoint",
+            {"use_oauth_proxy": False},
+            id="servicemesh",
         ),
         pytest.param(
             {
@@ -35,14 +35,14 @@ LOGGER = get_logger(name=__name__)
                     },
                 }
             },
-            {"service_fixture": "model_registry_instance_oauth_service"},
-            id="oauth_endpoint",
+            {"use_oauth_proxy": True},
+            id="oauth",
         ),
     ],
     indirect=True,
     scope="class",
 )
-@pytest.mark.usefixtures("updated_dsc_component_state_scope_class")
+@pytest.mark.usefixtures("updated_dsc_component_state_scope_class", "is_model_registry_oauth")
 class TestModelRegistryRBAC:
     """
     Tests RBAC for Model Registry REST endpoint using ServiceAccount tokens.
@@ -63,9 +63,7 @@ class TestModelRegistryRBAC:
         """
         LOGGER.info("--- Starting RBAC Test: Access Denied ---")
         LOGGER.info(f"Targeting Model Registry REST endpoint: {model_registry_instance_rest_endpoint}")
-        LOGGER.info(
-            f"Using {'OAuth' if request.node.callspec.id == 'oauth_endpoint' else 'standard'} client configuration"
-        )
+        LOGGER.info(f"Using {'OAuth' if request.node.callspec.id == 'oauth' else 'servicemesh'} client configuration")
         LOGGER.info("Expecting initial access DENIAL (403 Forbidden)")
 
         client_args = build_mr_client_args(
@@ -98,9 +96,7 @@ class TestModelRegistryRBAC:
         """
         LOGGER.info("--- Starting RBAC Test: Access Granted ---")
         LOGGER.info(f"Targeting Model Registry REST endpoint: {model_registry_instance_rest_endpoint}")
-        LOGGER.info(
-            f"Using {'OAuth' if request.node.callspec.id == 'oauth_endpoint' else 'standard'} client configuration"
-        )
+        LOGGER.info(f"Using {'OAuth' if request.node.callspec.id == 'oauth' else 'servicemesh'} client configuration")
         LOGGER.info("Applied RBAC Role/Binding via fixtures. Expecting access GRANT.")
 
         try:
