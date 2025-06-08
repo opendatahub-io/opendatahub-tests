@@ -32,7 +32,7 @@ OCI_IMAGE_NAME = "modelcar-granite-3-1-8b-instruct-quantized-w4a16:1.5"
     "model_namespace, serving_runtime, vllm_model_car_inference_service, modelcar_image_uri",
     [
         pytest.param(
-            {"name": "granite-8b-oci",  "modelmesh-enabled": False},
+            {"name": "granite-8b-oci", "modelmesh-enabled": False},
             {"deployment_type": KServeDeploymentType.SERVERLESS},
             {
                 "name": "granite-8b-oci",

@@ -221,12 +221,14 @@ def models_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str:
         return None
     return models_bucket_endpoint
 
+
 @pytest.fixture(scope="session")
 def model_image_name(pytestconfig: pytest.Config) -> str:
     model_image = pytestconfig.option.modelcar_image_name
     if not model_image:
         pytest.skip("Model image name is not provided")
     return model_image
+
 
 @pytest.fixture(scope="session")
 def supported_accelerator_type(pytestconfig: pytest.Config) -> str | None:

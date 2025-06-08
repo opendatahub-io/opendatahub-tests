@@ -111,7 +111,6 @@ def pytest_addoption(parser: Parser) -> None:
         help="Modelcar image name to use for the tests",
     )
 
-
     # Upgrade options
     upgrade_group.addoption(
         "--pre-upgrade",

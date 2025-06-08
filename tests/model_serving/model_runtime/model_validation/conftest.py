@@ -1,10 +1,12 @@
 from typing import Any, Generator
 import pytest
-from tests.model_serving.model_runtime.model_validation.constant import ACCELERATOR_IDENTIFIER, TEMPLATE_MAP, PREDICT_RESOURCES
+from tests.model_serving.model_runtime.model_validation.constant import (
+    ACCELERATOR_IDENTIFIER,
+    TEMPLATE_MAP,
+    PREDICT_RESOURCES,
+)
 from utilities.constants import KServeDeploymentType, Labels, RuntimeTemplates
-from ocp_resources.secret import Secret
 from ocp_resources.namespace import Namespace
-from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.inference_service import InferenceService
 from pytest import FixtureRequest
@@ -14,12 +16,10 @@ from ocp_resources.cluster_service_version import ClusterServiceVersion
 from simple_logger.logger import get_logger
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 from utilities.inference_utils import create_isvc
-from tests.model_serving.model_runtime.vllm.utils import (
-    kserve_s3_endpoint_secret,
-    validate_supported_quantization_schema
-)
+from tests.model_serving.model_runtime.vllm.utils import validate_supported_quantization_schema
 
 LOGGER = get_logger(name=__name__)
+
 
 @pytest.fixture(scope="package")
 def fail_if_missing_dependent_operators(admin_client: DynamicClient) -> None:
@@ -54,11 +54,13 @@ def fail_if_missing_dependent_operators(admin_client: DynamicClient) -> None:
     else:
         LOGGER.info("No dependent operators to verify")
 
+
 @pytest.fixture(scope="session")
 def skip_if_no_supported_accelerator_type(supported_accelerator_type: str) -> None:
     if not supported_accelerator_type:
         pytest.skip("Accelartor type is not provided,vLLM test can not be run on CPU")
-      
+
+
 @pytest.fixture(scope="class")
 def vllm_model_car_inference_service(
     request: FixtureRequest,
@@ -107,6 +109,7 @@ def vllm_model_car_inference_service(
 
     with create_isvc(**isvc_kwargs) as isvc:
         yield isvc
+
 
 @pytest.fixture(scope="class")
 def serving_runtime(
