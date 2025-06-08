@@ -3,6 +3,7 @@ import os
 import shutil
 from ast import literal_eval
 from typing import Any, Callable, Generator
+import warnings
 
 import pytest
 import shortuuid
@@ -153,10 +154,11 @@ def valid_aws_config(aws_access_key_id: str, aws_secret_access_key: str) -> tupl
 def ci_s3_bucket_name(pytestconfig: Config) -> str:
     bucket_name = pytestconfig.option.ci_s3_bucket_name
     if not bucket_name:
-        raise ValueError(
+        warnings.warn(
             "CI S3 bucket name is not set. "
             "Either pass with `--ci-s3-bucket-name` or set `CI_S3_BUCKET_NAME` environment variable"
         )
+        return None
     return bucket_name
 
 
@@ -164,10 +166,11 @@ def ci_s3_bucket_name(pytestconfig: Config) -> str:
 def ci_s3_bucket_region(pytestconfig: pytest.Config) -> str:
     ci_bucket_region = pytestconfig.option.ci_s3_bucket_region
     if not ci_bucket_region:
-        raise ValueError(
+        warnings.warn(
             "Region for the ci s3 bucket is not defined."
             "Either pass with `--ci-s3-bucket-region` or set `CI_S3_BUCKET_REGION` environment variable"
         )
+        return None
     return ci_bucket_region
 
 
@@ -175,10 +178,11 @@ def ci_s3_bucket_region(pytestconfig: pytest.Config) -> str:
 def ci_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str:
     ci_bucket_endpoint = pytestconfig.option.ci_s3_bucket_endpoint
     if not ci_bucket_endpoint:
-        raise ValueError(
+        warnings.warn(
             "Endpoint for the ci s3 bucket is not defined."
             "Either pass with `--ci-s3-bucket-endpoint` or set `CI_S3_BUCKET_ENDPOINT` environment variable"
         )
+        return None
     return ci_bucket_endpoint
 
 
@@ -186,10 +190,11 @@ def ci_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str:
 def models_s3_bucket_name(pytestconfig: pytest.Config) -> str:
     models_bucket = pytestconfig.option.models_s3_bucket_name
     if not models_bucket:
-        raise ValueError(
+        warnings.warn(
             "Bucket name for the models bucket is not defined."
             "Either pass with `--models-s3-bucket-name` or set `MODELS_S3_BUCKET_NAME` environment variable"
         )
+        return None
     return models_bucket
 
 
@@ -197,10 +202,11 @@ def models_s3_bucket_name(pytestconfig: pytest.Config) -> str:
 def models_s3_bucket_region(pytestconfig: pytest.Config) -> str:
     models_bucket_region = pytestconfig.option.models_s3_bucket_region
     if not models_bucket_region:
-        raise ValueError(
+        warnings.warn(
             "region for the models bucket is not defined."
             "Either pass with `--models-s3-bucket-region` or set `MODELS_S3_BUCKET_REGION` environment variable"
         )
+        return None
     return models_bucket_region
 
 
@@ -208,12 +214,19 @@ def models_s3_bucket_region(pytestconfig: pytest.Config) -> str:
 def models_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str:
     models_bucket_endpoint = pytestconfig.option.models_s3_bucket_endpoint
     if not models_bucket_endpoint:
-        raise ValueError(
+        warnings.warn(
             "endpoint for the models bucket is not defined."
             "Either pass with `--models-s3-bucket-endpoint` or set `MODELS_S3_BUCKET_ENDPOINT` environment variable"
         )
+        return None
     return models_bucket_endpoint
 
+@pytest.fixture(scope="session")
+def model_image_name(pytestconfig: pytest.Config) -> str:
+    model_image = pytestconfig.option.modelcar_image_name
+    if not model_image:
+        pytest.skip("Model image name is not provided")
+    return model_image
 
 @pytest.fixture(scope="session")
 def supported_accelerator_type(pytestconfig: pytest.Config) -> str | None:

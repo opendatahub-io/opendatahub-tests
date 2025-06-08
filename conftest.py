@@ -44,6 +44,7 @@ def pytest_addoption(parser: Parser) -> None:
     upgrade_group = parser.getgroup(name="Upgrade options")
     must_gather_group = parser.getgroup(name="MustGather")
     cluster_sanity_group = parser.getgroup(name="ClusterSanity")
+    modelcar_group = parser.getgroup(name="Modelcar options")
 
     # AWS config and credentials options
     aws_group.addoption(
@@ -102,6 +103,14 @@ def pytest_addoption(parser: Parser) -> None:
         default=os.environ.get("VLLM_RUNTIME_IMAGE"),
         help="Specify the runtime image to use for the tests",
     )
+
+    # Modelcar options
+    modelcar_group.addoption(
+        "--modelcar_image_name",
+        default=os.environ.get("MODEL_IMAGE_NAME"),
+        help="Modelcar image name to use for the tests",
+    )
+
 
     # Upgrade options
     upgrade_group.addoption(
