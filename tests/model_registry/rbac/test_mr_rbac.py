@@ -9,7 +9,7 @@ from tests.model_registry.rbac.utils import assert_positive_mr_registry, get_mr_
 from utilities.infra import switch_user_context
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.group import Group
-from ocp_resources.model_registry import ModelRegistry
+from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from utilities.constants import DscComponents
@@ -22,20 +22,36 @@ NEW_GROUP_NAME = "test-model-registry-group"
 
 
 @pytest.mark.parametrize(
-    "updated_dsc_component_state_scope_class",
+    "updated_dsc_component_state_scope_class, is_model_registry_oauth",
     [
-        pytest.param({
-            "component_patch": {
-                DscComponents.MODELREGISTRY: {
-                    "managementState": DscComponents.ManagementState.MANAGED,
-                    "registriesNamespace": py_config["model_registry_namespace"],
-                },
-            }
-        })
+        pytest.param(
+            {
+                "component_patch": {
+                    DscComponents.MODELREGISTRY: {
+                        "managementState": DscComponents.ManagementState.MANAGED,
+                        "registriesNamespace": py_config["model_registry_namespace"],
+                    },
+                }
+            },
+            {"use_oauth_proxy": False},
+            id="servicemesh",
+        ),
+        pytest.param(
+            {
+                "component_patch": {
+                    DscComponents.MODELREGISTRY: {
+                        "managementState": DscComponents.ManagementState.MANAGED,
+                        "registriesNamespace": py_config["model_registry_namespace"],
+                    },
+                }
+            },
+            {"use_oauth_proxy": True},
+            id="oauth",
+        ),
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("updated_dsc_component_state_scope_class")
+@pytest.mark.usefixtures("updated_dsc_component_state_scope_class", "is_model_registry_oauth")
 class TestUserPermission:
     """
     Test suite for verifying user and group permissions for the Model Registry.

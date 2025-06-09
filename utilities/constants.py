@@ -176,19 +176,27 @@ class Labels:
 
     class OpenDataHubIo:
         MANAGED: str = Annotations.OpenDataHubIo.MANAGED
+        NAME: str = f"component.{ApiGroups.OPENDATAHUB_IO}/name"
 
     class Openshift:
         APP: str = "app"
 
     class Kserve:
         NETWORKING_KSERVE_IO: str = "networking.kserve.io/visibility"
+        NETWORKING_KNATIVE_IO: str = "networking.knative.dev/visibility"
         EXPOSED: str = "exposed"
 
     class Nvidia:
         NVIDIA_COM_GPU: str = "nvidia.com/gpu"
 
+    class Kueue:
+        # TODO: Change to kueue.openshift.io/managed once it's working
+        MANAGED: str = "kueue-managed"
+        # MANAGED: str = "kueue.openshift.io/managed"
+
 
 class Timeout:
+    TIMEOUT_15_SEC: int = 15
     TIMEOUT_30SEC: int = 30
     TIMEOUT_1MIN: int = 60
     TIMEOUT_2MIN: int = 2 * TIMEOUT_1MIN
@@ -208,6 +216,12 @@ class RunTimeConfigs:
         "runtime-name": ModelInferenceRuntime.ONNX_RUNTIME,
         "model-format": {ModelFormat.ONNX: ModelVersion.OPSET13},
     }
+
+
+class ModelCarImage:
+    MNIST_8_1: str = (
+        "oci://quay.io/mwaykole/test@sha256:8a3217bcfa2cc5fa3d07496cff8b234acdf2c9725dd307dc0a80401f55e1a11c"  # noqa: E501
+    )
 
 
 class MinIo:

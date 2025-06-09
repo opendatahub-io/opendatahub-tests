@@ -1,6 +1,7 @@
 from typing import Any
 import requests
 import json
+
 from simple_logger.logger import get_logger
 from tests.model_registry.exceptions import (
     ModelRegistryResourceNotCreated,
@@ -8,6 +9,7 @@ from tests.model_registry.exceptions import (
     ModelRegistryResourceNotUpdated,
 )
 from tests.model_registry.rest_api.constants import MODEL_REGISTRY_BASE_URI
+from utilities.exceptions import ResourceValueMismatch
 
 LOGGER = get_logger(name=__name__)
 
@@ -87,3 +89,27 @@ def register_model_rest_api(
         f"associated artifact: {model_artifact}"
     )
     return {"register_model": register_model, "model_version": model_version, "model_artifact": model_artifact}
+
+
+def validate_resource_attributes(
+    expected_params: dict[str, Any], actual_resource_data: dict[str, Any], resource_name: str
+) -> None:
+    """
+    Validate that expected parameters match actual resource data.
+    Args:
+       expected_params: Dictionary of expected attribute values
+       actual_resource_data: Dictionary of actual resource data from API
+       resource_name: Name of the resource being validated for error messages
+
+    Raises:
+        ResourceValueMismatch: When expected and actual values don't match
+
+    """
+    errors: list[dict[str, list[Any]]]
+    if errors := [
+        {key: [f"Expected value: {expected_params[key]}, actual value: {actual_resource_data.get(key)}"]}
+        for key in expected_params.keys()
+        if (not actual_resource_data.get(key) or actual_resource_data[key] != expected_params[key])
+    ]:
+        raise ResourceValueMismatch(f"Resource: {resource_name} has mismatched data: {errors}")
+    LOGGER.info(f"Successfully validated resource: {resource_name}: {actual_resource_data['name']}")
