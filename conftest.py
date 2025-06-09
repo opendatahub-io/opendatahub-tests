@@ -35,6 +35,7 @@ from utilities.must_gather_collector import (
 
 from kubernetes.dynamic import DynamicClient
 from utilities.infra import get_operator_distribution, get_dsci_applications_namespace, get_data_science_cluster
+from ocp_resources.resource import get_client
 
 LOGGER = logging.getLogger(name=__name__)
 BASIC_LOGGER = logging.getLogger(name="basic")
@@ -240,6 +241,7 @@ def pytest_sessionstart(session: Session) -> None:
     if config.getoption("--collect-only") or config.getoption("--setup-plan"):
         LOGGER.info("Skipping global config update for collect-only or setup-plan")
         return
+    updated_global_config(admin_client=get_client())
 
 
 def updated_global_config(admin_client: DynamicClient) -> None:
