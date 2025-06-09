@@ -5,7 +5,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.service import Service
-from ocp_resources.model_registry import ModelRegistry
+from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
@@ -241,7 +241,7 @@ def generate_random_name(prefix: str, length: int = 8) -> str:
 
     Args:
         prefix (str): The required prefix for the generated name.
-        ength (int, optional): The desired length for the UUID-derived suffix.
+        length (int, optional): The desired length for the UUID-derived suffix.
                                Defaults to 8. Must be between 1 and 32.
 
     Returns:
