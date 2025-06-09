@@ -153,7 +153,7 @@ class TestRestRawDeploymentRoutesTimeout:
         ).update()
 
         # Wait for route to be updated with the annotation and timeout to be applied
-        time.sleep(10) # noqa: FCN001
+        time.sleep(10)  # noqa: FCN001
 
         with pytest.raises(InferenceResponseError) as ire:
             verify_inference_response(
@@ -272,7 +272,7 @@ class TestGrpcRawDeploymentTimeout:
         ).update()
 
         # Wait for route to be updated with the annotation and timeout to be applied
-        time.sleep(10) # noqa: FCN001
+        time.sleep(10)  # noqa: FCN001
 
         with pytest.raises(InferenceResponseError) as ire:
             verify_inference_response(

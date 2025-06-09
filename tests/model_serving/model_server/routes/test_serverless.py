@@ -147,7 +147,7 @@ class TestRestServerlessRoutesTimeout:
         ).update()
 
         # Wait for route to be updated with the annotation
-        time.sleep(10) # noqa: FCN001
+        time.sleep(10)  # noqa: FCN001
 
         with pytest.raises(TimeoutExpiredError):
             verify_inference_response(
