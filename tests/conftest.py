@@ -30,11 +30,8 @@ from utilities.exceptions import ClusterLoginError
 from utilities.infra import (
     verify_cluster_sanity,
     create_ns,
-    get_dsci_applications_namespace,
-    get_operator_distribution,
     login_with_user_password,
     get_openshift_token,
-    get_data_science_cluster,
 )
 from utilities.constants import (
     AcceleratorType,
@@ -63,23 +60,6 @@ def tests_tmp_dir(request: FixtureRequest, tmp_path_factory: TempPathFactory) ->
     yield
 
     shutil.rmtree(path=str(tests_tmp_path), ignore_errors=True)
-
-
-@pytest.fixture(scope="session")
-def updated_global_config(request: FixtureRequest, admin_client: DynamicClient) -> None:
-    distribution = get_operator_distribution(client=admin_client)
-    if distribution == "Open Data Hub":
-        py_config["distribution"] = "upstream"
-
-    elif distribution.startswith("OpenShift AI"):
-        py_config["distribution"] = "downstream"
-    else:
-        pytest.exit(f"Unknown distribution: {distribution}")
-
-    py_config["applications_namespace"] = get_dsci_applications_namespace(client=admin_client)
-    py_config["model_registry_namespace"] = get_data_science_cluster(
-        client=admin_client
-    ).instance.spec.components.modelregistry.registriesNamespace
 
 
 @pytest.fixture(scope="session")
