@@ -4,6 +4,7 @@ from typing import List, Tuple
 
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
+from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
@@ -287,3 +288,17 @@ def validate_container_images(
             validation_errors.append(f"Pod {pod.name} image {image} is not in valid image references")
 
     return validation_errors
+
+
+def create_ig_pod_label_selector_str(ig: InferenceGraph) -> str:
+    """
+    Creates a pod label selector string for the given InferenceGraph.
+
+    Args:
+        ig (InferenceGraph): InferenceGraph object
+
+    Returns:
+        str: Label selector string for fetching IG pods
+
+    """
+    return f"serving.kserve.io/inferencegraph={ig.name}"

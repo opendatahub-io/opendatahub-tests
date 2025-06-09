@@ -183,13 +183,20 @@ class Labels:
 
     class Kserve:
         NETWORKING_KSERVE_IO: str = "networking.kserve.io/visibility"
+        NETWORKING_KNATIVE_IO: str = "networking.knative.dev/visibility"
         EXPOSED: str = "exposed"
 
     class Nvidia:
         NVIDIA_COM_GPU: str = "nvidia.com/gpu"
 
+    class Kueue:
+        # TODO: Change to kueue.openshift.io/managed once it's working
+        MANAGED: str = "kueue-managed"
+        # MANAGED: str = "kueue.openshift.io/managed"
+
 
 class Timeout:
+    TIMEOUT_15_SEC: int = 15
     TIMEOUT_30SEC: int = 30
     TIMEOUT_1MIN: int = 60
     TIMEOUT_2MIN: int = 2 * TIMEOUT_1MIN
