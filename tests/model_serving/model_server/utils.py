@@ -84,6 +84,12 @@ def verify_inference_response(
             reason = "Forbidden"
             assert reason in res["output"], f"{reason} not found in output:\n{res['output']}"
 
+        elif (
+            isinstance(inference_service, InferenceGraph)
+            and inference.deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT
+        ):
+            assert "x-forbidden-reason: Access to the InferenceGraph is not allowed" in res["output"]
+
         else:
             raise ValueError(f"Auth header {auth_header} not found in response. Response: {res['output']}")
 

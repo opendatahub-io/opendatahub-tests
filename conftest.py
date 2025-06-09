@@ -33,6 +33,10 @@ from utilities.must_gather_collector import (
     get_base_dir,
 )
 
+from kubernetes.dynamic import DynamicClient
+from utilities.infra import get_operator_distribution, get_dsci_applications_namespace, get_data_science_cluster
+from ocp_resources.resource import get_client
+
 LOGGER = logging.getLogger(name=__name__)
 BASIC_LOGGER = logging.getLogger(name="basic")
 
@@ -233,6 +237,36 @@ def pytest_sessionstart(session: Session) -> None:
         path=must_gather_dict["must_gather_base_directory"],
         ignore_errors=True,
     )
+    config = session.config
+    if config.getoption("--collect-only") or config.getoption("--setup-plan"):
+        LOGGER.info("Skipping global config update for collect-only or setup-plan")
+        return
+    updated_global_config(admin_client=get_client())
+
+
+def updated_global_config(admin_client: DynamicClient) -> None:
+    """
+    Updates the global config with the distribution, applications namespace, and model registry namespace.
+    Args:
+        admin_client: The admin client to use to get resources.
+    Returns:
+        None
+    """
+    distribution = get_operator_distribution(client=admin_client)
+    if distribution == "Open Data Hub":
+        py_config["distribution"] = "upstream"
+
+    elif distribution.startswith("OpenShift AI"):
+        py_config["distribution"] = "downstream"
+    else:
+        import pytest
+
+        pytest.exit(f"Unknown distribution: {distribution}")
+
+    py_config["applications_namespace"] = get_dsci_applications_namespace(client=admin_client)
+    py_config["model_registry_namespace"] = get_data_science_cluster(
+        client=admin_client
+    ).instance.spec.components.modelregistry.registriesNamespace
 
 
 def pytest_fixture_setup(fixturedef: FixtureDef[Any], request: FixtureRequest) -> None:
@@ -275,9 +309,6 @@ def pytest_runtest_setup(item: Item) -> None:
 
     elif KServeDeploymentType.MODEL_MESH.lower() in item.keywords:
         item.fixturenames.insert(0, "enabled_modelmesh_in_dsc")
-
-    # The above fixtures require the global config to be updated before being called
-    item.fixturenames.insert(0, "updated_global_config")
 
 
 def pytest_runtest_call(item: Item) -> None:

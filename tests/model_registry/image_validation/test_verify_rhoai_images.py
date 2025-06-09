@@ -8,7 +8,7 @@ from utilities.constants import DscComponents
 from utilities.general import (
     validate_container_images,
 )
-from ocp_resources.model_registry import ModelRegistry
+from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from ocp_resources.pod import Pod
 
 LOGGER = get_logger(name=__name__)
@@ -29,6 +29,7 @@ LOGGER = get_logger(name=__name__)
     indirect=True,
 )
 @pytest.mark.usefixtures("updated_dsc_component_state_scope_class")
+@pytest.mark.downstream_only
 class TestModelRegistryImages:
     """
     Tests to verify that all Model Registry component images (operator and instance container images)

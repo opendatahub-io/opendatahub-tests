@@ -1,4 +1,6 @@
+import os
 import pytest
+from pytest import Config
 import schemathesis
 from typing import Generator, Any
 from ocp_resources.pod import Pod
@@ -9,7 +11,7 @@ from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 
-from ocp_resources.model_registry import ModelRegistry
+from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from schemathesis.specs.openapi.schemas import BaseOpenAPISchema
 from schemathesis.generation.stateful.state_machine import APIStateMachine
 from schemathesis.core.transport import Response
@@ -29,6 +31,8 @@ from tests.model_registry.constants import (
     DB_RESOURCES_NAME,
     MODEL_REGISTRY_DB_SECRET_STR_DATA,
     MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
+    OAUTH_PROXY_CONFIG_DICT,
+    MODEL_REGISTRY_STANDARD_LABELS,
 )
 from utilities.constants import Labels
 from tests.model_registry.utils import (
@@ -38,7 +42,7 @@ from tests.model_registry.utils import (
     get_model_registry_db_label_dict,
     wait_for_pods_running,
 )
-from utilities.constants import Annotations, Protocols, DscComponents
+from utilities.constants import Protocols, DscComponents
 from model_registry import ModelRegistry as ModelRegistryClient
 from semver import Version
 from utilities.infra import get_product_version
@@ -145,36 +149,44 @@ def model_registry_db_deployment(
 
 @pytest.fixture(scope="class")
 def model_registry_instance(
-    admin_client: DynamicClient,
-    model_registry_namespace: str,
-    model_registry_db_deployment: Deployment,
-    model_registry_db_secret: Secret,
-    model_registry_db_service: Service,
+    model_registry_namespace: str, model_registry_mysql_config: dict[str, Any], is_model_registry_oauth: bool
 ) -> Generator[ModelRegistry, Any, Any]:
+    istio_config = None
+    oauth_config = None
+    if is_model_registry_oauth:
+        LOGGER.warning("Requested Ouath Proxy configuration:")
+        oauth_config = OAUTH_PROXY_CONFIG_DICT
+    else:
+        LOGGER.warning("Requested OSSM configuration:")
+        istio_config = ISTIO_CONFIG_DICT
+    """Creates a model registry instance with oauth proxy/service mesh configuration."""
     with ModelRegistry(
         name=MR_INSTANCE_NAME,
         namespace=model_registry_namespace,
-        label={
-            Annotations.KubernetesIo.NAME: MR_INSTANCE_NAME,
-            Annotations.KubernetesIo.INSTANCE: MR_INSTANCE_NAME,
-            Annotations.KubernetesIo.PART_OF: MR_OPERATOR_NAME,
-            Annotations.KubernetesIo.CREATED_BY: MR_OPERATOR_NAME,
-        },
+        label=MODEL_REGISTRY_STANDARD_LABELS,
         grpc={},
         rest={},
-        istio=ISTIO_CONFIG_DICT,
-        mysql={
-            "host": f"{model_registry_db_deployment.name}.{model_registry_db_deployment.namespace}.svc.cluster.local",
-            "database": model_registry_db_secret.string_data["database-name"],
-            "passwordSecret": {"key": "database-password", "name": DB_RESOURCES_NAME},
-            "port": 3306,
-            "skipDBCreation": False,
-            "username": model_registry_db_secret.string_data["database-user"],
-        },
+        istio=istio_config,
+        oauth_proxy=oauth_config,
+        mysql=model_registry_mysql_config,
         wait_for_resource=True,
     ) as mr:
         mr.wait_for_condition(condition="Available", status="True")
         yield mr
+
+
+@pytest.fixture(scope="class")
+def model_registry_mysql_config(
+    model_registry_db_deployment: Deployment, model_registry_db_secret: Secret
+) -> dict[str, Any]:
+    return {
+        "host": f"{model_registry_db_deployment.name}.{model_registry_db_deployment.namespace}.svc.cluster.local",
+        "database": model_registry_db_secret.string_data["database-name"],
+        "passwordSecret": {"key": "database-password", "name": model_registry_db_deployment.name},
+        "port": 3306,
+        "skipDBCreation": False,
+        "username": model_registry_db_secret.string_data["database-user"],
+    }
 
 
 @pytest.fixture(scope="class")
@@ -183,8 +195,19 @@ def model_registry_instance_service(
     model_registry_namespace: str,
     model_registry_instance: ModelRegistry,
 ) -> Service:
+    """
+    Get the service for the regular model registry instance.
+    Args:
+        admin_client: The admin client
+        model_registry_namespace: The namespace where the model registry is deployed
+        model_registry_instance: The model registry instance to get the service for
+    Returns:
+        Service: The service for the model registry instance
+    """
     return get_mr_service_by_label(
-        client=admin_client, ns=Namespace(name=model_registry_namespace), mr_instance=model_registry_instance
+        client=admin_client,
+        ns=Namespace(name=model_registry_namespace),
+        mr_instance=model_registry_instance,
     )
 
 
@@ -192,19 +215,28 @@ def model_registry_instance_service(
 def model_registry_instance_rest_endpoint(
     model_registry_instance_service: Service,
 ) -> str:
+    """
+    Get the REST endpoint for the model registry instance.
+    Args:
+        model_registry_instance_service: The service for the model registry instance
+    Returns:
+        str: The REST endpoint for the model registry instance
+    """
     return get_endpoint_from_mr_service(svc=model_registry_instance_service, protocol=Protocols.REST)
 
 
 @pytest.fixture(scope="class")
-def generated_schema(model_registry_instance_rest_endpoint: str) -> BaseOpenAPISchema:
+def generated_schema(pytestconfig: Config, model_registry_instance_rest_endpoint: str) -> BaseOpenAPISchema:
+    os.environ["API_HOST"] = model_registry_instance_rest_endpoint
+    config = schemathesis.config.SchemathesisConfig.from_path(f"{pytestconfig.rootpath}/schemathesis.toml")
     schema = schemathesis.openapi.from_url(
-        url="https://raw.githubusercontent.com/kubeflow/model-registry/main/api/openapi/model-registry.yaml"
+        url="https://raw.githubusercontent.com/kubeflow/model-registry/main/api/openapi/model-registry.yaml",
+        config=config,
     )
-    schema.configure(base_url=f"https://{model_registry_instance_rest_endpoint}/")
     return schema
 
 
-@pytest.fixture
+@pytest.fixture()
 def state_machine(generated_schema: BaseOpenAPISchema, current_client_token: str) -> APIStateMachine:
     BaseAPIWorkflow = generated_schema.as_state_machine()
 
@@ -214,12 +246,18 @@ def state_machine(generated_schema: BaseOpenAPISchema, current_client_token: str
         def setup(self) -> None:
             self.headers = {"Authorization": f"Bearer {current_client_token}", "Content-Type": "application/json"}
 
+        def before_call(self, case: Case) -> None:
+            LOGGER.info(f"Checking: {case.method} {case.path}")
+
         # these kwargs are passed to requests.request()
         def get_call_kwargs(self, case: Case) -> dict[str, Any]:
             return {"verify": False, "headers": self.headers}
 
         def after_call(self, response: Response, case: Case) -> None:
-            LOGGER.info(f"{case.method} {case.path} -> {response.status_code}")
+            LOGGER.info(
+                f"Method tested: {case.method}, API: {case.path}, response code:{response.status_code},"
+                f" Full Response:{response.text}"
+            )
 
     return APIWorkflow
 
@@ -263,11 +301,18 @@ def updated_dsc_component_state_scope_class(
 
 @pytest.fixture(scope="class")
 def model_registry_client(current_client_token: str, model_registry_instance_rest_endpoint: str) -> ModelRegistryClient:
-    # address and port need to be split in the client instantiation
+    """
+    Get a client for the model registry instance.
+    Args:
+        request: The pytest request object
+        current_client_token: The current client token
+    Returns:
+        ModelRegistryClient: A client for the model registry instance
+    """
     server, port = model_registry_instance_rest_endpoint.split(":")
     return ModelRegistryClient(
         server_address=f"{Protocols.HTTPS}://{server}",
-        port=port,
+        port=int(port),
         author="opendatahub-test",
         user_token=current_client_token,
         is_secure=False,
@@ -350,3 +395,8 @@ def validate_authorino_operator_version_channel(admin_client: DynamicClient) -> 
         validate_operator_subscription_channel(
             client=admin_client, namespace="openshift-operators", operator_name=operator_name, channel_name="stable"
         )
+
+
+@pytest.fixture(scope="class")
+def is_model_registry_oauth(request: FixtureRequest) -> bool:
+    return getattr(request, "param", {}).get("use_oauth_proxy", False)
