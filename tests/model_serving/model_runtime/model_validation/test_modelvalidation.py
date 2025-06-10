@@ -8,7 +8,6 @@ from tests.model_serving.model_runtime.model_validation.constant import (
     CHAT_QUERY,
     BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
 )
-from tests.model_serving.model_runtime.model_validation.constant import ORIGINAL_PULL_SECRET
 
 LOGGER = get_logger(name=__name__)
 
@@ -35,11 +34,7 @@ OCI_IMAGE_NAME = "modelcar-granite-3-1-8b-base-quantized-w4a16:1.5"
         pytest.param(
             {"name": "granite-8b-oci", "modelmesh-enabled": False},
             {"deployment_type": KServeDeploymentType.SERVERLESS},
-            {
-                "name": "granite-8b-oci",
-                **BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
-                "gpu_count": 1
-            },
+            {"name": "granite-8b-oci", **BASE_SEVERRLESS_DEPLOYMENT_CONFIG, "gpu_count": 1},
             OCI_IMAGE_NAME,
             id="granite-8b-oci",
         )
@@ -48,10 +43,11 @@ OCI_IMAGE_NAME = "modelcar-granite-3-1-8b-base-quantized-w4a16:1.5"
 )
 class TestVLLMModelcarOCI:
     @pytest.mark.jira("RHOAIENG-25717")
-    def test_openai_completion_from_oci_image(self, 
-                                              vllm_model_car_inference_service: InferenceService,
-                                              response_snapshot: dict[str, str] = COMPLETION_QUERY,
-                                              ) -> None:
+    def test_openai_completion_from_oci_image(
+        self,
+        vllm_model_car_inference_service: InferenceService,
+        response_snapshot: dict[str, str] = COMPLETION_QUERY,
+    ) -> None:
         """
         Validate OpenAI-style completion request using vLLM runtime and OCI image deployment.
         """
@@ -59,7 +55,7 @@ class TestVLLMModelcarOCI:
         validate_serverless_openai_inference_request(
             url=vllm_model_car_inference_service.instance.status.url,
             model_name=vllm_model_car_inference_service.instance.metadata.name,
-            response_snapshot= response_snapshot,
-            chat_query= CHAT_QUERY,
+            response_snapshot=response_snapshot,
+            chat_query=CHAT_QUERY,
             completion_query=COMPLETION_QUERY,
         )

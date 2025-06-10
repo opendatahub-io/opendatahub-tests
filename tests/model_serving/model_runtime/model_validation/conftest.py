@@ -17,13 +17,13 @@ from simple_logger.logger import get_logger
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 from utilities.inference_utils import create_isvc
 from tests.model_serving.model_runtime.vllm.utils import validate_supported_quantization_schema
-from tests.model_serving.model_runtime.vllm.utils import (
-    validate_supported_quantization_schema
+from tests.model_serving.model_runtime.model_validation.constant import (
+    ORIGINAL_PULL_SECRET,
+    INFERENCE_SERVICE_PORT,
+    CONTAINER_PORT,
 )
-from tests.model_serving.model_runtime.model_validation.constant import ORIGINAL_PULL_SECRET, INFERENCE_SERVICE_PORT, CONTAINER_PORT
 
 LOGGER = get_logger(name=__name__)
-
 
 
 @pytest.fixture(scope="package")
@@ -145,7 +145,7 @@ def serving_runtime(
                 ],
                 "ports": [
                     {
-                        f"containerPort": CONTAINER_PORT,
+                        "containerPort": CONTAINER_PORT,
                         "protocol": "TCP",
                     }
                 ],
