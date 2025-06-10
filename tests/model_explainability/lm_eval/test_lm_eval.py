@@ -1,22 +1,65 @@
 import pytest
 
-from tests.model_explainability.lm_eval.utils import verify_lmevaljob_running
 from utilities.constants import Timeout
 
 LMEVALJOB_COMPLETE_STATE: str = "Complete"
 
 
 @pytest.mark.parametrize(
-    "model_namespace",
+    "model_namespace, lmevaljob_hf",
     [
         pytest.param(
-            {"name": "test-lmeval-huggingface"},
-        )
+            {"name": "test-lmeval-hf-arc"}, {"task_list": {"taskNames": ["arc_challenge"]}}, id="arc_challenge"
+        ),
+        pytest.param(
+            {"name": "test-lmeval-hf-mmlu"},
+            {"task_list": {"taskNames": ["mmlu_astronomy_generative"]}},
+            id="mmlu_astronomy_generative",
+        ),
+        pytest.param({"name": "test-lmeval-hf-hellaswag"}, {"task_list": {"taskNames": ["hellaswag"]}}, id="hellaswag"),
+        pytest.param(
+            {"name": "test-lmeval-hf-truthfulqa"}, {"task_list": {"taskNames": ["truthfulqa_gen"]}}, id="truthfulqa_gen"
+        ),
+        pytest.param(
+            {"name": "test-lmeval-hf-winogrande"}, {"task_list": {"taskNames": ["winogrande"]}}, id="winogrande"
+        ),
+        pytest.param(
+            {"name": "test-lmeval-hf-custom-task"},
+            {
+                "task_list": {
+                    "custom": {
+                        "systemPrompts": [
+                            {"name": "sp_0", "value": "Be concise. At every point give the shortest acceptable answer."}
+                        ],
+                        "templates": [
+                            {
+                                "name": "tp_0",
+                                "value": '{ "__type__": "input_output_template", '
+                                '"input_format": "{text_a_type}: {text_a}\\n'
+                                '{text_b_type}: {text_b}", '
+                                '"output_format": "{label}", '
+                                '"target_prefix": '
+                                '"The {type_of_relation} class is ", '
+                                '"instruction": "Given a {text_a_type} and {text_b_type} '
+                                'classify the {type_of_relation} of the {text_b_type} to one of {classes}.",'
+                                ' "postprocessors": [ "processors.take_first_non_empty_line",'
+                                ' "processors.lower_case_till_punc" ] }',
+                            }
+                        ],
+                    },
+                    "taskRecipes": [
+                        {"card": {"name": "cards.wnli"}, "systemPrompt": {"ref": "sp_0"}, "template": {"ref": "tp_0"}}
+                    ],
+                }
+            },
+            id="custom_task",
+        ),
     ],
     indirect=True,
 )
 def test_lmeval_huggingface_model(admin_client, model_namespace, lmevaljob_hf_pod):
-    """Basic test that verifies that LMEval can run successfully pulling a model from HuggingFace."""
+    """Tests that verify running common evaluations (and a custom one) on a model pulled directly from HuggingFace.
+    On each test we run a different evaluation task, limiting it to 1% of the questions on each eval."""
     lmevaljob_hf_pod.wait_for_status(status=lmevaljob_hf_pod.Status.SUCCEEDED, timeout=Timeout.TIMEOUT_20MIN)
 
 
@@ -39,10 +82,12 @@ def test_lmeval_local_offline_builtin_tasks_flan_arceasy(
     admin_client,
     model_namespace,
     lmeval_data_downloader_pod,
-    lmevaljob_local_offline,
+    lmevaljob_local_offline_pod,
 ):
     """Test that verifies that LMEval can run successfully in local, offline mode using builtin tasks"""
-    verify_lmevaljob_running(client=admin_client, lmevaljob=lmevaljob_local_offline)
+    lmevaljob_local_offline_pod.wait_for_status(
+        status=lmevaljob_local_offline_pod.Status.SUCCEEDED, timeout=Timeout.TIMEOUT_20MIN
+    )
 
 
 @pytest.mark.parametrize(
@@ -72,10 +117,12 @@ def test_lmeval_local_offline_unitxt_tasks_flan_20newsgroups(
     admin_client,
     model_namespace,
     lmeval_data_downloader_pod,
-    lmevaljob_local_offline,
+    lmevaljob_local_offline_pod,
 ):
     """Test that verifies that LMEval can run successfully in local, offline mode using unitxt"""
-    verify_lmevaljob_running(client=admin_client, lmevaljob=lmevaljob_local_offline)
+    lmevaljob_local_offline_pod.wait_for_status(
+        status=lmevaljob_local_offline_pod.Status.SUCCEEDED, timeout=Timeout.TIMEOUT_20MIN
+    )
 
 
 @pytest.mark.parametrize(
