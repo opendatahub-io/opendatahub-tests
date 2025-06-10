@@ -38,22 +38,15 @@ BASE_SEVERRLESS_DEPLOYMENT_CONFIG: dict[str, Any] = {
 
 COMPLETION_QUERY: list[dict[str, str]] = [
     {
-        "text": "List the top five breeds of dogs and their characteristics.",
+        "text": "What are the key benefits of renewable energy sources compared to fossil fuels?",
     },
+    {"text": "Translate the following English sentence into Spanish, German, and Mandarin: 'Knowledge is power.'"},
+    {"text": "Write a poem about the beauty of the night sky and the mysteries it holds."},
+    {"text": "Explain the significance of the Great Wall of China in history and its impact on modern tourism."},
+    {"text": "Discuss the ethical implications of using artificial intelligence in healthcare decision-making."},
     {
-        "text": "Translate the following English sentence into Japanese, French, and Swahili: 'The early bird catches "
-        "the worm.'"
+        "text": "Summarize the main events of the Apollo 11 moon landing and its importance in space exploration history."  # noqa: E122, E501
     },
-    {"text": "Write a short story about a robot that dreams for the first time."},
-    {
-        "text": "Explain the cultural significance of the Mona Lisa painting, and how its perception might vary in "
-        "Western versus Eastern societies."
-    },
-    {
-        "text": "Compare and contrast artificial intelligence with human intelligence in terms of "
-        "processing information."
-    },
-    {"text": "Briefly describe the major milestones in the development of artificial intelligence from 1950 to 2020."},
 ]
 
 CHAT_QUERY: list[list[dict[str, str]]] = [
@@ -71,7 +64,6 @@ CHAT_QUERY: list[list[dict[str, str]]] = [
         },
     ],
 ]
-
 
 ORIGINAL_PULL_SECRET: str = "conn"  # pragma: allowlist-secret
 INFERENCE_SERVICE_PORT: int = 8080

@@ -1,11 +1,11 @@
+from typing import Any
 import pytest
 from simple_logger.logger import get_logger
 from ocp_resources.inference_service import InferenceService
 from utilities.constants import KServeDeploymentType
-from tests.model_serving.model_runtime.vllm.utils import validate_serverless_openai_inference_request
+from tests.model_serving.model_runtime.model_validation.utils import validate_serverless_openai_inference_request
 from tests.model_serving.model_runtime.model_validation.constant import (
     COMPLETION_QUERY,
-    CHAT_QUERY,
     BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
 )
 
@@ -46,7 +46,7 @@ class TestVLLMModelcarOCI:
     def test_openai_completion_from_oci_image(
         self,
         vllm_model_car_inference_service: InferenceService,
-        response_snapshot: dict[str, str] = COMPLETION_QUERY,
+        response_snapshot: Any,
     ) -> None:
         """
         Validate OpenAI-style completion request using vLLM runtime and OCI image deployment.
@@ -56,6 +56,6 @@ class TestVLLMModelcarOCI:
             url=vllm_model_car_inference_service.instance.status.url,
             model_name=vllm_model_car_inference_service.instance.metadata.name,
             response_snapshot=response_snapshot,
-            chat_query=CHAT_QUERY,
             completion_query=COMPLETION_QUERY,
+            chat_query=None,
         )

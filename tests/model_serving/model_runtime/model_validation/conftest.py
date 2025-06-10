@@ -22,6 +22,7 @@ from tests.model_serving.model_runtime.model_validation.constant import (
     INFERENCE_SERVICE_PORT,
     CONTAINER_PORT,
 )
+from syrupy.extensions.json import JSONSnapshotExtension
 
 LOGGER = get_logger(name=__name__)
 
@@ -158,7 +159,12 @@ def serving_runtime(
 
 
 @pytest.fixture(scope="session")
-def modelcar_image_uri(request: FixtureRequest, model_image_name: str) -> str:
+def modelcar_image_uri(request: FixtureRequest, model_image_name: str) -> str | None:
     if not model_image_name:
         return None
     return f"oci://registry.redhat.io/rhelai1/{model_image_name}"
+
+
+@pytest.fixture
+def response_snapshot(snapshot: Any) -> Any:
+    return snapshot.use_extension(extension_class=JSONSnapshotExtension)
