@@ -17,8 +17,13 @@ from simple_logger.logger import get_logger
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 from utilities.inference_utils import create_isvc
 from tests.model_serving.model_runtime.vllm.utils import validate_supported_quantization_schema
+from tests.model_serving.model_runtime.vllm.utils import (
+    validate_supported_quantization_schema
+)
+from tests.model_serving.model_runtime.model_validation.constant import ORIGINAL_PULL_SECRET, INFERENCE_SERVICE_PORT, CONTAINER_PORT
 
 LOGGER = get_logger(name=__name__)
+
 
 
 @pytest.fixture(scope="package")
@@ -78,6 +83,7 @@ def vllm_model_car_inference_service(
         "storage_uri": modelcar_image_uri,
         "model_format": serving_runtime.instance.spec.supportedModelFormats[0].name,
         "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.SERVERLESS),
+        "image_pull_secrets": [ORIGINAL_PULL_SECRET],
     }
     accelerator_type = supported_accelerator_type.lower()
     gpu_count = request.param.get("gpu_count")
@@ -121,6 +127,7 @@ def serving_runtime(
 ) -> Generator[ServingRuntime, None, None]:
     accelerator_type = supported_accelerator_type.lower()
     template_name = TEMPLATE_MAP.get(accelerator_type, RuntimeTemplates.VLLM_CUDA)
+    print(f"using template: {template_name}")
     with ServingRuntimeFromTemplate(
         client=admin_client,
         name="vllm-runtime",
@@ -129,6 +136,23 @@ def serving_runtime(
         deployment_type=request.param["deployment_type"],
         runtime_image=vllm_runtime_image,
         support_tgis_open_ai_endpoints=True,
+        containers={
+            "kserve-container": {
+                "args": [
+                    f"--port={str(INFERENCE_SERVICE_PORT)}",
+                    "--model=/mnt/models",
+                    "--served-model-name={{.Name}}",
+                ],
+                "ports": [
+                    {
+                        f"containerPort": CONTAINER_PORT,
+                        "protocol": "TCP",
+                    }
+                ],
+                "volumeMounts": [{"mountPath": "/dev/shm", "name": "shm"}],
+            }
+        },
+        volumes=[{"emptyDir": {"medium": "Memory", "sizeLimit": "2Gi"}, "name": "shm"}],
     ) as model_runtime:
         yield model_runtime
 
