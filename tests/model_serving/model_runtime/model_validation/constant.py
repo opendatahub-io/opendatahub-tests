@@ -1,5 +1,6 @@
-from typing import Union
+from typing import Union, Any
 from utilities.constants import AcceleratorType, Labels, RuntimeTemplates
+from utilities.constants import KServeDeploymentType
 
 # Configurations
 ACCELERATOR_IDENTIFIER: dict[str, str] = {
