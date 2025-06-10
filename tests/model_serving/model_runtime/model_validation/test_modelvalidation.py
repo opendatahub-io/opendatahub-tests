@@ -29,7 +29,7 @@ OCI_IMAGE_NAME = "modelcar-granite-3-1-8b-base-quantized-w4a16:1.5"
 
 @pytest.mark.serverless
 @pytest.mark.parametrize(
-    "model_namespace, serving_runtime, vllm_model_car_inference_service, modelcar_image_uri",
+    "model_namespace, modelcar_serving_runtime, vllm_model_car_inference_service, modelcar_image_uri",
     [
         pytest.param(
             {"name": "granite-8b-oci", "modelmesh-enabled": False},
