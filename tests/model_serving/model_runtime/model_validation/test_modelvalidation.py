@@ -22,7 +22,7 @@ SERVING_ARGUMENT: list[str] = [
 
 BASE_SEVERRLESS_DEPLOYMENT_CONFIG["runtime_argument"] = SERVING_ARGUMENT
 
-pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type")
+pytestmark = pytest.mark.usefixtures("vllm_skip_if_no_supported_accelerator_type")
 
 OCI_IMAGE_NAME = "modelcar-granite-3-1-8b-base-quantized-w4a16:1.5"
 
