@@ -9,7 +9,7 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.fixture(scope="package")
-def fail_if_missing_dependent_operators(admin_client: DynamicClient) -> None:
+def fail_if_missing_dependent_operators(admin_client: DynamicClient) -> None:  # noqa: UFN001
     if dependent_operators := py_config.get("dependent_operators"):
         missing_operators: list[str] = []
 
@@ -43,6 +43,6 @@ def fail_if_missing_dependent_operators(admin_client: DynamicClient) -> None:
 
 
 @pytest.fixture(scope="session")
-def skip_if_no_supported_accelerator_type(supported_accelerator_type: str) -> None:
+def skip_if_no_supported_accelerator_type(supported_accelerator_type: str) -> None:  # noqa: UFN001
     if not supported_accelerator_type:
         pytest.skip("Accelartor type is not provided,vLLM test can not be run on CPU")
