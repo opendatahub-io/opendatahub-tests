@@ -216,7 +216,7 @@ def trustyai_service_with_invalid_db_cert(
 ) -> Generator[TrustyAIService, None, None]:
     """Create a TrustyAIService deployment with an invalid database certificate set as secret.
 
-    Yields: A secret with invalid database certificate set.
+    Yields: A TrustyAIService with invalid database certificate set.
     """
     yield from create_trustyai_service(
         client=admin_client,
