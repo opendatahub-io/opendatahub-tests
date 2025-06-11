@@ -65,10 +65,13 @@ class TestTrustyAIServiceMultipleNS:
         trustyai_service_with_pvc_storage_2,
         gaussian_credit_model,
         gaussian_credit_model_2,
+        isvc_getter_token,
+        isvc_getter_token_2,
     ) -> None:
-        for trustyaiservice, inference_model in zip(
+        for trustyaiservice, inference_model, inference_token in zip(
             [trustyai_service_with_pvc_storage, trustyai_service_with_pvc_storage_2],
             [gaussian_credit_model, gaussian_credit_model_2],
+            [isvc_getter_token, isvc_getter_token_2],
         ):
             send_inferences_and_verify_trustyai_service_registered(
                 client=admin_client,
@@ -77,6 +80,7 @@ class TestTrustyAIServiceMultipleNS:
                 trustyai_service=trustyaiservice,
                 inference_service=inference_model,
                 inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
+                inference_token=inference_token,
             )
 
     def test_upload_data_to_trustyai_service_multiple_ns(

@@ -8,8 +8,11 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.maria_db import MariaDB
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
+from ocp_resources.role import Role
+from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
+from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.trustyai_service import TrustyAIService
 
@@ -27,15 +30,22 @@ from tests.model_explainability.trustyai_service.constants import (
     KSERVE_MLSERVER_ANNOTATIONS,
     XGBOOST,
     TAI_DB_STORAGE_CONFIG,
+    ISVC_GETTER,
 )
 from tests.model_explainability.trustyai_service.trustyai_service_utils import (
     TRUSTYAI_SERVICE_NAME,
     wait_for_isvc_deployment_registered_by_trustyai_service,
 )
-from tests.model_explainability.trustyai_service.utils import create_trustyai_service
+from tests.model_explainability.trustyai_service.utils import (
+    create_trustyai_service,
+    create_isvc_getter_service_account,
+    create_isvc_getter_role,
+    create_isvc_getter_role_binding,
+    create_isvc_getter_token_secret,
+)
 from utilities.constants import KServeDeploymentType, Labels
 from utilities.inference_utils import create_isvc
-from utilities.infra import create_ns
+from utilities.infra import create_ns, create_inference_token
 from utilities.minio import create_minio_data_connection_secret
 
 
@@ -229,3 +239,51 @@ def trustyai_invalid_db_ca_secret(
         data_dict={"ca.crt": INVALID_TLS_CERTIFICATE},
     ) as secret:
         yield secret
+
+
+@pytest.fixture(scope="class")
+def isvc_getter_service_account_2(
+    admin_client: DynamicClient, model_namespace_2: Namespace
+) -> Generator[ServiceAccount, Any, Any]:
+    yield from create_isvc_getter_service_account(client=admin_client, namespace=model_namespace_2, name=ISVC_GETTER)
+
+
+@pytest.fixture(scope="class")
+def isvc_getter_role_2(admin_client: DynamicClient, model_namespace_2: Namespace) -> Generator[Role, Any, Any]:
+    yield from create_isvc_getter_role(client=admin_client, namespace=model_namespace_2, name=ISVC_GETTER)
+
+
+@pytest.fixture(scope="class")
+def isvc_getter_role_binding_2(
+    admin_client: DynamicClient,
+    model_namespace_2: Namespace,
+    isvc_getter_role_2: Role,
+    isvc_getter_service_account_2: ServiceAccount,
+) -> Generator[RoleBinding, Any, Any]:
+    yield from create_isvc_getter_role_binding(
+        client=admin_client,
+        namespace=model_namespace_2,
+        role=isvc_getter_role_2,
+        service_account=isvc_getter_service_account_2,
+        name=ISVC_GETTER,
+    )
+
+
+@pytest.fixture(scope="class")
+def isvc_getter_token_secret_2(
+    admin_client: DynamicClient,
+    model_namespace_2: Namespace,
+    isvc_getter_service_account_2: ServiceAccount,
+    isvc_getter_role_binding_2: RoleBinding,
+) -> Generator[Secret, Any, Any]:
+    yield from create_isvc_getter_token_secret(
+        client=admin_client,
+        name="sa-token",
+        namespace=model_namespace_2,
+        service_account=isvc_getter_service_account_2,
+    )
+
+
+@pytest.fixture(scope="class")
+def isvc_getter_token_2(isvc_getter_service_account_2: ServiceAccount, isvc_getter_token_secret_2: Secret) -> str:
+    return create_inference_token(model_service_account=isvc_getter_service_account_2)

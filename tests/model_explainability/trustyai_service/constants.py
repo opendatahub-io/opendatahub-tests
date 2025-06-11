@@ -54,3 +54,5 @@ KSERVE_MLSERVER_ANNOTATIONS: Dict[str, str] = {
     "prometheus.io/port": str(Ports.REST_PORT),
     "openshift.io/display-name": "mlserver-1.x",
 }
+
+ISVC_GETTER: str = "isvc-getter"

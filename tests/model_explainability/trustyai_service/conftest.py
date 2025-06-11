@@ -35,6 +35,7 @@ from tests.model_explainability.trustyai_service.constants import (
     XGBOOST,
     GAUSSIAN_CREDIT_MODEL,
     TAI_DB_STORAGE_CONFIG,
+    ISVC_GETTER,
 )
 from tests.model_explainability.trustyai_service.trustyai_service_utils import (
     wait_for_isvc_deployment_registered_by_trustyai_service,
@@ -44,6 +45,10 @@ from tests.model_explainability.trustyai_service.utils import (
     create_trustyai_service,
     wait_for_mariadb_pods,
     TRUSTYAI_SERVICE_NAME,
+    create_isvc_getter_role,
+    create_isvc_getter_role_binding,
+    create_isvc_getter_service_account,
+    create_isvc_getter_token_secret,
 )
 from utilities.operator_utils import get_cluster_service_version
 
@@ -325,25 +330,12 @@ def gaussian_credit_model(
 def isvc_getter_service_account(
     admin_client: DynamicClient, model_namespace: Namespace
 ) -> Generator[ServiceAccount, Any, Any]:
-    with ServiceAccount(client=admin_client, name=ISVC_GETTER, namespace=model_namespace.name) as sa:
-        yield sa
+    yield from create_isvc_getter_service_account(client=admin_client, namespace=model_namespace, name=ISVC_GETTER)
 
 
 @pytest.fixture(scope="class")
 def isvc_getter_role(admin_client: DynamicClient, model_namespace: Namespace) -> Generator[Role, Any, Any]:
-    with Role(
-        client=admin_client,
-        name=ISVC_GETTER,
-        namespace=model_namespace.name,
-        rules=[
-            {
-                "apiGroups": ["serving.kserve.io"],
-                "resources": ["inferenceservices"],
-                "verbs": ["get", "list", "watch"],
-            }
-        ],
-    ) as role:
-        yield role
+    yield from create_isvc_getter_role(client=admin_client, namespace=model_namespace, name=ISVC_GETTER)
 
 
 @pytest.fixture(scope="class")
@@ -353,16 +345,13 @@ def isvc_getter_role_binding(
     isvc_getter_role: Role,
     isvc_getter_service_account: ServiceAccount,
 ) -> Generator[RoleBinding, Any, Any]:
-    with RoleBinding(
+    yield from create_isvc_getter_role_binding(
         client=admin_client,
+        namespace=model_namespace,
+        role=isvc_getter_role,
+        service_account=isvc_getter_service_account,
         name=ISVC_GETTER,
-        namespace=model_namespace.name,
-        subjects_kind="ServiceAccount",
-        subjects_name=isvc_getter_service_account.name,
-        role_ref_kind="Role",
-        role_ref_name=isvc_getter_role.name,
-    ) as rb:
-        yield rb
+    )
 
 
 @pytest.fixture(scope="class")
@@ -372,14 +361,12 @@ def isvc_getter_token_secret(
     isvc_getter_service_account: ServiceAccount,
     isvc_getter_role_binding: RoleBinding,
 ) -> Generator[Secret, Any, Any]:
-    with Secret(
+    yield from create_isvc_getter_token_secret(
         client=admin_client,
         name="sa-token",
-        namespace=model_namespace.name,
-        annotations={"kubernetes.io/service-account.name": ISVC_GETTER},
-        type="kubernetes.io/service-account-token",
-    ) as secret:
-        yield secret
+        namespace=model_namespace,
+        service_account=isvc_getter_service_account,
+    )
 
 
 @pytest.fixture(scope="class")
