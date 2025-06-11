@@ -7,6 +7,10 @@ from ocp_resources.mariadb_operator import MariadbOperator
 from ocp_resources.maria_db import MariaDB
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
+from ocp_resources.role import Role
+from ocp_resources.role_binding import RoleBinding
+from ocp_resources.secret import Secret
+from ocp_resources.service_account import ServiceAccount
 from ocp_resources.trustyai_service import TrustyAIService
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
@@ -147,3 +151,97 @@ def create_trustyai_service(
         if wait_for_replicas:
             trustyai_deployment.wait_for_replicas()
         yield trustyai_service
+
+
+def create_isvc_getter_service_account(
+    client: DynamicClient, namespace: Namespace, name: str
+) -> Generator[ServiceAccount, Any, Any]:
+    """Creates a ServiceAccount for fetching InferenceServices.
+
+    Args:
+        client: The Kubernetes dynamic client.
+        namespace: Namespace: The Namespace object where the ServiceAccount will be created.
+        name: str: The name of the ServiceAccount.
+
+    Yields:
+        Generator[ServiceAccount, Any, Any]: The created ServiceAccount object.
+    """
+    with ServiceAccount(client=client, name=name, namespace=namespace.name) as sa:
+        yield sa
+
+
+def create_isvc_getter_role(client: DynamicClient, namespace: Namespace, name: str) -> Generator[Role, Any, Any]:
+    """Creates a Role with permissions to get, list, and watch InferenceServices.
+
+    Args:
+        client: DynamicClient: The Kubernetes dynamic client.
+        namespace: Namespace: The Namespace object where the Role will be created.
+        name: str: The name of the Role.
+
+    Yields:
+        Generator[Role, Any, Any]: The created Role object.
+    """
+    with Role(
+        client=client,
+        name=name,
+        namespace=namespace.name,
+        rules=[
+            {
+                "apiGroups": ["serving.kserve.io"],
+                "resources": ["inferenceservices"],
+                "verbs": ["get", "list", "watch"],
+            }
+        ],
+    ) as role:
+        yield role
+
+
+def create_isvc_getter_role_binding(
+    client: DynamicClient, namespace: Namespace, role: Role, service_account: ServiceAccount, name: str
+) -> Generator[RoleBinding, Any, Any]:
+    """Creates a RoleBinding to link a ServiceAccount to the InferenceService getter Role.
+
+    Args:
+        client: DynamicClient: The Kubernetes dynamic client.
+        namespace: Namespace: The Namespace object where the RoleBinding will be created.
+        role: Role: The Role object to bind.
+        service_account: ServiceAccount: The ServiceAccount object to bind.
+        name: str: The name of the RoleBinding.
+
+    Yields:
+        Generator[RoleBinding, Any, Any]: The created RoleBinding object.
+    """
+    with RoleBinding(
+        client=client,
+        name=name,
+        namespace=namespace.name,
+        subjects_kind="ServiceAccount",
+        subjects_name=service_account.name,
+        role_ref_kind="Role",
+        role_ref_name=role.name,
+    ) as rb:
+        yield rb
+
+
+def create_isvc_getter_token_secret(
+    client: DynamicClient, namespace: Namespace, service_account: ServiceAccount, name: str
+) -> Generator[Secret, Any, Any]:
+    """Creates a Secret of type 'kubernetes.io/service-account-token' for a given ServiceAccount.
+
+    Args:
+        client: DynamicClient: The Kubernetes dynamic client.
+        namespace: Namespace: The Namespace object where the Secret will be created.
+        service_account: ServiceAccount: The ServiceAccount object for which the token Secret is created.
+        name: str: The name of the Secret.
+
+    Yields:
+        Generator[Secret, Any, Any]: The created Secret object.
+    """
+    with Secret(
+        client=client,
+        namespace=namespace.name,
+        name=name,
+        annotations={"kubernetes.io/service-account.name": service_account.name},
+        type="kubernetes.io/service-account-token",
+    ) as secret:
+        yield secret
