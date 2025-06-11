@@ -69,9 +69,8 @@ def model_namespace_2(
     if request.param.get("modelmesh-enabled"):
         request.getfixturevalue(argname="enabled_modelmesh_in_dsc")
 
-    ns = Namespace(client=admin_client, name=request.param["name"])
-
     if pytestconfig.option.post_upgrade:
+        ns = Namespace(client=admin_client, name=request.param["name"])
         yield ns
         ns.clean_up()
     else:
