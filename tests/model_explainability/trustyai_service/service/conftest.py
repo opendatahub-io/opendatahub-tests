@@ -112,9 +112,9 @@ def trustyai_service_with_pvc_storage_2(
         "namespace": model_namespace_2.name,
         "name": TRUSTYAI_SERVICE_NAME,
     }
-    trustyai_service = TrustyAIService(**trustyai_service_kwargs)
 
     if pytestconfig.option.post_upgrade:
+        trustyai_service = TrustyAIService(**trustyai_service_kwargs)
         yield trustyai_service
         trustyai_service.clean_up()
 
@@ -147,9 +147,8 @@ def gaussian_credit_model_2(
         "name": GAUSSIAN_CREDIT_MODEL,
     }
 
-    isvc = InferenceService(**gaussian_credit_model_kwargs)
-
     if pytestconfig.option.post_upgrade:
+        isvc = InferenceService(**gaussian_credit_model_kwargs)
         yield isvc
         isvc.clean_up()
     else:
@@ -187,9 +186,8 @@ def mlserver_runtime_2(
         "name": KSERVE_MLSERVER,
     }
 
-    serving_runtime = ServingRuntime(**mlserver_runtime_kwargs)
-
     if pytestconfig.option.post_upgrade:
+        serving_runtime = ServingRuntime(**mlserver_runtime_kwargs)
         yield serving_runtime
         serving_runtime.clean_up()
     else:
