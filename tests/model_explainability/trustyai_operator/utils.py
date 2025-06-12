@@ -11,6 +11,14 @@ def validate_trustyai_operator_image(
         - container image matches that of the operator configmap.
         - image is present in relatedImages of CSV.
         - image complies with OpenShift AI requirements i.e. sourced from registry.redhat.io and pinned w/o tags.
+
+        Args:
+            related_images_refs (set[str]): set of related image refs from the RHOAI CSV
+            tai_operator_configmap_data (dict[str, str]): TrustyAI configmap data
+            tai_operator_deployment (Deployment): TrustyAI deployment object
+
+        Returns:
+            None
     """
     tai_operator_image = tai_operator_deployment.instance.spec.template.spec.containers[0].image
     assert tai_operator_image == tai_operator_configmap_data["trustyaiOperatorImage"]
