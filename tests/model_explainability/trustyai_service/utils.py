@@ -2,6 +2,7 @@ from typing import Generator, Any, Optional
 import re
 
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
 from ocp_resources.mariadb_operator import MariadbOperator
 from ocp_resources.maria_db import MariaDB
@@ -253,10 +254,17 @@ def validate_trustyai_service_images(
     related_images_refs: set[str],
     model_namespace: Namespace,
     label_selector: str,
+    trustyai_operator_configmap: ConfigMap,
 ) -> None:
     """Validates the TrustyAI service container images."""
+    tai_image_refs = set(
+        v
+        for k, v in trustyai_operator_configmap.instance.data.items()
+        if k in ["oauthProxyImage", "trustyaiServiceImage"]
+    )
     trustyai_service_pod = wait_for_pods_by_labels(
         admin_client=client, namespace=model_namespace.name, label_selector=label_selector, expected_num_pods=1
     )[0]
-    validation_errors = validate_container_images(pod=trustyai_service_pod, valid_image_refs=related_images_refs)
+    validation_errors = validate_container_images(pod=trustyai_service_pod, valid_image_refs=tai_image_refs)
     assert len(validation_errors) == 0, validation_errors
+    assert tai_image_refs.issubset(related_images_refs), "TrustyAI service container images are not present in CSV."

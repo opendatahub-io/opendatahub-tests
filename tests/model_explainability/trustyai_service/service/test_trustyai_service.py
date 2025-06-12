@@ -167,10 +167,12 @@ def test_validate_trustyai_service_image(
     model_namespace: Namespace,
     related_images_refs: set[str],
     trustyai_service_with_pvc_storage: TrustyAIService,
+    trustyai_operator_configmap,
 ):
     return validate_trustyai_service_images(
         client=admin_client,
         related_images_refs=related_images_refs,
         model_namespace=model_namespace,
         label_selector=f"app.kubernetes.io/instance={trustyai_service_with_pvc_storage.name}",
+        trustyai_operator_configmap=trustyai_operator_configmap,
     )
