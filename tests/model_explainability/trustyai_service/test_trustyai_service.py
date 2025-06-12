@@ -8,6 +8,7 @@ from ocp_resources.trustyai_service import TrustyAIService
 from tests.model_explainability.trustyai_service.utils import (
     validate_trustyai_service_db_conn_failure,
     validate_trustyai_operator_image,
+    validate_trustyai_service_images,
 )
 
 
@@ -52,14 +53,26 @@ class TestValidateTrustyAIImages:
     def test_validate_trustyai_operator_image(
         self,
         admin_client,
-        current_client_token,
         model_namespace: Namespace,
         related_images_refs: Set[str],
-        trustyai_service_with_pvc_storage: TrustyAIService,
         trustyai_operator_configmap: ConfigMap,
     ):
         return validate_trustyai_operator_image(
             client=admin_client,
             related_images_refs=related_images_refs,
             tai_operator_configmap_data=trustyai_operator_configmap.instance.data,
+        )
+
+    def test_validate_trustyai_service_image(
+        self,
+        admin_client,
+        model_namespace: Namespace,
+        related_images_refs: Set[str],
+        trustyai_service_with_pvc_storage: TrustyAIService,
+    ):
+        return validate_trustyai_service_images(
+            client=admin_client,
+            related_images_refs=related_images_refs,
+            model_namespace=model_namespace,
+            label_selector=f"app.kubernetes.io/instance={trustyai_service_with_pvc_storage.name}",
         )

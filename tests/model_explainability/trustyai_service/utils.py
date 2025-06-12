@@ -15,7 +15,7 @@ from timeout_sampler import TimeoutSampler, retry
 from tests.model_explainability.trustyai_service.trustyai_service_utils import TRUSTYAI_SERVICE_NAME
 from utilities.constants import Timeout
 from utilities.exceptions import TooManyPodsError, UnexpectedFailureError
-from utilities.general import validate_image_format
+from utilities.general import validate_image_format, wait_for_pods_by_labels, validate_container_images
 
 LOGGER = get_logger(name=__name__)
 
@@ -170,4 +170,19 @@ def validate_trustyai_operator_image(
     tai_operator_image = tai_operator_deployment.instance.spec.template.spec.containers[0].image
     assert tai_operator_image == tai_operator_configmap_data["trustyaiOperatorImage"]
     assert tai_operator_image in related_images_refs
-    assert validate_image_format(image=tai_operator_image)
+    image_valid, error_message = validate_image_format(image=tai_operator_image)
+    assert image_valid, error_message
+
+
+def validate_trustyai_service_images(
+    client: DynamicClient,
+    related_images_refs: Set[str],
+    model_namespace: Namespace,
+    label_selector: str,
+) -> None:
+    """Validates the TrustyAI service container images."""
+    trustyai_service_pod = wait_for_pods_by_labels(
+        admin_client=client, namespace=model_namespace.name, label_selector=label_selector, expected_num_pods=1
+    )
+    validation_errors = validate_container_images(pod=trustyai_service_pod, valid_image_refs=related_images_refs)
+    assert len(validation_errors) == 0, validation_errors

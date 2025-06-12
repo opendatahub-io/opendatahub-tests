@@ -222,9 +222,9 @@ def wait_for_pods_by_labels(
     namespace: str,
     label_selector: str,
     expected_num_pods: int,
-) -> list[Pod]:
+) -> list[Pod] | Pod:
     """
-    Get pods by label selector in a namespace.
+    Get pods or a pod by label selector in a namespace.
 
     Args:
         admin_client: The admin client to use for pod retrieval
@@ -232,7 +232,7 @@ def wait_for_pods_by_labels(
         label_selector: The label selector to filter pods
         expected_num_pods: The expected number of pods to be found
     Returns:
-        List of matching pods
+        List of matching pods or a single pod if expected_num_pods is 1
 
     Raises:
         ResourceNotFoundError: If no pods are found
@@ -247,8 +247,8 @@ def wait_for_pods_by_labels(
     if not pods:
         raise ResourceNotFoundError(f"No pods found with label selector {label_selector} in namespace {namespace}")
     if len(pods) != expected_num_pods:
-        raise UnexpectedResourceCountError(f"Expected {expected_num_pods} pods, found {len(pods)}")
-    return pods
+        raise UnexpectedResourceCountError(f"Expected {expected_num_pods} pod(s), found {len(pods)}")
+    return pods[0] if expected_num_pods and expected_num_pods == 1 else pods
 
 
 def validate_container_images(
