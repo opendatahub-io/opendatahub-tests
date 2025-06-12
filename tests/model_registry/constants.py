@@ -48,6 +48,12 @@ MODEL_REGISTRY_DB_SECRET_ANNOTATIONS = {
     f"{Resource.ApiGroup.TEMPLATE_OPENSHIFT_IO}/expose-password": "'{.data[''database-password'']}'",
     f"{Resource.ApiGroup.TEMPLATE_OPENSHIFT_IO}/expose-username": "'{.data[''database-user'']}'",
 }
+
+SECURE_MR_NAME = "secure-db-mr"
+CA_CONFIGMAP_NAME = "odh-trusted-ca-bundle"
+CA_MOUNT_PATH = "/etc/pki/ca-trust/extracted/pem"
+CA_FILE_PATH = f"{CA_MOUNT_PATH}/ca-bundle.crt"
+
 MODEL_REGISTRY_STANDARD_LABELS = {
     Annotations.KubernetesIo.NAME: MR_INSTANCE_NAME,
     Annotations.KubernetesIo.INSTANCE: MR_INSTANCE_NAME,

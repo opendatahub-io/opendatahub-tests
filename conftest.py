@@ -32,6 +32,9 @@ from utilities.must_gather_collector import (
     collect_rhoai_must_gather,
     get_base_dir,
 )
+from kubernetes.dynamic import DynamicClient
+from utilities.infra import get_operator_distribution, get_dsci_applications_namespace, get_data_science_cluster
+from ocp_resources.resource import get_client
 
 from kubernetes.dynamic import DynamicClient
 from utilities.infra import get_operator_distribution, get_dsci_applications_namespace, get_data_science_cluster
