@@ -248,7 +248,7 @@ def wait_for_pods_by_labels(
         raise ResourceNotFoundError(f"No pods found with label selector {label_selector} in namespace {namespace}")
     if len(pods) != expected_num_pods:
         raise UnexpectedResourceCountError(f"Expected {expected_num_pods} pod(s), found {len(pods)}")
-    return pods[0] if expected_num_pods and expected_num_pods == 1 else pods
+    return pods[0] if expected_num_pods == 1 else pods
 
 
 def validate_container_images(
