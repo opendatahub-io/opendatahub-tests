@@ -297,7 +297,7 @@ def model_registry_operator_pod(admin_client: DynamicClient) -> Generator[Pod, A
         namespace=py_config["applications_namespace"],
         label_selector=f"{Labels.OpenDataHubIo.NAME}={MR_OPERATOR_NAME}",
         expected_num_pods=1,
-    )[0]
+    )
 
 
 @pytest.fixture()
@@ -308,7 +308,7 @@ def model_registry_instance_pod(admin_client: DynamicClient) -> Generator[Pod, A
         namespace=py_config["model_registry_namespace"],
         label_selector=f"app={MR_INSTANCE_NAME}",
         expected_num_pods=1,
-    )[0]
+    )
 
 
 @pytest.fixture(scope="package", autouse=True)
