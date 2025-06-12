@@ -24,20 +24,46 @@ BASE_SEVERRLESS_DEPLOYMENT_CONFIG["runtime_argument"] = SERVING_ARGUMENT
 
 pytestmark = pytest.mark.usefixtures("vllm_skip_if_no_supported_accelerator_type")
 
-OCI_IMAGE_NAME = "modelcar-granite-3-1-8b-base-quantized-w4a16:1.5"
-
 
 @pytest.mark.serverless
 @pytest.mark.parametrize(
-    "model_namespace, modelcar_serving_runtime, vllm_model_car_inference_service, modelcar_image_uri",
+    "dynamic_model_namespace, modelcar_serving_runtime, vllm_model_car_inference_service, modelcar_image_uri",
+    # user can override the modelcar_image_uri in the test case from the cli input
     [
         pytest.param(
-            {"name": "granite-8b-oci", "modelmesh-enabled": False},
+            {"modelcar_image_uri": "modelcar-granite-3-1-8b-base-quantized-w4a16:1.5", "modelmesh-enabled": False},
             {"deployment_type": KServeDeploymentType.SERVERLESS},
-            {"name": "granite-8b-oci", **BASE_SEVERRLESS_DEPLOYMENT_CONFIG, "gpu_count": 1},
-            OCI_IMAGE_NAME,
+            {
+                "modelcar_image_uri": "modelcar-granite-3-1-8b-base-quantized-w4a16:1.5",
+                **BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
+                "gpu_count": 1,
+            },
+            "modelcar-granite-3-1-8b-base-quantized-w4a16:1.5",
             id="granite-8b-oci",
-        )
+        ),
+        pytest.param(
+            {"modelcar_image_uri": "modelcar-llama-3-1-8b-instruct:1.5", "modelmesh-enabled": False},
+            {"deployment_type": KServeDeploymentType.SERVERLESS},
+            {
+                "modelcar_image_uri": "modelcar-llama-3-1-8b-instruct:1.5",
+                **BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
+                "gpu_count": 1,
+            },
+            "modelcar-llama-3-1-8b-instruct:1.5",
+            id="llama-8b-oci",
+        ),
+        pytest.param(
+            {"modelcar_image_uri": "modelcar-qwen2-5-7b-instruct:1.5", "modelmesh-enabled": False},
+            {"deployment_type": KServeDeploymentType.SERVERLESS},
+            {
+                "modelcar_image_uri": "modelcar-qwen2-5-7b-instruct:1.5",
+                **BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
+                "gpu_count": 1,
+                "timeout": TIMEOUT_20MIN,
+            },
+            "modelcar-qwen2-5-7b-instruct:1.5",
+            id="qwen2-7b-oci",
+        ),
     ],
     indirect=True,
 )

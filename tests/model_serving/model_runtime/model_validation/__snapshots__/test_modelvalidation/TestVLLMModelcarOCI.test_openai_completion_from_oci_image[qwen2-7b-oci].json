@@ -1,6 +1,6 @@
 [
   {
-    "id": "isvc-8b-oci",
+    "id": "isvc-7b-oci",
     "max_model_len": 1024,
     "object": "model",
     "owned_by": "vllm",

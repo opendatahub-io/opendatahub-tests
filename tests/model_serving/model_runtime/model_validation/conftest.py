@@ -14,30 +14,62 @@ from kubernetes.dynamic import DynamicClient
 from simple_logger.logger import get_logger
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 from utilities.inference_utils import create_isvc
+from utilities.infra import create_ns
 from tests.model_serving.model_runtime.vllm.utils import validate_supported_quantization_schema
 from tests.model_serving.model_runtime.model_validation.constant import (
     ORIGINAL_PULL_SECRET,
     INFERENCE_SERVICE_PORT,
     CONTAINER_PORT,
 )
+
+import hashlib
+import re
 from syrupy.extensions.json import JSONSnapshotExtension
 
 LOGGER = get_logger(name=__name__)
+
+
+def safe_k8s_name(name: str, max_len: int = 20) -> str:
+    """
+    Convert a model image URI or name into a safe, human-readable Kubernetes name.
+    Prioritizes model family and size, e.g., 'granite-8b-oci'.
+    Falls back to hashed suffix if over max_len.
+    """
+    # Extract the base model name (e.g., "modelcar-granite-3-1-8b-base-quantized-w4a16")
+    base = name.split("/")[-1].split(":")[0]  # Strip registry and tag
+
+    # Clean and tokenize
+    parts = base.replace("modelcar-", "").split("-")
+
+    # Try to extract model family and size
+    family = parts[0] if parts else "model"
+    size = next((p for p in parts if re.match(r"^\d+b$", p)), "unk")
+
+    readable = f"{family}-{size}-oci"
+
+    if len(readable) <= max_len:
+        return readable
+
+    # Truncate with hash fallback
+    hash_suffix = hashlib.sha1(readable.encode()).hexdigest()[:6]
+    max_base_len = max_len - len("-" + hash_suffix)
+    return f"{readable[:max_base_len]}-{hash_suffix}"
 
 
 @pytest.fixture(scope="class")
 def vllm_model_car_inference_service(
     request: FixtureRequest,
     admin_client: DynamicClient,
-    model_namespace: Namespace,
+    dynamic_model_namespace: Namespace,
     modelcar_serving_runtime: ServingRuntime,
     supported_accelerator_type: str,
     modelcar_image_uri: str,
 ) -> Generator[InferenceService, Any, Any]:
+    name = safe_k8s_name(name=modelcar_image_uri, max_len=20)
     isvc_kwargs = {
         "client": admin_client,
-        "name": request.param["name"],
-        "namespace": model_namespace.name,
+        "name": name,
+        "namespace": dynamic_model_namespace.name,
         "runtime": modelcar_serving_runtime.name,
         "storage_uri": modelcar_image_uri,
         "model_format": modelcar_serving_runtime.instance.spec.supportedModelFormats[0].name,
@@ -80,7 +112,7 @@ def vllm_model_car_inference_service(
 def modelcar_serving_runtime(
     request: FixtureRequest,
     admin_client: DynamicClient,
-    model_namespace: Namespace,
+    dynamic_model_namespace: Namespace,
     supported_accelerator_type: str,
     vllm_runtime_image: str,
 ) -> Generator[ServingRuntime, None, None]:
@@ -90,7 +122,7 @@ def modelcar_serving_runtime(
     with ServingRuntimeFromTemplate(
         client=admin_client,
         name="vllm-runtime",
-        namespace=model_namespace.name,
+        namespace=dynamic_model_namespace.name,
         template_name=template_name,
         deployment_type=request.param["deployment_type"],
         runtime_image=vllm_runtime_image,
@@ -117,7 +149,8 @@ def modelcar_serving_runtime(
 
 
 @pytest.fixture(scope="session")
-def modelcar_image_uri(request: FixtureRequest, model_image_name: str) -> str | None:
+def modelcar_image_uri(request: FixtureRequest) -> str | None:
+    model_image_name = request.param
     if not model_image_name:
         return None
     return f"oci://registry.redhat.io/rhelai1/{model_image_name}"
@@ -126,3 +159,35 @@ def modelcar_image_uri(request: FixtureRequest, model_image_name: str) -> str | 
 @pytest.fixture
 def response_snapshot(snapshot: Any) -> Any:
     return snapshot.use_extension(extension_class=JSONSnapshotExtension)
+
+
+@pytest.fixture(scope="class")
+def dynamic_model_namespace(
+    request: FixtureRequest,
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    teardown_resources: bool,
+    modelcar_image_uri: str,
+) -> Generator[Namespace, Any, Any]:
+    if request.param.get("modelmesh-enabled"):
+        request.getfixturevalue(argname="enabled_modelmesh_in_dsc")
+
+    name = safe_k8s_name(name=modelcar_image_uri, max_len=20)
+
+    dynamic_name = f"{name}-ns"
+
+    ns = Namespace(client=admin_client, name=dynamic_name)
+
+    LOGGER.info(f"Creating dynamic namespace: {ns.name}")
+
+    if pytestconfig.option.post_upgrade:
+        yield ns
+        ns.clean_up()
+    else:
+        with create_ns(
+            client=admin_client,
+            name=dynamic_name,
+            pytest_request=request,
+            teardown=teardown_resources,
+        ) as ns:
+            yield ns
