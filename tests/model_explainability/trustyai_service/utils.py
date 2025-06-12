@@ -256,7 +256,21 @@ def validate_trustyai_service_images(
     label_selector: str,
     trustyai_operator_configmap: ConfigMap,
 ) -> None:
-    """Validates the TrustyAI service container images."""
+    """Validates trustyai service images against a set of related images.
+
+    Args:
+        client: DynamicClient: The Kubernetes dynamic client.
+        related_images_refs: list[str]: Related images references from RHOAI CSV.
+        model_namespace: Namespace: namespace to run the test against.
+        label_selector: str: Label selector string to get the trustyai pod.
+        trustyai_operator_configmap: ConfigMap: The trustyai operator configmap.
+
+    Returns:
+        None
+
+    Raises:
+        AssertionError: If any of the related images references are not present or invalid.
+    """
     tai_image_refs = set(
         v
         for k, v in trustyai_operator_configmap.instance.data.items()

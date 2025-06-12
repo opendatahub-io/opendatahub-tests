@@ -19,6 +19,9 @@ def validate_trustyai_operator_image(
 
         Returns:
             None
+
+        Raises:
+            AssertionError: If any of the related images references are not present or invalid.
     """
     tai_operator_image = tai_operator_deployment.instance.spec.template.spec.containers[0].image
     assert tai_operator_image == tai_operator_configmap_data["trustyaiOperatorImage"]
