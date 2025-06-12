@@ -12,7 +12,7 @@ ENV BIN_DIR="$HOME_DIR/.local/bin"
 ENV PATH="$PATH:$BIN_DIR"
 
 RUN apt-get update \
-    && apt-get install -y ssh gnupg software-properties-common curl gpg wget vim \
+    && apt-get install -y ssh gnupg software-properties-common curl gpg wget vim apache2-utils rsync\
     && apt-get clean autoclean \
     && apt-get autoremove --yes \
     && rm -rf /var/lib/{apt,dpkg,cache,log}/
@@ -35,11 +35,6 @@ RUN curl -sSL "https://github.com/fullstorydev/grpcurl/releases/download/v1.9.2/
     && tar xvf /tmp/grpcurl_1.2.tar.gz --no-same-owner \
     && mv grpcurl /usr/bin/grpcurl
 
-# Install htpasswd
-RUN apt-get update && \
-    apt-get install -y apache2-utils && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
 
 RUN useradd -ms /bin/bash $USER
 USER $USER

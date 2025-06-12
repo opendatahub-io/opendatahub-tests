@@ -42,6 +42,7 @@ from utilities.constants import (
 )
 from utilities.infra import update_configmap_data
 from utilities.minio import create_minio_data_connection_secret
+from utilities.operator_utils import get_csv_related_images
 
 LOGGER = get_logger(name=__name__)
 
@@ -517,3 +518,10 @@ def prometheus(admin_client: DynamicClient) -> Prometheus:
         ),  # TODO: Verify SSL with appropriate certs
         bearer_token=get_openshift_token(),
     )
+
+
+@pytest.fixture(scope="session")
+def related_images_refs(admin_client: DynamicClient) -> set[str]:
+    related_images = get_csv_related_images(admin_client=admin_client)
+    related_images_refs = {img["image"] for img in related_images}
+    return related_images_refs
