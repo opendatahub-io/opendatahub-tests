@@ -43,6 +43,6 @@ def fail_if_missing_dependent_operators(admin_client: DynamicClient) -> None:  #
 
 
 @pytest.fixture(scope="session")
-def skip_if_no_supported_accelerator_type(supported_accelerator_type: str) -> None:  # noqa: UFN001
+def vllm_skip_if_no_supported_accelerator_type(supported_accelerator_type: str) -> None:  # noqa: UFN001
     if not supported_accelerator_type:
         pytest.skip("Accelartor type is not provided,vLLM test can not be run on CPU")
