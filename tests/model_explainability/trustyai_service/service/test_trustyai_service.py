@@ -1,5 +1,6 @@
 import pytest
 from ocp_resources.namespace import Namespace
+from ocp_resources.trustyai_service import TrustyAIService
 
 from tests.model_explainability.trustyai_service.constants import DRIFT_BASE_DATA_PATH
 from tests.model_explainability.trustyai_service.trustyai_service_utils import (
@@ -9,7 +10,10 @@ from tests.model_explainability.trustyai_service.trustyai_service_utils import (
     verify_trustyai_service_metric_scheduling_request,
     verify_trustyai_service_metric_delete_request,
 )
-from tests.model_explainability.trustyai_service.utils import validate_trustyai_service_db_conn_failure
+from tests.model_explainability.trustyai_service.utils import (
+    validate_trustyai_service_db_conn_failure,
+    validate_trustyai_service_images,
+)
 from utilities.constants import MinIo
 from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
 
@@ -146,3 +150,27 @@ class TestTrustyAIServiceMultipleNS:
                 token=current_client_token,
                 metric_name=TrustyAIServiceMetrics.Drift.MEANSHIFT,
             )
+
+
+@pytest.mark.parametrize(
+    "model_namespace",
+    [
+        pytest.param(
+            {"name": "test-validate-trustyai-service-images"},
+        )
+    ],
+    indirect=True,
+)
+@pytest.mark.smoke
+def test_validate_trustyai_service_image(
+    admin_client,
+    model_namespace: Namespace,
+    related_images_refs: set[str],
+    trustyai_service_with_pvc_storage: TrustyAIService,
+):
+    return validate_trustyai_service_images(
+        client=admin_client,
+        related_images_refs=related_images_refs,
+        model_namespace=model_namespace,
+        label_selector=f"app.kubernetes.io/instance={trustyai_service_with_pvc_storage.name}",
+    )
