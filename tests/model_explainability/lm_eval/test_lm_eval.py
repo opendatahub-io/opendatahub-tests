@@ -179,6 +179,4 @@ def test_verify_lmeval_pod_images(lmevaljob_s3_offline_pod, trustyai_operator_co
         - lmeval driver image
         - lmeval job runner image
     """
-    verify_lmeval_pod_images(
-        lmeval_pod=lmevaljob_s3_offline_pod, trustyai_operator_configmap=trustyai_operator_configmap
-    )
+    verify_lmeval_pod_images(lmeval_pod=lmevaljob_s3_offline_pod, tai_operator_configmap=trustyai_operator_configmap)
