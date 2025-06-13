@@ -48,9 +48,9 @@ def serving_runtime(
 
 
 @pytest.fixture(scope="session")
-def skip_if_no_supported_accelerator_type(supported_accelerator_type: str) -> None:
+def skip_if_no_supported_accelerator_type(supported_accelerator_type: str) -> None:  # noqa: UFN001
     if not supported_accelerator_type:
-        pytest.skip("Accelartor type is not provide,vLLM test can not be run on CPU")
+        pytest.skip("Accelartor type is not provided,vLLM test can not be run on CPU")
 
 
 @pytest.fixture(scope="class")

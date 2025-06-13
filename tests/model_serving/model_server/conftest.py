@@ -560,7 +560,7 @@ def unprivileged_s3_caikit_serverless_inference_service(
 
 
 @pytest.fixture(scope="package")
-def fail_if_missing_dependent_operators(admin_client: DynamicClient) -> None:
+def fail_if_missing_dependent_operators(admin_client: DynamicClient) -> None:  # noqa: UFN001
     if dependent_operators := py_config.get("dependent_operators"):
         missing_operators: list[str] = []
 
