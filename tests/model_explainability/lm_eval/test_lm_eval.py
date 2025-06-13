@@ -1,5 +1,6 @@
 import pytest
 
+from tests.model_explainability.utils import validate_tai_component_images
 from utilities.constants import Timeout
 
 LMEVALJOB_COMPLETE_STATE: str = "Complete"
@@ -159,4 +160,28 @@ def test_lmeval_s3_storage(
     """Test to verify that LMEval works with a model stored in a S3 bucket"""
     lmevaljob_s3_offline_pod.wait_for_status(
         status=lmevaljob_s3_offline_pod.Status.SUCCEEDED, timeout=Timeout.TIMEOUT_20MIN
+    )
+
+
+@pytest.mark.parametrize(
+    "model_namespace, minio_data_connection",
+    [
+        pytest.param(
+            {"name": "test-lmeval-images"},
+            {"bucket": "models"},
+        )
+    ],
+    indirect=True,
+)
+@pytest.mark.smoke
+def test_verify_lmeval_pod_images(lmevaljob_s3_offline_pod, trustyai_operator_configmap) -> None:
+    """Test to verify LMEval pod images.
+    Checks if the image tag from the ConfigMap is used within the Pod and if it's pinned using a sha256 digest.
+
+    Verifies:
+        - lmeval driver image
+        - lmeval job runner image
+    """
+    validate_tai_component_images(
+        pod=lmevaljob_s3_offline_pod, tai_operator_configmap=trustyai_operator_configmap, include_init_containers=True
     )
