@@ -8,7 +8,6 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.guardrails_orchestrator import GuardrailsOrchestrator
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
-from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
@@ -18,8 +17,6 @@ from ocp_resources.serving_runtime import ServingRuntime
 from utilities.constants import (
     KServeDeploymentType,
     Labels,
-    MinIo,
-    Timeout,
     Ports,
     RuntimeTemplates,
 )
@@ -78,9 +75,11 @@ def guardrails_orchestrator_pod(
 
 
 @pytest.fixture(scope="class")
-def qwen_llm_model(
+def qwen_isvc(
     admin_client: DynamicClient,
     model_namespace: Namespace,
+    minio_pod: Pod,
+    minio_service: Service,
     minio_data_connection: Secret,
     vllm_runtime: ServingRuntime,
 ) -> Generator[InferenceService, Any, Any]:
@@ -107,7 +106,7 @@ def qwen_llm_model(
 def vllm_runtime(
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    minio_llm_deployment: Deployment,
+    minio_pod: Pod,
     minio_service: Service,
     minio_data_connection: Secret,
 ) -> Generator[ServingRuntime, Any, Any]:
@@ -138,7 +137,7 @@ def vllm_runtime(
 def orchestrator_configmap(
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    qwen_llm_model: InferenceService,
+    qwen_isvc: InferenceService,
 ) -> Generator[ConfigMap, Any, Any]:
     with ConfigMap(
         client=admin_client,
@@ -148,7 +147,7 @@ def orchestrator_configmap(
             "config.yaml": yaml.dump({
                 "chat_generation": {
                     "service": {
-                        "hostname": f"{qwen_llm_model.name}-predictor.{model_namespace.name}.svc.cluster.local",
+                        "hostname": f"{qwen_isvc.name}-predictor.{model_namespace.name}.svc.cluster.local",
                         "port": GUARDRAILS_ORCHESTRATOR_PORT,
                     }
                 },
@@ -205,82 +204,3 @@ def guardrails_gateway_config(
         },
     ) as cm:
         yield cm
-
-
-@pytest.fixture(scope="class")
-def minio_llm_deployment(
-    admin_client: DynamicClient,
-    minio_namespace: Namespace,
-    pvc_minio_namespace: PersistentVolumeClaim,
-) -> Generator[Deployment, Any, Any]:
-    with Deployment(
-        client=admin_client,
-        name="llm-container-deployment",
-        namespace=minio_namespace.name,
-        replicas=1,
-        selector={"matchLabels": {Labels.Openshift.APP: MinIo.Metadata.NAME}},
-        template={
-            "metadata": {
-                "labels": {
-                    Labels.Openshift.APP: MinIo.Metadata.NAME,
-                    "maistra.io/expose-route": "true",
-                },
-                "name": MinIo.Metadata.NAME,
-            },
-            "spec": {
-                "volumes": [
-                    {
-                        "name": "model-volume",
-                        "persistentVolumeClaim": {"claimName": pvc_minio_namespace.name},
-                    }
-                ],
-                "initContainers": [
-                    {
-                        "name": "download-model",
-                        "image": "quay.io/trustyai_testing/llm-downloader-bootstrap"
-                        "@sha256:d3211cc581fe69ca9a1cb75f84e5d08cacd1854cb2d63591439910323b0cbb57",
-                        "securityContext": {"fsGroup": 1001},
-                        "command": [
-                            "bash",
-                            "-c",
-                            'model="Qwen/Qwen2.5-0.5B-Instruct"'
-                            '\necho "starting download"'
-                            "\n/tmp/venv/bin/huggingface-cli download $model "
-                            "--local-dir /mnt/models/llms/$(basename $model)"
-                            '\necho "Done!"',
-                        ],
-                        "resources": {"limits": {"memory": "5Gi", "cpu": "2"}},
-                        "volumeMounts": [{"mountPath": "/mnt/models/", "name": "model-volume"}],
-                    }
-                ],
-                "containers": [
-                    {
-                        "args": ["server", "/models"],
-                        "env": [
-                            {
-                                "name": MinIo.Credentials.ACCESS_KEY_NAME,
-                                "value": MinIo.Credentials.ACCESS_KEY_VALUE,
-                            },
-                            {
-                                "name": MinIo.Credentials.SECRET_KEY_NAME,
-                                "value": MinIo.Credentials.SECRET_KEY_VALUE,
-                            },
-                        ],
-                        "image": "quay.io/trustyai/modelmesh-minio-examples"
-                        "@sha256:65cb22335574b89af15d7409f62feffcc52cc0e870e9419d63586f37706321a5",
-                        "name": MinIo.Metadata.NAME,
-                        "securityContext": {
-                            "allowPrivilegeEscalation": False,
-                            "capabilities": {"drop": ["ALL"]},
-                            "seccompProfile": {"type": "RuntimeDefault"},
-                        },
-                        "volumeMounts": [{"mountPath": "/models/", "name": "model-volume"}],
-                    }
-                ],
-            },
-        },
-        label={Labels.Openshift.APP: MinIo.Metadata.NAME},
-        wait_for_resource=True,
-    ) as deployment:
-        deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_10MIN)
-        yield deployment
