@@ -4,7 +4,7 @@ import pytest
 import requests
 from timeout_sampler import retry
 
-from tests.model_explainability.guardrails.utils import validate_guardrails_orchestrator_images
+from tests.model_explainability.utils import validate_tai_component_images
 from utilities.constants import Timeout
 
 
@@ -42,18 +42,6 @@ class TestGuardrails:
         assert response_data["services"]["regex"]["status"] == healthy_status
 
     def test_validate_guardrails_orchestrator_images(self, guardrails_orchestrator_pod, trustyai_operator_configmap):
-        """Validates Guardrails Orchestrator images.
-
-        Args:
-
-            guardrails_orchestrator_pod: Pod
-            trustyai_operator_configmap: ConfigMap
-
-        Returns:
-            None
-        Raises:
-            AssertionError: If validation fails.
-        """
-        validate_guardrails_orchestrator_images(
-            guardrails_orchestrator_pod=guardrails_orchestrator_pod, tai_operator_configmap=trustyai_operator_configmap
+        validate_tai_component_images(
+            pod=guardrails_orchestrator_pod, tai_operator_configmap=trustyai_operator_configmap
         )

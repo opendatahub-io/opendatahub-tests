@@ -1,6 +1,6 @@
 import pytest
 
-from tests.model_explainability.lm_eval.utils import verify_lmeval_pod_images
+from tests.model_explainability.utils import validate_tai_component_images
 from utilities.constants import Timeout
 
 LMEVALJOB_COMPLETE_STATE: str = "Complete"
@@ -179,4 +179,6 @@ def test_verify_lmeval_pod_images(lmevaljob_s3_offline_pod, trustyai_operator_co
         - lmeval driver image
         - lmeval job runner image
     """
-    verify_lmeval_pod_images(lmeval_pod=lmevaljob_s3_offline_pod, tai_operator_configmap=trustyai_operator_configmap)
+    validate_tai_component_images(
+        pod=lmevaljob_s3_offline_pod, tai_operator_configmap=trustyai_operator_configmap, include_init_containers=True
+    )

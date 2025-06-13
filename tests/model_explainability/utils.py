@@ -5,7 +5,7 @@ from ocp_resources.pod import Pod
 from utilities.general import SHA256_DIGEST_PATTERN
 
 
-def validate_pod_image_against_tai_configmap_images_and_check_digest(
+def validate_tai_component_images(
     pod: Pod, tai_operator_configmap: ConfigMap, include_init_containers: bool = False
 ) -> None:
     """Validate pod image against tai configmap images and check image for sha256 digest.
