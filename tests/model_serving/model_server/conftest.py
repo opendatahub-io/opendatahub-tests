@@ -15,7 +15,6 @@ from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.storage_class import StorageClass
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
-
 from utilities.constants import (
     KServeDeploymentType,
     ModelFormat,
@@ -35,7 +34,6 @@ from utilities.infra import (
     update_configmap_data,
 )
 from utilities.serving_runtime import ServingRuntimeFromTemplate
-
 
 LOGGER = get_logger(name=__name__)
 

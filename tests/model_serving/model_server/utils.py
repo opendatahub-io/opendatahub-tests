@@ -1,8 +1,10 @@
 import json
 import re
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import concurrent.futures
 from string import Template
 from typing import Any, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from kubernetes.dynamic import DynamicClient
 
 from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
@@ -13,6 +15,12 @@ from utilities.exceptions import (
     InferenceResponseError,
 )
 from utilities.inference_utils import UserInference
+from utilities.infra import get_isvc_keda_scaledobject
+from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
+from utilities.constants import Protocols
+from utilities.inference_utils import Inference
+from utilities.manifests.vllm import VLLM_INFERENCE_CONFIG
+from timeout_sampler import TimeoutWatch
 
 LOGGER = get_logger(name=__name__)
 
@@ -223,3 +231,100 @@ def run_inference_multiple_times(
 
             if exceptions:
                 raise InferenceResponseError(f"Failed to run inference. Error: {exceptions}")
+
+
+def verify_keda_scaledobject(
+    client: DynamicClient,
+    isvc: InferenceService,
+    expected_trigger_type: str | None = None,
+    expected_query: str | None = None,
+    expected_threshold: str | None = None,
+) -> None:
+    """
+    Verify the KEDA ScaledObject.
+
+    Args:
+        client: DynamicClient instance
+        isvc: InferenceService instance
+        expected_trigger_type: Expected trigger type
+        expected_query: Expected query string
+        expected_threshold: Expected threshold as string (e.g. "50.000000")
+    """
+    scaled_objects = get_isvc_keda_scaledobject(client=client, isvc=isvc)
+    scaled_object = scaled_objects[0]  # Get the first ScaledObject
+    trigger_meta = scaled_object.spec.triggers[0].metadata
+    trigger_type = scaled_object.spec.triggers[0].type
+    query = trigger_meta.get("query")
+    threshold = trigger_meta.get("threshold")
+
+    assert trigger_type == expected_trigger_type, (
+        f"Trigger type {trigger_type} does not match expected {expected_trigger_type}"
+    )
+    assert query == expected_query, f"Query {query} does not match expected {expected_query}"
+    assert threshold == expected_threshold, f"Threshold {threshold} does not match expected {expected_threshold}"
+
+
+def run_vllm_concurrent_load(
+    pod_name: str,
+    isvc: InferenceService,
+    response_snapshot: Any,
+    chat_query: list[list[dict[str, str]]],
+    completion_query: list[dict[str, str]],
+    num_concurrent: int = 5,
+    duration: int = 120,
+) -> None:
+    """
+    Run VLLM concurrent load.
+
+    Args:
+        pod_name: Pod name
+        isvc: InferenceService instance
+        response_snapshot: Response snapshot
+        chat_query: Chat query
+        completion_query: Completion query
+        num_concurrent: Number of concurrent requests
+        duration: Duration in seconds to run the load test
+    """
+
+    def _make_request() -> None:
+        verify_inference_response(
+            inference_service=isvc,
+            inference_config=VLLM_INFERENCE_CONFIG,
+            inference_type="completions",
+            protocol=Protocols.HTTPS,
+            use_default_query=True,
+        )
+
+    timeout_watch = TimeoutWatch(timeout=duration)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=num_concurrent) as executor:
+        while timeout_watch.remaining_time() > 0:
+            futures = [executor.submit(_make_request) for _ in range(num_concurrent)]
+            concurrent.futures.wait(fs=futures)
+
+
+def run_ovms_concurrent_load(
+    isvc: InferenceService,
+    num_concurrent: int = 5,
+    duration: int = 120,
+) -> None:
+    """
+    Run OVMS concurrent load.
+
+    Args:
+        isvc: InferenceService instance
+    """
+
+    def make_request() -> None:
+        verify_inference_response(
+            inference_service=isvc,
+            inference_config=ONNX_INFERENCE_CONFIG,
+            inference_type=Inference.INFER,
+            protocol=Protocols.HTTPS,
+            use_default_query=True,
+        )
+
+    timeout_watch = TimeoutWatch(timeout=duration)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=num_concurrent) as executor:
+        while timeout_watch.remaining_time() > 0:
+            futures = [executor.submit(make_request) for _ in range(num_concurrent)]
+            concurrent.futures.wait(fs=futures)
