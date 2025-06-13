@@ -22,7 +22,7 @@ def validate_pod_image_against_tai_configmap_images_and_check_digest(
         AssertionError: If validation fails.
     """
     tai_configmap_values = tai_operator_configmap.instance.data.values()
-    containers = pod.instance.spec.containers
+    containers = list(pod.instance.spec.containers)
     if include_init_containers:
         containers.extend(pod.instance.spec.initContainers)
     for container in containers:
