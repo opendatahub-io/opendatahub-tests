@@ -106,7 +106,7 @@ def qwen_isvc(
 def vllm_runtime(
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    minio_pod: Deployment,
+    minio_pod: Pod,
     minio_service: Service,
     minio_data_connection: Secret,
 ) -> Generator[ServingRuntime, Any, Any]:
