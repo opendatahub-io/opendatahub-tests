@@ -9,6 +9,7 @@ from ocp_resources.guardrails_orchestrator import GuardrailsOrchestrator
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
+from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
@@ -24,6 +25,8 @@ from utilities.constants import (
 )
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
+
+GORCH_NAME = "gorch-test"
 
 USER_ONE: str = "user-one"
 GUARDRAILS_ORCHESTRATOR_PORT: int = 8032
@@ -53,7 +56,7 @@ def guardrails_orchestrator(
 ) -> Generator[GuardrailsOrchestrator, Any, Any]:
     with GuardrailsOrchestrator(
         client=admin_client,
-        name="gorch-test",
+        name=GORCH_NAME,
         namespace=model_namespace.name,
         enable_built_in_detectors=True,
         enable_guardrails_gateway=True,
@@ -65,6 +68,13 @@ def guardrails_orchestrator(
         orchestrator_deployment = Deployment(name=gorch.name, namespace=gorch.namespace, wait_for_resource=True)
         orchestrator_deployment.wait_for_replicas()
         yield gorch
+
+
+@pytest.fixture(scope="class")
+def guardrails_orchestrator_pod(
+    admin_client: DynamicClient, model_namespace: Namespace, guardrails_orchestrator: GuardrailsOrchestrator
+) -> Pod:
+    return list(Pod.get(namespace=model_namespace.name, label_selector=f"app.kubernetes.io/instance={GORCH_NAME}"))[0]
 
 
 @pytest.fixture(scope="class")
