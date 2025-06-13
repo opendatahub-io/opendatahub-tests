@@ -17,19 +17,6 @@ RUN apt-get update \
     && apt-get autoremove --yes \
     && rm -rf /var/lib/{apt,dpkg,cache,log}/
 
-# Install the Rosa CLI
-RUN curl -L https://mirror.openshift.com/pub/openshift-v4/clients/rosa/latest/rosa-linux.tar.gz --output /tmp/rosa-linux.tar.gz \
-    && tar xvf /tmp/rosa-linux.tar.gz --no-same-owner \
-    && mv rosa /usr/bin/rosa \
-    && chmod +x /usr/bin/rosa \
-    && rosa version
-
-# Install the OpenShift CLI (OC)
-RUN curl -L https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/stable/openshift-client-linux.tar.gz --output /tmp/openshift-client-linux.tar.gz \
-    && tar xvf /tmp/openshift-client-linux.tar.gz --no-same-owner \
-    && mv oc /usr/bin/oc \
-    && chmod +x /usr/bin/oc
-
 # Install grpcurl
 RUN curl -sSL "https://github.com/fullstorydev/grpcurl/releases/download/v1.9.2/grpcurl_1.9.2_linux_x86_64.tar.gz"  --output /tmp/grpcurl_1.2.tar.gz \
     && tar xvf /tmp/grpcurl_1.2.tar.gz --no-same-owner \
