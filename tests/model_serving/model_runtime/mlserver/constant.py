@@ -134,3 +134,28 @@ LIGHTGBM_GRPC_INPUT_QUERY: dict[str, Any] = {
         }
     ],
 }
+
+CATBOOST_REST_INPUT_QUERY: dict[str, Any] = {
+    "id": "catboost",
+    "inputs": [
+        {
+            "name": "catboost-input-0",
+            "shape": [1, 10],
+            "datatype": "FP32",
+            "data": [[96, 84, 10, 16, 91, 57, 68, 77, 61, 81]],
+        }
+    ],
+}
+
+CATBOOST_GRPC_INPUT_QUERY: dict[str, Any] = {
+    "model_name": "catboost",
+    "model_version": "v0.1.0",
+    "inputs": [
+        {
+            "name": "catboost-input-0",
+            "datatype": "FP32",
+            "shape": [1, 10],
+            "contents": {"fp32_contents": [96, 84, 10, 16, 91, 57, 68, 77, 61, 81]},
+        }
+    ],
+}
