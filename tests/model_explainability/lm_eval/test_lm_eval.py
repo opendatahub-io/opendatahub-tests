@@ -173,9 +173,12 @@ def test_lmeval_s3_storage(
     ],
     indirect=True,
 )
+@pytest.mark.smoke
 def test_verify_lmeval_pod_images(lmevaljob_s3_offline_pod, trustyai_operator_configmap) -> None:
     """Test to verify LMEval pod images.
-    Verify:
+    Checks if the image tag from the ConfigMap is used within the Pod and if it's pinned using a sha256 digest.
+
+    Verifies:
         - lmeval driver image
         - lmeval job runner image
     """

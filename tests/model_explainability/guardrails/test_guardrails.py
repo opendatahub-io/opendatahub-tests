@@ -41,7 +41,11 @@ class TestGuardrails:
         assert response_data["services"]["chat_generation"]["status"] == healthy_status
         assert response_data["services"]["regex"]["status"] == healthy_status
 
+    @pytest.mark.smoke
     def test_validate_guardrails_orchestrator_images(self, guardrails_orchestrator_pod, trustyai_operator_configmap):
+        """Test to verify Guardrails pod images.
+        Checks if the image tag from the ConfigMap is used within the Pod and if it's pinned using a sha256 digest.
+        """
         validate_tai_component_images(
             pod=guardrails_orchestrator_pod, tai_operator_configmap=trustyai_operator_configmap
         )
