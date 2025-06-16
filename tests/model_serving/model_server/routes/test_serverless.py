@@ -147,9 +147,10 @@ class TestRestServerlessRoutesTimeout:
     def test_rest_serverless_external_route_with_timeout(self, s3_models_inference_service_patched_annotations):
         """Test HTTP inference using external route fails when timeout is set too low"""
         wait_for_route_timeout(
-            name=s3_models_inference_service_patched_annotations.name
-            + "-"
-            + s3_models_inference_service_patched_annotations.namespace,
+            name=(
+                f"{s3_models_inference_service_patched_annotations.name}-"
+                f"{s3_models_inference_service_patched_annotations.namespace}"
+            ),
             namespace="istio-system",
             route_timeout=OpenshiftRouteTimeout.TIMEOUT_1MICROSEC,
         )

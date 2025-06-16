@@ -139,12 +139,12 @@ def s3_models_inference_service(
         yield isvc
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def s3_models_inference_service_patched_annotations(
     request: FixtureRequest, s3_models_inference_service: InferenceService
 ) -> InferenceService:
     if hasattr(request, "param"):
-        ResourceEditor(
+        with ResourceEditor(
             patches={
                 s3_models_inference_service: {
                     "metadata": {
@@ -152,9 +152,8 @@ def s3_models_inference_service_patched_annotations(
                     }
                 }
             }
-        ).update()
-
-    return s3_models_inference_service
+        ):
+            yield s3_models_inference_service
 
 
 @pytest.fixture(scope="class")

@@ -931,8 +931,10 @@ def wait_for_route_timeout(name: str, namespace: str, route_timeout: str) -> Non
         namespace=namespace,
         ensure_exists=True,
     ):
-        annotations = getattr(route.instance.metadata, "annotations", {}) or {}
-        if annotations.get(Annotations.HaproxyRouterOpenshiftIo.TIMEOUT) != route_timeout:
+        if (
+            route.instance.metadata.get("annotations", {}).get(Annotations.HaproxyRouterOpenshiftIo.TIMEOUT)
+            != route_timeout
+        ):
             continue
         annotation_found_count += 1
         if annotation_found_count == 2:
