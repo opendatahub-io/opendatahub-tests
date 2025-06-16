@@ -22,6 +22,21 @@ from ocp_resources.subscription import Subscription
 from ocp_resources.trustyai_service import TrustyAIService
 from ocp_utilities.operators import install_operator, uninstall_operator
 
+from tests.model_explainability.trustyai_service.constants import (
+    TAI_DATA_CONFIG,
+    TAI_METRICS_CONFIG,
+    TAI_PVC_STORAGE_CONFIG,
+    KSERVE_MLSERVER,
+    KSERVE_MLSERVER_CONTAINERS,
+    KSERVE_MLSERVER_SUPPORTED_MODEL_FORMATS,
+    KSERVE_MLSERVER_ANNOTATIONS,
+    GAUSSIAN_CREDIT_MODEL_RESOURCES,
+    GAUSSIAN_CREDIT_MODEL_STORAGE_PATH,
+    XGBOOST,
+    GAUSSIAN_CREDIT_MODEL,
+    TAI_DB_STORAGE_CONFIG,
+    ISVC_GETTER,
+)
 from tests.model_explainability.trustyai_service.trustyai_service_utils import (
     wait_for_isvc_deployment_registered_by_trustyai_service,
 )
@@ -30,39 +45,24 @@ from tests.model_explainability.trustyai_service.utils import (
     create_trustyai_service,
     wait_for_mariadb_pods,
     TRUSTYAI_SERVICE_NAME,
+    create_isvc_getter_role,
+    create_isvc_getter_role_binding,
+    create_isvc_getter_service_account,
+    create_isvc_getter_token_secret,
 )
 from utilities.operator_utils import get_cluster_service_version
 
-from utilities.constants import Timeout, KServeDeploymentType, ApiGroups, Labels, Ports
+from utilities.constants import Timeout, KServeDeploymentType, Labels
 from utilities.inference_utils import create_isvc
 from utilities.infra import update_configmap_data, create_inference_token
 
 OPENSHIFT_OPERATORS: str = "openshift-operators"
 
-TAI_DATA_CONFIG = {"filename": "data.csv", "format": "CSV"}
-TAI_METRICS_CONFIG = {"schedule": "5s"}
-TAI_DB_STORAGE_CONFIG = {"format": "DATABASE", "size": "1Gi", "databaseConfigurations": "db-credentials"}
 MARIADB: str = "mariadb"
 DB_CREDENTIALS_SECRET_NAME: str = "db-credentials"
 DB_NAME: str = "trustyai_db"
 DB_USERNAME: str = "trustyai_user"
 DB_PASSWORD: str = "trustyai_password"
-MLSERVER: str = "mlserver"
-MLSERVER_RUNTIME_NAME: str = f"{MLSERVER}-1.x"
-XGBOOST: str = "xgboost"
-SKLEARN: str = "sklearn"
-LIGHTGBM: str = "lightgbm"
-MLFLOW: str = "mlflow"
-TIMEOUT_20MIN: int = 20 * Timeout.TIMEOUT_1MIN
-INVALID_TLS_CERTIFICATE: str = "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJnRENDQVNlZ0F3SUJBZ0lRRGtTcXVuUWRzRmZwdi8zSm\
-5TS2ZoVEFLQmdncWhrak9QUVFEQWpBVk1STXcKRVFZRFZRUURFd3B0WVhKcFlXUmlMV05oTUI0WERUSTFNRFF4TkRFME1EUXhOMW9YRFRJNE1EUXhNekUx\
-TURReApOMW93RlRFVE1CRUdBMVVFQXhNS2JXRnlhV0ZrWWkxallUQlpNQk1HQnlxR1NNNDlBZ0VHQ0NxR1NNNDlBd0VICkEwSUFCQ2IxQ1IwUjV1akZ1QUR\
-Gd1NsazQzUUpmdDFmTFVnOWNJNyttZ0w3bVd3MmVLUXowL04ybm9KMGpJaDYKN0NnQ2syUW1jNTdWM1podkFWQzJoU2NEbWg2aldUQlhNQTRHQTFVZER3RU\
-Ivd1FFQXdJQ0JEQVBCZ05WSFJNQgpBZjhFQlRBREFRSC9NQjBHQTFVZERnUVdCQlNUa2tzSU9pL1pTbCtQRlJua2NQRlJ0QTRrMERBVkJnTlZIUkVFCkRqQ\
-U1nZ3B0WVhKcFlXUmlMV05oTUFvR0NDcUdTTTQ5QkFNQ0EwY0FNRVFDSUI1Q2F6VW1WWUZQYTFkS2txUGkKbitKSEQvNVZTTGd4aHVPclgzUGcxQnlzQWlB\
-RmcvTXlNWW9CZUNrUVRWdS9rUkIwK2N2Qy9RMDB4NExvVGpJaQpGdCtKMGc9PQotLS0tLUVORCBDRVJUSUZJQ0FURS0t\
-LS0t"  # pragma: allowlist secret
-ISVC_GETTER: str = "isvc-getter"
 
 
 @pytest.fixture(scope="class")
@@ -75,16 +75,16 @@ def trustyai_service_with_pvc_storage(
     teardown_resources: bool,
 ) -> Generator[TrustyAIService, Any, Any]:
     trustyai_service_kwargs = {"client": admin_client, "namespace": model_namespace.name, "name": TRUSTYAI_SERVICE_NAME}
-    trustyai_service = TrustyAIService(**trustyai_service_kwargs)
 
     if pytestconfig.option.post_upgrade:
+        trustyai_service = TrustyAIService(**trustyai_service_kwargs)
         yield trustyai_service
         trustyai_service.clean_up()
 
     else:
         yield from create_trustyai_service(
             **trustyai_service_kwargs,
-            storage={"format": "PVC", "folder": "/inputs", "size": "1Gi"},
+            storage=TAI_PVC_STORAGE_CONFIG,
             metrics=TAI_METRICS_CONFIG,
             data=TAI_DATA_CONFIG,
             wait_for_replicas=True,
@@ -107,28 +107,6 @@ def trustyai_service_with_db_storage(
         storage=TAI_DB_STORAGE_CONFIG,
         metrics=TAI_METRICS_CONFIG,
         wait_for_replicas=True,
-    )
-
-
-@pytest.fixture(scope="class")
-def trustyai_service_with_invalid_db_cert(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-    cluster_monitoring_config: ConfigMap,
-    user_workload_monitoring_config: ConfigMap,
-    mariadb: MariaDB,
-    trustyai_invalid_db_ca_secret: None,
-) -> Generator[TrustyAIService, None, None]:
-    """Create a TrustyAIService deployment with an invalid database certificate set as secret.
-
-    Yields: A secret with invalid database certificate set.
-    """
-    yield from create_trustyai_service(
-        client=admin_client,
-        namespace=model_namespace.name,
-        storage=TAI_DB_STORAGE_CONFIG,
-        metrics=TAI_METRICS_CONFIG,
-        wait_for_replicas=False,
     )
 
 
@@ -272,19 +250,6 @@ def trustyai_db_ca_secret(
 
 
 @pytest.fixture(scope="class")
-def trustyai_invalid_db_ca_secret(
-    admin_client: DynamicClient, model_namespace: Namespace, mariadb: MariaDB
-) -> Generator[Secret, Any, None]:
-    with Secret(
-        client=admin_client,
-        name=f"{TRUSTYAI_SERVICE_NAME}-db-ca",
-        namespace=model_namespace.name,
-        data_dict={"ca.crt": INVALID_TLS_CERTIFICATE},
-    ) as secret:
-        yield secret
-
-
-@pytest.fixture(scope="class")
 def mlserver_runtime(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
@@ -295,56 +260,25 @@ def mlserver_runtime(
     mlserver_runtime_kwargs = {
         "client": admin_client,
         "namespace": model_namespace.name,
-        "name": "kserve-mlserver",
+        "name": KSERVE_MLSERVER,
     }
 
-    serving_runtime = ServingRuntime(**mlserver_runtime_kwargs)
-
     if pytestconfig.option.post_upgrade:
+        serving_runtime = ServingRuntime(**mlserver_runtime_kwargs)
         yield serving_runtime
         serving_runtime.clean_up()
 
-    supported_model_formats = [
-        {"name": SKLEARN, "version": "0", "autoSelect": True, "priority": 2},
-        {"name": SKLEARN, "version": "1", "autoSelect": True, "priority": 2},
-        {"name": XGBOOST, "version": "1", "autoSelect": True, "priority": 2},
-        {"name": XGBOOST, "version": "2", "autoSelect": True, "priority": 2},
-        {"name": LIGHTGBM, "version": "3", "autoSelect": True, "priority": 2},
-        {"name": LIGHTGBM, "version": "4", "autoSelect": True, "priority": 2},
-        {"name": MLFLOW, "version": "1", "autoSelect": True, "priority": 1},
-        {"name": MLFLOW, "version": "2", "autoSelect": True, "priority": 1},
-    ]
-    containers = [
-        {
-            "name": "kserve-container",
-            "image": "quay.io/trustyai_testing/mlserver"
-            "@sha256:68a4cd74fff40a3c4f29caddbdbdc9e54888aba54bf3c5f78c8ffd577c3a1c89",
-            "env": [
-                {"name": "MLSERVER_MODEL_IMPLEMENTATION", "value": "{{.Labels.modelClass}}"},
-                {"name": "MLSERVER_HTTP_PORT", "value": str(Ports.REST_PORT)},
-                {"name": "MLSERVER_GRPC_PORT", "value": "9000"},
-                {"name": "MODELS_DIR", "value": "/mnt/models/"},
-            ],
-            "resources": {"requests": {"cpu": "1", "memory": "2Gi"}, "limits": {"cpu": "1", "memory": "2Gi"}},
-        }
-    ]
-
-    with ServingRuntime(
-        containers=containers,
-        supported_model_formats=supported_model_formats,
-        protocol_versions=["v2"],
-        annotations={
-            f"{ApiGroups.OPENDATAHUB_IO}/accelerator-name": "",
-            f"{ApiGroups.OPENDATAHUB_IO}/template-display-name": "KServe MLServer",
-            "prometheus.kserve.io/path": "/metrics",
-            "prometheus.io/port": str(Ports.REST_PORT),
-            "openshift.io/display-name": "mlserver-1.x",
-        },
-        label={Labels.OpenDataHub.DASHBOARD: "true"},
-        teardown=teardown_resources,
-        **mlserver_runtime_kwargs,
-    ) as mlserver:
-        yield mlserver
+    else:
+        with ServingRuntime(
+            containers=KSERVE_MLSERVER_CONTAINERS,
+            supported_model_formats=KSERVE_MLSERVER_SUPPORTED_MODEL_FORMATS,
+            protocol_versions=["v2"],
+            annotations=KSERVE_MLSERVER_ANNOTATIONS,
+            label={Labels.OpenDataHub.DASHBOARD: "true"},
+            teardown=teardown_resources,
+            **mlserver_runtime_kwargs,
+        ) as mlserver:
+            yield mlserver
 
 
 @pytest.fixture(scope="class")
@@ -362,12 +296,11 @@ def gaussian_credit_model(
     gaussian_credit_model_kwargs = {
         "client": admin_client,
         "namespace": model_namespace.name,
-        "name": "gaussian-credit-model",
+        "name": GAUSSIAN_CREDIT_MODEL,
     }
 
-    isvc = InferenceService(**gaussian_credit_model_kwargs)
-
     if pytestconfig.option.post_upgrade:
+        isvc = InferenceService(**gaussian_credit_model_kwargs)
         yield isvc
         isvc.clean_up()
     else:
@@ -376,10 +309,10 @@ def gaussian_credit_model(
             model_format=XGBOOST,
             runtime=mlserver_runtime.name,
             storage_key=minio_data_connection.name,
-            storage_path="sklearn/gaussian_credit_model/1",
+            storage_path=GAUSSIAN_CREDIT_MODEL_STORAGE_PATH,
             enable_auth=True,
             wait_for_predictor_pods=False,
-            resources={"requests": {"cpu": "1", "memory": "2Gi"}, "limits": {"cpu": "1", "memory": "2Gi"}},
+            resources=GAUSSIAN_CREDIT_MODEL_RESOURCES,
             teardown=teardown_resources,
             **gaussian_credit_model_kwargs,
         ) as isvc:
@@ -395,25 +328,12 @@ def gaussian_credit_model(
 def isvc_getter_service_account(
     admin_client: DynamicClient, model_namespace: Namespace
 ) -> Generator[ServiceAccount, Any, Any]:
-    with ServiceAccount(client=admin_client, name=ISVC_GETTER, namespace=model_namespace.name) as sa:
-        yield sa
+    yield from create_isvc_getter_service_account(client=admin_client, namespace=model_namespace, name=ISVC_GETTER)
 
 
 @pytest.fixture(scope="class")
 def isvc_getter_role(admin_client: DynamicClient, model_namespace: Namespace) -> Generator[Role, Any, Any]:
-    with Role(
-        client=admin_client,
-        name=ISVC_GETTER,
-        namespace=model_namespace.name,
-        rules=[
-            {
-                "apiGroups": ["serving.kserve.io"],
-                "resources": ["inferenceservices"],
-                "verbs": ["get", "list", "watch"],
-            }
-        ],
-    ) as role:
-        yield role
+    yield from create_isvc_getter_role(client=admin_client, namespace=model_namespace, name=ISVC_GETTER)
 
 
 @pytest.fixture(scope="class")
@@ -423,16 +343,13 @@ def isvc_getter_role_binding(
     isvc_getter_role: Role,
     isvc_getter_service_account: ServiceAccount,
 ) -> Generator[RoleBinding, Any, Any]:
-    with RoleBinding(
+    yield from create_isvc_getter_role_binding(
         client=admin_client,
+        namespace=model_namespace,
+        role=isvc_getter_role,
+        service_account=isvc_getter_service_account,
         name=ISVC_GETTER,
-        namespace=model_namespace.name,
-        subjects_kind="ServiceAccount",
-        subjects_name=isvc_getter_service_account.name,
-        role_ref_kind="Role",
-        role_ref_name=isvc_getter_role.name,
-    ) as rb:
-        yield rb
+    )
 
 
 @pytest.fixture(scope="class")
@@ -442,14 +359,12 @@ def isvc_getter_token_secret(
     isvc_getter_service_account: ServiceAccount,
     isvc_getter_role_binding: RoleBinding,
 ) -> Generator[Secret, Any, Any]:
-    with Secret(
+    yield from create_isvc_getter_token_secret(
         client=admin_client,
         name="sa-token",
-        namespace=model_namespace.name,
-        annotations={"kubernetes.io/service-account.name": ISVC_GETTER},
-        type="kubernetes.io/service-account-token",
-    ) as secret:
-        yield secret
+        namespace=model_namespace,
+        service_account=isvc_getter_service_account,
+    )
 
 
 @pytest.fixture(scope="class")
