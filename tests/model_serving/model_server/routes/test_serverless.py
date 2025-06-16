@@ -1,7 +1,5 @@
 import pytest
-import time
 
-from ocp_resources.resource import ResourceEditor
 from tests.model_serving.model_server.utils import verify_inference_response
 from timeout_sampler import TimeoutExpiredError
 from utilities.constants import (
@@ -10,11 +8,13 @@ from utilities.constants import (
     Labels,
     ModelFormat,
     ModelStoragePath,
+    OpenshiftRouteTimeout,
     Protocols,
     ModelInferenceRuntime,
     RuntimeTemplates,
 )
 from utilities.inference_utils import Inference
+from utilities.infra import wait_for_route_timeout
 from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
 
 pytestmark = [pytest.mark.usefixtures("valid_aws_config"), pytest.mark.serverless, pytest.mark.sanity]
@@ -115,6 +115,7 @@ class TestRestServerlessRoutes:
                 "name": f"{Protocols.HTTP}-{ModelFormat.CAIKIT}",
                 "deployment-mode": KServeDeploymentType.SERVERLESS,
                 "model-dir": ModelStoragePath.FLAN_T5_SMALL_CAIKIT,
+                "external-route": True,
             },
         )
     ],
@@ -133,25 +134,29 @@ class TestRestServerlessRoutesTimeout:
             use_default_query=True,
         )
 
+    @pytest.mark.parametrize(
+        "s3_models_inference_service_patched_annotations",
+        [
+            pytest.param({
+                "annotations": {Annotations.HaproxyRouterOpenshiftIo.TIMEOUT: OpenshiftRouteTimeout.TIMEOUT_1MICROSEC}
+            })
+        ],
+        indirect=True,
+    )
     @pytest.mark.dependency(depends=["test_rest_serverless_external_route"])
-    def test_rest_serverless_external_route_with_timeout(self, s3_models_inference_service):
+    def test_rest_serverless_external_route_with_timeout(self, s3_models_inference_service_patched_annotations):
         """Test HTTP inference using external route fails when timeout is set too low"""
-        ResourceEditor(
-            patches={
-                s3_models_inference_service: {
-                    "metadata": {
-                        "annotations": {Annotations.HaproxyRouterOpenshiftIo.TIMEOUT: "1us"},
-                    }
-                }
-            }
-        ).update()
-
-        # Wait for route to be updated with the annotation
-        time.sleep(10)  # noqa: FCN001
+        wait_for_route_timeout(
+            name=s3_models_inference_service_patched_annotations.name
+            + "-"
+            + s3_models_inference_service_patched_annotations.namespace,
+            namespace="istio-system",
+            route_timeout=OpenshiftRouteTimeout.TIMEOUT_1MICROSEC,
+        )
 
         with pytest.raises(TimeoutExpiredError):
             verify_inference_response(
-                inference_service=s3_models_inference_service,
+                inference_service=s3_models_inference_service_patched_annotations,
                 inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
                 inference_type=Inference.ALL_TOKENS,
                 protocol=Protocols.HTTPS,

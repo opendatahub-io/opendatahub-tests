@@ -211,6 +211,10 @@ class Timeout:
     TIMEOUT_20MIN: int = 20 * TIMEOUT_1MIN
 
 
+class OpenshiftRouteTimeout:
+    TIMEOUT_1MICROSEC: str = "1us"
+
+
 class Containers:
     KSERVE_CONTAINER_NAME: str = "kserve-container"
 
