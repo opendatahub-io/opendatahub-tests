@@ -9,7 +9,6 @@ from ocp_resources.role_binding import RoleBinding
 from utilities.constants import Protocols
 import logging
 from model_registry import ModelRegistry as ModelRegistryClient
-from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from utilities.infra import get_openshift_token
 
 LOGGER = logging.getLogger(__name__)
@@ -40,7 +39,7 @@ def build_mr_client_args(rest_endpoint: str, token: str, author: str = "rbac-tes
 
 
 def assert_positive_mr_registry(
-    model_registry_instance_rest_endpoint: ModelRegistry,
+    model_registry_instance_rest_endpoint: str,
     token: str = "",
 ) -> None:
     """

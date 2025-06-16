@@ -260,6 +260,11 @@ class MinIo:
             **MINIO_BASE_CONFIG,
         }
 
+        QWEN_MINIO_CONFIG: dict[str, Any] = {
+            "image": "quay.io/trustyai_testing/qwen-minio@sha256:d1e244e24d2e40fb2557e85b4587d56084253c040fc4e64421f3ccc09ec8e5c3",  # noqa: E501
+            **MINIO_BASE_CONFIG,
+        }
+
         KSERVE_MINIO_CONFIG: dict[str, Any] = {
             "image": KSERVE_MINIO_IMAGE,
             **MINIO_BASE_CONFIG,

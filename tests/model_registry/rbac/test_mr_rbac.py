@@ -25,7 +25,7 @@ from mr_openapi.exceptions import ForbiddenException
 from utilities.user_utils import UserTestSession
 
 LOGGER = get_logger(name=__name__)
-pytestmark = [pytest.mark.usefixtures("original_user", "test_idp_user_session")]
+pytestmark = [pytest.mark.usefixtures("original_user", "test_idp_user")]
 
 
 @pytest.mark.parametrize(
@@ -61,24 +61,9 @@ pytestmark = [pytest.mark.usefixtures("original_user", "test_idp_user_session")]
 @pytest.mark.usefixtures("updated_dsc_component_state_scope_class", "is_model_registry_oauth")
 class TestUserPermission:
     @pytest.mark.sanity
-    def test_user_permission_admin_user(
-        self: Self,
-        model_registry_instance_rest_endpoint: str,
-    ):
-        """
-        This test verifies that admin users can access the Model Registry
-        """
-        client_args = build_mr_client_args(
-            token=get_openshift_token(), rest_endpoint=model_registry_instance_rest_endpoint
-        )
-        mr_client = ModelRegistryClient(**client_args)
-        assert mr_client is not None, "Client initialization failed for admin user"
-        LOGGER.info("Successfully created Model Registry client for admin user")
-
-    @pytest.mark.sanity
     def test_user_permission_non_admin_user(
         self: Self,
-        test_idp_user_session: Generator[UserTestSession, None, None],
+        test_idp_user,
         model_registry_instance_rest_endpoint: str,
         login_as_test_user: None,
     ):
@@ -96,9 +81,8 @@ class TestUserPermission:
     @pytest.mark.sanity
     def test_user_added_to_group(
         self: Self,
-        original_user: str,
         model_registry_instance_rest_endpoint: str,
-        test_idp_user_session: UserTestSession,
+        test_idp_user: UserTestSession,
         model_registry_group_with_user: Group,
         login_as_test_user: Generator[UserTestSession, None, None],
     ):
@@ -121,7 +105,7 @@ class TestUserPermission:
     @pytest.mark.sanity
     def test_create_group(
         self: Self,
-        test_idp_user_session: UserTestSession,
+        test_idp_user: UserTestSession,
         model_registry_instance_rest_endpoint: str,
         created_role_binding_group: RoleBinding,
         login_as_test_user: None,
@@ -141,7 +125,7 @@ class TestUserPermission:
     @pytest.mark.sanity
     def test_add_single_user_role_binding(
         self: Self,
-        test_idp_user_session: UserTestSession,
+        test_idp_user: UserTestSession,
         model_registry_instance_rest_endpoint: str,
         created_role_binding_user: RoleBinding,
         login_as_test_user: None,

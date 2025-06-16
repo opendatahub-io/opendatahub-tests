@@ -134,5 +134,5 @@ class MissingParameter(Exception):
     pass
 
 
-class ExceptionContextCreation(Exception):
+class ExceptionUserLogin(Exception):
     pass

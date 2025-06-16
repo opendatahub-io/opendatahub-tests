@@ -103,7 +103,7 @@ def sa_token(service_account: ServiceAccount) -> str:
 @pytest.fixture(scope="function")
 def add_user_to_group(
     admin_client: DynamicClient,
-    test_idp_user_session: UserTestSession,
+    test_idp_user: UserTestSession,
 ) -> Generator[str, None, None]:
     """
     Fixture to create a group and add a test user to it.
@@ -120,7 +120,7 @@ def add_user_to_group(
     with create_group(
         admin_client=admin_client,
         group_name=group_name,
-        users=[test_idp_user_session.username],
+        users=[test_idp_user.username],
     ) as group_name:
         yield group_name
 
@@ -128,7 +128,7 @@ def add_user_to_group(
 @pytest.fixture(scope="function")
 def model_registry_group_with_user(
     admin_client: DynamicClient,
-    test_idp_user_session: UserTestSession,
+    test_idp_user: UserTestSession,
 ) -> Generator[Group, None, None]:
     """
     Fixture to manage a test user in a specified group.
@@ -153,15 +153,15 @@ def model_registry_group_with_user(
         patches={
             group: {
                 "metadata": {"name": group_name},
-                "users": [test_idp_user_session.username],
+                "users": [test_idp_user.username],
             }
         }
     ) as _:
-        LOGGER.info(f"Added user {test_idp_user_session.username} to {group_name} group")
+        LOGGER.info(f"Added user {test_idp_user.username} to {group_name} group")
         yield group
 
 
-@pytest.fixture(scope="package")
+@pytest.fixture(scope="module")
 def user_credentials_rbac() -> dict[str, str]:
     random_str = generate_random_name()
     return {
@@ -233,7 +233,7 @@ def updated_oauth_config(
 
 
 @pytest.fixture(scope="module")
-def test_idp_user_session(
+def test_idp_user(
     original_user: str,
     user_credentials_rbac: dict[str, str],
     created_htpasswd_secret: Generator[UserTestSession, None, None],
@@ -354,13 +354,13 @@ def mr_access_role_binding(
 
 @pytest.fixture()
 def login_as_test_user(
-    api_server_url: str, original_user: str, test_idp_user_session: UserTestSession
+    api_server_url: str, original_user: str, test_idp_user: UserTestSession
 ) -> Generator[None, None, None]:
-    LOGGER.info(f"Logging in as {test_idp_user_session.username}")
+    LOGGER.info(f"Logging in as {test_idp_user.username}")
     login_with_user_password(
         api_address=api_server_url,
-        user=test_idp_user_session.username,
-        password=test_idp_user_session.password,
+        user=test_idp_user.username,
+        password=test_idp_user.password,
     )
     yield
     LOGGER.info(f"Logging in as {original_user}")
@@ -375,7 +375,7 @@ def created_role_binding_group(
     admin_client: DynamicClient,
     model_registry_namespace: str,
     mr_access_role: Role,
-    test_idp_user_session: UserTestSession,
+    test_idp_user: UserTestSession,
     add_user_to_group: str,
 ) -> Generator[RoleBinding, None, None]:
     yield from create_role_binding(
@@ -393,7 +393,7 @@ def created_role_binding_user(
     admin_client: DynamicClient,
     model_registry_namespace: str,
     mr_access_role: Role,
-    test_idp_user_session: UserTestSession,
+    test_idp_user: UserTestSession,
 ) -> Generator[RoleBinding, None, None]:
     yield from create_role_binding(
         admin_client=admin_client,
@@ -401,5 +401,5 @@ def created_role_binding_user(
         name="test-model-registry-access",
         mr_access_role=mr_access_role,
         subjects_kind="User",
-        subjects_name=test_idp_user_session.username,
+        subjects_name=test_idp_user.username,
     )

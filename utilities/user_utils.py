@@ -1,4 +1,5 @@
 import logging
+import shlex
 import tempfile
 from dataclasses import dataclass
 
@@ -6,7 +7,7 @@ from ocp_resources.user import User
 from pyhelper_utils.shell import run_command
 from timeout_sampler import retry
 
-from utilities.exceptions import ExceptionContextCreation
+from utilities.exceptions import ExceptionUserLogin
 from utilities.infra import login_with_user_password
 import base64
 from pathlib import Path
@@ -55,7 +56,9 @@ def create_htpasswd_file(username: str, password: str) -> tuple[Path, str]:
     """
     with tempfile.NamedTemporaryFile(mode="w+", delete=False) as temp_file:
         temp_path = Path(temp_file.name).resolve()  # Get absolute path
-        run_command(command=["htpasswd", "-c", "-b", str(temp_path.absolute()), username, password], check=True)
+        run_command(
+            command=shlex.split(f"htpasswd -c -b {str(temp_path.absolute())} {username} {password}"), check=True
+        )
 
         # Read the htpasswd file content and encode it
         temp_file.seek(0)  # noqa: FCN001 - TextIOWrapper.seek() doesn't accept keyword arguments
@@ -68,11 +71,11 @@ def create_htpasswd_file(username: str, password: str) -> tuple[Path, str]:
 @retry(
     wait_timeout=240,
     sleep=10,
-    exceptions_dict={ExceptionContextCreation: []},
+    exceptions_dict={ExceptionUserLogin: []},
 )
 def wait_for_user_creation(username: str, password: str, cluster_url: str) -> bool:
     """
-    Attempts to login to OpenShift
+    Attempts to login to OpenShift as a specific user over a period of time to ensure user creation
 
     Args:
         username: The username to login with
@@ -87,4 +90,4 @@ def wait_for_user_creation(username: str, password: str, cluster_url: str) -> bo
 
     if res:
         return True
-    raise ExceptionContextCreation(f"Could not create context for user {username} after timeout")
+    raise ExceptionUserLogin(f"Could not login as user {username}.")
