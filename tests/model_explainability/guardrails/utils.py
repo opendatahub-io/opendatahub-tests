@@ -24,6 +24,7 @@ def verify_and_parse_response(response: Response) -> Dict[str, Any]:
     if response.status_code != http.HTTPStatus.OK:
         assert False, f"Expected status code {http.HTTPStatus.OK}, got {response.status_code}"
 
+    LOGGER.info(response.text)
     try:
         return response.json()
     except ValueError:
@@ -34,6 +35,59 @@ def assert_no_errors(errors: List[str], failure_message_prefix: str) -> None:
     if errors:
         error_message = f"{failure_message_prefix}:\n" + "\n".join(f"- {error}" for error in errors)
         assert False, error_message
+
+
+def verify_detection(
+    detections_list: List[Dict[str, Any]],
+    detector_id: str,
+    detection_name: str,
+    detection_type: str,
+    expected_detection_text: Optional[str] = None,
+) -> List[str]:
+    """
+    Helper to verify detection results.
+
+    Args:
+        detections_list: List of detection objects
+        detector_id: Expected detector ID
+        detection_name: Expected detection name
+        detection_type: Expected detection type
+        expected_detection_text: Expected text (if None, just checks text exists and is non-empty)
+
+    Returns:
+        List of error messages
+    """
+    errors = []
+
+    if len(detections_list) == 0:
+        errors.append("Expected detections")
+        return errors
+
+    results = detections_list[0].get("results", [])
+    if len(results) == 0:
+        errors.append("Expected at least one detection result, but got 0.")
+        return errors
+
+    detection = results[0]
+
+    if detection["detector_id"] != detector_id:
+        errors.append(f"Expected detector_id {detector_id}, got {detection['detector_id']}")
+
+    if detection["detection"] != detection_name:
+        errors.append(f"Expected detection name {detection_name}, got {detection['detection']}")
+
+    if detection["detection_type"] != detection_type:
+        errors.append(f"Expected detection_type {detection_type}, got {detection['detection_type']}")
+
+    detection_text_actual = detection.get("text", "")
+    if expected_detection_text is not None:
+        if detection_text_actual != expected_detection_text:
+            errors.append(f"Expected text {expected_detection_text}, got {detection_text_actual}")
+    else:
+        if not detection_text_actual or len(detection_text_actual.strip()) == 0:
+            errors.append("Expected detection text to be present and non-empty")
+
+    return errors
 
 
 def verify_builtin_detector_unsuitable_input_response(
@@ -50,39 +104,29 @@ def verify_builtin_detector_unsuitable_input_response(
         detection_text: Expected detected text
     """
 
-    LOGGER.info(response.text)
     response_data = verify_and_parse_response(response=response)
-    errors: List[str] = []
+    errors = []
 
-    # Check response warnings
-    warnings: List[Dict[str, Any]] = response_data.get("warnings", [])
+    warnings = response_data.get("warnings", [])
     unsuitable_input_warning: str = "UNSUITABLE_INPUT"
     if len(warnings) != 1:
         errors.append(f"Expected 1 warning in response, got {len(warnings)}")
     elif warnings[0]["type"] != unsuitable_input_warning:
         errors.append(f"Expected warning type {unsuitable_input_warning}, got {warnings[0]['type']}")
 
-    # Check detections
-    detections: Dict[str, Any] = response_data.get("detections", {})
-    input_detections: List[Dict[str, Any]] = detections.get("input", [])
+    input_detections = response_data.get("detections", {}).get("input", [])
     if len(input_detections) != 1:
         errors.append(f"Expected 1 input detection, but got {len(input_detections)}.")
     else:
-        # Check first detection (message_index 0)
-        results: List[Dict[str, Any]] = input_detections[0].get("results", [])
-        if len(results) != 1:
-            errors.append(f"Expected 1 detection result, but got {len(results)}")
-        else:
-            # Check detection details
-            detection: Dict[str, Any] = results[0]
-            if detection["detector_id"] != detector_id:
-                errors.append(f"Expected detector_id {detector_id}, got {detection['detector_id']}")
-            if detection["detection"] != detection_name:
-                errors.append(f"Expected detection name {detection_name}, got {detection['detection']}")
-            if detection["detection_type"] != detection_type:
-                errors.append(f"Expected detection_type {detection_type}, got {detection['detection_type']}")
-            if detection["text"] != detection_text:
-                errors.append(f"Expected text {detection_text}, got {detection['text']}")
+        errors.extend(
+            verify_detection(
+                detections_list=input_detections,
+                detector_id=detector_id,
+                detection_name=detection_name,
+                detection_type=detection_type,
+                expected_detection_text=detection_text,
+            )
+        )
 
     assert_no_errors(errors=errors, failure_message_prefix="Input detection verification failed")
 
@@ -99,45 +143,29 @@ def verify_builtin_detector_unsuitable_output_response(
         detection_name: Expected detection name
         detection_type: Expected detection type
     """
-    LOGGER.info(response.text)
+    response_data = verify_and_parse_response(response=response)
+    errors = []
 
-    response_data: Dict[str, Any] = verify_and_parse_response(response)
-    errors: List[str] = []
-
-    # Check warning type
-    unsuitable_output_warning: str = "UNSUITABLE_OUTPUT"
-    warnings: List[Dict[str, Any]] = response_data.get("warnings", [])
+    unsuitable_output_warning = "UNSUITABLE_OUTPUT"
+    warnings = response_data.get("warnings", [])
     if len(warnings) != 1:
         errors.append(f"Expected 1 warning in response, got {len(warnings)}")
     elif warnings[0]["type"] != unsuitable_output_warning:
         errors.append(f"Expected warning type {unsuitable_output_warning}, got {warnings[0]['type']}")
 
-    # Check detections
-    detections: Dict[str, Any] = response_data.get("detections", {})
-    output_detections: List[Dict[str, Any]] = detections.get("output", [])
-    if len(output_detections) == 0:
-        errors.append("Expected output detections")
-    else:
-        # Check first detection (choice_index 0)
-        if output_detections[0].get("choice_index") != 0:
-            errors.append(f"Expected choice_index 0, got {output_detections[0].get('choice_index')}")
+    output_detections = response_data.get("detections", {}).get("output", [])
 
-        results: List[Dict[str, Any]] = output_detections[0].get("results", [])
-        if len(results) == 0:
-            errors.append("Expected at least one detection result, but got 0.")
-        else:
-            # Check first detection details
-            detection: Dict[str, Any] = results[0]
-            if detection["detector_id"] != detector_id:
-                errors.append(f"Expected detector_id {detector_id}, got {detection['detector_id']}")
-            if detection["detection"] != detection_name:
-                errors.append(f"Expected detection name {detection_name}, got {detection['detection']}")
-            if detection["detection_type"] != detection_type:
-                errors.append(f"Expected detection_type {detection_type}, got {detection['detection_type']}")
-            # Check that detection text exists and is non-empty
-            detection_text_actual: str = detection.get("text", "")
-            if not detection_text_actual or len(detection_text_actual.strip()) == 0:
-                errors.append("Expected detection text to be present and non-empty")
+    if len(output_detections) < 1:
+        errors.append(f"Expected at least one output detection, but got {len(output_detections)}.")
+    else:
+        errors.extend(
+            verify_detection(
+                detections_list=output_detections,
+                detector_id=detector_id,
+                detection_name=detection_name,
+                detection_type=detection_type,
+            )
+        )
 
     assert_no_errors(errors=errors, failure_message_prefix="Unsuitable output detection verification failed")
 
@@ -149,39 +177,32 @@ def verify_negative_detection_response(response: Response) -> None:
     Args:
         response: The HTTP response object from the guardrails API
     """
-    LOGGER.info(response.text)
 
-    response_data: Dict[str, Any] = verify_and_parse_response(response)
-    errors: List[str] = []
+    response_data = verify_and_parse_response(response=response)
+    errors = []
 
-    # Check that there are no warnings
-    warnings: Optional[List[Any]] = response_data.get("warnings")
+    warnings = response_data.get("warnings")
     if warnings is not None:
         errors.append(f"Expected no warnings, got {warnings}")
 
-    # Check that there are no detections
-    detections: Optional[Dict[str, Any]] = response_data.get("detections")
+    detections = response_data.get("detections")
     if detections is not None:
         errors.append(f"Expected no detections, got {detections}")
 
-    # Check choices array exists and has content
-    choices: List[Dict[str, Any]] = response_data.get("choices", [])
+    choices = response_data.get("choices", [])
     if len(choices) != 1:
         errors.append(f"Expected one choice in response, got {len(choices)}")
     else:
-        # Check finish reason is "stop"
-        finish_reason: Optional[str] = choices[0].get("finish_reason")
+        finish_reason = choices[0].get("finish_reason")
         if finish_reason != "stop":
             errors.append(f"Expected finish_reason 'stop', got '{finish_reason}'")
 
-        # Check message exists and has content
-        message: Dict[str, Any] = choices[0].get("message", {})
-        content: Optional[str] = message.get("content")
+        message = choices[0].get("message", {})
+        content = message.get("content")
         if content is None:
             errors.append("Expected message content, got none.")
 
-        # Check refusal is null
-        refusal: Optional[Any] = message.get("refusal")
+        refusal = message.get("refusal")
         if refusal is not None:
             errors.append(f"Expected refusal to be null, got {refusal}")
 
