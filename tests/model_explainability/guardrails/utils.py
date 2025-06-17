@@ -167,7 +167,7 @@ def verify_negative_detection_response(response: Response) -> None:
     # Check choices array exists and has content
     choices: List[Dict[str, Any]] = response_data.get("choices", [])
     if len(choices) != 1:
-        errors.append("Expected one choice in response, got {len(choices)}")
+        errors.append(f"Expected one choice in response, got {len(choices)}")
     else:
         # Check finish reason is "stop"
         finish_reason: Optional[str] = choices[0].get("finish_reason")
