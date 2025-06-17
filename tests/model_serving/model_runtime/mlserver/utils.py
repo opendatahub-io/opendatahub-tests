@@ -77,7 +77,7 @@ def kserve_s3_endpoint_secret(
         yield secret
 
 
-def send_rest_request(url: str, input_data: dict[str, Any]) -> Any:
+def send_rest_request(url: str, input_data: dict[str, Any], verify: bool = False) -> Any:
     """
     Sends a REST POST request to the specified URL with the given JSON payload.
 
@@ -91,7 +91,7 @@ def send_rest_request(url: str, input_data: dict[str, Any]) -> Any:
     Raises:
         requests.HTTPError: If the response contains an HTTP error status.
     """
-    response = requests.post(url=url, json=input_data, verify=False, timeout=60)
+    response = requests.post(url=url, json=input_data, verify=verify, timeout=60)
     response.raise_for_status()
     return response.json()
 
@@ -173,18 +173,18 @@ def run_mlserver_inference(
         with portforward.forward(pod_or_service=pod_name, namespace=isvc.namespace, from_port=port, to_port=port):
             host = f"{LOCAL_HOST_URL}:{port}" if is_rest else get_grpc_url(base_url=LOCAL_HOST_URL, port=port)
             return (
-                send_rest_request(f"{host}{rest_endpoint}", input_data)
+                send_rest_request(url=f"{host}{rest_endpoint}", input_data=input_data, verify=False)
                 if is_rest
-                else send_grpc_request(host, input_data, root_dir)
+                else send_grpc_request(url=host, input_data=input_data, root_dir=root_dir, insecure=False)
             )
 
     elif deployment_mode == KServeDeploymentType.SERVERLESS:
         base_url = isvc.instance.status.url.rstrip("/")
         if is_rest:
-            return send_rest_request(f"{base_url}{rest_endpoint}", input_data)
+            return send_rest_request(url=f"{base_url}{rest_endpoint}", input_data=input_data, verify=False)
         else:
             grpc_url = get_grpc_url(base_url=base_url, port=MLSERVER_GRPC_REMOTE_PORT)
-            return send_grpc_request(grpc_url, input_data, root_dir, insecure=True)
+            return send_grpc_request(url=grpc_url, input_data=input_data, root_dir=root_dir, insecure=True)
 
     return f"Invalid deployment_mode {deployment_mode}"
 

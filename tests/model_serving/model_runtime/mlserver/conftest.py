@@ -1,3 +1,13 @@
+"""
+Pytest fixtures for MLServer model serving runtime tests.
+
+This module provides fixtures for:
+- Setting up MLServer serving runtimes and templates
+- Creating inference services and related Kubernetes resources
+- Managing S3 secrets and service accounts
+- Providing test utilities like snapshots and pod resources
+"""
+
 from typing import cast, Any, Generator
 import copy
 
