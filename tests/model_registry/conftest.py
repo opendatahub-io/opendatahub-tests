@@ -149,7 +149,10 @@ def model_registry_db_deployment(
 
 @pytest.fixture(scope="class")
 def model_registry_instance(
-    model_registry_namespace: str, model_registry_mysql_config: dict[str, Any], is_model_registry_oauth: bool
+    model_registry_namespace: str,
+    model_registry_mysql_config: dict[str, Any],
+    is_model_registry_oauth: bool,
+    test_ca_configmap: Any,
 ) -> Generator[ModelRegistry, Any, Any]:
     istio_config = None
     oauth_config = None
@@ -183,7 +186,15 @@ def model_registry_mysql_config(
 ) -> dict[str, Any]:
     """
     Fixture to build the MySQL config dictionary for Model Registry.
-    Expects request.param to be a dict. If 'ssl_ca' is not present, it defaults to None.
+    Expects request.param to be a dict. If 'sslRootCertificateConfigMap' is not present, it defaults to None.
+    If 'sslRootCertificateConfigMap' is present, it will be used to configure the MySQL connection.
+
+    Args:
+        request: The pytest request object
+        model_registry_db_deployment: The model registry db deployment
+        model_registry_db_secret: The model registry db secret
+    Returns:
+        dict[str, Any]: The MySQL config dictionary
     """
     param = request.param if hasattr(request, "param") else {}
     config = {
@@ -194,8 +205,14 @@ def model_registry_mysql_config(
         "skipDBCreation": False,
         "username": model_registry_db_secret.string_data["database-user"],
     }
-    if param.get("ssl_ca"):
-        config["ssl_ca"] = param.get("ssl_ca")
+    if param.get("sslRootCertificateConfigMap"):
+        ssl_config = param.get("sslRootCertificateConfigMap")
+        if ssl_config:
+            config["sslRootCertificateConfigMap"] = {
+                "name": ssl_config.get("name"),
+                "key": ssl_config.get("key"),
+            }
+
     return config
 
 

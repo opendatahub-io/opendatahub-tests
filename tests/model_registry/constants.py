@@ -26,6 +26,7 @@ MODEL_DICT: dict[str, Any] = {
     },
 }
 MR_INSTANCE_NAME: str = "model-registry"
+SECURE_MR_NAME: str = "secure-db-mr"
 ISTIO_CONFIG_DICT: dict[str, Any] = {
     "gateway": {"grpc": {"tls": {}}, "rest": {"tls": {}}},
 }
@@ -49,7 +50,6 @@ MODEL_REGISTRY_DB_SECRET_ANNOTATIONS = {
     f"{Resource.ApiGroup.TEMPLATE_OPENSHIFT_IO}/expose-username": "'{.data[''database-user'']}'",
 }
 
-SECURE_MR_NAME = "secure-db-mr"
 CA_CONFIGMAP_NAME = "odh-trusted-ca-bundle"
 CA_MOUNT_PATH = "/etc/pki/ca-trust/extracted/pem"
 CA_FILE_PATH = f"{CA_MOUNT_PATH}/ca-bundle.crt"

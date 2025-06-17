@@ -1,6 +1,8 @@
-from typing import Any
+from typing import Any, Dict
 import requests
 import json
+import subprocess
+import os
 
 from simple_logger.logger import get_logger
 from tests.model_registry.exceptions import (
@@ -157,3 +159,87 @@ def validate_resource_attributes(
     ]:
         raise ResourceValueMismatch(f"Resource: {resource_name} has mismatched data: {errors}")
     LOGGER.info(f"Successfully validated resource: {resource_name}: {actual_resource_data['name']}")
+
+
+def generate_ca_and_server_cert(
+    tmp_dir: str,
+    db_service_hostname: str = "db-model-registry.rhoai-model-registries.svc.cluster.local",
+    ca_name: str = "Test CA",
+    server_cn: str = "mysql-server",
+) -> Dict[str, str]:
+    """
+    Generates a CA and server certificate/key for the MySQL server.
+    Args:
+        tmp_dir: The temporary directory to store the certificates.
+        db_service_hostname: The hostname of the MySQL server.
+        ca_name: The name of the CA.
+        server_cn: The common name of the server.
+    Returns:
+        Dict[str, str]: A dictionary containing the paths to the CA certificate, server key, and server certificate.
+    """
+
+    # Paths for certs
+    ca_key = os.path.join(tmp_dir, "ca.key")
+    ca_crt = os.path.join(tmp_dir, "ca.crt")
+    server_key = os.path.join(tmp_dir, "server-key.pem")
+    server_csr = os.path.join(tmp_dir, "server.csr")
+    server_crt = os.path.join(tmp_dir, "server-cert.pem")
+
+    LOGGER.info(f"Generating CA and server cert in {tmp_dir} for DB hostname {db_service_hostname}")
+
+    # --- 1. Create CA private key and certificate ---
+    subprocess.run(args=["openssl", "genrsa", "-out", ca_key, "2048"], check=True)
+    subprocess.run(
+        args=[
+            "openssl",
+            "req",
+            "-x509",
+            "-new",
+            "-nodes",
+            "-key",
+            ca_key,
+            "-sha256",
+            "-days",
+            "3650",
+            "-out",
+            ca_crt,
+            "-subj",
+            f"/CN={ca_name}",
+        ],
+        check=True,
+    )
+
+    # --- 2. Generate DB server private key and CSR ---
+    subprocess.run(args=["openssl", "genrsa", "-out", server_key, "2048"], check=True)
+
+    subprocess.run(
+        args=["openssl", "req", "-new", "-key", server_key, "-out", server_csr, "-subj", f"/CN={server_cn}"], check=True
+    )
+
+    # --- 3. Sign DB server cert with CA ---
+    subprocess.run(
+        args=[
+            "openssl",
+            "x509",
+            "-req",
+            "-in",
+            server_csr,
+            "-CA",
+            ca_crt,
+            "-CAkey",
+            ca_key,
+            "-CAcreateserial",
+            "-out",
+            server_crt,
+            "-days",
+            "3650",
+            "-sha256",
+        ],
+        check=True,
+    )
+
+    return {
+        "ca_crt": ca_crt,
+        "server_key": server_key,
+        "server_crt": server_crt,
+    }
