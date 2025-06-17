@@ -29,7 +29,6 @@ from model_registry.types import RegisteredModel
 from tests.model_registry.constants import (
     MR_OPERATOR_NAME,
     MR_INSTANCE_NAME,
-    ISTIO_CONFIG_DICT,
     DB_RESOURCES_NAME,
     MODEL_REGISTRY_DB_SECRET_STR_DATA,
     MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
@@ -153,24 +152,18 @@ def model_registry_db_deployment(
 
 @pytest.fixture(scope="class")
 def model_registry_instance(
-    model_registry_namespace: str, model_registry_mysql_config: dict[str, Any], is_model_registry_oauth: bool
+    model_registry_namespace: str,
+    model_registry_mysql_config: dict[str, Any],
 ) -> Generator[ModelRegistry, Any, Any]:
-    istio_config = None
-    oauth_config = None
-    if is_model_registry_oauth:
-        LOGGER.warning("Requested Ouath Proxy configuration:")
-        oauth_config = OAUTH_PROXY_CONFIG_DICT
-    else:
-        LOGGER.warning("Requested OSSM configuration:")
-        istio_config = ISTIO_CONFIG_DICT
-    """Creates a model registry instance with oauth proxy/service mesh configuration."""
+    """Creates a model registry instance with oauth proxy configuration."""
+    oauth_config = OAUTH_PROXY_CONFIG_DICT
     with ModelRegistry(
         name=MR_INSTANCE_NAME,
         namespace=model_registry_namespace,
         label=MODEL_REGISTRY_STANDARD_LABELS,
         grpc={},
         rest={},
-        istio=istio_config,
+        istio=None,
         oauth_proxy=oauth_config,
         mysql=model_registry_mysql_config,
         wait_for_resource=True,

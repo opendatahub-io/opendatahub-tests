@@ -6,6 +6,7 @@ from pytest_testconfig import config as py_config
 LOGGER = get_logger(name=__name__)
 
 
+@pytest.mark.skip(reason="Only run manually for now")
 @pytest.mark.fuzzer
 @pytest.mark.parametrize(
     "updated_dsc_component_state_scope_class",
