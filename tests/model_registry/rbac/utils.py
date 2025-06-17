@@ -1,17 +1,20 @@
-from typing import Any, Dict
+from typing import Any, Dict, Generator
+
+from kubernetes.dynamic import DynamicClient
+from timeout_sampler import TimeoutSampler
+
+from ocp_resources.deployment import Deployment
+from ocp_resources.role import Role
+from ocp_resources.role_binding import RoleBinding
 from utilities.constants import Protocols
 import logging
-from ocp_resources.namespace import Namespace
 from model_registry import ModelRegistry as ModelRegistryClient
-from tests.model_registry.utils import get_endpoint_from_mr_service, get_mr_service_by_label
-from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from utilities.infra import get_openshift_token
-from kubernetes.dynamic import DynamicClient
 
 LOGGER = logging.getLogger(__name__)
 
 
-def build_mr_client_args(rest_endpoint: str, token: str, author: str) -> Dict[str, Any]:
+def build_mr_client_args(rest_endpoint: str, token: str, author: str = "rbac-test") -> Dict[str, Any]:
     """
     Builds arguments for ModelRegistryClient based on REST endpoint and token.
 
@@ -36,17 +39,15 @@ def build_mr_client_args(rest_endpoint: str, token: str, author: str) -> Dict[st
 
 
 def assert_positive_mr_registry(
-    model_registry_instance: ModelRegistry,
-    model_registry_namespace: str,
-    admin_client: DynamicClient,
+    model_registry_instance_rest_endpoint: str,
+    token: str = "",
 ) -> None:
     """
     Assert that a user has access to the Model Registry.
 
     Args:
-        model_registry_instance: The Model Registry instance to check access for
-        model_registry_namespace: The namespace where Model Registry is deployed
-        admin_client: The admin client for accessing the cluster
+        model_registry_instance_rest_endpoint: The Model Registry rest endpoint
+        token: user token
 
     Raises:
         AssertionError: If client initialization fails
@@ -56,40 +57,52 @@ def assert_positive_mr_registry(
         This function should be called within the appropriate context (admin or user)
         as it uses the current context to get the token.
     """
-    token = get_openshift_token()
-    namespace_instance = Namespace(client=admin_client, name=model_registry_namespace)
-    svc = get_mr_service_by_label(client=admin_client, ns=namespace_instance, mr_instance=model_registry_instance)
-    endpoint = get_endpoint_from_mr_service(svc=svc, protocol=Protocols.REST)
-    client_args = build_mr_client_args(rest_endpoint=endpoint, token=token, author="rbac-test-user-granted")
+    client_args = build_mr_client_args(
+        rest_endpoint=model_registry_instance_rest_endpoint,
+        token=token or get_openshift_token(),
+        author="rbac-test-user-granted",
+    )
     mr_client = ModelRegistryClient(**client_args)
     assert mr_client is not None, "Client initialization failed after granting permissions"
     LOGGER.info("Client instantiated successfully after granting permissions.")
 
 
-def get_mr_client_args(
-    model_registry_instance: ModelRegistry,
-    model_registry_namespace: str,
+def wait_for_oauth_openshift_deployment() -> None:
+    deployment_obj = Deployment(name="oauth-openshift", namespace="openshift-authentication", ensure_exists=True)
+
+    _log = f"Wait for {deployment_obj.name} -> Type: Progressing -> Reason:"
+
+    def _wait_sampler(_reason: str) -> None:
+        sampler = TimeoutSampler(
+            wait_timeout=240,
+            sleep=5,
+            func=lambda: deployment_obj.instance.status.conditions,
+        )
+        for sample in sampler:
+            for _spl in sample:
+                if _spl.type == "Progressing" and _spl.reason == _reason:
+                    return
+
+    for reason in ("ReplicaSetUpdated", "NewReplicaSetAvailable"):
+        LOGGER.info(f"{_log} {reason}")
+        _wait_sampler(_reason=reason)
+
+
+def create_role_binding(
     admin_client: DynamicClient,
-    author: str = "rbac-test",
-) -> tuple[str, Dict[str, Any]]:
-    """
-    Get Model Registry client arguments using the current context.
-
-    Args:
-        model_registry_instance: The Model Registry instance to connect to
-        model_registry_namespace: The namespace where Model Registry is deployed
-        admin_client: The admin client for accessing the cluster
-        author: The author name for the client (default: "rbac-test")
-
-    Returns:
-        Tuple of (token, client_args) for Model Registry client
-
-    Note:
-        This function should be called within the appropriate context (admin or user)
-        as it uses the current context to get the token.
-    """
-    token = get_openshift_token()
-    namespace_instance = Namespace(client=admin_client, name=model_registry_namespace)
-    svc = get_mr_service_by_label(client=admin_client, ns=namespace_instance, mr_instance=model_registry_instance)
-    endpoint = get_endpoint_from_mr_service(svc=svc, protocol=Protocols.REST)
-    return token, build_mr_client_args(rest_endpoint=endpoint, token=token, author=author)
+    model_registry_namespace: str,
+    mr_access_role: Role,
+    name: str,
+    subjects_kind: str,
+    subjects_name: str,
+) -> Generator[RoleBinding, None, None]:
+    with RoleBinding(
+        client=admin_client,
+        namespace=model_registry_namespace,
+        name=name,
+        role_ref_name=mr_access_role.name,
+        role_ref_kind=mr_access_role.kind,
+        subjects_kind=subjects_kind,
+        subjects_name=subjects_name,
+    ) as mr_access_role_binding:
+        yield mr_access_role_binding
