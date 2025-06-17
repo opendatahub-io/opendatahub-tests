@@ -172,72 +172,17 @@ CATBOOST_GRPC_INPUT_QUERY: dict[str, Any] = {
 MLFLOW_REST_INPUT_QUERY: dict[str, Any] = {
     "id": "mlflow-wine-classifier",
     "inputs": [
-        {
-          "name": "fixed acidity",
-          "shape": [1],
-          "datatype": "FP32",
-          "data": [7.4]
-        },
-        {
-          "name": "volatile acidity",
-          "shape": [1],
-          "datatype": "FP32",
-          "data": [0.7000]
-        },
-        {
-          "name": "citric acid",
-          "shape": [1],
-          "datatype": "FP32",
-          "data": [0]
-        },
-        {
-          "name": "residual sugar",
-          "shape": [1],
-          "datatype": "FP32",
-          "data": [1.9]
-        },
-        {
-          "name": "chlorides",
-          "shape": [1],
-          "datatype": "FP32",
-          "data": [0.076]
-        },
-        {
-          "name": "free sulfur dioxide",
-          "shape": [1],
-          "datatype": "FP32",
-          "data": [11]
-        },
-        {
-          "name": "total sulfur dioxide",
-          "shape": [1],
-          "datatype": "FP32",
-          "data": [34]
-        },
-        {
-          "name": "density",
-          "shape": [1],
-          "datatype": "FP32",
-          "data": [0.9978]
-        },
-        {
-          "name": "pH",
-          "shape": [1],
-          "datatype": "FP32",
-          "data": [3.51]
-        },
-        {
-          "name": "sulphates",
-          "shape": [1],
-          "datatype": "FP32",
-          "data": [0.56]
-        },
-        {
-          "name": "alcohol",
-          "shape": [1],
-          "datatype": "FP32",
-          "data": [9.4]
-        }
+        {"name": "fixed acidity", "shape": [1], "datatype": "FP32", "data": [7.4]},
+        {"name": "volatile acidity", "shape": [1], "datatype": "FP32", "data": [0.7000]},
+        {"name": "citric acid", "shape": [1], "datatype": "FP32", "data": [0]},
+        {"name": "residual sugar", "shape": [1], "datatype": "FP32", "data": [1.9]},
+        {"name": "chlorides", "shape": [1], "datatype": "FP32", "data": [0.076]},
+        {"name": "free sulfur dioxide", "shape": [1], "datatype": "FP32", "data": [11]},
+        {"name": "total sulfur dioxide", "shape": [1], "datatype": "FP32", "data": [34]},
+        {"name": "density", "shape": [1], "datatype": "FP32", "data": [0.9978]},
+        {"name": "pH", "shape": [1], "datatype": "FP32", "data": [3.51]},
+        {"name": "sulphates", "shape": [1], "datatype": "FP32", "data": [0.56]},
+        {"name": "alcohol", "shape": [1], "datatype": "FP32", "data": [9.4]},
     ],
 }
 
@@ -245,71 +190,16 @@ MLFLOW_GRPC_INPUT_QUERY: dict[str, Any] = {
     "model_name": "mlflow-wine-classifier",
     "model_version": "v0.1.0",
     "inputs": [
-        {
-          "name": "fixed acidity",
-          "shape": [1],
-          "datatype": "FP32",
-          "contents": {"fp32_contents": [7.4]}
-        },
-        {
-          "name": "volatile acidity",
-          "shape": [1],
-          "datatype": "FP32",
-          "contents": {"fp32_contents": [0.7]}
-        },
-        {
-          "name": "citric acid",
-          "shape": [1],
-          "datatype": "FP32",
-          "contents": {"fp32_contents": [0]}
-        },
-        {
-          "name": "residual sugar",
-          "shape": [1],
-          "datatype": "FP32",
-          "contents": {"fp32_contents": [1.9]}
-        },
-        {
-          "name": "chlorides",
-          "shape": [1],
-          "datatype": "FP32",
-          "contents": {"fp32_contents": [0.076]}
-        },
-        {
-          "name": "free sulfur dioxide",
-          "shape": [1],
-          "datatype": "FP32",
-          "contents": {"fp32_contents": [11]}
-        },
-        {
-          "name": "total sulfur dioxide",
-          "shape": [1],
-          "datatype": "FP32",
-          "contents": {"fp32_contents": [34]}
-        },
-        {
-          "name": "density",
-          "shape": [1],
-          "datatype": "FP32",
-          "contents": {"fp32_contents": [0.9978]}
-        },
-        {
-          "name": "pH",
-          "shape": [1],
-          "datatype": "FP32",
-          "contents": {"fp32_contents": [3.51]}
-        },
-        {
-          "name": "sulphates",
-          "shape": [1],
-          "datatype": "FP32",
-          "contents": {"fp32_contents": [0.56]}
-        },
-        {
-          "name": "alcohol",
-          "shape": [1],
-          "datatype": "FP32",
-          "contents": {"fp32_contents": [9.4]}
-        }
+        {"name": "fixed acidity", "shape": [1], "datatype": "FP32", "contents": {"fp32_contents": [7.4]}},
+        {"name": "volatile acidity", "shape": [1], "datatype": "FP32", "contents": {"fp32_contents": [0.7]}},
+        {"name": "citric acid", "shape": [1], "datatype": "FP32", "contents": {"fp32_contents": [0]}},
+        {"name": "residual sugar", "shape": [1], "datatype": "FP32", "contents": {"fp32_contents": [1.9]}},
+        {"name": "chlorides", "shape": [1], "datatype": "FP32", "contents": {"fp32_contents": [0.076]}},
+        {"name": "free sulfur dioxide", "shape": [1], "datatype": "FP32", "contents": {"fp32_contents": [11]}},
+        {"name": "total sulfur dioxide", "shape": [1], "datatype": "FP32", "contents": {"fp32_contents": [34]}},
+        {"name": "density", "shape": [1], "datatype": "FP32", "contents": {"fp32_contents": [0.9978]}},
+        {"name": "pH", "shape": [1], "datatype": "FP32", "contents": {"fp32_contents": [3.51]}},
+        {"name": "sulphates", "shape": [1], "datatype": "FP32", "contents": {"fp32_contents": [0.56]}},
+        {"name": "alcohol", "shape": [1], "datatype": "FP32", "contents": {"fp32_contents": [9.4]}},
     ],
 }
