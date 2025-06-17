@@ -3,6 +3,8 @@ import pytest
 from pytest import Config
 import schemathesis
 from typing import Generator, Any
+
+from ocp_resources.infrastructure import Infrastructure
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.namespace import Namespace
@@ -61,7 +63,7 @@ def model_registry_namespace(updated_dsc_component_state_scope_class: DataScienc
 
 @pytest.fixture(scope="class")
 def model_registry_db_service(
-    admin_client: DynamicClient, model_registry_namespace: str
+    admin_client: DynamicClient, model_registry_namespace: str, is_model_registry_oauth: bool
 ) -> Generator[Service, Any, Any]:
     with Service(
         client=admin_client,
@@ -90,7 +92,7 @@ def model_registry_db_service(
 
 @pytest.fixture(scope="class")
 def model_registry_db_pvc(
-    admin_client: DynamicClient, model_registry_namespace: str
+    admin_client: DynamicClient, model_registry_namespace: str, is_model_registry_oauth: bool
 ) -> Generator[PersistentVolumeClaim, Any, Any]:
     with PersistentVolumeClaim(
         accessmodes="ReadWriteOnce",
@@ -107,6 +109,7 @@ def model_registry_db_pvc(
 def model_registry_db_secret(
     admin_client: DynamicClient,
     model_registry_namespace: str,
+    is_model_registry_oauth: bool,
 ) -> Generator[Secret, Any, Any]:
     with Secret(
         client=admin_client,
@@ -126,6 +129,7 @@ def model_registry_db_deployment(
     model_registry_db_secret: Secret,
     model_registry_db_pvc: PersistentVolumeClaim,
     model_registry_db_service: Service,
+    is_model_registry_oauth: bool,
 ) -> Generator[Deployment, Any, Any]:
     with Deployment(
         name=DB_RESOURCES_NAME,
@@ -205,9 +209,7 @@ def model_registry_instance_service(
         Service: The service for the model registry instance
     """
     return get_mr_service_by_label(
-        client=admin_client,
-        ns=Namespace(name=model_registry_namespace),
-        mr_instance=model_registry_instance,
+        client=admin_client, namespace_name=model_registry_namespace, mr_instance=model_registry_instance
     )
 
 
@@ -264,7 +266,10 @@ def state_machine(generated_schema: BaseOpenAPISchema, current_client_token: str
 
 @pytest.fixture(scope="class")
 def updated_dsc_component_state_scope_class(
-    request: FixtureRequest, dsc_resource: DataScienceCluster, admin_client: DynamicClient
+    request: FixtureRequest,
+    dsc_resource: DataScienceCluster,
+    admin_client: DynamicClient,
+    is_model_registry_oauth: bool,
 ) -> Generator[DataScienceCluster, Any, Any]:
     original_components = dsc_resource.instance.spec.components
     component_patch = request.param["component_patch"]
@@ -400,3 +405,9 @@ def validate_authorino_operator_version_channel(admin_client: DynamicClient) -> 
 @pytest.fixture(scope="class")
 def is_model_registry_oauth(request: FixtureRequest) -> bool:
     return getattr(request, "param", {}).get("use_oauth_proxy", False)
+
+
+@pytest.fixture(scope="session")
+def api_server_url(admin_client: DynamicClient) -> str:
+    infrastructure = Infrastructure(client=admin_client, name="cluster", ensure_exists=True)
+    return infrastructure.instance.status.apiServerURL
