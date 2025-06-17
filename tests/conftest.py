@@ -3,6 +3,7 @@ import os
 import shutil
 from ast import literal_eval
 from typing import Any, Callable, Generator
+import warnings
 
 import pytest
 import shortuuid
@@ -134,69 +135,119 @@ def valid_aws_config(aws_access_key_id: str, aws_secret_access_key: str) -> tupl
 
 
 @pytest.fixture(scope="session")
-def ci_s3_bucket_name(pytestconfig: Config) -> str:
+def ci_s3_bucket_name(pytestconfig: Config) -> str | None:
+    """
+    Fixture to get the name of the S3 bucket used. Not required for models stored in OCI.
+    """
     bucket_name = pytestconfig.option.ci_s3_bucket_name
     if not bucket_name:
-        raise ValueError(
-            "CI S3 bucket name is not set. "
-            "Either pass with `--ci-s3-bucket-name` or set `CI_S3_BUCKET_NAME` environment variable"
+        warnings.warn(
+            message=(
+                "CI S3 bucket name is not set. "
+                "Either pass with `--ci-s3-bucket-name` or set `CI_S3_BUCKET_NAME` environment variable"
+            ),
+            category=UserWarning,
         )
+        return None
     return bucket_name
 
 
 @pytest.fixture(scope="session")
-def ci_s3_bucket_region(pytestconfig: pytest.Config) -> str:
+def ci_s3_bucket_region(pytestconfig: pytest.Config) -> str | None:
+    """
+    Fixture to get the region of the S3 bucket used. Not required for models stored in OCI.
+    """
     ci_bucket_region = pytestconfig.option.ci_s3_bucket_region
     if not ci_bucket_region:
-        raise ValueError(
-            "Region for the ci s3 bucket is not defined."
-            "Either pass with `--ci-s3-bucket-region` or set `CI_S3_BUCKET_REGION` environment variable"
+        warnings.warn(
+            message=(
+                "Region for the ci s3 bucket is not defined."
+                "Either pass with `--ci-s3-bucket-region` or set `CI_S3_BUCKET_REGION` environment variable"
+            ),
+            category=UserWarning,
         )
+        return None
     return ci_bucket_region
 
 
 @pytest.fixture(scope="session")
-def ci_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str:
+def ci_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str | None:
+    """
+    Fixture to get the endpoint of the S3 bucket used. Not required for models stored in OCI.
+    """
     ci_bucket_endpoint = pytestconfig.option.ci_s3_bucket_endpoint
     if not ci_bucket_endpoint:
-        raise ValueError(
-            "Endpoint for the ci s3 bucket is not defined."
-            "Either pass with `--ci-s3-bucket-endpoint` or set `CI_S3_BUCKET_ENDPOINT` environment variable"
+        warnings.warn(
+            message=(
+                "Endpoint for the ci s3 bucket is not defined."
+                "Either pass with `--ci-s3-bucket-endpoint` or set `CI_S3_BUCKET_ENDPOINT` environment variable"
+            ),
+            category=UserWarning,
         )
+        return None
     return ci_bucket_endpoint
 
 
 @pytest.fixture(scope="session")
-def models_s3_bucket_name(pytestconfig: pytest.Config) -> str:
+def models_s3_bucket_name(pytestconfig: pytest.Config) -> str | None:
+    """
+    Fixture to get the name of the S3 bucket for models. Not required for models stored in OCI.
+    """
     models_bucket = pytestconfig.option.models_s3_bucket_name
     if not models_bucket:
-        raise ValueError(
-            "Bucket name for the models bucket is not defined."
-            "Either pass with `--models-s3-bucket-name` or set `MODELS_S3_BUCKET_NAME` environment variable"
+        warnings.warn(
+            message=(
+                "Bucket name for the models bucket is not defined."
+                "Either pass with `--models-s3-bucket-name` or set `MODELS_S3_BUCKET_NAME` environment variable"
+            ),
+            category=UserWarning,
         )
+        return None
     return models_bucket
 
 
 @pytest.fixture(scope="session")
-def models_s3_bucket_region(pytestconfig: pytest.Config) -> str:
+def models_s3_bucket_region(pytestconfig: pytest.Config) -> str | None:
+    """
+    Fixture to get the region of the S3 bucket for models. Not required for models stored in OCI.
+    """
     models_bucket_region = pytestconfig.option.models_s3_bucket_region
     if not models_bucket_region:
-        raise ValueError(
-            "region for the models bucket is not defined."
-            "Either pass with `--models-s3-bucket-region` or set `MODELS_S3_BUCKET_REGION` environment variable"
+        warnings.warn(
+            message=(
+                "region for the models bucket is not defined."
+                "Either pass with `--models-s3-bucket-region` or set `MODELS_S3_BUCKET_REGION` environment variable"
+            ),
+            category=UserWarning,
         )
+        return None
     return models_bucket_region
 
 
 @pytest.fixture(scope="session")
-def models_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str:
+def models_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str | None:
+    """
+    Fixture to get the endpoint of the S3 bucket for models. Not required for models stored in OCI.
+    """
     models_bucket_endpoint = pytestconfig.option.models_s3_bucket_endpoint
     if not models_bucket_endpoint:
-        raise ValueError(
-            "endpoint for the models bucket is not defined."
-            "Either pass with `--models-s3-bucket-endpoint` or set `MODELS_S3_BUCKET_ENDPOINT` environment variable"
+        warnings.warn(
+            message=(
+                "endpoint for the models bucket is not defined."
+                "Either pass with `--models-s3-bucket-endpoint` or set `MODELS_S3_BUCKET_ENDPOINT` environment variable"
+            ),
+            category=UserWarning,
         )
+        return None
     return models_bucket_endpoint
+
+
+@pytest.fixture(scope="session")
+def model_image_name(pytestconfig: pytest.Config) -> str:
+    model_image = pytestconfig.option.modelcar_image_name
+    if not model_image:
+        pytest.skip("Model image name is not provided")
+    return model_image
 
 
 @pytest.fixture(scope="session")
