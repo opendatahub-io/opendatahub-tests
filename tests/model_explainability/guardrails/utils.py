@@ -51,8 +51,8 @@ def verify_builtin_detector_unsuitable_input_response(
     """
 
     LOGGER.info(response.text)
-    response_data = verify_and_parse_response(response=response)  # This will assert immediately on failure
-    errors: List[str] = []  # errors list now only for subsequent checks
+    response_data = verify_and_parse_response(response=response)
+    errors: List[str] = []
 
     # Check response warnings
     warnings: List[Dict[str, Any]] = response_data.get("warnings", [])
@@ -73,7 +73,7 @@ def verify_builtin_detector_unsuitable_input_response(
         if len(results) != 1:
             errors.append(f"Expected 1 detection result, but got {len(results)}")
         else:
-            # Check email detection details
+            # Check detection details
             detection: Dict[str, Any] = results[0]
             if detection["detector_id"] != detector_id:
                 errors.append(f"Expected detector_id {detector_id}, got {detection['detector_id']}")
@@ -101,7 +101,7 @@ def verify_builtin_detector_unsuitable_output_response(
     """
     LOGGER.info(response.text)
 
-    response_data: Dict[str, Any] = verify_and_parse_response(response)  # This will assert immediately on failure
+    response_data: Dict[str, Any] = verify_and_parse_response(response)
     errors: List[str] = []
 
     # Check warning type
@@ -151,7 +151,7 @@ def verify_negative_detection_response(response: Response) -> None:
     """
     LOGGER.info(response.text)
 
-    response_data: Dict[str, Any] = verify_and_parse_response(response)  # This will assert immediately on failure
+    response_data: Dict[str, Any] = verify_and_parse_response(response)
     errors: List[str] = []
 
     # Check that there are no warnings
