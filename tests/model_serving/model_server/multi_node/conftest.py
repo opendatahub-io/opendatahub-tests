@@ -111,6 +111,58 @@ def multi_node_inference_service(
 
 
 @pytest.fixture(scope="class")
+def multi_node_oci_inference_service(
+    request: FixtureRequest,
+    unprivileged_client: DynamicClient,
+    multi_node_serving_runtime: ServingRuntime,
+) -> Generator[InferenceService, Any, Any]:
+    resources = {
+        "requests": {
+            "cpu": "1",
+            "memory": "4G",
+        },
+        "limits": {
+            "cpu": "2",
+            "memory": "12G",
+        },
+    }
+
+    worker_resources = {
+        "containers": [
+            {
+                "name": "worker-container",
+                "resources": resources,
+            }
+        ]
+    }
+
+    # NOTE: In KServe v0.15, the autoscaler_mode needs to be updated to "none".
+    with create_isvc(
+        client=unprivileged_client,
+        name=request.param["name"],
+        namespace=multi_node_serving_runtime.namespace,
+        runtime=multi_node_serving_runtime.name,
+        storage_uri="oci://registry.redhat.io/rhelai1/modelcar-granite-8b-code-instruct:1.4",
+        model_format=multi_node_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+        autoscaler_mode="external",
+        resources=resources,
+        multi_node_worker_spec=worker_resources,
+        wait_for_predictor_pods=False,
+        external_route=True,
+        timeout=Timeout.TIMEOUT_30MIN,
+    ) as isvc:
+        wait_for_inference_deployment_replicas(
+            client=unprivileged_client,
+            isvc=isvc,
+            expected_num_deployments=2,
+            runtime_name=multi_node_serving_runtime.name,
+            timeout=Timeout.TIMEOUT_15MIN,
+        )
+        yield isvc
+
+
+@pytest.fixture(scope="class")
 def multi_node_predictor_pods_scope_class(
     unprivileged_client: DynamicClient,
     multi_node_inference_service: InferenceService,
