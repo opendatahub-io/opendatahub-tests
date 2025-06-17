@@ -20,21 +20,18 @@ def get_chat_payload(content: str) -> Dict[str, Any]:
     }
 
 
-def verify_and_parse_response(response: Response) -> Dict[str, Any]:
-    if response.status_code != http.HTTPStatus.OK:
-        assert False, f"Expected status code {http.HTTPStatus.OK}, got {response.status_code}"
+def verify_and_parse_response(response: Response) -> Any:
+    assert response.status_code == http.HTTPStatus.OK, (
+        f"Expected status code {http.HTTPStatus.OK}, got {response.status_code}"
+    )
 
-    LOGGER.info(response.text)
-    try:
-        return response.json()
-    except ValueError:
-        assert False, "Response body is not valid JSON."
+    response_json = response.json()
+    LOGGER.info(response_json)
+    return response_json
 
 
 def assert_no_errors(errors: List[str], failure_message_prefix: str) -> None:
-    if errors:
-        error_message = f"{failure_message_prefix}:\n" + "\n".join(f"- {error}" for error in errors)
-        assert False, error_message
+    assert not errors, f"{failure_message_prefix}:\n" + "\n".join(f"- {error}" for error in errors)
 
 
 def verify_detection(
@@ -80,7 +77,7 @@ def verify_detection(
         errors.append(f"Expected detection_type {detection_type}, got {detection['detection_type']}")
 
     detection_text_actual = detection.get("text", "")
-    if expected_detection_text is not None:
+    if expected_detection_text:
         if detection_text_actual != expected_detection_text:
             errors.append(f"Expected text {expected_detection_text}, got {detection_text_actual}")
     else:
@@ -182,11 +179,11 @@ def verify_negative_detection_response(response: Response) -> None:
     errors = []
 
     warnings = response_data.get("warnings")
-    if warnings is not None:
+    if warnings:
         errors.append(f"Expected no warnings, got {warnings}")
 
     detections = response_data.get("detections")
-    if detections is not None:
+    if detections:
         errors.append(f"Expected no detections, got {detections}")
 
     choices = response_data.get("choices", [])
@@ -199,11 +196,11 @@ def verify_negative_detection_response(response: Response) -> None:
 
         message = choices[0].get("message", {})
         content = message.get("content")
-        if content is None:
+        if not content:
             errors.append("Expected message content, got none.")
 
         refusal = message.get("refusal")
-        if refusal is not None:
+        if refusal:
             errors.append(f"Expected refusal to be null, got {refusal}")
 
     assert_no_errors(errors=errors, failure_message_prefix="Negative detection verification failed")
