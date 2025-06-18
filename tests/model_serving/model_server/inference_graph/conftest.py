@@ -20,7 +20,7 @@ from utilities.infra import create_inference_token, create_inference_graph_view_
 @pytest.fixture
 def dog_breed_inference_graph(
     request: FixtureRequest,
-    unprivileged_client: DynamicClient,
+    admin_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     dog_cat_inference_service: InferenceService,
     dog_breed_inference_service: InferenceService,
@@ -69,7 +69,7 @@ def dog_breed_inference_graph(
         pass
 
     with InferenceGraph(
-        client=unprivileged_client,
+        client=admin_client,
         name=name,
         namespace=unprivileged_model_namespace.name,
         nodes=nodes,
@@ -82,13 +82,13 @@ def dog_breed_inference_graph(
 
 @pytest.fixture(scope="class")
 def dog_cat_inference_service(
-    unprivileged_client: DynamicClient,
+    admin_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     ovms_kserve_serving_runtime: ServingRuntime,
     models_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
-        client=unprivileged_client,
+        client=admin_client,
         name="dog-cat-classifier",
         namespace=unprivileged_model_namespace.name,
         runtime=ovms_kserve_serving_runtime.name,
@@ -103,13 +103,13 @@ def dog_cat_inference_service(
 
 @pytest.fixture(scope="class")
 def dog_breed_inference_service(
-    unprivileged_client: DynamicClient,
+    admin_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     ovms_kserve_serving_runtime: ServingRuntime,
     models_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
-        client=unprivileged_client,
+        client=admin_client,
         name="dog-breed-classifier",
         namespace=unprivileged_model_namespace.name,
         runtime=ovms_kserve_serving_runtime.name,
@@ -138,19 +138,19 @@ def inference_graph_sa_token_with_access(
 
 @pytest.fixture
 def service_account_with_access(
-    unprivileged_client: DynamicClient,
+    admin_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     dog_breed_inference_graph: InferenceGraph,
     bare_service_account: ServiceAccount,
 ) -> Generator[ServiceAccount, Any, Any]:
     with create_inference_graph_view_role(
-        client=unprivileged_client,
+        client=admin_client,
         name=f"{dog_breed_inference_graph.name}-view",
         namespace=unprivileged_model_namespace.name,
         resource_names=[dog_breed_inference_graph.name],
     ) as role:
         with RoleBinding(
-            client=unprivileged_client,
+            client=admin_client,
             namespace=unprivileged_model_namespace.name,
             name=f"{bare_service_account.name}-view",
             role_ref_name=role.name,
@@ -164,7 +164,7 @@ def service_account_with_access(
 @pytest.fixture
 def bare_service_account(
     request: FixtureRequest,
-    unprivileged_client: DynamicClient,
+    admin_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
 ) -> Generator[ServiceAccount, Any, Any]:
     try:
@@ -174,7 +174,7 @@ def bare_service_account(
         name = "sa-" + token_hex(4)
 
     with ServiceAccount(
-        client=unprivileged_client,
+        client=admin_client,
         namespace=unprivileged_model_namespace.name,
         name=name,
     ) as sa:

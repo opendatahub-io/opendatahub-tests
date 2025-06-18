@@ -118,6 +118,7 @@ class AcceleratorType:
 
 
 class ApiGroups:
+    HAPROXY_ROUTER_OPENSHIFT_IO: str = "haproxy.router.openshift.io"
     OPENDATAHUB_IO: str = "opendatahub.io"
 
 
@@ -137,6 +138,9 @@ class Annotations:
     class OpenDataHubIo:
         MANAGED: str = f"{ApiGroups.OPENDATAHUB_IO}/managed"
         SERVICE_MESH: str = f"{ApiGroups.OPENDATAHUB_IO}/service-mesh"
+
+    class HaproxyRouterOpenshiftIo:
+        TIMEOUT: str = f"{ApiGroups.HAPROXY_ROUTER_OPENSHIFT_IO}/timeout"
 
 
 class StorageClassName:
@@ -207,6 +211,10 @@ class Timeout:
     TIMEOUT_20MIN: int = 20 * TIMEOUT_1MIN
 
 
+class OpenshiftRouteTimeout:
+    TIMEOUT_1MICROSEC: str = "1us"
+
+
 class Containers:
     KSERVE_CONTAINER_NAME: str = "kserve-container"
 
@@ -257,6 +265,11 @@ class MinIo:
 
         MODEL_MESH_MINIO_CONFIG: dict[str, Any] = {
             "image": "quay.io/trustyai_testing/modelmesh-minio-examples@sha256:d2ccbe92abf9aa5085b594b2cae6c65de2bf06306c30ff5207956eb949bb49da",  # noqa: E501
+            **MINIO_BASE_CONFIG,
+        }
+
+        QWEN_MINIO_CONFIG: dict[str, Any] = {
+            "image": "quay.io/trustyai_testing/qwen-minio@sha256:d1e244e24d2e40fb2557e85b4587d56084253c040fc4e64421f3ccc09ec8e5c3",  # noqa: E501
             **MINIO_BASE_CONFIG,
         }
 

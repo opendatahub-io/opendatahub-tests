@@ -9,6 +9,7 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
+from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
@@ -136,6 +137,23 @@ def s3_models_inference_service(
 
     with create_isvc(**isvc_kwargs) as isvc:
         yield isvc
+
+
+@pytest.fixture(scope="function")
+def s3_models_inference_service_patched_annotations(
+    request: FixtureRequest, s3_models_inference_service: InferenceService
+) -> InferenceService:
+    if hasattr(request, "param"):
+        with ResourceEditor(
+            patches={
+                s3_models_inference_service: {
+                    "metadata": {
+                        "annotations": request.param["annotations"],
+                    }
+                }
+            }
+        ):
+            yield s3_models_inference_service
 
 
 @pytest.fixture(scope="class")

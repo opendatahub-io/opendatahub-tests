@@ -55,7 +55,6 @@ class TestModelRegistryRBAC:
         self: Self,
         sa_token: str,
         model_registry_instance_rest_endpoint: str,
-        request: pytest.FixtureRequest,
     ):
         """
         Verifies SA access is DENIED (403 Forbidden) by default via REST.
@@ -63,7 +62,6 @@ class TestModelRegistryRBAC:
         """
         LOGGER.info("--- Starting RBAC Test: Access Denied ---")
         LOGGER.info(f"Targeting Model Registry REST endpoint: {model_registry_instance_rest_endpoint}")
-        LOGGER.info(f"Using {'OAuth' if request.node.callspec.id == 'oauth' else 'servicemesh'} client configuration")
         LOGGER.info("Expecting initial access DENIAL (403 Forbidden)")
 
         client_args = build_mr_client_args(
@@ -83,20 +81,17 @@ class TestModelRegistryRBAC:
         LOGGER.info("Successfully received expected HTTP 403 status code.")
 
     @pytest.mark.sanity
-    # Use fixtures for SA/NS/Token AND the RBAC Role/Binding
     @pytest.mark.usefixtures("sa_namespace", "service_account", "mr_access_role", "mr_access_role_binding")
     def test_service_account_access_granted(
         self: Self,
         sa_token: str,
         model_registry_instance_rest_endpoint: str,
-        request: pytest.FixtureRequest,
     ):
         """
         Verifies SA access is GRANTED via REST after applying Role and RoleBinding fixtures.
         """
         LOGGER.info("--- Starting RBAC Test: Access Granted ---")
         LOGGER.info(f"Targeting Model Registry REST endpoint: {model_registry_instance_rest_endpoint}")
-        LOGGER.info(f"Using {'OAuth' if request.node.callspec.id == 'oauth' else 'servicemesh'} client configuration")
         LOGGER.info("Applied RBAC Role/Binding via fixtures. Expecting access GRANT.")
 
         try:
