@@ -4,7 +4,6 @@ from typing import Any
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.pod import Pod
 from ocp_resources.service import Service
-from ocp_resources.namespace import Namespace
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from simple_logger.logger import get_logger
@@ -51,28 +50,6 @@ def get_endpoint_from_mr_service(svc: Service, protocol: str) -> str:
         return svc.instance.metadata.annotations[f"{ADDRESS_ANNOTATION_PREFIX}{protocol}"]
     else:
         raise ProtocolNotSupportedError(protocol)
-
-
-def get_model_registry_endpoint(
-    admin_client: DynamicClient, model_registry_namespace: str, model_registry_name: str
-) -> str:
-    """
-    Get the endpoint from the Model Registry service.
-    Args:
-        admin_client: The admin client to use.
-        model_registry_namespace: The namespace of the Model Registry.
-        model_registry_name: The name of the Model Registry.
-    Returns:
-        str: The endpoint of the Model Registry.
-    """
-    model_registry_instance = ModelRegistry(
-        client=admin_client, name=model_registry_name, namespace=model_registry_namespace
-    )
-    namespace_instance = Namespace(client=admin_client, name=model_registry_namespace)
-    svc = get_mr_service_by_label(
-        client=admin_client, namespace_name=namespace_instance.name, mr_instance=model_registry_instance
-    )
-    return get_endpoint_from_mr_service(svc=svc, protocol=Protocols.REST)
 
 
 def get_model_registry_deployment_template_dict(secret_name: str, resource_name: str) -> dict[str, Any]:

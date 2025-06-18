@@ -172,6 +172,7 @@ def deploy_secure_mysql_and_mr(
         label=MODEL_REGISTRY_STANDARD_LABELS,
         grpc={},
         rest={},
+        istio=None,
         oauth_proxy=OAUTH_PROXY_CONFIG_DICT,
         mysql=model_registry_mysql_config,
         wait_for_resource=True,
