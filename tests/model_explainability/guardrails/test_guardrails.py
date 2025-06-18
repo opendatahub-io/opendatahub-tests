@@ -62,11 +62,11 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
          4.1. Unsuitable input detection.
          4.2. Unsuitable output detection.
          4.3. No detection.
-        5. Check that the /passthrough endpoint forwards
-        the query directly to the model without performing any detection.
+        5. Check that the /passthrough endpoint forwards the
+         query directly to the model without performing any detection.
     """
 
-    def test_guardrails_health_endpoint(self, admin_client, qwen_isvc, guardrails_orchestrator_health_route):
+    def test_guardrails_health_endpoint(self, qwen_isvc, guardrails_orchestrator_health_route):
         # It takes a bit for the endpoint to come online, so we retry for a brief period of time
         @retry(wait_timeout=Timeout.TIMEOUT_1MIN, sleep=1)
         def check_health_endpoint():
@@ -78,7 +78,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         response = check_health_endpoint()
         assert "fms-guardrails-orchestr8" in response.text
 
-    def test_guardrails_info_endpoint(self, admin_client, qwen_isvc, guardrails_orchestrator_health_route):
+    def test_guardrails_info_endpoint(self, qwen_isvc, guardrails_orchestrator_health_route):
         response = requests.get(url=f"https://{guardrails_orchestrator_health_route.host}/info", verify=False)
         assert response.status_code == http.HTTPStatus.OK
 
@@ -88,7 +88,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         assert response_data["services"]["regex"]["status"] == healthy_status
 
     def test_guardrails_builtin_detectors_unsuitable_input(
-        self, admin_client, current_client_token, openshift_ca_bundle_file, guardrails_orchestrator_route
+        self, current_client_token, openshift_ca_bundle_file, guardrails_orchestrator_route
     ):
         response = requests.post(
             url=f"https://{guardrails_orchestrator_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
@@ -106,7 +106,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         )
 
     def test_guardrails_builtin_detectors_unsuitable_output(
-        self, admin_client, current_client_token, openshift_ca_bundle_file, guardrails_orchestrator_route
+        self, current_client_token, openshift_ca_bundle_file, guardrails_orchestrator_route
     ):
         response = requests.post(
             url=f"https://{guardrails_orchestrator_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
@@ -136,7 +136,6 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
     )
     def test_guardrails_builtin_detectors_negative_detection(
         self,
-        admin_client,
         current_client_token,
         openshift_ca_bundle_file,
         guardrails_orchestrator_route,
