@@ -152,7 +152,6 @@ def model_registry_instance(
     model_registry_namespace: str,
     model_registry_mysql_config: dict[str, Any],
     is_model_registry_oauth: bool,
-    test_ca_configmap: Any,
 ) -> Generator[ModelRegistry, Any, Any]:
     istio_config = None
     oauth_config = None
@@ -193,6 +192,7 @@ def model_registry_mysql_config(
         request: The pytest request object
         model_registry_db_deployment: The model registry db deployment
         model_registry_db_secret: The model registry db secret
+
     Returns:
         dict[str, Any]: The MySQL config dictionary
     """
@@ -205,13 +205,7 @@ def model_registry_mysql_config(
         "skipDBCreation": False,
         "username": model_registry_db_secret.string_data["database-user"],
     }
-    if param.get("sslRootCertificateConfigMap"):
-        ssl_config = param.get("sslRootCertificateConfigMap")
-        if ssl_config:
-            config["sslRootCertificateConfigMap"] = {
-                "name": ssl_config.get("name"),
-                "key": ssl_config.get("key"),
-            }
+    config["sslRootCertificateConfigMap"] = param.get("sslRootCertificateConfigMap")
 
     return config
 

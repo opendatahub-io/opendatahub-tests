@@ -18,7 +18,7 @@ from tests.model_registry.constants import (
     CA_MOUNT_PATH,
     CA_FILE_PATH,
     CA_CONFIGMAP_NAME,
-    ISTIO_CONFIG_DICT,
+    OAUTH_PROXY_CONFIG_DICT,
     MODEL_REGISTRY_STANDARD_LABELS,
     SECURE_MR_NAME,
 )
@@ -128,8 +128,10 @@ def patch_invalid_ca(
 def mysql_template_with_ca(model_registry_db_secret: Secret) -> dict[str, Any]:
     """
     Patches the MySQL template with the CA file path and volume mount.
+
     Args:
         model_registry_db_secret: The secret for the model registry's MySQL database
+
     Returns:
         dict[str, Any]: The patched MySQL template
     """
@@ -158,6 +160,7 @@ def deploy_secure_mysql_and_mr(
 ) -> Generator[ModelRegistry, None, None]:
     """
     Deploy a secure MySQL and Model Registry instance.
+
     Args:
         model_registry_namespace: The namespace of the model registry
         model_registry_db_secret: The secret for the model registry's MySQL database
@@ -171,7 +174,8 @@ def deploy_secure_mysql_and_mr(
         label=MODEL_REGISTRY_STANDARD_LABELS,
         grpc={},
         rest={},
-        istio=ISTIO_CONFIG_DICT,
+        istio={},
+        oauth_proxy=OAUTH_PROXY_CONFIG_DICT,
         mysql=model_registry_mysql_config,
         wait_for_resource=True,
     ) as mr:
@@ -209,10 +213,12 @@ def test_ca_configmap(
 ) -> Generator[ConfigMap, None, None]:
     """
     Creates a test-specific ConfigMap for the CA bundle, using the generated CA cert.
+
     Args:
         admin_client: The admin client to create the ConfigMap
         model_registry_namespace: The namespace of the model registry
         mysql_ssl_artifacts_and_secrets: The artifacts and secrets for the MySQL SSL connection
+
     Returns:
         Generator[ConfigMap, None, None]: A generator that yields the ConfigMap instance.
     """
