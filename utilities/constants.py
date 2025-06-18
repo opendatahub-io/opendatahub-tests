@@ -231,9 +231,7 @@ class ModelCarImage:
     MNIST_8_1: str = (
         "oci://quay.io/mwaykole/test@sha256:8a3217bcfa2cc5fa3d07496cff8b234acdf2c9725dd307dc0a80401f55e1a11c"  # noqa: E501
     )
-    GRANITE_8B_CODE_INSTRUCT: str = (
-        "oci://registry.redhat.io/rhelai1/modelcar-granite-8b-code-instruct:1.4"
-    )
+    GRANITE_8B_CODE_INSTRUCT: str = "oci://registry.redhat.io/rhelai1/modelcar-granite-8b-code-instruct:1.4"
 
 
 class MinIo:
