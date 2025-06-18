@@ -9,6 +9,11 @@ from simple_logger.logger import DuplicateFilter, WrapperLogFormatter
 LOGGER = logging.getLogger(__name__)
 
 
+class RedactedString(str):
+    def __repr__(self) -> str:
+        return "'***REDACTED***'"
+
+
 def setup_logging(log_level: int, log_file: str = "/tmp/pytest-tests.log") -> QueueListener:
     """
     Setup basic/root logging using QueueHandler/QueueListener
