@@ -18,7 +18,7 @@ from utilities.plugins.constant import OpenAIEnpoints
 
 LOGGER = get_logger(name=__name__)
 EXAMPLE_EMAIL_ADDRESS: str = "myemail@domain.com"
-INPUT_WITH_EMAIL_ADDRESS: str = f"Hi, send me the info to {EXAMPLE_EMAIL_ADDRESS}"
+INPUT_WITH_EMAIL_ADDRESS: str = f"This is my email address: {EXAMPLE_EMAIL_ADDRESS}, just answer ACK."
 PII_ENDPOINT: str = "/pii"
 
 
@@ -112,8 +112,9 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
             url=f"https://{guardrails_orchestrator_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
             headers=get_auth_headers(token=current_client_token),
             json=get_chat_payload(
-                content="Hi, write three examples of email adresses "
+                content="Hi, write three and only three examples of email adresses "
                 "that I can use to create an account for an online service."
+                "Don't provide any additional explanation."
             ),
             verify=openshift_ca_bundle_file,
         )
@@ -122,25 +123,30 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
             response=response, detector_id="regex", detection_name="EmailAddress", detection_type="pii"
         )
 
+    @pytest.mark.parametrize(
+        "message, url_path",
+        [
+            pytest.param(
+                "What is the opposite of up?",
+                PII_ENDPOINT,
+                id="harmless_input",
+            ),
+            pytest.param(INPUT_WITH_EMAIL_ADDRESS, "/passthrough", id="pastthrough_endpoint"),
+        ],
+    )
     def test_guardrails_builtin_detectors_negative_detection(
-        self, admin_client, current_client_token, openshift_ca_bundle_file, guardrails_orchestrator_route
+        self,
+        admin_client,
+        current_client_token,
+        openshift_ca_bundle_file,
+        guardrails_orchestrator_route,
+        message,
+        url_path,
     ):
         response = requests.post(
-            url=f"https://{guardrails_orchestrator_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
+            url=f"https://{guardrails_orchestrator_route.host}{url_path}{OpenAIEnpoints.CHAT_COMPLETIONS}",
             headers=get_auth_headers(token=current_client_token),
-            json=get_chat_payload(content="Hello, how are you?"),
-            verify=openshift_ca_bundle_file,
-        )
-
-        verify_negative_detection_response(response=response)
-
-    def test_guardrails_passthrough_endpoint(
-        self, current_client_token, openshift_ca_bundle_file, guardrails_orchestrator_route
-    ):
-        response = requests.post(
-            url=f"https://{guardrails_orchestrator_route.host}/passthrough{OpenAIEnpoints.CHAT_COMPLETIONS}",
-            headers=get_auth_headers(token=current_client_token),
-            json=get_chat_payload(content=INPUT_WITH_EMAIL_ADDRESS),
+            json=get_chat_payload(content=str(message)),
             verify=openshift_ca_bundle_file,
         )
 

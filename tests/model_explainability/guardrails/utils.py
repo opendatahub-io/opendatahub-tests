@@ -1,4 +1,5 @@
 import http
+import json
 
 from requests import Response
 from simple_logger.logger import get_logger
@@ -17,6 +18,7 @@ def get_chat_payload(content: str) -> Dict[str, Any]:
         "messages": [
             {"role": "user", "content": content},
         ],
+        "temperature": "0.0",
     }
 
 
@@ -26,7 +28,7 @@ def verify_and_parse_response(response: Response) -> Any:
     )
 
     response_json = response.json()
-    LOGGER.info(response_json)
+    LOGGER.info(f"Guardrails Orchestrator detection response:\n{json.dumps(response_json, indent=4)}")
     return response_json
 
 
