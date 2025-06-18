@@ -14,6 +14,7 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
 
+from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import (
     KServeDeploymentType,
     Labels,
@@ -27,21 +28,6 @@ GORCH_NAME = "gorch-test"
 
 USER_ONE: str = "user-one"
 GUARDRAILS_ORCHESTRATOR_PORT: int = 8032
-
-
-@pytest.fixture(scope="class")
-def guardrails_orchestrator_health_route(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-    guardrails_orchestrator: GuardrailsOrchestrator,
-) -> Generator[Route, Any, Any]:
-    route = Route(
-        name=f"{guardrails_orchestrator.name}-health",
-        namespace=guardrails_orchestrator.namespace,
-        wait_for_resource=True,
-        ensure_exists=True,
-    )
-    yield route
 
 
 @pytest.fixture(scope="class")
@@ -65,6 +51,32 @@ def guardrails_orchestrator(
         orchestrator_deployment = Deployment(name=gorch.name, namespace=gorch.namespace, wait_for_resource=True)
         orchestrator_deployment.wait_for_replicas()
         yield gorch
+
+
+@pytest.fixture(scope="class")
+def guardrails_orchestrator_health_route(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    guardrails_orchestrator: GuardrailsOrchestrator,
+) -> Generator[Route, Any, Any]:
+    yield Route(
+        name=f"{guardrails_orchestrator.name}-health",
+        namespace=guardrails_orchestrator.namespace,
+        wait_for_resource=True,
+    )
+
+
+@pytest.fixture(scope="class")
+def guardrails_orchestrator_route(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    guardrails_orchestrator: GuardrailsOrchestrator,
+) -> Generator[Route, Any, Any]:
+    yield Route(
+        name=f"{guardrails_orchestrator.name}",
+        namespace=guardrails_orchestrator.namespace,
+        wait_for_resource=True,
+    )
 
 
 @pytest.fixture(scope="class")
@@ -204,3 +216,10 @@ def guardrails_gateway_config(
         },
     ) as cm:
         yield cm
+
+
+@pytest.fixture(scope="class")
+def openshift_ca_bundle_file(
+    admin_client: DynamicClient,
+) -> str:
+    return create_ca_bundle_file(client=admin_client, ca_type="openshift")

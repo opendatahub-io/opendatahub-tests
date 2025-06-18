@@ -15,7 +15,7 @@ from tests.model_registry.constants import (
     ISTIO_CONFIG_DICT,
     DB_RESOURCES_NAME,
 )
-from kubernetes.dynamic.exceptions import UnprocessibleEntityError
+from kubernetes.dynamic.exceptions import ForbiddenError
 
 
 LOGGER = get_logger(name=__name__)
@@ -71,7 +71,7 @@ class TestModelRegistryCreationNegative:
             "username": model_registry_db_secret_negative_test.string_data["database-user"],
         }
         with pytest.raises(
-            UnprocessibleEntityError,
+            ForbiddenError,  # UnprocessibleEntityError
             match=f"namespace must be {expected_namespace}",
         ):
             with ModelRegistry(

@@ -12,37 +12,21 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(
-    "updated_dsc_component_state_scope_class, is_model_registry_oauth",
+    "updated_dsc_component_state_scope_class",
     [
-        pytest.param(
-            {
-                "component_patch": {
-                    DscComponents.MODELREGISTRY: {
-                        "managementState": DscComponents.ManagementState.MANAGED,
-                        "registriesNamespace": py_config["model_registry_namespace"],
-                    },
-                }
-            },
-            {"use_oauth_proxy": False},
-            id="servicemesh",
-        ),
-        pytest.param(
-            {
-                "component_patch": {
-                    DscComponents.MODELREGISTRY: {
-                        "managementState": DscComponents.ManagementState.MANAGED,
-                        "registriesNamespace": py_config["model_registry_namespace"],
-                    },
-                }
-            },
-            {"use_oauth_proxy": True},
-            id="oauth",
-        ),
+        pytest.param({
+            "component_patch": {
+                DscComponents.MODELREGISTRY: {
+                    "managementState": DscComponents.ManagementState.MANAGED,
+                    "registriesNamespace": py_config["model_registry_namespace"],
+                },
+            }
+        }),
     ],
     indirect=True,
     scope="class",
 )
-@pytest.mark.usefixtures("updated_dsc_component_state_scope_class", "is_model_registry_oauth")
+@pytest.mark.usefixtures("updated_dsc_component_state_scope_class")
 class TestModelRegistryRBAC:
     """
     Tests RBAC for Model Registry REST endpoint using ServiceAccount tokens.

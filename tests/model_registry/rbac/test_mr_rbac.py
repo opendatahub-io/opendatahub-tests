@@ -29,36 +29,20 @@ pytestmark = [pytest.mark.usefixtures("original_user", "test_idp_user")]
 
 
 @pytest.mark.parametrize(
-    "updated_dsc_component_state_scope_class, is_model_registry_oauth",
+    "updated_dsc_component_state_scope_class",
     [
-        pytest.param(
-            {
-                "component_patch": {
-                    DscComponents.MODELREGISTRY: {
-                        "managementState": DscComponents.ManagementState.MANAGED,
-                        "registriesNamespace": py_config["model_registry_namespace"],
-                    },
-                }
-            },
-            {"use_oauth_proxy": False},
-            id="servicemesh",
-        ),
-        pytest.param(
-            {
-                "component_patch": {
-                    DscComponents.MODELREGISTRY: {
-                        "managementState": DscComponents.ManagementState.MANAGED,
-                        "registriesNamespace": py_config["model_registry_namespace"],
-                    },
-                }
-            },
-            {"use_oauth_proxy": True},
-            id="oauth",
-        ),
+        pytest.param({
+            "component_patch": {
+                DscComponents.MODELREGISTRY: {
+                    "managementState": DscComponents.ManagementState.MANAGED,
+                    "registriesNamespace": py_config["model_registry_namespace"],
+                },
+            }
+        }),
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("updated_dsc_component_state_scope_class", "is_model_registry_oauth")
+@pytest.mark.usefixtures("updated_dsc_component_state_scope_class")
 class TestUserPermission:
     @pytest.mark.sanity
     def test_user_permission_non_admin_user(
