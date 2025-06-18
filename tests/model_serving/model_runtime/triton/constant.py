@@ -8,17 +8,19 @@ from utilities.constants import (
     RuntimeTemplates,
 )
 
-from pathlib import Path
 
 TRITON_REST_INPUT_PATH = (
     "tests/model_serving/model_runtime/triton/basic_model_deployment/kserve-triton-resnet-rest-input.json"
 )
-TRITON_GRPC_INPUT_PATH =(
+TRITON_GRPC_INPUT_PATH = (
     "tests/model_serving/model_runtime/triton/basic_model_deployment/kserve-triton-resnet-gRPC-input.json"
 )
+
+
 def load_json(path: str) -> dict:
     with open(path, "r") as f:
         return json.load(f)
+
 
 TRITON_REST_INPUT_QUERY = load_json(TRITON_REST_INPUT_PATH)
 
@@ -39,8 +41,8 @@ PROTO_FILE_PATH: str = "utilities/manifests/common/grpc_predict_v2.proto"
 
 BASE_DIR = os.path.dirname(__file__)
 TEMPLATE_FILE_PATH: dict[str, str] = {
-    Protocols.REST: os.path.join(BASE_DIR,"basic_model_deployment","triton_rest_serving_template.yaml"),
-    Protocols.GRPC: os.path.join(BASE_DIR,"basic_model_deployment","triton_grpc_serving_template.yaml"),
+    Protocols.REST: os.path.join(BASE_DIR, "basic_model_deployment", "triton_rest_serving_template.yaml"),
+    Protocols.GRPC: os.path.join(BASE_DIR, "basic_model_deployment", "triton_grpc_serving_template.yaml"),
 }
 
 TEMPLATE_MAP: dict[str, str] = {

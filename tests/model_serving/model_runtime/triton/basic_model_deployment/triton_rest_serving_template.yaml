@@ -6,7 +6,7 @@ objects:
   - apiVersion: serving.kserve.io/v1alpha1
     kind: ServingRuntime
     metadata:
-      name: triton-kserve-rest 
+      name: triton-kserve-rest
     spec:
       annotations:
         prometheus.kserve.io/path: /metrics
