@@ -69,7 +69,7 @@ def tests_tmp_dir(request: FixtureRequest, tmp_path_factory: TempPathFactory) ->
 
 @pytest.fixture(scope="session")
 def current_client_token(admin_client: DynamicClient) -> str:
-    return RedactedString(object=get_openshift_token())
+    return RedactedString(value=get_openshift_token())
 
 
 @pytest.fixture(scope="session")

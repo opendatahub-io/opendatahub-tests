@@ -370,4 +370,4 @@ def isvc_getter_token_secret(
 
 @pytest.fixture(scope="class")
 def isvc_getter_token(isvc_getter_service_account: ServiceAccount, isvc_getter_token_secret: Secret) -> str:
-    return RedactedString(object=create_inference_token(model_service_account=isvc_getter_service_account))
+    return RedactedString(value=create_inference_token(model_service_account=isvc_getter_service_account))

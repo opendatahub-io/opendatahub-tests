@@ -52,7 +52,7 @@ def model_mesh_inference_token(
     ci_service_account: ServiceAccount,
     model_mesh_role_binding: RoleBinding,
 ) -> str:
-    return RedactedString(object=create_inference_token(model_service_account=ci_service_account))
+    return RedactedString(value=create_inference_token(model_service_account=ci_service_account))
 
 
 @pytest.fixture()

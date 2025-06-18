@@ -10,6 +10,13 @@ LOGGER = logging.getLogger(__name__)
 
 
 class RedactedString(str):
+    """
+    Used to redact the representation of a sensitive string.
+    """
+
+    def __new__(cls, *, value: object) -> "RedactedString":
+        return super().__new__(cls, value)
+
     def __repr__(self) -> str:
         return "'***REDACTED***'"
 
