@@ -118,6 +118,7 @@ class AcceleratorType:
 
 
 class ApiGroups:
+    HAPROXY_ROUTER_OPENSHIFT_IO: str = "haproxy.router.openshift.io"
     OPENDATAHUB_IO: str = "opendatahub.io"
 
 
@@ -137,6 +138,9 @@ class Annotations:
     class OpenDataHubIo:
         MANAGED: str = f"{ApiGroups.OPENDATAHUB_IO}/managed"
         SERVICE_MESH: str = f"{ApiGroups.OPENDATAHUB_IO}/service-mesh"
+
+    class HaproxyRouterOpenshiftIo:
+        TIMEOUT: str = f"{ApiGroups.HAPROXY_ROUTER_OPENSHIFT_IO}/timeout"
 
 
 class StorageClassName:
@@ -205,6 +209,10 @@ class Timeout:
     TIMEOUT_10MIN: int = 10 * TIMEOUT_1MIN
     TIMEOUT_15MIN: int = 15 * TIMEOUT_1MIN
     TIMEOUT_20MIN: int = 20 * TIMEOUT_1MIN
+
+
+class OpenshiftRouteTimeout:
+    TIMEOUT_1MICROSEC: str = "1us"
 
 
 class Containers:

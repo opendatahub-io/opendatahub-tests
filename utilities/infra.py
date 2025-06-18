@@ -905,6 +905,42 @@ def get_operator_distribution(client: DynamicClient, dsc_name: str = "default-ds
         raise ValueError("DSC release name not found in {dsc_name}")
 
 
+def wait_for_route_timeout(name: str, namespace: str, route_timeout: str) -> None:
+    """
+    Wait for route to be annotated with timeout value.
+    Given that there is a delay between the openshift route timeout annotation being set
+    and the timeout being applied to the route, a counter is instituted to wait until the
+    annotation is found in the route twice. This allows for the TimeoutSampler sleep time
+    to be executed and the route timeout to be successfully applied.
+
+    Args:
+        name (str): Name of the route.
+        namespace (str): Namespace the route is located in.
+        route_timeout (str): The expected value of the openshift route timeout annotation.
+
+    Raises:
+        TimeoutExpiredError: If route annotation is not set to the expected value before timeout expires.
+    """
+    annotation_found_count = 0
+    for route in TimeoutSampler(
+        wait_timeout=Timeout.TIMEOUT_30SEC,
+        sleep=10,
+        exceptions_dict={ResourceNotFoundError: []},
+        func=Route,
+        name=name,
+        namespace=namespace,
+        ensure_exists=True,
+    ):
+        if (
+            route.instance.metadata.get("annotations", {}).get(Annotations.HaproxyRouterOpenshiftIo.TIMEOUT)
+            != route_timeout
+        ):
+            continue
+        annotation_found_count += 1
+        if annotation_found_count == 2:
+            return
+
+
 def wait_for_serverless_pods_deletion(resource: Project | Namespace, admin_client: DynamicClient | None) -> None:
     """
     Wait for serverless pods deletion.
