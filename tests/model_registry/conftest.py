@@ -200,7 +200,8 @@ def model_registry_mysql_config(
         "skipDBCreation": False,
         "username": model_registry_db_secret.string_data["database-user"],
     }
-    config["sslRootCertificateConfigMap"] = param.get("sslRootCertificateConfigMap")
+    if "sslRootCertificateConfigMap" in param:
+        config["sslRootCertificateConfigMap"] = param["sslRootCertificateConfigMap"]
 
     return config
 
