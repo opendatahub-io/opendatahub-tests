@@ -22,7 +22,8 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(
-    "model_registry_namespace_for_negative_tests, updated_dsc_component_state_scope_class, expected_namespace",
+    "model_registry_namespace_for_negative_tests, updated_dsc_component_state_scope_class, "
+    "is_model_registry_oauth, expected_namespace",
     [
         pytest.param(
             {"namespace_name": CUSTOM_NEGATIVE_NS},
@@ -34,6 +35,20 @@ LOGGER = get_logger(name=__name__)
                     },
                 }
             },
+            {"use_oauth_proxy": False},
+            py_config["model_registry_namespace"],
+        ),
+        pytest.param(
+            {"namespace_name": CUSTOM_NEGATIVE_NS},
+            {
+                "component_patch": {
+                    DscComponents.MODELREGISTRY: {
+                        "managementState": DscComponents.ManagementState.MANAGED,
+                        "registriesNamespace": py_config["model_registry_namespace"],
+                    },
+                }
+            },
+            {"use_oauth_proxy": True},
             py_config["model_registry_namespace"],
         ),
         pytest.param(
@@ -46,10 +61,28 @@ LOGGER = get_logger(name=__name__)
                     },
                 },
             },
+            {"use_oauth_proxy": True},
+            CUSTOM_NEGATIVE_NS,
+        ),
+        pytest.param(
+            {"namespace_name": py_config["model_registry_namespace"]},
+            {
+                "component_patch": {
+                    DscComponents.MODELREGISTRY: {
+                        "managementState": DscComponents.ManagementState.MANAGED,
+                        "registriesNamespace": CUSTOM_NEGATIVE_NS,
+                    },
+                },
+            },
+            {"use_oauth_proxy": False},
             CUSTOM_NEGATIVE_NS,
         ),
     ],
-    indirect=["model_registry_namespace_for_negative_tests", "updated_dsc_component_state_scope_class"],
+    indirect=[
+        "model_registry_namespace_for_negative_tests",
+        "updated_dsc_component_state_scope_class",
+        "is_model_registry_oauth",
+    ],
 )
 class TestModelRegistryCreationNegative:
     def test_registering_model_negative(

@@ -15,20 +15,34 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(
-    "updated_dsc_component_state_scope_class",
+    "updated_dsc_component_state_scope_class, is_model_registry_oauth",
     [
-        {
-            "component_patch": {
-                DscComponents.MODELREGISTRY: {
-                    "managementState": DscComponents.ManagementState.MANAGED,
-                    "registriesNamespace": py_config["model_registry_namespace"],
+        pytest.param(
+            {
+                "component_patch": {
+                    DscComponents.MODELREGISTRY: {
+                        "managementState": DscComponents.ManagementState.MANAGED,
+                        "registriesNamespace": py_config["model_registry_namespace"],
+                    }
                 }
-            }
-        }
+            },
+            {"use_oauth_proxy": True},
+        ),
+        pytest.param(
+            {
+                "component_patch": {
+                    DscComponents.MODELREGISTRY: {
+                        "managementState": DscComponents.ManagementState.MANAGED,
+                        "registriesNamespace": py_config["model_registry_namespace"],
+                    }
+                }
+            },
+            {"use_oauth_proxy": False},
+        ),
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("updated_dsc_component_state_scope_class")
+@pytest.mark.usefixtures("updated_dsc_component_state_scope_class", "is_model_registry_oauth")
 @pytest.mark.downstream_only
 class TestModelRegistryImages:
     """

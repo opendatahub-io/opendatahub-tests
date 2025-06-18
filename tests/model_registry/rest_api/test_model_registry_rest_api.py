@@ -25,7 +25,7 @@ MODEL_ARTIFACT_DESCRIPTION = {"description": "updated artifact description"}
 
 
 @pytest.mark.parametrize(
-    "updated_dsc_component_state_scope_class, registered_model_rest_api",
+    "updated_dsc_component_state_scope_class, is_model_registry_oauth, registered_model_rest_api",
     [
         pytest.param(
             {
@@ -36,12 +36,27 @@ MODEL_ARTIFACT_DESCRIPTION = {"description": "updated artifact description"}
                     },
                 },
             },
+            {"use_oauth_proxy": False},
+            MODEL_REGISTER_DATA,
+        ),
+        pytest.param(
+            {
+                "component_patch": {
+                    DscComponents.MODELREGISTRY: {
+                        "managementState": DscComponents.ManagementState.MANAGED,
+                        "registriesNamespace": py_config["model_registry_namespace"],
+                    },
+                },
+            },
+            {"use_oauth_proxy": True},
             MODEL_REGISTER_DATA,
         ),
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("updated_dsc_component_state_scope_class", "registered_model_rest_api")
+@pytest.mark.usefixtures(
+    "updated_dsc_component_state_scope_class", "is_model_registry_oauth", "registered_model_rest_api"
+)
 class TestModelRegistryCreationRest:
     """
     Tests the creation of a model registry. If the component is set to 'Removed' it will be switched to 'Managed'

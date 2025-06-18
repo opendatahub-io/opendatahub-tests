@@ -16,7 +16,7 @@ CUSTOM_NAMESPACE = "model-registry-custom-ns"
 
 
 @pytest.mark.parametrize(
-    "updated_dsc_component_state_scope_class, registered_model",
+    "updated_dsc_component_state_scope_class, is_model_registry_oauth, registered_model",
     [
         pytest.param(
             {
@@ -27,6 +27,19 @@ CUSTOM_NAMESPACE = "model-registry-custom-ns"
                     },
                 }
             },
+            {"use_oauth_proxy": False},
+            MODEL_DICT,
+        ),
+        pytest.param(
+            {
+                "component_patch": {
+                    DscComponents.MODELREGISTRY: {
+                        "managementState": DscComponents.ManagementState.MANAGED,
+                        "registriesNamespace": CUSTOM_NAMESPACE,
+                    },
+                }
+            },
+            {"use_oauth_proxy": True},
             MODEL_DICT,
         ),
         pytest.param(
@@ -38,12 +51,25 @@ CUSTOM_NAMESPACE = "model-registry-custom-ns"
                     },
                 },
             },
+            {"use_oauth_proxy": False},
+            MODEL_DICT,
+        ),
+        pytest.param(
+            {
+                "component_patch": {
+                    DscComponents.MODELREGISTRY: {
+                        "managementState": DscComponents.ManagementState.MANAGED,
+                        "registriesNamespace": py_config["model_registry_namespace"],
+                    },
+                },
+            },
+            {"use_oauth_proxy": True},
             MODEL_DICT,
         ),
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("updated_dsc_component_state_scope_class", "registered_model")
+@pytest.mark.usefixtures("updated_dsc_component_state_scope_class", "is_model_registry_oauth", "registered_model")
 class TestModelRegistryCreation:
     """
     Tests the creation of a model registry. If the component is set to 'Removed' it will be switched to 'Managed'

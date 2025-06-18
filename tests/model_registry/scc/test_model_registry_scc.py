@@ -51,7 +51,7 @@ def model_registry_resource(
 
 
 @pytest.mark.parametrize(
-    "updated_dsc_component_state_scope_class, registered_model",
+    "updated_dsc_component_state_scope_class, is_model_registry_oauth, registered_model",
     [
         pytest.param(
             {
@@ -62,12 +62,25 @@ def model_registry_resource(
                     },
                 },
             },
+            {"use_oauth_proxy": True},
+            MODEL_DICT,
+        ),
+        pytest.param(
+            {
+                "component_patch": {
+                    DscComponents.MODELREGISTRY: {
+                        "managementState": DscComponents.ManagementState.MANAGED,
+                        "registriesNamespace": py_config["model_registry_namespace"],
+                    },
+                },
+            },
+            {"use_oauth_proxy": False},
             MODEL_DICT,
         ),
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("updated_dsc_component_state_scope_class", "registered_model")
+@pytest.mark.usefixtures("updated_dsc_component_state_scope_class", "is_model_registry_oauth", "registered_model")
 class TestModelRegistrySecurityContextValidation:
     @pytest.mark.parametrize(
         "model_registry_resource",
