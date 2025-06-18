@@ -17,7 +17,7 @@ from timeout_sampler import TimeoutSampler
 from tests.model_serving.model_server.multi_node.utils import (
     delete_multi_node_pod_by_role,
 )
-from utilities.constants import KServeDeploymentType, Labels, Protocols, Timeout
+from utilities.constants import KServeDeploymentType, Labels, Protocols, Timeout, ModelCarImage
 from utilities.general import download_model_data
 from utilities.inference_utils import create_isvc
 from utilities.infra import (
@@ -142,7 +142,7 @@ def multi_node_oci_inference_service(
         name=request.param["name"],
         namespace=multi_node_serving_runtime.namespace,
         runtime=multi_node_serving_runtime.name,
-        storage_uri="oci://registry.redhat.io/rhelai1/modelcar-granite-8b-code-instruct:1.4",
+        storage_uri=ModelCarImage.GRANITE_8B_CODE_INSTRUCT,
         model_format=multi_node_serving_runtime.instance.spec.supportedModelFormats[0].name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         autoscaler_mode="external",
