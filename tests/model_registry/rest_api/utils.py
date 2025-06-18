@@ -1,7 +1,6 @@
 from typing import Any, Dict
 import requests
 import json
-import subprocess
 import os
 
 from simple_logger.logger import get_logger
@@ -11,10 +10,7 @@ from tests.model_registry.exceptions import (
     ModelRegistryResourceNotUpdated,
 )
 from tests.model_registry.rest_api.constants import MODEL_REGISTRY_BASE_URI
-from ocp_resources.config_map import ConfigMap
-from ocp_resources.secret import Secret
-from kubernetes.dynamic import DynamicClient
-import base64
+from pyhelper_utils.shell import run_command
 from utilities.exceptions import ResourceValueMismatch
 
 LOGGER = get_logger(name=__name__)
@@ -105,38 +101,6 @@ def register_model_rest_api(
     return {"register_model": register_model, "model_version": model_version, "model_artifact": model_artifact}
 
 
-def create_ca_bundle_file(
-    admin_client: DynamicClient,
-    namespace: str,
-    ca_bundle_path: str,
-    cert_name: str,
-) -> None:
-    """
-    Creates a CA bundle file by fetching the CA bundle from a ConfigMap and appending the router CA from a Secret.
-    Args:
-        admin_client: The admin client to get the CA bundle from a ConfigMap and append the router CA from a Secret.
-        namespace: The namespace of the ConfigMap and Secret.
-        ca_bundle_path: The path to the CA bundle file.
-        cert_name: The name of the certificate in the ConfigMap.
-    """
-    cm = ConfigMap(client=admin_client, name="odh-trusted-ca-bundle", namespace=namespace, ensure_exists=True)
-    ca_bundle_content = cm.instance.data.get(cert_name)
-    with open(ca_bundle_path, "w", encoding="utf-8") as f:
-        f.write(ca_bundle_content)
-
-    router_secret = Secret(
-        client=admin_client, name="router-ca", namespace="openshift-ingress-operator", ensure_exists=True
-    )
-    router_ca_b64 = router_secret.instance.data.get("tls.crt")
-    if router_ca_b64:
-        router_ca_content = base64.b64decode(router_ca_b64).decode("utf-8")
-        with open(ca_bundle_path, "r", encoding="utf-8") as bundle:
-            bundle_content = bundle.read()
-        if router_ca_content not in bundle_content:
-            with open(ca_bundle_path, "a", encoding="utf-8") as bundle_append:
-                bundle_append.write("\n" + router_ca_content)
-
-
 def validate_resource_attributes(
     expected_params: dict[str, Any], actual_resource_data: dict[str, Any], resource_name: str
 ) -> None:
@@ -169,16 +133,17 @@ def generate_ca_and_server_cert(
 ) -> Dict[str, str]:
     """
     Generates a CA and server certificate/key for the MySQL server.
+
     Args:
         tmp_dir: The temporary directory to store the certificates.
         db_service_hostname: The hostname of the MySQL server.
         ca_name: The name of the CA.
         server_cn: The common name of the server.
+
     Returns:
         Dict[str, str]: A dictionary containing the paths to the CA certificate, server key, and server certificate.
     """
 
-    # Paths for certs
     ca_key = os.path.join(tmp_dir, "ca.key")
     ca_crt = os.path.join(tmp_dir, "ca.crt")
     server_key = os.path.join(tmp_dir, "server-key.pem")
@@ -187,10 +152,36 @@ def generate_ca_and_server_cert(
 
     LOGGER.info(f"Generating CA and server cert in {tmp_dir} for DB hostname {db_service_hostname}")
 
-    # --- 1. Create CA private key and certificate ---
-    subprocess.run(args=["openssl", "genrsa", "-out", ca_key, "2048"], check=True)
-    subprocess.run(
-        args=[
+    create_ca_key_and_cert_with_openssl(ca_key=ca_key, ca_crt=ca_crt, ca_name=ca_name)
+    generate_db_server_key_and_csr_with_openssl(server_key=server_key, server_csr=server_csr, server_cn=server_cn)
+    sign_db_server_cert_with_ca_with_openssl(server_crt=server_crt, server_csr=server_csr, ca_crt=ca_crt, ca_key=ca_key)
+
+    return {
+        "ca_crt": ca_crt,
+        "server_key": server_key,
+        "server_crt": server_crt,
+    }
+
+
+def create_ca_key_and_cert_with_openssl(
+    ca_key: str,
+    ca_crt: str,
+    ca_name: str,
+) -> None:
+    """
+    Creates a CA private key and certificate.
+
+    Args:
+        ca_key: The path to the CA private key.
+        ca_crt: The path to the CA certificate.
+        ca_name: The name of the CA.
+
+    Returns:
+        None
+    """
+    run_command(command=["openssl", "genrsa", "-out", ca_key, "2048"], check=True)
+    run_command(
+        command=[
             "openssl",
             "req",
             "-x509",
@@ -209,16 +200,50 @@ def generate_ca_and_server_cert(
         check=True,
     )
 
-    # --- 2. Generate DB server private key and CSR ---
-    subprocess.run(args=["openssl", "genrsa", "-out", server_key, "2048"], check=True)
 
-    subprocess.run(
-        args=["openssl", "req", "-new", "-key", server_key, "-out", server_csr, "-subj", f"/CN={server_cn}"], check=True
+def generate_db_server_key_and_csr_with_openssl(
+    server_key: str,
+    server_csr: str,
+    server_cn: str,
+) -> None:
+    """
+    Generates a DB server private key and CSR.
+
+    Args:
+        server_key: The path to the DB server private key.
+        server_csr: The path to the DB server CSR.
+        server_cn: The common name of the DB server.
+
+    Returns:
+        None
+    """
+    run_command(command=["openssl", "genrsa", "-out", server_key, "2048"], check=True)
+    run_command(
+        command=["openssl", "req", "-new", "-key", server_key, "-out", server_csr, "-subj", f"/CN={server_cn}"],
+        check=True,
     )
 
-    # --- 3. Sign DB server cert with CA ---
-    subprocess.run(
-        args=[
+
+def sign_db_server_cert_with_ca_with_openssl(
+    server_crt: str,
+    server_csr: str,
+    ca_crt: str,
+    ca_key: str,
+) -> None:
+    """
+    Signs a DB server certificate with a CA.
+
+    Args:
+        server_crt: The path to the DB server certificate.
+        server_csr: The path to the DB server CSR.
+        ca_crt: The path to the CA certificate.
+        ca_key: The path to the CA private key.
+
+    Returns:
+        None
+    """
+    run_command(
+        command=[
             "openssl",
             "x509",
             "-req",
@@ -237,9 +262,3 @@ def generate_ca_and_server_cert(
         ],
         check=True,
     )
-
-    return {
-        "ca_crt": ca_crt,
-        "server_key": server_key,
-        "server_crt": server_crt,
-    }

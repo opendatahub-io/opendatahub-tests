@@ -98,7 +98,9 @@ class TestModelRegistryWithSecureDB:
         ],
         indirect=True,
     )
-    @pytest.mark.usefixtures("deploy_secure_mysql_and_mr", "test_ca_configmap", "patch_mysql_deployment_with_ssl_ca")
+    @pytest.mark.usefixtures(
+        "deploy_secure_mysql_and_mr", "ca_configmap_for_test", "patch_mysql_deployment_with_ssl_ca"
+    )
     @pytest.mark.smoke
     def test_register_model_with_valid_ca(
         self: Self,

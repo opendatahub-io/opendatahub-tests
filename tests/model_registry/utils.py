@@ -4,6 +4,7 @@ from typing import Any
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.pod import Pod
 from ocp_resources.service import Service
+from ocp_resources.namespace import Namespace
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from simple_logger.logger import get_logger
@@ -68,7 +69,9 @@ def get_model_registry_endpoint(
         client=admin_client, name=model_registry_name, namespace=model_registry_namespace
     )
     namespace_instance = Namespace(client=admin_client, name=model_registry_namespace)
-    svc = get_mr_service_by_label(client=admin_client, ns=namespace_instance, mr_instance=model_registry_instance)
+    svc = get_mr_service_by_label(
+        client=admin_client, namespace_name=namespace_instance.name, mr_instance=model_registry_instance
+    )
     return get_endpoint_from_mr_service(svc=svc, protocol=Protocols.REST)
 
 

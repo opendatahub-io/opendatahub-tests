@@ -6,7 +6,6 @@ from tests.model_registry.rest_api.constants import MODEL_REGISTRY_BASE_URI
 from tests.model_registry.rest_api.utils import (
     register_model_rest_api,
     execute_model_registry_patch_command,
-    create_ca_bundle_file,
 )
 from utilities.constants import Protocols
 from ocp_resources.deployment import Deployment
@@ -26,13 +25,12 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.config_map import ConfigMap
 from simple_logger.logger import get_logger
-from ocp_resources.model_registry import ModelRegistry
+from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from pytest_testconfig import config as py_config
 from utilities.exceptions import MissingParameter
 import tempfile
 from tests.model_registry.rest_api.utils import generate_ca_and_server_cert
-import base64
-
+from utilities.certificates_utils import create_k8s_secret, create_ca_bundle_with_router_cert
 
 LOGGER = get_logger(name=__name__)
 
@@ -174,7 +172,6 @@ def deploy_secure_mysql_and_mr(
         label=MODEL_REGISTRY_STANDARD_LABELS,
         grpc={},
         rest={},
-        istio={},
         oauth_proxy=OAUTH_PROXY_CONFIG_DICT,
         mysql=model_registry_mysql_config,
         wait_for_resource=True,
@@ -194,8 +191,8 @@ def local_ca_bundle(request: pytest.FixtureRequest, admin_client: DynamicClient)
         Generator[str, Any, Any]: A generator that yields the CA bundle path.
     """
     ca_bundle_path = getattr(request, "param", {}).get("cert_name", "ca-bundle.crt")
-    create_ca_bundle_file(
-        admin_client=admin_client,
+    create_ca_bundle_with_router_cert(
+        client=admin_client,
         namespace=py_config["model_registry_namespace"],
         ca_bundle_path=ca_bundle_path,
         cert_name=ca_bundle_path,
@@ -206,10 +203,10 @@ def local_ca_bundle(request: pytest.FixtureRequest, admin_client: DynamicClient)
 
 
 @pytest.fixture(scope="class")
-def test_ca_configmap(
+def ca_configmap_for_test(
     admin_client: DynamicClient,
     model_registry_namespace: str,
-    mysql_ssl_artifacts_and_secrets: dict[str, Any],
+    mysql_ssl_artifact_paths: dict[str, Any],
 ) -> Generator[ConfigMap, None, None]:
     """
     Creates a test-specific ConfigMap for the CA bundle, using the generated CA cert.
@@ -217,12 +214,12 @@ def test_ca_configmap(
     Args:
         admin_client: The admin client to create the ConfigMap
         model_registry_namespace: The namespace of the model registry
-        mysql_ssl_artifacts_and_secrets: The artifacts and secrets for the MySQL SSL connection
+        mysql_ssl_secrets: The artifacts and secrets for the MySQL SSL connection
 
     Returns:
         Generator[ConfigMap, None, None]: A generator that yields the ConfigMap instance.
     """
-    with open(mysql_ssl_artifacts_and_secrets["ca_crt"], "r") as f:
+    with open(mysql_ssl_artifact_paths["ca_crt"], "r") as f:
         ca_content = f.read()
     if not ca_content:
         LOGGER.info("CA content is empty")
@@ -243,8 +240,8 @@ def patch_mysql_deployment_with_ssl_ca(
     admin_client: DynamicClient,
     model_registry_namespace: str,
     model_registry_db_deployment: Deployment,
-    mysql_ssl_artifacts_and_secrets: dict[str, Any],
-    test_ca_configmap: ConfigMap,
+    mysql_ssl_secrets: dict[str, Any],
+    ca_configmap_for_test: ConfigMap,
 ) -> Generator[Deployment, Any, Any]:
     """
     Patch the MySQL deployment to use the test CA bundle (mysql-ca-configmap),
@@ -300,48 +297,64 @@ def patch_mysql_deployment_with_ssl_ca(
 
 
 @pytest.fixture(scope="class")
-def mysql_ssl_artifacts_and_secrets(
-    admin_client: DynamicClient,
-    model_registry_namespace: str,
-) -> Generator[dict[str, Any], None, None]:
+def mysql_ssl_artifact_paths() -> Generator[dict[str, str], None, None]:
     """
-    Generates MySQL SSL artifacts and creates corresponding Kubernetes secrets for use in tests.
-    This fixture provides file paths and secret objects for the CA certificate, server certificate, and server key.
+    Generates MySQL SSL certificate and key files in a temporary directory
+    and provides their paths.
 
     Args:
-        admin_client: The Kubernetes dynamic client used to create secrets.
-        model_registry_namespace: The namespace in which to create the secrets.
+        admin_client: The admin client to create the ConfigMap
+        model_registry_namespace: The namespace of the model registry
+        mysql_ssl_artifacts_and_secrets: The artifacts and secrets for the MySQL SSL connection
 
-    Yields:
-        dict: A dictionary containing file paths and secret objects for the CA, server certificate, and server key.
+    Returns:
+        Generator[dict[str, str], None, None]: A generator that yields the CA certificate and key file paths.
     """
     with tempfile.TemporaryDirectory() as tmp_dir:
-        paths = generate_ca_and_server_cert(tmp_dir=tmp_dir)
+        yield generate_ca_and_server_cert(tmp_dir=tmp_dir)
 
-        def create_secret(name: str, file_path: str, key_name: str) -> Secret:
-            with open(file_path, "rb") as f:
-                file_content_raw_bytes = f.read()
-                file_content_b64_string = base64.b64encode(file_content_raw_bytes).decode("utf-8")
-                data = {key_name: file_content_b64_string}
-            secret = Secret(
-                client=admin_client,
-                name=name,
-                namespace=model_registry_namespace,
-                data_dict=data,
-                wait_for_resource=True,
-            )
-            secret.create()
-            return secret
 
-        ca_secret = create_secret(name="mysql-ca", file_path=paths["ca_crt"], key_name="ca.crt")
-        server_cert_secret = create_secret(name="mysql-server-cert", file_path=paths["server_crt"], key_name="tls.crt")
-        server_key_secret = create_secret(name="mysql-server-key", file_path=paths["server_key"], key_name="tls.key")
+@pytest.fixture(scope="class")
+def mysql_ssl_secrets(
+    admin_client: DynamicClient,
+    model_registry_namespace: str,
+    mysql_ssl_artifact_paths: dict[str, str],
+) -> Generator[dict[str, Secret], None, None]:
+    """
+    Creates Kubernetes secrets for MySQL SSL artifacts.
 
-        yield {
-            "ca_crt": paths["ca_crt"],
-            "server_crt": paths["server_crt"],
-            "server_key": paths["server_key"],
-            "ca_secret": ca_secret,
-            "server_cert_secret": server_cert_secret,
-            "server_key_secret": server_key_secret,
-        }
+    Args:
+        admin_client: The admin client to create the ConfigMap
+        model_registry_namespace: The namespace of the model registry
+        mysql_ssl_artifacts_and_secrets: The artifacts and secrets for the MySQL SSL connection
+
+    Returns:
+        Generator[dict[str, str], None, None]: A generator that yields the CA certificate and key file paths.
+    """
+    ca_secret = create_k8s_secret(
+        client=admin_client,
+        namespace=model_registry_namespace,
+        name="mysql-ca",
+        file_path=mysql_ssl_artifact_paths["ca_crt"],
+        key_name="ca.crt",
+    )
+    server_cert_secret = create_k8s_secret(
+        client=admin_client,
+        namespace=model_registry_namespace,
+        name="mysql-server-cert",
+        file_path=mysql_ssl_artifact_paths["server_crt"],
+        key_name="tls.crt",
+    )
+    server_key_secret = create_k8s_secret(
+        client=admin_client,
+        namespace=model_registry_namespace,
+        name="mysql-server-key",
+        file_path=mysql_ssl_artifact_paths["server_key"],
+        key_name="tls.key",
+    )
+
+    yield {
+        "ca_secret": ca_secret,
+        "server_cert_secret": server_cert_secret,
+        "server_key_secret": server_key_secret,
+    }
