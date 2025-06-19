@@ -7,8 +7,6 @@ from typing import Any, Callable, Generator
 import pytest
 import shortuuid
 import yaml
-from _pytest._py.path import LocalPath
-from _pytest.legacypath import TempdirFactory
 from _pytest.tmpdir import TempPathFactory
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.dsc_initialization import DSCInitialization
@@ -34,7 +32,6 @@ from utilities.infra import (
     create_ns,
     login_with_user_password,
     get_openshift_token,
-    download_oc_console_cli,
 )
 from utilities.constants import (
     AcceleratorType,
@@ -529,38 +526,38 @@ def related_images_refs(admin_client: DynamicClient) -> set[str]:
     return related_images_refs
 
 
-@pytest.fixture(scope="session")
-def os_path_environment() -> str:
-    return os.environ["PATH"]
+# @pytest.fixture(scope="session")
+# def os_path_environment() -> str:
+#     return os.environ["PATH"]
 
 
-@pytest.fixture(scope="session")
-def bin_directory(tmpdir_factory: TempdirFactory) -> LocalPath:
-    return tmpdir_factory.mktemp(basename="bin")
+# @pytest.fixture(scope="session")
+# def bin_directory(tmpdir_factory: TempdirFactory) -> LocalPath:
+#     return tmpdir_factory.mktemp(basename="bin")
 
 
-@pytest.fixture(scope="session")
-def bin_directory_to_os_path(os_path_environment: str, bin_directory: LocalPath, oc_binary_path: str) -> None:
-    LOGGER.info(f"OC binary path: {oc_binary_path}")
-    LOGGER.info(f"Adding {bin_directory} to $PATH")
-    os.environ["PATH"] = f"{bin_directory}:{os_path_environment}"
+# @pytest.fixture(scope="session")
+# def bin_directory_to_os_path(os_path_environment: str, bin_directory: LocalPath, oc_binary_path: str) -> None:
+#     LOGGER.info(f"OC binary path: {oc_binary_path}")
+#     LOGGER.info(f"Adding {bin_directory} to $PATH")
+#     os.environ["PATH"] = f"{bin_directory}:{os_path_environment}"
 
 
-@pytest.fixture(scope="session")
-def oc_binary_path(bin_directory: LocalPath) -> str:
-    installed_oc_binary_path = os.getenv("OC_BINARY_PATH")
-    if installed_oc_binary_path:
-        LOGGER.warning(f"Using previously installed: {installed_oc_binary_path}")
-        return installed_oc_binary_path
+# @pytest.fixture(scope="session")
+# def oc_binary_path(bin_directory: LocalPath) -> str:
+#     installed_oc_binary_path = os.getenv("OC_BINARY_PATH")
+#     if installed_oc_binary_path:
+#         LOGGER.warning(f"Using previously installed: {installed_oc_binary_path}")
+#         return installed_oc_binary_path
 
-    return download_oc_console_cli(tmpdir=bin_directory)
+#     return download_oc_console_cli(tmpdir=bin_directory)
 
 
-@pytest.fixture(scope="session", autouse=True)
-@pytest.mark.early(order=0)
-def autouse_fixtures(
-    bin_directory_to_os_path: None,
-    cluster_sanity_scope_session: None,
-) -> None:
-    """Fixture to control the order of execution of some of the fixtures"""
-    return
+# @pytest.fixture(scope="session", autouse=True)
+# @pytest.mark.early(order=0)
+# def autouse_fixtures(
+#     bin_directory_to_os_path: None,
+#     cluster_sanity_scope_session: None,
+# ) -> None:
+#     """Fixture to control the order of execution of some of the fixtures"""
+#     return
