@@ -3,15 +3,11 @@ from ocp_resources.resource import NamespacedResource
 from kubernetes.dynamic import DynamicClient
 from typing import Any, Dict, Generator
 
+
 class LlamaStackDistribution(NamespacedResource):
     api_group: str = "llamastack.io"
 
-    def __init__(
-            self,
-            replicas: int,
-            server: Dict[str, Any],
-            **kwargs: Any
-    ):
+    def __init__(self, replicas: int, server: Dict[str, Any], **kwargs: Any):
         """
         Args:
             kwargs: Keyword arguments to pass to the LlamaStackDistribution constructor
@@ -29,6 +25,7 @@ class LlamaStackDistribution(NamespacedResource):
             _spec = self.res["spec"]
             _spec["replicas"] = self.replicas
             _spec["server"] = self.server
+
 
 @contextmanager
 def create_llama_stack_distribution(

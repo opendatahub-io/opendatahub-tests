@@ -14,6 +14,7 @@ from utilities.rag_utils import create_llama_stack_distribution, LlamaStackDistr
 
 LOGGER = get_logger(name=__name__)
 
+
 def llama_stack_server() -> Dict[str, Any]:
     rag_vllm_url = os.getenv("RAG_VLLM_URL")
     rag_vllm_model = os.getenv("RAG_VLLM_MODEL")
@@ -26,23 +27,18 @@ def llama_stack_server() -> Dict[str, Any]:
                 {"name": "VLLM_TLS_VERIFY", "value": "false"},
                 {"name": "VLLM_API_TOKEN", "value": rag_vllm_token},
                 {"name": "VLLM_URL", "value": rag_vllm_url},
-                {"name": "MILVUS_DB_PATH", "value": '/.llama/distributions/remote-vllm/milvus.db'}
+                {"name": "MILVUS_DB_PATH", "value": "/.llama/distributions/remote-vllm/milvus.db"},
             ],
             "name": "llama-stack",
-            "port": 8321
+            "port": 8321,
         },
-        "distribution": {
-            "image": 'quay.io/mcampbel/llama-stack:milvus-granite-embedding-125m-english'
-        },
+        "distribution": {"image": "quay.io/mcampbel/llama-stack:milvus-granite-embedding-125m-english"},
         "podOverrides": {
-            "volumeMounts": [
-                {"mountPath": "/root/.llama", "name": "llama-storage"}
-            ],
-            "volumes": [
-                {"emptyDir": {}, "name": "llama-storage"}
-            ]
-        }
+            "volumeMounts": [{"mountPath": "/root/.llama", "name": "llama-storage"}],
+            "volumes": [{"emptyDir": {}, "name": "llama-storage"}],
+        },
     }
+
 
 @pytest.fixture(scope="session")
 def installed_llama_stack_operator(admin_client: DynamicClient) -> Generator[None, Any, Any]:
@@ -52,15 +48,15 @@ def installed_llama_stack_operator(admin_client: DynamicClient) -> Generator[Non
     operator_name = "llama-stack-k8s-operator-controller-manager"
 
     deployment = Deployment(
-            client=admin_client,
-            namespace=operator_ns.name,
-            name=f"{operator_name}",
-        )
+        client=admin_client,
+        namespace=operator_ns.name,
+        name=f"{operator_name}",
+    )
     if not deployment.exists:
         cmd = f"oc apply -f {LLAMA_STACK_OPERATOR_DEPLOY_YAML}"
         LOGGER.debug(f"Executing command: {cmd}")
         run_command(command=shlex.split(cmd), verify_stderr=False, check=True, timeout=30)
-        
+
     deployment.wait_for_replicas()
 
     yield
@@ -68,37 +64,41 @@ def installed_llama_stack_operator(admin_client: DynamicClient) -> Generator[Non
     LOGGER.debug(f"Executing command: {cmd}")
     run_command(command=shlex.split(cmd), verify_stderr=False, check=True, timeout=30)
 
+
 @pytest.fixture(scope="function")
 def rag_test_namespace(unprivileged_client: DynamicClient) -> Generator[Namespace, Any, Any]:
     namespace_name = "rag-test-" + shortuuid.uuid().lower()
     with create_ns(namespace_name, unprivileged_client=unprivileged_client) as ns:
         yield ns
 
+
 @pytest.fixture(scope="function")
 def llama_stack_distribution_from_template(
     installed_llama_stack_operator: Generator[None, Any, Any],
     rag_test_namespace: Namespace,
     request: FixtureRequest,
-    admin_client: DynamicClient) -> Generator[LlamaStackDistribution, Any, Any]:
+    admin_client: DynamicClient,
+) -> Generator[LlamaStackDistribution, Any, Any]:
     with create_llama_stack_distribution(
         client=admin_client,
         name="rag-llama-stack-distribution",
         namespace=rag_test_namespace.name,
         replicas=1,
-        server=llama_stack_server()
+        server=llama_stack_server(),
     ) as llama_stack_distribution:
         yield llama_stack_distribution
+
 
 @pytest.fixture(scope="function")
 def llama_stack_distribution_deployment(
     rag_test_namespace: Namespace,
     admin_client: DynamicClient,
-    llama_stack_distribution_from_template: Generator[LlamaStackDistribution, Any, Any]
+    llama_stack_distribution_from_template: Generator[LlamaStackDistribution, Any, Any],
 ) -> Generator[Deployment, Any, Any]:
     deployment = Deployment(
-            client=admin_client,
-            namespace=rag_test_namespace.name,
-            name="rag-llama-stack-distribution",
-        )
+        client=admin_client,
+        namespace=rag_test_namespace.name,
+        name="rag-llama-stack-distribution",
+    )
     assert deployment.exists
     yield deployment
