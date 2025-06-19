@@ -16,7 +16,7 @@ class ModelFormat:
     OVMS: str = "ovms"
     VLLM: str = "vllm"
     TENSORFLOW: str = "tensorflow"
-    PYTORCH: str = "pytorch"
+    PYTORCH: str = "pytorch - 1"
 
 
 class ModelName:
@@ -71,6 +71,8 @@ class RuntimeTemplates:
     VLLM_CUDA: str = "vllm-cuda-runtime-template"
     VLLM_ROCM: str = "vllm-rocm-runtime-template"
     VLLM_GAUDUI: str = "vllm-gaudi-runtime-template"
+    TRITON_GRPC: str = "triton-grpc-runtime-template"
+    TRITON_REST: str = "triton-rest-runtime-template"
 
 
 class ModelInferenceRuntime:
