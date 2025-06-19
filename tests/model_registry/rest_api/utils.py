@@ -10,6 +10,8 @@ from tests.model_registry.exceptions import (
 )
 from tests.model_registry.rest_api.constants import MODEL_REGISTRY_BASE_URI
 from utilities.exceptions import ResourceValueMismatch
+from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+
 
 LOGGER = get_logger(name=__name__)
 
@@ -113,3 +115,7 @@ def validate_resource_attributes(
     ]:
         raise ResourceValueMismatch(f"Resource: {resource_name} has mismatched data: {errors}")
     LOGGER.info(f"Successfully validated resource: {resource_name}: {actual_resource_data['name']}")
+
+
+class ModelRegistryV1Alpha1(ModelRegistry):
+    api_version = f"{ModelRegistry.ApiGroup.MODELREGISTRY_OPENDATAHUB_IO}/{ModelRegistry.ApiVersion.V1ALPHA1}"
