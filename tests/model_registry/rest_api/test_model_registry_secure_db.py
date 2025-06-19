@@ -1,11 +1,8 @@
 import pytest
 import requests
-from typing import Self
-import copy
+from typing import Self, Any
 from pytest_testconfig import config as py_config
 from tests.model_registry.rest_api.utils import register_model_rest_api, validate_resource_attributes
-from tests.model_registry.rest_api.constants import MODEL_REGISTER_DATA
-from tests.model_registry.utils import generate_random_name
 from tests.model_registry.constants import CA_MOUNT_PATH
 from tests.model_registry.utils import get_mr_service_by_label, get_endpoint_from_mr_service
 from kubernetes.dynamic import DynamicClient
@@ -62,6 +59,7 @@ class TestModelRegistryWithSecureDB:
         model_registry_rest_headers: dict[str, str],
         local_ca_bundle: str,
         deploy_secure_mysql_and_mr: ModelRegistry,
+        model_data_for_test: dict[str, Any],
     ):
         """
         Test that model registration fails with an SSLError when the Model Registry is deployed
@@ -72,15 +70,11 @@ class TestModelRegistryWithSecureDB:
         )
         model_registry_rest_url = get_endpoint_from_mr_service(svc=service, protocol=Protocols.REST)
 
-        model_name = generate_random_name(prefix="model-rest-api")
-        model_data = copy.deepcopy(MODEL_REGISTER_DATA)
-        model_data["register_model_data"]["name"] = model_name
-
         with pytest.raises(requests.exceptions.SSLError) as exc_info:
             register_model_rest_api(
                 model_registry_rest_url=f"https://{model_registry_rest_url}",
                 model_registry_rest_headers=model_registry_rest_headers,
-                data_dict=model_data,
+                data_dict=model_data_for_test,
                 verify=local_ca_bundle,
             )
         assert "SSLError" in str(exc_info.value), (
@@ -109,24 +103,22 @@ class TestModelRegistryWithSecureDB:
         model_registry_rest_headers: dict[str, str],
         local_ca_bundle: str,
         deploy_secure_mysql_and_mr: ModelRegistry,
+        model_data_for_test: dict[str, Any],
     ):
         service = get_mr_service_by_label(
             client=admin_client, namespace_name=model_registry_namespace, mr_instance=deploy_secure_mysql_and_mr
         )
         model_registry_rest_url = get_endpoint_from_mr_service(svc=service, protocol=Protocols.REST)
-        model_name = generate_random_name(prefix="model-rest-api")
-        model_data = copy.deepcopy(MODEL_REGISTER_DATA)
-        model_data["register_model_data"]["name"] = model_name
 
         result = register_model_rest_api(
             model_registry_rest_url=f"https://{model_registry_rest_url}",
             model_registry_rest_headers=model_registry_rest_headers,
-            data_dict=model_data,
+            data_dict=model_data_for_test,
             verify=local_ca_bundle,
         )
         assert result["register_model"].get("id"), "Model registration failed with secure DB connection."
         validate_resource_attributes(
-            expected_params=model_data["register_model_data"],
+            expected_params=model_data_for_test["register_model_data"],
             actual_resource_data=result["register_model"],
             resource_name="register_model",
         )

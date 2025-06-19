@@ -2,7 +2,8 @@ from typing import Any, Generator
 import os
 from kubernetes.dynamic import DynamicClient
 import pytest
-from tests.model_registry.rest_api.constants import MODEL_REGISTRY_BASE_URI
+import copy
+from tests.model_registry.rest_api.constants import MODEL_REGISTRY_BASE_URI, MODEL_REGISTER_DATA
 from tests.model_registry.rest_api.utils import (
     register_model_rest_api,
     execute_model_registry_patch_command,
@@ -11,7 +12,11 @@ from utilities.constants import Protocols
 from ocp_resources.deployment import Deployment
 from tests.model_registry.utils import (
     get_model_registry_deployment_template_dict,
+    apply_mysql_args_and_volume_mounts,
+    add_mysql_certs_volumes_to_deployment,
+    generate_random_name,
 )
+
 from tests.model_registry.constants import (
     DB_RESOURCES_NAME,
     CA_MOUNT_PATH,
@@ -250,51 +255,20 @@ def patch_mysql_deployment_with_ssl_ca(
     """
     CA_CONFIGMAP_NAME = request.param.get("ca_configmap_name", "mysql-ca-configmap")
     CA_MOUNT_PATH = request.param.get("ca_mount_path", "/etc/mysql/ssl")
-    deployment = Deployment(
-        client=admin_client,
-        name=model_registry_db_deployment.name,
-        namespace=model_registry_namespace,
-    )
-    deployment.wait_for_condition(condition="Available", status="True")
-    original_deployment = deployment.instance.to_dict()
-    spec = original_deployment["spec"]["template"]["spec"]
+    deployment = model_registry_db_deployment.instance.to_dict()
+    spec = deployment["spec"]["template"]["spec"]
     my_sql_container = next(container for container in spec["containers"] if container["name"] == "mysql")
     assert my_sql_container is not None, "Mysql container not found"
-    mysql_args = list(my_sql_container.get("args", []))
-    mysql_args.extend([
-        f"--ssl-ca={CA_MOUNT_PATH}/ca/ca-bundle.crt",
-        f"--ssl-cert={CA_MOUNT_PATH}/server_cert/tls.crt",
-        f"--ssl-key={CA_MOUNT_PATH}/server_key/tls.key",
-    ])
 
-    volumes_mounts = list(my_sql_container.get("volumeMounts", []))
-    volumes_mounts.extend([
-        {"name": CA_CONFIGMAP_NAME, "mountPath": f"{CA_MOUNT_PATH}/ca", "readOnly": True},
-        {
-            "name": "mysql-server-cert",
-            "mountPath": f"{CA_MOUNT_PATH}/server_cert",
-            "readOnly": True,
-        },
-        {
-            "name": "mysql-server-key",
-            "mountPath": f"{CA_MOUNT_PATH}/server_key",
-            "readOnly": True,
-        },
-    ])
-
-    my_sql_container["args"] = mysql_args
-    my_sql_container["volumeMounts"] = volumes_mounts
-    volumes = list(spec["volumes"])
-    volumes.extend([
-        {"name": CA_CONFIGMAP_NAME, "configMap": {"name": CA_CONFIGMAP_NAME}},
-        {"name": "mysql-server-cert", "secret": {"secretName": "mysql-server-cert"}},  # pragma: allowlist secret
-        {"name": "mysql-server-key", "secret": {"secretName": "mysql-server-key"}},  # pragma: allowlist secret
-    ])
+    my_sql_container = apply_mysql_args_and_volume_mounts(
+        my_sql_container=my_sql_container, ca_configmap_name=CA_CONFIGMAP_NAME, ca_mount_path=CA_MOUNT_PATH
+    )
+    volumes = add_mysql_certs_volumes_to_deployment(spec=spec, ca_configmap_name=CA_CONFIGMAP_NAME)
 
     patch = {"spec": {"template": {"spec": {"volumes": volumes, "containers": [my_sql_container]}}}}
-    with ResourceEditor(patches={deployment: patch}):
-        deployment.wait_for_condition(condition="Available", status="True")
-        yield deployment
+    with ResourceEditor(patches={model_registry_db_deployment: patch}):
+        model_registry_db_deployment.wait_for_condition(condition="Available", status="True")
+        yield model_registry_db_deployment
 
 
 @pytest.fixture(scope="class")
@@ -359,3 +333,17 @@ def mysql_ssl_secrets(
         "server_cert_secret": server_cert_secret,
         "server_key_secret": server_key_secret,
     }
+
+
+@pytest.fixture(scope="function")
+def model_data_for_test() -> Generator[dict[str, Any], None, None]:
+    """
+    Generates a model data for the test.
+
+    Returns:
+        dict[str, Any]: The model data for the test
+    """
+    model_name = generate_random_name(prefix="model-rest-api")
+    model_data = copy.deepcopy(MODEL_REGISTER_DATA)
+    model_data["register_model_data"]["name"] = model_name
+    yield model_data

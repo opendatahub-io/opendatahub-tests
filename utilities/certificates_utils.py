@@ -149,7 +149,7 @@ def create_ca_bundle_with_router_cert(
     Creates a CA bundle file by fetching the CA bundle from a ConfigMap and appending the router CA from a Secret.
 
     Args:
-        client: The admin client to get the CA bundle from a ConfigMap and append the router CA from a Secret.
+        client: The client to get the CA bundle from a ConfigMap and append the router CA from a Secret.
         namespace: The namespace of the ConfigMap and Secret.
         ca_bundle_path: The path to the CA bundle file.
         cert_name: The name of the certificate in the ConfigMap.
