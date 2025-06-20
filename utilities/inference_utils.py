@@ -688,7 +688,7 @@ def create_isvc(
         _annotations["serving.kserve.io/autoscalerClass"] = autoscaler_mode
 
     if stop_resume:
-        _annotations["serving.kserve.io/stop"] = stop_resume
+        _annotations[Annotations.KserveIo.FORCE_STOP_RUNTIME] = stop_resume
 
     if multi_node_worker_spec is not None:
         predictor_dict["workerSpec"] = multi_node_worker_spec
