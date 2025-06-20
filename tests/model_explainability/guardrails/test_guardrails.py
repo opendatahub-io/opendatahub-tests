@@ -1,5 +1,4 @@
 import http
-
 import pytest
 import requests
 from simple_logger.logger import get_logger
@@ -11,6 +10,7 @@ from tests.model_explainability.guardrails.utils import (
     verify_builtin_detector_unsuitable_output_response,
     get_auth_headers,
     get_chat_payload,
+    get_chat_detections_payload,
 )
 from tests.model_explainability.utils import validate_tai_component_images
 from utilities.constants import Timeout, MinIo
@@ -23,12 +23,10 @@ PII_ENDPOINT: str = "/pii"
 
 
 @pytest.mark.parametrize(
-    "model_namespace, minio_pod, minio_data_connection",
+    "model_namespace",
     [
         pytest.param(
             {"name": "test-guardrails-image"},
-            MinIo.PodConfig.QWEN_MINIO_CONFIG,
-            {"bucket": "llms"},
         )
     ],
     indirect=True,
@@ -45,7 +43,7 @@ def test_validate_guardrails_orchestrator_images(guardrails_orchestrator_pod, tr
     "model_namespace, minio_pod, minio_data_connection",
     [
         pytest.param(
-            {"name": "test-guardrails"},
+            {"name": "test-guardrails-builtin"},
             MinIo.PodConfig.QWEN_MINIO_CONFIG,
             {"bucket": "llms"},
         )
@@ -68,7 +66,11 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
          query directly to the model without performing any detection.
     """
 
-    def test_guardrails_health_endpoint(self, qwen_isvc, guardrails_orchestrator_health_route):
+    def test_guardrails_health_endpoint(
+        self,
+        qwen_isvc,
+        guardrails_orchestrator_health_route,
+    ):
         # It takes a bit for the endpoint to come online, so we retry for a brief period of time
         @retry(wait_timeout=Timeout.TIMEOUT_1MIN, sleep=1)
         def check_health_endpoint():
@@ -90,7 +92,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         assert response_data["services"]["regex"]["status"] == healthy_status
 
     def test_guardrails_builtin_detectors_unsuitable_input(
-        self, current_client_token, openshift_ca_bundle_file, guardrails_orchestrator_route
+        self, current_client_token, openshift_ca_bundle_file, qwen_isvc, guardrails_orchestrator_route
     ):
         response = requests.post(
             url=f"https://{guardrails_orchestrator_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
@@ -108,7 +110,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         )
 
     def test_guardrails_builtin_detectors_unsuitable_output(
-        self, current_client_token, openshift_ca_bundle_file, guardrails_orchestrator_route
+        self, current_client_token, openshift_ca_bundle_file, qwen_isvc, guardrails_orchestrator_route
     ):
         response = requests.post(
             url=f"https://{guardrails_orchestrator_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
@@ -140,6 +142,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         self,
         current_client_token,
         openshift_ca_bundle_file,
+        qwen_isvc,
         guardrails_orchestrator_route,
         message,
         url_path,
@@ -152,3 +155,41 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         )
 
         verify_negative_detection_response(response=response)
+
+
+@pytest.mark.parametrize(
+    "model_namespace, minio_pod, minio_data_connection",
+    [
+        pytest.param(
+            {"name": "test-guardrails-builtin"},
+            MinIo.PodConfig.QWEN_MINIO_CONFIG,
+            {"bucket": "llms"},
+        )
+    ],
+    indirect=True,
+)
+@pytest.mark.rawdeployment
+@pytest.mark.smoke
+class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
+    """
+    TODO
+    """
+
+    def test_guardrails_hf_detector(
+        self,
+        current_client_token,
+        minio_pod,
+        minio_data_connection,
+        qwen_isvc,
+        guardrails_orchestrator_with_hf_detectors_route,
+        prompt_injection_detector_route,
+        openshift_ca_bundle_file,
+    ):
+        response = requests.post(
+            url=f"https://{guardrails_orchestrator_with_hf_detectors_route.host}/api/v2/chat/completions-detection",
+            headers=get_auth_headers(token=current_client_token),
+            json=get_chat_detections_payload(content="Hello"),
+            verify=openshift_ca_bundle_file,
+        )
+
+        LOGGER.info(f"Guardrails response: {response.text}")
