@@ -463,17 +463,6 @@ def model_registry_client(
     Returns:
         ModelRegistryClient: A client for the model registry instance
     """
-    # if pytestconfig.option.post_upgrade:
-    #     mr_endpoint = get_mr_endpoint(client=admin_client, dsc_resource=dsc_resource)
-    #     server, port = mr_endpoint.split(":")
-    #     return ModelRegistryClient(
-    #         server_address=f"{Protocols.HTTPS}://{server}",
-    #         port=int(port),
-    #         author="opendatahub-test",
-    #         user_token=current_client_token,
-    #         is_secure=False,
-    #     )
-    # else:
     server, port = model_registry_instance_rest_endpoint.split(":")
     return ModelRegistryClient(
         server_address=f"{Protocols.HTTPS}://{server}",
