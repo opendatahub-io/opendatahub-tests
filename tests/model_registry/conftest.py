@@ -46,8 +46,6 @@ from tests.model_registry.utils import (
 from utilities.constants import Protocols, DscComponents
 from model_registry import ModelRegistry as ModelRegistryClient
 from semver import Version
-from utilities.infra import get_product_version
-from utilities.operator_utils import get_cluster_service_version, validate_operator_subscription_channel
 from utilities.general import wait_for_pods_by_labels
 
 LOGGER = get_logger(name=__name__)
@@ -372,47 +370,6 @@ def model_registry_instance_pod(admin_client: DynamicClient) -> Generator[Pod, A
         label_selector=f"app={MR_INSTANCE_NAME}",
         expected_num_pods=1,
     )[0]
-
-
-@pytest.fixture(scope="package", autouse=True)
-def validate_authorino_operator_version_channel(admin_client: DynamicClient) -> None:
-    """Check if Authorino operator is installed with required version and channel.
-
-    This fixture is automatically used for all tests in the model_registry directory.
-    It verifies that:
-    1. For OpenShift AI: The product version is >= 2.20
-    2. The Authorino operator is installed
-    3. The Authorino operator is using the required channel (stable)
-    4. The Authorino operator is at least version 1.2.1
-    """
-    distribution = py_config["distribution"]
-    if distribution == "upstream":
-        # TODO: figure out minimum version for ODH
-        LOGGER.info(f"Skipping Authorino operator check for {distribution} distribution")
-        return
-    # Only check product version for OpenShift AI
-    if distribution == "downstream":
-        product_version = get_product_version(admin_client=admin_client)
-        if product_version < MIN_MR_VERSION:
-            LOGGER.info(
-                "Skipping Authorino operator check - product version "
-                f"{product_version} is below required {MIN_MR_VERSION}"
-            )
-            return
-        operator_name = "authorino-operator"
-        # Find the CSV for the operator
-        authorino_csv = get_cluster_service_version(
-            client=admin_client, prefix=operator_name, namespace=py_config["applications_namespace"]
-        )
-        current_authorino_version = authorino_csv.instance.spec.version
-        if Version.parse(version="1.2.1") > Version.parse(version=current_authorino_version):
-            pytest.exit(
-                f"Authorino operator is not at least version 1.2.1. Current version: {current_authorino_version}"
-            )
-
-        validate_operator_subscription_channel(
-            client=admin_client, namespace="openshift-operators", operator_name=operator_name, channel_name="stable"
-        )
 
 
 @pytest.fixture(scope="class")
