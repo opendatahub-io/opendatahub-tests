@@ -713,7 +713,8 @@ def create_isvc(
     ) as inference_service:
         timeout_watch = TimeoutWatch(timeout=timeout)
 
-        if wait_for_predictor_pods:
+        # Skip waiting for pods if stop_resume is "True" since no pods should be created
+        if wait_for_predictor_pods and stop_resume != "True":
             verify_no_failed_pods(
                 client=client,
                 isvc=inference_service,
@@ -727,7 +728,7 @@ def create_isvc(
                 timeout=timeout_watch.remaining_time(),
             )
 
-        if wait:
+        if wait and stop_resume != "True":
             # Modelmesh 2nd server in the ns will fail to be Ready; isvc needs to be re-applied
             if deployment_mode == KServeDeploymentType.MODEL_MESH:
                 for isvc in InferenceService.get(dyn_client=client, namespace=namespace):

@@ -374,20 +374,24 @@ def ovms_raw_inference_service(
     ovms_kserve_serving_runtime: ServingRuntime,
     ci_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
-    with create_isvc(
-        client=unprivileged_client,
-        name=f"{request.param['name']}-raw",
-        namespace=unprivileged_model_namespace.name,
-        external_route=True,
-        runtime=ovms_kserve_serving_runtime.name,
-        storage_path=request.param["model-dir"],
-        storage_key=ci_endpoint_s3_secret.name,
-        model_format=ModelAndFormat.OPENVINO_IR,
-        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-        model_version=request.param["model-version"],
-    ) as isvc:
-        yield isvc
+    isvc_kwargs = {
+        "client": unprivileged_client,
+        "name": f"{request.param['name']}-raw",
+        "namespace": unprivileged_model_namespace.name,
+        "external_route": True,
+        "runtime": ovms_kserve_serving_runtime.name,
+        "storage_path": request.param["model-dir"],
+        "storage_key": ci_endpoint_s3_secret.name,
+        "model_format": ModelAndFormat.OPENVINO_IR,
+        "deployment_mode": KServeDeploymentType.RAW_DEPLOYMENT,
+        "model_version": request.param["model-version"],
+    }
 
+    if (stop_resume := request.param.get("stop")) is not None:
+        isvc_kwargs["stop_resume"] = stop_resume
+
+    with create_isvc(**isvc_kwargs) as isvc:
+        yield isvc
 
 @pytest.fixture(scope="class")
 def http_s3_tensorflow_model_mesh_inference_service(
