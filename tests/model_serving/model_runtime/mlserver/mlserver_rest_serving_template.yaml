@@ -16,7 +16,7 @@ objects:
         prometheus.kserve.io/path: /metrics
       containers:
         - name: kserve-container
-          image: 'docker.io/seldonio/mlserver@sha256:f1ce1afa2dddffa9697e51d15e3c7c95d5cdb1e1d31771305307f96eb08e7007'
+          image: 'docker.io/seldonio/mlserver@sha256:07890828601515d48c0fb73842aaf197cbcf245a5c855c789e890282b15ce390'
           env:
             - name: MLSERVER_HTTP_PORT
               value: "8080"
