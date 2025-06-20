@@ -568,6 +568,7 @@ def create_isvc(
     model_version: str | None = None,
     wait_for_predictor_pods: bool = True,
     autoscaler_mode: str | None = None,
+    stop_resume: str | None = None,
     multi_node_worker_spec: dict[str, int] | None = None,
     timeout: int = Timeout.TIMEOUT_15MIN,
     scale_metric: str | None = None,
@@ -685,6 +686,9 @@ def create_isvc(
 
     if autoscaler_mode:
         _annotations["serving.kserve.io/autoscalerClass"] = autoscaler_mode
+
+    if stop_resume:
+        _annotations["serving.kserve.io/stop"] = stop_resume
 
     if multi_node_worker_spec is not None:
         predictor_dict["workerSpec"] = multi_node_worker_spec

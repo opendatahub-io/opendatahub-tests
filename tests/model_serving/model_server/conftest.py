@@ -359,6 +359,9 @@ def ovms_kserve_inference_service(
     if (scale_target := request.param.get("scale-target")) is not None:
         isvc_kwargs["scale_target"] = scale_target
 
+    if (stop_resume := request.param.get("stop")) is not None:
+        isvc_kwargs["stop_resume"] = stop_resume
+
     with create_isvc(**isvc_kwargs) as isvc:
         yield isvc
 
