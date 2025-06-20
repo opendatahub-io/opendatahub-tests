@@ -1,0 +1,25 @@
+{
+  "modelName": "sklearn-iris",
+  "modelVersion": "v1.0.0",
+  "outputs": [
+    {
+      "contents": {
+        "int64Contents": [
+          "1",
+          "1"
+        ]
+      },
+      "datatype": "INT64",
+      "name": "predict",
+      "parameters": {
+        "content_type": {
+          "stringParam": "np"
+        }
+      },
+      "shape": [
+        "2",
+        "1"
+      ]
+    }
+  ]
+}
