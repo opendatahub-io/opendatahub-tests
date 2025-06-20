@@ -261,3 +261,72 @@ def generate_random_name(prefix: str = "", length: int = 8) -> str:
 
 def generate_namespace_name(file_path: str) -> str:
     return (file_path.removesuffix(".py").replace("/", "-").replace("_", "-"))[-63:].split("-", 1)[-1]
+
+
+def add_mysql_certs_volumes_to_deployment(
+    spec: dict[str, Any],
+    ca_configmap_name: str,
+) -> list[dict[str, Any]]:
+    """
+    Adds the MySQL certs volumes to the deployment.
+
+    Args:
+        spec: The spec of the deployment
+        ca_configmap_name: The name of the CA configmap
+
+    Returns:
+        The volumes with the MySQL certs volumes added
+    """
+
+    volumes = list(spec["volumes"])
+    volumes.extend([
+        {"name": ca_configmap_name, "configMap": {"name": ca_configmap_name}},
+        {"name": "mysql-server-cert", "secret": {"secretName": "mysql-server-cert"}},  # pragma: allowlist secret
+        {"name": "mysql-server-key", "secret": {"secretName": "mysql-server-key"}},  # pragma: allowlist secret
+    ])
+
+    return volumes
+
+
+def apply_mysql_args_and_volume_mounts(
+    my_sql_container: dict[str, Any],
+    ca_configmap_name: str,
+    ca_mount_path: str,
+) -> dict[str, Any]:
+    """
+    Applies the MySQL args and volume mounts to the MySQL container.
+
+    Args:
+        my_sql_container: The MySQL container
+        ca_configmap_name: The name of the CA configmap
+        ca_mount_path: The mount path of the CA
+
+    Returns:
+        The MySQL container with the MySQL args and volume mounts applied
+    """
+
+    mysql_args = list(my_sql_container.get("args", []))
+    mysql_args.extend([
+        f"--ssl-ca={ca_mount_path}/ca/ca-bundle.crt",
+        f"--ssl-cert={ca_mount_path}/server_cert/tls.crt",
+        f"--ssl-key={ca_mount_path}/server_key/tls.key",
+    ])
+
+    volumes_mounts = list(my_sql_container.get("volumeMounts", []))
+    volumes_mounts.extend([
+        {"name": ca_configmap_name, "mountPath": f"{ca_mount_path}/ca", "readOnly": True},
+        {
+            "name": "mysql-server-cert",
+            "mountPath": f"{ca_mount_path}/server_cert",
+            "readOnly": True,
+        },
+        {
+            "name": "mysql-server-key",
+            "mountPath": f"{ca_mount_path}/server_key",
+            "readOnly": True,
+        },
+    ])
+
+    my_sql_container["args"] = mysql_args
+    my_sql_container["volumeMounts"] = volumes_mounts
+    return my_sql_container

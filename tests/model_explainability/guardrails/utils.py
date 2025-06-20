@@ -18,7 +18,6 @@ def get_chat_payload(content: str) -> Dict[str, Any]:
         "messages": [
             {"role": "user", "content": content},
         ],
-        "temperature": "0.0",
     }
 
 
