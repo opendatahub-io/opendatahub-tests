@@ -22,7 +22,7 @@ def wait_for_trustyai_db_migration_complete_log(client: DynamicClient, trustyai_
             label_selector=f"app.kubernetes.io/instance={trustyai_service.name}",
         )
     )[0]
-    return True if db_migration_success_regex.search(trustyai_pod.log(container=TRUSTYAI_SERVICE_NAME)) else False
+    return bool(db_migration_success_regex.search(trustyai_pod.log(container=TRUSTYAI_SERVICE_NAME)))
 
 
 def patch_trustyai_service_cr(trustyai_service: TrustyAIService, patches: dict[str, Any]) -> TrustyAIService:
