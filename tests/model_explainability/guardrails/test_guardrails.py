@@ -23,10 +23,12 @@ PII_ENDPOINT: str = "/pii"
 
 
 @pytest.mark.parametrize(
-    "model_namespace",
+    "model_namespace, minio_pod, minio_data_connection",
     [
         pytest.param(
             {"name": "test-guardrails-image"},
+            MinIo.PodConfig.QWEN_MINIO_CONFIG,
+            {"bucket": "llms"},
         )
     ],
     indirect=True,
