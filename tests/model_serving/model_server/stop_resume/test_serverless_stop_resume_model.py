@@ -29,7 +29,7 @@ pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config"
                 "model-version": ModelVersion.OPSET13,
                 "model-dir": "test-dir",
                 "deployment-mode": KServeDeploymentType.SERVERLESS,
-                "stop": "False"
+                "stop": "False",
             },
         )
     ],
@@ -46,7 +46,7 @@ class TestStopServerless:
             protocol=Protocols.HTTPS,
             use_default_query=True,
         )
-    
+
     def test_stop_ann_update_to_true_delete_pod_rollout(self, unprivileged_client, ovms_kserve_inference_service):
         """Verify pod rollout is deleted when the stop annotation updated to true"""
         ResourceEditor(
@@ -60,10 +60,8 @@ class TestStopServerless:
         ).update()
 
         """Verify pods do not exist"""
-        verify_no_inference_pods(
-            client=unprivileged_client,
-            isvc=ovms_kserve_inference_service
-        )
+        verify_no_inference_pods(client=unprivileged_client, isvc=ovms_kserve_inference_service)
+
 
 @pytest.mark.serverless
 @pytest.mark.parametrize(
@@ -77,7 +75,7 @@ class TestStopServerless:
                 "model-version": ModelVersion.OPSET13,
                 "model-dir": "test-dir",
                 "deployment-mode": KServeDeploymentType.SERVERLESS,
-                "stop": "True"
+                "stop": "True",
             },
         )
     ],
@@ -88,10 +86,7 @@ class TestStoppedResumeServerless:
     def test_stop_ann_true_no_pod_rollout(self, unprivileged_client, ovms_kserve_inference_service):
         """Verify no pod rollout when the stop annotation is true"""
         """Verify pods do not exist"""
-        verify_no_inference_pods(
-            client=unprivileged_client,
-            isvc=ovms_kserve_inference_service
-        )
+        verify_no_inference_pods(client=unprivileged_client, isvc=ovms_kserve_inference_service)
 
     def test_stop_ann_update_to_false_pod_rollout(self, ovms_kserve_inference_service):
         """Verify pod rollout when the stop annotation is updated to false"""
