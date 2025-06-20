@@ -319,8 +319,8 @@ def gorch_with_hf_detectors_configmap(
             "config.yaml": yaml.dump({
                 "chat_generation": {
                     "service": {
-                        "hostname": "llm-predictor",
-                        "port": 8080,
+                        "hostname": f"{QWEN_ISVC_NAME}-predictor",
+                        "port": GUARDRAILS_ORCHESTRATOR_PORT,
                     }
                 },
                 "detectors": {
