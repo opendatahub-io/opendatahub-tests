@@ -5,11 +5,12 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.pod import Pod
 from ocp_resources.service import Service
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from ocp_resources.data_science_cluster import DataScienceCluster
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 from kubernetes.dynamic.exceptions import NotFoundError
-from tests.model_registry.constants import MR_DB_IMAGE_DIGEST
+from tests.model_registry.constants import MR_DB_IMAGE_DIGEST, MR_INSTANCE_NAME
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
 from utilities.constants import Protocols, Annotations
 
@@ -330,3 +331,23 @@ def apply_mysql_args_and_volume_mounts(
     my_sql_container["args"] = mysql_args
     my_sql_container["volumeMounts"] = volumes_mounts
     return my_sql_container
+
+
+def get_mr_endpoint(
+    client: DynamicClient,
+    dsc_resource: DataScienceCluster,
+) -> str:
+    namespace_name = dsc_resource.instance.spec.components.modelregistry.registriesNamespace
+    if svc := [
+        svcs
+        for svcs in Service.get(
+            dyn_client=client,
+            namespace=namespace_name,
+            label_selector=f"app={MR_INSTANCE_NAME},component=model-registry",
+        )
+    ]:
+        if len(svc) == 1:
+            svc = svc[0]
+            return get_endpoint_from_mr_service(svc=svc, protocol=Protocols.REST)
+        raise TooManyServicesError(svc)
+    raise ResourceNotFoundError(f"{MR_INSTANCE_NAME} has no Service")
