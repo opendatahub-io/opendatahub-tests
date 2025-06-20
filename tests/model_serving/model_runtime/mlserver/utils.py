@@ -67,9 +67,7 @@ def kserve_s3_endpoint_secret(
         name=name,
         namespace=namespace,
         annotations={
-            "serving.kserve.io/s3-endpoint": (
-                aws_s3_endpoint.replace("https://", "").replace("http://", "")
-            ),
+            "serving.kserve.io/s3-endpoint": (aws_s3_endpoint.replace("https://", "").replace("http://", "")),
             "serving.kserve.io/s3-region": aws_s3_region,
             "serving.kserve.io/s3-useanoncredential": "false",
             "serving.kserve.io/s3-verifyssl": "0",
@@ -256,10 +254,7 @@ def validate_inference_request(
         validate_nondeterministic_snapshot(response=response, model_framework=model_framework, protocol=protocol)
 
 
-def validate_deterministic_snapshot(
-    response: Any,
-    response_snapshot: Any
-) -> None:
+def validate_deterministic_snapshot(response: Any, response_snapshot: Any) -> None:
     """
     Validates a deterministic model inference response against a stored snapshot.
 
@@ -278,11 +273,7 @@ def validate_deterministic_snapshot(
     assert response == response_snapshot, f"Output mismatch: {response} != {response_snapshot}"
 
 
-def validate_nondeterministic_snapshot(
-    response: Any,
-    model_framework: str,
-    protocol: str
-) -> None:
+def validate_nondeterministic_snapshot(response: Any, model_framework: str, protocol: str) -> None:
     """
     Validates a model inference response containing non-deterministic output.
 
@@ -321,6 +312,5 @@ def validate_nondeterministic_snapshot(
 
     except Exception as e:
         raise RuntimeError(
-            f"Exception in validate_nondeterministic_snapshot: "
-            f"with response_data = {response_data} and exception = {e}"
+            f"Exception in validate_nondeterministic_snapshot: with response_data = {response_data} and exception = {e}"
         ) from e
