@@ -1,7 +1,7 @@
 """
-Test module for lightgbm model deployment using MLServer runtime.
+Test module for huggingface model deployment using MLServer runtime.
 
-This module contains parameterized tests that validate lightgbm model inference
+This module contains parameterized tests that validate huggingface model inference
 across different protocols (REST/gRPC) and deployment types (raw/serverless).
 """
 
@@ -19,23 +19,23 @@ from tests.model_serving.model_runtime.mlserver.constant import (
     BASE_RAW_DEPLOYMENT_CONFIG,
     BASE_SERVERLESS_DEPLOYMENT_CONFIG,
     MODEL_PATH_PREFIX,
-    LIGHTGBM_GRPC_INPUT_QUERY,
-    LIGHTGBM_REST_INPUT_QUERY,
-    LIGHTGBM_FRAMEWORK,
-    DETERMINISTIC_OUTPUT,
+    HUGGING_FACE_GRPC_INPUT_QUERY,
+    HUGGING_FACE_REST_INPUT_QUERY,
+    HUGGING_FACE_FRAMEWORK,
+    NON_DETERMINISTIC_OUTPUT,
 )
 from tests.model_serving.model_runtime.mlserver.utils import validate_inference_request
 
 
 LOGGER = get_logger(name=__name__)
 
-MODEL_NAME: str = "lightgbm-iris"
+MODEL_NAME: str = "distilgpt2"
 
 MODEL_VERSION: str = "v0.1.0"
 
 MODEL_NAME_DICT: dict[str, str] = {"name": MODEL_NAME}
 
-MODEL_STORAGE_URI_DICT: dict[str, str] = {"model-dir": f"{MODEL_PATH_PREFIX}/lightgbm"}
+MODEL_STORAGE_URI_DICT: dict[str, str] = {"model-dir": f"{MODEL_PATH_PREFIX}/huggingface"}
 
 
 pytestmark = pytest.mark.usefixtures(
@@ -48,48 +48,48 @@ pytestmark = pytest.mark.usefixtures(
     [
         pytest.param(
             {"protocol_type": Protocols.REST},
-            {"name": "lightgbm-iris-raw-rest"},
+            {"name": "huggingface-raw-rest"},
             {
                 **BASE_RAW_DEPLOYMENT_CONFIG,
                 **MODEL_NAME_DICT,
             },
             MODEL_STORAGE_URI_DICT,
             BASE_RAW_DEPLOYMENT_CONFIG,
-            id="lightgbm-iris-raw-rest-deployment",
+            id="huggingface-raw-rest-deployment",
         ),
         pytest.param(
             {"protocol_type": Protocols.GRPC},
-            {"name": "lightgbm-iris-raw-grpc"},
+            {"name": "huggingface-raw-grpc"},
             {
                 **BASE_RAW_DEPLOYMENT_CONFIG,
                 **MODEL_NAME_DICT,
             },
             MODEL_STORAGE_URI_DICT,
             BASE_RAW_DEPLOYMENT_CONFIG,
-            id="lightgbm-iris-raw-grpc-deployment",
+            id="huggingface-raw-grpc-deployment",
         ),
         pytest.param(
             {"protocol_type": Protocols.REST},
-            {"name": "lightgbm-iris-serverless-rest"},
+            {"name": "huggingface-serverless-rest"},
             {**BASE_SERVERLESS_DEPLOYMENT_CONFIG, **MODEL_NAME_DICT},
             MODEL_STORAGE_URI_DICT,
             BASE_SERVERLESS_DEPLOYMENT_CONFIG,
-            id="lightgbm-iris-serverless-rest-deployment",
+            id="huggingface-serverless-rest-deployment",
         ),
         pytest.param(
             {"protocol_type": Protocols.GRPC},
-            {"name": "lightgbm-iris-serverless-grpc"},
+            {"name": "huggingface-serverless-grpc"},
             {**BASE_SERVERLESS_DEPLOYMENT_CONFIG, **MODEL_NAME_DICT},
             MODEL_STORAGE_URI_DICT,
             BASE_SERVERLESS_DEPLOYMENT_CONFIG,
-            id="lightgbm-iris-serverless-grpc-deployment",
+            id="huggingface-serverless-grpc-deployment",
         ),
     ],
     indirect=True,
 )
-class TestLightGBMModel:
+class TestHuggingFaceModel:
     """
-    Test class for lightgbm model inference with MLServer runtime.
+    Test class for huggingface model inference with MLServer runtime.
 
     Covers multiple deployment scenarios:
     - REST and gRPC protocols
@@ -97,7 +97,7 @@ class TestLightGBMModel:
     - Response validation against snapshots
     """
 
-    def test_lightgbm_model_inference(
+    def test_huggingface_model_inference(
         self,
         mlserver_inference_service: InferenceService,
         mlserver_pod_resource: Pod,
@@ -106,7 +106,7 @@ class TestLightGBMModel:
         root_dir: str,
     ) -> None:
         """
-        Test lightgbm model inference across different protocols and deployment types.
+        Test huggingface model inference across different protocols and deployment types.
 
         Args:
             mlserver_inference_service (InferenceService): The deployed inference service.
@@ -115,7 +115,7 @@ class TestLightGBMModel:
             protocol (str): Communication protocol (REST or gRPC).
             root_dir (str): Test root directory path.
         """
-        input_query = LIGHTGBM_REST_INPUT_QUERY if protocol == Protocols.REST else LIGHTGBM_GRPC_INPUT_QUERY
+        input_query = HUGGING_FACE_REST_INPUT_QUERY if protocol == Protocols.REST else HUGGING_FACE_GRPC_INPUT_QUERY
 
         validate_inference_request(
             pod_name=mlserver_pod_resource.name,
@@ -123,8 +123,8 @@ class TestLightGBMModel:
             response_snapshot=mlserver_response_snapshot,
             input_query=input_query,
             model_version=MODEL_VERSION,
-            model_framework=LIGHTGBM_FRAMEWORK,
-            model_output_type=DETERMINISTIC_OUTPUT,
+            model_framework=HUGGING_FACE_FRAMEWORK,
+            model_output_type=NON_DETERMINISTIC_OUTPUT,
             protocol=protocol,
             root_dir=root_dir,
         )
