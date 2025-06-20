@@ -393,6 +393,7 @@ def ovms_raw_inference_service(
     with create_isvc(**isvc_kwargs) as isvc:
         yield isvc
 
+
 @pytest.fixture(scope="class")
 def http_s3_tensorflow_model_mesh_inference_service(
     request: FixtureRequest,
