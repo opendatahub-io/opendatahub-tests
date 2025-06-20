@@ -510,11 +510,6 @@ def model_registry_instance_pod(admin_client: DynamicClient) -> Generator[Pod, A
     )[0]
 
 
-@pytest.fixture(scope="class")
-def is_model_registry_oauth(request: FixtureRequest) -> bool:
-    return getattr(request, "param", {}).get("use_oauth_proxy", False)
-
-
 @pytest.fixture(scope="session")
 def api_server_url(admin_client: DynamicClient) -> str:
     infrastructure = Infrastructure(client=admin_client, name="cluster", ensure_exists=True)
