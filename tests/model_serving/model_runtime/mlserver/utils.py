@@ -10,6 +10,8 @@ This module provides functions for:
 
 import os
 import json
+import time
+import base64
 import subprocess
 from contextlib import contextmanager
 from typing import Generator, Any
@@ -28,6 +30,9 @@ from tests.model_serving.model_runtime.mlserver.constant import (
     PROTO_FILE_PATH,
     MLSERVER_REST_PORT,
     MLSERVER_GRPC_PORT,
+    DETERMINISTIC_OUTPUT,
+    NON_DETERMINISTIC_OUTPUT,
+    HUGGING_FACE_FRAMEWORK,
 )
 
 
@@ -62,7 +67,9 @@ def kserve_s3_endpoint_secret(
         name=name,
         namespace=namespace,
         annotations={
-            "serving.kserve.io/s3-endpoint": aws_s3_endpoint.replace("https://", ""),
+            "serving.kserve.io/s3-endpoint": (
+                aws_s3_endpoint.replace("https://", "").replace("http://", "")
+            ),
             "serving.kserve.io/s3-region": aws_s3_region,
             "serving.kserve.io/s3-useanoncredential": "false",
             "serving.kserve.io/s3-verifyssl": "0",
@@ -114,10 +121,11 @@ def send_grpc_request(url: str, input_data: dict[str, Any], root_dir: str, insec
     proto_import_path = os.path.dirname(grpc_proto_path)
     input_str = json.dumps(input_data)
     grpc_method = "inference.GRPCInferenceService/ModelInfer"
+    tls_flag = "-insecure" if insecure else "-plaintext"
 
     args = [
         "grpcurl",
-        "-insecure" if insecure else "-plaintext",
+        tls_flag,
         "-import-path",
         proto_import_path,
         "-proto",
@@ -209,6 +217,8 @@ def validate_inference_request(
     response_snapshot: Any,
     input_query: Any,
     model_version: str,
+    model_framework: str,
+    model_output_type: str,
     protocol: str,
     root_dir: str,
 ) -> None:
@@ -228,6 +238,9 @@ def validate_inference_request(
     Raises:
         AssertionError: If the actual response does not match the snapshot.
     """
+
+    # Sleeping for 5 secs for model loading properly.
+    time.sleep(5)
     response = run_mlserver_inference(
         pod_name=pod_name,
         isvc=isvc,
@@ -236,4 +249,78 @@ def validate_inference_request(
         protocol=protocol,
         root_dir=root_dir,
     )
+
+    if model_output_type == DETERMINISTIC_OUTPUT:
+        validate_deterministic_snapshot(response=response, response_snapshot=response_snapshot)
+    elif model_output_type == NON_DETERMINISTIC_OUTPUT:
+        validate_nondeterministic_snapshot(response=response, model_framework=model_framework, protocol=protocol)
+
+
+def validate_deterministic_snapshot(
+    response: Any,
+    response_snapshot: Any
+) -> None:
+    """
+    Validates a deterministic model inference response against a stored snapshot.
+
+    This function asserts that the actual model response exactly matches the expected
+    snapshot. It is intended for use in scenarios where the model output is expected
+    to be consistent across runs, such as with deterministic decoding (e.g., greedy search)
+    or fixed seed configurations.
+
+    Args:
+        response (Any): The actual inference response from the model.
+        response_snapshot (Any): The stored snapshot representing the expected output.
+
+    Raises:
+        AssertionError: If the actual response does not exactly match the expected snapshot.
+    """
     assert response == response_snapshot, f"Output mismatch: {response} != {response_snapshot}"
+
+
+def validate_nondeterministic_snapshot(
+    response: Any,
+    model_framework: str,
+    protocol: str
+) -> None:
+    """
+    Validates a model inference response containing non-deterministic output.
+
+    This function handles responses returned over different protocols (REST or gRPC)
+    and extracts generated output from a standard prediction response structure. It
+    expects the output to be either a plain JSON string (in REST) or a base64-encoded
+    JSON string (in gRPC), with the actual generated text stored under a "generated_text" key.
+
+    The function asserts that the generated output contains the keyword "test" as a
+    basic form of content validation. This is useful for verifying that the model is
+    producing reasonable and expected outputs in snapshot or integration tests, especially
+    when exact output matching is not feasible due to variability.
+
+    Args:
+        response (Any): The raw inference response returned by the model server.
+        model_framework (str): The identifier for the ML framework used.
+        protocol (str): The communication protocol used to interact with the model server (e.g., 'rest', 'grpc').
+
+    Raises:
+        RuntimeError: If response extraction or keyword validation fails.
+    """
+    response_data = ""
+
+    try:
+        if protocol == Protocols.REST:
+            response_data = response["outputs"][0]["data"][0]
+
+        elif protocol == Protocols.GRPC:
+            b64_encoded = response["outputs"][0]["contents"]["bytesContents"][0]
+            decoded_bytes = base64.b64decode(b64_encoded)
+            response_data = decoded_bytes.decode("utf-8")
+
+        if model_framework == HUGGING_FACE_FRAMEWORK:
+            assert "generated_text" in response_data, "Keyword 'generated_text' not found in generated text."
+            assert "test" in response_data, "Keyword 'test' not found in generated text."
+
+    except Exception as e:
+        raise RuntimeError(
+            f"Exception in validate_nondeterministic_snapshot: "
+            f"with response_data = {response_data} and exception = {e}"
+        ) from e

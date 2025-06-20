@@ -194,8 +194,8 @@ def mlserver_inference_service(
         identifier = Labels.Nvidia.NVIDIA_COM_GPU
         resources["requests"][identifier] = gpu_count
         resources["limits"][identifier] = gpu_count
-        service_config["volumes"] = PREDICT_RESOURCES["volumes"]
-        service_config["volumes_mounts"] = PREDICT_RESOURCES["volume_mounts"]
+        service_config["volumes"] = copy.deepcopy(PREDICT_RESOURCES["volumes"])
+        service_config["volumes_mounts"] = copy.deepcopy(PREDICT_RESOURCES["volume_mounts"])
     service_config["resources"] = resources
 
     if timeout:

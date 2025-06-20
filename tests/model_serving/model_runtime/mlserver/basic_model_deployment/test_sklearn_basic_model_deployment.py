@@ -21,6 +21,8 @@ from tests.model_serving.model_runtime.mlserver.constant import (
     MODEL_PATH_PREFIX,
     SKLEARN_GRPC_INPUT_QUERY,
     SKLEARN_REST_INPUT_QUERY,
+    SKLEARN_FRAMEWORK,
+    DETERMINISTIC_OUTPUT,
 )
 from tests.model_serving.model_runtime.mlserver.utils import validate_inference_request
 
@@ -121,6 +123,8 @@ class TestSkLearnModel:
             response_snapshot=mlserver_response_snapshot,
             input_query=input_query,
             model_version=MODEL_VERSION,
+            model_framework=SKLEARN_FRAMEWORK,
+            model_output_type=DETERMINISTIC_OUTPUT,
             protocol=protocol,
             root_dir=root_dir,
         )

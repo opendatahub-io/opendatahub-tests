@@ -21,6 +21,8 @@ from tests.model_serving.model_runtime.mlserver.constant import (
     MODEL_PATH_PREFIX,
     MLFLOW_GRPC_INPUT_QUERY,
     MLFLOW_REST_INPUT_QUERY,
+    MLFLOW_FRAMEWORK,
+    DETERMINISTIC_OUTPUT,
 )
 from tests.model_serving.model_runtime.mlserver.utils import validate_inference_request
 
@@ -121,6 +123,8 @@ class TestMLflowModel:
             response_snapshot=mlserver_response_snapshot,
             input_query=input_query,
             model_version=MODEL_VERSION,
+            model_framework=MLFLOW_FRAMEWORK,
+            model_output_type=DETERMINISTIC_OUTPUT,
             protocol=protocol,
             root_dir=root_dir,
         )

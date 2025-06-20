@@ -14,6 +14,22 @@ from utilities.constants import (
     RuntimeTemplates,
 )
 
+SKLEARN_FRAMEWORK: str = "sklearn"
+
+XGBOOST_FRAMEWORK: str = "xgboost"
+
+LIGHTGBM_FRAMEWORK: str = "lightgbm"
+
+CATBOOST_FRAMEWORK: str = "catboost"
+
+MLFLOW_FRAMEWORK: str = "mlflow"
+
+HUGGING_FACE_FRAMEWORK: str = "huggingface"
+
+DETERMINISTIC_OUTPUT: str = "deterministic"
+
+NON_DETERMINISTIC_OUTPUT: str = "non_deterministic"
+
 LOCAL_HOST_URL: str = "http://localhost"
 
 MLSERVER_REST_PORT: int = 8080
@@ -201,5 +217,30 @@ MLFLOW_GRPC_INPUT_QUERY: dict[str, Any] = {
         {"name": "pH", "shape": [1], "datatype": "FP32", "contents": {"fp32_contents": [3.51]}},
         {"name": "sulphates", "shape": [1], "datatype": "FP32", "contents": {"fp32_contents": [0.56]}},
         {"name": "alcohol", "shape": [1], "datatype": "FP32", "contents": {"fp32_contents": [9.4]}},
+    ],
+}
+
+HUGGING_FACE_REST_INPUT_QUERY: dict[str, Any] = {
+    "id": "huggingface",
+    "inputs": [
+        {
+            "name": "text_inputs",
+            "shape": [1],
+            "datatype": "BYTES",
+            "data": ["This is a test"],
+        }
+    ],
+}
+
+HUGGING_FACE_GRPC_INPUT_QUERY: dict[str, Any] = {
+    "model_name": "distilgpt2",
+    "model_version": "v0.1.0",
+    "inputs": [
+        {
+            "name": "text_inputs",
+            "datatype": "BYTES",
+            "shape": [1],
+            "contents": {"bytes_contents": ["VGhpcyBpcyBhIHRlc3QK"]},
+        }
     ],
 }
