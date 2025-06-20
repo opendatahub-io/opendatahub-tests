@@ -34,6 +34,7 @@ from tests.model_registry.constants import (
     MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
     OAUTH_PROXY_CONFIG_DICT,
     MODEL_REGISTRY_STANDARD_LABELS,
+    ISTIO_CONFIG_DICT,
 )
 from utilities.constants import Labels
 from tests.model_registry.utils import (
@@ -150,9 +151,16 @@ def model_registry_db_deployment(
 
 @pytest.fixture(scope="class")
 def model_registry_instance(
-    model_registry_namespace: str,
-    model_registry_mysql_config: dict[str, Any],
+    model_registry_namespace: str, model_registry_mysql_config: dict[str, Any], is_model_registry_oauth: bool
 ) -> Generator[ModelRegistry, Any, Any]:
+    istio_config = None
+    oauth_config = None
+    if is_model_registry_oauth:
+        LOGGER.warning("Requested Ouath Proxy configuration:")
+        oauth_config = OAUTH_PROXY_CONFIG_DICT
+    else:
+        LOGGER.warning("Requested OSSM configuration:")
+        istio_config = ISTIO_CONFIG_DICT
     """Creates a model registry instance with oauth proxy configuration."""
     oauth_config = OAUTH_PROXY_CONFIG_DICT
     with ModelRegistry(
@@ -161,7 +169,7 @@ def model_registry_instance(
         label=MODEL_REGISTRY_STANDARD_LABELS,
         grpc={},
         rest={},
-        istio=None,
+        istio=istio_config,
         oauth_proxy=oauth_config,
         mysql=model_registry_mysql_config,
         wait_for_resource=True,
@@ -374,7 +382,7 @@ def model_registry_instance_pod(admin_client: DynamicClient) -> Generator[Pod, A
 
 @pytest.fixture(scope="class")
 def is_model_registry_oauth(request: FixtureRequest) -> bool:
-    return getattr(request, "param", {}).get("use_oauth_proxy", False)
+    return getattr(request, "param", {}).get("use_oauth_proxy", True)
 
 
 @pytest.fixture(scope="session")
