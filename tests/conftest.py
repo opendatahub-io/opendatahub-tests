@@ -44,6 +44,7 @@ from utilities.constants import (
     Protocols,
 )
 from utilities.infra import update_configmap_data
+from utilities.logger import RedactedString
 from utilities.minio import create_minio_data_connection_secret
 from utilities.operator_utils import get_csv_related_images
 
@@ -68,7 +69,7 @@ def tests_tmp_dir(request: FixtureRequest, tmp_path_factory: TempPathFactory) ->
 
 @pytest.fixture(scope="session")
 def current_client_token(admin_client: DynamicClient) -> str:
-    return get_openshift_token()
+    return RedactedString(value=get_openshift_token())
 
 
 @pytest.fixture(scope="session")

@@ -50,6 +50,7 @@ from tests.model_explainability.trustyai_service.utils import (
     create_isvc_getter_service_account,
     create_isvc_getter_token_secret,
 )
+from utilities.logger import RedactedString
 from utilities.operator_utils import get_cluster_service_version
 
 from utilities.constants import Timeout, KServeDeploymentType, Labels
@@ -369,4 +370,4 @@ def isvc_getter_token_secret(
 
 @pytest.fixture(scope="class")
 def isvc_getter_token(isvc_getter_service_account: ServiceAccount, isvc_getter_token_secret: Secret) -> str:
-    return create_inference_token(model_service_account=isvc_getter_service_account)
+    return RedactedString(value=create_inference_token(model_service_account=isvc_getter_service_account))
