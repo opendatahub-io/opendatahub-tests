@@ -10,7 +10,6 @@ This module provides functions for:
 
 import os
 import json
-import time
 import base64
 import subprocess
 from contextlib import contextmanager
@@ -237,8 +236,6 @@ def validate_inference_request(
         AssertionError: If the actual response does not match the snapshot.
     """
 
-    # Sleeping for 5 secs for model loading properly.
-    time.sleep(5)
     response = run_mlserver_inference(
         pod_name=pod_name,
         isvc=isvc,
