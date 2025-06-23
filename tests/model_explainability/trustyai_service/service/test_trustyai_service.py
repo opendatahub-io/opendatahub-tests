@@ -210,7 +210,7 @@ def test_trustyai_service_db_migration(
     """Verify if TrustyAI DB Migration works as expected.
     This test initializes TrustyAI Service with PVC Storage at first with a database on standby but the service is not
     configured to use it.
-    Data is uploaded to the PVC, then the TrustyAI CR is patched to include the migration flag and database + PVC
+    Data is uploaded to the PVC, then the TrustyAI CR is patched to trigger a migration from PVC to DB storage.
     config.
     Then waits for the migration success entry in the container logs and patches the service again to remove PVC config.
     Finally, a metric is scheduled and checked if the service works as expected post migration.
