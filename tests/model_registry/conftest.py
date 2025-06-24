@@ -65,6 +65,7 @@ def model_registry_db_service(
     admin_client: DynamicClient,
     model_registry_namespace: str,
     teardown_resources: bool,
+    is_model_registry_oauth: bool,
 ) -> Generator[Service, Any, Any]:
     if pytestconfig.option.post_upgrade:
         mr_db_service = Service(name=DB_RESOURCES_NAME, namespace=model_registry_namespace, ensure_exists=True)
@@ -103,6 +104,7 @@ def model_registry_db_pvc(
     admin_client: DynamicClient,
     model_registry_namespace: str,
     teardown_resources: bool,
+    is_model_registry_oauth: bool,
 ) -> Generator[PersistentVolumeClaim, Any, Any]:
     if pytestconfig.option.post_upgrade:
         mr_db_pvc = PersistentVolumeClaim(
@@ -129,6 +131,7 @@ def model_registry_db_secret(
     admin_client: DynamicClient,
     model_registry_namespace: str,
     teardown_resources: bool,
+    is_model_registry_oauth: bool,
 ) -> Generator[Secret, Any, Any]:
     if pytestconfig.option.post_upgrade:
         mr_db_secret = Secret(name=DB_RESOURCES_NAME, namespace=model_registry_namespace, ensure_exists=True)
@@ -156,6 +159,7 @@ def model_registry_db_deployment(
     model_registry_db_pvc: PersistentVolumeClaim,
     model_registry_db_service: Service,
     teardown_resources: bool,
+    is_model_registry_oauth: bool,
 ) -> Generator[Deployment, Any, Any]:
     if pytestconfig.option.post_upgrade:
         db_deployment = Deployment(name=DB_RESOURCES_NAME, namespace=model_registry_namespace, ensure_exists=True)
@@ -333,6 +337,7 @@ def updated_dsc_component_state_scope_class(
     dsc_resource: DataScienceCluster,
     admin_client: DynamicClient,
     teardown_resources: bool,
+    is_model_registry_oauth: bool,
 ) -> Generator[DataScienceCluster, Any, Any]:
     if not teardown_resources or pytestconfig.option.post_upgrade:
         # if we are not tearing down resources or we are in post upgrade, we don't need to do anything
