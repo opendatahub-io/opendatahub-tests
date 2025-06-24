@@ -1,0 +1,29 @@
+{
+  "modelName": "mlflow-wine-classifier",
+  "modelVersion": "v0.1.0",
+  "outputs": [
+    {
+      "contents": {
+        "fp64Contents": [
+          5.576883936610762
+        ]
+      },
+      "datatype": "FP64",
+      "name": "output-1",
+      "parameters": {
+        "content_type": {
+          "stringParam": "np"
+        }
+      },
+      "shape": [
+        "1",
+        "1"
+      ]
+    }
+  ],
+  "parameters": {
+    "content_type": {
+      "stringParam": "np"
+    }
+  }
+}

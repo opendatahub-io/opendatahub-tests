@@ -1,9 +1,9 @@
 from typing import Self, Any
 import pytest
 from pytest_testconfig import config as py_config
-
+from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from tests.model_registry.rest_api.constants import MODEL_REGISTER, MODEL_ARTIFACT, MODEL_VERSION, MODEL_REGISTER_DATA
-from tests.model_registry.rest_api.utils import validate_resource_attributes
+from tests.model_registry.rest_api.utils import validate_resource_attributes, ModelRegistryV1Alpha1
 from utilities.constants import DscComponents
 from simple_logger.logger import get_logger
 
@@ -25,7 +25,7 @@ MODEL_ARTIFACT_DESCRIPTION = {"description": "updated artifact description"}
 
 
 @pytest.mark.parametrize(
-    "updated_dsc_component_state_scope_class, registered_model_rest_api",
+    "updated_dsc_component_state_scope_class, is_model_registry_oauth, registered_model_rest_api",
     [
         pytest.param(
             {
@@ -36,12 +36,27 @@ MODEL_ARTIFACT_DESCRIPTION = {"description": "updated artifact description"}
                     },
                 },
             },
+            {"use_oauth_proxy": False},
+            MODEL_REGISTER_DATA,
+        ),
+        pytest.param(
+            {
+                "component_patch": {
+                    DscComponents.MODELREGISTRY: {
+                        "managementState": DscComponents.ManagementState.MANAGED,
+                        "registriesNamespace": py_config["model_registry_namespace"],
+                    },
+                },
+            },
+            {},
             MODEL_REGISTER_DATA,
         ),
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("updated_dsc_component_state_scope_class", "registered_model_rest_api")
+@pytest.mark.usefixtures(
+    "updated_dsc_component_state_scope_class", "is_model_registry_oauth", "registered_model_rest_api"
+)
 class TestModelRegistryCreationRest:
     """
     Tests the creation of a model registry. If the component is set to 'Removed' it will be switched to 'Managed'
@@ -79,6 +94,27 @@ class TestModelRegistryCreationRest:
             actual_resource_data=registered_model_rest_api[data_key],
             resource_name=data_key,
         )
+
+    def test_model_registry_validate_api_version(self: Self, model_registry_instance):
+        api_version = model_registry_instance.instance.apiVersion
+        LOGGER.info(f"Validating apiversion {api_version} for model registry")
+        expected_version = f"{ModelRegistry.ApiGroup.MODELREGISTRY_OPENDATAHUB_IO}/{ModelRegistry.ApiVersion.V1BETA1}"
+        assert api_version == expected_version
+
+    def test_model_registry_validate_oauthproxy_enabled(self: Self, model_registry_instance):
+        model_registry_instance_spec = model_registry_instance.instance.spec
+        LOGGER.info(f"Validating that MR is using oauth proxy {model_registry_instance_spec}")
+        assert not model_registry_instance_spec.istio
+        assert model_registry_instance_spec.oauthProxy.serviceRoute == "enabled"
+
+    def test_model_registry_validate_mr_status_v1alpha1(self: Self, model_registry_instance):
+        mr_instance = ModelRegistryV1Alpha1(
+            name=model_registry_instance.name, namespace=model_registry_instance.namespace, ensure_exists=True
+        ).instance
+        status = mr_instance.status.to_dict()
+        LOGGER.info(f"Validating MR status {status}")
+        if not status:
+            pytest.fail(f"Empty status found for {mr_instance}")
 
     @pytest.mark.parametrize(
         "updated_model_registry_resource, expected_param",

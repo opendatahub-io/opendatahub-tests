@@ -14,6 +14,7 @@ from pyhelper_utils.shell import run_command
 from utilities.exceptions import ResourceValueMismatch
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
+
 LOGGER = get_logger(name=__name__)
 
 
