@@ -3,7 +3,9 @@ from typing import Self
 from tests.model_registry.constants import MODEL_NAME, MODEL_DICT
 from model_registry.types import RegisteredModel
 from model_registry import ModelRegistry as ModelRegistryClient
+from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from simple_logger.logger import get_logger
+from tests.model_registry.rest_api.utils import ModelRegistryV1Alpha1
 
 LOGGER = get_logger(name=__name__)
 
@@ -42,7 +44,7 @@ class TestPreUpgradeModelRegistry:
             pytest.fail("errors found in model registry response validation:\n{}".format("\n".join(errors)))
 
     # TODO: if we are in <=2.21, we can create a servicemesh MR here instead of oauth (v1alpha1), and then in
-    # post-upgrade check that it automatically gets converted to oauth (v1beta1)
+    # post-upgrade check that it automatically gets converted to oauth (v1beta1) - to be done in 2.21 branch directly.
 
 
 @pytest.mark.usefixtures("post_upgrade_dsc_patch")
@@ -51,6 +53,7 @@ class TestPostUpgradeModelRegistry:
     def test_retrieving_model_post_upgrade(
         self: Self,
         model_registry_client: ModelRegistryClient,
+        model_registry_instance: ModelRegistry,
     ):
         model = model_registry_client.get_registered_model(name=MODEL_NAME)
         expected_attrs = {
@@ -65,8 +68,20 @@ class TestPostUpgradeModelRegistry:
             LOGGER.error(f"received model: {model}")
             pytest.fail("errors found in model registry response validation:\n{}".format("\n".join(errors)))
 
-        # TODO: if we are in >= 2.22, we can check that this is using oauth instead of servicemesh
-        # TODO: if we are in >= 2.22, we can check that the conversion webhook is working as expected, i.e.
-        # the MR instance has api version v1beta1, and that when querying for older api version (e.g.
-        # `oc get modelregistries.v1alpha1.modelregistry.opendatahub.io -o wide -n rhoai-model-registries`)
-        # it also returns the status stanza (used by dashboard)
+        # the following is valid for 2.22+
+        api_version = model_registry_instance.instance.apiVersion
+        expected_version = f"{ModelRegistry.ApiGroup.MODELREGISTRY_OPENDATAHUB_IO}/{ModelRegistry.ApiVersion.V1BETA1}"
+        assert api_version == expected_version
+
+        model_registry_instance_spec = model_registry_instance.instance.spec
+        assert not model_registry_instance_spec.istio
+        assert model_registry_instance_spec.oauthProxy.serviceRoute == "enabled"
+
+        # After v1alpha1 is removed (2.24?) this has to be removed
+        mr_instance = ModelRegistryV1Alpha1(
+            name=model_registry_instance.name, namespace=model_registry_instance.namespace, ensure_exists=True
+        ).instance
+        status = mr_instance.status.to_dict()
+        LOGGER.info(f"Validating MR status {status}")
+        if not status:
+            pytest.fail(f"Empty status found for {mr_instance}")
