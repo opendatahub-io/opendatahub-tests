@@ -6,6 +6,7 @@ from model_registry import ModelRegistry as ModelRegistryClient
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from simple_logger.logger import get_logger
 from tests.model_registry.rest_api.utils import ModelRegistryV1Alpha1
+from tests.model_registry.utils import get_and_validate_registered_model
 
 LOGGER = get_logger(name=__name__)
 
@@ -27,19 +28,22 @@ class TestPreUpgradeModelRegistry:
         model_registry_client: ModelRegistryClient,
         registered_model: RegisteredModel,
     ):
-        model = model_registry_client.get_registered_model(name=MODEL_NAME)
-        expected_attrs = {
-            "id": registered_model.id,
-            "name": registered_model.name,
-            "description": registered_model.description,
-            "owner": registered_model.owner,
-            "state": registered_model.state,
-        }
-        errors = [
-            f"Unexpected {attr} expected: {expected}, received {getattr(model, attr)}"
-            for attr, expected in expected_attrs.items()
-            if getattr(model, attr) != expected
-        ]
+        errors = get_and_validate_registered_model(
+            model_registry_client=model_registry_client, model_name=MODEL_NAME, registered_model=registered_model
+        )
+        # model = model_registry_client.get_registered_model(name=MODEL_NAME)
+        # expected_attrs = {
+        #     "id": registered_model.id,
+        #     "name": registered_model.name,
+        #     "description": registered_model.description,
+        #     "owner": registered_model.owner,
+        #     "state": registered_model.state,
+        # }
+        # errors = [
+        #     f"Unexpected {attr} expected: {expected}, received {getattr(model, attr)}"
+        #     for attr, expected in expected_attrs.items()
+        #     if getattr(model, attr) != expected
+        # ]
         if errors:
             pytest.fail("errors found in model registry response validation:\n{}".format("\n".join(errors)))
 
@@ -55,29 +59,44 @@ class TestPostUpgradeModelRegistry:
         model_registry_client: ModelRegistryClient,
         model_registry_instance: ModelRegistry,
     ):
-        model = model_registry_client.get_registered_model(name=MODEL_NAME)
-        expected_attrs = {
-            "name": MODEL_DICT["model_name"],
-        }
-        errors = [
-            f"Unexpected {attr} expected: {expected}, received {getattr(model, attr)}"
-            for attr, expected in expected_attrs.items()
-            if getattr(model, attr) != expected
-        ]
+        errors = get_and_validate_registered_model(
+            model_registry_client=model_registry_client,
+            model_name=MODEL_NAME,
+        )
+        # model = model_registry_client.get_registered_model(name=MODEL_NAME)
+        # expected_attrs = {
+        #     "name": MODEL_DICT["model_name"],
+        # }
+        # errors = [
+        #     f"Unexpected {attr} expected: {expected}, received {getattr(model, attr)}"
+        #     for attr, expected in expected_attrs.items()
+        #     if getattr(model, attr) != expected
+        # ]
         if errors:
-            LOGGER.error(f"received model: {model}")
             pytest.fail("errors found in model registry response validation:\n{}".format("\n".join(errors)))
 
+    def test_model_registry_instance_api_version_post_upgrade(
+        self: Self,
+        model_registry_instance: ModelRegistry,
+    ):
         # the following is valid for 2.22+
         api_version = model_registry_instance.instance.apiVersion
         expected_version = f"{ModelRegistry.ApiGroup.MODELREGISTRY_OPENDATAHUB_IO}/{ModelRegistry.ApiVersion.V1BETA1}"
         assert api_version == expected_version
 
+    def test_model_registry_instance_spec_post_upgrade(
+        self: Self,
+        model_registry_instance: ModelRegistry,
+    ):
         model_registry_instance_spec = model_registry_instance.instance.spec
         assert not model_registry_instance_spec.istio
         assert model_registry_instance_spec.oauthProxy.serviceRoute == "enabled"
 
-        # After v1alpha1 is removed (2.24?) this has to be removed
+    def test_model_registry_instance_status_conversion_post_upgrade(
+        self: Self,
+        model_registry_instance: ModelRegistry,
+    ):
+        # TODO: After v1alpha1 is removed (2.24?) this has to be removed
         mr_instance = ModelRegistryV1Alpha1(
             name=model_registry_instance.name, namespace=model_registry_instance.namespace, ensure_exists=True
         ).instance

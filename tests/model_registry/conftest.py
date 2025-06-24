@@ -338,39 +338,42 @@ def updated_dsc_component_state_scope_class(
         # if we are not tearing down resources or we are in post upgrade, we don't need to do anything
         # the pre_upgrade/post_upgrade fixtures will handle the rest
         yield dsc_resource
-        return
+    else:
+        original_components = dsc_resource.instance.spec.components
+        component_patch = request.param["component_patch"]
 
-    original_components = dsc_resource.instance.spec.components
-    component_patch = request.param["component_patch"]
-
-    with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
-        for component_name in component_patch:
-            dsc_resource.wait_for_condition(condition=DscComponents.COMPONENT_MAPPING[component_name], status="True")
-        if component_patch.get(DscComponents.MODELREGISTRY):
-            namespace = Namespace(
-                name=dsc_resource.instance.spec.components.modelregistry.registriesNamespace, ensure_exists=True
+        with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
+            for component_name in component_patch:
+                dsc_resource.wait_for_condition(
+                    condition=DscComponents.COMPONENT_MAPPING[component_name], status="True"
+                )
+            if component_patch.get(DscComponents.MODELREGISTRY):
+                namespace = Namespace(
+                    name=dsc_resource.instance.spec.components.modelregistry.registriesNamespace, ensure_exists=True
+                )
+                namespace.wait_for_status(status=Namespace.Status.ACTIVE)
+            wait_for_pods_running(
+                admin_client=admin_client,
+                namespace_name=py_config["applications_namespace"],
+                number_of_consecutive_checks=6,
             )
-            namespace.wait_for_status(status=Namespace.Status.ACTIVE)
-        wait_for_pods_running(
-            admin_client=admin_client,
-            namespace_name=py_config["applications_namespace"],
-            number_of_consecutive_checks=6,
-        )
-        yield dsc_resource
+            yield dsc_resource
 
-    for component_name, value in component_patch.items():
-        LOGGER.info(f"Waiting for component {component_name} to be updated.")
-        if original_components[component_name]["managementState"] == DscComponents.ManagementState.MANAGED:
-            dsc_resource.wait_for_condition(condition=DscComponents.COMPONENT_MAPPING[component_name], status="True")
-        if (
-            component_name == DscComponents.MODELREGISTRY
-            and value.get("managementState") == DscComponents.ManagementState.MANAGED
-        ):
-            # Since namespace specified in registriesNamespace is automatically created after setting
-            # managementStateto Managed. We need to explicitly delete it on clean up.
-            namespace = Namespace(name=value["registriesNamespace"], ensure_exists=True)
-            if namespace:
-                namespace.delete(wait=True)
+        for component_name, value in component_patch.items():
+            LOGGER.info(f"Waiting for component {component_name} to be updated.")
+            if original_components[component_name]["managementState"] == DscComponents.ManagementState.MANAGED:
+                dsc_resource.wait_for_condition(
+                    condition=DscComponents.COMPONENT_MAPPING[component_name], status="True"
+                )
+            if (
+                component_name == DscComponents.MODELREGISTRY
+                and value.get("managementState") == DscComponents.ManagementState.MANAGED
+            ):
+                # Since namespace specified in registriesNamespace is automatically created after setting
+                # managementStateto Managed. We need to explicitly delete it on clean up.
+                namespace = Namespace(name=value["registriesNamespace"], ensure_exists=True)
+                if namespace:
+                    namespace.delete(wait=True)
 
 
 @pytest.fixture(scope="class")
