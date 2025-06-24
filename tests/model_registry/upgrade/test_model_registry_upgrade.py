@@ -52,7 +52,7 @@ class TestPostUpgradeModelRegistry:
         )
         if errors:
             pytest.fail("errors found in model registry response validation:\n{}".format("\n".join(errors)))
-    
+
     @pytest.mark.post_upgrade
     def test_model_registry_instance_api_version_post_upgrade(
         self: Self,
