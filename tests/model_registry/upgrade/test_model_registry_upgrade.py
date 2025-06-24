@@ -52,7 +52,8 @@ class TestPostUpgradeModelRegistry:
         )
         if errors:
             pytest.fail("errors found in model registry response validation:\n{}".format("\n".join(errors)))
-
+    
+    @pytest.mark.post_upgrade
     def test_model_registry_instance_api_version_post_upgrade(
         self: Self,
         model_registry_instance: ModelRegistry,
@@ -62,6 +63,7 @@ class TestPostUpgradeModelRegistry:
         expected_version = f"{ModelRegistry.ApiGroup.MODELREGISTRY_OPENDATAHUB_IO}/{ModelRegistry.ApiVersion.V1BETA1}"
         assert api_version == expected_version
 
+    @pytest.mark.post_upgrade
     def test_model_registry_instance_spec_post_upgrade(
         self: Self,
         model_registry_instance: ModelRegistry,
@@ -70,6 +72,7 @@ class TestPostUpgradeModelRegistry:
         assert not model_registry_instance_spec.istio
         assert model_registry_instance_spec.oauthProxy.serviceRoute == "enabled"
 
+    @pytest.mark.post_upgrade
     def test_model_registry_instance_status_conversion_post_upgrade(
         self: Self,
         model_registry_instance: ModelRegistry,
