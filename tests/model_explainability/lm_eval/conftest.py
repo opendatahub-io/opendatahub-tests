@@ -17,6 +17,7 @@ from pytest_testconfig import py_config
 
 from tests.model_explainability.lm_eval.utils import get_lmevaljob_pod
 from utilities.constants import Labels, Timeout, Annotations, Protocols, MinIo
+from pytest import Config
 
 VLLM_EMULATOR: str = "vllm-emulator"
 VLLM_EMULATOR_PORT: int = 8000
@@ -29,6 +30,7 @@ def lmevaljob_hf(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     patched_trustyai_operator_configmap_allow_online: ConfigMap,
+    lmeval_hf_access_token: Secret,
 ) -> Generator[LMEvalJob, None, None]:
     with LMEvalJob(
         client=admin_client,
@@ -45,6 +47,33 @@ def lmevaljob_hf(
             "enabled": True,
         },
         limit="0.01",
+        pod = {
+            "container": {
+                "resources": {
+                    "limits": {
+                        "cpu": "1",
+                        "memory": "8Gi",
+                        "nvidia.com/gpu": "1"
+                    },
+                    "requests": {
+                        "cpu": "1",
+                        "memory": "8Gi",
+                        "nvidia.com/gpu": "1"
+                    }
+                },
+                "env": [
+                    {   "name": "HF_TOKEN",
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "name": "hf-secret",
+                                "key": "HF_ACCESS_TOKEN",
+                            },
+                        },
+                    }
+                ],
+            },
+        },
+
     ) as job:
         yield job
 
@@ -404,3 +433,27 @@ def lmevaljob_vllm_emulator_pod(
 @pytest.fixture(scope="function")
 def lmevaljob_s3_offline_pod(admin_client: DynamicClient, lmevaljob_s3_offline: LMEvalJob) -> Generator[Pod, Any, Any]:
     yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_s3_offline)
+
+@pytest.fixture(scope="function")
+def lmeval_hf_access_token(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    pytestconfig: Config,
+) -> Secret:
+    hf_access_token=pytestconfig.option.hf_access_token
+    if not hf_access_token:
+        raise ValueError(
+            "HF access token is not set. "
+            "Either pass with `--hf-access-token` or set `HF_ACCESS_TOKEN` environment variable"
+        )
+    with Secret(
+        client=admin_client,
+        name="hf-secret",
+        namespace=model_namespace.name,
+        string_data={
+            "HF_ACCESS_TOKEN": hf_access_token,
+        },
+
+        wait_for_resource=True,
+    ) as secret:
+        yield secret
