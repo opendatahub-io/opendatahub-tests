@@ -32,10 +32,10 @@ from utilities.must_gather_collector import (
     collect_rhoai_must_gather,
     get_base_dir,
 )
-
 from kubernetes.dynamic import DynamicClient
 from utilities.infra import get_operator_distribution, get_dsci_applications_namespace, get_data_science_cluster
 from ocp_resources.resource import get_client
+
 
 LOGGER = logging.getLogger(name=__name__)
 BASIC_LOGGER = logging.getLogger(name="basic")
@@ -104,6 +104,11 @@ def pytest_addoption(parser: Parser) -> None:
     runtime_group.addoption(
         "--vllm-runtime-image",
         default=os.environ.get("VLLM_RUNTIME_IMAGE"),
+        help="Specify the runtime image to use for the tests",
+    )
+    runtime_group.addoption(
+        "--mlserver-runtime-image",
+        default=os.environ.get("MLSERVER_RUNTIME_IMAGE"),
         help="Specify the runtime image to use for the tests",
     )
 

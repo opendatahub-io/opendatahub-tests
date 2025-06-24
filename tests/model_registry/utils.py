@@ -2,7 +2,6 @@ import uuid
 from typing import Any
 
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.service import Service
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
@@ -19,11 +18,11 @@ ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
 LOGGER = get_logger(name=__name__)
 
 
-def get_mr_service_by_label(client: DynamicClient, ns: Namespace, mr_instance: ModelRegistry) -> Service:
+def get_mr_service_by_label(client: DynamicClient, namespace_name: str, mr_instance: ModelRegistry) -> Service:
     """
     Args:
         client (DynamicClient): OCP Client to use.
-        ns (Namespace): Namespace object where to find the Service
+        namespace_name (str): Namespace name associated with the service
         mr_instance (ModelRegistry): Model Registry instance
 
     Returns:
@@ -36,7 +35,7 @@ def get_mr_service_by_label(client: DynamicClient, ns: Namespace, mr_instance: M
         svcs
         for svcs in Service.get(
             dyn_client=client,
-            namespace=ns.name,
+            namespace=namespace_name,
             label_selector=f"app={mr_instance.name},component=model-registry",
         )
     ]:
@@ -232,7 +231,7 @@ def wait_for_pods_running(
     return None
 
 
-def generate_random_name(prefix: str, length: int = 8) -> str:
+def generate_random_name(prefix: str = "", length: int = 8) -> str:
     """
     Generates a name with a required prefix and a random suffix derived from a UUID.
 
@@ -250,8 +249,6 @@ def generate_random_name(prefix: str, length: int = 8) -> str:
     Raises:
         ValueError: If prefix is empty, or if length is not between 1 and 32.
     """
-    if not prefix:
-        raise ValueError("Prefix cannot be empty or None.")
     if not isinstance(length, int) or not (1 <= length <= 32):
         raise ValueError("suffix_length must be an integer between 1 and 32.")
     # Generate a new random UUID (version 4)
@@ -259,8 +256,77 @@ def generate_random_name(prefix: str, length: int = 8) -> str:
     # Use the first 'length' characters of the hexadecimal representation of the UUID as the suffix.
     # random_uuid.hex is 32 characters long.
     suffix = random_uuid.hex[:length]
-    return f"{prefix}-{suffix}"
+    return f"{prefix}-{suffix}" if prefix else suffix
 
 
 def generate_namespace_name(file_path: str) -> str:
     return (file_path.removesuffix(".py").replace("/", "-").replace("_", "-"))[-63:].split("-", 1)[-1]
+
+
+def add_mysql_certs_volumes_to_deployment(
+    spec: dict[str, Any],
+    ca_configmap_name: str,
+) -> list[dict[str, Any]]:
+    """
+    Adds the MySQL certs volumes to the deployment.
+
+    Args:
+        spec: The spec of the deployment
+        ca_configmap_name: The name of the CA configmap
+
+    Returns:
+        The volumes with the MySQL certs volumes added
+    """
+
+    volumes = list(spec["volumes"])
+    volumes.extend([
+        {"name": ca_configmap_name, "configMap": {"name": ca_configmap_name}},
+        {"name": "mysql-server-cert", "secret": {"secretName": "mysql-server-cert"}},  # pragma: allowlist secret
+        {"name": "mysql-server-key", "secret": {"secretName": "mysql-server-key"}},  # pragma: allowlist secret
+    ])
+
+    return volumes
+
+
+def apply_mysql_args_and_volume_mounts(
+    my_sql_container: dict[str, Any],
+    ca_configmap_name: str,
+    ca_mount_path: str,
+) -> dict[str, Any]:
+    """
+    Applies the MySQL args and volume mounts to the MySQL container.
+
+    Args:
+        my_sql_container: The MySQL container
+        ca_configmap_name: The name of the CA configmap
+        ca_mount_path: The mount path of the CA
+
+    Returns:
+        The MySQL container with the MySQL args and volume mounts applied
+    """
+
+    mysql_args = list(my_sql_container.get("args", []))
+    mysql_args.extend([
+        f"--ssl-ca={ca_mount_path}/ca/ca-bundle.crt",
+        f"--ssl-cert={ca_mount_path}/server_cert/tls.crt",
+        f"--ssl-key={ca_mount_path}/server_key/tls.key",
+    ])
+
+    volumes_mounts = list(my_sql_container.get("volumeMounts", []))
+    volumes_mounts.extend([
+        {"name": ca_configmap_name, "mountPath": f"{ca_mount_path}/ca", "readOnly": True},
+        {
+            "name": "mysql-server-cert",
+            "mountPath": f"{ca_mount_path}/server_cert",
+            "readOnly": True,
+        },
+        {
+            "name": "mysql-server-key",
+            "mountPath": f"{ca_mount_path}/server_key",
+            "readOnly": True,
+        },
+    ])
+
+    my_sql_container["args"] = mysql_args
+    my_sql_container["volumeMounts"] = volumes_mounts
+    return my_sql_container

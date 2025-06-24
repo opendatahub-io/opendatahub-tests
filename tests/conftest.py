@@ -7,6 +7,8 @@ from typing import Any, Callable, Generator
 import pytest
 import shortuuid
 import yaml
+from _pytest._py.path import LocalPath
+from _pytest.legacypath import TempdirFactory
 from _pytest.tmpdir import TempPathFactory
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.dsc_initialization import DSCInitialization
@@ -32,6 +34,7 @@ from utilities.infra import (
     create_ns,
     login_with_user_password,
     get_openshift_token,
+    download_oc_console_cli,
 )
 from utilities.constants import (
     AcceleratorType,
@@ -41,6 +44,7 @@ from utilities.constants import (
     Protocols,
 )
 from utilities.infra import update_configmap_data
+from utilities.logger import RedactedString
 from utilities.minio import create_minio_data_connection_secret
 from utilities.operator_utils import get_csv_related_images
 
@@ -65,7 +69,7 @@ def tests_tmp_dir(request: FixtureRequest, tmp_path_factory: TempPathFactory) ->
 
 @pytest.fixture(scope="session")
 def current_client_token(admin_client: DynamicClient) -> str:
-    return get_openshift_token()
+    return RedactedString(value=get_openshift_token())
 
 
 @pytest.fixture(scope="session")
@@ -212,6 +216,14 @@ def supported_accelerator_type(pytestconfig: pytest.Config) -> str | None:
 @pytest.fixture(scope="session")
 def vllm_runtime_image(pytestconfig: pytest.Config) -> str | None:
     runtime_image = pytestconfig.option.vllm_runtime_image
+    if not runtime_image:
+        return None
+    return runtime_image
+
+
+@pytest.fixture(scope="session")
+def mlserver_runtime_image(pytestconfig: pytest.Config) -> str | None:
+    runtime_image = pytestconfig.option.mlserver_runtime_image
     if not runtime_image:
         return None
     return runtime_image
@@ -490,8 +502,7 @@ def junitxml_plugin(
     return record_testsuite_property if request.config.pluginmanager.has_plugin("junitxml") else None
 
 
-@pytest.fixture(scope="session", autouse=True)
-@pytest.mark.early(order=0)
+@pytest.fixture(scope="session")
 def cluster_sanity_scope_session(
     request: FixtureRequest,
     nodes: list[Node],
@@ -525,3 +536,40 @@ def related_images_refs(admin_client: DynamicClient) -> set[str]:
     related_images = get_csv_related_images(admin_client=admin_client)
     related_images_refs = {img["image"] for img in related_images}
     return related_images_refs
+
+
+@pytest.fixture(scope="session")
+def os_path_environment() -> str:
+    return os.environ["PATH"]
+
+
+@pytest.fixture(scope="session")
+def bin_directory(tmpdir_factory: TempdirFactory) -> LocalPath:
+    return tmpdir_factory.mktemp(basename="bin")
+
+
+@pytest.fixture(scope="session")
+def bin_directory_to_os_path(os_path_environment: str, bin_directory: LocalPath, oc_binary_path: str) -> None:
+    LOGGER.info(f"OC binary path: {oc_binary_path}")
+    LOGGER.info(f"Adding {bin_directory} to $PATH")
+    os.environ["PATH"] = f"{bin_directory}:{os_path_environment}"
+
+
+@pytest.fixture(scope="session")
+def oc_binary_path(bin_directory: LocalPath) -> str:
+    installed_oc_binary_path = os.getenv("OC_BINARY_PATH")
+    if installed_oc_binary_path:
+        LOGGER.warning(f"Using previously installed: {installed_oc_binary_path}")
+        return installed_oc_binary_path
+
+    return download_oc_console_cli(tmpdir=bin_directory)
+
+
+@pytest.fixture(scope="session", autouse=True)
+@pytest.mark.early(order=0)
+def autouse_fixtures(
+    bin_directory_to_os_path: None,
+    cluster_sanity_scope_session: None,
+) -> None:
+    """Fixture to control the order of execution of some of the fixtures"""
+    return

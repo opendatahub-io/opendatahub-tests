@@ -18,6 +18,8 @@ SUPPORTED_LABELS: set[str] = {
     f"{LABEL_PREFIX}{LGTM_LABEL_STR}",
     f"{LABEL_PREFIX}{VERIFIED_LABEL_STR}",
     f"{LABEL_PREFIX}{HOLD_LABEL_STR}",
+    f"{LABEL_PREFIX}build-push-pr-image",
+    f"{LABEL_PREFIX}cherry-pick",
 }
 
 CANCEL_ACTION: str = "cancel"
@@ -38,7 +40,7 @@ Available user actions:
         `verified` label removed on each new commit push.
  * To Cherry-pick a merged PR `/cherry-pick <target_branch_name>` to the PR. If <target_branch_name> is valid,
          and the current PR is merged, a cherry-picked PR would be created and linked to the current PR.
- * To build and push image to quay, add /build-push-pr-image in a comment. This would create an image with tag
+ * To build and push image to quay, add `/build-push-pr-image` in a comment. This would create an image with tag
  pr-<pr_number> to quay repository. This image tag, however would be deleted on PR merge or close action.
 
 <details>
