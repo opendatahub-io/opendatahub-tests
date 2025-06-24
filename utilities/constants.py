@@ -211,6 +211,8 @@ class Timeout:
     TIMEOUT_10MIN: int = 10 * TIMEOUT_1MIN
     TIMEOUT_15MIN: int = 15 * TIMEOUT_1MIN
     TIMEOUT_20MIN: int = 20 * TIMEOUT_1MIN
+    TIMEOUT_30MIN: int = 30 * TIMEOUT_1MIN
+    TIMEOUT_40MIN: int = 40 * TIMEOUT_1MIN
 
 
 class OpenshiftRouteTimeout:

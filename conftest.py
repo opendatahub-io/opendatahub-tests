@@ -48,6 +48,7 @@ def pytest_addoption(parser: Parser) -> None:
     upgrade_group = parser.getgroup(name="Upgrade options")
     must_gather_group = parser.getgroup(name="MustGather")
     cluster_sanity_group = parser.getgroup(name="ClusterSanity")
+    hf_group = parser.getgroup(name="Hugging Face")
 
     # AWS config and credentials options
     aws_group.addoption(
@@ -150,6 +151,13 @@ def pytest_addoption(parser: Parser) -> None:
         "--cluster-sanity-skip-rhoai-check",
         help="Skip RHOAI/ODH-related resources (DSCI and DSC) checks",
         action="store_true",
+    )
+
+    # HuggingFace options
+    hf_group.addoption(
+        "--hf-access-token",
+        default=os.environ.get("HF_ACCESS_TOKEN"),
+        help="HF access token"
     )
 
 

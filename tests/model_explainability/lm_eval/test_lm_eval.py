@@ -1,28 +1,23 @@
 import pytest
+from typing import List
+
+from utilities.constants import Timeout
 
 from tests.model_explainability.utils import validate_tai_component_images
 from utilities.constants import Timeout
 
+from tests.model_explainability.lm_eval.utils import get_lmeval_tasks
+
 LMEVALJOB_COMPLETE_STATE: str = "Complete"
 
+LMEVAL_TASKS: List[str] = get_lmeval_tasks(min_downloads=10000)
 
 @pytest.mark.parametrize(
     "model_namespace, lmevaljob_hf",
     [
         pytest.param(
-            {"name": "test-lmeval-hf-arc"}, {"task_list": {"taskNames": ["arc_challenge"]}}, id="arc_challenge"
-        ),
-        pytest.param(
-            {"name": "test-lmeval-hf-mmlu"},
-            {"task_list": {"taskNames": ["mmlu_astronomy_generative"]}},
-            id="mmlu_astronomy_generative",
-        ),
-        pytest.param({"name": "test-lmeval-hf-hellaswag"}, {"task_list": {"taskNames": ["hellaswag"]}}, id="hellaswag"),
-        pytest.param(
-            {"name": "test-lmeval-hf-truthfulqa"}, {"task_list": {"taskNames": ["truthfulqa_gen"]}}, id="truthfulqa_gen"
-        ),
-        pytest.param(
-            {"name": "test-lmeval-hf-winogrande"}, {"task_list": {"taskNames": ["winogrande"]}}, id="winogrande"
+            {"name": "test-lmeval-hf"},
+            {"task_list": {"taskNames": LMEVAL_TASKS}},
         ),
         pytest.param(
             {"name": "test-lmeval-hf-custom-task"},
@@ -55,13 +50,14 @@ LMEVALJOB_COMPLETE_STATE: str = "Complete"
             },
             id="custom_task",
         ),
-    ],
-    indirect=True,
+    ], indirect=True,
 )
+
+
 def test_lmeval_huggingface_model(admin_client, model_namespace, lmevaljob_hf_pod):
     """Tests that verify running common evaluations (and a custom one) on a model pulled directly from HuggingFace.
-    On each test we run a different evaluation task, limiting it to 1% of the questions on each eval."""
-    lmevaljob_hf_pod.wait_for_status(status=lmevaljob_hf_pod.Status.SUCCEEDED, timeout=Timeout.TIMEOUT_20MIN)
+    On each test we run a different evaluation task, limiting it to 0.5% of the questions on each eval."""
+    lmevaljob_hf_pod.wait_for_status(status=lmevaljob_hf_pod.Status.SUCCEEDED, timeout=Timeout.TIMEOUT_40MIN)
 
 
 @pytest.mark.parametrize(
