@@ -230,6 +230,7 @@ def model_registry_instance(
 def model_registry_mysql_config(
     request: FixtureRequest,
     model_registry_db_deployment: Deployment,
+    model_registry_db_secret: Secret,
 ) -> dict[str, Any]:
     """
     Fixture to build the MySQL config dictionary for Model Registry.
