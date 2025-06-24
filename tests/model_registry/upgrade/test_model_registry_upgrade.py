@@ -25,7 +25,21 @@ class TestPreUpgradeModelRegistry:
         model_registry_client: ModelRegistryClient,
         registered_model: RegisteredModel,
     ):
-        pass
+        model = model_registry_client.get_registered_model(name=MODEL_NAME)
+        expected_attrs = {
+            "id": registered_model.id,
+            "name": registered_model.name,
+            "description": registered_model.description,
+            "owner": registered_model.owner,
+            "state": registered_model.state,
+        }
+        errors = [
+            f"Unexpected {attr} expected: {expected}, received {getattr(model, attr)}"
+            for attr, expected in expected_attrs.items()
+            if getattr(model, attr) != expected
+        ]
+        if errors:
+            pytest.fail("errors found in model registry response validation:\n{}".format("\n".join(errors)))
 
     # TODO: if we are in <=2.21, we can create a servicemesh MR here instead of oauth (v1alpha1), and then in
     # post-upgrade check that it automatically gets converted to oauth (v1beta1)

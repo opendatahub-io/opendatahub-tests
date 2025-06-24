@@ -47,7 +47,6 @@ from utilities.constants import Protocols, DscComponents
 from model_registry import ModelRegistry as ModelRegistryClient
 from semver import Version
 from utilities.general import wait_for_pods_by_labels
-from kubernetes.dynamic.exceptions import ResourceNotFoundError
 
 LOGGER = get_logger(name=__name__)
 
@@ -67,13 +66,7 @@ def model_registry_db_service(
     teardown_resources: bool,
 ) -> Generator[Service, Any, Any]:
     if pytestconfig.option.post_upgrade:
-        mr_db_service = next(
-            Service.get(client=admin_client, name=DB_RESOURCES_NAME, namespace=model_registry_namespace), None
-        )
-        if not mr_db_service:
-            raise ResourceNotFoundError(
-                f"Service {DB_RESOURCES_NAME} not found in namespace {model_registry_namespace}"
-            )
+        mr_db_service = Service(name=DB_RESOURCES_NAME, namespace=model_registry_namespace, ensure_exists=True)
         yield mr_db_service
         mr_db_service.delete(wait=True)
     else:
@@ -111,14 +104,9 @@ def model_registry_db_pvc(
     teardown_resources: bool,
 ) -> Generator[PersistentVolumeClaim, Any, Any]:
     if pytestconfig.option.post_upgrade:
-        mr_db_pvc = next(
-            PersistentVolumeClaim.get(client=admin_client, name=DB_RESOURCES_NAME, namespace=model_registry_namespace),
-            None,
+        mr_db_pvc = PersistentVolumeClaim(
+            name=DB_RESOURCES_NAME, namespace=model_registry_namespace, ensure_exists=True
         )
-        if not mr_db_pvc:
-            raise ResourceNotFoundError(
-                f"PersistentVolumeClaim {DB_RESOURCES_NAME} not found in namespace {model_registry_namespace}"
-            )
         yield mr_db_pvc
         mr_db_pvc.delete(wait=True)
     else:
@@ -142,11 +130,7 @@ def model_registry_db_secret(
     teardown_resources: bool,
 ) -> Generator[Secret, Any, Any]:
     if pytestconfig.option.post_upgrade:
-        mr_db_secret = next(
-            Secret.get(client=admin_client, name=DB_RESOURCES_NAME, namespace=model_registry_namespace), None
-        )
-        if not mr_db_secret:
-            raise ResourceNotFoundError(f"Secret {DB_RESOURCES_NAME} not found in namespace {model_registry_namespace}")
+        mr_db_secret = Secret(name=DB_RESOURCES_NAME, namespace=model_registry_namespace, ensure_exists=True)
         yield mr_db_secret
         mr_db_secret.delete(wait=True)
     else:
@@ -173,13 +157,7 @@ def model_registry_db_deployment(
     teardown_resources: bool,
 ) -> Generator[Deployment, Any, Any]:
     if pytestconfig.option.post_upgrade:
-        db_deployment = next(
-            Deployment.get(client=admin_client, name=DB_RESOURCES_NAME, namespace=model_registry_namespace), None
-        )
-        if not db_deployment:
-            raise ResourceNotFoundError(
-                f"Deployment {DB_RESOURCES_NAME} not found in namespace {model_registry_namespace}"
-            )
+        db_deployment = Deployment(name=DB_RESOURCES_NAME, namespace=model_registry_namespace, ensure_exists=True)
         yield db_deployment
         db_deployment.delete(wait=True)
     else:
@@ -214,13 +192,7 @@ def model_registry_instance(
 ) -> Generator[ModelRegistry, Any, Any]:
     """Creates a model registry instance with oauth proxy configuration."""
     if pytestconfig.option.post_upgrade:
-        mr_instance = next(
-            ModelRegistry.get(client=admin_client, name=MR_INSTANCE_NAME, namespace=model_registry_namespace), None
-        )
-        if not mr_instance:
-            raise ResourceNotFoundError(
-                f"ModelRegistry {MR_INSTANCE_NAME} not found in namespace {model_registry_namespace}"
-            )
+        mr_instance = ModelRegistry(name=MR_INSTANCE_NAME, namespace=model_registry_namespace, ensure_exists=True)
         yield mr_instance
         mr_instance.delete(wait=True)
     else:
@@ -403,8 +375,7 @@ def pre_upgrade_dsc_patch(
         original_components.get(DscComponents.MODELREGISTRY).get("managementState")
         == DscComponents.ManagementState.MANAGED
     ):
-        LOGGER.error("Model Registry is already set to Managed before upgrade - was this intentional?")
-        return dsc_resource
+        pytest.fail("Model Registry is already set to Managed before upgrade - was this intentional?")
     else:
         editor = ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}})
         editor.update()
@@ -437,7 +408,7 @@ def post_upgrade_dsc_patch(
         original_components.get(DscComponents.MODELREGISTRY).get("managementState")
         == DscComponents.ManagementState.REMOVED
     ):
-        LOGGER.error("Model Registry is already set to Removed after upgrade - was this intentional?")
+        pytest.fail("Model Registry is already set to Removed after upgrade - was this intentional?")
     else:
         editor = ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}})
         editor.update()
@@ -449,9 +420,6 @@ def post_upgrade_dsc_patch(
 
 @pytest.fixture(scope="class")
 def model_registry_client(
-    # pytestconfig: Config,
-    # admin_client: DynamicClient,
-    # dsc_resource: DataScienceCluster,
     current_client_token: str,
     model_registry_instance_rest_endpoint: str,
 ) -> ModelRegistryClient:
