@@ -31,19 +31,6 @@ class TestPreUpgradeModelRegistry:
         errors = get_and_validate_registered_model(
             model_registry_client=model_registry_client, model_name=MODEL_NAME, registered_model=registered_model
         )
-        # model = model_registry_client.get_registered_model(name=MODEL_NAME)
-        # expected_attrs = {
-        #     "id": registered_model.id,
-        #     "name": registered_model.name,
-        #     "description": registered_model.description,
-        #     "owner": registered_model.owner,
-        #     "state": registered_model.state,
-        # }
-        # errors = [
-        #     f"Unexpected {attr} expected: {expected}, received {getattr(model, attr)}"
-        #     for attr, expected in expected_attrs.items()
-        #     if getattr(model, attr) != expected
-        # ]
         if errors:
             pytest.fail("errors found in model registry response validation:\n{}".format("\n".join(errors)))
 
@@ -63,15 +50,6 @@ class TestPostUpgradeModelRegistry:
             model_registry_client=model_registry_client,
             model_name=MODEL_NAME,
         )
-        # model = model_registry_client.get_registered_model(name=MODEL_NAME)
-        # expected_attrs = {
-        #     "name": MODEL_DICT["model_name"],
-        # }
-        # errors = [
-        #     f"Unexpected {attr} expected: {expected}, received {getattr(model, attr)}"
-        #     for attr, expected in expected_attrs.items()
-        #     if getattr(model, attr) != expected
-        # ]
         if errors:
             pytest.fail("errors found in model registry response validation:\n{}".format("\n".join(errors)))
 
