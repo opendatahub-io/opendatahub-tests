@@ -11,17 +11,17 @@ LMEVAL_TASKS_HEAD5 = get_lmeval_tasks()[:5]
 
 params = [
     pytest.param(
-        {"name": f"test-lmeval-hf-{x}"},
-        {"task_list": {"taskNames": [LMEVAL_TASKS_HEAD5[x]]}},
-        id=LMEVAL_TASKS_HEAD5[x]
+        {"name": f"test-lmeval-hf-{x}"}, {"task_list": {"taskNames": [LMEVAL_TASKS_HEAD5[x]]}}, id=LMEVAL_TASKS_HEAD5[x]
     )
     for x in range(len(LMEVAL_TASKS_HEAD5))
 ]
 
-@pytest.mark.parametrize(
-    "model_namespace, lmevaljob_hf", params, indirect=True,
-)
 
+@pytest.mark.parametrize(
+    "model_namespace, lmevaljob_hf",
+    params,
+    indirect=True,
+)
 def test_lmeval_huggingface_model(admin_client, model_namespace, lmevaljob_hf_pod):
     """Tests that verify running common evaluations (and a custom one) on a model pulled directly from HuggingFace.
     On each test we run a different evaluation task, limiting it to 1% of the questions on each eval."""

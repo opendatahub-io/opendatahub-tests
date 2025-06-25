@@ -154,11 +154,7 @@ def pytest_addoption(parser: Parser) -> None:
     )
 
     # HuggingFace options
-    hf_group.addoption(
-        "--hf-access-token",
-        default=os.environ.get("HF_ACCESS_TOKEN"),
-        help="HF access token"
-    )
+    hf_group.addoption("--hf-access-token", default=os.environ.get("HF_ACCESS_TOKEN"), help="HF access token")
 
 
 def pytest_cmdline_main(config: Any) -> None:

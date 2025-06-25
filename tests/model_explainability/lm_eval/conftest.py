@@ -47,22 +47,15 @@ def lmevaljob_hf(
             "enabled": True,
         },
         limit="0.01",
-        pod = {
+        pod={
             "container": {
                 "resources": {
-                    "limits": {
-                        "cpu": "1",
-                        "memory": "8Gi",
-                        "nvidia.com/gpu": "1"
-                    },
-                    "requests": {
-                        "cpu": "1",
-                        "memory": "8Gi",
-                        "nvidia.com/gpu": "1"
-                    }
+                    "limits": {"cpu": "1", "memory": "8Gi", "nvidia.com/gpu": "1"},
+                    "requests": {"cpu": "1", "memory": "8Gi", "nvidia.com/gpu": "1"},
                 },
                 "env": [
-                    {   "name": "HF_TOKEN",
+                    {
+                        "name": "HF_TOKEN",
                         "valueFrom": {
                             "secretKeyRef": {
                                 "name": "hf-secret",
@@ -73,7 +66,6 @@ def lmevaljob_hf(
                 ],
             },
         },
-
     ) as job:
         yield job
 
@@ -434,13 +426,14 @@ def lmevaljob_vllm_emulator_pod(
 def lmevaljob_s3_offline_pod(admin_client: DynamicClient, lmevaljob_s3_offline: LMEvalJob) -> Generator[Pod, Any, Any]:
     yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_s3_offline)
 
+
 @pytest.fixture(scope="function")
 def lmeval_hf_access_token(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     pytestconfig: Config,
 ) -> Secret:
-    hf_access_token=pytestconfig.option.hf_access_token
+    hf_access_token = pytestconfig.option.hf_access_token
     if not hf_access_token:
         raise ValueError(
             "HF access token is not set. "
@@ -453,7 +446,6 @@ def lmeval_hf_access_token(
         string_data={
             "HF_ACCESS_TOKEN": hf_access_token,
         },
-
         wait_for_resource=True,
     ) as secret:
         yield secret

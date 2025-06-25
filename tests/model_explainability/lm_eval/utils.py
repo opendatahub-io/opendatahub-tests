@@ -34,6 +34,7 @@ def get_lmevaljob_pod(client: DynamicClient, lmevaljob: LMEvalJob, timeout: int 
 
     return lmeval_pod
 
+
 def get_lmeval_tasks() -> List:
     """
     Gets the list of LM-Eval tasks
@@ -45,13 +46,12 @@ def get_lmeval_tasks() -> List:
     lines = result.decode("utf-8").splitlines()[3:]
     lmeval_tasks = []
     for line in lines:
-        if '|' not in line or '---' in line:
+        if "|" not in line or "---" in line:
             continue
-        parts = line.split('|')
+        parts = line.split("|")
         if len(parts) > 1:
             task = parts[1].strip()
             if task:
                 lmeval_tasks.append(task)
 
     return lmeval_tasks
-    
