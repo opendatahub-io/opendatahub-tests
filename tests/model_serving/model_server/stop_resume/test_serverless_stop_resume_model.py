@@ -36,7 +36,9 @@ pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config"
 )
 class TestStopServerless:
     @pytest.mark.smoke
-    def test_serverless_onnx_rest_inference(self, unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service):
+    def test_serverless_onnx_rest_inference(
+        self, unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service
+    ):
         """Verify that kserve Serverless ONNX model can be queried using REST"""
         verify_inference_response(
             inference_service=ovms_kserve_inference_service,
@@ -48,11 +50,7 @@ class TestStopServerless:
 
     @pytest.mark.parametrize(
         "patched_inference_service_stop_annotation_true",
-        [
-            pytest.param(
-                {"annotations": {Annotations.KserveIo.FORCE_STOP_RUNTIME: "true"}}
-            )
-        ],
+        [pytest.param({"annotations": {Annotations.KserveIo.FORCE_STOP_RUNTIME: "true"}})],
         indirect=True,
     )
     def test_stop_ann_update_to_true_delete_pod_rollout(
@@ -100,19 +98,21 @@ class TestStoppedResumeServerless:
     ):
         """Verify no pod rollout when the stop annotation is true"""
         """Verify pods do not exist"""
-        verify_no_inference_pods(
-            client=unprivileged_client, isvc=ovms_kserve_inference_service
-        )
+        verify_no_inference_pods(client=unprivileged_client, isvc=ovms_kserve_inference_service)
+
     @pytest.mark.parametrize(
         "patched_inference_service_stop_annotation_false",
-        [
-            pytest.param(
-                {"annotations": {Annotations.KserveIo.FORCE_STOP_RUNTIME: "false"}}
-            )
-        ],
+        [pytest.param({"annotations": {Annotations.KserveIo.FORCE_STOP_RUNTIME: "false"}})],
         indirect=True,
     )
-    def test_stop_ann_update_to_false_pod_rollout(self, unprivileged_client, unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service, patched_inference_service_stop_annotation_false):
+    def test_stop_ann_update_to_false_pod_rollout(
+        self,
+        unprivileged_client,
+        unprivileged_model_namespace,
+        ovms_kserve_serving_runtime,
+        ovms_kserve_inference_service,
+        patched_inference_service_stop_annotation_false,
+    ):
         """Verify pod rollout when the stop annotation is updated to false"""
         """Verify that kserve Serverless ONNX model can be queried using REST"""
         verify_inference_response(
