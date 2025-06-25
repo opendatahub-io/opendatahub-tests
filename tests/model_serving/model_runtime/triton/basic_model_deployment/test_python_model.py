@@ -18,7 +18,7 @@ from tests.model_serving.model_runtime.triton.constant import (
     BASE_SERVERLESS_DEPLOYMENT_CONFIG,
     MODEL_PATH_PREFIX,
     TRITON_GRPC_PYTHON_INPUT_QUERY,
-    TRITON_REST_PYTHON_INPUT_QUERY 
+    TRITON_REST_PYTHON_INPUT_QUERY,
 )
 
 LOGGER = get_logger(name=__name__)
@@ -105,7 +105,7 @@ class TestPythonModel:
             protocol: REST or gRPC
             root_dir: Root directory for test execution
         """
-        input_query = TRITON_REST_PYTHON_INPUT_QUERY  if protocol == Protocols.REST else TRITON_GRPC_PYTHON_INPUT_QUERY 
+        input_query = TRITON_REST_PYTHON_INPUT_QUERY if protocol == Protocols.REST else TRITON_GRPC_PYTHON_INPUT_QUERY
 
         validate_inference_request(
             pod_name=triton_pod_resource.name,
