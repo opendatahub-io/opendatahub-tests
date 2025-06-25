@@ -73,7 +73,3 @@ TRUSTYAI_DB_MIGRATION_PATCH: dict[str, Any] = {
         "data": {"filename": "data.csv", "format": "BEAN"},
     },
 }
-TRUSTYAI_POST_DB_MIGRATION_PATCH: dict[str, Any] = {
-    "metadata": {"annotations": {"trustyai.opendatahub.io/db-migration": "false"}},
-    "spec": {"storage": {"format": "DATABASE", "size": "1Gi", "databaseConfigurations": "db-credentials"}, "data": {}},
-}

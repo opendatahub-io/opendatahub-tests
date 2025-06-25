@@ -5,7 +5,6 @@ from ocp_resources.trustyai_service import TrustyAIService
 from tests.model_explainability.trustyai_service.constants import (
     DRIFT_BASE_DATA_PATH,
     TRUSTYAI_DB_MIGRATION_PATCH,
-    TRUSTYAI_POST_DB_MIGRATION_PATCH,
 )
 from tests.model_explainability.trustyai_service.trustyai_service_utils import (
     send_inferences_and_verify_trustyai_service_registered,
@@ -242,13 +241,9 @@ def test_trustyai_service_db_migration(
         trustyai_service=trustyai_db_migration_patched_service,
     )
 
-    trustyai_db_only_patched_service = patch_trustyai_service_cr(
-        trustyai_service=trustyai_db_migration_patched_service, patches=TRUSTYAI_POST_DB_MIGRATION_PATCH
-    )
-
     verify_trustyai_service_metric_scheduling_request(
         client=admin_client,
-        trustyai_service=trustyai_db_only_patched_service,
+        trustyai_service=trustyai_db_migration_patched_service,
         token=current_client_token,
         metric_name=TrustyAIServiceMetrics.Drift.MEANSHIFT,
         json_data={

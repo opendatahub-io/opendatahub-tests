@@ -10,8 +10,6 @@ from timeout_sampler import retry
 from tests.model_explainability.trustyai_service.trustyai_service_utils import TRUSTYAI_SERVICE_NAME
 from utilities.constants import Timeout
 
-db_migration_success_regex = re.compile(r".+INFO.+Migration complete, the PVC is now safe to remove\.")
-
 
 @retry(wait_timeout=Timeout.TIMEOUT_5MIN, sleep=5)
 def wait_for_trustyai_db_migration_complete_log(client: DynamicClient, trustyai_service: TrustyAIService) -> bool:
@@ -22,7 +20,12 @@ def wait_for_trustyai_db_migration_complete_log(client: DynamicClient, trustyai_
             label_selector=f"app.kubernetes.io/instance={trustyai_service.name}",
         )
     )[0]
-    return bool(db_migration_success_regex.search(trustyai_pod.log(container=TRUSTYAI_SERVICE_NAME)))
+    return bool(
+        re.search(
+            r".+INFO.+Migration complete, the PVC is now safe to remove\.",
+            trustyai_pod.log(container=TRUSTYAI_SERVICE_NAME),
+        )
+    )
 
 
 def patch_trustyai_service_cr(trustyai_service: TrustyAIService, patches: dict[str, Any]) -> TrustyAIService:
