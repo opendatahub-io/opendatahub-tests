@@ -27,6 +27,7 @@ from utilities.constants import (
     RuntimeTemplates,
 )
 from utilities.jira import is_jira_open
+from utilities.logger import RedactedString
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 from utilities.constants import Annotations
 
@@ -152,12 +153,12 @@ def http_raw_role_binding(
 
 @pytest.fixture(scope="class")
 def http_inference_token(model_service_account: ServiceAccount, http_role_binding: RoleBinding) -> str:
-    return create_inference_token(model_service_account=model_service_account)
+    return RedactedString(value=create_inference_token(model_service_account=model_service_account))
 
 
 @pytest.fixture(scope="class")
 def http_raw_inference_token(model_service_account: ServiceAccount, http_raw_role_binding: RoleBinding) -> str:
-    return create_inference_token(model_service_account=model_service_account)
+    return RedactedString(value=create_inference_token(model_service_account=model_service_account))
 
 
 @pytest.fixture()
@@ -249,7 +250,7 @@ def grpc_role_binding(
 
 @pytest.fixture(scope="class")
 def grpc_inference_token(grpc_model_service_account: ServiceAccount, grpc_role_binding: RoleBinding) -> str:
-    return create_inference_token(model_service_account=grpc_model_service_account)
+    return RedactedString(value=create_inference_token(model_service_account=grpc_model_service_account))
 
 
 @pytest.fixture(scope="class")
@@ -398,4 +399,4 @@ def http_model_mesh_role_binding(
 def http_model_mesh_inference_token(
     ci_service_account: ServiceAccount, http_model_mesh_role_binding: RoleBinding
 ) -> str:
-    return create_inference_token(model_service_account=ci_service_account)
+    return RedactedString(value=create_inference_token(model_service_account=ci_service_account))

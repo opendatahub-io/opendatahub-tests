@@ -12,6 +12,7 @@ from utilities.constants import (
     Protocols,
 )
 from utilities.infra import create_inference_token, create_isvc_view_role
+from utilities.logger import RedactedString
 
 
 @pytest.fixture(scope="class")
@@ -51,7 +52,7 @@ def model_mesh_inference_token(
     ci_service_account: ServiceAccount,
     model_mesh_role_binding: RoleBinding,
 ) -> str:
-    return create_inference_token(model_service_account=ci_service_account)
+    return RedactedString(value=create_inference_token(model_service_account=ci_service_account))
 
 
 @pytest.fixture()

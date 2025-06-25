@@ -45,7 +45,7 @@ ONNX_INFERENCE_CONFIG = {
         },
         "graph": {
             "http": {
-                "endpoint": "/",
+                "endpoint": "",
                 "header": "Content-type:application/json",
                 "body": '$query_input',
                 "response_fields_map": {

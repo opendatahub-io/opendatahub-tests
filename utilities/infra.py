@@ -3,14 +3,21 @@ import json
 import os
 import re
 import shlex
+import stat
+import tarfile
 import tempfile
+import zipfile
 from contextlib import contextmanager
 from functools import cache
 from typing import Any, Generator, Optional, Set, Callable
 from json import JSONDecodeError
 
 import kubernetes
+import platform
 import pytest
+import requests
+import urllib3
+from _pytest._py.path import LocalPath
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import (
@@ -20,10 +27,12 @@ from kubernetes.dynamic.exceptions import (
 from ocp_resources.catalog_source import CatalogSource
 from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.console_cli_download import ConsoleCLIDownload
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.dsc_initialization import DSCInitialization
 from ocp_resources.exceptions import MissingResourceError
+from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.infrastructure import Infrastructure
 from ocp_resources.namespace import Namespace
@@ -71,6 +80,7 @@ def create_ns(
     ns_annotations: dict[str, str] | None = None,
     model_mesh_enabled: bool = False,
     add_dashboard_label: bool = False,
+    add_kueue_label: bool = False,
     pytest_request: FixtureRequest | None = None,
 ) -> Generator[Namespace | Project, Any, Any]:
     """
@@ -106,6 +116,7 @@ def create_ns(
         ns_annotations = pytest_request.param.get("annotations", ns_annotations)
         model_mesh_enabled = pytest_request.param.get("modelmesh-enabled", model_mesh_enabled)
         add_dashboard_label = pytest_request.param.get("add-dashboard-label", add_dashboard_label)
+        add_kueue_label = pytest_request.param.get("add-kueue-label", add_kueue_label)
 
     namespace_kwargs = {
         "name": name,
@@ -123,6 +134,9 @@ def create_ns(
 
     if add_dashboard_label:
         namespace_kwargs["label"][Labels.OpenDataHub.DASHBOARD] = "true"  # type: ignore
+
+    if add_kueue_label:
+        namespace_kwargs["label"][Labels.Kueue.MANAGED] = "true"  # type: ignore
 
     if unprivileged_client:
         with ProjectRequest(name=name, client=unprivileged_client, teardown=teardown):
@@ -369,6 +383,49 @@ def create_isvc_view_role(
         yield role
 
 
+@contextmanager
+def create_inference_graph_view_role(
+    client: DynamicClient,
+    namespace: str,
+    name: str,
+    resource_names: Optional[list[str]] = None,
+    teardown: bool = True,
+) -> Generator[Role, Any, Any]:
+    """
+    Create a view role for an InferenceGraph.
+
+    Args:
+        client (DynamicClient): Dynamic client.
+        namespace (str): Namespace to create the Role.
+        name (str): Role name.
+        resource_names (list[str]): Resource names to be attached to role.
+        teardown (bool): Whether to delete the role.
+
+    Yields:
+        Role: Role object.
+
+    """
+    rules = [
+        {
+            "apiGroups": [InferenceGraph.api_group],
+            "resources": ["inferencegraphs"],
+            "verbs": ["get"],
+        },
+    ]
+
+    if resource_names:
+        rules[0].update({"resourceNames": resource_names})
+
+    with Role(
+        client=client,
+        name=name,
+        namespace=namespace,
+        rules=rules,
+        teardown=teardown,
+    ) as role:
+        yield role
+
+
 def login_with_user_password(api_address: str, user: str, password: str | None = None) -> bool:
     """
     Log in to an OpenShift cluster using a username and password.
@@ -466,6 +523,33 @@ def get_services_by_isvc_label(
         return svcs
 
     raise ResourceNotFoundError(f"{isvc.name} has no services")
+
+
+def get_pods_by_ig_label(client: DynamicClient, ig: InferenceGraph) -> list[Pod]:
+    """
+    Args:
+        client (DynamicClient): OCP Client to use.
+        ig (InferenceGraph): InferenceGraph object.
+
+    Returns:
+        list[Pod]: A list of all matching pods
+
+    Raises:
+        ResourceNotFoundError: if no services are found.
+    """
+    label_selector = utilities.general.create_ig_pod_label_selector_str(ig=ig)
+
+    if pods := [
+        pod
+        for pod in Pod.get(
+            dyn_client=client,
+            namespace=ig.namespace,
+            label_selector=label_selector,
+        )
+    ]:
+        return pods
+
+    raise ResourceNotFoundError(f"{ig.name} has no pods")
 
 
 def get_pods_by_isvc_label(client: DynamicClient, isvc: InferenceService, runtime_name: str | None = None) -> list[Pod]:
@@ -822,6 +906,42 @@ def get_operator_distribution(client: DynamicClient, dsc_name: str = "default-ds
         raise ValueError("DSC release name not found in {dsc_name}")
 
 
+def wait_for_route_timeout(name: str, namespace: str, route_timeout: str) -> None:
+    """
+    Wait for route to be annotated with timeout value.
+    Given that there is a delay between the openshift route timeout annotation being set
+    and the timeout being applied to the route, a counter is instituted to wait until the
+    annotation is found in the route twice. This allows for the TimeoutSampler sleep time
+    to be executed and the route timeout to be successfully applied.
+
+    Args:
+        name (str): Name of the route.
+        namespace (str): Namespace the route is located in.
+        route_timeout (str): The expected value of the openshift route timeout annotation.
+
+    Raises:
+        TimeoutExpiredError: If route annotation is not set to the expected value before timeout expires.
+    """
+    annotation_found_count = 0
+    for route in TimeoutSampler(
+        wait_timeout=Timeout.TIMEOUT_30SEC,
+        sleep=10,
+        exceptions_dict={ResourceNotFoundError: []},
+        func=Route,
+        name=name,
+        namespace=namespace,
+        ensure_exists=True,
+    ):
+        if (
+            route.instance.metadata.get("annotations", {}).get(Annotations.HaproxyRouterOpenshiftIo.TIMEOUT)
+            != route_timeout
+        ):
+            continue
+        annotation_found_count += 1
+        if annotation_found_count == 2:
+            return
+
+
 def wait_for_serverless_pods_deletion(resource: Project | Namespace, admin_client: DynamicClient | None) -> None:
     """
     Wait for serverless pods deletion.
@@ -1034,33 +1154,76 @@ def get_oc_image_info(
         raise
 
 
-@contextmanager
-def switch_user_context(context_name: str) -> Generator[None, None, None]:
+def get_machine_platform() -> str:
+    os_machine_type = platform.machine()
+    return "amd64" if os_machine_type == "x86_64" else os_machine_type
+
+
+def get_os_system() -> str:
+    os_system = platform.system().lower()
+    if os_system == "darwin" and platform.mac_ver()[0]:
+        os_system = "mac"
+    return os_system
+
+
+def get_oc_console_cli_download_link() -> str:
+    oc_console_cli_download = ConsoleCLIDownload(name="oc-cli-downloads", ensure_exists=True)
+    os_system = get_os_system()
+    machine_platform = get_machine_platform()
+    oc_links = oc_console_cli_download.instance.spec.links
+    all_links = [
+        link_ref.href
+        for link_ref in oc_links
+        if link_ref.href.endswith(("oc.tar", "oc.zip"))
+        and os_system in link_ref.href
+        and machine_platform in link_ref.href
+    ]
+    LOGGER.info(f"All oc console cli download links: {all_links}")
+    if not all_links:
+        raise ValueError(f"No oc console cli download link found for {os_system} {machine_platform} in {oc_links}")
+
+    return all_links[0]
+
+
+def download_oc_console_cli(tmpdir: LocalPath) -> str:
     """
-    Context manager to temporarily switch to a specific OpenShift context.
-    Ensures the original context is restored after use, even if an error occurs.
+    Download and extract the OpenShift CLI binary.
 
     Args:
-        context_name: The name of the context to switch to
+        tmpdir (str): Directory to download and extract the binary to
 
-    Yields:
-        None
+    Returns:
+        str: Path to the extracted binary
 
-    Example:
-        with switch_user_context("my-context"):
-            # Commands here will run in my-context
-            run_command(["oc", "get", "pods"])
+    Raises:
+        ValueError: If multiple files are found in the archive or if no download link is found
     """
-    # Store current context
-    _, current_context, _ = run_command(command=["oc", "config", "current-context"], check=True)
-    current_context = current_context.strip()
+    oc_console_cli_download_link = get_oc_console_cli_download_link()
+    LOGGER.info(f"Downloading archive using: url={oc_console_cli_download_link}")
+    urllib3.disable_warnings()  # TODO: remove when cert issue is addressed for managed clusters
+    local_file_name = os.path.join(tmpdir, oc_console_cli_download_link.split("/")[-1])
+    with requests.get(oc_console_cli_download_link, verify=False, stream=True) as created_request:
+        created_request.raise_for_status()
+        with open(local_file_name, "wb") as file_downloaded:
+            for chunk in created_request.iter_content(chunk_size=8192):
+                file_downloaded.write(chunk)
+    LOGGER.info("Extract the downloaded archive.")
+    extracted_filenames = []
+    if oc_console_cli_download_link.endswith(".zip"):
+        zip_file = zipfile.ZipFile(file=local_file_name)
+        zip_file.extractall(path=tmpdir)
+        extracted_filenames = zip_file.namelist()
+    else:
+        with tarfile.open(name=local_file_name, mode="r") as tar_file:
+            tar_file.extractall(path=tmpdir)
+            extracted_filenames = tar_file.getnames()
+    LOGGER.info(f"Downloaded file: {extracted_filenames}")
 
-    try:
-        # Switch to the requested context
-        run_command(command=["oc", "config", "use-context", context_name], check=True)
-        LOGGER.info(f"Switched to context: {context_name}")
-        yield
-    finally:
-        # Restore original context
-        run_command(command=["oc", "config", "use-context", current_context], check=True)
-        LOGGER.info(f"Restored context: {current_context}")
+    if len(extracted_filenames) > 1:
+        raise ValueError(f"Multiple files found in {extracted_filenames}")
+    # Remove the downloaded file
+    if os.path.isfile(local_file_name):
+        os.remove(local_file_name)
+    binary_path = os.path.join(tmpdir, extracted_filenames[0])
+    os.chmod(binary_path, stat.S_IRUSR | stat.S_IXUSR)
+    return binary_path

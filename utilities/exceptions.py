@@ -132,3 +132,7 @@ class MissingParameter(Exception):
     """Raised required argument is not passed."""
 
     pass
+
+
+class ExceptionUserLogin(Exception):
+    pass

@@ -73,6 +73,8 @@ class RuntimeTemplates:
     VLLM_GAUDUI: str = "vllm-gaudi-runtime-template"
     TRITON_GRPC: str = "triton-grpc-runtime-template"
     TRITON_REST: str = "triton-rest-runtime-template"
+    MLSERVER_GRPC: str = "mlserver-grpc-runtime-template"
+    MLSERVER_REST: str = "mlserver-rest-runtime-template
 
 
 class ModelInferenceRuntime:
@@ -120,6 +122,7 @@ class AcceleratorType:
 
 
 class ApiGroups:
+    HAPROXY_ROUTER_OPENSHIFT_IO: str = "haproxy.router.openshift.io"
     OPENDATAHUB_IO: str = "opendatahub.io"
 
 
@@ -139,6 +142,9 @@ class Annotations:
     class OpenDataHubIo:
         MANAGED: str = f"{ApiGroups.OPENDATAHUB_IO}/managed"
         SERVICE_MESH: str = f"{ApiGroups.OPENDATAHUB_IO}/service-mesh"
+
+    class HaproxyRouterOpenshiftIo:
+        TIMEOUT: str = f"{ApiGroups.HAPROXY_ROUTER_OPENSHIFT_IO}/timeout"
 
 
 class StorageClassName:
@@ -185,13 +191,20 @@ class Labels:
 
     class Kserve:
         NETWORKING_KSERVE_IO: str = "networking.kserve.io/visibility"
+        NETWORKING_KNATIVE_IO: str = "networking.knative.dev/visibility"
         EXPOSED: str = "exposed"
 
     class Nvidia:
         NVIDIA_COM_GPU: str = "nvidia.com/gpu"
 
+    class Kueue:
+        # TODO: Change to kueue.openshift.io/managed once it's working
+        MANAGED: str = "kueue-managed"
+        # MANAGED: str = "kueue.openshift.io/managed"
+
 
 class Timeout:
+    TIMEOUT_15_SEC: int = 15
     TIMEOUT_30SEC: int = 30
     TIMEOUT_1MIN: int = 60
     TIMEOUT_2MIN: int = 2 * TIMEOUT_1MIN
@@ -200,6 +213,10 @@ class Timeout:
     TIMEOUT_10MIN: int = 10 * TIMEOUT_1MIN
     TIMEOUT_15MIN: int = 15 * TIMEOUT_1MIN
     TIMEOUT_20MIN: int = 20 * TIMEOUT_1MIN
+
+
+class OpenshiftRouteTimeout:
+    TIMEOUT_1MICROSEC: str = "1us"
 
 
 class Containers:
@@ -252,6 +269,11 @@ class MinIo:
 
         MODEL_MESH_MINIO_CONFIG: dict[str, Any] = {
             "image": "quay.io/trustyai_testing/modelmesh-minio-examples@sha256:d2ccbe92abf9aa5085b594b2cae6c65de2bf06306c30ff5207956eb949bb49da",  # noqa: E501
+            **MINIO_BASE_CONFIG,
+        }
+
+        QWEN_MINIO_CONFIG: dict[str, Any] = {
+            "image": "quay.io/trustyai_testing/qwen-minio@sha256:d1e244e24d2e40fb2557e85b4587d56084253c040fc4e64421f3ccc09ec8e5c3",  # noqa: E501
             **MINIO_BASE_CONFIG,
         }
 

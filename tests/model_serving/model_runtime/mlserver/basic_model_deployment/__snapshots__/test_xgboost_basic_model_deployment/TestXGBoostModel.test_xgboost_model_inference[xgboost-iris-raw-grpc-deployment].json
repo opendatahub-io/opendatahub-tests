@@ -1,0 +1,25 @@
+{
+  "modelName": "xgboost-iris",
+  "modelVersion": "v1.0.0",
+  "outputs": [
+    {
+      "contents": {
+        "fp32Contents": [
+          1,
+          1
+        ]
+      },
+      "datatype": "FP32",
+      "name": "predict",
+      "parameters": {
+        "content_type": {
+          "stringParam": "np"
+        }
+      },
+      "shape": [
+        "2",
+        "1"
+      ]
+    }
+  ]
+}

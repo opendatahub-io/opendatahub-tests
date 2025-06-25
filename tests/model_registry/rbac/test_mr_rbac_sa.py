@@ -14,17 +14,14 @@ LOGGER = get_logger(name=__name__)
 @pytest.mark.parametrize(
     "updated_dsc_component_state_scope_class",
     [
-        pytest.param(
-            {
-                "component_patch": {
-                    DscComponents.MODELREGISTRY: {
-                        "managementState": DscComponents.ManagementState.MANAGED,
-                        "registriesNamespace": py_config["model_registry_namespace"],
-                    },
-                }
-            },
-            id="enable_modelregistry_default_ns",
-        )
+        pytest.param({
+            "component_patch": {
+                DscComponents.MODELREGISTRY: {
+                    "managementState": DscComponents.ManagementState.MANAGED,
+                    "registriesNamespace": py_config["model_registry_namespace"],
+                },
+            }
+        }),
     ],
     indirect=True,
     scope="class",
@@ -33,6 +30,7 @@ LOGGER = get_logger(name=__name__)
 class TestModelRegistryRBAC:
     """
     Tests RBAC for Model Registry REST endpoint using ServiceAccount tokens.
+    Tests both standard and OAuth proxy configurations.
     """
 
     @pytest.mark.sanity
@@ -67,7 +65,6 @@ class TestModelRegistryRBAC:
         LOGGER.info("Successfully received expected HTTP 403 status code.")
 
     @pytest.mark.sanity
-    # Use fixtures for SA/NS/Token AND the RBAC Role/Binding
     @pytest.mark.usefixtures("sa_namespace", "service_account", "mr_access_role", "mr_access_role_binding")
     def test_service_account_access_granted(
         self: Self,
