@@ -12,6 +12,8 @@ from tests.model_registry.exceptions import (
 from tests.model_registry.rest_api.constants import MODEL_REGISTRY_BASE_URI
 from pyhelper_utils.shell import run_command
 from utilities.exceptions import ResourceValueMismatch
+from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+
 
 LOGGER = get_logger(name=__name__)
 
@@ -262,3 +264,7 @@ def sign_db_server_cert_with_ca_with_openssl(
         ],
         check=True,
     )
+
+
+class ModelRegistryV1Alpha1(ModelRegistry):
+    api_version = f"{ModelRegistry.ApiGroup.MODELREGISTRY_OPENDATAHUB_IO}/{ModelRegistry.ApiVersion.V1ALPHA1}"
