@@ -3,8 +3,6 @@ from kubernetes.dynamic.exceptions import ResourceNotFoundError, ResourceNotUniq
 from simple_logger.logger import get_logger
 
 from ocp_resources.cluster_service_version import ClusterServiceVersion
-from ocp_resources.subscription import Subscription
-from utilities.exceptions import ResourceMismatchError
 from utilities.infra import get_product_version
 from pytest_testconfig import config as py_config
 
@@ -29,27 +27,6 @@ def get_cluster_service_version(client: DynamicClient, prefix: str, namespace: s
         )
     LOGGER.info(f"Found cluster service version: {matching_csvs[0].name}")
     return matching_csvs[0]
-
-
-def validate_operator_subscription_channel(
-    client: DynamicClient, operator_name: str, namespace: str, channel_name: str
-) -> None:
-    operator_subscriptions = [
-        subscription
-        for subscription in Subscription.get(dyn_client=client, namespace=namespace)
-        if subscription.instance.spec.name == operator_name
-    ]
-
-    if not operator_subscriptions:
-        raise ResourceNotFoundError(f"Subscription not found for operator {operator_name}")
-    if len(operator_subscriptions) > 1:
-        raise ResourceNotUniqueError(f"Multiple subscriptions found for operator {operator_name}")
-    subscription_channel = operator_subscriptions[0].instance.spec.channel
-    if not subscription_channel or subscription_channel != channel_name:
-        raise ResourceMismatchError(
-            f"For Operator {operator_name}, Subscription points to {subscription_channel}, expected: {channel_name}"
-        )
-    LOGGER.info(f"Operator {operator_name} subscription channel is {subscription_channel}")
 
 
 def get_csv_related_images(admin_client: DynamicClient, csv_name: str | None = None) -> List[Dict[str, str]]:

@@ -16,6 +16,7 @@ import kubernetes
 import platform
 import pytest
 import requests
+import urllib3
 from _pytest._py.path import LocalPath
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
@@ -1184,16 +1185,6 @@ def get_oc_console_cli_download_link() -> str:
     return all_links[0]
 
 
-def get_server_cert(tmpdir: LocalPath) -> str:
-    data = ConfigMap(name="kube-root-ca.crt", namespace="openshift-apiserver", ensure_exists=True).instance.data[
-        "ca.crt"
-    ]
-    file_path = os.path.join(tmpdir, "cluster-ca.cert")
-    with open(file_path, "w") as fd:
-        fd.write(data)
-    return file_path
-
-
 def download_oc_console_cli(tmpdir: LocalPath) -> str:
     """
     Download and extract the OpenShift CLI binary.
@@ -1209,9 +1200,9 @@ def download_oc_console_cli(tmpdir: LocalPath) -> str:
     """
     oc_console_cli_download_link = get_oc_console_cli_download_link()
     LOGGER.info(f"Downloading archive using: url={oc_console_cli_download_link}")
-    cert_file = get_server_cert(tmpdir=tmpdir)
+    urllib3.disable_warnings()  # TODO: remove when cert issue is addressed for managed clusters
     local_file_name = os.path.join(tmpdir, oc_console_cli_download_link.split("/")[-1])
-    with requests.get(oc_console_cli_download_link, verify=cert_file, stream=True) as created_request:
+    with requests.get(oc_console_cli_download_link, verify=False, stream=True) as created_request:
         created_request.raise_for_status()
         with open(local_file_name, "wb") as file_downloaded:
             for chunk in created_request.iter_content(chunk_size=8192):

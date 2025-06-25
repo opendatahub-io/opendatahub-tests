@@ -291,7 +291,6 @@ def gaussian_credit_model(
     minio_service: Service,
     minio_data_connection: Secret,
     mlserver_runtime: ServingRuntime,
-    trustyai_service_with_pvc_storage: TrustyAIService,
     teardown_resources: bool,
 ) -> Generator[InferenceService, Any, Any]:
     gaussian_credit_model_kwargs = {
