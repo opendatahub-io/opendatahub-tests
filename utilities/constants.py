@@ -16,7 +16,7 @@ class ModelFormat:
     OVMS: str = "ovms"
     VLLM: str = "vllm"
     TENSORFLOW: str = "tensorflow"
-    PYTORCH: str = "pytorch - 1"
+    PYTORCH: str = "pytorch"
 
 
 class ModelName:

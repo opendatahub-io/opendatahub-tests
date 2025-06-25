@@ -12,6 +12,7 @@ from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.template import Template
 from ocp_resources.service_account import ServiceAccount
+from _pytest.fixtures import SubRequest
 
 from tests.model_serving.model_runtime.triton.constant import (
     PREDICT_RESOURCES,
@@ -39,6 +40,7 @@ LOGGER = get_logger(name=__name__)
 @pytest.fixture(scope="session")
 def root_dir(pytestconfig: pytest.Config) -> Any:
     return pytestconfig.rootpath
+
 
 @pytest.fixture(scope="class")
 def triton_grpc_serving_runtime_template(admin_client: DynamicClient) -> Generator[Template, None, None]:
@@ -181,7 +183,7 @@ def triton_pod_resource(
 
 
 @pytest.fixture(autouse=True)
-def cleanup_existing_isvc(request, admin_client: DynamicClient, model_namespace: Namespace):
+def cleanup_existing_isvc(request: SubRequest, admin_client: DynamicClient, model_namespace: Namespace) -> None:
     """
     Deletes any existing InferenceService with the same name before the test runs
     to avoid ConflictError (409) from Kubernetes.

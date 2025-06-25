@@ -1,0 +1,25 @@
+{
+  "id": "1",
+  "modelName": "python",
+  "modelVersion": "1",
+  "outputs": [
+    {
+      "datatype": "FP32",
+      "name": "OUTPUT0",
+      "shape": [
+        "4"
+      ]
+    },
+    {
+      "datatype": "FP32",
+      "name": "OUTPUT1",
+      "shape": [
+        "4"
+      ]
+    }
+  ],
+  "rawOutputContents": [
+    "AgAAAAAAAAAAAAAAAAAAAA==",
+    "AAQAAAAAAAAAAAAAAAAAAA=="
+  ]
+}

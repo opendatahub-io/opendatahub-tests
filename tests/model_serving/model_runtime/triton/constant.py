@@ -27,21 +27,44 @@ TRITON_REST_TF_INPUT_PATH = (
 TRITON_GRPC_TF_INPUT_PATH = (
     "tests/model_serving/model_runtime/triton/basic_model_deployment/kserve-triton-tensorflow-gRPC-input.json"
 )
+TRITON_REST_KERAS_INPUT_PATH = (
+    "tests/model_serving/model_runtime/triton/basic_model_deployment/kserve-keras-triton-resnet-rest-input.json"
+)
+TRITON_GRPC_KERAS_INPUT_PATH = (
+    "tests/model_serving/model_runtime/triton/basic_model_deployment/kserve-keras-triton-resnet-grpc-input.json"
+)
+TRITON_REST_PYTHON_INPUT_PATH = (
+    "tests/model_serving/model_runtime/triton/basic_model_deployment/kserve-triton-python-rest-input.json"
+)
+TRITON_GRPC_PYTHON_INPUT_PATH = (
+    "tests/model_serving/model_runtime/triton/basic_model_deployment/kserve-triton-python-grpc-input.json"
+)
+TRITON_REST_FIL_INPUT_PATH = (
+    "tests/model_serving/model_runtime/triton/basic_model_deployment/kserve-triton-fil_rest-input.json"
+)
+TRITON_GRPC_FIL_INPUT_PATH = (
+    "tests/model_serving/model_runtime/triton/basic_model_deployment/kserve-triton-fil-gRPC-input.json"
+)
 
 
-def load_json(path: str) -> dict:
+def load_json(path: str) -> dict[str, Any]:
     with open(path, "r") as f:
         return json.load(f)
 
 
-TRITON_REST_INPUT_QUERY = load_json(TRITON_REST_INPUT_PATH)
-TRITON_GRPC_INPUT_QUERY = load_json(TRITON_GRPC_INPUT_PATH)
+TRITON_REST_INPUT_QUERY = load_json(path=TRITON_REST_INPUT_PATH)
+TRITON_GRPC_INPUT_QUERY = load_json(path=TRITON_GRPC_INPUT_PATH)
+TRITON_REST_ONNX_INPUT_QUERY = load_json(path=TRITON_REST_ONNX_INPUT_PATH)
+TRITON_GRPC_ONNX_INPUT_QUERY = load_json(path=TRITON_GRPC_ONNX_INPUT_PATH)
+TRITON_REST_TF_INPUT_QUERY = load_json(path=TRITON_REST_TF_INPUT_PATH)
+TRITON_GRPC_TF_INPUT_QUERY = load_json(path=TRITON_GRPC_TF_INPUT_PATH)
+TRITON_REST_KERAS_INPUT_QUERY = load_json(path=TRITON_REST_KERAS_INPUT_PATH)
+TRITON_GRPC_KERAS_INPUT_QUERY = load_json(path=TRITON_GRPC_KERAS_INPUT_PATH)
+TRITON_REST_PYTHON_INPUT_QUERY = load_json(path=TRITON_REST_PYTHON_INPUT_PATH)
+TRITON_GRPC_PYTHON_INPUT_QUERY = load_json(path=TRITON_GRPC_PYTHON_INPUT_PATH)
+TRITON_REST_FIL_INPUT_QUERY = load_json(path=TRITON_REST_FIL_INPUT_PATH)
+TRITON_GRPC_FIL_INPUT_QUERY = load_json(path=TRITON_GRPC_FIL_INPUT_PATH)
 
-TRITON_REST_ONNX_INPUT_QUERY = load_json(TRITON_REST_ONNX_INPUT_PATH)
-TRITON_GRPC_ONNX_INPUT_QUERY = load_json(TRITON_GRPC_ONNX_INPUT_PATH)
-
-TRITON_REST_TF_INPUT_QUERY = load_json(TRITON_REST_TF_INPUT_PATH)
-TRITON_GRPC_TF_INPUT_QUERY = load_json(TRITON_GRPC_TF_INPUT_PATH)
 
 
 LOCAL_HOST_URL: str = "http://localhost"
@@ -52,7 +75,7 @@ TRITON_GRPC_PORT: int = 9000
 
 TRITON_GRPC_REMOTE_PORT: int = 443
 
-# MODEL_PATH_PREFIX_RESNET: str = "triton_resnet/model_repository"
+MODEL_PATH_PREFIX_KERAS: str = "triton_resnet/model_repository"
 
 MODEL_PATH_PREFIX: str = "triton/model_repository"
 

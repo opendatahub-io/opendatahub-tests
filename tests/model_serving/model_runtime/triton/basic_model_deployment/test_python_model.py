@@ -1,5 +1,5 @@
 """
-Test module for ResNet50 model served by Triton via KServe.
+Test module for Keras ResNet50 model served by Triton via KServe.
 
 Validates inference using REST and gRPC protocols with both raw and serverless deployment modes.
 """
@@ -17,13 +17,13 @@ from tests.model_serving.model_runtime.triton.constant import (
     BASE_RAW_DEPLOYMENT_CONFIG,
     BASE_SERVERLESS_DEPLOYMENT_CONFIG,
     MODEL_PATH_PREFIX,
-    TRITON_GRPC_INPUT_QUERY,
-    TRITON_REST_INPUT_QUERY,
+    TRITON_GRPC_PYTHON_INPUT_QUERY,
+    TRITON_REST_PYTHON_INPUT_QUERY 
 )
 
 LOGGER = get_logger(name=__name__)
 
-MODEL_NAME = "resnet50"
+MODEL_NAME = "python"
 MODEL_VERSION = "1"
 MODEL_NAME_DICT = {"name": MODEL_NAME}
 MODEL_STORAGE_URI_DICT = {"model-dir": f"{MODEL_PATH_PREFIX}"}
@@ -38,48 +38,48 @@ pytestmark = pytest.mark.usefixtures(
     [
         pytest.param(
             {"protocol_type": Protocols.REST},
-            {"name": "resnet50-raw-rest"},
+            {"name": "keras-python-raw-rest"},
             {
                 **BASE_RAW_DEPLOYMENT_CONFIG,
                 **MODEL_NAME_DICT,
             },
             MODEL_STORAGE_URI_DICT,
             BASE_RAW_DEPLOYMENT_CONFIG,
-            id="resnet50-raw-rest-deployment",
+            id="keras-python-raw-rest-deployment",
         ),
         pytest.param(
             {"protocol_type": Protocols.GRPC},
-            {"name": "resnet50-raw-grpc"},
+            {"name": "keras-python-raw-grpc"},
             {
                 **BASE_RAW_DEPLOYMENT_CONFIG,
                 **MODEL_NAME_DICT,
             },
             MODEL_STORAGE_URI_DICT,
             BASE_RAW_DEPLOYMENT_CONFIG,
-            id="resnet50-raw-grpc-deployment",
+            id="keras-python-raw-grpc-deployment",
         ),
         pytest.param(
             {"protocol_type": Protocols.REST},
-            {"name": "resnet50-serverless-rest"},
+            {"name": "keras-python-serverless-rest"},
             {**BASE_SERVERLESS_DEPLOYMENT_CONFIG, **MODEL_NAME_DICT},
             MODEL_STORAGE_URI_DICT,
             BASE_SERVERLESS_DEPLOYMENT_CONFIG,
-            id="resnet50-serverless-rest-deployment",
+            id="keras-python-serverless-rest-deployment",
         ),
         pytest.param(
             {"protocol_type": Protocols.GRPC},
-            {"name": "resnet50-serverless-grpc"},
+            {"name": "keras-python-serverless-grpc"},
             {**BASE_SERVERLESS_DEPLOYMENT_CONFIG, **MODEL_NAME_DICT},
             MODEL_STORAGE_URI_DICT,
             BASE_SERVERLESS_DEPLOYMENT_CONFIG,
-            id="resnet50-serverless-grpc-deployment",
+            id="keras-python-serverless-grpc-deployment",
         ),
     ],
     indirect=True,
 )
-class TestResNet50Model:
+class TestPythonModel:
     """
-    Test class for ResNet50 inference using Triton on KServe.
+    Test class for PYTHON inference using Triton on KServe.
 
     Covers:
     - REST and gRPC protocols
@@ -87,7 +87,7 @@ class TestResNet50Model:
     - Snapshot validation of inference results
     """
 
-    def test_resnet50_inference(
+    def test_python_inference(
         self,
         triton_inference_service: InferenceService,
         triton_pod_resource: Pod,
@@ -105,7 +105,7 @@ class TestResNet50Model:
             protocol: REST or gRPC
             root_dir: Root directory for test execution
         """
-        input_query = TRITON_REST_INPUT_QUERY if protocol == Protocols.REST else TRITON_GRPC_INPUT_QUERY
+        input_query = TRITON_REST_PYTHON_INPUT_QUERY  if protocol == Protocols.REST else TRITON_GRPC_PYTHON_INPUT_QUERY 
 
         validate_inference_request(
             pod_name=triton_pod_resource.name,

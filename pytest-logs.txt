@@ -1,478 +1,93 @@
 
--------------------------------------------------------- test_densenetonnx_inference[densenetonnx-raw-rest-deployment] --------------------------------------------------------
+------------------------------------------------------------- test_xgboost_inference[xgboost-raw-rest-deployment] -------------------------------------------------------------
 ------------------------------------------------------------------------------------ SETUP ------------------------------------------------------------------------------------
-2025-06-23T12:25:25.542262 conftest [32mINFO[0m Executing session fixture: admin_client[0m
-2025-06-23T12:25:27.513828 conftest [32mINFO[0m Executing session fixture: updated_global_config[0m
-2025-06-23T12:25:30.374688 conftest [32mINFO[0m Executing session fixture: event_loop_policy[0m
-2025-06-23T12:25:30.375004 conftest [32mINFO[0m Executing session fixture: _syrupy_apply_ide_patches[0m
-2025-06-23T12:25:30.375109 conftest [32mINFO[0m Executing session fixture: nodes[0m
-2025-06-23T12:25:56.463518 conftest [32mINFO[0m Executing session fixture: dsci_resource[0m
-2025-06-23T12:25:56.781054 conftest [32mINFO[0m Executing session fixture: dsc_resource[0m
-2025-06-23T12:25:57.101217 conftest [32mINFO[0m Executing session fixture: record_testsuite_property[0m
-2025-06-23T12:25:57.101396 conftest [32mINFO[0m Executing session fixture: junitxml_plugin[0m
-2025-06-23T12:25:57.101496 conftest [32mINFO[0m Executing session fixture: cluster_sanity_scope_session[0m
-2025-06-23T12:26:02.349121 conftest [32mINFO[0m Executing session fixture: tmp_path_factory[0m
-2025-06-23T12:26:02.349237 conftest [32mINFO[0m Executing session fixture: tests_tmp_dir[0m
-2025-06-23T12:26:02.349932 conftest [32mINFO[0m Executing session fixture: pytestconfig[0m
-2025-06-23T12:26:02.350071 conftest [32mINFO[0m Executing session fixture: root_dir[0m
-2025-06-23T12:26:02.350182 conftest [32mINFO[0m Executing session fixture: aws_access_key_id[0m
-2025-06-23T12:26:02.350276 conftest [32mINFO[0m Executing session fixture: aws_secret_access_key[0m
-2025-06-23T12:26:02.350350 conftest [32mINFO[0m Executing session fixture: valid_aws_config[0m
-2025-06-23T12:26:02.350489 conftest [32mINFO[0m Executing session fixture: models_s3_bucket_name[0m
-2025-06-23T12:26:02.350588 conftest [32mINFO[0m Executing session fixture: s3_models_storage_uri[0m
-2025-06-23T12:26:02.350668 conftest [32mINFO[0m Executing session fixture: teardown_resources[0m
-2025-06-23T12:26:02.350729 conftest [32mINFO[0m Executing session fixture: triton_runtime_image[0m
-2025-06-23T12:26:02.350783 conftest [32mINFO[0m Executing session fixture: models_s3_bucket_region[0m
-2025-06-23T12:26:02.350835 conftest [32mINFO[0m Executing session fixture: models_s3_bucket_endpoint[0m
-2025-06-23T12:26:02.350887 conftest [32mINFO[0m Executing class fixture: triton_rest_serving_runtime_template[0m
-2025-06-23T12:26:03.010399 conftest [32mINFO[0m Executing class fixture: triton_grpc_serving_runtime_template[0m
-2025-06-23T12:26:03.700418 conftest [32mINFO[0m Executing class fixture: model_namespace[0m
-2025-06-23T12:26:04.687819 conftest [32mINFO[0m Executing class fixture: protocol[0m
-2025-06-23T12:26:04.687903 conftest [32mINFO[0m Executing class fixture: triton_serving_runtime[0m
-2025-06-23T12:26:07.151152 conftest [32mINFO[0m Executing class fixture: kserve_s3_secret[0m
-2025-06-23T12:26:08.483513 conftest [32mINFO[0m Executing class fixture: triton_model_service_account[0m
-2025-06-23T12:26:09.321016 conftest [32mINFO[0m Executing class fixture: triton_inference_service[0m
-2025-06-23T12:26:40.068622 conftest [32mINFO[0m Executing function fixture: cleanup_existing_isvc[0m
-2025-06-23T12:26:40.407372 conftest [32mINFO[0m Executing function fixture: triton_pod_resource[0m
-2025-06-23T12:26:41.038675 conftest [32mINFO[0m Executing function fixture: snapshot[0m
-2025-06-23T12:26:41.039312 conftest [32mINFO[0m Executing function fixture: triton_response_snapshot[0m
+2025-06-25T18:01:17.245521 conftest [32mINFO[0m Executing session fixture: admin_client[0m
+2025-06-25T18:01:17.253812 conftest [32mINFO[0m Executing session fixture: updated_global_config[0m
+2025-06-25T18:01:20.745218 conftest [32mINFO[0m Executing session fixture: event_loop_policy[0m
+2025-06-25T18:01:20.745506 conftest [32mINFO[0m Executing session fixture: _syrupy_apply_ide_patches[0m
+2025-06-25T18:01:20.745620 conftest [32mINFO[0m Executing session fixture: nodes[0m
+2025-06-25T18:01:21.769947 conftest [32mINFO[0m Executing session fixture: dsci_resource[0m
+2025-06-25T18:01:22.122237 conftest [32mINFO[0m Executing session fixture: dsc_resource[0m
+2025-06-25T18:01:22.442176 conftest [32mINFO[0m Executing session fixture: record_testsuite_property[0m
+2025-06-25T18:01:22.442327 conftest [32mINFO[0m Executing session fixture: junitxml_plugin[0m
+2025-06-25T18:01:22.442398 conftest [32mINFO[0m Executing session fixture: cluster_sanity_scope_session[0m
+2025-06-25T18:01:28.254850 conftest [32mINFO[0m Executing session fixture: tmp_path_factory[0m
+2025-06-25T18:01:28.254968 conftest [32mINFO[0m Executing session fixture: tests_tmp_dir[0m
+2025-06-25T18:01:28.255556 conftest [32mINFO[0m Executing session fixture: pytestconfig[0m
+2025-06-25T18:01:28.255667 conftest [32mINFO[0m Executing session fixture: root_dir[0m
+2025-06-25T18:01:28.255760 conftest [32mINFO[0m Executing session fixture: aws_access_key_id[0m
+2025-06-25T18:01:28.255834 conftest [32mINFO[0m Executing session fixture: aws_secret_access_key[0m
+2025-06-25T18:01:28.255899 conftest [32mINFO[0m Executing session fixture: valid_aws_config[0m
+2025-06-25T18:01:28.255973 conftest [32mINFO[0m Executing session fixture: models_s3_bucket_name[0m
+2025-06-25T18:01:28.256023 conftest [32mINFO[0m Executing session fixture: s3_models_storage_uri[0m
+2025-06-25T18:01:28.256079 conftest [32mINFO[0m Executing session fixture: teardown_resources[0m
+2025-06-25T18:01:28.256132 conftest [32mINFO[0m Executing session fixture: triton_runtime_image[0m
+2025-06-25T18:01:28.256182 conftest [32mINFO[0m Executing session fixture: models_s3_bucket_region[0m
+2025-06-25T18:01:28.256238 conftest [32mINFO[0m Executing session fixture: models_s3_bucket_endpoint[0m
+2025-06-25T18:01:28.256289 conftest [32mINFO[0m Executing class fixture: triton_rest_serving_runtime_template[0m
+2025-06-25T18:01:28.947690 conftest [32mINFO[0m Executing class fixture: triton_grpc_serving_runtime_template[0m
+2025-06-25T18:01:29.656250 conftest [32mINFO[0m Executing class fixture: model_namespace[0m
+2025-06-25T18:01:31.292013 conftest [32mINFO[0m Executing class fixture: protocol[0m
+2025-06-25T18:01:31.292098 conftest [32mINFO[0m Executing class fixture: triton_serving_runtime[0m
+2025-06-25T18:01:32.747796 conftest [32mINFO[0m Executing class fixture: kserve_s3_secret[0m
+2025-06-25T18:01:33.749753 conftest [32mINFO[0m Executing class fixture: triton_model_service_account[0m
+2025-06-25T18:01:34.670470 conftest [32mINFO[0m Executing class fixture: triton_inference_service[0m
+2025-06-25T18:02:06.108203 conftest [32mINFO[0m Executing function fixture: cleanup_existing_isvc[0m
+2025-06-25T18:02:06.518444 conftest [32mINFO[0m Executing function fixture: triton_pod_resource[0m
+2025-06-25T18:02:07.337675 conftest [32mINFO[0m Executing function fixture: snapshot[0m
+2025-06-25T18:02:07.338594 conftest [32mINFO[0m Executing function fixture: triton_response_snapshot[0m
 ------------------------------------------------------------------------------------ CALL ------------------------------------------------------------------------------------
 
-TEST: TestdensenetonnxModel.test_densenetonnx_inference[densenetonnx-raw-rest-deployment] STATUS: [0;31mFAILED[0m
-2025-06-23T12:27:32.762844 conftest [31mERROR[0m self = <triton.basic_model_deployment.test_onnx_model.TestdensenetonnxModel object at 0x7fedcc04b2f0>
-triton_inference_service = <ocp_resources.inference_service.InferenceService object at 0x7fedc8b4b680>, triton_pod_resource = <ocp_resources.pod.Pod object at 0x7fedc8a12000>
-triton_response_snapshot = SnapshotAssertion(name='snapshot', num_executions=0), protocol = 'rest', root_dir = PosixPath('/home/rpancham/demo_test/opendatahub-tests')
-
-    def test_densenetonnx_inference(
-        self,
-        triton_inference_service: InferenceService,
-        triton_pod_resource: Pod,
-        triton_response_snapshot: Any,
-        protocol: str,
-        root_dir: str,
-    ) -> None:
-        """
-        Run inference and validate against snapshot.
-
-        Args:
-            triton_inference_service: The deployed InferenceService object
-            triton_pod_resource: The pod running the model server
-            triton_response_snapshot: Expected response snapshot
-            protocol: REST or gRPC
-            root_dir: Root directory for test execution
-        """
-        input_query = TRITON_REST_ONNX_INPUT_QUERY if protocol == Protocols.REST else TRITON_GRPC_ONNX_INPUT_QUERY
-
->       validate_inference_request(
-            pod_name=triton_pod_resource.name,
-            isvc=triton_inference_service,
-            response_snapshot=triton_response_snapshot,
-            input_query=input_query,
-            model_version=MODEL_VERSION,
-            protocol=protocol,
-            root_dir=root_dir,
-        )
-
-tests/model_serving/model_runtime/triton/basic_model_deployment/test_onnx_model.py:118:
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
-tests/model_serving/model_runtime/triton/basic_model_deployment/utils.py:232: in validate_inference_request
-    response = run_triton_inference(
-tests/model_serving/model_runtime/triton/basic_model_deployment/utils.py:177: in run_triton_inference
-    send_rest_request(f"{host}{rest_endpoint}", input_data)
-tests/model_serving/model_runtime/triton/basic_model_deployment/utils.py:95: in send_rest_request
-    response.raise_for_status()
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
-
-self = <Response [400]>
-
-    def raise_for_status(self):
-        """Raises :class:`HTTPError`, if one occurred."""
-
-        http_error_msg = ""
-        if isinstance(self.reason, bytes):
-            # We attempt to decode utf-8 first because some servers
-            # choose to localize their reason strings. If the string
-            # isn't utf-8, we fall back to iso-8859-1 for all other
-            # encodings. (See PR #3538)
-            try:
-                reason = self.reason.decode("utf-8")
-            except UnicodeDecodeError:
-                reason = self.reason.decode("iso-8859-1")
-        else:
-            reason = self.reason
-
-        if 400 <= self.status_code < 500:
-            http_error_msg = (
-                f"{self.status_code} Client Error: {reason} for url: {self.url}"
-            )
-
-        elif 500 <= self.status_code < 600:
-            http_error_msg = (
-                f"{self.status_code} Server Error: {reason} for url: {self.url}"
-            )
-
-        if http_error_msg:
->           raise HTTPError(http_error_msg, response=self)
-E           requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: http://localhost:8080/v2/models/densenetonnx/infer
-
-.venv/lib64/python3.12/site-packages/requests/models.py:1024: HTTPError[0m
+TEST: TestXGboostModel.test_xgboost_inference[xgboost-raw-rest-deployment] STATUS: [0;32mPASSED[0m
 ---------------------------------------------------------------------------------- TEARDOWN ----------------------------------------------------------------------------------
 
--------------------------------------------------------- test_densenetonnx_inference[densenetonnx-raw-grpc-deployment] --------------------------------------------------------
+------------------------------------------------------------- test_xgboost_inference[xgboost-raw-grpc-deployment] -------------------------------------------------------------
 ------------------------------------------------------------------------------------ SETUP ------------------------------------------------------------------------------------
-2025-06-23T12:27:46.914226 conftest [32mINFO[0m Executing class fixture: model_namespace[0m
-2025-06-23T12:27:47.893302 conftest [32mINFO[0m Executing class fixture: protocol[0m
-2025-06-23T12:27:47.893408 conftest [32mINFO[0m Executing class fixture: triton_serving_runtime[0m
-2025-06-23T12:27:49.228870 conftest [32mINFO[0m Executing class fixture: kserve_s3_secret[0m
-2025-06-23T12:27:50.202740 conftest [32mINFO[0m Executing class fixture: triton_model_service_account[0m
-2025-06-23T12:27:50.841458 conftest [32mINFO[0m Executing class fixture: triton_inference_service[0m
-
-TEST: TestdensenetonnxModel.test_densenetonnx_inference[densenetonnx-raw-grpc-deployment] [setup] STATUS: [0;31mERROR[0m
-2025-06-23T12:28:23.440883 conftest [31mERROR[0m request = <SubRequest 'triton_inference_service' for <Function test_densenetonnx_inference[densenetonnx-raw-grpc-deployment]>>
-admin_client = <kubernetes.dynamic.client.DynamicClient object at 0x7fedcaa14710>, model_namespace = <ocp_resources.namespace.Namespace object at 0x7fedc8a35760>
-triton_serving_runtime = <utilities.serving_runtime.ServingRuntimeFromTemplate object at 0x7fedc8a35340>, s3_models_storage_uri = 's3://ods-ci-s3/triton/model_repository/'
-triton_model_service_account = <ocp_resources.service_account.ServiceAccount object at 0x7fedc8a34fb0>
-
-    @pytest.fixture(scope="class")
-    def triton_inference_service(
-        request: pytest.FixtureRequest,
-        admin_client: DynamicClient,
-        model_namespace: Namespace,
-        triton_serving_runtime: ServingRuntime,
-        s3_models_storage_uri: str,
-        triton_model_service_account: ServiceAccount,
-    ) -> Generator[InferenceService, Any, Any]:
-        # ns_name = getattr(request.param, "name", None) or request.param.get("name")
-        # cleanup_namespace(admin_client, ns_name)
-        params = request.param
-        service_config = {
-            "client": admin_client,
-            "name": params.get("name"),
-            "namespace": model_namespace.name,
-            "runtime": triton_serving_runtime.name,
-            "storage_uri": s3_models_storage_uri,
-            "model_format": triton_serving_runtime.instance.spec.supportedModelFormats[0].name,
-            "model_service_account": triton_model_service_account.name,
-            "deployment_mode": params.get("deployment_type", KServeDeploymentType.RAW_DEPLOYMENT),
-            "external_route": params.get("enable_external_route", False),
-        }
-
-        gpu_count = params.get("gpu_count", 0)
-        timeout = params.get("timeout")
-        min_replicas = params.get("min-replicas")
-
-        resources = copy.deepcopy(cast(dict[str, dict[str, str]], PREDICT_RESOURCES["resources"]))
-        if gpu_count > 0:
-            identifier = Labels.Nvidia.NVIDIA_COM_GPU
-            resources["requests"][identifier] = gpu_count
-            resources["limits"][identifier] = gpu_count
-            service_config["volumes"] = PREDICT_RESOURCES["volumes"]
-            service_config["volumes_mounts"] = PREDICT_RESOURCES["volume_mounts"]
-        service_config["resources"] = resources
-
-        if timeout:
-            service_config["timeout"] = timeout
-
-        if min_replicas:
-            service_config["min_replicas"] = min_replicas
-
->       with create_isvc(**service_config) as isvc:
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-tests/model_serving/model_runtime/triton/basic_model_deployment/conftest.py:473:
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
-/usr/lib64/python3.12/contextlib.py:137: in __enter__
-    return next(self.gen)
-           ^^^^^^^^^^^^^^
-utilities/inference_utils.py:678: in create_isvc
-    verify_no_failed_pods(
-utilities/infra.py:655: in verify_no_failed_pods
-    wait_for_isvc_pods(client=client, isvc=isvc, runtime_name=runtime_name)
-.venv/lib64/python3.12/site-packages/timeout_sampler/__init__.py:276: in wrapper
-    for sample in TimeoutSampler(
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
-
-self = <timeout_sampler.TimeoutSampler object at 0x7fedc8a36ea0>
-
-    def __iter__(self) -> Any:
-        """
-        Call `func` and yield the result, or raise an exception on timeout.
-
-        Yields:
-            any: Return value from `func`
-
-        Raises:
-            TimeoutExpiredError: if `func` takes longer than `wait_timeout` seconds to return a value
-        """
-        timeout_watch = TimeoutWatch(timeout=self.wait_timeout)
-        if self.print_log:
-            log = (
-                f"Waiting for {self.wait_timeout} seconds"
-                f" [{datetime.timedelta(seconds=self.wait_timeout)}], retry every"
-                f" {self.sleep} seconds."
-            )
-
-            if self.print_func_log:
-                log += f" ({self._func_log})"
-
-            LOGGER.info(log)
-
-        last_exp = None
-        elapsed_time = None
-        while timeout_watch.remaining_time() > 0:
-            try:
-                elapsed_time = self.wait_timeout - timeout_watch.remaining_time()
-                yield self.func(*self.func_args, **self.func_kwargs)
-                time.sleep(self.sleep)
-                elapsed_time = None
-
-            except Exception as exp:
-                last_exp = exp
-                elapsed_time = self.wait_timeout - timeout_watch.remaining_time()
-
-                if not self._should_ignore_exception(exp=last_exp):
-                    raise TimeoutExpiredError(
-                        self._get_exception_log(exp=last_exp), last_exp=last_exp, elapsed_time=elapsed_time
-                    )
-
-                time.sleep(self.sleep)
-                elapsed_time = None
-
-            finally:
-                if self.print_log and elapsed_time:
-                    LOGGER.info(_elapsed_time_log(elapsed_time=elapsed_time))
-
->       raise TimeoutExpiredError(self._get_exception_log(exp=last_exp), last_exp=last_exp)
-E       timeout_sampler.TimeoutExpiredError: Timed Out: 30
-E       Function: utilities.infra.wait_for_isvc_pods  Kwargs: {'client': <kubernetes.dynamic.client.DynamicClient object at 0x7fedcaa14710>, 'isvc': <ocp_resources.inference_service.InferenceService object at 0x7fedc8a34200>, 'runtime_name': 'triton-grpc-runtime'}
-E       Last exception: ResourceNotFoundError: densenetonnx has no pods.
-
-.venv/lib64/python3.12/site-packages/timeout_sampler/__init__.py:179: TimeoutExpiredError[0m
----------------------------------------------------------------------------------- TEARDOWN ----------------------------------------------------------------------------------
-
----------------------------------------------------- test_densenetonnx_inference[densenetonnx-serverless-rest-deployment] ----------------------------------------------------
------------------------------------------------------------------------------------- SETUP ------------------------------------------------------------------------------------
-2025-06-23T12:28:36.019601 conftest [32mINFO[0m Executing class fixture: model_namespace[0m
-2025-06-23T12:28:37.139800 conftest [32mINFO[0m Executing class fixture: protocol[0m
-2025-06-23T12:28:37.139930 conftest [32mINFO[0m Executing class fixture: triton_serving_runtime[0m
-2025-06-23T12:28:38.744508 conftest [32mINFO[0m Executing class fixture: kserve_s3_secret[0m
-2025-06-23T12:28:39.740157 conftest [32mINFO[0m Executing class fixture: triton_model_service_account[0m
-2025-06-23T12:28:40.436005 conftest [32mINFO[0m Executing class fixture: triton_inference_service[0m
-2025-06-23T12:29:02.749068 conftest [32mINFO[0m Executing function fixture: cleanup_existing_isvc[0m
-2025-06-23T12:29:03.060536 conftest [32mINFO[0m Executing function fixture: triton_pod_resource[0m
-2025-06-23T12:29:04.021863 conftest [32mINFO[0m Executing function fixture: snapshot[0m
-2025-06-23T12:29:04.022043 conftest [32mINFO[0m Executing function fixture: triton_response_snapshot[0m
+2025-06-25T18:02:26.222996 conftest [32mINFO[0m Executing class fixture: model_namespace[0m
+2025-06-25T18:02:27.732841 conftest [32mINFO[0m Executing class fixture: protocol[0m
+2025-06-25T18:02:27.732973 conftest [32mINFO[0m Executing class fixture: triton_serving_runtime[0m
+2025-06-25T18:02:29.669981 conftest [32mINFO[0m Executing class fixture: kserve_s3_secret[0m
+2025-06-25T18:02:31.496221 conftest [32mINFO[0m Executing class fixture: triton_model_service_account[0m
+2025-06-25T18:02:32.315886 conftest [32mINFO[0m Executing class fixture: triton_inference_service[0m
+2025-06-25T18:03:07.037937 conftest [32mINFO[0m Executing function fixture: cleanup_existing_isvc[0m
+2025-06-25T18:03:07.378274 conftest [32mINFO[0m Executing function fixture: triton_pod_resource[0m
+2025-06-25T18:03:08.017705 conftest [32mINFO[0m Executing function fixture: snapshot[0m
+2025-06-25T18:03:08.017893 conftest [32mINFO[0m Executing function fixture: triton_response_snapshot[0m
 ------------------------------------------------------------------------------------ CALL ------------------------------------------------------------------------------------
 
-TEST: TestdensenetonnxModel.test_densenetonnx_inference[densenetonnx-serverless-rest-deployment] STATUS: [0;31mFAILED[0m
-2025-06-23T12:29:08.977080 conftest [31mERROR[0m self = <triton.basic_model_deployment.test_onnx_model.TestdensenetonnxModel object at 0x7fedcbcb6c00>
-triton_inference_service = <ocp_resources.inference_service.InferenceService object at 0x7fedc8912ea0>, triton_pod_resource = <ocp_resources.pod.Pod object at 0x7fedc8beb200>
-triton_response_snapshot = SnapshotAssertion(name='snapshot', num_executions=0), protocol = 'rest', root_dir = PosixPath('/home/rpancham/demo_test/opendatahub-tests')
-
-    def test_densenetonnx_inference(
-        self,
-        triton_inference_service: InferenceService,
-        triton_pod_resource: Pod,
-        triton_response_snapshot: Any,
-        protocol: str,
-        root_dir: str,
-    ) -> None:
-        """
-        Run inference and validate against snapshot.
-
-        Args:
-            triton_inference_service: The deployed InferenceService object
-            triton_pod_resource: The pod running the model server
-            triton_response_snapshot: Expected response snapshot
-            protocol: REST or gRPC
-            root_dir: Root directory for test execution
-        """
-        input_query = TRITON_REST_ONNX_INPUT_QUERY if protocol == Protocols.REST else TRITON_GRPC_ONNX_INPUT_QUERY
-
->       validate_inference_request(
-            pod_name=triton_pod_resource.name,
-            isvc=triton_inference_service,
-            response_snapshot=triton_response_snapshot,
-            input_query=input_query,
-            model_version=MODEL_VERSION,
-            protocol=protocol,
-            root_dir=root_dir,
-        )
-
-tests/model_serving/model_runtime/triton/basic_model_deployment/test_onnx_model.py:118:
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
-tests/model_serving/model_runtime/triton/basic_model_deployment/utils.py:232: in validate_inference_request
-    response = run_triton_inference(
-tests/model_serving/model_runtime/triton/basic_model_deployment/utils.py:185: in run_triton_inference
-    return send_rest_request(f"{base_url}{rest_endpoint}", input_data)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests/model_serving/model_runtime/triton/basic_model_deployment/utils.py:95: in send_rest_request
-    response.raise_for_status()
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
-
-self = <Response [400]>
-
-    def raise_for_status(self):
-        """Raises :class:`HTTPError`, if one occurred."""
-
-        http_error_msg = ""
-        if isinstance(self.reason, bytes):
-            # We attempt to decode utf-8 first because some servers
-            # choose to localize their reason strings. If the string
-            # isn't utf-8, we fall back to iso-8859-1 for all other
-            # encodings. (See PR #3538)
-            try:
-                reason = self.reason.decode("utf-8")
-            except UnicodeDecodeError:
-                reason = self.reason.decode("iso-8859-1")
-        else:
-            reason = self.reason
-
-        if 400 <= self.status_code < 500:
-            http_error_msg = (
-                f"{self.status_code} Client Error: {reason} for url: {self.url}"
-            )
-
-        elif 500 <= self.status_code < 600:
-            http_error_msg = (
-                f"{self.status_code} Server Error: {reason} for url: {self.url}"
-            )
-
-        if http_error_msg:
->           raise HTTPError(http_error_msg, response=self)
-E           requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://densenetonnx-densenetonnx-serverless-rest.apps.rpanchamgpu-pool-8dxr6.aws.rh-ods.com/v2/models/densenetonnx/infer
-
-.venv/lib64/python3.12/site-packages/requests/models.py:1024: HTTPError[0m
+TEST: TestXGboostModel.test_xgboost_inference[xgboost-raw-grpc-deployment] STATUS: [0;32mPASSED[0m
 ---------------------------------------------------------------------------------- TEARDOWN ----------------------------------------------------------------------------------
 
----------------------------------------------------- test_densenetonnx_inference[densenetonnx-serverless-grpc-deployment] ----------------------------------------------------
+--------------------------------------------------------- test_xgboost_inference[xgboost-serverless-rest-deployment] ---------------------------------------------------------
 ------------------------------------------------------------------------------------ SETUP ------------------------------------------------------------------------------------
-2025-06-23T12:29:55.293240 conftest [32mINFO[0m Executing class fixture: model_namespace[0m
-2025-06-23T12:29:56.523317 conftest [32mINFO[0m Executing class fixture: protocol[0m
-2025-06-23T12:29:56.523479 conftest [32mINFO[0m Executing class fixture: triton_serving_runtime[0m
-2025-06-23T12:29:58.262786 conftest [32mINFO[0m Executing class fixture: kserve_s3_secret[0m
-2025-06-23T12:29:59.302274 conftest [32mINFO[0m Executing class fixture: triton_model_service_account[0m
-2025-06-23T12:30:00.045228 conftest [32mINFO[0m Executing class fixture: triton_inference_service[0m
+2025-06-25T18:03:27.313067 conftest [32mINFO[0m Executing class fixture: model_namespace[0m
+2025-06-25T18:03:28.644612 conftest [32mINFO[0m Executing class fixture: protocol[0m
+2025-06-25T18:03:28.644729 conftest [32mINFO[0m Executing class fixture: triton_serving_runtime[0m
+2025-06-25T18:03:30.089424 conftest [32mINFO[0m Executing class fixture: kserve_s3_secret[0m
+2025-06-25T18:03:31.309823 conftest [32mINFO[0m Executing class fixture: triton_model_service_account[0m
+2025-06-25T18:03:31.977286 conftest [32mINFO[0m Executing class fixture: triton_inference_service[0m
+2025-06-25T18:03:54.075199 conftest [32mINFO[0m Executing function fixture: cleanup_existing_isvc[0m
+2025-06-25T18:03:54.389431 conftest [32mINFO[0m Executing function fixture: triton_pod_resource[0m
+2025-06-25T18:03:55.685227 conftest [32mINFO[0m Executing function fixture: snapshot[0m
+2025-06-25T18:03:55.685396 conftest [32mINFO[0m Executing function fixture: triton_response_snapshot[0m
+------------------------------------------------------------------------------------ CALL ------------------------------------------------------------------------------------
 
-TEST: TestdensenetonnxModel.test_densenetonnx_inference[densenetonnx-serverless-grpc-deployment] [setup] STATUS: [0;31mERROR[0m
-2025-06-23T12:30:33.790454 conftest [31mERROR[0m request = <SubRequest 'triton_inference_service' for <Function test_densenetonnx_inference[densenetonnx-serverless-grpc-deployment]>>
-admin_client = <kubernetes.dynamic.client.DynamicClient object at 0x7fedcaa14710>, model_namespace = <ocp_resources.namespace.Namespace object at 0x7fedc89124e0>
-triton_serving_runtime = <utilities.serving_runtime.ServingRuntimeFromTemplate object at 0x7fedc8912fc0>, s3_models_storage_uri = 's3://ods-ci-s3/triton/model_repository/'
-triton_model_service_account = <ocp_resources.service_account.ServiceAccount object at 0x7fedc8beb110>
+TEST: TestXGboostModel.test_xgboost_inference[xgboost-serverless-rest-deployment] STATUS: [0;32mPASSED[0m
+---------------------------------------------------------------------------------- TEARDOWN ----------------------------------------------------------------------------------
 
-    @pytest.fixture(scope="class")
-    def triton_inference_service(
-        request: pytest.FixtureRequest,
-        admin_client: DynamicClient,
-        model_namespace: Namespace,
-        triton_serving_runtime: ServingRuntime,
-        s3_models_storage_uri: str,
-        triton_model_service_account: ServiceAccount,
-    ) -> Generator[InferenceService, Any, Any]:
-        # ns_name = getattr(request.param, "name", None) or request.param.get("name")
-        # cleanup_namespace(admin_client, ns_name)
-        params = request.param
-        service_config = {
-            "client": admin_client,
-            "name": params.get("name"),
-            "namespace": model_namespace.name,
-            "runtime": triton_serving_runtime.name,
-            "storage_uri": s3_models_storage_uri,
-            "model_format": triton_serving_runtime.instance.spec.supportedModelFormats[0].name,
-            "model_service_account": triton_model_service_account.name,
-            "deployment_mode": params.get("deployment_type", KServeDeploymentType.RAW_DEPLOYMENT),
-            "external_route": params.get("enable_external_route", False),
-        }
+--------------------------------------------------------- test_xgboost_inference[xgboost-serverless-grpc-deployment] ---------------------------------------------------------
+------------------------------------------------------------------------------------ SETUP ------------------------------------------------------------------------------------
+2025-06-25T18:04:45.240707 conftest [32mINFO[0m Executing class fixture: model_namespace[0m
+2025-06-25T18:04:46.368718 conftest [32mINFO[0m Executing class fixture: protocol[0m
+2025-06-25T18:04:46.368859 conftest [32mINFO[0m Executing class fixture: triton_serving_runtime[0m
+2025-06-25T18:04:47.816159 conftest [32mINFO[0m Executing class fixture: kserve_s3_secret[0m
+2025-06-25T18:04:48.850141 conftest [32mINFO[0m Executing class fixture: triton_model_service_account[0m
+2025-06-25T18:04:49.475012 conftest [32mINFO[0m Executing class fixture: triton_inference_service[0m
+2025-06-25T18:05:10.056750 conftest [32mINFO[0m Executing function fixture: cleanup_existing_isvc[0m
+2025-06-25T18:05:10.365431 conftest [32mINFO[0m Executing function fixture: triton_pod_resource[0m
+2025-06-25T18:05:11.324366 conftest [32mINFO[0m Executing function fixture: snapshot[0m
+2025-06-25T18:05:11.324654 conftest [32mINFO[0m Executing function fixture: triton_response_snapshot[0m
+------------------------------------------------------------------------------------ CALL ------------------------------------------------------------------------------------
 
-        gpu_count = params.get("gpu_count", 0)
-        timeout = params.get("timeout")
-        min_replicas = params.get("min-replicas")
-
-        resources = copy.deepcopy(cast(dict[str, dict[str, str]], PREDICT_RESOURCES["resources"]))
-        if gpu_count > 0:
-            identifier = Labels.Nvidia.NVIDIA_COM_GPU
-            resources["requests"][identifier] = gpu_count
-            resources["limits"][identifier] = gpu_count
-            service_config["volumes"] = PREDICT_RESOURCES["volumes"]
-            service_config["volumes_mounts"] = PREDICT_RESOURCES["volume_mounts"]
-        service_config["resources"] = resources
-
-        if timeout:
-            service_config["timeout"] = timeout
-
-        if min_replicas:
-            service_config["min_replicas"] = min_replicas
-
->       with create_isvc(**service_config) as isvc:
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-tests/model_serving/model_runtime/triton/basic_model_deployment/conftest.py:473:
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
-/usr/lib64/python3.12/contextlib.py:137: in __enter__
-    return next(self.gen)
-           ^^^^^^^^^^^^^^
-utilities/inference_utils.py:678: in create_isvc
-    verify_no_failed_pods(
-utilities/infra.py:655: in verify_no_failed_pods
-    wait_for_isvc_pods(client=client, isvc=isvc, runtime_name=runtime_name)
-.venv/lib64/python3.12/site-packages/timeout_sampler/__init__.py:276: in wrapper
-    for sample in TimeoutSampler(
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
-
-self = <timeout_sampler.TimeoutSampler object at 0x7fedc8913d40>
-
-    def __iter__(self) -> Any:
-        """
-        Call `func` and yield the result, or raise an exception on timeout.
-
-        Yields:
-            any: Return value from `func`
-
-        Raises:
-            TimeoutExpiredError: if `func` takes longer than `wait_timeout` seconds to return a value
-        """
-        timeout_watch = TimeoutWatch(timeout=self.wait_timeout)
-        if self.print_log:
-            log = (
-                f"Waiting for {self.wait_timeout} seconds"
-                f" [{datetime.timedelta(seconds=self.wait_timeout)}], retry every"
-                f" {self.sleep} seconds."
-            )
-
-            if self.print_func_log:
-                log += f" ({self._func_log})"
-
-            LOGGER.info(log)
-
-        last_exp = None
-        elapsed_time = None
-        while timeout_watch.remaining_time() > 0:
-            try:
-                elapsed_time = self.wait_timeout - timeout_watch.remaining_time()
-                yield self.func(*self.func_args, **self.func_kwargs)
-                time.sleep(self.sleep)
-                elapsed_time = None
-
-            except Exception as exp:
-                last_exp = exp
-                elapsed_time = self.wait_timeout - timeout_watch.remaining_time()
-
-                if not self._should_ignore_exception(exp=last_exp):
-                    raise TimeoutExpiredError(
-                        self._get_exception_log(exp=last_exp), last_exp=last_exp, elapsed_time=elapsed_time
-                    )
-
-                time.sleep(self.sleep)
-                elapsed_time = None
-
-            finally:
-                if self.print_log and elapsed_time:
-                    LOGGER.info(_elapsed_time_log(elapsed_time=elapsed_time))
-
->       raise TimeoutExpiredError(self._get_exception_log(exp=last_exp), last_exp=last_exp)
-E       timeout_sampler.TimeoutExpiredError: Timed Out: 30
-E       Function: utilities.infra.wait_for_isvc_pods  Kwargs: {'client': <kubernetes.dynamic.client.DynamicClient object at 0x7fedcaa14710>, 'isvc': <ocp_resources.inference_service.InferenceService object at 0x7fedc8be9d00>, 'runtime_name': 'triton-grpc-runtime'}
-E       Last exception: ResourceNotFoundError: densenetonnx has no pods.
-
-.venv/lib64/python3.12/site-packages/timeout_sampler/__init__.py:179: TimeoutExpiredError[0m
+TEST: TestXGboostModel.test_xgboost_inference[xgboost-serverless-grpc-deployment] STATUS: [0;32mPASSED[0m
 ---------------------------------------------------------------------------------- TEARDOWN ----------------------------------------------------------------------------------
