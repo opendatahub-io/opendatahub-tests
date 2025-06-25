@@ -271,7 +271,7 @@ class MinIo:
         }
 
         QWEN_MINIO_CONFIG: dict[str, Any] = {
-            "image": "quay.io/aaguirre/hf-llm-minio@sha256:2404a37d578f2a9c7adb3971e26a7438fedbe7e2e59814f396bfa47cd5fe93bb",  # noqa: E501
+            "image": "quay.io/trustyai_testing/hf-llm-minio@sha256:2404a37d578f2a9c7adb3971e26a7438fedbe7e2e59814f396bfa47cd5fe93bb",  # noqa: E501
             **MINIO_BASE_CONFIG,
         }
 

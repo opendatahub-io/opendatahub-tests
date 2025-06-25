@@ -1,4 +1,6 @@
 import http
+from typing import Dict, Any
+
 import pytest
 import requests
 from simple_logger.logger import get_logger
@@ -9,7 +11,6 @@ from tests.model_explainability.guardrails.utils import (
     verify_negative_detection_response,
     verify_builtin_detector_unsuitable_output_response,
     get_auth_headers,
-    get_chat_payload,
     get_chat_detections_payload,
 )
 from tests.model_explainability.utils import validate_tai_component_images
@@ -21,9 +22,15 @@ LOGGER = get_logger(name=__name__)
 EXAMPLE_EMAIL_ADDRESS: str = "myemail@domain.com"
 PROMPT_WITH_PII: str = f"This is my email address: {EXAMPLE_EMAIL_ADDRESS}, just answer ACK."
 HARMLESS_PROMPT: str = "What is the opposite of up?"
+MNT_MODELS: str = "/mnt/models"
 
 CHAT_COMPLETIONS_DETECTION_ENDPOINT: str = "api/v2/chat/completions-detection"
 PII_ENDPOINT: str = "/pii"
+
+PROMPT_INJECTION_DETECTORS: Dict[str, Dict[str, Any]] = {
+    "input": {"prompt_injection": {}},
+    "output": {"prompt_injection": {}},
+}
 
 
 @pytest.mark.parametrize(
@@ -101,7 +108,10 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         response = requests.post(
             url=f"https://{guardrails_orchestrator_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
             headers=get_auth_headers(token=current_client_token),
-            json=get_chat_payload(content=PROMPT_WITH_PII),
+            json=get_chat_detections_payload(
+                content=PROMPT_WITH_PII,
+                model=MNT_MODELS,
+            ),
             verify=openshift_ca_bundle_file,
         )
 
@@ -119,10 +129,11 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         response = requests.post(
             url=f"https://{guardrails_orchestrator_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
             headers=get_auth_headers(token=current_client_token),
-            json=get_chat_payload(
+            json=get_chat_detections_payload(
                 content="Hi, write three and only three examples of email adresses "
                 "that I can use to create an account for an online service."
-                "Don't provide any additional explanation."
+                "Don't provide any additional explanation.",
+                model=MNT_MODELS,
             ),
             verify=openshift_ca_bundle_file,
         )
@@ -154,7 +165,10 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         response = requests.post(
             url=f"https://{guardrails_orchestrator_route.host}{url_path}{OpenAIEnpoints.CHAT_COMPLETIONS}",
             headers=get_auth_headers(token=current_client_token),
-            json=get_chat_payload(content=str(message)),
+            json=get_chat_detections_payload(
+                content=str(message),
+                model=MNT_MODELS,
+            ),
             verify=openshift_ca_bundle_file,
         )
 
@@ -165,7 +179,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
     "model_namespace, minio_pod, minio_data_connection",
     [
         pytest.param(
-            {"name": "test-guardrails-builtin"},
+            {"name": "test-guardrails-huggingface"},
             MinIo.PodConfig.QWEN_MINIO_CONFIG,
             {"bucket": "llms"},
         )
@@ -198,7 +212,9 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
         response = requests.post(
             url=f"https://{guardrails_orchestrator_with_hf_detectors_route.host}/{CHAT_COMPLETIONS_DETECTION_ENDPOINT}",
             headers=get_auth_headers(token=current_client_token),
-            json=get_chat_detections_payload(content=prompt_injection),
+            json=get_chat_detections_payload(
+                content=prompt_injection, model=MNT_MODELS, detectors=PROMPT_INJECTION_DETECTORS
+            ),
             verify=openshift_ca_bundle_file,
         )
 
@@ -223,7 +239,9 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
         response = requests.post(
             url=f"https://{guardrails_orchestrator_with_hf_detectors_route.host}/{CHAT_COMPLETIONS_DETECTION_ENDPOINT}",
             headers=get_auth_headers(token=current_client_token),
-            json=get_chat_detections_payload(content=HARMLESS_PROMPT),
+            json=get_chat_detections_payload(
+                content=HARMLESS_PROMPT, model=MNT_MODELS, detectors=PROMPT_INJECTION_DETECTORS
+            ),
             verify=openshift_ca_bundle_file,
         )
 
