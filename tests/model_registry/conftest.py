@@ -203,7 +203,7 @@ def model_registry_instance(
         yield mr_instance
         mr_instance.delete(wait=True)
     else:
-        iistio_config = None
+        istio_config = None
         oauth_config = None
         mr_class_name = ModelRegistry
         if is_model_registry_oauth:
