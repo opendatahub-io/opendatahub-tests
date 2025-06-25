@@ -1,5 +1,5 @@
 import uuid
-from typing import Any
+from typing import Any, List
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.pod import Pod
@@ -12,6 +12,8 @@ from kubernetes.dynamic.exceptions import NotFoundError
 from tests.model_registry.constants import MR_DB_IMAGE_DIGEST
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
 from utilities.constants import Protocols, Annotations
+from model_registry import ModelRegistry as ModelRegistryClient
+from model_registry.types import RegisteredModel
 
 ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
 
@@ -330,3 +332,32 @@ def apply_mysql_args_and_volume_mounts(
     my_sql_container["args"] = mysql_args
     my_sql_container["volumeMounts"] = volumes_mounts
     return my_sql_container
+
+
+def get_and_validate_registered_model(
+    model_registry_client: ModelRegistryClient,
+    model_name: str,
+    registered_model: RegisteredModel = None,
+) -> List[str]:
+    """
+    Get and validate a registered model.
+    """
+    model = model_registry_client.get_registered_model(name=model_name)
+    if registered_model is not None:
+        expected_attrs = {
+            "id": registered_model.id,
+            "name": registered_model.name,
+            "description": registered_model.description,
+            "owner": registered_model.owner,
+            "state": registered_model.state,
+        }
+    else:
+        expected_attrs = {
+            "name": model_name,
+        }
+    errors = [
+        f"Unexpected {attr} expected: {expected}, received {getattr(model, attr)}"
+        for attr, expected in expected_attrs.items()
+        if getattr(model, attr) != expected
+    ]
+    return errors

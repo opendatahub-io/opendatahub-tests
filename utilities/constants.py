@@ -71,6 +71,8 @@ class RuntimeTemplates:
     VLLM_CUDA: str = "vllm-cuda-runtime-template"
     VLLM_ROCM: str = "vllm-rocm-runtime-template"
     VLLM_GAUDUI: str = "vllm-gaudi-runtime-template"
+    MLSERVER_GRPC: str = "mlserver-grpc-runtime-template"
+    MLSERVER_REST: str = "mlserver-rest-runtime-template"
 
 
 class ModelInferenceRuntime:
