@@ -37,6 +37,7 @@ EXPECTED_UPDATED_REPLICAS = 2
 
 
 @pytest.mark.rawdeployment
+@pytest.mark.skip("This test is not applicable for 2.21")
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, kueue_kserve_serving_runtime, kueue_raw_inference_service, "
     "kueue_cluster_queue_from_template, kueue_resource_flavor_from_template, kueue_local_queue_from_template",
