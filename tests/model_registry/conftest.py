@@ -36,6 +36,7 @@ from tests.model_registry.constants import (
     MODEL_REGISTRY_STANDARD_LABELS,
     ISTIO_CONFIG_DICT,
 )
+from tests.model_registry.rest_api.utils import ModelRegistryV1Alpha1
 from utilities.constants import Labels
 from tests.model_registry.utils import (
     get_endpoint_from_mr_service,
@@ -202,15 +203,17 @@ def model_registry_instance(
         yield mr_instance
         mr_instance.delete(wait=True)
     else:
-        istio_config = None
+        iistio_config = None
         oauth_config = None
+        mr_class_name = ModelRegistry
         if is_model_registry_oauth:
             LOGGER.warning("Requested Ouath Proxy configuration:")
             oauth_config = OAUTH_PROXY_CONFIG_DICT
         else:
             LOGGER.warning("Requested OSSM configuration:")
             istio_config = ISTIO_CONFIG_DICT
-        with ModelRegistry(
+            mr_class_name = ModelRegistryV1Alpha1
+        with mr_class_name(
             name=MR_INSTANCE_NAME,
             namespace=model_registry_namespace,
             label=MODEL_REGISTRY_STANDARD_LABELS,
@@ -223,6 +226,8 @@ def model_registry_instance(
             teardown=teardown_resources,
         ) as mr:
             mr.wait_for_condition(condition="Available", status="True")
+            mr.wait_for_condition(condition="OAuthProxyAvailable", status="True")
+
             yield mr
 
 
