@@ -16,6 +16,7 @@ pytestmark = [
 LOGGER = get_logger(name=__name__)
 
 
+
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, multi_node_oci_inference_service",
     [
