@@ -22,7 +22,7 @@ pytestmark = [
     pytest.mark.usefixtures("skip_if_no_gpu_nodes", "skip_if_no_nfs_storage_class"),
     pytest.mark.multinode,
     pytest.mark.model_server_gpu,
-    pytest.mark.gpu
+    pytest.mark.gpu,
 ]
 
 
