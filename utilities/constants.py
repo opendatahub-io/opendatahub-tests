@@ -71,6 +71,8 @@ class RuntimeTemplates:
     VLLM_CUDA: str = "vllm-cuda-runtime-template"
     VLLM_ROCM: str = "vllm-rocm-runtime-template"
     VLLM_GAUDUI: str = "vllm-gaudi-runtime-template"
+    MLSERVER_GRPC: str = "mlserver-grpc-runtime-template"
+    MLSERVER_REST: str = "mlserver-rest-runtime-template"
 
 
 class ModelInferenceRuntime:
@@ -118,6 +120,7 @@ class AcceleratorType:
 
 
 class ApiGroups:
+    HAPROXY_ROUTER_OPENSHIFT_IO: str = "haproxy.router.openshift.io"
     OPENDATAHUB_IO: str = "opendatahub.io"
 
 
@@ -137,6 +140,9 @@ class Annotations:
     class OpenDataHubIo:
         MANAGED: str = f"{ApiGroups.OPENDATAHUB_IO}/managed"
         SERVICE_MESH: str = f"{ApiGroups.OPENDATAHUB_IO}/service-mesh"
+
+    class HaproxyRouterOpenshiftIo:
+        TIMEOUT: str = f"{ApiGroups.HAPROXY_ROUTER_OPENSHIFT_IO}/timeout"
 
 
 class StorageClassName:
@@ -205,6 +211,11 @@ class Timeout:
     TIMEOUT_10MIN: int = 10 * TIMEOUT_1MIN
     TIMEOUT_15MIN: int = 15 * TIMEOUT_1MIN
     TIMEOUT_20MIN: int = 20 * TIMEOUT_1MIN
+    TIMEOUT_30MIN: int = 30 * TIMEOUT_1MIN
+
+
+class OpenshiftRouteTimeout:
+    TIMEOUT_1MICROSEC: str = "1us"
 
 
 class Containers:
@@ -222,6 +233,7 @@ class ModelCarImage:
     MNIST_8_1: str = (
         "oci://quay.io/mwaykole/test@sha256:8a3217bcfa2cc5fa3d07496cff8b234acdf2c9725dd307dc0a80401f55e1a11c"  # noqa: E501
     )
+    GRANITE_8B_CODE_INSTRUCT: str = "oci://registry.redhat.io/rhelai1/modelcar-granite-8b-code-instruct:1.4"
 
 
 class MinIo:
@@ -257,6 +269,11 @@ class MinIo:
 
         MODEL_MESH_MINIO_CONFIG: dict[str, Any] = {
             "image": "quay.io/trustyai_testing/modelmesh-minio-examples@sha256:d2ccbe92abf9aa5085b594b2cae6c65de2bf06306c30ff5207956eb949bb49da",  # noqa: E501
+            **MINIO_BASE_CONFIG,
+        }
+
+        QWEN_MINIO_CONFIG: dict[str, Any] = {
+            "image": "quay.io/trustyai_testing/hf-llm-minio@sha256:2404a37d578f2a9c7adb3971e26a7438fedbe7e2e59814f396bfa47cd5fe93bb",  # noqa: E501
             **MINIO_BASE_CONFIG,
         }
 

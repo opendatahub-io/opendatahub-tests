@@ -1,0 +1,24 @@
+{
+  "modelName": "catboost",
+  "modelVersion": "v0.1.0",
+  "outputs": [
+    {
+      "contents": {
+        "int64Contents": [
+          "0"
+        ]
+      },
+      "datatype": "INT64",
+      "name": "predict",
+      "parameters": {
+        "content_type": {
+          "stringParam": "np"
+        }
+      },
+      "shape": [
+        "1",
+        "1"
+      ]
+    }
+  ]
+}
