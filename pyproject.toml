@@ -65,6 +65,7 @@ dependencies = [
     "jira>=3.8.0",
     "openshift-python-wrapper>=11.0.26",
     "semver>=3.0.4",
+    "pytest-html>=4.1.1",
 ]
 
 [project.urls]
