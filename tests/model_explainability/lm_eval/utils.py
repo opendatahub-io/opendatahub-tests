@@ -1,6 +1,7 @@
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.lm_eval_job import LMEvalJob
 from ocp_resources.pod import Pod
+from pathlib import Path
 
 from utilities.constants import Timeout
 from utilities.infra import check_pod_status_in_time
@@ -51,3 +52,16 @@ def get_lmevaljob_pod(client: DynamicClient, lmevaljob: LMEvalJob, timeout: int 
     lmeval_pod.wait(timeout=timeout)
 
     return lmeval_pod
+
+def save_pod_logs(pod: Pod, task_name: str, namespace: str):
+    """
+    Save pod logs to a file
+    """
+    output_dir = Path(__file__).parent.parent/ "lm_eval" / "task_lists" / "lmeval_task_logs" / namespace
+    output_dir.mkdir(parents=True, exist_ok=True)
+    log_file = output_dir / f"{task_name}_logs.txt"
+    logs = pod.get_logs()
+    with open(log_file, 'w') as f:
+        f.write(logs)
+    LOGGER.info(f"Saved logs for task {task_name} (pod: {pod.name}) to {log_file}")
+    return str(log_file)
