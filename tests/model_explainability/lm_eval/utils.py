@@ -53,15 +53,16 @@ def get_lmevaljob_pod(client: DynamicClient, lmevaljob: LMEvalJob, timeout: int 
 
     return lmeval_pod
 
+
 def save_pod_logs(pod: Pod, task_name: str, namespace: str):
     """
     Save pod logs to a file
     """
-    output_dir = Path(__file__).parent.parent/ "lm_eval" / "task_lists" / "lmeval_task_logs" / namespace
+    output_dir = Path(__file__).parent.parent / "lm_eval" / "task_lists" / "lmeval_task_logs" / namespace
     output_dir.mkdir(parents=True, exist_ok=True)
     log_file = output_dir / f"{task_name}_logs.txt"
     logs = pod.get_logs()
-    with open(log_file, 'w') as f:
+    with open(log_file, "w") as f:
         f.write(logs)
     LOGGER.info(f"Saved logs for task {task_name} (pod: {pod.name}) to {log_file}")
     return str(log_file)
