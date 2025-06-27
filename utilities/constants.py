@@ -71,6 +71,8 @@ class RuntimeTemplates:
     VLLM_CUDA: str = "vllm-cuda-runtime-template"
     VLLM_ROCM: str = "vllm-rocm-runtime-template"
     VLLM_GAUDUI: str = "vllm-gaudi-runtime-template"
+    MLSERVER_GRPC: str = "mlserver-grpc-runtime-template"
+    MLSERVER_REST: str = "mlserver-rest-runtime-template"
 
 
 class ModelInferenceRuntime:
@@ -211,6 +213,7 @@ class Timeout:
     TIMEOUT_10MIN: int = 10 * TIMEOUT_1MIN
     TIMEOUT_15MIN: int = 15 * TIMEOUT_1MIN
     TIMEOUT_20MIN: int = 20 * TIMEOUT_1MIN
+    TIMEOUT_30MIN: int = 30 * TIMEOUT_1MIN
 
 
 class OpenshiftRouteTimeout:
@@ -232,6 +235,7 @@ class ModelCarImage:
     MNIST_8_1: str = (
         "oci://quay.io/mwaykole/test@sha256:8a3217bcfa2cc5fa3d07496cff8b234acdf2c9725dd307dc0a80401f55e1a11c"  # noqa: E501
     )
+    GRANITE_8B_CODE_INSTRUCT: str = "oci://registry.redhat.io/rhelai1/modelcar-granite-8b-code-instruct:1.4"
 
 
 class MinIo:

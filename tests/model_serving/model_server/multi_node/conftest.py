@@ -17,7 +17,7 @@ from timeout_sampler import TimeoutSampler
 from tests.model_serving.model_server.multi_node.utils import (
     delete_multi_node_pod_by_role,
 )
-from utilities.constants import KServeDeploymentType, Labels, Protocols, Timeout
+from utilities.constants import KServeDeploymentType, Labels, Protocols, Timeout, ModelCarImage
 from utilities.general import download_model_data
 from utilities.inference_utils import create_isvc
 from utilities.infra import (
@@ -106,6 +106,58 @@ def multi_node_inference_service(
             isvc=isvc,
             expected_num_deployments=2,
             runtime_name=multi_node_serving_runtime.name,
+        )
+        yield isvc
+
+
+@pytest.fixture(scope="class")
+def multi_node_oci_inference_service(
+    request: FixtureRequest,
+    unprivileged_client: DynamicClient,
+    multi_node_serving_runtime: ServingRuntime,
+) -> Generator[InferenceService, Any, Any]:
+    resources = {
+        "requests": {
+            "cpu": "1",
+            "memory": "4G",
+        },
+        "limits": {
+            "cpu": "2",
+            "memory": "12G",
+        },
+    }
+
+    worker_resources = {
+        "containers": [
+            {
+                "name": "worker-container",
+                "resources": resources,
+            }
+        ]
+    }
+
+    # NOTE: In KServe v0.15, the autoscaler_mode needs to be updated to "none".
+    with create_isvc(
+        client=unprivileged_client,
+        name=request.param["name"],
+        namespace=multi_node_serving_runtime.namespace,
+        runtime=multi_node_serving_runtime.name,
+        storage_uri=ModelCarImage.GRANITE_8B_CODE_INSTRUCT,
+        model_format=multi_node_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+        autoscaler_mode="external",
+        resources=resources,
+        multi_node_worker_spec=worker_resources,
+        wait_for_predictor_pods=False,
+        external_route=True,
+        timeout=Timeout.TIMEOUT_30MIN,
+    ) as isvc:
+        wait_for_inference_deployment_replicas(
+            client=unprivileged_client,
+            isvc=isvc,
+            expected_num_deployments=2,
+            runtime_name=multi_node_serving_runtime.name,
+            timeout=Timeout.TIMEOUT_15MIN,
         )
         yield isvc
 

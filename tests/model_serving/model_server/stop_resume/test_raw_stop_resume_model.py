@@ -37,7 +37,9 @@ pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config"
 )
 class TestStopRaw:
     @pytest.mark.smoke
-    def test_raw_onnx_rest_inference(self, unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_raw_inference_service):
+    def test_raw_onnx_rest_inference(
+        self, unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_raw_inference_service
+    ):
         """Verify that kserve Raw ONNX model can be queried using REST"""
         verify_inference_response(
             inference_service=ovms_raw_inference_service,
@@ -49,11 +51,7 @@ class TestStopRaw:
 
     @pytest.mark.parametrize(
         "patched_raw_inference_service_stop_annotation_true",
-        [
-            pytest.param(
-                {"annotations": {Annotations.KserveIo.FORCE_STOP_RUNTIME: "true"}}
-            )
-        ],
+        [pytest.param({"annotations": {Annotations.KserveIo.FORCE_STOP_RUNTIME: "true"}})],
         indirect=True,
     )
     def test_stop_and_update_to_true_delete_pod_rollout(
@@ -127,14 +125,17 @@ class TestStoppedResumeRaw:
 
     @pytest.mark.parametrize(
         "patched_raw_inference_service_stop_annotation_false",
-        [
-            pytest.param(
-                {"annotations": {Annotations.KserveIo.FORCE_STOP_RUNTIME: "false"}}
-            )
-        ],
+        [pytest.param({"annotations": {Annotations.KserveIo.FORCE_STOP_RUNTIME: "false"}})],
         indirect=True,
     )
-    def test_stop_and_update_to_false_pod_rollout(self, unprivileged_client, unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_raw_inference_service, patched_raw_inference_service_stop_annotation_false):
+    def test_stop_ann_update_to_false_pod_rollout(
+        self,
+        unprivileged_client,
+        unprivileged_model_namespace,
+        ovms_kserve_serving_runtime,
+        ovms_raw_inference_service,
+        patched_raw_inference_service_stop_annotation_false,
+    ):
         """Verify pod rollout when the stop annotation is updated to false"""
         """Verify that kserve Raw ONNX model can be queried using REST"""
         verify_inference_response(

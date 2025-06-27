@@ -569,7 +569,7 @@ def create_isvc(
     wait_for_predictor_pods: bool = True,
     autoscaler_mode: str | None = None,
     stop_resume: bool = False,
-    multi_node_worker_spec: dict[str, int] | None = None,
+    multi_node_worker_spec: dict[str, Any] | None = None,
     timeout: int = Timeout.TIMEOUT_15MIN,
     scale_metric: str | None = None,
     scale_target: int | None = None,
@@ -604,7 +604,7 @@ def create_isvc(
         model_version (str): Model version
         wait_for_predictor_pods (bool): Wait for predictor pods
         autoscaler_mode (str): Autoscaler mode
-        multi_node_worker_spec (dict[str, int]): Multi node worker spec
+        multi_node_worker_spec (dict[str, Any]): Multi node worker spec
         timeout (int): Time to wait for the model inference,deployment to be ready
         scale_metric (str): Scale metric
         scale_target (int): Scale target
