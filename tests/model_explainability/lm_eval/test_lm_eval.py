@@ -3,59 +3,23 @@ import pytest
 from tests.model_explainability.utils import validate_tai_component_images
 from utilities.constants import Timeout
 
+from tests.model_explainability.lm_eval.utils import get_lmeval_tasks
+
 LMEVALJOB_COMPLETE_STATE: str = "Complete"
+
+LMEVAL_TASKS_HEAD5 = get_lmeval_tasks()[:5]
+
+params = [
+    pytest.param(
+        {"name": f"test-lmeval-hf-{x}"}, {"task_list": {"taskNames": [LMEVAL_TASKS_HEAD5[x]]}}, id=LMEVAL_TASKS_HEAD5[x]
+    )
+    for x in range(len(LMEVAL_TASKS_HEAD5))
+]
 
 
 @pytest.mark.parametrize(
     "model_namespace, lmevaljob_hf",
-    [
-        pytest.param(
-            {"name": "test-lmeval-hf-arc"}, {"task_list": {"taskNames": ["arc_challenge"]}}, id="arc_challenge"
-        ),
-        pytest.param(
-            {"name": "test-lmeval-hf-mmlu"},
-            {"task_list": {"taskNames": ["mmlu_astronomy_generative"]}},
-            id="mmlu_astronomy_generative",
-        ),
-        pytest.param({"name": "test-lmeval-hf-hellaswag"}, {"task_list": {"taskNames": ["hellaswag"]}}, id="hellaswag"),
-        pytest.param(
-            {"name": "test-lmeval-hf-truthfulqa"}, {"task_list": {"taskNames": ["truthfulqa_gen"]}}, id="truthfulqa_gen"
-        ),
-        pytest.param(
-            {"name": "test-lmeval-hf-winogrande"}, {"task_list": {"taskNames": ["winogrande"]}}, id="winogrande"
-        ),
-        pytest.param(
-            {"name": "test-lmeval-hf-custom-task"},
-            {
-                "task_list": {
-                    "custom": {
-                        "systemPrompts": [
-                            {"name": "sp_0", "value": "Be concise. At every point give the shortest acceptable answer."}
-                        ],
-                        "templates": [
-                            {
-                                "name": "tp_0",
-                                "value": '{ "__type__": "input_output_template", '
-                                '"input_format": "{text_a_type}: {text_a}\\n'
-                                '{text_b_type}: {text_b}", '
-                                '"output_format": "{label}", '
-                                '"target_prefix": '
-                                '"The {type_of_relation} class is ", '
-                                '"instruction": "Given a {text_a_type} and {text_b_type} '
-                                'classify the {type_of_relation} of the {text_b_type} to one of {classes}.",'
-                                ' "postprocessors": [ "processors.take_first_non_empty_line",'
-                                ' "processors.lower_case_till_punc" ] }',
-                            }
-                        ],
-                    },
-                    "taskRecipes": [
-                        {"card": {"name": "cards.wnli"}, "systemPrompt": {"ref": "sp_0"}, "template": {"ref": "tp_0"}}
-                    ],
-                }
-            },
-            id="custom_task",
-        ),
-    ],
+    params,
     indirect=True,
 )
 def test_lmeval_huggingface_model(admin_client, model_namespace, lmevaljob_hf_pod):
