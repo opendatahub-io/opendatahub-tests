@@ -127,7 +127,7 @@ class TestDriftMetrics:
         trustyai_service_with_pvc_storage,
         gaussian_credit_model,
         prometheus,
-        metric_name
+        metric_name,
     ):
         validate_metrics_field(
             prometheus=prometheus,
@@ -138,12 +138,12 @@ class TestDriftMetrics:
 
     @pytest.mark.parametrize("metric_name", DRIFT_METRICS)
     def test_drift_metric_delete(
-            self,
-            admin_client,
-            minio_data_connection,
-            current_client_token,
-            trustyai_service_with_pvc_storage,
-            metric_name,
+        self,
+        admin_client,
+        minio_data_connection,
+        current_client_token,
+        trustyai_service_with_pvc_storage,
+        metric_name,
     ):
         verify_trustyai_service_metric_delete_request(
             client=admin_client,
@@ -151,4 +151,3 @@ class TestDriftMetrics:
             token=current_client_token,
             metric_name=metric_name,
         )
-

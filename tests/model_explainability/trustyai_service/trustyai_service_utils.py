@@ -39,6 +39,7 @@ class TrustyAIServiceMetrics:
         APPROXKSTEST: str = "approxkstest"
         FOURIERMMD: str = "fouriermmd"
 
+
 class TrustyAIServiceClient:
     """
     A class to be used as a client to interact with TrustyAIService.
