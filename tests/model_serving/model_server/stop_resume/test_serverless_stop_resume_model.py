@@ -1,4 +1,5 @@
 import pytest
+import traceback
 
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import (
@@ -12,6 +13,7 @@ from utilities.constants import (
 from utilities.inference_utils import Inference
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 from tests.model_serving.model_server.serverless.utils import verify_no_inference_pods
+from timeout_sampler import TimeoutSampler, TimeoutExpiredError
 
 pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config")]
 
@@ -28,7 +30,7 @@ pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config"
                 "model-version": ModelVersion.OPSET13,
                 "model-dir": "test-dir",
                 "deployment-mode": KServeDeploymentType.SERVERLESS,
-                "stop": "False",
+                "stop": False,
             },
         )
     ],
@@ -55,7 +57,7 @@ class TestStopServerless:
         ],
         indirect=True,
     )
-    def test_stop_ann_update_to_true_delete_pod_rollout(
+    def test_stop_and_update_to_true_delete_pod_rollout(
         self,
         unprivileged_client,
         unprivileged_model_namespace,
@@ -65,10 +67,20 @@ class TestStopServerless:
     ):
         """Verify pod rollout is deleted when the stop annotation updated to true"""
         """Verify pods do not exist"""
-        verify_no_inference_pods(
-            client=unprivileged_client,
-            isvc=patched_inference_service_stop_annotation_true,
-        )
+        # Use TimeoutSampler to verify that no inference pods exist for 10 seconds with 1 second intervals
+        try:
+            for result in TimeoutSampler(
+                wait_timeout=10,
+                sleep=1,
+                func=lambda: verify_no_inference_pods(
+                    client=unprivileged_client,
+                    isvc=patched_inference_service_stop_annotation_true,
+                ),
+            ):
+                if result is not None:
+                    pytest.fail("Verification failed: pods were found when none should exist")
+        except TimeoutExpiredError:
+            pass
 
 
 @pytest.mark.serverless
@@ -83,7 +95,7 @@ class TestStopServerless:
                 "model-version": ModelVersion.OPSET13,
                 "model-dir": "test-dir",
                 "deployment-mode": KServeDeploymentType.SERVERLESS,
-                "stop": "True",
+                "stop": True,
             },
         )
     ],
@@ -91,7 +103,7 @@ class TestStopServerless:
 )
 class TestStoppedResumeServerless:
     @pytest.mark.smoke
-    def test_stop_ann_true_no_pod_rollout(
+    def test_stop_and_true_no_pod_rollout(
         self,
         unprivileged_client,
         unprivileged_model_namespace,
@@ -100,9 +112,21 @@ class TestStoppedResumeServerless:
     ):
         """Verify no pod rollout when the stop annotation is true"""
         """Verify pods do not exist"""
-        verify_no_inference_pods(
-            client=unprivileged_client, isvc=ovms_kserve_inference_service
-        )
+        # Use TimeoutSampler to verify that no inference pods exist for 10 seconds with 1 second intervals
+        try:
+            for result in TimeoutSampler(
+                wait_timeout=10,
+                sleep=1,
+                func=lambda: verify_no_inference_pods(
+                    client=unprivileged_client,
+                    isvc=ovms_kserve_inference_service,
+                ),
+            ):
+                if result is not None:
+                    pytest.fail("Verification failed: pods were found when none should exist")
+        except TimeoutExpiredError:
+            pass
+
     @pytest.mark.parametrize(
         "patched_inference_service_stop_annotation_false",
         [
@@ -112,7 +136,7 @@ class TestStoppedResumeServerless:
         ],
         indirect=True,
     )
-    def test_stop_ann_update_to_false_pod_rollout(self, unprivileged_client, unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service, patched_inference_service_stop_annotation_false):
+    def test_stop_and_update_to_false_pod_rollout(self, unprivileged_client, unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service, patched_inference_service_stop_annotation_false):
         """Verify pod rollout when the stop annotation is updated to false"""
         """Verify that kserve Serverless ONNX model can be queried using REST"""
         verify_inference_response(
