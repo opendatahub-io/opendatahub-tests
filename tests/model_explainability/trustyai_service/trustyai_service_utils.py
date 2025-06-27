@@ -42,7 +42,7 @@ class TrustyAIServiceMetrics:
 
 class TrustyAIServiceClient:
     """
-    A class to be used as a client to interact with TrustyAIService
+    A class to be used as a client to interact with TrustyAIService.
     """
 
     class Endpoints:
