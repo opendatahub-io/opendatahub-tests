@@ -146,8 +146,25 @@ def aws_secret_access_key(pytestconfig: Config) -> str:
 
 
 @pytest.fixture(scope="session")
+def registry_pullsecret(pytestconfig: Config) -> str:
+    registry_pull_secret = pytestconfig.option.registry_pull_secret
+    if not registry_pull_secret:
+        pytest.skip("Registry pull secret is not defined. Skipping tests that require it. ")
+    return registry_pull_secret
+
+
+@pytest.fixture(scope="session")
 def valid_aws_config(aws_access_key_id: str, aws_secret_access_key: str) -> tuple[str, str]:
     return aws_access_key_id, aws_secret_access_key
+
+
+@pytest.fixture(scope="session")
+def valid_registry_pullsecret(registry_pullsecret: str) -> str:
+    """
+    Fixture to validate the registry pull secret.
+    Skips tests if the registry pull secret is not provided.
+    """
+    return registry_pullsecret
 
 
 @pytest.fixture(scope="session")
@@ -202,6 +219,34 @@ def ci_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str | None:
         )
         return None
     return ci_bucket_endpoint
+
+
+@pytest.fixture(scope="session")
+def registry_pull_secret(pytestconfig: pytest.Config) -> str:
+    registry_pull_secret = pytestconfig.option.registry_pull_secret
+    if not registry_pull_secret:
+        warnings.warn(
+            message=(
+                "Registry pull secret is not defined."
+                "Either pass with `--registry-pull-secret` or set `REGISTRY_PULL_SECRET` environment variable"
+            ),
+            category=UserWarning,
+        )
+    return registry_pull_secret
+
+
+@pytest.fixture(scope="session")
+def registry_host(pytestconfig: pytest.Config) -> str:
+    registry_host = pytestconfig.option.registry_host
+    if not registry_host:
+        warnings.warn(
+            message=(
+                "Registry host is not defined."
+                "Either pass with `--registry-host` or set `REGISTRY_HOST` environment variable"
+            ),
+            category=UserWarning,
+        )
+    return registry_host
 
 
 @pytest.fixture(scope="session")

@@ -1,6 +1,6 @@
 [
   {
-    "id": "isvc-8b-oci",
+    "id": "granite-8b-oci",
     "max_model_len": 1024,
     "object": "model",
     "owned_by": "vllm",

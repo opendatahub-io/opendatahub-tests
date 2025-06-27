@@ -22,7 +22,9 @@ SERVING_ARGUMENT: list[str] = [
 
 BASE_SEVERRLESS_DEPLOYMENT_CONFIG["runtime_argument"] = SERVING_ARGUMENT
 
-pytestmark = pytest.mark.usefixtures("vllm_skip_if_no_supported_accelerator_type")
+pytestmark = pytest.mark.usefixtures(
+    "vllm_skip_if_no_supported_accelerator_type", "valid_aws_config", "valid_registry_pullsecret"
+)
 
 
 @pytest.mark.serverless

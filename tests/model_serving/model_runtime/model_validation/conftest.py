@@ -9,6 +9,8 @@ from utilities.constants import KServeDeploymentType, Labels, RuntimeTemplates
 from ocp_resources.namespace import Namespace
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.inference_service import InferenceService
+from tests.model_serving.model_runtime.model_validation.utils import kserve_registry_pull_secret
+from tests.model_serving.model_runtime.model_validation.constant import PULL_SECRET_NAME
 from pytest import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from simple_logger.logger import get_logger
@@ -17,7 +19,6 @@ from utilities.inference_utils import create_isvc
 from utilities.infra import create_ns
 from tests.model_serving.model_runtime.vllm.utils import validate_supported_quantization_schema
 from tests.model_serving.model_runtime.model_validation.constant import (
-    ORIGINAL_PULL_SECRET,
     INFERENCE_SERVICE_PORT,
     CONTAINER_PORT,
 )
@@ -64,48 +65,62 @@ def vllm_model_car_inference_service(
     modelcar_serving_runtime: ServingRuntime,
     supported_accelerator_type: str,
     modelcar_image_uri: str,
+    registry_pull_secret: str,
+    registry_host: str,
 ) -> Generator[InferenceService, Any, Any]:
     name = safe_k8s_name(name=modelcar_image_uri, max_len=20)
-    isvc_kwargs = {
-        "client": admin_client,
-        "name": name,
-        "namespace": dynamic_model_namespace.name,
-        "runtime": modelcar_serving_runtime.name,
-        "storage_uri": modelcar_image_uri,
-        "model_format": modelcar_serving_runtime.instance.spec.supportedModelFormats[0].name,
-        "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.SERVERLESS),
-        "image_pull_secrets": [ORIGINAL_PULL_SECRET],
-    }
-    accelerator_type = supported_accelerator_type.lower()
-    gpu_count = request.param.get("gpu_count")
-    timeout = request.param.get("timeout")
-    identifier = ACCELERATOR_IDENTIFIER.get(accelerator_type, Labels.Nvidia.NVIDIA_COM_GPU)
-    resources: Any = PREDICT_RESOURCES["resources"]
-    resources["requests"][identifier] = gpu_count
-    resources["limits"][identifier] = gpu_count
-    isvc_kwargs["resources"] = resources
-    if timeout:
-        isvc_kwargs["timeout"] = timeout
-    if gpu_count > 1:
-        isvc_kwargs["volumes"] = PREDICT_RESOURCES["volumes"]
-        isvc_kwargs["volumes_mounts"] = PREDICT_RESOURCES["volume_mounts"]
-    if arguments := request.param.get("runtime_argument"):
-        arguments = [
-            arg
-            for arg in arguments
-            if not (arg.startswith("--tensor-parallel-size") or arg.startswith("--quantization"))
-        ]
-        arguments.append(f"--tensor-parallel-size={gpu_count}")
-        if quantization := request.param.get("quantization"):
-            validate_supported_quantization_schema(q_type=quantization)
-            arguments.append(f"--quantization={quantization}")
-        isvc_kwargs["argument"] = arguments
 
-    if min_replicas := request.param.get("min-replicas"):
-        isvc_kwargs["min_replicas"] = min_replicas
+    # Dynamically create pull secret in the correct namespace
+    with kserve_registry_pull_secret(
+        admin_client=admin_client,
+        name=PULL_SECRET_NAME,
+        namespace=dynamic_model_namespace.name,
+        registry_pull_secret=registry_pull_secret,
+        registry_host=registry_host,
+    ):
+        isvc_kwargs = {
+            "client": admin_client,
+            "name": name,
+            "namespace": dynamic_model_namespace.name,
+            "runtime": modelcar_serving_runtime.name,
+            "storage_uri": modelcar_image_uri,
+            "model_format": modelcar_serving_runtime.instance.spec.supportedModelFormats[0].name,
+            "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.SERVERLESS),
+            "image_pull_secrets": [registry_pull_secret],  # secret name
+        }
+        accelerator_type = supported_accelerator_type.lower()
+        gpu_count = request.param.get("gpu_count")
+        timeout = request.param.get("timeout")
+        identifier = ACCELERATOR_IDENTIFIER.get(accelerator_type, Labels.Nvidia.NVIDIA_COM_GPU)
+        resources: Any = PREDICT_RESOURCES["resources"]
+        resources["requests"][identifier] = gpu_count
+        resources["limits"][identifier] = gpu_count
+        isvc_kwargs["resources"] = resources
 
-    with create_isvc(**isvc_kwargs) as isvc:
-        yield isvc
+        if timeout:
+            isvc_kwargs["timeout"] = timeout
+
+        if gpu_count > 1:
+            isvc_kwargs["volumes"] = PREDICT_RESOURCES["volumes"]
+            isvc_kwargs["volumes_mounts"] = PREDICT_RESOURCES["volume_mounts"]
+
+        if arguments := request.param.get("runtime_argument"):
+            arguments = [
+                arg
+                for arg in arguments
+                if not (arg.startswith("--tensor-parallel-size") or arg.startswith("--quantization"))
+            ]
+            arguments.append(f"--tensor-parallel-size={gpu_count}")
+            if quantization := request.param.get("quantization"):
+                validate_supported_quantization_schema(q_type=quantization)
+                arguments.append(f"--quantization={quantization}")
+            isvc_kwargs["argument"] = arguments
+
+        if min_replicas := request.param.get("min-replicas"):
+            isvc_kwargs["min_replicas"] = min_replicas
+
+        with create_isvc(**isvc_kwargs) as isvc:
+            yield isvc
 
 
 @pytest.fixture(scope="class")

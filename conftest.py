@@ -45,6 +45,7 @@ def pytest_addoption(parser: Parser) -> None:
     must_gather_group = parser.getgroup(name="MustGather")
     cluster_sanity_group = parser.getgroup(name="ClusterSanity")
     modelcar_group = parser.getgroup(name="Modelcar options")
+    ociregistry_group = parser.getgroup(name="OCI Registry")
 
     # AWS config and credentials options
     aws_group.addoption(
@@ -102,6 +103,18 @@ def pytest_addoption(parser: Parser) -> None:
         "--vllm-runtime-image",
         default=os.environ.get("VLLM_RUNTIME_IMAGE"),
         help="Specify the runtime image to use for the tests",
+    )
+
+    # OCI Registry options
+    ociregistry_group.addoption(
+        "--registry-pull-secret",
+        default=os.environ.get("OCI_REGISTRY_PULL_SECRET"),
+        help="Registry pull secret to pull oci container images",
+    )
+    ociregistry_group.addoption(
+        "--registry-host",
+        default=os.environ.get("REGISTRY_HOST"),
+        help="Registry host to pull oci container images",
     )
 
     # Modelcar options

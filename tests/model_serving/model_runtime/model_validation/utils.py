@@ -8,6 +8,7 @@ from simple_logger.logger import get_logger
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.plugins.openai_plugin import OpenAIClient
 from tests.model_serving.model_runtime.vllm.constant import VLLM_SUPPORTED_QUANTIZATION
+from tests.model_serving.model_runtime.model_validation.constant import PULL_SECRET_ACCESS_TYPE
 import pytest
 from tests.model_serving.model_runtime.model_validation.constant import CHAT_QUERY, COMPLETION_QUERY
 
@@ -38,6 +39,29 @@ def kserve_s3_endpoint_secret(
         string_data={
             "AWS_ACCESS_KEY_ID": aws_access_key,
             "AWS_SECRET_ACCESS_KEY": aws_secret_access_key,
+        },
+        wait_for_resource=True,
+    ) as secret:
+        yield secret
+
+
+@contextmanager
+def kserve_registry_pull_secret(
+    admin_client: DynamicClient,
+    name: str,
+    namespace: str,
+    registry_pull_secret: str,
+    registry_host: str,
+) -> Generator[Secret, Any, Any]:
+    dockerconfigjson = f'{{"auths": {{"{registry_host}": {{"auth": "{registry_pull_secret}"}}}}}}'
+    with Secret(
+        client=admin_client,
+        name=name,
+        namespace=namespace,
+        string_data={
+            ".dockerconfigjson": dockerconfigjson,
+            "ACCESS_TYPE": PULL_SECRET_ACCESS_TYPE,
+            "OCI_HOST": registry_host,
         },
         wait_for_resource=True,
     ) as secret:
