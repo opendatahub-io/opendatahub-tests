@@ -49,6 +49,7 @@ from utilities.constants import Protocols, DscComponents
 from model_registry import ModelRegistry as ModelRegistryClient
 from semver import Version
 from utilities.general import wait_for_pods_by_labels
+from utilities.infra import get_product_version
 
 LOGGER = get_logger(name=__name__)
 
@@ -226,7 +227,10 @@ def model_registry_instance(
             teardown=teardown_resources,
         ) as mr:
             mr.wait_for_condition(condition="Available", status="True")
-            mr.wait_for_condition(condition="OAuthProxyAvailable", status="True")
+            if is_model_registry_oauth or get_product_version(admin_client=admin_client) >= Version.parse(
+                version="2.22.0"
+            ):
+                mr.wait_for_condition(condition="OAuthProxyAvailable", status="True")
 
             yield mr
 
@@ -502,8 +506,12 @@ def model_registry_instance_pod(admin_client: DynamicClient) -> Generator[Pod, A
 
 
 @pytest.fixture(scope="class")
-def is_model_registry_oauth(request: FixtureRequest) -> bool:
-    return getattr(request, "param", {}).get("use_oauth_proxy", True)
+def is_model_registry_oauth(request: FixtureRequest, get_product_version: Version, admin_client: DynamicClient) -> bool:
+    product_version = get_product_version(admin_client=admin_client)
+    if product_version >= Version.parse(version="2.22.0"):
+        return getattr(request, "param", {}).get("use_oauth_proxy", True)
+    else:
+        return getattr(request, "param", {}).get("use_oauth_proxy", False)
 
 
 @pytest.fixture(scope="session")
