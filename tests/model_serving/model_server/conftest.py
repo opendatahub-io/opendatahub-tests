@@ -359,6 +359,8 @@ def ovms_kserve_inference_service(
     if (scale_target := request.param.get("scale-target")) is not None:
         isvc_kwargs["scale_target"] = scale_target
 
+    isvc_kwargs["stop_resume"] = request.param.get("stop", False)
+
     with create_isvc(**isvc_kwargs) as isvc:
         yield isvc
 
@@ -371,18 +373,22 @@ def ovms_raw_inference_service(
     ovms_kserve_serving_runtime: ServingRuntime,
     ci_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
-    with create_isvc(
-        client=unprivileged_client,
-        name=f"{request.param['name']}-raw",
-        namespace=unprivileged_model_namespace.name,
-        external_route=True,
-        runtime=ovms_kserve_serving_runtime.name,
-        storage_path=request.param["model-dir"],
-        storage_key=ci_endpoint_s3_secret.name,
-        model_format=ModelAndFormat.OPENVINO_IR,
-        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-        model_version=request.param["model-version"],
-    ) as isvc:
+    isvc_kwargs = {
+        "client": unprivileged_client,
+        "name": f"{request.param['name']}-raw",
+        "namespace": unprivileged_model_namespace.name,
+        "external_route": True,
+        "runtime": ovms_kserve_serving_runtime.name,
+        "storage_path": request.param["model-dir"],
+        "storage_key": ci_endpoint_s3_secret.name,
+        "model_format": ModelAndFormat.OPENVINO_IR,
+        "deployment_mode": KServeDeploymentType.RAW_DEPLOYMENT,
+        "model_version": request.param["model-version"],
+    }
+
+    isvc_kwargs["stop_resume"] = request.param.get("stop", False)
+
+    with create_isvc(**isvc_kwargs) as isvc:
         yield isvc
 
 

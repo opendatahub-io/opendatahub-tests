@@ -122,6 +122,7 @@ class AcceleratorType:
 class ApiGroups:
     HAPROXY_ROUTER_OPENSHIFT_IO: str = "haproxy.router.openshift.io"
     OPENDATAHUB_IO: str = "opendatahub.io"
+    KSERVE: str = "serving.kserve.io"
 
 
 class Annotations:
@@ -132,7 +133,8 @@ class Annotations:
         CREATED_BY: str = f"{Resource.ApiGroup.APP_KUBERNETES_IO}/created-by"
 
     class KserveIo:
-        DEPLOYMENT_MODE: str = "serving.kserve.io/deploymentMode"
+        DEPLOYMENT_MODE: str = f"{ApiGroups.KSERVE}/deploymentMode"
+        FORCE_STOP_RUNTIME: str = f"{ApiGroups.KSERVE}/stop"
 
     class KserveAuth:
         SECURITY: str = f"security.{ApiGroups.OPENDATAHUB_IO}/enable-auth"
