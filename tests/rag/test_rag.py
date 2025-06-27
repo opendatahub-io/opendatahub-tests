@@ -1,9 +1,5 @@
 class TestRag:
-    def test_rag_deployment(
-            self,
-            llama_stack_distribution_deployment
-    ):
-
+    def test_rag_deployment(self, llama_stack_distribution_deployment):
         """
         Test that the Llama stack distribution deployment for
         RAG was created and it has a working pod.

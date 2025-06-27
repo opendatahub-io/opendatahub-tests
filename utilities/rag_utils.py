@@ -7,12 +7,7 @@ from typing import Any, Dict, Generator
 class LlamaStackDistribution(NamespacedResource):
     api_group: str = "llamastack.io"
 
-    def __init__(
-            self,
-            replicas: int,
-            server: Dict[str, Any],
-            **kwargs: Any
-    ):
+    def __init__(self, replicas: int, server: Dict[str, Any], **kwargs: Any):
         """
         Args:
             kwargs: Keyword arguments to pass to the LlamaStackDistribution constructor

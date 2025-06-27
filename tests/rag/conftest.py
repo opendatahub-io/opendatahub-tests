@@ -29,22 +29,16 @@ def llama_stack_server() -> Dict[str, Any]:
                 {"name": "VLLM_TLS_VERIFY", "value": "false"},
                 {"name": "VLLM_API_TOKEN", "value": rag_vllm_token},
                 {"name": "VLLM_URL", "value": rag_vllm_url},
-                {"name": "MILVUS_DB_PATH", "value": '/.llama/distributions/remote-vllm/milvus.db'}
+                {"name": "MILVUS_DB_PATH", "value": "/.llama/distributions/remote-vllm/milvus.db"},
             ],
             "name": "llama-stack",
-            "port": 8321
+            "port": 8321,
         },
-        "distribution": {
-            "image": 'quay.io/mcampbel/llama-stack:milvus-granite-embedding-125m-english'
-        },
+        "distribution": {"image": "quay.io/mcampbel/llama-stack:milvus-granite-embedding-125m-english"},
         "podOverrides": {
-            "volumeMounts": [
-                {"mountPath": "/root/.llama", "name": "llama-storage"}
-            ],
-            "volumes": [
-                {"emptyDir": {}, "name": "llama-storage"}
-            ]
-        }
+            "volumeMounts": [{"mountPath": "/root/.llama", "name": "llama-storage"}],
+            "volumes": [{"emptyDir": {}, "name": "llama-storage"}],
+        },
     }
 
 
@@ -72,14 +66,14 @@ def llama_stack_distribution_from_template(
     enabled_llama_stack_operator: Generator[None, Any, Any],
     rag_test_namespace: Namespace,
     request: FixtureRequest,
-    admin_client: DynamicClient
+    admin_client: DynamicClient,
 ) -> Generator[LlamaStackDistribution, Any, Any]:
     with create_llama_stack_distribution(
         client=admin_client,
         name="rag-llama-stack-distribution",
         namespace=rag_test_namespace.name,
         replicas=1,
-        server=llama_stack_server()
+        server=llama_stack_server(),
     ) as llama_stack_distribution:
         yield llama_stack_distribution
 
@@ -88,20 +82,18 @@ def llama_stack_distribution_from_template(
 def llama_stack_distribution_deployment(
     rag_test_namespace: Namespace,
     admin_client: DynamicClient,
-    llama_stack_distribution_from_template: Generator[LlamaStackDistribution, Any, Any]
+    llama_stack_distribution_from_template: Generator[LlamaStackDistribution, Any, Any],
 ) -> Generator[Deployment, Any, Any]:
     deployment = Deployment(
-            client=admin_client,
-            namespace=rag_test_namespace.name,
-            name="rag-llama-stack-distribution",
-        )
+        client=admin_client,
+        namespace=rag_test_namespace.name,
+        name="rag-llama-stack-distribution",
+    )
 
     timeout = Timeout.TIMEOUT_15_SEC
     sampler = TimeoutSampler(
-        wait_timeout=timeout,
-        sleep=1,
-        func=lambda deployment: not deployment.exists is None,
-        deployment=deployment)
+        wait_timeout=timeout, sleep=1, func=lambda deployment: deployment.exists is not None, deployment=deployment
+    )
     for item in sampler:
         if item:
             break  # Break after first successful iteration
