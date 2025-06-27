@@ -34,10 +34,7 @@ INPUT_NAME_MAPPINGS: dict[str, str] = {
 }
 OUTPUT_NAME_MAPPINGS: dict[str, str] = {"predict": WILL_DEFAULT}
 
-FAIRNESS_METRICS = [
-    TrustyAIServiceMetrics.Fairness.SPD,
-    TrustyAIServiceMetrics.Fairness.DIR
-]
+FAIRNESS_METRICS = [TrustyAIServiceMetrics.Fairness.SPD, TrustyAIServiceMetrics.Fairness.DIR]
 
 
 def get_fairness_request_json_data(isvc: InferenceService) -> dict[str, Any]:
@@ -109,7 +106,8 @@ class TestFairnessMetricsWithPVCStorage:
 
     @pytest.mark.parametrize("metric_name", FAIRNESS_METRICS)
     def test_fairness_metric_with_pvc_storage(
-        self, admin_client, current_client_token, trustyai_service_with_pvc_storage, onnx_loan_model, metric_name   ):
+        self, admin_client, current_client_token, trustyai_service_with_pvc_storage, onnx_loan_model, metric_name
+    ):
         verify_trustyai_service_metric_request(
             client=admin_client,
             trustyai_service=trustyai_service_with_pvc_storage,
@@ -132,13 +130,7 @@ class TestFairnessMetricsWithPVCStorage:
 
     @pytest.mark.parametrize("metric_name", FAIRNESS_METRICS)
     def test_fairness_metric_prometheus(
-        self,
-        admin_client,
-        model_namespace,
-        trustyai_service_with_pvc_storage,
-        onnx_loan_model,
-        prometheus,
-        metric_name
+        self, admin_client, model_namespace, trustyai_service_with_pvc_storage, onnx_loan_model, prometheus, metric_name
     ):
         validate_metrics_field(
             prometheus=prometheus,
@@ -227,7 +219,7 @@ class TestFairnessMetricsWithDBStorage:
 
     @pytest.mark.parametrize("metric_name", FAIRNESS_METRICS)
     def test_fairness_metric_schedule_with_db_storage(
-            self, admin_client, current_client_token, trustyai_service_with_db_storage, onnx_loan_model, metric_name
+        self, admin_client, current_client_token, trustyai_service_with_db_storage, onnx_loan_model, metric_name
     ):
         verify_trustyai_service_metric_scheduling_request(
             client=admin_client,
@@ -239,7 +231,7 @@ class TestFairnessMetricsWithDBStorage:
 
     @pytest.mark.parametrize("metric_name", FAIRNESS_METRICS)
     def test_fairness_metric_delete_with_db_storage(
-            self, admin_client, current_client_token, trustyai_service_with_db_storage, onnx_loan_model, metric_name
+        self, admin_client, current_client_token, trustyai_service_with_db_storage, onnx_loan_model, metric_name
     ):
         verify_trustyai_service_metric_delete_request(
             client=admin_client,
