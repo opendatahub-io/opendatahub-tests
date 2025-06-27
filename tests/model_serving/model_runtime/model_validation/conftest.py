@@ -86,7 +86,7 @@ def vllm_model_car_inference_service(
             "storage_uri": modelcar_image_uri,
             "model_format": modelcar_serving_runtime.instance.spec.supportedModelFormats[0].name,
             "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.SERVERLESS),
-            "image_pull_secrets": [registry_pull_secret],  # secret name
+            "image_pull_secrets": [PULL_SECRET_NAME],
         }
         accelerator_type = supported_accelerator_type.lower()
         gpu_count = request.param.get("gpu_count")
@@ -163,12 +163,18 @@ def modelcar_serving_runtime(
         yield model_runtime
 
 
-@pytest.fixture(scope="session")
-def modelcar_image_uri(request: FixtureRequest) -> str | None:
-    model_image_name = request.param
-    if not model_image_name:
-        return None
-    return f"oci://registry.redhat.io/rhelai1/{model_image_name}"
+@pytest.fixture(scope="function")
+def modelcar_image_uri(request: FixtureRequest, model_image_name: str | list[str], registry_host: str) -> str:
+    """
+    Returns the model image URI for the modelcar image.
+    If the model image name is not provided, it skips the test.
+    """
+    param_index = request.node.callspec.indices.get("modelcar_image_uri", None)
+    if param_index is not None and param_index < len(model_image_name):
+        override = model_image_name[param_index]
+    else:
+        pytest.skip("model_image_name completed, no more parameters to test.")
+    return f"oci://{registry_host}/rhelai1/{override}"
 
 
 @pytest.fixture

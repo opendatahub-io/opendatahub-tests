@@ -308,7 +308,7 @@ def model_image_name(pytestconfig: pytest.Config) -> str:
     model_image = pytestconfig.option.modelcar_image_name
     if not model_image:
         pytest.skip("Model image name is not provided")
-    return model_image
+    return model_image.split(",")
 
 
 @pytest.fixture(scope="session")

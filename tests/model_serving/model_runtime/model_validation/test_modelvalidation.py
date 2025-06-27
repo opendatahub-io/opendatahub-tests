@@ -31,6 +31,7 @@ pytestmark = pytest.mark.usefixtures(
 @pytest.mark.parametrize(
     "dynamic_model_namespace, modelcar_serving_runtime, vllm_model_car_inference_service, modelcar_image_uri",
     # user can override the modelcar_image_uri in the test case from the cli input
+    # Maximum of 10 modelcar images can be tested at once
     [
         pytest.param(
             {"modelcar_image_uri": "modelcar-granite-3-1-8b-base-quantized-w4a16:1.5", "modelmesh-enabled": False},
@@ -65,6 +66,89 @@ pytestmark = pytest.mark.usefixtures(
             },
             "modelcar-qwen2-5-7b-instruct:1.5",
             id="qwen2-7b-oci",
+        ),
+        pytest.param(
+            {"modelcar_image_uri": "modelcar-mistral-7b-instruct:1.5", "modelmesh-enabled": False},
+            {"deployment_type": KServeDeploymentType.SERVERLESS},
+            {
+                "modelcar_image_uri": "modelcar-mistral-7b-instruct:1.5",
+                **BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
+                "gpu_count": 1,
+                "timeout": TIMEOUT_20MIN,
+            },
+            "modelcar-mistral-7b-instruct:1.5",
+            id="mistral-7b-oci",
+        ),
+        pytest.param(
+            {"modelcar_image_uri": "modelcar-mistral-7b-instruct:1.5", "modelmesh-enabled": False},
+            {"deployment_type": KServeDeploymentType.SERVERLESS},
+            {
+                "modelcar_image_uri": "modelcar-mistral-7b-instruct:1.5",
+                **BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
+                "gpu_count": 1,
+                "timeout": TIMEOUT_20MIN,
+            },
+            "modelcar-mistral-7b-instruct:1.5",
+            id="mistral-7b-oci",
+        ),
+        pytest.param(
+            {"modelcar_image_uri": "modelcar-llama-3-1-8b-instruct:1.5", "modelmesh-enabled": False},
+            {"deployment_type": KServeDeploymentType.SERVERLESS},
+            {
+                "modelcar_image_uri": "modelcar-llama-3-1-8b-instruct:1.5",
+                **BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
+                "gpu_count": 1,
+            },
+            "modelcar-llama-3-1-8b-instruct:1.5",
+            id="llama-8b-oci",
+        ),
+        pytest.param(
+            {"modelcar_image_uri": "modelcar-llama-3-2-70b-instruct:1.5", "modelmesh-enabled": False},
+            {"deployment_type": KServeDeploymentType.SERVERLESS},
+            {
+                "modelcar_image_uri": "modelcar-llama-3-2-70b-instruct:1.5",
+                **BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
+                "gpu_count": 1,
+                "timeout": TIMEOUT_20MIN,
+            },
+            "modelcar-llama-3-2-70b-instruct:1.5",
+            id="llama-70b-oci",
+        ),
+        pytest.param(
+            {"modelcar_image_uri": "modelcar-llama-3-2-70b-instruct:1.5", "modelmesh-enabled": False},
+            {"deployment_type": KServeDeploymentType.SERVERLESS},
+            {
+                "modelcar_image_uri": "modelcar-llama-3-2-70b-instruct:1.5",
+                **BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
+                "gpu_count": 1,
+                "timeout": TIMEOUT_20MIN,
+            },
+            "modelcar-llama-3-2-70b-instruct:1.5",
+            id="llama-70b-oci",
+        ),
+        pytest.param(
+            {"modelcar_image_uri": "modelcar-llama-3-2-70b-instruct:1.5", "modelmesh-enabled": False},
+            {"deployment_type": KServeDeploymentType.SERVERLESS},
+            {
+                "modelcar_image_uri": "modelcar-llama-3-2-70b-instruct:1.5",
+                **BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
+                "gpu_count": 1,
+                "timeout": TIMEOUT_20MIN,
+            },
+            "modelcar-llama-3-2-70b-instruct:1.5",
+            id="llama-70b-oci",
+        ),
+        pytest.param(
+            {"modelcar_image_uri": "modelcar-llama-3-2-70b-instruct:1.5", "modelmesh-enabled": False},
+            {"deployment_type": KServeDeploymentType.SERVERLESS},
+            {
+                "modelcar_image_uri": "modelcar-llama-3-2-70b-instruct:1.5",
+                **BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
+                "gpu_count": 1,
+                "timeout": TIMEOUT_20MIN,
+            },
+            "modelcar-llama-3-2-70b-instruct:1.5",
+            id="llama-70b-oci",
         ),
     ],
     indirect=True,
