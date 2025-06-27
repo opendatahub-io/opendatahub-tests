@@ -1,5 +1,4 @@
 import pytest
-import traceback
 
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import (
@@ -78,6 +77,7 @@ class TestStopRaw:
                     pytest.fail("Verification failed: pods were found when none should exist")
         except TimeoutExpiredError:
             pass
+
 
 @pytest.mark.rawdeployment
 @pytest.mark.parametrize(

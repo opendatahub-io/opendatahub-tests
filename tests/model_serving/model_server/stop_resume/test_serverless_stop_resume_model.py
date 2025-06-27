@@ -1,5 +1,4 @@
 import pytest
-import traceback
 
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import (
