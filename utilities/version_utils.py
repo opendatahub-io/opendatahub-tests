@@ -1,15 +1,14 @@
 import pytest
-import os
 
 
 def skip_if_version_less_than(min_version: str):
     """
     Skip tests if version is less than specified minimum.
-    
+
     Works for both UPSTREAM and DOWNSTREAM distributions:
     - DOWNSTREAM: Uses RHODS version checking
     - UPSTREAM: Uses environment variable control
-    
+
     Usage:
         pytestmark = [
             pytest.mark.serverless,
@@ -17,12 +16,13 @@ def skip_if_version_less_than(min_version: str):
         ]
     Args:
         min_version: Minimum required version (e.g., "2.23.0")
-    
+
     Returns:
         Tuple of pytest marks for downstream OR skipif mark for upstream
     """
     try:
         from pytest_testconfig import config as py_config
+
         distribution = py_config.get("distribution", "")
 
         if distribution == "downstream":
@@ -46,15 +46,16 @@ def skip_if_version_greater_than(max_version: str):
             pytest.mark.serverless,
             *skip_if_version_greater_than("2.25.0"),
         ]
-    
+
     Args:
         max_version: Maximum allowed version (e.g., "2.25.0")
-    
+
     Returns:
         Tuple of pytest marks for downstream
     """
     try:
         from pytest_testconfig import config as py_config
+
         distribution = py_config.get("distribution", "")
 
         if distribution == "downstream":
