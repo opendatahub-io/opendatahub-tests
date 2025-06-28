@@ -1,6 +1,7 @@
 import base64
 import re
 from typing import List, Tuple
+import uuid
 
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
@@ -302,3 +303,31 @@ def create_ig_pod_label_selector_str(ig: InferenceGraph) -> str:
 
     """
     return f"serving.kserve.io/inferencegraph={ig.name}"
+
+
+def generate_random_name(prefix: str = "", length: int = 8) -> str:
+    """
+    Generates a name with a required prefix and a random suffix derived from a UUID.
+
+    The length of the random suffix can be controlled, defaulting to 8 characters.
+    The suffix is taken from the beginning of a V4 UUID's hex representation.
+
+    Args:
+        prefix (str): The required prefix for the generated name.
+        length (int, optional): The desired length for the UUID-derived suffix.
+                               Defaults to 8. Must be between 1 and 32.
+
+    Returns:
+        str: A string in the format "prefix-uuid_suffix".
+
+    Raises:
+        ValueError: If prefix is empty, or if length is not between 1 and 32.
+    """
+    if not isinstance(length, int) or not (1 <= length <= 32):
+        raise ValueError("suffix_length must be an integer between 1 and 32.")
+    # Generate a new random UUID (version 4)
+    random_uuid = uuid.uuid4()
+    # Use the first 'length' characters of the hexadecimal representation of the UUID as the suffix.
+    # random_uuid.hex is 32 characters long.
+    suffix = random_uuid.hex[:length]
+    return f"{prefix}-{suffix}" if prefix else suffix

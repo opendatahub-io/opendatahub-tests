@@ -35,6 +35,9 @@ class TrustyAIServiceMetrics:
 
     class Drift:
         MEANSHIFT: str = "meanshift"
+        KSTEST: str = "kstest"
+        APPROXKSTEST: str = "approxkstest"
+        FOURIERMMD: str = "fouriermmd"
 
 
 class TrustyAIServiceClient:

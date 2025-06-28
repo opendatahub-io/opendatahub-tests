@@ -1,4 +1,3 @@
-import uuid
 from typing import Any, List
 
 from kubernetes.dynamic import DynamicClient
@@ -231,34 +230,6 @@ def wait_for_pods_running(
             )
             raise
     return None
-
-
-def generate_random_name(prefix: str = "", length: int = 8) -> str:
-    """
-    Generates a name with a required prefix and a random suffix derived from a UUID.
-
-    The length of the random suffix can be controlled, defaulting to 8 characters.
-    The suffix is taken from the beginning of a V4 UUID's hex representation.
-
-    Args:
-        prefix (str): The required prefix for the generated name.
-        length (int, optional): The desired length for the UUID-derived suffix.
-                               Defaults to 8. Must be between 1 and 32.
-
-    Returns:
-        str: A string in the format "prefix-uuid_suffix".
-
-    Raises:
-        ValueError: If prefix is empty, or if length is not between 1 and 32.
-    """
-    if not isinstance(length, int) or not (1 <= length <= 32):
-        raise ValueError("suffix_length must be an integer between 1 and 32.")
-    # Generate a new random UUID (version 4)
-    random_uuid = uuid.uuid4()
-    # Use the first 'length' characters of the hexadecimal representation of the UUID as the suffix.
-    # random_uuid.hex is 32 characters long.
-    suffix = random_uuid.hex[:length]
-    return f"{prefix}-{suffix}" if prefix else suffix
 
 
 def generate_namespace_name(file_path: str) -> str:
