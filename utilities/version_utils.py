@@ -1,7 +1,8 @@
 import pytest
+from typing import Any
 
 
-def skip_if_version_less_than(min_version: str):
+def skip_if_version_less_than(min_version: str) -> tuple[Any, ...]:
     """
     Skip tests if version is less than specified minimum.
 
@@ -31,12 +32,15 @@ def skip_if_version_less_than(min_version: str):
                 pytest.mark.parametrize("skip_if_downstream_version_less_than", [min_version], indirect=True),
                 pytest.mark.usefixtures("skip_if_downstream_version_less_than"),
             )
+        else:
+            # For non-downstream distributions, return empty tuple
+            return ()
     except Exception as e:
         print(f"⚠️  Version check setup failed: {e}, proceeding with test")
         return ()
 
 
-def skip_if_version_greater_than(max_version: str):
+def skip_if_version_greater_than(max_version: str) -> tuple[Any, ...]:
     """
     Skip tests if version is greater than specified maximum.
         - DOWNSTREAM: Uses RHODS version checking
@@ -64,6 +68,9 @@ def skip_if_version_greater_than(max_version: str):
                 pytest.mark.parametrize("skip_if_downstream_version_greater_than", [max_version], indirect=True),
                 pytest.mark.usefixtures("skip_if_downstream_version_greater_than"),
             )
+        else:
+            # For non-downstream distributions, return empty tuple
+            return ()
     except Exception as e:
         print(f"⚠️  Version check setup failed: {e}, proceeding with test")
         return ()
