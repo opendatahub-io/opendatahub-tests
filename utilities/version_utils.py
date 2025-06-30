@@ -1,5 +1,6 @@
 import pytest
 from typing import Any
+from simple_logger.logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 
