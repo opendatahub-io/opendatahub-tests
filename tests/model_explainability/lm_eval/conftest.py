@@ -35,7 +35,7 @@ def lmevaljob_hf(
         name=LMEVALJOB_NAME,
         namespace=model_namespace.name,
         model="hf",
-        model_args=[{"name": "pretrained", "value": "Qwen/Qwen2.5-0.5B-Instruct"}],
+        model_args=[{"name": "pretrained", "value": "rgeada/tiny-untrained-granite"}],
         task_list=request.param.get("task_list"),
         log_samples=True,
         allow_online=True,
