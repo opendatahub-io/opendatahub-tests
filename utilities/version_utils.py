@@ -1,5 +1,20 @@
 import pytest
 from typing import Any
+from simple_logger.logger import get_logger
+
+
+def compare_versions(version1: str, version2: str) -> int:
+    """
+    Compare two version strings.
+    Returns: -1 if version1 < version2, 0 if equal, 1 if version1 > version2
+    """
+    from packaging import version
+
+    try:
+        return (version.parse(version1) > version.parse(version2)) - (version.parse(version1) < version.parse(version2))
+    except Exception as e:
+        LOGGER.error(f"[VERSION COMPARE] Error comparing versions: {e}")
+        return 0
 
 
 def skip_if_version_less_than(min_version: str) -> tuple[Any, ...]:
@@ -43,7 +58,6 @@ def skip_if_version_less_than(min_version: str) -> tuple[Any, ...]:
 def skip_if_version_greater_than(max_version: str) -> tuple[Any, ...]:
     """
     Skip tests if version is greater than specified maximum.
-        - DOWNSTREAM: Uses RHODS version checking
 
     Usage:
         pytestmark = [

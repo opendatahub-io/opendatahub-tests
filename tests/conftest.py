@@ -47,6 +47,7 @@ from utilities.infra import update_configmap_data
 from utilities.logger import RedactedString
 from utilities.minio import create_minio_data_connection_secret
 from utilities.operator_utils import get_csv_related_images, get_cluster_service_version
+from utilities.version_utils import compare_versions
 
 LOGGER = get_logger(name=__name__)
 
@@ -90,33 +91,8 @@ def get_rhoai_csv_version(admin_client: DynamicClient, dsci_resource: DSCInitial
     return version
 
 
-def _compare_versions(version1: str, version2: str) -> int:
-    """
-    Compare two version strings.
-    Returns: -1 if version1 < version2, 0 if equal, 1 if version1 > version2
-    """
-    from packaging import version
-
-    LOGGER.info(f"[VERSION COMPARE] Comparing '{version1}' vs '{version2}'")
-
-    try:
-        return (version.parse(version1) > version.parse(version2)) - (version.parse(version1) < version.parse(version2))
-    except Exception as e:
-        LOGGER.error(f"[VERSION COMPARE] Error comparing versions: {e}")
-        return 0
-
-
 @pytest.fixture(scope="function")
 def skip_if_downstream_version_greater_than(request: FixtureRequest, get_rhoai_csv_version: str) -> None:
-    """
-    Skip test if downstream RHODS version is greater than the specified threshold.
-
-    Usage:
-        @pytest.mark.parametrize("skip_if_downstream_version_greater_than", ["2.8.0"], indirect=True)
-        @pytest.mark.usefixtures("skip_if_downstream_version_greater_than")
-        def test_something():
-            pass
-    """
     if not hasattr(request, "param"):
         raise ValueError("This fixture requires a parameter.Use @pytest.mark.parametrize with indirect=True")
 
@@ -124,21 +100,12 @@ def skip_if_downstream_version_greater_than(request: FixtureRequest, get_rhoai_c
     current_version = get_rhoai_csv_version
     distribution = py_config.get("distribution", "")
 
-    if distribution == "downstream" and _compare_versions(current_version, threshold_version) > 0:
+    if distribution == "downstream" and compare_versions(current_version, threshold_version) > 0:
         pytest.skip(f"Skipping test: downstream RHODS version {current_version} > {threshold_version}")
 
 
 @pytest.fixture(scope="function")
 def skip_if_downstream_version_less_than(request: FixtureRequest, get_rhoai_csv_version: str) -> None:
-    """
-    Skip test if downstream RHODS version is less than the specified threshold.
-
-    Usage:
-        @pytest.mark.parametrize("skip_if_downstream_version_less_than", ["2.8.0"], indirect=True)
-        @pytest.mark.usefixtures("skip_if_downstream_version_less_than")
-        def test_something():
-            pass
-    """
     if not hasattr(request, "param"):
         raise ValueError("This fixture requires a parameter. Use @pytest.mark.parametrize with indirect=True")
 
@@ -147,7 +114,7 @@ def skip_if_downstream_version_less_than(request: FixtureRequest, get_rhoai_csv_
     distribution = py_config.get("distribution", "")
 
     if distribution == "downstream":
-        if _compare_versions(current_version, threshold_version) < 0:
+        if compare_versions(current_version, threshold_version) < 0:
             pytest.skip(f"Skipping test: downstream RHODS version {current_version} < {threshold_version}")
 
 
