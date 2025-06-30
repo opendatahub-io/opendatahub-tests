@@ -64,18 +64,15 @@ The test suite is organized into different markers, and directories are arranged
 
 #### Smoke/Sanity/Tier1/Tier2 Tests
 ```bash
-uv run pytest -m <marker> ./test/path-of-component
+uv run pytest -m <marker> ./tests/path-of-component
 ```
-You can omit `./test/path-of-component` if you want to run markers for all components.
+You can omit `./tests/path-of-component` if you want to run markers for all components.
 
 #### Excluding Test Suites
 You can exclude one or multiple test suites from execution using the `--ignore` option:
 ```bash
 # Ignore a single test suite
-uv run pytest --ignore=tests/model_registry/
-
-# Ignore multiple test suites
-uv run pytest --ignore=tests/model_registry/ --ignore=tests/workbenches/
+uv run pytest --ignore=tests/{model_registry,workbenches}
 ```
 
 #### Combining Test Categories
