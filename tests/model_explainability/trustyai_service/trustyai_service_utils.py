@@ -32,6 +32,7 @@ class NoMetricsFoundError(ValueError):
 class TrustyAIServiceMetrics:
     class Fairness:
         SPD: str = "spd"
+        DIR: str = "dir"
 
     class Drift:
         MEANSHIFT: str = "meanshift"

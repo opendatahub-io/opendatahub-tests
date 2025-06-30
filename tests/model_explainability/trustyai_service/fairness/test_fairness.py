@@ -34,6 +34,8 @@ INPUT_NAME_MAPPINGS: dict[str, str] = {
 }
 OUTPUT_NAME_MAPPINGS: dict[str, str] = {"predict": WILL_DEFAULT}
 
+FAIRNESS_METRICS = [TrustyAIServiceMetrics.Fairness.SPD, TrustyAIServiceMetrics.Fairness.DIR]
+
 
 def get_fairness_request_json_data(isvc: InferenceService) -> dict[str, Any]:
     return {
@@ -102,51 +104,50 @@ class TestFairnessMetricsWithPVCStorage:
             output_mappings=OUTPUT_NAME_MAPPINGS,
         )
 
-    def test_fairness_metric_spd_with_pvc_storage(
-        self, admin_client, current_client_token, trustyai_service_with_pvc_storage, onnx_loan_model
+    @pytest.mark.parametrize("metric_name", FAIRNESS_METRICS)
+    def test_fairness_metric_with_pvc_storage(
+        self, admin_client, current_client_token, trustyai_service_with_pvc_storage, onnx_loan_model, metric_name
     ):
         verify_trustyai_service_metric_request(
             client=admin_client,
             trustyai_service=trustyai_service_with_pvc_storage,
             token=current_client_token,
-            metric_name=TrustyAIServiceMetrics.Fairness.SPD,
+            metric_name=metric_name,
             json_data=get_fairness_request_json_data(isvc=onnx_loan_model),
         )
 
-    def test_fairness_metric_schedule_spd_with_pvc_storage(
-        self, admin_client, current_client_token, trustyai_service_with_pvc_storage, onnx_loan_model
+    @pytest.mark.parametrize("metric_name", FAIRNESS_METRICS)
+    def test_fairness_metric_schedule_with_pvc_storage(
+        self, admin_client, current_client_token, trustyai_service_with_pvc_storage, onnx_loan_model, metric_name
     ):
         verify_trustyai_service_metric_scheduling_request(
             client=admin_client,
             trustyai_service=trustyai_service_with_pvc_storage,
             token=current_client_token,
-            metric_name=TrustyAIServiceMetrics.Fairness.SPD,
+            metric_name=metric_name,
             json_data=get_fairness_request_json_data(isvc=onnx_loan_model),
         )
 
+    @pytest.mark.parametrize("metric_name", FAIRNESS_METRICS)
     def test_fairness_metric_prometheus(
-        self,
-        admin_client,
-        model_namespace,
-        trustyai_service_with_pvc_storage,
-        onnx_loan_model,
-        prometheus,
+        self, admin_client, model_namespace, trustyai_service_with_pvc_storage, onnx_loan_model, prometheus, metric_name
     ):
         validate_metrics_field(
             prometheus=prometheus,
-            metrics_query=f'trustyai_{TrustyAIServiceMetrics.Fairness.SPD}{{namespace="{model_namespace.name}"}}',
-            expected_value=TrustyAIServiceMetrics.Fairness.SPD.upper(),
+            metrics_query=f'trustyai_{metric_name}{{namespace="{model_namespace.name}"}}',
+            expected_value=metric_name.upper(),
             field_getter=partial(get_metric_label, label_name="metricName"),
         )
 
+    @pytest.mark.parametrize("metric_name", FAIRNESS_METRICS)
     def test_fairness_metric_delete_with_pvc_storage(
-        self, admin_client, current_client_token, trustyai_service_with_pvc_storage, onnx_loan_model
+        self, admin_client, current_client_token, trustyai_service_with_pvc_storage, onnx_loan_model, metric_name
     ):
         verify_trustyai_service_metric_delete_request(
             client=admin_client,
             trustyai_service=trustyai_service_with_pvc_storage,
             token=current_client_token,
-            metric_name=TrustyAIServiceMetrics.Fairness.SPD,
+            metric_name=metric_name,
         )
 
 
@@ -204,34 +205,37 @@ class TestFairnessMetricsWithDBStorage:
             output_mappings=OUTPUT_NAME_MAPPINGS,
         )
 
-    def test_fairness_metric_spd_with_db_storage(
-        self, admin_client, current_client_token, trustyai_service_with_db_storage, onnx_loan_model
+    @pytest.mark.parametrize("metric_name", FAIRNESS_METRICS)
+    def test_fairness_metric_with_db_storage(
+        self, admin_client, current_client_token, trustyai_service_with_db_storage, onnx_loan_model, metric_name
     ):
         verify_trustyai_service_metric_request(
             client=admin_client,
             trustyai_service=trustyai_service_with_db_storage,
             token=current_client_token,
-            metric_name=TrustyAIServiceMetrics.Fairness.SPD,
+            metric_name=metric_name,
             json_data=get_fairness_request_json_data(isvc=onnx_loan_model),
         )
 
-    def test_fairness_metric_schedule_spd_with_db_storage(
-        self, admin_client, current_client_token, trustyai_service_with_db_storage, onnx_loan_model
+    @pytest.mark.parametrize("metric_name", FAIRNESS_METRICS)
+    def test_fairness_metric_schedule_with_db_storage(
+        self, admin_client, current_client_token, trustyai_service_with_db_storage, onnx_loan_model, metric_name
     ):
         verify_trustyai_service_metric_scheduling_request(
             client=admin_client,
             trustyai_service=trustyai_service_with_db_storage,
             token=current_client_token,
-            metric_name=TrustyAIServiceMetrics.Fairness.SPD,
+            metric_name=metric_name,
             json_data=get_fairness_request_json_data(isvc=onnx_loan_model),
         )
 
+    @pytest.mark.parametrize("metric_name", FAIRNESS_METRICS)
     def test_fairness_metric_delete_with_db_storage(
-        self, admin_client, current_client_token, trustyai_service_with_db_storage, onnx_loan_model
+        self, admin_client, current_client_token, trustyai_service_with_db_storage, onnx_loan_model, metric_name
     ):
         verify_trustyai_service_metric_delete_request(
             client=admin_client,
             trustyai_service=trustyai_service_with_db_storage,
             token=current_client_token,
-            metric_name=TrustyAIServiceMetrics.Fairness.SPD,
+            metric_name=metric_name,
         )
