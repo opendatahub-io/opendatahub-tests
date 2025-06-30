@@ -66,7 +66,7 @@ The test suite is organized into different categories based on their purpose and
 ```bash
 uv run pytest -m <marker> ./test/path-of-component
 ```
-You can omit `./test/path-of-component` if you want to run markers for all components. 
+You can omit `./test/path-of-component` if you want to run markers for all components.
 
 
 #### Combining Test Categories
