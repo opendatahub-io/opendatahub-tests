@@ -75,7 +75,7 @@ You can exclude one or multiple test suites from execution using the `--ignore` 
 uv run pytest --ignore=tests/model_registry/
 
 # Ignore multiple test suites
-uv run pytest --ignore=tests/{model_registry,workbenches}/
+uv run pytest --ignore=tests/model_registry/ --ignore=tests/workbenches/
 ```
 
 #### Combining Test Categories
