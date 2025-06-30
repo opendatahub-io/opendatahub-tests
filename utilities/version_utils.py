@@ -1,6 +1,5 @@
 import pytest
 from typing import Any
-from simple_logger.logger import get_logger
 
 
 def compare_versions(version1: str, version2: str) -> int:
