@@ -10,6 +10,8 @@ from utilities.plugins.openai_plugin import OpenAIClient
 from tests.model_serving.model_runtime.vllm.constant import VLLM_SUPPORTED_QUANTIZATION
 from tests.model_serving.model_runtime.model_validation.constant import PULL_SECRET_ACCESS_TYPE
 import pytest
+import hashlib
+import re
 from tests.model_serving.model_runtime.model_validation.constant import CHAT_QUERY, COMPLETION_QUERY
 
 LOGGER = get_logger(name=__name__)
@@ -131,3 +133,30 @@ def validate_inference_output(*args: tuple[str, ...] | list[Any], response_snaps
 def skip_if_deployment_mode(isvc: InferenceService, deployment_type: str, deployment_message: str) -> None:
     if isvc.instance.metadata.annotations["serving.kserve.io/deploymentMode"] == deployment_type:
         pytest.skip(deployment_message)
+
+
+def safe_k8s_name(name: str, max_len: int = 20) -> str:
+    """
+    Convert a model image URI or name into a safe, human-readable Kubernetes name.
+    Prioritizes model family and size, e.g., 'granite-8b-oci'.
+    Falls back to hashed suffix if over max_len.
+    """
+    # Extract the base model name (e.g., "modelcar-granite-3-1-8b-base-quantized-w4a16")
+    base = name.split("/")[-1].split(":")[0]  # Strip registry and tag
+
+    # Clean and tokenize
+    parts = base.replace("modelcar-", "").split("-")
+
+    # Try to extract model family and size
+    family = parts[0] if parts else "model"
+    size = next((p for p in parts if re.match(r"^\d+b$", p)), "unk")
+
+    readable = f"{family}-{size}-oci"
+
+    if len(readable) <= max_len:
+        return readable
+
+    # Truncate with hash fallback
+    hash_suffix = hashlib.sha1(readable.encode()).hexdigest()[:6]
+    max_base_len = max_len - len("-" + hash_suffix)
+    return f"{readable[:max_base_len]}-{hash_suffix}"

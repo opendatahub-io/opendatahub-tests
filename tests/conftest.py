@@ -24,6 +24,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.resource import get_client
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
+import json
 
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.data_science_cluster_utils import update_components_in_dsc
@@ -168,56 +169,35 @@ def valid_registry_pullsecret(registry_pullsecret: str) -> str:
 
 
 @pytest.fixture(scope="session")
-def ci_s3_bucket_name(pytestconfig: Config) -> str | None:
+def ci_s3_bucket_name(pytestconfig: Config) -> str:
     """
     Fixture to get the name of the S3 bucket used. Not required for models stored in OCI.
     """
     bucket_name = pytestconfig.option.ci_s3_bucket_name
     if not bucket_name:
-        warnings.warn(
-            message=(
-                "CI S3 bucket name is not set. "
-                "Either pass with `--ci-s3-bucket-name` or set `CI_S3_BUCKET_NAME` environment variable"
-            ),
-            category=UserWarning,
-        )
-        return None
+        pytest.skip("CI S3 bucket name is not defined. Skipping tests that require it.")
     return bucket_name
 
 
 @pytest.fixture(scope="session")
-def ci_s3_bucket_region(pytestconfig: pytest.Config) -> str | None:
+def ci_s3_bucket_region(pytestconfig: pytest.Config) -> str:
     """
     Fixture to get the region of the S3 bucket used. Not required for models stored in OCI.
     """
     ci_bucket_region = pytestconfig.option.ci_s3_bucket_region
     if not ci_bucket_region:
-        warnings.warn(
-            message=(
-                "Region for the ci s3 bucket is not defined."
-                "Either pass with `--ci-s3-bucket-region` or set `CI_S3_BUCKET_REGION` environment variable"
-            ),
-            category=UserWarning,
-        )
-        return None
+        pytest.skip("CI S3 bucket region is not defined. Skipping tests that require it.")
     return ci_bucket_region
 
 
 @pytest.fixture(scope="session")
-def ci_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str | None:
+def ci_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str:
     """
     Fixture to get the endpoint of the S3 bucket used. Not required for models stored in OCI.
     """
     ci_bucket_endpoint = pytestconfig.option.ci_s3_bucket_endpoint
     if not ci_bucket_endpoint:
-        warnings.warn(
-            message=(
-                "Endpoint for the ci s3 bucket is not defined."
-                "Either pass with `--ci-s3-bucket-endpoint` or set `CI_S3_BUCKET_ENDPOINT` environment variable"
-            ),
-            category=UserWarning,
-        )
-        return None
+        pytest.skip("CI S3 bucket endpoint is not defined. Skipping tests that require it.")
     return ci_bucket_endpoint
 
 
@@ -225,13 +205,7 @@ def ci_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str | None:
 def registry_pull_secret(pytestconfig: pytest.Config) -> str:
     registry_pull_secret = pytestconfig.option.registry_pull_secret
     if not registry_pull_secret:
-        warnings.warn(
-            message=(
-                "Registry pull secret is not defined."
-                "Either pass with `--registry-pull-secret` or set `REGISTRY_PULL_SECRET` environment variable"
-            ),
-            category=UserWarning,
-        )
+        pytest.skip("Registry pull secret is not defined. Skipping tests that require it.")
     return registry_pull_secret
 
 
@@ -239,14 +213,25 @@ def registry_pull_secret(pytestconfig: pytest.Config) -> str:
 def registry_host(pytestconfig: pytest.Config) -> str:
     registry_host = pytestconfig.option.registry_host
     if not registry_host:
-        warnings.warn(
-            message=(
-                "Registry host is not defined."
-                "Either pass with `--registry-host` or set `REGISTRY_HOST` environment variable"
-            ),
-            category=UserWarning,
-        )
+        pytest.skip("Registry host is not defined. Skipping tests that require it.")
     return registry_host
+
+
+@pytest.fixture(scope="session")
+def serving_argument(pytestconfig: pytest.Config) -> list[str]:
+    """
+    Fixture to get the serving arguments for the model serving runtime.
+    """
+    serving_argument = pytestconfig.option.serving_argument
+    if not serving_argument:
+        pytest.skip("Serving arguments are not defined. Skipping tests that require it.")
+    try:
+        return json.loads(serving_argument)
+    except json.JSONDecodeError:
+        raise ValueError(
+            "Serving arguments should be a valid JSON list. "
+            "Either pass with `--serving-argument` or set `SERVING_ARGUMENT` environment variable"
+        )
 
 
 @pytest.fixture(scope="session")
@@ -307,7 +292,7 @@ def models_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str | None:
 def model_image_name(pytestconfig: pytest.Config) -> str:
     model_image = pytestconfig.option.modelcar_image_name
     if not model_image:
-        pytest.skip("Model image name is not provided")
+        pytest.skip("Model image name is not defined. Skipping tests that require it.")
     return model_image.split(",")
 
 

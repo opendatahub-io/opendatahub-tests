@@ -46,6 +46,7 @@ def pytest_addoption(parser: Parser) -> None:
     cluster_sanity_group = parser.getgroup(name="ClusterSanity")
     modelcar_group = parser.getgroup(name="Modelcar options")
     ociregistry_group = parser.getgroup(name="OCI Registry")
+    serving_arguments_group = parser.getgroup(name="Serving arguments")
 
     # AWS config and credentials options
     aws_group.addoption(
@@ -115,6 +116,12 @@ def pytest_addoption(parser: Parser) -> None:
         "--registry-host",
         default=os.environ.get("REGISTRY_HOST"),
         help="Registry host to pull oci container images",
+    )
+    # Serving arguments options
+    serving_arguments_group.addoption(
+        "--serving-argument",
+        default=os.environ.get("SERVING_ARGUMENTS"),
+        help="Serving arguments to use for the tests",
     )
 
     # Modelcar options

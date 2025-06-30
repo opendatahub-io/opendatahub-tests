@@ -4,23 +4,20 @@ from simple_logger.logger import get_logger
 from ocp_resources.inference_service import InferenceService
 from utilities.constants import KServeDeploymentType
 from tests.model_serving.model_runtime.model_validation.utils import validate_serverless_openai_inference_request
-from tests.model_serving.model_runtime.model_validation.constant import (
-    COMPLETION_QUERY,
-    BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
-)
+from tests.model_serving.model_runtime.model_validation.constant import COMPLETION_QUERY
 
 LOGGER = get_logger(name=__name__)
 
 TIMEOUT_20MIN: str = 30 * 60
 
-SERVING_ARGUMENT: list[str] = [
-    "--uvicorn-log-level=debug",
-    "--max-model-len=1024",
-    "--trust-remote-code",
-    "--distributed-executor-backend=mp",
-]
+# SERVING_ARGUMENT: list[str] = [
+#     "--uvicorn-log-level=debug",
+#     "--max-model-len=1024",
+#     "--trust-remote-code",
+#     "--distributed-executor-backend=mp",
+# ]
 
-BASE_SEVERRLESS_DEPLOYMENT_CONFIG["runtime_argument"] = SERVING_ARGUMENT
+# BASE_SEVERRLESS_DEPLOYMENT_CONFIG["runtime_argument"] = SERVING_ARGUMENT
 
 pytestmark = pytest.mark.usefixtures(
     "vllm_skip_if_no_supported_accelerator_type", "valid_aws_config", "valid_registry_pullsecret"
@@ -38,7 +35,6 @@ pytestmark = pytest.mark.usefixtures(
             {"deployment_type": KServeDeploymentType.SERVERLESS},
             {
                 "modelcar_image_uri": "modelcar-granite-3-1-8b-base-quantized-w4a16:1.5",
-                **BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
                 "gpu_count": 1,
             },
             "modelcar-granite-3-1-8b-base-quantized-w4a16:1.5",
@@ -49,7 +45,6 @@ pytestmark = pytest.mark.usefixtures(
             {"deployment_type": KServeDeploymentType.SERVERLESS},
             {
                 "modelcar_image_uri": "modelcar-llama-3-1-8b-instruct:1.5",
-                **BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
                 "gpu_count": 1,
             },
             "modelcar-llama-3-1-8b-instruct:1.5",
@@ -60,7 +55,6 @@ pytestmark = pytest.mark.usefixtures(
             {"deployment_type": KServeDeploymentType.SERVERLESS},
             {
                 "modelcar_image_uri": "modelcar-qwen2-5-7b-instruct:1.5",
-                **BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
                 "gpu_count": 1,
                 "timeout": TIMEOUT_20MIN,
             },
@@ -72,7 +66,6 @@ pytestmark = pytest.mark.usefixtures(
             {"deployment_type": KServeDeploymentType.SERVERLESS},
             {
                 "modelcar_image_uri": "modelcar-mistral-7b-instruct:1.5",
-                **BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
                 "gpu_count": 1,
                 "timeout": TIMEOUT_20MIN,
             },
@@ -84,7 +77,6 @@ pytestmark = pytest.mark.usefixtures(
             {"deployment_type": KServeDeploymentType.SERVERLESS},
             {
                 "modelcar_image_uri": "modelcar-mistral-7b-instruct:1.5",
-                **BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
                 "gpu_count": 1,
                 "timeout": TIMEOUT_20MIN,
             },
@@ -96,7 +88,6 @@ pytestmark = pytest.mark.usefixtures(
             {"deployment_type": KServeDeploymentType.SERVERLESS},
             {
                 "modelcar_image_uri": "modelcar-llama-3-1-8b-instruct:1.5",
-                **BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
                 "gpu_count": 1,
             },
             "modelcar-llama-3-1-8b-instruct:1.5",
@@ -107,7 +98,6 @@ pytestmark = pytest.mark.usefixtures(
             {"deployment_type": KServeDeploymentType.SERVERLESS},
             {
                 "modelcar_image_uri": "modelcar-llama-3-2-70b-instruct:1.5",
-                **BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
                 "gpu_count": 1,
                 "timeout": TIMEOUT_20MIN,
             },
@@ -119,7 +109,6 @@ pytestmark = pytest.mark.usefixtures(
             {"deployment_type": KServeDeploymentType.SERVERLESS},
             {
                 "modelcar_image_uri": "modelcar-llama-3-2-70b-instruct:1.5",
-                **BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
                 "gpu_count": 1,
                 "timeout": TIMEOUT_20MIN,
             },
@@ -131,7 +120,6 @@ pytestmark = pytest.mark.usefixtures(
             {"deployment_type": KServeDeploymentType.SERVERLESS},
             {
                 "modelcar_image_uri": "modelcar-llama-3-2-70b-instruct:1.5",
-                **BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
                 "gpu_count": 1,
                 "timeout": TIMEOUT_20MIN,
             },
@@ -143,7 +131,6 @@ pytestmark = pytest.mark.usefixtures(
             {"deployment_type": KServeDeploymentType.SERVERLESS},
             {
                 "modelcar_image_uri": "modelcar-llama-3-2-70b-instruct:1.5",
-                **BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
                 "gpu_count": 1,
                 "timeout": TIMEOUT_20MIN,
             },

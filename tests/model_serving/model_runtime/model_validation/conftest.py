@@ -22,39 +22,11 @@ from tests.model_serving.model_runtime.model_validation.constant import (
     INFERENCE_SERVICE_PORT,
     CONTAINER_PORT,
 )
-
-import hashlib
-import re
+from tests.model_serving.model_runtime.model_validation.utils import safe_k8s_name
+from tests.model_serving.model_runtime.model_validation.constant import BASE_SEVERRLESS_DEPLOYMENT_CONFIG
 from syrupy.extensions.json import JSONSnapshotExtension
 
 LOGGER = get_logger(name=__name__)
-
-
-def safe_k8s_name(name: str, max_len: int = 20) -> str:
-    """
-    Convert a model image URI or name into a safe, human-readable Kubernetes name.
-    Prioritizes model family and size, e.g., 'granite-8b-oci'.
-    Falls back to hashed suffix if over max_len.
-    """
-    # Extract the base model name (e.g., "modelcar-granite-3-1-8b-base-quantized-w4a16")
-    base = name.split("/")[-1].split(":")[0]  # Strip registry and tag
-
-    # Clean and tokenize
-    parts = base.replace("modelcar-", "").split("-")
-
-    # Try to extract model family and size
-    family = parts[0] if parts else "model"
-    size = next((p for p in parts if re.match(r"^\d+b$", p)), "unk")
-
-    readable = f"{family}-{size}-oci"
-
-    if len(readable) <= max_len:
-        return readable
-
-    # Truncate with hash fallback
-    hash_suffix = hashlib.sha1(readable.encode()).hexdigest()[:6]
-    max_base_len = max_len - len("-" + hash_suffix)
-    return f"{readable[:max_base_len]}-{hash_suffix}"
 
 
 @pytest.fixture(scope="class")
@@ -67,6 +39,7 @@ def vllm_model_car_inference_service(
     modelcar_image_uri: str,
     registry_pull_secret: str,
     registry_host: str,
+    deployment_config: dict[str, Any],
 ) -> Generator[InferenceService, Any, Any]:
     name = safe_k8s_name(name=modelcar_image_uri, max_len=20)
 
@@ -104,7 +77,8 @@ def vllm_model_car_inference_service(
             isvc_kwargs["volumes"] = PREDICT_RESOURCES["volumes"]
             isvc_kwargs["volumes_mounts"] = PREDICT_RESOURCES["volume_mounts"]
 
-        if arguments := request.param.get("runtime_argument"):
+        print(f"deployment config - {deployment_config.get('runtime_argument')}")
+        if arguments := deployment_config.get("runtime_argument"):
             arguments = [
                 arg
                 for arg in arguments
@@ -212,3 +186,15 @@ def dynamic_model_namespace(
             teardown=teardown_resources,
         ) as ns:
             yield ns
+
+
+@pytest.fixture(scope="class")
+def deployment_config(
+    serving_argument: list[str],
+) -> dict[str, Any]:
+    """
+    Fixture to provide the base deployment configuration for serverless deployments.
+    """
+    config = BASE_SEVERRLESS_DEPLOYMENT_CONFIG.copy()
+    config["runtime_argument"] = serving_argument
+    return config
