@@ -38,5 +38,9 @@ uv run pytest --pre-upgrade --post-upgrade --upgrade-deployment-modes=servelerss
 ```
 
 ```bash
-uv run pytest --pre-upgrade --post-upgrade --upgrade-deployment-modes=servelerss,rawdeployment
+uv run pytest --pre-upgrade --post-upgrade --upgrade-deployment-modes=servelerss,rawdeployment,authorino
+```
+If you need to upgrade a raw cluster with no dependent operators:
+```bash
+uv run pytest --pre-upgrade --post-upgrade --upgrade-deployment-modes=rawdeployment --tc=dependent_operators:""
 ```
