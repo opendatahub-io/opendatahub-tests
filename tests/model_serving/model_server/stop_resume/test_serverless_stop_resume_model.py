@@ -128,7 +128,7 @@ class TestStoppedResumeServerless:
         [pytest.param({"stop": "false"})],
         indirect=True,
     )
-    def test_stop_ann_update_to_false_pod_rollout(
+    def test_stop_and_update_to_false_pod_rollout(
         self,
         unprivileged_client,
         unprivileged_model_namespace,
