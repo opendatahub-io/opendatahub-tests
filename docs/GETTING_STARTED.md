@@ -58,11 +58,11 @@ uv run pytest -c custom-pytest.ini
 uv run pytest -k test_name
 ```
 
-### Running smoke/sanity/tier1/tier2 test suites
+### Running smoke/sanity test suites
 
 The test suite is organized into different markers, and directories are arranged based on their components:
 
-#### Smoke/Sanity/Tier1/Tier2 Tests
+#### Smoke/Sanity Tests
 ```bash
 uv run pytest -m <marker> ./tests/path-of-component
 ```
