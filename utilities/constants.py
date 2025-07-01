@@ -153,6 +153,7 @@ class DscComponents:
     MODELMESHSERVING: str = "modelmeshserving"
     KSERVE: str = "kserve"
     MODELREGISTRY: str = "modelregistry"
+    LLAMASTACKOPERATOR: str = "llamastackoperator"
 
     class ManagementState:
         MANAGED: str = "Managed"
@@ -162,11 +163,13 @@ class DscComponents:
         MODEL_REGISTRY_READY: str = "ModelRegistryReady"
         KSERVE_READY: str = "KserveReady"
         MODEL_MESH_SERVING_READY: str = "ModelMeshServingReady"
+        LLAMA_STACK_OPERATOR_READY: str = "LlamaStackOperatorReady"
 
     COMPONENT_MAPPING: dict[str, str] = {
         MODELMESHSERVING: ConditionType.MODEL_MESH_SERVING_READY,
         KSERVE: ConditionType.KSERVE_READY,
         MODELREGISTRY: ConditionType.MODEL_REGISTRY_READY,
+        LLAMASTACKOPERATOR: ConditionType.LLAMA_STACK_OPERATOR_READY,
     }
 
 
@@ -211,6 +214,7 @@ class Timeout:
     TIMEOUT_10MIN: int = 10 * TIMEOUT_1MIN
     TIMEOUT_15MIN: int = 15 * TIMEOUT_1MIN
     TIMEOUT_20MIN: int = 20 * TIMEOUT_1MIN
+    TIMEOUT_30MIN: int = 30 * TIMEOUT_1MIN
 
 
 class OpenshiftRouteTimeout:
@@ -232,6 +236,7 @@ class ModelCarImage:
     MNIST_8_1: str = (
         "oci://quay.io/mwaykole/test@sha256:8a3217bcfa2cc5fa3d07496cff8b234acdf2c9725dd307dc0a80401f55e1a11c"  # noqa: E501
     )
+    GRANITE_8B_CODE_INSTRUCT: str = "oci://registry.redhat.io/rhelai1/modelcar-granite-8b-code-instruct:1.4"
 
 
 class MinIo:
@@ -271,7 +276,7 @@ class MinIo:
         }
 
         QWEN_MINIO_CONFIG: dict[str, Any] = {
-            "image": "quay.io/trustyai_testing/qwen-minio@sha256:d1e244e24d2e40fb2557e85b4587d56084253c040fc4e64421f3ccc09ec8e5c3",  # noqa: E501
+            "image": "quay.io/trustyai_testing/hf-llm-minio@sha256:2404a37d578f2a9c7adb3971e26a7438fedbe7e2e59814f396bfa47cd5fe93bb",  # noqa: E501
             **MINIO_BASE_CONFIG,
         }
 

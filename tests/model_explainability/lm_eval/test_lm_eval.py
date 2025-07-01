@@ -10,19 +10,9 @@ LMEVALJOB_COMPLETE_STATE: str = "Complete"
     "model_namespace, lmevaljob_hf",
     [
         pytest.param(
-            {"name": "test-lmeval-hf-arc"}, {"task_list": {"taskNames": ["arc_challenge"]}}, id="arc_challenge"
-        ),
-        pytest.param(
-            {"name": "test-lmeval-hf-mmlu"},
-            {"task_list": {"taskNames": ["mmlu_astronomy_generative"]}},
-            id="mmlu_astronomy_generative",
-        ),
-        pytest.param({"name": "test-lmeval-hf-hellaswag"}, {"task_list": {"taskNames": ["hellaswag"]}}, id="hellaswag"),
-        pytest.param(
-            {"name": "test-lmeval-hf-truthfulqa"}, {"task_list": {"taskNames": ["truthfulqa_gen"]}}, id="truthfulqa_gen"
-        ),
-        pytest.param(
-            {"name": "test-lmeval-hf-winogrande"}, {"task_list": {"taskNames": ["winogrande"]}}, id="winogrande"
+            {"name": "test-lmeval-hf-tasks"},
+            {"task_list": {"taskNames": ["arc_challenge", "mmlu_astronomy", "hellaswag", "truthfulqa", "winogrande"]}},
+            id="popular_tasks",
         ),
         pytest.param(
             {"name": "test-lmeval-hf-custom-task"},

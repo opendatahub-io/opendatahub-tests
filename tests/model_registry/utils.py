@@ -1,5 +1,4 @@
-import uuid
-from typing import Any
+from typing import Any, List
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.pod import Pod
@@ -12,6 +11,8 @@ from kubernetes.dynamic.exceptions import NotFoundError
 from tests.model_registry.constants import MR_DB_IMAGE_DIGEST
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
 from utilities.constants import Protocols, Annotations
+from model_registry import ModelRegistry as ModelRegistryClient
+from model_registry.types import RegisteredModel
 
 ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
 
@@ -231,34 +232,6 @@ def wait_for_pods_running(
     return None
 
 
-def generate_random_name(prefix: str = "", length: int = 8) -> str:
-    """
-    Generates a name with a required prefix and a random suffix derived from a UUID.
-
-    The length of the random suffix can be controlled, defaulting to 8 characters.
-    The suffix is taken from the beginning of a V4 UUID's hex representation.
-
-    Args:
-        prefix (str): The required prefix for the generated name.
-        length (int, optional): The desired length for the UUID-derived suffix.
-                               Defaults to 8. Must be between 1 and 32.
-
-    Returns:
-        str: A string in the format "prefix-uuid_suffix".
-
-    Raises:
-        ValueError: If prefix is empty, or if length is not between 1 and 32.
-    """
-    if not isinstance(length, int) or not (1 <= length <= 32):
-        raise ValueError("suffix_length must be an integer between 1 and 32.")
-    # Generate a new random UUID (version 4)
-    random_uuid = uuid.uuid4()
-    # Use the first 'length' characters of the hexadecimal representation of the UUID as the suffix.
-    # random_uuid.hex is 32 characters long.
-    suffix = random_uuid.hex[:length]
-    return f"{prefix}-{suffix}" if prefix else suffix
-
-
 def generate_namespace_name(file_path: str) -> str:
     return (file_path.removesuffix(".py").replace("/", "-").replace("_", "-"))[-63:].split("-", 1)[-1]
 
@@ -330,3 +303,32 @@ def apply_mysql_args_and_volume_mounts(
     my_sql_container["args"] = mysql_args
     my_sql_container["volumeMounts"] = volumes_mounts
     return my_sql_container
+
+
+def get_and_validate_registered_model(
+    model_registry_client: ModelRegistryClient,
+    model_name: str,
+    registered_model: RegisteredModel = None,
+) -> List[str]:
+    """
+    Get and validate a registered model.
+    """
+    model = model_registry_client.get_registered_model(name=model_name)
+    if registered_model is not None:
+        expected_attrs = {
+            "id": registered_model.id,
+            "name": registered_model.name,
+            "description": registered_model.description,
+            "owner": registered_model.owner,
+            "state": registered_model.state,
+        }
+    else:
+        expected_attrs = {
+            "name": model_name,
+        }
+    errors = [
+        f"Unexpected {attr} expected: {expected}, received {getattr(model, attr)}"
+        for attr, expected in expected_attrs.items()
+        if getattr(model, attr) != expected
+    ]
+    return errors
