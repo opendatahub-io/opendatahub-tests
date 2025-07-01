@@ -59,7 +59,7 @@ LMEVALJOB_COMPLETE_STATE: str = "Complete"
     indirect=True,
 )
 def test_lmeval_huggingface_model(admin_client, model_namespace, lmevaljob_hf_pod):
-    """Tests that verify running common evaluations (and a custom one) on a model pulled directly from HuggingFace.
+    """Tests that verify running common evaluations and a custom one on a model pulled directly from HuggingFace.
     On each test we run a different evaluation task, limiting it to 1% of the questions on each eval."""
     lmevaljob_hf_pod.wait_for_status(status=lmevaljob_hf_pod.Status.SUCCEEDED, timeout=Timeout.TIMEOUT_20MIN)
 
