@@ -50,8 +50,8 @@ class TestStopServerless:
         )
 
     @pytest.mark.parametrize(
-        "patched_inference_service_stop_annotation_true",
-        [pytest.param({"annotations": {Annotations.KserveIo.FORCE_STOP_RUNTIME: "true"}})],
+        "patched_inference_service_stop_annotation",
+        [pytest.param({"stop": "true"})],
         indirect=True,
     )
     def test_stop_and_update_to_true_delete_pod_rollout(
@@ -60,7 +60,7 @@ class TestStopServerless:
         unprivileged_model_namespace,
         ovms_kserve_serving_runtime,
         ovms_kserve_inference_service,
-        patched_inference_service_stop_annotation_true,
+        patched_inference_service_stop_annotation,
     ):
         """Verify pod rollout is deleted when the stop annotation updated to true"""
         """Verify pods do not exist"""
@@ -71,7 +71,7 @@ class TestStopServerless:
                 sleep=1,
                 func=lambda: verify_no_inference_pods(
                     client=unprivileged_client,
-                    isvc=patched_inference_service_stop_annotation_true,
+                    isvc=patched_inference_service_stop_annotation,
                 ),
             ):
                 if result is not None:
@@ -125,8 +125,8 @@ class TestStoppedResumeServerless:
             pass
 
     @pytest.mark.parametrize(
-        "patched_inference_service_stop_annotation_false",
-        [pytest.param({"annotations": {Annotations.KserveIo.FORCE_STOP_RUNTIME: "false"}})],
+        "patched_inference_service_stop_annotation",
+        [pytest.param({"stop": "false"})],
         indirect=True,
     )
     def test_stop_ann_update_to_false_pod_rollout(
@@ -135,12 +135,12 @@ class TestStoppedResumeServerless:
         unprivileged_model_namespace,
         ovms_kserve_serving_runtime,
         ovms_kserve_inference_service,
-        patched_inference_service_stop_annotation_false,
+        patched_inference_service_stop_annotation,
     ):
         """Verify pod rollout when the stop annotation is updated to false"""
         """Verify that kserve Serverless ONNX model can be queried using REST"""
         verify_inference_response(
-            inference_service=patched_inference_service_stop_annotation_false,
+            inference_service=patched_inference_service_stop_annotation,
             inference_config=ONNX_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,

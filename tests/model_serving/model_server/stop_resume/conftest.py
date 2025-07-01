@@ -7,13 +7,14 @@ from utilities.constants import Annotations
 
 
 @pytest.fixture(scope="function")
-def patched_inference_service_stop_annotation_false(
+def patched_inference_service_stop_annotation(
+    request: pytest.FixtureRequest,
     ovms_kserve_inference_service: InferenceService,
 ) -> Generator[InferenceService, Any, Any]:
     with ResourceEditor(
         patches={
             ovms_kserve_inference_service: {
-                "metadata": {"annotations": {Annotations.KserveIo.FORCE_STOP_RUNTIME: "false"}},
+                "metadata": {"annotations": {Annotations.KserveIo.FORCE_STOP_RUNTIME: request.param.get("stop", "false")}},
             }
         }
     ):
@@ -21,42 +22,16 @@ def patched_inference_service_stop_annotation_false(
 
 
 @pytest.fixture(scope="function")
-def patched_inference_service_stop_annotation_true(
-    ovms_kserve_inference_service: InferenceService,
-) -> Generator[InferenceService, Any, Any]:
-    with ResourceEditor(
-        patches={
-            ovms_kserve_inference_service: {
-                "metadata": {"annotations": {Annotations.KserveIo.FORCE_STOP_RUNTIME: "true"}},
-            }
-        }
-    ):
-        yield ovms_kserve_inference_service
-
-
-@pytest.fixture(scope="function")
-def patched_raw_inference_service_stop_annotation_false(
+def patched_raw_inference_service_stop_annotation(
+    request: pytest.FixtureRequest,
     ovms_raw_inference_service: InferenceService,
 ) -> Generator[InferenceService, Any, Any]:
     with ResourceEditor(
         patches={
             ovms_raw_inference_service: {
-                "metadata": {"annotations": {Annotations.KserveIo.FORCE_STOP_RUNTIME: "false"}},
+                "metadata": {"annotations": {Annotations.KserveIo.FORCE_STOP_RUNTIME: request.param.get("stop", "false")}},
             }
         }
     ):
         yield ovms_raw_inference_service
 
-
-@pytest.fixture(scope="function")
-def patched_raw_inference_service_stop_annotation_true(
-    ovms_raw_inference_service: InferenceService,
-) -> Generator[InferenceService, Any, Any]:
-    with ResourceEditor(
-        patches={
-            ovms_raw_inference_service: {
-                "metadata": {"annotations": {Annotations.KserveIo.FORCE_STOP_RUNTIME: "true"}},
-            }
-        }
-    ):
-        yield ovms_raw_inference_service
