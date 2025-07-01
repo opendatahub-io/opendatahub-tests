@@ -24,6 +24,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.resource import get_client
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
+from ocp_resources.cluster_service_version import ClusterServiceVersion
 import json
 
 from utilities.certificates_utils import create_ca_bundle_file
@@ -147,7 +148,7 @@ def aws_secret_access_key(pytestconfig: Config) -> str:
 
 
 @pytest.fixture(scope="session")
-def registry_pullsecret(pytestconfig: Config) -> str:
+def registry_pull_secret(pytestconfig: Config) -> str:
     registry_pull_secret = pytestconfig.option.registry_pull_secret
     if not registry_pull_secret:
         pytest.skip("Registry pull secret is not defined. Skipping tests that require it. ")
@@ -157,15 +158,6 @@ def registry_pullsecret(pytestconfig: Config) -> str:
 @pytest.fixture(scope="session")
 def valid_aws_config(aws_access_key_id: str, aws_secret_access_key: str) -> tuple[str, str]:
     return aws_access_key_id, aws_secret_access_key
-
-
-@pytest.fixture(scope="session")
-def valid_registry_pullsecret(registry_pullsecret: str) -> str:
-    """
-    Fixture to validate the registry pull secret.
-    Skips tests if the registry pull secret is not provided.
-    """
-    return registry_pullsecret
 
 
 @pytest.fixture(scope="session")
@@ -199,14 +191,6 @@ def ci_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str:
     if not ci_bucket_endpoint:
         pytest.skip("CI S3 bucket endpoint is not defined. Skipping tests that require it.")
     return ci_bucket_endpoint
-
-
-@pytest.fixture(scope="session")
-def registry_pull_secret(pytestconfig: pytest.Config) -> str:
-    registry_pull_secret = pytestconfig.option.registry_pull_secret
-    if not registry_pull_secret:
-        pytest.skip("Registry pull secret is not defined. Skipping tests that require it.")
-    return registry_pull_secret
 
 
 @pytest.fixture(scope="session")
@@ -414,6 +398,40 @@ def unprivileged_client(
 
         else:
             raise ClusterLoginError(user=non_admin_user_name)
+
+
+@pytest.fixture(scope="package")
+def fail_if_missing_dependent_operators(admin_client: DynamicClient) -> None:  # noqa: UFN001
+    if dependent_operators := py_config.get("dependent_operators"):
+        missing_operators: list[str] = []
+
+        for operator_name in dependent_operators.split(","):
+            csvs = list(
+                ClusterServiceVersion.get(
+                    dyn_client=admin_client,
+                    namespace=py_config["applications_namespace"],
+                )
+            )
+
+            LOGGER.info(f"Verifying if {operator_name} is installed")
+            for csv in csvs:
+                if csv.name.startswith(operator_name):
+                    if csv.status == csv.Status.SUCCEEDED:
+                        break
+
+                    else:
+                        missing_operators.append(
+                            f"Operator {operator_name} is installed but CSV is not in {csv.Status.SUCCEEDED} state"
+                        )
+
+            else:
+                missing_operators.append(f"{operator_name} is not installed")
+
+        if missing_operators:
+            pytest.fail(str(missing_operators))
+
+    else:
+        LOGGER.info("No dependent operators to verify")
 
 
 @pytest.fixture(scope="session")

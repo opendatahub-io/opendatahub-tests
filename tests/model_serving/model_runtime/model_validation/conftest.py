@@ -144,10 +144,13 @@ def modelcar_image_uri(request: FixtureRequest, model_image_name: str | list[str
     If the model image name is not provided, it skips the test.
     """
     param_index = request.node.callspec.indices.get("modelcar_image_uri", None)
-    if param_index is not None and param_index < len(model_image_name):
-        override = model_image_name[param_index]
+    if isinstance(model_image_name, list):
+        if param_index is not None and param_index < len(model_image_name):
+            override = model_image_name[param_index]
+        else:
+            pytest.skip("model_image_name completed, no more parameters to test.")
     else:
-        pytest.skip("model_image_name completed, no more parameters to test.")
+        override = model_image_name
     return f"oci://{registry_host}/rhelai1/{override}"
 
 

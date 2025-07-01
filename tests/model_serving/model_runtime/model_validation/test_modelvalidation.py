@@ -4,24 +4,12 @@ from simple_logger.logger import get_logger
 from ocp_resources.inference_service import InferenceService
 from utilities.constants import KServeDeploymentType
 from tests.model_serving.model_runtime.model_validation.utils import validate_serverless_openai_inference_request
-from tests.model_serving.model_runtime.model_validation.constant import COMPLETION_QUERY
+from tests.model_serving.model_runtime.model_validation.constant import COMPLETION_QUERY, TIMEOUT_20MIN
 
 LOGGER = get_logger(name=__name__)
 
-TIMEOUT_20MIN: str = 30 * 60
 
-# SERVING_ARGUMENT: list[str] = [
-#     "--uvicorn-log-level=debug",
-#     "--max-model-len=1024",
-#     "--trust-remote-code",
-#     "--distributed-executor-backend=mp",
-# ]
-
-# BASE_SEVERRLESS_DEPLOYMENT_CONFIG["runtime_argument"] = SERVING_ARGUMENT
-
-pytestmark = pytest.mark.usefixtures(
-    "vllm_skip_if_no_supported_accelerator_type", "valid_aws_config", "valid_registry_pullsecret"
-)
+pytestmark = pytest.mark.usefixtures("vllm_skip_if_no_supported_accelerator_type", "valid_aws_config")
 
 
 @pytest.mark.serverless

@@ -12,6 +12,7 @@ from tests.model_serving.model_runtime.model_validation.constant import PULL_SEC
 import pytest
 import hashlib
 import re
+import json
 from tests.model_serving.model_runtime.model_validation.constant import CHAT_QUERY, COMPLETION_QUERY
 
 LOGGER = get_logger(name=__name__)
@@ -55,7 +56,7 @@ def kserve_registry_pull_secret(
     registry_pull_secret: str,
     registry_host: str,
 ) -> Generator[Secret, Any, Any]:
-    dockerconfigjson = f'{{"auths": {{"{registry_host}": {{"auth": "{registry_pull_secret}"}}}}}}'
+    dockerconfigjson = json.dumps({"auths": {registry_host: {"auth": registry_pull_secret}}})
     with Secret(
         client=admin_client,
         name=name,
@@ -70,13 +71,17 @@ def kserve_registry_pull_secret(
         yield secret
 
 
-def fetch_openai_response(  # type: ignore
+def fetch_openai_response(
     url: str,
     model_name: str,
-    chat_query=CHAT_QUERY,
-    completion_query=COMPLETION_QUERY,
+    completion_query: Any,
+    chat_query: list[list[dict[str, str]]] | None = None,
     tool_calling: dict[Any, Any] | None = None,
 ) -> tuple[Any, list[Any], list[Any]]:
+    if chat_query is None:
+        chat_query = CHAT_QUERY
+    if completion_query is None:
+        completion_query = COMPLETION_QUERY
     completion_responses = []
     chat_responses = []
     inference_client = OpenAIClient(host=url, model_name=model_name, streaming=True)
@@ -87,7 +92,7 @@ def fetch_openai_response(  # type: ignore
             )
             chat_responses.append(chat_response)
     if completion_query:
-        for query in COMPLETION_QUERY:
+        for query in completion_query:
             completion_response = inference_client.request_http(
                 endpoint=OpenAIEnpoints.COMPLETIONS, query=query, extra_param={"max_tokens": 100}
             )

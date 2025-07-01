@@ -69,3 +69,4 @@ PULL_SECRET_ACCESS_TYPE: str = "WyJQdWxsIl0="  # Base64 encoded value for "Pull"
 PULL_SECRET_NAME: str = "oci-registry-pull-secret"
 INFERENCE_SERVICE_PORT: int = 8080
 CONTAINER_PORT: int = 8080
+TIMEOUT_20MIN: int = 30 * 60

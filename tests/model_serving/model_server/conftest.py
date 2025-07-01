@@ -4,7 +4,6 @@ import pytest
 import yaml
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
@@ -13,7 +12,6 @@ from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.storage_class import StorageClass
-from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 
 from utilities.constants import (
@@ -557,37 +555,3 @@ def unprivileged_s3_caikit_serverless_inference_service(
         storage_path=request.param["model-dir"],
     ) as isvc:
         yield isvc
-
-
-@pytest.fixture(scope="package")
-def fail_if_missing_dependent_operators(admin_client: DynamicClient) -> None:  # noqa: UFN001
-    if dependent_operators := py_config.get("dependent_operators"):
-        missing_operators: list[str] = []
-
-        for operator_name in dependent_operators.split(","):
-            csvs = list(
-                ClusterServiceVersion.get(
-                    dyn_client=admin_client,
-                    namespace=py_config["applications_namespace"],
-                )
-            )
-
-            LOGGER.info(f"Verifying if {operator_name} is installed")
-            for csv in csvs:
-                if csv.name.startswith(operator_name):
-                    if csv.status == csv.Status.SUCCEEDED:
-                        break
-
-                    else:
-                        missing_operators.append(
-                            f"Operator {operator_name} is installed but CSV is not in {csv.Status.SUCCEEDED} state"
-                        )
-
-            else:
-                missing_operators.append(f"{operator_name} is not installed")
-
-        if missing_operators:
-            pytest.fail(str(missing_operators))
-
-    else:
-        LOGGER.info("No dependent operators to verify")
