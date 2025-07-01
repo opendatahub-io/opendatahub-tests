@@ -12,13 +12,32 @@ def get_auth_headers(token: str) -> Dict[str, str]:
     return {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
 
 
-def get_chat_payload(content: str) -> Dict[str, Any]:
-    return {
-        "model": "/mnt/models",
+def get_chat_detections_payload(content: str, model: str, detectors: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    Constructs a chat detections payload for a given content string.
+
+    Args:
+        content: The user's message content.
+        model: The model identifier to be used.
+        detectors: Optional. A dictionary specifying detectors to be used.
+                   If None, detectors are not included in the payload.
+
+    Returns:
+        A dictionary representing the chat detections payload.
+    """
+
+    payload: Dict[str, Any] = {
+        "model": model,
         "messages": [
             {"role": "user", "content": content},
         ],
+        "temperature": 0,
     }
+
+    if detectors is not None:
+        payload["detectors"] = detectors
+
+    return payload
 
 
 def verify_and_parse_response(response: Response) -> Any:

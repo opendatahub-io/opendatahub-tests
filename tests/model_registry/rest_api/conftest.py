@@ -9,12 +9,12 @@ from tests.model_registry.rest_api.utils import (
     execute_model_registry_patch_command,
 )
 from utilities.constants import Protocols
+from utilities.general import generate_random_name
 from ocp_resources.deployment import Deployment
 from tests.model_registry.utils import (
     get_model_registry_deployment_template_dict,
     apply_mysql_args_and_volume_mounts,
     add_mysql_certs_volumes_to_deployment,
-    generate_random_name,
 )
 
 from tests.model_registry.constants import (

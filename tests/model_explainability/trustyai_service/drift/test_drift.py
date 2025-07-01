@@ -15,6 +15,13 @@ from utilities.constants import MinIo
 from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
 from utilities.monitoring import validate_metrics_field, get_metric_label
 
+DRIFT_METRICS = [
+    TrustyAIServiceMetrics.Drift.MEANSHIFT,
+    TrustyAIServiceMetrics.Drift.KSTEST,
+    TrustyAIServiceMetrics.Drift.APPROXKSTEST,
+    TrustyAIServiceMetrics.Drift.FOURIERMMD,
+]
+
 
 @pytest.mark.parametrize(
     "model_namespace, minio_pod, minio_data_connection",
@@ -72,42 +79,47 @@ class TestDriftMetrics:
             data_path=f"{DRIFT_BASE_DATA_PATH}/training_data.json",
         )
 
-    def test_drift_metric_meanshift(
+    @pytest.mark.parametrize("metric_name", DRIFT_METRICS)
+    def test_drift_metric_request(
         self,
         admin_client,
         current_client_token,
         trustyai_service_with_pvc_storage,
         gaussian_credit_model,
+        metric_name,
     ):
         verify_trustyai_service_metric_request(
             client=admin_client,
             trustyai_service=trustyai_service_with_pvc_storage,
             token=current_client_token,
-            metric_name=TrustyAIServiceMetrics.Drift.MEANSHIFT,
+            metric_name=metric_name,
             json_data={
                 "modelId": gaussian_credit_model.name,
                 "referenceTag": "TRAINING",
             },
         )
 
-    def test_drift_metric_schedule_meanshift(
+    @pytest.mark.parametrize("metric_name", DRIFT_METRICS)
+    def test_drift_metric_schedule(
         self,
         admin_client,
         current_client_token,
         trustyai_service_with_pvc_storage,
         gaussian_credit_model,
+        metric_name,
     ):
         verify_trustyai_service_metric_scheduling_request(
             client=admin_client,
             trustyai_service=trustyai_service_with_pvc_storage,
             token=current_client_token,
-            metric_name=TrustyAIServiceMetrics.Drift.MEANSHIFT,
+            metric_name=metric_name,
             json_data={
                 "modelId": gaussian_credit_model.name,
                 "referenceTag": "TRAINING",
             },
         )
 
+    @pytest.mark.parametrize("metric_name", DRIFT_METRICS)
     def test_drift_metric_prometheus(
         self,
         admin_client,
@@ -115,24 +127,27 @@ class TestDriftMetrics:
         trustyai_service_with_pvc_storage,
         gaussian_credit_model,
         prometheus,
+        metric_name,
     ):
         validate_metrics_field(
             prometheus=prometheus,
-            metrics_query=f'trustyai_{TrustyAIServiceMetrics.Drift.MEANSHIFT}{{namespace="{model_namespace.name}"}}',
-            expected_value=TrustyAIServiceMetrics.Drift.MEANSHIFT.upper(),
+            metrics_query=f'trustyai_{metric_name}{{namespace="{model_namespace.name}"}}',
+            expected_value=metric_name.upper(),
             field_getter=partial(get_metric_label, label_name="metricName"),
         )
 
+    @pytest.mark.parametrize("metric_name", DRIFT_METRICS)
     def test_drift_metric_delete(
         self,
         admin_client,
         minio_data_connection,
         current_client_token,
         trustyai_service_with_pvc_storage,
+        metric_name,
     ):
         verify_trustyai_service_metric_delete_request(
             client=admin_client,
             trustyai_service=trustyai_service_with_pvc_storage,
             token=current_client_token,
-            metric_name=TrustyAIServiceMetrics.Drift.MEANSHIFT,
+            metric_name=metric_name,
         )

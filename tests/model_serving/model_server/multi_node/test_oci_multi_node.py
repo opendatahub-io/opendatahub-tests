@@ -8,6 +8,9 @@ from utilities.constants import Protocols
 pytestmark = [
     pytest.mark.rawdeployment,
     pytest.mark.usefixtures("skip_if_no_gpu_nodes"),
+    pytest.mark.multinode,
+    pytest.mark.model_server_gpu,
+    pytest.mark.gpu,
 ]
 
 LOGGER = get_logger(name=__name__)

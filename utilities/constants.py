@@ -155,6 +155,7 @@ class DscComponents:
     MODELMESHSERVING: str = "modelmeshserving"
     KSERVE: str = "kserve"
     MODELREGISTRY: str = "modelregistry"
+    LLAMASTACKOPERATOR: str = "llamastackoperator"
 
     class ManagementState:
         MANAGED: str = "Managed"
@@ -164,11 +165,13 @@ class DscComponents:
         MODEL_REGISTRY_READY: str = "ModelRegistryReady"
         KSERVE_READY: str = "KserveReady"
         MODEL_MESH_SERVING_READY: str = "ModelMeshServingReady"
+        LLAMA_STACK_OPERATOR_READY: str = "LlamaStackOperatorReady"
 
     COMPONENT_MAPPING: dict[str, str] = {
         MODELMESHSERVING: ConditionType.MODEL_MESH_SERVING_READY,
         KSERVE: ConditionType.KSERVE_READY,
         MODELREGISTRY: ConditionType.MODEL_REGISTRY_READY,
+        LLAMASTACKOPERATOR: ConditionType.LLAMA_STACK_OPERATOR_READY,
     }
 
 
@@ -275,7 +278,7 @@ class MinIo:
         }
 
         QWEN_MINIO_CONFIG: dict[str, Any] = {
-            "image": "quay.io/trustyai_testing/qwen-minio@sha256:d1e244e24d2e40fb2557e85b4587d56084253c040fc4e64421f3ccc09ec8e5c3",  # noqa: E501
+            "image": "quay.io/trustyai_testing/hf-llm-minio@sha256:2404a37d578f2a9c7adb3971e26a7438fedbe7e2e59814f396bfa47cd5fe93bb",  # noqa: E501
             **MINIO_BASE_CONFIG,
         }
 
