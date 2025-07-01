@@ -46,7 +46,7 @@ Once the RHOAI upgrade is completed, run post-upgrade tests:
 uv run pytest --post-upgrade --upgrade-deployment-modes=serverless,rawdeployment,authorino
 ```
 
-If you need to upgrade a raw cluster with no dependent operators:
+If you need to upgrade a one kserve-raw test with no dependent operators:
 ```bash
-uv run pytest --pre-upgrade --post-upgrade --upgrade-deployment-modes=rawdeployment --tc=dependent_operators:""
+uv run pytest --pre-upgrade --post-upgrade --upgrade-deployment-modes=rawdeployment --tc=dependent_operators:"
 ```
