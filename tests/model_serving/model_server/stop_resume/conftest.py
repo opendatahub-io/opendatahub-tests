@@ -14,7 +14,9 @@ def patched_inference_service_stop_annotation(
     with ResourceEditor(
         patches={
             ovms_kserve_inference_service: {
-                "metadata": {"annotations": {Annotations.KserveIo.FORCE_STOP_RUNTIME: request.param.get("stop", "false")}},
+                "metadata": {
+                    "annotations": {Annotations.KserveIo.FORCE_STOP_RUNTIME: request.param.get("stop", "false")}
+                },
             }
         }
     ):
@@ -29,9 +31,10 @@ def patched_raw_inference_service_stop_annotation(
     with ResourceEditor(
         patches={
             ovms_raw_inference_service: {
-                "metadata": {"annotations": {Annotations.KserveIo.FORCE_STOP_RUNTIME: request.param.get("stop", "false")}},
+                "metadata": {
+                    "annotations": {Annotations.KserveIo.FORCE_STOP_RUNTIME: request.param.get("stop", "false")}
+                },
             }
         }
     ):
         yield ovms_raw_inference_service
-
