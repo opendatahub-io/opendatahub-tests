@@ -7,7 +7,6 @@ from utilities.constants import (
     ModelVersion,
     Protocols,
     RunTimeConfigs,
-    Annotations,
 )
 from utilities.inference_utils import Inference
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
