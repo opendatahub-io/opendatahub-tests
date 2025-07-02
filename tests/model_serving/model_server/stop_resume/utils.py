@@ -28,8 +28,10 @@ def consistently_verify_no_pods_exist(
         for _ in range(checks):
             if not verify_no_inference_pods(client, isvc):
                 return False
-            # Nested timeout samplers can cause false positives, so we iterate and sleep here instead
-            time.sleep(interval)
+            # Nested timeout samplers can cause false negatives if the internal sampler has
+            # a timeout that is greater than the external sampler.
+            # So we iterate and sleep here instead.
+            time.sleep(interval)  # noqa: FCN001
     except TimeoutExpiredError:
         return False
     return True
