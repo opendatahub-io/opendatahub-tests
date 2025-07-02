@@ -15,12 +15,12 @@ def consistently_verify_no_pods_exist(
 ) -> bool:
     """
     Verify that no inference pods exist for the given inference service.
-    
+
     Args:
         client: The Kubernetes client
         isvc: The InferenceService object
         checks: Number of checks to perform (default: 10)
-    
+
     Returns:
         bool: True if no pods exist (verification passed), False if pods are found
     """
