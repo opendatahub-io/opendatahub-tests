@@ -18,9 +18,7 @@ LOGGER = get_logger(name=__name__)
 
 
 def verify_no_inference_pods(
-    client: DynamicClient,
-    isvc: InferenceService,
-    wait_timeout: int = Timeout.TIMEOUT_4MIN
+    client: DynamicClient, isvc: InferenceService, wait_timeout: int = Timeout.TIMEOUT_4MIN
 ) -> bool:
     """
     Verify that no inference pods are running for the given InferenceService.
