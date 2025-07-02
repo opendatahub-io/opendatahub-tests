@@ -12,13 +12,13 @@ def verify_no_pods_exist_with_timeout(
 ) -> bool:
     """
     Verify that no inference pods exist for the given inference service within a timeout period.
-    
+
     Args:
         client: The Kubernetes client
         isvc: The InferenceService object
         wait_timeout: Maximum time to wait in seconds (default: 10)
         sleep: Sleep interval between checks in seconds (default: 1)
-    
+
     Returns:
         bool: True if no pods exist (verification passed), False if pods are found
     """
