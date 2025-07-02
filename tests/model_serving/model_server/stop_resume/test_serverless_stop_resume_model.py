@@ -10,13 +10,13 @@ from utilities.constants import (
 )
 from utilities.inference_utils import Inference
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
-from tests.model_serving.model_server.serverless.utils import verify_no_inference_pods
-from timeout_sampler import TimeoutSampler, TimeoutExpiredError
+from tests.model_serving.model_server.stop_resume.utils import verify_no_pods_exist_with_timeout
 
 pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config")]
 
 
 @pytest.mark.serverless
+@pytest.mark.smoke
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service",
     [
@@ -35,7 +35,6 @@ pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config"
     indirect=True,
 )
 class TestStopServerless:
-    @pytest.mark.smoke
     def test_serverless_onnx_rest_inference(
         self, unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service
     ):
@@ -63,23 +62,15 @@ class TestStopServerless:
     ):
         """Verify pod rollout is deleted when the stop annotation updated to true"""
         """Verify pods do not exist"""
-        # Use TimeoutSampler to verify that no inference pods exist for 10 seconds with 1 second intervals
-        try:
-            for result in TimeoutSampler(
-                wait_timeout=10,
-                sleep=1,
-                func=lambda: verify_no_inference_pods(
-                    client=unprivileged_client,
-                    isvc=patched_inference_service_stop_annotation,
-                ),
-            ):
-                if result is not None:
-                    pytest.fail("Verification failed: pods were found when none should exist")
-        except TimeoutExpiredError:
-            pass
+        result = verify_no_pods_exist_with_timeout(
+            client=unprivileged_client,
+            isvc=patched_inference_service_stop_annotation,
+        )
+        assert result, "Verification failed: pods were found when none should exist"
 
 
 @pytest.mark.serverless
+@pytest.mark.smoke
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service",
     [
@@ -98,7 +89,6 @@ class TestStopServerless:
     indirect=True,
 )
 class TestStoppedResumeServerless:
-    @pytest.mark.smoke
     def test_stop_and_true_no_pod_rollout(
         self,
         unprivileged_client,
@@ -108,20 +98,11 @@ class TestStoppedResumeServerless:
     ):
         """Verify no pod rollout when the stop annotation is true"""
         """Verify pods do not exist"""
-        # Use TimeoutSampler to verify that no inference pods exist for 10 seconds with 1 second intervals
-        try:
-            for result in TimeoutSampler(
-                wait_timeout=10,
-                sleep=1,
-                func=lambda: verify_no_inference_pods(
-                    client=unprivileged_client,
-                    isvc=ovms_kserve_inference_service,
-                ),
-            ):
-                if result is not None:
-                    pytest.fail("Verification failed: pods were found when none should exist")
-        except TimeoutExpiredError:
-            pass
+        result = verify_no_pods_exist_with_timeout(
+            client=unprivileged_client,
+            isvc=ovms_kserve_inference_service,
+        )
+        assert result, "Verification failed: pods were found when none should exist"
 
     @pytest.mark.parametrize(
         "patched_inference_service_stop_annotation",
