@@ -80,7 +80,6 @@ class TestStopRaw:
                 "name": ModelFormat.ONNX,
                 "model-version": ModelVersion.OPSET13,
                 "model-dir": "test-dir",
-                "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
                 "stop": True,
             },
         )
