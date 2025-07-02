@@ -41,7 +41,7 @@ class TestServerlessInitialScaleZero:
     @pytest.mark.dependency(name="test_no_serverless_pods_created_for_zero_initial_scale")
     def test_no_serverless_pods_created_for_zero_initial_scale(self, admin_client, ovms_kserve_inference_service):
         """Verify no pods are created when inference service initial scale is zero, i.e. zero min-replicas requested."""
-        verify_no_inference_pods(client=admin_client, isvc=ovms_kserve_inference_service)
+        assert verify_no_inference_pods(client=admin_client, isvc=ovms_kserve_inference_service)
 
     @pytest.mark.dependency(name="test_no_serverless_replicas_created_for_zero_initial_scale")
     def test_no_serverless_replicas_created_for_zero_initial_scale(

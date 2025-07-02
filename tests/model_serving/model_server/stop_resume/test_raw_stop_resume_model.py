@@ -10,7 +10,7 @@ from utilities.constants import (
 )
 from utilities.inference_utils import Inference
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
-from tests.model_serving.model_server.stop_resume.utils import verify_no_pods_exist_with_timeout
+from tests.model_serving.model_server.stop_resume.utils import consistently_verify_no_pods_exist
 
 pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config")]
 
@@ -61,7 +61,7 @@ class TestStopRaw:
     ):
         """Verify pod rollout is deleted when the stop annotation updated to true"""
         """Verify pods do not exist"""
-        result = verify_no_pods_exist_with_timeout(
+        result = consistently_verify_no_pods_exist(
             client=unprivileged_client,
             isvc=patched_raw_inference_service_stop_annotation,
         )
@@ -96,7 +96,7 @@ class TestStoppedResumeRaw:
     ):
         """Verify no pod rollout when the stop annotation is true"""
         """Verify pods do not exist"""
-        result = verify_no_pods_exist_with_timeout(
+        result = consistently_verify_no_pods_exist(
             client=unprivileged_client,
             isvc=ovms_raw_inference_service,
         )
