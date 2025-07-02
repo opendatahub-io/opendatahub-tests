@@ -359,6 +359,8 @@ def ovms_kserve_inference_service(
     if (scale_target := request.param.get("scale-target")) is not None:
         isvc_kwargs["scale_target"] = scale_target
 
+    isvc_kwargs["stop_resume"] = request.param.get("stop", False)
+
     with create_isvc(**isvc_kwargs) as isvc:
         yield isvc
 
@@ -382,6 +384,7 @@ def ovms_raw_inference_service(
         model_format=ModelAndFormat.OPENVINO_IR,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         model_version=request.param["model-version"],
+        stop_resume=request.param.get("stop", False),
     ) as isvc:
         yield isvc
 

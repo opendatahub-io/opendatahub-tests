@@ -17,23 +17,28 @@ from utilities.infra import get_pods_by_isvc_label
 LOGGER = get_logger(name=__name__)
 
 
-def verify_no_inference_pods(client: DynamicClient, isvc: InferenceService) -> None:
+def verify_no_inference_pods(
+    client: DynamicClient, isvc: InferenceService, wait_timeout: int = Timeout.TIMEOUT_4MIN
+) -> bool:
     """
     Verify that no inference pods are running for the given InferenceService.
 
     Args:
         client (DynamicClient): DynamicClient object
         isvc (InferenceService): InferenceService object
+        wait_timeout (int): Timeout in seconds, default is 4 minutes
 
+    Returns:
+        bool: True if no pods are running, False otherwise
     Raises:
-        TimeoutError: If pods are exist after the timeout.
+        TimeoutError: If pods exist after the timeout.
 
     """
     pods = []
 
     try:
         for pods in TimeoutSampler(
-            wait_timeout=Timeout.TIMEOUT_4MIN,
+            wait_timeout=wait_timeout,
             sleep=5,
             exceptions_dict=DEFAULT_CLUSTER_RETRY_EXCEPTIONS,
             func=get_pods_by_isvc_label,
@@ -41,13 +46,14 @@ def verify_no_inference_pods(client: DynamicClient, isvc: InferenceService) -> N
             isvc=isvc,
         ):
             if not pods:
-                return
+                return True
 
     except TimeoutExpiredError as e:
         if isinstance(e.last_exp, ResourceNotFoundError):
-            return
+            return True
         LOGGER.error(f"{[pod.name for pod in pods]} were not deleted")
-        raise
+        return False
+    return True
 
 
 def wait_for_canary_rollout(isvc: InferenceService, percentage: int, timeout: int = Timeout.TIMEOUT_5MIN) -> None:
