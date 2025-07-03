@@ -26,7 +26,12 @@ LOGGER = get_logger(name=__name__)
     indirect=True,
     scope="class",
 )
-@pytest.mark.usefixtures("updated_dsc_component_state_scope_class")
+@pytest.mark.usefixtures(
+    "updated_dsc_component_state_scope_class",
+    "is_model_registry_oauth",
+    "model_registry_mysql_metadata_db",
+    "model_registry_instance_mysql",
+)
 class TestModelRegistryRBAC:
     """
     Tests RBAC for Model Registry REST endpoint using ServiceAccount tokens.
@@ -37,8 +42,8 @@ class TestModelRegistryRBAC:
     @pytest.mark.usefixtures("sa_namespace", "service_account")
     def test_service_account_access_denied(
         self: Self,
-        sa_token: str,
         model_registry_instance_rest_endpoint: str,
+        sa_token: str,
     ):
         """
         Verifies SA access is DENIED (403 Forbidden) by default via REST.

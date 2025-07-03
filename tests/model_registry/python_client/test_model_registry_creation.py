@@ -4,7 +4,6 @@ from simple_logger.logger import get_logger
 from pytest_testconfig import config as py_config
 
 from ocp_resources.pod import Pod
-from ocp_resources.namespace import Namespace
 from utilities.constants import DscComponents
 from tests.model_registry.constants import MODEL_NAME, MODEL_DICT
 from model_registry import ModelRegistry as ModelRegistryClient
@@ -43,7 +42,12 @@ CUSTOM_NAMESPACE = "model-registry-custom-ns"
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("updated_dsc_component_state_scope_class", "registered_model")
+@pytest.mark.usefixtures(
+    "updated_dsc_component_state_scope_class",
+    "model_registry_mysql_metadata_db",
+    "model_registry_instance_mysql",
+    "registered_model",
+)
 class TestModelRegistryCreation:
     """
     Tests the creation of a model registry. If the component is set to 'Removed' it will be switched to 'Managed'
@@ -74,7 +78,6 @@ class TestModelRegistryCreation:
 
     def test_model_registry_operator_env(
         self,
-        updated_dsc_component_state_scope_class: Namespace,
         model_registry_namespace: str,
         model_registry_operator_pod: Pod,
     ):
