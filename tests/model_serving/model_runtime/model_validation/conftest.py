@@ -21,6 +21,7 @@ from tests.model_serving.model_runtime.vllm.utils import validate_supported_quan
 from tests.model_serving.model_runtime.model_validation.constant import (
     INFERENCE_SERVICE_PORT,
     CONTAINER_PORT,
+    TIMEOUT_20MIN,
 )
 from tests.model_serving.model_runtime.model_validation.utils import safe_k8s_name
 from tests.model_serving.model_runtime.model_validation.constant import BASE_SEVERRLESS_DEPLOYMENT_CONFIG
@@ -201,3 +202,58 @@ def deployment_config(
     config = BASE_SEVERRLESS_DEPLOYMENT_CONFIG.copy()
     config["runtime_argument"] = serving_argument
     return config
+
+
+def build_modelcar_params(config: pytest.Config) -> tuple[list[pytest.param], list[str]]:
+    """
+    Generate modelcar parameters for testing based on CLI input.
+    """
+    image_arg = config.getoption(option="--modelcar_image_name")
+    modelcar_image_list = image_arg.split(",") if image_arg else []
+
+    modelcar_params = []
+    modelcar_ids = []
+    for image_uri in modelcar_image_list[:20]:
+        if not image_uri.strip():
+            continue
+        modelcar_params.extend([
+            pytest.param(
+                {"modelcar_image_uri": image_uri, "modelmesh-enabled": False},
+                {"deployment_type": KServeDeploymentType.SERVERLESS},
+                {
+                    "modelcar_image_uri": image_uri,
+                    "gpu_count": 1,
+                    "timeout": TIMEOUT_20MIN,
+                },
+                image_uri,
+            ),
+            pytest.param(
+                {"modelcar_image_uri": image_uri, "modelmesh-enabled": True},
+                {"deployment_type": KServeDeploymentType.RAW_DEPLOYMENT},
+                {
+                    "modelcar_image_uri": image_uri,
+                    "gpu_count": 1,
+                    "timeout": TIMEOUT_20MIN,
+                },
+                image_uri,
+            ),
+        ])
+        modelcar_ids.extend([f"{image_uri}-serverless", f"{image_uri}-raw"])
+    return modelcar_params, modelcar_ids
+
+
+def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
+    """
+    Generate parameters for modelcar tests based on CLI input.
+    """
+    if "modelcar_image_uri" in metafunc.fixturenames:
+        params, ids = build_modelcar_params(config=metafunc.config)
+        metafunc.parametrize(
+            argnames=(
+                "dynamic_model_namespace, modelcar_serving_runtime, "
+                "vllm_model_car_inference_service, modelcar_image_uri"
+            ),
+            argvalues=params,
+            indirect=True,
+            ids=ids,
+        )

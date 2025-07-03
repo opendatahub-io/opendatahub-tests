@@ -30,6 +30,12 @@ PREDICT_RESOURCES: dict[str, Union[list[dict[str, Union[str, dict[str, str]]]], 
     "resources": {"requests": {"cpu": "2", "memory": "15Gi"}, "limits": {"cpu": "3", "memory": "16Gi"}},
 }
 
+BASE_RAW_DEPLOYMENT_CONFIG: dict[str, Any] = {
+    "deployment_mode": KServeDeploymentType.RAW_DEPLOYMENT,
+    "runtime_argument": None,
+    "min-replicas": 1,
+}
+
 BASE_SEVERRLESS_DEPLOYMENT_CONFIG: dict[str, Any] = {
     "deployment_mode": KServeDeploymentType.SERVERLESS,
     "runtime_argument": None,
@@ -70,3 +76,5 @@ PULL_SECRET_NAME: str = "oci-registry-pull-secret"
 INFERENCE_SERVICE_PORT: int = 8080
 CONTAINER_PORT: int = 8080
 TIMEOUT_20MIN: int = 30 * 60
+OPENAI_ENDPOINT_NAME: str = "openai"
+TGIS_ENDPOINT_NAME: str = "tgis"

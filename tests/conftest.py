@@ -225,14 +225,7 @@ def models_s3_bucket_name(pytestconfig: pytest.Config) -> str | None:
     """
     models_bucket = pytestconfig.option.models_s3_bucket_name
     if not models_bucket:
-        warnings.warn(
-            message=(
-                "Bucket name for the models bucket is not defined."
-                "Either pass with `--models-s3-bucket-name` or set `MODELS_S3_BUCKET_NAME` environment variable"
-            ),
-            category=UserWarning,
-        )
-        return None
+        pytest.skip("S3 bucket name for models is not defined. Skipping tests that require it.")
     return models_bucket
 
 
@@ -243,14 +236,7 @@ def models_s3_bucket_region(pytestconfig: pytest.Config) -> str | None:
     """
     models_bucket_region = pytestconfig.option.models_s3_bucket_region
     if not models_bucket_region:
-        warnings.warn(
-            message=(
-                "region for the models bucket is not defined."
-                "Either pass with `--models-s3-bucket-region` or set `MODELS_S3_BUCKET_REGION` environment variable"
-            ),
-            category=UserWarning,
-        )
-        return None
+        pytest.skip("S3 bucket region for models is not defined. Skipping tests that require it.")
     return models_bucket_region
 
 
@@ -273,7 +259,7 @@ def models_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str | None:
 
 
 @pytest.fixture(scope="session")
-def model_image_name(pytestconfig: pytest.Config) -> str:
+def model_image_name(pytestconfig: pytest.Config) -> list[str]:
     model_image = pytestconfig.option.modelcar_image_name
     if not model_image:
         pytest.skip("Model image name is not defined. Skipping tests that require it.")
