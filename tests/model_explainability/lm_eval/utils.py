@@ -36,42 +36,32 @@ def get_lmevaljob_pod(client: DynamicClient, lmevaljob: LMEvalJob, timeout: int 
 
     return lmeval_pod
 
-def get_lmeval_tasks(min_downloads: int = 10000) -> List[str]:
+def get_lmeval_tasks(min_downloads: int = 10000, tier: int = 1) -> List[str]:
     """
     Gets the list of unique LM-Eval tasks that have above a certain number of downloads.
 
     Args:
         min_downloads: The minimum number of downloads
+        tier: The tier of support offered
 
     Returns:
         List of LM-Eval task names
     """
     if min_downloads < 1:
         raise ValueError("Min downloads must be greater than 0")
-    # TO-DO: update list of tasks since some of them don't exist
-    lmeval_tasks = pd.read_csv("tests/model_explainability/lm_eval/data/lm_eval_tasks.csv")
 
-    # filter rows by download count
-    filtered_df = lmeval_tasks[lmeval_tasks['HF dataset downloads'] >= min_downloads]
+    if tier < 1 or tier > 3:
+        raise ValueError("Valid tier values are: 1, 2, or 3")
 
-    def get_group_names(task_names: List[str]):
-        # count how many times each base prefix appears
-        group_counts = Counter(task.split('_')[0] for task in task_names)
+    lmeval_tasks = pd.read_csv("tests/model_explainability/lm_eval/data/new_task_list.csv")
 
-        unique_tasks = set()
+    filtered_df = lmeval_tasks[
+        (lmeval_tasks['Exists']) &
+        (lmeval_tasks['Tier'] == tier) &
+        (lmeval_tasks['HF dataset downloads'] >= min_downloads) &
+        (lmeval_tasks['OpenLLM leaderboard'])
+    ]
 
-        for name in task_names:
-            group = name.split('_')[0]
-            if group_counts[group] > 1:
-                # if multiple tasks share this base, keep only the base prefix once
-                unique_tasks.add(group)
-            else:
-                # if base prefix unique, keep the full name
-                unique_tasks.add(name)
+    LOGGER.info(f"Number of unique LMEval tasks with more than {min_downloads} downloads: {len(filtered_df)}")
 
-        return unique_tasks
-
-    group_names = list(get_group_names(filtered_df['Name']))
-    LOGGER.info(f"Number of unique LMEval tasks with more than {min_downloads} downloads: {len(group_names)}")
-
-    return group_names
+    return filtered_df['Name'].tolist()

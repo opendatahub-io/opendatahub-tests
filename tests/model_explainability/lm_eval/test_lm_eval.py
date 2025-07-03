@@ -8,7 +8,7 @@ from tests.model_explainability.lm_eval.utils import get_lmeval_tasks
 
 LMEVALJOB_COMPLETE_STATE: str = "Complete"
 
-LMEVAL_TASKS: List[str] = get_lmeval_tasks(min_downloads=10000)
+LMEVAL_TASKS: List[str] = get_lmeval_tasks(min_downloads=10000, tier=1)
 
 @pytest.mark.parametrize(
     "model_namespace, lmevaljob_hf",

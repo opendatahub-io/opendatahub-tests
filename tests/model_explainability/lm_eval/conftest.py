@@ -53,12 +53,10 @@ def lmevaljob_hf(
                     "limits": {
                         "cpu": "1",
                         "memory": "8Gi",
-                        # "nvidia.com/gpu": "1"
                     },
                     "requests": {
                         "cpu": "1",
                         "memory": "8Gi",
-                        # "nvidia.com/gpu": "1"
                     }
                 },
                 "env": [
@@ -69,7 +67,12 @@ def lmevaljob_hf(
                                 "key": "HF_ACCESS_TOKEN",
                             },
                         },
-                    }
+                    },
+                    {
+                        "name": "HF_ALLOW_CODE_EVAL",
+                        "value": "1",
+
+                    },
                 ],
             },
         },
