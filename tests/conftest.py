@@ -3,6 +3,7 @@ import os
 import shutil
 from ast import literal_eval
 from typing import Any, Callable, Generator
+import warnings
 
 import pytest
 import shortuuid
@@ -25,6 +26,8 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.resource import get_client
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
+from ocp_resources.cluster_service_version import ClusterServiceVersion
+import json
 
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.data_science_cluster_utils import update_components_in_dsc
@@ -130,74 +133,122 @@ def aws_secret_access_key(pytestconfig: Config) -> str:
 
 
 @pytest.fixture(scope="session")
+def registry_pull_secret(pytestconfig: Config) -> str:
+    registry_pull_secret = pytestconfig.option.registry_pull_secret
+    if not registry_pull_secret:
+        pytest.skip("Registry pull secret is not defined. Skipping tests that require it. ")
+    return registry_pull_secret
+
+
+@pytest.fixture(scope="session")
 def valid_aws_config(aws_access_key_id: str, aws_secret_access_key: str) -> tuple[str, str]:
     return aws_access_key_id, aws_secret_access_key
 
 
 @pytest.fixture(scope="session")
 def ci_s3_bucket_name(pytestconfig: Config) -> str:
+    """
+    Fixture to get the name of the S3 bucket used. Not required for models stored in OCI.
+    """
     bucket_name = pytestconfig.option.ci_s3_bucket_name
     if not bucket_name:
-        raise ValueError(
-            "CI S3 bucket name is not set. "
-            "Either pass with `--ci-s3-bucket-name` or set `CI_S3_BUCKET_NAME` environment variable"
-        )
+        pytest.skip("CI S3 bucket name is not defined. Skipping tests that require it.")
     return bucket_name
 
 
 @pytest.fixture(scope="session")
 def ci_s3_bucket_region(pytestconfig: pytest.Config) -> str:
+    """
+    Fixture to get the region of the S3 bucket used. Not required for models stored in OCI.
+    """
     ci_bucket_region = pytestconfig.option.ci_s3_bucket_region
     if not ci_bucket_region:
-        raise ValueError(
-            "Region for the ci s3 bucket is not defined."
-            "Either pass with `--ci-s3-bucket-region` or set `CI_S3_BUCKET_REGION` environment variable"
-        )
+        pytest.skip("CI S3 bucket region is not defined. Skipping tests that require it.")
     return ci_bucket_region
 
 
 @pytest.fixture(scope="session")
 def ci_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str:
+    """
+    Fixture to get the endpoint of the S3 bucket used. Not required for models stored in OCI.
+    """
     ci_bucket_endpoint = pytestconfig.option.ci_s3_bucket_endpoint
     if not ci_bucket_endpoint:
-        raise ValueError(
-            "Endpoint for the ci s3 bucket is not defined."
-            "Either pass with `--ci-s3-bucket-endpoint` or set `CI_S3_BUCKET_ENDPOINT` environment variable"
-        )
+        pytest.skip("CI S3 bucket endpoint is not defined. Skipping tests that require it.")
     return ci_bucket_endpoint
 
 
 @pytest.fixture(scope="session")
-def models_s3_bucket_name(pytestconfig: pytest.Config) -> str:
+def registry_host(pytestconfig: pytest.Config) -> str:
+    registry_host = pytestconfig.option.registry_host
+    if not registry_host:
+        pytest.skip("Registry host is not defined. Skipping tests that require it.")
+    return registry_host
+
+
+@pytest.fixture(scope="session")
+def serving_argument(pytestconfig: pytest.Config) -> list[str]:
+    """
+    Fixture to get the serving arguments for the model serving runtime.
+    """
+    serving_argument = pytestconfig.option.serving_argument
+    if not serving_argument:
+        pytest.skip("Serving arguments are not defined. Skipping tests that require it.")
+    try:
+        return json.loads(serving_argument)
+    except json.JSONDecodeError:
+        raise ValueError(
+            "Serving arguments should be a valid JSON list. "
+            "Either pass with `--serving-argument` or set `SERVING_ARGUMENT` environment variable"
+        )
+
+
+@pytest.fixture(scope="session")
+def models_s3_bucket_name(pytestconfig: pytest.Config) -> str | None:
+    """
+    Fixture to get the name of the S3 bucket for models. Not required for models stored in OCI.
+    """
     models_bucket = pytestconfig.option.models_s3_bucket_name
     if not models_bucket:
-        raise ValueError(
-            "Bucket name for the models bucket is not defined."
-            "Either pass with `--models-s3-bucket-name` or set `MODELS_S3_BUCKET_NAME` environment variable"
-        )
+        pytest.skip("S3 bucket name for models is not defined. Skipping tests that require it.")
     return models_bucket
 
 
 @pytest.fixture(scope="session")
-def models_s3_bucket_region(pytestconfig: pytest.Config) -> str:
+def models_s3_bucket_region(pytestconfig: pytest.Config) -> str | None:
+    """
+    Fixture to get the region of the S3 bucket for models. Not required for models stored in OCI.
+    """
     models_bucket_region = pytestconfig.option.models_s3_bucket_region
     if not models_bucket_region:
-        raise ValueError(
-            "region for the models bucket is not defined."
-            "Either pass with `--models-s3-bucket-region` or set `MODELS_S3_BUCKET_REGION` environment variable"
-        )
+        pytest.skip("S3 bucket region for models is not defined. Skipping tests that require it.")
     return models_bucket_region
 
 
 @pytest.fixture(scope="session")
-def models_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str:
+def models_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str | None:
+    """
+    Fixture to get the endpoint of the S3 bucket for models. Not required for models stored in OCI.
+    """
     models_bucket_endpoint = pytestconfig.option.models_s3_bucket_endpoint
     if not models_bucket_endpoint:
-        raise ValueError(
-            "endpoint for the models bucket is not defined."
-            "Either pass with `--models-s3-bucket-endpoint` or set `MODELS_S3_BUCKET_ENDPOINT` environment variable"
+        warnings.warn(
+            message=(
+                "endpoint for the models bucket is not defined."
+                "Either pass with `--models-s3-bucket-endpoint` or set `MODELS_S3_BUCKET_ENDPOINT` environment variable"
+            ),
+            category=UserWarning,
         )
+        return None
     return models_bucket_endpoint
+
+
+@pytest.fixture(scope="session")
+def model_image_name(pytestconfig: pytest.Config) -> list[str]:
+    model_image = pytestconfig.option.modelcar_image_name
+    if not model_image:
+        pytest.skip("Model image name is not defined. Skipping tests that require it.")
+    return model_image.split(",")
 
 
 @pytest.fixture(scope="session")
@@ -326,6 +377,40 @@ def unprivileged_client(
 
         else:
             raise ClusterLoginError(user=non_admin_user_name)
+
+
+@pytest.fixture(scope="package")
+def fail_if_missing_dependent_operators(admin_client: DynamicClient) -> None:  # noqa: UFN001
+    if dependent_operators := py_config.get("dependent_operators"):
+        missing_operators: list[str] = []
+
+        for operator_name in dependent_operators.split(","):
+            csvs = list(
+                ClusterServiceVersion.get(
+                    dyn_client=admin_client,
+                    namespace=py_config["applications_namespace"],
+                )
+            )
+
+            LOGGER.info(f"Verifying if {operator_name} is installed")
+            for csv in csvs:
+                if csv.name.startswith(operator_name):
+                    if csv.status == csv.Status.SUCCEEDED:
+                        break
+
+                    else:
+                        missing_operators.append(
+                            f"Operator {operator_name} is installed but CSV is not in {csv.Status.SUCCEEDED} state"
+                        )
+
+            else:
+                missing_operators.append(f"{operator_name} is not installed")
+
+        if missing_operators:
+            pytest.fail(str(missing_operators))
+
+    else:
+        LOGGER.info("No dependent operators to verify")
 
 
 @pytest.fixture(scope="session")
