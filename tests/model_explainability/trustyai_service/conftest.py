@@ -6,7 +6,6 @@ from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.config_map import ConfigMap
-from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.maria_db import MariaDB
 from ocp_resources.mariadb_operator import MariadbOperator
@@ -18,9 +17,7 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
-from ocp_resources.subscription import Subscription
 from ocp_resources.trustyai_service import TrustyAIService
-from ocp_utilities.operators import install_operator, uninstall_operator
 
 from tests.model_explainability.trustyai_service.constants import (
     TAI_DATA_CONFIG,
@@ -41,7 +38,6 @@ from tests.model_explainability.trustyai_service.trustyai_service_utils import (
     wait_for_isvc_deployment_registered_by_trustyai_service,
 )
 from tests.model_explainability.trustyai_service.utils import (
-    wait_for_mariadb_operator_deployments,
     create_trustyai_service,
     wait_for_mariadb_pods,
     TRUSTYAI_SERVICE_NAME,
@@ -52,14 +48,10 @@ from tests.model_explainability.trustyai_service.utils import (
 )
 from utilities.logger import RedactedString
 from utilities.operator_utils import get_cluster_service_version
-
-from utilities.constants import Timeout, KServeDeploymentType, Labels
+from utilities.constants import KServeDeploymentType, Labels, OPENSHIFT_OPERATORS, MARIADB
 from utilities.inference_utils import create_isvc
 from utilities.infra import update_configmap_data, create_inference_token
 
-OPENSHIFT_OPERATORS: str = "openshift-operators"
-
-MARIADB: str = "mariadb"
 DB_CREDENTIALS_SECRET_NAME: str = "db-credentials"
 DB_NAME: str = "trustyai_db"
 DB_USERNAME: str = "trustyai_user"
@@ -140,64 +132,6 @@ def db_credentials_secret(admin_client: DynamicClient, model_namespace: Namespac
         },
     ) as db_credentials:
         yield db_credentials
-
-
-@pytest.fixture(scope="session")
-def installed_mariadb_operator(admin_client: DynamicClient) -> Generator[None, Any, Any]:
-    operator_ns = Namespace(name="openshift-operators", ensure_exists=True)
-    operator_name = "mariadb-operator"
-
-    mariadb_operator_subscription = Subscription(client=admin_client, namespace=operator_ns.name, name=operator_name)
-
-    if not mariadb_operator_subscription.exists:
-        install_operator(
-            admin_client=admin_client,
-            target_namespaces=[],
-            name=operator_name,
-            channel="alpha",
-            source="community-operators",
-            operator_namespace=operator_ns.name,
-            timeout=Timeout.TIMEOUT_15MIN,
-            install_plan_approval="Manual",
-            starting_csv=f"{operator_name}.v0.37.1",
-        )
-
-        deployment = Deployment(
-            client=admin_client,
-            namespace=operator_ns.name,
-            name=f"{operator_name}-helm-controller-manager",
-            wait_for_resource=True,
-        )
-        deployment.wait_for_replicas()
-
-    yield
-    uninstall_operator(
-        admin_client=admin_client, name=operator_name, operator_namespace=operator_ns.name, clean_up_namespace=False
-    )
-
-
-@pytest.fixture(scope="class")
-def mariadb_operator_cr(
-    admin_client: DynamicClient, installed_mariadb_operator: None
-) -> Generator[MariadbOperator, Any, Any]:
-    mariadb_csv: ClusterServiceVersion = get_cluster_service_version(
-        client=admin_client, prefix="mariadb", namespace=OPENSHIFT_OPERATORS
-    )
-    alm_examples: list[dict[str, Any]] = mariadb_csv.get_alm_examples()
-    mariadb_operator_cr_dict: dict[str, Any] = next(
-        example for example in alm_examples if example["kind"] == "MariadbOperator"
-    )
-
-    if not mariadb_operator_cr_dict:
-        raise ResourceNotFoundError(f"No MariadbOperator dict found in alm_examples for CSV {mariadb_csv.name}")
-
-    mariadb_operator_cr_dict["metadata"]["namespace"] = OPENSHIFT_OPERATORS
-    with MariadbOperator(kind_dict=mariadb_operator_cr_dict) as mariadb_operator_cr:
-        mariadb_operator_cr.wait_for_condition(
-            condition="Deployed", status=mariadb_operator_cr.Condition.Status.TRUE, timeout=Timeout.TIMEOUT_10MIN
-        )
-        wait_for_mariadb_operator_deployments(mariadb_operator=mariadb_operator_cr)
-        yield mariadb_operator_cr
 
 
 @pytest.fixture(scope="class")

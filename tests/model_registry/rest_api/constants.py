@@ -41,3 +41,17 @@ MODEL_REGISTER_DATA = {
     "model_artifact_data": MODEL_ARTIFACT,
 }
 MODEL_REGISTRY_BASE_URI = "/api/model_registry/v1alpha3/"
+CUSTOM_PROPERTY = {
+    "customProperties": {
+        "my_bool_property": {"bool_value": True, "metadataType": "MetadataBoolValue"},
+        "my_str_property": {"string_value": "my_value", "metadataType": "MetadataStringValue"},
+        "my_double_property": {"double_value": 500.01, "metadataType": "MetadataDoubleValue"},
+    }
+}
+MODEL_VERSION_DESCRIPTION = {"description": "updated model version description"}
+STATE_ARCHIVED = {"state": "ARCHIVED"}
+STATE_LIVE = {"state": "LIVE"}
+REGISTERED_MODEL_DESCRIPTION = {"description": "updated registered model description"}
+MODEL_FORMAT_VERSION = {"modelFormatVersion": "v2"}
+MODEL_FORMAT_NAME = {"modelFormatName": "tensorflow"}
+MODEL_ARTIFACT_DESCRIPTION = {"description": "updated artifact description"}
