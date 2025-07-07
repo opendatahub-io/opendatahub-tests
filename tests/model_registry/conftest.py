@@ -21,12 +21,16 @@ from pytest_testconfig import config as py_config
 from model_registry.types import RegisteredModel
 
 # Factory fixture imports
-from dataclasses import dataclass
 from typing import Optional, List, Dict, Callable
 import uuid
 from contextlib import contextmanager
-from tests.model_registry.constants import MR_DB_IMAGE_DIGEST
 from utilities.constants import Annotations
+from tests.model_registry.factory_utils import (
+    ModelRegistryDBConfig,
+    ModelRegistryConfig,
+    ModelRegistryDBBundle,
+    ModelRegistryInstanceBundle,
+)
 
 from tests.model_registry.constants import (
     MR_OPERATOR_NAME,
@@ -55,6 +59,39 @@ from utilities.general import wait_for_pods_by_labels
 LOGGER = get_logger(name=__name__)
 
 MIN_MR_VERSION = Version.parse(version="2.20.0")
+
+
+class ModelRegistryCleanupRegistry:
+    """Registry to track and manage cleanup of Model Registry resources."""
+
+    def __init__(self) -> None:
+        self._cleanup_functions: List[Callable[[], None]] = []
+
+    def register_cleanup(self, cleanup_func: Callable[[], None]) -> None:
+        """Register a cleanup function to be called during teardown."""
+        self._cleanup_functions.append(cleanup_func)
+
+    def cleanup_all(self) -> None:
+        """Execute all registered cleanup functions in reverse order."""
+        # Execute cleanup functions in reverse order (LIFO)
+        for cleanup_func in reversed(self._cleanup_functions):
+            try:
+                cleanup_func()
+            except Exception as e:
+                LOGGER.warning(f"Error during cleanup: {e}")
+
+        # Clear the registry after cleanup
+        self._cleanup_functions.clear()
+
+
+# Global cleanup registry instance
+_cleanup_registry = ModelRegistryCleanupRegistry()
+
+
+@pytest.fixture(scope="class")
+def model_registry_cleanup_registry() -> ModelRegistryCleanupRegistry:
+    """Provide access to the cleanup registry."""
+    return _cleanup_registry
 
 
 @pytest.fixture(scope="class")
@@ -485,143 +522,6 @@ def api_server_url(admin_client: DynamicClient) -> str:
 # =============================================================================
 # FACTORY FIXTURES
 # =============================================================================
-
-
-class ModelRegistryCleanupRegistry:
-    """Registry to track and manage cleanup of Model Registry resources."""
-
-    def __init__(self) -> None:
-        self._cleanup_functions: List[Callable[[], None]] = []
-
-    def register_cleanup(self, cleanup_func: Callable[[], None]) -> None:
-        """Register a cleanup function to be called during teardown."""
-        self._cleanup_functions.append(cleanup_func)
-
-    def cleanup_all(self) -> None:
-        """Execute all registered cleanup functions in reverse order."""
-        # Execute cleanup functions in reverse order (LIFO)
-        for cleanup_func in reversed(self._cleanup_functions):
-            try:
-                cleanup_func()
-            except Exception as e:
-                LOGGER.warning(f"Error during cleanup: {e}")
-
-        # Clear the registry after cleanup
-        self._cleanup_functions.clear()
-
-
-# Global cleanup registry instance
-_cleanup_registry = ModelRegistryCleanupRegistry()
-
-
-@pytest.fixture(scope="class")
-def model_registry_cleanup_registry() -> ModelRegistryCleanupRegistry:
-    """Provide access to the cleanup registry."""
-    return _cleanup_registry
-
-
-@dataclass
-class ModelRegistryDBConfig:
-    """Configuration for Model Registry Database resources."""
-
-    name_prefix: str = "mr-db"
-    namespace: str = "default"
-    teardown: bool = True
-    mysql_image: str = MR_DB_IMAGE_DIGEST
-    storage_size: str = "5Gi"
-    access_mode: str = "ReadWriteOnce"
-    database_name: str = MODEL_REGISTRY_DB_SECRET_STR_DATA["database-name"]
-    database_user: str = MODEL_REGISTRY_DB_SECRET_STR_DATA["database-user"]
-    database_password: str = MODEL_REGISTRY_DB_SECRET_STR_DATA["database-password"]
-    port: int = 3306
-    ssl_config: Optional[Dict[str, Any]] = None
-    labels: Optional[Dict[str, str]] = None
-    annotations: Optional[Dict[str, str]] = None
-
-
-@dataclass
-class ModelRegistryConfig:
-    """Configuration for Model Registry instance."""
-
-    name: str = "model-registry"
-    namespace: str = "default"
-    use_oauth_proxy: bool = True
-    use_istio: bool = False
-    teardown: bool = True
-    grpc_config: Optional[Dict[str, Any]] = None
-    rest_config: Optional[Dict[str, Any]] = None
-    mysql_config: Optional[ModelRegistryDBConfig] = None
-    labels: Optional[Dict[str, str]] = None
-    wait_for_conditions: bool = True
-    oauth_proxy_config: Optional[Dict[str, Any]] = None
-    istio_config: Optional[Dict[str, Any]] = None
-
-
-@dataclass
-class ModelRegistryDBBundle:
-    """Bundle containing all Model Registry DB resources."""
-
-    service: Service
-    pvc: PersistentVolumeClaim
-    secret: Secret
-    deployment: Deployment
-    config: ModelRegistryDBConfig
-
-    def cleanup(self) -> None:
-        """Clean up all resources in this bundle in reverse order of creation."""
-        # Cleanup in reverse order: Deployment -> Service -> PVC -> Secret
-        resources = [
-            ("deployment", self.deployment),
-            ("service", self.service),
-            ("pvc", self.pvc),
-            ("secret", self.secret),
-        ]
-
-        for resource_type, resource in resources:
-            try:
-                if resource and hasattr(resource, "delete"):
-                    LOGGER.info(f"Cleaning up {resource_type}: {resource.name}")
-                    resource.delete(wait=True)
-            except Exception as e:
-                LOGGER.warning(f"Failed to cleanup {resource_type} {resource.name if resource else 'unknown'}: {e}")
-
-    def get_mysql_config(self) -> Dict[str, Any]:
-        """Get MySQL configuration dictionary for Model Registry."""
-        return {
-            "host": f"{self.deployment.name}.{self.deployment.namespace}.svc.cluster.local",
-            "database": self.config.database_name,
-            "passwordSecret": {"key": "database-password", "name": self.secret.name},
-            "port": self.config.port,
-            "skipDBCreation": False,
-            "username": self.config.database_user,
-        }
-
-
-@dataclass
-class ModelRegistryInstanceBundle:
-    """Bundle containing Model Registry instance and related resources."""
-
-    instance: ModelRegistry
-    db_bundle: Optional[ModelRegistryDBBundle]
-    service: Optional[Service]
-    config: ModelRegistryConfig
-    rest_endpoint: Optional[str] = None
-    grpc_endpoint: Optional[str] = None
-
-    def cleanup(self) -> None:
-        """Clean up all resources in this bundle."""
-        # Cleanup Model Registry instance first
-        try:
-            if self.instance and hasattr(self.instance, "delete"):
-                LOGGER.info(f"Cleaning up Model Registry instance: {self.instance.name}")
-                self.instance.delete(wait=True)
-        except Exception as e:
-            LOGGER.warning(
-                f"Failed to cleanup Model Registry instance {self.instance.name if self.instance else 'unknown'}: {e}"
-            )
-
-        # Note: DB bundle cleanup is handled by the cleanup registry to ensure proper teardown order
-        # We don't call self.db_bundle.cleanup() here to avoid double-cleanup
 
 
 @pytest.fixture(scope="class")
