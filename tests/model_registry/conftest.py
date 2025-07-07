@@ -1,7 +1,5 @@
-import os
 import pytest
 from pytest import Config
-import schemathesis
 from typing import Generator, Any
 
 from ocp_resources.infrastructure import Infrastructure
@@ -14,10 +12,6 @@ from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
-from schemathesis.specs.openapi.schemas import BaseOpenAPISchema
-from schemathesis.generation.stateful.state_machine import APIStateMachine
-from schemathesis.core.transport import Response
-from schemathesis.generation.case import Case
 from ocp_resources.resource import ResourceEditor
 
 from pytest import FixtureRequest
@@ -297,43 +291,6 @@ def model_registry_instance_rest_endpoint(
         str: The REST endpoint for the model registry instance
     """
     return get_endpoint_from_mr_service(svc=model_registry_instance_service, protocol=Protocols.REST)
-
-
-@pytest.fixture(scope="class")
-def generated_schema(pytestconfig: Config, model_registry_instance_rest_endpoint: str) -> BaseOpenAPISchema:
-    os.environ["API_HOST"] = model_registry_instance_rest_endpoint
-    config = schemathesis.config.SchemathesisConfig.from_path(f"{pytestconfig.rootpath}/schemathesis.toml")
-    schema = schemathesis.openapi.from_url(
-        url="https://raw.githubusercontent.com/kubeflow/model-registry/main/api/openapi/model-registry.yaml",
-        config=config,
-    )
-    return schema
-
-
-@pytest.fixture()
-def state_machine(generated_schema: BaseOpenAPISchema, current_client_token: str) -> APIStateMachine:
-    BaseAPIWorkflow = generated_schema.as_state_machine()
-
-    class APIWorkflow(BaseAPIWorkflow):  # type: ignore
-        headers: dict[str, str]
-
-        def setup(self) -> None:
-            self.headers = {"Authorization": f"Bearer {current_client_token}", "Content-Type": "application/json"}
-
-        def before_call(self, case: Case) -> None:
-            LOGGER.info(f"Checking: {case.method} {case.path}")
-
-        # these kwargs are passed to requests.request()
-        def get_call_kwargs(self, case: Case) -> dict[str, Any]:
-            return {"verify": False, "headers": self.headers}
-
-        def after_call(self, response: Response, case: Case) -> None:
-            LOGGER.info(
-                f"Method tested: {case.method}, API: {case.path}, response code:{response.status_code},"
-                f" Full Response:{response.text}"
-            )
-
-    return APIWorkflow
 
 
 @pytest.fixture(scope="class")
