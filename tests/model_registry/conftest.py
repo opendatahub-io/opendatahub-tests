@@ -1,7 +1,5 @@
-import os
 import pytest
 from pytest import Config
-import schemathesis
 from typing import Generator, Any
 
 from ocp_resources.infrastructure import Infrastructure
@@ -14,10 +12,6 @@ from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
-from schemathesis.specs.openapi.schemas import BaseOpenAPISchema
-from schemathesis.generation.stateful.state_machine import APIStateMachine
-from schemathesis.core.transport import Response
-from schemathesis.generation.case import Case
 from ocp_resources.resource import ResourceEditor
 
 from pytest import FixtureRequest
@@ -308,49 +302,188 @@ def model_registry_instance_rest_endpoint(
 
 
 @pytest.fixture(scope="class")
-def generated_schema(pytestconfig: Config, model_registry_instance_rest_endpoint: str) -> BaseOpenAPISchema:
-    os.environ["API_HOST"] = model_registry_instance_rest_endpoint
-    config = schemathesis.config.SchemathesisConfig.from_path(f"{pytestconfig.rootpath}/schemathesis.toml")
-    schema = schemathesis.openapi.from_url(
-        url="https://raw.githubusercontent.com/kubeflow/model-registry/main/api/openapi/model-registry.yaml",
-        config=config,
+def updated_dsc_component_state_scope_class(
+    pytestconfig: Config,
+    request: FixtureRequest,
+    dsc_resource: DataScienceCluster,
+    admin_client: DynamicClient,
+    teardown_resources: bool,
+    is_model_registry_oauth: bool,
+    model_registry_cleanup_registry: ModelRegistryCleanupRegistry,
+) -> Generator[DataScienceCluster, Any, Any]:
+    if not teardown_resources or pytestconfig.option.post_upgrade:
+        # if we are not tearing down resources or we are in post upgrade, we don't need to do anything
+        # the pre_upgrade/post_upgrade fixtures will handle the rest
+        yield dsc_resource
+    else:
+        original_components = dsc_resource.instance.spec.components
+        component_patch = request.param["component_patch"]
+
+        with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
+            for component_name in component_patch:
+                dsc_resource.wait_for_condition(
+                    condition=DscComponents.COMPONENT_MAPPING[component_name], status="True"
+                )
+            if component_patch.get(DscComponents.MODELREGISTRY):
+                namespace = Namespace(
+                    name=dsc_resource.instance.spec.components.modelregistry.registriesNamespace, ensure_exists=True
+                )
+                namespace.wait_for_status(status=Namespace.Status.ACTIVE)
+            wait_for_pods_running(
+                admin_client=admin_client,
+                namespace_name=py_config["applications_namespace"],
+                number_of_consecutive_checks=6,
+            )
+            yield dsc_resource
+
+            # CRITICAL: Clean up factory-created resources BEFORE reverting DSC patch
+            LOGGER.info("Cleaning up Model Registry factory resources before reverting DSC patch")
+            model_registry_cleanup_registry.cleanup_all()
+
+        for component_name, value in component_patch.items():
+            LOGGER.info(f"Waiting for component {component_name} to be updated.")
+            if original_components[component_name]["managementState"] == DscComponents.ManagementState.MANAGED:
+                dsc_resource.wait_for_condition(
+                    condition=DscComponents.COMPONENT_MAPPING[component_name], status="True"
+                )
+            if (
+                component_name == DscComponents.MODELREGISTRY
+                and value.get("managementState") == DscComponents.ManagementState.MANAGED
+            ):
+                # Since namespace specified in registriesNamespace is automatically created after setting
+                # managementStateto Managed. We need to explicitly delete it on clean up.
+                namespace = Namespace(name=value["registriesNamespace"], ensure_exists=True)
+                if namespace:
+                    namespace.delete(wait=True)
+
+
+@pytest.fixture(scope="class")
+def pre_upgrade_dsc_patch(
+    dsc_resource: DataScienceCluster,
+    admin_client: DynamicClient,
+) -> DataScienceCluster:
+    original_components = dsc_resource.instance.spec.components
+    component_patch = {DscComponents.MODELREGISTRY: {"managementState": DscComponents.ManagementState.MANAGED}}
+    if (
+        original_components.get(DscComponents.MODELREGISTRY).get("managementState")
+        == DscComponents.ManagementState.MANAGED
+    ):
+        pytest.fail("Model Registry is already set to Managed before upgrade - was this intentional?")
+    else:
+        editor = ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}})
+        editor.update()
+        dsc_resource.wait_for_condition(condition=DscComponents.COMPONENT_MAPPING["modelregistry"], status="True")
+        namespace = Namespace(
+            name=dsc_resource.instance.spec.components.modelregistry.registriesNamespace, ensure_exists=True
+        )
+        namespace.wait_for_status(status=Namespace.Status.ACTIVE)
+        wait_for_pods_running(
+            admin_client=admin_client,
+            namespace_name=py_config["applications_namespace"],
+            number_of_consecutive_checks=6,
+        )
+        return dsc_resource
+
+
+@pytest.fixture(scope="class")
+def post_upgrade_dsc_patch(
+    dsc_resource: DataScienceCluster,
+) -> Generator[DataScienceCluster, Any, Any]:
+    # yield right away so that the rest of the fixture is executed at teardown time
+    yield dsc_resource
+
+    # the state we found after the upgrade
+    original_components = dsc_resource.instance.spec.components
+    # We don't have an easy way to figure out the state of the components before the upgrade at runtime
+    # For now we know that MR has to go back to Removed after post upgrade tests are run
+    component_patch = {DscComponents.MODELREGISTRY: {"managementState": DscComponents.ManagementState.REMOVED}}
+    if (
+        original_components.get(DscComponents.MODELREGISTRY).get("managementState")
+        == DscComponents.ManagementState.REMOVED
+    ):
+        pytest.fail("Model Registry is already set to Removed after upgrade - was this intentional?")
+    else:
+        editor = ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}})
+        editor.update()
+    ns = original_components.get(DscComponents.MODELREGISTRY).get("registriesNamespace")
+    namespace = Namespace(name=ns, ensure_exists=True)
+    if namespace:
+        namespace.delete(wait=True)
+
+
+@pytest.fixture(scope="class")
+def model_registry_client(
+    current_client_token: str,
+    model_registry_instance_rest_endpoint: str,
+) -> ModelRegistryClient:
+    """
+    Get a client for the model registry instance.
+    Args:
+        request: The pytest request object
+        current_client_token: The current client token
+    Returns:
+        ModelRegistryClient: A client for the model registry instance
+    """
+    server, port = model_registry_instance_rest_endpoint.split(":")
+    return ModelRegistryClient(
+        server_address=f"{Protocols.HTTPS}://{server}",
+        port=int(port),
+        author="opendatahub-test",
+        user_token=current_client_token,
+        is_secure=False,
     )
-    return schema
+
+
+@pytest.fixture(scope="class")
+def registered_model(request: FixtureRequest, model_registry_client: ModelRegistryClient) -> RegisteredModel:
+    return model_registry_client.register_model(
+        name=request.param.get("model_name"),
+        uri=request.param.get("model_uri"),
+        version=request.param.get("model_version"),
+        description=request.param.get("model_description"),
+        model_format_name=request.param.get("model_format"),
+        model_format_version=request.param.get("model_format_version"),
+        storage_key=request.param.get("model_storage_key"),
+        storage_path=request.param.get("model_storage_path"),
+        metadata=request.param.get("model_metadata"),
+    )
 
 
 @pytest.fixture()
-def state_machine(generated_schema: BaseOpenAPISchema, current_client_token: str) -> APIStateMachine:
-    BaseAPIWorkflow = generated_schema.as_state_machine()
+def model_registry_operator_pod(admin_client: DynamicClient) -> Generator[Pod, Any, Any]:
+    """Get the model registry operator pod."""
+    yield wait_for_pods_by_labels(
+        admin_client=admin_client,
+        namespace=py_config["applications_namespace"],
+        label_selector=f"{Labels.OpenDataHubIo.NAME}={MR_OPERATOR_NAME}",
+        expected_num_pods=1,
+    )[0]
 
-    class APIWorkflow(BaseAPIWorkflow):  # type: ignore
-        headers: dict[str, str]
 
-        def setup(self) -> None:
-            self.headers = {"Authorization": f"Bearer {current_client_token}", "Content-Type": "application/json"}
+@pytest.fixture()
+def model_registry_instance_pod(admin_client: DynamicClient) -> Generator[Pod, Any, Any]:
+    """Get the model registry instance pod."""
+    yield wait_for_pods_by_labels(
+        admin_client=admin_client,
+        namespace=py_config["model_registry_namespace"],
+        label_selector=f"app={MR_INSTANCE_NAME}",
+        expected_num_pods=1,
+    )[0]
 
-        def before_call(self, case: Case) -> None:
-            LOGGER.info(f"Checking: {case.method} {case.path}")
 
-        # these kwargs are passed to requests.request()
-        def get_call_kwargs(self, case: Case) -> dict[str, Any]:
-            return {"verify": False, "headers": self.headers}
+@pytest.fixture(scope="class")
+def is_model_registry_oauth(request: FixtureRequest) -> bool:
+    return getattr(request, "param", {}).get("use_oauth_proxy", True)
 
-        def after_call(self, response: Response, case: Case) -> None:
-            LOGGER.info(
-                f"Method tested: {case.method}, API: {case.path}, response code:{response.status_code},"
-                f" Full Response:{response.text}"
-            )
 
-    return APIWorkflow
+@pytest.fixture(scope="session")
+def api_server_url(admin_client: DynamicClient) -> str:
+    infrastructure = Infrastructure(client=admin_client, name="cluster", ensure_exists=True)
+    return infrastructure.instance.status.apiServerURL
 
 
 # =============================================================================
-# FACTORY FIXTURES - Phase 1 Implementation
-# =============================================================================
-
-
-# =============================================================================
-# CLEANUP REGISTRY - Ensures proper teardown order
+# FACTORY FIXTURES
 # =============================================================================
 
 
@@ -629,7 +762,7 @@ def model_registry_db_factory(
 
     yield create_db_bundle
 
-    # Note: Cleanup is now handled by the cleanup registry, not here
+    # Note: Cleanup is handled by the cleanup registry, not here
     # This ensures proper teardown order relative to DSC patch revert
 
 
@@ -761,7 +894,7 @@ def model_registry_instance_factory(
 
     yield create_instance
 
-    # Note: Cleanup is now handled by the cleanup registry, not here
+    # Note: Cleanup is handled by the cleanup registry, not here
     # This ensures proper teardown order relative to DSC patch revert
 
 
@@ -783,11 +916,6 @@ def model_registry_client_factory(
         )
 
     return create_client
-
-
-# =============================================================================
-# CONVENIENCE FIXTURES - Common configurations
-# =============================================================================
 
 
 @pytest.fixture(scope="class")
@@ -905,13 +1033,6 @@ def multi_instance_factory(
     return create_multiple_instances
 
 
-# =============================================================================
-# HELPER FUNCTIONS FOR DSC SETUP
-# =============================================================================
-
-# Helper functions moved to tests.model_registry.factory_utils to avoid NIC001 linting issues
-
-
 @pytest.fixture(scope="class")
 def simple_model_registry_factory(
     model_registry_instance_factory: Callable[[ModelRegistryConfig], ModelRegistryInstanceBundle],
@@ -948,11 +1069,6 @@ def simple_model_registry_factory(
     return create_simple_instance
 
 
-# =============================================================================
-# HELPER CONTEXT MANAGERS
-# =============================================================================
-
-
 @contextmanager
 def temporary_model_registry(
     config: ModelRegistryConfig,
@@ -979,192 +1095,3 @@ def temporary_model_registry_db(
     finally:
         if bundle.config.teardown:
             bundle.cleanup()
-
-
-# =============================================================================
-# EXAMPLE TEST UTILITIES
-# =============================================================================
-
-
-# ModelRegistryTestHelper class moved to tests.model_registry.factory_utils to avoid NIC001 linting issues
-
-
-@pytest.fixture(scope="class")
-def updated_dsc_component_state_scope_class(
-    pytestconfig: Config,
-    request: FixtureRequest,
-    dsc_resource: DataScienceCluster,
-    admin_client: DynamicClient,
-    teardown_resources: bool,
-    is_model_registry_oauth: bool,
-    model_registry_cleanup_registry: ModelRegistryCleanupRegistry,
-) -> Generator[DataScienceCluster, Any, Any]:
-    if not teardown_resources or pytestconfig.option.post_upgrade:
-        # if we are not tearing down resources or we are in post upgrade, we don't need to do anything
-        # the pre_upgrade/post_upgrade fixtures will handle the rest
-        yield dsc_resource
-    else:
-        original_components = dsc_resource.instance.spec.components
-        component_patch = request.param["component_patch"]
-
-        with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
-            for component_name in component_patch:
-                dsc_resource.wait_for_condition(
-                    condition=DscComponents.COMPONENT_MAPPING[component_name], status="True"
-                )
-            if component_patch.get(DscComponents.MODELREGISTRY):
-                namespace = Namespace(
-                    name=dsc_resource.instance.spec.components.modelregistry.registriesNamespace, ensure_exists=True
-                )
-                namespace.wait_for_status(status=Namespace.Status.ACTIVE)
-            wait_for_pods_running(
-                admin_client=admin_client,
-                namespace_name=py_config["applications_namespace"],
-                number_of_consecutive_checks=6,
-            )
-            yield dsc_resource
-
-            # CRITICAL: Clean up factory-created resources BEFORE reverting DSC patch
-            LOGGER.info("Cleaning up Model Registry factory resources before reverting DSC patch")
-            model_registry_cleanup_registry.cleanup_all()
-
-        for component_name, value in component_patch.items():
-            LOGGER.info(f"Waiting for component {component_name} to be updated.")
-            if original_components[component_name]["managementState"] == DscComponents.ManagementState.MANAGED:
-                dsc_resource.wait_for_condition(
-                    condition=DscComponents.COMPONENT_MAPPING[component_name], status="True"
-                )
-            if (
-                component_name == DscComponents.MODELREGISTRY
-                and value.get("managementState") == DscComponents.ManagementState.MANAGED
-            ):
-                # Since namespace specified in registriesNamespace is automatically created after setting
-                # managementStateto Managed. We need to explicitly delete it on clean up.
-                namespace = Namespace(name=value["registriesNamespace"], ensure_exists=True)
-                if namespace:
-                    namespace.delete(wait=True)
-
-
-@pytest.fixture(scope="class")
-def pre_upgrade_dsc_patch(
-    dsc_resource: DataScienceCluster,
-    admin_client: DynamicClient,
-) -> DataScienceCluster:
-    original_components = dsc_resource.instance.spec.components
-    component_patch = {DscComponents.MODELREGISTRY: {"managementState": DscComponents.ManagementState.MANAGED}}
-    if (
-        original_components.get(DscComponents.MODELREGISTRY).get("managementState")
-        == DscComponents.ManagementState.MANAGED
-    ):
-        pytest.fail("Model Registry is already set to Managed before upgrade - was this intentional?")
-    else:
-        editor = ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}})
-        editor.update()
-        dsc_resource.wait_for_condition(condition=DscComponents.COMPONENT_MAPPING["modelregistry"], status="True")
-        namespace = Namespace(
-            name=dsc_resource.instance.spec.components.modelregistry.registriesNamespace, ensure_exists=True
-        )
-        namespace.wait_for_status(status=Namespace.Status.ACTIVE)
-        wait_for_pods_running(
-            admin_client=admin_client,
-            namespace_name=py_config["applications_namespace"],
-            number_of_consecutive_checks=6,
-        )
-        return dsc_resource
-
-
-@pytest.fixture(scope="class")
-def post_upgrade_dsc_patch(
-    dsc_resource: DataScienceCluster,
-) -> Generator[DataScienceCluster, Any, Any]:
-    # yield right away so that the rest of the fixture is executed at teardown time
-    yield dsc_resource
-
-    # the state we found after the upgrade
-    original_components = dsc_resource.instance.spec.components
-    # We don't have an easy way to figure out the state of the components before the upgrade at runtime
-    # For now we know that MR has to go back to Removed after post upgrade tests are run
-    component_patch = {DscComponents.MODELREGISTRY: {"managementState": DscComponents.ManagementState.REMOVED}}
-    if (
-        original_components.get(DscComponents.MODELREGISTRY).get("managementState")
-        == DscComponents.ManagementState.REMOVED
-    ):
-        pytest.fail("Model Registry is already set to Removed after upgrade - was this intentional?")
-    else:
-        editor = ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}})
-        editor.update()
-    ns = original_components.get(DscComponents.MODELREGISTRY).get("registriesNamespace")
-    namespace = Namespace(name=ns, ensure_exists=True)
-    if namespace:
-        namespace.delete(wait=True)
-
-
-@pytest.fixture(scope="class")
-def model_registry_client(
-    current_client_token: str,
-    model_registry_instance_rest_endpoint: str,
-) -> ModelRegistryClient:
-    """
-    Get a client for the model registry instance.
-    Args:
-        request: The pytest request object
-        current_client_token: The current client token
-    Returns:
-        ModelRegistryClient: A client for the model registry instance
-    """
-    server, port = model_registry_instance_rest_endpoint.split(":")
-    return ModelRegistryClient(
-        server_address=f"{Protocols.HTTPS}://{server}",
-        port=int(port),
-        author="opendatahub-test",
-        user_token=current_client_token,
-        is_secure=False,
-    )
-
-
-@pytest.fixture(scope="class")
-def registered_model(request: FixtureRequest, model_registry_client: ModelRegistryClient) -> RegisteredModel:
-    return model_registry_client.register_model(
-        name=request.param.get("model_name"),
-        uri=request.param.get("model_uri"),
-        version=request.param.get("model_version"),
-        description=request.param.get("model_description"),
-        model_format_name=request.param.get("model_format"),
-        model_format_version=request.param.get("model_format_version"),
-        storage_key=request.param.get("model_storage_key"),
-        storage_path=request.param.get("model_storage_path"),
-        metadata=request.param.get("model_metadata"),
-    )
-
-
-@pytest.fixture()
-def model_registry_operator_pod(admin_client: DynamicClient) -> Generator[Pod, Any, Any]:
-    """Get the model registry operator pod."""
-    yield wait_for_pods_by_labels(
-        admin_client=admin_client,
-        namespace=py_config["applications_namespace"],
-        label_selector=f"{Labels.OpenDataHubIo.NAME}={MR_OPERATOR_NAME}",
-        expected_num_pods=1,
-    )[0]
-
-
-@pytest.fixture()
-def model_registry_instance_pod(admin_client: DynamicClient) -> Generator[Pod, Any, Any]:
-    """Get the model registry instance pod."""
-    yield wait_for_pods_by_labels(
-        admin_client=admin_client,
-        namespace=py_config["model_registry_namespace"],
-        label_selector=f"app={MR_INSTANCE_NAME}",
-        expected_num_pods=1,
-    )[0]
-
-
-@pytest.fixture(scope="class")
-def is_model_registry_oauth(request: FixtureRequest) -> bool:
-    return getattr(request, "param", {}).get("use_oauth_proxy", True)
-
-
-@pytest.fixture(scope="session")
-def api_server_url(admin_client: DynamicClient) -> str:
-    infrastructure = Infrastructure(client=admin_client, name="cluster", ensure_exists=True)
-    return infrastructure.instance.status.apiServerURL
