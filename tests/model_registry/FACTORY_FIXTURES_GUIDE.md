@@ -381,20 +381,5 @@ def test_custom_resources(self, model_registry_instance_factory, model_registry_
 
 ## Example Test File
 
-See `tests/model_registry/test_factory_fixtures_example.py` for a complete example demonstrating all patterns and usage scenarios.
-
-## Troubleshooting
-
-### Common Issues
-
-1. **DSC not parametrized**: Ensure you use the correct DSC parametrization pattern
-2. **Namespace mismatch**: Make sure the namespace in your config matches the DSC setup
-3. **Name conflicts**: Use unique name prefixes to avoid resource conflicts
-4. **Missing teardown**: Set `teardown=True` to ensure cleanup
-
-### Debug Tips
-
-- Check the test logs for resource creation/cleanup messages
-- Verify the DSC component is properly enabled
-- Ensure the namespace exists and is active
-- Use `kubectl get` commands to check resource states
+See `tests/model_registry/python_client/test_model_registry_creation.py` for a simple example demonstrating usage,
+specifically the test `test_multiple_registry_clients_with_factory`.
