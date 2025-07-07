@@ -31,7 +31,7 @@ from tests.model_registry.constants import (
     ISTIO_CONFIG_DICT,
 )
 from tests.model_registry.rest_api.utils import ModelRegistryV1Alpha1
-from utilities.constants import Labels
+from utilities.constants import Labels, Protocols
 from tests.model_registry.utils import (
     get_endpoint_from_mr_service,
     get_mr_service_by_label,
@@ -39,7 +39,7 @@ from tests.model_registry.utils import (
     get_model_registry_db_label_dict,
     wait_for_pods_running,
 )
-from utilities.constants import Protocols, DscComponents
+from utilities.constants import DscComponents
 from model_registry import ModelRegistry as ModelRegistryClient
 from semver import Version
 from utilities.general import wait_for_pods_by_labels
@@ -467,3 +467,18 @@ def is_model_registry_oauth(request: FixtureRequest) -> bool:
 def api_server_url(admin_client: DynamicClient) -> str:
     infrastructure = Infrastructure(client=admin_client, name="cluster", ensure_exists=True)
     return infrastructure.instance.status.apiServerURL
+
+
+@pytest.fixture(scope="class")
+def model_registry_rest_url(model_registry_instance_rest_endpoint: str) -> str:
+    # address and port need to be split in the client instantiation
+    return f"{Protocols.HTTPS}://{model_registry_instance_rest_endpoint}"
+
+
+@pytest.fixture(scope="class")
+def model_registry_rest_headers(current_client_token: str) -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {current_client_token}",
+        "accept": "application/json",
+        "Content-Type": "application/json",
+    }

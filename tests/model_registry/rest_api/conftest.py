@@ -3,12 +3,12 @@ import os
 from kubernetes.dynamic import DynamicClient
 import pytest
 import copy
+
 from tests.model_registry.rest_api.constants import MODEL_REGISTRY_BASE_URI, MODEL_REGISTER_DATA
 from tests.model_registry.rest_api.utils import (
     register_model_rest_api,
     execute_model_registry_patch_command,
 )
-from utilities.constants import Protocols
 from utilities.general import generate_random_name
 from ocp_resources.deployment import Deployment
 from tests.model_registry.utils import (
@@ -38,21 +38,6 @@ from tests.model_registry.rest_api.utils import generate_ca_and_server_cert
 from utilities.certificates_utils import create_k8s_secret, create_ca_bundle_with_router_cert
 
 LOGGER = get_logger(name=__name__)
-
-
-@pytest.fixture(scope="class")
-def model_registry_rest_url(model_registry_instance_rest_endpoint: str) -> str:
-    # address and port need to be split in the client instantiation
-    return f"{Protocols.HTTPS}://{model_registry_instance_rest_endpoint}"
-
-
-@pytest.fixture(scope="class")
-def model_registry_rest_headers(current_client_token: str) -> dict[str, str]:
-    return {
-        "Authorization": f"Bearer {current_client_token}",
-        "accept": "application/json",
-        "Content-Type": "application/json",
-    }
 
 
 @pytest.fixture(scope="class")
