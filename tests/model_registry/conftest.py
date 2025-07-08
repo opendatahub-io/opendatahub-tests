@@ -221,7 +221,9 @@ def model_registry_instance(
         ) as mr:
             mr.wait_for_condition(condition="Available", status="True")
             mr.wait_for_condition(condition="OAuthProxyAvailable", status="True")
-
+            wait_for_pods_running(
+                admin_client=admin_client, namespace_name=model_registry_namespace, number_of_consecutive_checks=6
+            )
             yield mr
 
 
