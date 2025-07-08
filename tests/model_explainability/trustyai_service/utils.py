@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from typing import Generator, Any, Optional
 import re
 
@@ -114,7 +115,7 @@ def validate_trustyai_service_db_conn_failure(
                 return True
     return False
 
-
+@contextmanager
 def create_trustyai_service(
     client: DynamicClient,
     namespace: str,
@@ -155,6 +156,7 @@ def create_trustyai_service(
         yield trustyai_service
 
 
+@contextmanager
 def create_isvc_getter_service_account(
     client: DynamicClient, namespace: Namespace, name: str
 ) -> Generator[ServiceAccount, Any, Any]:
@@ -172,6 +174,7 @@ def create_isvc_getter_service_account(
         yield sa
 
 
+@contextmanager
 def create_isvc_getter_role(client: DynamicClient, namespace: Namespace, name: str) -> Generator[Role, Any, Any]:
     """Creates a Role with permissions to get, list, and watch InferenceServices.
 
@@ -198,6 +201,7 @@ def create_isvc_getter_role(client: DynamicClient, namespace: Namespace, name: s
         yield role
 
 
+@contextmanager
 def create_isvc_getter_role_binding(
     client: DynamicClient, namespace: Namespace, role: Role, service_account: ServiceAccount, name: str
 ) -> Generator[RoleBinding, Any, Any]:
@@ -225,6 +229,7 @@ def create_isvc_getter_role_binding(
         yield rb
 
 
+@contextmanager
 def create_isvc_getter_token_secret(
     client: DynamicClient, namespace: Namespace, service_account: ServiceAccount, name: str
 ) -> Generator[Secret, Any, Any]:
