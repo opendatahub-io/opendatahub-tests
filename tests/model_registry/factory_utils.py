@@ -208,3 +208,79 @@ class ModelRegistryInstanceBundle:
 
         # Note: DB bundle cleanup is handled by the cleanup registry to ensure proper teardown order
         # We don't call self.db_bundle.cleanup() here to avoid double-cleanup
+
+
+# =============================================================================
+# RESOURCE CONFIG CLASSES
+# =============================================================================
+
+
+@dataclass
+class SecretConfig:
+    """Configuration for a Secret resource."""
+
+    name: str
+    namespace: str
+    string_data: Dict[str, str]
+    labels: Optional[Dict[str, str]] = None
+    annotations: Optional[Dict[str, str]] = None
+    teardown: bool = True
+
+
+@dataclass
+class PVCConfig:
+    """Configuration for a PersistentVolumeClaim resource."""
+
+    name: str
+    namespace: str
+    access_modes: str
+    size: str
+    labels: Optional[Dict[str, str]] = None
+    teardown: bool = True
+
+
+@dataclass
+class ServiceConfig:
+    """Configuration for a Service resource."""
+
+    name: str
+    namespace: str
+    ports: List[Dict[str, Any]]
+    selector: Dict[str, str]
+    labels: Optional[Dict[str, str]] = None
+    annotations: Optional[Dict[str, str]] = None
+    teardown: bool = True
+
+
+@dataclass
+class DeploymentConfig:
+    """Configuration for a Deployment resource."""
+
+    name: str
+    namespace: str
+    template: Dict[str, Any]
+    labels: Optional[Dict[str, str]] = None
+    annotations: Optional[Dict[str, str]] = None
+    replicas: int = 1
+    revision_history_limit: int = 0
+    selector: Optional[Dict[str, Any]] = None
+    strategy: Optional[Dict[str, Any]] = None
+    teardown: bool = True
+
+
+@dataclass
+class ModelRegistryResourceConfig:
+    """Configuration for a ModelRegistry resource."""
+
+    name: str
+    namespace: str
+    mysql_config: Optional[Dict[str, Any]]
+    labels: Optional[Dict[str, str]] = None
+    grpc_config: Optional[Dict[str, Any]] = None
+    rest_config: Optional[Dict[str, Any]] = None
+    oauth_proxy_config: Optional[Dict[str, Any]] = None
+    istio_config: Optional[Dict[str, Any]] = None
+    use_oauth_proxy: bool = True
+    use_istio: bool = False
+    teardown: bool = True
+    wait_for_conditions: bool = True
