@@ -1,5 +1,7 @@
+import json
 from typing import Any, List
 
+import requests
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.pod import Pod
 from ocp_resources.service import Service
@@ -9,6 +11,7 @@ from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 from kubernetes.dynamic.exceptions import NotFoundError
 from tests.model_registry.constants import MR_DB_IMAGE_DIGEST
+from tests.model_registry.exceptions import ModelRegistryResourceNotFoundError
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
 from utilities.constants import Protocols, Annotations
 from model_registry import ModelRegistry as ModelRegistryClient
@@ -332,3 +335,30 @@ def get_and_validate_registered_model(
         if getattr(model, attr) != expected
     ]
     return errors
+
+
+def execute_model_registry_get_command(url: str, headers: dict[str, str], json_output: bool = True) -> dict[Any, Any]:
+    """
+    Executes model registry get commands against model registry rest end point
+
+    Args:
+        url (str): Model registry endpoint for rest calls
+        headers (dict[str, str]): HTTP headers for get calls
+        json_output(bool): Whether to output JSON response
+
+    Returns: json output or dict of raw output.
+    """
+    resp = requests.get(url=url, headers=headers, verify=False)
+    LOGGER.info(f"url: {url}, status code: {resp.status_code}, rep: {resp.text}")
+    if resp.status_code not in [200, 201]:
+        raise ModelRegistryResourceNotFoundError(
+            f"Failed to get ModelRegistry resource: {url}, {resp.status_code}: {resp.text}"
+        )
+    if json_output:
+        try:
+            return json.loads(resp.text)
+        except json.JSONDecodeError:
+            LOGGER.error(f"Unable to parse {resp.text}")
+            raise
+    else:
+        return {"raw_output": resp.text}
