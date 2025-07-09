@@ -61,7 +61,7 @@ class TestServerlessScaleToZero:
     @pytest.mark.dependency(name=NO_PODS_AFTER_SCALE_TEST_NAME)
     def test_no_serverless_pods_after_scale_to_zero(self, unprivileged_client, inference_service_patched_replicas):
         """Verify pods are scaled to zero"""
-        verify_no_inference_pods(client=unprivileged_client, isvc=inference_service_patched_replicas)
+        assert verify_no_inference_pods(client=unprivileged_client, isvc=inference_service_patched_replicas)
 
     @pytest.mark.dependency(
         name=INFERENCE_AFTER_SCALE_TEST_NAME,
@@ -84,7 +84,7 @@ class TestServerlessScaleToZero:
     @pytest.mark.order(4)
     def test_no_serverless_pods_when_no_traffic(self, unprivileged_client, inference_service_patched_replicas):
         """Verify pods are scaled to zero when no traffic is sent"""
-        verify_no_inference_pods(client=unprivileged_client, isvc=inference_service_patched_replicas)
+        assert verify_no_inference_pods(client=unprivileged_client, isvc=inference_service_patched_replicas)
 
     @pytest.mark.parametrize(
         "inference_service_patched_replicas",

@@ -38,7 +38,7 @@ def wait_for_mariadb_operator_deployments(mariadb_operator: MariadbOperator) -> 
         deployment.wait_for_replicas()
 
 
-def wait_for_mariadb_pods(client: DynamicClient, mariadb: MariaDB, timeout: int = Timeout.TIMEOUT_5MIN) -> None:
+def wait_for_mariadb_pods(client: DynamicClient, mariadb: MariaDB, timeout: int = Timeout.TIMEOUT_15MIN) -> None:
     def _get_mariadb_pods() -> list[Pod]:
         _pods = [
             _pod
