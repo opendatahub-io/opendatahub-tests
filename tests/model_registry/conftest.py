@@ -458,7 +458,7 @@ def model_registry_instance_pod(admin_client: DynamicClient) -> Generator[Pod, A
     )[0]
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture()
 def model_registry_db_instance_pod(admin_client: DynamicClient) -> Generator[Pod, Any, Any]:
     """Get the model registry instance pod."""
     yield wait_for_pods_by_labels(
@@ -469,7 +469,7 @@ def model_registry_db_instance_pod(admin_client: DynamicClient) -> Generator[Pod
     )[0]
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture()
 def set_mr_db_dirty(model_registry_db_instance_pod: Pod) -> int:
     """Set the model registry database dirty and return the latest migration version"""
     output = model_registry_db_instance_pod.execute(
@@ -498,7 +498,7 @@ def set_mr_db_dirty(model_registry_db_instance_pod: Pod) -> int:
     return latest_migration_version
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture()
 def delete_mr_deployment() -> None:
     """Delete the model registry deployment"""
     mr_deployment = Deployment(
