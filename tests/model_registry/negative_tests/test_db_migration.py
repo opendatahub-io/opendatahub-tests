@@ -58,4 +58,4 @@ class TestDBMigration:
             f"Error: {{{{ALERT}}}} error connecting to datastore: Dirty database version {set_mr_db_dirty}. "
             "Fix and force version."
         )
-        assert expected_error in log_output, f"Expected error message not found in logs! Logs:\n{log_output}"
+        assert expected_error in log_output, "Expected error message not found in logs!"
