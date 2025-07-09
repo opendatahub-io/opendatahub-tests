@@ -43,11 +43,13 @@ PROMPT_INJECTION_DETECTORS: Dict[str, Dict[str, Any]] = {
     indirect=True,
 )
 @pytest.mark.smoke
-def test_validate_guardrails_orchestrator_images(guardrails_orchestrator_pod, trustyai_operator_configmap):
+def test_validate_guardrails_orchestrator_images(gorch_with_builtin_detectors_pod, trustyai_operator_configmap):
     """Test to verify Guardrails pod images.
     Checks if the image tag from the ConfigMap is used within the Pod and if it's pinned using a sha256 digest.
     """
-    validate_tai_component_images(pod=guardrails_orchestrator_pod, tai_operator_configmap=trustyai_operator_configmap)
+    validate_tai_component_images(
+        pod=gorch_with_builtin_detectors_pod, tai_operator_configmap=trustyai_operator_configmap
+    )
 
 
 @pytest.mark.parametrize(
@@ -80,12 +82,14 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
     def test_guardrails_health_endpoint(
         self,
         qwen_isvc,
-        guardrails_orchestrator_health_route,
+        gorch_with_builtin_detectors_health_route,
     ):
         # It takes a bit for the endpoint to come online, so we retry for a brief period of time
         @retry(wait_timeout=Timeout.TIMEOUT_1MIN, sleep=1)
         def check_health_endpoint():
-            response = requests.get(url=f"https://{guardrails_orchestrator_health_route.host}/health", verify=False)
+            response = requests.get(
+                url=f"https://{gorch_with_builtin_detectors_health_route.host}/health", verify=False
+            )
             if response.status_code == http.HTTPStatus.OK:
                 return response
             return False
@@ -93,8 +97,8 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         response = check_health_endpoint()
         assert "fms-guardrails-orchestr8" in response.text
 
-    def test_guardrails_info_endpoint(self, qwen_isvc, guardrails_orchestrator_health_route):
-        response = requests.get(url=f"https://{guardrails_orchestrator_health_route.host}/info", verify=False)
+    def test_guardrails_info_endpoint(self, qwen_isvc, gorch_with_builtin_detectors_health_route):
+        response = requests.get(url=f"https://{gorch_with_builtin_detectors_health_route.host}/info", verify=False)
         assert response.status_code == http.HTTPStatus.OK
 
         healthy_status = "HEALTHY"
@@ -103,10 +107,10 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         assert response_data["services"]["regex"]["status"] == healthy_status
 
     def test_guardrails_builtin_detectors_unsuitable_input(
-        self, current_client_token, openshift_ca_bundle_file, qwen_isvc, guardrails_orchestrator_route
+        self, current_client_token, openshift_ca_bundle_file, qwen_isvc, gorch_with_builtin_detectors_route
     ):
         response = requests.post(
-            url=f"https://{guardrails_orchestrator_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
+            url=f"https://{gorch_with_builtin_detectors_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
             headers=get_auth_headers(token=current_client_token),
             json=get_chat_detections_payload(
                 content=PROMPT_WITH_PII,
@@ -124,10 +128,10 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         )
 
     def test_guardrails_builtin_detectors_unsuitable_output(
-        self, current_client_token, openshift_ca_bundle_file, qwen_isvc, guardrails_orchestrator_route
+        self, current_client_token, openshift_ca_bundle_file, qwen_isvc, gorch_with_builtin_detectors_route
     ):
         response = requests.post(
-            url=f"https://{guardrails_orchestrator_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
+            url=f"https://{gorch_with_builtin_detectors_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
             headers=get_auth_headers(token=current_client_token),
             json=get_chat_detections_payload(
                 content="Hi, write three and only three examples of email adresses "
@@ -158,12 +162,12 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         current_client_token,
         openshift_ca_bundle_file,
         qwen_isvc,
-        guardrails_orchestrator_route,
+        gorch_with_builtin_detectors_route,
         message,
         url_path,
     ):
         response = requests.post(
-            url=f"https://{guardrails_orchestrator_route.host}{url_path}{OpenAIEnpoints.CHAT_COMPLETIONS}",
+            url=f"https://{gorch_with_builtin_detectors_route.host}{url_path}{OpenAIEnpoints.CHAT_COMPLETIONS}",
             headers=get_auth_headers(token=current_client_token),
             json=get_chat_detections_payload(
                 content=str(message),
