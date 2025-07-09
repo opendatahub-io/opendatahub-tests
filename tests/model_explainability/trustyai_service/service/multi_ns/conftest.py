@@ -158,7 +158,9 @@ def gaussian_credit_model_multi_ns(
 ) -> Generator[List[InferenceService], Any, None]:
     inference_services = []
 
-    for i, (ns, minio_secret, runtime) in enumerate(zip(model_namespaces, minio_data_connection_multi_ns, mlserver_runtime_multi_ns)):
+    for i, (ns, minio_secret, runtime) in enumerate(
+        zip(model_namespaces, minio_data_connection_multi_ns, mlserver_runtime_multi_ns)
+    ):
         with create_isvc(
             client=admin_client,
             name=f"gaussian-credit-isvc-{i}",
@@ -253,12 +255,10 @@ def isvc_getter_token_secret_multi_ns(
         secrets.append(secret)
     yield secrets
 
+
 @pytest.fixture(scope="class")
 def isvc_getter_token_multi_ns(
     isvc_getter_service_account_multi_ns: List[ServiceAccount],
     isvc_getter_token_secret_multi_ns: List[Secret],
 ) -> List[str]:
-    return [
-        create_inference_token(model_service_account=sa)
-        for sa in isvc_getter_service_account_multi_ns
-    ]
+    return [create_inference_token(model_service_account=sa) for sa in isvc_getter_service_account_multi_ns]
