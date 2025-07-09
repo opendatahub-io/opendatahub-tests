@@ -221,7 +221,9 @@ def model_registry_instance(
         ) as mr:
             mr.wait_for_condition(condition="Available", status="True")
             mr.wait_for_condition(condition="OAuthProxyAvailable", status="True")
-
+            wait_for_pods_running(
+                admin_client=admin_client, namespace_name=model_registry_namespace, number_of_consecutive_checks=6
+            )
             yield mr
 
 
@@ -456,6 +458,55 @@ def model_registry_instance_pod(admin_client: DynamicClient) -> Generator[Pod, A
         label_selector=f"app={MR_INSTANCE_NAME}",
         expected_num_pods=1,
     )[0]
+
+
+@pytest.fixture()
+def model_registry_db_instance_pod(admin_client: DynamicClient) -> Generator[Pod, Any, Any]:
+    """Get the model registry instance pod."""
+    yield wait_for_pods_by_labels(
+        admin_client=admin_client,
+        namespace=py_config["model_registry_namespace"],
+        label_selector=f"name={DB_RESOURCES_NAME}",
+        expected_num_pods=1,
+    )[0]
+
+
+@pytest.fixture()
+def set_mr_db_dirty(model_registry_db_instance_pod: Pod) -> int:
+    """Set the model registry database dirty and return the latest migration version"""
+    output = model_registry_db_instance_pod.execute(
+        command=[
+            "mysql",
+            "-u",
+            MODEL_REGISTRY_DB_SECRET_STR_DATA["database-user"],
+            f"-p{MODEL_REGISTRY_DB_SECRET_STR_DATA['database-password']}",
+            "-e",
+            "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1;",
+            MODEL_REGISTRY_DB_SECRET_STR_DATA["database-name"],
+        ]
+    )
+    latest_migration_version = int(output.strip().split()[1])
+    model_registry_db_instance_pod.execute(
+        command=[
+            "mysql",
+            "-u",
+            MODEL_REGISTRY_DB_SECRET_STR_DATA["database-user"],
+            f"-p{MODEL_REGISTRY_DB_SECRET_STR_DATA['database-password']}",
+            "-e",
+            f"UPDATE schema_migrations SET dirty = 1 WHERE version = {latest_migration_version};",
+            MODEL_REGISTRY_DB_SECRET_STR_DATA["database-name"],
+        ]
+    )
+    return latest_migration_version
+
+
+@pytest.fixture()
+def delete_mr_deployment() -> None:
+    """Delete the model registry deployment"""
+    mr_deployment = Deployment(
+        name=MR_INSTANCE_NAME, namespace=py_config["model_registry_namespace"], ensure_exists=True
+    )
+    mr_deployment.delete(wait=True)
 
 
 @pytest.fixture(scope="class")

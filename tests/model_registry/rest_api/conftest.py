@@ -15,6 +15,7 @@ from tests.model_registry.utils import (
     get_model_registry_deployment_template_dict,
     apply_mysql_args_and_volume_mounts,
     add_mysql_certs_volumes_to_deployment,
+    wait_for_pods_running,
 )
 
 from tests.model_registry.constants import (
@@ -139,6 +140,7 @@ def mysql_template_with_ca(model_registry_db_secret: Secret) -> dict[str, Any]:
 
 @pytest.fixture(scope="class")
 def deploy_secure_mysql_and_mr(
+    admin_client: DynamicClient,
     model_registry_namespace: str,
     model_registry_db_secret: Secret,
     model_registry_db_deployment: Deployment,
@@ -168,6 +170,10 @@ def deploy_secure_mysql_and_mr(
         wait_for_resource=True,
     ) as mr:
         mr.wait_for_condition(condition="Available", status="True")
+        mr.wait_for_condition(condition="OAuthProxyAvailable", status="True")
+        wait_for_pods_running(
+            admin_client=admin_client, namespace_name=model_registry_namespace, number_of_consecutive_checks=6
+        )
         yield mr
 
 
