@@ -4,13 +4,13 @@ from typing import List
 from utilities.constants import Timeout
 
 from tests.model_explainability.utils import validate_tai_component_images
-from utilities.constants import Timeout
 
 from tests.model_explainability.lm_eval.utils import get_lmeval_tasks
 
 LMEVALJOB_COMPLETE_STATE: str = "Complete"
 
 LMEVAL_TASKS: List[str] = get_lmeval_tasks(min_downloads=10000)
+
 
 @pytest.mark.parametrize(
     "model_namespace, lmevaljob_hf",
@@ -50,10 +50,9 @@ LMEVAL_TASKS: List[str] = get_lmeval_tasks(min_downloads=10000)
             },
             id="custom_task",
         ),
-    ], indirect=True,
+    ],
+    indirect=True,
 )
-
-
 def test_lmeval_huggingface_model(admin_client, model_namespace, lmevaljob_hf_pod):
     """Tests that verify running common evaluations (and a custom one) on a model pulled directly from HuggingFace.
     On each test we run a different evaluation task, limiting it to 0.5% of the questions on each eval."""

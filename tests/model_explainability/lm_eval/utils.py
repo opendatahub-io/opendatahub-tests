@@ -55,19 +55,15 @@ def get_lmeval_tasks(min_downloads: int = 10000) -> List[str]:
     # AND exist on LMEval AND do not include image data
 
     filtered_df = lmeval_tasks[
-    lmeval_tasks['Exists'] & (lmeval_tasks['Dataset'] != "MMMU/MMMU") & (
-        (lmeval_tasks['HF dataset downloads'] >= min_downloads) |
-        (lmeval_tasks['OpenLLM leaderboard'])
-        )
+        lmeval_tasks["Exists"]
+        & (lmeval_tasks["Dataset"] != "MMMU/MMMU")
+        & ((lmeval_tasks["HF dataset downloads"] >= min_downloads) | (lmeval_tasks["OpenLLM leaderboard"]))
     ]
 
     # group tasks by dataset and extract the task with shortest name in the group
-    unique_tasks = (
-        filtered_df
-        .loc[filtered_df.groupby('Dataset')['Name'].apply(lambda x: x.str.len().idxmin())]
-    )
+    unique_tasks = filtered_df.loc[filtered_df.groupby("Dataset")["Name"].apply(lambda x: x.str.len().idxmin())]
 
-    unique_tasks = unique_tasks['Name'].tolist()
+    unique_tasks = unique_tasks["Name"].tolist()
 
     LOGGER.info(f"Number of unique LMEval tasks with more than {min_downloads} downloads: {len(unique_tasks)}")
 
