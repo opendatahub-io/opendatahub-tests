@@ -56,7 +56,7 @@ class TestLlamaStackFMSGuardrailsProvider:
 
         assert chat_completion_response.completion_message.content != ""
 
-    def test_fms_guardrails_register_shield(self, lls_client, current_client_token):
+    def test_fms_guardrails_register_shield(self, lls_client):
         trustyai_fms_provider_id = "trustyai_fms"
         shield_params = {
             "type": "content",
