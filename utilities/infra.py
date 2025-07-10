@@ -319,8 +319,19 @@ def s3_endpoint_secret(
         yield secret
 
     else:
+        # Determine usehttps based on endpoint protocol
+        usehttps = 0
+        if aws_s3_endpoint.startswith("https://"):
+            usehttps = 1
         with Secret(
-            annotations={f"{ApiGroups.OPENDATAHUB_IO}/connection-type": "s3"},
+            annotations={
+                f"{ApiGroups.OPENDATAHUB_IO}/connection-type": "s3",
+                "serving.kserve.io/s3-endpoint": (aws_s3_endpoint.replace("https://", "").replace("http://", "")),
+                "serving.kserve.io/s3-region": aws_s3_region,
+                "serving.kserve.io/s3-useanoncredential": "false",
+                "serving.kserve.io/s3-verifyssl": "0",
+                "serving.kserve.io/s3-usehttps": str(usehttps),
+            },
             # the labels are needed to set the secret as data connection by odh-model-controller
             label={
                 Labels.OpenDataHubIo.MANAGED: "true",

@@ -6,7 +6,11 @@ DRIFT_BASE_DATA_PATH: str = "./tests/model_explainability/trustyai_service/drift
 TAI_DATA_CONFIG: Dict[str, str] = {"filename": "data.csv", "format": "CSV"}
 TAI_METRICS_CONFIG: Dict[str, str] = {"schedule": "5s"}
 TAI_PVC_STORAGE_CONFIG: Dict[str, str] = {"format": "PVC", "folder": "/inputs", "size": "1Gi"}
-TAI_DB_STORAGE_CONFIG = {"format": "DATABASE", "size": "1Gi", "databaseConfigurations": "db-credentials"}
+TAI_DB_STORAGE_CONFIG: Dict[str, str] = {
+    "format": "DATABASE",
+    "size": "1Gi",
+    "databaseConfigurations": "db-credentials",
+}
 
 SKLEARN: str = "sklearn"
 MLSERVER: str = "mlserver"
@@ -56,3 +60,16 @@ KSERVE_MLSERVER_ANNOTATIONS: Dict[str, str] = {
 }
 
 ISVC_GETTER: str = "isvc-getter"
+
+TRUSTYAI_DB_MIGRATION_PATCH: dict[str, Any] = {
+    "metadata": {"annotations": {"trustyai.opendatahub.io/db-migration": "true"}},
+    "spec": {
+        "storage": {
+            "format": "DATABASE",
+            "folder": "/inputs",
+            "size": "1Gi",
+            "databaseConfigurations": "db-credentials",
+        },
+        "data": {"filename": "data.csv", "format": "BEAN"},
+    },
+}

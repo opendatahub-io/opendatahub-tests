@@ -568,7 +568,8 @@ def create_isvc(
     model_version: str | None = None,
     wait_for_predictor_pods: bool = True,
     autoscaler_mode: str | None = None,
-    multi_node_worker_spec: dict[str, int] | None = None,
+    stop_resume: bool = False,
+    multi_node_worker_spec: dict[str, Any] | None = None,
     timeout: int = Timeout.TIMEOUT_15MIN,
     scale_metric: str | None = None,
     scale_target: int | None = None,
@@ -603,7 +604,7 @@ def create_isvc(
         model_version (str): Model version
         wait_for_predictor_pods (bool): Wait for predictor pods
         autoscaler_mode (str): Autoscaler mode
-        multi_node_worker_spec (dict[str, int]): Multi node worker spec
+        multi_node_worker_spec (dict[str, Any]): Multi node worker spec
         timeout (int): Time to wait for the model inference,deployment to be ready
         scale_metric (str): Scale metric
         scale_target (int): Scale target
@@ -686,6 +687,9 @@ def create_isvc(
     if autoscaler_mode:
         _annotations["serving.kserve.io/autoscalerClass"] = autoscaler_mode
 
+    if stop_resume:
+        _annotations[Annotations.KserveIo.FORCE_STOP_RUNTIME] = str(stop_resume)
+
     if multi_node_worker_spec is not None:
         predictor_dict["workerSpec"] = multi_node_worker_spec
 
@@ -709,7 +713,8 @@ def create_isvc(
     ) as inference_service:
         timeout_watch = TimeoutWatch(timeout=timeout)
 
-        if wait_for_predictor_pods:
+        # Skip waiting for pods if stop_resume is "True" since no pods should be created
+        if wait_for_predictor_pods and not stop_resume:
             verify_no_failed_pods(
                 client=client,
                 isvc=inference_service,
@@ -723,7 +728,7 @@ def create_isvc(
                 timeout=timeout_watch.remaining_time(),
             )
 
-        if wait:
+        if wait and not stop_resume:
             # Modelmesh 2nd server in the ns will fail to be Ready; isvc needs to be re-applied
             if deployment_mode == KServeDeploymentType.MODEL_MESH:
                 for isvc in InferenceService.get(dyn_client=client, namespace=namespace):

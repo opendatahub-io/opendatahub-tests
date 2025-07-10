@@ -6,7 +6,6 @@ import os
 from simple_logger.logger import get_logger
 from tests.model_registry.exceptions import (
     ModelRegistryResourceNotCreated,
-    ModelRegistryResourceNotFoundError,
     ModelRegistryResourceNotUpdated,
 )
 from tests.model_registry.rest_api.constants import MODEL_REGISTRY_BASE_URI
@@ -45,21 +44,6 @@ def execute_model_registry_post_command(
         raise ModelRegistryResourceNotCreated(
             f"Failed to create ModelRegistry resource: {url}, {resp.status_code}: {resp.text}"
         )
-    try:
-        return json.loads(resp.text)
-    except json.JSONDecodeError:
-        LOGGER.error(f"Unable to parse {resp.text}")
-        raise
-
-
-def execute_model_registry_get_command(url: str, headers: dict[str, str]) -> dict[Any, Any]:  # skip-unused-code
-    resp = requests.get(url=url, headers=headers, verify=False)
-    LOGGER.info(f"url: {url}, status code: {resp.status_code}, rep: {resp.text}")
-    if resp.status_code not in [200, 201]:
-        raise ModelRegistryResourceNotFoundError(
-            f"Failed to get ModelRegistry resource: {url}, {resp.status_code}: {resp.text}"
-        )
-
     try:
         return json.loads(resp.text)
     except json.JSONDecodeError:

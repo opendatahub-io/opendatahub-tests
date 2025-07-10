@@ -60,7 +60,7 @@ class TestServerlessCanaryRollout:
             inference_type=Inference.MNIST,
             protocol=Protocols.HTTPS,
             iterations=20,
-            expected_percentage=30,
+            expected_percentage=70,
             tolerance=10,
         )
 

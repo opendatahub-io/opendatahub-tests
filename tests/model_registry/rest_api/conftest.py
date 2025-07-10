@@ -3,18 +3,19 @@ import os
 from kubernetes.dynamic import DynamicClient
 import pytest
 import copy
+
 from tests.model_registry.rest_api.constants import MODEL_REGISTRY_BASE_URI, MODEL_REGISTER_DATA
 from tests.model_registry.rest_api.utils import (
     register_model_rest_api,
     execute_model_registry_patch_command,
 )
-from utilities.constants import Protocols
+from utilities.general import generate_random_name
 from ocp_resources.deployment import Deployment
 from tests.model_registry.utils import (
     get_model_registry_deployment_template_dict,
     apply_mysql_args_and_volume_mounts,
     add_mysql_certs_volumes_to_deployment,
-    generate_random_name,
+    wait_for_pods_running,
 )
 
 from tests.model_registry.constants import (
@@ -38,21 +39,6 @@ from tests.model_registry.rest_api.utils import generate_ca_and_server_cert
 from utilities.certificates_utils import create_k8s_secret, create_ca_bundle_with_router_cert
 
 LOGGER = get_logger(name=__name__)
-
-
-@pytest.fixture(scope="class")
-def model_registry_rest_url(model_registry_instance_rest_endpoint: str) -> str:
-    # address and port need to be split in the client instantiation
-    return f"{Protocols.HTTPS}://{model_registry_instance_rest_endpoint}"
-
-
-@pytest.fixture(scope="class")
-def model_registry_rest_headers(current_client_token: str) -> dict[str, str]:
-    return {
-        "Authorization": f"Bearer {current_client_token}",
-        "accept": "application/json",
-        "Content-Type": "application/json",
-    }
 
 
 @pytest.fixture(scope="class")
@@ -154,6 +140,7 @@ def mysql_template_with_ca(model_registry_db_secret: Secret) -> dict[str, Any]:
 
 @pytest.fixture(scope="class")
 def deploy_secure_mysql_and_mr(
+    admin_client: DynamicClient,
     model_registry_namespace: str,
     model_registry_db_secret: Secret,
     model_registry_db_deployment: Deployment,
@@ -183,6 +170,10 @@ def deploy_secure_mysql_and_mr(
         wait_for_resource=True,
     ) as mr:
         mr.wait_for_condition(condition="Available", status="True")
+        mr.wait_for_condition(condition="OAuthProxyAvailable", status="True")
+        wait_for_pods_running(
+            admin_client=admin_client, namespace_name=model_registry_namespace, number_of_consecutive_checks=6
+        )
         yield mr
 
 

@@ -18,7 +18,8 @@ from kubernetes.dynamic import DynamicClient
 from pyhelper_utils.shell import run_command
 
 from tests.model_registry.rbac.utils import wait_for_oauth_openshift_deployment, create_role_binding
-from tests.model_registry.utils import generate_random_name, generate_namespace_name
+from utilities.general import generate_random_name
+from tests.model_registry.utils import generate_namespace_name
 from utilities.infra import login_with_user_password
 from utilities.user_utils import UserTestSession, create_htpasswd_file, wait_for_user_creation
 from tests.model_registry.rbac.group_utils import create_group

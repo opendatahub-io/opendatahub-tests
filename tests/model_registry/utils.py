@@ -1,6 +1,7 @@
-import uuid
-from typing import Any
+import json
+from typing import Any, List
 
+import requests
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.pod import Pod
 from ocp_resources.service import Service
@@ -10,8 +11,11 @@ from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 from kubernetes.dynamic.exceptions import NotFoundError
 from tests.model_registry.constants import MR_DB_IMAGE_DIGEST
+from tests.model_registry.exceptions import ModelRegistryResourceNotFoundError
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
 from utilities.constants import Protocols, Annotations
+from model_registry import ModelRegistry as ModelRegistryClient
+from model_registry.types import RegisteredModel
 
 ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
 
@@ -231,34 +235,6 @@ def wait_for_pods_running(
     return None
 
 
-def generate_random_name(prefix: str = "", length: int = 8) -> str:
-    """
-    Generates a name with a required prefix and a random suffix derived from a UUID.
-
-    The length of the random suffix can be controlled, defaulting to 8 characters.
-    The suffix is taken from the beginning of a V4 UUID's hex representation.
-
-    Args:
-        prefix (str): The required prefix for the generated name.
-        length (int, optional): The desired length for the UUID-derived suffix.
-                               Defaults to 8. Must be between 1 and 32.
-
-    Returns:
-        str: A string in the format "prefix-uuid_suffix".
-
-    Raises:
-        ValueError: If prefix is empty, or if length is not between 1 and 32.
-    """
-    if not isinstance(length, int) or not (1 <= length <= 32):
-        raise ValueError("suffix_length must be an integer between 1 and 32.")
-    # Generate a new random UUID (version 4)
-    random_uuid = uuid.uuid4()
-    # Use the first 'length' characters of the hexadecimal representation of the UUID as the suffix.
-    # random_uuid.hex is 32 characters long.
-    suffix = random_uuid.hex[:length]
-    return f"{prefix}-{suffix}" if prefix else suffix
-
-
 def generate_namespace_name(file_path: str) -> str:
     return (file_path.removesuffix(".py").replace("/", "-").replace("_", "-"))[-63:].split("-", 1)[-1]
 
@@ -330,3 +306,84 @@ def apply_mysql_args_and_volume_mounts(
     my_sql_container["args"] = mysql_args
     my_sql_container["volumeMounts"] = volumes_mounts
     return my_sql_container
+
+
+def get_and_validate_registered_model(
+    model_registry_client: ModelRegistryClient,
+    model_name: str,
+    registered_model: RegisteredModel = None,
+) -> List[str]:
+    """
+    Get and validate a registered model.
+    """
+    model = model_registry_client.get_registered_model(name=model_name)
+    if registered_model is not None:
+        expected_attrs = {
+            "id": registered_model.id,
+            "name": registered_model.name,
+            "description": registered_model.description,
+            "owner": registered_model.owner,
+            "state": registered_model.state,
+        }
+    else:
+        expected_attrs = {
+            "name": model_name,
+        }
+    errors = [
+        f"Unexpected {attr} expected: {expected}, received {getattr(model, attr)}"
+        for attr, expected in expected_attrs.items()
+        if getattr(model, attr) != expected
+    ]
+    return errors
+
+
+def execute_model_registry_get_command(url: str, headers: dict[str, str], json_output: bool = True) -> dict[Any, Any]:
+    """
+    Executes model registry get commands against model registry rest end point
+
+    Args:
+        url (str): Model registry endpoint for rest calls
+        headers (dict[str, str]): HTTP headers for get calls
+        json_output(bool): Whether to output JSON response
+
+    Returns: json output or dict of raw output.
+    """
+    resp = requests.get(url=url, headers=headers, verify=False)
+    LOGGER.info(f"url: {url}, status code: {resp.status_code}, rep: {resp.text}")
+    if resp.status_code not in [200, 201]:
+        raise ModelRegistryResourceNotFoundError(
+            f"Failed to get ModelRegistry resource: {url}, {resp.status_code}: {resp.text}"
+        )
+    if json_output:
+        try:
+            return json.loads(resp.text)
+        except json.JSONDecodeError:
+            LOGGER.error(f"Unable to parse {resp.text}")
+            raise
+    else:
+        return {"raw_output": resp.text}
+
+
+def validate_no_grpc_container(deployment_containers: list[dict[str, Any]]) -> None:
+    grpc_container = None
+    for container in deployment_containers:
+        if "grpc" in container["name"]:
+            grpc_container = container
+    assert not grpc_container, f"GRPC container found: {grpc_container}"
+
+
+def validate_mlmd_removal_in_model_registry_pod_log(
+    deployment_containers: list[dict[str, Any]], pod_object: Pod
+) -> None:
+    errors = []
+    embedmd_message = "EmbedMD service connected"
+    for container in deployment_containers:
+        container_name = container["name"]
+        LOGGER.info(f"Checking {container_name}")
+        log = pod_object.log(container=container_name)
+        if "rest" in container_name:
+            if embedmd_message not in log:
+                errors.append(f"Missing {embedmd_message} in {container_name} log")
+        if "MLMD" in log:
+            errors.append(f"MLMD reference found in {container_name} log")
+    assert not errors, f"Log validation failed with error(s): {errors}"

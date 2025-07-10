@@ -96,7 +96,9 @@ class TestModelRegistryCreationRest:
         )
 
     def test_model_registry_validate_api_version(self: Self, model_registry_instance):
-        api_version = model_registry_instance.instance.apiVersion
+        api_version = ModelRegistry(
+            name=model_registry_instance.name, namespace=model_registry_instance.namespace, ensure_exists=True
+        ).instance.apiVersion
         LOGGER.info(f"Validating apiversion {api_version} for model registry")
         expected_version = f"{ModelRegistry.ApiGroup.MODELREGISTRY_OPENDATAHUB_IO}/{ModelRegistry.ApiVersion.V1BETA1}"
         assert api_version == expected_version

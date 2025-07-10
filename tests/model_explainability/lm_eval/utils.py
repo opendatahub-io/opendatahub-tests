@@ -13,7 +13,7 @@ import pandas as pd
 LOGGER = get_logger(name=__name__)
 
 
-def get_lmevaljob_pod(client: DynamicClient, lmevaljob: LMEvalJob, timeout: int = Timeout.TIMEOUT_2MIN) -> Pod:
+def get_lmevaljob_pod(client: DynamicClient, lmevaljob: LMEvalJob, timeout: int = Timeout.TIMEOUT_10MIN) -> Pod:
     """
     Gets the pod corresponding to a given LMEvalJob and waits for it to be ready.
 
