@@ -423,7 +423,7 @@ def lls_dist_gorch_with_builtin_detectors(
                 "name": "llama-stack",
                 "port": 8321,
             },
-            "distribution": {"name": "rh-dev"},
+            "distribution": {"image": "quay.io/opendatahub/llama-stack:odh"},
             "storage": {
                 "size": "20Gi",
             },
