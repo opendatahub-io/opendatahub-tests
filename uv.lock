@@ -393,6 +393,15 @@ wheels = [
 ]
 
 [[package]]
+name = "fire"
+version = "0.7.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "termcolor" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/6b/b6/82c7e601d6d3c3278c40b7bd35e17e82aa227f050aa9f66cb7b7fce29471/fire-0.7.0.tar.gz", hash = "sha256:961550f07936eaf65ad1dc8360f2b2bf8408fad46abbfa4d2a3794f8d2a95cdf", size = 87189, upload-time = "2024-10-01T14:29:31.585Z" }
+
+[[package]]
 name = "frozenlist"
 version = "1.7.0"
 source = { registry = "https://pypi.org/simple" }
@@ -828,6 +837,7 @@ name = "opendatahub-tests"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "fire" },
     { name = "grpcio-reflection" },
     { name = "ipython" },
     { name = "jira" },
@@ -866,6 +876,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "fire" },
     { name = "grpcio-reflection" },
     { name = "ipython", specifier = ">=8.18.1" },
     { name = "jira", specifier = ">=3.8.0" },
