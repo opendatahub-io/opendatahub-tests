@@ -68,6 +68,8 @@ dependencies = [
     "pytest-order>=1.3.0",
     "marshmallow==3.26.1,<4", # this version is needed for pytest-jira
     "pytest-html>=4.1.1",
+    "fire",
+    "llama_stack_client==0.2.10",
 ]
 
 [project.urls]
