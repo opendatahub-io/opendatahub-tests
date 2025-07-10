@@ -1,0 +1,93 @@
+
+------------------------------------------------------------- test_xgboost_inference[xgboost-raw-rest-deployment] -------------------------------------------------------------
+------------------------------------------------------------------------------------ SETUP ------------------------------------------------------------------------------------
+2025-06-26T13:36:42.416892 conftest [32mINFO[0m Executing session fixture: admin_client[0m
+2025-06-26T13:36:42.425015 conftest [32mINFO[0m Executing session fixture: updated_global_config[0m
+2025-06-26T13:36:46.519588 conftest [32mINFO[0m Executing session fixture: event_loop_policy[0m
+2025-06-26T13:36:46.519926 conftest [32mINFO[0m Executing session fixture: _syrupy_apply_ide_patches[0m
+2025-06-26T13:36:46.520028 conftest [32mINFO[0m Executing session fixture: nodes[0m
+2025-06-26T13:36:47.675710 conftest [32mINFO[0m Executing session fixture: dsci_resource[0m
+2025-06-26T13:36:48.032966 conftest [32mINFO[0m Executing session fixture: dsc_resource[0m
+2025-06-26T13:36:48.389646 conftest [32mINFO[0m Executing session fixture: record_testsuite_property[0m
+2025-06-26T13:36:48.389820 conftest [32mINFO[0m Executing session fixture: junitxml_plugin[0m
+2025-06-26T13:36:48.389907 conftest [32mINFO[0m Executing session fixture: cluster_sanity_scope_session[0m
+2025-06-26T13:36:54.969113 conftest [32mINFO[0m Executing session fixture: tmp_path_factory[0m
+2025-06-26T13:36:54.969239 conftest [32mINFO[0m Executing session fixture: tests_tmp_dir[0m
+2025-06-26T13:36:54.969772 conftest [32mINFO[0m Executing session fixture: pytestconfig[0m
+2025-06-26T13:36:54.969851 conftest [32mINFO[0m Executing session fixture: root_dir[0m
+2025-06-26T13:36:54.969917 conftest [32mINFO[0m Executing session fixture: aws_access_key_id[0m
+2025-06-26T13:36:54.969974 conftest [32mINFO[0m Executing session fixture: aws_secret_access_key[0m
+2025-06-26T13:36:54.970022 conftest [32mINFO[0m Executing session fixture: valid_aws_config[0m
+2025-06-26T13:36:54.970089 conftest [32mINFO[0m Executing session fixture: models_s3_bucket_name[0m
+2025-06-26T13:36:54.970143 conftest [32mINFO[0m Executing session fixture: s3_models_storage_uri[0m
+2025-06-26T13:36:54.970203 conftest [32mINFO[0m Executing session fixture: teardown_resources[0m
+2025-06-26T13:36:54.970256 conftest [32mINFO[0m Executing session fixture: triton_runtime_image[0m
+2025-06-26T13:36:54.970305 conftest [32mINFO[0m Executing session fixture: models_s3_bucket_region[0m
+2025-06-26T13:36:54.970352 conftest [32mINFO[0m Executing session fixture: models_s3_bucket_endpoint[0m
+2025-06-26T13:36:54.970396 conftest [32mINFO[0m Executing class fixture: triton_rest_serving_runtime_template[0m
+2025-06-26T13:36:55.702004 conftest [32mINFO[0m Executing class fixture: triton_grpc_serving_runtime_template[0m
+2025-06-26T13:36:56.786870 conftest [32mINFO[0m Executing class fixture: model_namespace[0m
+2025-06-26T13:36:57.953150 conftest [32mINFO[0m Executing class fixture: protocol[0m
+2025-06-26T13:36:57.953275 conftest [32mINFO[0m Executing class fixture: triton_serving_runtime[0m
+2025-06-26T13:36:59.552052 conftest [32mINFO[0m Executing class fixture: kserve_s3_secret[0m
+2025-06-26T13:37:00.559624 conftest [32mINFO[0m Executing class fixture: triton_model_service_account[0m
+2025-06-26T13:37:01.293369 conftest [32mINFO[0m Executing class fixture: triton_inference_service[0m
+2025-06-26T13:37:32.935312 conftest [32mINFO[0m Executing function fixture: cleanup_existing_isvc[0m
+2025-06-26T13:37:33.344536 conftest [32mINFO[0m Executing function fixture: triton_pod_resource[0m
+2025-06-26T13:37:34.162903 conftest [32mINFO[0m Executing function fixture: snapshot[0m
+2025-06-26T13:37:34.164248 conftest [32mINFO[0m Executing function fixture: triton_response_snapshot[0m
+------------------------------------------------------------------------------------ CALL ------------------------------------------------------------------------------------
+
+TEST: TestXGboostModel.test_xgboost_inference[xgboost-raw-rest-deployment] STATUS: [0;32mPASSED[0m
+---------------------------------------------------------------------------------- TEARDOWN ----------------------------------------------------------------------------------
+
+------------------------------------------------------------- test_xgboost_inference[xgboost-raw-grpc-deployment] -------------------------------------------------------------
+------------------------------------------------------------------------------------ SETUP ------------------------------------------------------------------------------------
+2025-06-26T13:37:53.017778 conftest [32mINFO[0m Executing class fixture: model_namespace[0m
+2025-06-26T13:37:54.077961 conftest [32mINFO[0m Executing class fixture: protocol[0m
+2025-06-26T13:37:54.078099 conftest [32mINFO[0m Executing class fixture: triton_serving_runtime[0m
+2025-06-26T13:37:55.667347 conftest [32mINFO[0m Executing class fixture: kserve_s3_secret[0m
+2025-06-26T13:37:56.919765 conftest [32mINFO[0m Executing class fixture: triton_model_service_account[0m
+2025-06-26T13:37:57.597826 conftest [32mINFO[0m Executing class fixture: triton_inference_service[0m
+2025-06-26T13:38:17.739795 conftest [32mINFO[0m Executing function fixture: cleanup_existing_isvc[0m
+2025-06-26T13:38:18.196460 conftest [32mINFO[0m Executing function fixture: triton_pod_resource[0m
+2025-06-26T13:38:19.038332 conftest [32mINFO[0m Executing function fixture: snapshot[0m
+2025-06-26T13:38:19.038547 conftest [32mINFO[0m Executing function fixture: triton_response_snapshot[0m
+------------------------------------------------------------------------------------ CALL ------------------------------------------------------------------------------------
+
+TEST: TestXGboostModel.test_xgboost_inference[xgboost-raw-grpc-deployment] STATUS: [0;32mPASSED[0m
+---------------------------------------------------------------------------------- TEARDOWN ----------------------------------------------------------------------------------
+
+--------------------------------------------------------- test_xgboost_inference[xgboost-serverless-rest-deployment] ---------------------------------------------------------
+------------------------------------------------------------------------------------ SETUP ------------------------------------------------------------------------------------
+2025-06-26T13:38:37.524791 conftest [32mINFO[0m Executing class fixture: model_namespace[0m
+2025-06-26T13:38:38.535693 conftest [32mINFO[0m Executing class fixture: protocol[0m
+2025-06-26T13:38:38.535817 conftest [32mINFO[0m Executing class fixture: triton_serving_runtime[0m
+2025-06-26T13:38:40.108826 conftest [32mINFO[0m Executing class fixture: kserve_s3_secret[0m
+2025-06-26T13:38:41.123856 conftest [32mINFO[0m Executing class fixture: triton_model_service_account[0m
+2025-06-26T13:38:41.818176 conftest [32mINFO[0m Executing class fixture: triton_inference_service[0m
+2025-06-26T13:39:00.190823 conftest [32mINFO[0m Executing function fixture: cleanup_existing_isvc[0m
+2025-06-26T13:39:00.509839 conftest [32mINFO[0m Executing function fixture: triton_pod_resource[0m
+2025-06-26T13:39:01.190662 conftest [32mINFO[0m Executing function fixture: snapshot[0m
+2025-06-26T13:39:01.190911 conftest [32mINFO[0m Executing function fixture: triton_response_snapshot[0m
+------------------------------------------------------------------------------------ CALL ------------------------------------------------------------------------------------
+
+TEST: TestXGboostModel.test_xgboost_inference[xgboost-serverless-rest-deployment] STATUS: [0;32mPASSED[0m
+---------------------------------------------------------------------------------- TEARDOWN ----------------------------------------------------------------------------------
+
+--------------------------------------------------------- test_xgboost_inference[xgboost-serverless-grpc-deployment] ---------------------------------------------------------
+------------------------------------------------------------------------------------ SETUP ------------------------------------------------------------------------------------
+2025-06-26T13:39:49.811689 conftest [32mINFO[0m Executing class fixture: model_namespace[0m
+2025-06-26T13:39:50.784137 conftest [32mINFO[0m Executing class fixture: protocol[0m
+2025-06-26T13:39:50.784261 conftest [32mINFO[0m Executing class fixture: triton_serving_runtime[0m
+2025-06-26T13:39:52.182940 conftest [32mINFO[0m Executing class fixture: kserve_s3_secret[0m
+2025-06-26T13:39:53.304599 conftest [32mINFO[0m Executing class fixture: triton_model_service_account[0m
+2025-06-26T13:39:54.230234 conftest [32mINFO[0m Executing class fixture: triton_inference_service[0m
+2025-06-26T13:40:12.714207 conftest [32mINFO[0m Executing function fixture: cleanup_existing_isvc[0m
+2025-06-26T13:40:13.111060 conftest [32mINFO[0m Executing function fixture: triton_pod_resource[0m
+2025-06-26T13:40:14.066987 conftest [32mINFO[0m Executing function fixture: snapshot[0m
+2025-06-26T13:40:14.067238 conftest [32mINFO[0m Executing function fixture: triton_response_snapshot[0m
+------------------------------------------------------------------------------------ CALL ------------------------------------------------------------------------------------
+
+TEST: TestXGboostModel.test_xgboost_inference[xgboost-serverless-grpc-deployment] STATUS: [0;32mPASSED[0m
+---------------------------------------------------------------------------------- TEARDOWN ----------------------------------------------------------------------------------
