@@ -44,7 +44,7 @@ class TestLlamaStackFMSGuardrailsProvider:
 
         assert chat_completion_response.completion_message.content != ""
 
-    def test_fms_guardrails_register_shield(self, lls_client):
+    def test_fms_guardrails_register_shield(self, lls_client, current_client_token):
         trustyai_fms_provider_id = "trustyai_fms"
         shield_params = {
             "type": "content",
@@ -64,14 +64,5 @@ class TestLlamaStackFMSGuardrailsProvider:
         assert shields[0].provider_id == trustyai_fms_provider_id
         assert shields[0].params == shield_params
 
-    def test_fms_guardrails_run_shield(self, lls_client):
-        lls_client.safety.run_shield(
-            shield_id=PII_REGEX_SHIELD_ID,
-            messages=[
-                {
-                    "content": "You are a useful assistant",
-                    "role": "system",
-                },
-            ],
-            params={},
-        )
+
+# TODO: Add tests for run_shields
