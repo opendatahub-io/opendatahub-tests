@@ -20,6 +20,18 @@ PII_REGEX_SHIELD_ID = "regex"
     indirect=True,
 )
 class TestLlamaStackFMSGuardrailsProvider:
+    """
+    Adds basic tests for the LlamaStack FMS Guardrails provider.
+
+    Given a basic guardrails setup (generator model + detectors),
+    and a llama-stack distribution and client:
+
+    1. Register the generator model via lls client
+    2. Test that we can run inferences on said model via lls client
+    3. Register the shields (detectors)
+    4. TODO: Add tests for run_shields
+    """
+
     def test_fms_guardrails_register_model(self, lls_client):
         provider_id = "vllm-inference"
         model_type = "llm"
@@ -63,6 +75,3 @@ class TestLlamaStackFMSGuardrailsProvider:
         assert shields[0].identifier == PII_REGEX_SHIELD_ID
         assert shields[0].provider_id == trustyai_fms_provider_id
         assert shields[0].params == shield_params
-
-
-# TODO: Add tests for run_shields
