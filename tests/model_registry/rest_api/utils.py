@@ -1,3 +1,4 @@
+import copy
 from typing import Any, Dict
 import requests
 import json
@@ -8,7 +9,7 @@ from tests.model_registry.exceptions import (
     ModelRegistryResourceNotCreated,
     ModelRegistryResourceNotUpdated,
 )
-from tests.model_registry.rest_api.constants import MODEL_REGISTRY_BASE_URI
+from tests.model_registry.rest_api.constants import MODEL_REGISTRY_BASE_URI, MODEL_REGISTER_DATA
 from pyhelper_utils.shell import run_command
 from utilities.exceptions import ResourceValueMismatch
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
@@ -248,6 +249,17 @@ def sign_db_server_cert_with_ca_with_openssl(
         ],
         check=True,
     )
+
+
+def get_register_model_data(num_models: int) -> list[dict[str, Any]]:
+    model_data = []
+    for num_model in range(0, num_models):
+        copy_data = copy.deepcopy(MODEL_REGISTER_DATA)
+        for key, value in copy_data.items():
+            value["name"] = f"{value['name']}{num_model}"
+            value["description"] = f"{value['description']}{num_model}"
+        model_data.append(copy_data)
+    return model_data
 
 
 class ModelRegistryV1Alpha1(ModelRegistry):

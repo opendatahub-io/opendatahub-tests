@@ -97,21 +97,21 @@ class TestModelRegistryCreationRest:
 
     def test_model_registry_validate_api_version(self: Self, model_registry_instance):
         api_version = ModelRegistry(
-            name=model_registry_instance.name, namespace=model_registry_instance.namespace, ensure_exists=True
+            name=model_registry_instance[0].name, namespace=model_registry_instance[0].namespace, ensure_exists=True
         ).instance.apiVersion
         LOGGER.info(f"Validating apiversion {api_version} for model registry")
         expected_version = f"{ModelRegistry.ApiGroup.MODELREGISTRY_OPENDATAHUB_IO}/{ModelRegistry.ApiVersion.V1BETA1}"
         assert api_version == expected_version
 
     def test_model_registry_validate_oauthproxy_enabled(self: Self, model_registry_instance):
-        model_registry_instance_spec = model_registry_instance.instance.spec
+        model_registry_instance_spec = model_registry_instance[0].instance.spec
         LOGGER.info(f"Validating that MR is using oauth proxy {model_registry_instance_spec}")
         assert not model_registry_instance_spec.istio
         assert model_registry_instance_spec.oauthProxy.serviceRoute == "enabled"
 
     def test_model_registry_validate_mr_status_v1alpha1(self: Self, model_registry_instance):
         mr_instance = ModelRegistryV1Alpha1(
-            name=model_registry_instance.name, namespace=model_registry_instance.namespace, ensure_exists=True
+            name=model_registry_instance[0].name, namespace=model_registry_instance[0].namespace, ensure_exists=True
         ).instance
         status = mr_instance.status.to_dict()
         LOGGER.info(f"Validating MR status {status}")

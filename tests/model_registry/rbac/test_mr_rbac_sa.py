@@ -38,18 +38,18 @@ class TestModelRegistryRBAC:
     def test_service_account_access_denied(
         self: Self,
         sa_token: str,
-        model_registry_instance_rest_endpoint: str,
+        model_registry_instance_rest_endpoint: list[str],
     ):
         """
         Verifies SA access is DENIED (403 Forbidden) by default via REST.
         Does NOT use mr_access_role or mr_access_role_binding fixtures.
         """
         LOGGER.info("--- Starting RBAC Test: Access Denied ---")
-        LOGGER.info(f"Targeting Model Registry REST endpoint: {model_registry_instance_rest_endpoint}")
+        LOGGER.info(f"Targeting Model Registry REST endpoint: {model_registry_instance_rest_endpoint[0]}")
         LOGGER.info("Expecting initial access DENIAL (403 Forbidden)")
 
         client_args = build_mr_client_args(
-            rest_endpoint=model_registry_instance_rest_endpoint, token=sa_token, author="rbac-test-denied"
+            rest_endpoint=model_registry_instance_rest_endpoint[0], token=sa_token, author="rbac-test-denied"
         )
         LOGGER.debug(f"Attempting client connection with args: {client_args}")
 
@@ -69,7 +69,7 @@ class TestModelRegistryRBAC:
     def test_service_account_access_granted(
         self: Self,
         sa_token: str,
-        model_registry_instance_rest_endpoint: str,
+        model_registry_instance_rest_endpoint: list[str],
     ):
         """
         Verifies SA access is GRANTED via REST after applying Role and RoleBinding fixtures.
@@ -80,7 +80,7 @@ class TestModelRegistryRBAC:
 
         try:
             client_args = build_mr_client_args(
-                rest_endpoint=model_registry_instance_rest_endpoint, token=sa_token, author="rbac-test-granted"
+                rest_endpoint=model_registry_instance_rest_endpoint[0], token=sa_token, author="rbac-test-granted"
             )
             LOGGER.debug(f"Attempting client connection with args: {client_args}")
             mr_client_success = ModelRegistryClient(**client_args)

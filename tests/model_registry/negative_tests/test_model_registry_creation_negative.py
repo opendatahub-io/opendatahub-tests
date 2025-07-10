@@ -11,9 +11,9 @@ from tests.model_registry.negative_tests.constants import CUSTOM_NEGATIVE_NS
 from utilities.constants import DscComponents, Annotations
 from tests.model_registry.constants import (
     MR_OPERATOR_NAME,
-    MR_INSTANCE_NAME,
+    MR_INSTANCE_BASE_NAME,
     ISTIO_CONFIG_DICT,
-    DB_RESOURCES_NAME,
+    DB_BASE_RESOURCES_NAME,
 )
 from kubernetes.dynamic.exceptions import ForbiddenError
 
@@ -65,7 +65,7 @@ class TestModelRegistryCreationNegative:
             "host": f"{model_registry_db_deployment_negative_test.name}."
             f"{model_registry_db_deployment_negative_test.namespace}.svc.cluster.local",
             "database": model_registry_db_secret_negative_test.string_data["database-name"],
-            "passwordSecret": {"key": "database-password", "name": DB_RESOURCES_NAME},
+            "passwordSecret": {"key": "database-password", "name": DB_BASE_RESOURCES_NAME},
             "port": 3306,
             "skipDBCreation": False,
             "username": model_registry_db_secret_negative_test.string_data["database-user"],
@@ -75,11 +75,11 @@ class TestModelRegistryCreationNegative:
             match=f"namespace must be {expected_namespace}",
         ):
             with ModelRegistry(
-                name=MR_INSTANCE_NAME,
+                name=MR_INSTANCE_BASE_NAME,
                 namespace=model_registry_namespace_for_negative_tests.name,
                 label={
-                    Annotations.KubernetesIo.NAME: MR_INSTANCE_NAME,
-                    Annotations.KubernetesIo.INSTANCE: MR_INSTANCE_NAME,
+                    Annotations.KubernetesIo.NAME: MR_INSTANCE_BASE_NAME,
+                    Annotations.KubernetesIo.INSTANCE: MR_INSTANCE_BASE_NAME,
                     Annotations.KubernetesIo.PART_OF: MR_OPERATOR_NAME,
                     Annotations.KubernetesIo.CREATED_BY: MR_OPERATOR_NAME,
                 },

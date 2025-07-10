@@ -25,7 +25,6 @@ from utilities.user_utils import UserTestSession, create_htpasswd_file, wait_for
 from tests.model_registry.rbac.group_utils import create_group
 from tests.model_registry.constants import MR_INSTANCE_NAME
 
-
 LOGGER = get_logger(name=__name__)
 DEFAULT_TOKEN_DURATION = "10m"
 

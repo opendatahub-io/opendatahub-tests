@@ -40,7 +40,7 @@ class TestModelRegistryWithSecureDB:
 
     # Implements RHOAIENG-26150
     @pytest.mark.parametrize(
-        "patch_mysql_deployment_with_ssl_ca,patch_invalid_ca,model_registry_mysql_config,local_ca_bundle",
+        "patch_mysql_deployment_with_ssl_ca,patch_invalid_ca,model_registry_instance,local_ca_bundle",
         [
             (
                 {"ca_configmap_name": "mysql-ca-configmap", "ca_mount_path": "/etc/mysql/ssl"},
@@ -51,7 +51,12 @@ class TestModelRegistryWithSecureDB:
         ],
         indirect=True,
     )
-    @pytest.mark.usefixtures("deploy_secure_mysql_and_mr", "patch_mysql_deployment_with_ssl_ca", "patch_invalid_ca")
+    @pytest.mark.usefixtures(
+        "deploy_secure_mysql_and_mr",
+        "patch_mysql_deployment_with_ssl_ca",
+        "patch_invalid_ca",
+        "model_registry_instance",
+    )
     def test_register_model_with_invalid_ca(
         self: Self,
         admin_client: DynamicClient,
@@ -82,7 +87,7 @@ class TestModelRegistryWithSecureDB:
         )
 
     @pytest.mark.parametrize(
-        "patch_mysql_deployment_with_ssl_ca,model_registry_mysql_config,local_ca_bundle",
+        "patch_mysql_deployment_with_ssl_ca,model_registry_instance,local_ca_bundle",
         [
             (
                 {"ca_configmap_name": "mysql-ca-configmap", "ca_mount_path": "/etc/mysql/ssl"},
@@ -93,7 +98,10 @@ class TestModelRegistryWithSecureDB:
         indirect=True,
     )
     @pytest.mark.usefixtures(
-        "deploy_secure_mysql_and_mr", "ca_configmap_for_test", "patch_mysql_deployment_with_ssl_ca"
+        "deploy_secure_mysql_and_mr",
+        "ca_configmap_for_test",
+        "patch_mysql_deployment_with_ssl_ca",
+        "model_registry_instance",
     )
     @pytest.mark.smoke
     def test_register_model_with_valid_ca(

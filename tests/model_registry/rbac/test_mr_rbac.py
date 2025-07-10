@@ -42,20 +42,20 @@ pytestmark = [pytest.mark.usefixtures("original_user", "test_idp_user")]
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("updated_dsc_component_state_scope_class")
+@pytest.mark.usefixtures("updated_dsc_component_state_scope_class", "model_registry_instance")
 class TestUserPermission:
     @pytest.mark.sanity
     def test_user_permission_non_admin_user(
         self: Self,
         test_idp_user,
-        model_registry_instance_rest_endpoint: str,
+        model_registry_instance_rest_endpoint: list[str],
         login_as_test_user: None,
     ):
         """
         This test verifies that non-admin users cannot access the Model Registry (403 Forbidden)
         """
         client_args = build_mr_client_args(
-            rest_endpoint=model_registry_instance_rest_endpoint, token=get_openshift_token()
+            rest_endpoint=model_registry_instance_rest_endpoint[0], token=get_openshift_token()
         )
         with pytest.raises(ForbiddenException) as exc_info:
             ModelRegistryClient(**client_args)
@@ -65,7 +65,7 @@ class TestUserPermission:
     @pytest.mark.sanity
     def test_user_added_to_group(
         self: Self,
-        model_registry_instance_rest_endpoint: str,
+        model_registry_instance_rest_endpoint: list[str],
         test_idp_user: UserTestSession,
         model_registry_group_with_user: Group,
         login_as_test_user: Generator[UserTestSession, None, None],
@@ -79,7 +79,7 @@ class TestUserPermission:
             wait_timeout=240,
             sleep=5,
             func=assert_positive_mr_registry,
-            model_registry_instance_rest_endpoint=model_registry_instance_rest_endpoint,
+            model_registry_instance_rest_endpoint=model_registry_instance_rest_endpoint[0],
             token=get_openshift_token(),
         )
         for _ in sampler:
@@ -90,7 +90,7 @@ class TestUserPermission:
     def test_create_group(
         self: Self,
         test_idp_user: UserTestSession,
-        model_registry_instance_rest_endpoint: str,
+        model_registry_instance_rest_endpoint: list[str],
         created_role_binding_group: RoleBinding,
         login_as_test_user: None,
     ):
@@ -103,14 +103,14 @@ class TestUserPermission:
         3. Users in the group can access the Model Registry
         """
         assert_positive_mr_registry(
-            model_registry_instance_rest_endpoint=model_registry_instance_rest_endpoint,
+            model_registry_instance_rest_endpoint=model_registry_instance_rest_endpoint[0],
         )
 
     @pytest.mark.sanity
     def test_add_single_user_role_binding(
         self: Self,
         test_idp_user: UserTestSession,
-        model_registry_instance_rest_endpoint: str,
+        model_registry_instance_rest_endpoint: list[str],
         created_role_binding_user: RoleBinding,
         login_as_test_user: None,
     ):
@@ -122,5 +122,5 @@ class TestUserPermission:
         2. The user can access the Model Registry after being granted access
         """
         assert_positive_mr_registry(
-            model_registry_instance_rest_endpoint=model_registry_instance_rest_endpoint,
+            model_registry_instance_rest_endpoint=model_registry_instance_rest_endpoint[0],
         )

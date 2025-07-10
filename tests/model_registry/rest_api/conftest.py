@@ -16,15 +16,16 @@ from tests.model_registry.utils import (
     apply_mysql_args_and_volume_mounts,
     add_mysql_certs_volumes_to_deployment,
     wait_for_pods_running,
+    get_mysql_config,
+    get_mr_standard_labels,
 )
 
 from tests.model_registry.constants import (
-    DB_RESOURCES_NAME,
+    DB_BASE_RESOURCES_NAME,
     CA_MOUNT_PATH,
     CA_FILE_PATH,
     CA_CONFIGMAP_NAME,
     OAUTH_PROXY_CONFIG_DICT,
-    MODEL_REGISTRY_STANDARD_LABELS,
     SECURE_MR_NAME,
 )
 from ocp_resources.resource import ResourceEditor
@@ -43,10 +44,10 @@ LOGGER = get_logger(name=__name__)
 
 @pytest.fixture(scope="class")
 def registered_model_rest_api(
-    request: pytest.FixtureRequest, model_registry_rest_url: str, model_registry_rest_headers: dict[str, str]
+    request: pytest.FixtureRequest, model_registry_rest_url: list[str], model_registry_rest_headers: dict[str, str]
 ) -> dict[str, Any]:
     return register_model_rest_api(
-        model_registry_rest_url=model_registry_rest_url,
+        model_registry_rest_url=model_registry_rest_url[0],
         model_registry_rest_headers=model_registry_rest_headers,
         data_dict=request.param,
     )
@@ -55,7 +56,7 @@ def registered_model_rest_api(
 @pytest.fixture()
 def updated_model_registry_resource(
     request: pytest.FixtureRequest,
-    model_registry_rest_url: str,
+    model_registry_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
     registered_model_rest_api: dict[str, Any],
 ) -> dict[str, Any]:
@@ -77,7 +78,7 @@ def updated_model_registry_resource(
     resource_id = registered_model_rest_api[resource_name]["id"]
     assert resource_id, f"Resource id not found: {registered_model_rest_api[resource_name]}"
     return execute_model_registry_patch_command(
-        url=f"{model_registry_rest_url}{MODEL_REGISTRY_BASE_URI}{api_name}/{resource_id}",
+        url=f"{model_registry_rest_url[0]}{MODEL_REGISTRY_BASE_URI}{api_name}/{resource_id}",
         headers=model_registry_rest_headers,
         data_json=request.param["data"],
     )
@@ -114,7 +115,7 @@ def patch_invalid_ca(
 
 
 @pytest.fixture(scope="class")
-def mysql_template_with_ca(model_registry_db_secret: Secret) -> dict[str, Any]:
+def mysql_template_with_ca(model_registry_db_secret: list[Secret]) -> dict[str, Any]:
     """
     Patches the MySQL template with the CA file path and volume mount.
 
@@ -125,8 +126,8 @@ def mysql_template_with_ca(model_registry_db_secret: Secret) -> dict[str, Any]:
         dict[str, Any]: The patched MySQL template
     """
     mysql_template = get_model_registry_deployment_template_dict(
-        secret_name=model_registry_db_secret.name,
-        resource_name=DB_RESOURCES_NAME,
+        secret_name=model_registry_db_secret[0].name,
+        resource_name=DB_BASE_RESOURCES_NAME,
     )
     mysql_template["spec"]["containers"][0]["args"].append(f"--ssl-ca={CA_FILE_PATH}")
     mysql_template["spec"]["containers"][0]["volumeMounts"].append({
@@ -140,11 +141,11 @@ def mysql_template_with_ca(model_registry_db_secret: Secret) -> dict[str, Any]:
 
 @pytest.fixture(scope="class")
 def deploy_secure_mysql_and_mr(
+    request: pytest.FixtureRequest,
     admin_client: DynamicClient,
     model_registry_namespace: str,
-    model_registry_db_secret: Secret,
-    model_registry_db_deployment: Deployment,
-    model_registry_mysql_config: dict[str, Any],
+    model_registry_db_secret: list[Secret],
+    model_registry_db_deployment: list[Deployment],
     mysql_template_with_ca: dict[str, Any],
     patch_mysql_deployment_with_ssl_ca: Deployment,
 ) -> Generator[ModelRegistry, None, None]:
@@ -158,15 +159,19 @@ def deploy_secure_mysql_and_mr(
         model_registry_mysql_config: The MySQL config dictionary
         mysql_template_with_ca: The MySQL template with the CA file path and volume mount
     """
+    param = getattr(request, "param", {})
+    mysql = get_mysql_config(deployment_name=model_registry_db_deployment[0].name, namespace=model_registry_namespace)
+    if "sslRootCertificateConfigMap" in param:
+        mysql["sslRootCertificateConfigMap"] = param["sslRootCertificateConfigMap"]
     with ModelRegistry(
         name=SECURE_MR_NAME,
         namespace=model_registry_namespace,
-        label=MODEL_REGISTRY_STANDARD_LABELS,
+        label=get_mr_standard_labels(resource_name=SECURE_MR_NAME),
         grpc={},
         rest={},
         istio=None,
         oauth_proxy=OAUTH_PROXY_CONFIG_DICT,
-        mysql=model_registry_mysql_config,
+        mysql=mysql,
         wait_for_resource=True,
     ) as mr:
         mr.wait_for_condition(condition="Available", status="True")
@@ -236,7 +241,7 @@ def patch_mysql_deployment_with_ssl_ca(
     request: pytest.FixtureRequest,
     admin_client: DynamicClient,
     model_registry_namespace: str,
-    model_registry_db_deployment: Deployment,
+    model_registry_db_deployment: list[Deployment],
     mysql_ssl_secrets: dict[str, Any],
     ca_configmap_for_test: ConfigMap,
 ) -> Generator[Deployment, Any, Any]:
@@ -246,7 +251,8 @@ def patch_mysql_deployment_with_ssl_ca(
     """
     CA_CONFIGMAP_NAME = request.param.get("ca_configmap_name", "mysql-ca-configmap")
     CA_MOUNT_PATH = request.param.get("ca_mount_path", "/etc/mysql/ssl")
-    deployment = model_registry_db_deployment.instance.to_dict()
+    mr_deployment = model_registry_db_deployment[0]
+    deployment = mr_deployment.instance.to_dict()
     spec = deployment["spec"]["template"]["spec"]
     my_sql_container = next(container for container in spec["containers"] if container["name"] == "mysql")
     assert my_sql_container is not None, "Mysql container not found"
@@ -257,9 +263,9 @@ def patch_mysql_deployment_with_ssl_ca(
     volumes = add_mysql_certs_volumes_to_deployment(spec=spec, ca_configmap_name=CA_CONFIGMAP_NAME)
 
     patch = {"spec": {"template": {"spec": {"volumes": volumes, "containers": [my_sql_container]}}}}
-    with ResourceEditor(patches={model_registry_db_deployment: patch}):
-        model_registry_db_deployment.wait_for_condition(condition="Available", status="True")
-        yield model_registry_db_deployment
+    with ResourceEditor(patches={mr_deployment: patch}):
+        mr_deployment.wait_for_condition(condition="Available", status="True")
+        yield mr_deployment
 
 
 @pytest.fixture(scope="class")

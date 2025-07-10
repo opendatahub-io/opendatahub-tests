@@ -54,10 +54,10 @@ class TestModelRegistryCreation:
     @pytest.mark.smoke
     def test_registering_model(
         self: Self,
-        model_registry_client: ModelRegistryClient,
+        model_registry_client: list[ModelRegistryClient],
         registered_model: RegisteredModel,
     ):
-        model = model_registry_client.get_registered_model(name=MODEL_NAME)
+        model = model_registry_client[0].get_registered_model(name=MODEL_NAME)
         expected_attrs = {
             "id": registered_model.id,
             "name": registered_model.name,
@@ -112,7 +112,7 @@ class TestModelRegistryCreation:
         ],
     )
     def test_model_registry_endpoint_response(
-        self, model_registry_rest_url: str, model_registry_rest_headers: dict[str, str], endpoint: str
+        self, model_registry_rest_url: list[str], model_registry_rest_headers: dict[str, str], endpoint: str
     ):
         """
         RHOAIENG-26239: Test to ensure model registry endpoints are responsive
@@ -122,6 +122,6 @@ class TestModelRegistryCreation:
             Ensure endpoint is responsive via get call
         """
         output = execute_model_registry_get_command(
-            url=f"{model_registry_rest_url}/{endpoint}", headers=model_registry_rest_headers, json_output=False
+            url=f"{model_registry_rest_url[0]}/{endpoint}", headers=model_registry_rest_headers, json_output=False
         )
         assert output["raw_output"].lower() == "OK".lower()

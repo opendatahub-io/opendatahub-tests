@@ -1,7 +1,6 @@
 import pytest
-from typing import Self
+from typing import Self, Any
 from simple_logger.logger import get_logger
-from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from pytest_testconfig import config as py_config
 from ocp_resources.pod import Pod
 from utilities.constants import DscComponents
@@ -32,7 +31,7 @@ class TestDBMigration:
     def test_db_migration_negative(
         self: Self,
         admin_client: DynamicClient,
-        model_registry_instance: ModelRegistry,
+        model_registry_instance: list[Any],
         model_registry_db_instance_pod: Pod,
         set_mr_db_dirty: int,
         delete_mr_deployment: None,

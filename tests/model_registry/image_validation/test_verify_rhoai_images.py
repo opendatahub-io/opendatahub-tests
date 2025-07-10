@@ -1,5 +1,5 @@
 import pytest
-from typing import Self, Set
+from typing import Self, Set, Any
 from simple_logger.logger import get_logger
 from kubernetes.dynamic import DynamicClient
 from pytest_testconfig import config as py_config
@@ -8,7 +8,6 @@ from utilities.constants import DscComponents
 from utilities.general import (
     validate_container_images,
 )
-from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from ocp_resources.pod import Pod
 
 LOGGER = get_logger(name=__name__)
@@ -43,7 +42,7 @@ class TestModelRegistryImages:
     def test_verify_model_registry_images(
         self: Self,
         admin_client: DynamicClient,
-        model_registry_instance: ModelRegistry,
+        model_registry_instance: list[Any],
         model_registry_operator_pod: Pod,
         model_registry_instance_pod: Pod,
         related_images_refs: Set[str],
