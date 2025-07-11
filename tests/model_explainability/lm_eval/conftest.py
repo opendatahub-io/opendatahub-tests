@@ -216,7 +216,7 @@ def vllm_emulator_deployment(
                 "containers": [
                     {
                         "image": "quay.io/trustyai_testing/vllm_emulator"
-                        "@sha256:4214f31bff9de6cc723da23324fb8974cea8abadcab621d85a97a3503cabbdc6",
+                        "@sha256:0ac495dff723aaf03b9c2168512536bcdf5a387edf91a4db5630973ce7ecfbbf",
                         "name": "vllm-emulator",
                         "securityContext": {
                             "allowPrivilegeEscalation": False,
