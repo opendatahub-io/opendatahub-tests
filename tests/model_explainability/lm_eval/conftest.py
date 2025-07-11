@@ -1,10 +1,6 @@
-from typing import Generator, Any
+from typing import Any, Generator
 
 import pytest
-from ocp_resources.route import Route
-from ocp_resources.secret import Secret
-from ocp_resources.service import Service
-from pytest import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
@@ -13,10 +9,15 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
+from ocp_resources.route import Route
+from ocp_resources.secret import Secret
+from ocp_resources.service import Service
+from pytest import Config, FixtureRequest
 from pytest_testconfig import py_config
 
 from tests.model_explainability.lm_eval.utils import get_lmevaljob_pod
-from utilities.constants import Labels, Timeout, Annotations, Protocols, MinIo
+from utilities.constants import Annotations, Labels, MinIo, Protocols, Timeout
+from utilities.exceptions import MissingParameter
 
 VLLM_EMULATOR: str = "vllm-emulator"
 VLLM_EMULATOR_PORT: int = 8000
@@ -29,6 +30,7 @@ def lmevaljob_hf(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     patched_trustyai_operator_configmap_allow_online: ConfigMap,
+    lmeval_hf_access_token: Secret,
 ) -> Generator[LMEvalJob, None, None]:
     with LMEvalJob(
         client=admin_client,
@@ -45,6 +47,26 @@ def lmevaljob_hf(
             "enabled": True,
         },
         limit="0.01",
+        pod={
+            "container": {
+                "resources": {
+                    "limits": {"cpu": "1", "memory": "8Gi"},
+                    "requests": {"cpu": "1", "memory": "8Gi"},
+                },
+                "env": [
+                    {
+                        "name": "HF_TOKEN",
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "name": "hf-secret",
+                                "key": "HF_ACCESS_TOKEN",
+                            },
+                        },
+                    },
+                    {"name": "HF_ALLOW_CODE_EVAL", "value": "1"},
+                ],
+            },
+        },
     ) as job:
         yield job
 
@@ -127,7 +149,10 @@ def patched_trustyai_operator_configmap_allow_online(admin_client: DynamicClient
         patches={
             configmap: {
                 "metadata": {"annotations": {Annotations.OpenDataHubIo.MANAGED: "false"}},
-                "data": {"lmes-allow-online": "true", "lmes-allow-code-execution": "true"},
+                "data": {
+                    "lmes-allow-online": "true",
+                    "lmes-allow-code-execution": "true",
+                },
             }
         }
     ):
@@ -404,3 +429,27 @@ def lmevaljob_vllm_emulator_pod(
 @pytest.fixture(scope="function")
 def lmevaljob_s3_offline_pod(admin_client: DynamicClient, lmevaljob_s3_offline: LMEvalJob) -> Generator[Pod, Any, Any]:
     yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_s3_offline)
+
+
+@pytest.fixture(scope="function")
+def lmeval_hf_access_token(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    pytestconfig: Config,
+) -> Secret:
+    hf_access_token = pytestconfig.option.hf_access_token
+    if not hf_access_token:
+        raise MissingParameter(
+            "HF access token is not set. "
+            "Either pass with `--hf-access-token` or set `HF_ACCESS_TOKEN` environment variable"
+        )
+    with Secret(
+        client=admin_client,
+        name="hf-secret",
+        namespace=model_namespace.name,
+        string_data={
+            "HF_ACCESS_TOKEN": hf_access_token,
+        },
+        wait_for_resource=True,
+    ) as secret:
+        yield secret

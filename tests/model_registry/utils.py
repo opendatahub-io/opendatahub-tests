@@ -537,3 +537,28 @@ def get_mysql_config(deployment_name: str, namespace: str) -> dict[str, Any]:
         "skipDBCreation": False,
         "username": MODEL_REGISTRY_DB_SECRET_STR_DATA["database-user"],
     }
+
+
+def validate_no_grpc_container(deployment_containers: list[dict[str, Any]]) -> None:
+    grpc_container = None
+    for container in deployment_containers:
+        if "grpc" in container["name"]:
+            grpc_container = container
+    assert not grpc_container, f"GRPC container found: {grpc_container}"
+
+
+def validate_mlmd_removal_in_model_registry_pod_log(
+    deployment_containers: list[dict[str, Any]], pod_object: Pod
+) -> None:
+    errors = []
+    embedmd_message = "EmbedMD service connected"
+    for container in deployment_containers:
+        container_name = container["name"]
+        LOGGER.info(f"Checking {container_name}")
+        log = pod_object.log(container=container_name)
+        if "rest" in container_name:
+            if embedmd_message not in log:
+                errors.append(f"Missing {embedmd_message} in {container_name} log")
+        if "MLMD" in log:
+            errors.append(f"MLMD reference found in {container_name} log")
+    assert not errors, f"Log validation failed with error(s): {errors}"

@@ -429,7 +429,7 @@ def model_registry_instance_pod(admin_client: DynamicClient) -> Generator[Pod, A
     yield wait_for_pods_by_labels(
         admin_client=admin_client,
         namespace=py_config["model_registry_namespace"],
-        label_selector=f"app={MR_INSTANCE_BASE_NAME}",
+        label_selector=f"app={MR_INSTANCE_NAME}",
         expected_num_pods=1,
     )[0]
 
@@ -507,3 +507,23 @@ def model_registry_rest_headers(current_client_token: str) -> dict[str, str]:
         "accept": "application/json",
         "Content-Type": "application/json",
     }
+
+
+@pytest.fixture(scope="class")
+def model_registry_deployment_containers(model_registry_namespace: str) -> list[dict[str, Any]]:
+    return Deployment(
+        name=MR_INSTANCE_NAME, namespace=model_registry_namespace, ensure_exists=True
+    ).instance.spec.template.spec.containers
+
+
+@pytest.fixture(scope="class")
+def model_registry_pod(admin_client: DynamicClient, model_registry_namespace: str) -> Pod:
+    mr_pod = list(
+        Pod.get(
+            dyn_client=admin_client,
+            namespace=model_registry_namespace,
+            label_selector=f"app={MR_INSTANCE_NAME}",
+        )
+    )
+    assert len(mr_pod) == 1
+    return mr_pod[0]
