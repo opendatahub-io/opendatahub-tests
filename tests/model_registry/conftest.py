@@ -533,3 +533,23 @@ def model_registry_rest_headers(current_client_token: str) -> dict[str, str]:
         "accept": "application/json",
         "Content-Type": "application/json",
     }
+
+
+@pytest.fixture(scope="class")
+def model_registry_deployment_containers(model_registry_namespace: str) -> list[dict[str, Any]]:
+    return Deployment(
+        name=MR_INSTANCE_NAME, namespace=model_registry_namespace, ensure_exists=True
+    ).instance.spec.template.spec.containers
+
+
+@pytest.fixture(scope="class")
+def model_registry_pod(admin_client: DynamicClient, model_registry_namespace: str) -> Pod:
+    mr_pod = list(
+        Pod.get(
+            dyn_client=admin_client,
+            namespace=model_registry_namespace,
+            label_selector=f"app={MR_INSTANCE_NAME}",
+        )
+    )
+    assert len(mr_pod) == 1
+    return mr_pod[0]
