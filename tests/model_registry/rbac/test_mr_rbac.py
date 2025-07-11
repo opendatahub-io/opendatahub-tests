@@ -42,7 +42,12 @@ pytestmark = [pytest.mark.usefixtures("original_user", "test_idp_user")]
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("updated_dsc_component_state_scope_class")
+@pytest.mark.usefixtures(
+    "updated_dsc_component_state_scope_class",
+    "is_model_registry_oauth",
+    "model_registry_mysql_metadata_db",
+    "model_registry_instance_mysql",
+)
 class TestUserPermission:
     @pytest.mark.sanity
     def test_user_permission_non_admin_user(

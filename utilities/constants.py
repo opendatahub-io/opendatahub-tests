@@ -311,3 +311,5 @@ vLLM_CONFIG: dict[str, dict[str, Any]] = {
 }
 
 RHOAI_OPERATOR_NAMESPACE = "redhat-ods-operator"
+OPENSHIFT_OPERATORS: str = "openshift-operators"
+MARIADB: str = "mariadb"

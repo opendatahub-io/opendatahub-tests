@@ -43,7 +43,10 @@ LOGGER = get_logger(name=__name__)
 
 @pytest.fixture(scope="class")
 def registered_model_rest_api(
-    request: pytest.FixtureRequest, model_registry_rest_url: str, model_registry_rest_headers: dict[str, str]
+    request: pytest.FixtureRequest,
+    is_model_registry_oauth: bool,
+    model_registry_rest_url: str,
+    model_registry_rest_headers: dict[str, str],
 ) -> dict[str, Any]:
     return register_model_rest_api(
         model_registry_rest_url=model_registry_rest_url,
@@ -144,8 +147,7 @@ def mysql_template_with_ca(model_registry_db_secret: Secret) -> dict[str, Any]:
 def deploy_secure_mysql_and_mr(
     admin_client: DynamicClient,
     model_registry_namespace: str,
-    model_registry_db_secret: Secret,
-    model_registry_db_deployment: Deployment,
+    model_registry_mysql_metadata_db: Deployment,
     model_registry_mysql_config: dict[str, Any],
     mysql_template_with_ca: dict[str, Any],
     patch_mysql_deployment_with_ssl_ca: Deployment,
