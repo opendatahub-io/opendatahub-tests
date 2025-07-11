@@ -11,8 +11,8 @@ from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
 
 import utilities.infra
-from utilities.constants import Annotations, KServeDeploymentType, MODELMESH_SERVING
-from utilities.exceptions import UnexpectedResourceCountError
+from utilities.constants import Annotations, KServeDeploymentType, MODELMESH_SERVING, Timeout
+from utilities.exceptions import UnexpectedResourceCountError, ResourceValueMismatch
 from ocp_resources.resource import Resource
 from timeout_sampler import retry
 
@@ -331,3 +331,27 @@ def generate_random_name(prefix: str = "", length: int = 8) -> str:
     # random_uuid.hex is 32 characters long.
     suffix = random_uuid.hex[:length]
     return f"{prefix}-{suffix}" if prefix else suffix
+
+
+@retry(wait_timeout=Timeout.TIMEOUT_15_SEC, sleep=1)
+def wait_for_container_status(pod: Pod, container_name: str, expected_status: str) -> bool:
+    """
+    Wait for a container to be in the expected status.
+
+    Args:
+        pod: The pod to wait for
+        container_name: The name of the container to wait for
+        expected_status: The expected status
+
+    Returns:
+        bool: True if the container is in the expected status, False otherwise
+
+    Raises:
+        ResourceValueMismatch: If the container is not in the expected status
+    """
+
+    for cs in pod.instance.status.get("containerStatuses", []):
+        if cs.name == container_name and cs.state.waiting.reason == expected_status:
+            LOGGER.info(f"Pod is in the expected status {expected_status}")
+            return True
+    raise ResourceValueMismatch(f"Pod is not in the expected status {expected_status}")
