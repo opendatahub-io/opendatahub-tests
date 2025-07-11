@@ -4,7 +4,6 @@ from simple_logger.logger import get_logger
 from pytest_testconfig import config as py_config
 
 from ocp_resources.pod import Pod
-from ocp_resources.namespace import Namespace
 from tests.model_registry.utils import (
     execute_model_registry_get_command,
     validate_no_grpc_container,
