@@ -7,12 +7,12 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
+from utilities.constants import KServeDeploymentType
 from tests.model_serving.model_runtime.vllm.utils import (
     kserve_s3_endpoint_secret,
     validate_supported_quantization_schema,
-    skip_if_deployment_mode,
 )
-from utilities.constants import KServeDeploymentType, Labels, RuntimeTemplates
+from utilities.constants import Labels, RuntimeTemplates
 from pytest import FixtureRequest
 from syrupy.extensions.json import JSONSnapshotExtension
 from tests.model_serving.model_runtime.vllm.constant import ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES, TEMPLATE_MAP
@@ -48,7 +48,7 @@ def serving_runtime(
 
 
 @pytest.fixture(scope="session")
-def skip_if_no_supported_accelerator_type(supported_accelerator_type: str) -> None:  # noqa: UFN001
+def skip_if_no_supported_accelerator_type(supported_accelerator_type: str) -> None:
     if not supported_accelerator_type:
         pytest.skip("Accelartor type is not provided,vLLM test can not be run on CPU")
 
@@ -124,7 +124,7 @@ def kserve_endpoint_s3_secret(
     aws_secret_access_key: str,
     models_s3_bucket_region: str,
     models_s3_bucket_endpoint: str,
-) -> Secret:
+) -> Generator[Secret, None, None]:
     with kserve_s3_endpoint_secret(
         admin_client=admin_client,
         name="models-bucket-secret",
@@ -145,21 +145,3 @@ def response_snapshot(snapshot: Any) -> Any:
 @pytest.fixture
 def vllm_pod_resource(admin_client: DynamicClient, vllm_inference_service: InferenceService) -> Pod:
     return get_pods_by_isvc_label(client=admin_client, isvc=vllm_inference_service)[0]
-
-
-@pytest.fixture
-def skip_if_serverless_deployemnt(vllm_inference_service: InferenceService) -> None:
-    skip_if_deployment_mode(
-        isvc=vllm_inference_service,
-        deployment_type=KServeDeploymentType.SERVERLESS,
-        deployment_message="Test is being skipped because model is being deployed in serverless mode",
-    )
-
-
-@pytest.fixture
-def skip_if_raw_deployemnt(vllm_inference_service: InferenceService) -> None:
-    skip_if_deployment_mode(
-        isvc=vllm_inference_service,
-        deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
-        deployment_message="Test is being skipped because model is being deployed in raw mode",
-    )

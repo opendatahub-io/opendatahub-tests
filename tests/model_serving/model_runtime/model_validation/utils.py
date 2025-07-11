@@ -2,11 +2,9 @@ from contextlib import contextmanager
 from typing import Generator, Any
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.secret import Secret
-from ocp_resources.inference_service import InferenceService
 from simple_logger.logger import get_logger
 from tests.model_serving.model_runtime.vllm.constant import VLLM_SUPPORTED_QUANTIZATION
 from tests.model_serving.model_runtime.model_validation.constant import PULL_SECRET_ACCESS_TYPE
-import pytest
 import hashlib
 import re
 import json
@@ -75,11 +73,6 @@ def validate_supported_quantization_schema(q_type: str) -> None:
 def validate_inference_output(*args: tuple[str, ...] | list[Any], response_snapshot: Any) -> None:
     for data in args:
         assert data == response_snapshot, f"output mismatch for {data}"
-
-
-def skip_if_deployment_mode(isvc: InferenceService, deployment_type: str, deployment_message: str) -> None:
-    if isvc.instance.metadata.annotations["serving.kserve.io/deploymentMode"] == deployment_type:
-        pytest.skip(deployment_message)
 
 
 def safe_k8s_name(name: str, max_len: int = 20) -> str:

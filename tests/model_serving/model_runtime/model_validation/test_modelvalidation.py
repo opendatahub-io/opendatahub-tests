@@ -15,29 +15,12 @@ LOGGER = get_logger(name=__name__)
 pytestmark = pytest.mark.usefixtures("vllm_skip_if_no_supported_accelerator_type", "valid_aws_config")
 
 
-@pytest.mark.serverless
-class TestVLLMModelcarOCI:
-    @pytest.mark.jira("RHOAIENG-25717")
-    def test_oci_modelcar_serverless_openai_inference(
-        self,
-        vllm_model_car_inference_service: InferenceService,
-        response_snapshot: Any,
-    ) -> None:
-        """
-        Validate OpenAI-style completion request using vLLM runtime and OCI image deployment.
-        """
-        LOGGER.info("Sending OpenAI-style completion request to vLLM model served from OCI image.")
-        validate_serverless_openai_inference_request(
-            url=vllm_model_car_inference_service.instance.status.url,
-            model_name=vllm_model_car_inference_service.instance.metadata.name,
-            response_snapshot=response_snapshot,
-            completion_query=COMPLETION_QUERY,
-        )
-
+class TestVLLMModelcarRaw:
     def test_oci_modelcar_raw_openai_inference(
         self,
         vllm_model_car_inference_service: InferenceService,
         vllm_pod_resource: Pod,
+        skip_if_not_raw_deployment: Any,
         response_snapshot: Any,
     ) -> None:
         """
@@ -47,6 +30,25 @@ class TestVLLMModelcarOCI:
         validate_raw_openai_inference_request(
             isvc=vllm_model_car_inference_service,
             pod_name=vllm_pod_resource.name,
+            response_snapshot=response_snapshot,
+            completion_query=COMPLETION_QUERY,
+        )
+
+
+class TestVLLMModelcarServerless:
+    def test_oci_modelcar_serverless_openai_inference(
+        self,
+        vllm_model_car_inference_service: InferenceService,
+        skip_if_not_serverless_deployment: Any,
+        response_snapshot: Any,
+    ) -> None:
+        """
+        Validate OpenAI-style completion request using vLLM runtime and OCI image deployment.
+        """
+        LOGGER.info("Sending OpenAI-style completion request to vLLM model served from OCI image.")
+        validate_serverless_openai_inference_request(
+            url=vllm_model_car_inference_service.instance.status.url,
+            model_name=vllm_model_car_inference_service.instance.metadata.name,
             response_snapshot=response_snapshot,
             completion_query=COMPLETION_QUERY,
         )

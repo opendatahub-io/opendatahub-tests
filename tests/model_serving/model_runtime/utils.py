@@ -8,6 +8,7 @@ from utilities.plugins.tgis_grpc_plugin import TGISGRPCPlugin
 from utilities.exceptions import NotSupportedError
 from tests.model_serving.model_runtime.model_validation.constant import OPENAI_ENDPOINT_NAME
 import portforward
+import pytest
 from utilities.constants import Ports
 from tenacity import retry, stop_after_attempt, wait_exponential
 from tests.model_serving.model_runtime.model_validation.constant import COMPLETION_QUERY
@@ -47,6 +48,7 @@ def run_raw_inference(
     endpoint: str,
     completion_query: list[dict[str, str]] = COMPLETION_QUERY,
 ) -> tuple[Any, list[Any], list[Any]]:
+    print(f"this is the endpoint: {endpoint} for model: {isvc.instance.metadata.name} raw inference")
     LOGGER.info(pod_name)
     with portforward.forward(
         pod_or_service=pod_name,
@@ -113,6 +115,7 @@ def fetch_openai_response(
 def validate_serverless_openai_inference_request(
     url: str, model_name: str, response_snapshot: Any, completion_query: list[dict[str, str]]
 ) -> None:
+    print(f"this is the url: {url} for model: {model_name} serverless inference")
     model_info, completion_responses = fetch_openai_response(
         url=url, model_name=model_name, completion_query=completion_query
     )
@@ -121,3 +124,8 @@ def validate_serverless_openai_inference_request(
         completion_responses,
         response_snapshot=response_snapshot,
     )
+
+
+def skip_if_not_deployment_mode(isvc: InferenceService, deployment_type: str, deployment_message: str) -> None:
+    if isvc.instance.metadata.annotations["serving.kserve.io/deploymentMode"] != deployment_type:
+        pytest.skip(deployment_message)

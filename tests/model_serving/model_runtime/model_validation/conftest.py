@@ -24,7 +24,10 @@ from tests.model_serving.model_runtime.model_validation.constant import (
     TIMEOUT_20MIN,
 )
 from tests.model_serving.model_runtime.model_validation.utils import safe_k8s_name
-from tests.model_serving.model_runtime.model_validation.constant import BASE_SEVERRLESS_DEPLOYMENT_CONFIG
+from tests.model_serving.model_runtime.model_validation.constant import (
+    BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
+    BASE_RAW_DEPLOYMENT_CONFIG,
+)
 from syrupy.extensions.json import JSONSnapshotExtension
 
 LOGGER = get_logger(name=__name__)
@@ -42,7 +45,8 @@ def vllm_model_car_inference_service(
     registry_host: str,
     deployment_config: dict[str, Any],
 ) -> Generator[InferenceService, Any, Any]:
-    name = safe_k8s_name(name=modelcar_image_uri, max_len=20)
+    deployment_type = deployment_config.get("deployment_type", KServeDeploymentType.SERVERLESS).lower()
+    name = safe_k8s_name(name=f"{modelcar_image_uri}-{deployment_type}", max_len=20)
 
     # Dynamically create pull secret in the correct namespace
     with kserve_registry_pull_secret(
@@ -59,7 +63,7 @@ def vllm_model_car_inference_service(
             "runtime": modelcar_serving_runtime.name,
             "storage_uri": modelcar_image_uri,
             "model_format": modelcar_serving_runtime.instance.spec.supportedModelFormats[0].name,
-            "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.SERVERLESS),
+            "deployment_mode": deployment_config.get("deployment_type", KServeDeploymentType.SERVERLESS),
             "image_pull_secrets": [PULL_SECRET_NAME],
         }
         accelerator_type = supported_accelerator_type.lower()
@@ -78,7 +82,6 @@ def vllm_model_car_inference_service(
             isvc_kwargs["volumes"] = PREDICT_RESOURCES["volumes"]
             isvc_kwargs["volumes_mounts"] = PREDICT_RESOURCES["volume_mounts"]
 
-        print(f"deployment config - {deployment_config.get('runtime_argument')}")
         if arguments := deployment_config.get("runtime_argument"):
             arguments = [
                 arg
@@ -166,18 +169,17 @@ def dynamic_model_namespace(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     teardown_resources: bool,
-    modelcar_image_uri: str,
+    deployment_config: dict[str, Any],
 ) -> Generator[Namespace, Any, Any]:
     if request.param.get("modelmesh-enabled"):
         request.getfixturevalue(argname="enabled_modelmesh_in_dsc")
 
-    name = safe_k8s_name(name=modelcar_image_uri, max_len=20)
-
-    dynamic_name = f"{name}-ns"
+    deployment_type = deployment_config.get("deployment_type", KServeDeploymentType.SERVERLESS)
+    deployment_key = deployment_type.lower()  # 'rawdeployment' or 'serverless'
+    dynamic_name = f"{deployment_key}-models-ns"
 
     ns = Namespace(client=admin_client, name=dynamic_name)
-
-    LOGGER.info(f"Creating dynamic namespace: {ns.name}")
+    LOGGER.info(f"Creating shared namespace: {ns.name}")
 
     if pytestconfig.option.post_upgrade:
         yield ns
@@ -194,66 +196,93 @@ def dynamic_model_namespace(
 
 @pytest.fixture(scope="class")
 def deployment_config(
+    request: FixtureRequest,
     serving_argument: list[str],
 ) -> dict[str, Any]:
     """
     Fixture to provide the base deployment configuration for serverless deployments.
     """
-    config = BASE_SEVERRLESS_DEPLOYMENT_CONFIG.copy()
+    deployment_type = request.param.get("deployment_type", KServeDeploymentType.SERVERLESS)
+
+    config = (
+        BASE_SEVERRLESS_DEPLOYMENT_CONFIG.copy()
+        if deployment_type == KServeDeploymentType.SERVERLESS
+        else BASE_RAW_DEPLOYMENT_CONFIG.copy()
+    )
     config["runtime_argument"] = serving_argument
+    config["deployment_type"] = deployment_type
     return config
 
 
-def build_modelcar_params(config: pytest.Config) -> tuple[list[pytest.param], list[str]]:
-    """
-    Generate modelcar parameters for testing based on CLI input.
-    """
-    image_arg = config.getoption(option="--modelcar_image_name")
-    modelcar_image_list = image_arg.split(",") if image_arg else []
-
-    modelcar_params = []
-    modelcar_ids = []
-    for image_uri in modelcar_image_list[:20]:
-        if not image_uri.strip():
+def build_raw_params(image_list: list[str]) -> tuple[list[pytest.param], list[str]]:
+    params = []
+    ids = []
+    for image in image_list:
+        image = image.strip()
+        if not image:
             continue
-        modelcar_params.extend([
+        ids.append(f"{image}-raw")
+        params.append(
             pytest.param(
-                {"modelcar_image_uri": image_uri, "modelmesh-enabled": False},
-                {"deployment_type": KServeDeploymentType.SERVERLESS},
-                {
-                    "modelcar_image_uri": image_uri,
-                    "gpu_count": 1,
-                    "timeout": TIMEOUT_20MIN,
-                },
-                image_uri,
-            ),
-            pytest.param(
-                {"modelcar_image_uri": image_uri, "modelmesh-enabled": True},
+                {"deployment_type": KServeDeploymentType.RAW_DEPLOYMENT, "modelmesh-enabled": True},
                 {"deployment_type": KServeDeploymentType.RAW_DEPLOYMENT},
                 {
-                    "modelcar_image_uri": image_uri,
+                    "modelcar_image_uri": image,
                     "gpu_count": 1,
                     "timeout": TIMEOUT_20MIN,
                 },
-                image_uri,
-            ),
-        ])
-        modelcar_ids.extend([f"{image_uri}-serverless", f"{image_uri}-raw"])
-    return modelcar_params, modelcar_ids
+                {"deployment_type": KServeDeploymentType.RAW_DEPLOYMENT},
+                image,
+                id=f"{image}-raw",
+                marks=[pytest.mark.rawdeployment],
+            )
+        )
+    return params, ids
+
+
+def build_serverless_params(image_list: list[str]) -> tuple[list[pytest.param], list[str]]:
+    params = []
+    ids = []
+    for image in image_list:
+        image = image.strip()
+        if not image:
+            continue
+        ids.append(f"{image}-serverless")
+        params.append(
+            pytest.param(
+                {"deployment_type": KServeDeploymentType.SERVERLESS, "modelmesh-enabled": False},
+                {"deployment_type": KServeDeploymentType.SERVERLESS},
+                {
+                    "modelcar_image_uri": image,
+                    "gpu_count": 1,
+                    "timeout": TIMEOUT_20MIN,
+                },
+                {"deployment_type": KServeDeploymentType.SERVERLESS},
+                image,
+                id=f"{image}-serverless",
+                marks=[pytest.mark.serverless],
+            )
+        )
+    return params, ids
 
 
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
-    """
-    Generate parameters for modelcar tests based on CLI input.
-    """
-    if "modelcar_image_uri" in metafunc.fixturenames:
-        params, ids = build_modelcar_params(config=metafunc.config)
-        metafunc.parametrize(
-            argnames=(
-                "dynamic_model_namespace, modelcar_serving_runtime, "
-                "vllm_model_car_inference_service, modelcar_image_uri"
-            ),
-            argvalues=params,
-            indirect=True,
-            ids=ids,
-        )
+    image_arg = metafunc.config.getoption(name="--modelcar_image_name")
+    image_list = image_arg.split(",") if image_arg else []
+
+    if metafunc.cls.__name__ == "TestVLLMModelcarRaw":
+        params, ids = build_raw_params(image_list=image_list)
+    elif metafunc.cls.__name__ == "TestVLLMModelcarServerless":
+        params, ids = build_serverless_params(image_list)
+    else:
+        return
+
+    metafunc.parametrize(
+        argnames=(
+            "dynamic_model_namespace, modelcar_serving_runtime, "
+            "vllm_model_car_inference_service, deployment_config, modelcar_image_uri"
+        ),
+        argvalues=params,
+        indirect=True,
+        ids=ids,
+    )
