@@ -3,7 +3,6 @@ import requests
 from typing import Self, Any
 from pytest_testconfig import config as py_config
 from tests.model_registry.rest_api.utils import register_model_rest_api, validate_resource_attributes
-from tests.model_registry.constants import CA_MOUNT_PATH
 from tests.model_registry.utils import get_mr_service_by_label, get_endpoint_from_mr_service
 from kubernetes.dynamic import DynamicClient
 from utilities.constants import DscComponents, Protocols
@@ -40,12 +39,15 @@ class TestModelRegistryWithSecureDB:
 
     # Implements RHOAIENG-26150
     @pytest.mark.parametrize(
-        "patch_mysql_deployment_with_ssl_ca,patch_invalid_ca,model_registry_mysql_config,local_ca_bundle",
+        "patch_mysql_deployment_with_ssl_ca,patch_invalid_ca,local_ca_bundle",
         [
             (
-                {"ca_configmap_name": "mysql-ca-configmap", "ca_mount_path": "/etc/mysql/ssl"},
+                {
+                    "ca_configmap_name": "odh-trusted-ca-bundle",
+                    "ca_mount_path": "/etc/mysql/ssl",
+                    "ca_configmap_for_test": False,
+                },
                 {"ca_configmap_name": "odh-trusted-ca-bundle", "ca_file_name": "invalid-ca.crt"},
-                {"ssl_ca": f"{CA_MOUNT_PATH}/invalid-ca.crt"},
                 {"cert_name": "invalid-ca.crt"},
             ),
         ],
@@ -85,7 +87,11 @@ class TestModelRegistryWithSecureDB:
         "patch_mysql_deployment_with_ssl_ca,model_registry_mysql_config,local_ca_bundle",
         [
             (
-                {"ca_configmap_name": "mysql-ca-configmap", "ca_mount_path": "/etc/mysql/ssl"},
+                {
+                    "ca_configmap_name": "mysql-ca-configmap",
+                    "ca_mount_path": "/etc/mysql/ssl",
+                    "ca_configmap_for_test": True,
+                },
                 {"sslRootCertificateConfigMap": {"name": "mysql-ca-configmap", "key": "ca-bundle.crt"}},
                 {"cert_name": "ca-bundle.crt"},
             ),

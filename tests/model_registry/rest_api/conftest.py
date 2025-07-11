@@ -90,11 +90,12 @@ def patch_invalid_ca(
     request: pytest.FixtureRequest,
 ) -> Generator[str, Any, Any]:
     """
-    Patches the odh-trusted-ca-bundle ConfigMap with an invalid CA certificate.
+    Patches the ConfigMap with an invalid CA certificate.
     """
     ca_configmap_name = request.param.get("ca_configmap_name", "odh-trusted-ca-bundle")
     ca_file_name = request.param.get("ca_file_name", "invalid-ca.crt")
     ca_file_path = f"{CA_MOUNT_PATH}/{ca_file_name}"
+    LOGGER.info(f"Patching the {ca_configmap_name} ConfigMap with an invalid CA certificate: {ca_file_path}")
     ca_data = {ca_file_name: "-----BEGIN CERTIFICATE-----\nINVALIDCERTIFICATE\n-----END CERTIFICATE-----"}
     ca_configmap = ConfigMap(
         client=admin_client,
@@ -110,6 +111,7 @@ def patch_invalid_ca(
         "data": ca_data,
     }
     with ResourceEditor(patches={ca_configmap: patch}):
+        LOGGER.info(f"Patched the {ca_configmap_name} ConfigMap with an invalid CA certificate: {ca_file_path}")
         yield ca_file_path
 
 
@@ -157,6 +159,7 @@ def deploy_secure_mysql_and_mr(
         model_registry_db_deployment: The deployment for the model registry's MySQL database
         model_registry_mysql_config: The MySQL config dictionary
         mysql_template_with_ca: The MySQL template with the CA file path and volume mount
+        patch_mysql_deployment_with_ssl_ca: The MySQL deployment with the CA file path and volume mount
     """
     with ModelRegistry(
         name=SECURE_MR_NAME,
@@ -238,14 +241,18 @@ def patch_mysql_deployment_with_ssl_ca(
     model_registry_namespace: str,
     model_registry_db_deployment: Deployment,
     mysql_ssl_secrets: dict[str, Any],
-    ca_configmap_for_test: ConfigMap,
 ) -> Generator[Deployment, Any, Any]:
     """
     Patch the MySQL deployment to use the test CA bundle (mysql-ca-configmap),
     and mount the server cert/key for SSL.
     """
+
+    if request.param.get("ca_configmap_for_test"):
+        LOGGER.info("Invoking ca_configmap_for_test fixture")
+        request.getfixturevalue("ca_configmap_for_test")  # noqa: FCN001
     CA_CONFIGMAP_NAME = request.param.get("ca_configmap_name", "mysql-ca-configmap")
     CA_MOUNT_PATH = request.param.get("ca_mount_path", "/etc/mysql/ssl")
+
     deployment = model_registry_db_deployment.instance.to_dict()
     spec = deployment["spec"]["template"]["spec"]
     my_sql_container = next(container for container in spec["containers"] if container["name"] == "mysql")
