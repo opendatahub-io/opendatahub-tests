@@ -5,7 +5,11 @@ from pytest_testconfig import config as py_config
 
 from ocp_resources.pod import Pod
 from ocp_resources.namespace import Namespace
-from tests.model_registry.utils import execute_model_registry_get_command
+from tests.model_registry.utils import (
+    execute_model_registry_get_command,
+    validate_no_grpc_container,
+    validate_mlmd_removal_in_model_registry_pod_log,
+)
 from utilities.constants import DscComponents
 from tests.model_registry.constants import MODEL_NAME, MODEL_DICT
 from model_registry import ModelRegistry as ModelRegistryClient
@@ -87,7 +91,7 @@ class TestModelRegistryCreation:
         if not namespace_env:
             pytest.fail("Missing environment variable REGISTRIES_NAMESPACE")
 
-    def test_model_registry_grpc_container_removal(self, model_registry_deployment_containers: dict[str, Any]):
+    def test_model_registry_grpc_container_removal(self, model_registry_deployment_containers: list[dict[str, Any]]):
         """
         RHOAIENG-26239: Test to ensure removal of grpc container from model registry deployment
         Steps:
@@ -95,10 +99,21 @@ class TestModelRegistryCreation:
             Deploys model registry using the same
             Check model registry deployment for grpc container. It should not be present
         """
+        validate_no_grpc_container(deployment_containers=model_registry_deployment_containers)
 
-        for container in model_registry_deployment_containers:
-            if "grpc" in container["name"]:
-                pytest.fail(f"GRPC container found: {container}")
+    def test_model_registry_pod_log_mlmd_removal(
+        self, model_registry_deployment_containers: list[dict[str, Any]], model_registry_pod: Pod
+    ):
+        """
+        RHOAIENG-26239: Test to ensure removal of grpc container from model registry deployment
+        Steps:
+            Create metadata database
+            Deploys model registry using the same
+            Check model registry deployment for grpc container. It should not be present
+        """
+        validate_mlmd_removal_in_model_registry_pod_log(
+            deployment_containers=model_registry_deployment_containers, pod_object=model_registry_pod
+        )
 
     @pytest.mark.parametrize(
         "endpoint",
