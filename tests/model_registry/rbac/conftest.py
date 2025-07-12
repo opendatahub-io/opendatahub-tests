@@ -1,30 +1,45 @@
+from contextlib import ExitStack
+
 import pytest
 import shlex
 import subprocess
 import os
 from typing import Generator, List, Dict, Any
 
+from _pytest.fixtures import FixtureRequest
+from pytest_testconfig import py_config
 from simple_logger.logger import get_logger
 
+from ocp_resources.data_science_cluster import DataScienceCluster
+from ocp_resources.deployment import Deployment
+from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from ocp_resources.namespace import Namespace
 from ocp_resources.oauth import OAuth
+from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.secret import Secret
+from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.role import Role
 from ocp_resources.group import Group
+
 from ocp_resources.resource import ResourceEditor
 from kubernetes.dynamic import DynamicClient
 from pyhelper_utils.shell import run_command
 
 from tests.model_registry.rbac.utils import wait_for_oauth_openshift_deployment, create_role_binding
+from utilities.constants import DscComponents
 from utilities.general import generate_random_name
-from tests.model_registry.utils import generate_namespace_name
+from tests.model_registry.utils import (
+    generate_namespace_name,
+    wait_for_pods_running,
+)
 from utilities.infra import login_with_user_password
 from utilities.user_utils import UserTestSession, create_htpasswd_file, wait_for_user_creation
 from tests.model_registry.rbac.group_utils import create_group
-from tests.model_registry.constants import MR_INSTANCE_NAME
-
+from tests.model_registry.constants import (
+    MR_INSTANCE_NAME,
+)
 
 LOGGER = get_logger(name=__name__)
 DEFAULT_TOKEN_DURATION = "10m"
@@ -405,3 +420,139 @@ def created_role_binding_user(
         subjects_kind="User",
         subjects_name=test_idp_user.username,
     )
+
+
+# =============================================================================
+# RESOURCE FIXTURES PARMETRIZED
+# =============================================================================
+@pytest.fixture(scope="class")
+def updated_dsc_component_state_parametrized(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    dsc_resource: DataScienceCluster,
+    teardown_resources: bool,
+) -> Generator[DataScienceCluster, Any, Any]:
+    """Configure DSC to use parametrized Model Registry namespace"""
+    if not teardown_resources:
+        yield dsc_resource
+
+    # Get the namespace name from the parameter if provided, otherwise use the default namespace
+    namespace_name = request.param.get("ns_name", py_config["model_registry_namespace"])
+
+    # Set the new namespace and manage
+    component_patch = {
+        DscComponents.MODELREGISTRY: {
+            "managementState": DscComponents.ManagementState.MANAGED,
+            "registriesNamespace": namespace_name,
+        },
+    }
+
+    with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
+        dsc_resource.wait_for_condition(
+            condition=DscComponents.COMPONENT_MAPPING[DscComponents.MODELREGISTRY], status="True"
+        )
+        namespace = Namespace(name=namespace_name, ensure_exists=True)
+        namespace.wait_for_status(status=Namespace.Status.ACTIVE)
+        wait_for_pods_running(
+            admin_client=admin_client,
+            namespace_name=py_config["applications_namespace"],
+            number_of_consecutive_checks=6,
+        )
+        yield dsc_resource
+
+    # Clean up the dynamic namespace
+    namespace = Namespace(name=namespace_name, ensure_exists=True)
+    if namespace:
+        namespace.delete(wait=True)
+
+
+@pytest.fixture(scope="class")
+def db_secret_parametrized(request: FixtureRequest, teardown_resources: bool) -> Generator[List[Secret], Any, Any]:
+    """Create DB Secret parametrized"""
+    with ExitStack() as stack:
+        secrets = [
+            stack.enter_context(
+                Secret(
+                    **param,
+                    teardown=teardown_resources,
+                )
+            )
+            for param in request.param
+        ]
+        yield secrets
+
+
+@pytest.fixture(scope="class")
+def db_pvc_parametrized(
+    request: FixtureRequest, teardown_resources: bool
+) -> Generator[List[PersistentVolumeClaim], Any, Any]:
+    """Create DB PVC parametrized"""
+    with ExitStack() as stack:
+        pvc = [
+            stack.enter_context(
+                PersistentVolumeClaim(
+                    **param,
+                    teardown=teardown_resources,
+                )
+            )
+            for param in request.param
+        ]
+        yield pvc
+
+
+@pytest.fixture(scope="class")
+def db_service_parametrized(request: FixtureRequest, teardown_resources: bool) -> Generator[List[Service], Any, Any]:
+    """Create DB Service parametrized"""
+    with ExitStack() as stack:
+        services = [
+            stack.enter_context(
+                Service(
+                    **param,
+                    teardown=teardown_resources,
+                )
+            )
+            for param in request.param
+        ]
+        yield services
+
+
+@pytest.fixture(scope="class")
+def db_deployment_parametrized(
+    request: FixtureRequest, teardown_resources: bool
+) -> Generator[List[Deployment], Any, Any]:
+    """Create DB Deployment parametrized"""
+    with ExitStack() as stack:
+        deployments = [
+            stack.enter_context(
+                Deployment(
+                    **param,
+                    teardown=teardown_resources,
+                )
+            )
+            for param in request.param
+        ]
+
+        for deployment in deployments:
+            deployment.wait_for_replicas(deployed=True)
+
+        yield deployments
+
+
+@pytest.fixture(scope="class")
+def model_registry_instance_parametrized(
+    request: FixtureRequest, teardown_resources: bool
+) -> Generator[List[ModelRegistry], Any, Any]:
+    """Create Model Registry instance parametrized"""
+    with ExitStack() as stack:
+        model_registry_instances = []
+        for param in request.param:
+            # Common parameters for both ModelRegistry classes
+            mr_instance = stack.enter_context(ModelRegistry(**param))  # noqa: FCN001
+            mr_instance.wait_for_condition(condition="Available", status="True")
+            mr_instance.wait_for_condition(condition="OAuthProxyAvailable", status="True")
+            model_registry_instances.append(mr_instance)
+
+        LOGGER.info(
+            f"Created {len(model_registry_instances)} MR instances: {[mr.name for mr in model_registry_instances]}"
+        )
+        yield model_registry_instances

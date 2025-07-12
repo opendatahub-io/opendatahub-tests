@@ -17,7 +17,8 @@ from tests.model_registry.rest_api.constants import (
     CUSTOM_PROPERTY,
     REGISTERED_MODEL_DESCRIPTION,
 )
-from tests.model_registry.rest_api.utils import validate_resource_attributes, ModelRegistryV1Alpha1
+from tests.model_registry.rest_api.utils import validate_resource_attributes
+from tests.model_registry.utils import ModelRegistryV1Alpha1
 from simple_logger.logger import get_logger
 
 from utilities.constants import DscComponents

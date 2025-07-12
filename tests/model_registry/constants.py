@@ -41,7 +41,7 @@ DB_RESOURCE_NAME: str = f"{DB_BASE_RESOURCES_NAME}0"
 MR_DB_IMAGE_DIGEST: str = (
     "public.ecr.aws/docker/library/mysql@sha256:9de9d54fecee6253130e65154b930978b1fcc336bcc86dfd06e89b72a2588ebe"
 )
-MODEL_REGISTRY_DB_SECRET_STR_DATA = {
+MODEL_REGISTRY_DB_SECRET_STR_DATA: dict[str, str] = {
     "database-name": "model_registry",
     "database-password": "TheBlurstOfTimes",  # pragma: allowlist secret
     "database-user": "mlmduser",  # pragma: allowlist secret
@@ -55,5 +55,5 @@ MODEL_REGISTRY_DB_SECRET_ANNOTATIONS = {
 CA_CONFIGMAP_NAME = "odh-trusted-ca-bundle"
 CA_MOUNT_PATH = "/etc/pki/ca-trust/extracted/pem"
 CA_FILE_PATH = f"{CA_MOUNT_PATH}/ca-bundle.crt"
-NUM_RESOURCES_DEFAULT = {"num_resources": 1}
 NUM_RESOURCES = {"num_resources": 3}
+NUM_MR_INSTANCES: int = 2

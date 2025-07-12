@@ -23,14 +23,18 @@ from ocp_resources.secret import Secret
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.service import Service
 from ocp_resources.deployment import Deployment
+from tests.model_registry.multiple_instance_utils import MR_MULTIPROJECT_TEST_SCENARIO_PARAMS
 from tests.model_registry.rbac.utils import build_mr_client_args, assert_positive_mr_registry, assert_forbidden_access
+from tests.model_registry.constants import NUM_MR_INSTANCES
 from utilities.infra import get_openshift_token
 from utilities.constants import DscComponents
 from mr_openapi.exceptions import ForbiddenException
 from utilities.user_utils import UserTestSession
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
-from tests.model_registry.multiple_instance_utils import MR_MULTIPROJECT_TEST_SCENARIO_PARAMS, NUM_MR_INSTANCES
+from tests.model_registry.utils import get_mr_service_by_label, get_endpoint_from_mr_service
+from tests.model_registry.rbac.utils import grant_mr_access, revoke_mr_access
+from utilities.constants import Protocols
 
 LOGGER = get_logger(name=__name__)
 pytestmark = [pytest.mark.usefixtures("original_user", "test_idp_user")]
@@ -172,10 +176,6 @@ class TestUserMultiProjectPermission:
         Verify that a user can be granted access to one MR instance at a time.
         All resources (MR instances and databases) are created in the same dynamically generated namespace.
         """
-
-        from tests.model_registry.utils import get_mr_service_by_label, get_endpoint_from_mr_service
-        from tests.model_registry.rbac.utils import grant_mr_access, revoke_mr_access
-        from utilities.constants import Protocols
 
         if len(model_registry_instance_parametrized) != NUM_MR_INSTANCES:
             raise ValueError(

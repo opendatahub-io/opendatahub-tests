@@ -7,11 +7,11 @@ from model_registry.types import RegisteredModel
 from model_registry import ModelRegistry as ModelRegistryClient
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from simple_logger.logger import get_logger
-from tests.model_registry.rest_api.utils import ModelRegistryV1Alpha1
 from tests.model_registry.utils import (
     get_and_validate_registered_model,
     validate_no_grpc_container,
     validate_mlmd_removal_in_model_registry_pod_log,
+    ModelRegistryV1Alpha1,
 )
 
 LOGGER = get_logger(name=__name__)
