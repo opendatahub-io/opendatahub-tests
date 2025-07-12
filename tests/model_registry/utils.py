@@ -19,9 +19,9 @@ from tests.model_registry.constants import (
     MODEL_REGISTRY_DB_SECRET_STR_DATA,
     MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
     DB_BASE_RESOURCES_NAME,
+    OAUTH_PROXY_CONFIG_DICT,
 )
 from tests.model_registry.exceptions import ModelRegistryResourceNotFoundError
-from tests.model_registry.rest_api.utils import ModelRegistryV1Alpha1
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
 from utilities.constants import Protocols, Annotations
 from model_registry import ModelRegistry as ModelRegistryClient
@@ -498,10 +498,7 @@ def get_model_registry_objects(
     base_name: str,
     namespace: str,
     client: DynamicClient,
-    mr_class_name: ModelRegistry | ModelRegistryV1Alpha1,
     teardown_resources: bool,
-    istio_config: dict[str, Any] | None,
-    oauth_config: dict[str, Any] | None,
     params: dict[str, Any],
     num: int = 1,
 ) -> list[Any]:
@@ -512,15 +509,14 @@ def get_model_registry_objects(
         if "sslRootCertificateConfigMap" in params:
             mysql["sslRootCertificateConfigMap"] = params["sslRootCertificateConfigMap"]
         model_registry_objects.append(
-            mr_class_name(
+            ModelRegistry(
                 client=client,
                 name=name,
                 namespace=namespace,
                 label=get_mr_standard_labels(resource_name=name),
                 grpc={},
                 rest={},
-                istio=istio_config,
-                oauth_proxy=oauth_config,
+                oauth_proxy=OAUTH_PROXY_CONFIG_DICT,
                 mysql=mysql,
                 wait_for_resource=True,
                 teardown=teardown_resources,

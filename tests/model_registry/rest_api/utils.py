@@ -15,7 +15,6 @@ from tests.model_registry.exceptions import (
 from tests.model_registry.rest_api.constants import MODEL_REGISTRY_BASE_URI, MODEL_REGISTER_DATA
 from pyhelper_utils.shell import run_command
 from utilities.exceptions import ResourceValueMismatch
-from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
 
 LOGGER = get_logger(name=__name__)
@@ -267,7 +266,3 @@ def get_register_model_data(num_models: int) -> list[dict[str, Any]]:
 
 def get_mr_deployment(admin_client: DynamicClient, mr_namespace: str) -> list[Deployment]:
     return list(Deployment.get(dyn_client=admin_client, namespace=mr_namespace))
-
-
-class ModelRegistryV1Alpha1(ModelRegistry):
-    api_version = f"{ModelRegistry.ApiGroup.MODELREGISTRY_OPENDATAHUB_IO}/{ModelRegistry.ApiVersion.V1ALPHA1}"

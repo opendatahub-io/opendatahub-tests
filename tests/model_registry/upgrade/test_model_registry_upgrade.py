@@ -7,7 +7,6 @@ from model_registry.types import RegisteredModel
 from model_registry import ModelRegistry as ModelRegistryClient
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from simple_logger.logger import get_logger
-from tests.model_registry.rest_api.utils import ModelRegistryV1Alpha1
 from tests.model_registry.utils import (
     get_and_validate_registered_model,
     validate_no_grpc_container,
@@ -74,22 +73,6 @@ class TestPostUpgradeModelRegistry:
         model_registry_instance_spec = model_registry_instance_mysql[0].instance.spec
         assert not model_registry_instance_spec.istio
         assert model_registry_instance_spec.oauthProxy.serviceRoute == "enabled"
-
-    @pytest.mark.post_upgrade
-    def test_model_registry_instance_status_conversion_post_upgrade(
-        self: Self,
-        model_registry_instance_mysql: list[Any],
-    ):
-        # TODO: After v1alpha1 is removed (2.24?) this has to be removed
-        mr_instance = ModelRegistryV1Alpha1(
-            name=model_registry_instance_mysql[0].name,
-            namespace=model_registry_instance_mysql[0].namespace,
-            ensure_exists=True,
-        ).instance
-        status = mr_instance.status.to_dict()
-        LOGGER.info(f"Validating MR status {status}")
-        if not status:
-            pytest.fail(f"Empty status found for {mr_instance}")
 
     @pytest.mark.post_upgrade
     def test_model_registry_grpc_container_removal_post_upgrade(

@@ -17,7 +17,7 @@ from tests.model_registry.rest_api.constants import (
     CUSTOM_PROPERTY,
     REGISTERED_MODEL_DESCRIPTION,
 )
-from tests.model_registry.rest_api.utils import validate_resource_attributes, ModelRegistryV1Alpha1
+from tests.model_registry.rest_api.utils import validate_resource_attributes
 from simple_logger.logger import get_logger
 
 from utilities.constants import DscComponents
@@ -115,17 +115,6 @@ class TestModelRegistryCreationRest:
         LOGGER.info(f"Validating that MR is using oauth proxy {model_registry_instance_spec}")
         assert not model_registry_instance_spec.istio
         assert model_registry_instance_spec.oauthProxy.serviceRoute == "enabled"
-
-    def test_model_registry_validate_mr_status_v1alpha1(self: Self, model_registry_instance_mysql):
-        mr_instance = ModelRegistryV1Alpha1(
-            name=model_registry_instance_mysql[0].name,
-            namespace=model_registry_instance_mysql[0].namespace,
-            ensure_exists=True,
-        ).instance
-        status = mr_instance.status.to_dict()
-        LOGGER.info(f"Validating MR status {status}")
-        if not status:
-            pytest.fail(f"Empty status found for {mr_instance}")
 
     @pytest.mark.parametrize(
         "updated_model_registry_resource, expected_param",
