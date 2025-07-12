@@ -3,19 +3,30 @@ from typing import Any, List
 
 import requests
 from kubernetes.dynamic import DynamicClient
+
+from ocp_resources.deployment import Deployment
+from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
+from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 from kubernetes.dynamic.exceptions import NotFoundError
-from tests.model_registry.constants import MR_DB_IMAGE_DIGEST
+from tests.model_registry.constants import (
+    MR_DB_IMAGE_DIGEST,
+    MODEL_REGISTRY_DB_SECRET_STR_DATA,
+    MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
+    DB_BASE_RESOURCES_NAME,
+)
 from tests.model_registry.exceptions import ModelRegistryResourceNotFoundError
+from tests.model_registry.rest_api.utils import ModelRegistryV1Alpha1
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
 from utilities.constants import Protocols, Annotations
 from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
+
 
 ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
 
@@ -362,6 +373,171 @@ def execute_model_registry_get_command(url: str, headers: dict[str, str], json_o
             raise
     else:
         return {"raw_output": resp.text}
+
+
+def get_mr_service_objects(
+    base_name: str, namespace: str, client: DynamicClient, teardown_resources: bool, num: int = 1
+) -> list[Service]:
+    services = []
+    annotation = {
+        "template.openshift.io/expose-uri": r"mysql://{.spec.clusterIP}:{.spec.ports[?(.name==\mysql\)].port}"
+    }
+    for num_service in range(0, num):
+        name = f"{base_name}{num_service}"
+        services.append(
+            Service(
+                client=client,
+                name=name,
+                namespace=namespace,
+                ports=[
+                    {
+                        "name": "mysql",
+                        "nodePort": 0,
+                        "port": 3306,
+                        "protocol": "TCP",
+                        "appProtocol": "tcp",
+                        "targetPort": 3306,
+                    }
+                ],
+                selector={
+                    "name": name,
+                },
+                label=get_model_registry_db_label_dict(db_resource_name=name),
+                annotations=annotation,
+                teardown=teardown_resources,
+            )
+        )
+    return services
+
+
+def get_mr_pvc_objects(
+    base_name: str, namespace: str, client: DynamicClient, teardown_resources: bool, num: int = 1
+) -> list[PersistentVolumeClaim]:
+    pvcs = []
+    for num_pvc in range(0, num):
+        name = f"{base_name}{num_pvc}"
+        pvcs.append(
+            PersistentVolumeClaim(
+                accessmodes="ReadWriteOnce",
+                name=name,
+                namespace=namespace,
+                client=client,
+                size="5Gi",
+                label=get_model_registry_db_label_dict(db_resource_name=name),
+                teardown=teardown_resources,
+            )
+        )
+    return pvcs
+
+
+def get_mr_secret_objects(
+    base_name: str, namespace: str, client: DynamicClient, teardown_resources: bool, num: int = 1
+) -> list[Secret]:
+    secrets = []
+    for num_secret in range(0, num):
+        name = f"{base_name}{num_secret}"
+        secrets.append(
+            Secret(
+                client=client,
+                name=name,
+                namespace=namespace,
+                string_data=MODEL_REGISTRY_DB_SECRET_STR_DATA,
+                label=get_model_registry_db_label_dict(db_resource_name=name),
+                annotations=MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
+                teardown=teardown_resources,
+            )
+        )
+    return secrets
+
+
+def get_mr_deployment_objects(
+    base_name: str,
+    namespace: str,
+    client: DynamicClient,
+    teardown_resources: bool,
+    num: int = 1,
+) -> list[Deployment]:
+    deployments = []
+    for num_deployment in range(0, num):
+        name = f"{base_name}{num_deployment}"
+        secret_name = f"{DB_BASE_RESOURCES_NAME}{num_deployment}"
+        secret = Secret(name=secret_name, namespace=namespace, ensure_exists=True)
+        assert secret, f"Secret {name} not found"
+        LOGGER.warning(f"Secret used: {secret.name}")
+        deployments.append(
+            Deployment(
+                name=name,
+                client=client,
+                namespace=namespace,
+                annotations={
+                    "template.alpha.openshift.io/wait-for-ready": "true",
+                },
+                label=get_model_registry_db_label_dict(db_resource_name=name),
+                replicas=1,
+                revision_history_limit=0,
+                selector={"matchLabels": {"name": name}},
+                strategy={"type": "Recreate"},
+                template=get_model_registry_deployment_template_dict(secret_name=secret_name, resource_name=name),
+                wait_for_resource=True,
+                teardown=teardown_resources,
+            )
+        )
+    return deployments
+
+
+def get_mr_standard_labels(resource_name: str) -> dict[str, str]:
+    return {
+        Annotations.KubernetesIo.NAME: resource_name,
+        Annotations.KubernetesIo.INSTANCE: resource_name,
+        Annotations.KubernetesIo.PART_OF: resource_name,
+        Annotations.KubernetesIo.CREATED_BY: resource_name,
+    }
+
+
+def get_model_registry_objects(
+    base_name: str,
+    namespace: str,
+    client: DynamicClient,
+    mr_class_name: ModelRegistry | ModelRegistryV1Alpha1,
+    teardown_resources: bool,
+    istio_config: dict[str, Any] | None,
+    oauth_config: dict[str, Any] | None,
+    params: dict[str, Any],
+    num: int = 1,
+) -> list[Any]:
+    model_registry_objects = []
+    for num_mr in range(0, num):
+        name = f"{base_name}{num_mr}"
+        mysql = get_mysql_config(base_name=f"{DB_BASE_RESOURCES_NAME}{num_mr}", namespace=namespace)
+        if "sslRootCertificateConfigMap" in params:
+            mysql["sslRootCertificateConfigMap"] = params["sslRootCertificateConfigMap"]
+        model_registry_objects.append(
+            mr_class_name(
+                client=client,
+                name=name,
+                namespace=namespace,
+                label=get_mr_standard_labels(resource_name=name),
+                grpc={},
+                rest={},
+                istio=istio_config,
+                oauth_proxy=oauth_config,
+                mysql=mysql,
+                wait_for_resource=True,
+                teardown=teardown_resources,
+            )
+        )
+    return model_registry_objects
+
+
+def get_mysql_config(base_name: str, namespace: str) -> dict[str, Any]:
+    return {
+        "host": f"{base_name}.{namespace}.svc.cluster.local",
+        "database": MODEL_REGISTRY_DB_SECRET_STR_DATA["database-name"],
+        "passwordSecret": {"key": "database-password", "name": base_name},
+        "port": 3306,
+        "skipDBCreation": False,
+        "username": MODEL_REGISTRY_DB_SECRET_STR_DATA["database-user"],
+    }
 
 
 def validate_no_grpc_container(deployment_containers: list[dict[str, Any]]) -> None:
