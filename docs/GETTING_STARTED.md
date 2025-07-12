@@ -58,6 +58,35 @@ uv run pytest -c custom-pytest.ini
 uv run pytest -k test_name
 ```
 
+### Running smoke/sanity test suites
+
+The test suite is organized into different markers, and directories are arranged based on their components:
+
+#### Smoke/Sanity Tests
+```bash
+uv run pytest -m <marker> ./tests/path-of-component
+```
+You can omit `./tests/path-of-component` if you want to run markers for all components.
+
+#### Excluding Test Suites
+You can exclude one or multiple test suites from execution using the `--ignore` option:
+```bash
+# Ignore a single test suite
+uv run pytest --ignore=tests/{model_registry,workbenches}
+```
+
+#### Combining Test Categories
+You can combine multiple test categories or exclude specific ones:
+
+eg:
+```bash
+# Run smoke and sanity tests
+uv run pytest -m "smoke or sanity"
+
+# Run smoke tests for serverless functionality only
+uv run pytest -m "smoke and serverless"
+```
+
 ### Running on different distributions
 Bt default, RHOAI distribution is set.  
 To run on ODH, pass `--tc=distribution:upstream` to pytest.
@@ -68,10 +97,11 @@ To skip cluster sanity checks, pass `--cluster-sanity-skip-check` to skip all te
 To skip RHOAI/ODH-related tests (for example when running in upstream), pass `--cluster-sanity-skip-rhoai-check`.
 
 ### Check dependent operators
-By default, `Serveless` (serverless-operator), `Authorino` (authorino-operator) and `Service Mesh` (servicemeshoperator) operators are checked to be installed when  
+By default, `Serverless` (serverless-operator), `Authorino` (authorino-operator) and `Service Mesh` (servicemeshoperator) operators are checked to be installed when  
 running model server Serverless tests.
 To check only specific operator, pass `--tc=dependent_operators:<operator_name>` to pytest.
-For example, to check only `Serveless` and `Service Mesh` operators, pass `--tc=dependent_operators:serverless-operator,servicemeshoperator`.
+For example, to check only `Serverless` and `Service Mesh` operators, pass `--tc=dependent_operators:serverless-operator,servicemeshoperator`.
+When you don't want to check any dependent operators, pass `--tc=dependent_operators:""`.
 
 
 ### Running tests with admin client instead of unprivileged client
