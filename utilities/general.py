@@ -350,8 +350,27 @@ def wait_for_container_status(pod: Pod, container_name: str, expected_status: st
         ResourceValueMismatch: If the container is not in the expected status
     """
 
+    container_status = None
     for cs in pod.instance.status.get("containerStatuses", []):
-        if cs.name == container_name and cs.state.waiting.reason == expected_status:
-            LOGGER.info(f"Pod is in the expected status {expected_status}")
-            return True
-    raise ResourceValueMismatch(f"Pod is not in the expected status {expected_status}")
+        if cs.name == container_name:
+            container_status = cs
+            break
+    if container_status is None:
+        raise ResourceValueMismatch(f"Container {container_name} not found in pod {pod.name}")
+
+    if container_status.state.waiting:
+        reason = container_status.state.waiting.reason
+    elif container_status.state.terminated:
+        reason = container_status.state.terminated.reason
+    elif container_status.state.running:
+        # Running container does not have a reason
+        reason = "Running"
+    else:
+        raise ResourceValueMismatch(
+            f"{container_name} in {pod.name} is in an unrecognized or transitional state: {container_status.state}"
+        )
+
+    if reason == expected_status:
+        LOGGER.info(f"Container {container_name} is in the expected status {expected_status}")
+        return True
+    raise ResourceValueMismatch(f"Container {container_name} is not in the expected status {container_status.state}")
