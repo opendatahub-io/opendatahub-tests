@@ -108,6 +108,11 @@ def pytest_addoption(parser: Parser) -> None:
         help="Specify the runtime image to use for the tests",
     )
     runtime_group.addoption(
+        "--triton-runtime-image",
+        default=os.environ.get("TRITON_RUNTIME_IMAGE"),
+        help="Specify the runtime image to use for the tests",
+    )
+    runtime_group.addoption(
         "--mlserver-runtime-image",
         default=os.environ.get("MLSERVER_RUNTIME_IMAGE"),
         help="Specify the runtime image to use for the tests",
