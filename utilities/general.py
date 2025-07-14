@@ -4,7 +4,7 @@ from typing import List, Tuple
 import uuid
 
 from kubernetes.dynamic import DynamicClient
-from kubernetes.dynamic.exceptions import ResourceNotFoundError
+from kubernetes.dynamic.exceptions import ResourceNotFoundError, NotFoundError
 from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
@@ -333,7 +333,11 @@ def generate_random_name(prefix: str = "", length: int = 8) -> str:
     return f"{prefix}-{suffix}" if prefix else suffix
 
 
-@retry(wait_timeout=Timeout.TIMEOUT_15_SEC, sleep=1)
+@retry(
+    wait_timeout=Timeout.TIMEOUT_15_SEC,
+    sleep=1,
+    exceptions_dict={ResourceValueMismatch: [], ResourceNotFoundError: [], NotFoundError: []},
+)
 def wait_for_container_status(pod: Pod, container_name: str, expected_status: str) -> bool:
     """
     Wait for a container to be in the expected status.
