@@ -72,8 +72,8 @@ def model_registry_db_service(
     request: pytest.FixtureRequest,
     pytestconfig: Config,
     admin_client: DynamicClient,
-        teardown_resources: bool,
-        model_registry_namespace: str,
+    teardown_resources: bool,
+    model_registry_namespace: str,
     is_model_registry_oauth: bool,
 ) -> Generator[list[Service], Any, Any]:
     num_resources = getattr(request, "param", {}).get("num", 1)
@@ -99,8 +99,8 @@ def model_registry_db_pvc(
     request: pytest.FixtureRequest,
     pytestconfig: Config,
     admin_client: DynamicClient,
-        teardown_resources: bool,
-        model_registry_namespace: str,
+    teardown_resources: bool,
+    model_registry_namespace: str,
     is_model_registry_oauth: bool,
 ) -> Generator[list[PersistentVolumeClaim], Any, Any]:
     num_resources = getattr(request, "param", {}).get("num", 1)
@@ -126,8 +126,8 @@ def model_registry_db_secret(
     request: pytest.FixtureRequest,
     pytestconfig: Config,
     admin_client: DynamicClient,
-        teardown_resources: bool,
-        model_registry_namespace: str,
+    teardown_resources: bool,
+    model_registry_namespace: str,
     is_model_registry_oauth: bool,
 ) -> Generator[list[Secret], Any, Any]:
     num_resources = getattr(request, "param", {}).get("num", 1)
@@ -153,8 +153,8 @@ def model_registry_db_deployment(
     request: pytest.FixtureRequest,
     pytestconfig: Config,
     admin_client: DynamicClient,
-        teardown_resources: bool,
-        model_registry_namespace: str,
+    teardown_resources: bool,
+    model_registry_namespace: str,
     is_model_registry_oauth: bool,
 ) -> Generator[list[Deployment], Any, Any]:
     num_resources = getattr(request, "param", {}).get("num", 1)
@@ -192,8 +192,8 @@ def model_registry_instance_mysql(
     request: pytest.FixtureRequest,
     pytestconfig: Config,
     admin_client: DynamicClient,
-        teardown_resources: bool,
-        model_registry_namespace: str,
+    teardown_resources: bool,
+    model_registry_namespace: str,
     is_model_registry_oauth: bool,
 ) -> Generator[list[Any], Any, Any]:
     """Creates a model registry instance with oauth proxy configuration."""
