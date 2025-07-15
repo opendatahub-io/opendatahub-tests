@@ -5,6 +5,9 @@
     ":maintainLockFilesWeekly",
     ":prHourlyLimitNone"
   ],
+  "constraints": {
+    "python": "==3.12"
+  },
   "prConcurrentLimit": 0,
   "lockFileMaintenance": {
     "enabled": true
