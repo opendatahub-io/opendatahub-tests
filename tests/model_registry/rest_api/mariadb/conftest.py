@@ -4,6 +4,7 @@ import pytest
 
 from ocp_resources.maria_db import MariaDB
 from ocp_resources.mariadb_operator import MariadbOperator
+from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from tests.model_registry.rest_api.mariadb.utils import get_mariadb_dict
 from tests.model_registry.utils import wait_for_pods_running
 from utilities.constants import OPENSHIFT_OPERATORS, MARIADB
@@ -41,6 +42,10 @@ def deployed_mariadb(
         secret = Secret(name=secret_name, namespace=OPENSHIFT_OPERATORS)
         if secret.exists:
             secret.clean_up()
+        for pvc in PersistentVolumeClaim.get(dyn_client=admin_client):
+            if mariadb_str in pvc.name:
+                LOGGER.warning(f"Deleting pvc: {pvc.name}")
+                pvc.clean_up()
 
 
 @pytest.fixture(scope="class")
