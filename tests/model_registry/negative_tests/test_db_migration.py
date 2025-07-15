@@ -7,7 +7,7 @@ from ocp_resources.pod import Pod
 from utilities.constants import DscComponents
 from tests.model_registry.constants import MR_INSTANCE_NAME
 from kubernetes.dynamic.client import DynamicClient
-from utilities.general import wait_for_pods_by_labels
+from utilities.general import wait_for_pods_by_labels, wait_for_container_status
 
 
 LOGGER = get_logger(name=__name__)
@@ -52,6 +52,9 @@ class TestDBMigration:
             expected_num_pods=1,
         )
         mr_pod = mr_pods[0]
+        LOGGER.info("Waiting for model registry pod to crash")
+        assert wait_for_container_status(mr_pod, "rest-container", Pod.Status.CRASH_LOOPBACK_OFF)
+
         LOGGER.info("Checking the logs for the expected error")
 
         log_output = mr_pod.log(container="rest-container")

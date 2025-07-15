@@ -73,6 +73,8 @@ class RuntimeTemplates:
     VLLM_GAUDUI: str = "vllm-gaudi-runtime-template"
     MLSERVER_GRPC: str = "mlserver-grpc-runtime-template"
     MLSERVER_REST: str = "mlserver-rest-runtime-template"
+    TRITON_REST: str = "triton-rest-runtime-template"
+    TRITON_GRPC: str = "triton-grpc-runtime-template"
 
 
 class ModelInferenceRuntime:
@@ -200,6 +202,9 @@ class Labels:
     class Nvidia:
         NVIDIA_COM_GPU: str = "nvidia.com/gpu"
 
+    class ROCm:
+        ROCM_GPU: str = "amd.com/gpu"
+
     class Kueue:
         # TODO: Change to kueue.openshift.io/managed once it's working
         MANAGED: str = "kueue-managed"
@@ -237,7 +242,8 @@ class RunTimeConfigs:
 
 class ModelCarImage:
     MNIST_8_1: str = (
-        "oci://quay.io/mwaykole/test@sha256:8a3217bcfa2cc5fa3d07496cff8b234acdf2c9725dd307dc0a80401f55e1a11c"  # noqa: E501
+        "oci://quay.io/mwaykole/test@sha256:8a3217bcfa2cc5fa3d07496cff8b234acdf2c9725dd307dc0a80401f55e1a11c"
+        # noqa: E501
     )
     GRANITE_8B_CODE_INSTRUCT: str = "oci://registry.redhat.io/rhelai1/modelcar-granite-8b-code-instruct:1.4"
 
@@ -260,7 +266,8 @@ class MinIo:
 
     class PodConfig:
         KSERVE_MINIO_IMAGE: str = (
-            "quay.io/jooholee/model-minio@sha256:b50aa0fbfea740debb314ece8e925b3e8e761979f345b6cd12a6833efd04e2c2"  # noqa: E501
+            "quay.io/jooholee/model-minio@sha256:b50aa0fbfea740debb314ece8e925b3e8e761979f345b6cd12a6833efd04e2c2"
+            # noqa: E501
         )
 
         MINIO_BASE_CONFIG: dict[str, Any] = {
@@ -274,12 +281,16 @@ class MinIo:
         }
 
         MODEL_MESH_MINIO_CONFIG: dict[str, Any] = {
-            "image": "quay.io/trustyai_testing/modelmesh-minio-examples@sha256:d2ccbe92abf9aa5085b594b2cae6c65de2bf06306c30ff5207956eb949bb49da",  # noqa: E501
+            "image": "quay.io/trustyai_testing/modelmesh-minio-examples@"
+            "sha256:d2ccbe92abf9aa5085b594b2cae6c65de2bf06306c30ff5207956eb949bb49da",
+            # noqa: E501
             **MINIO_BASE_CONFIG,
         }
 
         QWEN_MINIO_CONFIG: dict[str, Any] = {
-            "image": "quay.io/trustyai_testing/hf-llm-minio@sha256:2404a37d578f2a9c7adb3971e26a7438fedbe7e2e59814f396bfa47cd5fe93bb",  # noqa: E501
+            "image": "quay.io/trustyai_testing/hf-llm-minio@"
+            "sha256:2404a37d578f2a9c7adb3971e26a7438fedbe7e2e59814f396bfa47cd5fe93bb",
+            # noqa: E501
             **MINIO_BASE_CONFIG,
         }
 
