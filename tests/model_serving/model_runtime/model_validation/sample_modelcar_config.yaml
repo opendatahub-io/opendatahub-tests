@@ -1,0 +1,16 @@
+modelcar_image_name:
+  - modelcar-granite-3-1-8b-base-quantized-w4a16:1.5
+  - modelcar-llama-3-1-8b-instruct:1.5
+  - modelcar-mistral-7b-instruct-v0-3-quantized-w4a16:1.5
+
+serving_arguments:
+  - "--uvicorn-log-level=debug"
+  - "--max-model-len=1024"
+  - "--trust-remote-code"
+  - "--distributed-executor-backend=mp"
+
+vllm_runtime_image: quay.io/modh/vllm@sha256:67822ff98835488ee34c25c2349b7b3d8c401928c45181b46ed533a9ccd7caba
+
+supported_accelerator_type: Nvidia
+
+registry_host: registry.redhat.io

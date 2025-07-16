@@ -1,7 +1,7 @@
 [
   {
     "id": "granite-8b-oci",
-    "max_model_len": 1024,
+    "max_model_len": 131072,
     "object": "model",
     "owned_by": "vllm",
     "parent": null,

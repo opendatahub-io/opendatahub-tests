@@ -194,28 +194,51 @@ def ci_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str:
 
 
 @pytest.fixture(scope="session")
-def registry_host(pytestconfig: pytest.Config) -> str:
-    registry_host = pytestconfig.option.registry_host
+def registry_host(pytestconfig: pytest.Config, modelcar_yaml_config: dict[str, str] | None) -> str | None:
+    """
+    Fixture to get the registry host from the modelcar.yaml file or pytest configuration.
+    """
+    if modelcar_yaml_config:
+        registry_host = modelcar_yaml_config.get("registry_host")
+    else:
+        registry_host = pytestconfig.option.registry_host
     if not registry_host:
         pytest.skip("Registry host is not defined. Skipping tests that require it.")
     return registry_host
 
 
 @pytest.fixture(scope="session")
-def serving_argument(pytestconfig: pytest.Config) -> list[str]:
-    """
-    Fixture to get the serving arguments for the model serving runtime.
-    """
-    serving_argument = pytestconfig.option.serving_argument
-    if not serving_argument:
-        pytest.skip("Serving arguments are not defined. Skipping tests that require it.")
+def serving_argument(pytestconfig: pytest.Config, modelcar_yaml_config: dict[str, Any] | None) -> list[str]:
+    if modelcar_yaml_config:
+        arg = modelcar_yaml_config.get("serving_argument", [])
+        return arg if isinstance(arg, list) else [arg]
+
+    raw_arg = pytestconfig.option.serving_argument
     try:
-        return json.loads(serving_argument)
+        return json.loads(raw_arg)
     except json.JSONDecodeError:
         raise ValueError(
             "Serving arguments should be a valid JSON list. "
-            "Either pass with `--serving-argument` or set `SERVING_ARGUMENT` environment variable"
+            "Either pass with `--serving-argument` or set it correctly in modelcar.yaml"
         )
+
+
+@pytest.fixture(scope="session")
+def modelcar_yaml_config(pytestconfig: pytest.Config) -> dict[str, Any] | None:
+    """
+    Fixture to get the path to the modelcar.yaml file.
+    """
+    config_path = pytestconfig.option.modelcar_yaml_path
+    if not config_path:
+        return None
+    with open(config_path, "r") as file:
+        try:
+            modelcar_yaml = yaml.safe_load(file)
+            if not isinstance(modelcar_yaml, dict):
+                raise ValueError("modelcar.yaml should contain a dictionary.")
+            return modelcar_yaml
+        except yaml.YAMLError as e:
+            raise ValueError(f"Error parsing modelcar.yaml: {e}") from e
 
 
 @pytest.fixture(scope="session")
@@ -259,32 +282,51 @@ def models_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str | None:
 
 
 @pytest.fixture(scope="session")
-def model_image_name(pytestconfig: pytest.Config) -> list[str]:
-    model_image = pytestconfig.option.modelcar_image_name
-    if not model_image:
+def model_image_name(pytestconfig: pytest.Config, modelcar_yaml_config: dict[str, Any] | None) -> list[str]:
+    """
+    Fixture to get the list of model image names from modelcar.yaml or CLI option.
+    """
+    if modelcar_yaml_config:
+        model_image = modelcar_yaml_config.get("modelcar_image_name", [])
+        return model_image if isinstance(model_image, list) else model_image.split(",")
+
+    model_image_arg = pytestconfig.option.modelcar_image_name
+    if not model_image_arg:
         pytest.skip("Model image name is not defined. Skipping tests that require it.")
-    return model_image.split(",")
+    return model_image_arg.split(",")
 
 
 @pytest.fixture(scope="session")
-def supported_accelerator_type(pytestconfig: pytest.Config) -> str | None:
-    accelerator_type = pytestconfig.option.supported_accelerator_type
+def supported_accelerator_type(pytestconfig: pytest.Config, modelcar_yaml_config: dict[str, Any] | None) -> str | None:
+    """
+    Fixture to get the supported accelerator type from modelcar.yaml or CLI option.
+    """
+    accelerator_type = (
+        modelcar_yaml_config.get("supported_accelerator_type")
+        if modelcar_yaml_config
+        else pytestconfig.option.supported_accelerator_type
+    )
+
     if not accelerator_type:
         return None
-    if accelerator_type.lower() not in AcceleratorType.SUPPORTED_LISTS:
+
+    accelerator_type = accelerator_type.lower()
+    if accelerator_type not in AcceleratorType.SUPPORTED_LISTS:
         raise ValueError(
-            "accelerator type is not defined."
-            "Either pass with `--supported-accelerator-type` or set `SUPPORTED_ACCLERATOR_TYPE` environment variable"
+            f"Unsupported accelerator type: '{accelerator_type}'. Supported types: {AcceleratorType.SUPPORTED_LISTS}"
         )
     return accelerator_type
 
 
 @pytest.fixture(scope="session")
-def vllm_runtime_image(pytestconfig: pytest.Config) -> str | None:
-    runtime_image = pytestconfig.option.vllm_runtime_image
-    if not runtime_image:
-        return None
-    return runtime_image
+def vllm_runtime_image(pytestconfig: pytest.Config, modelcar_yaml_config: dict[str, Any] | None) -> str | None:
+    """
+    Fixture to get the vLLM runtime image from modelcar.yaml or CLI option.
+    """
+    if modelcar_yaml_config:
+        return modelcar_yaml_config.get("vllm_runtime_image")
+
+    return pytestconfig.option.vllm_runtime_image or None
 
 
 @pytest.fixture(scope="session")

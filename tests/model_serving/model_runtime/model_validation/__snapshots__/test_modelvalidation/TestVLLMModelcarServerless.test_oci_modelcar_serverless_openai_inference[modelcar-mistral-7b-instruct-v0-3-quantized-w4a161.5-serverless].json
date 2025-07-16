@@ -1,7 +1,7 @@
 [
   {
     "id": "mistral-7b-oci",
-    "max_model_len": 1024,
+    "max_model_len": 32768,
     "object": "model",
     "owned_by": "vllm",
     "parent": null,

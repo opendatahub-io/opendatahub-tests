@@ -28,6 +28,7 @@ from tests.model_serving.model_runtime.model_validation.constant import (
     BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
     BASE_RAW_DEPLOYMENT_CONFIG,
 )
+import yaml
 from syrupy.extensions.json import JSONSnapshotExtension
 
 LOGGER = get_logger(name=__name__)
@@ -267,8 +268,23 @@ def build_serverless_params(image_list: list[str]) -> tuple[list[pytest.param], 
 
 
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
-    image_arg = metafunc.config.getoption(name="--modelcar_image_name")
-    image_list = image_arg.split(",") if image_arg else []
+    yaml_config = None
+    yaml_path = metafunc.config.getoption(name="modelcar_yaml_path")
+    if yaml_path:
+        with open(yaml_path, "r") as f:
+            yaml_config = yaml.safe_load(f)
+
+    if yaml_config and "modelcar_image_name" in yaml_config:
+        model_images = yaml_config["modelcar_image_name"]
+        if isinstance(model_images, str):
+            image_list = [x.strip() for x in model_images.split(",")]
+        elif isinstance(model_images, list):
+            image_list = model_images
+        else:
+            raise ValueError("Invalid format for `model_image_name` in YAML.")
+    else:
+        image_arg = metafunc.config.getoption(name="modelcar_image_name")
+        image_list = image_arg.split(",") if image_arg else []
 
     if metafunc.cls.__name__ == "TestVLLMModelcarRaw":
         params, ids = build_raw_params(image_list=image_list)
