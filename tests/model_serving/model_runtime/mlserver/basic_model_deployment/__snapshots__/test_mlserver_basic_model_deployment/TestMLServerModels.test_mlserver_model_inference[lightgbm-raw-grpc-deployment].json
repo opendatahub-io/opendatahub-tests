@@ -1,5 +1,5 @@
 {
-  "modelName": "lightgbm-iris",
+  "modelName": "lightgbm",
   "modelVersion": "v0.1.0",
   "outputs": [
     {
