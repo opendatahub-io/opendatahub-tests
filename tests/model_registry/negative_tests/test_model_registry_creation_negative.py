@@ -12,10 +12,10 @@ from utilities.constants import DscComponents, Annotations
 from tests.model_registry.constants import (
     MR_OPERATOR_NAME,
     MR_INSTANCE_NAME,
-    ISTIO_CONFIG_DICT,
     DB_RESOURCES_NAME,
+    OAUTH_PROXY_CONFIG_DICT,
 )
-from kubernetes.dynamic.exceptions import UnprocessibleEntityError
+from kubernetes.dynamic.exceptions import ForbiddenError
 
 
 LOGGER = get_logger(name=__name__)
@@ -51,6 +51,12 @@ LOGGER = get_logger(name=__name__)
     ],
     indirect=["model_registry_namespace_for_negative_tests", "updated_dsc_component_state_scope_class"],
 )
+@pytest.mark.usefixtures(
+    "model_registry_namespace_for_negative_tests",
+    "updated_dsc_component_state_scope_class",
+    "model_registry_db_secret_negative_test",
+    "model_registry_db_deployment_negative_test",
+)
 class TestModelRegistryCreationNegative:
     def test_registering_model_negative(
         self: Self,
@@ -71,7 +77,7 @@ class TestModelRegistryCreationNegative:
             "username": model_registry_db_secret_negative_test.string_data["database-user"],
         }
         with pytest.raises(
-            UnprocessibleEntityError,
+            ForbiddenError,  # UnprocessibleEntityError
             match=f"namespace must be {expected_namespace}",
         ):
             with ModelRegistry(
@@ -85,7 +91,7 @@ class TestModelRegistryCreationNegative:
                 },
                 grpc={},
                 rest={},
-                istio=ISTIO_CONFIG_DICT,
+                oauth_proxy=OAUTH_PROXY_CONFIG_DICT,
                 mysql=my_sql_dict,
                 wait_for_resource=True,
             ):

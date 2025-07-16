@@ -1,8 +1,9 @@
 import pytest
 from typing import Self
+
+from pytest_testconfig import py_config
 from simple_logger.logger import get_logger
 from _pytest.fixtures import FixtureRequest
-from pytest_testconfig import config as py_config
 
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
@@ -13,11 +14,11 @@ from tests.model_registry.scc.utils import (
     KEYS_TO_VALIDATE,
     validate_containers_pod_security_context,
 )
-from utilities.constants import DscComponents
 from tests.model_registry.constants import MODEL_DICT, MR_INSTANCE_NAME
 
 from kubernetes.dynamic import DynamicClient
 from ocp_utilities.infra import get_pods_by_name_prefix
+from utilities.constants import DscComponents
 
 LOGGER = get_logger(name=__name__)
 
@@ -67,7 +68,13 @@ def model_registry_resource(
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("updated_dsc_component_state_scope_class", "registered_model")
+@pytest.mark.usefixtures(
+    "updated_dsc_component_state_scope_class",
+    "is_model_registry_oauth",
+    "model_registry_mysql_metadata_db",
+    "model_registry_instance_mysql",
+    "registered_model",
+)
 class TestModelRegistrySecurityContextValidation:
     @pytest.mark.parametrize(
         "model_registry_resource",

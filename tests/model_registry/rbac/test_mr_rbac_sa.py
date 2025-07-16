@@ -12,37 +12,26 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(
-    "updated_dsc_component_state_scope_class, is_model_registry_oauth",
+    "updated_dsc_component_state_scope_class",
     [
-        pytest.param(
-            {
-                "component_patch": {
-                    DscComponents.MODELREGISTRY: {
-                        "managementState": DscComponents.ManagementState.MANAGED,
-                        "registriesNamespace": py_config["model_registry_namespace"],
-                    },
-                }
-            },
-            {"use_oauth_proxy": False},
-            id="servicemesh",
-        ),
-        pytest.param(
-            {
-                "component_patch": {
-                    DscComponents.MODELREGISTRY: {
-                        "managementState": DscComponents.ManagementState.MANAGED,
-                        "registriesNamespace": py_config["model_registry_namespace"],
-                    },
-                }
-            },
-            {"use_oauth_proxy": True},
-            id="oauth",
-        ),
+        pytest.param({
+            "component_patch": {
+                DscComponents.MODELREGISTRY: {
+                    "managementState": DscComponents.ManagementState.MANAGED,
+                    "registriesNamespace": py_config["model_registry_namespace"],
+                },
+            }
+        }),
     ],
     indirect=True,
     scope="class",
 )
-@pytest.mark.usefixtures("updated_dsc_component_state_scope_class", "is_model_registry_oauth")
+@pytest.mark.usefixtures(
+    "updated_dsc_component_state_scope_class",
+    "is_model_registry_oauth",
+    "model_registry_mysql_metadata_db",
+    "model_registry_instance_mysql",
+)
 class TestModelRegistryRBAC:
     """
     Tests RBAC for Model Registry REST endpoint using ServiceAccount tokens.
@@ -53,9 +42,8 @@ class TestModelRegistryRBAC:
     @pytest.mark.usefixtures("sa_namespace", "service_account")
     def test_service_account_access_denied(
         self: Self,
-        sa_token: str,
         model_registry_instance_rest_endpoint: str,
-        request: pytest.FixtureRequest,
+        sa_token: str,
     ):
         """
         Verifies SA access is DENIED (403 Forbidden) by default via REST.
@@ -63,7 +51,6 @@ class TestModelRegistryRBAC:
         """
         LOGGER.info("--- Starting RBAC Test: Access Denied ---")
         LOGGER.info(f"Targeting Model Registry REST endpoint: {model_registry_instance_rest_endpoint}")
-        LOGGER.info(f"Using {'OAuth' if request.node.callspec.id == 'oauth' else 'servicemesh'} client configuration")
         LOGGER.info("Expecting initial access DENIAL (403 Forbidden)")
 
         client_args = build_mr_client_args(
@@ -83,20 +70,17 @@ class TestModelRegistryRBAC:
         LOGGER.info("Successfully received expected HTTP 403 status code.")
 
     @pytest.mark.sanity
-    # Use fixtures for SA/NS/Token AND the RBAC Role/Binding
     @pytest.mark.usefixtures("sa_namespace", "service_account", "mr_access_role", "mr_access_role_binding")
     def test_service_account_access_granted(
         self: Self,
         sa_token: str,
         model_registry_instance_rest_endpoint: str,
-        request: pytest.FixtureRequest,
     ):
         """
         Verifies SA access is GRANTED via REST after applying Role and RoleBinding fixtures.
         """
         LOGGER.info("--- Starting RBAC Test: Access Granted ---")
         LOGGER.info(f"Targeting Model Registry REST endpoint: {model_registry_instance_rest_endpoint}")
-        LOGGER.info(f"Using {'OAuth' if request.node.callspec.id == 'oauth' else 'servicemesh'} client configuration")
         LOGGER.info("Applied RBAC Role/Binding via fixtures. Expecting access GRANT.")
 
         try:

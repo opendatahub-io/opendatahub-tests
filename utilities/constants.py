@@ -71,6 +71,10 @@ class RuntimeTemplates:
     VLLM_CUDA: str = "vllm-cuda-runtime-template"
     VLLM_ROCM: str = "vllm-rocm-runtime-template"
     VLLM_GAUDUI: str = "vllm-gaudi-runtime-template"
+    MLSERVER_GRPC: str = "mlserver-grpc-runtime-template"
+    MLSERVER_REST: str = "mlserver-rest-runtime-template"
+    TRITON_REST: str = "triton-rest-runtime-template"
+    TRITON_GRPC: str = "triton-grpc-runtime-template"
 
 
 class ModelInferenceRuntime:
@@ -118,7 +122,9 @@ class AcceleratorType:
 
 
 class ApiGroups:
+    HAPROXY_ROUTER_OPENSHIFT_IO: str = "haproxy.router.openshift.io"
     OPENDATAHUB_IO: str = "opendatahub.io"
+    KSERVE: str = "serving.kserve.io"
 
 
 class Annotations:
@@ -129,7 +135,8 @@ class Annotations:
         CREATED_BY: str = f"{Resource.ApiGroup.APP_KUBERNETES_IO}/created-by"
 
     class KserveIo:
-        DEPLOYMENT_MODE: str = "serving.kserve.io/deploymentMode"
+        DEPLOYMENT_MODE: str = f"{ApiGroups.KSERVE}/deploymentMode"
+        FORCE_STOP_RUNTIME: str = f"{ApiGroups.KSERVE}/stop"
 
     class KserveAuth:
         SECURITY: str = f"security.{ApiGroups.OPENDATAHUB_IO}/enable-auth"
@@ -137,6 +144,9 @@ class Annotations:
     class OpenDataHubIo:
         MANAGED: str = f"{ApiGroups.OPENDATAHUB_IO}/managed"
         SERVICE_MESH: str = f"{ApiGroups.OPENDATAHUB_IO}/service-mesh"
+
+    class HaproxyRouterOpenshiftIo:
+        TIMEOUT: str = f"{ApiGroups.HAPROXY_ROUTER_OPENSHIFT_IO}/timeout"
 
 
 class StorageClassName:
@@ -147,6 +157,7 @@ class DscComponents:
     MODELMESHSERVING: str = "modelmeshserving"
     KSERVE: str = "kserve"
     MODELREGISTRY: str = "modelregistry"
+    LLAMASTACKOPERATOR: str = "llamastackoperator"
 
     class ManagementState:
         MANAGED: str = "Managed"
@@ -156,11 +167,13 @@ class DscComponents:
         MODEL_REGISTRY_READY: str = "ModelRegistryReady"
         KSERVE_READY: str = "KserveReady"
         MODEL_MESH_SERVING_READY: str = "ModelMeshServingReady"
+        LLAMA_STACK_OPERATOR_READY: str = "LlamaStackOperatorReady"
 
     COMPONENT_MAPPING: dict[str, str] = {
         MODELMESHSERVING: ConditionType.MODEL_MESH_SERVING_READY,
         KSERVE: ConditionType.KSERVE_READY,
         MODELREGISTRY: ConditionType.MODEL_REGISTRY_READY,
+        LLAMASTACKOPERATOR: ConditionType.LLAMA_STACK_OPERATOR_READY,
     }
 
 
@@ -189,6 +202,9 @@ class Labels:
     class Nvidia:
         NVIDIA_COM_GPU: str = "nvidia.com/gpu"
 
+    class ROCm:
+        ROCM_GPU: str = "amd.com/gpu"
+
     class Kueue:
         # TODO: Change to kueue.openshift.io/managed once it's working
         MANAGED: str = "kueue-managed"
@@ -205,6 +221,12 @@ class Timeout:
     TIMEOUT_10MIN: int = 10 * TIMEOUT_1MIN
     TIMEOUT_15MIN: int = 15 * TIMEOUT_1MIN
     TIMEOUT_20MIN: int = 20 * TIMEOUT_1MIN
+    TIMEOUT_30MIN: int = 30 * TIMEOUT_1MIN
+    TIMEOUT_40MIN: int = 40 * TIMEOUT_1MIN
+
+
+class OpenshiftRouteTimeout:
+    TIMEOUT_1MICROSEC: str = "1us"
 
 
 class Containers:
@@ -220,8 +242,10 @@ class RunTimeConfigs:
 
 class ModelCarImage:
     MNIST_8_1: str = (
-        "oci://quay.io/mwaykole/test@sha256:8a3217bcfa2cc5fa3d07496cff8b234acdf2c9725dd307dc0a80401f55e1a11c"  # noqa: E501
+        "oci://quay.io/mwaykole/test@sha256:8a3217bcfa2cc5fa3d07496cff8b234acdf2c9725dd307dc0a80401f55e1a11c"
+        # noqa: E501
     )
+    GRANITE_8B_CODE_INSTRUCT: str = "oci://registry.redhat.io/rhelai1/modelcar-granite-8b-code-instruct:1.4"
 
 
 class MinIo:
@@ -242,7 +266,8 @@ class MinIo:
 
     class PodConfig:
         KSERVE_MINIO_IMAGE: str = (
-            "quay.io/jooholee/model-minio@sha256:b50aa0fbfea740debb314ece8e925b3e8e761979f345b6cd12a6833efd04e2c2"  # noqa: E501
+            "quay.io/jooholee/model-minio@sha256:b50aa0fbfea740debb314ece8e925b3e8e761979f345b6cd12a6833efd04e2c2"
+            # noqa: E501
         )
 
         MINIO_BASE_CONFIG: dict[str, Any] = {
@@ -256,7 +281,16 @@ class MinIo:
         }
 
         MODEL_MESH_MINIO_CONFIG: dict[str, Any] = {
-            "image": "quay.io/trustyai_testing/modelmesh-minio-examples@sha256:d2ccbe92abf9aa5085b594b2cae6c65de2bf06306c30ff5207956eb949bb49da",  # noqa: E501
+            "image": "quay.io/trustyai_testing/modelmesh-minio-examples@"
+            "sha256:d2ccbe92abf9aa5085b594b2cae6c65de2bf06306c30ff5207956eb949bb49da",
+            # noqa: E501
+            **MINIO_BASE_CONFIG,
+        }
+
+        QWEN_MINIO_CONFIG: dict[str, Any] = {
+            "image": "quay.io/trustyai_testing/hf-llm-minio@"
+            "sha256:2404a37d578f2a9c7adb3971e26a7438fedbe7e2e59814f396bfa47cd5fe93bb",
+            # noqa: E501
             **MINIO_BASE_CONFIG,
         }
 
@@ -288,3 +322,5 @@ vLLM_CONFIG: dict[str, dict[str, Any]] = {
 }
 
 RHOAI_OPERATOR_NAMESPACE = "redhat-ods-operator"
+OPENSHIFT_OPERATORS: str = "openshift-operators"
+MARIADB: str = "mariadb"

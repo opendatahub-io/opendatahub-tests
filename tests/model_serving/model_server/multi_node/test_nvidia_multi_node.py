@@ -20,6 +20,9 @@ from utilities.manifests.vllm import VLLM_INFERENCE_CONFIG
 pytestmark = [
     pytest.mark.rawdeployment,
     pytest.mark.usefixtures("skip_if_no_gpu_nodes", "skip_if_no_nfs_storage_class"),
+    pytest.mark.model_server_gpu,
+    pytest.mark.multinode,
+    pytest.mark.gpu,
 ]
 
 

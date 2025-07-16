@@ -8,13 +8,21 @@ import warnings
 import pytest
 import shortuuid
 import yaml
+from _pytest._py.path import LocalPath
+from _pytest.legacypath import TempdirFactory
 from _pytest.tmpdir import TempPathFactory
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
+
+from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.deployment import Deployment
 from ocp_resources.dsc_initialization import DSCInitialization
+from ocp_resources.mariadb_operator import MariadbOperator
 from ocp_resources.node import Node
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
+from ocp_resources.subscription import Subscription
 from ocp_utilities.monitoring import Prometheus
 from pyhelper_utils.shell import run_command
 from pytest import FixtureRequest, Config
@@ -24,20 +32,18 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.resource import get_client
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
-from ocp_resources.cluster_service_version import ClusterServiceVersion
 import json
 
+from ocp_utilities.operators import uninstall_operator, install_operator
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.exceptions import ClusterLoginError
 from utilities.infra import (
     verify_cluster_sanity,
     create_ns,
-    get_dsci_applications_namespace,
-    get_operator_distribution,
     login_with_user_password,
     get_openshift_token,
-    get_data_science_cluster,
+    download_oc_console_cli,
 )
 from utilities.constants import (
     AcceleratorType,
@@ -45,9 +51,14 @@ from utilities.constants import (
     Labels,
     MinIo,
     Protocols,
+    Timeout,
+    OPENSHIFT_OPERATORS,
 )
 from utilities.infra import update_configmap_data
+from utilities.logger import RedactedString
+from utilities.mariadb_utils import wait_for_mariadb_operator_deployments
 from utilities.minio import create_minio_data_connection_secret
+from utilities.operator_utils import get_csv_related_images, get_cluster_service_version
 
 LOGGER = get_logger(name=__name__)
 
@@ -69,25 +80,8 @@ def tests_tmp_dir(request: FixtureRequest, tmp_path_factory: TempPathFactory) ->
 
 
 @pytest.fixture(scope="session")
-def updated_global_config(request: FixtureRequest, admin_client: DynamicClient) -> None:
-    distribution = get_operator_distribution(client=admin_client)
-    if distribution == "Open Data Hub":
-        py_config["distribution"] = "upstream"
-
-    elif distribution.startswith("OpenShift AI"):
-        py_config["distribution"] = "downstream"
-    else:
-        pytest.exit(f"Unknown distribution: {distribution}")
-
-    py_config["applications_namespace"] = get_dsci_applications_namespace(client=admin_client)
-    py_config["model_registry_namespace"] = get_data_science_cluster(
-        client=admin_client
-    ).instance.spec.components.modelregistry.registriesNamespace
-
-
-@pytest.fixture(scope="session")
 def current_client_token(admin_client: DynamicClient) -> str:
-    return get_openshift_token()
+    return RedactedString(value=get_openshift_token())
 
 
 @pytest.fixture(scope="session")
@@ -330,6 +324,22 @@ def vllm_runtime_image(pytestconfig: pytest.Config, modelcar_yaml_config: dict[s
 
 
 @pytest.fixture(scope="session")
+def mlserver_runtime_image(pytestconfig: pytest.Config) -> str | None:
+    runtime_image = pytestconfig.option.mlserver_runtime_image
+    if not runtime_image:
+        return None
+    return runtime_image
+
+
+@pytest.fixture(scope="session")
+def triton_runtime_image(pytestconfig: pytest.Config) -> str | None:
+    runtime_image = pytestconfig.option.triton_runtime_image
+    if not runtime_image:
+        return None
+    return runtime_image
+
+
+@pytest.fixture(scope="session")
 def use_unprivileged_client(pytestconfig: pytest.Config) -> bool:
     _use_unprivileged_client = py_config.get("use_unprivileged_client")
 
@@ -429,7 +439,7 @@ def unprivileged_client(
 
 
 @pytest.fixture(scope="package")
-def fail_if_missing_dependent_operators(admin_client: DynamicClient) -> None:  # noqa: UFN001
+def fail_if_missing_dependent_operators(admin_client: DynamicClient) -> None:
     if dependent_operators := py_config.get("dependent_operators"):
         missing_operators: list[str] = []
 
@@ -636,8 +646,7 @@ def junitxml_plugin(
     return record_testsuite_property if request.config.pluginmanager.has_plugin("junitxml") else None
 
 
-@pytest.fixture(scope="session", autouse=True)
-@pytest.mark.early(order=0)
+@pytest.fixture(scope="session")
 def cluster_sanity_scope_session(
     request: FixtureRequest,
     nodes: list[Node],
@@ -664,3 +673,103 @@ def prometheus(admin_client: DynamicClient) -> Prometheus:
         ),  # TODO: Verify SSL with appropriate certs
         bearer_token=get_openshift_token(),
     )
+
+
+@pytest.fixture(scope="session")
+def related_images_refs(admin_client: DynamicClient) -> set[str]:
+    related_images = get_csv_related_images(admin_client=admin_client)
+    related_images_refs = {img["image"] for img in related_images}
+    return related_images_refs
+
+
+@pytest.fixture(scope="session")
+def os_path_environment() -> str:
+    return os.environ["PATH"]
+
+
+@pytest.fixture(scope="session")
+def bin_directory(tmpdir_factory: TempdirFactory) -> LocalPath:
+    return tmpdir_factory.mktemp(basename="bin")
+
+
+@pytest.fixture(scope="session")
+def bin_directory_to_os_path(os_path_environment: str, bin_directory: LocalPath, oc_binary_path: str) -> None:
+    LOGGER.info(f"OC binary path: {oc_binary_path}")
+    LOGGER.info(f"Adding {bin_directory} to $PATH")
+    os.environ["PATH"] = f"{bin_directory}:{os_path_environment}"
+
+
+@pytest.fixture(scope="session")
+def oc_binary_path(bin_directory: LocalPath) -> str:
+    installed_oc_binary_path = os.getenv("OC_BINARY_PATH")
+    if installed_oc_binary_path:
+        LOGGER.warning(f"Using previously installed: {installed_oc_binary_path}")
+        return installed_oc_binary_path
+
+    return download_oc_console_cli(tmpdir=bin_directory)
+
+
+@pytest.fixture(scope="session", autouse=True)
+@pytest.mark.early(order=0)
+def autouse_fixtures(
+    bin_directory_to_os_path: None,
+    cluster_sanity_scope_session: None,
+) -> None:
+    """Fixture to control the order of execution of some of the fixtures"""
+    return
+
+
+@pytest.fixture(scope="session")
+def installed_mariadb_operator(admin_client: DynamicClient) -> Generator[None, Any, Any]:
+    operator_ns = Namespace(name="openshift-operators", ensure_exists=True)
+    operator_name = "mariadb-operator"
+
+    mariadb_operator_subscription = Subscription(client=admin_client, namespace=operator_ns.name, name=operator_name)
+
+    if not mariadb_operator_subscription.exists:
+        install_operator(
+            admin_client=admin_client,
+            target_namespaces=["openshift-operators"],
+            name=operator_name,
+            channel="alpha",
+            source="community-operators",
+            operator_namespace=operator_ns.name,
+            timeout=Timeout.TIMEOUT_15MIN,
+            install_plan_approval="Manual",
+            starting_csv=f"{operator_name}.v0.38.1",
+        )
+
+        deployment = Deployment(
+            client=admin_client,
+            namespace=operator_ns.name,
+            name=f"{operator_name}-helm-controller-manager",
+            wait_for_resource=True,
+        )
+        deployment.wait_for_replicas()
+    yield
+    uninstall_operator(
+        admin_client=admin_client, name=operator_name, operator_namespace=operator_ns.name, clean_up_namespace=False
+    )
+
+
+@pytest.fixture(scope="class")
+def mariadb_operator_cr(
+    admin_client: DynamicClient, installed_mariadb_operator: None
+) -> Generator[MariadbOperator, Any, Any]:
+    mariadb_csv: ClusterServiceVersion = get_cluster_service_version(
+        client=admin_client, prefix="mariadb", namespace=OPENSHIFT_OPERATORS
+    )
+    alm_examples: list[dict[str, Any]] = mariadb_csv.get_alm_examples()
+    mariadb_operator_cr_dict: dict[str, Any] = next(
+        example for example in alm_examples if example["kind"] == "MariadbOperator"
+    )
+    if not mariadb_operator_cr_dict:
+        raise ResourceNotFoundError(f"No MariadbOperator dict found in alm_examples for CSV {mariadb_csv.name}")
+
+    mariadb_operator_cr_dict["metadata"]["namespace"] = OPENSHIFT_OPERATORS
+    with MariadbOperator(kind_dict=mariadb_operator_cr_dict) as mariadb_operator_cr:
+        mariadb_operator_cr.wait_for_condition(
+            condition="Deployed", status=mariadb_operator_cr.Condition.Status.TRUE, timeout=Timeout.TIMEOUT_10MIN
+        )
+        wait_for_mariadb_operator_deployments(mariadb_operator=mariadb_operator_cr)
+        yield mariadb_operator_cr

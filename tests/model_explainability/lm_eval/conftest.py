@@ -1,10 +1,6 @@
-from typing import Generator, Any
+from typing import Any, Generator
 
 import pytest
-from ocp_resources.route import Route
-from ocp_resources.secret import Secret
-from ocp_resources.service import Service
-from pytest import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
@@ -13,10 +9,15 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
+from ocp_resources.route import Route
+from ocp_resources.secret import Secret
+from ocp_resources.service import Service
+from pytest import Config, FixtureRequest
 from pytest_testconfig import py_config
 
 from tests.model_explainability.lm_eval.utils import get_lmevaljob_pod
-from utilities.constants import Labels, Timeout, Annotations, Protocols, MinIo
+from utilities.constants import Annotations, Labels, MinIo, Protocols, Timeout
+from utilities.exceptions import MissingParameter
 
 VLLM_EMULATOR: str = "vllm-emulator"
 VLLM_EMULATOR_PORT: int = 8000
@@ -25,42 +26,47 @@ LMEVALJOB_NAME: str = "lmeval-test-job"
 
 @pytest.fixture(scope="function")
 def lmevaljob_hf(
-    admin_client: DynamicClient, model_namespace: Namespace, patched_trustyai_operator_configmap_allow_online: ConfigMap
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    patched_trustyai_operator_configmap_allow_online: ConfigMap,
+    lmeval_hf_access_token: Secret,
 ) -> Generator[LMEvalJob, None, None]:
     with LMEvalJob(
         client=admin_client,
-        name="test-job",
+        name=LMEVALJOB_NAME,
         namespace=model_namespace.name,
         model="hf",
-        model_args=[{"name": "pretrained", "value": "google/flan-t5-base"}],
-        task_list={
-            "custom": {
-                "systemPrompts": [
-                    {"name": "sp_0", "value": "Be concise. At every point give the shortest acceptable answer."}
-                ],
-                "templates": [
-                    {
-                        "name": "tp_0",
-                        "value": '{ "__type__": "input_output_template", '
-                        '"input_format": "{text_a_type}: {text_a}\\n'
-                        '{text_b_type}: {text_b}", '
-                        '"output_format": "{label}", '
-                        '"target_prefix": '
-                        '"The {type_of_relation} class is ", '
-                        '"instruction": "Given a {text_a_type} and {text_b_type} '
-                        'classify the {type_of_relation} of the {text_b_type} to one of {classes}.",'
-                        ' "postprocessors": [ "processors.take_first_non_empty_line",'
-                        ' "processors.lower_case_till_punc" ] }',
-                    }
-                ],
-            },
-            "taskRecipes": [
-                {"card": {"name": "cards.wnli"}, "systemPrompt": {"ref": "sp_0"}, "template": {"ref": "tp_0"}}
-            ],
-        },
+        model_args=[{"name": "pretrained", "value": "rgeada/tiny-untrained-granite"}],
+        task_list=request.param.get("task_list"),
         log_samples=True,
         allow_online=True,
         allow_code_execution=True,
+        system_instruction="Be concise. At every point give the shortest acceptable answer.",
+        chat_template={
+            "enabled": True,
+        },
+        limit="0.01",
+        pod={
+            "container": {
+                "resources": {
+                    "limits": {"cpu": "1", "memory": "8Gi"},
+                    "requests": {"cpu": "1", "memory": "8Gi"},
+                },
+                "env": [
+                    {
+                        "name": "HF_TOKEN",
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "name": "hf-secret",
+                                "key": "HF_ACCESS_TOKEN",
+                            },
+                        },
+                    },
+                    {"name": "HF_ALLOW_CODE_EVAL", "value": "1"},
+                ],
+            },
+        },
     ) as job:
         yield job
 
@@ -80,6 +86,7 @@ def lmevaljob_local_offline(
         model="hf",
         model_args=[{"name": "pretrained", "value": "/opt/app-root/src/hf_home/flan"}],
         task_list=request.param.get("task_list"),
+        limit="0.01",
         log_samples=True,
         offline={"storage": {"pvcName": "lmeval-data"}},
         pod={
@@ -142,7 +149,10 @@ def patched_trustyai_operator_configmap_allow_online(admin_client: DynamicClient
         patches={
             configmap: {
                 "metadata": {"annotations": {Annotations.OpenDataHubIo.MANAGED: "false"}},
-                "data": {"lmes-allow-online": "true", "lmes-allow-code-execution": "true"},
+                "data": {
+                    "lmes-allow-online": "true",
+                    "lmes-allow-code-execution": "true",
+                },
             }
         }
     ):
@@ -231,7 +241,7 @@ def vllm_emulator_deployment(
                 "containers": [
                     {
                         "image": "quay.io/trustyai_testing/vllm_emulator"
-                        "@sha256:4214f31bff9de6cc723da23324fb8974cea8abadcab621d85a97a3503cabbdc6",
+                        "@sha256:c4bdd5bb93171dee5b4c8454f36d7c42b58b2a4ceb74f29dba5760ac53b5c12d",
                         "name": "vllm-emulator",
                         "securityContext": {
                             "allowPrivilegeEscalation": False,
@@ -403,6 +413,13 @@ def lmevaljob_hf_pod(admin_client: DynamicClient, lmevaljob_hf: LMEvalJob) -> Ge
 
 
 @pytest.fixture(scope="function")
+def lmevaljob_local_offline_pod(
+    admin_client: DynamicClient, lmevaljob_local_offline: LMEvalJob
+) -> Generator[Pod, Any, Any]:
+    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_local_offline)
+
+
+@pytest.fixture(scope="function")
 def lmevaljob_vllm_emulator_pod(
     admin_client: DynamicClient, lmevaljob_vllm_emulator: LMEvalJob
 ) -> Generator[Pod, Any, Any]:
@@ -412,3 +429,27 @@ def lmevaljob_vllm_emulator_pod(
 @pytest.fixture(scope="function")
 def lmevaljob_s3_offline_pod(admin_client: DynamicClient, lmevaljob_s3_offline: LMEvalJob) -> Generator[Pod, Any, Any]:
     yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_s3_offline)
+
+
+@pytest.fixture(scope="function")
+def lmeval_hf_access_token(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    pytestconfig: Config,
+) -> Secret:
+    hf_access_token = pytestconfig.option.hf_access_token
+    if not hf_access_token:
+        raise MissingParameter(
+            "HF access token is not set. "
+            "Either pass with `--hf-access-token` or set `HF_ACCESS_TOKEN` environment variable"
+        )
+    with Secret(
+        client=admin_client,
+        name="hf-secret",
+        namespace=model_namespace.name,
+        string_data={
+            "HF_ACCESS_TOKEN": hf_access_token,
+        },
+        wait_for_resource=True,
+    ) as secret:
+        yield secret

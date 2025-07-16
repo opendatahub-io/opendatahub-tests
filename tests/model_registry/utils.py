@@ -1,8 +1,8 @@
-import uuid
-from typing import Any
+import json
+from typing import Any, List
 
+import requests
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.service import Service
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
@@ -11,19 +11,22 @@ from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 from kubernetes.dynamic.exceptions import NotFoundError
 from tests.model_registry.constants import MR_DB_IMAGE_DIGEST
+from tests.model_registry.exceptions import ModelRegistryResourceNotFoundError
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
 from utilities.constants import Protocols, Annotations
+from model_registry import ModelRegistry as ModelRegistryClient
+from model_registry.types import RegisteredModel
 
 ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
 
 LOGGER = get_logger(name=__name__)
 
 
-def get_mr_service_by_label(client: DynamicClient, ns: Namespace, mr_instance: ModelRegistry) -> Service:
+def get_mr_service_by_label(client: DynamicClient, namespace_name: str, mr_instance: ModelRegistry) -> Service:
     """
     Args:
         client (DynamicClient): OCP Client to use.
-        ns (Namespace): Namespace object where to find the Service
+        namespace_name (str): Namespace name associated with the service
         mr_instance (ModelRegistry): Model Registry instance
 
     Returns:
@@ -36,7 +39,7 @@ def get_mr_service_by_label(client: DynamicClient, ns: Namespace, mr_instance: M
         svcs
         for svcs in Service.get(
             dyn_client=client,
-            namespace=ns.name,
+            namespace=namespace_name,
             label_selector=f"app={mr_instance.name},component=model-registry",
         )
     ]:
@@ -232,35 +235,155 @@ def wait_for_pods_running(
     return None
 
 
-def generate_random_name(prefix: str, length: int = 8) -> str:
-    """
-    Generates a name with a required prefix and a random suffix derived from a UUID.
-
-    The length of the random suffix can be controlled, defaulting to 8 characters.
-    The suffix is taken from the beginning of a V4 UUID's hex representation.
-
-    Args:
-        prefix (str): The required prefix for the generated name.
-        length (int, optional): The desired length for the UUID-derived suffix.
-                               Defaults to 8. Must be between 1 and 32.
-
-    Returns:
-        str: A string in the format "prefix-uuid_suffix".
-
-    Raises:
-        ValueError: If prefix is empty, or if length is not between 1 and 32.
-    """
-    if not prefix:
-        raise ValueError("Prefix cannot be empty or None.")
-    if not isinstance(length, int) or not (1 <= length <= 32):
-        raise ValueError("suffix_length must be an integer between 1 and 32.")
-    # Generate a new random UUID (version 4)
-    random_uuid = uuid.uuid4()
-    # Use the first 'length' characters of the hexadecimal representation of the UUID as the suffix.
-    # random_uuid.hex is 32 characters long.
-    suffix = random_uuid.hex[:length]
-    return f"{prefix}-{suffix}"
-
-
 def generate_namespace_name(file_path: str) -> str:
     return (file_path.removesuffix(".py").replace("/", "-").replace("_", "-"))[-63:].split("-", 1)[-1]
+
+
+def add_mysql_certs_volumes_to_deployment(
+    spec: dict[str, Any],
+    ca_configmap_name: str,
+) -> list[dict[str, Any]]:
+    """
+    Adds the MySQL certs volumes to the deployment.
+
+    Args:
+        spec: The spec of the deployment
+        ca_configmap_name: The name of the CA configmap
+
+    Returns:
+        The volumes with the MySQL certs volumes added
+    """
+
+    volumes = list(spec["volumes"])
+    volumes.extend([
+        {"name": ca_configmap_name, "configMap": {"name": ca_configmap_name}},
+        {"name": "mysql-server-cert", "secret": {"secretName": "mysql-server-cert"}},  # pragma: allowlist secret
+        {"name": "mysql-server-key", "secret": {"secretName": "mysql-server-key"}},  # pragma: allowlist secret
+    ])
+
+    return volumes
+
+
+def apply_mysql_args_and_volume_mounts(
+    my_sql_container: dict[str, Any],
+    ca_configmap_name: str,
+    ca_mount_path: str,
+) -> dict[str, Any]:
+    """
+    Applies the MySQL args and volume mounts to the MySQL container.
+
+    Args:
+        my_sql_container: The MySQL container
+        ca_configmap_name: The name of the CA configmap
+        ca_mount_path: The mount path of the CA
+
+    Returns:
+        The MySQL container with the MySQL args and volume mounts applied
+    """
+
+    mysql_args = list(my_sql_container.get("args", []))
+    mysql_args.extend([
+        f"--ssl-ca={ca_mount_path}/ca/ca-bundle.crt",
+        f"--ssl-cert={ca_mount_path}/server_cert/tls.crt",
+        f"--ssl-key={ca_mount_path}/server_key/tls.key",
+    ])
+
+    volumes_mounts = list(my_sql_container.get("volumeMounts", []))
+    volumes_mounts.extend([
+        {"name": ca_configmap_name, "mountPath": f"{ca_mount_path}/ca", "readOnly": True},
+        {
+            "name": "mysql-server-cert",
+            "mountPath": f"{ca_mount_path}/server_cert",
+            "readOnly": True,
+        },
+        {
+            "name": "mysql-server-key",
+            "mountPath": f"{ca_mount_path}/server_key",
+            "readOnly": True,
+        },
+    ])
+
+    my_sql_container["args"] = mysql_args
+    my_sql_container["volumeMounts"] = volumes_mounts
+    return my_sql_container
+
+
+def get_and_validate_registered_model(
+    model_registry_client: ModelRegistryClient,
+    model_name: str,
+    registered_model: RegisteredModel = None,
+) -> List[str]:
+    """
+    Get and validate a registered model.
+    """
+    model = model_registry_client.get_registered_model(name=model_name)
+    if registered_model is not None:
+        expected_attrs = {
+            "id": registered_model.id,
+            "name": registered_model.name,
+            "description": registered_model.description,
+            "owner": registered_model.owner,
+            "state": registered_model.state,
+        }
+    else:
+        expected_attrs = {
+            "name": model_name,
+        }
+    errors = [
+        f"Unexpected {attr} expected: {expected}, received {getattr(model, attr)}"
+        for attr, expected in expected_attrs.items()
+        if getattr(model, attr) != expected
+    ]
+    return errors
+
+
+def execute_model_registry_get_command(url: str, headers: dict[str, str], json_output: bool = True) -> dict[Any, Any]:
+    """
+    Executes model registry get commands against model registry rest end point
+
+    Args:
+        url (str): Model registry endpoint for rest calls
+        headers (dict[str, str]): HTTP headers for get calls
+        json_output(bool): Whether to output JSON response
+
+    Returns: json output or dict of raw output.
+    """
+    resp = requests.get(url=url, headers=headers, verify=False)
+    LOGGER.info(f"url: {url}, status code: {resp.status_code}, rep: {resp.text}")
+    if resp.status_code not in [200, 201]:
+        raise ModelRegistryResourceNotFoundError(
+            f"Failed to get ModelRegistry resource: {url}, {resp.status_code}: {resp.text}"
+        )
+    if json_output:
+        try:
+            return json.loads(resp.text)
+        except json.JSONDecodeError:
+            LOGGER.error(f"Unable to parse {resp.text}")
+            raise
+    else:
+        return {"raw_output": resp.text}
+
+
+def validate_no_grpc_container(deployment_containers: list[dict[str, Any]]) -> None:
+    grpc_container = None
+    for container in deployment_containers:
+        if "grpc" in container["name"]:
+            grpc_container = container
+    assert not grpc_container, f"GRPC container found: {grpc_container}"
+
+
+def validate_mlmd_removal_in_model_registry_pod_log(
+    deployment_containers: list[dict[str, Any]], pod_object: Pod
+) -> None:
+    errors = []
+    embedmd_message = "EmbedMD service connected"
+    for container in deployment_containers:
+        container_name = container["name"]
+        LOGGER.info(f"Checking {container_name}")
+        log = pod_object.log(container=container_name)
+        if "rest" in container_name:
+            if embedmd_message not in log:
+                errors.append(f"Missing {embedmd_message} in {container_name} log")
+        if "MLMD" in log:
+            errors.append(f"MLMD reference found in {container_name} log")
+    assert not errors, f"Log validation failed with error(s): {errors}"

@@ -32,6 +32,10 @@ from utilities.must_gather_collector import (
     collect_rhoai_must_gather,
     get_base_dir,
 )
+from kubernetes.dynamic import DynamicClient
+from utilities.infra import get_operator_distribution, get_dsci_applications_namespace, get_data_science_cluster
+from ocp_resources.resource import get_client
+
 
 LOGGER = logging.getLogger(name=__name__)
 BASIC_LOGGER = logging.getLogger(name="basic")
@@ -48,6 +52,7 @@ def pytest_addoption(parser: Parser) -> None:
     ociregistry_group = parser.getgroup(name="OCI Registry")
     serving_arguments_group = parser.getgroup(name="Serving arguments")
     model_validation_automation_group = parser.getgroup(name="Model Validation Automation")
+    hf_group = parser.getgroup(name="Hugging Face")
 
     # AWS config and credentials options
     aws_group.addoption(
@@ -104,6 +109,16 @@ def pytest_addoption(parser: Parser) -> None:
     runtime_group.addoption(
         "--vllm-runtime-image",
         default=os.environ.get("VLLM_RUNTIME_IMAGE"),
+        help="Specify the runtime image to use for the tests",
+    )
+    runtime_group.addoption(
+        "--mlserver-runtime-image",
+        default=os.environ.get("MLSERVER_RUNTIME_IMAGE"),
+        help="Specify the runtime image to use for the tests",
+    )
+    runtime_group.addoption(
+        "--triton-runtime-image",
+        default=os.environ.get("TRITON_RUNTIME_IMAGE"),
         help="Specify the runtime image to use for the tests",
     )
 
@@ -178,6 +193,9 @@ def pytest_addoption(parser: Parser) -> None:
         help="Skip RHOAI/ODH-related resources (DSCI and DSC) checks",
         action="store_true",
     )
+
+    # HuggingFace options
+    hf_group.addoption("--hf-access-token", default=os.environ.get("HF_ACCESS_TOKEN"), help="HF access token")
 
 
 def pytest_cmdline_main(config: Any) -> None:
@@ -269,6 +287,36 @@ def pytest_sessionstart(session: Session) -> None:
         path=must_gather_dict["must_gather_base_directory"],
         ignore_errors=True,
     )
+    config = session.config
+    if config.getoption("--collect-only") or config.getoption("--setup-plan"):
+        LOGGER.info("Skipping global config update for collect-only or setup-plan")
+        return
+    updated_global_config(admin_client=get_client())
+
+
+def updated_global_config(admin_client: DynamicClient) -> None:
+    """
+    Updates the global config with the distribution, applications namespace, and model registry namespace.
+    Args:
+        admin_client: The admin client to use to get resources.
+    Returns:
+        None
+    """
+    distribution = get_operator_distribution(client=admin_client)
+    if distribution == "Open Data Hub":
+        py_config["distribution"] = "upstream"
+
+    elif distribution.startswith("OpenShift AI"):
+        py_config["distribution"] = "downstream"
+    else:
+        import pytest
+
+        pytest.exit(f"Unknown distribution: {distribution}")
+
+    py_config["applications_namespace"] = get_dsci_applications_namespace(client=admin_client)
+    py_config["model_registry_namespace"] = get_data_science_cluster(
+        client=admin_client
+    ).instance.spec.components.modelregistry.registriesNamespace
 
 
 def pytest_fixture_setup(fixturedef: FixtureDef[Any], request: FixtureRequest) -> None:
@@ -311,9 +359,6 @@ def pytest_runtest_setup(item: Item) -> None:
 
     elif KServeDeploymentType.MODEL_MESH.lower() in item.keywords:
         item.fixturenames.insert(0, "enabled_modelmesh_in_dsc")
-
-    # The above fixtures require the global config to be updated before being called
-    item.fixturenames.insert(0, "updated_global_config")
 
 
 def pytest_runtest_call(item: Item) -> None:
