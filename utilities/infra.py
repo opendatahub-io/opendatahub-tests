@@ -160,9 +160,9 @@ def create_ns(
         yield project
         if teardown:
             wait_for_serverless_pods_deletion(resource=project, admin_client=admin_client)
-        # cleanup must be done with admin admin_client
-        project.client = admin_client
-        project.clean_up()
+            # cleanup must be done with admin admin_client
+            project.client = admin_client
+            project.clean_up()
 
 
 def wait_for_replicas_in_deployment(deployment: Deployment, replicas: int, timeout: int = Timeout.TIMEOUT_2MIN) -> None:
