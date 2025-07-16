@@ -50,7 +50,7 @@ class TestPostUpgradeModelRegistry:
     def test_retrieving_model_post_upgrade(
         self: Self,
         model_registry_client: ModelRegistryClient,
-        model_registry_instance: ModelRegistry,
+        model_registry_instance_mysql: ModelRegistry,
     ):
         errors = get_and_validate_registered_model(
             model_registry_client=model_registry_client,
@@ -62,30 +62,32 @@ class TestPostUpgradeModelRegistry:
     @pytest.mark.post_upgrade
     def test_model_registry_instance_api_version_post_upgrade(
         self: Self,
-        model_registry_instance: ModelRegistry,
+        model_registry_instance_mysql: ModelRegistry,
     ):
         # the following is valid for 2.22+
-        api_version = model_registry_instance.instance.apiVersion
+        api_version = model_registry_instance_mysql.instance.apiVersion
         expected_version = f"{ModelRegistry.ApiGroup.MODELREGISTRY_OPENDATAHUB_IO}/{ModelRegistry.ApiVersion.V1BETA1}"
         assert api_version == expected_version
 
     @pytest.mark.post_upgrade
     def test_model_registry_instance_spec_post_upgrade(
         self: Self,
-        model_registry_instance: ModelRegistry,
+        model_registry_instance_mysql: ModelRegistry,
     ):
-        model_registry_instance_spec = model_registry_instance.instance.spec
+        model_registry_instance_spec = model_registry_instance_mysql.instance.spec
         assert not model_registry_instance_spec.istio
         assert model_registry_instance_spec.oauthProxy.serviceRoute == "enabled"
 
     @pytest.mark.post_upgrade
     def test_model_registry_instance_status_conversion_post_upgrade(
         self: Self,
-        model_registry_instance: ModelRegistry,
+        model_registry_instance_mysql: ModelRegistry,
     ):
         # TODO: After v1alpha1 is removed (2.24?) this has to be removed
         mr_instance = ModelRegistryV1Alpha1(
-            name=model_registry_instance.name, namespace=model_registry_instance.namespace, ensure_exists=True
+            name=model_registry_instance_mysql.name,
+            namespace=model_registry_instance_mysql.namespace,
+            ensure_exists=True,
         ).instance
         status = mr_instance.status.to_dict()
         LOGGER.info(f"Validating MR status {status}")

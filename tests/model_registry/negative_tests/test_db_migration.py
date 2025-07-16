@@ -1,13 +1,13 @@
 import pytest
 from typing import Self
 from simple_logger.logger import get_logger
-from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from pytest_testconfig import config as py_config
+
 from ocp_resources.pod import Pod
 from utilities.constants import DscComponents
 from tests.model_registry.constants import MR_INSTANCE_NAME
 from kubernetes.dynamic.client import DynamicClient
-from utilities.general import wait_for_pods_by_labels
+from utilities.general import wait_for_pods_by_labels, wait_for_container_status
 
 
 LOGGER = get_logger(name=__name__)
@@ -27,12 +27,13 @@ LOGGER = get_logger(name=__name__)
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("updated_dsc_component_state_scope_class")
+@pytest.mark.usefixtures(
+    "updated_dsc_component_state_scope_class", "model_registry_mysql_metadata_db", "model_registry_instance_mysql"
+)
 class TestDBMigration:
     def test_db_migration_negative(
         self: Self,
         admin_client: DynamicClient,
-        model_registry_instance: ModelRegistry,
         model_registry_db_instance_pod: Pod,
         set_mr_db_dirty: int,
         delete_mr_deployment: None,
@@ -51,6 +52,9 @@ class TestDBMigration:
             expected_num_pods=1,
         )
         mr_pod = mr_pods[0]
+        LOGGER.info("Waiting for model registry pod to crash")
+        assert wait_for_container_status(mr_pod, "rest-container", Pod.Status.CRASH_LOOPBACK_OFF)
+
         LOGGER.info("Checking the logs for the expected error")
 
         log_output = mr_pod.log(container="rest-container")

@@ -148,11 +148,8 @@ def model_registry_db_secret(
 @pytest.fixture(scope="class")
 def model_registry_db_deployment(
     pytestconfig: Config,
-    admin_client: DynamicClient,
     model_registry_namespace: str,
     model_registry_db_secret: Secret,
-    model_registry_db_pvc: PersistentVolumeClaim,
-    model_registry_db_service: Service,
     teardown_resources: bool,
     is_model_registry_oauth: bool,
 ) -> Generator[Deployment, Any, Any]:
@@ -183,7 +180,17 @@ def model_registry_db_deployment(
 
 
 @pytest.fixture(scope="class")
-def model_registry_instance(
+def model_registry_mysql_metadata_db(
+    model_registry_db_secret: Secret,
+    model_registry_db_pvc: PersistentVolumeClaim,
+    model_registry_db_service: Service,
+    model_registry_db_deployment: Deployment,
+) -> Deployment:
+    return model_registry_db_deployment
+
+
+@pytest.fixture(scope="class")
+def model_registry_instance_mysql(
     pytestconfig: Config,
     admin_client: DynamicClient,
     model_registry_namespace: str,
@@ -228,29 +235,22 @@ def model_registry_instance(
 
 
 @pytest.fixture(scope="class")
-def model_registry_mysql_config(
-    request: FixtureRequest,
-    model_registry_db_deployment: Deployment,
-    model_registry_db_secret: Secret,
-) -> dict[str, Any]:
+def model_registry_mysql_config(request: FixtureRequest, model_registry_namespace: str) -> dict[str, Any]:
     """
     Fixture to build the MySQL config dictionary for Model Registry.
     Expects request.param to be a dict. If 'sslRootCertificateConfigMap' is not present, it defaults to None.
     If 'sslRootCertificateConfigMap' is present, it will be used to configure the MySQL connection.
-
     Args:
         request: The pytest request object
-        model_registry_db_deployment: The model registry db deployment
-        model_registry_db_secret: The model registry db secret
-
+        model_registry_namespace: The model registry namespoce
     Returns:
         dict[str, Any]: The MySQL config dictionary
     """
     param = request.param if hasattr(request, "param") else {}
     config = {
-        "host": f"{model_registry_db_deployment.name}.{model_registry_db_deployment.namespace}.svc.cluster.local",
+        "host": f"{DB_RESOURCES_NAME}.{model_registry_namespace}.svc.cluster.local",
         "database": MODEL_REGISTRY_DB_SECRET_STR_DATA["database-name"],
-        "passwordSecret": {"key": "database-password", "name": model_registry_db_deployment.name},
+        "passwordSecret": {"key": "database-password", "name": DB_RESOURCES_NAME},
         "port": param.get("port", 3306),
         "skipDBCreation": False,
         "username": MODEL_REGISTRY_DB_SECRET_STR_DATA["database-user"],
@@ -262,45 +262,23 @@ def model_registry_mysql_config(
 
 
 @pytest.fixture(scope="class")
-def model_registry_instance_service(
-    admin_client: DynamicClient,
-    model_registry_namespace: str,
-    model_registry_instance: ModelRegistry,
-) -> Service:
-    """
-    Get the service for the regular model registry instance.
-    Args:
-        admin_client: The admin client
-        model_registry_namespace: The namespace where the model registry is deployed
-        model_registry_instance: The model registry instance to get the service for
-    Returns:
-        Service: The service for the model registry instance
-    """
-    return get_mr_service_by_label(
-        client=admin_client, namespace_name=model_registry_namespace, mr_instance=model_registry_instance
+def model_registry_instance_rest_endpoint(admin_client: DynamicClient, model_registry_namespace: str) -> str:
+    return get_endpoint_from_mr_service(
+        svc=get_mr_service_by_label(
+            client=admin_client,
+            namespace_name=model_registry_namespace,
+            mr_instance=ModelRegistry(name=MR_INSTANCE_NAME, namespace=model_registry_namespace),
+        ),
+        protocol=Protocols.REST,
     )
-
-
-@pytest.fixture(scope="class")
-def model_registry_instance_rest_endpoint(
-    model_registry_instance_service: Service,
-) -> str:
-    """
-    Get the REST endpoint for the model registry instance.
-    Args:
-        model_registry_instance_service: The service for the model registry instance
-    Returns:
-        str: The REST endpoint for the model registry instance
-    """
-    return get_endpoint_from_mr_service(svc=model_registry_instance_service, protocol=Protocols.REST)
 
 
 @pytest.fixture(scope="class")
 def updated_dsc_component_state_scope_class(
     pytestconfig: Config,
+    admin_client: DynamicClient,
     request: FixtureRequest,
     dsc_resource: DataScienceCluster,
-    admin_client: DynamicClient,
     teardown_resources: bool,
     is_model_registry_oauth: bool,
 ) -> Generator[DataScienceCluster, Any, Any]:
