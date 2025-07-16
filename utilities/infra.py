@@ -147,19 +147,19 @@ def create_ns(
     else:
         namespace_kwargs["client"] = unprivileged_client
         project = ProjectRequest(**namespace_kwargs).deploy()
+        if _labels := namespace_kwargs.get("label", {}):
+            # To patch the namespace, admin client is required
+            ns = Namespace(client=get_client(), name=name)
+            ResourceEditor({
+                ns: {
+                    "metadata": {
+                        "labels": _labels,
+                    }
+                }
+            }).update()
         yield project
         if teardown:
             wait_for_serverless_pods_deletion(resource=project, admin_client=admin_client)
-            if _labels := namespace_kwargs.get("label", {}):
-                # To patch the namespace, admin client is required
-                ns = Namespace(client=get_client(), name=name)
-                ResourceEditor({
-                    ns: {
-                        "metadata": {
-                            "labels": _labels,
-                        }
-                    }
-                }).update()
         # cleanup must be done with admin admin_client
         project.client = admin_client
         project.clean_up()
