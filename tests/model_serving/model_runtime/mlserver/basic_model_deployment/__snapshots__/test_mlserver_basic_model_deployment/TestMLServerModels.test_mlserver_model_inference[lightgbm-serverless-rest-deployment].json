@@ -1,6 +1,6 @@
 {
-  "id": "lightgbm-iris",
-  "model_name": "lightgbm-iris",
+  "id": "lightgbm",
+  "model_name": "lightgbm",
   "model_version": "v0.1.0",
   "outputs": [
     {
