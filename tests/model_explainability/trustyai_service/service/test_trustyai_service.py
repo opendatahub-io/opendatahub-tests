@@ -9,7 +9,7 @@ from tests.model_explainability.trustyai_service.constants import (
 from tests.model_explainability.trustyai_service.trustyai_service_utils import (
     verify_upload_data_to_trustyai_service,
     TrustyAIServiceMetrics,
-    verify_trustyai_service_metric_scheduling_request
+    verify_trustyai_service_metric_scheduling_request,
 )
 from tests.model_explainability.trustyai_service.utils import (
     validate_trustyai_service_db_conn_failure,
@@ -43,6 +43,7 @@ def test_trustyai_service_with_invalid_db_cert(
         namespace=model_namespace,
         label_selector=f"app.kubernetes.io/instance={trustyai_service_with_invalid_db_cert.name}",
     )
+
 
 @pytest.mark.parametrize(
     "model_namespace",

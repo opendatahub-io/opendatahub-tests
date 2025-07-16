@@ -20,7 +20,8 @@ from tests.model_explainability.trustyai_service.constants import (
     KSERVE_MLSERVER_SUPPORTED_MODEL_FORMATS,
     KSERVE_MLSERVER_ANNOTATIONS,
     XGBOOST,
-    ISVC_GETTER, GAUSSIAN_CREDIT_MODEL,
+    ISVC_GETTER,
+    GAUSSIAN_CREDIT_MODEL,
 )
 from tests.model_explainability.trustyai_service.trustyai_service_utils import (
     TRUSTYAI_SERVICE_NAME,
@@ -55,8 +56,11 @@ def model_namespaces(request, admin_client, teardown_resources) -> Generator[Lis
     for ns in namespaces:
         ns.clean_up()
 
+
 @pytest.fixture(scope="class")
-def minio_data_connection_multi_ns(request, admin_client, model_namespaces, minio_service) -> Generator[List[Secret], Any, None]:
+def minio_data_connection_multi_ns(
+    request, admin_client, model_namespaces, minio_service
+) -> Generator[List[Secret], Any, None]:
     with ExitStack() as stack:
         secrets = [
             stack.enter_context(
@@ -64,15 +68,18 @@ def minio_data_connection_multi_ns(request, admin_client, model_namespaces, mini
                     minio_service=minio_service,
                     model_namespace=ns.name,
                     aws_s3_bucket=param["bucket"],
-                    client=admin_client
+                    client=admin_client,
                 )
             )
             for ns, param in zip(model_namespaces, request.param)
         ]
         yield secrets
 
+
 @pytest.fixture(scope="class")
-def trustyai_service_with_pvc_storage_multi_ns(admin_client, model_namespaces, cluster_monitoring_config, user_workload_monitoring_config) -> Generator[List[TrustyAIService], Any, None]:
+def trustyai_service_with_pvc_storage_multi_ns(
+    admin_client, model_namespaces, cluster_monitoring_config, user_workload_monitoring_config
+) -> Generator[List[TrustyAIService], Any, None]:
     with ExitStack() as stack:
         services = [
             stack.enter_context(
@@ -90,6 +97,7 @@ def trustyai_service_with_pvc_storage_multi_ns(admin_client, model_namespaces, c
             for ns in model_namespaces
         ]
         yield services
+
 
 @pytest.fixture(scope="class")
 def mlserver_runtime_multi_ns(admin_client, model_namespaces) -> Generator[List[ServingRuntime], Any, None]:
@@ -113,6 +121,7 @@ def mlserver_runtime_multi_ns(admin_client, model_namespaces) -> Generator[List[
     for runtime in runtimes:
         runtime.clean_up()
 
+
 @pytest.fixture(scope="class")
 def gaussian_credit_model_multi_ns(
     admin_client,
@@ -121,7 +130,7 @@ def gaussian_credit_model_multi_ns(
     minio_service,
     minio_data_connection_multi_ns,
     mlserver_runtime_multi_ns,
-    trustyai_service_with_pvc_storage_multi_ns
+    trustyai_service_with_pvc_storage_multi_ns,
 ) -> Generator[List[InferenceService], Any, None]:
     with ExitStack() as stack:
         models = []
@@ -137,9 +146,9 @@ def gaussian_credit_model_multi_ns(
                 storage_path=GAUSSIAN_CREDIT_MODEL_STORAGE_PATH,
                 enable_auth=True,
                 wait_for_predictor_pods=False,
-                resources=GAUSSIAN_CREDIT_MODEL_RESOURCES
+                resources=GAUSSIAN_CREDIT_MODEL_RESOURCES,
             )
-            isvc = stack.enter_context(isvc_context) # noqa: FCN001
+            isvc = stack.enter_context(isvc_context)  # noqa: FCN001
 
             wait_for_isvc_deployment_registered_by_trustyai_service(
                 client=admin_client,
@@ -171,6 +180,7 @@ def isvc_getter_role_multi_ns(admin_client, model_namespaces) -> Generator[List[
         ]
         yield roles
 
+
 @pytest.fixture(scope="class")
 def isvc_getter_role_binding_multi_ns(
     admin_client,
@@ -193,6 +203,7 @@ def isvc_getter_role_binding_multi_ns(
         ]
         yield bindings
 
+
 @pytest.fixture(scope="class")
 def isvc_getter_token_secret_multi_ns(
     admin_client,
@@ -214,12 +225,10 @@ def isvc_getter_token_secret_multi_ns(
         ]
         yield secrets
 
+
 @pytest.fixture(scope="class")
 def isvc_getter_token_multi_ns(
     isvc_getter_service_account_multi_ns,
     isvc_getter_token_secret_multi_ns,
 ) -> List[str]:
-    return [
-        create_inference_token(model_service_account=sa)
-        for sa in isvc_getter_service_account_multi_ns
-    ]
+    return [create_inference_token(model_service_account=sa) for sa in isvc_getter_service_account_multi_ns]
