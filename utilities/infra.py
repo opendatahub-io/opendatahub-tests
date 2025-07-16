@@ -149,7 +149,7 @@ def create_ns(
         project = ProjectRequest(**namespace_kwargs).deploy()
         if _labels := namespace_kwargs.get("label", {}):
             # To patch the namespace, admin client is required
-            ns = Namespace(client=get_client(), name=name)
+            ns = Namespace(client=admin_client, name=name)
             ResourceEditor({
                 ns: {
                     "metadata": {
