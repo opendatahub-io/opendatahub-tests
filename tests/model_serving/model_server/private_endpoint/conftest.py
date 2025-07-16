@@ -9,6 +9,7 @@ from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from simple_logger.logger import get_logger
 
+from tests.conftest import admin_client
 from tests.model_serving.model_server.private_endpoint.utils import create_sidecar_pod
 from utilities.constants import KServeDeploymentType, ModelFormat, ModelStoragePath
 from utilities.inference_utils import create_isvc
@@ -18,8 +19,8 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")
-def diff_namespace(unprivileged_client: DynamicClient) -> Generator[Namespace, Any, Any]:
-    with create_ns(unprivileged_client=unprivileged_client, name="diff-namespace") as ns:
+def diff_namespace(admin_client: DynamicClient, unprivileged_client: DynamicClient) -> Generator[Namespace, Any, Any]:
+    with create_ns(admin_client=admin_client ,unprivileged_client=unprivileged_client, name="diff-namespace") as ns:
         yield ns
 
 
