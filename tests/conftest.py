@@ -389,12 +389,12 @@ def cluster_monitoring_config(
 
 @pytest.fixture(scope="class")
 def unprivileged_model_namespace(
-    request: FixtureRequest, admin_client:DynamicClient, unprivileged_client: DynamicClient
+    request: FixtureRequest, admin_client: DynamicClient, unprivileged_client: DynamicClient
 ) -> Generator[Namespace, Any, Any]:
     if request.param.get("modelmesh-enabled"):
         request.getfixturevalue(argname="enabled_modelmesh_in_dsc")
 
-    with create_ns(admin_client=admin_client,unprivileged_client=unprivileged_client, pytest_request=request) as ns:
+    with create_ns(admin_client=admin_client, unprivileged_client=unprivileged_client, pytest_request=request) as ns:
         yield ns
 
 
