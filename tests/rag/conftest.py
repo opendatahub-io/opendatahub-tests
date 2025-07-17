@@ -1,19 +1,23 @@
-from typing import Dict, Generator, Any
-import pytest
 import os
+from typing import Any, Dict, Generator
+
+import portforward
+import pytest
+from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
+from llama_stack_client import LlamaStackClient, APIConnectionError
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
-from _pytest.fixtures import FixtureRequest
 from ocp_resources.namespace import Namespace
-
-from utilities.infra import create_ns
+from ocp_resources.project_project_openshift_io import Project
 from simple_logger.logger import get_logger
-from utilities.rag_utils import create_llama_stack_distribution, LlamaStackDistribution
-from utilities.data_science_cluster_utils import update_components_in_dsc
+from timeout_sampler import TimeoutSampler, retry
+
 from utilities.constants import DscComponents, Timeout
+from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.general import generate_random_name
-from timeout_sampler import TimeoutSampler
+from utilities.infra import create_ns
+from utilities.rag_utils import LlamaStackDistribution, create_llama_stack_distribution
 
 LOGGER = get_logger(name=__name__)
 
@@ -25,26 +29,28 @@ def llama_stack_server() -> Dict[str, Any]:
 
     return {
         "containerSpec": {
+            "resources": {
+                "requests": {"cpu": "250m", "memory": "500Mi"},
+                "limits": {"cpu": "2", "memory": "12Gi"},
+            },
             "env": [
                 {"name": "INFERENCE_MODEL", "value": rag_vllm_model},
                 {"name": "VLLM_TLS_VERIFY", "value": "false"},
                 {"name": "VLLM_API_TOKEN", "value": rag_vllm_token},
                 {"name": "VLLM_URL", "value": rag_vllm_url},
-                {"name": "MILVUS_DB_PATH", "value": "/.llama/distributions/remote-vllm/milvus.db"},
+                {"name": "MILVUS_DB_PATH", "value": "~/.llama/milvus.db"},
+                {"name": "FMS_ORCHESTRATOR_URL", "value": "http://localhost"},
             ],
             "name": "llama-stack",
             "port": 8321,
         },
-        "distribution": {"image": "quay.io/mcampbel/llama-stack:milvus-granite-embedding-125m-english"},
-        "podOverrides": {
-            "volumeMounts": [{"mountPath": "/root/.llama", "name": "llama-storage"}],
-            "volumes": [{"emptyDir": {}, "name": "llama-storage"}],
-        },
+        "distribution": {"image": "quay.io/opendatahub/llama-stack:odh"},
+        "storage": {"size": "5Gi"},
     }
 
 
 @pytest.fixture(scope="class")
-def enabled_llama_stack_operator(dsc_resource: DataScienceCluster) -> Generator[None, Any, Any]:
+def enabled_llama_stack_operator(dsc_resource: DataScienceCluster) -> Generator[DataScienceCluster, Any, Any]:
     with update_components_in_dsc(
         dsc=dsc_resource,
         components={
@@ -55,19 +61,19 @@ def enabled_llama_stack_operator(dsc_resource: DataScienceCluster) -> Generator[
         yield dsc
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="class")
 def rag_test_namespace(
     admin_client: DynamicClient, unprivileged_client: DynamicClient
-) -> Generator[Namespace, Any, Any]:
-    namespace_name = generate_random_name(prefix="rag-test-")
-    with create_ns(namespace_name, admin_client=admin_client, unprivileged_client=unprivileged_client) as ns:
+) -> Generator[Namespace | Project, Any, Any]:
+    namespace_name = generate_random_name(prefix="rag-test")
+    with create_ns(name=namespace_name, admin_client=admin_client, unprivileged_client=unprivileged_client) as ns:
         yield ns
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="class")
 def llama_stack_distribution_from_template(
-    enabled_llama_stack_operator: Generator[None, Any, Any],
-    rag_test_namespace: Namespace,
+    enabled_llama_stack_operator: Generator[DataScienceCluster, Any, Any],
+    rag_test_namespace: Namespace | Project,
     request: FixtureRequest,
     admin_client: DynamicClient,
 ) -> Generator[LlamaStackDistribution, Any, Any]:
@@ -81,9 +87,9 @@ def llama_stack_distribution_from_template(
         yield llama_stack_distribution
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="class")
 def llama_stack_distribution_deployment(
-    rag_test_namespace: Namespace,
+    rag_test_namespace: Namespace | Project,
     admin_client: DynamicClient,
     llama_stack_distribution_from_template: Generator[LlamaStackDistribution, Any, Any],
 ) -> Generator[Deployment, Any, Any]:
@@ -103,3 +109,47 @@ def llama_stack_distribution_deployment(
 
     assert deployment.exists, f"llama stack distribution deployment doesn't exist within {timeout} seconds"
     yield deployment
+
+
+@retry(wait_timeout=Timeout.TIMEOUT_1MIN, sleep=5)
+def wait_for_llama_stack_ready(client: LlamaStackClient):
+    try:
+        client.inspect.health()
+        version = client.inspect.version()
+        LOGGER.info(f"Llama Stack server (v{version.version}) is available!")
+        return True
+    except APIConnectionError:
+        return False
+
+
+@pytest.fixture(scope="class")
+def lls_client(
+    admin_client: DynamicClient,
+    rag_test_namespace: Namespace,
+    llama_stack_distribution_deployment: Deployment,
+) -> Generator[LlamaStackClient, Any, Any]:
+    """
+    Returns a ready to use LlamaStackClient,  enabling port forwarding
+    from the llama-stack-server service:8321 to localhost:8321
+
+    Args:
+        admin_client (DynamicClient): _description_
+        rag_test_namespace (Namespace): _description_
+        llama_stack_distribution_deployment (Deployment): _description_
+
+    Yields:
+        Generator[LlamaStackClient, Any, Any]: _description_
+    """
+    with portforward.forward(
+        pod_or_service="rag-llama-stack-distribution-service",
+        namespace=rag_test_namespace.name,
+        from_port=8321,
+        to_port=8321,
+        waiting=15,
+    ):
+        client = LlamaStackClient(
+            base_url="http://localhost:8321",
+            timeout=120.0,
+        )
+        wait_for_llama_stack_ready(client)
+        yield client
