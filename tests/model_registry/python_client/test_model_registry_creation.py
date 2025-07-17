@@ -17,7 +17,6 @@ from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
 
 
-
 LOGGER = get_logger(name=__name__)
 
 CUSTOM_NAMESPACE = "model-registry-custom-ns"

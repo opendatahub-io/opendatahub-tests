@@ -497,7 +497,8 @@ def is_model_registry_oauth(request: FixtureRequest) -> bool:
 def api_server_url(admin_client: DynamicClient) -> str:
     infrastructure = Infrastructure(client=admin_client, name="cluster", ensure_exists=True)
     return infrastructure.instance.status.apiServerURL
-  
+
+
 @pytest.fixture(scope="class")
 def model_registry_rest_url(model_registry_instance_rest_endpoint: str) -> str:
     # address and port need to be split in the client instantiation
