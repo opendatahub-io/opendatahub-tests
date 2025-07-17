@@ -31,11 +31,10 @@ def fetch_tgis_response(  # type: ignore
     inference_client = TGISGRPCPlugin(host=url, model_name=model_name, streaming=True)
     model_info = inference_client.get_model_info()
     if completion_query:
-        for query in COMPLETION_QUERY:
+        for query in completion_query:
             completion_response = inference_client.make_grpc_request(query=query)
             completion_responses.append(completion_response)
             stream_response = inference_client.make_grpc_request_stream(query=query)
-            completion_responses.append(completion_response)
             stream_completion_responses.append(stream_response)
     return model_info, completion_responses, stream_completion_responses
 
@@ -48,7 +47,6 @@ def run_raw_inference(
     endpoint: str,
     completion_query: list[dict[str, str]] = COMPLETION_QUERY,
 ) -> tuple[Any, list[Any], list[Any]]:
-    print(f"this is the endpoint: {endpoint} for model: {isvc.instance.metadata.name} raw inference")
     LOGGER.info(pod_name)
     with portforward.forward(
         pod_or_service=pod_name,

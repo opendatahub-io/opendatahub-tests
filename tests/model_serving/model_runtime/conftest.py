@@ -14,7 +14,7 @@ LOGGER = get_logger(name=__name__)
 @pytest.fixture(scope="session", autouse=True)
 def vllm_skip_if_no_supported_accelerator_type(supported_accelerator_type: str) -> None:
     if not supported_accelerator_type:
-        pytest.skip("Accelerator type is not provided,vLLM test can not be run on CPU")
+        pytest.skip("Accelerator type is not provided,vLLM test cannot be run on CPU")
 
 
 @pytest.fixture
