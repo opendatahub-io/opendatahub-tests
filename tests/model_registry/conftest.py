@@ -19,16 +19,7 @@ from simple_logger.logger import get_logger
 from kubernetes.dynamic import DynamicClient
 from pytest_testconfig import config as py_config
 from model_registry.types import RegisteredModel
-
-# Factory fixture imports
-from typing import List, Callable
 import uuid
-from tests.model_registry.factory_utils import (
-    SecretConfig,
-    PVCConfig,
-    ServiceConfig,
-    DeploymentConfig,
-)
 
 from tests.model_registry.constants import (
     MR_OPERATOR_NAME,
@@ -57,39 +48,6 @@ from utilities.general import wait_for_pods_by_labels
 LOGGER = get_logger(name=__name__)
 
 MIN_MR_VERSION = Version.parse(version="2.20.0")
-
-
-class ModelRegistryCleanupRegistry:
-    """Registry to track and manage cleanup of Model Registry resources."""
-
-    def __init__(self) -> None:
-        self._cleanup_functions: List[Callable[[], None]] = []
-
-    def register_cleanup(self, cleanup_func: Callable[[], None]) -> None:
-        """Register a cleanup function to be called during teardown."""
-        self._cleanup_functions.append(cleanup_func)
-
-    def cleanup_all(self) -> None:
-        """Execute all registered cleanup functions in reverse order."""
-        # Execute cleanup functions in reverse order (LIFO)
-        for cleanup_func in reversed(self._cleanup_functions):
-            try:
-                cleanup_func()
-            except Exception as e:
-                LOGGER.warning(f"Error during cleanup: {e}")
-
-        # Clear the registry after cleanup
-        self._cleanup_functions.clear()
-
-
-# Global cleanup registry instance
-_cleanup_registry = ModelRegistryCleanupRegistry()
-
-
-@pytest.fixture(scope="class")
-def model_registry_cleanup_registry() -> ModelRegistryCleanupRegistry:
-    """Provide access to the cleanup registry."""
-    return _cleanup_registry
 
 
 @pytest.fixture(scope="class")
@@ -344,7 +302,6 @@ def updated_dsc_component_state_scope_class(
     admin_client: DynamicClient,
     teardown_resources: bool,
     is_model_registry_oauth: bool,
-    model_registry_cleanup_registry: ModelRegistryCleanupRegistry,
 ) -> Generator[DataScienceCluster, Any, Any]:
     if not teardown_resources or pytestconfig.option.post_upgrade:
         # if we are not tearing down resources or we are in post upgrade, we don't need to do anything
@@ -370,10 +327,6 @@ def updated_dsc_component_state_scope_class(
                 number_of_consecutive_checks=6,
             )
             yield dsc_resource
-
-            # CRITICAL: Clean up factory-created resources BEFORE reverting DSC patch
-            LOGGER.info("Cleaning up Model Registry factory resources before reverting DSC patch")
-            model_registry_cleanup_registry.cleanup_all()
 
         for component_name, value in component_patch.items():
             LOGGER.info(f"Waiting for component {component_name} to be updated.")
@@ -531,19 +484,12 @@ def db_name_1() -> str:
 @pytest.fixture(scope="class")
 def db_secret_1(model_registry_namespace: str, db_name_1: str, teardown_resources: bool) -> Generator[Secret, Any, Any]:
     """Create the first DB secret."""
-    config = SecretConfig(
+    with Secret(
         name=db_name_1,
         namespace=model_registry_namespace,
         string_data=MODEL_REGISTRY_DB_SECRET_STR_DATA,
-        labels=get_model_registry_db_label_dict(db_resource_name=db_name_1),
+        label=get_model_registry_db_label_dict(db_resource_name=db_name_1),
         annotations=MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
-    )
-    with Secret(
-        name=config.name,
-        namespace=config.namespace,
-        string_data=config.string_data,
-        label=config.labels,
-        annotations=config.annotations,
         teardown=teardown_resources,
     ) as secret:
         yield secret
@@ -554,19 +500,12 @@ def db_pvc_1(
     model_registry_namespace: str, db_name_1: str, teardown_resources: bool
 ) -> Generator[PersistentVolumeClaim, Any, Any]:
     """Create the first DB PVC."""
-    config = PVCConfig(
+    with PersistentVolumeClaim(
         name=db_name_1,
         namespace=model_registry_namespace,
-        access_modes="ReadWriteOnce",
+        accessmodes="ReadWriteOnce",
         size="5Gi",
-        labels=get_model_registry_db_label_dict(db_resource_name=db_name_1),
-    )
-    with PersistentVolumeClaim(
-        name=config.name,
-        namespace=config.namespace,
-        accessmodes=config.access_modes,
-        size=config.size,
-        label=config.labels,
+        label=get_model_registry_db_label_dict(db_resource_name=db_name_1),
         teardown=teardown_resources,
     ) as pvc:
         yield pvc
@@ -577,19 +516,12 @@ def db_service_1(
     model_registry_namespace: str, db_name_1: str, teardown_resources: bool
 ) -> Generator[Service, Any, Any]:
     """Create the first DB service."""
-    config = ServiceConfig(
+    with Service(
         name=db_name_1,
         namespace=model_registry_namespace,
         ports=[{"name": "mysql", "port": 3306, "protocol": "TCP", "targetPort": 3306}],
         selector={"name": db_name_1},
-        labels=get_model_registry_db_label_dict(db_resource_name=db_name_1),
-    )
-    with Service(
-        name=config.name,
-        namespace=config.namespace,
-        ports=config.ports,
-        selector=config.selector,
-        label=config.labels,
+        label=get_model_registry_db_label_dict(db_resource_name=db_name_1),
         teardown=teardown_resources,
     ) as service:
         yield service
@@ -600,17 +532,11 @@ def db_deployment_1(
     model_registry_namespace: str, db_name_1: str, teardown_resources: bool
 ) -> Generator[Deployment, Any, Any]:
     """Create the first DB deployment."""
-    config = DeploymentConfig(
+    with Deployment(
         name=db_name_1,
         namespace=model_registry_namespace,
         template=get_model_registry_deployment_template_dict(secret_name=db_name_1, resource_name=db_name_1),
-        labels=get_model_registry_db_label_dict(db_resource_name=db_name_1),
-    )
-    with Deployment(
-        name=config.name,
-        namespace=config.namespace,
-        template=config.template,
-        label=config.labels,
+        label=get_model_registry_db_label_dict(db_resource_name=db_name_1),
         replicas=1,
         revision_history_limit=0,
         selector={"matchLabels": {"name": db_name_1}},
@@ -675,19 +601,12 @@ def db_name_2() -> str:
 @pytest.fixture(scope="class")
 def db_secret_2(model_registry_namespace: str, db_name_2: str, teardown_resources: bool) -> Generator[Secret, Any, Any]:
     """Create the second DB secret."""
-    config = SecretConfig(
+    with Secret(
         name=db_name_2,
         namespace=model_registry_namespace,
         string_data=MODEL_REGISTRY_DB_SECRET_STR_DATA,
-        labels=get_model_registry_db_label_dict(db_resource_name=db_name_2),
+        label=get_model_registry_db_label_dict(db_resource_name=db_name_2),
         annotations=MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
-    )
-    with Secret(
-        name=config.name,
-        namespace=config.namespace,
-        string_data=config.string_data,
-        label=config.labels,
-        annotations=config.annotations,
         teardown=teardown_resources,
     ) as secret:
         yield secret
@@ -698,19 +617,12 @@ def db_pvc_2(
     model_registry_namespace: str, db_name_2: str, teardown_resources: bool
 ) -> Generator[PersistentVolumeClaim, Any, Any]:
     """Create the second DB PVC."""
-    config = PVCConfig(
+    with PersistentVolumeClaim(
         name=db_name_2,
         namespace=model_registry_namespace,
-        access_modes="ReadWriteOnce",
+        accessmodes="ReadWriteOnce",
         size="5Gi",
-        labels=get_model_registry_db_label_dict(db_resource_name=db_name_2),
-    )
-    with PersistentVolumeClaim(
-        name=config.name,
-        namespace=config.namespace,
-        accessmodes=config.access_modes,
-        size=config.size,
-        label=config.labels,
+        label=get_model_registry_db_label_dict(db_resource_name=db_name_2),
         teardown=teardown_resources,
     ) as pvc:
         yield pvc
@@ -721,19 +633,12 @@ def db_service_2(
     model_registry_namespace: str, db_name_2: str, teardown_resources: bool
 ) -> Generator[Service, Any, Any]:
     """Create the second DB service."""
-    config = ServiceConfig(
+    with Service(
         name=db_name_2,
         namespace=model_registry_namespace,
         ports=[{"name": "mysql", "port": 3306, "protocol": "TCP", "targetPort": 3306}],
         selector={"name": db_name_2},
-        labels=get_model_registry_db_label_dict(db_resource_name=db_name_2),
-    )
-    with Service(
-        name=config.name,
-        namespace=config.namespace,
-        ports=config.ports,
-        selector=config.selector,
-        label=config.labels,
+        label=get_model_registry_db_label_dict(db_resource_name=db_name_2),
         teardown=teardown_resources,
     ) as service:
         yield service
@@ -744,17 +649,11 @@ def db_deployment_2(
     model_registry_namespace: str, db_name_2: str, teardown_resources: bool
 ) -> Generator[Deployment, Any, Any]:
     """Create the second DB deployment."""
-    config = DeploymentConfig(
+    with Deployment(
         name=db_name_2,
         namespace=model_registry_namespace,
         template=get_model_registry_deployment_template_dict(secret_name=db_name_2, resource_name=db_name_2),
-        labels=get_model_registry_db_label_dict(db_resource_name=db_name_2),
-    )
-    with Deployment(
-        name=config.name,
-        namespace=config.namespace,
-        template=config.template,
-        label=config.labels,
+        label=get_model_registry_db_label_dict(db_resource_name=db_name_2),
         replicas=1,
         revision_history_limit=0,
         selector={"matchLabels": {"name": db_name_2}},

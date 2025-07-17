@@ -15,9 +15,8 @@ from tests.model_registry.constants import (
     MODEL_NAME,
     MODEL_DICT,
 )
-from tests.model_registry.factory_utils import (
-    create_dsc_component_patch,
-)
+
+from utilities.constants import DscComponents
 
 LOGGER = get_logger(name=__name__)
 
@@ -27,11 +26,27 @@ CUSTOM_NAMESPACE = "model-registry-custom-ns"
 @pytest.mark.parametrize(
     "updated_dsc_component_state_scope_class, registered_model",
     [
-        pytest.param(create_dsc_component_patch(namespace=CUSTOM_NAMESPACE), MODEL_DICT, id="custom-namespace"),
         pytest.param(
-            create_dsc_component_patch(namespace=py_config["model_registry_namespace"]),
+            {
+                "component_patch": {
+                    DscComponents.MODELREGISTRY: {
+                        "managementState": DscComponents.ManagementState.MANAGED,
+                        "registriesNamespace": CUSTOM_NAMESPACE,
+                    },
+                }
+            },
             MODEL_DICT,
-            id="default-namespace",
+        ),
+        pytest.param(
+            {
+                "component_patch": {
+                    DscComponents.MODELREGISTRY: {
+                        "managementState": DscComponents.ManagementState.MANAGED,
+                        "registriesNamespace": py_config["model_registry_namespace"],
+                    },
+                },
+            },
+            MODEL_DICT,
         ),
     ],
     indirect=True,
