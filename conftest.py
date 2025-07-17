@@ -48,6 +48,7 @@ def pytest_addoption(parser: Parser) -> None:
     upgrade_group = parser.getgroup(name="Upgrade options")
     must_gather_group = parser.getgroup(name="MustGather")
     cluster_sanity_group = parser.getgroup(name="ClusterSanity")
+    hf_group = parser.getgroup(name="Hugging Face")
 
     # AWS config and credentials options
     aws_group.addoption(
@@ -111,6 +112,11 @@ def pytest_addoption(parser: Parser) -> None:
         default=os.environ.get("MLSERVER_RUNTIME_IMAGE"),
         help="Specify the runtime image to use for the tests",
     )
+    runtime_group.addoption(
+        "--triton-runtime-image",
+        default=os.environ.get("TRITON_RUNTIME_IMAGE"),
+        help="Specify the runtime image to use for the tests",
+    )
 
     # Upgrade options
     upgrade_group.addoption(
@@ -151,6 +157,9 @@ def pytest_addoption(parser: Parser) -> None:
         help="Skip RHOAI/ODH-related resources (DSCI and DSC) checks",
         action="store_true",
     )
+
+    # HuggingFace options
+    hf_group.addoption("--hf-access-token", default=os.environ.get("HF_ACCESS_TOKEN"), help="HF access token")
 
 
 def pytest_cmdline_main(config: Any) -> None:

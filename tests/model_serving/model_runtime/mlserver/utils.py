@@ -8,21 +8,16 @@ This module provides functions for:
 - Validating responses against snapshots
 """
 
-import os
-import json
 import base64
+import json
+import os
 import subprocess
-from contextlib import contextmanager
-from typing import Generator, Any
+from typing import Any
 
-import requests
 import portforward
-
-from kubernetes.dynamic import DynamicClient
-from ocp_resources.secret import Secret
+import requests
 from ocp_resources.inference_service import InferenceService
 
-from utilities.constants import KServeDeploymentType, Protocols
 from tests.model_serving.model_runtime.mlserver.constant import (
     MLSERVER_GRPC_REMOTE_PORT,
     LOCAL_HOST_URL,
@@ -33,52 +28,7 @@ from tests.model_serving.model_runtime.mlserver.constant import (
     NON_DETERMINISTIC_OUTPUT,
     HUGGING_FACE_FRAMEWORK,
 )
-
-
-@contextmanager
-def kserve_s3_endpoint_secret(
-    admin_client: DynamicClient,
-    name: str,
-    namespace: str,
-    aws_access_key: str,
-    aws_secret_access_key: str,
-    aws_s3_endpoint: str,
-    aws_s3_region: str,
-) -> Generator[Secret, Any, Any]:
-    """
-    Context manager that creates a temporary Kubernetes Secret for KServe
-    to access an S3-compatible storage endpoint.
-
-    Args:
-        admin_client (DynamicClient): Kubernetes dynamic client for resource operations.
-        name (str): Name of the Secret resource.
-        namespace (str): Kubernetes namespace in which to create the Secret.
-        aws_access_key (str): AWS access key ID for authentication.
-        aws_secret_access_key (str): AWS secret access key for authentication.
-        aws_s3_endpoint (str): S3 endpoint URL (e.g., https://s3.example.com).
-        aws_s3_region (str): AWS region for the S3 service.
-
-    Yields:
-        Secret: The created Kubernetes Secret object within the context.
-    """
-    with Secret(
-        client=admin_client,
-        name=name,
-        namespace=namespace,
-        annotations={
-            "serving.kserve.io/s3-endpoint": (aws_s3_endpoint.replace("https://", "").replace("http://", "")),
-            "serving.kserve.io/s3-region": aws_s3_region,
-            "serving.kserve.io/s3-useanoncredential": "false",
-            "serving.kserve.io/s3-verifyssl": "0",
-            "serving.kserve.io/s3-usehttps": "1",
-        },
-        string_data={
-            "AWS_ACCESS_KEY_ID": aws_access_key,
-            "AWS_SECRET_ACCESS_KEY": aws_secret_access_key,
-        },
-        wait_for_resource=True,
-    ) as secret:
-        yield secret
+from utilities.constants import KServeDeploymentType, Protocols
 
 
 def send_rest_request(url: str, input_data: dict[str, Any], verify: bool = False) -> Any:

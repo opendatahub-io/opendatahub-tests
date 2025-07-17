@@ -32,7 +32,7 @@ from tests.model_registry.constants import (
     ISTIO_CONFIG_DICT,
 )
 from tests.model_registry.rest_api.utils import ModelRegistryV1Alpha1
-from utilities.constants import Labels
+from utilities.constants import Labels, Protocols
 from tests.model_registry.utils import (
     get_endpoint_from_mr_service,
     get_mr_service_by_label,
@@ -40,7 +40,7 @@ from tests.model_registry.utils import (
     get_model_registry_db_label_dict,
     wait_for_pods_running,
 )
-from utilities.constants import Protocols, DscComponents
+from utilities.constants import DscComponents
 from model_registry import ModelRegistry as ModelRegistryClient
 from semver import Version
 from utilities.general import wait_for_pods_by_labels
@@ -149,11 +149,8 @@ def model_registry_db_secret(
 @pytest.fixture(scope="class")
 def model_registry_db_deployment(
     pytestconfig: Config,
-    admin_client: DynamicClient,
     model_registry_namespace: str,
     model_registry_db_secret: Secret,
-    model_registry_db_pvc: PersistentVolumeClaim,
-    model_registry_db_service: Service,
     teardown_resources: bool,
     is_model_registry_oauth: bool,
 ) -> Generator[Deployment, Any, Any]:
@@ -184,7 +181,17 @@ def model_registry_db_deployment(
 
 
 @pytest.fixture(scope="class")
-def model_registry_instance(
+def model_registry_mysql_metadata_db(
+    model_registry_db_secret: Secret,
+    model_registry_db_pvc: PersistentVolumeClaim,
+    model_registry_db_service: Service,
+    model_registry_db_deployment: Deployment,
+) -> Deployment:
+    return model_registry_db_deployment
+
+
+@pytest.fixture(scope="class")
+def model_registry_instance_mysql(
     pytestconfig: Config,
     admin_client: DynamicClient,
     model_registry_namespace: str,
@@ -222,34 +229,29 @@ def model_registry_instance(
         ) as mr:
             mr.wait_for_condition(condition="Available", status="True")
             mr.wait_for_condition(condition="OAuthProxyAvailable", status="True")
-
+            wait_for_pods_running(
+                admin_client=admin_client, namespace_name=model_registry_namespace, number_of_consecutive_checks=6
+            )
             yield mr
 
 
 @pytest.fixture(scope="class")
-def model_registry_mysql_config(
-    request: FixtureRequest,
-    model_registry_db_deployment: Deployment,
-    model_registry_db_secret: Secret,
-) -> dict[str, Any]:
+def model_registry_mysql_config(request: FixtureRequest, model_registry_namespace: str) -> dict[str, Any]:
     """
     Fixture to build the MySQL config dictionary for Model Registry.
     Expects request.param to be a dict. If 'sslRootCertificateConfigMap' is not present, it defaults to None.
     If 'sslRootCertificateConfigMap' is present, it will be used to configure the MySQL connection.
-
     Args:
         request: The pytest request object
-        model_registry_db_deployment: The model registry db deployment
-        model_registry_db_secret: The model registry db secret
-
+        model_registry_namespace: The model registry namespoce
     Returns:
         dict[str, Any]: The MySQL config dictionary
     """
     param = request.param if hasattr(request, "param") else {}
     config = {
-        "host": f"{model_registry_db_deployment.name}.{model_registry_db_deployment.namespace}.svc.cluster.local",
+        "host": f"{DB_RESOURCES_NAME}.{model_registry_namespace}.svc.cluster.local",
         "database": MODEL_REGISTRY_DB_SECRET_STR_DATA["database-name"],
-        "passwordSecret": {"key": "database-password", "name": model_registry_db_deployment.name},
+        "passwordSecret": {"key": "database-password", "name": DB_RESOURCES_NAME},
         "port": param.get("port", 3306),
         "skipDBCreation": False,
         "username": MODEL_REGISTRY_DB_SECRET_STR_DATA["database-user"],
@@ -261,45 +263,23 @@ def model_registry_mysql_config(
 
 
 @pytest.fixture(scope="class")
-def model_registry_instance_service(
-    admin_client: DynamicClient,
-    model_registry_namespace: str,
-    model_registry_instance: ModelRegistry,
-) -> Service:
-    """
-    Get the service for the regular model registry instance.
-    Args:
-        admin_client: The admin client
-        model_registry_namespace: The namespace where the model registry is deployed
-        model_registry_instance: The model registry instance to get the service for
-    Returns:
-        Service: The service for the model registry instance
-    """
-    return get_mr_service_by_label(
-        client=admin_client, namespace_name=model_registry_namespace, mr_instance=model_registry_instance
+def model_registry_instance_rest_endpoint(admin_client: DynamicClient, model_registry_namespace: str) -> str:
+    return get_endpoint_from_mr_service(
+        svc=get_mr_service_by_label(
+            client=admin_client,
+            namespace_name=model_registry_namespace,
+            mr_instance=ModelRegistry(name=MR_INSTANCE_NAME, namespace=model_registry_namespace),
+        ),
+        protocol=Protocols.REST,
     )
-
-
-@pytest.fixture(scope="class")
-def model_registry_instance_rest_endpoint(
-    model_registry_instance_service: Service,
-) -> str:
-    """
-    Get the REST endpoint for the model registry instance.
-    Args:
-        model_registry_instance_service: The service for the model registry instance
-    Returns:
-        str: The REST endpoint for the model registry instance
-    """
-    return get_endpoint_from_mr_service(svc=model_registry_instance_service, protocol=Protocols.REST)
 
 
 @pytest.fixture(scope="class")
 def updated_dsc_component_state_scope_class(
     pytestconfig: Config,
+    admin_client: DynamicClient,
     request: FixtureRequest,
     dsc_resource: DataScienceCluster,
-    admin_client: DynamicClient,
     teardown_resources: bool,
     is_model_registry_oauth: bool,
 ) -> Generator[DataScienceCluster, Any, Any]:
@@ -459,6 +439,55 @@ def model_registry_instance_pod(admin_client: DynamicClient) -> Generator[Pod, A
     )[0]
 
 
+@pytest.fixture()
+def model_registry_db_instance_pod(admin_client: DynamicClient) -> Generator[Pod, Any, Any]:
+    """Get the model registry instance pod."""
+    yield wait_for_pods_by_labels(
+        admin_client=admin_client,
+        namespace=py_config["model_registry_namespace"],
+        label_selector=f"name={DB_RESOURCES_NAME}",
+        expected_num_pods=1,
+    )[0]
+
+
+@pytest.fixture()
+def set_mr_db_dirty(model_registry_db_instance_pod: Pod) -> int:
+    """Set the model registry database dirty and return the latest migration version"""
+    output = model_registry_db_instance_pod.execute(
+        command=[
+            "mysql",
+            "-u",
+            MODEL_REGISTRY_DB_SECRET_STR_DATA["database-user"],
+            f"-p{MODEL_REGISTRY_DB_SECRET_STR_DATA['database-password']}",
+            "-e",
+            "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1;",
+            MODEL_REGISTRY_DB_SECRET_STR_DATA["database-name"],
+        ]
+    )
+    latest_migration_version = int(output.strip().split()[1])
+    model_registry_db_instance_pod.execute(
+        command=[
+            "mysql",
+            "-u",
+            MODEL_REGISTRY_DB_SECRET_STR_DATA["database-user"],
+            f"-p{MODEL_REGISTRY_DB_SECRET_STR_DATA['database-password']}",
+            "-e",
+            f"UPDATE schema_migrations SET dirty = 1 WHERE version = {latest_migration_version};",
+            MODEL_REGISTRY_DB_SECRET_STR_DATA["database-name"],
+        ]
+    )
+    return latest_migration_version
+
+
+@pytest.fixture()
+def delete_mr_deployment() -> None:
+    """Delete the model registry deployment"""
+    mr_deployment = Deployment(
+        name=MR_INSTANCE_NAME, namespace=py_config["model_registry_namespace"], ensure_exists=True
+    )
+    mr_deployment.delete(wait=True)
+
+
 @pytest.fixture(scope="class")
 def is_model_registry_oauth(request: FixtureRequest) -> bool:
     return getattr(request, "param", {}).get("use_oauth_proxy", True)
@@ -468,6 +497,40 @@ def is_model_registry_oauth(request: FixtureRequest) -> bool:
 def api_server_url(admin_client: DynamicClient) -> str:
     infrastructure = Infrastructure(client=admin_client, name="cluster", ensure_exists=True)
     return infrastructure.instance.status.apiServerURL
+  
+@pytest.fixture(scope="class")
+def model_registry_rest_url(model_registry_instance_rest_endpoint: str) -> str:
+    # address and port need to be split in the client instantiation
+    return f"{Protocols.HTTPS}://{model_registry_instance_rest_endpoint}"
+
+
+@pytest.fixture(scope="class")
+def model_registry_rest_headers(current_client_token: str) -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {current_client_token}",
+        "accept": "application/json",
+        "Content-Type": "application/json",
+    }
+
+
+@pytest.fixture(scope="class")
+def model_registry_deployment_containers(model_registry_namespace: str) -> list[dict[str, Any]]:
+    return Deployment(
+        name=MR_INSTANCE_NAME, namespace=model_registry_namespace, ensure_exists=True
+    ).instance.spec.template.spec.containers
+
+
+@pytest.fixture(scope="class")
+def model_registry_pod(admin_client: DynamicClient, model_registry_namespace: str) -> Pod:
+    mr_pod = list(
+        Pod.get(
+            dyn_client=admin_client,
+            namespace=model_registry_namespace,
+            label_selector=f"app={MR_INSTANCE_NAME}",
+        )
+    )
+    assert len(mr_pod) == 1
+    return mr_pod[0]
 
 
 # =============================================================================

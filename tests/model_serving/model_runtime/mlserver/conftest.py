@@ -30,7 +30,6 @@ from tests.model_serving.model_runtime.mlserver.constant import (
     TEMPLATE_MAP,
     TEMPLATE_FILE_PATH,
 )
-from tests.model_serving.model_runtime.mlserver.utils import kserve_s3_endpoint_secret
 
 from utilities.constants import (
     KServeDeploymentType,
@@ -46,20 +45,6 @@ from simple_logger.logger import get_logger
 
 
 LOGGER = get_logger(name=__name__)
-
-
-@pytest.fixture(scope="session")
-def root_dir(pytestconfig: pytest.Config) -> Any:
-    """
-    Provides the root directory path of the pytest project for the entire test session.
-
-    Args:
-        pytestconfig (pytest.Config): The pytest configuration object.
-
-    Returns:
-        Any: The root path of the pytest project.
-    """
-    return pytestconfig.rootpath
 
 
 @pytest.fixture(scope="class")
@@ -100,20 +85,6 @@ def mlserver_rest_serving_runtime_template(admin_client: DynamicClient) -> Gener
         namespace=py_config["applications_namespace"],
     ) as tp:
         yield tp
-
-
-@pytest.fixture(scope="class")
-def protocol(request: pytest.FixtureRequest) -> str:
-    """
-    Provides the protocol type parameter for the test class.
-
-    Args:
-        request (pytest.FixtureRequest): The pytest fixture request object.
-
-    Returns:
-        str: The protocol type specified in the test parameter.
-    """
-    return request.param["protocol_type"]
 
 
 @pytest.fixture(scope="class")
@@ -227,41 +198,6 @@ def mlserver_model_service_account(admin_client: DynamicClient, kserve_s3_secret
         secrets=[{"name": kserve_s3_secret.name}],
     ) as sa:
         yield sa
-
-
-@pytest.fixture(scope="class")
-def kserve_s3_secret(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-    aws_access_key_id: str,
-    aws_secret_access_key: str,
-    models_s3_bucket_region: str,
-    models_s3_bucket_endpoint: str,
-) -> Secret:
-    """
-    Creates and yields a Kubernetes Secret configured for S3 access in KServe.
-
-    Args:
-        admin_client (DynamicClient): Kubernetes dynamic client.
-        model_namespace (Namespace): Namespace where the secret will be created.
-        aws_access_key_id (str): AWS access key ID.
-        aws_secret_access_key (str): AWS secret access key.
-        models_s3_bucket_region (str): AWS S3 bucket region.
-        models_s3_bucket_endpoint (str): AWS S3 bucket endpoint URL.
-
-    Yields:
-        Secret: A Kubernetes Secret configured with the provided AWS credentials and S3 endpoint.
-    """
-    with kserve_s3_endpoint_secret(
-        admin_client=admin_client,
-        name="mlserver-models-bucket-secret",
-        namespace=model_namespace.name,
-        aws_access_key=aws_access_key_id,
-        aws_secret_access_key=aws_secret_access_key,
-        aws_s3_region=models_s3_bucket_region,
-        aws_s3_endpoint=models_s3_bucket_endpoint,
-    ) as secret:
-        yield secret
 
 
 @pytest.fixture

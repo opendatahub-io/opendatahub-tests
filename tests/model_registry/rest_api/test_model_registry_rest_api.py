@@ -1,27 +1,28 @@
 from typing import Self, Any
 import pytest
-from pytest_testconfig import config as py_config
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
-from tests.model_registry.rest_api.constants import MODEL_REGISTER, MODEL_ARTIFACT, MODEL_VERSION, MODEL_REGISTER_DATA
+from pytest_testconfig import py_config
+
+from tests.model_registry.rest_api.constants import (
+    MODEL_REGISTER,
+    MODEL_ARTIFACT,
+    MODEL_VERSION,
+    MODEL_REGISTER_DATA,
+    MODEL_ARTIFACT_DESCRIPTION,
+    MODEL_FORMAT_NAME,
+    MODEL_FORMAT_VERSION,
+    MODEL_VERSION_DESCRIPTION,
+    STATE_ARCHIVED,
+    STATE_LIVE,
+    CUSTOM_PROPERTY,
+    REGISTERED_MODEL_DESCRIPTION,
+)
 from tests.model_registry.rest_api.utils import validate_resource_attributes, ModelRegistryV1Alpha1
-from utilities.constants import DscComponents
 from simple_logger.logger import get_logger
 
+from utilities.constants import DscComponents
+
 LOGGER = get_logger(name=__name__)
-CUSTOM_PROPERTY = {
-    "customProperties": {
-        "my_bool_property": {"bool_value": True, "metadataType": "MetadataBoolValue"},
-        "my_str_property": {"string_value": "my_value", "metadataType": "MetadataStringValue"},
-        "my_double_property": {"double_value": 500.01, "metadataType": "MetadataDoubleValue"},
-    }
-}
-MODEL_VERSION_DESCRIPTION = {"description": "updated model version description"}
-STATE_ARCHIVED = {"state": "ARCHIVED"}
-STATE_LIVE = {"state": "LIVE"}
-REGISTERED_MODEL_DESCRIPTION = {"description": "updated registered model description"}
-MODEL_FORMAT_VERSION = {"modelFormatVersion": "v2"}
-MODEL_FORMAT_NAME = {"modelFormatName": "tensorflow"}
-MODEL_ARTIFACT_DESCRIPTION = {"description": "updated artifact description"}
 
 
 @pytest.mark.parametrize(
@@ -55,7 +56,11 @@ MODEL_ARTIFACT_DESCRIPTION = {"description": "updated artifact description"}
     indirect=True,
 )
 @pytest.mark.usefixtures(
-    "updated_dsc_component_state_scope_class", "is_model_registry_oauth", "registered_model_rest_api"
+    "updated_dsc_component_state_scope_class",
+    "is_model_registry_oauth",
+    "model_registry_mysql_metadata_db",
+    "model_registry_instance_mysql",
+    "registered_model_rest_api",
 )
 class TestModelRegistryCreationRest:
     """
@@ -95,23 +100,27 @@ class TestModelRegistryCreationRest:
             resource_name=data_key,
         )
 
-    def test_model_registry_validate_api_version(self: Self, model_registry_instance):
+    def test_model_registry_validate_api_version(self: Self, model_registry_instance_mysql):
         api_version = ModelRegistry(
-            name=model_registry_instance.name, namespace=model_registry_instance.namespace, ensure_exists=True
+            name=model_registry_instance_mysql.name,
+            namespace=model_registry_instance_mysql.namespace,
+            ensure_exists=True,
         ).instance.apiVersion
         LOGGER.info(f"Validating apiversion {api_version} for model registry")
         expected_version = f"{ModelRegistry.ApiGroup.MODELREGISTRY_OPENDATAHUB_IO}/{ModelRegistry.ApiVersion.V1BETA1}"
         assert api_version == expected_version
 
-    def test_model_registry_validate_oauthproxy_enabled(self: Self, model_registry_instance):
-        model_registry_instance_spec = model_registry_instance.instance.spec
+    def test_model_registry_validate_oauthproxy_enabled(self: Self, model_registry_instance_mysql):
+        model_registry_instance_spec = model_registry_instance_mysql.instance.spec
         LOGGER.info(f"Validating that MR is using oauth proxy {model_registry_instance_spec}")
         assert not model_registry_instance_spec.istio
         assert model_registry_instance_spec.oauthProxy.serviceRoute == "enabled"
 
-    def test_model_registry_validate_mr_status_v1alpha1(self: Self, model_registry_instance):
+    def test_model_registry_validate_mr_status_v1alpha1(self: Self, model_registry_instance_mysql):
         mr_instance = ModelRegistryV1Alpha1(
-            name=model_registry_instance.name, namespace=model_registry_instance.namespace, ensure_exists=True
+            name=model_registry_instance_mysql.name,
+            namespace=model_registry_instance_mysql.namespace,
+            ensure_exists=True,
         ).instance
         status = mr_instance.status.to_dict()
         LOGGER.info(f"Validating MR status {status}")

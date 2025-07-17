@@ -6,6 +6,7 @@ from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from _pytest.fixtures import FixtureRequest
 from ocp_resources.namespace import Namespace
+
 from utilities.infra import create_ns
 from simple_logger.logger import get_logger
 from utilities.rag_utils import create_llama_stack_distribution, LlamaStackDistribution
@@ -55,9 +56,11 @@ def enabled_llama_stack_operator(dsc_resource: DataScienceCluster) -> Generator[
 
 
 @pytest.fixture(scope="function")
-def rag_test_namespace(unprivileged_client: DynamicClient) -> Generator[Namespace, Any, Any]:
+def rag_test_namespace(
+    admin_client: DynamicClient, unprivileged_client: DynamicClient
+) -> Generator[Namespace, Any, Any]:
     namespace_name = generate_random_name(prefix="rag-test-")
-    with create_ns(namespace_name, unprivileged_client=unprivileged_client) as ns:
+    with create_ns(namespace_name, admin_client=admin_client, unprivileged_client=unprivileged_client) as ns:
         yield ns
 
 

@@ -1,22 +1,22 @@
 import pytest
-from typing import Self
+from typing import Self, Any
 from simple_logger.logger import get_logger
 from pytest_testconfig import config as py_config
 
 # ocp_resources imports
 from ocp_resources.pod import Pod
 
-# model-registry client imports
+from tests.model_registry.utils import (
+    execute_model_registry_get_command,
+    validate_no_grpc_container,
+    validate_mlmd_removal_in_model_registry_pod_log,
+)
+from utilities.constants import DscComponents
+from tests.model_registry.constants import MODEL_NAME, MODEL_DICT
 from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
 
-# test constants and utils
-from tests.model_registry.constants import (
-    MODEL_NAME,
-    MODEL_DICT,
-)
 
-from utilities.constants import DscComponents
 
 LOGGER = get_logger(name=__name__)
 
@@ -51,7 +51,12 @@ CUSTOM_NAMESPACE = "model-registry-custom-ns"
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("updated_dsc_component_state_scope_class", "registered_model")
+@pytest.mark.usefixtures(
+    "updated_dsc_component_state_scope_class",
+    "model_registry_mysql_metadata_db",
+    "model_registry_instance_mysql",
+    "registered_model",
+)
 class TestModelRegistryCreation:
     """
     Tests the creation of a model registry. If the component is set to 'Removed' it will be switched to 'Managed'
@@ -93,7 +98,52 @@ class TestModelRegistryCreation:
         if not namespace_env:
             pytest.fail("Missing environment variable REGISTRIES_NAMESPACE")
 
-    # TODO: Edit a registered model
-    # TODO: Add additional versions for a model
-    # TODO: List all available models
-    # TODO: List all versions of a model
+    def test_model_registry_grpc_container_removal(self, model_registry_deployment_containers: list[dict[str, Any]]):
+        """
+        RHOAIENG-26239: Test to ensure removal of grpc container from model registry deployment
+        Steps:
+            Create metadata database
+            Deploys model registry using the same
+            Check model registry deployment for grpc container. It should not be present
+        """
+        validate_no_grpc_container(deployment_containers=model_registry_deployment_containers)
+
+    def test_model_registry_pod_log_mlmd_removal(
+        self, model_registry_deployment_containers: list[dict[str, Any]], model_registry_pod: Pod
+    ):
+        """
+        RHOAIENG-26239: Test to ensure removal of grpc container from model registry deployment
+        Steps:
+            Create metadata database
+            Deploys model registry using the same
+            Check model registry deployment for grpc container. It should not be present
+        """
+        validate_mlmd_removal_in_model_registry_pod_log(
+            deployment_containers=model_registry_deployment_containers, pod_object=model_registry_pod
+        )
+
+    @pytest.mark.parametrize(
+        "endpoint",
+        [
+            pytest.param(
+                "oauth/healthz",
+            ),
+            pytest.param(
+                "readyz/isDirty",
+            ),
+        ],
+    )
+    def test_model_registry_endpoint_response(
+        self, model_registry_rest_url: str, model_registry_rest_headers: dict[str, str], endpoint: str
+    ):
+        """
+        RHOAIENG-26239: Test to ensure model registry endpoints are responsive
+        Steps:
+            Create metadata database
+            Deploys model registry using the same
+            Ensure endpoint is responsive via get call
+        """
+        output = execute_model_registry_get_command(
+            url=f"{model_registry_rest_url}/{endpoint}", headers=model_registry_rest_headers, json_output=False
+        )
+        assert output["raw_output"].lower() == "OK".lower()

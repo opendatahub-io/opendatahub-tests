@@ -28,7 +28,12 @@ LOGGER = get_logger(name=__name__)
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("updated_dsc_component_state_scope_class")
+@pytest.mark.usefixtures(
+    "updated_dsc_component_state_scope_class",
+    "is_model_registry_oauth",
+    "model_registry_mysql_metadata_db",
+    "model_registry_instance_mysql",
+)
 @pytest.mark.downstream_only
 class TestModelRegistryImages:
     """
@@ -43,7 +48,7 @@ class TestModelRegistryImages:
     def test_verify_model_registry_images(
         self: Self,
         admin_client: DynamicClient,
-        model_registry_instance: ModelRegistry,
+        model_registry_instance_mysql: ModelRegistry,
         model_registry_operator_pod: Pod,
         model_registry_instance_pod: Pod,
         related_images_refs: Set[str],
