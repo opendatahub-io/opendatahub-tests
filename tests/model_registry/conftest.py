@@ -23,17 +23,11 @@ from model_registry.types import RegisteredModel
 # Factory fixture imports
 from typing import List, Callable
 import uuid
-from utilities.constants import Annotations
 from tests.model_registry.factory_utils import (
-    ModelRegistryDBConfig,
-    ModelRegistryConfig,
-    ModelRegistryDBBundle,
-    ModelRegistryInstanceBundle,
     SecretConfig,
     PVCConfig,
     ServiceConfig,
     DeploymentConfig,
-    ModelRegistryResourceConfig,
 )
 
 from tests.model_registry.constants import (
@@ -524,440 +518,7 @@ def api_server_url(admin_client: DynamicClient) -> str:
 
 
 # =============================================================================
-# FACTORY FIXTURES
-# =============================================================================
-
-
-@pytest.fixture(scope="class")
-def resource_creation_factory(
-    admin_client: DynamicClient,
-    model_registry_cleanup_registry: ModelRegistryCleanupRegistry,
-) -> Callable[[Any, Any], Any]:
-    """A generic factory for creating and cleaning up Kubernetes resources."""
-
-    def _create_resource(resource_class: Any, config: Any, **kwargs: Any) -> Any:
-        """Helper to instantiate, create, and register cleanup for a resource."""
-        resource_name = config.name
-        LOGGER.info(f"Creating {resource_class.__name__}: {resource_name}")
-
-        try:
-            resource = resource_class(client=admin_client, name=resource_name, **kwargs)
-            resource.create()
-
-            if config.teardown:
-
-                def cleanup() -> None:
-                    try:
-                        LOGGER.info(f"Cleaning up {resource_class.__name__}: {resource.name}")
-                        resource.delete(wait=True)
-                    except Exception as e:
-                        LOGGER.warning(f"Failed to cleanup {resource_class.__name__} {resource.name}: {e}")
-
-                model_registry_cleanup_registry.register_cleanup(cleanup_func=cleanup)
-
-            return resource
-        except Exception as e:
-            LOGGER.error(f"Failed to create {resource_class.__name__} {resource_name}: {e}")
-            raise
-
-    return _create_resource
-
-
-@pytest.fixture(scope="class")
-def secret_factory(resource_creation_factory: Callable[..., Any]) -> Callable[[SecretConfig], Secret]:
-    """Factory for creating Secret resources."""
-
-    def _create_secret(config: SecretConfig) -> Secret:
-        return resource_creation_factory(
-            resource_class=Secret,
-            config=config,
-            namespace=config.namespace,
-            string_data=config.string_data,
-            label=config.labels,
-            annotations=config.annotations,
-        )
-
-    return _create_secret
-
-
-@pytest.fixture(scope="class")
-def pvc_factory(resource_creation_factory: Callable[..., Any]) -> Callable[[PVCConfig], PersistentVolumeClaim]:
-    """Factory for creating PersistentVolumeClaim resources."""
-
-    def _create_pvc(config: PVCConfig) -> PersistentVolumeClaim:
-        return resource_creation_factory(
-            resource_class=PersistentVolumeClaim,
-            config=config,
-            namespace=config.namespace,
-            accessmodes=config.access_modes,
-            size=config.size,
-            label=config.labels,
-        )
-
-    return _create_pvc
-
-
-@pytest.fixture(scope="class")
-def service_factory(resource_creation_factory: Callable[..., Any]) -> Callable[[ServiceConfig], Service]:
-    """Factory for creating Service resources."""
-
-    def _create_service(config: ServiceConfig) -> Service:
-        return resource_creation_factory(
-            resource_class=Service,
-            config=config,
-            namespace=config.namespace,
-            ports=config.ports,
-            selector=config.selector,
-            label=config.labels,
-            annotations=config.annotations,
-        )
-
-    return _create_service
-
-
-@pytest.fixture(scope="class")
-def deployment_factory(resource_creation_factory: Callable[..., Any]) -> Callable[[DeploymentConfig], Deployment]:
-    """Factory for creating Deployment resources."""
-
-    def _create_deployment(config: DeploymentConfig) -> Deployment:
-        deployment = resource_creation_factory(
-            resource_class=Deployment,
-            config=config,
-            namespace=config.namespace,
-            annotations=config.annotations,
-            label=config.labels,
-            replicas=config.replicas,
-            revision_history_limit=config.revision_history_limit,
-            selector=config.selector or {"matchLabels": {"name": config.name}},
-            strategy=config.strategy or {"type": "Recreate"},
-            template=config.template,
-        )
-        LOGGER.info(f"Waiting for DB deployment to be ready: {config.name}")
-        deployment.wait_for_replicas(deployed=True)
-        return deployment
-
-    return _create_deployment
-
-
-@pytest.fixture(scope="class")
-def model_registry_resource_factory(
-    resource_creation_factory: Callable[..., Any],
-) -> Callable[[ModelRegistryResourceConfig], ModelRegistry]:
-    """Factory for creating ModelRegistry resources."""
-
-    def _create_model_registry(config: ModelRegistryResourceConfig) -> ModelRegistry:
-        mr_class = ModelRegistryV1Alpha1 if config.use_istio else ModelRegistry
-        instance = resource_creation_factory(
-            resource_class=mr_class,
-            config=config,
-            namespace=config.namespace,
-            label=config.labels,
-            grpc=config.grpc_config or {},
-            rest=config.rest_config or {},
-            istio=config.istio_config,
-            oauth_proxy=config.oauth_proxy_config,
-            mysql=config.mysql_config,
-        )
-
-        if config.wait_for_conditions:
-            LOGGER.info(f"Waiting for Model Registry conditions: {config.name}")
-            instance.wait_for_condition(condition="Available", status="True")
-            if config.use_oauth_proxy:
-                instance.wait_for_condition(condition="OAuthProxyAvailable", status="True")
-
-        return instance
-
-    return _create_model_registry
-
-
-@pytest.fixture(scope="class")
-def model_registry_db_factory(
-    pytestconfig: Config,
-    model_registry_cleanup_registry: ModelRegistryCleanupRegistry,
-    secret_factory: Callable[[SecretConfig], Secret],
-    pvc_factory: Callable[[PVCConfig], PersistentVolumeClaim],
-    service_factory: Callable[[ServiceConfig], Service],
-    deployment_factory: Callable[[DeploymentConfig], Deployment],
-) -> Generator[Callable[[ModelRegistryDBConfig], ModelRegistryDBBundle], Any, Any]:
-    """Factory fixture for creating Model Registry DB bundles."""
-    created_bundles: List[ModelRegistryDBBundle] = []
-
-    def create_db_bundle(config: ModelRegistryDBConfig) -> ModelRegistryDBBundle:
-        """Create a complete Model Registry DB bundle."""
-        unique_suffix = str(uuid.uuid4())[:8]
-        db_name = f"{config.name_prefix}-{unique_suffix}"
-        labels = config.labels or get_model_registry_db_label_dict(db_resource_name=db_name)
-
-        if pytestconfig.option.post_upgrade:
-            # In post-upgrade, we assume resources exist and just wrap them
-            service = Service(name=db_name, namespace=config.namespace, ensure_exists=True)
-            pvc = PersistentVolumeClaim(name=db_name, namespace=config.namespace, ensure_exists=True)
-            secret = Secret(name=db_name, namespace=config.namespace, ensure_exists=True)
-            deployment = Deployment(name=db_name, namespace=config.namespace, ensure_exists=True)
-        else:
-            # Create resources using individual factories
-            secret_config = SecretConfig(
-                name=db_name,
-                namespace=config.namespace,
-                string_data={
-                    "database-name": config.database_name,
-                    "database-user": config.database_user,
-                    "database-password": config.database_password,
-                },
-                labels=labels,
-                annotations=config.annotations or MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
-                teardown=config.teardown,
-            )
-            secret = secret_factory(secret_config)  # noqa: FCN001
-
-            pvc_config = PVCConfig(
-                name=db_name,
-                namespace=config.namespace,
-                access_modes=config.access_mode,
-                size=config.storage_size,
-                labels=labels,
-                teardown=config.teardown,
-            )
-            pvc = pvc_factory(pvc_config)  # noqa: FCN001
-
-            service_config = ServiceConfig(
-                name=db_name,
-                namespace=config.namespace,
-                ports=[
-                    {
-                        "name": "mysql",
-                        "nodePort": 0,
-                        "port": config.port,
-                        "protocol": "TCP",
-                        "appProtocol": "tcp",
-                        "targetPort": config.port,
-                    }
-                ],
-                selector={"name": db_name},
-                labels=labels,
-                annotations={
-                    "template.openshift.io/expose-uri": (
-                        "mysql://{.spec.clusterIP}:{.spec.ports[?(.name==\\mysql\\)].port}"
-                    ),
-                },
-                teardown=config.teardown,
-            )
-            service = service_factory(service_config)  # noqa: FCN001
-
-            deployment_config = DeploymentConfig(
-                name=db_name,
-                namespace=config.namespace,
-                template=get_model_registry_deployment_template_dict(secret_name=secret.name, resource_name=db_name),
-                labels=labels,
-                annotations={"template.alpha.openshift.io/wait-for-ready": "true"},
-                teardown=config.teardown,
-            )
-            deployment = deployment_factory(deployment_config)  # noqa: FCN001
-
-        bundle = ModelRegistryDBBundle(service=service, pvc=pvc, secret=secret, deployment=deployment, config=config)
-        created_bundles.append(bundle)
-
-        # Note: Cleanup is now handled by the individual resource factories.
-        # We don't need to register a cleanup for the bundle itself.
-
-        LOGGER.info(f"Successfully created DB bundle: {db_name}")
-        return bundle
-
-    yield create_db_bundle
-
-    # Note: Cleanup is handled by the cleanup registry, not here
-    # This ensures proper teardown order relative to DSC patch revert
-
-
-@pytest.fixture(scope="class")
-def model_registry_instance_factory(
-    admin_client: DynamicClient,
-    pytestconfig: Config,
-    model_registry_db_factory: Callable[[ModelRegistryDBConfig], ModelRegistryDBBundle],
-    model_registry_resource_factory: Callable[[ModelRegistryResourceConfig], ModelRegistry],
-    model_registry_cleanup_registry: ModelRegistryCleanupRegistry,
-) -> Generator[Callable[[ModelRegistryConfig], ModelRegistryInstanceBundle], Any, Any]:
-    """Factory fixture for creating Model Registry instances."""
-    created_instances: List[ModelRegistryInstanceBundle] = []
-
-    def create_instance(config: ModelRegistryConfig) -> ModelRegistryInstanceBundle:
-        """Create a complete Model Registry instance bundle."""
-        unique_suffix = str(uuid.uuid4())[:8]
-        instance_name = f"{config.name}-{unique_suffix}"
-
-        db_bundle = None
-        mysql_config_dict = None
-        if config.mysql_config:
-            db_bundle = model_registry_db_factory(config.mysql_config)  # noqa: FCN001
-            mysql_config_dict = db_bundle.get_mysql_config()
-
-        labels = config.labels or MODEL_REGISTRY_STANDARD_LABELS.copy()
-        labels.update({
-            Annotations.KubernetesIo.NAME: instance_name,
-            Annotations.KubernetesIo.INSTANCE: instance_name,
-        })
-
-        if pytestconfig.option.post_upgrade:
-            mr_class = ModelRegistryV1Alpha1 if config.use_istio else ModelRegistry
-            instance = mr_class(name=instance_name, namespace=config.namespace, ensure_exists=True)
-        else:
-            mr_resource_config = ModelRegistryResourceConfig(
-                name=instance_name,
-                namespace=config.namespace,
-                mysql_config=mysql_config_dict,
-                labels=labels,
-                grpc_config=config.grpc_config,
-                rest_config=config.rest_config,
-                oauth_proxy_config=config.oauth_proxy_config or OAUTH_PROXY_CONFIG_DICT,
-                istio_config=config.istio_config or ISTIO_CONFIG_DICT,
-                use_oauth_proxy=config.use_oauth_proxy,
-                use_istio=config.use_istio,
-                teardown=config.teardown,
-                wait_for_conditions=config.wait_for_conditions,
-            )
-            instance = model_registry_resource_factory(mr_resource_config)  # noqa: FCN001
-
-        service = None
-        rest_endpoint = None
-        grpc_endpoint = None
-        try:
-            service = get_mr_service_by_label(
-                client=admin_client, namespace_name=config.namespace, mr_instance=instance
-            )
-            rest_endpoint = get_endpoint_from_mr_service(svc=service, protocol=Protocols.REST)
-            grpc_endpoint = get_endpoint_from_mr_service(svc=service, protocol=Protocols.GRPC)
-        except Exception as e:
-            LOGGER.warning(f"Failed to get service/endpoints for {instance_name}: {e}")
-
-        bundle = ModelRegistryInstanceBundle(
-            instance=instance,
-            db_bundle=db_bundle,
-            service=service,
-            config=config,
-            rest_endpoint=rest_endpoint,
-            grpc_endpoint=grpc_endpoint,
-        )
-        created_instances.append(bundle)
-
-        # Note: Cleanup is handled by the model_registry_resource_factory.
-
-        LOGGER.info(f"Successfully created Model Registry bundle: {instance_name}")
-        return bundle
-
-    yield create_instance
-
-    # Note: Cleanup is handled by the cleanup registry.
-
-
-@pytest.fixture(scope="class")
-def model_registry_client_factory(
-    current_client_token: str,
-) -> Callable[[str], ModelRegistryClient]:
-    """Factory fixture for creating Model Registry clients."""
-
-    def create_client(rest_endpoint: str) -> ModelRegistryClient:
-        """Create a Model Registry client for the given endpoint."""
-        server, port = rest_endpoint.split(":")
-        return ModelRegistryClient(
-            server_address=f"{Protocols.HTTPS}://{server}",
-            port=int(port),
-            author="opendatahub-test",
-            user_token=current_client_token,
-            is_secure=False,
-        )
-
-    return create_client
-
-
-@pytest.fixture(scope="class")
-def default_model_registry(
-    model_registry_instance_factory: Callable[[ModelRegistryConfig], ModelRegistryInstanceBundle],
-    model_registry_namespace: str,
-) -> ModelRegistryInstanceBundle:
-    """Creates a Model Registry instance with default configuration."""
-    config = ModelRegistryConfig(
-        name="default-mr",
-        namespace=model_registry_namespace,
-        mysql_config=ModelRegistryDBConfig(
-            name_prefix="default-mr-db",
-            namespace=model_registry_namespace,
-        ),
-    )
-    return model_registry_instance_factory(config)  # noqa: FCN001
-
-
-@pytest.fixture(scope="class")
-def oauth_model_registry(
-    model_registry_instance_factory: Callable[[ModelRegistryConfig], ModelRegistryInstanceBundle],
-    model_registry_namespace: str,
-) -> ModelRegistryInstanceBundle:
-    """Creates a Model Registry instance with OAuth configuration."""
-    config = ModelRegistryConfig(
-        name="oauth-mr",
-        namespace=model_registry_namespace,
-        use_oauth_proxy=True,
-        use_istio=False,
-        mysql_config=ModelRegistryDBConfig(
-            name_prefix="oauth-mr-db",
-            namespace=model_registry_namespace,
-        ),
-    )
-    return model_registry_instance_factory(config)  # noqa: FCN001
-
-
-@pytest.fixture(scope="class")
-def istio_model_registry(
-    model_registry_instance_factory: Callable[[ModelRegistryConfig], ModelRegistryInstanceBundle],
-    model_registry_namespace: str,
-) -> ModelRegistryInstanceBundle:
-    """Creates a Model Registry instance with Istio configuration."""
-    config = ModelRegistryConfig(
-        name="istio-mr",
-        namespace=model_registry_namespace,
-        use_oauth_proxy=False,
-        use_istio=True,
-        mysql_config=ModelRegistryDBConfig(
-            name_prefix="istio-mr-db",
-            namespace=model_registry_namespace,
-        ),
-    )
-    return model_registry_instance_factory(config)  # noqa: FCN001
-
-
-@pytest.fixture(scope="class")
-def standalone_db(
-    model_registry_db_factory: Callable[[ModelRegistryDBConfig], ModelRegistryDBBundle],
-    model_registry_namespace: str,
-) -> ModelRegistryDBBundle:
-    """Creates a standalone Model Registry DB instance."""
-    config = ModelRegistryDBConfig(
-        name_prefix="standalone-db",
-        namespace=model_registry_namespace,
-    )
-    return model_registry_db_factory(config)  # noqa: FCN001
-
-
-@pytest.fixture(scope="class")
-def simple_model_registry(
-    model_registry_instance_factory: Callable[[ModelRegistryConfig], ModelRegistryInstanceBundle],
-    model_registry_namespace: str,
-) -> ModelRegistryInstanceBundle:
-    """
-    Creates a Model Registry instance with minimal configuration.
-    """
-    config = ModelRegistryConfig(
-        name="simple-mr",
-        namespace=model_registry_namespace,
-        mysql_config=ModelRegistryDBConfig(
-            name_prefix="simple-mr-db",
-            namespace=model_registry_namespace,
-        ),
-    )
-    return model_registry_instance_factory(config)  # noqa: FCN001
-
-
-# =============================================================================
-# SIMPLE RESOURCE FIXTURES
+# DUPLICATED RESOURCE FIXTURES
 # =============================================================================
 
 
@@ -968,98 +529,138 @@ def db_name_1() -> str:
 
 
 @pytest.fixture(scope="class")
-def db_secret_1(
-    secret_factory: Callable[[SecretConfig], Secret], model_registry_namespace: str, db_name_1: str
-) -> Secret:
+def db_secret_1(model_registry_namespace: str, db_name_1: str, teardown_resources: bool) -> Generator[Secret, Any, Any]:
     """Create the first DB secret."""
-    labels = get_model_registry_db_label_dict(db_resource_name=db_name_1)
     config = SecretConfig(
         name=db_name_1,
         namespace=model_registry_namespace,
         string_data=MODEL_REGISTRY_DB_SECRET_STR_DATA,
-        labels=labels,
+        labels=get_model_registry_db_label_dict(db_resource_name=db_name_1),
         annotations=MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
     )
-    return secret_factory(config)  # noqa: FCN001
+    with Secret(
+        name=config.name,
+        namespace=config.namespace,
+        string_data=config.string_data,
+        label=config.labels,
+        annotations=config.annotations,
+        teardown=teardown_resources,
+    ) as secret:
+        yield secret
 
 
 @pytest.fixture(scope="class")
 def db_pvc_1(
-    pvc_factory: Callable[[PVCConfig], PersistentVolumeClaim], model_registry_namespace: str, db_name_1: str
-) -> PersistentVolumeClaim:
+    model_registry_namespace: str, db_name_1: str, teardown_resources: bool
+) -> Generator[PersistentVolumeClaim, Any, Any]:
     """Create the first DB PVC."""
-    labels = get_model_registry_db_label_dict(db_resource_name=db_name_1)
     config = PVCConfig(
         name=db_name_1,
         namespace=model_registry_namespace,
         access_modes="ReadWriteOnce",
         size="5Gi",
-        labels=labels,
+        labels=get_model_registry_db_label_dict(db_resource_name=db_name_1),
     )
-    return pvc_factory(config)  # noqa: FCN001
+    with PersistentVolumeClaim(
+        name=config.name,
+        namespace=config.namespace,
+        accessmodes=config.access_modes,
+        size=config.size,
+        label=config.labels,
+        teardown=teardown_resources,
+    ) as pvc:
+        yield pvc
 
 
 @pytest.fixture(scope="class")
 def db_service_1(
-    service_factory: Callable[[ServiceConfig], Service], model_registry_namespace: str, db_name_1: str
-) -> Service:
+    model_registry_namespace: str, db_name_1: str, teardown_resources: bool
+) -> Generator[Service, Any, Any]:
     """Create the first DB service."""
-    labels = get_model_registry_db_label_dict(db_resource_name=db_name_1)
     config = ServiceConfig(
         name=db_name_1,
         namespace=model_registry_namespace,
         ports=[{"name": "mysql", "port": 3306, "protocol": "TCP", "targetPort": 3306}],
         selector={"name": db_name_1},
-        labels=labels,
+        labels=get_model_registry_db_label_dict(db_resource_name=db_name_1),
     )
-    return service_factory(config)  # noqa: FCN001
+    with Service(
+        name=config.name,
+        namespace=config.namespace,
+        ports=config.ports,
+        selector=config.selector,
+        label=config.labels,
+        teardown=teardown_resources,
+    ) as service:
+        yield service
 
 
 @pytest.fixture(scope="class")
 def db_deployment_1(
-    deployment_factory: Callable[[DeploymentConfig], Deployment],
-    model_registry_namespace: str,
-    db_name_1: str,
-    db_secret_1: Secret,
-) -> Deployment:
+    model_registry_namespace: str, db_name_1: str, teardown_resources: bool
+) -> Generator[Deployment, Any, Any]:
     """Create the first DB deployment."""
-    labels = get_model_registry_db_label_dict(db_resource_name=db_name_1)
     config = DeploymentConfig(
         name=db_name_1,
         namespace=model_registry_namespace,
-        template=get_model_registry_deployment_template_dict(secret_name=db_secret_1.name, resource_name=db_name_1),
-        labels=labels,
+        template=get_model_registry_deployment_template_dict(secret_name=db_name_1, resource_name=db_name_1),
+        labels=get_model_registry_db_label_dict(db_resource_name=db_name_1),
     )
-    return deployment_factory(config)  # noqa: FCN001
+    with Deployment(
+        name=config.name,
+        namespace=config.namespace,
+        template=config.template,
+        label=config.labels,
+        replicas=1,
+        revision_history_limit=0,
+        selector={"matchLabels": {"name": db_name_1}},
+        strategy={"type": "Recreate"},
+        wait_for_resource=True,
+        teardown=teardown_resources,
+    ) as deployment:
+        deployment.wait_for_replicas(deployed=True)
+        yield deployment
 
 
 @pytest.fixture(scope="class")
 def model_registry_instance_1(
-    model_registry_resource_factory: Callable[[ModelRegistryResourceConfig], ModelRegistry],
-    model_registry_namespace: str,
-    db_deployment_1: Deployment,
-    db_secret_1: Secret,
-) -> ModelRegistry:
+    db_name_1: str, model_registry_namespace: str, teardown_resources: bool, is_model_registry_oauth: bool
+) -> Generator[ModelRegistry, Any, Any]:
     """Create the first Model Registry instance (default/oauth)."""
     mysql_config = {
-        "host": f"{db_deployment_1.name}.{model_registry_namespace}.svc.cluster.local",
+        "host": f"{db_name_1}.{model_registry_namespace}.svc.cluster.local",
         "database": MODEL_REGISTRY_DB_SECRET_STR_DATA["database-name"],
-        "passwordSecret": {"key": "database-password", "name": db_secret_1.name},
+        "passwordSecret": {"key": "database-password", "name": db_name_1},
         "port": 3306,
+        "skipDBCreation": False,
         "username": MODEL_REGISTRY_DB_SECRET_STR_DATA["database-user"],
     }
+    istio_config = None
+    oauth_config = None
+    mr_class_name = ModelRegistry
+    if is_model_registry_oauth:
+        LOGGER.warning("Requested Ouath Proxy configuration:")
+        oauth_config = OAUTH_PROXY_CONFIG_DICT
+    else:
+        LOGGER.warning("Requested OSSM configuration:")
+        istio_config = ISTIO_CONFIG_DICT
+        mr_class_name = ModelRegistryV1Alpha1
     mr_name = f"mr-instance-1-{str(uuid.uuid4())[:8]}"
-    labels = MODEL_REGISTRY_STANDARD_LABELS.copy()
-    labels.update({Annotations.KubernetesIo.NAME: mr_name, Annotations.KubernetesIo.INSTANCE: mr_name})
-    config = ModelRegistryResourceConfig(
+    with mr_class_name(
         name=mr_name,
         namespace=model_registry_namespace,
-        mysql_config=mysql_config,
-        labels=labels,
-        use_oauth_proxy=True,
-        oauth_proxy_config=OAUTH_PROXY_CONFIG_DICT,
-    )
-    return model_registry_resource_factory(config)  # noqa: FCN001
+        grpc={},
+        rest={},
+        label=MODEL_REGISTRY_STANDARD_LABELS,
+        istio=istio_config,
+        oauth_proxy=oauth_config,
+        mysql=mysql_config,
+        wait_for_resource=True,
+        teardown=teardown_resources,
+    ) as mr_instance:
+        mr_instance.wait_for_condition(condition="Available", status="True")
+        mr_instance.wait_for_condition(condition="OAuthProxyAvailable", status="True")
+        yield mr_instance
 
 
 # --- Instance 2 Resources ---
@@ -1072,95 +673,135 @@ def db_name_2() -> str:
 
 
 @pytest.fixture(scope="class")
-def db_secret_2(
-    secret_factory: Callable[[SecretConfig], Secret], model_registry_namespace: str, db_name_2: str
-) -> Secret:
+def db_secret_2(model_registry_namespace: str, db_name_2: str, teardown_resources: bool) -> Generator[Secret, Any, Any]:
     """Create the second DB secret."""
-    labels = get_model_registry_db_label_dict(db_resource_name=db_name_2)
     config = SecretConfig(
         name=db_name_2,
         namespace=model_registry_namespace,
         string_data=MODEL_REGISTRY_DB_SECRET_STR_DATA,
-        labels=labels,
+        labels=get_model_registry_db_label_dict(db_resource_name=db_name_2),
         annotations=MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
     )
-    return secret_factory(config)  # noqa: FCN001
+    with Secret(
+        name=config.name,
+        namespace=config.namespace,
+        string_data=config.string_data,
+        label=config.labels,
+        annotations=config.annotations,
+        teardown=teardown_resources,
+    ) as secret:
+        yield secret
 
 
 @pytest.fixture(scope="class")
 def db_pvc_2(
-    pvc_factory: Callable[[PVCConfig], PersistentVolumeClaim], model_registry_namespace: str, db_name_2: str
-) -> PersistentVolumeClaim:
+    model_registry_namespace: str, db_name_2: str, teardown_resources: bool
+) -> Generator[PersistentVolumeClaim, Any, Any]:
     """Create the second DB PVC."""
-    labels = get_model_registry_db_label_dict(db_resource_name=db_name_2)
     config = PVCConfig(
         name=db_name_2,
         namespace=model_registry_namespace,
         access_modes="ReadWriteOnce",
         size="5Gi",
-        labels=labels,
+        labels=get_model_registry_db_label_dict(db_resource_name=db_name_2),
     )
-    return pvc_factory(config)  # noqa: FCN001
+    with PersistentVolumeClaim(
+        name=config.name,
+        namespace=config.namespace,
+        accessmodes=config.access_modes,
+        size=config.size,
+        label=config.labels,
+        teardown=teardown_resources,
+    ) as pvc:
+        yield pvc
 
 
 @pytest.fixture(scope="class")
 def db_service_2(
-    service_factory: Callable[[ServiceConfig], Service], model_registry_namespace: str, db_name_2: str
-) -> Service:
+    model_registry_namespace: str, db_name_2: str, teardown_resources: bool
+) -> Generator[Service, Any, Any]:
     """Create the second DB service."""
-    labels = get_model_registry_db_label_dict(db_resource_name=db_name_2)
     config = ServiceConfig(
         name=db_name_2,
         namespace=model_registry_namespace,
         ports=[{"name": "mysql", "port": 3306, "protocol": "TCP", "targetPort": 3306}],
         selector={"name": db_name_2},
-        labels=labels,
+        labels=get_model_registry_db_label_dict(db_resource_name=db_name_2),
     )
-    return service_factory(config)  # noqa: FCN001
+    with Service(
+        name=config.name,
+        namespace=config.namespace,
+        ports=config.ports,
+        selector=config.selector,
+        label=config.labels,
+        teardown=teardown_resources,
+    ) as service:
+        yield service
 
 
 @pytest.fixture(scope="class")
 def db_deployment_2(
-    deployment_factory: Callable[[DeploymentConfig], Deployment],
-    model_registry_namespace: str,
-    db_name_2: str,
-    db_secret_2: Secret,
-) -> Deployment:
+    model_registry_namespace: str, db_name_2: str, teardown_resources: bool
+) -> Generator[Deployment, Any, Any]:
     """Create the second DB deployment."""
-    labels = get_model_registry_db_label_dict(db_resource_name=db_name_2)
     config = DeploymentConfig(
         name=db_name_2,
         namespace=model_registry_namespace,
-        template=get_model_registry_deployment_template_dict(secret_name=db_secret_2.name, resource_name=db_name_2),
-        labels=labels,
+        template=get_model_registry_deployment_template_dict(secret_name=db_name_2, resource_name=db_name_2),
+        labels=get_model_registry_db_label_dict(db_resource_name=db_name_2),
     )
-    return deployment_factory(config)  # noqa: FCN001
+    with Deployment(
+        name=config.name,
+        namespace=config.namespace,
+        template=config.template,
+        label=config.labels,
+        replicas=1,
+        revision_history_limit=0,
+        selector={"matchLabels": {"name": db_name_2}},
+        strategy={"type": "Recreate"},
+        wait_for_resource=True,
+        teardown=teardown_resources,
+    ) as deployment:
+        deployment.wait_for_replicas(deployed=True)
+        yield deployment
 
 
 @pytest.fixture(scope="class")
 def model_registry_instance_2(
-    model_registry_resource_factory: Callable[[ModelRegistryResourceConfig], ModelRegistry],
-    model_registry_namespace: str,
-    db_deployment_2: Deployment,
-    db_secret_2: Secret,
-) -> ModelRegistry:
+    model_registry_namespace: str, db_name_2: str, teardown_resources: bool, is_model_registry_oauth: bool
+) -> Generator[ModelRegistry, Any, Any]:
     """Create the second Model Registry instance (istio)."""
     mysql_config = {
-        "host": f"{db_deployment_2.name}.{model_registry_namespace}.svc.cluster.local",
+        "host": f"{db_name_2}.{model_registry_namespace}.svc.cluster.local",
         "database": MODEL_REGISTRY_DB_SECRET_STR_DATA["database-name"],
-        "passwordSecret": {"key": "database-password", "name": db_secret_2.name},
+        "passwordSecret": {"key": "database-password", "name": db_name_2},
         "port": 3306,
+        "skipDBCreation": False,
         "username": MODEL_REGISTRY_DB_SECRET_STR_DATA["database-user"],
     }
+    istio_config = None
+    oauth_config = None
+    mr_class_name = ModelRegistry
+    if is_model_registry_oauth:
+        LOGGER.warning("Requested Ouath Proxy configuration:")
+        oauth_config = OAUTH_PROXY_CONFIG_DICT
+    else:
+        LOGGER.warning("Requested OSSM configuration:")
+        istio_config = ISTIO_CONFIG_DICT
+        mr_class_name = ModelRegistryV1Alpha1
     mr_name = f"mr-instance-2-{str(uuid.uuid4())[:8]}"
-    labels = MODEL_REGISTRY_STANDARD_LABELS.copy()
-    labels.update({Annotations.KubernetesIo.NAME: mr_name, Annotations.KubernetesIo.INSTANCE: mr_name})
-    config = ModelRegistryResourceConfig(
+    with mr_class_name(
         name=mr_name,
         namespace=model_registry_namespace,
-        mysql_config=mysql_config,
-        labels=labels,
-        use_oauth_proxy=True,
-        oauth_proxy_config=OAUTH_PROXY_CONFIG_DICT,
-    )
-    return model_registry_resource_factory(config)  # noqa: FCN001
+        grpc={},
+        rest={},
+        label=MODEL_REGISTRY_STANDARD_LABELS,
+        istio=istio_config,
+        oauth_proxy=oauth_config,
+        mysql=mysql_config,
+        wait_for_resource=True,
+        teardown=teardown_resources,
+    ) as mr_instance:
+        mr_instance.wait_for_condition(condition="Available", status="True")
+        mr_instance.wait_for_condition(condition="OAuthProxyAvailable", status="True")
+        yield mr_instance
