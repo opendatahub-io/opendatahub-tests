@@ -75,7 +75,7 @@ def model_namespace_2(
         ns.clean_up()
     else:
         with create_ns(
-            client=admin_client,
+            admin_client=admin_client,
             pytest_request=request,
             teardown=teardown_resources,
         ) as ns:

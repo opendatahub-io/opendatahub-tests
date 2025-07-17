@@ -112,7 +112,7 @@ def model_namespace(
         ns.clean_up()
     else:
         with create_ns(
-            client=admin_client,
+            admin_client=admin_client,
             pytest_request=request,
             teardown=teardown_resources,
         ) as ns:
@@ -533,12 +533,12 @@ def cluster_monitoring_config(
 
 @pytest.fixture(scope="class")
 def unprivileged_model_namespace(
-    request: FixtureRequest, unprivileged_client: DynamicClient
+    request: FixtureRequest, admin_client: DynamicClient, unprivileged_client: DynamicClient
 ) -> Generator[Namespace, Any, Any]:
     if request.param.get("modelmesh-enabled"):
         request.getfixturevalue(argname="enabled_modelmesh_in_dsc")
 
-    with create_ns(unprivileged_client=unprivileged_client, pytest_request=request) as ns:
+    with create_ns(admin_client=admin_client, unprivileged_client=unprivileged_client, pytest_request=request) as ns:
         yield ns
 
 
@@ -547,7 +547,7 @@ def unprivileged_model_namespace(
 def minio_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
     with create_ns(
         name=f"{MinIo.Metadata.NAME}-{shortuuid.uuid().lower()}",
-        client=admin_client,
+        admin_client=admin_client,
     ) as ns:
         yield ns
 
