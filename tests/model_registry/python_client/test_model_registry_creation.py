@@ -3,7 +3,9 @@ from typing import Self, Any
 from simple_logger.logger import get_logger
 from pytest_testconfig import config as py_config
 
+# ocp_resources imports
 from ocp_resources.pod import Pod
+
 from tests.model_registry.utils import (
     execute_model_registry_get_command,
     validate_no_grpc_container,
@@ -13,6 +15,7 @@ from utilities.constants import DscComponents
 from tests.model_registry.constants import MODEL_NAME, MODEL_DICT
 from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
+
 
 LOGGER = get_logger(name=__name__)
 
