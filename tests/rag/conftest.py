@@ -137,12 +137,12 @@ def lls_client(
     from the llama-stack-server service:8321 to localhost:8321
 
     Args:
-        admin_client (DynamicClient): _description_
-        rag_test_namespace (Namespace): _description_
-        llama_stack_distribution_deployment (Deployment): _description_
+        admin_client (DynamicClient): Kubernetes dynamic client for cluster operations
+        rag_test_namespace (Namespace): Namespace or project containing RAG test resources
+        llama_stack_distribution_deployment (Deployment): LlamaStack distribution deployment resource
 
     Yields:
-        Generator[LlamaStackClient, Any, Any]: _description_
+        Generator[LlamaStackClient, Any, Any]: Configured LlamaStackClient for RAG testing
     """
     try:
         with portforward.forward(
