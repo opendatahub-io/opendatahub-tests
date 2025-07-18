@@ -1,0 +1,13 @@
+model-car:
+  - name: granite-3.1-8b-base-quantized.w4a16
+    image: oci://registry.redhat.io/rhelai1/modelcar-granite-3-1-8b-base-quantized-w4a16:1.5
+  - name: Llama-3.1-8B-Instruct
+    image: oci://registry.redhat.io/rhelai1/modelcar-llama-3-1-8b-instruct:1.5
+  - name: Mistral-7B-Instruct-v0.3-quantized.w4a16
+    image: oci://registry.redhat.io/rhelai1/modelcar-mistral-7b-instruct-v0-3-quantized-w4a16:1.5
+
+serving_arguments:
+  - "--uvicorn-log-level=debug"
+  - "--max-model-len=1024"
+  - "--trust-remote-code"
+  - "--distributed-executor-backend=mp"
