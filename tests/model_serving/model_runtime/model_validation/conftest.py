@@ -14,7 +14,8 @@ from syrupy.extensions.json import JSONSnapshotExtension
 from tests.model_serving.model_runtime.model_validation.constant import (
     ACCELERATOR_IDENTIFIER,
     TEMPLATE_MAP,
-    PREDICT_RESOURCES, PULL_SECRET_ACCESS_TYPE,
+    PREDICT_RESOURCES,
+    PULL_SECRET_ACCESS_TYPE,
 )
 from tests.model_serving.model_runtime.model_validation.constant import (
     BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
@@ -36,36 +37,36 @@ LOGGER = get_logger(name=__name__)
 
 @pytest.fixture(scope="class")
 def model_car_serving_runtime(
-        request: FixtureRequest,
-        admin_client: DynamicClient,
-        model_namespace: Namespace,
-        supported_accelerator_type: str,
-        vllm_runtime_image: str,
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    supported_accelerator_type: str,
+    vllm_runtime_image: str,
 ) -> Generator[ServingRuntime, None, None]:
     accelerator_type = supported_accelerator_type.lower()
     template_name = TEMPLATE_MAP.get(accelerator_type, RuntimeTemplates.VLLM_CUDA)
     LOGGER.info(f"using template: {template_name}")
     assert model_namespace.name is not None
     with ServingRuntimeFromTemplate(
-            client=admin_client,
-            name="vllm-runtime",
-            namespace=model_namespace.name,
-            template_name=template_name,
-            deployment_type=request.param["deployment_type"],
-            runtime_image=vllm_runtime_image,
+        client=admin_client,
+        name="vllm-runtime",
+        namespace=model_namespace.name,
+        template_name=template_name,
+        deployment_type=request.param["deployment_type"],
+        runtime_image=vllm_runtime_image,
     ) as model_runtime:
         yield model_runtime
 
 
 @pytest.fixture(scope="class")
 def vllm_model_car_inference_service(
-        request: FixtureRequest,
-        admin_client: DynamicClient,
-        model_namespace: Namespace,
-        model_car_serving_runtime: ServingRuntime,
-        supported_accelerator_type: str,
-        deployment_config: dict[str, Any],
-        kserve_registry_pull_secret: Secret,
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    model_car_serving_runtime: ServingRuntime,
+    supported_accelerator_type: str,
+    deployment_config: dict[str, Any],
+    kserve_registry_pull_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     isvc_kwargs = {
         "client": admin_client,
@@ -119,8 +120,8 @@ def response_snapshot(snapshot: Any) -> Any:
 
 @pytest.fixture(scope="class")
 def deployment_config(
-        request: FixtureRequest,
-        serving_argument: list[str],
+    request: FixtureRequest,
+    serving_argument: list[str],
 ) -> dict[str, Any]:
     """
     Fixture to provide the base deployment configuration for serverless deployments.
@@ -215,8 +216,7 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
     if params:
         metafunc.parametrize(
             argnames=(
-                "model_namespace, model_car_serving_runtime, "
-                "vllm_model_car_inference_service, deployment_config"
+                "model_namespace, model_car_serving_runtime, vllm_model_car_inference_service, deployment_config"
             ),
             argvalues=params,
             indirect=True,
@@ -226,21 +226,21 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
 
 @pytest.fixture(scope="class")
 def kserve_registry_pull_secret(
-        admin_client: DynamicClient,
-        model_namespace: Namespace,
-        registry_pull_secret: str,
-        registry_host: str,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    registry_pull_secret: str,
+    registry_host: str,
 ) -> Generator[Secret, Any, Any]:
     docker_config_json = json.dumps({"auths": {registry_host: {"auth": registry_pull_secret}}})
     with Secret(
-            client=admin_client,
-            name=PULL_SECRET_NAME,
-            namespace=model_namespace.name,
-            string_data={
-                ".dockerconfigjson": docker_config_json,
-                "ACCESS_TYPE": PULL_SECRET_ACCESS_TYPE,
-                "OCI_HOST": registry_host,
-            },
-            wait_for_resource=True,
+        client=admin_client,
+        name=PULL_SECRET_NAME,
+        namespace=model_namespace.name,
+        string_data={
+            ".dockerconfigjson": docker_config_json,
+            "ACCESS_TYPE": PULL_SECRET_ACCESS_TYPE,
+            "OCI_HOST": registry_host,
+        },
+        wait_for_resource=True,
     ) as secret:
         yield secret

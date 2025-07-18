@@ -30,20 +30,20 @@ def safe_k8s_name(model_name: str, max_length: int = 20) -> str:
         return "default-model"
 
     # Convert to lowercase and replace invalid characters with hyphens
-    safe_name = re.sub(r'[^a-z0-9-]', '-', model_name.lower())
+    safe_name = re.sub(r"[^a-z0-9-]", "-", model_name.lower())
 
     # Remove consecutive hyphens
-    safe_name = re.sub(r'-+', '-', safe_name)
+    safe_name = re.sub(r"-+", "-", safe_name)
 
     # Remove leading/trailing hyphens
-    safe_name = safe_name.strip('-')
+    safe_name = safe_name.strip("-")
 
     # Truncate to max_length
     if len(safe_name) > max_length:
         safe_name = safe_name[:max_length]
 
     # Ensure it doesn't end with a hyphen after truncation
-    safe_name = safe_name.rstrip('-')
+    safe_name = safe_name.rstrip("-")
 
     # Ensure it's not empty after all processing
     if not safe_name:

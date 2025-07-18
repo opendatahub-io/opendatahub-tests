@@ -17,11 +17,11 @@ pytestmark = pytest.mark.usefixtures("vllm_skip_if_no_supported_accelerator_type
 
 class TestVLLMModelCarRaw:
     def test_oci_model_car_raw_openai_inference(
-            self,
-            vllm_model_car_inference_service: InferenceService,
-            vllm_pod_resource: Pod,
-            skip_if_not_raw_deployment: Any,
-            response_snapshot: Any,
+        self,
+        vllm_model_car_inference_service: InferenceService,
+        vllm_pod_resource: Pod,
+        skip_if_not_raw_deployment: Any,
+        response_snapshot: Any,
     ) -> None:
         """
         Validate raw inference request using vLLM runtime and OCI image deployment.
@@ -37,10 +37,10 @@ class TestVLLMModelCarRaw:
 
 class TestVLLMModelCarServerless:
     def test_oci_model_car_serverless_openai_inference(
-            self,
-            vllm_model_car_inference_service: InferenceService,
-            skip_if_not_serverless_deployment: Any,
-            response_snapshot: Any,
+        self,
+        vllm_model_car_inference_service: InferenceService,
+        skip_if_not_serverless_deployment: Any,
+        response_snapshot: Any,
     ) -> None:
         """
         Validate OpenAI-style completion request using vLLM runtime and OCI image deployment.
