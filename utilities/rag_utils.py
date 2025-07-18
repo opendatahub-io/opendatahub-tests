@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 from ocp_resources.resource import NamespacedResource
 from kubernetes.dynamic import DynamicClient
-from typing import Any, Dict, Generator, List
+from typing import Any, Dict, Generator, List, TypedDict
 from llama_stack_client import Agent, AgentEventLogger
 from simple_logger.logger import get_logger
 
@@ -54,35 +54,60 @@ def create_llama_stack_distribution(
         yield llama_stack_distribution
 
 
+class TurnExpectation(TypedDict):
+    question: str
+    expected_keywords: List[str]
+    description: str
+
+
+class TurnResult(TypedDict):
+    question: str
+    description: str
+    expected_keywords: List[str]
+    found_keywords: List[str]
+    missing_keywords: List[str]
+    response_content: str
+    response_length: int
+    event_count: int
+    success: bool
+    error: str | None
+
+
+class ValidationSummary(TypedDict):
+    total_turns: int
+    successful_turns: int
+    failed_turns: int
+    success_rate: float
+    total_events: int
+    total_response_length: int
+
+
+class ValidationResult(TypedDict):
+    success: bool
+    results: List[TurnResult]
+    summary: ValidationSummary
+    
+def extract_event_content(event: Any) -> str:
+    """Extract content from various event types."""
+    for attr in ['content', 'message', 'text']:
+        if hasattr(event, attr) and getattr(event, attr):
+            return str(getattr(event, attr))
+    return ""    
+
 def validate_rag_agent_responses(
     rag_agent: Agent,
     session_id: str,
-    turns_with_expectations: List[Dict[str, Any]],
+    turns_with_expectations: List[TurnExpectation],
     stream: bool = True,
     verbose: bool = True,
     min_keywords_required: int = 1,
     print_events: bool = False,
-) -> Dict[str, Any]:
+) -> ValidationResult:
     """
-    Validate RAG agent responses against expected keywords and criteria.
-
-    Args:
-        rag_agent: The RAG agent instance
-        session_id: The session ID for the conversation
-        turns_with_expectations: List of dictionaries containing:
-            - question: The user question
-            - expected_keywords: List of keywords that should appear in the response
-            - description: Description of what the question is testing
-        stream: Whether to use streaming responses (default: True)
-        verbose: Whether to print detailed logs (default: True)
-        min_keywords_required: Minimum number of keywords that must be found (default: 1)
-        print_events: Whether to print agent events (default: False)
-
-    Returns:
-        Dictionary containing validation results with keys:
-            - success: Boolean indicating overall success
-            - results: List of results for each turn
-            - summary: Summary statistics
+    Validate RAG agent responses against expected keywords.
+    
+    Tests multiple questions and validates that responses contain expected keywords.
+    Returns validation results with success status and detailed results for each turn.
     """
 
     all_results = []
@@ -118,12 +143,7 @@ def validate_rag_agent_responses(
                 event_count += 1
 
                 # Extract content from different event types
-                if hasattr(event, "content") and event.content:
-                    response_content += str(event.content)
-                elif hasattr(event, "message") and event.message:
-                    response_content += str(event.message)
-                elif hasattr(event, "text") and event.text:
-                    response_content += str(event.text)
+                response_content += extract_event_content(event)
 
             # Validate response content
             response_lower = response_content.lower()
