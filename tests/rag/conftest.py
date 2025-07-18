@@ -112,20 +112,24 @@ def llama_stack_distribution_deployment(
 
 
 @retry(wait_timeout=Timeout.TIMEOUT_1MIN, sleep=5)
-def wait_for_llama_stack_ready(client: LlamaStackClient):
+def wait_for_llama_stack_ready(client: LlamaStackClient) -> bool:
     try:
         client.inspect.health()
         version = client.inspect.version()
         LOGGER.info(f"Llama Stack server (v{version.version}) is available!")
         return True
-    except APIConnectionError:
+    except APIConnectionError as e:
+        LOGGER.debug(f"Llama Stack server not ready yet: {e}")
+        return False
+    except Exception as e:
+        LOGGER.warning(f"Unexpected error checking Llama Stack readiness: {e}")
         return False
 
 
 @pytest.fixture(scope="class")
 def lls_client(
     admin_client: DynamicClient,
-    rag_test_namespace: Namespace,
+    rag_test_namespace: Namespace | Project,
     llama_stack_distribution_deployment: Deployment,
 ) -> Generator[LlamaStackClient, Any, Any]:
     """
@@ -140,16 +144,20 @@ def lls_client(
     Yields:
         Generator[LlamaStackClient, Any, Any]: _description_
     """
-    with portforward.forward(
-        pod_or_service="rag-llama-stack-distribution-service",
-        namespace=rag_test_namespace.name,
-        from_port=8321,
-        to_port=8321,
-        waiting=15,
-    ):
-        client = LlamaStackClient(
-            base_url="http://localhost:8321",
-            timeout=120.0,
-        )
-        wait_for_llama_stack_ready(client)
-        yield client
+    try:
+        with portforward.forward(
+            pod_or_service="rag-llama-stack-distribution-service",
+            namespace=rag_test_namespace.name,
+            from_port=8321,
+            to_port=8321,
+            waiting=15,
+        ):
+            client = LlamaStackClient(
+                base_url="http://localhost:8321",
+                timeout=120.0,
+            )
+            wait_for_llama_stack_ready(client)
+            yield client
+    except Exception as e:
+        LOGGER.error(f"Failed to set up port forwarding: {e}")
+        raise
