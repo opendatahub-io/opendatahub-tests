@@ -167,7 +167,7 @@ class TestRag:
             documents = [
                 RAGDocument(
                     document_id=f"num-{i}",
-                    content=f"https://raw.githubusercontent.com/pytorch/torchtune/refs/tags/v0.6.1/docs/source/tutorials/{url}", # noqa
+                    content=f"https://raw.githubusercontent.com/pytorch/torchtune/refs/tags/v0.6.1/docs/source/tutorials/{url}",  # noqa
                     mime_type="text/plain",
                     metadata={},
                 )
