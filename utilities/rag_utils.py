@@ -86,13 +86,15 @@ class ValidationResult(TypedDict):
     success: bool
     results: List[TurnResult]
     summary: ValidationSummary
-    
+
+
 def extract_event_content(event: Any) -> str:
     """Extract content from various event types."""
-    for attr in ['content', 'message', 'text']:
+    for attr in ["content", "message", "text"]:
         if hasattr(event, attr) and getattr(event, attr):
             return str(getattr(event, attr))
-    return ""    
+    return ""
+
 
 def validate_rag_agent_responses(
     rag_agent: Agent,
@@ -105,7 +107,7 @@ def validate_rag_agent_responses(
 ) -> ValidationResult:
     """
     Validate RAG agent responses against expected keywords.
-    
+
     Tests multiple questions and validates that responses contain expected keywords.
     Returns validation results with success status and detailed results for each turn.
     """
