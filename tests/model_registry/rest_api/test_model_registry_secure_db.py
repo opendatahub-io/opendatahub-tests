@@ -30,7 +30,7 @@ LOGGER = get_logger(name=__name__)
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("updated_dsc_component_state_scope_class")
+@pytest.mark.usefixtures("updated_dsc_component_state_scope_class", "model_registry_instance_mysql")
 class TestModelRegistryWithSecureDB:
     """
     Test suite for validating Model Registry functionality with a secure MySQL database connection (SSL/TLS).
@@ -53,7 +53,12 @@ class TestModelRegistryWithSecureDB:
         ],
         indirect=True,
     )
-    @pytest.mark.usefixtures("deploy_secure_mysql_and_mr", "patch_mysql_deployment_with_ssl_ca", "patch_invalid_ca")
+    @pytest.mark.usefixtures(
+        "mysql_metadata_resources",
+        "deploy_secure_mysql_and_mr",
+        "patch_mysql_deployment_with_ssl_ca",
+        "patch_invalid_ca",
+    )
     def test_register_model_with_invalid_ca(
         self: Self,
         admin_client: DynamicClient,
@@ -84,7 +89,7 @@ class TestModelRegistryWithSecureDB:
         )
 
     @pytest.mark.parametrize(
-        "patch_mysql_deployment_with_ssl_ca,model_registry_mysql_config,local_ca_bundle",
+        "patch_mysql_deployment_with_ssl_ca, deploy_secure_mysql_and_mr,local_ca_bundle",
         [
             (
                 {
