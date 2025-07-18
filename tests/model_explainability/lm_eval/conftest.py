@@ -27,7 +27,10 @@ def lmevaljob_hf(
         model_args=[{"name": "pretrained", "value": "google/flan-t5-base"}],
         task_list={
             "taskRecipes": [
-                {"card": {"name": "cards.wnli"}, "template": "templates.classification.multi_class.relation.default"}
+                {
+                    "card": {"name": "cards.wnli"},
+                    "template": {"name": "templates.classification.multi_class.relation.default"},
+                }
             ]
         },
         log_samples=True,
