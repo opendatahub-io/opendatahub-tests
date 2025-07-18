@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 from ocp_resources.resource import NamespacedResource
 from kubernetes.dynamic import DynamicClient
-from typing import Any, Dict, Generator, List, TypedDict
+from typing import Any, Dict, Generator, List, TypedDict, cast
 from llama_stack_client import Agent, AgentEventLogger
 from simple_logger.logger import get_logger
 
@@ -220,8 +220,8 @@ def validate_rag_agent_responses(
         "successful_turns": successful_turns,
         "failed_turns": total_turns - successful_turns,
         "success_rate": successful_turns / total_turns if total_turns > 0 else 0,
-        "total_events": sum(result["event_count"] for result in all_results),
-        "total_response_length": sum(result["response_length"] for result in all_results),
+        "total_events": sum(cast(TurnResult, result)["event_count"] for result in all_results),
+        "total_response_length": sum(cast(TurnResult, result)["response_length"] for result in all_results),
     }
 
     overall_success = successful_turns == total_turns
@@ -235,4 +235,4 @@ def validate_rag_agent_responses(
         LOGGER.info(f"Success rate: {summary['success_rate']:.1%}")
         LOGGER.info(f"Overall result: {'✓ PASSED' if overall_success else '✗ FAILED'}")
 
-    return {"success": overall_success, "results": all_results, "summary": summary}
+    return cast(ValidationResult, {"success": overall_success, "results": all_results, "summary": summary})

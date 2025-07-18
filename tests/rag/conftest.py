@@ -127,7 +127,7 @@ def wait_for_llama_stack_ready(client: LlamaStackClient) -> bool:
 
 
 @pytest.fixture(scope="class")
-def lls_client(
+def rag_lls_client(
     admin_client: DynamicClient,
     rag_test_namespace: Namespace | Project,
     llama_stack_distribution_deployment: Deployment,
@@ -138,7 +138,7 @@ def lls_client(
 
     Args:
         admin_client (DynamicClient): Kubernetes dynamic client for cluster operations
-        rag_test_namespace (Namespace): Namespace or project containing RAG test resources
+        rag_test_namespace (Namespace | Project): Namespace or project containing RAG test resources
         llama_stack_distribution_deployment (Deployment): LlamaStack distribution deployment resource
 
     Yields:
@@ -156,7 +156,7 @@ def lls_client(
                 base_url="http://localhost:8321",
                 timeout=120.0,
             )
-            wait_for_llama_stack_ready(client)
+            wait_for_llama_stack_ready(client=client)
             yield client
     except Exception as e:
         LOGGER.error(f"Failed to set up port forwarding: {e}")

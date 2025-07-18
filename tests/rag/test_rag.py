@@ -21,7 +21,7 @@ class TestRag:
 
     @pytest.mark.smoke
     def test_llama_stack_server(
-        self, llama_stack_distribution_deployment: Deployment, lls_client: LlamaStackClient
+        self, llama_stack_distribution_deployment: Deployment, rag_lls_client: LlamaStackClient
     ) -> None:
         """
         Test LlamaStack Server deployment and verify required models are available.
@@ -33,7 +33,7 @@ class TestRag:
         """
         llama_stack_distribution_deployment.wait_for_replicas()
 
-        models = lls_client.models.list()
+        models = rag_lls_client.models.list()
         assert models is not None, "No models returned from LlamaStackClient"
 
         llm_model = next((m for m in models if m.api_model_type == "llm"), None)
@@ -50,19 +50,20 @@ class TestRag:
         assert embedding_dimension is not None, "No embedding_dimension set in embedding model"
 
     @pytest.mark.smoke
-    def test_rag_basic_inference(self, lls_client: LlamaStackClient) -> None:
+    def test_rag_basic_inference(self, rag_lls_client: LlamaStackClient) -> None:
         """
         Test basic chat completion inference through LlamaStack client.
 
         Validates that the server can perform text generation using the chat completions API
         and provides factually correct responses.
 
-        Based on the example available at https://llama-stack.readthedocs.io/en/latest/getting_started/detailed_tutorial.html#step-4-run-the-demos
+        Based on the example available at
+        https://llama-stack.readthedocs.io/en/latest/getting_started/detailed_tutorial.html#step-4-run-the-demos
         """
-        models = lls_client.models.list()
+        models = rag_lls_client.models.list()
         model_id = next(m for m in models if m.api_model_type == "llm").identifier
 
-        response = lls_client.chat.completions.create(
+        response = rag_lls_client.chat.completions.create(
             model=model_id,
             messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
@@ -77,18 +78,19 @@ class TestRag:
         assert "Paris" in content, "The LLM didn't provide the expected answer to the prompt"
 
     @pytest.mark.smoke
-    def test_rag_simple_agent(self, lls_client: LlamaStackClient) -> None:
+    def test_rag_simple_agent(self, rag_lls_client: LlamaStackClient) -> None:
         """
         Test basic agent creation and conversation capabilities.
 
         Validates agent creation, session management, and turn-based interactions
         with both identity and capability questions.
 
-        Based on the example available at https://llama-stack.readthedocs.io/en/latest/getting_started/detailed_tutorial.html#step-4-run-the-demos
+        Based on the example available at
+        https://llama-stack.readthedocs.io/en/latest/getting_started/detailed_tutorial.html#step-4-run-the-demos
         """
-        models = lls_client.models.list()
+        models = rag_lls_client.models.list()
         model_id = next(m for m in models if m.api_model_type == "llm").identifier
-        agent = Agent(lls_client, model=model_id, instructions="You are a helpful assistant.")
+        agent = Agent(client=rag_lls_client, model=model_id, instructions="You are a helpful assistant.")
         s_id = agent.create_session(session_name=f"s{uuid.uuid4().hex}")
 
         # Test identity question
@@ -112,7 +114,7 @@ class TestRag:
         assert "answers" in content, "The LLM didn't provide the expected answer to the prompt"
 
     @pytest.mark.smoke
-    def test_rag_build_rag_agent(self, lls_client: LlamaStackClient) -> None:
+    def test_rag_build_rag_agent(self, rag_lls_client: LlamaStackClient) -> None:
         """
         Test full RAG pipeline with vector database integration and knowledge retrieval.
 
@@ -120,9 +122,10 @@ class TestRag:
         about fine-tuning techniques (LoRA, QAT, memory optimizations), and validates
         that responses contain expected technical keywords.
 
-        Based on the example available at https://llama-stack.readthedocs.io/en/latest/getting_started/detailed_tutorial.html#step-4-run-the-demos
+        Based on the example available at
+        https://llama-stack.readthedocs.io/en/latest/getting_started/detailed_tutorial.html#step-4-run-the-demos
         """
-        models = lls_client.models.list()
+        models = rag_lls_client.models.list()
         model_id = next(m for m in models if m.api_model_type == "llm").identifier
         embedding_model = next(m for m in models if m.api_model_type == "embedding")
 
@@ -131,7 +134,7 @@ class TestRag:
         # Create a vector database instance
         vector_db_id = f"v{uuid.uuid4().hex}"
 
-        lls_client.vector_dbs.register(
+        rag_lls_client.vector_dbs.register(
             vector_db_id=vector_db_id,
             embedding_model=embedding_model.identifier,
             embedding_dimension=embedding_dimension,
@@ -141,7 +144,7 @@ class TestRag:
         try:
             # Create the RAG agent connected to the vector database
             rag_agent = Agent(
-                lls_client,
+                client=rag_lls_client,
                 model=model_id,
                 instructions="You are a helpful assistant. Use the RAG tool to answer questions as needed.",
                 tools=[
@@ -164,14 +167,14 @@ class TestRag:
             documents = [
                 RAGDocument(
                     document_id=f"num-{i}",
-                    content=f"https://raw.githubusercontent.com/pytorch/torchtune/refs/tags/v0.6.1/docs/source/tutorials/{url}",
+                    content=f"https://raw.githubusercontent.com/pytorch/torchtune/refs/tags/v0.6.1/docs/source/tutorials/{url}", # noqa
                     mime_type="text/plain",
                     metadata={},
                 )
                 for i, url in enumerate(urls)
             ]
 
-            lls_client.tool_runtime.rag_tool.insert(
+            rag_lls_client.tool_runtime.rag_tool.insert(
                 documents=documents,
                 vector_db_id=vector_db_id,
                 chunk_size_in_tokens=512,
@@ -243,6 +246,6 @@ class TestRag:
         finally:
             # Cleanup: unregister the vector database to prevent resource leaks
             try:
-                lls_client.vector_dbs.unregister(vector_db_id)
+                rag_lls_client.vector_dbs.unregister(vector_db_id)
             except Exception as e:
                 LOGGER.warning(f"Failed to unregister vector database {vector_db_id}: {e}")
