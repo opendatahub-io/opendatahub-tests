@@ -1,68 +1,7 @@
-from contextlib import contextmanager
-from typing import Generator, Any
-from kubernetes.dynamic import DynamicClient
-from ocp_resources.secret import Secret
-from simple_logger.logger import get_logger
-from tests.model_serving.model_runtime.vllm.constant import VLLM_SUPPORTED_QUANTIZATION
-from tests.model_serving.model_runtime.model_validation.constant import PULL_SECRET_ACCESS_TYPE
-import hashlib
 import re
-import json
+from typing import Any
 
-LOGGER = get_logger(name=__name__)
-
-
-@contextmanager
-def kserve_s3_endpoint_secret(
-    admin_client: DynamicClient,
-    name: str,
-    namespace: str,
-    aws_access_key: str,
-    aws_secret_access_key: str,
-    aws_s3_endpoint: str,
-    aws_s3_region: str,
-) -> Generator[Secret, Any, Any]:
-    with Secret(
-        client=admin_client,
-        name=name,
-        namespace=namespace,
-        annotations={
-            "serving.kserve.io/s3-endpoint": aws_s3_endpoint.replace("https://", ""),
-            "serving.kserve.io/s3-region": aws_s3_region,
-            "serving.kserve.io/s3-useanoncredential": "false",
-            "serving.kserve.io/s3-verifyssl": "0",
-            "serving.kserve.io/s3-usehttps": "1",
-        },
-        string_data={
-            "AWS_ACCESS_KEY_ID": aws_access_key,
-            "AWS_SECRET_ACCESS_KEY": aws_secret_access_key,
-        },
-        wait_for_resource=True,
-    ) as secret:
-        yield secret
-
-
-@contextmanager
-def kserve_registry_pull_secret(
-    admin_client: DynamicClient,
-    name: str,
-    namespace: str,
-    registry_pull_secret: str,
-    registry_host: str,
-) -> Generator[Secret, Any, Any]:
-    dockerconfigjson = json.dumps({"auths": {registry_host: {"auth": registry_pull_secret}}})
-    with Secret(
-        client=admin_client,
-        name=name,
-        namespace=namespace,
-        string_data={
-            ".dockerconfigjson": dockerconfigjson,
-            "ACCESS_TYPE": PULL_SECRET_ACCESS_TYPE,
-            "OCI_HOST": registry_host,
-        },
-        wait_for_resource=True,
-    ) as secret:
-        yield secret
+from tests.model_serving.model_runtime.vllm.constant import VLLM_SUPPORTED_QUANTIZATION
 
 
 def validate_supported_quantization_schema(q_type: str) -> None:
@@ -75,28 +14,39 @@ def validate_inference_output(*args: tuple[str, ...] | list[Any], response_snaps
         assert data == response_snapshot, f"output mismatch for {data}"
 
 
-def safe_k8s_name(name: str, max_len: int = 20) -> str:
+def safe_k8s_name(model_name: str, max_length: int = 20) -> str:
     """
-    Convert a model image URI or name into a safe, human-readable Kubernetes name.
-    Prioritizes model family and size, e.g., 'granite-8b-oci'.
-    Falls back to hashed suffix if over max_len.
+    Create a safe Kubernetes name from model_name by truncating to max_length characters
+    and ensuring it follows Kubernetes naming conventions.
+
+    Args:
+        model_name: The original model name
+        max_length: Maximum length for the name (default: 20)
+
+    Returns:
+        A valid Kubernetes name truncated to max_length characters
     """
-    # Extract the base model name (e.g., "modelcar-granite-3-1-8b-base-quantized-w4a16")
-    base = name.split("/")[-1].split(":")[0]  # Strip registry and tag
+    if not model_name:
+        return "default-model"
 
-    # Clean and tokenize
-    parts = base.replace("modelcar-", "").split("-")
+    # Convert to lowercase and replace invalid characters with hyphens
+    safe_name = re.sub(r'[^a-z0-9-]', '-', model_name.lower())
 
-    # Try to extract model family and size
-    family = parts[0] if parts else "model"
-    size = next((p for p in parts if re.match(r"^\d+b$", p)), "unk")
+    # Remove consecutive hyphens
+    safe_name = re.sub(r'-+', '-', safe_name)
 
-    readable = f"{family}-{size}-oci"
+    # Remove leading/trailing hyphens
+    safe_name = safe_name.strip('-')
 
-    if len(readable) <= max_len:
-        return readable
+    # Truncate to max_length
+    if len(safe_name) > max_length:
+        safe_name = safe_name[:max_length]
 
-    # Truncate with hash fallback
-    hash_suffix = hashlib.sha1(readable.encode()).hexdigest()[:6]
-    max_base_len = max_len - len("-" + hash_suffix)
-    return f"{readable[:max_base_len]}-{hash_suffix}"
+    # Ensure it doesn't end with a hyphen after truncation
+    safe_name = safe_name.rstrip('-')
+
+    # Ensure it's not empty after all processing
+    if not safe_name:
+        return "model"
+
+    return safe_name

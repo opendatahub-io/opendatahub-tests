@@ -35,7 +35,6 @@ from utilities.infra import (
 )
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
-
 LOGGER = get_logger(name=__name__)
 
 

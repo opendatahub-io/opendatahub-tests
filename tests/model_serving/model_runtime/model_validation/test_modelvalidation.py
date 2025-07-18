@@ -12,16 +12,16 @@ from ocp_resources.pod import Pod
 LOGGER = get_logger(name=__name__)
 
 
-pytestmark = pytest.mark.usefixtures("vllm_skip_if_no_supported_accelerator_type", "valid_aws_config")
+pytestmark = pytest.mark.usefixtures("vllm_skip_if_no_supported_accelerator_type")
 
 
-class TestVLLMModelcarRaw:
-    def test_oci_modelcar_raw_openai_inference(
-        self,
-        vllm_model_car_inference_service: InferenceService,
-        vllm_pod_resource: Pod,
-        skip_if_not_raw_deployment: Any,
-        response_snapshot: Any,
+class TestVLLMModelCarRaw:
+    def test_oci_model_car_raw_openai_inference(
+            self,
+            vllm_model_car_inference_service: InferenceService,
+            vllm_pod_resource: Pod,
+            skip_if_not_raw_deployment: Any,
+            response_snapshot: Any,
     ) -> None:
         """
         Validate raw inference request using vLLM runtime and OCI image deployment.
@@ -35,12 +35,12 @@ class TestVLLMModelcarRaw:
         )
 
 
-class TestVLLMModelcarServerless:
-    def test_oci_modelcar_serverless_openai_inference(
-        self,
-        vllm_model_car_inference_service: InferenceService,
-        skip_if_not_serverless_deployment: Any,
-        response_snapshot: Any,
+class TestVLLMModelCarServerless:
+    def test_oci_model_car_serverless_openai_inference(
+            self,
+            vllm_model_car_inference_service: InferenceService,
+            skip_if_not_serverless_deployment: Any,
+            response_snapshot: Any,
     ) -> None:
         """
         Validate OpenAI-style completion request using vLLM runtime and OCI image deployment.

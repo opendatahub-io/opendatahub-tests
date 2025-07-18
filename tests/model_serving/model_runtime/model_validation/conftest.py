@@ -1,162 +1,115 @@
+import json
 from typing import Any, Generator
+
 import pytest
+import yaml
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.inference_service import InferenceService
+from ocp_resources.namespace import Namespace
+from ocp_resources.secret import Secret
+from ocp_resources.serving_runtime import ServingRuntime
+from pytest import FixtureRequest
+from syrupy.extensions.json import JSONSnapshotExtension
+
 from tests.model_serving.model_runtime.model_validation.constant import (
     ACCELERATOR_IDENTIFIER,
     TEMPLATE_MAP,
-    PREDICT_RESOURCES,
+    PREDICT_RESOURCES, PULL_SECRET_ACCESS_TYPE,
 )
-from utilities.constants import KServeDeploymentType, Labels, RuntimeTemplates
-from ocp_resources.namespace import Namespace
-from ocp_resources.serving_runtime import ServingRuntime
-from ocp_resources.inference_service import InferenceService
-from tests.model_serving.model_runtime.model_validation.utils import kserve_registry_pull_secret
-from tests.model_serving.model_runtime.model_validation.constant import PULL_SECRET_NAME
-from pytest import FixtureRequest
-from kubernetes.dynamic import DynamicClient
-from simple_logger.logger import get_logger
-from utilities.serving_runtime import ServingRuntimeFromTemplate
-from utilities.inference_utils import create_isvc
-from utilities.infra import create_ns
-from tests.model_serving.model_runtime.vllm.utils import validate_supported_quantization_schema
-from tests.model_serving.model_runtime.model_validation.constant import (
-    INFERENCE_SERVICE_PORT,
-    CONTAINER_PORT,
-    TIMEOUT_20MIN,
-)
-from tests.model_serving.model_runtime.model_validation.utils import safe_k8s_name
 from tests.model_serving.model_runtime.model_validation.constant import (
     BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
     BASE_RAW_DEPLOYMENT_CONFIG,
 )
-import yaml
-from syrupy.extensions.json import JSONSnapshotExtension
+from tests.model_serving.model_runtime.model_validation.constant import PULL_SECRET_NAME
+from tests.model_serving.model_runtime.model_validation.constant import (
+    TIMEOUT_20MIN,
+)
+from tests.model_serving.model_runtime.model_validation.utils import safe_k8s_name
+from tests.model_serving.model_runtime.vllm.utils import validate_supported_quantization_schema
+from utilities.constants import KServeDeploymentType, Labels, RuntimeTemplates
+from utilities.inference_utils import create_isvc
+from utilities.serving_runtime import ServingRuntimeFromTemplate
+from simple_logger.logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")
-def vllm_model_car_inference_service(
-    request: FixtureRequest,
-    admin_client: DynamicClient,
-    dynamic_model_namespace: Namespace,
-    modelcar_serving_runtime: ServingRuntime,
-    supported_accelerator_type: str,
-    modelcar_image_uri: str,
-    registry_pull_secret: str,
-    registry_host: str,
-    deployment_config: dict[str, Any],
-) -> Generator[InferenceService, Any, Any]:
-    deployment_type = deployment_config.get("deployment_type", KServeDeploymentType.SERVERLESS).lower()
-    name = safe_k8s_name(name=f"{modelcar_image_uri}-{deployment_type}", max_len=20)
-
-    # Dynamically create pull secret in the correct namespace
-    with kserve_registry_pull_secret(
-        admin_client=admin_client,
-        name=PULL_SECRET_NAME,
-        namespace=dynamic_model_namespace.name,
-        registry_pull_secret=registry_pull_secret,
-        registry_host=registry_host,
-    ):
-        isvc_kwargs = {
-            "client": admin_client,
-            "name": name,
-            "namespace": dynamic_model_namespace.name,
-            "runtime": modelcar_serving_runtime.name,
-            "storage_uri": modelcar_image_uri,
-            "model_format": modelcar_serving_runtime.instance.spec.supportedModelFormats[0].name,
-            "deployment_mode": deployment_config.get("deployment_type", KServeDeploymentType.SERVERLESS),
-            "image_pull_secrets": [PULL_SECRET_NAME],
-        }
-        accelerator_type = supported_accelerator_type.lower()
-        gpu_count = request.param.get("gpu_count")
-        timeout = request.param.get("timeout")
-        identifier = ACCELERATOR_IDENTIFIER.get(accelerator_type, Labels.Nvidia.NVIDIA_COM_GPU)
-        resources: Any = PREDICT_RESOURCES["resources"]
-        resources["requests"][identifier] = gpu_count
-        resources["limits"][identifier] = gpu_count
-        isvc_kwargs["resources"] = resources
-
-        if timeout:
-            isvc_kwargs["timeout"] = timeout
-
-        if gpu_count > 1:
-            isvc_kwargs["volumes"] = PREDICT_RESOURCES["volumes"]
-            isvc_kwargs["volumes_mounts"] = PREDICT_RESOURCES["volume_mounts"]
-
-        if arguments := deployment_config.get("runtime_argument"):
-            arguments = [
-                arg
-                for arg in arguments
-                if not (arg.startswith("--tensor-parallel-size") or arg.startswith("--quantization"))
-            ]
-            arguments.append(f"--tensor-parallel-size={gpu_count}")
-            if quantization := request.param.get("quantization"):
-                validate_supported_quantization_schema(q_type=quantization)
-                arguments.append(f"--quantization={quantization}")
-            isvc_kwargs["argument"] = arguments
-
-        if min_replicas := request.param.get("min-replicas"):
-            isvc_kwargs["min_replicas"] = min_replicas
-
-        with create_isvc(**isvc_kwargs) as isvc:
-            yield isvc
-
-
-@pytest.fixture(scope="class")
-def modelcar_serving_runtime(
-    request: FixtureRequest,
-    admin_client: DynamicClient,
-    dynamic_model_namespace: Namespace,
-    supported_accelerator_type: str,
-    vllm_runtime_image: str,
+def model_car_serving_runtime(
+        request: FixtureRequest,
+        admin_client: DynamicClient,
+        model_namespace: Namespace,
+        supported_accelerator_type: str,
+        vllm_runtime_image: str,
 ) -> Generator[ServingRuntime, None, None]:
     accelerator_type = supported_accelerator_type.lower()
     template_name = TEMPLATE_MAP.get(accelerator_type, RuntimeTemplates.VLLM_CUDA)
-    print(f"using template: {template_name}")
+    LOGGER.info(f"using template: {template_name}")
+    assert model_namespace.name is not None
     with ServingRuntimeFromTemplate(
-        client=admin_client,
-        name="vllm-runtime",
-        namespace=dynamic_model_namespace.name,
-        template_name=template_name,
-        deployment_type=request.param["deployment_type"],
-        runtime_image=vllm_runtime_image,
-        support_tgis_open_ai_endpoints=True,
-        containers={
-            "kserve-container": {
-                "args": [
-                    f"--port={str(INFERENCE_SERVICE_PORT)}",
-                    "--model=/mnt/models",
-                    "--served-model-name={{.Name}}",
-                ],
-                "ports": [
-                    {
-                        "containerPort": CONTAINER_PORT,
-                        "protocol": "TCP",
-                    }
-                ],
-                "volumeMounts": [{"mountPath": "/dev/shm", "name": "shm"}],
-            }
-        },
-        volumes=[{"emptyDir": {"medium": "Memory", "sizeLimit": "2Gi"}, "name": "shm"}],
+            client=admin_client,
+            name="vllm-runtime",
+            namespace=model_namespace.name,
+            template_name=template_name,
+            deployment_type=request.param["deployment_type"],
+            runtime_image=vllm_runtime_image,
     ) as model_runtime:
         yield model_runtime
 
 
-@pytest.fixture(scope="function")
-def modelcar_image_uri(request: FixtureRequest, model_image_name: str | list[str], registry_host: str) -> str:
-    """
-    Returns the model image URI for the modelcar image.
-    If the model image name is not provided, it skips the test.
-    """
-    param_index = request.node.callspec.indices.get("modelcar_image_uri", None)
-    if isinstance(model_image_name, list):
-        if param_index is not None and param_index < len(model_image_name):
-            override = model_image_name[param_index]
-        else:
-            pytest.skip("model_image_name completed, no more parameters to test.")
-    else:
-        override = model_image_name
-    return f"oci://{registry_host}/rhelai1/{override}"
+@pytest.fixture(scope="class")
+def vllm_model_car_inference_service(
+        request: FixtureRequest,
+        admin_client: DynamicClient,
+        model_namespace: Namespace,
+        model_car_serving_runtime: ServingRuntime,
+        supported_accelerator_type: str,
+        deployment_config: dict[str, Any],
+        kserve_registry_pull_secret: Secret,
+) -> Generator[InferenceService, Any, Any]:
+    isvc_kwargs = {
+        "client": admin_client,
+        "name": safe_k8s_name(request.param.get("model_name", "")),
+        "namespace": model_namespace.name,
+        "runtime": model_car_serving_runtime.name,
+        "storage_uri": request.param.get("model_car_image_uri"),
+        "model_format": model_car_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        "deployment_mode": deployment_config.get("deployment_type", KServeDeploymentType.SERVERLESS),
+        "image_pull_secrets": [kserve_registry_pull_secret.name],
+    }
+    accelerator_type = supported_accelerator_type.lower()
+    gpu_count = deployment_config.get("gpu_count", 0)
+    timeout = deployment_config.get("timeout")
+    identifier = ACCELERATOR_IDENTIFIER.get(accelerator_type, Labels.Nvidia.NVIDIA_COM_GPU)
+    resources: Any = PREDICT_RESOURCES["resources"]
+    resources["requests"][identifier] = gpu_count
+    resources["limits"][identifier] = gpu_count
+    isvc_kwargs["resources"] = resources
+
+    if timeout:
+        isvc_kwargs["timeout"] = timeout
+
+    if gpu_count > 1:
+        isvc_kwargs["volumes"] = PREDICT_RESOURCES["volumes"]
+        isvc_kwargs["volumes_mounts"] = PREDICT_RESOURCES["volume_mounts"]
+
+    if arguments := deployment_config.get("runtime_argument"):
+        arguments = [
+            arg
+            for arg in arguments
+            if not (arg.startswith("--tensor-parallel-size") or arg.startswith("--quantization"))
+        ]
+        arguments.append(f"--tensor-parallel-size={gpu_count}")
+        if quantization := request.param.get("quantization"):
+            validate_supported_quantization_schema(q_type=quantization)
+            arguments.append(f"--quantization={quantization}")
+        isvc_kwargs["argument"] = arguments
+
+    if min_replicas := request.param.get("min-replicas"):
+        isvc_kwargs["min_replicas"] = min_replicas
+
+    with create_isvc(**isvc_kwargs) as isvc:
+        yield isvc
 
 
 @pytest.fixture
@@ -165,40 +118,9 @@ def response_snapshot(snapshot: Any) -> Any:
 
 
 @pytest.fixture(scope="class")
-def dynamic_model_namespace(
-    request: FixtureRequest,
-    pytestconfig: pytest.Config,
-    admin_client: DynamicClient,
-    teardown_resources: bool,
-    deployment_config: dict[str, Any],
-) -> Generator[Namespace, Any, Any]:
-    if request.param.get("modelmesh-enabled"):
-        request.getfixturevalue(argname="enabled_modelmesh_in_dsc")
-
-    deployment_type = deployment_config.get("deployment_type", KServeDeploymentType.SERVERLESS)
-    deployment_key = deployment_type.lower()  # 'rawdeployment' or 'serverless'
-    dynamic_name = f"{deployment_key}-models-ns"
-
-    ns = Namespace(client=admin_client, name=dynamic_name)
-    LOGGER.info(f"Creating shared namespace: {ns.name}")
-
-    if pytestconfig.option.post_upgrade:
-        yield ns
-        ns.clean_up()
-    else:
-        with create_ns(
-            client=admin_client,
-            name=dynamic_name,
-            pytest_request=request,
-            teardown=teardown_resources,
-        ) as ns:
-            yield ns
-
-
-@pytest.fixture(scope="class")
 def deployment_config(
-    request: FixtureRequest,
-    serving_argument: list[str],
+        request: FixtureRequest,
+        serving_argument: list[str],
 ) -> dict[str, Any]:
     """
     Fixture to provide the base deployment configuration for serverless deployments.
@@ -212,93 +134,113 @@ def deployment_config(
     )
     config["runtime_argument"] = serving_argument
     config["deployment_type"] = deployment_type
+    config["gpu_count"] = 1
+    config["timeout"] = TIMEOUT_20MIN
     return config
 
 
-def build_raw_params(image_list: list[str]) -> tuple[list[pytest.param], list[str]]:
-    params = []
-    ids = []
-    for image in image_list:
-        image = image.strip()
-        if not image:
-            continue
-        ids.append(f"{image}-raw")
-        params.append(
-            pytest.param(
-                {"deployment_type": KServeDeploymentType.RAW_DEPLOYMENT, "modelmesh-enabled": True},
-                {"deployment_type": KServeDeploymentType.RAW_DEPLOYMENT},
-                {
-                    "modelcar_image_uri": image,
-                    "gpu_count": 1,
-                    "timeout": TIMEOUT_20MIN,
-                },
-                {"deployment_type": KServeDeploymentType.RAW_DEPLOYMENT},
-                image,
-                id=f"{image}-raw",
-                marks=[pytest.mark.rawdeployment],
-            )
-        )
-    return params, ids
+def build_raw_params(name: str, image: str) -> tuple[Any, str]:
+    test_id = f"{name}-raw"
+    param = pytest.param(
+        {"name": "raw-model-validation"},
+        {"deployment_type": KServeDeploymentType.RAW_DEPLOYMENT},
+        {
+            "model_name": name,
+            "model_car_image_uri": image,
+        },
+        {"deployment_type": KServeDeploymentType.RAW_DEPLOYMENT},
+        id=test_id,
+        marks=[pytest.mark.rawdeployment],
+    )
+    return param, test_id
 
 
-def build_serverless_params(image_list: list[str]) -> tuple[list[pytest.param], list[str]]:
-    params = []
-    ids = []
-    for image in image_list:
-        image = image.strip()
-        if not image:
-            continue
-        ids.append(f"{image}-serverless")
-        params.append(
-            pytest.param(
-                {"deployment_type": KServeDeploymentType.SERVERLESS, "modelmesh-enabled": False},
-                {"deployment_type": KServeDeploymentType.SERVERLESS},
-                {
-                    "modelcar_image_uri": image,
-                    "gpu_count": 1,
-                    "timeout": TIMEOUT_20MIN,
-                },
-                {"deployment_type": KServeDeploymentType.SERVERLESS},
-                image,
-                id=f"{image}-serverless",
-                marks=[pytest.mark.serverless],
-            )
-        )
-    return params, ids
+def build_serverless_params(name: str, image: str) -> tuple[Any, str]:
+    test_id = f"{name}-serverless"
+    param = pytest.param(
+        {"name": "serverless-model-validation"},
+        {"deployment_type": KServeDeploymentType.SERVERLESS},
+        {
+            "model_name": name,
+            "model_car_image_uri": image,
+        },
+        {"deployment_type": KServeDeploymentType.SERVERLESS},
+        id=test_id,
+        marks=[pytest.mark.serverless],
+    )
+    return param, test_id
 
 
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
     yaml_config = None
-    yaml_path = metafunc.config.getoption(name="modelcar_yaml_path")
+    yaml_path = metafunc.config.getoption(name="model_car_yaml_path")
     if yaml_path:
         with open(yaml_path, "r") as f:
             yaml_config = yaml.safe_load(f)
 
-    if yaml_config and "modelcar_image_name" in yaml_config:
-        model_images = yaml_config["modelcar_image_name"]
-        if isinstance(model_images, str):
-            image_list = [x.strip() for x in model_images.split(",")]
-        elif isinstance(model_images, list):
-            image_list = model_images
-        else:
-            raise ValueError("Invalid format for `model_image_name` in YAML.")
-    else:
-        image_arg = metafunc.config.getoption(name="modelcar_image_name")
-        image_list = image_arg.split(",") if image_arg else []
-
-    if metafunc.cls.__name__ == "TestVLLMModelcarRaw":
-        params, ids = build_raw_params(image_list=image_list)
-    elif metafunc.cls.__name__ == "TestVLLMModelcarServerless":
-        params, ids = build_serverless_params(image_list)
-    else:
+    if not yaml_config or "model-car" not in yaml_config:
         return
 
-    metafunc.parametrize(
-        argnames=(
-            "dynamic_model_namespace, modelcar_serving_runtime, "
-            "vllm_model_car_inference_service, deployment_config, modelcar_image_uri"
-        ),
-        argvalues=params,
-        indirect=True,
-        ids=ids,
-    )
+    model_car_data = yaml_config["model-car"]
+    if not isinstance(model_car_data, list):
+        raise ValueError("Invalid format for `model-car` in YAML. Expected a list of objects.")
+
+    # Check if metafunc.cls is not None to avoid linter errors
+    if not metafunc.cls:
+        return
+
+    params = []
+    ids = []
+
+    for model_car in model_car_data:
+        if not model_car or not isinstance(model_car, dict):
+            continue
+
+        name = model_car.get("name", "").strip()
+        image = model_car.get("image", "").strip()
+
+        if not name or not image:
+            continue
+
+        if metafunc.cls.__name__ == "TestVLLMModelCarRaw":
+            param, test_id = build_raw_params(name=name, image=image)
+        elif metafunc.cls.__name__ == "TestVLLMModelCarServerless":
+            param, test_id = build_serverless_params(name=name, image=image)
+        else:
+            continue
+
+        params.append(param)
+        ids.append(test_id)
+
+    if params:
+        metafunc.parametrize(
+            argnames=(
+                "model_namespace, model_car_serving_runtime, "
+                "vllm_model_car_inference_service, deployment_config"
+            ),
+            argvalues=params,
+            indirect=True,
+            ids=ids,
+        )
+
+
+@pytest.fixture(scope="class")
+def kserve_registry_pull_secret(
+        admin_client: DynamicClient,
+        model_namespace: Namespace,
+        registry_pull_secret: str,
+        registry_host: str,
+) -> Generator[Secret, Any, Any]:
+    docker_config_json = json.dumps({"auths": {registry_host: {"auth": registry_pull_secret}}})
+    with Secret(
+            client=admin_client,
+            name=PULL_SECRET_NAME,
+            namespace=model_namespace.name,
+            string_data={
+                ".dockerconfigjson": docker_config_json,
+                "ACCESS_TYPE": PULL_SECRET_ACCESS_TYPE,
+                "OCI_HOST": registry_host,
+            },
+            wait_for_resource=True,
+    ) as secret:
+        yield secret
