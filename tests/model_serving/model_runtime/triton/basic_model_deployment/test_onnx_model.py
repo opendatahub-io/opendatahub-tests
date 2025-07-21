@@ -31,7 +31,7 @@ pytestmark = pytest.mark.usefixtures(
     "root_dir", "valid_aws_config", "triton_rest_serving_runtime_template", "triton_grpc_serving_runtime_template"
 )
 
-
+@pytest.mark.sanity
 @pytest.mark.parametrize(
     ("protocol", "model_namespace", "s3_models_storage_uri", "triton_serving_runtime", "triton_inference_service"),
     [

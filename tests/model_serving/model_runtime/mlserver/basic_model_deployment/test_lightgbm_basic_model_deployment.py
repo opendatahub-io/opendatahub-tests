@@ -42,7 +42,7 @@ pytestmark = pytest.mark.usefixtures(
     "root_dir", "valid_aws_config", "mlserver_rest_serving_runtime_template", "mlserver_grpc_serving_runtime_template"
 )
 
-
+@pytest.mark.smoke
 @pytest.mark.parametrize(
     ("protocol", "model_namespace", "mlserver_inference_service", "s3_models_storage_uri", "mlserver_serving_runtime"),
     [
