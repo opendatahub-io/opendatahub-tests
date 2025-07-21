@@ -1,17 +1,17 @@
 from typing import Any
+
+import portforward
 from ocp_resources.inference_service import InferenceService
 from simple_logger.logger import get_logger
+from tenacity import retry, stop_after_attempt, wait_exponential
 
+from tests.model_serving.model_runtime.model_validation.constant import COMPLETION_QUERY
+from tests.model_serving.model_runtime.model_validation.constant import OPENAI_ENDPOINT_NAME
+from utilities.constants import Ports
+from utilities.exceptions import NotSupportedError
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.plugins.openai_plugin import OpenAIClient
 from utilities.plugins.tgis_grpc_plugin import TGISGRPCPlugin
-from utilities.exceptions import NotSupportedError
-from tests.model_serving.model_runtime.model_validation.constant import OPENAI_ENDPOINT_NAME
-import portforward
-import pytest
-from utilities.constants import Ports
-from tenacity import retry, stop_after_attempt, wait_exponential
-from tests.model_serving.model_runtime.model_validation.constant import COMPLETION_QUERY
 
 LOGGER = get_logger(name=__name__)
 
@@ -122,8 +122,3 @@ def validate_serverless_openai_inference_request(
         completion_responses,
         response_snapshot=response_snapshot,
     )
-
-
-def skip_if_not_deployment_mode(isvc: InferenceService, deployment_type: str, deployment_message: str) -> None:
-    if isvc.instance.metadata.annotations["serving.kserve.io/deploymentMode"] != deployment_type:
-        pytest.skip(deployment_message)

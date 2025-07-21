@@ -141,13 +141,6 @@ def pytest_addoption(parser: Parser) -> None:
         help="Serving arguments to use for the tests",
     )
 
-    # Modelcar options
-    modelcar_group.addoption(
-        "--modelcar_image_name",
-        default=os.environ.get("MODEL_IMAGE_NAME"),
-        help="Modelcar image name to use for the tests",
-    )
-
     # Model Validation Automation options
     model_validation_automation_group.addoption(
         "--model_car_yaml_path",

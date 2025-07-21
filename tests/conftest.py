@@ -268,21 +268,6 @@ def models_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str:
 
 
 @pytest.fixture(scope="session")
-def model_image_name(pytestconfig: pytest.Config, modelcar_yaml_config: dict[str, Any] | None) -> list[str]:
-    """
-    Fixture to get the list of model image names from modelcar.yaml or CLI option.
-    """
-    if modelcar_yaml_config:
-        model_image = modelcar_yaml_config.get("modelcar_image_name", [])
-        return model_image if isinstance(model_image, list) else model_image.split(",")
-
-    model_image_arg = pytestconfig.option.modelcar_image_name
-    if not model_image_arg:
-        pytest.skip("Model image name is not defined. Skipping tests that require it.")
-    return model_image_arg.split(",")
-
-
-@pytest.fixture(scope="session")
 def supported_accelerator_type(pytestconfig: pytest.Config) -> str | None:
     accelerator_type = pytestconfig.option.supported_accelerator_type
     if not accelerator_type:

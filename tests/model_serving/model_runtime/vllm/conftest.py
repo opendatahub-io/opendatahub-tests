@@ -1,23 +1,24 @@
 from typing import Any, Generator
+
 import pytest
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.namespace import Namespace
-from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.inference_service import InferenceService
+from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
-from utilities.constants import KServeDeploymentType
+from ocp_resources.serving_runtime import ServingRuntime
+from pytest import FixtureRequest
+from simple_logger.logger import get_logger
+
+from tests.model_serving.model_runtime.vllm.constant import ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES, TEMPLATE_MAP
 from tests.model_serving.model_runtime.vllm.utils import (
     kserve_s3_endpoint_secret,
     validate_supported_quantization_schema,
+    skip_if_not_deployment_mode,
 )
+from utilities.constants import KServeDeploymentType
 from utilities.constants import Labels, RuntimeTemplates
-from pytest import FixtureRequest
-from syrupy.extensions.json import JSONSnapshotExtension
-from tests.model_serving.model_runtime.vllm.constant import ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES, TEMPLATE_MAP
-from simple_logger.logger import get_logger
-
 from utilities.inference_utils import create_isvc
 from utilities.infra import get_pods_by_isvc_label
 from utilities.serving_runtime import ServingRuntimeFromTemplate
@@ -45,12 +46,6 @@ def serving_runtime(
         support_tgis_open_ai_endpoints=True,
     ) as model_runtime:
         yield model_runtime
-
-
-@pytest.fixture(scope="session")
-def skip_if_no_supported_accelerator_type(supported_accelerator_type: str) -> None:
-    if not supported_accelerator_type:
-        pytest.skip("Accelerator type is not provided,vLLM test cannot be run on CPU")
 
 
 @pytest.fixture(scope="class")
@@ -138,10 +133,21 @@ def kserve_endpoint_s3_secret(
 
 
 @pytest.fixture
-def response_snapshot(snapshot: Any) -> Any:
-    return snapshot.use_extension(extension_class=JSONSnapshotExtension)
+def vllm_pod_resource(admin_client: DynamicClient, vllm_inference_service: InferenceService) -> Pod:
+    return get_pods_by_isvc_label(client=admin_client, isvc=vllm_inference_service)[0]
 
 
 @pytest.fixture
-def vllm_pod_resource(admin_client: DynamicClient, vllm_inference_service: InferenceService) -> Pod:
-    return get_pods_by_isvc_label(client=admin_client, isvc=vllm_inference_service)[0]
+def skip_if_not_serverless_deployment(vllm_inference_service: InferenceService) -> None:
+    skip_if_not_deployment_mode(
+        isvc=vllm_inference_service,
+        deployment_type=KServeDeploymentType.SERVERLESS,
+    )
+
+
+@pytest.fixture
+def skip_if_not_raw_deployment(vllm_inference_service: InferenceService) -> None:
+    skip_if_not_deployment_mode(
+        isvc=vllm_inference_service,
+        deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
+    )

@@ -12,15 +12,14 @@ from ocp_resources.pod import Pod
 LOGGER = get_logger(name=__name__)
 
 
-pytestmark = pytest.mark.usefixtures("vllm_skip_if_no_supported_accelerator_type")
+pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type")
 
 
 class TestVLLMModelCarRaw:
     def test_oci_model_car_raw_openai_inference(
         self,
         vllm_model_car_inference_service: InferenceService,
-        vllm_pod_resource: Pod,
-        skip_if_not_raw_deployment: Any,
+        vllm_model_car_pod_resource: Pod,
         response_snapshot: Any,
     ) -> None:
         """
@@ -29,7 +28,7 @@ class TestVLLMModelCarRaw:
         LOGGER.info("Sending raw inference request to vLLM model served from OCI image.")
         validate_raw_openai_inference_request(
             isvc=vllm_model_car_inference_service,
-            pod_name=vllm_pod_resource.name,
+            pod_name=vllm_model_car_pod_resource.name,
             response_snapshot=response_snapshot,
             completion_query=COMPLETION_QUERY,
         )
@@ -39,7 +38,6 @@ class TestVLLMModelCarServerless:
     def test_oci_model_car_serverless_openai_inference(
         self,
         vllm_model_car_inference_service: InferenceService,
-        skip_if_not_serverless_deployment: Any,
         response_snapshot: Any,
     ) -> None:
         """

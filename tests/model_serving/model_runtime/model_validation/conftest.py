@@ -6,10 +6,11 @@ import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
+from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
-from syrupy.extensions.json import JSONSnapshotExtension
+from utilities.infra import get_pods_by_isvc_label
 
 from tests.model_serving.model_runtime.model_validation.constant import (
     ACCELERATOR_IDENTIFIER,
@@ -49,7 +50,7 @@ def model_car_serving_runtime(
     assert model_namespace.name is not None
     with ServingRuntimeFromTemplate(
         client=admin_client,
-        name="vllm-runtime",
+        name=f"vllm-{request.param['deployment_type'].lower()}-runtime",
         namespace=model_namespace.name,
         template_name=template_name,
         deployment_type=request.param["deployment_type"],
@@ -113,9 +114,26 @@ def vllm_model_car_inference_service(
         yield isvc
 
 
-@pytest.fixture
-def response_snapshot(snapshot: Any) -> Any:
-    return snapshot.use_extension(extension_class=JSONSnapshotExtension)
+@pytest.fixture(scope="class")
+def kserve_registry_pull_secret(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    registry_pull_secret: str,
+    registry_host: str,
+) -> Generator[Secret, Any, Any]:
+    docker_config_json = json.dumps({"auths": {registry_host: {"auth": registry_pull_secret}}})
+    with Secret(
+        client=admin_client,
+        name=PULL_SECRET_NAME,
+        namespace=model_namespace.name,
+        string_data={
+            ".dockerconfigjson": docker_config_json,
+            "ACCESS_TYPE": PULL_SECRET_ACCESS_TYPE,
+            "OCI_HOST": registry_host,
+        },
+        wait_for_resource=True,
+    ) as secret:
+        yield secret
 
 
 @pytest.fixture(scope="class")
@@ -224,23 +242,6 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
         )
 
 
-@pytest.fixture(scope="class")
-def kserve_registry_pull_secret(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-    registry_pull_secret: str,
-    registry_host: str,
-) -> Generator[Secret, Any, Any]:
-    docker_config_json = json.dumps({"auths": {registry_host: {"auth": registry_pull_secret}}})
-    with Secret(
-        client=admin_client,
-        name=PULL_SECRET_NAME,
-        namespace=model_namespace.name,
-        string_data={
-            ".dockerconfigjson": docker_config_json,
-            "ACCESS_TYPE": PULL_SECRET_ACCESS_TYPE,
-            "OCI_HOST": registry_host,
-        },
-        wait_for_resource=True,
-    ) as secret:
-        yield secret
+@pytest.fixture
+def vllm_model_car_pod_resource(admin_client: DynamicClient, vllm_model_car_inference_service: InferenceService) -> Pod:
+    return get_pods_by_isvc_label(client=admin_client, isvc=vllm_model_car_inference_service)[0]
