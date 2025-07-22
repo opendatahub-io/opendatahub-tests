@@ -133,6 +133,7 @@ def pytest_addoption(parser: Parser) -> None:
         default=os.environ.get("REGISTRY_HOST"),
         help="Registry host to pull oci container images",
     )
+
     # Serving arguments options
     serving_arguments_group.addoption(
         "--serving-argument",
