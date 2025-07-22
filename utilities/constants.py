@@ -206,9 +206,7 @@ class Labels:
         ROCM_GPU: str = "amd.com/gpu"
 
     class Kueue:
-        # TODO: Change to kueue.openshift.io/managed once it's working
-        MANAGED: str = "kueue-managed"
-        # MANAGED: str = "kueue.openshift.io/managed"
+        MANAGED: str = "kueue.openshift.io/managed"
 
 
 class Timeout:
