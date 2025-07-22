@@ -49,7 +49,6 @@ def pytest_addoption(parser: Parser) -> None:
     upgrade_group = parser.getgroup(name="Upgrade options")
     must_gather_group = parser.getgroup(name="MustGather")
     cluster_sanity_group = parser.getgroup(name="ClusterSanity")
-    modelcar_group = parser.getgroup(name="Modelcar options")
     ociregistry_group = parser.getgroup(name="OCI Registry")
     serving_arguments_group = parser.getgroup(name="Serving arguments")
     model_validation_automation_group = parser.getgroup(name="Model Validation Automation")
