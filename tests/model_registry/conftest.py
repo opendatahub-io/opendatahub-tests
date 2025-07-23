@@ -19,6 +19,7 @@ from simple_logger.logger import get_logger
 from kubernetes.dynamic import DynamicClient
 from pytest_testconfig import config as py_config
 from model_registry.types import RegisteredModel
+import uuid
 
 from tests.model_registry.constants import (
     MR_OPERATOR_NAME,
@@ -531,3 +532,239 @@ def model_registry_pod(admin_client: DynamicClient, model_registry_namespace: st
     )
     assert len(mr_pod) == 1
     return mr_pod[0]
+
+
+# =============================================================================
+# DUPLICATED RESOURCE FIXTURES
+# =============================================================================
+
+
+@pytest.fixture(scope="class")
+def db_name_1() -> str:
+    """Generate a unique name for the first DB instance."""
+    return f"db-instance-1-{str(uuid.uuid4())[:8]}"
+
+
+@pytest.fixture(scope="class")
+def db_secret_1(model_registry_namespace: str, db_name_1: str, teardown_resources: bool) -> Generator[Secret, Any, Any]:
+    """Create the first DB secret."""
+    with Secret(
+        name=db_name_1,
+        namespace=model_registry_namespace,
+        string_data=MODEL_REGISTRY_DB_SECRET_STR_DATA,
+        label=get_model_registry_db_label_dict(db_resource_name=db_name_1),
+        annotations=MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
+        teardown=teardown_resources,
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
+def db_pvc_1(
+    model_registry_namespace: str, db_name_1: str, teardown_resources: bool
+) -> Generator[PersistentVolumeClaim, Any, Any]:
+    """Create the first DB PVC."""
+    with PersistentVolumeClaim(
+        name=db_name_1,
+        namespace=model_registry_namespace,
+        accessmodes="ReadWriteOnce",
+        size="5Gi",
+        label=get_model_registry_db_label_dict(db_resource_name=db_name_1),
+        teardown=teardown_resources,
+    ) as pvc:
+        yield pvc
+
+
+@pytest.fixture(scope="class")
+def db_service_1(
+    model_registry_namespace: str, db_name_1: str, teardown_resources: bool
+) -> Generator[Service, Any, Any]:
+    """Create the first DB service."""
+    with Service(
+        name=db_name_1,
+        namespace=model_registry_namespace,
+        ports=[{"name": "mysql", "port": 3306, "protocol": "TCP", "targetPort": 3306}],
+        selector={"name": db_name_1},
+        label=get_model_registry_db_label_dict(db_resource_name=db_name_1),
+        teardown=teardown_resources,
+    ) as service:
+        yield service
+
+
+@pytest.fixture(scope="class")
+def db_deployment_1(
+    model_registry_namespace: str, db_name_1: str, teardown_resources: bool
+) -> Generator[Deployment, Any, Any]:
+    """Create the first DB deployment."""
+    with Deployment(
+        name=db_name_1,
+        namespace=model_registry_namespace,
+        template=get_model_registry_deployment_template_dict(secret_name=db_name_1, resource_name=db_name_1),
+        label=get_model_registry_db_label_dict(db_resource_name=db_name_1),
+        replicas=1,
+        revision_history_limit=0,
+        selector={"matchLabels": {"name": db_name_1}},
+        strategy={"type": "Recreate"},
+        wait_for_resource=True,
+        teardown=teardown_resources,
+    ) as deployment:
+        deployment.wait_for_replicas(deployed=True)
+        yield deployment
+
+
+@pytest.fixture(scope="class")
+def model_registry_instance_1(
+    db_name_1: str, model_registry_namespace: str, teardown_resources: bool, is_model_registry_oauth: bool
+) -> Generator[ModelRegistry, Any, Any]:
+    """Create the first Model Registry instance (default/oauth)."""
+    mysql_config = {
+        "host": f"{db_name_1}.{model_registry_namespace}.svc.cluster.local",
+        "database": MODEL_REGISTRY_DB_SECRET_STR_DATA["database-name"],
+        "passwordSecret": {"key": "database-password", "name": db_name_1},
+        "port": 3306,
+        "skipDBCreation": False,
+        "username": MODEL_REGISTRY_DB_SECRET_STR_DATA["database-user"],
+    }
+    istio_config = None
+    oauth_config = None
+    mr_class_name = ModelRegistry
+    if is_model_registry_oauth:
+        LOGGER.warning("Requested Ouath Proxy configuration:")
+        oauth_config = OAUTH_PROXY_CONFIG_DICT
+    else:
+        LOGGER.warning("Requested OSSM configuration:")
+        istio_config = ISTIO_CONFIG_DICT
+        mr_class_name = ModelRegistryV1Alpha1
+    mr_name = f"mr-instance-1-{str(uuid.uuid4())[:8]}"
+    with mr_class_name(
+        name=mr_name,
+        namespace=model_registry_namespace,
+        grpc={},
+        rest={},
+        label=MODEL_REGISTRY_STANDARD_LABELS,
+        istio=istio_config,
+        oauth_proxy=oauth_config,
+        mysql=mysql_config,
+        wait_for_resource=True,
+        teardown=teardown_resources,
+    ) as mr_instance:
+        mr_instance.wait_for_condition(condition="Available", status="True")
+        mr_instance.wait_for_condition(condition="OAuthProxyAvailable", status="True")
+        yield mr_instance
+
+
+# --- Instance 2 Resources ---
+
+
+@pytest.fixture(scope="class")
+def db_name_2() -> str:
+    """Generate a unique name for the second DB instance."""
+    return f"db-instance-2-{str(uuid.uuid4())[:8]}"
+
+
+@pytest.fixture(scope="class")
+def db_secret_2(model_registry_namespace: str, db_name_2: str, teardown_resources: bool) -> Generator[Secret, Any, Any]:
+    """Create the second DB secret."""
+    with Secret(
+        name=db_name_2,
+        namespace=model_registry_namespace,
+        string_data=MODEL_REGISTRY_DB_SECRET_STR_DATA,
+        label=get_model_registry_db_label_dict(db_resource_name=db_name_2),
+        annotations=MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
+        teardown=teardown_resources,
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
+def db_pvc_2(
+    model_registry_namespace: str, db_name_2: str, teardown_resources: bool
+) -> Generator[PersistentVolumeClaim, Any, Any]:
+    """Create the second DB PVC."""
+    with PersistentVolumeClaim(
+        name=db_name_2,
+        namespace=model_registry_namespace,
+        accessmodes="ReadWriteOnce",
+        size="5Gi",
+        label=get_model_registry_db_label_dict(db_resource_name=db_name_2),
+        teardown=teardown_resources,
+    ) as pvc:
+        yield pvc
+
+
+@pytest.fixture(scope="class")
+def db_service_2(
+    model_registry_namespace: str, db_name_2: str, teardown_resources: bool
+) -> Generator[Service, Any, Any]:
+    """Create the second DB service."""
+    with Service(
+        name=db_name_2,
+        namespace=model_registry_namespace,
+        ports=[{"name": "mysql", "port": 3306, "protocol": "TCP", "targetPort": 3306}],
+        selector={"name": db_name_2},
+        label=get_model_registry_db_label_dict(db_resource_name=db_name_2),
+        teardown=teardown_resources,
+    ) as service:
+        yield service
+
+
+@pytest.fixture(scope="class")
+def db_deployment_2(
+    model_registry_namespace: str, db_name_2: str, teardown_resources: bool
+) -> Generator[Deployment, Any, Any]:
+    """Create the second DB deployment."""
+    with Deployment(
+        name=db_name_2,
+        namespace=model_registry_namespace,
+        template=get_model_registry_deployment_template_dict(secret_name=db_name_2, resource_name=db_name_2),
+        label=get_model_registry_db_label_dict(db_resource_name=db_name_2),
+        replicas=1,
+        revision_history_limit=0,
+        selector={"matchLabels": {"name": db_name_2}},
+        strategy={"type": "Recreate"},
+        wait_for_resource=True,
+        teardown=teardown_resources,
+    ) as deployment:
+        deployment.wait_for_replicas(deployed=True)
+        yield deployment
+
+
+@pytest.fixture(scope="class")
+def model_registry_instance_2(
+    model_registry_namespace: str, db_name_2: str, teardown_resources: bool, is_model_registry_oauth: bool
+) -> Generator[ModelRegistry, Any, Any]:
+    """Create the second Model Registry instance (istio)."""
+    mysql_config = {
+        "host": f"{db_name_2}.{model_registry_namespace}.svc.cluster.local",
+        "database": MODEL_REGISTRY_DB_SECRET_STR_DATA["database-name"],
+        "passwordSecret": {"key": "database-password", "name": db_name_2},
+        "port": 3306,
+        "skipDBCreation": False,
+        "username": MODEL_REGISTRY_DB_SECRET_STR_DATA["database-user"],
+    }
+    istio_config = None
+    oauth_config = None
+    mr_class_name = ModelRegistry
+    if is_model_registry_oauth:
+        LOGGER.warning("Requested Ouath Proxy configuration:")
+        oauth_config = OAUTH_PROXY_CONFIG_DICT
+    else:
+        LOGGER.warning("Requested OSSM configuration:")
+        istio_config = ISTIO_CONFIG_DICT
+        mr_class_name = ModelRegistryV1Alpha1
+    mr_name = f"mr-instance-2-{str(uuid.uuid4())[:8]}"
+    with mr_class_name(
+        name=mr_name,
+        namespace=model_registry_namespace,
+        grpc={},
+        rest={},
+        label=MODEL_REGISTRY_STANDARD_LABELS,
+        istio=istio_config,
+        oauth_proxy=oauth_config,
+        mysql=mysql_config,
+        wait_for_resource=True,
+        teardown=teardown_resources,
+    ) as mr_instance:
+        mr_instance.wait_for_condition(condition="Available", status="True")
+        mr_instance.wait_for_condition(condition="OAuthProxyAvailable", status="True")
+        yield mr_instance

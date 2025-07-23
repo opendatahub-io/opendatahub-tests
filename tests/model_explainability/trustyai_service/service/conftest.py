@@ -30,6 +30,7 @@ U1nZ3B0WVhKcFlXUmlMV05oTUFvR0NDcUdTTTQ5QkFNQ0EwY0FNRVFDSUI1Q2F6VW1WWUZQYTFkS2txU
 RmcvTXlNWW9CZUNrUVRWdS9rUkIwK2N2Qy9RMDB4NExvVGpJaQpGdCtKMGc9PQotLS0tLUVORCBDRVJUSUZJQ0FURS0t\
 LS0t"  # pragma: allowlist secret
 
+
 @pytest.fixture(scope="class")
 def trustyai_service_with_invalid_db_cert(
     admin_client: DynamicClient,

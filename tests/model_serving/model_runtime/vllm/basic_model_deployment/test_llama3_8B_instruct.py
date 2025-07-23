@@ -66,7 +66,7 @@ class TestLlamaInstructModel:
     def test_llama3_instruct_8b_raw_simple_openai_model_inference(
         self,
         vllm_inference_service: Generator[InferenceService, Any, Any],
-        skip_if_serverless_deployemnt: Any,
+        skip_if_not_raw_deployment: Any,
         vllm_pod_resource: Pod,
         response_snapshot: Any,
     ):
@@ -81,7 +81,7 @@ class TestLlamaInstructModel:
     def test_llama3_instruct_8b_raw_simple_tgis_model_inference(
         self,
         vllm_inference_service: Generator[InferenceService, Any, Any],
-        skip_if_serverless_deployemnt: Any,
+        skip_if_not_raw_deployment: Any,
         vllm_pod_resource: Pod,
         response_snapshot: Any,
     ):
@@ -95,7 +95,7 @@ class TestLlamaInstructModel:
     def test_llama3_instruct_8b_model_inference_serverless(
         self,
         vllm_inference_service: Generator[InferenceService, Any, Any],
-        skip_if_raw_deployemnt: Any,
+        skip_if_not_serverless_deployment: Any,
         response_snapshot: Any,
     ):
         validate_serverless_openai_inference_request(
@@ -139,7 +139,7 @@ class TestMultiLlamaInstructModel:
     def test_llama3_instruct_8b_raw_multi_openai_model_inference(
         self,
         vllm_inference_service: Generator[InferenceService, Any, Any],
-        skip_if_serverless_deployemnt: Any,
+        skip_if_not_raw_deployment: Any,
         vllm_pod_resource: Pod,
         response_snapshot: Any,
     ):
@@ -154,7 +154,7 @@ class TestMultiLlamaInstructModel:
     def test_llama3_instruct_8b_raw_multi_tgis_model_inference(
         self,
         vllm_inference_service: Generator[InferenceService, Any, Any],
-        skip_if_serverless_deployemnt: Any,
+        skip_if_not_raw_deployment: Any,
         vllm_pod_resource: Pod,
         response_snapshot: Any,
     ):
@@ -168,7 +168,7 @@ class TestMultiLlamaInstructModel:
     def test_llama3_instruct_8b_multi_model_inference_serverless(
         self,
         vllm_inference_service: Generator[InferenceService, Any, Any],
-        skip_if_raw_deployemnt: Any,
+        skip_if_not_serverless_deployment: Any,
         response_snapshot: Any,
     ):
         validate_serverless_openai_inference_request(

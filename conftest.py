@@ -5,6 +5,7 @@ import shutil
 import datetime
 import traceback
 
+import pytest
 import shortuuid
 from _pytest.runner import CallInfo
 from _pytest.reports import TestReport
@@ -35,7 +36,7 @@ from utilities.must_gather_collector import (
 from kubernetes.dynamic import DynamicClient
 from utilities.infra import get_operator_distribution, get_dsci_applications_namespace, get_data_science_cluster
 from ocp_resources.resource import get_client
-
+from ocp_resources.cluster_service_version import ClusterServiceVersion
 
 LOGGER = logging.getLogger(name=__name__)
 BASIC_LOGGER = logging.getLogger(name="basic")
@@ -48,6 +49,9 @@ def pytest_addoption(parser: Parser) -> None:
     upgrade_group = parser.getgroup(name="Upgrade options")
     must_gather_group = parser.getgroup(name="MustGather")
     cluster_sanity_group = parser.getgroup(name="ClusterSanity")
+    ociregistry_group = parser.getgroup(name="OCI Registry")
+    serving_arguments_group = parser.getgroup(name="Serving arguments")
+    model_validation_automation_group = parser.getgroup(name="Model Validation Automation")
     hf_group = parser.getgroup(name="Hugging Face")
 
     # AWS config and credentials options
@@ -116,6 +120,32 @@ def pytest_addoption(parser: Parser) -> None:
         "--triton-runtime-image",
         default=os.environ.get("TRITON_RUNTIME_IMAGE"),
         help="Specify the runtime image to use for the tests",
+    )
+
+    # OCI Registry options
+    ociregistry_group.addoption(
+        "--registry-pull-secret",
+        default=os.environ.get("OCI_REGISTRY_PULL_SECRET"),
+        help="Registry pull secret to pull oci container images",
+    )
+    ociregistry_group.addoption(
+        "--registry-host",
+        default=os.environ.get("REGISTRY_HOST"),
+        help="Registry host to pull oci container images",
+    )
+
+    # Serving arguments options
+    serving_arguments_group.addoption(
+        "--serving-argument",
+        default=os.environ.get("SERVING_ARGUMENTS"),
+        help="Serving arguments to use for the tests",
+    )
+
+    # Model Validation Automation options
+    model_validation_automation_group.addoption(
+        "--model_car_yaml_path",
+        default=os.environ.get("MODEL_YAML_PATH"),
+        help="Path to the modelcar yaml file",
     )
 
     # Upgrade options
@@ -412,3 +442,37 @@ def pytest_exception_interact(node: Item | Collector, call: CallInfo[Any], repor
 
         except Exception as current_exception:
             LOGGER.warning(f"Failed to collect logs: {test_name}: {current_exception} {traceback.format_exc()}")
+
+
+@pytest.fixture(scope="package")
+def fail_if_missing_dependent_operators(admin_client: DynamicClient) -> None:
+    if dependent_operators := py_config.get("dependent_operators"):
+        missing_operators: list[str] = []
+
+        for operator_name in dependent_operators.split(","):
+            csvs = list(
+                ClusterServiceVersion.get(
+                    dyn_client=admin_client,
+                    namespace=py_config["applications_namespace"],
+                )
+            )
+
+            LOGGER.info(f"Verifying if {operator_name} is installed")
+            for csv in csvs:
+                if csv.name.startswith(operator_name):
+                    if csv.status == csv.Status.SUCCEEDED:
+                        break
+
+                    else:
+                        missing_operators.append(
+                            f"Operator {operator_name} is installed but CSV is not in {csv.Status.SUCCEEDED} state"
+                        )
+
+            else:
+                missing_operators.append(f"{operator_name} is not installed")
+
+        if missing_operators:
+            pytest.fail(str(missing_operators))
+
+    else:
+        LOGGER.info("No dependent operators to verify")

@@ -31,6 +31,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.resource import get_client
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
+import json
 
 from ocp_utilities.operators import uninstall_operator, install_operator
 from utilities.certificates_utils import create_ca_bundle_file
@@ -110,7 +111,7 @@ def model_namespace(
         ns.clean_up()
     else:
         with create_ns(
-            client=admin_client,
+            admin_client=admin_client,
             pytest_request=request,
             teardown=teardown_resources,
         ) as ns:
@@ -137,6 +138,28 @@ def aws_secret_access_key(pytestconfig: Config) -> str:
             "Either pass with `--aws-secret-access-key` or set `AWS_SECRET_ACCESS_KEY` environment variable"
         )
     return secret_access_key
+
+
+@pytest.fixture(scope="session")
+def registry_pull_secret(pytestconfig: Config) -> str:
+    registry_pull_secret = pytestconfig.option.registry_pull_secret
+    if not registry_pull_secret:
+        raise ValueError(
+            "Registry pull secret is not set. "
+            "Either pass with `--registry_pull_secret` or set `OCI_REGISTRY_PULL_SECRET` environment variable"
+        )
+    return registry_pull_secret
+
+
+@pytest.fixture(scope="session")
+def registry_host(pytestconfig: pytest.Config) -> str | None:
+    registry_host = pytestconfig.option.registry_host
+    if not registry_host:
+        raise ValueError(
+            "Registry host for OCI images is not set. "
+            "Either pass with `--registry_host` or set `REGISTRY_HOST` environment variable"
+        )
+    return registry_host
 
 
 @pytest.fixture(scope="session")
@@ -175,6 +198,40 @@ def ci_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str:
             "Either pass with `--ci-s3-bucket-endpoint` or set `CI_S3_BUCKET_ENDPOINT` environment variable"
         )
     return ci_bucket_endpoint
+
+
+@pytest.fixture(scope="session")
+def serving_argument(pytestconfig: pytest.Config, modelcar_yaml_config: dict[str, Any] | None) -> list[str]:
+    if modelcar_yaml_config:
+        arg = modelcar_yaml_config.get("serving_argument", [])
+        return arg if isinstance(arg, list) else [arg]
+
+    raw_arg = pytestconfig.option.serving_argument
+    try:
+        return json.loads(raw_arg)
+    except json.JSONDecodeError:
+        raise ValueError(
+            "Serving arguments should be a valid JSON list. "
+            "Either pass with `--serving-argument` or set it correctly in modelcar.yaml"
+        )
+
+
+@pytest.fixture(scope="session")
+def modelcar_yaml_config(pytestconfig: pytest.Config) -> dict[str, Any] | None:
+    """
+    Fixture to get the path to the modelcar.yaml file.
+    """
+    config_path = pytestconfig.option.model_car_yaml_path
+    if not config_path:
+        return None
+    with open(config_path, "r") as file:
+        try:
+            modelcar_yaml = yaml.safe_load(file)
+            if not isinstance(modelcar_yaml, dict):
+                raise ValueError("modelcar.yaml should contain a dictionary.")
+            return modelcar_yaml
+        except yaml.YAMLError as e:
+            raise ValueError(f"Error parsing modelcar.yaml: {e}") from e
 
 
 @pytest.fixture(scope="session")
@@ -407,12 +464,12 @@ def cluster_monitoring_config(
 
 @pytest.fixture(scope="class")
 def unprivileged_model_namespace(
-    request: FixtureRequest, unprivileged_client: DynamicClient
+    request: FixtureRequest, admin_client: DynamicClient, unprivileged_client: DynamicClient
 ) -> Generator[Namespace, Any, Any]:
     if request.param.get("modelmesh-enabled"):
         request.getfixturevalue(argname="enabled_modelmesh_in_dsc")
 
-    with create_ns(unprivileged_client=unprivileged_client, pytest_request=request) as ns:
+    with create_ns(admin_client=admin_client, unprivileged_client=unprivileged_client, pytest_request=request) as ns:
         yield ns
 
 
@@ -421,7 +478,7 @@ def unprivileged_model_namespace(
 def minio_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
     with create_ns(
         name=f"{MinIo.Metadata.NAME}-{shortuuid.uuid().lower()}",
-        client=admin_client,
+        admin_client=admin_client,
     ) as ns:
         yield ns
 

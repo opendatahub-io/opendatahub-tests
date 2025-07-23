@@ -216,6 +216,6 @@ def validate_serverless_openai_inference_request(
     )
 
 
-def skip_if_deployment_mode(isvc: InferenceService, deployment_type: str, deployment_message: str) -> None:
-    if isvc.instance.metadata.annotations["serving.kserve.io/deploymentMode"] == deployment_type:
-        pytest.skip(deployment_message)
+def skip_if_not_deployment_mode(isvc: InferenceService, deployment_type: str) -> None:
+    if isvc.instance.metadata.annotations["serving.kserve.io/deploymentMode"] != deployment_type:
+        pytest.skip(f"Test is being skipped because model is not being deployed in {deployment_type} mode")

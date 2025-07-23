@@ -71,8 +71,8 @@ LOGGER = get_logger(name=__name__)
 
 @contextmanager
 def create_ns(
+    admin_client: DynamicClient,
     name: str | None = None,
-    client: DynamicClient | None = None,
     unprivileged_client: DynamicClient | None = None,
     teardown: bool = True,
     delete_timeout: int = Timeout.TIMEOUT_4MIN,
@@ -94,7 +94,7 @@ def create_ns(
     Args:
         name (str): namespace name.
             Can be overwritten by `request.param["name"]`
-        client (DynamicClient): admin client.
+        admin_client (DynamicClient): admin client.
         unprivileged_client (UnprivilegedClient): unprivileged client.
         teardown (bool): should run resource teardown
         delete_timeout (int): delete timeout.
@@ -120,7 +120,6 @@ def create_ns(
 
     namespace_kwargs = {
         "name": name,
-        "client": client or unprivileged_client,
         "teardown": teardown,
         "delete_timeout": delete_timeout,
         "label": labels or {},
@@ -138,32 +137,32 @@ def create_ns(
     if add_kueue_label:
         namespace_kwargs["label"][Labels.Kueue.MANAGED] = "true"  # type: ignore
 
-    if unprivileged_client:
-        with ProjectRequest(name=name, client=unprivileged_client, teardown=teardown):
-            project = Project(**namespace_kwargs)
-            project.wait_for_status(status=project.Status.ACTIVE, timeout=Timeout.TIMEOUT_2MIN)
-            if _labels := namespace_kwargs.get("label", {}):
-                # To patch the namespace, admin client is required
-                ns = Namespace(client=get_client(), name=name)
-                ResourceEditor({
-                    ns: {
-                        "metadata": {
-                            "labels": _labels,
-                        }
-                    }
-                }).update()
-            yield project
-
-            if teardown:
-                wait_for_serverless_pods_deletion(resource=project, admin_client=client)
-
-    else:
+    if not unprivileged_client:
+        namespace_kwargs["client"] = admin_client
         with Namespace(**namespace_kwargs) as ns:
             ns.wait_for_status(status=Namespace.Status.ACTIVE, timeout=Timeout.TIMEOUT_2MIN)
             yield ns
-
             if teardown:
-                wait_for_serverless_pods_deletion(resource=ns, admin_client=client)
+                wait_for_serverless_pods_deletion(resource=ns, admin_client=admin_client)
+    else:
+        namespace_kwargs["client"] = unprivileged_client
+        project = ProjectRequest(**namespace_kwargs).deploy()
+        if _labels := namespace_kwargs.get("label", {}):
+            # To patch the namespace, admin client is required
+            ns = Namespace(client=admin_client, name=name)
+            ResourceEditor({
+                ns: {
+                    "metadata": {
+                        "labels": _labels,
+                    }
+                }
+            }).update()
+        yield project
+        if teardown:
+            wait_for_serverless_pods_deletion(resource=project, admin_client=admin_client)
+            # cleanup must be done with admin admin_client
+            project.client = admin_client
+            project.clean_up()
 
 
 def wait_for_replicas_in_deployment(deployment: Deployment, replicas: int, timeout: int = Timeout.TIMEOUT_2MIN) -> None:
