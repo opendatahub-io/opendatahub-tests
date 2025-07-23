@@ -115,6 +115,7 @@ def validate_trustyai_service_db_conn_failure(
                 return True
     return False
 
+
 @contextmanager
 def create_trustyai_service(
     client: DynamicClient,

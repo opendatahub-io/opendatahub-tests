@@ -64,4 +64,3 @@ def trustyai_invalid_db_ca_secret(
         data_dict={"ca.crt": INVALID_TLS_CERTIFICATE},
     ) as secret:
         yield secret
-
