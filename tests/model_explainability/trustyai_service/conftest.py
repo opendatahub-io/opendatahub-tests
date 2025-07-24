@@ -97,52 +97,6 @@ def trustyai_service(
             yield trustyai_service
 
 
-@pytest.fixture(scope="class")
-def trustyai_service_with_pvc_storage(
-    pytestconfig: pytest.Config,
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-    cluster_monitoring_config: ConfigMap,
-    user_workload_monitoring_config: ConfigMap,
-    teardown_resources: bool,
-) -> Generator[TrustyAIService, Any, Any]:
-    trustyai_service_kwargs = {"client": admin_client, "namespace": model_namespace.name, "name": TRUSTYAI_SERVICE_NAME}
-
-    if pytestconfig.option.post_upgrade:
-        trustyai_service = TrustyAIService(**trustyai_service_kwargs)
-        yield trustyai_service
-        trustyai_service.clean_up()
-    else:
-        with create_trustyai_service(
-            **trustyai_service_kwargs,
-            storage=TAI_PVC_STORAGE_CONFIG,
-            metrics=TAI_METRICS_CONFIG,
-            data=TAI_DATA_CONFIG,
-            wait_for_replicas=True,
-            teardown=teardown_resources,
-        ) as trustyai_service:
-            yield trustyai_service
-
-
-@pytest.fixture(scope="class")
-def trustyai_service_with_db_storage(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-    cluster_monitoring_config: ConfigMap,
-    user_workload_monitoring_config: ConfigMap,
-    mariadb: MariaDB,
-    trustyai_db_ca_secret: None,
-) -> Generator[TrustyAIService, Any, Any]:
-    with create_trustyai_service(
-        client=admin_client,
-        namespace=model_namespace.name,
-        storage=TAI_DB_STORAGE_CONFIG,
-        metrics=TAI_METRICS_CONFIG,
-        wait_for_replicas=True,
-    ) as trustyai_service:
-        yield trustyai_service
-
-
 @pytest.fixture(scope="session")
 def user_workload_monitoring_config(admin_client: DynamicClient) -> Generator[ConfigMap, Any, Any]:
     data = {"config.yaml": yaml.dump({"prometheus": {"logLevel": "debug", "retention": "15d"}})}
