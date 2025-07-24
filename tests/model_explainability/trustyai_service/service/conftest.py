@@ -42,15 +42,17 @@ def trustyai_service_with_invalid_db_cert(
 ) -> Generator[TrustyAIService, None, None]:
     """Create a TrustyAIService deployment with an invalid database certificate set as secret.
 
-    Yields: A TrustyAIService with invalid database certificate set.
+    Yields:
+        A TrustyAIService with invalid database certificate set.
     """
-    yield from create_trustyai_service(
+    with create_trustyai_service(
         client=admin_client,
         namespace=model_namespace.name,
         storage=TAI_DB_STORAGE_CONFIG,
         metrics=TAI_METRICS_CONFIG,
         wait_for_replicas=False,
-    )
+    ) as trustyai_service:
+        yield trustyai_service
 
 
 @pytest.fixture(scope="class")

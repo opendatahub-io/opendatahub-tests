@@ -73,16 +73,16 @@ def trustyai_service_with_pvc_storage(
         trustyai_service = TrustyAIService(**trustyai_service_kwargs)
         yield trustyai_service
         trustyai_service.clean_up()
-
     else:
-        yield from create_trustyai_service(
+        with create_trustyai_service(
             **trustyai_service_kwargs,
             storage=TAI_PVC_STORAGE_CONFIG,
             metrics=TAI_METRICS_CONFIG,
             data=TAI_DATA_CONFIG,
             wait_for_replicas=True,
             teardown=teardown_resources,
-        )
+        ) as trustyai_service:
+            yield trustyai_service
 
 
 @pytest.fixture(scope="class")
@@ -94,13 +94,14 @@ def trustyai_service_with_db_storage(
     mariadb: MariaDB,
     trustyai_db_ca_secret: None,
 ) -> Generator[TrustyAIService, Any, Any]:
-    yield from create_trustyai_service(
+    with create_trustyai_service(
         client=admin_client,
         namespace=model_namespace.name,
         storage=TAI_DB_STORAGE_CONFIG,
         metrics=TAI_METRICS_CONFIG,
         wait_for_replicas=True,
-    )
+    ) as trustyai_service:
+        yield trustyai_service
 
 
 @pytest.fixture(scope="session")
@@ -262,12 +263,16 @@ def gaussian_credit_model(
 def isvc_getter_service_account(
     admin_client: DynamicClient, model_namespace: Namespace
 ) -> Generator[ServiceAccount, Any, Any]:
-    yield from create_isvc_getter_service_account(client=admin_client, namespace=model_namespace, name=ISVC_GETTER)
+    with create_isvc_getter_service_account(
+        client=admin_client, namespace=model_namespace, name=ISVC_GETTER
+    ) as service_account:
+        yield service_account
 
 
 @pytest.fixture(scope="class")
 def isvc_getter_role(admin_client: DynamicClient, model_namespace: Namespace) -> Generator[Role, Any, Any]:
-    yield from create_isvc_getter_role(client=admin_client, namespace=model_namespace, name=ISVC_GETTER)
+    with create_isvc_getter_role(client=admin_client, namespace=model_namespace, name=ISVC_GETTER) as role:
+        yield role
 
 
 @pytest.fixture(scope="class")
@@ -277,13 +282,14 @@ def isvc_getter_role_binding(
     isvc_getter_role: Role,
     isvc_getter_service_account: ServiceAccount,
 ) -> Generator[RoleBinding, Any, Any]:
-    yield from create_isvc_getter_role_binding(
+    with create_isvc_getter_role_binding(
         client=admin_client,
         namespace=model_namespace,
         role=isvc_getter_role,
         service_account=isvc_getter_service_account,
         name=ISVC_GETTER,
-    )
+    ) as role_binding:
+        yield role_binding
 
 
 @pytest.fixture(scope="class")
@@ -293,12 +299,13 @@ def isvc_getter_token_secret(
     isvc_getter_service_account: ServiceAccount,
     isvc_getter_role_binding: RoleBinding,
 ) -> Generator[Secret, Any, Any]:
-    yield from create_isvc_getter_token_secret(
+    with create_isvc_getter_token_secret(
         client=admin_client,
         name="sa-token",
         namespace=model_namespace,
         service_account=isvc_getter_service_account,
-    )
+    ) as secret:
+        yield secret
 
 
 @pytest.fixture(scope="class")

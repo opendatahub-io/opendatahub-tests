@@ -44,7 +44,7 @@ from utilities.minio import create_minio_data_connection_secret
 def model_namespaces(request, admin_client) -> Generator[List[Namespace], Any, None]:
     with ExitStack() as stack:
         namespaces = [
-            stack.enter_context(create_ns(client=admin_client, name=param["name"])) for param in request.param
+            stack.enter_context(create_ns(admin_client=admin_client, name=param["name"])) for param in request.param
         ]
         yield namespaces
 
