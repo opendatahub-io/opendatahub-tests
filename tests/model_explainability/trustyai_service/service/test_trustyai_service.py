@@ -85,6 +85,7 @@ def test_validate_trustyai_service_image(
     indirect=True,
 )
 @pytest.mark.usefixtures("minio_pod")
+@pytest.mark.serverless
 def test_trustyai_service_db_migration(
     admin_client,
     current_client_token,

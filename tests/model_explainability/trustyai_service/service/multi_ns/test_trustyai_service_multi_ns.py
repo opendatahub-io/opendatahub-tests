@@ -29,6 +29,7 @@ from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
     ],
     indirect=True,
 )
+@pytest.mark.serverless
 class TestTrustyAIServiceMultipleNS:
     """Verifies TrustyAIService operations across multiple namespaces,
     i.e. registering inference requests, uploading data, scheduling and deleting metrics,
