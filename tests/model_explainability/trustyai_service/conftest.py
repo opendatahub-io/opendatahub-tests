@@ -2,6 +2,7 @@ from typing import Generator, Any
 
 import pytest
 import yaml
+from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.cluster_service_version import ClusterServiceVersion
@@ -56,6 +57,44 @@ DB_CREDENTIALS_SECRET_NAME: str = "db-credentials"
 DB_NAME: str = "trustyai_db"
 DB_USERNAME: str = "trustyai_user"
 DB_PASSWORD: str = "trustyai_password"
+
+
+@pytest.fixture(scope="class")
+def trustyai_service(
+    request: FixtureRequest,
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    cluster_monitoring_config: ConfigMap,
+    user_workload_monitoring_config: ConfigMap,
+    teardown_resources: bool,
+) -> Generator[TrustyAIService, Any, Any]:
+    tais_kwargs = {"client": admin_client, "namespace": model_namespace.name, "name": TRUSTYAI_SERVICE_NAME}
+
+    if pytestconfig.option.post_upgrade:
+        # If we are on post-upgrade tests, we don't need to create the TrustyAIService,
+        # but we need to clean it up manually
+        trustyai_service = TrustyAIService(**tais_kwargs)
+        yield trustyai_service
+        trustyai_service.clean_up()
+    else:
+        if request.param["storage"] == "pvc":
+            tais_kwargs["storage"] = TAI_PVC_STORAGE_CONFIG
+            tais_kwargs["data"] = TAI_DATA_CONFIG
+        elif request.param["storage"] == "db":
+            request.getfixturevalue("mariadb")
+            request.getfixturevalue("trustyai_db_ca_secret")
+            tais_kwargs["storage"] = TAI_DB_STORAGE_CONFIG
+        else:
+            raise ValueError("TrustyAI storage can only be 'pvc' or 'db'")
+
+        with create_trustyai_service(
+            **tais_kwargs,
+            metrics=TAI_METRICS_CONFIG,
+            wait_for_replicas=True,
+            teardown=teardown_resources,
+        ) as trustyai_service:
+            yield trustyai_service
 
 
 @pytest.fixture(scope="class")
