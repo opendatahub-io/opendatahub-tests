@@ -76,7 +76,7 @@ def test_validate_trustyai_service_image(
     "model_namespace, minio_pod, minio_data_connection, trustyai_service",
     [
         pytest.param(
-            {"name": "validate-trustyai-db-migration"},
+            {"name": "test-trustyai-db-migration"},
             MinIo.PodConfig.MODEL_MESH_MINIO_CONFIG,
             {"bucket": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
             {"storage": "pvc"},
