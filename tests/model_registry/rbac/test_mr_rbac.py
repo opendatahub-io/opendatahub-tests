@@ -16,6 +16,7 @@ from simple_logger.logger import get_logger
 from model_registry import ModelRegistry as ModelRegistryClient
 from timeout_sampler import TimeoutSampler
 
+from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.group import Group
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
@@ -138,21 +139,6 @@ class TestUserPermission:
         )
 
 
-@pytest.mark.parametrize(
-    "updated_dsc_component_state_scope_class",
-    [
-        pytest.param({
-            "component_patch": {
-                DscComponents.MODELREGISTRY: {
-                    "managementState": DscComponents.ManagementState.MANAGED,
-                    "registriesNamespace": py_config["model_registry_namespace"],
-                },
-            }
-        }),
-    ],
-    indirect=True,
-)
-@pytest.mark.usefixtures("updated_dsc_component_state_scope_class")
 class TestUserMultiProjectPermission:
     """
     Test suite for verifying user permissions in a multi-project setup for the Model Registry.
@@ -160,6 +146,7 @@ class TestUserMultiProjectPermission:
 
     @pytest.mark.parametrize(
         (
+            "updated_dsc_component_state_parametrized, "
             "db_secret_parametrized, "
             "db_pvc_parametrized, "
             "db_service_parametrized, "
@@ -169,11 +156,12 @@ class TestUserMultiProjectPermission:
         ALL_MR_TEST_SCENARIOS,
         indirect=True,
     )
+    @pytest.mark.smoke
     def test_user_permission_multi_project_parametrized(
         self: Self,
         test_idp_user: UserTestSession,
         admin_client: DynamicClient,
-        model_registry_namespace: str,
+        updated_dsc_component_state_parametrized: DataScienceCluster,
         db_secret_parametrized: List[Secret],
         db_pvc_parametrized: List[PersistentVolumeClaim],
         db_service_parametrized: List[Service],
@@ -183,7 +171,9 @@ class TestUserMultiProjectPermission:
     ):
         """
         Verify that a user can be granted access to one MR instance at a time using parametrized fixtures.
+        All resources (MR instances and databases) are created in the same dynamically generated namespace.
         """
+
         from tests.model_registry.utils import get_mr_service_by_label, get_endpoint_from_mr_service
         from tests.model_registry.rbac.utils import grant_mr_access, revoke_mr_access
         from utilities.constants import Protocols
@@ -196,7 +186,13 @@ class TestUserMultiProjectPermission:
         mr_instance_1 = model_registry_instance_parametrized[0]
         mr_instance_2 = model_registry_instance_parametrized[1]
 
-        # Get endpoints for both MR instances
+        # Use the namespace configured in the DSC (same namespace for everything)
+        model_registry_namespace = (
+            updated_dsc_component_state_parametrized.instance.spec.components.modelregistry.registriesNamespace
+        )
+        LOGGER.info(f"Model Registry namespace: {model_registry_namespace}")
+
+        # Get endpoints for both MR instances (both in the same namespace)
         service1 = get_mr_service_by_label(
             client=admin_client,
             namespace_name=model_registry_namespace,

@@ -538,6 +538,86 @@ def model_registry_pod(admin_client: DynamicClient, model_registry_namespace: st
 # =============================================================================
 # RESOURCE FIXTURES PARMETRIZED
 # =============================================================================
+@pytest.fixture(scope="class")
+def updated_dsc_component_state_parametrized(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    dsc_resource: DataScienceCluster,
+    teardown_resources: bool,
+) -> Generator[DataScienceCluster, Any, Any]:
+    """Configure DSC to use parametrized Model Registry namespace"""
+    if not teardown_resources:
+        yield dsc_resource
+        return
+
+    # Get the namespace name from the parameter
+    namespace_name = request.param["ns_name"]
+    original_components = dsc_resource.instance.spec.components
+
+    # First, remove the Model Registry to allow namespace changes
+    remove_patch = {
+        DscComponents.MODELREGISTRY: {
+            "managementState": DscComponents.ManagementState.REMOVED,
+        },
+    }
+
+    # Apply remove patch first
+    with ResourceEditor(patches={dsc_resource: {"spec": {"components": remove_patch}}}):
+        dsc_resource.wait_for_condition(
+            condition=DscComponents.COMPONENT_MAPPING[DscComponents.MODELREGISTRY], status="False"
+        )
+
+    # Now set the new namespace and manage
+    component_patch = {
+        DscComponents.MODELREGISTRY: {
+            "managementState": DscComponents.ManagementState.MANAGED,
+            "registriesNamespace": namespace_name,
+        },
+    }
+
+    with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
+        dsc_resource.wait_for_condition(
+            condition=DscComponents.COMPONENT_MAPPING[DscComponents.MODELREGISTRY], status="True"
+        )
+        namespace = Namespace(name=namespace_name, ensure_exists=True)
+        namespace.wait_for_status(status=Namespace.Status.ACTIVE)
+        wait_for_pods_running(
+            admin_client=admin_client,
+            namespace_name=py_config["applications_namespace"],
+            number_of_consecutive_checks=6,
+        )
+        yield dsc_resource
+
+    # Cleanup - restore original state
+    LOGGER.info("Cleaning up DSC configuration...")
+
+    # First, remove the Model Registry
+    remove_patch = {
+        DscComponents.MODELREGISTRY: {
+            "managementState": DscComponents.ManagementState.REMOVED,
+        },
+    }
+
+    with ResourceEditor(patches={dsc_resource: {"spec": {"components": remove_patch}}}):
+        dsc_resource.wait_for_condition(
+            condition=DscComponents.COMPONENT_MAPPING[DscComponents.MODELREGISTRY], status="False"
+        )
+
+    # Restore original configuration
+    restore_patch = {
+        DscComponents.MODELREGISTRY: original_components[DscComponents.MODELREGISTRY],
+    }
+
+    with ResourceEditor(patches={dsc_resource: {"spec": {"components": restore_patch}}}):
+        if original_components[DscComponents.MODELREGISTRY]["managementState"] == DscComponents.ManagementState.MANAGED:
+            dsc_resource.wait_for_condition(
+                condition=DscComponents.COMPONENT_MAPPING[DscComponents.MODELREGISTRY], status="True"
+            )
+
+    # Clean up the dynamic namespace
+    namespace = Namespace(name=namespace_name, ensure_exists=True)
+    if namespace:
+        namespace.delete(wait=True)
 
 
 @pytest.fixture(scope="class")
@@ -548,7 +628,7 @@ def db_secret_parametrized(request: FixtureRequest, teardown_resources: bool) ->
             stack.enter_context(
                 Secret(
                     name=param.get("db_name"),
-                    namespace=py_config["model_registry_namespace"],
+                    namespace=param.get("ns_name", py_config["model_registry_namespace"]),
                     string_data=MODEL_REGISTRY_DB_SECRET_STR_DATA,
                     label=get_model_registry_db_label_dict(db_resource_name=param.get("db_name")),
                     annotations=MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
@@ -570,7 +650,7 @@ def db_pvc_parametrized(
             stack.enter_context(
                 PersistentVolumeClaim(
                     name=param.get("db_name"),
-                    namespace=py_config["model_registry_namespace"],
+                    namespace=param.get("ns_name", py_config["model_registry_namespace"]),
                     accessmodes="ReadWriteOnce",
                     size="5Gi",
                     label=get_model_registry_db_label_dict(db_resource_name=param.get("db_name")),
@@ -590,7 +670,7 @@ def db_service_parametrized(request: FixtureRequest, teardown_resources: bool) -
             stack.enter_context(
                 Service(
                     name=param.get("db_name"),
-                    namespace=py_config["model_registry_namespace"],
+                    namespace=param.get("ns_name", py_config["model_registry_namespace"]),
                     ports=param.get("ports"),
                     selector={"name": param.get("db_name")},
                     label=get_model_registry_db_label_dict(db_resource_name=param.get("db_name")),
@@ -612,7 +692,7 @@ def db_deployment_parametrized(
             stack.enter_context(
                 Deployment(
                     name=param.get("db_name"),
-                    namespace=py_config["model_registry_namespace"],
+                    namespace=param.get("ns_name", py_config["model_registry_namespace"]),
                     template=get_model_registry_deployment_template_dict(
                         secret_name=param.get("db_name"), resource_name=param.get("db_name")
                     ),
@@ -653,7 +733,7 @@ def model_registry_instance_parametrized(
             # Common parameters for both ModelRegistry classes
             common_params = {
                 "name": param.get("mr_name"),
-                "namespace": py_config["model_registry_namespace"],
+                "namespace": param.get("ns_name", py_config["model_registry_namespace"]),
                 "grpc": {},
                 "rest": {},
                 "label": MODEL_REGISTRY_STANDARD_LABELS,
