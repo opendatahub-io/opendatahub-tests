@@ -13,12 +13,13 @@ from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
 
 
 @pytest.mark.parametrize(
-    "model_namespace, minio_pod, minio_data_connection",
+    "model_namespace, minio_pod, minio_data_connection, trustyai_service",
     [
         pytest.param(
             {"name": "test-trustyaiservice-upgrade"},
             MinIo.PodConfig.MODEL_MESH_MINIO_CONFIG,
             {"bucket": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
+            {"storage": "pvc"},
         )
     ],
     indirect=True,
@@ -32,7 +33,7 @@ class TestPreUpgradeTrustyAIService:
         current_client_token,
         model_namespace,
         isvc_getter_token,
-        trustyai_service_with_pvc_storage,
+        trustyai_service,
         gaussian_credit_model,
     ) -> None:
         """Set up a TrustyAIService with a model and inference before upgrade."""
@@ -40,7 +41,7 @@ class TestPreUpgradeTrustyAIService:
             client=admin_client,
             token=current_client_token,
             data_path=f"{DRIFT_BASE_DATA_PATH}/data_batches",
-            trustyai_service=trustyai_service_with_pvc_storage,
+            trustyai_service=trustyai_service,
             inference_service=gaussian_credit_model,
             inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
             inference_token=isvc_getter_token,
@@ -52,12 +53,12 @@ class TestPreUpgradeTrustyAIService:
         admin_client,
         minio_data_connection,
         current_client_token,
-        trustyai_service_with_pvc_storage,
+        trustyai_service,
     ) -> None:
         """Upload data to TrustyAIService before upgrade."""
         verify_upload_data_to_trustyai_service(
             client=admin_client,
-            trustyai_service=trustyai_service_with_pvc_storage,
+            trustyai_service=trustyai_service,
             token=current_client_token,
             data_path=f"{DRIFT_BASE_DATA_PATH}/training_data.json",
         )
@@ -67,13 +68,13 @@ class TestPreUpgradeTrustyAIService:
         self,
         admin_client,
         current_client_token,
-        trustyai_service_with_pvc_storage,
+        trustyai_service,
         gaussian_credit_model,
     ):
         """Schedule a drift metric before upgrade."""
         verify_trustyai_service_metric_scheduling_request(
             client=admin_client,
-            trustyai_service=trustyai_service_with_pvc_storage,
+            trustyai_service=trustyai_service,
             token=current_client_token,
             metric_name=TrustyAIServiceMetrics.Drift.MEANSHIFT,
             json_data={
@@ -102,12 +103,12 @@ class TestPostUpgradeTrustyAIService:
         admin_client,
         minio_data_connection,
         current_client_token,
-        trustyai_service_with_pvc_storage,
+        trustyai_service,
     ):
         """Retrieve the metric scheduled before upgrade and delete it."""
         verify_trustyai_service_metric_delete_request(
             client=admin_client,
-            trustyai_service=trustyai_service_with_pvc_storage,
+            trustyai_service=trustyai_service,
             token=current_client_token,
             metric_name=TrustyAIServiceMetrics.Drift.MEANSHIFT,
         )

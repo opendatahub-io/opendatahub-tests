@@ -70,6 +70,7 @@ dependencies = [
     "pytest-html>=4.1.1",
     "fire",
     "llama_stack_client==0.2.10",
+    "pytest-xdist==3.8.0",
 ]
 
 [project.urls]
