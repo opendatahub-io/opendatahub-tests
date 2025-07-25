@@ -9,6 +9,7 @@ use_unprivileged_client: bool = True
 distribution: str = "downstream"
 applications_namespace: str = "redhat-ods-applications"
 model_registry_namespace: str = "rhoai-model-registries"
+num_mr_instances: int = 2
 
 for _dir in dir():
     val = locals()[_dir]

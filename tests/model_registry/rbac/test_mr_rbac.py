@@ -10,7 +10,7 @@ This suite tests various RBAC scenarios including:
 
 import pytest
 from pytest_testconfig import config as py_config
-from typing import Self, Generator
+from typing import Self, Generator, List
 from simple_logger.logger import get_logger
 
 from model_registry import ModelRegistry as ModelRegistryClient
@@ -29,6 +29,7 @@ from mr_openapi.exceptions import ForbiddenException
 from utilities.user_utils import UserTestSession
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from tests.model_registry.multiple_instance_utils import ALL_MR_TEST_SCENARIOS, NUM_MR_INSTANCES
 
 LOGGER = get_logger(name=__name__)
 pytestmark = [pytest.mark.usefixtures("original_user", "test_idp_user")]
@@ -157,42 +158,56 @@ class TestUserMultiProjectPermission:
     Test suite for verifying user permissions in a multi-project setup for the Model Registry.
     """
 
-    def test_user_permission_multi_project(
+    @pytest.mark.parametrize(
+        (
+            "db_secret_parametrized, "
+            "db_pvc_parametrized, "
+            "db_service_parametrized, "
+            "db_deployment_parametrized, "
+            "model_registry_instance_parametrized"
+        ),
+        ALL_MR_TEST_SCENARIOS,
+        indirect=True,
+    )
+    def test_user_permission_multi_project_parametrized(
         self: Self,
         test_idp_user: UserTestSession,
         admin_client: DynamicClient,
         model_registry_namespace: str,
-        db_secret_1: Secret,
-        db_pvc_1: PersistentVolumeClaim,
-        db_service_1: Service,
-        db_deployment_1: Deployment,
-        model_registry_instance_1: ModelRegistry,
-        db_secret_2: Secret,
-        db_pvc_2: PersistentVolumeClaim,
-        db_service_2: Service,
-        db_deployment_2: Deployment,
-        model_registry_instance_2: ModelRegistry,
+        db_secret_parametrized: List[Secret],
+        db_pvc_parametrized: List[PersistentVolumeClaim],
+        db_service_parametrized: List[Service],
+        db_deployment_parametrized: List[Deployment],
+        model_registry_instance_parametrized: List[ModelRegistry],
         login_as_test_user: None,
     ):
         """
-        Verify that a user can be granted access to one MR instance at a time.
+        Verify that a user can be granted access to one MR instance at a time using parametrized fixtures.
         """
         from tests.model_registry.utils import get_mr_service_by_label, get_endpoint_from_mr_service
         from tests.model_registry.rbac.utils import grant_mr_access, revoke_mr_access
         from utilities.constants import Protocols
 
+        if len(model_registry_instance_parametrized) != NUM_MR_INSTANCES:
+            raise ValueError(
+                f"Expected {NUM_MR_INSTANCES} MR instances, but got {len(model_registry_instance_parametrized)}"
+            )
+
+        mr_instance_1 = model_registry_instance_parametrized[0]
+        mr_instance_2 = model_registry_instance_parametrized[1]
+
         # Get endpoints for both MR instances
         service1 = get_mr_service_by_label(
             client=admin_client,
             namespace_name=model_registry_namespace,
-            mr_instance=model_registry_instance_1,
+            mr_instance=mr_instance_1,
         )
         endpoint1 = get_endpoint_from_mr_service(svc=service1, protocol=Protocols.REST)
 
         service2 = get_mr_service_by_label(
             client=admin_client,
             namespace_name=model_registry_namespace,
-            mr_instance=model_registry_instance_2,
+            mr_instance=mr_instance_2,
         )
         endpoint2 = get_endpoint_from_mr_service(svc=service2, protocol=Protocols.REST)
 
@@ -200,7 +215,7 @@ class TestUserMultiProjectPermission:
         grant_mr_access(
             admin_client=admin_client,
             user=test_idp_user.username,
-            mr_instance_name=model_registry_instance_1.name,
+            mr_instance_name=mr_instance_1.name,
             model_registry_namespace=model_registry_namespace,
         )
         sampler = TimeoutSampler(
@@ -215,19 +230,19 @@ class TestUserMultiProjectPermission:
         with pytest.raises(ForbiddenException):
             ModelRegistryClient(**build_mr_client_args(rest_endpoint=endpoint2, token=get_openshift_token()))
 
-        LOGGER.info(f"User has access to {model_registry_instance_1.name}, but not {model_registry_instance_2.name}")
+        LOGGER.info(f"User has access to {mr_instance_1.name}, but not {mr_instance_2.name}")
 
         # 2. Revoke access from the first, grant to the second, and verify
         revoke_mr_access(
             admin_client=admin_client,
             user=test_idp_user.username,
-            mr_instance_name=model_registry_instance_1.name,
+            mr_instance_name=mr_instance_1.name,
             model_registry_namespace=model_registry_namespace,
         )
         grant_mr_access(
             admin_client=admin_client,
             user=test_idp_user.username,
-            mr_instance_name=model_registry_instance_2.name,
+            mr_instance_name=mr_instance_2.name,
             model_registry_namespace=model_registry_namespace,
         )
 
@@ -251,13 +266,12 @@ class TestUserMultiProjectPermission:
         for _ in sampler:
             break
 
-        LOGGER.info(
-            f"User now has access to {model_registry_instance_2.name}, but not {model_registry_instance_1.name}"
-        )
+        LOGGER.info(f"User now has access to {mr_instance_2.name}, but not {mr_instance_1.name}")
 
+        # Clean up - revoke access from the second instance
         revoke_mr_access(
             admin_client=admin_client,
             user=test_idp_user.username,
-            mr_instance_name=model_registry_instance_2.name,
+            mr_instance_name=mr_instance_2.name,
             model_registry_namespace=model_registry_namespace,
         )
