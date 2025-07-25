@@ -139,11 +139,12 @@ def kserve_registry_pull_secret(
 @pytest.fixture(scope="class")
 def deployment_config(
     request: FixtureRequest,
-    serving_argument: list[str],
+    serving_argument: tuple[list[str], int],
 ) -> dict[str, Any]:
     """
     Fixture to provide the base deployment configuration for serverless deployments.
     """
+    args, gpu_count = serving_argument
     deployment_type = request.param.get("deployment_type", KServeDeploymentType.SERVERLESS)
 
     config = (
@@ -151,9 +152,9 @@ def deployment_config(
         if deployment_type == KServeDeploymentType.SERVERLESS
         else BASE_RAW_DEPLOYMENT_CONFIG.copy()
     )
-    config["runtime_argument"] = serving_argument
+    config["runtime_argument"] = args
     config["deployment_type"] = deployment_type
-    config["gpu_count"] = 1
+    config["gpu_count"] = gpu_count
     config["timeout"] = TIMEOUT_20MIN
     return config
 
