@@ -1,14 +1,18 @@
+import copy
 from typing import Any, Dict
 import requests
 import json
 import os
 
+from kubernetes.dynamic import DynamicClient
 from simple_logger.logger import get_logger
+
+from ocp_resources.deployment import Deployment
 from tests.model_registry.exceptions import (
     ModelRegistryResourceNotCreated,
     ModelRegistryResourceNotUpdated,
 )
-from tests.model_registry.rest_api.constants import MODEL_REGISTRY_BASE_URI
+from tests.model_registry.rest_api.constants import MODEL_REGISTRY_BASE_URI, MODEL_REGISTER_DATA
 from pyhelper_utils.shell import run_command
 from utilities.exceptions import ResourceValueMismatch
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
@@ -248,6 +252,21 @@ def sign_db_server_cert_with_ca_with_openssl(
         ],
         check=True,
     )
+
+
+def get_register_model_data(num_models: int) -> list[dict[str, Any]]:
+    model_data = []
+    for num_model in range(0, num_models):
+        copy_data = copy.deepcopy(MODEL_REGISTER_DATA)
+        for key, value in copy_data.items():
+            value["name"] = f"{value['name']}{num_model}"
+            value["description"] = f"{value['description']}{num_model}"
+        model_data.append(copy_data)
+    return model_data
+
+
+def get_mr_deployment(admin_client: DynamicClient, mr_namespace: str) -> list[Deployment]:
+    return list(Deployment.get(dyn_client=admin_client, namespace=mr_namespace))
 
 
 class ModelRegistryV1Alpha1(ModelRegistry):

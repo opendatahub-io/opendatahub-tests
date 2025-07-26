@@ -28,7 +28,7 @@ LOGGER = get_logger(name=__name__)
     indirect=True,
 )
 @pytest.mark.usefixtures(
-    "updated_dsc_component_state_scope_class", "model_registry_mysql_metadata_db", "model_registry_instance_mysql"
+    "updated_dsc_component_state_scope_class", "mysql_metadata_resources", "model_registry_instance_mysql"
 )
 class TestDBMigration:
     def test_db_migration_negative(
