@@ -31,6 +31,7 @@ LOGGER = get_logger(name=__name__)
     "updated_dsc_component_state_scope_class", "model_registry_mysql_metadata_db", "model_registry_instance_mysql"
 )
 class TestDBMigration:
+    @pytest.mark.smoke
     def test_db_migration_negative(
         self: Self,
         admin_client: DynamicClient,
@@ -45,6 +46,18 @@ class TestDBMigration:
         2. Delete the model registry deployment
         3. Check the logs for the expected error
         """
+        # Wait for the new pod to be created after deployment deletion
+        LOGGER.info("Waiting for new model registry pod to be created after deployment deletion")
+        # Get all pods and log them for debugging
+        all_pods = list(
+            Pod.get(
+                dyn_client=admin_client,
+                namespace=py_config["model_registry_namespace"],
+                label_selector=f"app={MR_INSTANCE_NAME}",
+            )
+        )
+        LOGGER.info(f"All MR pods found: {[pod.name for pod in all_pods]}")
+
         mr_pods = wait_for_pods_by_labels(
             admin_client=admin_client,
             namespace=py_config["model_registry_namespace"],
@@ -52,6 +65,16 @@ class TestDBMigration:
             expected_num_pods=1,
         )
         mr_pod = mr_pods[0]
+        LOGGER.info(f"Selected pod: {mr_pod.name}")
+
+        # Verify the pod still exists before checking status
+        try:
+            mr_pod.instance
+            LOGGER.info(f"Pod {mr_pod.name} exists and is accessible")
+        except Exception as e:
+            LOGGER.error(f"Pod {mr_pod.name} is not accessible: {e}")
+            raise
+
         LOGGER.info("Waiting for model registry pod to crash")
         assert wait_for_container_status(mr_pod, "rest-container", Pod.Status.CRASH_LOOPBACK_OFF)
 
