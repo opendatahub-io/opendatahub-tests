@@ -156,7 +156,6 @@ class TestUserMultiProjectPermission:
         ALL_MR_TEST_SCENARIOS,
         indirect=True,
     )
-    @pytest.mark.smoke
     def test_user_permission_multi_project_parametrized(
         self: Self,
         test_idp_user: UserTestSession,

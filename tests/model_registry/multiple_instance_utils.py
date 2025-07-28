@@ -11,7 +11,7 @@ from tests.model_registry.constants import (
 ns_name = f"{MR_INSTANCE_NAME}-ns-{str(uuid.uuid4())[:8]}"
 ns_params = {"ns_name": ns_name}
 
-db_names = [f"{DB_RESOURCES_NAME}-{i + 1}-{str(uuid.uuid4())[:8]}" for i in range(NUM_MR_INSTANCES)]  # noqa: F821
+db_names = [f"{DB_RESOURCES_NAME}-{i + 1}-{str(uuid.uuid4())[:8]}" for i in range(NUM_MR_INSTANCES)]
 
 db_secret_params = [{"db_name": db_name, "ns_name": ns_name} for db_name in db_names]
 db_pvc_params = [{"db_name": db_name, "ns_name": ns_name} for db_name in db_names]

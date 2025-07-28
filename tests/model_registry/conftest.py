@@ -548,26 +548,11 @@ def updated_dsc_component_state_parametrized(
     """Configure DSC to use parametrized Model Registry namespace"""
     if not teardown_resources:
         yield dsc_resource
-        return
 
-    # Get the namespace name from the parameter
-    namespace_name = request.param["ns_name"]
-    original_components = dsc_resource.instance.spec.components
+    # Get the namespace name from the parameter if provided, otherwise use the default namespace
+    namespace_name = request.param.get("ns_name", py_config["model_registry_namespace"])
 
-    # First, remove the Model Registry to allow namespace changes
-    remove_patch = {
-        DscComponents.MODELREGISTRY: {
-            "managementState": DscComponents.ManagementState.REMOVED,
-        },
-    }
-
-    # Apply remove patch first
-    with ResourceEditor(patches={dsc_resource: {"spec": {"components": remove_patch}}}):
-        dsc_resource.wait_for_condition(
-            condition=DscComponents.COMPONENT_MAPPING[DscComponents.MODELREGISTRY], status="False"
-        )
-
-    # Now set the new namespace and manage
+    # Set the new namespace and manage
     component_patch = {
         DscComponents.MODELREGISTRY: {
             "managementState": DscComponents.ManagementState.MANAGED,
@@ -587,32 +572,6 @@ def updated_dsc_component_state_parametrized(
             number_of_consecutive_checks=6,
         )
         yield dsc_resource
-
-    # Cleanup - restore original state
-    LOGGER.info("Cleaning up DSC configuration...")
-
-    # First, remove the Model Registry
-    remove_patch = {
-        DscComponents.MODELREGISTRY: {
-            "managementState": DscComponents.ManagementState.REMOVED,
-        },
-    }
-
-    with ResourceEditor(patches={dsc_resource: {"spec": {"components": remove_patch}}}):
-        dsc_resource.wait_for_condition(
-            condition=DscComponents.COMPONENT_MAPPING[DscComponents.MODELREGISTRY], status="False"
-        )
-
-    # Restore original configuration
-    restore_patch = {
-        DscComponents.MODELREGISTRY: original_components[DscComponents.MODELREGISTRY],
-    }
-
-    with ResourceEditor(patches={dsc_resource: {"spec": {"components": restore_patch}}}):
-        if original_components[DscComponents.MODELREGISTRY]["managementState"] == DscComponents.ManagementState.MANAGED:
-            dsc_resource.wait_for_condition(
-                condition=DscComponents.COMPONENT_MAPPING[DscComponents.MODELREGISTRY], status="True"
-            )
 
     # Clean up the dynamic namespace
     namespace = Namespace(name=namespace_name, ensure_exists=True)
