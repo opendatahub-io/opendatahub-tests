@@ -610,8 +610,8 @@ def db_pvc_parametrized(
                 PersistentVolumeClaim(
                     name=param.get("db_name"),
                     namespace=param.get("ns_name", py_config["model_registry_namespace"]),
-                    accessmodes="ReadWriteOnce",
-                    size="5Gi",
+                    accessmodes=param.get("accessmodes", "ReadWriteOnce"),
+                    size=param.get("size", "5Gi"),
                     label=get_model_registry_db_label_dict(db_resource_name=param.get("db_name")),
                     teardown=teardown_resources,
                 )
@@ -656,8 +656,8 @@ def db_deployment_parametrized(
                         secret_name=param.get("db_name"), resource_name=param.get("db_name")
                     ),
                     label=get_model_registry_db_label_dict(db_resource_name=param.get("db_name")),
-                    replicas=1,
-                    revision_history_limit=0,
+                    replicas=param.get("replicas", 1),
+                    revision_history_limit=param.get("revision_history_limit", 0),
                     selector={"matchLabels": {"name": param.get("db_name")}},
                     strategy={"type": "Recreate"},
                     wait_for_resource=True,
@@ -666,6 +666,10 @@ def db_deployment_parametrized(
             )
             for param in request.param
         ]
+
+        for deployment in deployments:
+            deployment.wait_for_replicas(deployed=True)
+
         yield deployments
 
 

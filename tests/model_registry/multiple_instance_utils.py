@@ -14,7 +14,17 @@ ns_params = {"ns_name": ns_name}
 db_names = [f"{DB_RESOURCES_NAME}-{i + 1}-{str(uuid.uuid4())[:8]}" for i in range(NUM_MR_INSTANCES)]
 
 db_secret_params = [{"db_name": db_name, "ns_name": ns_name} for db_name in db_names]
-db_pvc_params = [{"db_name": db_name, "ns_name": ns_name} for db_name in db_names]
+
+db_pvc_params = [
+    {
+        "db_name": db_name,
+        "ns_name": ns_name,
+        "accessmodes": "ReadWriteOnce",
+        "size": "4Gi",
+    }
+    for db_name in db_names
+]
+
 db_service_params = [
     {
         "db_name": db_name,
@@ -23,9 +33,20 @@ db_service_params = [
     }
     for db_name in db_names
 ]
-db_deployment_params = [{"db_name": db_name, "ns_name": ns_name} for db_name in db_names]
+
+db_deployment_params = [
+    {
+        "db_name": db_name,
+        "ns_name": ns_name,
+        "replicas": 1,
+        "revision_history_limit": 0,
+    }
+    for db_name in db_names
+]
+
 model_registry_instance_params = [
     {
+        "is_model_registry_oauth": True,
         "mr_name": f"{MR_INSTANCE_NAME}-{i + 1}",
         "db_name": db_name,
         "ns_name": ns_name,
