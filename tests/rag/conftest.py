@@ -1,4 +1,5 @@
 import os
+from re import T
 from typing import Any, Dict, Generator
 
 import portforward
@@ -17,7 +18,8 @@ from utilities.constants import DscComponents, Timeout
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.general import generate_random_name
 from utilities.infra import create_ns
-from utilities.rag_utils import LlamaStackDistribution, create_llama_stack_distribution
+from ocp_resources.llama_stack_distribution import LlamaStackDistribution
+from utilities.rag_utils import create_llama_stack_distribution
 
 LOGGER = get_logger(name=__name__)
 
@@ -38,14 +40,12 @@ def llama_stack_server() -> Dict[str, Any]:
                 {"name": "VLLM_TLS_VERIFY", "value": "false"},
                 {"name": "VLLM_API_TOKEN", "value": rag_vllm_token},
                 {"name": "VLLM_URL", "value": rag_vllm_url},
-                {"name": "MILVUS_DB_PATH", "value": "~/.llama/milvus.db"},
                 {"name": "FMS_ORCHESTRATOR_URL", "value": "http://localhost"},
             ],
             "name": "llama-stack",
             "port": 8321,
         },
-        "distribution": {"image": "quay.io/opendatahub/llama-stack:odh"},
-        "storage": {"size": "5Gi"},
+        "distribution": {"name": "rh-dev"},
     }
 
 
@@ -99,15 +99,7 @@ def llama_stack_distribution_deployment(
         name="rag-llama-stack-distribution",
     )
 
-    timeout = Timeout.TIMEOUT_15_SEC
-    sampler = TimeoutSampler(
-        wait_timeout=timeout, sleep=1, func=lambda deployment: deployment.exists is not None, deployment=deployment
-    )
-    for item in sampler:
-        if item:
-            break  # Break after first successful iteration
-
-    assert deployment.exists, f"llama stack distribution deployment doesn't exist within {timeout} seconds"
+    deployment.wait(timeout=Timeout.TIMEOUT_2MIN)
     yield deployment
 
 
