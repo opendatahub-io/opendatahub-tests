@@ -63,7 +63,7 @@ model_registry_instance_params = [
 ]
 
 # Add this complete set of parameters as a pytest.param tuple to the list.
-ALL_MR_TEST_SCENARIOS = [
+MR_MULTIPROJECT_TEST_SCENARIO_PARAMS = [
     pytest.param(
         ns_params,  # updated_dsc_component_state_parametrized (expects dict)
         db_secret_params,
