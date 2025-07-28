@@ -46,7 +46,7 @@ def wait_for_mariadb_pods(client: DynamicClient, mariadb: MariaDB, timeout: int 
             for _pod in Pod.get(
                 dyn_client=client,
                 namespace=mariadb.namespace,
-                label_selector="app.kubernetes.io/instance=mariadb",
+                label_selector=f"app.kubernetes.io/instance={mariadb.name}",
             )
         ]
         return _pods
