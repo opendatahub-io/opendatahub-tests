@@ -1,0 +1,18 @@
+{
+  "id": "test1",
+  "modelName": "fil",
+  "modelVersion": "1",
+  "outputs": [
+    {
+      "datatype": "FP32",
+      "name": "output__0",
+      "shape": [
+        "1",
+        "2"
+      ]
+    }
+  ],
+  "rawOutputContents": [
+    "BsJ/P5fpdzo="
+  ]
+}
