@@ -332,3 +332,153 @@ class TestRag:
                 rag_lls_client.vector_dbs.unregister(vector_db_id)
             except Exception as e:
                 LOGGER.warning(f"Failed to unregister vector database {vector_db_id}: {e}")
+
+    def test_rag_pdf(self, rag_lls_client: LlamaStackClient) -> None:
+        """
+        Test RAG functionality with PDF documents.
+
+        Creates a RAG agent with Docling PDF documentation, tests knowledge queries
+        about Docling features, AI models, output formats, and capabilities, and validates
+        that responses contain expected technical keywords.
+        """
+        models = rag_lls_client.models.list()
+        model_id = None
+        embedding_model = None
+
+        # Iterate through the list of models to find the first LLM model (for model_id)
+        # and the first embedding model (for embedding_model). Stop searching once both are found.
+        for m in models:
+            if m.api_model_type == "llm" and model_id is None:
+                model_id = m.identifier
+            if m.api_model_type == "embedding" and embedding_model is None:
+                embedding_model = m
+            if model_id is not None and embedding_model is not None:
+                break
+
+        embedding_dimension = embedding_model.metadata["embedding_dimension"]
+        
+        # Create a vector database instance
+        vector_db_id = f"v{uuid.uuid4().hex}"
+
+        rag_lls_client.vector_dbs.register(
+            vector_db_id=vector_db_id,
+            embedding_model=embedding_model.identifier,
+            embedding_dimension=embedding_dimension,
+            provider_id="milvus",
+        )
+
+        try:
+            # Create the RAG agent connected to the vector database
+            rag_agent = Agent(
+                client=rag_lls_client,
+                model=model_id,
+                instructions="You are a helpful assistant. Use the RAG tool to answer questions as needed.",
+                tools=[
+                    {
+                        "name": "builtin::rag/knowledge_search",
+                        "args": {"vector_db_ids": [vector_db_id]},
+                    }
+                ],
+            )
+            session_id = rag_agent.create_session(session_name=f"s{uuid.uuid4().hex}")
+
+            # Insert PDF documents about Docling
+            pdf_files_urls = [
+                "https://arxiv.org/pdf/2408.09869"
+            ]
+            documents = [
+                RAGDocument(
+                    document_id=f"num-{i}", 
+                    content=file_url, 
+                    mime_type="application/pdf", 
+                    metadata={}
+                )
+                for i, file_url in enumerate(pdf_files_urls)
+            ]
+            
+            rag_lls_client.tool_runtime.rag_tool.insert(
+                documents=documents,
+                vector_db_id=vector_db_id,
+                chunk_size_in_tokens=512,
+            )
+
+            turns_with_expectations: List[TurnExpectation] = [
+                {
+                    "question": "What is Docling?",
+                    "expected_keywords": ["PDF", "conversion", "open-source", "MIT"],
+                    "description": "Should provide information about Docling framework",
+                },
+                {
+                    "question": "What AI models power Docling?",
+                    "expected_keywords": ["DocLayNet", "TableFormer", "layout", "analysis", "table", "structure"],
+                    "description": "Should provide information about Docling's AI models",
+                },
+                {
+                    "question": "What output formats does Docling support for converted PDF documents?",
+                    "expected_keywords": ["JSON", "Markdown"],
+                    "description": "Should provide information about Docling's output formats",
+                },
+                {
+                    "question": "Where can users find documentation and examples for Docling?",
+                    "expected_keywords": ["GitHub", "repository", "documentation", "examples", "DS4SD"],
+                    "description": "Should provide information about Docling documentation location",
+                },
+                {
+                    "question": "What is the processing pipeline of Docling?",
+                    "expected_keywords": ["PDF", "backend", "AI", "models", "post-processing"],
+                    "description": "Should provide information about Docling's processing pipeline",
+                },
+                {
+                    "question": "What are the two PDF backend choices available in Docling?",
+                    "expected_keywords": ["qpdf", "pypdfium", "docling-parse"],
+                    "description": "Should provide information about Docling's PDF backends",
+                },
+                {
+                    "question": "What is TableFormer?",
+                    "expected_keywords": ["vision-transformer", "table", "structure", "row", "column"],
+                    "description": "Should provide information about TableFormer model",
+                },
+                {
+                    "question": "What OCR library does Docling use in its initial release?",
+                    "expected_keywords": ["EasyOCR"],
+                    "description": "Should provide information about Docling's OCR library",
+                },
+                {
+                    "question": "How can users extend Docling's capabilities?",
+                    "expected_keywords": ["BaseModelPipeline", "sub-classing"],
+                    "description": "Should provide information about extending Docling",
+                },
+                {
+                    "question": "What are some of the downstream applications for Docling's output?",
+                    "expected_keywords": ["search", "retrieval", "RAG", "classification", "knowledge", "extraction"],
+                    "description": "Should provide information about Docling's applications",
+                },
+            ]
+
+            # Ask the agent about the inserted documents and validate responses
+            validation_result = validate_rag_agent_responses(
+                rag_agent=rag_agent,
+                session_id=session_id,
+                turns_with_expectations=turns_with_expectations,
+                stream=True,
+                verbose=True,
+                min_keywords_required=1,
+                print_events=False,
+            )
+
+            # Assert that validation was successful
+            assert validation_result["success"], f"RAG PDF agent validation failed. Summary: {validation_result['summary']}"
+
+            # Additional assertions for specific requirements
+            for result in validation_result["results"]:
+                assert result["response_length"] > 0, f"No response content for question: {result['question']}"
+                assert len(result["found_keywords"]) > 0, (
+                    f"No expected keywords found in response for: {result['question']}"
+                )
+
+        finally:
+            # Cleanup: unregister the vector database to prevent resource leaks
+            try:
+                rag_lls_client.vector_dbs.unregister(vector_db_id)
+            except Exception as e:
+                LOGGER.warning(f"Failed to unregister vector database {vector_db_id}: {e}")
