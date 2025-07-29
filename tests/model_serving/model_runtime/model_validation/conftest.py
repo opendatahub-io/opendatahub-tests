@@ -137,29 +137,27 @@ def kserve_registry_pull_secret(
 
 
 @pytest.fixture(scope="class")
-def deployment_config(
-    request: FixtureRequest,
-    serving_argument: tuple[list[str], int],
-) -> dict[str, Any]:
+def deployment_config(request: FixtureRequest) -> dict[str, Any]:
     """
     Fixture to provide the base deployment configuration for serverless deployments.
     """
-    args, gpu_count = serving_argument
     deployment_type = request.param.get("deployment_type", KServeDeploymentType.SERVERLESS)
+    serving_argument = request.param.get("runtime_argument", [])
+    gpu_count = request.param.get("gpu_count", 1)
 
     config = (
         BASE_SEVERRLESS_DEPLOYMENT_CONFIG.copy()
         if deployment_type == KServeDeploymentType.SERVERLESS
         else BASE_RAW_DEPLOYMENT_CONFIG.copy()
     )
-    config["runtime_argument"] = args
+    config["runtime_argument"] = serving_argument
     config["deployment_type"] = deployment_type
     config["gpu_count"] = gpu_count
     config["timeout"] = TIMEOUT_20MIN
     return config
 
 
-def build_raw_params(name: str, image: str) -> tuple[Any, str]:
+def build_raw_params(name: str, image: str, args: list[str], gpu_count: int) -> tuple[Any, str]:
     test_id = f"{name}-raw"
     param = pytest.param(
         {"name": "raw-model-validation"},
@@ -168,14 +166,18 @@ def build_raw_params(name: str, image: str) -> tuple[Any, str]:
             "model_name": name,
             "model_car_image_uri": image,
         },
-        {"deployment_type": KServeDeploymentType.RAW_DEPLOYMENT},
+        {
+            "deployment_type": KServeDeploymentType.RAW_DEPLOYMENT,
+            "runtime_argument": args,
+            "gpu_count": gpu_count,
+        },
         id=test_id,
         marks=[pytest.mark.rawdeployment],
     )
     return param, test_id
 
 
-def build_serverless_params(name: str, image: str) -> tuple[Any, str]:
+def build_serverless_params(name: str, image: str, args: list[str], gpu_count: int) -> tuple[Any, str]:
     test_id = f"{name}-serverless"
     param = pytest.param(
         {"name": "serverless-model-validation"},
@@ -184,7 +186,11 @@ def build_serverless_params(name: str, image: str) -> tuple[Any, str]:
             "model_name": name,
             "model_car_image_uri": image,
         },
-        {"deployment_type": KServeDeploymentType.SERVERLESS},
+        {
+            "deployment_type": KServeDeploymentType.SERVERLESS,
+            "runtime_argument": args,
+            "gpu_count": gpu_count,
+        },
         id=test_id,
         marks=[pytest.mark.serverless],
     )
@@ -218,14 +224,17 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
 
         name = model_car.get("name", "").strip()
         image = model_car.get("image", "").strip()
+        serving_config = model_car.get("serving_arguments", [])
+        args = serving_config.get("args", [])
+        gpu_count = serving_config.get("gpu_count", 1)
 
         if not name or not image:
             continue
 
         if metafunc.cls.__name__ == "TestVLLMModelCarRaw":
-            param, test_id = build_raw_params(name=name, image=image)
+            param, test_id = build_raw_params(name=name, image=image, args=args, gpu_count=gpu_count)
         elif metafunc.cls.__name__ == "TestVLLMModelCarServerless":
-            param, test_id = build_serverless_params(name=name, image=image)
+            param, test_id = build_serverless_params(name=name, image=image, args=args, gpu_count=gpu_count)
         else:
             continue
 
