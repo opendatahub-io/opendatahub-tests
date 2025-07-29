@@ -31,7 +31,7 @@ LOGGER = get_logger(name=__name__)
     "updated_dsc_component_state_scope_class", "model_registry_mysql_metadata_db", "model_registry_instance_mysql"
 )
 class TestDBMigration:
-    @pytest.mark.tier1
+    @pytest.mark.smoke
     def test_db_migration_negative(
         self: Self,
         admin_client: DynamicClient,
