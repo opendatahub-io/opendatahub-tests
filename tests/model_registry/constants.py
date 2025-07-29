@@ -60,3 +60,5 @@ MODEL_REGISTRY_STANDARD_LABELS = {
     Annotations.KubernetesIo.PART_OF: MR_OPERATOR_NAME,
     Annotations.KubernetesIo.CREATED_BY: MR_OPERATOR_NAME,
 }
+
+NUM_MR_INSTANCES: int = 2
