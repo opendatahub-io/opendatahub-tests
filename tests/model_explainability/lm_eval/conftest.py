@@ -350,6 +350,12 @@ def lmeval_minio_copy_pod(
                 "command": ["/bin/sh", "-c"],
                 "args": ["cp -r /mnt/data /shared"],
                 "volumeMounts": [{"name": "shared-data", "mountPath": "/shared"}],
+                "securityContext": {
+                    "allowPrivilegeEscalation": False,
+                    "capabilities": {"drop": ["ALL"]},
+                    "runAsNonRoot": True,
+                    "seccompProfile": {"type": "RuntimeDefault"},
+                },
             }
         ],
         containers=[
@@ -358,12 +364,20 @@ def lmeval_minio_copy_pod(
                 "image": "quay.io/minio/mc@sha256:470f5546b596e16c7816b9c3fa7a78ce4076bb73c2c73f7faeec0c8043923123",
                 "command": ["/bin/sh", "-c"],
                 "args": [
+                    # Set a writable config dir to avoid permission errors when running as non-root
+                    f"export MC_CONFIG_DIR=/shared/.mc && "
                     f"mc alias set myminio http://{minio_service.name}:{MinIo.Metadata.DEFAULT_PORT} "
-                    f"{MinIo.Credentials.ACCESS_KEY_VALUE} {MinIo.Credentials.SECRET_KEY_VALUE} &&\n"
-                    "mc mb --ignore-existing myminio/models &&\n"
+                    f"{MinIo.Credentials.ACCESS_KEY_VALUE} {MinIo.Credentials.SECRET_KEY_VALUE} && "
+                    "mc mb --ignore-existing myminio/models && "
                     "mc cp --recursive /shared/data/ myminio/models"
                 ],
                 "volumeMounts": [{"name": "shared-data", "mountPath": "/shared"}],
+                "securityContext": {
+                    "allowPrivilegeEscalation": False,
+                    "capabilities": {"drop": ["ALL"]},
+                    "runAsNonRoot": True,
+                    "seccompProfile": {"type": "RuntimeDefault"},
+                },
             }
         ],
         wait_for_resource=True,
