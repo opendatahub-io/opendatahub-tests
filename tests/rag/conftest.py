@@ -1,5 +1,4 @@
 import os
-from re import T
 from typing import Any, Dict, Generator
 
 import portforward
@@ -12,7 +11,7 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
 from ocp_resources.project_project_openshift_io import Project
 from simple_logger.logger import get_logger
-from timeout_sampler import TimeoutSampler, retry
+from timeout_sampler import retry
 
 from utilities.constants import DscComponents, Timeout
 from utilities.data_science_cluster_utils import update_components_in_dsc
