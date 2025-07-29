@@ -1,34 +1,11 @@
 from contextlib import contextmanager
-from ocp_resources.resource import NamespacedResource
+from ocp_resources.llama_stack_distribution import LlamaStackDistribution
 from kubernetes.dynamic import DynamicClient
 from typing import Any, Dict, Generator, List, TypedDict, cast
 from llama_stack_client import Agent, AgentEventLogger
 from simple_logger.logger import get_logger
 
 LOGGER = get_logger(name=__name__)
-
-
-class LlamaStackDistribution(NamespacedResource):
-    api_group: str = "llamastack.io"
-
-    def __init__(self, replicas: int, server: Dict[str, Any], **kwargs: Any):
-        """
-        Args:
-            kwargs: Keyword arguments to pass to the LlamaStackDistribution constructor
-        """
-        super().__init__(
-            **kwargs,
-        )
-        self.replicas = replicas
-        self.server = server
-
-    def to_dict(self) -> None:
-        super().to_dict()
-        if not self.kind_dict and not self.yaml_file:
-            self.res["spec"] = {}
-            _spec = self.res["spec"]
-            _spec["replicas"] = self.replicas
-            _spec["server"] = self.server
 
 
 @contextmanager
