@@ -1,8 +1,9 @@
 import json
 import re
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 from string import Template
 from typing import Any, Optional
+from kubernetes.dynamic import DynamicClient
 
 from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
@@ -12,7 +13,14 @@ from utilities.constants import KServeDeploymentType
 from utilities.exceptions import (
     InferenceResponseError,
 )
+from utilities.constants import Timeout
 from utilities.inference_utils import UserInference
+from utilities.infra import get_isvc_keda_scaledobject, get_pods_by_isvc_label
+from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
+from utilities.constants import Protocols
+from utilities.inference_utils import Inference
+from utilities.manifests.vllm import VLLM_INFERENCE_CONFIG
+from timeout_sampler import TimeoutWatch, TimeoutSampler
 
 LOGGER = get_logger(name=__name__)
 
@@ -223,3 +231,136 @@ def run_inference_multiple_times(
 
             if exceptions:
                 raise InferenceResponseError(f"Failed to run inference. Error: {exceptions}")
+
+
+def verify_keda_scaledobject(
+    client: DynamicClient,
+    isvc: InferenceService,
+    expected_trigger_type: str | None = None,
+    expected_query: str | None = None,
+    expected_threshold: str | None = None,
+) -> None:
+    """
+    Verify the KEDA ScaledObject.
+
+    Args:
+        client: DynamicClient instance
+        isvc: InferenceService instance
+        expected_trigger_type: Expected trigger type
+        expected_query: Expected query string
+        expected_threshold: Expected threshold as string (e.g. "50.000000")
+    """
+    scaled_objects = get_isvc_keda_scaledobject(client=client, isvc=isvc)
+    scaled_object = scaled_objects[0]  # Get the first ScaledObject
+    trigger_meta = scaled_object.spec.triggers[0].metadata
+    trigger_type = scaled_object.spec.triggers[0].type
+    query = trigger_meta.get("query")
+    threshold = trigger_meta.get("threshold")
+
+    assert trigger_type == expected_trigger_type, (
+        f"Trigger type {trigger_type} does not match expected {expected_trigger_type}"
+    )
+    assert query == expected_query, f"Query {query} does not match expected {expected_query}"
+    assert threshold == expected_threshold, f"Threshold {threshold} does not match expected {expected_threshold}"
+
+
+def run_vllm_concurrent_load(
+    isvc: InferenceService,
+    num_concurrent: int = 5,
+    duration: int = 120,
+) -> None:
+    """
+    Run VLLM concurrent load.
+
+    Args:
+        pod_name: Pod name
+        isvc: InferenceService instance
+        response_snapshot: Response snapshot
+        chat_query: Chat query
+        completion_query: Completion query
+        num_concurrent: Number of concurrent requests
+        duration: Duration in seconds to run the load test
+    """
+
+    def _make_request() -> None:
+        verify_inference_response(
+            inference_service=isvc,
+            inference_config=VLLM_INFERENCE_CONFIG,
+            inference_type="completions",
+            protocol=Protocols.HTTPS,
+            use_default_query=True,
+        )
+
+    timeout_watch = TimeoutWatch(timeout=duration)
+    with ThreadPoolExecutor(max_workers=num_concurrent) as executor:
+        while timeout_watch.remaining_time() > 0:
+            futures = [executor.submit(_make_request) for _ in range(num_concurrent)]
+            wait(fs=futures)
+
+
+def run_ovms_concurrent_load(
+    isvc: InferenceService,
+    num_concurrent: int = 5,
+    duration: int = 120,
+) -> None:
+    """
+    Run OVMS concurrent load.
+
+    Args:
+        isvc: InferenceService instance
+    """
+
+    def make_request() -> None:
+        verify_inference_response(
+            inference_service=isvc,
+            inference_config=ONNX_INFERENCE_CONFIG,
+            inference_type=Inference.INFER,
+            protocol=Protocols.HTTPS,
+            use_default_query=True,
+        )
+
+    timeout_watch = TimeoutWatch(timeout=duration)
+    with ThreadPoolExecutor(max_workers=num_concurrent) as executor:
+        while timeout_watch.remaining_time() > 0:
+            futures = [executor.submit(make_request) for _ in range(num_concurrent)]
+            wait(fs=futures)
+
+
+def inference_service_pods_sampler(
+    client: DynamicClient, isvc: InferenceService, timeout: int, sleep: int = 1
+) -> TimeoutSampler:
+    """
+    Returns TimeoutSampler for inference service.
+
+    Args:
+        client (DynamicClient): DynamicClient object
+        isvc (InferenceService): InferenceService object
+        timeout (int): Timeout in seconds
+        sleep (int): Sleep time in seconds
+
+    Returns:
+        TimeoutSampler: TimeoutSampler object
+
+    """
+    return TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=sleep,
+        func=get_pods_by_isvc_label,
+        client=client,
+        isvc=isvc,
+    )
+
+
+def verify_final_pod_count(unprivileged_client: DynamicClient, isvc: InferenceService, final_pod_count: int):
+    """Verify final pod count after running load tests for KEDA scaling."""
+
+    for pods in inference_service_pods_sampler(
+        client=unprivileged_client,
+        isvc=isvc,
+        timeout=Timeout.TIMEOUT_5MIN,
+        sleep=10,
+    ):
+        if pods:
+            assert len(pods) == final_pod_count, (
+                f"Final pod count {len(pods)} does not match expected {final_pod_count}"
+            )
