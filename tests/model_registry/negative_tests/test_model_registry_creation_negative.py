@@ -12,7 +12,7 @@ from utilities.constants import DscComponents, Annotations
 from tests.model_registry.constants import (
     MR_OPERATOR_NAME,
     MR_INSTANCE_NAME,
-    DB_RESOURCES_NAME,
+    DB_RESOURCE_NAME,
     OAUTH_PROXY_CONFIG_DICT,
 )
 from kubernetes.dynamic.exceptions import ForbiddenError
@@ -71,7 +71,7 @@ class TestModelRegistryCreationNegative:
             "host": f"{model_registry_db_deployment_negative_test.name}."
             f"{model_registry_db_deployment_negative_test.namespace}.svc.cluster.local",
             "database": model_registry_db_secret_negative_test.string_data["database-name"],
-            "passwordSecret": {"key": "database-password", "name": DB_RESOURCES_NAME},
+            "passwordSecret": {"key": "database-password", "name": DB_RESOURCE_NAME},
             "port": 3306,
             "skipDBCreation": False,
             "username": model_registry_db_secret_negative_test.string_data["database-user"],

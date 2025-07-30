@@ -58,7 +58,7 @@ LOGGER = get_logger(name=__name__)
 @pytest.mark.usefixtures(
     "updated_dsc_component_state_scope_class",
     "is_model_registry_oauth",
-    "model_registry_mysql_metadata_db",
+    "mysql_metadata_resources",
     "model_registry_instance_mysql",
     "registered_model_rest_api",
 )
@@ -102,8 +102,8 @@ class TestModelRegistryCreationRest:
 
     def test_model_registry_validate_api_version(self: Self, model_registry_instance_mysql):
         api_version = ModelRegistry(
-            name=model_registry_instance_mysql.name,
-            namespace=model_registry_instance_mysql.namespace,
+            name=model_registry_instance_mysql[0].name,
+            namespace=model_registry_instance_mysql[0].namespace,
             ensure_exists=True,
         ).instance.apiVersion
         LOGGER.info(f"Validating apiversion {api_version} for model registry")
@@ -111,15 +111,15 @@ class TestModelRegistryCreationRest:
         assert api_version == expected_version
 
     def test_model_registry_validate_oauthproxy_enabled(self: Self, model_registry_instance_mysql):
-        model_registry_instance_spec = model_registry_instance_mysql.instance.spec
+        model_registry_instance_spec = model_registry_instance_mysql[0].instance.spec
         LOGGER.info(f"Validating that MR is using oauth proxy {model_registry_instance_spec}")
         assert not model_registry_instance_spec.istio
         assert model_registry_instance_spec.oauthProxy.serviceRoute == "enabled"
 
     def test_model_registry_validate_mr_status_v1alpha1(self: Self, model_registry_instance_mysql):
         mr_instance = ModelRegistryV1Alpha1(
-            name=model_registry_instance_mysql.name,
-            namespace=model_registry_instance_mysql.namespace,
+            name=model_registry_instance_mysql[0].name,
+            namespace=model_registry_instance_mysql[0].namespace,
             ensure_exists=True,
         ).instance
         status = mr_instance.status.to_dict()

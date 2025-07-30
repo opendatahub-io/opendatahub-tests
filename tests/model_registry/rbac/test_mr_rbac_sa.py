@@ -29,7 +29,7 @@ LOGGER = get_logger(name=__name__)
 @pytest.mark.usefixtures(
     "updated_dsc_component_state_scope_class",
     "is_model_registry_oauth",
-    "model_registry_mysql_metadata_db",
+    "mysql_metadata_resources",
     "model_registry_instance_mysql",
 )
 class TestModelRegistryRBAC:
@@ -42,7 +42,7 @@ class TestModelRegistryRBAC:
     @pytest.mark.usefixtures("sa_namespace", "service_account")
     def test_service_account_access_denied(
         self: Self,
-        model_registry_instance_rest_endpoint: str,
+        model_registry_instance_rest_endpoint: list[str],
         sa_token: str,
     ):
         """
@@ -54,7 +54,7 @@ class TestModelRegistryRBAC:
         LOGGER.info("Expecting initial access DENIAL (403 Forbidden)")
 
         client_args = build_mr_client_args(
-            rest_endpoint=model_registry_instance_rest_endpoint, token=sa_token, author="rbac-test-denied"
+            rest_endpoint=model_registry_instance_rest_endpoint[0], token=sa_token, author="rbac-test-denied"
         )
         LOGGER.debug(f"Attempting client connection with args: {client_args}")
 
@@ -74,18 +74,18 @@ class TestModelRegistryRBAC:
     def test_service_account_access_granted(
         self: Self,
         sa_token: str,
-        model_registry_instance_rest_endpoint: str,
+        model_registry_instance_rest_endpoint: list[str],
     ):
         """
         Verifies SA access is GRANTED via REST after applying Role and RoleBinding fixtures.
         """
         LOGGER.info("--- Starting RBAC Test: Access Granted ---")
-        LOGGER.info(f"Targeting Model Registry REST endpoint: {model_registry_instance_rest_endpoint}")
+        LOGGER.info(f"Targeting Model Registry REST endpoint: {model_registry_instance_rest_endpoint[0]}")
         LOGGER.info("Applied RBAC Role/Binding via fixtures. Expecting access GRANT.")
 
         try:
             client_args = build_mr_client_args(
-                rest_endpoint=model_registry_instance_rest_endpoint, token=sa_token, author="rbac-test-granted"
+                rest_endpoint=model_registry_instance_rest_endpoint[0], token=sa_token, author="rbac-test-granted"
             )
             LOGGER.debug(f"Attempting client connection with args: {client_args}")
             mr_client_success = ModelRegistryClient(**client_args)
