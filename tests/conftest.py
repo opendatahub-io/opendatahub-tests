@@ -667,7 +667,7 @@ def installed_mariadb_operator(admin_client: DynamicClient) -> Generator[None, A
             operator_namespace=operator_ns.name,
             timeout=Timeout.TIMEOUT_15MIN,
             install_plan_approval="Manual",
-            starting_csv=f"{operator_name}.v0.38.1",
+            starting_csv=f"{operator_name}.v25.8.1",
         )
 
         deployment = Deployment(
