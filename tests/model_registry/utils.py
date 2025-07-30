@@ -258,7 +258,7 @@ def wait_for_new_running_mr_pods(
 
     """
     LOGGER.info("Waiting for pods to be replaced")
-    oring_pods_names = [pod.name for pod in orig_pods]
+    orig_pods_names = [pod.name for pod in orig_pods]
 
     expected_num_pods = expected_num_pods or len(orig_pods)
 
@@ -275,11 +275,11 @@ def wait_for_new_running_mr_pods(
             ),
         ):
             if pods and len(pods) == expected_num_pods:
-                if all(pod.name not in oring_pods_names and pod.status == pod.Status.RUNNING for pod in pods):
+                if all(pod.name not in orig_pods_names and pod.status == pod.Status.RUNNING for pod in pods):
                     return pods
 
     except TimeoutError:
-        LOGGER.error(f"Timeout waiting for pods {oring_pods_names} to be replaced")
+        LOGGER.error(f"Timeout waiting for pods {orig_pods_names} to be replaced")
         raise
 
 
