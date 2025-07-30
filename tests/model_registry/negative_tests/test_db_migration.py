@@ -8,7 +8,7 @@ from utilities.constants import DscComponents
 from tests.model_registry.constants import MR_INSTANCE_NAME
 from kubernetes.dynamic.client import DynamicClient
 from utilities.general import wait_for_container_status
-from tests.model_registry.utils import wait_for_new_running_mr_pods
+from tests.model_registry.utils import wait_for_new_running_mr_pod
 
 LOGGER = get_logger(name=__name__)
 
@@ -48,13 +48,12 @@ class TestDBMigration:
         4. Check the logs for the expected error
         """
         LOGGER.info(f"Model registry pod: {model_registry_pod.name}")
-        mr_pods = wait_for_new_running_mr_pods(
+        mr_pod = wait_for_new_running_mr_pod(
             admin_client=admin_client,
-            orig_pods=[model_registry_pod],
+            orig_pod_name=model_registry_pod.name,
             namespace=py_config["model_registry_namespace"],
             instance_name=MR_INSTANCE_NAME,
         )
-        mr_pod = mr_pods[0]
         LOGGER.info(f"Pod that should contains the container in CrashLoopBackOff state: {mr_pod.name}")
         assert wait_for_container_status(mr_pod, "rest-container", Pod.Status.CRASH_LOOPBACK_OFF)
 
