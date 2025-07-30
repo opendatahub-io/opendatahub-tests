@@ -8,12 +8,12 @@ from ocp_resources.service import Service
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from simple_logger.logger import get_logger
-from timeout_sampler import TimeoutExpiredError, TimeoutSampler
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 from kubernetes.dynamic.exceptions import NotFoundError
 from tests.model_registry.constants import MR_DB_IMAGE_DIGEST
 from tests.model_registry.exceptions import ModelRegistryResourceNotFoundError
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
-from utilities.constants import Protocols, Annotations
+from utilities.constants import Protocols, Annotations, Timeout
 from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
 
@@ -233,6 +233,42 @@ def wait_for_pods_running(
             )
             raise
     return None
+
+
+@retry(exceptions_dict={TimeoutError: []}, wait_timeout=Timeout.TIMEOUT_2MIN, sleep=5)
+def wait_for_new_running_mr_pod(
+    admin_client: DynamicClient,
+    orig_pod_name: str,
+    namespace: str,
+    instance_name: str,
+) -> Pod:
+    """
+    Wait for the model registry pod to be replaced.
+
+    Args:
+        admin_client (DynamicClient): The admin client.
+        orig_pod_name (str): The name of the original pod.
+        namespace (str): The namespace of the pod.
+        instance_name (str): The name of the instance.
+    Returns:
+        Pod object.
+
+    Raises:
+        TimeoutError: If the pods are not replaced.
+
+    """
+    LOGGER.info("Waiting for pod to be replaced")
+    pods = list(
+        Pod.get(
+            dyn_client=admin_client,
+            namespace=namespace,
+            label_selector=f"app={instance_name}",
+        )
+    )
+    if pods and len(pods) == 1:
+        if pods[0].name != orig_pod_name and pods[0].status == Pod.Status.RUNNING:
+            return pods[0]
+    raise TimeoutError(f"Timeout waiting for pod {orig_pod_name} to be replaced")
 
 
 def generate_namespace_name(file_path: str) -> str:
