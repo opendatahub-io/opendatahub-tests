@@ -1,0 +1,18 @@
+{
+  "model_name": "fil",
+  "model_version": "1",
+  "outputs": [
+    {
+      "data": [
+        0.9988755583763123,
+        0.0011244644410908222
+      ],
+      "datatype": "FP32",
+      "name": "output__0",
+      "shape": [
+        1,
+        2
+      ]
+    }
+  ]
+}

@@ -10,12 +10,18 @@ import yaml
 from _pytest._py.path import LocalPath
 from _pytest.legacypath import TempdirFactory
 from _pytest.tmpdir import TempPathFactory
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
+
+from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.deployment import Deployment
 from ocp_resources.dsc_initialization import DSCInitialization
+from ocp_resources.mariadb_operator import MariadbOperator
 from ocp_resources.node import Node
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
+from ocp_resources.subscription import Subscription
 from ocp_utilities.monitoring import Prometheus
 from pyhelper_utils.shell import run_command
 from pytest import FixtureRequest, Config
@@ -25,7 +31,9 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.resource import get_client
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
+import json
 
+from ocp_utilities.operators import uninstall_operator, install_operator
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.exceptions import ClusterLoginError
@@ -42,11 +50,14 @@ from utilities.constants import (
     Labels,
     MinIo,
     Protocols,
+    Timeout,
+    OPENSHIFT_OPERATORS,
 )
 from utilities.infra import update_configmap_data
 from utilities.logger import RedactedString
+from utilities.mariadb_utils import wait_for_mariadb_operator_deployments
 from utilities.minio import create_minio_data_connection_secret
-from utilities.operator_utils import get_csv_related_images
+from utilities.operator_utils import get_csv_related_images, get_cluster_service_version
 
 LOGGER = get_logger(name=__name__)
 
@@ -100,7 +111,7 @@ def model_namespace(
         ns.clean_up()
     else:
         with create_ns(
-            client=admin_client,
+            admin_client=admin_client,
             pytest_request=request,
             teardown=teardown_resources,
         ) as ns:
@@ -127,6 +138,28 @@ def aws_secret_access_key(pytestconfig: Config) -> str:
             "Either pass with `--aws-secret-access-key` or set `AWS_SECRET_ACCESS_KEY` environment variable"
         )
     return secret_access_key
+
+
+@pytest.fixture(scope="session")
+def registry_pull_secret(pytestconfig: Config) -> str:
+    registry_pull_secret = pytestconfig.option.registry_pull_secret
+    if not registry_pull_secret:
+        raise ValueError(
+            "Registry pull secret is not set. "
+            "Either pass with `--registry_pull_secret` or set `OCI_REGISTRY_PULL_SECRET` environment variable"
+        )
+    return registry_pull_secret
+
+
+@pytest.fixture(scope="session")
+def registry_host(pytestconfig: pytest.Config) -> str | None:
+    registry_host = pytestconfig.option.registry_host
+    if not registry_host:
+        raise ValueError(
+            "Registry host for OCI images is not set. "
+            "Either pass with `--registry_host` or set `REGISTRY_HOST` environment variable"
+        )
+    return registry_host
 
 
 @pytest.fixture(scope="session")
@@ -165,6 +198,40 @@ def ci_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str:
             "Either pass with `--ci-s3-bucket-endpoint` or set `CI_S3_BUCKET_ENDPOINT` environment variable"
         )
     return ci_bucket_endpoint
+
+
+@pytest.fixture(scope="session")
+def serving_argument(pytestconfig: pytest.Config, modelcar_yaml_config: dict[str, Any] | None) -> list[str]:
+    if modelcar_yaml_config:
+        arg = modelcar_yaml_config.get("serving_argument", [])
+        return arg if isinstance(arg, list) else [arg]
+
+    raw_arg = pytestconfig.option.serving_argument
+    try:
+        return json.loads(raw_arg)
+    except json.JSONDecodeError:
+        raise ValueError(
+            "Serving arguments should be a valid JSON list. "
+            "Either pass with `--serving-argument` or set it correctly in modelcar.yaml"
+        )
+
+
+@pytest.fixture(scope="session")
+def modelcar_yaml_config(pytestconfig: pytest.Config) -> dict[str, Any] | None:
+    """
+    Fixture to get the path to the modelcar.yaml file.
+    """
+    config_path = pytestconfig.option.model_car_yaml_path
+    if not config_path:
+        return None
+    with open(config_path, "r") as file:
+        try:
+            modelcar_yaml = yaml.safe_load(file)
+            if not isinstance(modelcar_yaml, dict):
+                raise ValueError("modelcar.yaml should contain a dictionary.")
+            return modelcar_yaml
+        except yaml.YAMLError as e:
+            raise ValueError(f"Error parsing modelcar.yaml: {e}") from e
 
 
 @pytest.fixture(scope="session")
@@ -224,6 +291,14 @@ def vllm_runtime_image(pytestconfig: pytest.Config) -> str | None:
 @pytest.fixture(scope="session")
 def mlserver_runtime_image(pytestconfig: pytest.Config) -> str | None:
     runtime_image = pytestconfig.option.mlserver_runtime_image
+    if not runtime_image:
+        return None
+    return runtime_image
+
+
+@pytest.fixture(scope="session")
+def triton_runtime_image(pytestconfig: pytest.Config) -> str | None:
+    runtime_image = pytestconfig.option.triton_runtime_image
     if not runtime_image:
         return None
     return runtime_image
@@ -389,12 +464,12 @@ def cluster_monitoring_config(
 
 @pytest.fixture(scope="class")
 def unprivileged_model_namespace(
-    request: FixtureRequest, unprivileged_client: DynamicClient
+    request: FixtureRequest, admin_client: DynamicClient, unprivileged_client: DynamicClient
 ) -> Generator[Namespace, Any, Any]:
     if request.param.get("modelmesh-enabled"):
         request.getfixturevalue(argname="enabled_modelmesh_in_dsc")
 
-    with create_ns(unprivileged_client=unprivileged_client, pytest_request=request) as ns:
+    with create_ns(admin_client=admin_client, unprivileged_client=unprivileged_client, pytest_request=request) as ns:
         yield ns
 
 
@@ -403,7 +478,7 @@ def unprivileged_model_namespace(
 def minio_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
     with create_ns(
         name=f"{MinIo.Metadata.NAME}-{shortuuid.uuid().lower()}",
-        client=admin_client,
+        admin_client=admin_client,
     ) as ns:
         yield ns
 
@@ -573,3 +648,59 @@ def autouse_fixtures(
 ) -> None:
     """Fixture to control the order of execution of some of the fixtures"""
     return
+
+
+@pytest.fixture(scope="session")
+def installed_mariadb_operator(admin_client: DynamicClient) -> Generator[None, Any, Any]:
+    operator_ns = Namespace(name="openshift-operators", ensure_exists=True)
+    operator_name = "mariadb-operator"
+
+    mariadb_operator_subscription = Subscription(client=admin_client, namespace=operator_ns.name, name=operator_name)
+
+    if not mariadb_operator_subscription.exists:
+        install_operator(
+            admin_client=admin_client,
+            target_namespaces=["openshift-operators"],
+            name=operator_name,
+            channel="alpha",
+            source="community-operators",
+            operator_namespace=operator_ns.name,
+            timeout=Timeout.TIMEOUT_15MIN,
+            install_plan_approval="Manual",
+            starting_csv=f"{operator_name}.v25.8.1",
+        )
+
+        deployment = Deployment(
+            client=admin_client,
+            namespace=operator_ns.name,
+            name=f"{operator_name}-helm-controller-manager",
+            wait_for_resource=True,
+        )
+        deployment.wait_for_replicas()
+    yield
+    uninstall_operator(
+        admin_client=admin_client, name=operator_name, operator_namespace=operator_ns.name, clean_up_namespace=False
+    )
+
+
+@pytest.fixture(scope="class")
+def mariadb_operator_cr(
+    admin_client: DynamicClient, installed_mariadb_operator: None
+) -> Generator[MariadbOperator, Any, Any]:
+    mariadb_csv: ClusterServiceVersion = get_cluster_service_version(
+        client=admin_client, prefix="mariadb", namespace=OPENSHIFT_OPERATORS
+    )
+    alm_examples: list[dict[str, Any]] = mariadb_csv.get_alm_examples()
+    mariadb_operator_cr_dict: dict[str, Any] = next(
+        example for example in alm_examples if example["kind"] == "MariadbOperator"
+    )
+    if not mariadb_operator_cr_dict:
+        raise ResourceNotFoundError(f"No MariadbOperator dict found in alm_examples for CSV {mariadb_csv.name}")
+
+    mariadb_operator_cr_dict["metadata"]["namespace"] = OPENSHIFT_OPERATORS
+    with MariadbOperator(kind_dict=mariadb_operator_cr_dict) as mariadb_operator_cr:
+        mariadb_operator_cr.wait_for_condition(
+            condition="Deployed", status=mariadb_operator_cr.Condition.Status.TRUE, timeout=Timeout.TIMEOUT_10MIN
+        )
+        wait_for_mariadb_operator_deployments(mariadb_operator=mariadb_operator_cr)
+        yield mariadb_operator_cr

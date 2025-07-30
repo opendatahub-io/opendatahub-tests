@@ -51,34 +51,49 @@ def get_fairness_request_json_data(isvc: InferenceService) -> dict[str, Any]:
 
 @pytest.mark.usefixtures("minio_pod")
 @pytest.mark.parametrize(
-    "model_namespace, minio_pod, minio_data_connection",
+    "model_namespace, minio_pod, minio_data_connection, trustyai_service",
     [
         pytest.param(
             {"name": "test-fairness-pvc"},
             MinIo.PodConfig.MODEL_MESH_MINIO_CONFIG,
             {"bucket": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
-        )
+            {"storage": "pvc"},
+            id="pvc-storage",
+        ),
+        pytest.param(
+            {"name": "test-fairness-db"},
+            MinIo.PodConfig.MODEL_MESH_MINIO_CONFIG,
+            {"bucket": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
+            {"storage": "db"},
+            id="db-storage",
+        ),
     ],
     indirect=True,
 )
 @pytest.mark.usefixtures("minio_pod")
-class TestFairnessMetricsWithPVCStorage:
+@pytest.mark.serverless
+@pytest.mark.smoke
+class TestFairnessMetrics:
     """
-    Verifies all the basic operations with a fairness metric (spd and dir) available in TrustyAI, using PVC storage.
+    Verifies all the basic operations that can be performed with all the fairness metrics
+    (SPD and DIR) available in TrustyAI.
 
     1. Send data to the model and verify that TrustyAI registers the observations.
     2. Apply name mappings
-    3. Send metric request (spd and dir) and verify the response.
+    3. Send metric request (SPD and DIR) and verify the response.
     4. Send metric scheduling request and verify the response.
     5. Send metric deletion request and verify that the scheduled metric has been deleted.
+
+    The tests are run for both PVC and DB storage.
     """
 
-    def test_fairness_send_inference_and_verify_trustyai_service_with_pvc_storage(
+    @pytest.mark.dependency(name="send_inference")
+    def test_fairness_send_inference(
         self,
         admin_client,
         current_client_token,
         model_namespace,
-        trustyai_service_with_pvc_storage,
+        trustyai_service,
         onnx_loan_model,
         isvc_getter_token,
     ):
@@ -86,51 +101,53 @@ class TestFairnessMetricsWithPVCStorage:
             client=admin_client,
             token=current_client_token,
             data_path=f"{BASE_DATA_PATH}",
-            trustyai_service=trustyai_service_with_pvc_storage,
+            trustyai_service=trustyai_service,
             inference_service=onnx_loan_model,
             inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
             inference_token=isvc_getter_token,
         )
 
-    def test_name_mappings_with_pvc_storage(
-        self, admin_client, current_client_token, model_namespace, trustyai_service_with_pvc_storage, onnx_loan_model
+    @pytest.mark.dependency(name="upload_data", depends=["send_inference"])
+    def test_name_mappings(
+        self, admin_client, current_client_token, model_namespace, trustyai_service, onnx_loan_model
     ):
         verify_trustyai_service_name_mappings(
             client=admin_client,
             token=current_client_token,
-            trustyai_service=trustyai_service_with_pvc_storage,
+            trustyai_service=trustyai_service,
             isvc=onnx_loan_model,
             input_mappings=INPUT_NAME_MAPPINGS,
             output_mappings=OUTPUT_NAME_MAPPINGS,
         )
 
+    @pytest.mark.dependency(depends=["upload_data"])
     @pytest.mark.parametrize("metric_name", FAIRNESS_METRICS)
-    def test_fairness_metric_with_pvc_storage(
-        self, admin_client, current_client_token, trustyai_service_with_pvc_storage, onnx_loan_model, metric_name
-    ):
+    def test_fairness_metric(self, admin_client, current_client_token, trustyai_service, onnx_loan_model, metric_name):
         verify_trustyai_service_metric_request(
             client=admin_client,
-            trustyai_service=trustyai_service_with_pvc_storage,
+            trustyai_service=trustyai_service,
             token=current_client_token,
             metric_name=metric_name,
             json_data=get_fairness_request_json_data(isvc=onnx_loan_model),
         )
 
+    @pytest.mark.dependency(name="schedule_metric", depends=["upload_data"])
     @pytest.mark.parametrize("metric_name", FAIRNESS_METRICS)
-    def test_fairness_metric_schedule_with_pvc_storage(
-        self, admin_client, current_client_token, trustyai_service_with_pvc_storage, onnx_loan_model, metric_name
+    def test_fairness_metric_schedule(
+        self, admin_client, current_client_token, trustyai_service, onnx_loan_model, metric_name
     ):
         verify_trustyai_service_metric_scheduling_request(
             client=admin_client,
-            trustyai_service=trustyai_service_with_pvc_storage,
+            trustyai_service=trustyai_service,
             token=current_client_token,
             metric_name=metric_name,
             json_data=get_fairness_request_json_data(isvc=onnx_loan_model),
         )
 
+    @pytest.mark.dependency(depends=["schedule_metric"])
     @pytest.mark.parametrize("metric_name", FAIRNESS_METRICS)
     def test_fairness_metric_prometheus(
-        self, admin_client, model_namespace, trustyai_service_with_pvc_storage, onnx_loan_model, prometheus, metric_name
+        self, admin_client, model_namespace, trustyai_service, onnx_loan_model, prometheus, metric_name
     ):
         validate_metrics_field(
             prometheus=prometheus,
@@ -139,103 +156,14 @@ class TestFairnessMetricsWithPVCStorage:
             field_getter=partial(get_metric_label, label_name="metricName"),
         )
 
+    @pytest.mark.dependency(depends=["schedule_metric"])
     @pytest.mark.parametrize("metric_name", FAIRNESS_METRICS)
-    def test_fairness_metric_delete_with_pvc_storage(
-        self, admin_client, current_client_token, trustyai_service_with_pvc_storage, onnx_loan_model, metric_name
+    def test_fairness_metric_delete(
+        self, admin_client, current_client_token, trustyai_service, onnx_loan_model, metric_name
     ):
         verify_trustyai_service_metric_delete_request(
             client=admin_client,
-            trustyai_service=trustyai_service_with_pvc_storage,
-            token=current_client_token,
-            metric_name=metric_name,
-        )
-
-
-@pytest.mark.parametrize(
-    "model_namespace, minio_pod, minio_data_connection",
-    [
-        pytest.param(
-            {"name": "test-fairness-db"},
-            MinIo.PodConfig.MODEL_MESH_MINIO_CONFIG,
-            {"bucket": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
-        )
-    ],
-    indirect=True,
-)
-@pytest.mark.usefixtures("minio_pod")
-class TestFairnessMetricsWithDBStorage:
-    """
-    Verifies all the basic operations with a fairness metric (spd and dir) available in TrustyAI, using MariaDB storage.
-
-    1. Send data to the model and verify that TrustyAI registers the observations.
-    2. Apply name mappings
-    3. Send metric request (spd and dir) and verify the response.
-    4. Send metric scheduling request and verify the response.
-    5. Send metric deletion request and verify that the scheduled metric has been deleted.
-    """
-
-    def test_fairness_send_inference_and_verify_trustyai_service_with_db_storage(
-        self,
-        admin_client,
-        current_client_token,
-        model_namespace,
-        isvc_getter_token,
-        trustyai_service_with_db_storage,
-        onnx_loan_model,
-    ):
-        send_inferences_and_verify_trustyai_service_registered(
-            client=admin_client,
-            token=current_client_token,
-            data_path=f"{BASE_DATA_PATH}",
-            trustyai_service=trustyai_service_with_db_storage,
-            inference_service=onnx_loan_model,
-            inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
-            inference_token=isvc_getter_token,
-        )
-
-    def test_name_mappings_with_db_storage(
-        self, admin_client, current_client_token, model_namespace, trustyai_service_with_db_storage, onnx_loan_model
-    ):
-        verify_trustyai_service_name_mappings(
-            client=admin_client,
-            token=current_client_token,
-            trustyai_service=trustyai_service_with_db_storage,
-            isvc=onnx_loan_model,
-            input_mappings=INPUT_NAME_MAPPINGS,
-            output_mappings=OUTPUT_NAME_MAPPINGS,
-        )
-
-    @pytest.mark.parametrize("metric_name", FAIRNESS_METRICS)
-    def test_fairness_metric_with_db_storage(
-        self, admin_client, current_client_token, trustyai_service_with_db_storage, onnx_loan_model, metric_name
-    ):
-        verify_trustyai_service_metric_request(
-            client=admin_client,
-            trustyai_service=trustyai_service_with_db_storage,
-            token=current_client_token,
-            metric_name=metric_name,
-            json_data=get_fairness_request_json_data(isvc=onnx_loan_model),
-        )
-
-    @pytest.mark.parametrize("metric_name", FAIRNESS_METRICS)
-    def test_fairness_metric_schedule_with_db_storage(
-        self, admin_client, current_client_token, trustyai_service_with_db_storage, onnx_loan_model, metric_name
-    ):
-        verify_trustyai_service_metric_scheduling_request(
-            client=admin_client,
-            trustyai_service=trustyai_service_with_db_storage,
-            token=current_client_token,
-            metric_name=metric_name,
-            json_data=get_fairness_request_json_data(isvc=onnx_loan_model),
-        )
-
-    @pytest.mark.parametrize("metric_name", FAIRNESS_METRICS)
-    def test_fairness_metric_delete_with_db_storage(
-        self, admin_client, current_client_token, trustyai_service_with_db_storage, onnx_loan_model, metric_name
-    ):
-        verify_trustyai_service_metric_delete_request(
-            client=admin_client,
-            trustyai_service=trustyai_service_with_db_storage,
+            trustyai_service=trustyai_service,
             token=current_client_token,
             metric_name=metric_name,
         )

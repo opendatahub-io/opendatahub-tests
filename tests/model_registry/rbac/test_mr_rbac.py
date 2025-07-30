@@ -10,19 +10,27 @@ This suite tests various RBAC scenarios including:
 
 import pytest
 from pytest_testconfig import config as py_config
-from typing import Self, Generator
+from typing import Self, Generator, List
 from simple_logger.logger import get_logger
 
 from model_registry import ModelRegistry as ModelRegistryClient
 from timeout_sampler import TimeoutSampler
 
+from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.group import Group
 from ocp_resources.role_binding import RoleBinding
-from tests.model_registry.rbac.utils import build_mr_client_args, assert_positive_mr_registry
+from ocp_resources.secret import Secret
+from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
+from ocp_resources.service import Service
+from ocp_resources.deployment import Deployment
+from tests.model_registry.rbac.utils import build_mr_client_args, assert_positive_mr_registry, assert_forbidden_access
 from utilities.infra import get_openshift_token
 from utilities.constants import DscComponents
 from mr_openapi.exceptions import ForbiddenException
 from utilities.user_utils import UserTestSession
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from tests.model_registry.multiple_instance_utils import MR_MULTIPROJECT_TEST_SCENARIO_PARAMS, NUM_MR_INSTANCES
 
 LOGGER = get_logger(name=__name__)
 pytestmark = [pytest.mark.usefixtures("original_user", "test_idp_user")]
@@ -42,7 +50,12 @@ pytestmark = [pytest.mark.usefixtures("original_user", "test_idp_user")]
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("updated_dsc_component_state_scope_class")
+@pytest.mark.usefixtures(
+    "updated_dsc_component_state_scope_class",
+    "is_model_registry_oauth",
+    "model_registry_mysql_metadata_db",
+    "model_registry_instance_mysql",
+)
 class TestUserPermission:
     @pytest.mark.sanity
     def test_user_permission_non_admin_user(
@@ -123,4 +136,125 @@ class TestUserPermission:
         """
         assert_positive_mr_registry(
             model_registry_instance_rest_endpoint=model_registry_instance_rest_endpoint,
+        )
+
+
+class TestUserMultiProjectPermission:
+    """
+    Test suite for verifying user permissions in a multi-project setup for the Model Registry.
+    """
+
+    @pytest.mark.parametrize(
+        (
+            "updated_dsc_component_state_parametrized, "
+            "db_secret_parametrized, "
+            "db_pvc_parametrized, "
+            "db_service_parametrized, "
+            "db_deployment_parametrized, "
+            "model_registry_instance_parametrized"
+        ),
+        MR_MULTIPROJECT_TEST_SCENARIO_PARAMS,
+        indirect=True,
+    )
+    def test_user_permission_multi_project_parametrized(
+        self: Self,
+        test_idp_user: UserTestSession,
+        admin_client: DynamicClient,
+        updated_dsc_component_state_parametrized: DataScienceCluster,
+        db_secret_parametrized: List[Secret],
+        db_pvc_parametrized: List[PersistentVolumeClaim],
+        db_service_parametrized: List[Service],
+        db_deployment_parametrized: List[Deployment],
+        model_registry_instance_parametrized: List[ModelRegistry],
+        login_as_test_user: None,
+    ):
+        """
+        Verify that a user can be granted access to one MR instance at a time.
+        All resources (MR instances and databases) are created in the same dynamically generated namespace.
+        """
+
+        from tests.model_registry.utils import get_mr_service_by_label, get_endpoint_from_mr_service
+        from tests.model_registry.rbac.utils import grant_mr_access, revoke_mr_access
+        from utilities.constants import Protocols
+
+        if len(model_registry_instance_parametrized) != NUM_MR_INSTANCES:
+            raise ValueError(
+                f"Expected {NUM_MR_INSTANCES} MR instances, but got {len(model_registry_instance_parametrized)}"
+            )
+
+        # Use the namespace configured in the DSC
+        model_registry_namespace = (
+            updated_dsc_component_state_parametrized.instance.spec.components.modelregistry.registriesNamespace
+        )
+        LOGGER.info(f"Model Registry namespace: {model_registry_namespace}")
+
+        # Prepare MR instances and endpoints
+        mr_data = []
+        for mr_instance in model_registry_instance_parametrized:
+            service = get_mr_service_by_label(
+                client=admin_client,
+                namespace_name=model_registry_namespace,
+                mr_instance=mr_instance,
+            )
+            endpoint = get_endpoint_from_mr_service(svc=service, protocol=Protocols.REST)
+            mr_data.append({"instance": mr_instance, "endpoint": endpoint, "name": mr_instance.name})
+
+        # Test each MR instance sequentially
+        for i, current_mr_data in enumerate(mr_data):
+            current_mr = current_mr_data["instance"]
+            current_endpoint = current_mr_data["endpoint"]
+
+            LOGGER.info(f"Testing access to MR instance {i + 1}/{len(mr_data)}: {current_mr.name}")
+
+            # Grant access to current instance
+            grant_mr_access(
+                admin_client=admin_client,
+                user=test_idp_user.username,
+                mr_instance_name=current_mr.name,
+                model_registry_namespace=model_registry_namespace,
+            )
+
+            # Verify access to current instance
+            sampler = TimeoutSampler(
+                wait_timeout=240,
+                sleep=5,
+                func=assert_positive_mr_registry,
+                model_registry_instance_rest_endpoint=current_endpoint,
+                token=get_openshift_token(),
+            )
+            for _ in sampler:
+                break
+
+            # Verify NO access to other instances
+            other_mr_names = [mr["name"] for j, mr in enumerate(mr_data) if j != i]
+            for j, other_mr_data in enumerate(mr_data):
+                if i != j:
+                    # Wait for role reconciliation - retry until ForbiddenException is raised
+                    sampler = TimeoutSampler(
+                        wait_timeout=240,
+                        sleep=5,
+                        func=assert_forbidden_access,
+                        endpoint=other_mr_data["endpoint"],
+                        token=get_openshift_token(),
+                    )
+                    for _ in sampler:
+                        break
+
+            LOGGER.info(f"User has access to {current_mr.name}, but not to: {', '.join(other_mr_names)}")
+
+            # Revoke access (except for the last instance)
+            if i < len(mr_data) - 1:
+                revoke_mr_access(
+                    admin_client=admin_client,
+                    user=test_idp_user.username,
+                    mr_instance_name=current_mr.name,
+                    model_registry_namespace=model_registry_namespace,
+                )
+
+        # Clean up - revoke access from the last instance
+        revoke_mr_access(
+            admin_client=admin_client,
+            user=test_idp_user.username,
+            mr_instance_name=mr_data[-1]["instance"].name,
+            model_registry_namespace=model_registry_namespace,
         )

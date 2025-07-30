@@ -14,7 +14,6 @@ from utilities.manifests.caikit_standalone import CAIKIT_STANDALONE_INFERENCE_CO
 pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_config")]
 
 
-@pytest.mark.smoke
 @pytest.mark.jira("RHOAIENG-11749")
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, serving_runtime_from_template, s3_models_inference_service",

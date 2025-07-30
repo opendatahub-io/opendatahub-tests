@@ -231,6 +231,7 @@ def updated_oauth_config(
     LOGGER.info(f"Added IDP {user_credentials_rbac['idp_name']} to OAuth configuration")
     yield
     identity_providers_patch.restore()
+    wait_for_oauth_openshift_deployment()
 
 
 @pytest.fixture(scope="module")

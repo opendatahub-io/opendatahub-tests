@@ -43,6 +43,7 @@ pytestmark = pytest.mark.usefixtures(
 )
 
 
+@pytest.mark.smoke
 @pytest.mark.parametrize(
     ("protocol", "model_namespace", "mlserver_inference_service", "s3_models_storage_uri", "mlserver_serving_runtime"),
     [

@@ -18,8 +18,8 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")
-def diff_namespace(unprivileged_client: DynamicClient) -> Generator[Namespace, Any, Any]:
-    with create_ns(unprivileged_client=unprivileged_client, name="diff-namespace") as ns:
+def diff_namespace(admin_client: DynamicClient, unprivileged_client: DynamicClient) -> Generator[Namespace, Any, Any]:
+    with create_ns(admin_client=admin_client, unprivileged_client=unprivileged_client, name="diff-namespace") as ns:
         yield ns
 
 

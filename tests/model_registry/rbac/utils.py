@@ -1,4 +1,4 @@
-from typing import Any, Dict, Generator
+from typing import Any, Dict, Generator, List
 
 from kubernetes.dynamic import DynamicClient
 from timeout_sampler import TimeoutSampler
@@ -10,6 +10,7 @@ from utilities.constants import Protocols
 import logging
 from model_registry import ModelRegistry as ModelRegistryClient
 from utilities.infra import get_openshift_token
+from mr_openapi.exceptions import ForbiddenException
 
 LOGGER = logging.getLogger(__name__)
 
@@ -106,3 +107,74 @@ def create_role_binding(
         subjects_name=subjects_name,
     ) as mr_access_role_binding:
         yield mr_access_role_binding
+
+
+def grant_mr_access(
+    admin_client: DynamicClient, user: str, mr_instance_name: str, model_registry_namespace: str
+) -> tuple[Role, RoleBinding]:
+    """Grant a user access to a Model Registry instance."""
+    role_rules: List[Dict[str, Any]] = [
+        {
+            "apiGroups": [""],
+            "resources": ["services"],
+            "resourceNames": [mr_instance_name],  # Grant access only to the specific MR service object
+            "verbs": ["get"],
+        }
+    ]
+    role_labels = {
+        "app.kubernetes.io/component": "model-registry-test-rbac-multitenancy",
+    }
+    role = Role(
+        client=admin_client,
+        name=f"{user}-{mr_instance_name}-role",
+        namespace=model_registry_namespace,
+        rules=role_rules,
+        label=role_labels,
+        wait_for_resource=True,
+    )
+    _ = role.create(wait=True)
+    rb = RoleBinding(
+        client=admin_client,
+        namespace=model_registry_namespace,
+        name=f"{user}-{mr_instance_name}-access",
+        role_ref_name=f"{user}-{mr_instance_name}-role",
+        role_ref_kind="Role",
+        subjects_kind="User",
+        subjects_name=user,
+        wait_for_resource=True,
+    )
+    _ = rb.create(wait=True)
+    LOGGER.info(f"Role {role.name} created successfully.")
+    LOGGER.info(f"RoleBinding {rb.name} created successfully.")
+    return role, rb
+
+
+def revoke_mr_access(
+    admin_client: DynamicClient, user: str, mr_instance_name: str, model_registry_namespace: str
+) -> None:
+    """Revoke a user's access to a Model Registry instance."""
+    rb = RoleBinding(
+        client=admin_client,
+        namespace=model_registry_namespace,
+        name=f"{user}-{mr_instance_name}-access",
+    )
+    rb.delete(wait=True)
+    role = Role(
+        client=admin_client,
+        namespace=model_registry_namespace,
+        name=f"{user}-{mr_instance_name}-role",
+    )
+    role.delete(wait=True)
+    LOGGER.info(f"Role {role.name} deleted successfully.")
+    LOGGER.info(f"RoleBinding {rb.name} deleted successfully.")
+
+
+def assert_forbidden_access(endpoint: str, token: str) -> None:
+    """Helper function to assert that access is properly forbidden"""
+    try:
+        ModelRegistryClient(**build_mr_client_args(rest_endpoint=endpoint, token=token))
+        # If no exception is raised, the access is still granted - raise an error to continue retrying
+        raise AssertionError("Access should be forbidden but client creation succeeded")
+    except ForbiddenException:
+        # This is what we want - access is properly forbidden
+        pass
