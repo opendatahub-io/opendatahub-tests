@@ -355,7 +355,6 @@ def wait_for_container_status(pod: Pod, container_name: str, expected_status: st
     """
 
     container_status = None
-    LOGGER.info(f"Pod status: {pod.instance.status}")
     for cs in pod.instance.status.get("containerStatuses", []):
         if cs.name == container_name:
             container_status = cs

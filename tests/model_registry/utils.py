@@ -235,6 +235,54 @@ def wait_for_pods_running(
     return None
 
 
+def wait_for_new_running_mr_pods(
+    admin_client: DynamicClient,
+    orig_pods: list[Pod],
+    namespace: str,
+    instance_name: str,
+    expected_num_pods: int | None = None,
+) -> list[Pod]:
+    """
+    Wait for the model registry pod to be replaced.
+
+    Args:
+        admin_client (DynamicClient): The admin client.
+        orig_pods (list): List of Pod objects.
+        expected_num_pods (int): Number of pods expected to be running.
+        If not provided, the number of pods is expected to be len(orig_pods)
+    Returns:
+        List of Pod objects.
+
+    Raises:
+        TimeoutError: If the pods are not replaced.
+
+    """
+    LOGGER.info("Waiting for pods to be replaced")
+    oring_pods_names = [pod.name for pod in orig_pods]
+
+    expected_num_pods = expected_num_pods or len(orig_pods)
+
+    try:
+        for pods in TimeoutSampler(
+            wait_timeout=180,
+            sleep=5,
+            func=lambda: list(
+                Pod.get(
+                    dyn_client=admin_client,
+                    namespace=namespace,
+                    label_selector=f"app={instance_name}",
+                )
+            ),
+        ):
+            if pods and len(pods) == expected_num_pods:
+                if all(pod.name not in oring_pods_names and pod.status == pod.Status.RUNNING for pod in pods):
+                    return pods
+
+    except TimeoutError:
+        LOGGER.error(f"Timeout waiting for pods {oring_pods_names} to be replaced")
+        raise
+
+
 def generate_namespace_name(file_path: str) -> str:
     return (file_path.removesuffix(".py").replace("/", "-").replace("_", "-"))[-63:].split("-", 1)[-1]
 

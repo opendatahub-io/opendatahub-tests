@@ -481,30 +481,12 @@ def set_mr_db_dirty(model_registry_db_instance_pod: Pod) -> int:
 
 
 @pytest.fixture()
-def delete_mr_deployment(admin_client: DynamicClient) -> None:
+def delete_mr_deployment() -> None:
     """Delete the model registry deployment"""
-    pods = list(
-        Pod.get(
-            dyn_client=admin_client,
-            namespace=py_config["model_registry_namespace"],
-            label_selector=f"app={MR_INSTANCE_NAME}",
-        )
-    )
-    old_pod_names = [pod.name for pod in pods]
-    LOGGER.info(f"Old pod names: {old_pod_names}")
     mr_deployment = Deployment(
         name=MR_INSTANCE_NAME, namespace=py_config["model_registry_namespace"], ensure_exists=True
     )
     mr_deployment.delete(wait=True)
-    pods = list(
-        Pod.get(
-            dyn_client=admin_client,
-            namespace=py_config["model_registry_namespace"],
-            label_selector=f"app={MR_INSTANCE_NAME}",
-        )
-    )
-    new_pod_names = [pod.name for pod in pods]
-    LOGGER.info(f"New pod names: {new_pod_names}")
 
 
 @pytest.fixture(scope="class")
