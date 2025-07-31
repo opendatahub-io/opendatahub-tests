@@ -1,11 +1,10 @@
 import pytest
 import requests
 from typing import Self, Any
-from pytest_testconfig import config as py_config
 from tests.model_registry.rest_api.utils import register_model_rest_api, validate_resource_attributes
 from tests.model_registry.utils import get_mr_service_by_label, get_endpoint_from_mr_service
 from kubernetes.dynamic import DynamicClient
-from utilities.constants import DscComponents, Protocols
+from utilities.constants import Protocols
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
 from simple_logger.logger import get_logger
@@ -14,22 +13,6 @@ from simple_logger.logger import get_logger
 LOGGER = get_logger(name=__name__)
 
 
-@pytest.mark.parametrize(
-    "updated_dsc_component_state_scope_class",
-    [
-        pytest.param(
-            {
-                "component_patch": {
-                    DscComponents.MODELREGISTRY: {
-                        "managementState": DscComponents.ManagementState.MANAGED,
-                        "registriesNamespace": py_config["model_registry_namespace"],
-                    },
-                },
-            },
-        ),
-    ],
-    indirect=True,
-)
 @pytest.mark.usefixtures("updated_dsc_component_state_scope_class")
 class TestModelRegistryWithSecureDB:
     """
