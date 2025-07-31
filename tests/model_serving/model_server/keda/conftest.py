@@ -11,6 +11,8 @@ from ocp_resources.serving_runtime import ServingRuntime
 from simple_logger.logger import get_logger
 from tests.model_serving.model_runtime.vllm.utils import validate_supported_quantization_schema
 from tests.model_serving.model_runtime.vllm.constant import ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES, TEMPLATE_MAP
+from utilities.manifests.vllm import VLLM_INFERENCE_CONFIG
+from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 from utilities.constants import (
     KServeDeploymentType,
@@ -18,8 +20,7 @@ from utilities.constants import (
     Labels,
 )
 from tests.model_serving.model_server.utils import (
-    run_vllm_concurrent_load,
-    run_ovms_concurrent_load,
+    run_concurrent_load_for_keda_scaling,
 )
 from utilities.constants import (
     ModelAndFormat,
@@ -71,15 +72,14 @@ def create_keda_auto_scaling_config(
 
 
 @pytest.fixture(scope="class")
-def vllm_serving_runtime(
+def vllm_cuda_serving_runtime(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
     supported_accelerator_type: str,
     vllm_runtime_image: str,
 ) -> Generator[ServingRuntime, None, None]:
-    accelerator_type = supported_accelerator_type.lower()
-    template_name = TEMPLATE_MAP.get(accelerator_type, RuntimeTemplates.VLLM_CUDA)
+    template_name = TEMPLATE_MAP.get(supported_accelerator_type.lower(), RuntimeTemplates.VLLM_CUDA)
     with ServingRuntimeFromTemplate(
         client=admin_client,
         name="vllm-runtime",
@@ -97,7 +97,7 @@ def stressed_keda_vllm_inference_service(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    vllm_serving_runtime: ServingRuntime,
+    vllm_cuda_serving_runtime: ServingRuntime,
     supported_accelerator_type: str,
     s3_models_storage_uri: str,
     model_service_account: ServiceAccount,
@@ -106,9 +106,9 @@ def stressed_keda_vllm_inference_service(
         "client": admin_client,
         "name": request.param["name"],
         "namespace": model_namespace.name,
-        "runtime": vllm_serving_runtime.name,
+        "runtime": vllm_cuda_serving_runtime.name,
         "storage_uri": s3_models_storage_uri,
-        "model_format": vllm_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        "model_format": vllm_cuda_serving_runtime.instance.spec.supportedModelFormats[0].name,
         "model_service_account": model_service_account.name,
         "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.RAW_DEPLOYMENT),
         "autoscaler_mode": "keda",
@@ -151,7 +151,11 @@ def stressed_keda_vllm_inference_service(
 
     with create_isvc(**isvc_kwargs) as isvc:
         isvc.wait_for_condition(condition=isvc.Condition.READY, status="True")
-        run_vllm_concurrent_load(isvc=isvc, response_snapshot=response_snapshot)
+        run_concurrent_load_for_keda_scaling(
+            isvc=isvc,
+            inference_config=VLLM_INFERENCE_CONFIG,
+            response_snapshot=response_snapshot,
+        )
         yield isvc
 
 
@@ -186,7 +190,10 @@ def stressed_ovms_keda_inference_service(
         ),
     ) as isvc:
         isvc.wait_for_condition(condition=isvc.Condition.READY, status="True")
-        run_ovms_concurrent_load(isvc=isvc)
+        run_concurrent_load_for_keda_scaling(
+            isvc=isvc,
+            inference_config=ONNX_INFERENCE_CONFIG,
+        )
         yield isvc
 
 

@@ -53,6 +53,11 @@ pytestmark = [pytest.mark.keda, pytest.mark.usefixtures("valid_aws_config")]
     indirect=True,
 )
 class TestOVMSKedaScaling:
+    """
+    Test Keda functionality for a cpu based inference service.
+    This class verifies pod scaling, metrics availability, and the creation of a keda scaled object.
+    """
+
     def test_ovms_keda_scaling_verify_scaledobject(
         self,
         unprivileged_model_namespace: Namespace,

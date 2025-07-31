@@ -29,7 +29,7 @@ pytestmark = [pytest.mark.keda, pytest.mark.usefixtures("skip_if_no_supported_gp
 
 
 @pytest.mark.parametrize(
-    "model_namespace, s3_models_storage_uri, vllm_serving_runtime, stressed_keda_vllm_inference_service",
+    "model_namespace, s3_models_storage_uri, vllm_cuda_serving_runtime, stressed_keda_vllm_inference_service",
     [
         pytest.param(
             {"name": VLLM_MODEL_NAME},
@@ -50,9 +50,15 @@ pytestmark = [pytest.mark.keda, pytest.mark.usefixtures("skip_if_no_supported_gp
     indirect=True,
 )
 class TestVllmKedaScaling:
+    """
+    Test Keda functionality for a gpu based inference service.
+    This class verifies pod scaling, metrics availability, and the creation of a keda scaled object.
+    """
+
     def test_vllm_keda_scaling_verify_scaledobject(
         self,
         unprivileged_model_namespace: Namespace,
+        vllm_cuda_serving_runtime,
         unprivileged_client: DynamicClient,
         stressed_keda_vllm_inference_service: Generator[InferenceService, Any, Any],
     ):
@@ -68,7 +74,7 @@ class TestVllmKedaScaling:
         self,
         unprivileged_model_namespace: Namespace,
         unprivileged_client: DynamicClient,
-        vllm_serving_runtime,
+        vllm_cuda_serving_runtime,
         stressed_keda_vllm_inference_service: Generator[InferenceService, Any, Any],
         prometheus,
     ):
@@ -83,7 +89,7 @@ class TestVllmKedaScaling:
         self,
         unprivileged_model_namespace: Namespace,
         unprivileged_client: DynamicClient,
-        vllm_serving_runtime,
+        vllm_cuda_serving_runtime,
         stressed_keda_vllm_inference_service: Generator[InferenceService, Any, Any],
     ):
         verify_final_pod_count(

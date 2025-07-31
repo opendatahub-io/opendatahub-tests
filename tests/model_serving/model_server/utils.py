@@ -16,10 +16,7 @@ from utilities.exceptions import (
 from utilities.constants import Timeout
 from utilities.inference_utils import UserInference
 from utilities.infra import get_isvc_keda_scaledobject, get_pods_by_isvc_label
-from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 from utilities.constants import Protocols
-from utilities.inference_utils import Inference
-from utilities.manifests.vllm import VLLM_INFERENCE_CONFIG
 from timeout_sampler import TimeoutWatch, TimeoutSampler
 
 LOGGER = get_logger(name=__name__)
@@ -251,7 +248,7 @@ def verify_keda_scaledobject(
         expected_threshold: Expected threshold as string (e.g. "50.000000")
     """
     scaled_objects = get_isvc_keda_scaledobject(client=client, isvc=isvc)
-    scaled_object = scaled_objects[0]  # Get the first ScaledObject
+    scaled_object = scaled_objects[0]
     trigger_meta = scaled_object.spec.triggers[0].metadata
     trigger_type = scaled_object.spec.triggers[0].type
     query = trigger_meta.get("query")
@@ -264,20 +261,18 @@ def verify_keda_scaledobject(
     assert threshold == expected_threshold, f"Threshold {threshold} does not match expected {expected_threshold}"
 
 
-def run_vllm_concurrent_load(
+def run_concurrent_load_for_keda_scaling(
     isvc: InferenceService,
+    inference_config: dict[str, Any],
     num_concurrent: int = 5,
     duration: int = 120,
 ) -> None:
     """
-    Run VLLM concurrent load.
+    Run a concurrent load to test the keda scaling functionality.
 
     Args:
-        pod_name: Pod name
         isvc: InferenceService instance
-        response_snapshot: Response snapshot
-        chat_query: Chat query
-        completion_query: Completion query
+        inference_config: Inference config
         num_concurrent: Number of concurrent requests
         duration: Duration in seconds to run the load test
     """
@@ -285,7 +280,7 @@ def run_vllm_concurrent_load(
     def _make_request() -> None:
         verify_inference_response(
             inference_service=isvc,
-            inference_config=VLLM_INFERENCE_CONFIG,
+            inference_config=inference_config,
             inference_type="completions",
             protocol=Protocols.HTTPS,
             use_default_query=True,
@@ -295,34 +290,6 @@ def run_vllm_concurrent_load(
     with ThreadPoolExecutor(max_workers=num_concurrent) as executor:
         while timeout_watch.remaining_time() > 0:
             futures = [executor.submit(_make_request) for _ in range(num_concurrent)]
-            wait(fs=futures)
-
-
-def run_ovms_concurrent_load(
-    isvc: InferenceService,
-    num_concurrent: int = 5,
-    duration: int = 120,
-) -> None:
-    """
-    Run OVMS concurrent load.
-
-    Args:
-        isvc: InferenceService instance
-    """
-
-    def make_request() -> None:
-        verify_inference_response(
-            inference_service=isvc,
-            inference_config=ONNX_INFERENCE_CONFIG,
-            inference_type=Inference.INFER,
-            protocol=Protocols.HTTPS,
-            use_default_query=True,
-        )
-
-    timeout_watch = TimeoutWatch(timeout=duration)
-    with ThreadPoolExecutor(max_workers=num_concurrent) as executor:
-        while timeout_watch.remaining_time() > 0:
-            futures = [executor.submit(make_request) for _ in range(num_concurrent)]
             wait(fs=futures)
 
 
