@@ -33,14 +33,10 @@ from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
-USER_ONE: str = "user-one"
-
-GORCH_NAME = "guardrails-orchestrator"
-GORCH_CONFIGMAP_NAME = "fms-orchestr8-config-nlp"
-GORCH_PORT: int = 8032
+GUARDRAILS_ORCHESTRATOR_NAME = "guardrails-orchestrator"
 
 
-# GuardrailsOrchestrator related fixtures
+# Fixtures related to the Guardrails Orchestrator
 @pytest.fixture(scope="class")
 def guardrails_orchestrator(
     request: FixtureRequest,
@@ -50,7 +46,7 @@ def guardrails_orchestrator(
 ) -> Generator[GuardrailsOrchestrator, Any, Any]:
     gorch_kwargs = {
         "client": admin_client,
-        "name": GORCH_NAME,
+        "name": GUARDRAILS_ORCHESTRATOR_NAME,
         "namespace": model_namespace.name,
         "orchestrator_config": orchestrator_config.name,
         "replicas": 1,
@@ -104,7 +100,11 @@ def guardrails_orchestrator_pod(
     model_namespace: Namespace,
     guardrails_orchestrator: GuardrailsOrchestrator,
 ) -> Pod:
-    return list(Pod.get(namespace=model_namespace.name, label_selector=f"app.kubernetes.io/instance={GORCH_NAME}"))[0]
+    return list(
+        Pod.get(
+            namespace=model_namespace.name, label_selector=f"app.kubernetes.io/instance={GUARDRAILS_ORCHESTRATOR_NAME}"
+        )
+    )[0]
 
 
 @pytest.fixture(scope="class")
@@ -154,10 +154,10 @@ def vllm_runtime(
         containers={
             "kserve-container": {
                 "args": [
-                    f"--port={str(GORCH_PORT)}",
+                    f"--port={str(8032)}",
                     "--model=/mnt/models",
                 ],
-                "ports": [{"containerPort": GORCH_PORT, "protocol": "TCP"}],
+                "ports": [{"containerPort": 8032, "protocol": "TCP"}],
                 "volumeMounts": [{"mountPath": "/dev/shm", "name": "shm"}],
             }
         },
@@ -280,7 +280,7 @@ def prompt_injection_detector_route(
     )
 
 
-# Llama-stack fixtures
+# LlamaStack fixtures
 @pytest.fixture(scope="class")
 def llamastack_distribution_trustyai(
     admin_client: DynamicClient,
@@ -369,7 +369,7 @@ def llamastack_client_trustyai(
     return LlamaStackClient(base_url=f"http://{llamastack_distribution_trustyai_route.host}")
 
 
-# Other
+# Other "helper" fixtures
 @pytest.fixture(scope="class")
 def openshift_ca_bundle_file(
     admin_client: DynamicClient,
@@ -382,17 +382,16 @@ def guardrails_orchestrator_ssl_cert(guardrails_orchestrator_route: Route):
     hostname = guardrails_orchestrator_route.host
 
     try:
-        cmd = ["openssl", "s_client", "-showcerts", "-connect", f"{hostname}:443"]
-
-        process = subprocess.Popen(
-            args=cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        result = subprocess.run(
+            args=["openssl", "s_client", "-showcerts", "-connect", f"{hostname}:443"],
+            input="",
+            capture_output=True,
+            text=True,
         )
-
-        stdout, _ = process.communicate(input="")
 
         cert_lines = []
         in_cert = False
-        for line in stdout.split("\n"):
+        for line in result.stdout.splitlines():
             if "-----BEGIN CERTIFICATE-----" in line:
                 in_cert = True
             if in_cert:

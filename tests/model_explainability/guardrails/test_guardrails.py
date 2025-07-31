@@ -11,6 +11,8 @@ from tests.model_explainability.guardrails.constants import (
     QWEN_ISVC_NAME,
     CHAT_GENERATION_CONFIG,
     BUILTIN_DETECTOR_CONFIG,
+    PROMPT_WITH_PII,
+    EXAMPLE_EMAIL_ADDRESS,
 )
 from tests.model_explainability.guardrails.utils import (
     verify_builtin_detector_unsuitable_input_response,
@@ -25,8 +27,6 @@ from utilities.plugins.constant import OpenAIEnpoints
 
 LOGGER = get_logger(name=__name__)
 
-EXAMPLE_EMAIL_ADDRESS: str = "myemail@domain.com"
-PROMPT_WITH_PII: str = f"This is my email address: {EXAMPLE_EMAIL_ADDRESS}, just answer ACK."
 HARMLESS_PROMPT: str = "What is the opposite of up?"
 MNT_MODELS: str = "/mnt/models"
 
@@ -59,7 +59,6 @@ PROMPT_INJECTION_DETECTORS: Dict[str, Dict[str, Any]] = {
     indirect=True,
 )
 @pytest.mark.smoke
-@pytest.mark.usefixtures("guardrails_orchestrator")
 def test_validate_guardrails_orchestrator_images(guardrails_orchestrator_pod, trustyai_operator_configmap):
     """Test to verify Guardrails pod images.
     Checks if the image tag from the ConfigMap is used within the Pod and if it's pinned using a sha256 digest.
@@ -112,7 +111,7 @@ def test_validate_guardrails_orchestrator_images(guardrails_orchestrator_pod, tr
 )
 @pytest.mark.smoke
 @pytest.mark.rawdeployment
-@pytest.mark.usefixtures("guardrails_gateway_config", "guardrails_orchestrator")
+@pytest.mark.usefixtures("guardrails_gateway_config")
 class TestGuardrailsOrchestratorWithBuiltInDetectors:
     """
     Tests that the basic functionality of the GuardrailsOrchestrator work properly with the built-in (regex) detectors.
@@ -261,7 +260,6 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
     indirect=True,
 )
 @pytest.mark.rawdeployment
-@pytest.mark.usefixtures("guardrails_orchestrator")
 class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
     """
     These tests verify that the GuardrailsOrchestrator works as expected when using HuggingFace detectors

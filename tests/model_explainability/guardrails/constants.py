@@ -20,3 +20,6 @@ CHAT_GENERATION_CONFIG: Dict[str, Any] = {
         "port": 8032,
     }
 }
+
+EXAMPLE_EMAIL_ADDRESS: str = "myemail@domain.com"
+PROMPT_WITH_PII: str = f"This is my email address: {EXAMPLE_EMAIL_ADDRESS}, just answer ACK."

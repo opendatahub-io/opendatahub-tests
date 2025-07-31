@@ -2,7 +2,11 @@ import pytest
 import yaml
 from simple_logger.logger import get_logger
 
-from tests.model_explainability.guardrails.constants import CHAT_GENERATION_CONFIG, BUILTIN_DETECTOR_CONFIG
+from tests.model_explainability.guardrails.constants import (
+    CHAT_GENERATION_CONFIG,
+    BUILTIN_DETECTOR_CONFIG,
+    PROMPT_WITH_PII,
+)
 from tests.model_explainability.guardrails.test_guardrails import MNT_MODELS
 from utilities.constants import MinIo
 
@@ -30,7 +34,6 @@ PII_REGEX_SHIELD_ID = "regex"
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("minio_pod", "guardrails_orchestrator")
 class TestLlamaStackFMSGuardrailsProvider:
     """
     Adds basic tests for the LlamaStack FMS Guardrails provider.
@@ -41,7 +44,7 @@ class TestLlamaStackFMSGuardrailsProvider:
     1. Register the generator model via lls client
     2. Test that we can run inferences on said model via lls client
     3. Register the shields (detectors)
-    4. TODO: Add tests for run_shields
+    4. Test a basic detection (PII) by using run_shields
     """
 
     def test_fms_guardrails_register_model(self, qwen_isvc, llamastack_client_trustyai):
@@ -85,6 +88,7 @@ class TestLlamaStackFMSGuardrailsProvider:
             provider_shield_id=PII_REGEX_SHIELD_ID,
             provider_id=trustyai_fms_provider_id,
             params=shield_params,
+            timeout=120,
         )
         shields = llamastack_client_trustyai.shields.list()
 
@@ -98,7 +102,7 @@ class TestLlamaStackFMSGuardrailsProvider:
             shield_id=PII_REGEX_SHIELD_ID,
             messages=[
                 {
-                    "content": "my email is example@mail.com",
+                    "content": PROMPT_WITH_PII,
                     "role": "system",
                 },
             ],
