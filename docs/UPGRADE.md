@@ -37,6 +37,16 @@ uv run pytest --pre-upgrade --post-upgrade
 uv run pytest --pre-upgrade --post-upgrade --upgrade-deployment-modes=servelerss
 ```
 
+This will run pre-upgrade tests:
 ```bash
-uv run pytest --pre-upgrade --post-upgrade --upgrade-deployment-modes=servelerss,rawdeployment
+uv run pytest --pre-upgrade --upgrade-deployment-modes=serverless,rawdeployment,authorino
+```
+Once the RHOAI upgrade is completed, run post-upgrade tests:
+```bash
+uv run pytest --post-upgrade --upgrade-deployment-modes=serverless,rawdeployment,authorino
+```
+
+If you need to upgrade a one kserve-raw test with no dependent operators:
+```bash
+uv run pytest --pre-upgrade --post-upgrade --upgrade-deployment-modes=rawdeployment --tc=dependent_operators:"
 ```
