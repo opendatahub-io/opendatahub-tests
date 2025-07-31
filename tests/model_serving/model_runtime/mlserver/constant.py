@@ -14,22 +14,6 @@ from utilities.constants import (
     RuntimeTemplates,
 )
 
-SKLEARN_FRAMEWORK: str = "sklearn"
-
-XGBOOST_FRAMEWORK: str = "xgboost"
-
-LIGHTGBM_FRAMEWORK: str = "lightgbm"
-
-CATBOOST_FRAMEWORK: str = "catboost"
-
-MLFLOW_FRAMEWORK: str = "mlflow"
-
-HUGGING_FACE_FRAMEWORK: str = "huggingface"
-
-DETERMINISTIC_OUTPUT: str = "deterministic"
-
-NON_DETERMINISTIC_OUTPUT: str = "non_deterministic"
-
 LOCAL_HOST_URL: str = "http://localhost"
 
 MLSERVER_REST_PORT: int = 8080
@@ -38,9 +22,33 @@ MLSERVER_GRPC_PORT: int = 9000
 
 MLSERVER_GRPC_REMOTE_PORT: int = 443
 
+RAW_DEPLOYMENT_TYPE: str = "raw"
+
+SERVERLESS_DEPLOYMENT_TYPE: str = "serverless"
+
+CATBOOST_MODEL_FORMAT_NAME: str = "catboost"
+
+HUGGING_FACE_MODEL_FORMAT_NAME: str = "huggingface"
+
+MLFLOW_MODEL_FORMAT_NAME: str = "mlflow"
+
+LIGHTGBM_MODEL_FORMAT_NAME: str = "lightgbm"
+
+SKLEARN_MODEL_FORMAT_NAME: str = "sklearn"
+
+XGBOOST_MODEL_FORMAT_NAME: str = "xgboost"
+
+DETERMINISTIC_OUTPUT: str = "deterministic"
+
+NON_DETERMINISTIC_OUTPUT: str = "non_deterministic"
+
 MODEL_PATH_PREFIX: str = "mlserver/model_repository"
 
 PROTO_FILE_PATH: str = "utilities/manifests/common/grpc_predict_v2.proto"
+
+REST_PROTOCOL_TYPE_DICT: dict[str, str] = {"protocol_type": Protocols.REST}
+
+GRPC_PROTOCOL_TYPE_DICT: dict[str, str] = {"protocol_type": Protocols.GRPC}
 
 MLSERVER_TESTS_DIR: str = os.path.dirname(__file__)
 
@@ -86,10 +94,10 @@ BASE_SERVERLESS_DEPLOYMENT_CONFIG: dict[str, Any] = {
 }
 
 SKLEARN_REST_INPUT_QUERY: dict[str, Any] = {
-    "id": "sklearn-iris",
+    "id": "sklearn",
     "inputs": [
         {
-            "name": "sklearn-iris-input-0",
+            "name": "sklearn-input-0",
             "shape": [2, 4],
             "datatype": "FP32",
             "data": [[6.8, 2.8, 4.8, 1.4], [6, 3.4, 4.5, 1.6]],
@@ -98,11 +106,11 @@ SKLEARN_REST_INPUT_QUERY: dict[str, Any] = {
 }
 
 SKLEARN_GRPC_INPUT_QUERY: dict[str, Any] = {
-    "model_name": "sklearn-iris",
+    "model_name": "sklearn",
     "model_version": "v1.0.0",
     "inputs": [
         {
-            "name": "sklearn-iris-input-0",
+            "name": "sklearn-input-0",
             "datatype": "FP32",
             "shape": [2, 4],
             "contents": {"fp32_contents": [6.8, 2.8, 4.8, 1.4, 6, 3.4, 4.5, 1.6]},
@@ -111,10 +119,10 @@ SKLEARN_GRPC_INPUT_QUERY: dict[str, Any] = {
 }
 
 XGBOOST_REST_INPUT_QUERY: dict[str, Any] = {
-    "id": "xgboost-iris",
+    "id": "xgboost",
     "inputs": [
         {
-            "name": "xgboost-iris-input-0",
+            "name": "xgboost-input-0",
             "shape": [2, 4],
             "datatype": "FP32",
             "data": [[6.8, 2.8, 4.8, 1.4], [6, 3.4, 4.5, 1.6]],
@@ -123,11 +131,11 @@ XGBOOST_REST_INPUT_QUERY: dict[str, Any] = {
 }
 
 XGBOOST_GRPC_INPUT_QUERY: dict[str, Any] = {
-    "model_name": "xgboost-iris",
+    "model_name": "xgboost",
     "model_version": "v1.0.0",
     "inputs": [
         {
-            "name": "xgboost-iris-input-0",
+            "name": "xgboost-input-0",
             "datatype": "FP32",
             "shape": [2, 4],
             "contents": {"fp32_contents": [6.8, 2.8, 4.8, 1.4, 6, 3.4, 4.5, 1.6]},
@@ -136,10 +144,10 @@ XGBOOST_GRPC_INPUT_QUERY: dict[str, Any] = {
 }
 
 LIGHTGBM_REST_INPUT_QUERY: dict[str, Any] = {
-    "id": "lightgbm-iris",
+    "id": "lightgbm",
     "inputs": [
         {
-            "name": "lightgbm-iris-input-0",
+            "name": "lightgbm-input-0",
             "shape": [1, 4],
             "datatype": "FP32",
             "data": [[6.7, 3.3, 5.7, 2.1]],
@@ -148,11 +156,11 @@ LIGHTGBM_REST_INPUT_QUERY: dict[str, Any] = {
 }
 
 LIGHTGBM_GRPC_INPUT_QUERY: dict[str, Any] = {
-    "model_name": "lightgbm-iris",
+    "model_name": "lightgbm",
     "model_version": "v0.1.0",
     "inputs": [
         {
-            "name": "lightgbm-iris-input-0",
+            "name": "lightgbm-input-0",
             "datatype": "FP32",
             "shape": [1, 4],
             "contents": {"fp32_contents": [6.7, 3.3, 5.7, 2.1]},
@@ -186,7 +194,7 @@ CATBOOST_GRPC_INPUT_QUERY: dict[str, Any] = {
 }
 
 MLFLOW_REST_INPUT_QUERY: dict[str, Any] = {
-    "id": "mlflow-wine-classifier",
+    "id": "mlflow",
     "inputs": [
         {"name": "fixed acidity", "shape": [1], "datatype": "FP32", "data": [7.4]},
         {"name": "volatile acidity", "shape": [1], "datatype": "FP32", "data": [0.7000]},
@@ -203,7 +211,7 @@ MLFLOW_REST_INPUT_QUERY: dict[str, Any] = {
 }
 
 MLFLOW_GRPC_INPUT_QUERY: dict[str, Any] = {
-    "model_name": "mlflow-wine-classifier",
+    "model_name": "mlflow",
     "model_version": "v0.1.0",
     "inputs": [
         {"name": "fixed acidity", "shape": [1], "datatype": "FP32", "contents": {"fp32_contents": [7.4]}},
@@ -233,7 +241,7 @@ HUGGING_FACE_REST_INPUT_QUERY: dict[str, Any] = {
 }
 
 HUGGING_FACE_GRPC_INPUT_QUERY: dict[str, Any] = {
-    "model_name": "distilgpt2",
+    "model_name": "huggingface",
     "model_version": "v0.1.0",
     "inputs": [
         {
@@ -243,4 +251,49 @@ HUGGING_FACE_GRPC_INPUT_QUERY: dict[str, Any] = {
             "contents": {"bytes_contents": ["VGhpcyBpcyBhIHRlc3QK"]},
         }
     ],
+}
+
+MODEL_CONFIGS: dict[str, dict[str, Any]] = {
+    CATBOOST_MODEL_FORMAT_NAME: {
+        "model_name": "catboost",
+        "model_version": "v0.1.0",
+        "rest_query": CATBOOST_REST_INPUT_QUERY,
+        "grpc_query": CATBOOST_GRPC_INPUT_QUERY,
+        "output_type": DETERMINISTIC_OUTPUT,
+    },
+    HUGGING_FACE_MODEL_FORMAT_NAME: {
+        "model_name": "huggingface",
+        "model_version": "v0.1.0",
+        "rest_query": HUGGING_FACE_REST_INPUT_QUERY,
+        "grpc_query": HUGGING_FACE_GRPC_INPUT_QUERY,
+        "output_type": NON_DETERMINISTIC_OUTPUT,
+    },
+    LIGHTGBM_MODEL_FORMAT_NAME: {
+        "model_name": "lightgbm",
+        "model_version": "v0.1.0",
+        "rest_query": LIGHTGBM_REST_INPUT_QUERY,
+        "grpc_query": LIGHTGBM_GRPC_INPUT_QUERY,
+        "output_type": DETERMINISTIC_OUTPUT,
+    },
+    MLFLOW_MODEL_FORMAT_NAME: {
+        "model_name": "mlflow",
+        "model_version": "v0.1.0",
+        "rest_query": MLFLOW_REST_INPUT_QUERY,
+        "grpc_query": MLFLOW_GRPC_INPUT_QUERY,
+        "output_type": DETERMINISTIC_OUTPUT,
+    },
+    SKLEARN_MODEL_FORMAT_NAME: {
+        "model_name": "sklearn",
+        "model_version": "v1.0.0",
+        "rest_query": SKLEARN_REST_INPUT_QUERY,
+        "grpc_query": SKLEARN_GRPC_INPUT_QUERY,
+        "output_type": DETERMINISTIC_OUTPUT,
+    },
+    XGBOOST_MODEL_FORMAT_NAME: {
+        "model_name": "xgboost",
+        "model_version": "v1.0.0",
+        "rest_query": XGBOOST_REST_INPUT_QUERY,
+        "grpc_query": XGBOOST_GRPC_INPUT_QUERY,
+        "output_type": DETERMINISTIC_OUTPUT,
+    },
 }

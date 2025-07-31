@@ -208,6 +208,8 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
         return
 
     model_car_data = yaml_config["model-car"]
+    default_serving_config = yaml_config.get("default", {})
+
     if not isinstance(model_car_data, list):
         raise ValueError("Invalid format for `model-car` in YAML. Expected a list of objects.")
 
@@ -224,12 +226,13 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
 
         name = model_car.get("name", "").strip()
         image = model_car.get("image", "").strip()
-        serving_config = model_car.get("serving_arguments", [])
-        args = serving_config.get("args", [])
-        gpu_count = serving_config.get("gpu_count", 1)
 
         if not name or not image:
             continue
+
+        serving_config = model_car.get("serving_arguments") or default_serving_config.get("serving_arguments", {})
+        args = serving_config.get("args", [])
+        gpu_count = serving_config.get("gpu_count", 1)
 
         if metafunc.cls.__name__ == "TestVLLMModelCarRaw":
             param, test_id = build_raw_params(name=name, image=image, args=args, gpu_count=gpu_count)
