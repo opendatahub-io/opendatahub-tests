@@ -387,7 +387,11 @@ def guardrails_orchestrator_ssl_cert(guardrails_orchestrator_route: Route):
             input="",
             capture_output=True,
             text=True,
+            timeout=30,
         )
+
+        if result.returncode != 0 and "CONNECTED" not in result.stdout:
+            raise RuntimeError(f"Failed to connect to {hostname}: {result.stderr}")
 
         cert_lines = []
         in_cert = False
@@ -398,6 +402,9 @@ def guardrails_orchestrator_ssl_cert(guardrails_orchestrator_route: Route):
                 cert_lines.append(line)
             if "-----END CERTIFICATE-----" in line:
                 in_cert = False
+
+        if not cert_lines:
+            raise RuntimeError(f"No certificate found in response from {hostname}")
 
         filepath = os.path.join(py_config["tmp_base_dir"], "gorch_cert.crt")
         with open(filepath, "w") as f:
