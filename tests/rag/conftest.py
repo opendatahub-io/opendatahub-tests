@@ -83,6 +83,7 @@ def llama_stack_distribution_from_template(
         replicas=1,
         server=llama_stack_server(),
     ) as llama_stack_distribution:
+        llama_stack_distribution.wait_for_condition(condition="HealthCheck", status="True", timeout=240)
         yield llama_stack_distribution
 
 
