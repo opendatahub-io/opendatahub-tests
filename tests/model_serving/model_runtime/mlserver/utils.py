@@ -26,7 +26,12 @@ from tests.model_serving.model_runtime.mlserver.constant import (
     MLSERVER_GRPC_PORT,
     DETERMINISTIC_OUTPUT,
     NON_DETERMINISTIC_OUTPUT,
-    HUGGING_FACE_FRAMEWORK,
+    MODEL_PATH_PREFIX,
+    HUGGING_FACE_MODEL_FORMAT_NAME,
+    RAW_DEPLOYMENT_TYPE,
+    SERVERLESS_DEPLOYMENT_TYPE,
+    BASE_RAW_DEPLOYMENT_CONFIG,
+    BASE_SERVERLESS_DEPLOYMENT_CONFIG,
 )
 from utilities.constants import KServeDeploymentType, Protocols
 
@@ -253,7 +258,7 @@ def validate_nondeterministic_snapshot(response: Any, model_framework: str, prot
             decoded_bytes = base64.b64decode(b64_encoded)
             response_data = decoded_bytes.decode("utf-8")
 
-        if model_framework == HUGGING_FACE_FRAMEWORK:
+        if model_framework == HUGGING_FACE_MODEL_FORMAT_NAME:
             assert "generated_text" in response_data, "Keyword 'generated_text' not found in generated text."
             assert "test" in response_data, "Keyword 'test' not found in generated text."
 
@@ -261,3 +266,83 @@ def validate_nondeterministic_snapshot(response: Any, model_framework: str, prot
         raise RuntimeError(
             f"Exception in validate_nondeterministic_snapshot: with response_data = {response_data} and exception = {e}"
         ) from e
+
+
+def get_model_storage_uri_dict(model_format_name: str) -> dict[str, str]:
+    """
+    Generate a dictionary containing the storage path for a given model format.
+
+    This utility helps build a consistent storage URI dictionary, typically used
+    for referencing model directories in file systems or remote storage.
+
+    Args:
+        model_format_name (str): Name of the model format or subdirectory.
+
+    Returns:
+        dict[str, str]: A dictionary with a single key "model-dir" pointing to the
+                        constructed path using the global MODEL_PATH_PREFIX.
+                        Example: {"model-dir": "/mnt/models/sklearn"}
+    """
+    return {"model-dir": f"{MODEL_PATH_PREFIX.rstrip('/')}/{model_format_name.lstrip('/')}"}
+
+
+def get_model_namespace_dict(model_format_name: str, deployment_type: str, protocol_type: str) -> dict[str, str]:
+    """
+    Generate a dictionary containing a unique model namespace or name identifier.
+
+    The function constructs a name by concatenating the given model format,
+    deployment type, and protocol type using hyphens. It is useful for dynamically
+    naming model-serving resources, configurations, or deployments.
+
+    Args:
+        model_format_name (str): The model format name (e.g., "onnx", "sklearn").
+        deployment_type (str): The type of deployment (e.g., "serverless", "raw").
+        protocol_type (str): The communication protocol (e.g., "rest", "grpc").
+
+    Returns:
+        dict[str, str]: A dictionary with the key "name" and a concatenated identifier as value.
+                        Example: {"name": "onnx-serverless-rest"}
+    """
+    name = f"{model_format_name.strip()}-{deployment_type.strip()}-{protocol_type.strip()}"
+    return {"name": name}
+
+
+def get_deployment_config_dict(model_format_name: str, deployment_type: str) -> dict[str, str]:
+    """
+    Generate a deployment configuration dictionary based on the model format and deployment type.
+
+    This function merges a base deployment configuration (either raw or serverless)
+    with a given model format name to produce a complete configuration dictionary.
+
+    Args:
+        model_format_name (str): The model format name (e.g., "onnx", "sklearn").
+        deployment_type (str): The deployment type (e.g., "raw", "serverless").
+
+    Returns:
+        dict[str, str]: A dictionary containing the deployment configuration.
+    """
+    deployment_config_dict = {}
+
+    if deployment_type == RAW_DEPLOYMENT_TYPE:
+        deployment_config_dict = {"name": model_format_name, **BASE_RAW_DEPLOYMENT_CONFIG}
+
+    if deployment_type == SERVERLESS_DEPLOYMENT_TYPE:
+        deployment_config_dict = {"name": model_format_name, **BASE_SERVERLESS_DEPLOYMENT_CONFIG}
+
+    return deployment_config_dict
+
+
+def get_test_case_id(model_format_name: str, deployment_type: str, protocol_type: str) -> str:
+    """
+    Generate a test case identifier string based on model format, deployment type, and protocol type.
+
+    Args:
+        model_format_name (str): The model format name (e.g., "onnx", "sklearn").
+        deployment_type (str): The deployment type (e.g., "raw", "serverless").
+        protocol_type (str): The protocol type (e.g., "rest", "grpc").
+
+    Returns:
+        str: A test case ID in the format: "<model_format>-<deployment_type>-<protocol_type>-deployment".
+              Example: "onnx-raw-rest-deployment"
+    """
+    return f"{model_format_name.strip()}-{deployment_type.strip()}-{protocol_type.strip()}-deployment"

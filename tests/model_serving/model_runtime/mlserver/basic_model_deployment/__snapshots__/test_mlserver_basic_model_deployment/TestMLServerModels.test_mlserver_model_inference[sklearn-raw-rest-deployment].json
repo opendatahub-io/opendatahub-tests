@@ -1,14 +1,14 @@
 {
-  "id": "xgboost-iris",
-  "model_name": "xgboost-iris",
+  "id": "sklearn",
+  "model_name": "sklearn",
   "model_version": "v1.0.0",
   "outputs": [
     {
       "data": [
-        1.0,
-        1.0
+        1,
+        1
       ],
-      "datatype": "FP32",
+      "datatype": "INT64",
       "name": "predict",
       "parameters": {
         "content_type": "np"

@@ -1,5 +1,5 @@
 {
-  "modelName": "mlflow-wine-classifier",
+  "modelName": "mlflow",
   "modelVersion": "v0.1.0",
   "outputs": [
     {
