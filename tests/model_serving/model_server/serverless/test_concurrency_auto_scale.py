@@ -1,6 +1,6 @@
 import pytest
 
-from tests.model_serving.model_server.serverless.utils import (
+from tests.model_serving.model_server.utils import (
     inference_service_pods_sampler,
 )
 from utilities.constants import (
