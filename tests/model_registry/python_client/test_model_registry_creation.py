@@ -145,4 +145,4 @@ class TestModelRegistryCreation:
         output = execute_model_registry_get_command(
             url=f"{model_registry_rest_url}/{endpoint}", headers=model_registry_rest_headers, json_output=False
         )
-        assert output["raw_output"].lower() == "OK".lower()
+        assert output["raw_output"] == "OK"
