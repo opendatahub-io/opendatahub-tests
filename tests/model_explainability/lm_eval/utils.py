@@ -1,4 +1,4 @@
-from typing import List,Union
+from typing import List, Union
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.lm_eval_job import LMEvalJob
@@ -68,7 +68,7 @@ def get_lmeval_tasks(min_downloads: Union[int, float], max_downloads: Union[int,
     # if max_downloads is provided, filter for tasks that have less than
     # or equal to the maximum number of downloads
     if max_downloads is not None:
-        if (max_downloads <= 0 | max_downloads > max(lmeval_tasks["HF dataset downloads"])):
+        if max_downloads <= 0 | max_downloads > max(lmeval_tasks["HF dataset downloads"]):
             raise ValueError("Maximum downloads must be greater than 0 and less than the maximum number of downloads")
         if isinstance(max_downloads, float):
             if not 0 <= min_downloads <= 1:
