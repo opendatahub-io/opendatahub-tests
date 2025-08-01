@@ -1,12 +1,15 @@
 import pytest
 from typing import Generator, Any
+
+from _pytest.config import Config
+
+from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.secret import Secret
 from ocp_resources.namespace import Namespace
 from ocp_resources.service import Service
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.deployment import Deployment
 
-from pytest import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 
 
@@ -14,8 +17,8 @@ from tests.model_registry.constants import (
     MODEL_REGISTRY_DB_SECRET_STR_DATA,
     MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
 )
-from tests.model_registry.negative_tests.constants import CUSTOM_NEGATIVE_NS
 from tests.model_registry.utils import get_model_registry_deployment_template_dict, get_model_registry_db_label_dict
+from utilities.constants import MODEL_REGISTRY_CUSTOM_NAMESPACE
 from utilities.infra import create_ns
 
 DB_RESOURCES_NAME_NEGATIVE = "db-model-registry-negative"
@@ -23,10 +26,15 @@ DB_RESOURCES_NAME_NEGATIVE = "db-model-registry-negative"
 
 @pytest.fixture(scope="class")
 def model_registry_namespace_for_negative_tests(
-    request: FixtureRequest, admin_client: DynamicClient
+    dsc_resource: DataScienceCluster,
+    admin_client: DynamicClient,
+    pytestconfig: Config,
 ) -> Generator[Namespace, Any, Any]:
+    namespace_name = MODEL_REGISTRY_CUSTOM_NAMESPACE
+    if pytestconfig.option.custom_namespace:
+        namespace_name = "rhoai-model-registries"
     with create_ns(
-        name=request.param.get("namespace_name", CUSTOM_NEGATIVE_NS),
+        name=namespace_name,
         admin_client=admin_client,
     ) as ns:
         yield ns

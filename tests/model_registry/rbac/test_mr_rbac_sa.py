@@ -1,37 +1,21 @@
 # AI Disclaimer: Google Gemini 2.5 pro has been used to generate a majority of this code, with human review and editing.
 import pytest
-from pytest_testconfig import config as py_config
 from typing import Self
 from simple_logger.logger import get_logger
 from model_registry import ModelRegistry as ModelRegistryClient
 from tests.model_registry.rbac.utils import build_mr_client_args
-from utilities.constants import DscComponents
 from mr_openapi.exceptions import ForbiddenException
 
 LOGGER = get_logger(name=__name__)
 
 
-@pytest.mark.parametrize(
-    "updated_dsc_component_state_scope_class",
-    [
-        pytest.param({
-            "component_patch": {
-                DscComponents.MODELREGISTRY: {
-                    "managementState": DscComponents.ManagementState.MANAGED,
-                    "registriesNamespace": py_config["model_registry_namespace"],
-                },
-            }
-        }),
-    ],
-    indirect=True,
-    scope="class",
-)
 @pytest.mark.usefixtures(
     "updated_dsc_component_state_scope_class",
     "is_model_registry_oauth",
     "mysql_metadata_resources",
     "model_registry_instance_mysql",
 )
+@pytest.mark.custom_namespace
 class TestModelRegistryRBAC:
     """
     Tests RBAC for Model Registry REST endpoint using ServiceAccount tokens.

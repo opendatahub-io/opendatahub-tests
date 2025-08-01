@@ -1,6 +1,5 @@
 from typing import Self, Any
 import pytest
-from pytest_testconfig import py_config
 
 from tests.model_registry.rest_api.constants import (
     MODEL_REGISTER,
@@ -19,24 +18,14 @@ from tests.model_registry.rest_api.constants import (
 from tests.model_registry.rest_api.utils import validate_resource_attributes
 from simple_logger.logger import get_logger
 
-from utilities.constants import DscComponents
 
 LOGGER = get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(
-    "updated_dsc_component_state_scope_class, is_model_registry_oauth, registered_model_rest_api",
+    "registered_model_rest_api",
     [
         pytest.param(
-            {
-                "component_patch": {
-                    DscComponents.MODELREGISTRY: {
-                        "managementState": DscComponents.ManagementState.MANAGED,
-                        "registriesNamespace": py_config["model_registry_namespace"],
-                    },
-                },
-            },
-            {},
             MODEL_REGISTER_DATA,
         ),
     ],

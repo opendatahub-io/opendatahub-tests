@@ -7,8 +7,7 @@ from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegis
 from pytest_testconfig import config as py_config
 from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
-from tests.model_registry.negative_tests.constants import CUSTOM_NEGATIVE_NS
-from utilities.constants import DscComponents, Annotations
+from utilities.constants import Annotations
 from tests.model_registry.constants import (
     MR_OPERATOR_NAME,
     MR_INSTANCE_NAME,
@@ -21,42 +20,13 @@ from kubernetes.dynamic.exceptions import ForbiddenError
 LOGGER = get_logger(name=__name__)
 
 
-@pytest.mark.parametrize(
-    "model_registry_namespace_for_negative_tests, updated_dsc_component_state_scope_class, expected_namespace",
-    [
-        pytest.param(
-            {"namespace_name": CUSTOM_NEGATIVE_NS},
-            {
-                "component_patch": {
-                    DscComponents.MODELREGISTRY: {
-                        "managementState": DscComponents.ManagementState.MANAGED,
-                        "registriesNamespace": py_config["model_registry_namespace"],
-                    },
-                }
-            },
-            py_config["model_registry_namespace"],
-        ),
-        pytest.param(
-            {"namespace_name": py_config["model_registry_namespace"]},
-            {
-                "component_patch": {
-                    DscComponents.MODELREGISTRY: {
-                        "managementState": DscComponents.ManagementState.MANAGED,
-                        "registriesNamespace": CUSTOM_NEGATIVE_NS,
-                    },
-                },
-            },
-            CUSTOM_NEGATIVE_NS,
-        ),
-    ],
-    indirect=["model_registry_namespace_for_negative_tests", "updated_dsc_component_state_scope_class"],
-)
 @pytest.mark.usefixtures(
     "model_registry_namespace_for_negative_tests",
     "updated_dsc_component_state_scope_class",
     "model_registry_db_secret_negative_test",
     "model_registry_db_deployment_negative_test",
 )
+@pytest.mark.custom_namespace
 class TestModelRegistryCreationNegative:
     def test_registering_model_negative(
         self: Self,
@@ -65,7 +35,6 @@ class TestModelRegistryCreationNegative:
         updated_dsc_component_state_scope_class: DataScienceCluster,
         model_registry_db_secret_negative_test: Secret,
         model_registry_db_deployment_negative_test: Deployment,
-        expected_namespace: str,
     ):
         my_sql_dict: dict[str, str] = {
             "host": f"{model_registry_db_deployment_negative_test.name}."
@@ -78,7 +47,7 @@ class TestModelRegistryCreationNegative:
         }
         with pytest.raises(
             ForbiddenError,  # UnprocessibleEntityError
-            match=f"namespace must be {expected_namespace}",
+            match=f"namespace must be {py_config['model_registry_namespace']}",
         ):
             with ModelRegistry(
                 name=MR_INSTANCE_NAME,
