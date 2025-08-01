@@ -13,6 +13,9 @@ permissions:
 jobs:
 
   dummy-workflow:
+    if: |
+      github.event.pull_request != '' &&
+      !contains(github.event.sender.login, 'coderabbitai[bot]')
     runs-on: ubuntu-latest
 
     steps:

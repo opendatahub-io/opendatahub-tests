@@ -17,6 +17,8 @@ jobs:
       - name: Run this on Dummy workflow success
         run: echo "Dummy Workflow on review completes successfully"
   download_context_artifact:
+    needs:
+      - run_on_workflow_a_success
     runs-on: ubuntu-latest
     steps:
       - name: 'Download artifact'
