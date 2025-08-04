@@ -21,6 +21,32 @@ KUBECONFIG=<kubeconfig file>
 
 or by saving the kubeconfig file under `~/.kube/config`
 
+## OpenShift CLI (oc) Binary
+
+By default, the test framework automatically downloads the OpenShift CLI binary from the target cluster's console CLI download service. This ensures compatibility between the client and cluster versions.
+
+### Using a Local oc Binary
+
+If you already have the `oc` binary installed locally, you can avoid the download by setting the `OC_BINARY_PATH` environment variable:
+
+```bash
+export OC_BINARY_PATH=/usr/local/bin/oc
+```
+
+Or run tests with the variable:
+
+```bash
+OC_BINARY_PATH=/usr/local/bin/oc uv run pytest
+```
+
+**Note:** Ensure your local `oc` binary is executable and compatible with your target cluster version.
+
+### Benefits of Using Local Binary
+
+- Faster test startup (no download time)
+- Consistent tooling across different test runs
+- Useful in air-gapped environments or when internet access is limited
+
 ## Running the tests
 ### Basic run of all tests
 
