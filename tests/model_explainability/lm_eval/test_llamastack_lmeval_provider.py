@@ -47,10 +47,7 @@ class TestLlamaStackLMEvalProvider:
             dataset_id=trustyai_lmeval_arc_easy,
             scoring_functions=["string"],
             provider_id="trustyai_lmeval",
-            metadata={
-                "tokenized_request": False,
-                "tokenizer": "google/flan-t5-small"
-            }
+            metadata={"tokenized_request": False, "tokenizer": "google/flan-t5-small"},
         )
 
         response = llamastack_client_trustyai.benchmarks.list()
