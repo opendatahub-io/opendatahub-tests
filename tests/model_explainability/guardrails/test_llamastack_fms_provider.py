@@ -1,6 +1,5 @@
 import pytest
 import yaml
-from simple_logger.logger import get_logger
 
 from tests.model_explainability.guardrails.constants import (
     CHAT_GENERATION_CONFIG,
@@ -10,7 +9,6 @@ from tests.model_explainability.guardrails.constants import (
 from tests.model_explainability.guardrails.test_guardrails import MNT_MODELS
 from utilities.constants import MinIo
 
-LOGGER = get_logger(name=__name__)
 PII_REGEX_SHIELD_ID = "regex"
 
 
@@ -18,7 +16,7 @@ PII_REGEX_SHIELD_ID = "regex"
     "model_namespace, minio_pod, minio_data_connection, orchestrator_config, guardrails_orchestrator",
     [
         pytest.param(
-            {"name": "test-guardrails-lls"},
+            {"name": "test-lls-guardrails"},
             MinIo.PodConfig.QWEN_MINIO_CONFIG,
             {"bucket": "llms"},
             {
