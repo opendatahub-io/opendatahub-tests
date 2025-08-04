@@ -2,9 +2,7 @@ import pytest
 from typing import Self, Set
 from simple_logger.logger import get_logger
 from kubernetes.dynamic import DynamicClient
-from pytest_testconfig import config as py_config
 
-from utilities.constants import DscComponents
 from utilities.general import (
     validate_container_images,
 )
@@ -13,20 +11,6 @@ from ocp_resources.pod import Pod
 LOGGER = get_logger(name=__name__)
 
 
-@pytest.mark.parametrize(
-    "updated_dsc_component_state_scope_class",
-    [
-        {
-            "component_patch": {
-                DscComponents.MODELREGISTRY: {
-                    "managementState": DscComponents.ManagementState.MANAGED,
-                    "registriesNamespace": py_config["model_registry_namespace"],
-                }
-            }
-        }
-    ],
-    indirect=True,
-)
 @pytest.mark.usefixtures(
     "updated_dsc_component_state_scope_class",
     "is_model_registry_oauth",
