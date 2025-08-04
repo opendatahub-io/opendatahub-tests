@@ -61,7 +61,7 @@ def internal_image_registry(
 def minimal_image() -> Generator[str, None, None]:
     """Provides a full image name of a minimal workbench image"""
     image_name = "jupyter-minimal-notebook" if py_config.get("distribution") == "upstream" else "s2i-minimal-notebook"
-    yield f"{image_name}:{'2024.2'}"
+    yield f"{image_name}:{'2025.1'}"
 
 
 @pytest.fixture(scope="function")
