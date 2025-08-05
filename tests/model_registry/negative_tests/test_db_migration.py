@@ -4,7 +4,6 @@ from simple_logger.logger import get_logger
 from pytest_testconfig import config as py_config
 
 from ocp_resources.pod import Pod
-from utilities.constants import DscComponents
 from tests.model_registry.constants import MR_INSTANCE_NAME
 from kubernetes.dynamic.client import DynamicClient
 from utilities.general import wait_for_container_status
@@ -13,22 +12,8 @@ from tests.model_registry.utils import wait_for_new_running_mr_pod
 LOGGER = get_logger(name=__name__)
 
 
-@pytest.mark.parametrize(
-    "updated_dsc_component_state_scope_class",
-    [
-        pytest.param({
-            "component_patch": {
-                DscComponents.MODELREGISTRY: {
-                    "managementState": DscComponents.ManagementState.MANAGED,
-                    "registriesNamespace": py_config["model_registry_namespace"],
-                },
-            }
-        }),
-    ],
-    indirect=True,
-)
 @pytest.mark.usefixtures(
-    "updated_dsc_component_state_scope_class", "model_registry_mysql_metadata_db", "model_registry_instance_mysql"
+    "updated_dsc_component_state_scope_class", "mysql_metadata_resources", "model_registry_instance_mysql"
 )
 class TestDBMigration:
     def test_db_migration_negative(

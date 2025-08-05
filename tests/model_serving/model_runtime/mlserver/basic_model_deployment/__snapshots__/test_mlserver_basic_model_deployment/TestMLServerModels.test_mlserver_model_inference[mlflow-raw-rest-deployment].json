@@ -1,6 +1,6 @@
 {
-  "id": "mlflow-wine-classifier",
-  "model_name": "mlflow-wine-classifier",
+  "id": "mlflow",
+  "model_name": "mlflow",
   "model_version": "v0.1.0",
   "outputs": [
     {

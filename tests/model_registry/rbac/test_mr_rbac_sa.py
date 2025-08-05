@@ -1,37 +1,21 @@
 # AI Disclaimer: Google Gemini 2.5 pro has been used to generate a majority of this code, with human review and editing.
 import pytest
-from pytest_testconfig import config as py_config
 from typing import Self
 from simple_logger.logger import get_logger
 from model_registry import ModelRegistry as ModelRegistryClient
 from tests.model_registry.rbac.utils import build_mr_client_args
-from utilities.constants import DscComponents
 from mr_openapi.exceptions import ForbiddenException
 
 LOGGER = get_logger(name=__name__)
 
 
-@pytest.mark.parametrize(
-    "updated_dsc_component_state_scope_class",
-    [
-        pytest.param({
-            "component_patch": {
-                DscComponents.MODELREGISTRY: {
-                    "managementState": DscComponents.ManagementState.MANAGED,
-                    "registriesNamespace": py_config["model_registry_namespace"],
-                },
-            }
-        }),
-    ],
-    indirect=True,
-    scope="class",
-)
 @pytest.mark.usefixtures(
     "updated_dsc_component_state_scope_class",
     "is_model_registry_oauth",
-    "model_registry_mysql_metadata_db",
+    "mysql_metadata_resources",
     "model_registry_instance_mysql",
 )
+@pytest.mark.custom_namespace
 class TestModelRegistryRBAC:
     """
     Tests RBAC for Model Registry REST endpoint using ServiceAccount tokens.
@@ -42,7 +26,7 @@ class TestModelRegistryRBAC:
     @pytest.mark.usefixtures("sa_namespace", "service_account")
     def test_service_account_access_denied(
         self: Self,
-        model_registry_instance_rest_endpoint: str,
+        model_registry_instance_rest_endpoint: list[str],
         sa_token: str,
     ):
         """
@@ -54,7 +38,7 @@ class TestModelRegistryRBAC:
         LOGGER.info("Expecting initial access DENIAL (403 Forbidden)")
 
         client_args = build_mr_client_args(
-            rest_endpoint=model_registry_instance_rest_endpoint, token=sa_token, author="rbac-test-denied"
+            rest_endpoint=model_registry_instance_rest_endpoint[0], token=sa_token, author="rbac-test-denied"
         )
         LOGGER.debug(f"Attempting client connection with args: {client_args}")
 
@@ -74,18 +58,18 @@ class TestModelRegistryRBAC:
     def test_service_account_access_granted(
         self: Self,
         sa_token: str,
-        model_registry_instance_rest_endpoint: str,
+        model_registry_instance_rest_endpoint: list[str],
     ):
         """
         Verifies SA access is GRANTED via REST after applying Role and RoleBinding fixtures.
         """
         LOGGER.info("--- Starting RBAC Test: Access Granted ---")
-        LOGGER.info(f"Targeting Model Registry REST endpoint: {model_registry_instance_rest_endpoint}")
+        LOGGER.info(f"Targeting Model Registry REST endpoint: {model_registry_instance_rest_endpoint[0]}")
         LOGGER.info("Applied RBAC Role/Binding via fixtures. Expecting access GRANT.")
 
         try:
             client_args = build_mr_client_args(
-                rest_endpoint=model_registry_instance_rest_endpoint, token=sa_token, author="rbac-test-granted"
+                rest_endpoint=model_registry_instance_rest_endpoint[0], token=sa_token, author="rbac-test-granted"
             )
             LOGGER.debug(f"Attempting client connection with args: {client_args}")
             mr_client_success = ModelRegistryClient(**client_args)

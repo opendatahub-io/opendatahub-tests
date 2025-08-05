@@ -23,7 +23,7 @@ from _pytest.terminal import TerminalReporter
 from typing import Optional, Any
 from pytest_testconfig import config as py_config
 
-from utilities.constants import KServeDeploymentType
+from utilities.constants import KServeDeploymentType, MODEL_REGISTRY_CUSTOM_NAMESPACE
 from utilities.database import Database
 from utilities.logger import separator, setup_logging
 from utilities.must_gather_collector import (
@@ -53,7 +53,7 @@ def pytest_addoption(parser: Parser) -> None:
     serving_arguments_group = parser.getgroup(name="Serving arguments")
     model_validation_automation_group = parser.getgroup(name="Model Validation Automation")
     hf_group = parser.getgroup(name="Hugging Face")
-
+    model_registry_group = parser.getgroup(name="Model Registry options")
     # AWS config and credentials options
     aws_group.addoption(
         "--aws-secret-access-key",
@@ -190,6 +190,13 @@ def pytest_addoption(parser: Parser) -> None:
 
     # HuggingFace options
     hf_group.addoption("--hf-access-token", default=os.environ.get("HF_ACCESS_TOKEN"), help="HF access token")
+    # Model Registry options
+    model_registry_group.addoption(
+        "--custom-namespace",
+        default=False,
+        action="store_true",
+        help="Indicates if the model registry tests are to be run against custom namespace",
+    )
 
 
 def pytest_cmdline_main(config: Any) -> None:
@@ -285,10 +292,10 @@ def pytest_sessionstart(session: Session) -> None:
     if config.getoption("--collect-only") or config.getoption("--setup-plan"):
         LOGGER.info("Skipping global config update for collect-only or setup-plan")
         return
-    updated_global_config(admin_client=get_client())
+    updated_global_config(admin_client=get_client(), config=config)
 
 
-def updated_global_config(admin_client: DynamicClient) -> None:
+def updated_global_config(admin_client: DynamicClient, config: Config) -> None:
     """
     Updates the global config with the distribution, applications namespace, and model registry namespace.
     Args:
@@ -308,9 +315,15 @@ def updated_global_config(admin_client: DynamicClient) -> None:
         pytest.exit(f"Unknown distribution: {distribution}")
 
     py_config["applications_namespace"] = get_dsci_applications_namespace(client=admin_client)
-    py_config["model_registry_namespace"] = get_data_science_cluster(
-        client=admin_client
-    ).instance.spec.components.modelregistry.registriesNamespace
+
+    if config.getoption("--custom-namespace"):
+        LOGGER.info(f"Running model registry tests against custom namespace: {MODEL_REGISTRY_CUSTOM_NAMESPACE}")
+        py_config["model_registry_namespace"] = MODEL_REGISTRY_CUSTOM_NAMESPACE
+    else:
+        LOGGER.info("Running model registry tests against default namespace")
+        py_config["model_registry_namespace"] = get_data_science_cluster(
+            client=admin_client
+        ).instance.spec.components.modelregistry.registriesNamespace
 
 
 def pytest_fixture_setup(fixturedef: FixtureDef[Any], request: FixtureRequest) -> None:
