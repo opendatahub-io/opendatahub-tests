@@ -4,11 +4,17 @@ from typing import Any, Generator
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 from ocp_resources.inference_service import InferenceService
-from tests.model_serving.model_server.utils import verify_keda_scaledobject, verify_final_pod_count
+from tests.model_serving.model_server.utils import (
+    verify_keda_scaledobject,
+    verify_final_pod_count,
+    run_inference_multiple_times,
+)
 from tests.model_serving.model_runtime.vllm.constant import BASE_RAW_DEPLOYMENT_CONFIG
 from tests.model_serving.model_runtime.vllm.basic_model_deployment.test_granite_7b_starter import SERVING_ARGUMENT
-from utilities.constants import ModelFormat, ModelVersion, RunTimeConfigs
+from utilities.constants import ModelFormat, ModelVersion, RunTimeConfigs, Protocols, Timeout
 from utilities.monitoring import validate_metrics_field
+from utilities.inference_utils import Inference
+from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 LOGGER = get_logger(name=__name__)
 
@@ -21,14 +27,9 @@ FINAL_POD_COUNT = 5
 OVMS_MODEL_NAMESPACE = "ovms-keda"
 OVMS_MODEL_NAME = "onnx-raw"
 OVMS_METRICS_QUERY = (
-    f"sum by (name) (rate(ovms_inference_time_us_sum{{"
-    f"namespace='{OVMS_MODEL_NAMESPACE}', name='{OVMS_MODEL_NAME}'"
-    f"}}[5m])) / "
-    f"sum by (name) (rate(ovms_inference_time_us_count{{"
-    f"namespace='{OVMS_MODEL_NAMESPACE}', name='{OVMS_MODEL_NAME}'"
-    f"}}[5m]))"
+    f'sum(sum_over_time(ovms_requests_success{{namespace="{OVMS_MODEL_NAMESPACE}", name="{OVMS_MODEL_NAME}"}}[5m]))'
 )
-OVMS_METRICS_THRESHOLD = 200
+OVMS_METRICS_THRESHOLD = 2.0
 
 pytestmark = [pytest.mark.keda, pytest.mark.usefixtures("valid_aws_config")]
 
@@ -43,6 +44,7 @@ pytestmark = [pytest.mark.keda, pytest.mark.usefixtures("valid_aws_config")]
                 "name": ModelFormat.ONNX,
                 "model-version": ModelVersion.OPSET13,
                 "model-dir": "test-dir",
+                "model-name": OVMS_MODEL_NAME,
                 "initial_pod_count": INITIAL_POD_COUNT,
                 "final_pod_count": FINAL_POD_COUNT,
                 "metrics_query": OVMS_METRICS_QUERY,
@@ -65,12 +67,23 @@ class TestOVMSKedaScaling:
         ovms_kserve_serving_runtime,
         stressed_ovms_keda_inference_service: Generator[InferenceService, Any, Any],
     ):
+        """Test KEDA ScaledObject configuration and run inference multiple times to trigger scaling."""
         verify_keda_scaledobject(
             client=unprivileged_client,
             isvc=stressed_ovms_keda_inference_service,
             expected_trigger_type="prometheus",
             expected_query=OVMS_METRICS_QUERY,
             expected_threshold=OVMS_METRICS_THRESHOLD,
+        )
+        # Run inference multiple times to test KEDA scaling
+        run_inference_multiple_times(
+            isvc=stressed_ovms_keda_inference_service,
+            inference_config=ONNX_INFERENCE_CONFIG,
+            inference_type=Inference.INFER,
+            protocol=Protocols.HTTPS,
+            model_name=OVMS_MODEL_NAME,
+            iterations=10,
+            run_in_parallel=True,
         )
 
     def test_ovms_keda_scaling_verify_metrics(
@@ -81,11 +94,13 @@ class TestOVMSKedaScaling:
         stressed_ovms_keda_inference_service: Generator[InferenceService, Any, Any],
         prometheus,
     ):
+        """Test that OVMS metrics are available and above the expected threshold."""
         validate_metrics_field(
             prometheus=prometheus,
             metrics_query=OVMS_METRICS_QUERY,
-            expected_value=str(OVMS_METRICS_THRESHOLD),
+            expected_value=OVMS_METRICS_THRESHOLD,
             greater_than=True,
+            timeout=Timeout.TIMEOUT_5MIN,
         )
 
     def test_ovms_keda_scaling_verify_final_pod_count(
@@ -95,6 +110,7 @@ class TestOVMSKedaScaling:
         ovms_kserve_serving_runtime,
         stressed_ovms_keda_inference_service: Generator[InferenceService, Any, Any],
     ):
+        """Test that pods scale up to the expected count after load generation."""
         verify_final_pod_count(
             unprivileged_client=unprivileged_client,
             isvc=stressed_ovms_keda_inference_service,
