@@ -201,7 +201,7 @@ def ci_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str:
 
 
 @pytest.fixture(scope="session")
-def serving_argument(pytestconfig: pytest.Config, modelcar_yaml_config: dict[str, Any] | None) -> list[str]:
+def serving_argument(pytestconfig: pytest.Config, modelcar_yaml_config: dict[str, Any] | None) -> tuple[list[str], int]:
     if modelcar_yaml_config:
         val = modelcar_yaml_config.get("serving_arguments", {})
         if isinstance(val, dict):

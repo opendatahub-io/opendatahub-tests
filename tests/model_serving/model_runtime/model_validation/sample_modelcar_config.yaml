@@ -38,7 +38,7 @@ model-car:
   - name: Qwen2.5-7B-Instruct-quantized.w8a8
     image: oci://registry.redhat.io/rhelai1/modelcar-qwen2-5-7b-instruct-quantized-w8a8:1.5
 
-  - name: Qwen2.5-7B-Instruct-quantized.w4a16
+  - name: Qwen2.5-7B-Instruct-FP8-dynamic
     image: oci://registry.redhat.io/rhelai1/modelcar-qwen2-5-7b-instruct-fp8-dynamic:1.5
     serving_arguments:
       args:
