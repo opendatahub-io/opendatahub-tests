@@ -259,9 +259,6 @@ class OCIRegistry:
             "labels": {
                 "maistra.io/expose-route": "true",
             },
-            "annotations": {
-                "sidecar.istio.io/inject": "true",
-            },
         }
 
 
