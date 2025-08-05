@@ -600,46 +600,27 @@ def oci_registry_pod_with_minio(
             {
                 "args": request.param.get("args"),
                 "env": [
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_NAME", "value": OCIRegistry.Storage.STORAGE_DRIVER},
                     {
-                        "name": "REGISTRY_STORAGE",
-                        "value": "s3",
+                        "name": "ZOT_STORAGE_STORAGEDRIVER_ROOTDIRECTORY",
+                        "value": OCIRegistry.Storage.STORAGE_DRIVER_ROOT_DIRECTORY,
+                    },
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_BUCKET", "value": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_REGION", "value": OCIRegistry.Storage.STORAGE_DRIVER_REGION},
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_REGIONENDPOINT", "value": f"http://{minio_endpoint}"},
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_ACCESSKEY", "value": MinIo.Credentials.ACCESS_KEY_VALUE},
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_SECRETKEY", "value": MinIo.Credentials.SECRET_KEY_VALUE},
+                    {
+                        "name": "ZOT_STORAGE_STORAGEDRIVER_SECURE",
+                        "value": OCIRegistry.Storage.STORAGE_STORAGEDRIVER_SECURE,
                     },
                     {
-                        "name": "REGISTRY_STORAGE_S3_BUCKET",
-                        "value": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS,
+                        "name": "ZOT_STORAGE_STORAGEDRIVER_FORCEPATHSTYLE",
+                        "value": OCIRegistry.Storage.STORAGE_STORAGEDRIVER_FORCEPATHSTYLE,
                     },
-                    {
-                        "name": "REGISTRY_STORAGE_S3_ACCESSKEY",
-                        "value": MinIo.Credentials.ACCESS_KEY_VALUE,
-                    },
-                    {
-                        "name": "REGISTRY_STORAGE_S3_SECRETKEY",
-                        "value": MinIo.Credentials.SECRET_KEY_VALUE,
-                    },
-                    {
-                        "name": "REGISTRY_STORAGE_S3_REGIONENDPOINT",
-                        "value": f"http://{minio_endpoint}",
-                    },
-                    {
-                        "name": "REGISTRY_STORAGE_S3_FORCEPATHSTYLE",
-                        "value": "true",
-                    },
-                    {
-                        "name": "REGISTRY_STORAGE_S3_SECURE",
-                        "value": "false",
-                    },
-                    {
-                        "name": "REGISTRY_STORAGE_S3_REGION",
-                        "value": "us-east-1",
-                    },
-                    {
-                        "name": "REGISTRY_STORAGE_DELETE_ENABLED",
-                        "value": "true",
-                    },
-                    {
-                        "name": "REGISTRY_VALIDATION_DISABLED",
-                        "value": "true",
-                    },
+                    {"name": "ZOT_HTTP_ADDRESS", "value": OCIRegistry.Metadata.DEFAULT_HTTP_ADDRESS},
+                    {"name": "ZOT_HTTP_PORT", "value": str(OCIRegistry.Metadata.DEFAULT_PORT)},
+                    {"name": "ZOT_LOG_LEVEL", "value": "info"},
                 ],
                 "image": request.param.get("image", OCIRegistry.PodConfig.REGISTRY_IMAGE),
                 "name": OCIRegistry.Metadata.NAME,
@@ -649,6 +630,18 @@ def oci_registry_pod_with_minio(
                     "runAsNonRoot": True,
                     "seccompProfile": {"type": "RuntimeDefault"},
                 },
+                "volumeMounts": [
+                    {
+                        "name": "zot-data",
+                        "mountPath": "/var/lib/registry",
+                    }
+                ],
+            }
+        ],
+        volumes=[
+            {
+                "name": "zot-data",
+                "emptyDir": {},
             }
         ],
         label=pod_labels,

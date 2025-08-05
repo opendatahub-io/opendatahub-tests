@@ -1,4 +1,5 @@
 import pytest
+import json
 
 from ocp_resources.route import Route
 
@@ -26,7 +27,10 @@ LOGGER = get_logger(name=__name__)
 )
 @pytest.mark.usefixtures("minio_pod", "oci_registry_pod_with_minio", "oci_registry_route")
 class TestOciRegistry:
-    """Test OCI registry deployment functionality"""
+    """
+    Temporary test for OCI registry deployment functionality using MinIO backend
+    It will be replaced with a more comprehensive e2e test as part of https://issues.redhat.com/browse/RHOAISTRAT-456
+    """
 
     def test_oci_registry_push_and_pull_operations(
         self,
@@ -44,13 +48,19 @@ class TestOciRegistry:
 
         blob_digest = push_blob_to_oci_registry(registry_url=registry_url, data=test_data, repo=test_repo)
 
-        manifest = create_manifest(blob_digest=blob_digest, data=test_data)
+        config_data = {"architecture": "amd64", "os": "linux"}
+        config_json = json.dumps(config_data, separators=(",", ":")).encode("utf-8")
+        config_digest = push_blob_to_oci_registry(registry_url=registry_url, data=config_json, repo=test_repo)
+
+        manifest = create_manifest(
+            blob_digest=blob_digest, config_json=config_json, config_digest=config_digest, data=test_data
+        )
 
         push_manifest_to_oci_registry(registry_url=registry_url, manifest=manifest, repo=test_repo, tag=test_tag)
 
-        manifest = pull_manifest_from_oci_registry(registry_url=registry_url, repo=test_repo, tag=test_tag)
+        manifest_get = pull_manifest_from_oci_registry(registry_url=registry_url, repo=test_repo, tag=test_tag)
 
-        assert manifest["schemaVersion"] == 2
-        assert manifest["config"]["digest"] == blob_digest
-        assert len(manifest["layers"]) == 1
-        assert manifest["layers"][0]["digest"] == blob_digest
+        assert manifest_get["schemaVersion"] == 2
+        assert manifest_get["config"]["digest"] == config_digest
+        assert len(manifest_get["layers"]) == 1
+        assert manifest_get["layers"][0]["digest"] == blob_digest
