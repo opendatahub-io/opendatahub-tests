@@ -1,11 +1,14 @@
 import pytest
 from typing import Self, Any
 
+from kubernetes.dynamic import DynamicClient
+
 from ocp_resources.pod import Pod
 from tests.model_registry.constants import MODEL_NAME, MODEL_DICT
 from model_registry.types import RegisteredModel
 from model_registry import ModelRegistry as ModelRegistryClient
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from simple_logger.logger import get_logger
 from tests.model_registry.rest_api.utils import ModelRegistryV1Alpha1
 from tests.model_registry.utils import (
@@ -26,7 +29,7 @@ LOGGER = get_logger(name=__name__)
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("pre_upgrade_dsc_patch")
+@pytest.mark.usefixtures("pre_upgrade_dsc_patch", "model_registry_mysql_metadata_db", "model_registry_instance_mysql")
 class TestPreUpgradeModelRegistry:
     @pytest.mark.pre_upgrade
     def test_registering_model_pre_upgrade(
@@ -119,3 +122,16 @@ class TestPostUpgradeModelRegistry:
         validate_mlmd_removal_in_model_registry_pod_log(
             deployment_containers=model_registry_deployment_containers, pod_object=model_registry_pod
         )
+
+    @pytest.mark.post_upgrade
+    def test_model_registry_storage_version(self, admin_client: DynamicClient):
+        """
+        RHOAIENG-28213: Test to ensure v1beta1 is found in crd storedVersion
+        Steps:
+            After upgrade check if the storedVersion for CRD contains v1beta1
+        """
+        mr_crd = CustomResourceDefinition(name="modelregistries.modelregistry.opendatahub.io")
+        assert mr_crd.exists
+        expected_stored_version = "v1beta1"
+        stored_version = mr_crd.instance.status.storedVersions
+        assert expected_stored_version in stored_version, f"Expected {expected_stored_version}, found: {stored_version}"
