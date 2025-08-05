@@ -1,7 +1,6 @@
 import pytest
 from typing import Self, Any
 from simple_logger.logger import get_logger
-from pytest_testconfig import config as py_config
 
 # ocp_resources imports
 from ocp_resources.pod import Pod
@@ -11,7 +10,6 @@ from tests.model_registry.utils import (
     validate_no_grpc_container,
     validate_mlmd_removal_in_model_registry_pod_log,
 )
-from utilities.constants import DscComponents
 from tests.model_registry.constants import MODEL_NAME, MODEL_DICT
 from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
@@ -23,28 +21,9 @@ CUSTOM_NAMESPACE = "model-registry-custom-ns"
 
 
 @pytest.mark.parametrize(
-    "updated_dsc_component_state_scope_class, registered_model",
+    "registered_model",
     [
         pytest.param(
-            {
-                "component_patch": {
-                    DscComponents.MODELREGISTRY: {
-                        "managementState": DscComponents.ManagementState.MANAGED,
-                        "registriesNamespace": CUSTOM_NAMESPACE,
-                    },
-                }
-            },
-            MODEL_DICT,
-        ),
-        pytest.param(
-            {
-                "component_patch": {
-                    DscComponents.MODELREGISTRY: {
-                        "managementState": DscComponents.ManagementState.MANAGED,
-                        "registriesNamespace": py_config["model_registry_namespace"],
-                    },
-                },
-            },
             MODEL_DICT,
         ),
     ],
@@ -56,6 +35,7 @@ CUSTOM_NAMESPACE = "model-registry-custom-ns"
     "model_registry_instance_mysql",
     "registered_model",
 )
+@pytest.mark.custom_namespace
 class TestModelRegistryCreation:
     """
     Tests the creation of a model registry. If the component is set to 'Removed' it will be switched to 'Managed'

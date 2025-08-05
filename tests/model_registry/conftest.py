@@ -290,18 +290,21 @@ def updated_dsc_component_state_scope_class(
         yield dsc_resource
     else:
         original_components = dsc_resource.instance.spec.components
-        component_patch = request.param["component_patch"]
+        component_patch = {
+            DscComponents.MODELREGISTRY: {
+                "managementState": DscComponents.ManagementState.MANAGED,
+                "registriesNamespace": py_config["model_registry_namespace"],
+            },
+        }
+        LOGGER.info(f"Applying patch {component_patch}")
 
         with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
             for component_name in component_patch:
                 dsc_resource.wait_for_condition(
                     condition=DscComponents.COMPONENT_MAPPING[component_name], status="True"
                 )
-            if component_patch.get(DscComponents.MODELREGISTRY):
-                namespace = Namespace(
-                    name=dsc_resource.instance.spec.components.modelregistry.registriesNamespace, ensure_exists=True
-                )
-                namespace.wait_for_status(status=Namespace.Status.ACTIVE)
+            namespace = Namespace(name=py_config["model_registry_namespace"], ensure_exists=True)
+            namespace.wait_for_status(status=Namespace.Status.ACTIVE)
             wait_for_pods_running(
                 admin_client=admin_client,
                 namespace_name=py_config["applications_namespace"],
@@ -321,7 +324,7 @@ def updated_dsc_component_state_scope_class(
             ):
                 # Since namespace specified in registriesNamespace is automatically created after setting
                 # managementStateto Managed. We need to explicitly delete it on clean up.
-                namespace = Namespace(name=value["registriesNamespace"], ensure_exists=True)
+                namespace = Namespace(name=py_config["model_registry_namespace"], ensure_exists=True)
                 if namespace:
                     namespace.delete(wait=True)
 

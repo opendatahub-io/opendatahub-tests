@@ -9,7 +9,6 @@ This suite tests various RBAC scenarios including:
 """
 
 import pytest
-from pytest_testconfig import config as py_config
 from typing import Self, Generator, List
 from simple_logger.logger import get_logger
 
@@ -25,7 +24,6 @@ from ocp_resources.service import Service
 from ocp_resources.deployment import Deployment
 from tests.model_registry.rbac.utils import build_mr_client_args, assert_positive_mr_registry, assert_forbidden_access
 from utilities.infra import get_openshift_token
-from utilities.constants import DscComponents
 from mr_openapi.exceptions import ForbiddenException
 from utilities.user_utils import UserTestSession
 from kubernetes.dynamic import DynamicClient
@@ -36,26 +34,13 @@ LOGGER = get_logger(name=__name__)
 pytestmark = [pytest.mark.usefixtures("original_user", "test_idp_user")]
 
 
-@pytest.mark.parametrize(
-    "updated_dsc_component_state_scope_class",
-    [
-        pytest.param({
-            "component_patch": {
-                DscComponents.MODELREGISTRY: {
-                    "managementState": DscComponents.ManagementState.MANAGED,
-                    "registriesNamespace": py_config["model_registry_namespace"],
-                },
-            }
-        }),
-    ],
-    indirect=True,
-)
 @pytest.mark.usefixtures(
     "updated_dsc_component_state_scope_class",
     "is_model_registry_oauth",
     "model_registry_mysql_metadata_db",
     "model_registry_instance_mysql",
 )
+@pytest.mark.custom_namespace
 class TestUserPermission:
     @pytest.mark.sanity
     def test_user_permission_non_admin_user(
