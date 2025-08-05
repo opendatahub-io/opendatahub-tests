@@ -191,7 +191,7 @@ def model_registry_instance_mysql(
         yield [mr_instance]
         mr_instance.delete(wait=True)
     else:
-        LOGGER.warning("Requested Ouath Proxy configuration:")
+        LOGGER.warning("Requested Oauth Proxy configuration:")
         mr_objects = get_model_registry_objects(
             client=admin_client,
             namespace=model_registry_namespace,
