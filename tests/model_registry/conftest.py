@@ -1,6 +1,7 @@
 from contextlib import ExitStack
 
 import pytest
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from pytest import Config
 from typing import Generator, Any
 
@@ -224,6 +225,8 @@ def model_registry_instance_rest_endpoint(admin_client: DynamicClient, model_reg
         get_mr_service_by_label(client=admin_client, namespace_name=model_registry_namespace, mr_instance=mr_instance)
         for mr_instance in mr_instances
     ]
+    if not mr_services:
+        raise ResourceNotFoundError("No model registry services found")
     return [get_endpoint_from_mr_service(svc=svc, protocol=Protocols.REST) for svc in mr_services]
 
 
@@ -359,6 +362,8 @@ def model_registry_client(
                 is_secure=False,
             )
         )
+    if not mr_clients:
+        raise ResourceNotFoundError("No model registry clients created")
     return mr_clients
 
 

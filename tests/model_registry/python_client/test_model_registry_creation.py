@@ -53,7 +53,6 @@ class TestModelRegistryCreation:
         model_registry_client: list[ModelRegistryClient],
         registered_model: RegisteredModel,
     ):
-        assert model_registry_client
         model = model_registry_client[0].get_registered_model(name=MODEL_NAME)
         expected_attrs = {
             "id": registered_model.id,
