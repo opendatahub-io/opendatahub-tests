@@ -9,7 +9,6 @@ This suite tests various RBAC scenarios including:
 """
 
 import pytest
-from pytest_testconfig import config as py_config
 from typing import Self, Generator, List
 from simple_logger.logger import get_logger
 
@@ -23,52 +22,42 @@ from ocp_resources.secret import Secret
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.service import Service
 from ocp_resources.deployment import Deployment
+from tests.model_registry.multiple_instance_utils import MR_MULTIPROJECT_TEST_SCENARIO_PARAMS
 from tests.model_registry.rbac.utils import build_mr_client_args, assert_positive_mr_registry, assert_forbidden_access
+from tests.model_registry.constants import NUM_MR_INSTANCES
 from utilities.infra import get_openshift_token
-from utilities.constants import DscComponents
 from mr_openapi.exceptions import ForbiddenException
 from utilities.user_utils import UserTestSession
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
-from tests.model_registry.multiple_instance_utils import MR_MULTIPROJECT_TEST_SCENARIO_PARAMS, NUM_MR_INSTANCES
+from tests.model_registry.utils import get_mr_service_by_label, get_endpoint_from_mr_service
+from tests.model_registry.rbac.utils import grant_mr_access, revoke_mr_access
+from utilities.constants import Protocols
 
 LOGGER = get_logger(name=__name__)
 pytestmark = [pytest.mark.usefixtures("original_user", "test_idp_user")]
 
 
-@pytest.mark.parametrize(
-    "updated_dsc_component_state_scope_class",
-    [
-        pytest.param({
-            "component_patch": {
-                DscComponents.MODELREGISTRY: {
-                    "managementState": DscComponents.ManagementState.MANAGED,
-                    "registriesNamespace": py_config["model_registry_namespace"],
-                },
-            }
-        }),
-    ],
-    indirect=True,
-)
 @pytest.mark.usefixtures(
     "updated_dsc_component_state_scope_class",
     "is_model_registry_oauth",
-    "model_registry_mysql_metadata_db",
+    "mysql_metadata_resources",
     "model_registry_instance_mysql",
 )
+@pytest.mark.custom_namespace
 class TestUserPermission:
     @pytest.mark.sanity
     def test_user_permission_non_admin_user(
         self: Self,
         test_idp_user,
-        model_registry_instance_rest_endpoint: str,
+        model_registry_instance_rest_endpoint: list[str],
         login_as_test_user: None,
     ):
         """
         This test verifies that non-admin users cannot access the Model Registry (403 Forbidden)
         """
         client_args = build_mr_client_args(
-            rest_endpoint=model_registry_instance_rest_endpoint, token=get_openshift_token()
+            rest_endpoint=model_registry_instance_rest_endpoint[0], token=get_openshift_token()
         )
         with pytest.raises(ForbiddenException) as exc_info:
             ModelRegistryClient(**client_args)
@@ -78,7 +67,7 @@ class TestUserPermission:
     @pytest.mark.sanity
     def test_user_added_to_group(
         self: Self,
-        model_registry_instance_rest_endpoint: str,
+        model_registry_instance_rest_endpoint: list[str],
         test_idp_user: UserTestSession,
         model_registry_group_with_user: Group,
         login_as_test_user: Generator[UserTestSession, None, None],
@@ -92,7 +81,7 @@ class TestUserPermission:
             wait_timeout=240,
             sleep=5,
             func=assert_positive_mr_registry,
-            model_registry_instance_rest_endpoint=model_registry_instance_rest_endpoint,
+            model_registry_instance_rest_endpoint=model_registry_instance_rest_endpoint[0],
             token=get_openshift_token(),
         )
         for _ in sampler:
@@ -103,7 +92,7 @@ class TestUserPermission:
     def test_create_group(
         self: Self,
         test_idp_user: UserTestSession,
-        model_registry_instance_rest_endpoint: str,
+        model_registry_instance_rest_endpoint: list[str],
         created_role_binding_group: RoleBinding,
         login_as_test_user: None,
     ):
@@ -116,14 +105,14 @@ class TestUserPermission:
         3. Users in the group can access the Model Registry
         """
         assert_positive_mr_registry(
-            model_registry_instance_rest_endpoint=model_registry_instance_rest_endpoint,
+            model_registry_instance_rest_endpoint=model_registry_instance_rest_endpoint[0],
         )
 
     @pytest.mark.sanity
     def test_add_single_user_role_binding(
         self: Self,
         test_idp_user: UserTestSession,
-        model_registry_instance_rest_endpoint: str,
+        model_registry_instance_rest_endpoint: list[str],
         created_role_binding_user: RoleBinding,
         login_as_test_user: None,
     ):
@@ -135,7 +124,7 @@ class TestUserPermission:
         2. The user can access the Model Registry after being granted access
         """
         assert_positive_mr_registry(
-            model_registry_instance_rest_endpoint=model_registry_instance_rest_endpoint,
+            model_registry_instance_rest_endpoint=model_registry_instance_rest_endpoint[0],
         )
 
 
@@ -172,10 +161,6 @@ class TestUserMultiProjectPermission:
         Verify that a user can be granted access to one MR instance at a time.
         All resources (MR instances and databases) are created in the same dynamically generated namespace.
         """
-
-        from tests.model_registry.utils import get_mr_service_by_label, get_endpoint_from_mr_service
-        from tests.model_registry.rbac.utils import grant_mr_access, revoke_mr_access
-        from utilities.constants import Protocols
 
         if len(model_registry_instance_parametrized) != NUM_MR_INSTANCES:
             raise ValueError(

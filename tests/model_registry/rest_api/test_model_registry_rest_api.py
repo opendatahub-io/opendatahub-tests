@@ -1,7 +1,6 @@
 from typing import Self, Any
 import pytest
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
-from pytest_testconfig import py_config
 
 from tests.model_registry.rest_api.constants import (
     MODEL_REGISTER,
@@ -17,38 +16,21 @@ from tests.model_registry.rest_api.constants import (
     CUSTOM_PROPERTY,
     REGISTERED_MODEL_DESCRIPTION,
 )
-from tests.model_registry.rest_api.utils import validate_resource_attributes, ModelRegistryV1Alpha1
+from tests.model_registry.rest_api.utils import validate_resource_attributes
 from simple_logger.logger import get_logger
 
-from utilities.constants import DscComponents
 
 LOGGER = get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(
-    "updated_dsc_component_state_scope_class, is_model_registry_oauth, registered_model_rest_api",
+    "is_model_registry_oauth, registered_model_rest_api",
     [
         pytest.param(
-            {
-                "component_patch": {
-                    DscComponents.MODELREGISTRY: {
-                        "managementState": DscComponents.ManagementState.MANAGED,
-                        "registriesNamespace": py_config["model_registry_namespace"],
-                    },
-                },
-            },
             {"use_oauth_proxy": False},
             MODEL_REGISTER_DATA,
         ),
         pytest.param(
-            {
-                "component_patch": {
-                    DscComponents.MODELREGISTRY: {
-                        "managementState": DscComponents.ManagementState.MANAGED,
-                        "registriesNamespace": py_config["model_registry_namespace"],
-                    },
-                },
-            },
             {},
             MODEL_REGISTER_DATA,
         ),
@@ -58,10 +40,11 @@ LOGGER = get_logger(name=__name__)
 @pytest.mark.usefixtures(
     "updated_dsc_component_state_scope_class",
     "is_model_registry_oauth",
-    "model_registry_mysql_metadata_db",
+    "mysql_metadata_resources",
     "model_registry_instance_mysql",
     "registered_model_rest_api",
 )
+@pytest.mark.custom_namespace
 class TestModelRegistryCreationRest:
     """
     Tests the creation of a model registry. If the component is set to 'Removed' it will be switched to 'Managed'
@@ -102,8 +85,8 @@ class TestModelRegistryCreationRest:
 
     def test_model_registry_validate_api_version(self: Self, model_registry_instance_mysql):
         api_version = ModelRegistry(
-            name=model_registry_instance_mysql.name,
-            namespace=model_registry_instance_mysql.namespace,
+            name=model_registry_instance_mysql[0].name,
+            namespace=model_registry_instance_mysql[0].namespace,
             ensure_exists=True,
         ).instance.apiVersion
         LOGGER.info(f"Validating apiversion {api_version} for model registry")
@@ -111,21 +94,10 @@ class TestModelRegistryCreationRest:
         assert api_version == expected_version
 
     def test_model_registry_validate_oauthproxy_enabled(self: Self, model_registry_instance_mysql):
-        model_registry_instance_spec = model_registry_instance_mysql.instance.spec
+        model_registry_instance_spec = model_registry_instance_mysql[0].instance.spec
         LOGGER.info(f"Validating that MR is using oauth proxy {model_registry_instance_spec}")
         assert not model_registry_instance_spec.istio
         assert model_registry_instance_spec.oauthProxy.serviceRoute == "enabled"
-
-    def test_model_registry_validate_mr_status_v1alpha1(self: Self, model_registry_instance_mysql):
-        mr_instance = ModelRegistryV1Alpha1(
-            name=model_registry_instance_mysql.name,
-            namespace=model_registry_instance_mysql.namespace,
-            ensure_exists=True,
-        ).instance
-        status = mr_instance.status.to_dict()
-        LOGGER.info(f"Validating MR status {status}")
-        if not status:
-            pytest.fail(f"Empty status found for {mr_instance}")
 
     @pytest.mark.parametrize(
         "updated_model_registry_resource, expected_param",

@@ -36,7 +36,7 @@ repos:
         exclude: .*/__snapshots__/.*|.*-input\.json$
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.12.5
+    rev: v0.12.7
     hooks:
       - id: ruff
       - id: ruff-format
@@ -55,7 +55,7 @@ repos:
       - id: gitleaks
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.17.0
+    rev: v1.17.1
     hooks:
       - id: mypy
         additional_dependencies: ["types-PyYAML", "types-requests"]
