@@ -40,7 +40,6 @@ pytestmark = [pytest.mark.usefixtures("original_user", "test_idp_user")]
 
 @pytest.mark.usefixtures(
     "updated_dsc_component_state_scope_class",
-    "is_model_registry_oauth",
     "mysql_metadata_resources",
     "model_registry_instance_mysql",
 )
