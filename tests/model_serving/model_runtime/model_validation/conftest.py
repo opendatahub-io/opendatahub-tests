@@ -143,7 +143,6 @@ def deployment_config(request: FixtureRequest) -> dict[str, Any]:
     """
     deployment_type = request.param.get("deployment_type", KServeDeploymentType.SERVERLESS)
     serving_argument = request.param.get("runtime_argument", [])
-    gpu_count = request.param.get("gpu_count", 1)
 
     config = (
         BASE_SEVERRLESS_DEPLOYMENT_CONFIG.copy()
@@ -152,7 +151,7 @@ def deployment_config(request: FixtureRequest) -> dict[str, Any]:
     )
     config["runtime_argument"] = serving_argument
     config["deployment_type"] = deployment_type
-    config["gpu_count"] = gpu_count
+    config["gpu_count"] = request.param.get("gpu_count", 1)
     config["timeout"] = TIMEOUT_20MIN
     return config
 
