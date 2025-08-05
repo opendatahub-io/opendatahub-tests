@@ -246,6 +246,25 @@ class ModelCarImage:
     GRANITE_8B_CODE_INSTRUCT: str = "oci://registry.redhat.io/rhelai1/modelcar-granite-8b-code-instruct:1.4"
 
 
+class OCIRegistry:
+    class Metadata:
+        NAME: str = "oci-registry"
+        DEFAULT_PORT: int = 5000
+        DEFAULT_ENDPOINT: str = f"{Protocols.HTTP}://{NAME}:{DEFAULT_PORT}"
+
+    class PodConfig:
+        REGISTRY_IMAGE: str = "docker.io/registry:2"
+        REGISTRY_BASE_CONFIG: dict[str, Any] = {
+            "args": None,
+            "labels": {
+                "maistra.io/expose-route": "true",
+            },
+            "annotations": {
+                "sidecar.istio.io/inject": "true",
+            },
+        }
+
+
 class MinIo:
     class Metadata:
         NAME: str = "minio"
