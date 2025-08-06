@@ -15,6 +15,7 @@ from utilities.constants import ModelFormat, ModelVersion, RunTimeConfigs, Proto
 from utilities.monitoring import validate_metrics_field
 from utilities.inference_utils import Inference
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
+from utilities.jira import is_jira_open
 
 LOGGER = get_logger(name=__name__)
 
@@ -66,8 +67,25 @@ class TestOVMSKedaScaling:
         unprivileged_client: DynamicClient,
         ovms_kserve_serving_runtime,
         stressed_ovms_keda_inference_service: Generator[InferenceService, Any, Any],
+        admin_client: DynamicClient,
     ):
         """Test KEDA ScaledObject configuration and run inference multiple times to trigger scaling."""
+
+        if is_jira_open(jira_id="RHOAIENG-31386", admin_client=admin_client):
+            patch_operations = [
+                {
+                    "op": "add",
+                    "path": "/spec/predictor/autoScaling/metrics/0/external/authenticationRef",
+                    "value": {"authModes": "bearer", "authenticationRef": {"name": "inference-prometheus-auth"}},
+                }
+            ]
+            admin_client.resources.get(api_version="v1beta1", kind="InferenceService").patch(
+                name=stressed_ovms_keda_inference_service.name,
+                namespace=stressed_ovms_keda_inference_service.namespace,
+                body=patch_operations,
+                content_type="application/json-patch+json",
+            )
+
         verify_keda_scaledobject(
             client=unprivileged_client,
             isvc=stressed_ovms_keda_inference_service,
