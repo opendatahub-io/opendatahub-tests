@@ -36,7 +36,7 @@ def get_lmevaljob_pod(client: DynamicClient, lmevaljob: LMEvalJob, timeout: int 
     return lmeval_pod
 
 
-def get_lmeval_tasks(min_downloads: int|float, max_downloads: int|float|None = None) -> List[str]:
+def get_lmeval_tasks(min_downloads: int | float, max_downloads: int | float | None = None) -> List[str]:
     """
     Gets the list of supported LM-Eval tasks that have above a certain number of minimum downloads on HuggingFace.
 
@@ -68,7 +68,7 @@ def get_lmeval_tasks(min_downloads: int|float, max_downloads: int|float|None = N
     # if max_downloads is provided, filter for tasks that have less than
     # or equal to the maximum number of downloads
     if max_downloads is not None:
-        if (max_downloads <= 0 or max_downloads > max(lmeval_tasks["HF dataset downloads"])):
+        if max_downloads <= 0 or max_downloads > max(lmeval_tasks["HF dataset downloads"]):
             raise ValueError("Maximum downloads must be greater than 0 and less than the maximum number of downloads")
         if isinstance(max_downloads, float):
             if not 0 <= max_downloads <= 1:

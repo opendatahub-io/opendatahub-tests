@@ -11,7 +11,10 @@ LMEVALJOB_COMPLETE_STATE: str = "Complete"
 
 TIER1_LMEVAL_TASKS: List[str] = get_lmeval_tasks(min_downloads=10000)
 
-TIER2_LMEVAL_TASKS: List[str] = list(set(get_lmeval_tasks(min_downloads=.70, max_downloads=10000)) - set(TIER1_LMEVAL_TASKS))
+TIER2_LMEVAL_TASKS: List[str] = list(
+    set(get_lmeval_tasks(min_downloads=0.70, max_downloads=10000)) - set(TIER1_LMEVAL_TASKS)
+)
+
 
 @pytest.mark.parametrize(
     "model_namespace, lmevaljob_hf",
