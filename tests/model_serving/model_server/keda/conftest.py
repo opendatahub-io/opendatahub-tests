@@ -12,7 +12,6 @@ from simple_logger.logger import get_logger
 from tests.model_serving.model_runtime.vllm.utils import validate_supported_quantization_schema
 from tests.model_serving.model_runtime.vllm.constant import ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES, TEMPLATE_MAP
 from utilities.manifests.vllm import VLLM_INFERENCE_CONFIG
-from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 from utilities.constants import (
     KServeDeploymentType,
@@ -36,6 +35,8 @@ LOGGER = get_logger(name=__name__)
 def create_keda_auto_scaling_config(
     query: str,
     target_value: str,
+    model_name: str,
+    namespace: Namespace,
 ) -> dict[str, Any]:
     """Create KEDA auto-scaling configuration for inference services.
 
@@ -54,6 +55,7 @@ def create_keda_auto_scaling_config(
                 "type": "External",
                 "external": {
                     "metric": {
+                        "namespace": namespace,
                         "backend": "prometheus",
                         "serverAddress": THANOS_QUERIER_ADDRESS,
                         "query": query,
@@ -144,7 +146,7 @@ def stressed_keda_vllm_inference_service(
 
     isvc_kwargs["auto_scaling"] = create_keda_auto_scaling_config(
         query=request.param.get("metrics_query"),
-        model_name=request.param["name"],
+        model_name=request.param["model-name"],
         namespace=model_namespace.name,
         target_value=str(request.param.get("metrics_threshold")),
     )
@@ -165,7 +167,7 @@ def stressed_ovms_keda_inference_service(
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     ovms_kserve_serving_runtime: ServingRuntime,
-    models_endpoint_s3_secret: Secret,
+    ci_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     model_name = f"{request.param['name']}-raw"
     with create_isvc(
@@ -175,7 +177,7 @@ def stressed_ovms_keda_inference_service(
         external_route=True,
         runtime=ovms_kserve_serving_runtime.name,
         storage_path=request.param["model-dir"],
-        storage_key=models_endpoint_s3_secret.name,
+        storage_key=ci_endpoint_s3_secret.name,
         model_format=ModelAndFormat.OPENVINO_IR,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         model_version=request.param["model-version"],
@@ -189,11 +191,6 @@ def stressed_ovms_keda_inference_service(
             target_value=str(request.param["metrics_threshold"]),
         ),
     ) as isvc:
-        isvc.wait_for_condition(condition=isvc.Condition.READY, status="True")
-        run_concurrent_load_for_keda_scaling(
-            isvc=isvc,
-            inference_config=ONNX_INFERENCE_CONFIG,
-        )
         yield isvc
 
 
