@@ -12,7 +12,7 @@ PII_REGEX_SHIELD_ID = "regex"
     "model_namespace, minio_pod, minio_data_connection",
     [
         pytest.param(
-            {"name": "test-guardrails-lls"},
+            {"name": "test-llamastack-lls"},
             MinIo.PodConfig.QWEN_MINIO_CONFIG,
             {"bucket": "llms"},
         )
