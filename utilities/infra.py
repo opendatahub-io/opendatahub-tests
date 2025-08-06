@@ -1022,7 +1022,7 @@ def get_isvc_keda_scaledobject(client: DynamicClient, isvc: InferenceService) ->
     scaled_object = scaled_object_client.get(namespace=namespace, name=isvc.name + "-predictor")
 
     if scaled_object:
-        return scaled_object
+        return [scaled_object]
     raise ResourceNotFoundError(f"{isvc.name} has no KEDA ScaledObjects")
 
 
