@@ -24,14 +24,9 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(
-    "is_model_registry_oauth, registered_model_rest_api",
+    "registered_model_rest_api",
     [
         pytest.param(
-            {"use_oauth_proxy": False},
-            MODEL_REGISTER_DATA,
-        ),
-        pytest.param(
-            {},
             MODEL_REGISTER_DATA,
         ),
     ],
@@ -39,7 +34,6 @@ LOGGER = get_logger(name=__name__)
 )
 @pytest.mark.usefixtures(
     "updated_dsc_component_state_scope_class",
-    "is_model_registry_oauth",
     "mysql_metadata_resources",
     "model_registry_instance_mysql",
     "registered_model_rest_api",
