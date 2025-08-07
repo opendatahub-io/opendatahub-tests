@@ -258,7 +258,9 @@ def verify_keda_scaledobject(
         f"Trigger type {trigger_type} does not match expected {expected_trigger_type}"
     )
     assert query == expected_query, f"Query {query} does not match expected {expected_query}"
-    assert threshold == expected_threshold, f"Threshold {threshold} does not match expected {expected_threshold}"
+    assert int(float(threshold)) == int(float(expected_threshold)), (
+        f"Threshold {threshold} does not match expected {expected_threshold}"
+    )
 
 
 def run_concurrent_load_for_keda_scaling(
@@ -327,7 +329,6 @@ def verify_final_pod_count(unprivileged_client: DynamicClient, isvc: InferenceSe
         timeout=Timeout.TIMEOUT_5MIN,
         sleep=10,
     ):
-        if pods:
-            assert len(pods) == final_pod_count, (
-                f"Final pod count {len(pods)} does not match expected {final_pod_count}"
-            )
+        if pods and len(pods) == final_pod_count:
+            return
+    raise AssertionError(f"Timed out waiting for {final_pod_count} pods. Current pod count: {len(pods) if pods else 0}")

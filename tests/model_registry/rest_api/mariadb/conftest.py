@@ -67,7 +67,6 @@ def model_registry_with_mariadb(
     admin_client: DynamicClient,
     model_registry_namespace: str,
     mariadb_mysql_config: dict[str, Any],
-    is_model_registry_oauth: bool,
 ) -> Generator[ModelRegistry, Any, Any]:
     with ModelRegistry(
         name=MR_INSTANCE_NAME,
