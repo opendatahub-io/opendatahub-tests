@@ -62,7 +62,6 @@ def model_registry_db_service(
     admin_client: DynamicClient,
     teardown_resources: bool,
     model_registry_namespace: str,
-    is_model_registry_oauth: bool,
 ) -> Generator[list[Service], Any, Any]:
     num_resources = getattr(request, "param", {}).get("num_resources", 1)
     if pytestconfig.option.post_upgrade:
@@ -89,7 +88,6 @@ def model_registry_db_pvc(
     admin_client: DynamicClient,
     teardown_resources: bool,
     model_registry_namespace: str,
-    is_model_registry_oauth: bool,
 ) -> Generator[list[PersistentVolumeClaim], Any, Any]:
     num_resources = getattr(request, "param", {}).get("num_resources", 1)
     if pytestconfig.option.post_upgrade:
@@ -116,7 +114,6 @@ def model_registry_db_secret(
     admin_client: DynamicClient,
     teardown_resources: bool,
     model_registry_namespace: str,
-    is_model_registry_oauth: bool,
 ) -> Generator[list[Secret], Any, Any]:
     num_resources = getattr(request, "param", {}).get("num_resources", 1)
     if pytestconfig.option.post_upgrade:
@@ -143,7 +140,6 @@ def model_registry_db_deployment(
     admin_client: DynamicClient,
     teardown_resources: bool,
     model_registry_namespace: str,
-    is_model_registry_oauth: bool,
 ) -> Generator[list[Deployment], Any, Any]:
     num_resources = getattr(request, "param", {}).get("num_resources", 1)
     if pytestconfig.option.post_upgrade:
@@ -182,7 +178,6 @@ def model_registry_instance_mysql(
     admin_client: DynamicClient,
     teardown_resources: bool,
     model_registry_namespace: str,
-    is_model_registry_oauth: bool,
 ) -> Generator[list[Any], Any, Any]:
     """Creates a model registry instance with oauth proxy configuration."""
     param = getattr(request, "param", {})
@@ -257,7 +252,7 @@ def updated_dsc_component_state_scope_class(
                 dsc_resource.wait_for_condition(
                     condition=DscComponents.COMPONENT_MAPPING[component_name], status="True"
                 )
-            namespace = Namespace(name=py_config["model_registry_namespace"], ensure_exists=True)
+            namespace = Namespace(name=py_config["model_registry_namespace"], wait_for_resource=True)
             namespace.wait_for_status(status=Namespace.Status.ACTIVE)
             wait_for_pods_running(
                 admin_client=admin_client,
@@ -453,11 +448,6 @@ def delete_mr_deployment() -> None:
         name=MR_INSTANCE_NAME, namespace=py_config["model_registry_namespace"], ensure_exists=True
     )
     mr_deployment.delete(wait=True)
-
-
-@pytest.fixture(scope="class")
-def is_model_registry_oauth(request: FixtureRequest) -> bool:
-    return getattr(request, "param", {}).get("use_oauth_proxy", True)
 
 
 @pytest.fixture(scope="session")
