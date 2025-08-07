@@ -201,10 +201,13 @@ def ci_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str:
 
 
 @pytest.fixture(scope="session")
-def serving_argument(pytestconfig: pytest.Config, modelcar_yaml_config: dict[str, Any] | None) -> list[str]:
+def serving_argument(pytestconfig: pytest.Config, modelcar_yaml_config: dict[str, Any] | None) -> tuple[list[str], int]:
     if modelcar_yaml_config:
-        arg = modelcar_yaml_config.get("serving_argument", [])
-        return arg if isinstance(arg, list) else [arg]
+        val = modelcar_yaml_config.get("serving_arguments", {})
+        if isinstance(val, dict):
+            args = val.get("args", [])
+            gpu_count = val.get("gpu_count", 1)
+        return args, gpu_count
 
     raw_arg = pytestconfig.option.serving_argument
     try:
