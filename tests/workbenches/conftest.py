@@ -1,6 +1,7 @@
 from typing import Generator
 
 import pytest
+import logging
 from pytest_testconfig import config as py_config
 
 
@@ -13,12 +14,13 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.route import Route
 from ocp_resources.notebook import Notebook
-from ocp_resources.cluster_operator import ClusterOperator
 
 
-from utilities.constants import Labels, Timeout
+from utilities.constants import Labels
 from utilities import constants
 from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH
+
+LOGGER = logging.getLogger(name=__name__)
 
 
 @pytest.fixture(scope="function")
@@ -40,21 +42,24 @@ def users_persistent_volume_claim(
 @pytest.fixture(scope="function")
 def internal_image_registry(
     admin_client: DynamicClient,
-) -> Generator[ClusterOperator | None, None, None]:
+) -> Generator[bool, None, None]:
+    """Check if internal image registry is available by checking the imageregistry config managementState"""
     try:
-        image_registry = ClusterOperator(
-            client=admin_client,
-            name="image-registry",
-            ensure_exists=True,
-        )
-        image_registry.wait_for_condition(
-            condition=ClusterOperator.Condition.AVAILABLE,
-            status=ClusterOperator.Condition.Status.TRUE,
-            timeout=Timeout.TIMEOUT_30SEC,
-        )
-        yield image_registry
-    except ResourceNotFoundError:
-        yield None
+        # Access the imageregistry.operator.openshift.io/v1 Config resource named "cluster"
+        api_version = "imageregistry.operator.openshift.io/v1"
+        kind = "Config"
+
+        resource = admin_client.resources.get(api_version=api_version, kind=kind)
+        config_instance = resource.get(name="cluster")
+
+        management_state = config_instance.spec.get("managementState", "").lower()
+        is_available = management_state == "managed"
+
+        LOGGER.info(f"Image registry management state: {management_state}, available: {is_available}")
+        yield is_available
+    except (ResourceNotFoundError, Exception) as e:
+        LOGGER.warning(f"Failed to check image registry config: {e}")
+        yield False
 
 
 @pytest.fixture(scope="function")
@@ -68,7 +73,7 @@ def minimal_image() -> Generator[str, None, None]:
 def default_notebook(
     request: pytest.FixtureRequest,
     admin_client: DynamicClient,
-    internal_image_registry: ClusterOperator | None,
+    internal_image_registry: bool,
     minimal_image: str,
 ) -> Generator[Notebook, None, None]:
     """Returns a new Notebook CR for a given namespace, name, and image"""
