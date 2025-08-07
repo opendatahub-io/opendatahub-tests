@@ -26,7 +26,7 @@ LOGGER = get_logger(name=__name__)
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("pre_upgrade_dsc_patch")
+@pytest.mark.usefixtures("pre_upgrade_dsc_patch", "model_registry_mysql_metadata_db", "model_registry_instance_mysql")
 class TestPreUpgradeModelRegistry:
     @pytest.mark.pre_upgrade
     def test_registering_model_pre_upgrade(
