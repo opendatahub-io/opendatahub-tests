@@ -356,7 +356,7 @@ class TestRag:
                 break
 
         embedding_dimension = embedding_model.metadata["embedding_dimension"]
-        
+
         # Create a vector database instance
         vector_db_id = f"v{uuid.uuid4().hex}"
 
@@ -383,19 +383,12 @@ class TestRag:
             session_id = rag_agent.create_session(session_name=f"s{uuid.uuid4().hex}")
 
             # Insert PDF documents about Docling
-            pdf_files_urls = [
-                "https://arxiv.org/pdf/2408.09869"
-            ]
+            pdf_files_urls = ["https://arxiv.org/pdf/2408.09869"]
             documents = [
-                RAGDocument(
-                    document_id=f"num-{i}", 
-                    content=file_url, 
-                    mime_type="application/pdf", 
-                    metadata={}
-                )
+                RAGDocument(document_id=f"num-{i}", content=file_url, mime_type="application/pdf", metadata={})
                 for i, file_url in enumerate(pdf_files_urls)
             ]
-            
+
             rag_lls_client.tool_runtime.rag_tool.insert(
                 documents=documents,
                 vector_db_id=vector_db_id,
@@ -467,7 +460,9 @@ class TestRag:
             )
 
             # Assert that validation was successful
-            assert validation_result["success"], f"RAG PDF agent validation failed. Summary: {validation_result['summary']}"
+            assert validation_result["success"], (
+                f"RAG PDF agent validation failed. Summary: {validation_result['summary']}"
+            )
 
             # Additional assertions for specific requirements
             for result in validation_result["results"]:
