@@ -1,4 +1,7 @@
+from contextlib import ExitStack
+
 import pytest
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from pytest import Config
 from typing import Generator, Any
 
@@ -19,36 +22,32 @@ from simple_logger.logger import get_logger
 from kubernetes.dynamic import DynamicClient
 from pytest_testconfig import config as py_config
 from model_registry.types import RegisteredModel
-from contextlib import ExitStack
-from typing import List
 
 from tests.model_registry.constants import (
     MR_OPERATOR_NAME,
-    MR_INSTANCE_NAME,
-    DB_RESOURCES_NAME,
+    MR_INSTANCE_BASE_NAME,
+    DB_BASE_RESOURCES_NAME,
     MODEL_REGISTRY_DB_SECRET_STR_DATA,
-    MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
-    OAUTH_PROXY_CONFIG_DICT,
-    MODEL_REGISTRY_STANDARD_LABELS,
-    ISTIO_CONFIG_DICT,
+    DB_RESOURCE_NAME,
+    MR_INSTANCE_NAME,
 )
-from tests.model_registry.rest_api.utils import ModelRegistryV1Alpha1
 from utilities.constants import Labels, Protocols
 from tests.model_registry.utils import (
     get_endpoint_from_mr_service,
     get_mr_service_by_label,
-    get_model_registry_deployment_template_dict,
-    get_model_registry_db_label_dict,
     wait_for_pods_running,
+    get_mr_service_objects,
+    get_mr_pvc_objects,
+    get_mr_secret_objects,
+    get_mr_deployment_objects,
+    get_model_registry_objects,
 )
 from utilities.constants import DscComponents
 from model_registry import ModelRegistry as ModelRegistryClient
-from semver import Version
 from utilities.general import wait_for_pods_by_labels
+from utilities.infra import get_data_science_cluster
 
 LOGGER = get_logger(name=__name__)
-
-MIN_MR_VERSION = Version.parse(version="2.20.0")
 
 
 @pytest.fixture(scope="class")
@@ -58,250 +57,203 @@ def model_registry_namespace(updated_dsc_component_state_scope_class: DataScienc
 
 @pytest.fixture(scope="class")
 def model_registry_db_service(
+    request: pytest.FixtureRequest,
     pytestconfig: Config,
     admin_client: DynamicClient,
-    model_registry_namespace: str,
     teardown_resources: bool,
-    is_model_registry_oauth: bool,
-) -> Generator[Service, Any, Any]:
+    model_registry_namespace: str,
+) -> Generator[list[Service], Any, Any]:
+    num_resources = getattr(request, "param", {}).get("num_resources", 1)
     if pytestconfig.option.post_upgrade:
-        mr_db_service = Service(name=DB_RESOURCES_NAME, namespace=model_registry_namespace, ensure_exists=True)
-        yield mr_db_service
+        mr_db_service = Service(name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True)
+        yield [mr_db_service]
         mr_db_service.delete(wait=True)
     else:
-        with Service(
+        services = get_mr_service_objects(
             client=admin_client,
-            name=DB_RESOURCES_NAME,
             namespace=model_registry_namespace,
-            ports=[
-                {
-                    "name": "mysql",
-                    "nodePort": 0,
-                    "port": 3306,
-                    "protocol": "TCP",
-                    "appProtocol": "tcp",
-                    "targetPort": 3306,
-                }
-            ],
-            selector={
-                "name": DB_RESOURCES_NAME,
-            },
-            label=get_model_registry_db_label_dict(db_resource_name=DB_RESOURCES_NAME),
-            annotations={
-                "template.openshift.io/expose-uri": r"mysql://{.spec.clusterIP}:{.spec.ports[?(.name==\mysql\)].port}",
-            },
-            teardown=teardown_resources,
-        ) as mr_db_service:
-            yield mr_db_service
+            base_name=DB_BASE_RESOURCES_NAME,
+            num=num_resources,
+            teardown_resources=teardown_resources,
+        )
+        with ExitStack() as stack:
+            mr_services = [stack.enter_context(service) for service in services]
+            yield mr_services
 
 
 @pytest.fixture(scope="class")
 def model_registry_db_pvc(
+    request: pytest.FixtureRequest,
     pytestconfig: Config,
     admin_client: DynamicClient,
-    model_registry_namespace: str,
     teardown_resources: bool,
-    is_model_registry_oauth: bool,
-) -> Generator[PersistentVolumeClaim, Any, Any]:
+    model_registry_namespace: str,
+) -> Generator[list[PersistentVolumeClaim], Any, Any]:
+    num_resources = getattr(request, "param", {}).get("num_resources", 1)
     if pytestconfig.option.post_upgrade:
-        mr_db_pvc = PersistentVolumeClaim(
-            name=DB_RESOURCES_NAME, namespace=model_registry_namespace, ensure_exists=True
-        )
-        yield mr_db_pvc
+        mr_db_pvc = PersistentVolumeClaim(name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True)
+        yield [mr_db_pvc]
         mr_db_pvc.delete(wait=True)
     else:
-        with PersistentVolumeClaim(
-            accessmodes="ReadWriteOnce",
-            name=DB_RESOURCES_NAME,
-            namespace=model_registry_namespace,
+        pvcs = get_mr_pvc_objects(
             client=admin_client,
-            size="5Gi",
-            label=get_model_registry_db_label_dict(db_resource_name=DB_RESOURCES_NAME),
-            teardown=teardown_resources,
-        ) as pvc:
-            yield pvc
+            namespace=model_registry_namespace,
+            base_name=DB_BASE_RESOURCES_NAME,
+            num=num_resources,
+            teardown_resources=teardown_resources,
+        )
+        with ExitStack() as stack:
+            mr_pvcs = [stack.enter_context(pvc) for pvc in pvcs]
+            yield mr_pvcs
 
 
 @pytest.fixture(scope="class")
 def model_registry_db_secret(
+    request: pytest.FixtureRequest,
     pytestconfig: Config,
     admin_client: DynamicClient,
-    model_registry_namespace: str,
     teardown_resources: bool,
-    is_model_registry_oauth: bool,
-) -> Generator[Secret, Any, Any]:
+    model_registry_namespace: str,
+) -> Generator[list[Secret], Any, Any]:
+    num_resources = getattr(request, "param", {}).get("num_resources", 1)
     if pytestconfig.option.post_upgrade:
-        mr_db_secret = Secret(name=DB_RESOURCES_NAME, namespace=model_registry_namespace, ensure_exists=True)
-        yield mr_db_secret
+        mr_db_secret = Secret(name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True)
+        yield [mr_db_secret]
         mr_db_secret.delete(wait=True)
     else:
-        with Secret(
+        secrets = get_mr_secret_objects(
             client=admin_client,
-            name=DB_RESOURCES_NAME,
             namespace=model_registry_namespace,
-            string_data=MODEL_REGISTRY_DB_SECRET_STR_DATA,
-            label=get_model_registry_db_label_dict(db_resource_name=DB_RESOURCES_NAME),
-            annotations=MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
-            teardown=teardown_resources,
-        ) as mr_db_secret:
-            yield mr_db_secret
+            base_name=DB_BASE_RESOURCES_NAME,
+            num=num_resources,
+            teardown_resources=teardown_resources,
+        )
+        with ExitStack() as stack:
+            mr_secrets = [stack.enter_context(secret) for secret in secrets]
+            yield mr_secrets
 
 
 @pytest.fixture(scope="class")
 def model_registry_db_deployment(
+    request: pytest.FixtureRequest,
     pytestconfig: Config,
-    model_registry_namespace: str,
-    model_registry_db_secret: Secret,
+    admin_client: DynamicClient,
     teardown_resources: bool,
-    is_model_registry_oauth: bool,
-) -> Generator[Deployment, Any, Any]:
+    model_registry_namespace: str,
+) -> Generator[list[Deployment], Any, Any]:
+    num_resources = getattr(request, "param", {}).get("num_resources", 1)
     if pytestconfig.option.post_upgrade:
-        db_deployment = Deployment(name=DB_RESOURCES_NAME, namespace=model_registry_namespace, ensure_exists=True)
-        yield db_deployment
+        db_deployment = Deployment(name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True)
+        yield [db_deployment]
         db_deployment.delete(wait=True)
     else:
-        with Deployment(
-            name=DB_RESOURCES_NAME,
+        deployments = get_mr_deployment_objects(
+            client=admin_client,
             namespace=model_registry_namespace,
-            annotations={
-                "template.alpha.openshift.io/wait-for-ready": "true",
-            },
-            label=get_model_registry_db_label_dict(db_resource_name=DB_RESOURCES_NAME),
-            replicas=1,
-            revision_history_limit=0,
-            selector={"matchLabels": {"name": DB_RESOURCES_NAME}},
-            strategy={"type": "Recreate"},
-            template=get_model_registry_deployment_template_dict(
-                secret_name=model_registry_db_secret.name, resource_name=DB_RESOURCES_NAME
-            ),
-            wait_for_resource=True,
-            teardown=teardown_resources,
-        ) as mr_db_deployment:
-            mr_db_deployment.wait_for_replicas(deployed=True)
-            yield mr_db_deployment
+            base_name=DB_BASE_RESOURCES_NAME,
+            num=num_resources,
+            teardown_resources=teardown_resources,
+        )
+        with ExitStack() as stack:
+            mr_deployments = [stack.enter_context(deployment) for deployment in deployments]
+            for deployment in mr_deployments:
+                deployment.wait_for_replicas(deployed=True)
+            yield mr_deployments
 
 
 @pytest.fixture(scope="class")
-def model_registry_mysql_metadata_db(
-    model_registry_db_secret: Secret,
-    model_registry_db_pvc: PersistentVolumeClaim,
-    model_registry_db_service: Service,
-    model_registry_db_deployment: Deployment,
-) -> Deployment:
+def mysql_metadata_resources(
+    model_registry_db_secret: list[Secret],
+    model_registry_db_pvc: list[PersistentVolumeClaim],
+    model_registry_db_service: list[Service],
+    model_registry_db_deployment: list[Deployment],
+) -> list[Deployment]:
     return model_registry_db_deployment
 
 
 @pytest.fixture(scope="class")
 def model_registry_instance_mysql(
+    request: pytest.FixtureRequest,
     pytestconfig: Config,
     admin_client: DynamicClient,
-    model_registry_namespace: str,
-    model_registry_mysql_config: dict[str, Any],
     teardown_resources: bool,
-    is_model_registry_oauth: bool,
-) -> Generator[ModelRegistry, Any, Any]:
+    model_registry_namespace: str,
+) -> Generator[list[Any], Any, Any]:
     """Creates a model registry instance with oauth proxy configuration."""
+    param = getattr(request, "param", {})
+    num_resources = param.get("num_resources", 1)
     if pytestconfig.option.post_upgrade:
         mr_instance = ModelRegistry(name=MR_INSTANCE_NAME, namespace=model_registry_namespace, ensure_exists=True)
-        yield mr_instance
+        yield [mr_instance]
         mr_instance.delete(wait=True)
     else:
-        istio_config = None
-        oauth_config = None
-        mr_class_name = ModelRegistry
-        if is_model_registry_oauth:
-            LOGGER.warning("Requested Ouath Proxy configuration:")
-            oauth_config = OAUTH_PROXY_CONFIG_DICT
-        else:
-            LOGGER.warning("Requested OSSM configuration:")
-            istio_config = ISTIO_CONFIG_DICT
-            mr_class_name = ModelRegistryV1Alpha1
-        with mr_class_name(
-            name=MR_INSTANCE_NAME,
-            namespace=model_registry_namespace,
-            label=MODEL_REGISTRY_STANDARD_LABELS,
-            grpc={},
-            rest={},
-            istio=istio_config,
-            oauth_proxy=oauth_config,
-            mysql=model_registry_mysql_config,
-            wait_for_resource=True,
-            teardown=teardown_resources,
-        ) as mr:
-            mr.wait_for_condition(condition="Available", status="True")
-            mr.wait_for_condition(condition="OAuthProxyAvailable", status="True")
-            wait_for_pods_running(
-                admin_client=admin_client, namespace_name=model_registry_namespace, number_of_consecutive_checks=6
-            )
-            yield mr
-
-
-@pytest.fixture(scope="class")
-def model_registry_mysql_config(request: FixtureRequest, model_registry_namespace: str) -> dict[str, Any]:
-    """
-    Fixture to build the MySQL config dictionary for Model Registry.
-    Expects request.param to be a dict. If 'sslRootCertificateConfigMap' is not present, it defaults to None.
-    If 'sslRootCertificateConfigMap' is present, it will be used to configure the MySQL connection.
-    Args:
-        request: The pytest request object
-        model_registry_namespace: The model registry namespoce
-    Returns:
-        dict[str, Any]: The MySQL config dictionary
-    """
-    param = request.param if hasattr(request, "param") else {}
-    config = {
-        "host": f"{DB_RESOURCES_NAME}.{model_registry_namespace}.svc.cluster.local",
-        "database": MODEL_REGISTRY_DB_SECRET_STR_DATA["database-name"],
-        "passwordSecret": {"key": "database-password", "name": DB_RESOURCES_NAME},
-        "port": param.get("port", 3306),
-        "skipDBCreation": False,
-        "username": MODEL_REGISTRY_DB_SECRET_STR_DATA["database-user"],
-    }
-    if "sslRootCertificateConfigMap" in param:
-        config["sslRootCertificateConfigMap"] = param["sslRootCertificateConfigMap"]
-
-    return config
-
-
-@pytest.fixture(scope="class")
-def model_registry_instance_rest_endpoint(admin_client: DynamicClient, model_registry_namespace: str) -> str:
-    return get_endpoint_from_mr_service(
-        svc=get_mr_service_by_label(
+        LOGGER.warning("Requested Oauth Proxy configuration:")
+        mr_objects = get_model_registry_objects(
             client=admin_client,
-            namespace_name=model_registry_namespace,
-            mr_instance=ModelRegistry(name=MR_INSTANCE_NAME, namespace=model_registry_namespace),
-        ),
-        protocol=Protocols.REST,
-    )
+            namespace=model_registry_namespace,
+            base_name=MR_INSTANCE_BASE_NAME,
+            num=num_resources,
+            teardown_resources=teardown_resources,
+            params=param,
+        )
+        with ExitStack() as stack:
+            mr_instances = [stack.enter_context(mr_obj) for mr_obj in mr_objects]
+            for mr_instance in mr_instances:
+                mr_instance.wait_for_condition(condition="Available", status="True")
+                mr_instance.wait_for_condition(condition="OAuthProxyAvailable", status="True")
+                wait_for_pods_running(
+                    admin_client=admin_client, namespace_name=model_registry_namespace, number_of_consecutive_checks=6
+                )
+            yield mr_instances
+
+
+@pytest.fixture(scope="class")
+def model_registry_instance_rest_endpoint(admin_client: DynamicClient, model_registry_namespace: str) -> list[str]:
+    """
+    Get the REST endpoint(s) for the model registry instance.
+    """
+    # get all model registry instances:
+    mr_instances = list(ModelRegistry.get(namespace=model_registry_namespace))
+    assert len(mr_instances) >= 1, f"No model registry instance for namespace {model_registry_namespace}"
+    # get all the services:
+    mr_services = [
+        get_mr_service_by_label(client=admin_client, namespace_name=model_registry_namespace, mr_instance=mr_instance)
+        for mr_instance in mr_instances
+    ]
+    if not mr_services:
+        raise ResourceNotFoundError("No model registry services found")
+    return [get_endpoint_from_mr_service(svc=svc, protocol=Protocols.REST) for svc in mr_services]
 
 
 @pytest.fixture(scope="class")
 def updated_dsc_component_state_scope_class(
     pytestconfig: Config,
-    admin_client: DynamicClient,
     request: FixtureRequest,
-    dsc_resource: DataScienceCluster,
+    admin_client: DynamicClient,
     teardown_resources: bool,
-    is_model_registry_oauth: bool,
 ) -> Generator[DataScienceCluster, Any, Any]:
+    dsc_resource = get_data_science_cluster(client=admin_client)
     if not teardown_resources or pytestconfig.option.post_upgrade:
         # if we are not tearing down resources or we are in post upgrade, we don't need to do anything
         # the pre_upgrade/post_upgrade fixtures will handle the rest
         yield dsc_resource
     else:
         original_components = dsc_resource.instance.spec.components
-        component_patch = request.param["component_patch"]
+        component_patch = {
+            DscComponents.MODELREGISTRY: {
+                "managementState": DscComponents.ManagementState.MANAGED,
+                "registriesNamespace": py_config["model_registry_namespace"],
+            },
+        }
+        LOGGER.info(f"Applying patch {component_patch}")
 
         with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
             for component_name in component_patch:
                 dsc_resource.wait_for_condition(
                     condition=DscComponents.COMPONENT_MAPPING[component_name], status="True"
                 )
-            if component_patch.get(DscComponents.MODELREGISTRY):
-                namespace = Namespace(
-                    name=dsc_resource.instance.spec.components.modelregistry.registriesNamespace, ensure_exists=True
-                )
-                namespace.wait_for_status(status=Namespace.Status.ACTIVE)
+            namespace = Namespace(name=py_config["model_registry_namespace"], wait_for_resource=True)
+            namespace.wait_for_status(status=Namespace.Status.ACTIVE)
             wait_for_pods_running(
                 admin_client=admin_client,
                 namespace_name=py_config["applications_namespace"],
@@ -321,7 +273,7 @@ def updated_dsc_component_state_scope_class(
             ):
                 # Since namespace specified in registriesNamespace is automatically created after setting
                 # managementStateto Managed. We need to explicitly delete it on clean up.
-                namespace = Namespace(name=value["registriesNamespace"], ensure_exists=True)
+                namespace = Namespace(name=py_config["model_registry_namespace"], ensure_exists=True)
                 if namespace:
                     namespace.delete(wait=True)
 
@@ -383,29 +335,38 @@ def post_upgrade_dsc_patch(
 @pytest.fixture(scope="class")
 def model_registry_client(
     current_client_token: str,
-    model_registry_instance_rest_endpoint: str,
-) -> ModelRegistryClient:
+    model_registry_instance_rest_endpoint: list[str],
+) -> list[ModelRegistryClient]:
     """
     Get a client for the model registry instance.
     Args:
-        request: The pytest request object
         current_client_token: The current client token
+        model_registry_instance_rest_endpoint: list of model registry endpoints
     Returns:
         ModelRegistryClient: A client for the model registry instance
     """
-    server, port = model_registry_instance_rest_endpoint.split(":")
-    return ModelRegistryClient(
-        server_address=f"{Protocols.HTTPS}://{server}",
-        port=int(port),
-        author="opendatahub-test",
-        user_token=current_client_token,
-        is_secure=False,
-    )
+    mr_clients = []
+    for rest_endpoint in model_registry_instance_rest_endpoint:
+        server, port = rest_endpoint.split(":")
+        mr_clients.append(
+            ModelRegistryClient(
+                server_address=f"{Protocols.HTTPS}://{server}",
+                port=int(port),
+                author="opendatahub-test",
+                user_token=current_client_token,
+                is_secure=False,
+            )
+        )
+    if not mr_clients:
+        raise ResourceNotFoundError("No model registry clients created")
+    return mr_clients
 
 
 @pytest.fixture(scope="class")
-def registered_model(request: FixtureRequest, model_registry_client: ModelRegistryClient) -> RegisteredModel:
-    return model_registry_client.register_model(
+def registered_model(
+    request: FixtureRequest, model_registry_client: list[ModelRegistryClient]
+) -> Generator[RegisteredModel, None, None]:
+    yield model_registry_client[0].register_model(
         name=request.param.get("model_name"),
         uri=request.param.get("model_uri"),
         version=request.param.get("model_version"),
@@ -446,7 +407,7 @@ def model_registry_db_instance_pod(admin_client: DynamicClient) -> Generator[Pod
     yield wait_for_pods_by_labels(
         admin_client=admin_client,
         namespace=py_config["model_registry_namespace"],
-        label_selector=f"name={DB_RESOURCES_NAME}",
+        label_selector=f"name={DB_RESOURCE_NAME}",
         expected_num_pods=1,
     )[0]
 
@@ -489,11 +450,6 @@ def delete_mr_deployment() -> None:
     mr_deployment.delete(wait=True)
 
 
-@pytest.fixture(scope="class")
-def is_model_registry_oauth(request: FixtureRequest) -> bool:
-    return getattr(request, "param", {}).get("use_oauth_proxy", True)
-
-
 @pytest.fixture(scope="session")
 def api_server_url(admin_client: DynamicClient) -> str:
     infrastructure = Infrastructure(client=admin_client, name="cluster", ensure_exists=True)
@@ -501,9 +457,9 @@ def api_server_url(admin_client: DynamicClient) -> str:
 
 
 @pytest.fixture(scope="class")
-def model_registry_rest_url(model_registry_instance_rest_endpoint: str) -> str:
+def model_registry_rest_url(model_registry_instance_rest_endpoint: list[str]) -> list[str]:
     # address and port need to be split in the client instantiation
-    return f"{Protocols.HTTPS}://{model_registry_instance_rest_endpoint}"
+    return [f"{Protocols.HTTPS}://{rest_url}" for rest_url in model_registry_instance_rest_endpoint]
 
 
 @pytest.fixture(scope="class")
@@ -533,186 +489,3 @@ def model_registry_pod(admin_client: DynamicClient, model_registry_namespace: st
     )
     assert len(mr_pod) == 1
     return mr_pod[0]
-
-
-# =============================================================================
-# RESOURCE FIXTURES PARMETRIZED
-# =============================================================================
-@pytest.fixture(scope="class")
-def updated_dsc_component_state_parametrized(
-    request: FixtureRequest,
-    admin_client: DynamicClient,
-    dsc_resource: DataScienceCluster,
-    teardown_resources: bool,
-) -> Generator[DataScienceCluster, Any, Any]:
-    """Configure DSC to use parametrized Model Registry namespace"""
-    if not teardown_resources:
-        yield dsc_resource
-
-    # Get the namespace name from the parameter if provided, otherwise use the default namespace
-    namespace_name = request.param.get("ns_name", py_config["model_registry_namespace"])
-
-    # Set the new namespace and manage
-    component_patch = {
-        DscComponents.MODELREGISTRY: {
-            "managementState": DscComponents.ManagementState.MANAGED,
-            "registriesNamespace": namespace_name,
-        },
-    }
-
-    with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
-        dsc_resource.wait_for_condition(
-            condition=DscComponents.COMPONENT_MAPPING[DscComponents.MODELREGISTRY], status="True"
-        )
-        namespace = Namespace(name=namespace_name, ensure_exists=True)
-        namespace.wait_for_status(status=Namespace.Status.ACTIVE)
-        wait_for_pods_running(
-            admin_client=admin_client,
-            namespace_name=py_config["applications_namespace"],
-            number_of_consecutive_checks=6,
-        )
-        yield dsc_resource
-
-    # Clean up the dynamic namespace
-    namespace = Namespace(name=namespace_name, ensure_exists=True)
-    if namespace:
-        namespace.delete(wait=True)
-
-
-@pytest.fixture(scope="class")
-def db_secret_parametrized(request: FixtureRequest, teardown_resources: bool) -> Generator[List[Secret], Any, Any]:
-    """Create DB Secret parametrized"""
-    with ExitStack() as stack:
-        secrets = [
-            stack.enter_context(
-                Secret(
-                    name=param.get("db_name"),
-                    namespace=param.get("ns_name", py_config["model_registry_namespace"]),
-                    string_data=MODEL_REGISTRY_DB_SECRET_STR_DATA,
-                    label=get_model_registry_db_label_dict(db_resource_name=param.get("db_name")),
-                    annotations=MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
-                    teardown=teardown_resources,
-                )
-            )
-            for param in request.param
-        ]
-        yield secrets
-
-
-@pytest.fixture(scope="class")
-def db_pvc_parametrized(
-    request: FixtureRequest, teardown_resources: bool
-) -> Generator[List[PersistentVolumeClaim], Any, Any]:
-    """Create DB PVC parametrized"""
-    with ExitStack() as stack:
-        pvc = [
-            stack.enter_context(
-                PersistentVolumeClaim(
-                    name=param.get("db_name"),
-                    namespace=param.get("ns_name", py_config["model_registry_namespace"]),
-                    accessmodes=param.get("accessmodes", "ReadWriteOnce"),
-                    size=param.get("size", "5Gi"),
-                    label=get_model_registry_db_label_dict(db_resource_name=param.get("db_name")),
-                    teardown=teardown_resources,
-                )
-            )
-            for param in request.param
-        ]
-        yield pvc
-
-
-@pytest.fixture(scope="class")
-def db_service_parametrized(request: FixtureRequest, teardown_resources: bool) -> Generator[List[Service], Any, Any]:
-    """Create DB Service parametrized"""
-    with ExitStack() as stack:
-        services = [
-            stack.enter_context(
-                Service(
-                    name=param.get("db_name"),
-                    namespace=param.get("ns_name", py_config["model_registry_namespace"]),
-                    ports=param.get("ports"),
-                    selector={"name": param.get("db_name")},
-                    label=get_model_registry_db_label_dict(db_resource_name=param.get("db_name")),
-                    teardown=teardown_resources,
-                )
-            )
-            for param in request.param
-        ]
-        yield services
-
-
-@pytest.fixture(scope="class")
-def db_deployment_parametrized(
-    request: FixtureRequest, teardown_resources: bool
-) -> Generator[List[Deployment], Any, Any]:
-    """Create DB Deployment parametrized"""
-    with ExitStack() as stack:
-        deployments = [
-            stack.enter_context(
-                Deployment(
-                    name=param.get("db_name"),
-                    namespace=param.get("ns_name", py_config["model_registry_namespace"]),
-                    template=get_model_registry_deployment_template_dict(
-                        secret_name=param.get("db_name"), resource_name=param.get("db_name")
-                    ),
-                    label=get_model_registry_db_label_dict(db_resource_name=param.get("db_name")),
-                    replicas=param.get("replicas", 1),
-                    revision_history_limit=param.get("revision_history_limit", 0),
-                    selector={"matchLabels": {"name": param.get("db_name")}},
-                    strategy={"type": "Recreate"},
-                    wait_for_resource=True,
-                    teardown=teardown_resources,
-                )
-            )
-            for param in request.param
-        ]
-
-        for deployment in deployments:
-            deployment.wait_for_replicas(deployed=True)
-
-        yield deployments
-
-
-@pytest.fixture(scope="class")
-def model_registry_instance_parametrized(
-    request: FixtureRequest, teardown_resources: bool
-) -> Generator[List[ModelRegistry], Any, Any]:
-    """Create Model Registry instance parametrized"""
-    with ExitStack() as stack:
-        model_registry_instances = []
-        for param in request.param:
-            mysql_config = param.get("mysql_config")
-            istio_config = None
-            oauth_config = None
-            if param.get("is_model_registry_oauth"):
-                LOGGER.warning("Requested Ouath Proxy configuration:")
-                oauth_config = OAUTH_PROXY_CONFIG_DICT
-                mr_class = ModelRegistry
-            else:
-                LOGGER.warning("Requested OSSM configuration:")
-                istio_config = ISTIO_CONFIG_DICT
-                mr_class = ModelRegistryV1Alpha1
-
-            # Common parameters for both ModelRegistry classes
-            common_params = {
-                "name": param.get("mr_name"),
-                "namespace": param.get("ns_name", py_config["model_registry_namespace"]),
-                "grpc": {},
-                "rest": {},
-                "label": MODEL_REGISTRY_STANDARD_LABELS,
-                "istio": istio_config,
-                "oauth_proxy": oauth_config,
-                "mysql": mysql_config,
-                "wait_for_resource": True,
-                "teardown": teardown_resources,
-            }
-
-            mr_instance = stack.enter_context(mr_class(**common_params))  # noqa: FCN001
-            mr_instance.wait_for_condition(condition="Available", status="True")
-            mr_instance.wait_for_condition(condition="OAuthProxyAvailable", status="True")
-            model_registry_instances.append(mr_instance)
-
-        LOGGER.info(
-            f"Created {len(model_registry_instances)} MR instances: {[mr.name for mr in model_registry_instances]}"
-        )
-        yield model_registry_instances

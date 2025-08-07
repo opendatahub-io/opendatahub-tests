@@ -1,6 +1,6 @@
 from typing import Any
 from ocp_resources.resource import Resource
-from utilities.constants import ModelFormat, Annotations
+from utilities.constants import ModelFormat
 
 
 class ModelRegistryEndpoints:
@@ -25,21 +25,20 @@ MODEL_DICT: dict[str, Any] = {
         "str_key": "str_value",
     },
 }
-MR_INSTANCE_NAME: str = "model-registry"
+MR_INSTANCE_BASE_NAME: str = "model-registry"
+MR_INSTANCE_NAME: str = f"{MR_INSTANCE_BASE_NAME}0"
 SECURE_MR_NAME: str = "secure-db-mr"
-ISTIO_CONFIG_DICT: dict[str, Any] = {
-    "gateway": {"grpc": {"tls": {}}, "rest": {"tls": {}}},
-}
 OAUTH_PROXY_CONFIG_DICT: dict[str, Any] = {
     "port": 8443,
     "routePort": 443,
     "serviceRoute": "enabled",
 }
-DB_RESOURCES_NAME: str = "db-model-registry"
+DB_BASE_RESOURCES_NAME: str = "db-model-registry"
+DB_RESOURCE_NAME: str = f"{DB_BASE_RESOURCES_NAME}0"
 MR_DB_IMAGE_DIGEST: str = (
     "public.ecr.aws/docker/library/mysql@sha256:9de9d54fecee6253130e65154b930978b1fcc336bcc86dfd06e89b72a2588ebe"
 )
-MODEL_REGISTRY_DB_SECRET_STR_DATA = {
+MODEL_REGISTRY_DB_SECRET_STR_DATA: dict[str, str] = {
     "database-name": "model_registry",
     "database-password": "TheBlurstOfTimes",  # pragma: allowlist secret
     "database-user": "mlmduser",  # pragma: allowlist secret
@@ -53,12 +52,5 @@ MODEL_REGISTRY_DB_SECRET_ANNOTATIONS = {
 CA_CONFIGMAP_NAME = "odh-trusted-ca-bundle"
 CA_MOUNT_PATH = "/etc/pki/ca-trust/extracted/pem"
 CA_FILE_PATH = f"{CA_MOUNT_PATH}/ca-bundle.crt"
-
-MODEL_REGISTRY_STANDARD_LABELS = {
-    Annotations.KubernetesIo.NAME: MR_INSTANCE_NAME,
-    Annotations.KubernetesIo.INSTANCE: MR_INSTANCE_NAME,
-    Annotations.KubernetesIo.PART_OF: MR_OPERATOR_NAME,
-    Annotations.KubernetesIo.CREATED_BY: MR_OPERATOR_NAME,
-}
-
+NUM_RESOURCES = {"num_resources": 3}
 NUM_MR_INSTANCES: int = 2

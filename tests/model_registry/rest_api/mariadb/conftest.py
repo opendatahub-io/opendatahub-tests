@@ -6,13 +6,12 @@ from ocp_resources.maria_db import MariaDB
 from ocp_resources.mariadb_operator import MariadbOperator
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from tests.model_registry.rest_api.mariadb.utils import get_mariadb_dict
-from tests.model_registry.utils import wait_for_pods_running
+from tests.model_registry.utils import wait_for_pods_running, get_mr_standard_labels
 from utilities.constants import OPENSHIFT_OPERATORS, MARIADB
 from utilities.general import generate_random_name
 
 from tests.model_registry.constants import (
     OAUTH_PROXY_CONFIG_DICT,
-    MODEL_REGISTRY_STANDARD_LABELS,
     MR_INSTANCE_NAME,
 )
 from ocp_resources.secret import Secret
@@ -68,12 +67,11 @@ def model_registry_with_mariadb(
     admin_client: DynamicClient,
     model_registry_namespace: str,
     mariadb_mysql_config: dict[str, Any],
-    is_model_registry_oauth: bool,
 ) -> Generator[ModelRegistry, Any, Any]:
     with ModelRegistry(
         name=MR_INSTANCE_NAME,
         namespace=model_registry_namespace,
-        label=MODEL_REGISTRY_STANDARD_LABELS,
+        label=get_mr_standard_labels(resource_name=MR_INSTANCE_NAME),
         grpc={},
         rest={},
         oauth_proxy=OAUTH_PROXY_CONFIG_DICT,

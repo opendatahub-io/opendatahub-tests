@@ -1,11 +1,10 @@
 import pytest
 import requests
 from typing import Self, Any
-from pytest_testconfig import config as py_config
 from tests.model_registry.rest_api.utils import register_model_rest_api, validate_resource_attributes
 from tests.model_registry.utils import get_mr_service_by_label, get_endpoint_from_mr_service
 from kubernetes.dynamic import DynamicClient
-from utilities.constants import DscComponents, Protocols
+from utilities.constants import Protocols
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
 from simple_logger.logger import get_logger
@@ -14,23 +13,7 @@ from simple_logger.logger import get_logger
 LOGGER = get_logger(name=__name__)
 
 
-@pytest.mark.parametrize(
-    "updated_dsc_component_state_scope_class",
-    [
-        pytest.param(
-            {
-                "component_patch": {
-                    DscComponents.MODELREGISTRY: {
-                        "managementState": DscComponents.ManagementState.MANAGED,
-                        "registriesNamespace": py_config["model_registry_namespace"],
-                    },
-                },
-            },
-        ),
-    ],
-    indirect=True,
-)
-@pytest.mark.usefixtures("updated_dsc_component_state_scope_class")
+@pytest.mark.usefixtures("updated_dsc_component_state_scope_class", "model_registry_instance_mysql")
 class TestModelRegistryWithSecureDB:
     """
     Test suite for validating Model Registry functionality with a secure MySQL database connection (SSL/TLS).
@@ -53,7 +36,12 @@ class TestModelRegistryWithSecureDB:
         ],
         indirect=True,
     )
-    @pytest.mark.usefixtures("deploy_secure_mysql_and_mr", "patch_mysql_deployment_with_ssl_ca", "patch_invalid_ca")
+    @pytest.mark.usefixtures(
+        "mysql_metadata_resources",
+        "deploy_secure_mysql_and_mr",
+        "patch_mysql_deployment_with_ssl_ca",
+        "patch_invalid_ca",
+    )
     def test_register_model_with_invalid_ca(
         self: Self,
         admin_client: DynamicClient,
@@ -84,7 +72,7 @@ class TestModelRegistryWithSecureDB:
         )
 
     @pytest.mark.parametrize(
-        "patch_mysql_deployment_with_ssl_ca,model_registry_mysql_config,local_ca_bundle",
+        "patch_mysql_deployment_with_ssl_ca, deploy_secure_mysql_and_mr,local_ca_bundle",
         [
             (
                 {

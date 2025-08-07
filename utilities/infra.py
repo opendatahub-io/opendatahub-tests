@@ -1003,6 +1003,29 @@ def wait_for_isvc_pods(client: DynamicClient, isvc: InferenceService, runtime_na
     return get_pods_by_isvc_label(client=client, isvc=isvc, runtime_name=runtime_name)
 
 
+def get_isvc_keda_scaledobject(client: DynamicClient, isvc: InferenceService) -> list[Any]:
+    """
+    Get KEDA ScaledObject resources associated with an InferenceService.
+
+    Args:
+        client (DynamicClient): OCP Client to use.
+        isvc (InferenceService): InferenceService object.
+
+    Returns:
+        list[Any]: A list of all matching ScaledObjects
+
+    Raises:
+        ResourceNotFoundError: if no ScaledObjects are found.
+    """
+    namespace = isvc.namespace
+    scaled_object_client = client.resources.get(api_version="keda.sh/v1alpha1", kind="ScaledObject")
+    scaled_object = scaled_object_client.get(namespace=namespace, name=isvc.name + "-predictor")
+
+    if scaled_object:
+        return [scaled_object]
+    raise ResourceNotFoundError(f"{isvc.name} has no KEDA ScaledObjects")
+
+
 def get_rhods_subscription() -> Subscription | None:
     subscriptions = Subscription.get(dyn_client=get_client(), namespace=RHOAI_OPERATOR_NAMESPACE)
     if subscriptions:

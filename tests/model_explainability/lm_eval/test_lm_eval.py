@@ -9,15 +9,23 @@ from tests.model_explainability.lm_eval.utils import get_lmeval_tasks
 
 LMEVALJOB_COMPLETE_STATE: str = "Complete"
 
-LMEVAL_TASKS: List[str] = get_lmeval_tasks(min_downloads=10000)
+TIER1_LMEVAL_TASKS: List[str] = get_lmeval_tasks(min_downloads=10000)
+
+TIER2_LMEVAL_TASKS: List[str] = list(
+    set(get_lmeval_tasks(min_downloads=0.70, max_downloads=10000)) - set(TIER1_LMEVAL_TASKS)
+)
 
 
 @pytest.mark.parametrize(
     "model_namespace, lmevaljob_hf",
     [
         pytest.param(
-            {"name": "test-lmeval-hf"},
-            {"task_list": {"taskNames": LMEVAL_TASKS}},
+            {"name": "test-lmeval-hf-tier1"},
+            {"task_list": {"taskNames": TIER1_LMEVAL_TASKS}},
+        ),
+        pytest.param(
+            {"name": "test-lmeval-hf-tier2"},
+            {"task_list": {"taskNames": TIER2_LMEVAL_TASKS}},
         ),
         pytest.param(
             {"name": "test-lmeval-hf-custom-task"},

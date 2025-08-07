@@ -246,6 +246,29 @@ class ModelCarImage:
     GRANITE_8B_CODE_INSTRUCT: str = "oci://registry.redhat.io/rhelai1/modelcar-granite-8b-code-instruct:1.4"
 
 
+class OCIRegistry:
+    class Metadata:
+        NAME: str = "oci-registry"
+        DEFAULT_PORT: int = 5000
+        DEFAULT_HTTP_ADDRESS: str = "0.0.0.0"
+
+    class PodConfig:
+        REGISTRY_IMAGE: str = "ghcr.io/project-zot/zot-linux-amd64:v2.1.7"
+        REGISTRY_BASE_CONFIG: dict[str, Any] = {
+            "args": None,
+            "labels": {
+                "maistra.io/expose-route": "true",
+            },
+        }
+
+    class Storage:
+        STORAGE_DRIVER: str = "s3"
+        STORAGE_DRIVER_ROOT_DIRECTORY: str = "/registry"
+        STORAGE_DRIVER_REGION: str = "us-east-1"
+        STORAGE_STORAGEDRIVER_SECURE: str = "false"
+        STORAGE_STORAGEDRIVER_FORCEPATHSTYLE: str = "true"
+
+
 class MinIo:
     class Metadata:
         NAME: str = "minio"
@@ -322,3 +345,5 @@ vLLM_CONFIG: dict[str, dict[str, Any]] = {
 RHOAI_OPERATOR_NAMESPACE = "redhat-ods-operator"
 OPENSHIFT_OPERATORS: str = "openshift-operators"
 MARIADB: str = "mariadb"
+MODEL_REGISTRY_CUSTOM_NAMESPACE: str = "model-registry-custom-ns"
+THANOS_QUERIER_ADDRESS = "https://thanos-querier.openshift-monitoring.svc:9092"

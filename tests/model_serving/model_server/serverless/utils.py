@@ -146,28 +146,3 @@ def verify_canary_traffic(
             f"Percentage of inference requests {successful_inferences_percentage} "
             f"to the new model does not match the expected percentage {expected_percentage}. "
         )
-
-
-def inference_service_pods_sampler(
-    client: DynamicClient, isvc: InferenceService, timeout: int, sleep: int = 1
-) -> TimeoutSampler:
-    """
-    Returns TimeoutSampler for inference service.
-
-    Args:
-        client (DynamicClient): DynamicClient object
-        isvc (InferenceService): InferenceService object
-        timeout (int): Timeout in seconds
-        sleep (int): Sleep time in seconds
-
-    Returns:
-        TimeoutSampler: TimeoutSampler object
-
-    """
-    return TimeoutSampler(
-        wait_timeout=timeout,
-        sleep=sleep,
-        func=get_pods_by_isvc_label,
-        client=client,
-        isvc=isvc,
-    )
