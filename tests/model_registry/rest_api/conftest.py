@@ -46,7 +46,6 @@ LOGGER = get_logger(name=__name__)
 @pytest.fixture(scope="class")
 def registered_model_rest_api(
     request: pytest.FixtureRequest,
-    is_model_registry_oauth: bool,
     model_registry_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
 ) -> dict[str, Any]:

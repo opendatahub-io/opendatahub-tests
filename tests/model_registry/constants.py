@@ -28,9 +28,6 @@ MODEL_DICT: dict[str, Any] = {
 MR_INSTANCE_BASE_NAME: str = "model-registry"
 MR_INSTANCE_NAME: str = f"{MR_INSTANCE_BASE_NAME}0"
 SECURE_MR_NAME: str = "secure-db-mr"
-ISTIO_CONFIG_DICT: dict[str, Any] = {
-    "gateway": {"grpc": {"tls": {}}, "rest": {"tls": {}}},
-}
 OAUTH_PROXY_CONFIG_DICT: dict[str, Any] = {
     "port": 8443,
     "routePort": 443,

@@ -451,7 +451,7 @@ def updated_dsc_component_state_parametrized(
         dsc_resource.wait_for_condition(
             condition=DscComponents.COMPONENT_MAPPING[DscComponents.MODELREGISTRY], status="True"
         )
-        namespace = Namespace(name=namespace_name, ensure_exists=True)
+        namespace = Namespace(name=namespace_name, wait_for_resource=True)
         namespace.wait_for_status(status=Namespace.Status.ACTIVE)
         wait_for_pods_running(
             admin_client=admin_client,

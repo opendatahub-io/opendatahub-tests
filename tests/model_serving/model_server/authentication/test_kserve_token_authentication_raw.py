@@ -12,12 +12,13 @@ from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
 pytestmark = pytest.mark.usefixtures("valid_aws_config")
 
 
+@pytest.mark.sanity
 @pytest.mark.rawdeployment
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, s3_models_storage_uri",
     [
         pytest.param(
-            {"name": "kserve-raw-token-authentication"},
+            {"name": "test-kserve-raw-token-authentication"},
             {"model-dir": ModelStoragePath.FLAN_T5_SMALL_CAIKIT},
         )
     ],
