@@ -299,7 +299,7 @@ def updated_dsc_component_state_scope_class(
                 )
             if component_patch.get(DscComponents.MODELREGISTRY):
                 namespace = Namespace(
-                    name=dsc_resource.instance.spec.components.modelregistry.registriesNamespace, ensure_exists=True
+                    name=dsc_resource.instance.spec.components.modelregistry.registriesNamespace, wait_for_resource=True
                 )
                 namespace.wait_for_status(status=Namespace.Status.ACTIVE)
             wait_for_pods_running(
@@ -321,7 +321,7 @@ def updated_dsc_component_state_scope_class(
             ):
                 # Since namespace specified in registriesNamespace is automatically created after setting
                 # managementStateto Managed. We need to explicitly delete it on clean up.
-                namespace = Namespace(name=value["registriesNamespace"], ensure_exists=True)
+                namespace = Namespace(name=value["registriesNamespace"], wait_for_resource=True)
                 if namespace:
                     namespace.delete(wait=True)
 
@@ -343,7 +343,7 @@ def pre_upgrade_dsc_patch(
         editor.update()
         dsc_resource.wait_for_condition(condition=DscComponents.COMPONENT_MAPPING["modelregistry"], status="True")
         namespace = Namespace(
-            name=dsc_resource.instance.spec.components.modelregistry.registriesNamespace, ensure_exists=True
+            name=dsc_resource.instance.spec.components.modelregistry.registriesNamespace, wait_for_resource=True
         )
         namespace.wait_for_status(status=Namespace.Status.ACTIVE)
         wait_for_pods_running(
@@ -375,7 +375,7 @@ def post_upgrade_dsc_patch(
         editor = ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}})
         editor.update()
     ns = original_components.get(DscComponents.MODELREGISTRY).get("registriesNamespace")
-    namespace = Namespace(name=ns, ensure_exists=True)
+    namespace = Namespace(name=ns, wait_for_resource=True)
     if namespace:
         namespace.delete(wait=True)
 
@@ -564,7 +564,7 @@ def updated_dsc_component_state_parametrized(
         dsc_resource.wait_for_condition(
             condition=DscComponents.COMPONENT_MAPPING[DscComponents.MODELREGISTRY], status="True"
         )
-        namespace = Namespace(name=namespace_name, ensure_exists=True)
+        namespace = Namespace(name=namespace_name, wait_for_resource=True)
         namespace.wait_for_status(status=Namespace.Status.ACTIVE)
         wait_for_pods_running(
             admin_client=admin_client,
@@ -574,7 +574,7 @@ def updated_dsc_component_state_parametrized(
         yield dsc_resource
 
     # Clean up the dynamic namespace
-    namespace = Namespace(name=namespace_name, ensure_exists=True)
+    namespace = Namespace(name=namespace_name, wait_for_resource=True)
     if namespace:
         namespace.delete(wait=True)
 
