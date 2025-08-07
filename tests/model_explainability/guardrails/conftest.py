@@ -6,37 +6,30 @@ from typing import Generator, Any
 import pytest
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
-from llama_stack_client import LlamaStackClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
 from ocp_resources.guardrails_orchestrator import GuardrailsOrchestrator
 from ocp_resources.inference_service import InferenceService
-from ocp_resources.llama_stack_distribution import LlamaStackDistribution
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
-from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest_testconfig import py_config
 
-from tests.model_explainability.guardrails.constants import QWEN_ISVC_NAME
-from tests.model_explainability.guardrails.test_guardrails import MNT_MODELS
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import (
     KServeDeploymentType,
     Labels,
-    RuntimeTemplates,
 )
 from utilities.inference_utils import create_isvc
-from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
 GUARDRAILS_ORCHESTRATOR_NAME = "guardrails-orchestrator"
 
 
-# Fixtures related to the Guardrails Orchestrator
+# GuardrailsOrchestrator related fixtures
 @pytest.fixture(scope="class")
 def guardrails_orchestrator(
     request: FixtureRequest,
@@ -136,37 +129,6 @@ def guardrails_orchestrator_health_route(
 # ServingRuntimes, InferenceServices, and related resources
 # for generation and detection models
 @pytest.fixture(scope="class")
-def vllm_runtime(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-    minio_pod: Pod,
-    minio_service: Service,
-    minio_data_connection: Secret,
-) -> Generator[ServingRuntime, Any, Any]:
-    with ServingRuntimeFromTemplate(
-        client=admin_client,
-        name="vllm-runtime-cpu-fp16",
-        namespace=model_namespace.name,
-        template_name=RuntimeTemplates.VLLM_CUDA,
-        deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
-        runtime_image="quay.io/rh-aiservices-bu/vllm-cpu-openai-ubi9"
-        "@sha256:d680ff8becb6bbaf83dfee7b2d9b8a2beb130db7fd5aa7f9a6d8286a58cebbfd",
-        containers={
-            "kserve-container": {
-                "args": [
-                    f"--port={str(8032)}",
-                    "--model=/mnt/models",
-                ],
-                "ports": [{"containerPort": 8032, "protocol": "TCP"}],
-                "volumeMounts": [{"mountPath": "/dev/shm", "name": "shm"}],
-            }
-        },
-        volumes=[{"emptyDir": {"medium": "Memory", "sizeLimit": "2Gi"}, "name": "shm"}],
-    ) as serving_runtime:
-        yield serving_runtime
-
-
-@pytest.fixture(scope="class")
 def huggingface_sr(
     admin_client: DynamicClient,
     model_namespace: Namespace,
@@ -206,33 +168,6 @@ def huggingface_sr(
         },
     ) as serving_runtime:
         yield serving_runtime
-
-
-@pytest.fixture(scope="class")
-def qwen_isvc(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-    minio_pod: Pod,
-    minio_service: Service,
-    minio_data_connection: Secret,
-    vllm_runtime: ServingRuntime,
-) -> Generator[InferenceService, Any, Any]:
-    with create_isvc(
-        client=admin_client,
-        name=QWEN_ISVC_NAME,
-        namespace=model_namespace.name,
-        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-        model_format="vLLM",
-        runtime=vllm_runtime.name,
-        storage_key=minio_data_connection.name,
-        storage_path="Qwen2.5-0.5B-Instruct",
-        wait_for_predictor_pods=False,
-        resources={
-            "requests": {"cpu": "1", "memory": "8Gi"},
-            "limits": {"cpu": "2", "memory": "10Gi"},
-        },
-    ) as isvc:
-        yield isvc
 
 
 @pytest.fixture(scope="class")
@@ -278,95 +213,6 @@ def prompt_injection_detector_route(
         service=prompt_injection_detector_isvc.name,
         wait_for_resource=True,
     )
-
-
-# LlamaStack fixtures
-@pytest.fixture(scope="class")
-def llamastack_distribution_trustyai(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-    qwen_isvc: InferenceService,
-    guardrails_orchestrator_route: Route,
-) -> Generator[LlamaStackDistribution, None, None]:
-    with LlamaStackDistribution(
-        name="llama-stack-distribution",
-        namespace=model_namespace.name,
-        replicas=1,
-        server={
-            "containerSpec": {
-                "env": [
-                    {
-                        "name": "VLLM_URL",
-                        "value": f"http://{qwen_isvc.name}-predictor.{model_namespace.name}.svc.cluster.local:8032/v1",
-                    },
-                    {
-                        "name": "INFERENCE_MODEL",
-                        "value": MNT_MODELS,
-                    },
-                    {
-                        "name": "MILVUS_DB_PATH",
-                        "value": "~/.llama/milvus.db",
-                    },
-                    {
-                        "name": "VLLM_TLS_VERIFY",
-                        "value": "false",
-                    },
-                    {
-                        "name": "FMS_ORCHESTRATOR_URL",
-                        "value": f"https://{guardrails_orchestrator_route.host}",
-                    },
-                ],
-                "name": "llama-stack",
-                "port": 8321,
-            },
-            "distribution": {"name": "rh-dev"},
-            "storage": {
-                "size": "20Gi",
-            },
-        },
-        wait_for_resource=True,
-    ) as lls_dist:
-        lls_dist.wait_for_status(status=LlamaStackDistribution.Status.READY)
-        yield lls_dist
-
-
-@pytest.fixture(scope="class")
-def llamastack_distribution_trustyai_service(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-    llamastack_distribution_trustyai: LlamaStackDistribution,
-) -> Generator[Service, None, None]:
-    yield Service(
-        client=admin_client,
-        name=f"{llamastack_distribution_trustyai.name}-service",
-        namespace=model_namespace.name,
-        wait_for_resource=True,
-    )
-
-
-@pytest.fixture(scope="class")
-def llamastack_distribution_trustyai_route(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-    llamastack_distribution_trustyai: LlamaStackDistribution,
-    llamastack_distribution_trustyai_service: Service,
-) -> Generator[Route, None, None]:
-    with Route(
-        client=admin_client,
-        name=f"{llamastack_distribution_trustyai.name}-route",
-        namespace=model_namespace.name,
-        service=llamastack_distribution_trustyai_service.name,
-    ) as route:
-        yield route
-
-
-@pytest.fixture(scope="class")
-def llamastack_client_trustyai(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-    llamastack_distribution_trustyai_route: Route,
-) -> LlamaStackClient:
-    return LlamaStackClient(base_url=f"http://{llamastack_distribution_trustyai_route.host}")
 
 
 # Other "helper" fixtures
@@ -435,10 +281,10 @@ def guardrails_orchestrator_ssl_cert_secret(
 
 
 @pytest.fixture(scope="class")
-def patched_llamastack_deployment_tls_certs(llamastack_distribution_trustyai, guardrails_orchestrator_ssl_cert_secret):
+def patched_llamastack_deployment_tls_certs(llamastack_distribution, guardrails_orchestrator_ssl_cert_secret):
     lls_deployment = Deployment(
-        name=llamastack_distribution_trustyai.name,
-        namespace=llamastack_distribution_trustyai.namespace,
+        name=llamastack_distribution.name,
+        namespace=llamastack_distribution.namespace,
         ensure_exists=True,
     )
 
