@@ -3,6 +3,8 @@ from typing import List
 
 import pytest
 from llama_stack_client import Agent, LlamaStackClient, RAGDocument
+from llama_stack_client.types import EmbeddingsResponse, QueryChunksResponse
+from llama_stack_client.types.vector_io_insert_params import Chunk
 from ocp_resources.deployment import Deployment
 from simple_logger.logger import get_logger
 
@@ -50,7 +52,7 @@ class TestRag:
         assert embedding_dimension is not None, "No embedding_dimension set in embedding model"
 
     @pytest.mark.smoke
-    def test_rag_basic_inference(self, rag_lls_client: LlamaStackClient) -> None:
+    def test_rag_chat_completions(self, rag_lls_client: LlamaStackClient) -> None:
         """
         Test basic chat completion inference through LlamaStack client.
 
@@ -76,6 +78,87 @@ class TestRag:
         content = response.choices[0].message.content
         assert content is not None, "LLM response content is None"
         assert "Paris" in content, "The LLM didn't provide the expected answer to the prompt"
+
+    @pytest.mark.smoke
+    def test_rag_inference_embeddings(self, rag_lls_client: LlamaStackClient) -> None:
+        """
+        Test embedding model functionality and vector generation.
+
+        Validates that the server can generate properly formatted embedding vectors
+        for text input with correct dimensions as specified in model metadata.
+        """
+        models = rag_lls_client.models.list()
+        embedding_model = next(m for m in models if m.api_model_type == "embedding")
+        embedding_dimension = embedding_model.metadata["embedding_dimension"]
+
+        embeddings_response = rag_lls_client.inference.embeddings(
+            model_id=embedding_model.identifier,
+            contents=["First chunk of text"],
+            output_dimension=embedding_dimension,  # type: ignore
+        )
+        assert isinstance(embeddings_response, EmbeddingsResponse)
+        assert len(embeddings_response.embeddings) == 1
+        assert isinstance(embeddings_response.embeddings[0], list)
+        assert isinstance(embeddings_response.embeddings[0][0], float)
+
+    @pytest.mark.smoke
+    def test_rag_vector_io_ingestion_retrieval(self, rag_lls_client: LlamaStackClient) -> None:
+        """
+        Validates basic vector_db API in llama-stack using milvus
+
+        Tests registering, inserting and retrieving information from a milvus vector db database
+
+        Based on the example available at
+        https://llama-stack.readthedocs.io/en/latest/building_applications/rag.html
+        """
+        models = rag_lls_client.models.list()
+        embedding_model = next(m for m in models if m.api_model_type == "embedding")
+        embedding_dimension = embedding_model.metadata["embedding_dimension"]
+
+        # Create a vector database instance
+        vector_db_id = f"v{uuid.uuid4().hex}"
+
+        try:
+            rag_lls_client.vector_dbs.register(
+                vector_db_id=vector_db_id,
+                embedding_model=embedding_model.identifier,
+                embedding_dimension=embedding_dimension,  # type: ignore
+                provider_id="milvus",
+            )
+
+            # Calculate embeddings
+            embeddings_response = rag_lls_client.inference.embeddings(
+                model_id=embedding_model.identifier,
+                contents=["First chunk of text"],
+                output_dimension=embedding_dimension,  # type: ignore
+            )
+
+            # Insert chunk into the vector db
+            chunks_with_embeddings = [
+                Chunk(
+                    content="First chunk of text",
+                    mime_type="text/plain",
+                    metadata={"document_id": "doc1", "source": "precomputed"},
+                    embedding=embeddings_response.embeddings[0],
+                ),
+            ]
+            rag_lls_client.vector_io.insert(vector_db_id=vector_db_id, chunks=chunks_with_embeddings)
+
+            # Query the vector db to find the chunk
+            chunks_response = rag_lls_client.vector_io.query(
+                vector_db_id=vector_db_id, query="What do you know about..."
+            )
+            assert isinstance(chunks_response, QueryChunksResponse)
+            assert len(chunks_response.chunks) > 0
+            assert chunks_response.chunks[0].metadata["document_id"] == "doc1"
+            assert chunks_response.chunks[0].metadata["source"] == "precomputed"
+
+        finally:
+            # Cleanup: unregister the vector database to prevent resource leaks
+            try:
+                rag_lls_client.vector_dbs.unregister(vector_db_id)
+            except Exception as e:
+                LOGGER.warning(f"Failed to unregister vector database {vector_db_id}: {e}")
 
     @pytest.mark.smoke
     def test_rag_simple_agent(self, rag_lls_client: LlamaStackClient) -> None:
