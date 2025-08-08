@@ -5,14 +5,14 @@ from tests.model_serving.model_server.inference_service_configuration.constants 
     ORIGINAL_PULL_SECRET,
     UPDATED_PULL_SECRET,
 )
-from utilities.constants import ModelFormat, ModelName, RuntimeTemplates
+from utilities.constants import ModelName, RuntimeTemplates
 
 
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, serving_runtime_from_template, model_car_raw_inference_service_with_pull_secret",
     [
         pytest.param(
-            {"name": f"test-pull-secret-modelcar"},
+            {"name": "test-pull-secret-modelcar"},
             {
                 "name": f"{ModelName.MNIST}-runtime",
                 "template-name": RuntimeTemplates.OVMS_KSERVE,
