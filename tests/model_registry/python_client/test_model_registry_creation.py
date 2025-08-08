@@ -115,7 +115,7 @@ class TestModelRegistryCreation:
                 "readyz/isDirty",
             ),
             pytest.param(
-                "/readyz/health",
+                "readyz/health",
             ),
         ],
     )
