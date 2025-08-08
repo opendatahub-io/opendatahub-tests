@@ -68,6 +68,7 @@ EXPECTED_UPDATED_DEPLOYMENTS = 2
     ],
     indirect=True,
 )
+@pytest.mark.skip(reason="2.22 we dont support kueue")
 class TestKueueInferenceServiceServerless:
     """Test inference service with serverless deployment"""
 

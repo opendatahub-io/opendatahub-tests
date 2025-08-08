@@ -68,6 +68,7 @@ EXPECTED_UPDATED_REPLICAS = 2
     ],
     indirect=True,
 )
+@pytest.mark.skip(reason="2.22 we dont support kueue")
 class TestKueueInferenceServiceRaw:
     """Test inference service with raw deployment"""
 
