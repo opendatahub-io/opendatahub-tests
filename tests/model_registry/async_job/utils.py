@@ -11,6 +11,7 @@ from tests.model_registry.async_job.constants import (
     MODEL_SYNC_CONFIG,
     VOLUME_MOUNTS,
 )
+from utilities.general import b64_encoded_string
 from simple_logger.logger import get_logger
 
 LOGGER = get_logger(name=__name__)
@@ -27,6 +28,27 @@ def get_job_pod(admin_client: DynamicClient, job: Job) -> Pod:
     )
     assert len(pods) == 1, f"Expected 1 pod for job {job.name}, found {len(pods)}"
     return pods[0]
+
+
+def get_latest_job_pod(admin_client: DynamicClient, job: Job) -> Pod:
+    """Get the latest (most recently created) Pod created by a Job"""
+    pods = list(
+        Pod.get(
+            dyn_client=admin_client,
+            namespace=job.namespace,
+            label_selector=f"job-name={job.name}",
+        )
+    )
+
+    if not pods:
+        raise AssertionError(f"No pods found for job {job.name}")
+
+    # Sort pods by creation time (latest first)
+    sorted_pods = sorted(pods, key=lambda p: p.instance.metadata.creationTimestamp or "", reverse=True)
+
+    latest_pod = sorted_pods[0]
+    LOGGER.info(f"Found {len(pods)} pod(s) for job {job.name}, using latest: {latest_pod.name}")
+    return latest_pod
 
 
 def validate_job_labels_and_annotations(job: Job) -> None:
@@ -159,3 +181,130 @@ def pull_manifest_from_oci_registry(registry_url: str, repo: str, tag: str) -> d
     LOGGER.info(f"Manifest pull: {response.status_code}")
     assert response.status_code == 200, f"Failed to pull manifest: {response.status_code}"
     return response.json()
+
+
+def get_aysnc_job_s3_secret_dict(
+    access_key: str,
+    secret_access_key: str,
+    s3_bucket: str,
+    s3_endpoint: str,
+    s3_region: str,
+) -> dict[str, str]:
+    """
+    Returns a dictionary of s3 secret values
+
+    Args:
+        access_key (str): access key
+        secret_access_key (str): secret key
+        s3_bucket (str): S3 bucket
+        s3_endpoint (str): S3 endpoint
+        s3_region (str): S3 region
+
+    Returns:
+        dict[str, str]: A dictionary of s3 secret encoded values
+
+    """
+    return {
+        "AWS_ACCESS_KEY_ID": b64_encoded_string(string_to_encode=access_key),
+        "AWS_SECRET_ACCESS_KEY": b64_encoded_string(string_to_encode=secret_access_key),
+        "AWS_BUCKET": b64_encoded_string(string_to_encode=s3_bucket),
+        "AWS_ENDPOINT_URL": b64_encoded_string(string_to_encode=s3_endpoint),
+        "AWS_REGION": b64_encoded_string(string_to_encode=s3_region),
+    }
+
+
+def upload_test_model_to_minio(
+    admin_client: DynamicClient,
+    namespace: str,
+    minio_service,
+    object_key: str = "my-model/mnist-8.onnx",
+) -> None:
+    """
+    Upload mnist-8.onnx test model to MinIO using a temporary pod
+
+    Args:
+        admin_client: Kubernetes client
+        namespace: Namespace to create upload pod in
+        minio_service: MinIO service resource
+        object_key: S3 object key path (default: "my-model/mnist-8.onnx")
+    """
+    from ocp_resources.pod import Pod
+    from utilities.constants import MinIo
+    import base64
+    import os
+
+    # Read the mnist-8.onnx file from the repository
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.join(current_dir, "..", "..", "..")
+    model_file_path = os.path.join(repo_root, "tests", "model_registry", "async_job", "artifacts", "mnist-8.onnx")
+
+    try:
+        with open(model_file_path, "rb") as f:
+            model_file_content = f.read()
+        LOGGER.info(f"Loaded mnist-8.onnx file ({len(model_file_content)} bytes)")
+    except FileNotFoundError:
+        raise FileNotFoundError(
+            f"mnist-8.onnx not found at {model_file_path}. Please ensure the file exists in the repository root."
+        )
+
+    # Encode the model file content as base64 for embedding in the pod
+    encoded_content = base64.b64encode(model_file_content).decode("ascii")
+
+    with Pod(
+        client=admin_client,
+        name="test-model-uploader",
+        namespace=namespace,
+        restart_policy="Never",
+        volumes=[{"name": "upload-data", "emptyDir": {}}],
+        init_containers=[
+            {
+                "name": "decode-model-file",
+                "image": "registry.redhat.io/ubi8/ubi-minimal:latest",
+                "command": ["/bin/sh", "-c"],
+                "args": [f"echo '{encoded_content}' | base64 -d > /upload-data/model-file"],
+                "volumeMounts": [{"name": "upload-data", "mountPath": "/upload-data"}],
+                "securityContext": {
+                    "allowPrivilegeEscalation": False,
+                    "capabilities": {"drop": ["ALL"]},
+                    "runAsNonRoot": True,
+                    "seccompProfile": {"type": "RuntimeDefault"},
+                },
+            }
+        ],
+        containers=[
+            {
+                "name": "minio-uploader",
+                "image": "quay.io/minio/mc@sha256:470f5546b596e16c7816b9c3fa7a78ce4076bb73c2c73f7faeec0c8043923123",
+                "command": ["/bin/sh", "-c"],
+                "args": [
+                    # Set up MinIO client and upload the model file
+                    f"export MC_CONFIG_DIR=/upload-data/.mc && "
+                    f"mc alias set testminio http://{minio_service.name}.{minio_service.namespace}.svc.cluster.local:{MinIo.Metadata.DEFAULT_PORT} "  # noqa: E501
+                    f"{MinIo.Credentials.ACCESS_KEY_VALUE} {MinIo.Credentials.SECRET_KEY_VALUE} && "
+                    f"mc mb --ignore-existing testminio/{MinIo.Buckets.MODELMESH_EXAMPLE_MODELS} && "
+                    f"mc cp /upload-data/model-file testminio/{MinIo.Buckets.MODELMESH_EXAMPLE_MODELS}/{object_key} && "
+                    f"mc ls testminio/{MinIo.Buckets.MODELMESH_EXAMPLE_MODELS}/my-model/ && "
+                    f"echo 'Upload completed successfully'"
+                ],
+                "volumeMounts": [{"name": "upload-data", "mountPath": "/upload-data"}],
+                "securityContext": {
+                    "allowPrivilegeEscalation": False,
+                    "capabilities": {"drop": ["ALL"]},
+                    "runAsNonRoot": True,
+                    "seccompProfile": {"type": "RuntimeDefault"},
+                },
+            }
+        ],
+        wait_for_resource=True,
+    ) as upload_pod:
+        LOGGER.info(f"Uploading model file to MinIO: {object_key}")
+        upload_pod.wait_for_status(status="Succeeded", timeout=300)
+
+        # Get upload logs for verification
+        try:
+            upload_logs = upload_pod.log()
+            LOGGER.info(f"Upload logs: {upload_logs}")
+        except Exception as e:
+            LOGGER.warning(f"Could not retrieve upload logs: {e}")
+
+        LOGGER.info(f"✓ Model file uploaded successfully to s3://{MinIo.Buckets.MODELMESH_EXAMPLE_MODELS}/{object_key}")

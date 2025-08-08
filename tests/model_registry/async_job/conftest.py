@@ -1,4 +1,5 @@
 from typing import Any, Generator
+import json
 
 import pytest
 from kubernetes.dynamic import DynamicClient
@@ -10,8 +11,6 @@ from tests.model_registry.async_job.constants import (
     ASYNC_UPLOAD_IMAGE,
     ASYNC_UPLOAD_JOB_NAME,
     MODEL_SYNC_CONFIG,
-    PLACEHOLDER_OCI_SECRET_NAME,
-    PLACEHOLDER_S3_SECRET_NAME,
     VOLUME_MOUNTS,
 )
 
@@ -21,133 +20,219 @@ from pytest import FixtureRequest
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
+from ocp_resources.secret import Secret
 from ocp_resources.service import Service
+from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
 from utilities.infra import create_ns
 from utilities.constants import OCIRegistry, MinIo, Protocols, Labels
+from utilities.general import b64_encoded_string
+from tests.model_registry.async_job.utils import get_aysnc_job_s3_secret_dict
+from tests.model_registry.utils import get_mr_service_by_label, get_endpoint_from_mr_service
+
+
+# We need to upstream this to the wrapper library
+class JobWithVolumes(Job):
+    """Extended Job class that supports volumes"""
+
+    def __init__(self, volumes=None, **kwargs):
+        super().__init__(**kwargs)
+        self.volumes = volumes or []
+
+    def to_dict(self) -> None:
+        super().to_dict()
+        if not self.kind_dict and not self.yaml_file and self.volumes:
+            self.res["spec"].setdefault("template", {}).setdefault("spec", {})
+            self.res["spec"]["template"]["spec"]["volumes"] = self.volumes
 
 
 @pytest.fixture(scope="class")
-def placeholder_s3_secret_name() -> str:
-    """Placeholder for S3 credentials secret name - to be replaced by other engineer's fixture"""
-    return PLACEHOLDER_S3_SECRET_NAME
+def s3_secret_for_async_job(
+    admin_client: DynamicClient,
+    model_registry_namespace: str,
+    minio_service: Service,
+) -> Generator[Secret, Any, Any]:
+    """Create S3 credentials secret for async upload job"""
+    # Construct MinIO endpoint from service
+    minio_endpoint = (
+        f"http://{minio_service.name}.{minio_service.namespace}.svc.cluster.local:{MinIo.Metadata.DEFAULT_PORT}"
+    )
+
+    # Create S3 secret data using existing utility
+    secret_data = get_aysnc_job_s3_secret_dict(
+        access_key=MinIo.Credentials.ACCESS_KEY_VALUE,
+        secret_access_key=MinIo.Credentials.SECRET_KEY_VALUE,
+        s3_bucket=MinIo.Buckets.MODELMESH_EXAMPLE_MODELS,
+        s3_endpoint=minio_endpoint,
+        s3_region="us-east-1",  # Default region for MinIO
+    )
+
+    secret_name = f"async-job-s3-secret-{shortuuid.uuid().lower()}"
+
+    with Secret(
+        client=admin_client,
+        name=secret_name,
+        namespace=model_registry_namespace,
+        data_dict=secret_data,
+        type="Opaque",
+    ) as secret:
+        yield secret
 
 
 @pytest.fixture(scope="class")
-def placeholder_oci_secret_name() -> str:
-    """Placeholder for OCI credentials secret name - to be replaced by other engineer's fixture"""
-    return PLACEHOLDER_OCI_SECRET_NAME
+def oci_secret_for_async_job(
+    admin_client: DynamicClient,
+    model_registry_namespace: str,
+    oci_registry_route: Route,
+) -> Generator[Secret, Any, Any]:
+    """Create OCI registry credentials secret for async upload job"""
+    # Get OCI registry endpoint from route
+    registry_host = oci_registry_route.instance.spec.host
+
+    # Create anonymous dockerconfig for OCI registry (no authentication)
+    # This matches the zot registry setup which allows anonymous access
+    dockerconfig = {
+        "auths": {
+            f"{registry_host}:{OCIRegistry.Metadata.DEFAULT_PORT}": {
+                "auth": "",
+                "email": "user@example.com",  # Anonymous access
+            }
+        }
+    }
+
+    secret_data = {
+        ".dockerconfigjson": b64_encoded_string(json.dumps(dockerconfig)),
+        "ACCESS_TYPE": b64_encoded_string(json.dumps('["Push,Pull"]')),
+        "OCI_HOST": b64_encoded_string(json.dumps(f"{registry_host}:{OCIRegistry.Metadata.DEFAULT_PORT}")),
+    }
+
+    secret_name = f"async-job-oci-secret-{shortuuid.uuid().lower()}"
+
+    with Secret(
+        client=admin_client,
+        name=secret_name,
+        namespace=model_registry_namespace,
+        data_dict=secret_data,
+        type="kubernetes.io/dockerconfigjson",
+    ) as secret:
+        yield secret
 
 
 @pytest.fixture(scope="class")
 def model_sync_async_job(
     admin_client: DynamicClient,
+    current_client_token: str,
     model_registry_namespace: str,
-    placeholder_s3_secret_name: str,
-    placeholder_oci_secret_name: str,
+    model_registry_instance_mysql: list[ModelRegistry],
+    s3_secret_for_async_job: Secret,
+    oci_secret_for_async_job: Secret,
+    oci_registry_route: Route,
     teardown_resources: bool,
 ) -> Generator[Job, Any, Any]:
     """Core Job fixture focused on Job deployment and configuration"""
-    with Job(
+    # Get dynamic OCI URI from route
+    oci_registry_host = oci_registry_route.instance.spec.host
+    dynamic_oci_uri = f"{oci_registry_host}/async-job-test/model-artifact"
+
+    # Get model registry service and endpoint
+    mr_instance = model_registry_instance_mysql[0]  # Use first instance
+    mr_service = get_mr_service_by_label(
+        client=admin_client, namespace_name=model_registry_namespace, mr_instance=mr_instance
+    )
+    mr_endpoint = get_endpoint_from_mr_service(svc=mr_service, protocol=Protocols.REST)
+    mr_host = mr_endpoint.split(":")[0]
+    mr_port = mr_endpoint.split(":")[1]
+
+    with JobWithVolumes(
         client=admin_client,
         name=ASYNC_UPLOAD_JOB_NAME,
         namespace=model_registry_namespace,
-        labels=ASYNC_JOB_LABELS,
+        label=ASYNC_JOB_LABELS,
         annotations=ASYNC_JOB_ANNOTATIONS,
-        spec={
-            "template": {
-                "metadata": {
-                    "labels": {
-                        **ASYNC_JOB_LABELS,
-                        # Template pod labels from sample YAML
-                        "modelregistry.opendatahub.io/model-sync-model-id": MODEL_SYNC_CONFIG["MODEL_ID"],
-                        "modelregistry.opendatahub.io/model-sync-model-version-id": MODEL_SYNC_CONFIG[
-                            "MODEL_VERSION_ID"
-                        ],
-                        "modelregistry.opendatahub.io/model-sync-model-artifact-id": MODEL_SYNC_CONFIG[
-                            "MODEL_ARTIFACT_ID"
-                        ],
-                    }
-                },
-                "spec": {
-                    "restartPolicy": "Never",
-                    "volumes": [
-                        {"name": "source-credentials", "secret": {"secretName": placeholder_s3_secret_name}},
-                        {
-                            "name": "destination-credentials",
-                            "secret": {
-                                "secretName": placeholder_oci_secret_name,
-                                "items": [{"key": ".dockerconfigjson", "path": ".dockerconfigjson"}],
-                            },
-                        },
-                    ],
-                    "containers": [
-                        {
-                            "name": "async-upload",
-                            "image": ASYNC_UPLOAD_IMAGE,
-                            "volumeMounts": [
-                                {
-                                    "name": "source-credentials",
-                                    "readOnly": True,
-                                    "mountPath": VOLUME_MOUNTS["SOURCE_CREDS_PATH"],
-                                },
-                                {
-                                    "name": "destination-credentials",
-                                    "readOnly": True,
-                                    "mountPath": VOLUME_MOUNTS["DEST_CREDS_PATH"],
-                                },
-                            ],
-                            "env": [
-                                # Proxy settings
-                                {"name": "HTTP_PROXY", "value": ""},
-                                {"name": "HTTPS_PROXY", "value": ""},
-                                {"name": "NO_PROXY", "value": "*.svc.cluster.local"},
-                                # Source configuration
-                                {"name": "MODEL_SYNC_SOURCE_TYPE", "value": MODEL_SYNC_CONFIG["SOURCE_TYPE"]},
-                                {"name": "MODEL_SYNC_SOURCE_AWS_KEY", "value": MODEL_SYNC_CONFIG["SOURCE_AWS_KEY"]},
-                                {
-                                    "name": "MODEL_SYNC_SOURCE_S3_CREDENTIALS_PATH",
-                                    "value": VOLUME_MOUNTS["SOURCE_CREDS_PATH"],
-                                },
-                                # Destination configuration
-                                {"name": "MODEL_SYNC_DESTINATION_TYPE", "value": MODEL_SYNC_CONFIG["DESTINATION_TYPE"]},
-                                {
-                                    "name": "MODEL_SYNC_DESTINATION_OCI_URI",
-                                    "value": MODEL_SYNC_CONFIG["DESTINATION_OCI_URI"],
-                                },
-                                {
-                                    "name": "MODEL_SYNC_DESTINATION_OCI_CREDENTIALS_PATH",
-                                    "value": VOLUME_MOUNTS["DEST_DOCKERCONFIG_PATH"],
-                                },
-                                {
-                                    "name": "MODEL_SYNC_DESTINATION_OCI_BASE_IMAGE",
-                                    "value": MODEL_SYNC_CONFIG["DESTINATION_OCI_BASE_IMAGE"],
-                                },
-                                {
-                                    "name": "MODEL_SYNC_DESTINATION_OCI_ENABLE_TLS_VERIFY",
-                                    "value": MODEL_SYNC_CONFIG["DESTINATION_OCI_ENABLE_TLS_VERIFY"],
-                                },
-                                # Model parameters
-                                {"name": "MODEL_SYNC_MODEL_ID", "value": MODEL_SYNC_CONFIG["MODEL_ID"]},
-                                {"name": "MODEL_SYNC_MODEL_VERSION_ID", "value": MODEL_SYNC_CONFIG["MODEL_VERSION_ID"]},
-                                {
-                                    "name": "MODEL_SYNC_MODEL_ARTIFACT_ID",
-                                    "value": MODEL_SYNC_CONFIG["MODEL_ARTIFACT_ID"],
-                                },
-                                # Model Registry client params (placeholders)
-                                {
-                                    "name": "MODEL_SYNC_REGISTRY_SERVER_ADDRESS",
-                                    "value": "PLACEHOLDER_MR_SERVER_ADDRESS",
-                                },
-                                {"name": "MODEL_SYNC_REGISTRY_PORT", "value": "8080"},
-                                {"name": "MODEL_SYNC_REGISTRY_AUTHOR", "value": "RHOAI Test"},
-                                {"name": "MODEL_SYNC_REGISTRY_USER_TOKEN", "value": "PLACEHOLDER_USER_TOKEN"},
-                            ],
-                        }
-                    ],
-                },
+        restart_policy="Never",
+        containers=[
+            {
+                "name": "async-upload",
+                "image": ASYNC_UPLOAD_IMAGE,
+                "volumeMounts": [
+                    {
+                        "name": "source-credentials",
+                        "readOnly": True,
+                        "mountPath": VOLUME_MOUNTS["SOURCE_CREDS_PATH"],
+                    },
+                    {
+                        "name": "destination-credentials",
+                        "readOnly": True,
+                        "mountPath": VOLUME_MOUNTS["DEST_CREDS_PATH"],
+                    },
+                ],
+                "env": [
+                    # Proxy settings
+                    {"name": "HTTP_PROXY", "value": ""},
+                    {"name": "HTTPS_PROXY", "value": ""},
+                    {"name": "NO_PROXY", "value": "*.svc.cluster.local"},
+                    # Source configuration
+                    {"name": "MODEL_SYNC_SOURCE_TYPE", "value": MODEL_SYNC_CONFIG["SOURCE_TYPE"]},
+                    {"name": "MODEL_SYNC_SOURCE_AWS_KEY", "value": MODEL_SYNC_CONFIG["SOURCE_AWS_KEY"]},
+                    {
+                        "name": "MODEL_SYNC_SOURCE_S3_CREDENTIALS_PATH",
+                        "value": VOLUME_MOUNTS["SOURCE_CREDS_PATH"],
+                    },
+                    # Destination configuration
+                    {"name": "MODEL_SYNC_DESTINATION_TYPE", "value": MODEL_SYNC_CONFIG["DESTINATION_TYPE"]},
+                    {
+                        "name": "MODEL_SYNC_DESTINATION_OCI_URI",
+                        "value": f"{dynamic_oci_uri}",
+                    },
+                    {
+                        "name": "MODEL_SYNC_DESTINATION_OCI_REGISTRY",
+                        "value": f"{oci_registry_host}:{OCIRegistry.Metadata.DEFAULT_PORT}",
+                    },
+                    {
+                        "name": "MODEL_SYNC_DESTINATION_OCI_CREDENTIALS_PATH",
+                        "value": VOLUME_MOUNTS["DEST_DOCKERCONFIG_PATH"],
+                    },
+                    {
+                        "name": "MODEL_SYNC_DESTINATION_OCI_BASE_IMAGE",
+                        "value": MODEL_SYNC_CONFIG["DESTINATION_OCI_BASE_IMAGE"],
+                    },
+                    {
+                        "name": "MODEL_SYNC_DESTINATION_OCI_ENABLE_TLS_VERIFY",
+                        "value": MODEL_SYNC_CONFIG["DESTINATION_OCI_ENABLE_TLS_VERIFY"],
+                    },
+                    # Model parameters
+                    {"name": "MODEL_SYNC_MODEL_ID", "value": MODEL_SYNC_CONFIG["MODEL_ID"]},
+                    {"name": "MODEL_SYNC_MODEL_VERSION_ID", "value": MODEL_SYNC_CONFIG["MODEL_VERSION_ID"]},
+                    {
+                        "name": "MODEL_SYNC_MODEL_ARTIFACT_ID",
+                        "value": MODEL_SYNC_CONFIG["MODEL_ARTIFACT_ID"],
+                    },
+                    # Model Registry client params
+                    {
+                        "name": "MODEL_SYNC_REGISTRY_SERVER_ADDRESS",
+                        "value": f"https://{mr_host}",
+                    },
+                    {"name": "MODEL_SYNC_REGISTRY_PORT", "value": mr_port},
+                    {"name": "MODEL_SYNC_REGISTRY_AUTHOR", "value": "RHOAI async job test"},
+                    {"name": "MODEL_SYNC_REGISTRY_USER_TOKEN", "value": current_client_token},
+                    {"name": "MODEL_SYNC_REGISTRY_IS_SECURE", "value": "False"},
+                ],
             }
-        },
+        ],
+        volumes=[
+            {
+                "name": "source-credentials",
+                "secret": {
+                    "secretName": s3_secret_for_async_job.name,
+                },
+            },
+            {
+                "name": "destination-credentials",
+                "secret": {
+                    "secretName": oci_secret_for_async_job.name,
+                },
+            },
+        ],
         teardown=teardown_resources,
     ) as job:
         yield job

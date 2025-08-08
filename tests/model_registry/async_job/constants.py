@@ -1,39 +1,34 @@
 # Job identification
 ASYNC_UPLOAD_JOB_NAME = "model-sync-async-job"
 
-# Placeholder for downstream image (TBD)
-ASYNC_UPLOAD_IMAGE = "PLACEHOLDER_DOWNSTREAM_ASYNC_UPLOAD_IMAGE"
+# Midstream temporary image (until downstream is available)
+# TODO: Update before async job goes live
+ASYNC_UPLOAD_IMAGE = "quay.io/opendatahub/model-registry-job-async-upload:main-500be9d"
 
 # Job labels and annotations
 ASYNC_JOB_LABELS = {
     "app.kubernetes.io/name": "model-registry-async-job",
     "app.kubernetes.io/component": "async-job",
     "app.kubernetes.io/part-of": "model-registry",
-    "app.kubernetes.io/managed-by": "kubectl",
     "component": "model-registry-job",
     "modelregistry.opendatahub.io/job-type": "async-upload",
 }
 
 ASYNC_JOB_ANNOTATIONS = {
-    "modelregistry.opendatahub.io/description": "Asynchronous job for uploading models to Model Registry"
+    "modelregistry.opendatahub.io/description": "Asynchronous job for uploading models to Model Registry and converting them to ModelCar format"  # noqa: E501
 }
 
 # Model sync parameters (from sample YAML)
 MODEL_SYNC_CONFIG = {
     "MODEL_ID": "1",
-    "MODEL_VERSION_ID": "3",
-    "MODEL_ARTIFACT_ID": "6",
+    "MODEL_VERSION_ID": "2",
+    "MODEL_ARTIFACT_ID": "1",
     "SOURCE_TYPE": "s3",
     "DESTINATION_TYPE": "oci",
     "SOURCE_AWS_KEY": "my-model",
-    "DESTINATION_OCI_URI": "PLACEHOLDER_OCI_URI",
-    "DESTINATION_OCI_BASE_IMAGE": "busybox:latest",
+    "DESTINATION_OCI_BASE_IMAGE": "public.ecr.aws/docker/library/busybox:latest",
     "DESTINATION_OCI_ENABLE_TLS_VERIFY": "false",
 }
-
-# Placeholder secret names (to be provided by other engineer)
-PLACEHOLDER_S3_SECRET_NAME = "PLACEHOLDER_S3_CREDENTIALS_SECRET"  # pragma: allowlist secret
-PLACEHOLDER_OCI_SECRET_NAME = "PLACEHOLDER_OCI_CREDENTIALS_SECRET"  # pragma: allowlist secret
 
 # Volume mount paths (from sample YAML)
 VOLUME_MOUNTS = {

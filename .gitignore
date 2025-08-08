@@ -50,6 +50,7 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
+results/
 
 # Translations
 *.mo
@@ -165,3 +166,6 @@ cython_debug/
 
 # VSCode config
 .vscode/
+
+# AI Assistant Config Files
+CLAUDE.md
