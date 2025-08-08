@@ -33,7 +33,6 @@ LOGGER = get_logger(name=__name__)
 )
 @pytest.mark.usefixtures(
     "updated_dsc_component_state_scope_class",
-    "is_model_registry_oauth",
     "deployed_mariadb",
     "model_registry_with_mariadb",
     "registered_model_rest_api",

@@ -39,7 +39,7 @@ def wait_for_isvc_model_status(isvc: InferenceService, target_model_state: str, 
     "unprivileged_model_namespace, serving_runtime_from_template, invalid_s3_models_inference_service",
     [
         pytest.param(
-            {"name": "non-existing-models-storage-path"},
+            {"name": "test-non-existing-models-path"},
             {
                 "name": f"{Protocols.HTTP}-{ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME}",
                 "template-name": RuntimeTemplates.CAIKIT_TGIS_SERVING,

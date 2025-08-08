@@ -32,12 +32,12 @@ SERVERLESS_DEPLOYMENT_ISVC_CONFIG = {
     "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service",
     [
         pytest.param(
-            {"name": "raw-env-update"},
+            {"name": "test-raw-update"},
             RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
             RAW_DEPLOYMENT_ISVC_CONFIG,
         ),
         pytest.param(
-            {"name": "raw-multi-env-update"},
+            {"name": "test-raw-multi-update"},
             RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
             {
                 **RAW_DEPLOYMENT_ISVC_CONFIG,
@@ -62,12 +62,12 @@ class TestRawISVCEnvVarsUpdates:
     "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service",
     [
         pytest.param(
-            {"name": "serverless-env-update"},
+            {"name": "test-serverless-update"},
             RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
             SERVERLESS_DEPLOYMENT_ISVC_CONFIG,
         ),
         pytest.param(
-            {"name": "serverless-multi-env-update"},
+            {"name": "test-adv-multi-update"},
             RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
             {
                 **SERVERLESS_DEPLOYMENT_ISVC_CONFIG,

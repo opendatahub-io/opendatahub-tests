@@ -31,7 +31,6 @@ CUSTOM_NAMESPACE = "model-registry-custom-ns"
 )
 @pytest.mark.usefixtures(
     "updated_dsc_component_state_scope_class",
-    "is_model_registry_oauth",
     "model_registry_namespace",
     "model_registry_db_secret",
     "model_registry_db_pvc",

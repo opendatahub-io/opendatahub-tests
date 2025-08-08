@@ -22,7 +22,7 @@ MODELMESH_ISVC_PARAMS = {
     "http_s3_openvino_model_mesh_inference_service",
     [
         pytest.param(
-            {"name": "serverless-model-mesh-openvino", "modelmesh-enabled": True},
+            {"name": "test-mm-openvino", "modelmesh-enabled": True},
             KSERVE_RUNTIME_PARAMS,
             SERVERLESS_ISVC_PARAMS,
             MODELMESH_ISVC_PARAMS,
@@ -61,7 +61,7 @@ class TestOpenVINOServerlessModelMesh:
     "ovms_kserve_inference_service, ",
     [
         pytest.param(
-            {"name": "model-mesh-serverless-openvino", "modelmesh-enabled": True},
+            {"name": "test-mm-openvino", "modelmesh-enabled": True},
             MODELMESH_ISVC_PARAMS,
             KSERVE_RUNTIME_PARAMS,
             SERVERLESS_ISVC_PARAMS,
