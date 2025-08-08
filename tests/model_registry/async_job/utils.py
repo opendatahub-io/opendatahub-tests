@@ -17,19 +17,6 @@ from simple_logger.logger import get_logger
 LOGGER = get_logger(name=__name__)
 
 
-def get_job_pod(admin_client: DynamicClient, job: Job) -> Pod:
-    """Get the Pod created by a Job"""
-    pods = list(
-        Pod.get(
-            dyn_client=admin_client,
-            namespace=job.namespace,
-            label_selector=f"job-name={job.name}",
-        )
-    )
-    assert len(pods) == 1, f"Expected 1 pod for job {job.name}, found {len(pods)}"
-    return pods[0]
-
-
 def get_latest_job_pod(admin_client: DynamicClient, job: Job) -> Pod:
     """Get the latest (most recently created) Pod created by a Job"""
     pods = list(
