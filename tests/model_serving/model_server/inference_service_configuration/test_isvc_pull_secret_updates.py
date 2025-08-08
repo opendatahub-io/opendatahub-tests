@@ -12,7 +12,7 @@ from utilities.constants import ModelFormat, ModelName, RuntimeTemplates
     "unprivileged_model_namespace, serving_runtime_from_template, model_car_raw_inference_service_with_pull_secret",
     [
         pytest.param(
-            {"name": f"{ModelFormat.OPENVINO}-model-car"},
+            {"name": f"test-pull-secret-modelcar"},
             {
                 "name": f"{ModelName.MNIST}-runtime",
                 "template-name": RuntimeTemplates.OVMS_KSERVE,
