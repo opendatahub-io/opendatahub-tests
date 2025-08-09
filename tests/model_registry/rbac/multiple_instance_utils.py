@@ -1,4 +1,6 @@
 import pytest
+from pytest_testconfig import config as py_config
+
 from tests.model_registry.constants import (
     MODEL_REGISTRY_DB_SECRET_STR_DATA,
     MR_INSTANCE_NAME,
@@ -13,9 +15,8 @@ from tests.model_registry.utils import (
     get_mr_standard_labels,
     get_mysql_config,
 )
-from utilities.general import generate_random_name
 
-ns_name = generate_random_name(prefix=MR_INSTANCE_NAME, length=2)
+ns_name = py_config["model_registry_namespace"]
 ns_params = {"ns_name": ns_name}
 
 resource_names = [f"{DB_BASE_RESOURCES_NAME}{index}" for index in range(0, NUM_MR_INSTANCES)]
@@ -66,7 +67,9 @@ db_deployment_params = [
         "label": get_model_registry_db_label_dict(db_resource_name=resource_name),
         "selector": {"matchLabels": {"name": resource_name}},
         "strategy": {"type": "Recreate"},
-        "template": get_model_registry_deployment_template_dict(secret_name=resource_name, resource_name=resource_name),
+        "template": get_model_registry_deployment_template_dict(
+            secret_name=resource_name, resource_name=resource_name, db_backend="mysql"
+        ),
         "wait_for_resource": True,
     }
     for resource_name in resource_names
@@ -79,7 +82,7 @@ model_registry_instance_params = [
         "label": get_mr_standard_labels(resource_name=f"{MR_INSTANCE_NAME}{index}"),
         "grpc": {},
         "rest": {},
-        "mysql": get_mysql_config(base_name=f"{DB_BASE_RESOURCES_NAME}{index}", namespace=ns_name),
+        "mysql": get_mysql_config(base_name=f"{DB_BASE_RESOURCES_NAME}{index}", namespace=ns_name, db_backend="mysql"),
         "wait_for_resource": True,
         "oauth_proxy": OAUTH_PROXY_CONFIG_DICT,
     }

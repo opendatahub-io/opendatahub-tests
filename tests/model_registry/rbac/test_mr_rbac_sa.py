@@ -10,9 +10,10 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.mark.usefixtures(
-    "updated_dsc_component_state_scope_class",
-    "mysql_metadata_resources",
-    "model_registry_instance_mysql",
+    "updated_dsc_component_state_scope_session",
+    "model_registry_namespace",
+    "model_registry_metadata_db_resources",
+    "model_registry_instance",
 )
 @pytest.mark.custom_namespace
 class TestModelRegistryRBAC:

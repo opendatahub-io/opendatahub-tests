@@ -120,19 +120,14 @@ def patch_invalid_ca(
 
 
 @pytest.fixture(scope="class")
-def mysql_template_with_ca(model_registry_db_secret: list[Secret]) -> dict[str, Any]:
+def mysql_template_with_ca(model_registry_metadata_db_resources: dict[Any, Any]) -> dict[str, Any]:
     """
     Patches the MySQL template with the CA file path and volume mount.
-
-    Args:
-        model_registry_db_secret: The secret for the model registry's MySQL database
-
-    Returns:
-        dict[str, Any]: The patched MySQL template
     """
     mysql_template = get_model_registry_deployment_template_dict(
-        secret_name=model_registry_db_secret[0].name,
+        secret_name=model_registry_metadata_db_resources[Secret][0].name,
         resource_name=DB_RESOURCE_NAME,
+        db_backend="mysql",
     )
     mysql_template["spec"]["containers"][0]["args"].append(f"--ssl-ca={CA_FILE_PATH}")
     mysql_template["spec"]["containers"][0]["volumeMounts"].append({
@@ -156,7 +151,7 @@ def deploy_secure_mysql_and_mr(
     Deploy a secure MySQL and Model Registry instance.
     """
     param = getattr(request, "param", {})
-    mysql = get_mysql_config(base_name=DB_RESOURCE_NAME, namespace=model_registry_namespace)
+    mysql = get_mysql_config(base_name=DB_RESOURCE_NAME, namespace=model_registry_namespace, db_backend="mysql")
     if "sslRootCertificateConfigMap" in param:
         mysql["sslRootCertificateConfigMap"] = param["sslRootCertificateConfigMap"]
     with ModelRegistry(

@@ -2,8 +2,10 @@ import pytest
 from typing import Generator, Any
 
 from _pytest.config import Config
+from pytest_testconfig import config as py_config
 
 from ocp_resources.data_science_cluster import DataScienceCluster
+from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.namespace import Namespace
 from ocp_resources.service import Service
@@ -16,9 +18,12 @@ from kubernetes.dynamic import DynamicClient
 from tests.model_registry.constants import (
     MODEL_REGISTRY_DB_SECRET_STR_DATA,
     MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
+    DB_RESOURCE_NAME,
+    MR_INSTANCE_NAME,
 )
 from tests.model_registry.utils import get_model_registry_deployment_template_dict, get_model_registry_db_label_dict
 from utilities.constants import MODEL_REGISTRY_CUSTOM_NAMESPACE
+from utilities.general import wait_for_pods_by_labels
 from utilities.infra import create_ns
 
 DB_RESOURCES_NAME_NEGATIVE = "db-model-registry-negative"
@@ -121,9 +126,60 @@ def model_registry_db_deployment_negative_test(
         selector={"matchLabels": {"name": DB_RESOURCES_NAME_NEGATIVE}},
         strategy={"type": "Recreate"},
         template=get_model_registry_deployment_template_dict(
-            secret_name=model_registry_db_secret_negative_test.name, resource_name=DB_RESOURCES_NAME_NEGATIVE
+            secret_name=model_registry_db_secret_negative_test.name,
+            resource_name=DB_RESOURCES_NAME_NEGATIVE,
+            db_backend="mysql",
         ),
         wait_for_resource=True,
     ) as mr_db_deployment:
         mr_db_deployment.wait_for_replicas(deployed=True)
         yield mr_db_deployment
+
+
+@pytest.fixture()
+def set_mr_db_dirty(model_registry_db_instance_pod: Pod) -> int:
+    """Set the model registry database dirty and return the latest migration version"""
+    output = model_registry_db_instance_pod.execute(
+        command=[
+            "mysql",
+            "-u",
+            MODEL_REGISTRY_DB_SECRET_STR_DATA["database-user"],
+            f"-p{MODEL_REGISTRY_DB_SECRET_STR_DATA['database-password']}",
+            "-e",
+            "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1;",
+            MODEL_REGISTRY_DB_SECRET_STR_DATA["database-name"],
+        ]
+    )
+    latest_migration_version = int(output.strip().split()[1])
+    model_registry_db_instance_pod.execute(
+        command=[
+            "mysql",
+            "-u",
+            MODEL_REGISTRY_DB_SECRET_STR_DATA["database-user"],
+            f"-p{MODEL_REGISTRY_DB_SECRET_STR_DATA['database-password']}",
+            "-e",
+            f"UPDATE schema_migrations SET dirty = 1 WHERE version = {latest_migration_version};",
+            MODEL_REGISTRY_DB_SECRET_STR_DATA["database-name"],
+        ]
+    )
+    return latest_migration_version
+
+
+@pytest.fixture()
+def model_registry_db_instance_pod(admin_client: DynamicClient) -> Generator[Pod, Any, Any]:
+    """Get the model registry instance pod."""
+    yield wait_for_pods_by_labels(
+        admin_client=admin_client,
+        namespace=py_config["model_registry_namespace"],
+        label_selector=f"name={DB_RESOURCE_NAME}",
+        expected_num_pods=1,
+    )[0]
+
+
+@pytest.fixture()
+def delete_mr_deployment() -> None:
+    """Delete the model registry deployment"""
+    mr_deployment = Deployment(
+        name=MR_INSTANCE_NAME, namespace=py_config["model_registry_namespace"], ensure_exists=True
+    )
+    mr_deployment.delete(wait=True)

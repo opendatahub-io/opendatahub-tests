@@ -55,3 +55,4 @@ REGISTERED_MODEL_DESCRIPTION = {"description": "updated registered model descrip
 MODEL_FORMAT_VERSION = {"modelFormatVersion": "v2"}
 MODEL_FORMAT_NAME = {"modelFormatName": "tensorflow"}
 MODEL_ARTIFACT_DESCRIPTION = {"description": "updated artifact description"}
+MARIADB_METADATA_DB = {"db_name": "mariadb"}

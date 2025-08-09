@@ -28,7 +28,7 @@ LOGGER = get_logger(name=__name__)
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("pre_upgrade_dsc_patch", "mysql_metadata_resources", "model_registry_instance_mysql")
+@pytest.mark.usefixtures("pre_upgrade_dsc_patch", "model_registry_metadata_db_resources", "model_registry_instance")
 class TestPreUpgradeModelRegistry:
     @pytest.mark.pre_upgrade
     def test_registering_model_pre_upgrade(
@@ -49,7 +49,7 @@ class TestPostUpgradeModelRegistry:
     def test_retrieving_model_post_upgrade(
         self: Self,
         model_registry_client: list[ModelRegistryClient],
-        model_registry_instance_mysql: list[Any],
+        model_registry_instance,
     ):
         errors = get_and_validate_registered_model(
             model_registry_client=model_registry_client[0],
@@ -61,19 +61,19 @@ class TestPostUpgradeModelRegistry:
     @pytest.mark.post_upgrade
     def test_model_registry_instance_api_version_post_upgrade(
         self: Self,
-        model_registry_instance_mysql: list[Any],
+        model_registry_instance,
     ):
         # the following is valid for 2.22+
-        api_version = model_registry_instance_mysql[0].instance.apiVersion
+        api_version = model_registry_instance[0].instance.apiVersion
         expected_version = f"{ModelRegistry.ApiGroup.MODELREGISTRY_OPENDATAHUB_IO}/{ModelRegistry.ApiVersion.V1BETA1}"
         assert api_version == expected_version
 
     @pytest.mark.post_upgrade
     def test_model_registry_instance_spec_post_upgrade(
         self: Self,
-        model_registry_instance_mysql: list[Any],
+        model_registry_instance,
     ):
-        model_registry_instance_spec = model_registry_instance_mysql[0].instance.spec
+        model_registry_instance_spec = model_registry_instance[0].instance.spec
         assert not model_registry_instance_spec.istio
         assert model_registry_instance_spec.oauthProxy.serviceRoute == "enabled"
 
