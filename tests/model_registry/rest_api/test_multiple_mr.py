@@ -14,13 +14,9 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(
-    "model_registry_db_secret, model_registry_db_pvc, "
-    "model_registry_db_service, model_registry_db_deployment, model_registry_instance_mysql",
+    "model_registry_metadata_db_resources, model_registry_instance",
     [
         pytest.param(
-            NUM_RESOURCES,
-            NUM_RESOURCES,
-            NUM_RESOURCES,
             NUM_RESOURCES,
             NUM_RESOURCES,
         ),
@@ -28,16 +24,13 @@ LOGGER = get_logger(name=__name__)
     indirect=True,
 )
 @pytest.mark.usefixtures(
-    "updated_dsc_component_state_scope_class",
-    "model_registry_db_secret",
-    "model_registry_db_pvc",
-    "model_registry_db_service",
-    "model_registry_db_deployment",
-    "model_registry_instance_mysql",
+    "updated_dsc_component_state_scope_session",
+    "model_registry_metadata_db_resources",
+    "model_registry_instance",
 )
 class TestModelRegistryMultipleInstances:
     def test_validate_multiple_model_registry(
-        self: Self, model_registry_instance_mysql: list[Any], model_registry_namespace: str
+        self: Self, model_registry_instance, model_registry_namespace: str
     ):
         for num in range(0, NUM_RESOURCES["num_resources"]):
             mr = ModelRegistry(
