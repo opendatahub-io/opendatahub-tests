@@ -67,7 +67,9 @@ db_deployment_params = [
         "label": get_model_registry_db_label_dict(db_resource_name=resource_name),
         "selector": {"matchLabels": {"name": resource_name}},
         "strategy": {"type": "Recreate"},
-        "template": get_model_registry_deployment_template_dict(secret_name=resource_name, resource_name=resource_name, db_backend="mysql"),
+        "template": get_model_registry_deployment_template_dict(
+            secret_name=resource_name, resource_name=resource_name, db_backend="mysql"
+        ),
         "wait_for_resource": True,
     }
     for resource_name in resource_names

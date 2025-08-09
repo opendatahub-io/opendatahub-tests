@@ -27,10 +27,13 @@ LOGGER = get_logger(name=__name__)
     "model_registry_metadata_db_resources, model_registry_instance, registered_model_rest_api",
     [
         pytest.param(
-            {},{},
+            {},
+            {},
             MODEL_REGISTER_DATA,
-        ),pytest.param(
-            {"db_name": "mariadb"},{"db_name": "mariadb"},
+        ),
+        pytest.param(
+            {"db_name": "mariadb"},
+            {"db_name": "mariadb"},
             MODEL_REGISTER_DATA,
         ),
     ],
@@ -84,7 +87,7 @@ class TestModelRegistryCreationRest:
 
     def test_model_registry_validate_api_version(
         self: Self,
-            model_registry_instance,
+        model_registry_instance,
         # registered_model_rest_api: dict[str, Any],
     ):
         api_version = ModelRegistry(
@@ -98,7 +101,7 @@ class TestModelRegistryCreationRest:
 
     def test_model_registry_validate_oauthproxy_enabled(
         self: Self,
-            model_registry_instance,
+        model_registry_instance,
         #    registered_model_rest_api: dict[str, Any],
     ):
         model_registry_instance_spec = model_registry_instance[0].instance.spec

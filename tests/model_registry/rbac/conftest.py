@@ -7,10 +7,8 @@ import os
 from typing import Generator, List, Dict, Any
 
 from _pytest.fixtures import FixtureRequest
-from pytest_testconfig import py_config
 from simple_logger.logger import get_logger
 
-from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.infrastructure import Infrastructure
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
@@ -29,11 +27,9 @@ from kubernetes.dynamic import DynamicClient
 from pyhelper_utils.shell import run_command
 
 from tests.model_registry.rbac.utils import wait_for_oauth_openshift_deployment, create_role_binding
-from utilities.constants import DscComponents
 from utilities.general import generate_random_name
 from tests.model_registry.utils import (
     generate_namespace_name,
-    wait_for_pods_running,
 )
 from utilities.infra import login_with_user_password
 from utilities.user_utils import UserTestSession, create_htpasswd_file, wait_for_user_creation

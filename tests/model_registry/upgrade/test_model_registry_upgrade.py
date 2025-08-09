@@ -49,7 +49,7 @@ class TestPostUpgradeModelRegistry:
     def test_retrieving_model_post_upgrade(
         self: Self,
         model_registry_client: list[ModelRegistryClient],
-            model_registry_instance,
+        model_registry_instance,
     ):
         errors = get_and_validate_registered_model(
             model_registry_client=model_registry_client[0],
@@ -61,7 +61,7 @@ class TestPostUpgradeModelRegistry:
     @pytest.mark.post_upgrade
     def test_model_registry_instance_api_version_post_upgrade(
         self: Self,
-            model_registry_instance,
+        model_registry_instance,
     ):
         # the following is valid for 2.22+
         api_version = model_registry_instance[0].instance.apiVersion
@@ -71,7 +71,7 @@ class TestPostUpgradeModelRegistry:
     @pytest.mark.post_upgrade
     def test_model_registry_instance_spec_post_upgrade(
         self: Self,
-            model_registry_instance,
+        model_registry_instance,
     ):
         model_registry_instance_spec = model_registry_instance[0].instance.spec
         assert not model_registry_instance_spec.istio

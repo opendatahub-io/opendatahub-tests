@@ -17,7 +17,9 @@ from kubernetes.dynamic import DynamicClient
 
 from tests.model_registry.constants import (
     MODEL_REGISTRY_DB_SECRET_STR_DATA,
-    MODEL_REGISTRY_DB_SECRET_ANNOTATIONS, DB_RESOURCE_NAME, MR_INSTANCE_NAME,
+    MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
+    DB_RESOURCE_NAME,
+    MR_INSTANCE_NAME,
 )
 from tests.model_registry.utils import get_model_registry_deployment_template_dict, get_model_registry_db_label_dict
 from utilities.constants import MODEL_REGISTRY_CUSTOM_NAMESPACE
@@ -124,7 +126,9 @@ def model_registry_db_deployment_negative_test(
         selector={"matchLabels": {"name": DB_RESOURCES_NAME_NEGATIVE}},
         strategy={"type": "Recreate"},
         template=get_model_registry_deployment_template_dict(
-            secret_name=model_registry_db_secret_negative_test.name, resource_name=DB_RESOURCES_NAME_NEGATIVE, db_backend="mysql"
+            secret_name=model_registry_db_secret_negative_test.name,
+            resource_name=DB_RESOURCES_NAME_NEGATIVE,
+            db_backend="mysql",
         ),
         wait_for_resource=True,
     ) as mr_db_deployment:

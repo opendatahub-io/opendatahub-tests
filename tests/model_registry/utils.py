@@ -2,7 +2,6 @@ import json
 from typing import Any, List
 
 import requests
-from _pytest.config import Config
 from kubernetes.dynamic import DynamicClient
 
 from ocp_resources.config_map import ConfigMap
@@ -22,7 +21,8 @@ from tests.model_registry.constants import (
     MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
     DB_BASE_RESOURCES_NAME,
     OAUTH_PROXY_CONFIG_DICT,
-    MARIADB_MY_CNF, DB_RESOURCE_NAME, PORT_MAP,
+    MARIADB_MY_CNF,
+    PORT_MAP,
 )
 from tests.model_registry.exceptions import ModelRegistryResourceNotFoundError
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
@@ -444,7 +444,11 @@ def execute_model_registry_get_command(url: str, headers: dict[str, str], json_o
 
 
 def get_mr_service_objects(
-    base_name: str, namespace: str, client: DynamicClient, teardown_resources: bool, num: int,
+    base_name: str,
+    namespace: str,
+    client: DynamicClient,
+    teardown_resources: bool,
+    num: int,
 ) -> list[Service]:
     services = []
     annotation = {
@@ -604,7 +608,9 @@ def get_model_registry_objects(
     model_registry_objects = []
     for num_mr in range(0, num):
         name = f"{base_name}{num_mr}"
-        mysql = get_mysql_config(base_name=f"{DB_BASE_RESOURCES_NAME}{num_mr}", namespace=namespace, db_backend=db_backend)
+        mysql = get_mysql_config(
+            base_name=f"{DB_BASE_RESOURCES_NAME}{num_mr}", namespace=namespace, db_backend=db_backend
+        )
         if "sslRootCertificateConfigMap" in params:
             mysql["sslRootCertificateConfigMap"] = params["sslRootCertificateConfigMap"]
         model_registry_objects.append(
@@ -624,12 +630,14 @@ def get_model_registry_objects(
     return model_registry_objects
 
 
-def get_model_registry_metadata_resources(base_name: str,
+def get_model_registry_metadata_resources(
+    base_name: str,
     namespace: str,
     client: DynamicClient,
     teardown_resources: bool,
-    num_resources: int, db_backend: str = "mysql") -> dict[Any, Any]:
-
+    num_resources: int,
+    db_backend: str = "mysql",
+) -> dict[Any, Any]:
     return {
         Secret: get_mr_secret_objects(
             client=client,
@@ -666,7 +674,8 @@ def get_model_registry_metadata_resources(base_name: str,
             base_name=base_name,
             num=num_resources,
             teardown_resources=teardown_resources,
-            db_backend=db_backend)
+            db_backend=db_backend,
+        ),
     }
 
 

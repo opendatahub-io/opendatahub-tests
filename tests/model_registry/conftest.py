@@ -35,7 +35,8 @@ from tests.model_registry.utils import (
     get_endpoint_from_mr_service,
     get_mr_service_by_label,
     wait_for_pods_running,
-    get_model_registry_objects, get_model_registry_metadata_resources,
+    get_model_registry_objects,
+    get_model_registry_metadata_resources,
 )
 from utilities.constants import DscComponents
 from model_registry import ModelRegistry as ModelRegistryClient
@@ -71,10 +72,10 @@ def model_registry_instance(
             client=admin_client,
             namespace=model_registry_namespace,
             base_name=MR_INSTANCE_BASE_NAME,
-            num= param.get("num_resources", 1),
+            num=param.get("num_resources", 1),
             teardown_resources=teardown_resources,
             params=param,
-            db_backend=param.get("db_backend", "mysql")
+            db_backend=param.get("db_backend", "mysql"),
         )
         with ExitStack() as stack:
             mr_instances = [stack.enter_context(mr_obj) for mr_obj in mr_objects]
@@ -86,11 +87,15 @@ def model_registry_instance(
                 )
             yield mr_instances
 
+
 @pytest.fixture(scope="class")
-def model_registry_metadata_db_resources(request: FixtureRequest, admin_client: DynamicClient,
-                                         pytestconfig: Config,
-                                         teardown_resources: bool,
-                                         model_registry_namespace: str) -> Generator[dict[Any, Any], None, None]:
+def model_registry_metadata_db_resources(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    pytestconfig: Config,
+    teardown_resources: bool,
+    model_registry_namespace: str,
+) -> Generator[dict[Any, Any], None, None]:
     num_resources = getattr(request, "param", {}).get("num_resources", 1)
     db_backend = getattr(request, "param", {}).get("db_backend", "mysql")
 
@@ -98,32 +103,40 @@ def model_registry_metadata_db_resources(request: FixtureRequest, admin_client: 
         if pytestconfig.option.post_upgrade:
             resources = {
                 Secret: [Secret(name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True)],
-                PersistentVolumeClaim: [PersistentVolumeClaim(name=DB_RESOURCE_NAME, namespace=model_registry_namespace,
-                                                             ensure_exists=True)],
+                PersistentVolumeClaim: [
+                    PersistentVolumeClaim(name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True)
+                ],
                 Service: [Service(name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True)],
-                ConfigMap: [ConfigMap(name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True)] if db_backend == [
-                    "mariadb"] else [],
-                Deployment: [Deployment(name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True)]
+                ConfigMap: [ConfigMap(name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True)]
+                if db_backend == ["mariadb"]
+                else [],
+                Deployment: [Deployment(name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True)],
             }
             yield resources
-            for kind in [Deployment, ConfigMap,Service, PersistentVolumeClaim, Secret]:
+            for kind in [Deployment, ConfigMap, Service, PersistentVolumeClaim, Secret]:
                 for resource in resources[kind]:
                     resource.delete(wait=True)
     else:
         resources_instances = {}
-        resources = get_model_registry_metadata_resources(base_name=DB_BASE_RESOURCES_NAME,
-                                                           namespace=model_registry_namespace,
-                                                          num_resources=num_resources, db_backend=db_backend,
-                                                          teardown_resources=teardown_resources, client=admin_client)
+        resources = get_model_registry_metadata_resources(
+            base_name=DB_BASE_RESOURCES_NAME,
+            namespace=model_registry_namespace,
+            num_resources=num_resources,
+            db_backend=db_backend,
+            teardown_resources=teardown_resources,
+            client=admin_client,
+        )
         with ExitStack() as stack:
             for kind_name in [Secret, PersistentVolumeClaim, Service, ConfigMap, Deployment]:
                 if resources[kind_name]:
-
                     LOGGER.info(f"Creating {num_resources} {kind_name} resources")
-                    resources_instances[kind_name] = [stack.enter_context(resource_obj) for resource_obj in resources[kind_name]]
+                    resources_instances[kind_name] = [
+                        stack.enter_context(resource_obj) for resource_obj in resources[kind_name]
+                    ]
             for deployment in resources_instances[Deployment]:
                 deployment.wait_for_replicas(deployed=True)
             yield resources_instances
+
 
 @pytest.fixture(scope="class")
 def model_registry_instance_rest_endpoint(admin_client: DynamicClient, model_registry_instance) -> list[str]:

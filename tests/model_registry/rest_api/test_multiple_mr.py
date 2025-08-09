@@ -1,4 +1,4 @@
-from typing import Self, Any
+from typing import Self
 import pytest
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
@@ -29,9 +29,7 @@ LOGGER = get_logger(name=__name__)
     "model_registry_instance",
 )
 class TestModelRegistryMultipleInstances:
-    def test_validate_multiple_model_registry(
-        self: Self, model_registry_instance, model_registry_namespace: str
-    ):
+    def test_validate_multiple_model_registry(self: Self, model_registry_instance, model_registry_namespace: str):
         for num in range(0, NUM_RESOURCES["num_resources"]):
             mr = ModelRegistry(
                 name=f"{MR_INSTANCE_BASE_NAME}{num}", namespace=model_registry_namespace, ensure_exists=True

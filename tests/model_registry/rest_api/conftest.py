@@ -126,7 +126,8 @@ def mysql_template_with_ca(model_registry_metadata_db_resources: dict[Any, Any])
     """
     mysql_template = get_model_registry_deployment_template_dict(
         secret_name=model_registry_metadata_db_resources[Secret][0].name,
-        resource_name=DB_RESOURCE_NAME, db_backend="mysql"
+        resource_name=DB_RESOURCE_NAME,
+        db_backend="mysql",
     )
     mysql_template["spec"]["containers"][0]["args"].append(f"--ssl-ca={CA_FILE_PATH}")
     mysql_template["spec"]["containers"][0]["volumeMounts"].append({

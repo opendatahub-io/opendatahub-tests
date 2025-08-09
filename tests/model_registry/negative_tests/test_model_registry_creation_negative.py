@@ -32,7 +32,7 @@ class TestModelRegistryCreationNegative:
         self: Self,
         current_client_token: str,
         model_registry_namespace_for_negative_tests: Namespace,
-            updated_dsc_component_state_scope_session: DataScienceCluster,
+        updated_dsc_component_state_scope_session: DataScienceCluster,
         model_registry_db_secret_negative_test: Secret,
         model_registry_db_deployment_negative_test: Deployment,
     ):

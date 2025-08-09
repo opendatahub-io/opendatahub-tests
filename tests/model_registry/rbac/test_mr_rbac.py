@@ -151,7 +151,7 @@ class TestUserMultiProjectPermission:
         test_idp_user: UserTestSession,
         admin_client: DynamicClient,
         updated_dsc_component_state_scope_session: DataScienceCluster,
-            model_registry_namespace: str,
+        model_registry_namespace: str,
         db_secret_parametrized: List[Secret],
         db_pvc_parametrized: List[PersistentVolumeClaim],
         db_service_parametrized: List[Service],
