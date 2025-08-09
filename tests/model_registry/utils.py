@@ -4,6 +4,7 @@ from typing import Any, List
 import requests
 from kubernetes.dynamic import DynamicClient
 
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
@@ -20,6 +21,8 @@ from tests.model_registry.constants import (
     MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
     DB_BASE_RESOURCES_NAME,
     OAUTH_PROXY_CONFIG_DICT,
+    MARIADB_MY_CNF,
+    PORT_MAP,
 )
 from tests.model_registry.exceptions import ModelRegistryResourceNotFoundError
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
@@ -29,7 +32,9 @@ from model_registry.types import RegisteredModel
 
 
 ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
-
+MARIA_DB_IMAGE = (
+    "registry.redhat.io/rhel9/mariadb-1011@sha256:e89fe8e65e3ad6d3cf5a90f53032ef73eb63e68bf76ecf06464e30c08c700338"
+)
 LOGGER = get_logger(name=__name__)
 
 
@@ -67,8 +72,10 @@ def get_endpoint_from_mr_service(svc: Service, protocol: str) -> str:
         raise ProtocolNotSupportedError(protocol)
 
 
-def get_model_registry_deployment_template_dict(secret_name: str, resource_name: str) -> dict[str, Any]:
-    return {
+def get_model_registry_deployment_template_dict(
+    secret_name: str, resource_name: str, db_backend: str
+) -> dict[str, Any]:
+    base_dict = {
         "metadata": {
             "labels": {
                 "name": resource_name,
@@ -135,7 +142,7 @@ def get_model_registry_deployment_template_dict(secret_name: str, resource_name:
                         "periodSeconds": 10,
                         "timeoutSeconds": 5,
                     },
-                    "name": "mysql",
+                    "name": db_backend,
                     "ports": [{"containerPort": 3306, "protocol": "TCP"}],
                     "readinessProbe": {
                         "exec": {
@@ -168,6 +175,33 @@ def get_model_registry_deployment_template_dict(secret_name: str, resource_name:
             ],
         },
     }
+    if db_backend == "mariadb":
+        base_dict["metadata"]["labels"]["app"] = db_backend
+        base_dict["metadata"]["labels"]["component"] = "database"
+        base_dict["spec"]["containers"][0]["image"] = MARIA_DB_IMAGE
+        base_dict["spec"]["containers"][0]["env"].append({
+            "name": "MARIADB_ROOT_PASSWORD",
+            "valueFrom": {"secretKeyRef": {"name": secret_name, "key": "database-password"}},
+        })
+        base_dict["spec"]["containers"][0]["volumeMounts"] = [
+            {"mountPath": "/var/lib/mysql", "name": f"{db_backend}-data"},
+            {
+                "mountPath": "/etc/mysql/conf.d",
+                "name": f"{db_backend}-config",
+            },
+        ]
+        del base_dict["spec"]["containers"][0]["args"]
+        base_dict["spec"]["volumes"] = [
+            {
+                "name": f"{db_backend}-data",
+                "persistentVolumeClaim": {"claimName": resource_name},
+            },
+            {
+                "name": f"{db_backend}-config",
+                "configMap": {"name": resource_name},
+            },
+        ]
+    return base_dict
 
 
 def get_model_registry_db_label_dict(db_resource_name: str) -> dict[str, str]:
@@ -412,7 +446,11 @@ def execute_model_registry_get_command(url: str, headers: dict[str, str], json_o
 
 
 def get_mr_service_objects(
-    base_name: str, namespace: str, client: DynamicClient, teardown_resources: bool, num: int = 1
+    base_name: str,
+    namespace: str,
+    client: DynamicClient,
+    teardown_resources: bool,
+    num: int,
 ) -> list[Service]:
     services = []
     annotation = {
@@ -446,8 +484,33 @@ def get_mr_service_objects(
     return services
 
 
+def get_mr_configmap_objects(
+    base_name: str,
+    namespace: str,
+    client: DynamicClient,
+    teardown_resources: bool,
+    num: int,
+    db_backend: str,
+) -> list[Service]:
+    config_maps = []
+    if db_backend == "mariadb":
+        for num_config_map in range(0, num):
+            name = f"{base_name}{num_config_map}"
+            config_maps.append(
+                ConfigMap(
+                    client=client,
+                    name=name,
+                    namespace=namespace,
+                    data={"my.cnf": MARIADB_MY_CNF},
+                    label=get_model_registry_db_label_dict(db_resource_name=name),
+                    teardown=teardown_resources,
+                )
+            )
+    return config_maps
+
+
 def get_mr_pvc_objects(
-    base_name: str, namespace: str, client: DynamicClient, teardown_resources: bool, num: int = 1
+    base_name: str, namespace: str, client: DynamicClient, teardown_resources: bool, num: int
 ) -> list[PersistentVolumeClaim]:
     pvcs = []
     for num_pvc in range(0, num):
@@ -467,7 +530,7 @@ def get_mr_pvc_objects(
 
 
 def get_mr_secret_objects(
-    base_name: str, namespace: str, client: DynamicClient, teardown_resources: bool, num: int = 1
+    base_name: str, namespace: str, client: DynamicClient, teardown_resources: bool, num: int
 ) -> list[Secret]:
     secrets = []
     for num_secret in range(0, num):
@@ -491,15 +554,18 @@ def get_mr_deployment_objects(
     namespace: str,
     client: DynamicClient,
     teardown_resources: bool,
-    num: int = 1,
+    db_backend: str,
+    num: int,
 ) -> list[Deployment]:
     deployments = []
+
     for num_deployment in range(0, num):
         name = f"{base_name}{num_deployment}"
+        selectors = {"matchLabels": {"name": name}}
+        if db_backend == "mariadb":
+            selectors["matchLabels"]["app"] = db_backend
+            selectors["matchLabels"]["component"] = "database"
         secret_name = f"{DB_BASE_RESOURCES_NAME}{num_deployment}"
-        secret = Secret(name=secret_name, namespace=namespace, ensure_exists=True)
-        assert secret, f"Secret {name} not found"
-        LOGGER.warning(f"Secret used: {secret.name}")
         deployments.append(
             Deployment(
                 name=name,
@@ -511,9 +577,11 @@ def get_mr_deployment_objects(
                 label=get_model_registry_db_label_dict(db_resource_name=name),
                 replicas=1,
                 revision_history_limit=0,
-                selector={"matchLabels": {"name": name}},
+                selector=selectors,
                 strategy={"type": "Recreate"},
-                template=get_model_registry_deployment_template_dict(secret_name=secret_name, resource_name=name),
+                template=get_model_registry_deployment_template_dict(
+                    secret_name=secret_name, resource_name=name, db_backend=db_backend
+                ),
                 wait_for_resource=True,
                 teardown=teardown_resources,
             )
@@ -536,12 +604,15 @@ def get_model_registry_objects(
     client: DynamicClient,
     teardown_resources: bool,
     params: dict[str, Any],
-    num: int = 1,
+    num: int,
+    db_backend: str,
 ) -> list[Any]:
     model_registry_objects = []
     for num_mr in range(0, num):
         name = f"{base_name}{num_mr}"
-        mysql = get_mysql_config(base_name=f"{DB_BASE_RESOURCES_NAME}{num_mr}", namespace=namespace)
+        mysql = get_mysql_config(
+            base_name=f"{DB_BASE_RESOURCES_NAME}{num_mr}", namespace=namespace, db_backend=db_backend
+        )
         if "sslRootCertificateConfigMap" in params:
             mysql["sslRootCertificateConfigMap"] = params["sslRootCertificateConfigMap"]
         model_registry_objects.append(
@@ -561,12 +632,61 @@ def get_model_registry_objects(
     return model_registry_objects
 
 
-def get_mysql_config(base_name: str, namespace: str) -> dict[str, Any]:
+def get_model_registry_metadata_resources(
+    base_name: str,
+    namespace: str,
+    client: DynamicClient,
+    teardown_resources: bool,
+    num_resources: int,
+    db_backend: str,
+) -> dict[Any, Any]:
+    return {
+        Secret: get_mr_secret_objects(
+            client=client,
+            namespace=namespace,
+            base_name=base_name,
+            num=num_resources,
+            teardown_resources=teardown_resources,
+        ),
+        PersistentVolumeClaim: get_mr_pvc_objects(
+            client=client,
+            namespace=namespace,
+            base_name=base_name,
+            num=num_resources,
+            teardown_resources=teardown_resources,
+        ),
+        Service: get_mr_service_objects(
+            client=client,
+            namespace=namespace,
+            base_name=base_name,
+            num=num_resources,
+            teardown_resources=teardown_resources,
+        ),
+        ConfigMap: get_mr_configmap_objects(
+            client=client,
+            namespace=namespace,
+            base_name=base_name,
+            num=num_resources,
+            teardown_resources=teardown_resources,
+            db_backend=db_backend,
+        ),
+        Deployment: get_mr_deployment_objects(
+            client=client,
+            namespace=namespace,
+            base_name=base_name,
+            num=num_resources,
+            teardown_resources=teardown_resources,
+            db_backend=db_backend,
+        ),
+    }
+
+
+def get_mysql_config(base_name: str, namespace: str, db_backend: str) -> dict[str, Any]:
     return {
         "host": f"{base_name}.{namespace}.svc.cluster.local",
         "database": MODEL_REGISTRY_DB_SECRET_STR_DATA["database-name"],
         "passwordSecret": {"key": "database-password", "name": base_name},
-        "port": 3306,
+        "port": PORT_MAP[db_backend],
         "skipDBCreation": False,
         "username": MODEL_REGISTRY_DB_SECRET_STR_DATA["database-user"],
     }
