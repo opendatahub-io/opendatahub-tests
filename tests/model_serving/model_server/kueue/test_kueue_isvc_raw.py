@@ -18,7 +18,7 @@ pytestmark = [
     pytest.mark.smoke,
 ]
 
-NAMESPACE_NAME = "kueue-isvc-raw-test"
+NAMESPACE_NAME = "test-kueue-isvc-raw"
 LOCAL_QUEUE_NAME = "local-queue-raw"
 CLUSTER_QUEUE_NAME = "cluster-queue-raw"
 RESOURCE_FLAVOR_NAME = "default-flavor-raw"

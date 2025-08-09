@@ -25,7 +25,7 @@ BASE_RAW_DEPLOYMENT_CONFIG["runtime_argument"] = SERVING_ARGUMENT
 INITIAL_POD_COUNT = 1
 FINAL_POD_COUNT = 5
 
-OVMS_MODEL_NAMESPACE = "ovms-keda"
+OVMS_MODEL_NAMESPACE = "test-ovms-keda"
 OVMS_MODEL_NAME = "onnx-raw"
 OVMS_METRICS_QUERY = (
     f'sum(sum_over_time(ovms_requests_success{{namespace="{OVMS_MODEL_NAMESPACE}", name="{OVMS_MODEL_NAME}"}}[5m]))'
@@ -39,7 +39,7 @@ pytestmark = [pytest.mark.keda, pytest.mark.usefixtures("valid_aws_config")]
     "unprivileged_model_namespace, ovms_kserve_serving_runtime, stressed_ovms_keda_inference_service",
     [
         pytest.param(
-            {"name": "ovms-keda"},
+            {"name": OVMS_MODEL_NAMESPACE},
             RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
             {
                 "name": ModelFormat.ONNX,

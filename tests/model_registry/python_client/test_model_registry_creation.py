@@ -112,6 +112,9 @@ class TestModelRegistryCreation:
             pytest.param(
                 "readyz/isDirty",
             ),
+            pytest.param(
+                "readyz/health",
+            ),
         ],
     )
     def test_model_registry_endpoint_response(

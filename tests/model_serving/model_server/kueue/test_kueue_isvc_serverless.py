@@ -19,7 +19,7 @@ pytestmark = [
     pytest.mark.smoke,
 ]
 
-NAMESPACE_NAME = "kueue-isvc-serverless-test"
+NAMESPACE_NAME = "test-kueue-isvc-serverless"
 LOCAL_QUEUE_NAME = "local-queue-serverless"
 CLUSTER_QUEUE_NAME = "cluster-queue-serverless"
 RESOURCE_FLAVOR_NAME = "default-flavor-serverless"

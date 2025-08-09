@@ -27,7 +27,7 @@ pytestmark = [pytest.mark.sanity, pytest.mark.usefixtures("valid_aws_config")]
     "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service",
     [
         pytest.param(
-            {"name": "raw-isvc-replicas"},
+            {"name": "test-raw-isvc-replicas"},
             RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
             {
                 **BASE_ISVC_CONFIG,

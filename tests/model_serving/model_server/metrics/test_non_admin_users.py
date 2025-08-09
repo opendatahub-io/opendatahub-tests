@@ -14,7 +14,7 @@ from utilities.monitoring import validate_metrics_field
     "unprivileged_model_namespace, unprivileged_s3_caikit_serverless_inference_service",
     [
         pytest.param(
-            {"name": "non-admin-serverless"},
+            {"name": "test-non-admin-serverless"},
             {"model-dir": ModelStoragePath.FLAN_T5_SMALL_CAIKIT},
         )
     ],
@@ -40,7 +40,7 @@ class TestServerlessUnprivilegedUser:
     "unprivileged_model_namespace, unprivileged_s3_caikit_raw_inference_service",
     [
         pytest.param(
-            {"name": "non-admin-metrics"},
+            {"name": "test-non-admin-metrics"},
             {"model-dir": ModelStoragePath.FLAN_T5_SMALL_HF},
         )
     ],

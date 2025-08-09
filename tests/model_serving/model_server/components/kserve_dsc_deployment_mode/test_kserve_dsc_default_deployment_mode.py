@@ -32,7 +32,7 @@ INFERENCE_SERVICE_PARAMS = {
     [
         pytest.param(
             {"default-deployment-mode": KServeDeploymentType.SERVERLESS},
-            {"name": "dsc-serverless"},
+            {"name": "test-dsc-serverless"},
             RUNTIME_PARAMS,
             {
                 **{"name": f"{ModelFormat.OPENVINO}-{KServeDeploymentType.SERVERLESS.lower()}"},
