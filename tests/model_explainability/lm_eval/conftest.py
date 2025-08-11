@@ -382,7 +382,7 @@ def lmeval_minio_copy_pod(
         ],
         wait_for_resource=True,
     ) as pod:
-        pod.wait_for_status(status=Pod.Status.SUCCEEDED)
+        pod.wait_for_status(status=Pod.Status.SUCCEEDED, timeout=600)
         yield pod
 
 
