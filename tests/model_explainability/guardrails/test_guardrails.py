@@ -7,6 +7,7 @@ import yaml
 from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
+from tests.model_explainability.constants import MNT_MODELS
 from tests.model_explainability.guardrails.constants import (
     QWEN_ISVC_NAME,
     CHAT_GENERATION_CONFIG,
@@ -28,7 +29,6 @@ from utilities.plugins.constant import OpenAIEnpoints
 LOGGER = get_logger(name=__name__)
 
 HARMLESS_PROMPT: str = "What is the opposite of up?"
-MNT_MODELS: str = "/mnt/models"
 
 CHAT_COMPLETIONS_DETECTION_ENDPOINT: str = "api/v2/chat/completions-detection"
 PII_ENDPOINT: str = "/pii"
