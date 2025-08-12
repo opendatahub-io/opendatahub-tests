@@ -15,4 +15,4 @@ tests/model_explainability/       @adolfo-ab @sheltoncyril
 tests/model_registry/             @dbasunag @lugi0 @fege
 tests/model_serving/              @mwaykole @Raghul-M
 tests/rag/                        @jgarciao @jiripetrlik
-tests/workbenches                 @jstourac
+tests/workbenches                 @jstourac @andyatmiami
