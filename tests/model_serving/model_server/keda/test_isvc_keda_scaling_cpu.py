@@ -74,12 +74,7 @@ class TestOVMSKedaScaling:
 
         if is_jira_open(jira_id="RHOAIENG-31386", admin_client=admin_client):
             isvc_dict = stressed_ovms_keda_inference_service.instance.to_dict()
-            metrics = (
-                isvc_dict.get("spec", {})
-                .get("predictor", {})
-                .get("autoScaling", {})
-                .get("metrics", [])
-            )
+            metrics = isvc_dict.get("spec", {}).get("predictor", {}).get("autoScaling", {}).get("metrics", [])
 
             if metrics and isinstance(metrics[0], dict) and metrics[0].get("external") is not None:
                 metrics[0].setdefault("external", {})["authenticationRef"] = {
@@ -100,7 +95,6 @@ class TestOVMSKedaScaling:
                         }
                     }
                 ).update()
-
 
         verify_keda_scaledobject(
             client=unprivileged_client,
