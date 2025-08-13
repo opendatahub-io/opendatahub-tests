@@ -1,4 +1,4 @@
-FROM python:3.13
+FROM fedora:42
 
 ARG USER=odh
 ARG HOME=/home/$USER
@@ -11,17 +11,16 @@ ENV UV_NO_CACHE=1
 ENV BIN_DIR="$HOME_DIR/.local/bin"
 ENV PATH="$PATH:$BIN_DIR"
 
-RUN apt-get update \
-    && apt-get install -y ssh gnupg software-properties-common curl gpg wget vim apache2-utils rsync\
-    && apt-get clean autoclean \
-    && apt-get autoremove --yes \
-    && rm -rf /var/lib/{apt,dpkg,cache,log}/
+# Install Python 3.13 and other dependencies using dnf
+RUN dnf update -y \
+    && dnf install -y python3.13 python3.13-pip ssh gnupg curl gpg wget vim httpd-tools rsync openssl openssl-devel\
+    && dnf clean all \
+    && rm -rf /var/cache/dnf
 
 # Install grpcurl
-RUN curl -sSL "https://github.com/fullstorydev/grpcurl/releases/download/v1.9.2/grpcurl_1.9.2_linux_x86_64.tar.gz"  --output /tmp/grpcurl_1.2.tar.gz \
+RUN curl -sSL "https://github.com/fullstorydev/grpcurl/releases/download/v1.9.2/grpcurl_1.9.2_linux_x86_64.tar.gz" --output /tmp/grpcurl_1.2.tar.gz \
     && tar xvf /tmp/grpcurl_1.2.tar.gz --no-same-owner \
     && mv grpcurl /usr/bin/grpcurl
-
 
 RUN useradd -ms /bin/bash $USER
 USER $USER
