@@ -27,7 +27,7 @@ from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegis
 from utilities.infra import create_ns
 from utilities.constants import OCIRegistry, MinIo, Protocols, Labels
 from utilities.general import b64_encoded_string
-from tests.model_registry.async_job.utils import get_aysnc_job_s3_secret_dict, upload_test_model_to_minio
+from tests.model_registry.async_job.utils import get_async_job_s3_secret_dict, upload_test_model_to_minio
 from tests.model_registry.utils import get_mr_service_by_label, get_endpoint_from_mr_service
 from tests.model_registry.async_job.constants import REPO_NAME
 
@@ -60,7 +60,7 @@ def s3_secret_for_async_job(
     )
 
     # Create S3 secret data using existing utility
-    secret_data = get_aysnc_job_s3_secret_dict(
+    secret_data = get_async_job_s3_secret_dict(
         access_key=MinIo.Credentials.ACCESS_KEY_VALUE,
         secret_access_key=MinIo.Credentials.SECRET_KEY_VALUE,
         s3_bucket=MinIo.Buckets.MODELMESH_EXAMPLE_MODELS,

@@ -135,7 +135,7 @@ def pull_manifest_from_oci_registry(registry_url: str, repo: str, tag: str) -> d
     return response.json()
 
 
-def get_aysnc_job_s3_secret_dict(
+def get_async_job_s3_secret_dict(
     access_key: str,
     secret_access_key: str,
     s3_bucket: str,
