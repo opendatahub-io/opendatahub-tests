@@ -161,7 +161,7 @@ def vllm_runtime(
         template_name=RuntimeTemplates.VLLM_CUDA,
         deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
         runtime_image="quay.io/rh-aiservices-bu/vllm-cpu-openai-ubi9"
-        "@sha256:d680ff8becb6bbaf83dfee7b2d9b8a2beb130db7fd5aa7f9a6d8286a58cebbfd",
+        "@sha256:ada6b3ba98829eb81ae4f89364d9b431c0222671eafb9a04aa16f31628536af2",
         containers={
             "kserve-container": {
                 "args": [
