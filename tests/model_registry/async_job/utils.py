@@ -11,6 +11,43 @@ from simple_logger.logger import get_logger
 LOGGER = get_logger(name=__name__)
 
 
+def check_job_completion(admin_client: DynamicClient, job: Job) -> bool:
+    """
+    Check if job has completed successfully.
+
+    Args:
+        admin_client: Kubernetes dynamic client
+        job: Job object to check
+
+    Returns:
+        bool: True if job completed successfully, False otherwise
+    """
+    job_status = job.instance.status
+
+    # Check if job succeeded
+    if hasattr(job_status, "succeeded") and job_status.succeeded:
+        LOGGER.info("Job completed successfully")
+        return True
+
+    # Log current pod status for debugging
+    try:
+        current_pod = get_latest_job_pod(admin_client=admin_client, job=job)
+        pod_status = current_pod.instance.status
+        if hasattr(pod_status, "phase"):
+            if pod_status.phase == "Succeeded":
+                LOGGER.info(f"Pod {current_pod.name} succeeded")
+            elif pod_status.phase == "Failed":
+                LOGGER.warning(f"Pod {current_pod.name} failed, job may retry with new pod")
+            elif pod_status.phase == "Running":
+                LOGGER.info(f"Pod {current_pod.name} is running...")
+            else:
+                LOGGER.info(f"Pod {current_pod.name} in phase: {pod_status.phase}")
+    except Exception as e:
+        LOGGER.warning(f"Could not get pod status: {e}")
+
+    return False
+
+
 def get_latest_job_pod(admin_client: DynamicClient, job: Job) -> Pod:
     """Get the latest (most recently created) Pod created by a Job"""
     pods = list(

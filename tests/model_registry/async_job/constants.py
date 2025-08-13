@@ -36,3 +36,6 @@ VOLUME_MOUNTS = {
     "DEST_CREDS_PATH": "/opt/creds/destination",
     "DEST_DOCKERCONFIG_PATH": "/opt/creds/destination/.dockerconfigjson",
 }
+
+REPO_NAME = "async-job-test/model-artifact"
+TAG = "latest"

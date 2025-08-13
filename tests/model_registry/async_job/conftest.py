@@ -27,8 +27,9 @@ from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegis
 from utilities.infra import create_ns
 from utilities.constants import OCIRegistry, MinIo, Protocols, Labels
 from utilities.general import b64_encoded_string
-from tests.model_registry.async_job.utils import get_aysnc_job_s3_secret_dict
+from tests.model_registry.async_job.utils import get_aysnc_job_s3_secret_dict, upload_test_model_to_minio
 from tests.model_registry.utils import get_mr_service_by_label, get_endpoint_from_mr_service
+from tests.model_registry.async_job.constants import REPO_NAME
 
 
 # We need to upstream this to the wrapper library
@@ -46,10 +47,10 @@ class JobWithVolumes(Job):
             self.res["spec"]["template"]["spec"]["volumes"] = self.volumes
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def s3_secret_for_async_job(
     admin_client: DynamicClient,
-    model_registry_namespace: str,
+    service_account,
     minio_service: Service,
 ) -> Generator[Secret, Any, Any]:
     """Create S3 credentials secret for async upload job"""
@@ -72,17 +73,17 @@ def s3_secret_for_async_job(
     with Secret(
         client=admin_client,
         name=secret_name,
-        namespace=model_registry_namespace,
+        namespace=service_account.namespace,
         data_dict=secret_data,
         type="Opaque",
     ) as secret:
         yield secret
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def oci_secret_for_async_job(
     admin_client: DynamicClient,
-    model_registry_namespace: str,
+    service_account,
     oci_registry_route: Route,
 ) -> Generator[Secret, Any, Any]:
     """Create OCI registry credentials secret for async upload job"""
@@ -111,28 +112,30 @@ def oci_secret_for_async_job(
     with Secret(
         client=admin_client,
         name=secret_name,
-        namespace=model_registry_namespace,
+        namespace=service_account.namespace,
         data_dict=secret_data,
         type="kubernetes.io/dockerconfigjson",
     ) as secret:
         yield secret
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def model_sync_async_job(
     admin_client: DynamicClient,
-    current_client_token: str,
+    sa_token: str,
+    service_account,
     model_registry_namespace: str,
     model_registry_instance_mysql: list[ModelRegistry],
     s3_secret_for_async_job: Secret,
     oci_secret_for_async_job: Secret,
     oci_registry_route: Route,
+    mr_access_role_binding,
     teardown_resources: bool,
 ) -> Generator[Job, Any, Any]:
     """Core Job fixture focused on Job deployment and configuration"""
     # Get dynamic OCI URI from route
     oci_registry_host = oci_registry_route.instance.spec.host
-    dynamic_oci_uri = f"{oci_registry_host}/async-job-test/model-artifact"
+    dynamic_oci_uri = f"{oci_registry_host}/{REPO_NAME}"
 
     # Get model registry service and endpoint
     mr_instance = model_registry_instance_mysql[0]  # Use first instance
@@ -146,7 +149,7 @@ def model_sync_async_job(
     with JobWithVolumes(
         client=admin_client,
         name=ASYNC_UPLOAD_JOB_NAME,
-        namespace=model_registry_namespace,
+        namespace=service_account.namespace,
         label=ASYNC_JOB_LABELS,
         annotations=ASYNC_JOB_ANNOTATIONS,
         restart_policy="Never",
@@ -214,7 +217,7 @@ def model_sync_async_job(
                     },
                     {"name": "MODEL_SYNC_REGISTRY_PORT", "value": mr_port},
                     {"name": "MODEL_SYNC_REGISTRY_AUTHOR", "value": "RHOAI async job test"},
-                    {"name": "MODEL_SYNC_REGISTRY_USER_TOKEN", "value": current_client_token},
+                    {"name": "MODEL_SYNC_REGISTRY_USER_TOKEN", "value": sa_token},
                     {"name": "MODEL_SYNC_REGISTRY_IS_SECURE", "value": "False"},
                 ],
             }
@@ -353,3 +356,15 @@ def oci_registry_route(admin_client: DynamicClient, oci_registry_service: Servic
         service=oci_registry_service.name,
     ) as oci_route:
         yield oci_route
+
+
+@pytest.fixture(scope="function")
+def create_test_data_in_minio(
+    minio_service: Service,
+    admin_client: DynamicClient,
+    model_registry_namespace: str,
+) -> None:
+    """Upload the mnist-8.onnx test model file to MinIO"""
+    upload_test_model_to_minio(
+        admin_client=admin_client, namespace=model_registry_namespace, minio_service=minio_service
+    )
