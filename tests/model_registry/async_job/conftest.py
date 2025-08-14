@@ -19,9 +19,11 @@ from pytest import FixtureRequest
 
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
+from ocp_resources.role_binding import RoleBinding
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
+from ocp_resources.service_account import ServiceAccount
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
 from utilities.infra import create_ns
@@ -50,7 +52,7 @@ class JobWithVolumes(Job):
 @pytest.fixture(scope="function")
 def s3_secret_for_async_job(
     admin_client: DynamicClient,
-    service_account,
+    service_account: ServiceAccount,
     minio_service: Service,
 ) -> Generator[Secret, Any, Any]:
     """Create S3 credentials secret for async upload job"""
@@ -83,7 +85,7 @@ def s3_secret_for_async_job(
 @pytest.fixture(scope="function")
 def oci_secret_for_async_job(
     admin_client: DynamicClient,
-    service_account,
+    service_account: ServiceAccount,
     oci_registry_route: Route,
 ) -> Generator[Secret, Any, Any]:
     """Create OCI registry credentials secret for async upload job"""
@@ -123,13 +125,13 @@ def oci_secret_for_async_job(
 def model_sync_async_job(
     admin_client: DynamicClient,
     sa_token: str,
-    service_account,
+    service_account: ServiceAccount,
     model_registry_namespace: str,
     model_registry_instance_mysql: list[ModelRegistry],
     s3_secret_for_async_job: Secret,
     oci_secret_for_async_job: Secret,
     oci_registry_route: Route,
-    mr_access_role_binding,
+    mr_access_role_binding: RoleBinding,
     teardown_resources: bool,
 ) -> Generator[Job, Any, Any]:
     """Core Job fixture focused on Job deployment and configuration"""

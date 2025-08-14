@@ -4,6 +4,7 @@ import json
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.job import Job
 from ocp_resources.pod import Pod
+from ocp_resources.service import Service
 
 from utilities.general import b64_encoded_string
 from simple_logger.logger import get_logger
@@ -168,7 +169,7 @@ def get_async_job_s3_secret_dict(
 def upload_test_model_to_minio(
     admin_client: DynamicClient,
     namespace: str,
-    minio_service,
+    minio_service: Service,
     object_key: str = "my-model/mnist-8.onnx",
 ) -> None:
     """
