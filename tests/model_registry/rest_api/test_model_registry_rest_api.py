@@ -24,18 +24,26 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(
-    "registered_model_rest_api",
+    "model_registry_metadata_db_resources, model_registry_instance, registered_model_rest_api",
     [
         pytest.param(
+            {},
+            {},
+            MODEL_REGISTER_DATA,
+        ),
+        pytest.param(
+            {"db_name": "mariadb"},
+            {"db_name": "mariadb"},
             MODEL_REGISTER_DATA,
         ),
     ],
     indirect=True,
 )
 @pytest.mark.usefixtures(
-    "updated_dsc_component_state_scope_class",
-    "mysql_metadata_resources",
-    "model_registry_instance_mysql",
+    "updated_dsc_component_state_scope_session",
+    "model_registry_namespace",
+    "model_registry_metadata_db_resources",
+    "model_registry_instance",
     "registered_model_rest_api",
 )
 @pytest.mark.custom_namespace
@@ -77,18 +85,24 @@ class TestModelRegistryCreationRest:
             resource_name=data_key,
         )
 
-    def test_model_registry_validate_api_version(self: Self, model_registry_instance_mysql):
+    def test_model_registry_validate_api_version(
+        self: Self,
+        model_registry_instance,
+    ):
         api_version = ModelRegistry(
-            name=model_registry_instance_mysql[0].name,
-            namespace=model_registry_instance_mysql[0].namespace,
+            name=model_registry_instance[0].name,
+            namespace=model_registry_instance[0].namespace,
             ensure_exists=True,
         ).instance.apiVersion
         LOGGER.info(f"Validating apiversion {api_version} for model registry")
         expected_version = f"{ModelRegistry.ApiGroup.MODELREGISTRY_OPENDATAHUB_IO}/{ModelRegistry.ApiVersion.V1BETA1}"
         assert api_version == expected_version
 
-    def test_model_registry_validate_oauthproxy_enabled(self: Self, model_registry_instance_mysql):
-        model_registry_instance_spec = model_registry_instance_mysql[0].instance.spec
+    def test_model_registry_validate_oauthproxy_enabled(
+        self: Self,
+        model_registry_instance,
+    ):
+        model_registry_instance_spec = model_registry_instance[0].instance.spec
         LOGGER.info(f"Validating that MR is using oauth proxy {model_registry_instance_spec}")
         assert not model_registry_instance_spec.istio
         assert model_registry_instance_spec.oauthProxy.serviceRoute == "enabled"
