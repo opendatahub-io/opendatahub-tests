@@ -70,3 +70,10 @@ repos:
         args:
           - --subject-min-length=10
           - --subject-max-length=80
+  - repo: local
+    hooks:
+        - id: check-prohibited-patterns
+          name: Check for prohibited code patterns
+          entry: python scripts/check_incorrect_wrapper_usage.py
+          language: python
+          pass_filenames: false
