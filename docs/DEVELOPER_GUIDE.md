@@ -66,6 +66,12 @@ The project utilizes [openshift-python-wrapper](https://github.com/RedHatQE/open
 Please refer to the [documentation](https://github.com/RedHatQE/openshift-python-wrapper/blob/main/README.md)  
 and the [examples](https://github.com/RedHatQE/openshift-python-wrapper/tree/main/examples) for more information.
 
+For any missing resources, please generate a new resource using
+[class_generator tool](https://github.com/RedHatQE/openshift-python-wrapper/blob/main/class_generator/README.md) and
+create a PR against wrapper. Calls to cluster resources from tests, utils and fixtures must always use
+openshift-python-wrapper resource or oc command
+(when wrapper resource is not relevant. e.g. must-gather generation)
+
 
 ## Conftest
 - Top level [conftest.py](../conftest.py) contains pytest native fixtures.
