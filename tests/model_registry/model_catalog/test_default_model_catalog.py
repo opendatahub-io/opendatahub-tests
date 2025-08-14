@@ -8,6 +8,7 @@ from ocp_resources.config_map import ConfigMap
 
 LOGGER = get_logger(name=__name__)
 
+
 @pytest.mark.parametrize(
     "catalog_config_map, expected_models",
     [
