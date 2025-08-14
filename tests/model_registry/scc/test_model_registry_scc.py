@@ -59,9 +59,9 @@ def model_registry_resource(
     indirect=True,
 )
 @pytest.mark.usefixtures(
-    "updated_dsc_component_state_scope_class",
-    "mysql_metadata_resources",
-    "model_registry_instance_mysql",
+    "updated_dsc_component_state_scope_session",
+    "model_registry_metadata_db_resources",
+    "model_registry_instance",
     "registered_model",
 )
 @pytest.mark.custom_namespace
