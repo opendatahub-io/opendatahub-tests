@@ -1,4 +1,4 @@
-from typing import Generator, Any, Dict
+from typing import Generator, Any
 
 import pytest
 from kubernetes.dynamic import DynamicClient
@@ -12,30 +12,32 @@ from utilities.kueue_utils import (
     LocalQueue,
     ClusterQueue,
     ResourceFlavor,
+    backup_configmap_data,
+    update_kueue_config_frameworks,
+    restart_kueue_deployment,
+    create_kueue_config_patch,
 )
 from ocp_resources.namespace import Namespace
 from ocp_resources.config_map import ConfigMap
-from ocp_resources.deployment import Deployment
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.resource import ResourceEditor
-from utilities.constants import Labels, Annotations
+from simple_logger.logger import get_logger
+from utilities.constants import Labels
 from utilities.infra import create_ns
 from utilities.kueue_detection import (
     detect_kueue_installation_scenario,
     should_patch_kueue_config,
     should_restart_kueue_deployment,
 )
-import yaml
-import logging
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = get_logger(name=__name__)
 
 
 def kueue_resource_groups_for_notebooks(
     flavor_name: str,
     cpu_quota: str,
     memory_quota: str,
-) -> list[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Create resource groups configuration for Kueue with notebook-specific resources"""
     return [
         {
@@ -170,103 +172,53 @@ def patched_kueue_manager_config(
         yield None
         return
 
-    namespace = py_config["applications_namespace"]
-    config_map_name = "kueue-manager-config"
+    applications_namespace = py_config["applications_namespace"]
 
     # Get the existing ConfigMap
     try:
         config_map = ConfigMap(
             client=admin_client,
-            name=config_map_name,
-            namespace=namespace,
+            name="kueue-manager-config",
+            namespace=applications_namespace,
             ensure_exists=True,
         )
     except Exception as e:
-        LOGGER.warning(f"Could not find kueue-manager-config ConfigMap: {e}")
-        LOGGER.info("This is expected for Red Hat build of Kueue operator scenario")
-        yield None
-        return
+        LOGGER.error(f"Could not find kueue-manager-config ConfigMap: {e}")
+        LOGGER.error(f"This is unexpected for scenario '{scenario}' - the ConfigMap should exist")
+        raise RuntimeError(
+            f"kueue-manager-config ConfigMap not found in scenario '{scenario}'. "
+            f"This indicates a system configuration issue that needs investigation."
+        ) from e
 
-    # Store original data and annotations for restoration
-    original_data = config_map.instance.data.copy() if config_map.instance.data else {}
-    original_annotations = (
-        config_map.instance.metadata.annotations.copy() if config_map.instance.metadata.annotations else {}
-    )
+    # Backup original data and annotations using utility function
+    original_data, original_annotations = backup_configmap_data(config_map=config_map)
 
-    LOGGER.info("Storing original kueue-manager-config data for restoration")
-
-    # Get current config data
+    # Get current config data and update it
     current_data = config_map.instance.data or {}
     config_yaml = current_data.get("controller_manager_config.yaml", "{}")
 
-    # Parse the existing configuration
-    try:
-        config_dict = yaml.safe_load(config_yaml) or {}
-    except yaml.YAMLError:
-        config_dict = {}
+    # Update configuration to add pod and statefulset frameworks
+    updated_config_yaml = update_kueue_config_frameworks(
+        config_yaml=config_yaml,
+        frameworks_to_add=["pod", "statefulset"],
+    )
 
-    # Ensure integrations section exists
-    if "integrations" not in config_dict:
-        config_dict["integrations"] = {}
-
-    if "frameworks" not in config_dict["integrations"]:
-        config_dict["integrations"]["frameworks"] = []
-
-    # Add pod and statefulset if not already present
-    frameworks = config_dict["integrations"]["frameworks"]
-    if "pod" not in frameworks:
-        frameworks.append("pod")
-    if "statefulset" not in frameworks:
-        frameworks.append("statefulset")
-
-    # Convert back to YAML
-    updated_config_yaml = yaml.dump(config_dict, default_flow_style=False)
-    updated_data = {**current_data, "controller_manager_config.yaml": updated_config_yaml}
-
-    # Apply the patch with both data and metadata annotations
-    patch = {"metadata": {"annotations": {Annotations.OpenDataHubIo.MANAGED: "false"}}, "data": updated_data}
-
-    def restart_kueue_deployment(reason: str):
-        """Helper function to restart the kueue-controller-manager deployment"""
-        if not should_restart_kueue_deployment(scenario):
-            LOGGER.info(f"Skipping kueue-controller-manager deployment restart for scenario: {scenario}")
-            return
-
-        LOGGER.info(f"Restarting kueue-controller-manager deployment - {reason}")
-
-        try:
-            kueue_deployment = Deployment(
-                client=admin_client,
-                name="kueue-controller-manager",
-                namespace=namespace,
-                ensure_exists=True,
-            )
-
-            # Get current replica count before restart
-            current_replicas = kueue_deployment.replicas
-            if current_replicas is None:
-                current_replicas = 1
-            LOGGER.info(f"Current kueue-controller-manager replicas: {current_replicas}")
-
-            # Restart deployment by scaling to 0 and back to original count
-            LOGGER.info("Scaling kueue-controller-manager deployment to 0 replicas...")
-            kueue_deployment.scale_replicas(replica_count=0)
-            kueue_deployment.wait_for_replicas(deployed=False)
-            LOGGER.info("kueue-controller-manager deployment scaled down to 0 replicas")
-
-            # Now scale back up to original count
-            LOGGER.info(f"Scaling kueue-controller-manager deployment back to {current_replicas} replicas...")
-            kueue_deployment.scale_replicas(replica_count=current_replicas)
-            kueue_deployment.wait_for_replicas(deployed=True)
-
-            LOGGER.info(f"kueue-controller-manager deployment restart completed - {reason}")
-        except Exception as e:
-            LOGGER.warning(f"Could not restart kueue-controller-manager deployment: {e}")
-            LOGGER.info("This is expected for Red Hat build of Kueue operator scenario")
+    # Create patch using utility function
+    patch = create_kueue_config_patch(
+        current_data=current_data,
+        updated_config_yaml=updated_config_yaml,
+        managed_annotation="false",
+    )
 
     with ResourceEditor(patches={config_map: patch}):
         # After patching the ConfigMap, restart the deployment to pick up new configuration
-        restart_kueue_deployment(reason="to apply patched configuration")
+        restart_kueue_deployment(
+            client=admin_client,
+            namespace=applications_namespace,
+            reason="to apply patched configuration",
+            should_restart_func=should_restart_kueue_deployment,
+            scenario=scenario,
+        )
         yield config_map
 
     # Teardown: Restore original configuration and restart deployment
@@ -277,5 +229,11 @@ def patched_kueue_manager_config(
 
     with ResourceEditor(patches={config_map: restore_patch}):
         # Restart deployment to pick up the restored original configuration
-        restart_kueue_deployment(reason="to restore original configuration")
+        restart_kueue_deployment(
+            client=admin_client,
+            namespace=applications_namespace,
+            reason="to restore original configuration",
+            should_restart_func=should_restart_kueue_deployment,
+            scenario=scenario,
+        )
         LOGGER.info("Original kueue-manager-config configuration restored successfully")

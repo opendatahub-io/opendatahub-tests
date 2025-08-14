@@ -111,7 +111,6 @@ def detect_kueue_installation_scenario(client: DynamicClient) -> KueueInstallati
         return KueueInstallationScenario.RHOAI_MANAGED
 
     # Scenario 2: Red Hat build of Kueue operator + DSC Kueue = Unmanaged
-    # TODO: shall we also apply in case it's removed completely?
     elif rh_kueue_operator_installed and dsc_kueue_state == DscComponents.ManagementState.UNMANAGED:
         LOGGER.info("Detected scenario: Red Hat build of Kueue operator with RHOAI kueue component unmanaged")
         return KueueInstallationScenario.RHOAI_UNMANAGED

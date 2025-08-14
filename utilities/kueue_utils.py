@@ -1,9 +1,14 @@
 from contextlib import contextmanager
-from typing import Optional, Dict, Any, List, Generator
+from typing import Any, Generator, Callable
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.resource import NamespacedResource, Resource, MissingRequiredArgumentError
 from ocp_resources.deployment import Deployment
 from ocp_resources.pod import Pod
+from ocp_resources.config_map import ConfigMap
+import yaml
+from simple_logger.logger import get_logger
+
+LOGGER = get_logger(name=__name__)
 
 
 class ResourceFlavor(Resource):
@@ -57,8 +62,8 @@ class ClusterQueue(Resource):
 
     def __init__(
         self,
-        namespace_selector: Dict[str, Any] | None = None,
-        resource_groups: List[Dict[str, Any]] | None = None,
+        namespace_selector: dict[str, Any] | None = None,
+        resource_groups: list[dict[str, Any]] | None = None,
         **kwargs: Any,
     ):
         """
@@ -130,8 +135,8 @@ def create_local_queue(
 def create_cluster_queue(
     client: DynamicClient,
     name: str,
-    resource_groups: List[Dict[str, Any]],
-    namespace_selector: Optional[Dict[str, Any]] = None,
+    resource_groups: list[dict[str, Any]],
+    namespace_selector: dict[str, Any] | None = None,
     teardown: bool = True,
 ) -> Generator[ClusterQueue, Any, Any]:
     """
@@ -184,7 +189,7 @@ def check_gated_pods_and_running_pods(
     return running_pods, gated_pods
 
 
-def get_queue_resource_usage(queue: ClusterQueue | LocalQueue, flavor_name: str) -> Dict[str, str | bool]:
+def get_queue_resource_usage(queue: ClusterQueue | LocalQueue, flavor_name: str) -> dict[str, str | bool]:
     """
     Get resource usage for a specific flavor in a queue.
 
@@ -195,7 +200,7 @@ def get_queue_resource_usage(queue: ClusterQueue | LocalQueue, flavor_name: str)
     Returns:
         Dict containing CPU and memory usage information
     """
-    usage_info: Dict[str, str | bool] = {"cpu": "0", "memory": "0", "found": False}
+    usage_info: dict[str, str | bool] = {"cpu": "0", "memory": "0", "found": False}
 
     # Refresh the queue status
     queue.get()
@@ -222,8 +227,8 @@ def get_queue_resource_usage(queue: ClusterQueue | LocalQueue, flavor_name: str)
 def verify_queue_tracks_workload(
     queue: ClusterQueue | LocalQueue,
     flavor_name: str,
-    expected_cpu: Optional[str] = None,
-    expected_memory: Optional[str] = None,
+    expected_cpu: str | None = None,
+    expected_memory: str | None = None,
 ) -> bool:
     """
     Verify that a queue is tracking workload resource usage.
@@ -266,3 +271,149 @@ def verify_queue_tracks_workload(
         has_cpu_usage = usage_info["cpu"] != "0"
         has_memory_usage = usage_info["memory"] != "0"
         return has_cpu_usage or has_memory_usage
+
+
+def backup_configmap_data(config_map: ConfigMap) -> tuple[dict[str, Any], dict[str, Any]]:
+    """
+    Backup ConfigMap data and annotations for later restoration.
+
+    Args:
+        config_map: ConfigMap object to backup
+
+    Returns:
+        Tuple of (original_data, original_annotations)
+    """
+    configmap_instance = config_map.instance
+
+    original_data = configmap_instance.data.copy() if configmap_instance.data else {}
+    original_annotations = (
+        configmap_instance.metadata.annotations.copy() if configmap_instance.metadata.annotations else {}
+    )
+
+    LOGGER.info("Stored original ConfigMap data and annotations for restoration")
+    return original_data, original_annotations
+
+
+def update_kueue_config_frameworks(config_yaml: str, frameworks_to_add: list[str]) -> str:
+    """
+    Update the Kueue configuration to add specified frameworks to the integrations section.
+
+    Args:
+        config_yaml: Current configuration YAML string
+        frameworks_to_add: List of frameworks to add
+
+    Returns:
+        Updated configuration YAML string
+
+    Raises:
+        yaml.YAMLError: If the given configuration is malformed
+    """
+    # Parse the existing configuration - fail fast if corrupted
+    try:
+        config_dict = yaml.safe_load(config_yaml) or {}
+    except yaml.YAMLError as e:
+        LOGGER.error(f"Failed to parse Kueue configuration - this indicates a serious issue: {e}")
+        LOGGER.error(f"Corrupted YAML content: {config_yaml}")
+        raise
+
+    # Validate expected structure exists
+    if "integrations" not in config_dict:
+        LOGGER.error(f"Kueue configuration missing 'integrations' section: {config_dict}")
+        raise ValueError(
+            "Kueue configuration is missing required 'integrations' section. "
+            "This indicates a malformed configuration that needs investigation."
+        )
+
+    if "frameworks" not in config_dict["integrations"]:
+        LOGGER.error(f"Kueue configuration missing 'frameworks' section in integrations: {config_dict['integrations']}")
+        raise ValueError(
+            "Kueue configuration is missing required 'frameworks' section in integrations. "
+            "This indicates a malformed configuration that needs investigation."
+        )
+
+    # Add frameworks if not already present
+    frameworks = config_dict["integrations"]["frameworks"]
+    for framework in frameworks_to_add:
+        if framework not in frameworks:
+            frameworks.append(framework)
+            LOGGER.info(f"Added '{framework}' framework to Kueue configuration")
+
+    # Convert back to YAML
+    return yaml.dump(config_dict, default_flow_style=False)
+
+
+def restart_kueue_deployment(
+    client: DynamicClient,
+    namespace: str,
+    reason: str,
+    should_restart_func: Callable[[str], bool],
+    scenario: str,
+    deployment_name: str = "kueue-controller-manager",
+) -> None:
+    """
+    Restart the kueue-controller-manager deployment.
+
+    Args:
+        client: Kubernetes dynamic client
+        namespace: Namespace where the deployment is located
+        reason: Reason for the restart (for logging)
+        should_restart_func: Function to check if restart should be performed
+        scenario: Kueue installation scenario
+        deployment_name: Name of the deployment (default: "kueue-controller-manager")
+    """
+    if not should_restart_func(scenario):
+        LOGGER.info(f"Skipping {deployment_name} deployment restart for scenario: {scenario}")
+        return
+
+    LOGGER.info(f"Restarting {deployment_name} deployment - {reason}")
+
+    try:
+        kueue_deployment = Deployment(
+            client=client,
+            name=deployment_name,
+            namespace=namespace,
+            ensure_exists=True,
+        )
+
+        # Get current replica count before restart
+        current_replicas = kueue_deployment.replicas
+        if current_replicas is None:
+            current_replicas = 1
+        LOGGER.info(f"Current {deployment_name} replicas: {current_replicas}")
+
+        # Restart deployment by scaling to 0 and back to original count
+        LOGGER.info(f"Scaling {deployment_name} deployment to 0 replicas...")
+        kueue_deployment.scale_replicas(replica_count=0)
+        kueue_deployment.wait_for_replicas(deployed=False)
+        LOGGER.info(f"{deployment_name} deployment scaled down to 0 replicas")
+
+        # Now scale back up to original count
+        LOGGER.info(f"Scaling {deployment_name} deployment back to {current_replicas} replicas...")
+        kueue_deployment.scale_replicas(replica_count=current_replicas)
+        kueue_deployment.wait_for_replicas(deployed=True)
+
+        LOGGER.info(f"{deployment_name} deployment restart completed - {reason}")
+    except Exception as e:
+        LOGGER.warning(f"Could not restart {deployment_name} deployment: {e}")
+        LOGGER.info("This is expected for Red Hat build of Kueue operator scenario")
+
+
+def create_kueue_config_patch(
+    current_data: dict[str, Any], updated_config_yaml: str, managed_annotation: str = "false"
+) -> dict[str, Any]:
+    """
+    Create a patch for the Kueue ConfigMap with updated configuration and annotations.
+
+    Args:
+        current_data: Current ConfigMap data
+        updated_config_yaml: Updated configuration YAML string
+        managed_annotation: Value for the managed annotation (default: "false")
+
+    Returns:
+        Patch dictionary for the ConfigMap
+    """
+    from utilities.constants import Annotations
+
+    updated_data = {**current_data, "controller_manager_config.yaml": updated_config_yaml}
+
+    return {"metadata": {"annotations": {Annotations.OpenDataHubIo.MANAGED: managed_annotation}}, "data": updated_data}
