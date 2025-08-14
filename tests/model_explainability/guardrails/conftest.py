@@ -307,6 +307,7 @@ def patched_llamastack_deployment_tls_certs(llamastack_distribution, guardrails_
         lls_deployment.wait_for_replicas()
         yield lls_deployment
 
+
 @pytest.fixture(scope="class")
 def hap_detector_isvc(
     admin_client: DynamicClient,
@@ -334,9 +335,9 @@ def hap_detector_isvc(
         labels={
             "opendatahub.io/dashboard": "true",
         },
-
     ) as isvc:
         yield isvc
+
 
 @pytest.fixture(scope="class")
 def hap_detector_route(
