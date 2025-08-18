@@ -181,7 +181,6 @@ def upload_test_model_to_minio(
         minio_service: MinIO service resource
         object_key: S3 object key path (default: "my-model/mnist-8.onnx")
     """
-    from ocp_resources.pod import Pod
     from utilities.constants import MinIo
     import base64
     import os

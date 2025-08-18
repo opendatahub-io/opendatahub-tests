@@ -61,22 +61,17 @@ def s3_secret_for_async_job(
         f"http://{minio_service.name}.{minio_service.namespace}.svc.cluster.local:{MinIo.Metadata.DEFAULT_PORT}"
     )
 
-    # Create S3 secret data using existing utility
-    secret_data = get_async_job_s3_secret_dict(
-        access_key=MinIo.Credentials.ACCESS_KEY_VALUE,
-        secret_access_key=MinIo.Credentials.SECRET_KEY_VALUE,
-        s3_bucket=MinIo.Buckets.MODELMESH_EXAMPLE_MODELS,
-        s3_endpoint=minio_endpoint,
-        s3_region="us-east-1",  # Default region for MinIO
-    )
-
-    secret_name = f"async-job-s3-secret-{shortuuid.uuid().lower()}"
-
     with Secret(
         client=admin_client,
-        name=secret_name,
+        name=f"async-job-s3-secret-{shortuuid.uuid().lower()}",
         namespace=service_account.namespace,
-        data_dict=secret_data,
+        data_dict=get_async_job_s3_secret_dict(
+            access_key=MinIo.Credentials.ACCESS_KEY_VALUE,
+            secret_access_key=MinIo.Credentials.SECRET_KEY_VALUE,
+            s3_bucket=MinIo.Buckets.MODELMESH_EXAMPLE_MODELS,
+            s3_endpoint=minio_endpoint,
+            s3_region="us-east-1",  # Default region for MinIO
+        ),
         type="Opaque",
     ) as secret:
         yield secret
@@ -86,36 +81,30 @@ def s3_secret_for_async_job(
 def oci_secret_for_async_job(
     admin_client: DynamicClient,
     service_account: ServiceAccount,
-    oci_registry_route: Route,
+    oci_registry_host: str,
 ) -> Generator[Secret, Any, Any]:
     """Create OCI registry credentials secret for async upload job"""
-    # Get OCI registry endpoint from route
-    registry_host = oci_registry_route.instance.spec.host
 
     # Create anonymous dockerconfig for OCI registry (no authentication)
     # This matches the zot registry setup which allows anonymous access
     dockerconfig = {
         "auths": {
-            f"{registry_host}:{OCIRegistry.Metadata.DEFAULT_PORT}": {
+            f"{oci_registry_host}:{OCIRegistry.Metadata.DEFAULT_PORT}": {
                 "auth": "",
                 "email": "user@example.com",  # Anonymous access
             }
         }
     }
 
-    secret_data = {
-        ".dockerconfigjson": b64_encoded_string(json.dumps(dockerconfig)),
-        "ACCESS_TYPE": b64_encoded_string(json.dumps('["Push,Pull"]')),
-        "OCI_HOST": b64_encoded_string(json.dumps(f"{registry_host}:{OCIRegistry.Metadata.DEFAULT_PORT}")),
-    }
-
-    secret_name = f"async-job-oci-secret-{shortuuid.uuid().lower()}"
-
     with Secret(
         client=admin_client,
-        name=secret_name,
+        name=f"async-job-oci-secret-{shortuuid.uuid().lower()}",
         namespace=service_account.namespace,
-        data_dict=secret_data,
+        data_dict={
+            ".dockerconfigjson": b64_encoded_string(json.dumps(dockerconfig)),
+            "ACCESS_TYPE": b64_encoded_string(json.dumps('["Push,Pull"]')),
+            "OCI_HOST": b64_encoded_string(json.dumps(f"{oci_registry_host}:{OCIRegistry.Metadata.DEFAULT_PORT}")),
+        },
         type="kubernetes.io/dockerconfigjson",
     ) as secret:
         yield secret
@@ -130,13 +119,12 @@ def model_sync_async_job(
     model_registry_instance: list[ModelRegistry],
     s3_secret_for_async_job: Secret,
     oci_secret_for_async_job: Secret,
-    oci_registry_route: Route,
+    oci_registry_host: str,
     mr_access_role_binding: RoleBinding,
     teardown_resources: bool,
 ) -> Generator[Job, Any, Any]:
     """Core Job fixture focused on Job deployment and configuration"""
     # Get dynamic OCI URI from route
-    oci_registry_host = oci_registry_route.instance.spec.host
     dynamic_oci_uri = f"{oci_registry_host}/{REPO_NAME}"
 
     # Get model registry service and endpoint
@@ -358,6 +346,12 @@ def oci_registry_route(admin_client: DynamicClient, oci_registry_service: Servic
         service=oci_registry_service.name,
     ) as oci_route:
         yield oci_route
+
+
+@pytest.fixture(scope="class")
+def oci_registry_host(oci_registry_route: Route) -> str:
+    """Get the OCI registry host from the route"""
+    return oci_registry_route.instance.spec.host
 
 
 @pytest.fixture(scope="function")

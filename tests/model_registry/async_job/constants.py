@@ -3,7 +3,7 @@ ASYNC_UPLOAD_JOB_NAME = "model-sync-async-job"
 
 # Midstream temporary image (until downstream is available)
 # TODO: Update before async job goes live
-ASYNC_UPLOAD_IMAGE = "quay.io/opendatahub/model-registry-job-async-upload:main-500be9d"
+ASYNC_UPLOAD_IMAGE = "quay.io/opendatahub/model-registry-job-async-upload:v0.2.22"
 
 # Job labels and annotations
 ASYNC_JOB_LABELS = {
