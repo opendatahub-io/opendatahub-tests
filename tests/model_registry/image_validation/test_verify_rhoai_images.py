@@ -12,9 +12,10 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.mark.usefixtures(
-    "updated_dsc_component_state_scope_class",
-    "mysql_metadata_resources",
-    "model_registry_instance_mysql",
+    "updated_dsc_component_state_scope_session",
+    "model_registry_namespace",
+    "model_registry_metadata_db_resources",
+    "model_registry_instance",
 )
 @pytest.mark.downstream_only
 class TestModelRegistryImages:
@@ -31,11 +32,11 @@ class TestModelRegistryImages:
         self: Self,
         admin_client: DynamicClient,
         model_registry_operator_pod: Pod,
-        model_registry_instance_pod: Pod,
+        model_registry_instance_pod_by_label: Pod,
         related_images_refs: Set[str],
     ):
         validation_errors = []
-        for pod in [model_registry_operator_pod, model_registry_instance_pod]:
+        for pod in [model_registry_operator_pod, model_registry_instance_pod_by_label]:
             validation_errors.extend(
                 validate_container_images(
                     pod=pod, valid_image_refs=related_images_refs, skip_patterns=["openshift-service-mesh"]
