@@ -44,13 +44,9 @@ MODEL_DATA = {
     indirect=True,
 )
 @pytest.mark.usefixtures(
-    "updated_dsc_component_state_scope_class",
+    "updated_dsc_component_state_scope_session",
     "model_registry_namespace",
-    "model_registry_db_secret",
-    "model_registry_db_pvc",
-    "model_registry_db_service",
-    "model_registry_db_deployment",
-    "model_registry_instance_mysql",
+    "model_registry_metadata_db_resources",
     "minio_pod",
     "create_test_data_in_minio",
     "s3_secret_for_async_job",

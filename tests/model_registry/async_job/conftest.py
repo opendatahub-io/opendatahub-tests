@@ -127,7 +127,7 @@ def model_sync_async_job(
     sa_token: str,
     service_account: ServiceAccount,
     model_registry_namespace: str,
-    model_registry_instance_mysql: list[ModelRegistry],
+    model_registry_instance: list[ModelRegistry],
     s3_secret_for_async_job: Secret,
     oci_secret_for_async_job: Secret,
     oci_registry_route: Route,
@@ -140,7 +140,7 @@ def model_sync_async_job(
     dynamic_oci_uri = f"{oci_registry_host}/{REPO_NAME}"
 
     # Get model registry service and endpoint
-    mr_instance = model_registry_instance_mysql[0]  # Use first instance
+    mr_instance = model_registry_instance[0]  # Use first instance
     mr_service = get_mr_service_by_label(
         client=admin_client, namespace_name=model_registry_namespace, mr_instance=mr_instance
     )
