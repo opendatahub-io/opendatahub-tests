@@ -13,7 +13,7 @@ def get_isvc_keda_scaledobject(client: DynamicClient, isvc: InferenceService) ->
         isvc (InferenceService): InferenceService object.
 
     Returns:
-        list[ScaledObject]: A list of all matching ScaledObjects
+        list[ScaledObject]: A list containing the ScaledObject
 
     Raises:
         ResourceNotFoundError: if no ScaledObjects are found.
@@ -22,11 +22,12 @@ def get_isvc_keda_scaledobject(client: DynamicClient, isvc: InferenceService) ->
     scaled_object_name = isvc.name + "-predictor"
 
     try:
-        scaled_objects = list(ScaledObject.get(dyn_client=client, namespace=namespace, name=scaled_object_name))
-
-        if scaled_objects:
-            return scaled_objects
-        else:
-            raise ResourceNotFoundError(f"{isvc.name} has no KEDA ScaledObjects")
+        scaled_object = ScaledObject(
+            client=client,
+            name=scaled_object_name,
+            namespace=namespace,
+            ensure_exists=True
+        )
+        return [scaled_object]
     except Exception as e:
         raise ResourceNotFoundError(f"{isvc.name} has no KEDA ScaledObjects: {e}")
