@@ -52,7 +52,6 @@ def get_isvc_keda_scaledobject(client: DynamicClient, isvc: InferenceService) ->
     scaled_object_name = isvc.name + "-predictor"
 
     try:
-        # Use openshift-python-wrapper to get ScaledObjects in namespace
         scaled_objects = list(ScaledObject.get(dyn_client=client, namespace=namespace, name=scaled_object_name))
 
         if scaled_objects:
