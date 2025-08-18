@@ -22,12 +22,7 @@ def get_isvc_keda_scaledobject(client: DynamicClient, isvc: InferenceService) ->
     scaled_object_name = isvc.name + "-predictor"
 
     try:
-        scaled_object = ScaledObject(
-            client=client,
-            name=scaled_object_name,
-            namespace=namespace,
-            ensure_exists=True
-        )
+        scaled_object = ScaledObject(client=client, name=scaled_object_name, namespace=namespace, ensure_exists=True)
         return [scaled_object]
     except Exception as e:
         raise ResourceNotFoundError(f"{isvc.name} has no KEDA ScaledObjects: {e}")
