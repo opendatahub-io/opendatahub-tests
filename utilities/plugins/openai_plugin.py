@@ -138,6 +138,34 @@ class OpenAIClient:
         except (requests.exceptions.RequestException, json.JSONDecodeError):
             LOGGER.exception("Request error")
 
+    def request_audio(self, endpoint: str, audio_file_path: str) -> Any:
+        """
+        Sends a HTTP POST request to the specified endpoint with an audio file.
+
+        Args:
+            endpoint (str): The API endpoint to send the request to.
+            audio_file_path (str): The path to the audio file to be sent.
+
+        Returns:
+            Any: The parsed response from the API.
+        Raises:
+            requests.exceptions.RequestException: If there is a request error.
+            json.JSONDecodeError: If there is a JSON decoding error.
+        """
+        headers = RestHeader.HEADERS
+        try:
+            url = f"{self.host}{endpoint}"
+            with open(audio_file_path, "rb") as audio_file:
+                files = {"file": audio_file}
+                response = requests.post(url, headers=headers, files=files, verify=False)
+            LOGGER.info(response)
+            response.raise_for_status()
+            message = response.json()
+            return self._parse_response(endpoint, message)
+        except (requests.exceptions.RequestException, json.JSONDecodeError) as err:
+            LOGGER.error(f"Test failed due to an unexpected exception: {err}")
+            raise
+
     def _construct_request_data(
         self,
         endpoint: str,

@@ -78,3 +78,4 @@ CONTAINER_PORT: int = 8080
 TIMEOUT_20MIN: int = 30 * 60
 OPENAI_ENDPOINT_NAME: str = "openai"
 TGIS_ENDPOINT_NAME: str = "tgis"
+AUDIO_FILE_S3_PATH: str = "audio-dataset/harvard.wav"
