@@ -1,4 +1,3 @@
-from typing import Any
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.scaled_object import ScaledObject
