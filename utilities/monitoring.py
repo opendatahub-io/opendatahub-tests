@@ -82,7 +82,7 @@ def validate_metrics_field(
             metrics_query=metrics_query,
         ):
             if greater_than:
-                if float(sample) >= float(expected_value):
+                if sample is not None and float(sample) >= float(expected_value):
                     LOGGER.info(f"Metric field {sample} is greater than or equal to expected value {expected_value}!")
                     return
             else:
