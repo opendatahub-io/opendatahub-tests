@@ -338,17 +338,16 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
         verify_negative_detection_response(response=response)
 
     def test_guardrails_standalone_detector_endpoint(
-            self, current_client_token, openshift_ca_bundle_file, qwen_isvc, guardrails_orchestrator_route, hap_detector_route
+        self,
+        current_client_token,
+        openshift_ca_bundle_file,
+        qwen_isvc,
+        guardrails_orchestrator_route,
+        hap_detector_route,
     ):
         url = f"https://{guardrails_orchestrator_route.host}/{STANDALONE_DETECTION_ENDPOINT}"
         headers = get_auth_headers(token=current_client_token)
-        payload = {
-            "detectors": {
-                "hap": {}
-            },
-
-            "content": HAP_PROMPT
-        }
+        payload = {"detectors": {"hap": {}}, "content": HAP_PROMPT}
 
         response = requests.post(
             url=url,
@@ -366,7 +365,6 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
 
         score = data.get("score")
         assert score > 0.9, f"Expected score > 0.9, got {score}"
-
 
 
 @pytest.mark.parametrize(
