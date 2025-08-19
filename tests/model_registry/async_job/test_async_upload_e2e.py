@@ -6,15 +6,12 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.job import Job
 from ocp_resources.route import Route
 from model_registry.types import ArtifactState, RegisteredModelState
-from timeout_sampler import TimeoutSampler, TimeoutExpiredError
 from tests.model_registry.async_job.constants import (
-    ASYNC_UPLOAD_IMAGE,
     ASYNC_UPLOAD_JOB_NAME,
 )
 from tests.model_registry.async_job.utils import (
     get_latest_job_pod,
     pull_manifest_from_oci_registry,
-    check_job_completion,
 )
 from tests.model_registry.constants import MODEL_DICT
 from utilities.constants import MinIo, OCIRegistry
@@ -65,10 +62,6 @@ MODEL_DATA = {
 class TestAsyncUploadE2E:
     """Test for async upload job with real MinIO, OCI registry, and Model Registry"""
 
-    @pytest.mark.skipif(
-        ASYNC_UPLOAD_IMAGE.startswith("PLACEHOLDER"),
-        reason="Downstream image not yet available - job will fail to start",
-    )
     def test_async_upload_job(
         self: Self,
         admin_client: DynamicClient,
@@ -81,31 +74,6 @@ class TestAsyncUploadE2E:
         # Wait for job to create a pod
         job_pod = get_latest_job_pod(admin_client=admin_client, job=model_sync_async_job)
         assert job_pod.name.startswith(ASYNC_UPLOAD_JOB_NAME)
-
-        # Verify job is created and configured correctly
-        assert model_sync_async_job.exists
-        LOGGER.info("Job created successfully")
-
-        # Wait for job to complete
-        try:
-            for sample in TimeoutSampler(
-                wait_timeout=300,  # 5 minutes
-                sleep=10,  # Check every 10 seconds
-                func=lambda: check_job_completion(admin_client=admin_client, job=model_sync_async_job),
-            ):
-                if sample:  # Job completed successfully
-                    break
-        except TimeoutExpiredError:
-            # Timeout reached - get final logs for debugging
-            LOGGER.error("Job timed out after 300 seconds")
-            try:
-                current_pod = get_latest_job_pod(admin_client=admin_client, job=model_sync_async_job)
-                pod_logs = current_pod.log()
-                LOGGER.error(f"Final pod logs: {pod_logs}")
-            except Exception as e:
-                LOGGER.error(f"Could not retrieve final pod logs: {e}")
-
-            pytest.fail("Async upload job did not complete within 300 seconds")
 
         # Verify OCI registry contains the uploaded artifact
         registry_host = oci_registry_route.instance.spec.host
@@ -123,18 +91,15 @@ class TestAsyncUploadE2E:
         # Verify the manifest has the expected structure
         assert "manifests" in manifest, "Manifest should contain manifests section"
         assert len(manifest["manifests"]) > 0, "Manifest should have at least one manifest"
-
         LOGGER.info(f"Manifest contains {len(manifest['manifests'])} layer(s)")
 
         # Verify model registry metadata was updated
         LOGGER.info("Verifying model registry model and artifact")
         client = model_registry_client[0]
         model = client.get_registered_model(name=MODEL_NAME)
-        LOGGER.info(f"Model: {model}")
         assert model.state == RegisteredModelState.LIVE
 
         model_artifact = client.get_model_artifact(name=MODEL_NAME, version=MODEL_DATA["model_version"])
-        LOGGER.info(f"Model artifact: {model_artifact}")
 
         # Validate model artifact attributes
         assert model_artifact.name == MODEL_NAME

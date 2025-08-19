@@ -230,6 +230,7 @@ def model_sync_async_job(
         ],
         teardown=teardown_resources,
     ) as job:
+        job.wait_for_condition(condition="Complete", status="True")
         yield job
 
 
