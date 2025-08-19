@@ -311,8 +311,7 @@ def model_registry_pod(admin_client: DynamicClient, model_registry_namespace: st
 @pytest.fixture(scope="function")
 def sa_namespace(request: pytest.FixtureRequest, admin_client: DynamicClient) -> Generator[Namespace, None, None]:
     """
-    Creates a temporary namespace using a context manager for automatic cleanup.
-    Function scope ensures a fresh namespace for each test needing it.
+    Creates a namespace
     """
     test_file = os.path.relpath(request.fspath.strpath, start=os.path.dirname(__file__))
     ns_name = generate_namespace_name(file_path=test_file)
@@ -325,8 +324,7 @@ def sa_namespace(request: pytest.FixtureRequest, admin_client: DynamicClient) ->
 @pytest.fixture(scope="function")
 def service_account(admin_client: DynamicClient, sa_namespace: Namespace) -> Generator[ServiceAccount, None, None]:
     """
-    Creates a ServiceAccount within the temporary namespace using a context manager.
-    Function scope ensures it's tied to the lifetime of sa_namespace for that test.
+    Creates a ServiceAccount.
     """
     sa_name = generate_random_name(prefix="mr-test-user")
     LOGGER.info(f"Creating ServiceAccount: {sa_name} in namespace {sa_namespace.name}")
@@ -338,7 +336,6 @@ def service_account(admin_client: DynamicClient, sa_namespace: Namespace) -> Gen
 def sa_token(service_account: ServiceAccount) -> str:
     """
     Retrieves a short-lived token for the ServiceAccount using 'oc create token'.
-    Function scope because token is temporary and tied to the SA for that test.
     """
     sa_name = service_account.name
     namespace = service_account.namespace
@@ -404,7 +401,6 @@ def mr_access_role(
         "test.opendatahub.io/namespace": sa_namespace.name,
     }
 
-    LOGGER.info(f"Attempting to create Role: {role_name} with rules and labels.")
     with Role(
         client=admin_client,
         name=role_name,
@@ -413,7 +409,6 @@ def mr_access_role(
         label=role_labels,
         wait_for_resource=True,
     ) as role:
-        LOGGER.info(f"Role {role.name} created successfully.")
         yield role
 
 
@@ -438,7 +433,6 @@ def mr_access_role_binding(
         "test.opendatahub.io/namespace": sa_namespace.name,
     }
 
-    LOGGER.info(f"Attempting to create RoleBinding: {binding_name} with labels.")
     with RoleBinding(
         client=admin_client,
         name=binding_name,

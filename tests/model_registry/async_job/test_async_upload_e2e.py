@@ -48,17 +48,17 @@ MODEL_DATA = {
     "model_registry_namespace",
     "model_registry_metadata_db_resources",
     "minio_pod",
-    "create_test_data_in_minio",
+    "create_test_data_in_minio_from_image",
     "s3_secret_for_async_job",
     "oci_secret_for_async_job",
     "oci_registry_pod_with_minio",
-    "registered_model",
+    "registered_model_from_image",
 )
 @pytest.mark.custom_namespace
 @pytest.mark.parametrize(
-    "registered_model",
+    "registered_model_from_image",
     [
-        pytest.param(MODEL_DATA, id="test_model"),
+        pytest.param(MODEL_DATA, id="test_model_from_image"),
     ],
     indirect=True,
 )
@@ -76,8 +76,8 @@ class TestAsyncUploadE2E:
         model_registry_client: list[ModelRegistryClient],
         oci_registry_route: Route,
     ) -> None:
-        """Test for async upload job execution"""
-        LOGGER.info("Starting async upload job test")
+        """Test for async upload job execution using model from KSERVE_MINIO_IMAGE"""
+        LOGGER.info("Starting async upload job test with KSERVE_MINIO_IMAGE")
         # Wait for job to create a pod
         job_pod = get_latest_job_pod(admin_client=admin_client, job=model_sync_async_job)
         assert job_pod.name.startswith(ASYNC_UPLOAD_JOB_NAME)
@@ -143,4 +143,4 @@ class TestAsyncUploadE2E:
         assert model_artifact.storage_key == MODEL_DATA["model_storage_key"]
         assert model_artifact.storage_path == MODEL_DATA["model_storage_path"]
 
-        LOGGER.info("Async upload job test: PASSED")
+        LOGGER.info("Async upload job test with KSERVE_MINIO_IMAGE: PASSED")

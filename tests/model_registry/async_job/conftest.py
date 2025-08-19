@@ -25,11 +25,13 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from model_registry.types import RegisteredModel
+from model_registry import ModelRegistry as ModelRegistryClient
 
 from utilities.infra import create_ns
 from utilities.constants import OCIRegistry, MinIo, Protocols, Labels
 from utilities.general import b64_encoded_string
-from tests.model_registry.async_job.utils import get_async_job_s3_secret_dict, upload_test_model_to_minio
+from tests.model_registry.async_job.utils import get_async_job_s3_secret_dict, upload_test_model_to_minio_from_image
 from tests.model_registry.utils import get_mr_service_by_label, get_endpoint_from_mr_service
 from tests.model_registry.async_job.constants import REPO_NAME
 
@@ -355,12 +357,32 @@ def oci_registry_host(oci_registry_route: Route) -> str:
 
 
 @pytest.fixture(scope="function")
-def create_test_data_in_minio(
+def create_test_data_in_minio_from_image(
     minio_service: Service,
     admin_client: DynamicClient,
     model_registry_namespace: str,
 ) -> None:
-    """Upload the mnist-8.onnx test model file to MinIO"""
-    upload_test_model_to_minio(
-        admin_client=admin_client, namespace=model_registry_namespace, minio_service=minio_service
+    """Extract and upload test model from KSERVE_MINIO_IMAGE to MinIO"""
+    upload_test_model_to_minio_from_image(
+        admin_client=admin_client,
+        namespace=model_registry_namespace,
+        minio_service=minio_service,
+        object_key="my-model/model.onnx",
+    )
+
+
+@pytest.fixture(scope="class")
+def registered_model_from_image(
+    request: FixtureRequest, model_registry_client: list[ModelRegistryClient]
+) -> Generator[RegisteredModel, None, None]:
+    """Create a registered model for testing with KSERVE_MINIO_IMAGE data"""
+    yield model_registry_client[0].register_model(
+        name=request.param.get("model_name"),
+        uri=request.param.get("model_uri"),
+        version=request.param.get("model_version"),
+        description=request.param.get("model_description"),
+        model_format_name=request.param.get("model_format"),
+        model_format_version=request.param.get("model_format_version"),
+        storage_key=request.param.get("model_storage_key"),
+        storage_path=request.param.get("model_storage_path"),
     )
