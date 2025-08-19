@@ -69,7 +69,15 @@ class TestAsyncUploadE2E:
         model_registry_client: list[ModelRegistryClient],
         oci_registry_route: Route,
     ) -> None:
-        """Test for async upload job execution using model from KSERVE_MINIO_IMAGE"""
+        """
+        RHOAIENG-29344: Test for async upload job execution using model from KSERVE_MINIO_IMAGE
+        Steps:
+            Create a model from KSERVE_MINIO_IMAGE
+            Create a job to upload the model to OCI registry
+            Verify the job completed successfully
+            Verify the model is uploaded to OCI registry
+            Verify the model is registered in model registry
+        """
         LOGGER.info("Starting async upload job test with KSERVE_MINIO_IMAGE")
         # Wait for job to create a pod
         job_pod = get_latest_job_pod(admin_client=admin_client, job=model_sync_async_job)
