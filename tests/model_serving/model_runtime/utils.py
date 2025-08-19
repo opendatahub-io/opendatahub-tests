@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Iterable
 
 import portforward
 from ocp_resources.inference_service import InferenceService
@@ -8,7 +8,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from tests.model_serving.model_runtime.model_validation.constant import (
     COMPLETION_QUERY,
     OPENAI_ENDPOINT_NAME,
-    AUDIO_FILE_S3_PATH,
+    AUDIO_FILE_URL,
 )
 from utilities.constants import Ports
 from utilities.exceptions import NotSupportedError
@@ -24,6 +24,13 @@ LOGGER = get_logger(name=__name__)
 def validate_inference_output(*args: tuple[str, ...] | list[Any], response_snapshot: Any) -> None:
     for data in args:
         assert data == response_snapshot, f"output mismatch for {data}"
+
+
+def validate_audio_inference_output(model_info: Any, completion_responses: Iterable[Any]) -> None:
+    if model_info is None:
+        assert isinstance(model_info, dict), "Model info should be a dictionary"
+    assert isinstance(completion_responses, (list, tuple)), "Completion responses should be a list or tuple"
+    assert len(completion_responses) > 0, "Completion responses should not be empty"
 
 
 def fetch_tgis_response(  # type: ignore
@@ -85,10 +92,10 @@ def run_audio_inference(
     port: int,
     endpoint: str,
     audio_file_path: str = "/tmp/harvard.wav",
-    audio_s3_path: str = AUDIO_FILE_S3_PATH,
+    audio_file_url: str = AUDIO_FILE_URL,
 ) -> tuple[Any, list[Any]]:
     LOGGER.info(pod_name)
-    download_audio_file(url=audio_s3_path, file_path=audio_file_path)
+    download_audio_file(audio_file_url=audio_file_url, destination_path=audio_file_path)
 
     with portforward.forward(
         pod_or_service=pod_name,
@@ -128,11 +135,7 @@ def validate_raw_openai_inference_request(
             port=Ports.REST_PORT,
             endpoint=OPENAI_ENDPOINT_NAME,
         )
-        validate_inference_output(
-            model_info,
-            completion_responses,
-            response_snapshot=response_snapshot,
-        )
+        validate_audio_inference_output(model_info=model_info, completion_responses=completion_responses)
         return
     elif model_output_type == "text":
         LOGGER.info("Running text inference test")
@@ -153,8 +156,7 @@ def validate_raw_openai_inference_request(
 
 
 def download_audio_file(
-    storage_path: str = AUDIO_FILE_S3_PATH,
-    region: str = "us-east-1",
+    audio_file_url: str = AUDIO_FILE_URL,
     destination_path: str = "/tmp/harvard.wav",
 ) -> None:
     """
@@ -166,7 +168,7 @@ def download_audio_file(
     if os.path.exists(destination_path) and os.path.getsize(destination_path) > 0:
         LOGGER.info("Audio file already exists at %s, skipping download.", destination_path)
         return
-    cmd = ["aws", "s3", "cp", f"s3://ods-ci-s3/{storage_path}", destination_path, "--region", region]
+    cmd = ["curl", "-fSL", "-o", destination_path, audio_file_url]
     try:
         subprocess.run(args=cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         LOGGER.info("Audio file downloaded successfully to %s", destination_path)
@@ -201,12 +203,13 @@ def validate_serverless_openai_inference_request(
 ) -> None:
     if model_output_type == "audio":
         LOGGER.info("Running audio inference test")
-        model_info, completion_responses = fetch_openai_response(url=url, model_name=model_name, completion_query=None)
-        validate_inference_output(
-            model_info,
-            completion_responses,
-            response_snapshot=response_snapshot,
+        model_info, completion_responses = run_audio_inference(
+            pod_name="",
+            isvc=InferenceService(name=model_name, namespace="default"),
+            port=Ports.REST_PORT,
+            endpoint=OPENAI_ENDPOINT_NAME,
         )
+        validate_audio_inference_output(model_info=model_info, completion_responses=completion_responses)
         return
     elif model_output_type == "text":
         model_info, completion_responses = fetch_openai_response(
