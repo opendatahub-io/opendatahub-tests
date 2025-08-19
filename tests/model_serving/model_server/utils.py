@@ -248,8 +248,7 @@ def verify_keda_scaledobject(
         expected_query: Expected query string
         expected_threshold: Expected threshold as string (e.g. "50.000000")
     """
-    scaled_objects = get_isvc_keda_scaledobject(client=client, isvc=isvc)
-    scaled_object = scaled_objects[0]
+    scaled_object = get_isvc_keda_scaledobject(client=client, isvc=isvc)
     trigger_meta = scaled_object.instance.spec.triggers[0].metadata
     trigger_type = scaled_object.instance.spec.triggers[0].type
     query = trigger_meta.get("query")
