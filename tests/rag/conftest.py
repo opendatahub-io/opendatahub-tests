@@ -5,13 +5,12 @@ import portforward
 import pytest
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
-from llama_stack_client import LlamaStackClient, APIConnectionError
+from llama_stack_client import LlamaStackClient
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
 from ocp_resources.project_project_openshift_io import Project
 from simple_logger.logger import get_logger
-from timeout_sampler import retry
 
 from utilities.constants import DscComponents, Timeout
 from utilities.data_science_cluster_utils import update_components_in_dsc
@@ -101,21 +100,6 @@ def llama_stack_distribution_deployment(
 
     deployment.wait(timeout=Timeout.TIMEOUT_2MIN)
     yield deployment
-
-
-@retry(wait_timeout=Timeout.TIMEOUT_1MIN, sleep=5)
-def wait_for_llama_stack_ready(client: LlamaStackClient) -> bool:
-    try:
-        client.inspect.health()
-        version = client.inspect.version()
-        LOGGER.info(f"Llama Stack server (v{version.version}) is available!")
-        return True
-    except APIConnectionError as e:
-        LOGGER.debug(f"Llama Stack server not ready yet: {e}")
-        return False
-    except Exception as e:
-        LOGGER.warning(f"Unexpected error checking Llama Stack readiness: {e}")
-        return False
 
 
 @pytest.fixture(scope="class")
