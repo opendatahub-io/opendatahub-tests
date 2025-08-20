@@ -30,6 +30,7 @@ class TestVLLMModelCarRaw:
         validate_raw_openai_inference_request(
             isvc=vllm_model_car_inference_service,
             pod_name=vllm_model_car_pod_resource.name,
+            model_name=vllm_model_car_inference_service.instance.metadata.name,
             response_snapshot=response_snapshot,
             completion_query=COMPLETION_QUERY,
             model_output_type=deployment_config.get("model_output_type"),

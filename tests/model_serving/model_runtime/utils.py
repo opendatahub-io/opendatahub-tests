@@ -1,4 +1,4 @@
-from typing import Any, Iterable
+from typing import Any, Iterable, Optional
 
 import portforward
 from ocp_resources.inference_service import InferenceService
@@ -17,6 +17,7 @@ from utilities.plugins.openai_plugin import OpenAIClient
 from utilities.plugins.tgis_grpc_plugin import TGISGRPCPlugin
 import subprocess
 import os
+import glob
 
 LOGGER = get_logger(name=__name__)
 
@@ -87,37 +88,52 @@ def run_raw_inference(
 
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(min=1, max=6))
 def run_audio_inference(
-    pod_name: str,
-    isvc: InferenceService,
-    port: int,
     endpoint: str,
+    model_name: str,
     audio_file_path: str = "/tmp/harvard.wav",
     audio_file_url: str = AUDIO_FILE_URL,
+    url: Optional[str] = None,
+    pod_name: Optional[str] = None,
+    isvc: Optional[InferenceService] = None,
+    port: Optional[int] = Ports.REST_PORT,
 ) -> tuple[Any, list[Any]]:
     LOGGER.info(pod_name)
     download_audio_file(audio_file_url=audio_file_url, destination_path=audio_file_path)
 
-    with portforward.forward(
-        pod_or_service=pod_name,
-        namespace=isvc.namespace,
-        from_port=port,
-        to_port=port,
-    ):
-        if endpoint == "openai":
-            inference_client = OpenAIClient(
-                host=f"http://localhost:{port}", model_name=isvc.instance.metadata.name, streaming=True
-            )
-            completion_responses = []
-            completion_response = inference_client.request_audio(
-                endpoint=OpenAIEnpoints.AUDIO_TRANSCRIPTION, audio_file_path=audio_file_path
-            )
-            completion_responses.append(completion_response)
-            model_info = OpenAIClient.request_audio(
-                host=f"http://localhost:{port}", endpoint=OpenAIEnpoints.MODELS_INFO
-            )
-            return model_info, completion_responses
-        else:
-            raise NotSupportedError(f"{endpoint} endpoint for audio inference")
+    if url is not None:
+        LOGGER.info("Using provided URL for inference: %s", url)
+        inference_client = OpenAIClient(host=url, model_name=model_name, streaming=True)
+        completion_responses = []
+        completion_response = inference_client.request_audio(
+            endpoint=OpenAIEnpoints.AUDIO_TRANSCRIPTION,
+            audio_file_path=audio_file_path,
+            model_name=model_name,
+        )
+        completion_responses.append(completion_response)
+        model_info = OpenAIClient.get_request_http(host=url, endpoint=OpenAIEnpoints.MODELS_INFO)
+        return model_info, completion_responses
+    else:
+        LOGGER.info("Using port forwarding for inference on pod: %s", pod_name)
+        inference_client = OpenAIClient(host=f"http://localhost:{port}", model_name=model_name, streaming=True)
+
+        with portforward.forward(
+            pod_or_service=pod_name,
+            namespace=isvc.namespace,
+            from_port=port,
+            to_port=port,
+        ):
+            if endpoint == "openai":
+                completion_responses = []
+                completion_response = inference_client.request_audio(
+                    endpoint=OpenAIEnpoints.AUDIO_TRANSCRIPTION, audio_file_path=audio_file_path, model_name=model_name
+                )
+                completion_responses.append(completion_response)
+                model_info = OpenAIClient.get_request_http(
+                    host=f"http://localhost:{port}", endpoint=OpenAIEnpoints.MODELS_INFO
+                )
+                return model_info, completion_responses
+            else:
+                raise NotSupportedError(f"{endpoint} endpoint for audio inference")
 
 
 def validate_raw_openai_inference_request(
@@ -126,6 +142,7 @@ def validate_raw_openai_inference_request(
     response_snapshot: Any,
     completion_query: list[dict[str, str]],
     model_output_type: str,
+    model_name: str,
 ) -> None:
     if model_output_type == "audio":
         LOGGER.info("Running audio inference test")
@@ -134,8 +151,11 @@ def validate_raw_openai_inference_request(
             isvc=isvc,
             port=Ports.REST_PORT,
             endpoint=OPENAI_ENDPOINT_NAME,
+            model_name=model_name,
         )
         validate_audio_inference_output(model_info=model_info, completion_responses=completion_responses)
+        for file_path in glob.glob("/tmp/*.wav"):
+            os.remove(file_path)
         return
     elif model_output_type == "text":
         LOGGER.info("Running text inference test")
@@ -204,12 +224,13 @@ def validate_serverless_openai_inference_request(
     if model_output_type == "audio":
         LOGGER.info("Running audio inference test")
         model_info, completion_responses = run_audio_inference(
-            pod_name="",
-            isvc=InferenceService(name=model_name, namespace="default"),
-            port=Ports.REST_PORT,
+            url=url,
             endpoint=OPENAI_ENDPOINT_NAME,
+            model_name=model_name,
         )
         validate_audio_inference_output(model_info=model_info, completion_responses=completion_responses)
+        for file_path in glob.glob("/tmp/*.wav"):
+            os.remove(file_path)
         return
     elif model_output_type == "text":
         model_info, completion_responses = fetch_openai_response(

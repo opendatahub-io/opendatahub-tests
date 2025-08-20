@@ -138,13 +138,15 @@ class OpenAIClient:
         except (requests.exceptions.RequestException, json.JSONDecodeError):
             LOGGER.exception("Request error")
 
-    def request_audio(self, endpoint: str, audio_file_path: str) -> Any:
+    def request_audio(self, endpoint: str, audio_file_path: str, model_name: str, filename: str = "harvard.wav") -> Any:
         """
         Sends a HTTP POST request to the specified endpoint with an audio file.
 
         Args:
             endpoint (str): The API endpoint to send the request to.
             audio_file_path (str): The path to the audio file to be sent.
+            model_name (str): The name of the model to use for processing the audio.
+            filename (str, optional): The name of the audio file. Defaults to "harvard.wav".
 
         Returns:
             Any: The parsed response from the API.
@@ -152,12 +154,17 @@ class OpenAIClient:
             requests.exceptions.RequestException: If there is a request error.
             json.JSONDecodeError: If there is a JSON decoding error.
         """
-        headers = RestHeader.HEADERS
+        headers = {k: v for k, v in RestHeader.HEADERS.items() if k != "Content-Type"}
+        data = {
+            "model": model_name,
+            "response_format": "json",
+            "language": "en",
+        }
         try:
             url = f"{self.host}{endpoint}"
             with open(audio_file_path, "rb") as audio_file:
-                files = {"file": audio_file}
-                response = requests.post(url, headers=headers, files=files, verify=False)
+                files = {"file": (filename, audio_file, "audio/wav")}
+                response = requests.post(url, headers=headers, files=files, data=data, verify=False)
             LOGGER.info(response)
             response.raise_for_status()
             message = response.json()
@@ -222,6 +229,9 @@ class OpenAIClient:
         elif OpenAIEnpoints.EMBEDDINGS in endpoint:
             LOGGER.info(message["choices"][0])
             return message["choices"][0]
+        elif OpenAIEnpoints.AUDIO_TRANSCRIPTION in endpoint:
+            LOGGER.info(message["text"])
+            return message["text"]
         else:
             LOGGER.info(message["choices"][0])
             return message["choices"][0]
