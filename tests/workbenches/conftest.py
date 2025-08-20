@@ -13,11 +13,11 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.route import Route
 from ocp_resources.notebook import Notebook
-from ocp_resources.config_imageregistry_operator_openshift_io import Config
 
 from utilities.constants import Labels
 from utilities import constants
 from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH
+from utilities.infra import check_internal_image_registry_available
 
 LOGGER = get_logger(name=__name__)
 
@@ -39,25 +39,6 @@ def users_persistent_volume_claim(
 
 
 @pytest.fixture(scope="function")
-def internal_image_registry(
-    admin_client: DynamicClient,
-) -> Generator[bool, None, None]:
-    """Check if internal image registry is available by checking the imageregistry config managementState"""
-    try:
-        # Access the imageregistry.operator.openshift.io/v1 Config resource named "cluster"
-        config_instance = Config(client=admin_client, name="cluster")
-
-        management_state = config_instance.instance.spec.get("managementState", "").lower()
-        is_available = management_state == "managed"
-
-        LOGGER.info(f"Image registry management state: {management_state}, available: {is_available}")
-        yield is_available
-    except (ResourceNotFoundError, Exception) as e:
-        LOGGER.warning(f"Failed to check image registry config: {e}")
-        yield False
-
-
-@pytest.fixture(scope="function")
 def minimal_image() -> Generator[str, None, None]:
     """Provides a full image name of a minimal workbench image"""
     image_name = "jupyter-minimal-notebook" if py_config.get("distribution") == "upstream" else "s2i-minimal-notebook"
@@ -68,7 +49,6 @@ def minimal_image() -> Generator[str, None, None]:
 def default_notebook(
     request: pytest.FixtureRequest,
     admin_client: DynamicClient,
-    internal_image_registry: bool,
     minimal_image: str,
 ) -> Generator[Notebook, None, None]:
     """Returns a new Notebook CR for a given namespace, name, and image"""
@@ -84,6 +64,9 @@ def default_notebook(
     # Set the correct username
     username = get_username(dyn_client=admin_client)
     assert username, "Failed to determine username from the cluster"
+
+    # Check internal image registry availability
+    internal_image_registry = check_internal_image_registry_available(admin_client=admin_client)
 
     # Set the image path based on internal image registry status
     minimal_image_path = (
