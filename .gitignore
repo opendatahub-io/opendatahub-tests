@@ -169,3 +169,6 @@ cython_debug/
 
 # AI Assistant Config Files
 CLAUDE.md
+
+# Must-Gather Artifacts
+must-gather-collected/

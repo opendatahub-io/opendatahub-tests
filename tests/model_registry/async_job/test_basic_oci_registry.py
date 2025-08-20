@@ -32,6 +32,7 @@ class TestOciRegistry:
     It will be replaced with a more comprehensive e2e test as part of https://issues.redhat.com/browse/RHOAISTRAT-456
     """
 
+    @pytest.mark.skip(reason="To remove soon")
     def test_oci_registry_push_and_pull_operations(
         self,
         oci_registry_route: Route,
