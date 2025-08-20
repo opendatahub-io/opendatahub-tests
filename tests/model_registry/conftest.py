@@ -308,7 +308,7 @@ def model_registry_pod(admin_client: DynamicClient, model_registry_namespace: st
     return mr_pod[0]
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="class")
 def sa_namespace(request: pytest.FixtureRequest, admin_client: DynamicClient) -> Generator[Namespace, None, None]:
     """
     Creates a namespace
