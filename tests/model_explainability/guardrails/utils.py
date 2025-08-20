@@ -1,6 +1,8 @@
 import http
 import json
 
+import requests
+from curlify import to_curl
 from requests import Response
 from simple_logger.logger import get_logger
 from typing import Dict, Any, List, Optional
@@ -224,3 +226,8 @@ def verify_negative_detection_response(response: Response) -> None:
             errors.append(f"Expected refusal to be null, got {refusal}")
 
     assert_no_errors(errors=errors, failure_message_prefix="Negative detection verification failed")
+
+
+def log_request_and_response(response: requests.Response):
+    LOGGER.debug(to_curl(response.request))
+    LOGGER.debug(response.text)
