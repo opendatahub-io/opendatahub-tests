@@ -1,14 +1,16 @@
 from typing import List
-
+import re
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.lm_eval_job import LMEvalJob
 from ocp_resources.pod import Pod
 
 from utilities.constants import Timeout
 from simple_logger.logger import get_logger
+from timeout_sampler import TimeoutExpiredError
 
 import pandas as pd
 
+from utilities.exceptions import PodLogMissMatchError, UnexpectedFailureError
 
 LOGGER = get_logger(name=__name__)
 
@@ -84,3 +86,24 @@ def get_lmeval_tasks(min_downloads: int | float, max_downloads: int | float | No
     LOGGER.info(f"Number of unique LMEval tasks with more than {min_downloads} downloads: {len(unique_tasks)}")
 
     return unique_tasks
+
+
+def validate_lmeval_job_pod_and_logs(lmevaljob_pod: Pod) -> None:
+    """Validate LMEval job pod success and presence of corresponding logs.
+
+    Args:
+        lmevaljob_pod: The LMEvalJob pod.
+
+    Returns: None
+    """
+    pod_success_log_regex = (
+        r"INFO\sdriver\supdate status: job completed\s\{\"state\":\s\{\"state\""
+        r":\"Complete\",\"reason\":\"Succeeded\",\"message\":\"job completed\""
+    )
+    lmevaljob_pod.wait_for_status(status=lmevaljob_pod.Status.RUNNING, timeout=Timeout.TIMEOUT_5MIN)
+    try:
+        lmevaljob_pod.wait_for_status(status=Pod.Status.SUCCEEDED, timeout=Timeout.TIMEOUT_20MIN)
+    except TimeoutExpiredError as e:
+        raise UnexpectedFailureError("LMEval job pod failed from a running state.") from e
+    if not bool(re.search(pod_success_log_regex, lmevaljob_pod.log())):
+        raise PodLogMissMatchError("LMEval job pod failed.")

@@ -1,11 +1,10 @@
 import pytest
 from typing import List
 
-from utilities.constants import Timeout
 
 from tests.model_explainability.utils import validate_tai_component_images
 
-from tests.model_explainability.lm_eval.utils import get_lmeval_tasks
+from tests.model_explainability.lm_eval.utils import get_lmeval_tasks, validate_lmeval_job_pod_and_logs
 
 LMEVALJOB_COMPLETE_STATE: str = "Complete"
 
@@ -64,7 +63,7 @@ TIER2_LMEVAL_TASKS: List[str] = list(
 def test_lmeval_huggingface_model(admin_client, model_namespace, lmevaljob_hf_pod):
     """Tests that verify running common evaluations (and a custom one) on a model pulled directly from HuggingFace.
     On each test we run a different evaluation task, limiting it to 0.5% of the questions on each eval."""
-    lmevaljob_hf_pod.wait_for_status(status=lmevaljob_hf_pod.Status.SUCCEEDED, timeout=Timeout.TIMEOUT_40MIN)
+    validate_lmeval_job_pod_and_logs(lmevaljob_pod=lmevaljob_hf_pod)
 
 
 @pytest.mark.parametrize(
@@ -89,9 +88,7 @@ def test_lmeval_local_offline_builtin_tasks_flan_arceasy(
     lmevaljob_local_offline_pod,
 ):
     """Test that verifies that LMEval can run successfully in local, offline mode using builtin tasks"""
-    lmevaljob_local_offline_pod.wait_for_status(
-        status=lmevaljob_local_offline_pod.Status.SUCCEEDED, timeout=Timeout.TIMEOUT_20MIN
-    )
+    validate_lmeval_job_pod_and_logs(lmevaljob_pod=lmevaljob_local_offline_pod)
 
 
 @pytest.mark.parametrize(
@@ -124,9 +121,7 @@ def test_lmeval_local_offline_unitxt_tasks_flan_20newsgroups(
     lmevaljob_local_offline_pod,
 ):
     """Test that verifies that LMEval can run successfully in local, offline mode using unitxt"""
-    lmevaljob_local_offline_pod.wait_for_status(
-        status=lmevaljob_local_offline_pod.Status.SUCCEEDED, timeout=Timeout.TIMEOUT_20MIN
-    )
+    validate_lmeval_job_pod_and_logs(lmevaljob_pod=lmevaljob_local_offline_pod)
 
 
 @pytest.mark.parametrize(
@@ -140,9 +135,7 @@ def test_lmeval_local_offline_unitxt_tasks_flan_20newsgroups(
 )
 def test_lmeval_vllm_emulator(admin_client, model_namespace, lmevaljob_vllm_emulator_pod):
     """Basic test that verifies LMEval works with vLLM using a vLLM emulator for more efficient evaluation"""
-    lmevaljob_vllm_emulator_pod.wait_for_status(
-        status=lmevaljob_vllm_emulator_pod.Status.SUCCEEDED, timeout=Timeout.TIMEOUT_20MIN
-    )
+    validate_lmeval_job_pod_and_logs(lmevaljob_pod=lmevaljob_vllm_emulator_pod)
 
 
 @pytest.mark.parametrize(
@@ -161,9 +154,7 @@ def test_lmeval_s3_storage(
     lmevaljob_s3_offline_pod,
 ):
     """Test to verify that LMEval works with a model stored in a S3 bucket"""
-    lmevaljob_s3_offline_pod.wait_for_status(
-        status=lmevaljob_s3_offline_pod.Status.SUCCEEDED, timeout=Timeout.TIMEOUT_20MIN
-    )
+    validate_lmeval_job_pod_and_logs(lmevaljob_pod=lmevaljob_s3_offline_pod)
 
 
 @pytest.mark.parametrize(
