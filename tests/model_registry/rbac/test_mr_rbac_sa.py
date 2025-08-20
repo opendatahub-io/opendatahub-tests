@@ -6,6 +6,7 @@ from model_registry import ModelRegistry as ModelRegistryClient
 from tests.model_registry.rbac.utils import build_mr_client_args
 from utilities.infra import create_inference_token
 from mr_openapi.exceptions import ForbiddenException
+from ocp_resources.service_account import ServiceAccount
 
 LOGGER = get_logger(name=__name__)
 
@@ -58,7 +59,7 @@ class TestModelRegistryRBAC:
     @pytest.mark.usefixtures("sa_namespace", "service_account", "mr_access_role", "mr_access_role_binding")
     def test_service_account_access_granted(
         self: Self,
-        service_account,
+        service_account: ServiceAccount,
         model_registry_instance_rest_endpoint: list[str],
     ):
         """
