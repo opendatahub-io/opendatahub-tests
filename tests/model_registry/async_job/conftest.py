@@ -51,7 +51,7 @@ class JobWithVolumes(Job):
             self.res["spec"]["template"]["spec"]["volumes"] = self.volumes
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="class")
 def s3_secret_for_async_job(
     admin_client: DynamicClient,
     service_account: ServiceAccount,
@@ -79,7 +79,7 @@ def s3_secret_for_async_job(
         yield secret
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="class")
 def oci_secret_for_async_job(
     admin_client: DynamicClient,
     service_account: ServiceAccount,
@@ -112,7 +112,7 @@ def oci_secret_for_async_job(
         yield secret
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="class")
 def model_sync_async_job(
     admin_client: DynamicClient,
     sa_token: str,
@@ -357,7 +357,7 @@ def oci_registry_host(oci_registry_route: Route) -> str:
     return oci_registry_route.instance.spec.host
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="class")
 def create_test_data_in_minio_from_image(
     minio_service: Service,
     admin_client: DynamicClient,

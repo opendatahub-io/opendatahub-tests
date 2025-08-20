@@ -4,7 +4,6 @@ import time
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.job import Job
-from ocp_resources.route import Route
 from model_registry.types import ArtifactState, RegisteredModelState
 from tests.model_registry.async_job.constants import (
     ASYNC_UPLOAD_JOB_NAME,
@@ -60,32 +59,36 @@ MODEL_DATA = {
     indirect=True,
 )
 class TestAsyncUploadE2E:
-    """Test for async upload job with real MinIO, OCI registry, and Model Registry"""
+    """RHOAIENG-29344: Test for async upload job with real MinIO, OCI registry, and Model Registry"""
 
-    def test_async_upload_job(
+    @pytest.mark.dependency(name="job_creation_and_pod_spawning")
+    def test_job_creation_and_pod_spawning(
         self: Self,
         admin_client: DynamicClient,
         model_sync_async_job: Job,
-        model_registry_client: list[ModelRegistryClient],
-        oci_registry_route: Route,
     ) -> None:
         """
-        RHOAIENG-29344: Test for async upload job execution using model from KSERVE_MINIO_IMAGE
-        Steps:
-            Create a model from KSERVE_MINIO_IMAGE
-            Create a job to upload the model to OCI registry
-            Verify the job completed successfully
-            Verify the model is uploaded to OCI registry
-            Verify the model is registered in model registry
+        Verify job creation and pod spawning
         """
-        LOGGER.info("Starting async upload job test with KSERVE_MINIO_IMAGE")
+        LOGGER.info("Verifying job creation and pod spawning")
+
         # Wait for job to create a pod
         job_pod = get_latest_job_pod(admin_client=admin_client, job=model_sync_async_job)
         assert job_pod.name.startswith(ASYNC_UPLOAD_JOB_NAME)
 
-        # Verify OCI registry contains the uploaded artifact
-        registry_host = oci_registry_route.instance.spec.host
-        registry_url = f"http://{registry_host}"
+    @pytest.mark.dependency(name="oci_registry_verification", depends=["job_creation_and_pod_spawning"])
+    def test_oci_registry_verification(
+        self: Self,
+        oci_registry_host: str,
+    ) -> None:
+        """
+        Verify OCI registry upload
+        - Model manifest exists in OCI registry
+        - Manifest has correct structure and layers
+        """
+        LOGGER.info("Verifying OCI registry upload")
+
+        registry_url = f"http://{oci_registry_host}"
 
         LOGGER.info(f"Verifying artifact in OCI registry: {registry_url}/v2/{REPO_NAME}/manifests/{TAG}")
 
@@ -101,8 +104,20 @@ class TestAsyncUploadE2E:
         assert len(manifest["manifests"]) > 0, "Manifest should have at least one manifest"
         LOGGER.info(f"Manifest contains {len(manifest['manifests'])} layer(s)")
 
-        # Verify model registry metadata was updated
+    @pytest.mark.dependency(name="model_registry_verification", depends=["oci_registry_verification"])
+    def test_model_registry_verification(
+        self: Self,
+        model_registry_client: list[ModelRegistryClient],
+        oci_registry_host: str,
+    ) -> None:
+        """
+        Verify model registration
+        - Model is registered in model registry
+        - Model artifact has correct attributes
+        """
         LOGGER.info("Verifying model registry model and artifact")
+
+        # Verify model registry metadata was updated
         client = model_registry_client[0]
         model = client.get_registered_model(name=MODEL_NAME)
         assert model.state == RegisteredModelState.LIVE
@@ -112,7 +127,7 @@ class TestAsyncUploadE2E:
         # Validate model artifact attributes
         assert model_artifact.name == MODEL_NAME
         assert model_artifact.state == ArtifactState.LIVE
-        assert model_artifact.uri == f"oci://{registry_host}/{REPO_NAME}"
+        assert model_artifact.uri == f"oci://{oci_registry_host}/{REPO_NAME}"
         assert model_artifact.storage_key == MODEL_DATA["model_storage_key"]
         assert model_artifact.storage_path == MODEL_DATA["model_storage_path"]
 

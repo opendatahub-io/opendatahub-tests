@@ -308,7 +308,7 @@ def model_registry_pod(admin_client: DynamicClient, model_registry_namespace: st
     return mr_pod[0]
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="module")
 def sa_namespace(request: pytest.FixtureRequest, admin_client: DynamicClient) -> Generator[Namespace, None, None]:
     """
     Creates a namespace
@@ -321,7 +321,7 @@ def sa_namespace(request: pytest.FixtureRequest, admin_client: DynamicClient) ->
         yield ns
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="class")
 def service_account(admin_client: DynamicClient, sa_namespace: Namespace) -> Generator[ServiceAccount, None, None]:
     """
     Creates a ServiceAccount.
@@ -332,7 +332,7 @@ def service_account(admin_client: DynamicClient, sa_namespace: Namespace) -> Gen
         yield sa
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="class")
 def sa_token(service_account: ServiceAccount) -> str:
     """
     Retrieves a short-lived token for the ServiceAccount using 'oc create token'.
@@ -376,7 +376,7 @@ def sa_token(service_account: ServiceAccount) -> str:
         raise
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="class")
 def mr_access_role(
     admin_client: DynamicClient,
     model_registry_namespace: str,
@@ -412,7 +412,7 @@ def mr_access_role(
         yield role
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="class")
 def mr_access_role_binding(
     admin_client: DynamicClient,
     model_registry_namespace: str,
