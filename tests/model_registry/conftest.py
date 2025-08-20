@@ -38,6 +38,7 @@ from tests.model_registry.constants import (
     DB_BASE_RESOURCES_NAME,
     DB_RESOURCE_NAME,
     MR_INSTANCE_NAME,
+    MODEL_REGISTRY_POD_FILTER,
 )
 from utilities.constants import Labels, Protocols
 from tests.model_registry.utils import (
@@ -301,7 +302,7 @@ def model_registry_pod(admin_client: DynamicClient, model_registry_namespace: st
         Pod.get(
             dyn_client=admin_client,
             namespace=model_registry_namespace,
-            label_selector=f"app={MR_INSTANCE_NAME}",
+            label_selector=MODEL_REGISTRY_POD_FILTER,
         )
     )
     assert len(mr_pod) == 1
