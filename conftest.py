@@ -32,6 +32,7 @@ def pytest_addoption(parser: Parser) -> None:
     buckets_group = parser.getgroup(name="Buckets")
     runtime_group = parser.getgroup(name="Runtime details")
     upgrade_group = parser.getgroup(name="Upgrade options")
+    must_gather_group = parser.getgroup(name="MustGather")
 
     # AWS config and credentials options
     aws_group.addoption(
@@ -111,6 +112,12 @@ def pytest_addoption(parser: Parser) -> None:
         "--upgrade-deployment-modes",
         help="Coma-separated str; specify inference service deployment modes tests to run in upgrade tests. "
         "If not set, all will be tested.",
+    )
+    must_gather_group.addoption(
+        "--collect-must-gather",
+        help="Indicate if must-gather should be collected on failure.",
+        action="store_true",
+        default=False,
     )
 
 
