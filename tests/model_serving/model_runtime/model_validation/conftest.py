@@ -152,7 +152,7 @@ def deployment_config(request: FixtureRequest) -> dict[str, Any]:
     config["runtime_argument"] = serving_argument
     config["deployment_type"] = deployment_type
     config["gpu_count"] = request.param.get("gpu_count", 1)
-    config["model_output_type"] = request.param.get("model_output_type", "text")
+    config["model_output_type"] = request.param.get("model_output_type") or "text"
     config["timeout"] = TIMEOUT_20MIN
     return config
 
@@ -236,7 +236,7 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
         if not name or not image:
             continue
 
-        model_output_type = model_car.get("model_output_type")
+        model_output_type = model_car.get("model_output_type", "text")
         serving_config = model_car.get("serving_arguments") or default_serving_config.get("serving_arguments", {})
         args = serving_config.get("args", [])
         gpu_count = serving_config.get("gpu_count", 1)

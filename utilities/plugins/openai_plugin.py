@@ -138,7 +138,10 @@ class OpenAIClient:
         except (requests.exceptions.RequestException, json.JSONDecodeError):
             LOGGER.exception("Request error")
 
-    def request_audio(self, endpoint: str, audio_file_path: str, model_name: str, filename: str = "harvard.wav") -> Any:
+    @retry(stop=stop_after_attempt(MAX_RETRIES), wait=wait_exponential(min=1, max=6))
+    def request_audio(
+        self, endpoint: str, audio_file_path: str, model_name: str, filename: str = "harvard.wav", language: str = "en"
+    ) -> Any:
         """
         Sends a HTTP POST request to the specified endpoint with an audio file.
 
@@ -158,7 +161,7 @@ class OpenAIClient:
         data = {
             "model": model_name,
             "response_format": "json",
-            "language": "en",
+            "language": language,
         }
         try:
             url = f"{self.host}{endpoint}"

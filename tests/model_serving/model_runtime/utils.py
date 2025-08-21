@@ -9,6 +9,7 @@ from tests.model_serving.model_runtime.model_validation.constant import (
     COMPLETION_QUERY,
     OPENAI_ENDPOINT_NAME,
     AUDIO_FILE_URL,
+    AUDIO_FILE_LOCAL_PATH,
 )
 from utilities.constants import Ports
 from utilities.exceptions import NotSupportedError
@@ -17,7 +18,6 @@ from utilities.plugins.openai_plugin import OpenAIClient
 from utilities.plugins.tgis_grpc_plugin import TGISGRPCPlugin
 import subprocess
 import os
-import glob
 
 LOGGER = get_logger(name=__name__)
 
@@ -28,8 +28,8 @@ def validate_inference_output(*args: tuple[str, ...] | list[Any], response_snaps
 
 
 def validate_audio_inference_output(model_info: Any, completion_responses: Iterable[Any]) -> None:
-    if model_info is None:
-        assert isinstance(model_info, dict), "Model info should be a dictionary"
+    assert model_info is not None, "Model info should not be None"
+    assert isinstance(model_info, (list, tuple)), "Model info should be a list or tuple"
     assert isinstance(completion_responses, (list, tuple)), "Completion responses should be a list or tuple"
     assert len(completion_responses) > 0, "Completion responses should not be empty"
 
@@ -90,7 +90,7 @@ def run_raw_inference(
 def run_audio_inference(
     endpoint: str,
     model_name: str,
-    audio_file_path: str = "/tmp/harvard.wav",
+    audio_file_path: str = AUDIO_FILE_LOCAL_PATH,
     audio_file_url: str = AUDIO_FILE_URL,
     url: Optional[str] = None,
     pod_name: Optional[str] = None,
@@ -154,8 +154,8 @@ def validate_raw_openai_inference_request(
             model_name=model_name,
         )
         validate_audio_inference_output(model_info=model_info, completion_responses=completion_responses)
-        for file_path in glob.glob("/tmp/*.wav"):
-            os.remove(file_path)
+        if os.path.exists(AUDIO_FILE_LOCAL_PATH):
+            os.remove(AUDIO_FILE_LOCAL_PATH)
         return
     elif model_output_type == "text":
         LOGGER.info("Running text inference test")
@@ -171,6 +171,7 @@ def validate_raw_openai_inference_request(
             completion_responses,
             response_snapshot=response_snapshot,
         )
+
     else:
         raise NotSupportedError(f"Model output type {model_output_type} is not supported for raw inference request.")
 
@@ -229,8 +230,8 @@ def validate_serverless_openai_inference_request(
             model_name=model_name,
         )
         validate_audio_inference_output(model_info=model_info, completion_responses=completion_responses)
-        for file_path in glob.glob("/tmp/*.wav"):
-            os.remove(file_path)
+        if os.path.exists(AUDIO_FILE_LOCAL_PATH):
+            os.remove(AUDIO_FILE_LOCAL_PATH)
         return
     elif model_output_type == "text":
         model_info, completion_responses = fetch_openai_response(
