@@ -84,7 +84,7 @@ def llama_stack_server_config(
             "name": "llama-stack",
             "port": 8321,
         },
-        "distribution": {"image": "quay.io/ruimvieira/llama-stack-odh:latest"},
+        "distribution": {"image": "quay.io/ruimvieira/llama-stack-lmeval-fix:latest"},
         "storage": {
             "size": "20Gi",
         },

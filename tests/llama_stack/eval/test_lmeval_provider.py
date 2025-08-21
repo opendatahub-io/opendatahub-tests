@@ -38,7 +38,8 @@ class TestLlamaStackLMEvalProvider:
             dataset_id=trustyai_lmeval_arc_easy,
             scoring_functions=["string"],
             provider_id=LlamaStackProviders.Eval.TRUSTYAI_LMEVAL,
-            metadata={"tokenized_request": False, "tokenizer": "google/flan-t5-small"},
+            provider_benchmark_id="string",
+            metadata={"tokenized_requests": False, "tokenizer": "google/flan-t5-small"},
         )
 
         benchmarks = llama_stack_client.benchmarks.list()
@@ -52,12 +53,12 @@ class TestLlamaStackLMEvalProvider:
             benchmark_id=f"{LlamaStackProviders.Eval.TRUSTYAI_LMEVAL}::arc_easy",
             benchmark_config={
                 "eval_candidate": {
-                    "type": "model",
                     "model": "qwen",
+                    "type": "model",
                     "provider_id": LlamaStackProviders.Eval.TRUSTYAI_LMEVAL,
                     "sampling_params": {"temperature": 0.7, "top_p": 0.9, "max_tokens": 256},
                 },
-                "num_examples": 10,
+                "num_examples": 100,
             },
         )
 
