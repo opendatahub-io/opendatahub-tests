@@ -63,3 +63,4 @@ PORT_MAP = {
     "mariadb": 3306,
     "mysql": 3306,
 }
+MODEL_REGISTRY_POD_FILTER: str = "component=model-registry"

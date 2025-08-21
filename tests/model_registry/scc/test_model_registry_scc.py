@@ -13,10 +13,9 @@ from tests.model_registry.scc.utils import (
     KEYS_TO_VALIDATE,
     validate_containers_pod_security_context,
 )
-from tests.model_registry.constants import MODEL_DICT, MR_INSTANCE_NAME
+from tests.model_registry.constants import MODEL_DICT, MR_INSTANCE_NAME, MODEL_REGISTRY_POD_FILTER
 
 from kubernetes.dynamic import DynamicClient
-from ocp_utilities.infra import get_pods_by_name_prefix
 
 LOGGER = get_logger(name=__name__)
 
@@ -37,8 +36,12 @@ def model_registry_resource(
     if request.param["kind"] == Deployment:
         return Deployment(name=MR_INSTANCE_NAME, namespace=model_registry_namespace, ensure_exists=True)
     elif request.param["kind"] == Pod:
-        pods = get_pods_by_name_prefix(
-            client=admin_client, pod_prefix=MR_INSTANCE_NAME, namespace=model_registry_namespace
+        pods = list(
+            Pod.get(
+                dyn_client=admin_client,
+                namespace=model_registry_namespace,
+                label_selector=MODEL_REGISTRY_POD_FILTER,
+            )
         )
         if len(pods) != 1:
             pytest.fail(

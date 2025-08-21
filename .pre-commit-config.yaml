@@ -2,7 +2,7 @@ minimum_pre_commit_version: 3.3.0
 default_install_hook_types: [pre-commit, commit-msg]
 
 default_language_version:
-  python: python3.12
+  python: python3.13
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -36,7 +36,7 @@ repos:
         exclude: .*/__snapshots__/.*|.*-input\.json$
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.12.8
+    rev: v0.12.9
     hooks:
       - id: ruff
       - id: ruff-format
@@ -70,3 +70,10 @@ repos:
         args:
           - --subject-min-length=10
           - --subject-max-length=80
+  - repo: local
+    hooks:
+        - id: check-prohibited-patterns
+          name: Check for prohibited code patterns
+          entry: python scripts/check_incorrect_wrapper_usage.py
+          language: python
+          pass_filenames: false

@@ -5,7 +5,7 @@ from kubernetes.dynamic import DynamicClient
 from pytest_testconfig import config as py_config
 
 from ocp_resources.pod import Pod
-from tests.model_registry.constants import MR_INSTANCE_NAME
+from tests.model_registry.constants import MODEL_REGISTRY_POD_FILTER
 from utilities.general import wait_for_pods_by_labels
 
 
@@ -15,6 +15,6 @@ def model_registry_instance_pod_by_label(admin_client: DynamicClient) -> Generat
     yield wait_for_pods_by_labels(
         admin_client=admin_client,
         namespace=py_config["model_registry_namespace"],
-        label_selector=f"app={MR_INSTANCE_NAME}",
+        label_selector=MODEL_REGISTRY_POD_FILTER,
         expected_num_pods=1,
     )[0]

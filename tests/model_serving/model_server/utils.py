@@ -15,7 +15,8 @@ from utilities.exceptions import (
 )
 from utilities.constants import Timeout
 from utilities.inference_utils import UserInference
-from utilities.infra import get_isvc_keda_scaledobject, get_pods_by_isvc_label
+from utilities.infra import get_pods_by_isvc_label
+from tests.model_serving.model_server.keda.utils import get_isvc_keda_scaledobject
 from utilities.constants import Protocols
 from timeout_sampler import TimeoutWatch, TimeoutSampler
 
@@ -247,10 +248,9 @@ def verify_keda_scaledobject(
         expected_query: Expected query string
         expected_threshold: Expected threshold as string (e.g. "50.000000")
     """
-    scaled_objects = get_isvc_keda_scaledobject(client=client, isvc=isvc)
-    scaled_object = scaled_objects[0]
-    trigger_meta = scaled_object.spec.triggers[0].metadata
-    trigger_type = scaled_object.spec.triggers[0].type
+    scaled_object = get_isvc_keda_scaledobject(client=client, isvc=isvc)
+    trigger_meta = scaled_object.instance.spec.triggers[0].metadata
+    trigger_type = scaled_object.instance.spec.triggers[0].type
     query = trigger_meta.get("query")
     threshold = trigger_meta.get("threshold")
 

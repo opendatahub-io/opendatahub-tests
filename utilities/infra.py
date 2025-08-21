@@ -27,6 +27,7 @@ from kubernetes.dynamic.exceptions import (
 from ocp_resources.catalog_source import CatalogSource
 from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.config_imageregistry_operator_openshift_io import Config
 from ocp_resources.console_cli_download import ConsoleCLIDownload
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
@@ -1003,29 +1004,6 @@ def wait_for_isvc_pods(client: DynamicClient, isvc: InferenceService, runtime_na
     return get_pods_by_isvc_label(client=client, isvc=isvc, runtime_name=runtime_name)
 
 
-def get_isvc_keda_scaledobject(client: DynamicClient, isvc: InferenceService) -> list[Any]:
-    """
-    Get KEDA ScaledObject resources associated with an InferenceService.
-
-    Args:
-        client (DynamicClient): OCP Client to use.
-        isvc (InferenceService): InferenceService object.
-
-    Returns:
-        list[Any]: A list of all matching ScaledObjects
-
-    Raises:
-        ResourceNotFoundError: if no ScaledObjects are found.
-    """
-    namespace = isvc.namespace
-    scaled_object_client = client.resources.get(api_version="keda.sh/v1alpha1", kind="ScaledObject")
-    scaled_object = scaled_object_client.get(namespace=namespace, name=isvc.name + "-predictor")
-
-    if scaled_object:
-        return [scaled_object]
-    raise ResourceNotFoundError(f"{isvc.name} has no KEDA ScaledObjects")
-
-
 def get_rhods_subscription() -> Subscription | None:
     subscriptions = Subscription.get(dyn_client=get_client(), namespace=RHOAI_OPERATOR_NAMESPACE)
     if subscriptions:
@@ -1260,3 +1238,19 @@ def download_oc_console_cli(tmpdir: LocalPath) -> str:
     binary_path = os.path.join(tmpdir, extracted_filenames[0])
     os.chmod(binary_path, stat.S_IRUSR | stat.S_IXUSR)
     return binary_path
+
+
+def check_internal_image_registry_available(admin_client: DynamicClient) -> bool:
+    """Check if internal image registry is available by checking the imageregistry config managementState"""
+    try:
+        # Access the imageregistry.operator.openshift.io/v1 Config resource named "cluster"
+        config_instance = Config(client=admin_client, name="cluster")
+
+        management_state = config_instance.instance.spec.get("managementState", "").lower()
+        is_available = management_state == "managed"
+
+        LOGGER.info(f"Image registry management state: {management_state}, available: {is_available}")
+        return is_available
+    except (ResourceNotFoundError, Exception) as e:
+        LOGGER.warning(f"Failed to check image registry config: {e}")
+        return False

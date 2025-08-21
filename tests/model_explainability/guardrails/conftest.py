@@ -306,3 +306,48 @@ def patched_llamastack_deployment_tls_certs(llamastack_distribution, guardrails_
         lls_deployment.scale_replicas(replica_count=initial_replicas)
         lls_deployment.wait_for_replicas()
         yield lls_deployment
+
+
+@pytest.fixture(scope="class")
+def hap_detector_isvc(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    minio_data_connection: Secret,
+    huggingface_sr: ServingRuntime,
+) -> Generator[InferenceService, Any, Any]:
+    with create_isvc(
+        client=admin_client,
+        name="hap-detector",
+        namespace=model_namespace.name,
+        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+        model_format="guardrails-detector-huggingface",
+        runtime=huggingface_sr.name,
+        storage_key=minio_data_connection.name,
+        storage_path="granite-guardian-hap-38m",
+        wait_for_predictor_pods=False,
+        enable_auth=False,
+        resources={
+            "requests": {"cpu": "1", "memory": "4Gi", "nvidia.com/gpu": "0"},
+            "limits": {"cpu": "1", "memory": "4Gi", "nvidia.com/gpu": "0"},
+        },
+        max_replicas=1,
+        min_replicas=1,
+        labels={
+            "opendatahub.io/dashboard": "true",
+        },
+    ) as isvc:
+        yield isvc
+
+
+@pytest.fixture(scope="class")
+def hap_detector_route(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    hap_detector_isvc: InferenceService,
+) -> Generator[Route, Any, Any]:
+    yield Route(
+        name="hap-detector-route",
+        namespace=model_namespace.name,
+        service=hap_detector_isvc.name,
+        wait_for_resource=True,
+    )

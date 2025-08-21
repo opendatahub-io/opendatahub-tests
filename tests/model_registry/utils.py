@@ -23,6 +23,7 @@ from tests.model_registry.constants import (
     OAUTH_PROXY_CONFIG_DICT,
     MARIADB_MY_CNF,
     PORT_MAP,
+    MODEL_REGISTRY_POD_FILTER,
 )
 from tests.model_registry.exceptions import ModelRegistryResourceNotFoundError
 from tests.model_registry.model_catalog.constants import DEFAULT_MODEL_CATALOG
@@ -308,7 +309,7 @@ def wait_for_new_running_mr_pod(
         Pod.get(
             dyn_client=admin_client,
             namespace=namespace,
-            label_selector=f"app={instance_name}",
+            label_selector=MODEL_REGISTRY_POD_FILTER,
         )
     )
     if pods and len(pods) == 1:
