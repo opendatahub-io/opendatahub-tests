@@ -1,6 +1,11 @@
 import pytest
 
 from tests.llama_stack.constants import LlamaStackProviders
+from utilities.constants import Timeout
+from timeout_sampler import TimeoutSampler
+
+
+TRUSTYAI_LMEVAL_ARCEASY = f"{LlamaStackProviders.Eval.TRUSTYAI_LMEVAL}::arc_easy"
 
 
 @pytest.mark.parametrize(
@@ -19,11 +24,10 @@ from tests.llama_stack.constants import LlamaStackProviders
 @pytest.mark.rawdeployment
 class TestLlamaStackLMEvalProvider:
     """
-    Adds basic tests for the LlamaStack LMEval provider.
-
+    Tests for the LlamaStack LMEval provider.
     1. Register the LLM that will be evaluated.
-    2. Register the arc_easy benchmark (eval)
-    3. TODO: Add test for run_eval
+    2. Register the arc_easy benchmark.
+    3. Run the evaluation and wait until it's completed.
     """
 
     def test_lmeval_register_benchmark(self, llama_stack_client):
@@ -31,22 +35,19 @@ class TestLlamaStackLMEvalProvider:
             provider_id=LlamaStackProviders.Inference.VLLM_INFERENCE, model_type="llm", model_id="qwen"
         )
 
-        provider_id = LlamaStackProviders.Eval.TRUSTYAI_LMEVAL
-        trustyai_lmeval_arc_easy = f"{provider_id}::arc_easy"
         llama_stack_client.benchmarks.register(
-            benchmark_id=trustyai_lmeval_arc_easy,
-            dataset_id=trustyai_lmeval_arc_easy,
+            benchmark_id=TRUSTYAI_LMEVAL_ARCEASY,
+            dataset_id=TRUSTYAI_LMEVAL_ARCEASY,
             scoring_functions=["string"],
             provider_id=LlamaStackProviders.Eval.TRUSTYAI_LMEVAL,
             provider_benchmark_id="string",
             metadata={"tokenized_requests": False, "tokenizer": "google/flan-t5-small"},
         )
-
         benchmarks = llama_stack_client.benchmarks.list()
 
         assert len(benchmarks) == 1
-        assert benchmarks[0].identifier == trustyai_lmeval_arc_easy
-        assert benchmarks[0].provider_id == provider_id
+        assert benchmarks[0].identifier == TRUSTYAI_LMEVAL_ARCEASY
+        assert benchmarks[0].provider_id == LlamaStackProviders.Eval.TRUSTYAI_LMEVAL
 
     def test_llamastack_run_eval(self, patched_trustyai_operator_configmap_allow_online, llama_stack_client):
         job = llama_stack_client.eval.run_eval(
@@ -56,10 +57,21 @@ class TestLlamaStackLMEvalProvider:
                     "model": "qwen",
                     "type": "model",
                     "provider_id": LlamaStackProviders.Eval.TRUSTYAI_LMEVAL,
-                    "sampling_params": {"temperature": 0.7, "top_p": 0.9, "max_tokens": 256},
+                    "sampling_params": {"temperature": 0.7, "top_p": 0.9, "max_tokens": 10},
                 },
-                "num_examples": 100,
+                "scoring_params": {},
+                "num_examples": 2,
             },
         )
 
-        print("hi")
+        samples = TimeoutSampler(
+            wait_timeout=Timeout.TIMEOUT_10MIN,
+            sleep=30,
+            func=lambda: llama_stack_client.eval.jobs.status(
+                job_id=job.job_id, benchmark_id=TRUSTYAI_LMEVAL_ARCEASY
+            ).status,
+        )
+
+        for sample in samples:
+            if sample == "completed":
+                break
