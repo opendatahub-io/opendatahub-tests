@@ -1,6 +1,6 @@
 import pytest
 
-from tests.llama_stack.constants import LLamaStackProviders
+from tests.llama_stack.constants import LlamaStackProviders
 
 
 @pytest.mark.parametrize(
@@ -17,7 +17,7 @@ from tests.llama_stack.constants import LLamaStackProviders
 class TestLlamaStackCore:
     def test_model_register(self, llama_stack_client):
         response = llama_stack_client.models.register(
-            provider_id=LLamaStackProviders.Inference.VLLM_INFERENCE, model_type="llm", model_id="qwen"
+            provider_id=LlamaStackProviders.Inference.VLLM_INFERENCE, model_type="llm", model_id="qwen"
         )
         assert response
 
@@ -29,7 +29,7 @@ class TestLlamaStackCore:
         assert len(models) == 2
         assert models[0].identifier == "qwen"
         assert models[0].model_type == "llm"
-        assert models[0].provider_id == LLamaStackProviders.Inference.VLLM_INFERENCE
+        assert models[0].provider_id == LlamaStackProviders.Inference.VLLM_INFERENCE
 
     def test_inference(self, llama_stack_client):
         response = llama_stack_client.inference.chat_completion(

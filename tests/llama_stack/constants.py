@@ -1,7 +1,7 @@
 from enum import Enum
 
 
-class LLamaStackProviders:
+class LlamaStackProviders:
     """LlamaStack provider identifiers."""
 
     class Inference(str, Enum):

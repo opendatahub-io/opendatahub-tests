@@ -2,7 +2,7 @@ import pytest
 import yaml
 from simple_logger.logger import get_logger
 
-from tests.llama_stack.constants import LLamaStackProviders
+from tests.llama_stack.constants import LlamaStackProviders
 from tests.model_explainability.guardrails.constants import (
     CHAT_GENERATION_CONFIG,
     BUILTIN_DETECTOR_CONFIG,
@@ -65,7 +65,7 @@ class TestLlamaStackFMSGuardrailsProvider:
         llama_stack_client.shields.register(
             shield_id=SECURE_SHIELD_ID,
             provider_shield_id=SECURE_SHIELD_ID,
-            provider_id=LLamaStackProviders.Safety.TRUSTYAI_FMS,
+            provider_id=LlamaStackProviders.Safety.TRUSTYAI_FMS,
             params=shield_params,
             timeout=120,
         )
@@ -73,7 +73,7 @@ class TestLlamaStackFMSGuardrailsProvider:
 
         assert len(shields) == 1
         assert shields[0].identifier == SECURE_SHIELD_ID
-        assert shields[0].provider_id == LLamaStackProviders.Safety.TRUSTYAI_FMS
+        assert shields[0].provider_id == LlamaStackProviders.Safety.TRUSTYAI_FMS
         assert shields[0].params == shield_params
 
     def test_fms_guardrails_run_shield(self, llama_stack_client):
