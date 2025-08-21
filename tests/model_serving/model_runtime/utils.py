@@ -114,7 +114,8 @@ def run_audio_inference(
         return model_info, completion_responses
     else:
         LOGGER.info("Using port forwarding for inference on pod: %s", pod_name)
-        inference_client = OpenAIClient(host=f"http://localhost:{port}", model_name=model_name, streaming=True)
+        if pod_name is None or isvc is None or port is None:
+            raise ValueError("pod_name, isvc, and port are required when url is not provided")
 
         with portforward.forward(
             pod_or_service=pod_name,
@@ -124,6 +125,7 @@ def run_audio_inference(
         ):
             if endpoint == "openai":
                 completion_responses = []
+                inference_client = OpenAIClient(host=f"http://localhost:{port}", model_name=model_name, streaming=True)
                 completion_response = inference_client.request_audio(
                     endpoint=OpenAIEnpoints.AUDIO_TRANSCRIPTION, audio_file_path=audio_file_path, model_name=model_name
                 )
@@ -167,7 +169,6 @@ def validate_raw_openai_inference_request(
             completion_query=completion_query,
         )
         validate_inference_output(
-            model_info,
             completion_responses,
             response_snapshot=response_snapshot,
         )
@@ -238,7 +239,6 @@ def validate_serverless_openai_inference_request(
             url=url, model_name=model_name, completion_query=completion_query
         )
         validate_inference_output(
-            model_info,
             completion_responses,
             response_snapshot=response_snapshot,
         )
