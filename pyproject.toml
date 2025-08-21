@@ -66,6 +66,7 @@ dependencies = [
     "openshift-python-wrapper>=11.0.26",
     "semver>=3.0.4",
     "pytest-html>=4.1.1",
+    "sqlalchemy>=2.0.43",
 ]
 
 [project.urls]

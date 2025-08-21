@@ -68,3 +68,9 @@ class NotSupportedError(Exception):
 
     def __str__(self) -> str:
         return f"The {self.type} is not supported"
+
+
+class InvalidArgumentsError(Exception):
+    """Raised when mutually exclusive or invalid argument combinations are passed."""
+
+    pass
