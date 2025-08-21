@@ -29,7 +29,7 @@ from simple_logger.logger import get_logger
 from kubernetes.dynamic import DynamicClient
 from pytest_testconfig import config as py_config
 from model_registry.types import RegisteredModel
-from tests.model_registry.utils import generate_namespace_name
+from tests.model_registry.utils import generate_namespace_name, wait_for_mr_operator_pod_running
 from utilities.general import generate_random_name
 
 from tests.model_registry.constants import (
@@ -89,7 +89,12 @@ def model_registry_instance(
             db_backend=param.get("db_name", "mysql"),
         )
         with ExitStack() as stack:
-            mr_instances = [stack.enter_context(mr_obj) for mr_obj in mr_objects]
+            mr_instances = []
+            for mr_object in mr_objects:
+                # ensure the operator pod is healthy:
+                wait_for_mr_operator_pod_running(admin_client=admin_client)
+                stack.enter_context(mr_object)
+                mr_instances.append(mr_object)
             for mr_instance in mr_instances:
                 mr_instance.wait_for_condition(condition="Available", status="True")
                 mr_instance.wait_for_condition(condition="OAuthProxyAvailable", status="True")

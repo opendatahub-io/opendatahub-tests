@@ -63,6 +63,7 @@ def model_registry_resource(
 )
 @pytest.mark.usefixtures(
     "updated_dsc_component_state_scope_session",
+    "model_registry_namespace",
     "model_registry_metadata_db_resources",
     "model_registry_instance",
     "registered_model",

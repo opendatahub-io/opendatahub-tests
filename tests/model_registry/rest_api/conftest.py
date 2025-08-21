@@ -173,7 +173,7 @@ def deploy_secure_mysql_and_mr(
         yield mr
 
 
-@pytest.fixture()
+@pytest.fixture(scope="class")
 def local_ca_bundle(request: pytest.FixtureRequest, admin_client: DynamicClient) -> Generator[str, Any, Any]:
     """
     Creates a local CA bundle file by fetching the CA bundle from a ConfigMap and appending the router CA from a Secret.

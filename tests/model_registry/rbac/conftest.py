@@ -22,6 +22,7 @@ from kubernetes.dynamic import DynamicClient
 from pyhelper_utils.shell import run_command
 
 from tests.model_registry.rbac.utils import wait_for_oauth_openshift_deployment, create_role_binding
+from tests.model_registry.utils import wait_for_mr_operator_pod_running
 from utilities.general import generate_random_name
 from utilities.infra import login_with_user_password
 from utilities.user_utils import UserTestSession, create_htpasswd_file, wait_for_user_creation
@@ -337,13 +338,14 @@ def db_deployment_parametrized(
 
 @pytest.fixture(scope="class")
 def model_registry_instance_parametrized(
-    request: FixtureRequest, teardown_resources: bool
+    request: FixtureRequest, teardown_resources: bool, admin_client: DynamicClient
 ) -> Generator[List[ModelRegistry], Any, Any]:
     """Create Model Registry instance parametrized"""
     with ExitStack() as stack:
         model_registry_instances = []
         for param in request.param:
             # Common parameters for both ModelRegistry classes
+            wait_for_mr_operator_pod_running(admin_client=admin_client)
             mr_instance = stack.enter_context(ModelRegistry(**param))  # noqa: FCN001
             mr_instance.wait_for_condition(condition="Available", status="True")
             mr_instance.wait_for_condition(condition="OAuthProxyAvailable", status="True")

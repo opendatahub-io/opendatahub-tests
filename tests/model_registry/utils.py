@@ -24,12 +24,14 @@ from tests.model_registry.constants import (
     MARIADB_MY_CNF,
     PORT_MAP,
     MODEL_REGISTRY_POD_FILTER,
+    MR_OPERATOR_NAME,
 )
 from tests.model_registry.exceptions import ModelRegistryResourceNotFoundError
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
-from utilities.constants import Protocols, Annotations, Timeout
+from utilities.constants import Protocols, Annotations, Timeout, Labels
 from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
+from pytest_testconfig import config as py_config
 
 
 ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
@@ -286,7 +288,6 @@ def wait_for_new_running_mr_pod(
     admin_client: DynamicClient,
     orig_pod_name: str,
     namespace: str,
-    instance_name: str,
 ) -> Pod:
     """
     Wait for the model registry pod to be replaced.
@@ -295,7 +296,6 @@ def wait_for_new_running_mr_pod(
         admin_client (DynamicClient): The admin client.
         orig_pod_name (str): The name of the original pod.
         namespace (str): The namespace of the pod.
-        instance_name (str): The name of the instance.
     Returns:
         Pod object.
 
@@ -716,3 +716,30 @@ def validate_mlmd_removal_in_model_registry_pod_log(
         if "MLMD" in log:
             errors.append(f"MLMD reference found in {container_name} log")
     assert not errors, f"Log validation failed with error(s): {errors}"
+
+
+@retry(wait_timeout=240, sleep=5, exceptions_dict={NotFoundError: [], ResourceNotFoundError: []})
+def wait_for_mr_operator_pod_running(
+    admin_client: DynamicClient,
+) -> bool | None:
+    """
+    Waits for all pods in a given namespace to reach Running/Completed state. To avoid catching all pods in running
+    state too soon, use number_of_consecutive_checks with appropriate values.
+    """
+    namespace_name = py_config["applications_namespace"]
+    pods = get_not_running_pods(
+        pods=list(
+            Pod.get(
+                dyn_client=admin_client,
+                namespace=namespace_name,
+                label_selector=f"{Labels.OpenDataHubIo.NAME}={MR_OPERATOR_NAME}",
+            )
+        )
+    )
+    if not pods:
+        return True
+    LOGGER.error(
+        f"timeout waiting for all pods in namespace {namespace_name} to reach "
+        f"running state, following pods are in not running state: {pods}"
+    )
+    return False
