@@ -74,3 +74,7 @@ class InvalidArgumentsError(Exception):
     """Raised when mutually exclusive or invalid argument combinations are passed."""
 
     pass
+
+
+class ResourceNotReadyError(Exception):
+    pass

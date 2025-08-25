@@ -18,7 +18,9 @@ from kubernetes.dynamic.exceptions import ResourceNotFoundError, ResourceNotUniq
 from ocp_resources.catalog_source import CatalogSource
 from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
+from ocp_resources.dsc_initialization import DSCInitialization
 from ocp_resources.exceptions import MissingResourceError
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.infrastructure import Infrastructure
@@ -40,8 +42,8 @@ from simple_logger.logger import get_logger
 
 from ocp_resources.subscription import Subscription
 from utilities.constants import Timeout, RHOAI_OPERATOR_NAMESPACE
-from utilities.exceptions import FailedPodsError
-from timeout_sampler import TimeoutExpiredError, TimeoutSampler
+from utilities.exceptions import FailedPodsError, ResourceNotReadyError
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 from utilities.general import create_isvc_label_selector_str, get_s3_secret_dict
 
 LOGGER = get_logger(name=__name__)
@@ -690,3 +692,32 @@ def get_oc_image_info(
     except TimeoutExpiredError:
         LOGGER.error(f"Failed to parse {base_command}")
         raise
+
+
+@retry(
+    wait_timeout=120,
+    sleep=5,
+    exceptions_dict={ResourceNotReadyError: []},
+)
+def wait_for_dsci_status_ready(dsci_resource: DSCInitialization) -> bool:
+    LOGGER.info(f"Wait for DSCI {dsci_resource.name} to be in {dsci_resource.Status.READY} status.")
+    if dsci_resource.status == dsci_resource.Status.READY:
+        return True
+
+    raise ResourceNotReadyError(
+        f"DSCI {dsci_resource.name} is not ready.\nCurrent status: {dsci_resource.instance.status}"
+    )
+
+
+@retry(
+    wait_timeout=120,
+    sleep=5,
+    exceptions_dict={ResourceNotReadyError: []},
+)
+def wait_for_dsc_status_ready(dsc_resource: DataScienceCluster) -> bool:
+    LOGGER.info(f"Wait for DSC {dsc_resource.name} are {dsc_resource.Status.READY}.")
+    if dsc_resource.status == dsc_resource.Status.READY:
+        return True
+    raise ResourceNotReadyError(
+        f"DSC {dsc_resource.name} is not ready.\nCurrent status: {dsc_resource.instance.status}"
+    )

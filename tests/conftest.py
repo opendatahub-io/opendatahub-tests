@@ -9,6 +9,7 @@ import pytest
 import yaml
 from _pytest.tmpdir import TempPathFactory
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.node import Node
 from ocp_resources.secret import Secret
 from pyhelper_utils.shell import run_command
 from pytest import FixtureRequest, Config
@@ -286,3 +287,8 @@ def cluster_monitoring_config(admin_client: DynamicClient) -> Generator[ConfigMa
         data=data,
     ) as cm:
         yield cm
+
+
+@pytest.fixture(scope="session")
+def nodes(admin_client: DynamicClient) -> list[Node]:
+    return list(Node.get(dyn_client=admin_client))
