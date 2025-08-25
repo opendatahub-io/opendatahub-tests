@@ -45,6 +45,7 @@ HF_DETECTORS: Dict[str, Dict[str, Any]] = {
     "output": {"prompt_injection": {}, "hap": {}},
 }
 
+QWEN_MODEL_ID: str = "qwen"
 
 @pytest.mark.parametrize(
     "model_namespace, orchestrator_config, guardrails_orchestrator",
@@ -73,13 +74,10 @@ def test_validate_guardrails_orchestrator_images(guardrails_orchestrator_pod, tr
 
 
 @pytest.mark.parametrize(
-    "model_namespace, minio_pod, minio_data_connection, "
-    "orchestrator_config, guardrails_gateway_config, guardrails_orchestrator",
+    "model_namespace, orchestrator_config, guardrails_gateway_config, guardrails_orchestrator",
     [
         pytest.param(
             {"name": "test-guardrails-builtin"},
-            MinIo.PodConfig.QWEN_MINIO_CONFIG,
-            {"bucket": "llms"},
             {
                 "orchestrator_config_data": {
                     "config.yaml": yaml.dump({
@@ -134,7 +132,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
 
     def test_guardrails_health_endpoint(
         self,
-        qwen_isvc,
+        qwen25_05B_instruct,
         guardrails_orchestrator_health_route,
     ):
         # It takes a bit for the endpoint to come online, so we retry for a brief period of time
@@ -148,7 +146,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         response = check_health_endpoint()
         assert "fms-guardrails-orchestr8" in response.text
 
-    def test_guardrails_info_endpoint(self, qwen_isvc, guardrails_orchestrator_health_route):
+    def test_guardrails_info_endpoint(self, qwen25_05B_instruct, guardrails_orchestrator_health_route):
         response = requests.get(url=f"https://{guardrails_orchestrator_health_route.host}/info", verify=False)
         assert response.status_code == http.HTTPStatus.OK
 
@@ -158,14 +156,14 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         assert response_data["services"]["regex"]["status"] == healthy_status
 
     def test_guardrails_builtin_detectors_unsuitable_input(
-        self, current_client_token, openshift_ca_bundle_file, qwen_isvc, guardrails_orchestrator_route
+        self, current_client_token, openshift_ca_bundle_file, qwen25_05B_instruct, guardrails_orchestrator_route
     ):
         response = requests.post(
             url=f"https://{guardrails_orchestrator_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
             headers=get_auth_headers(token=current_client_token),
             json=get_chat_detections_payload(
                 content=PROMPT_WITH_PII,
-                model=MNT_MODELS,
+                model=QWEN_MODEL_ID,
             ),
             verify=openshift_ca_bundle_file,
         )
@@ -179,7 +177,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         )
 
     def test_guardrails_builtin_detectors_unsuitable_output(
-        self, current_client_token, openshift_ca_bundle_file, qwen_isvc, guardrails_orchestrator_route
+        self, current_client_token, openshift_ca_bundle_file, qwen25_05B_instruct, guardrails_orchestrator_route
     ):
         response = requests.post(
             url=f"https://{guardrails_orchestrator_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
@@ -188,7 +186,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
                 content="Hi, write three and only three examples of email adresses "
                 "that I can use to create an account for an online service."
                 "Don't provide any additional explanation.",
-                model=MNT_MODELS,
+                model=QWEN_MODEL_ID,
             ),
             verify=openshift_ca_bundle_file,
         )
@@ -222,7 +220,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
             headers=get_auth_headers(token=current_client_token),
             json=get_chat_detections_payload(
                 content=str(message),
-                model=MNT_MODELS,
+                model=QWEN_MODEL_ID,
             ),
             verify=openshift_ca_bundle_file,
         )
@@ -231,12 +229,10 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
 
 
 @pytest.mark.parametrize(
-    "model_namespace, minio_pod, minio_data_connection, orchestrator_config, guardrails_orchestrator",
+    "model_namespace, orchestrator_config, guardrails_orchestrator",
     [
         pytest.param(
             {"name": "test-guardrails-huggingface"},
-            MinIo.PodConfig.QWEN_MINIO_CONFIG,
-            {"bucket": "llms"},
             {
                 "orchestrator_config_data": {
                     "config.yaml": yaml.dump({
@@ -291,9 +287,7 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
     def test_guardrails_hf_detector_unsuitable_input(
         self,
         current_client_token,
-        minio_pod,
-        minio_data_connection,
-        qwen_isvc,
+        qwen25_05B_instruct,
         guardrails_orchestrator_route,
         prompt_injection_detector_route,
         openshift_ca_bundle_file,
@@ -303,7 +297,7 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
             url=f"https://{guardrails_orchestrator_route.host}/{CHAT_COMPLETIONS_DETECTION_ENDPOINT}",
             headers=get_auth_headers(token=current_client_token),
             json=get_chat_detections_payload(
-                content=prompt_injection, model=MNT_MODELS, detectors=PROMPT_INJECTION_DETECTORS
+                content=prompt_injection, model=QWEN_MODEL_ID, detectors=PROMPT_INJECTION_DETECTORS
             ),
             verify=openshift_ca_bundle_file,
         )
@@ -319,9 +313,7 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
     def test_guardrails_hf_detector_negative_detection(
         self,
         current_client_token,
-        minio_pod,
-        minio_data_connection,
-        qwen_isvc,
+        qwen25_05B_instruct,
         guardrails_orchestrator_route,
         prompt_injection_detector_route,
         openshift_ca_bundle_file,
@@ -330,7 +322,7 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
             url=f"https://{guardrails_orchestrator_route.host}/{CHAT_COMPLETIONS_DETECTION_ENDPOINT}",
             headers=get_auth_headers(token=current_client_token),
             json=get_chat_detections_payload(
-                content=HARMLESS_PROMPT, model=MNT_MODELS, detectors=PROMPT_INJECTION_DETECTORS
+                content=HARMLESS_PROMPT, model=QWEN_MODEL_ID, detectors=PROMPT_INJECTION_DETECTORS
             ),
             verify=openshift_ca_bundle_file,
         )
@@ -341,7 +333,7 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
         self,
         current_client_token,
         openshift_ca_bundle_file,
-        qwen_isvc,
+        qwen25_05B_instruct,
         guardrails_orchestrator_route,
         hap_detector_route,
     ):
@@ -368,12 +360,10 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
 
 
 @pytest.mark.parametrize(
-    "model_namespace, minio_pod, minio_data_connection, orchestrator_config, guardrails_orchestrator",
+    "model_namespace, orchestrator_config, guardrails_orchestrator",
     [
         pytest.param(
             {"name": "test-guardrails-huggingface"},
-            MinIo.PodConfig.QWEN_HAP_BPIV2_MINIO_CONFIG,
-            {"bucket": "llms"},
             {
                 "orchestrator_config_data": {
                     "config.yaml": yaml.dump({
@@ -427,9 +417,7 @@ class TestGuardrailsOrchestratorWithSeveralDetectors:
     def test_guardrails_several_detector_unsuitable_input(
         self,
         current_client_token,
-        minio_pod,
-        minio_data_connection,
-        qwen_isvc,
+        qwen25_05B_instruct,
         guardrails_orchestrator_route,
         prompt_injection_detector_route,
         hap_detector_route,
@@ -448,7 +436,7 @@ class TestGuardrailsOrchestratorWithSeveralDetectors:
                 headers=get_auth_headers(token=current_client_token),
                 json=get_chat_detections_payload(
                     content=input_text,
-                    model=MNT_MODELS,
+                    model=QWEN_MODEL_ID,
                     detectors=HF_DETECTORS,
                 ),
                 verify=openshift_ca_bundle_file,
@@ -465,9 +453,7 @@ class TestGuardrailsOrchestratorWithSeveralDetectors:
     def test_guardrails_several_detector_negative_detection(
         self,
         current_client_token,
-        minio_pod,
-        minio_data_connection,
-        qwen_isvc,
+        qwen25_05B_instruct,
         guardrails_orchestrator_route,
         hap_detector_route,
         prompt_injection_detector_route,
@@ -476,7 +462,7 @@ class TestGuardrailsOrchestratorWithSeveralDetectors:
         response = requests.post(
             url=f"https://{guardrails_orchestrator_route.host}/{CHAT_COMPLETIONS_DETECTION_ENDPOINT}",
             headers=get_auth_headers(token=current_client_token),
-            json=get_chat_detections_payload(content=HARMLESS_PROMPT, model=MNT_MODELS, detectors=HF_DETECTORS),
+            json=get_chat_detections_payload(content=HARMLESS_PROMPT, model=QWEN_MODEL_ID, detectors=HF_DETECTORS),
             verify=openshift_ca_bundle_file,
         )
 
