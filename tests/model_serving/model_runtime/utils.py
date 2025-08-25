@@ -60,7 +60,7 @@ def run_raw_inference(
     endpoint: str,
     completion_query: list[dict[str, str]] = COMPLETION_QUERY,
 ) -> tuple[Any, list[Any], list[Any]]:
-    LOGGER.info(pod_name)
+    LOGGER.info("audio_inference:start endpoint=%s pod=%s", endpoint, pod_name)
     with portforward.forward(
         pod_or_service=pod_name,
         namespace=isvc.namespace,
@@ -177,12 +177,12 @@ def validate_raw_openai_inference_request(
         raise NotSupportedError(f"Model output type {model_output_type} is not supported for raw inference request.")
 
 
-def download_audio_file(
-    audio_file_url: str = AUDIO_FILE_URL,
-    destination_path: str = "/tmp/harvard.wav",
-) -> None:
+def download_audio_file(audio_file_url: str = AUDIO_FILE_URL, destination_path: str = AUDIO_FILE_LOCAL_PATH) -> None:
     """
-    Download an audio file and save to file_path if it's missing or empty.
+    Download an audio file and save to destination_path if it's missing or empty.
+
+    :param audio_file_url: The URL of the audio file to download.
+    :param destination_path: The local path where the audio file should be saved.
     """
     dir_ = os.path.dirname(destination_path)
     os.makedirs(dir_, exist_ok=True)
@@ -225,14 +225,19 @@ def validate_serverless_openai_inference_request(
 ) -> None:
     if model_output_type == "audio":
         LOGGER.info("Running audio inference test")
-        model_info, completion_responses = run_audio_inference(
-            url=url,
-            endpoint=OPENAI_ENDPOINT_NAME,
-            model_name=model_name,
-        )
-        validate_audio_inference_output(model_info=model_info, completion_responses=completion_responses)
-        if os.path.exists(AUDIO_FILE_LOCAL_PATH):
-            os.remove(AUDIO_FILE_LOCAL_PATH)
+        try:
+            model_info, completion_responses = run_audio_inference(
+                url=url,
+                endpoint=OPENAI_ENDPOINT_NAME,
+                model_name=model_name,
+            )
+            validate_audio_inference_output(model_info=model_info, completion_responses=completion_responses)
+        finally:
+            try:
+                if os.path.exists(AUDIO_FILE_LOCAL_PATH):
+                    os.remove(AUDIO_FILE_LOCAL_PATH)
+            except OSError as e:
+                LOGGER.error("Error removing audio file: %s", e)
         return
     elif model_output_type == "text":
         model_info, completion_responses = fetch_openai_response(

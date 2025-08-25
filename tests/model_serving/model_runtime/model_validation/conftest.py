@@ -152,7 +152,7 @@ def deployment_config(request: FixtureRequest) -> dict[str, Any]:
     config["runtime_argument"] = serving_argument
     config["deployment_type"] = deployment_type
     config["gpu_count"] = request.param.get("gpu_count", 1)
-    config["model_output_type"] = request.param.get("model_output_type") or "text"
+    config["model_output_type"] = request.param.get("model_output_type", "text")
     config["timeout"] = TIMEOUT_20MIN
     return config
 
