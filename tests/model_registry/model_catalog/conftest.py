@@ -26,12 +26,14 @@ def model_catalog_routes(admin_client: DynamicClient, model_registry_namespace: 
 @pytest.fixture(scope="class")
 def model_catalog_rest_url(model_registry_namespace: str, model_catalog_routes: list[Route]) -> list[str]:
     assert model_catalog_routes, f"Model catalog routes does not exist in {model_registry_namespace}"
-    routes = [f"https://{route.instance.spec.host}:443/api/model_catalog/v1alpha1/" for route in model_catalog_routes]
-    assert routes, (
+    route_urls = [
+        f"https://{route.instance.spec.host}:443/api/model_catalog/v1alpha1/" for route in model_catalog_routes
+    ]
+    assert route_urls, (
         "Model catalog routes information could not be found from "
         f"routes:{[route.name for route in model_catalog_routes]}"
     )
-    return routes
+    return route_urls
 
 
 @pytest.fixture(scope="class")

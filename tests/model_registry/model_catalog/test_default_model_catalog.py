@@ -23,8 +23,7 @@ class TestModelCatalog:
         assert not catalog_config_map.exists
 
     def test_config_map_exists(self: Self, model_registry_instance: ModelRegistry, catalog_config_map: ConfigMap):
-        # Check that the default configmaps is created when model registry is .
-        # Managed configmap contains default model sources while the unmanaged one is empty by default
+        # Check that the default configmaps is created when model registry is enabled.
         assert catalog_config_map.exists, f"{catalog_config_map.name} does not exist"
         models = yaml.safe_load(catalog_config_map.instance.data["sources.yaml"])["catalogs"]
         assert not models, f"Expected no default models to be present. Actual: {models}"
