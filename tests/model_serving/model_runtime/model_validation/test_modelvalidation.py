@@ -21,6 +21,7 @@ class TestVLLMModelCarRaw:
         vllm_model_car_inference_service: InferenceService,
         vllm_model_car_pod_resource: Pod,
         response_snapshot: Any,
+        deployment_config: dict[str, Any],
     ) -> None:
         """
         Validate raw inference request using vLLM runtime and OCI image deployment.
@@ -29,8 +30,10 @@ class TestVLLMModelCarRaw:
         validate_raw_openai_inference_request(
             isvc=vllm_model_car_inference_service,
             pod_name=vllm_model_car_pod_resource.name,
+            model_name=vllm_model_car_inference_service.instance.metadata.name,
             response_snapshot=response_snapshot,
             completion_query=COMPLETION_QUERY,
+            model_output_type=deployment_config.get("model_output_type"),
         )
 
 
@@ -39,6 +42,7 @@ class TestVLLMModelCarServerless:
         self,
         vllm_model_car_inference_service: InferenceService,
         response_snapshot: Any,
+        deployment_config: dict[str, Any],
     ) -> None:
         """
         Validate OpenAI-style completion request using vLLM runtime and OCI image deployment.
@@ -49,4 +53,5 @@ class TestVLLMModelCarServerless:
             model_name=vllm_model_car_inference_service.instance.metadata.name,
             response_snapshot=response_snapshot,
             completion_query=COMPLETION_QUERY,
+            model_output_type=deployment_config.get("model_output_type"),
         )

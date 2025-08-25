@@ -7,7 +7,7 @@ reviews:
   request_changes_workflow: false
   high_level_summary: true
   high_level_summary_placeholder: '@coderabbitai summary'
-  high_level_summary_in_walkthrough: true
+  high_level_summary_in_walkthrough: false
   auto_title_placeholder: '@coderabbitai'
   auto_title_instructions: ''
   review_status: true
@@ -25,7 +25,7 @@ reviews:
   auto_assign_reviewers: false
   poem: false
   labeling_instructions: []
-  path_filters: []
+  path_filters: ["!.github/**"]
   path_instructions: []
   abort_on_close: true
   disable_cache: false

@@ -4,15 +4,18 @@ from typing import Self
 from simple_logger.logger import get_logger
 from model_registry import ModelRegistry as ModelRegistryClient
 from tests.model_registry.rbac.utils import build_mr_client_args
+from utilities.infra import create_inference_token
 from mr_openapi.exceptions import ForbiddenException
+from ocp_resources.service_account import ServiceAccount
 
 LOGGER = get_logger(name=__name__)
 
 
 @pytest.mark.usefixtures(
-    "updated_dsc_component_state_scope_class",
-    "mysql_metadata_resources",
-    "model_registry_instance_mysql",
+    "updated_dsc_component_state_scope_session",
+    "model_registry_namespace",
+    "model_registry_metadata_db_resources",
+    "model_registry_instance",
 )
 @pytest.mark.custom_namespace
 class TestModelRegistryRBAC:
@@ -56,7 +59,7 @@ class TestModelRegistryRBAC:
     @pytest.mark.usefixtures("sa_namespace", "service_account", "mr_access_role", "mr_access_role_binding")
     def test_service_account_access_granted(
         self: Self,
-        sa_token: str,
+        service_account: ServiceAccount,
         model_registry_instance_rest_endpoint: list[str],
     ):
         """
@@ -66,9 +69,12 @@ class TestModelRegistryRBAC:
         LOGGER.info(f"Targeting Model Registry REST endpoint: {model_registry_instance_rest_endpoint[0]}")
         LOGGER.info("Applied RBAC Role/Binding via fixtures. Expecting access GRANT.")
 
+        # Create a fresh token to bypass OAuth proxy cache from previous test
+        fresh_token = create_inference_token(model_service_account=service_account)
+
         try:
             client_args = build_mr_client_args(
-                rest_endpoint=model_registry_instance_rest_endpoint[0], token=sa_token, author="rbac-test-granted"
+                rest_endpoint=model_registry_instance_rest_endpoint[0], token=fresh_token, author="rbac-test-granted"
             )
             LOGGER.debug(f"Attempting client connection with args: {client_args}")
             mr_client_success = ModelRegistryClient(**client_args)

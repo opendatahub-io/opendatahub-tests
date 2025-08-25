@@ -4,6 +4,7 @@ class OpenAIEnpoints:
     EMBEDDINGS: str = "/v1/embeddings"
     MODELS_INFO: str = "/v1/models"
     METRICS: str = "/metrics/"
+    AUDIO_TRANSCRIPTION: str = "/v1/audio/transcriptions"
 
 
 class RestHeader:

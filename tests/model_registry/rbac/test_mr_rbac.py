@@ -22,7 +22,7 @@ from ocp_resources.secret import Secret
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.service import Service
 from ocp_resources.deployment import Deployment
-from tests.model_registry.multiple_instance_utils import MR_MULTIPROJECT_TEST_SCENARIO_PARAMS
+from tests.model_registry.rbac.multiple_instance_utils import MR_MULTIPROJECT_TEST_SCENARIO_PARAMS
 from tests.model_registry.rbac.utils import build_mr_client_args, assert_positive_mr_registry, assert_forbidden_access
 from tests.model_registry.constants import NUM_MR_INSTANCES
 from utilities.infra import get_openshift_token
@@ -39,9 +39,10 @@ pytestmark = [pytest.mark.usefixtures("original_user", "test_idp_user")]
 
 
 @pytest.mark.usefixtures(
-    "updated_dsc_component_state_scope_class",
-    "mysql_metadata_resources",
-    "model_registry_instance_mysql",
+    "updated_dsc_component_state_scope_session",
+    "model_registry_namespace",
+    "model_registry_metadata_db_resources",
+    "model_registry_instance",
 )
 @pytest.mark.custom_namespace
 class TestUserPermission:
@@ -134,7 +135,7 @@ class TestUserMultiProjectPermission:
 
     @pytest.mark.parametrize(
         (
-            "updated_dsc_component_state_parametrized, "
+            "updated_dsc_component_state_scope_session, "
             "db_secret_parametrized, "
             "db_pvc_parametrized, "
             "db_service_parametrized, "
@@ -148,7 +149,8 @@ class TestUserMultiProjectPermission:
         self: Self,
         test_idp_user: UserTestSession,
         admin_client: DynamicClient,
-        updated_dsc_component_state_parametrized: DataScienceCluster,
+        updated_dsc_component_state_scope_session: DataScienceCluster,
+        model_registry_namespace: str,
         db_secret_parametrized: List[Secret],
         db_pvc_parametrized: List[PersistentVolumeClaim],
         db_service_parametrized: List[Service],
@@ -166,10 +168,6 @@ class TestUserMultiProjectPermission:
                 f"Expected {NUM_MR_INSTANCES} MR instances, but got {len(model_registry_instance_parametrized)}"
             )
 
-        # Use the namespace configured in the DSC
-        model_registry_namespace = (
-            updated_dsc_component_state_parametrized.instance.spec.components.modelregistry.registriesNamespace
-        )
         LOGGER.info(f"Model Registry namespace: {model_registry_namespace}")
 
         # Prepare MR instances and endpoints

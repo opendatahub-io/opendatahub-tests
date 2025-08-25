@@ -54,3 +54,13 @@ CA_MOUNT_PATH = "/etc/pki/ca-trust/extracted/pem"
 CA_FILE_PATH = f"{CA_MOUNT_PATH}/ca-bundle.crt"
 NUM_RESOURCES = {"num_resources": 3}
 NUM_MR_INSTANCES: int = 2
+MARIADB_MY_CNF = (
+    "[mysqld]\nbind-address=0.0.0.0\ndefault_storage_engine=InnoDB\n"
+    "binlog_format=row\ninnodb_autoinc_lock_mode=2\ninnodb_buffer_pool_size=1024M"
+    "\nmax_allowed_packet=256M\n"
+)
+PORT_MAP = {
+    "mariadb": 3306,
+    "mysql": 3306,
+}
+MODEL_REGISTRY_POD_FILTER: str = "component=model-registry"

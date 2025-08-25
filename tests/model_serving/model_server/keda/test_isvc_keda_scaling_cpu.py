@@ -1,4 +1,5 @@
 import pytest
+from ocp_resources.resource import ResourceEditor
 from simple_logger.logger import get_logger
 from typing import Any, Generator
 from kubernetes.dynamic import DynamicClient
@@ -25,7 +26,7 @@ BASE_RAW_DEPLOYMENT_CONFIG["runtime_argument"] = SERVING_ARGUMENT
 INITIAL_POD_COUNT = 1
 FINAL_POD_COUNT = 5
 
-OVMS_MODEL_NAMESPACE = "ovms-keda"
+OVMS_MODEL_NAMESPACE = "test-ovms-keda"
 OVMS_MODEL_NAME = "onnx-raw"
 OVMS_METRICS_QUERY = (
     f'sum(sum_over_time(ovms_requests_success{{namespace="{OVMS_MODEL_NAMESPACE}", name="{OVMS_MODEL_NAME}"}}[5m]))'
@@ -39,7 +40,7 @@ pytestmark = [pytest.mark.keda, pytest.mark.usefixtures("valid_aws_config")]
     "unprivileged_model_namespace, ovms_kserve_serving_runtime, stressed_ovms_keda_inference_service",
     [
         pytest.param(
-            {"name": "ovms-keda"},
+            {"name": OVMS_MODEL_NAMESPACE},
             RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
             {
                 "name": ModelFormat.ONNX,
@@ -72,19 +73,28 @@ class TestOVMSKedaScaling:
         """Test KEDA ScaledObject configuration and run inference multiple times to trigger scaling."""
 
         if is_jira_open(jira_id="RHOAIENG-31386", admin_client=admin_client):
-            patch_operations = [
-                {
-                    "op": "add",
-                    "path": "/spec/predictor/autoScaling/metrics/0/external/authenticationRef",
-                    "value": {"authModes": "bearer", "authenticationRef": {"name": "inference-prometheus-auth"}},
+            isvc_dict = stressed_ovms_keda_inference_service.instance.to_dict()
+            metrics = isvc_dict.get("spec", {}).get("predictor", {}).get("autoScaling", {}).get("metrics", [])
+
+            if metrics and isinstance(metrics[0], dict) and metrics[0].get("external") is not None:
+                metrics[0].setdefault("external", {})["authenticationRef"] = {
+                    "authModes": "bearer",
+                    "authenticationRef": {"name": "inference-prometheus-auth"},
                 }
-            ]
-            admin_client.resources.get(api_version="v1beta1", kind="InferenceService").patch(
-                name=stressed_ovms_keda_inference_service.name,
-                namespace=stressed_ovms_keda_inference_service.namespace,
-                body=patch_operations,
-                content_type="application/json-patch+json",
-            )
+
+                ResourceEditor(
+                    patches={
+                        stressed_ovms_keda_inference_service: {
+                            "spec": {
+                                "predictor": {
+                                    "autoScaling": {
+                                        "metrics": metrics,
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ).update()
 
         verify_keda_scaledobject(
             client=unprivileged_client,

@@ -152,11 +152,14 @@ def deployment_config(request: FixtureRequest) -> dict[str, Any]:
     config["runtime_argument"] = serving_argument
     config["deployment_type"] = deployment_type
     config["gpu_count"] = request.param.get("gpu_count", 1)
+    config["model_output_type"] = request.param.get("model_output_type", "text")
     config["timeout"] = TIMEOUT_20MIN
     return config
 
 
-def build_raw_params(name: str, image: str, args: list[str], gpu_count: int) -> tuple[Any, str]:
+def build_raw_params(
+    name: str, image: str, args: list[str], gpu_count: int, model_output_type: str = "text"
+) -> tuple[Any, str]:
     test_id = f"{name}-raw"
     param = pytest.param(
         {"name": "raw-model-validation"},
@@ -169,6 +172,7 @@ def build_raw_params(name: str, image: str, args: list[str], gpu_count: int) -> 
             "deployment_type": KServeDeploymentType.RAW_DEPLOYMENT,
             "runtime_argument": args,
             "gpu_count": gpu_count,
+            "model_output_type": model_output_type,
         },
         id=test_id,
         marks=[pytest.mark.rawdeployment],
@@ -176,7 +180,9 @@ def build_raw_params(name: str, image: str, args: list[str], gpu_count: int) -> 
     return param, test_id
 
 
-def build_serverless_params(name: str, image: str, args: list[str], gpu_count: int) -> tuple[Any, str]:
+def build_serverless_params(
+    name: str, image: str, args: list[str], gpu_count: int, model_output_type: str = "text"
+) -> tuple[Any, str]:
     test_id = f"{name}-serverless"
     param = pytest.param(
         {"name": "serverless-model-validation"},
@@ -189,6 +195,7 @@ def build_serverless_params(name: str, image: str, args: list[str], gpu_count: i
             "deployment_type": KServeDeploymentType.SERVERLESS,
             "runtime_argument": args,
             "gpu_count": gpu_count,
+            "model_output_type": model_output_type,
         },
         id=test_id,
         marks=[pytest.mark.serverless],
@@ -229,14 +236,19 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
         if not name or not image:
             continue
 
+        model_output_type = model_car.get("model_output_type", "text")
         serving_config = model_car.get("serving_arguments") or default_serving_config.get("serving_arguments", {})
         args = serving_config.get("args", [])
         gpu_count = serving_config.get("gpu_count", 1)
 
         if metafunc.cls.__name__ == "TestVLLMModelCarRaw":
-            param, test_id = build_raw_params(name=name, image=image, args=args, gpu_count=gpu_count)
+            param, test_id = build_raw_params(
+                name=name, image=image, args=args, gpu_count=gpu_count, model_output_type=model_output_type
+            )
         elif metafunc.cls.__name__ == "TestVLLMModelCarServerless":
-            param, test_id = build_serverless_params(name=name, image=image, args=args, gpu_count=gpu_count)
+            param, test_id = build_serverless_params(
+                name=name, image=image, args=args, gpu_count=gpu_count, model_output_type=model_output_type
+            )
         else:
             continue
 

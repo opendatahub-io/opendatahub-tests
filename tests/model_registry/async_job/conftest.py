@@ -1,17 +1,237 @@
-import pytest
 from typing import Any, Generator
+import json
+
+import pytest
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.job import Job
+
+from tests.model_registry.async_job.constants import (
+    ASYNC_JOB_ANNOTATIONS,
+    ASYNC_JOB_LABELS,
+    ASYNC_UPLOAD_IMAGE,
+    ASYNC_UPLOAD_JOB_NAME,
+    MODEL_SYNC_CONFIG,
+    VOLUME_MOUNTS,
+)
+
 import shortuuid
 from pytest import FixtureRequest
 
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
+from ocp_resources.role_binding import RoleBinding
 from ocp_resources.route import Route
+from ocp_resources.secret import Secret
 from ocp_resources.service import Service
+from ocp_resources.service_account import ServiceAccount
+from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from model_registry.types import RegisteredModel
+from model_registry import ModelRegistry as ModelRegistryClient
 
 from utilities.infra import create_ns
 from utilities.constants import OCIRegistry, MinIo, Protocols, Labels
+from utilities.general import b64_encoded_string
+from tests.model_registry.async_job.utils import get_async_job_s3_secret_dict, upload_test_model_to_minio_from_image
+from tests.model_registry.utils import get_mr_service_by_label, get_endpoint_from_mr_service
+from tests.model_registry.async_job.constants import REPO_NAME
 
-from kubernetes.dynamic import DynamicClient
+
+# We need to upstream this to the wrapper library
+class JobWithVolumes(Job):
+    """Extended Job class that supports volumes"""
+
+    def __init__(self, volumes=None, **kwargs):
+        super().__init__(**kwargs)
+        self.volumes = volumes or []
+
+    def to_dict(self) -> None:
+        super().to_dict()
+        if not self.kind_dict and not self.yaml_file and self.volumes:
+            self.res["spec"].setdefault("template", {}).setdefault("spec", {})
+            self.res["spec"]["template"]["spec"]["volumes"] = self.volumes
+
+
+@pytest.fixture(scope="class")
+def s3_secret_for_async_job(
+    admin_client: DynamicClient,
+    service_account: ServiceAccount,
+    minio_service: Service,
+) -> Generator[Secret, Any, Any]:
+    """Create S3 credentials secret for async upload job"""
+    # Construct MinIO endpoint from service
+    minio_endpoint = (
+        f"http://{minio_service.name}.{minio_service.namespace}.svc.cluster.local:{MinIo.Metadata.DEFAULT_PORT}"
+    )
+
+    with Secret(
+        client=admin_client,
+        name=f"async-job-s3-secret-{shortuuid.uuid().lower()}",
+        namespace=service_account.namespace,
+        data_dict=get_async_job_s3_secret_dict(
+            access_key=MinIo.Credentials.ACCESS_KEY_VALUE,
+            secret_access_key=MinIo.Credentials.SECRET_KEY_VALUE,
+            s3_bucket=MinIo.Buckets.MODELMESH_EXAMPLE_MODELS,
+            s3_endpoint=minio_endpoint,
+            s3_region="us-east-1",  # Default region for MinIO
+        ),
+        type="Opaque",
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
+def oci_secret_for_async_job(
+    admin_client: DynamicClient,
+    service_account: ServiceAccount,
+    oci_registry_host: str,
+) -> Generator[Secret, Any, Any]:
+    """Create OCI registry credentials secret for async upload job"""
+
+    # Create anonymous dockerconfig for OCI registry (no authentication)
+    # This matches the zot registry setup which allows anonymous access
+    dockerconfig = {
+        "auths": {
+            f"{oci_registry_host}:{OCIRegistry.Metadata.DEFAULT_PORT}": {
+                "auth": "",
+                "email": "user@example.com",  # Anonymous access
+            }
+        }
+    }
+
+    with Secret(
+        client=admin_client,
+        name=f"async-job-oci-secret-{shortuuid.uuid().lower()}",
+        namespace=service_account.namespace,
+        data_dict={
+            ".dockerconfigjson": b64_encoded_string(json.dumps(dockerconfig)),
+            "ACCESS_TYPE": b64_encoded_string(json.dumps('["Push,Pull"]')),
+            "OCI_HOST": b64_encoded_string(json.dumps(f"{oci_registry_host}:{OCIRegistry.Metadata.DEFAULT_PORT}")),
+        },
+        type="kubernetes.io/dockerconfigjson",
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
+def model_sync_async_job(
+    admin_client: DynamicClient,
+    sa_token: str,
+    service_account: ServiceAccount,
+    model_registry_namespace: str,
+    model_registry_instance: list[ModelRegistry],
+    s3_secret_for_async_job: Secret,
+    oci_secret_for_async_job: Secret,
+    oci_registry_host: str,
+    mr_access_role_binding: RoleBinding,
+    teardown_resources: bool,
+) -> Generator[Job, Any, Any]:
+    """Core Job fixture focused on Job deployment and configuration"""
+    # Get dynamic OCI URI from route
+    dynamic_oci_uri = f"{oci_registry_host}/{REPO_NAME}"
+
+    # Get model registry service and endpoint
+    mr_instance = model_registry_instance[0]  # Use first instance
+    mr_service = get_mr_service_by_label(
+        client=admin_client, namespace_name=model_registry_namespace, mr_instance=mr_instance
+    )
+    mr_endpoint = get_endpoint_from_mr_service(svc=mr_service, protocol=Protocols.REST)
+    mr_host = mr_endpoint.split(":")[0]
+    mr_port = mr_endpoint.split(":")[1]
+
+    with JobWithVolumes(
+        client=admin_client,
+        name=ASYNC_UPLOAD_JOB_NAME,
+        namespace=service_account.namespace,
+        label=ASYNC_JOB_LABELS,
+        annotations=ASYNC_JOB_ANNOTATIONS,
+        restart_policy="Never",
+        containers=[
+            {
+                "name": "async-upload",
+                "image": ASYNC_UPLOAD_IMAGE,
+                "volumeMounts": [
+                    {
+                        "name": "source-credentials",
+                        "readOnly": True,
+                        "mountPath": VOLUME_MOUNTS["SOURCE_CREDS_PATH"],
+                    },
+                    {
+                        "name": "destination-credentials",
+                        "readOnly": True,
+                        "mountPath": VOLUME_MOUNTS["DEST_CREDS_PATH"],
+                    },
+                ],
+                "env": [
+                    # Proxy settings
+                    {"name": "HTTP_PROXY", "value": ""},
+                    {"name": "HTTPS_PROXY", "value": ""},
+                    {"name": "NO_PROXY", "value": "*.svc.cluster.local"},
+                    # Source configuration
+                    {"name": "MODEL_SYNC_SOURCE_TYPE", "value": MODEL_SYNC_CONFIG["SOURCE_TYPE"]},
+                    {"name": "MODEL_SYNC_SOURCE_AWS_KEY", "value": MODEL_SYNC_CONFIG["SOURCE_AWS_KEY"]},
+                    {
+                        "name": "MODEL_SYNC_SOURCE_S3_CREDENTIALS_PATH",
+                        "value": VOLUME_MOUNTS["SOURCE_CREDS_PATH"],
+                    },
+                    # Destination configuration
+                    {"name": "MODEL_SYNC_DESTINATION_TYPE", "value": MODEL_SYNC_CONFIG["DESTINATION_TYPE"]},
+                    {
+                        "name": "MODEL_SYNC_DESTINATION_OCI_URI",
+                        "value": f"{dynamic_oci_uri}",
+                    },
+                    {
+                        "name": "MODEL_SYNC_DESTINATION_OCI_REGISTRY",
+                        "value": f"{oci_registry_host}:{OCIRegistry.Metadata.DEFAULT_PORT}",
+                    },
+                    {
+                        "name": "MODEL_SYNC_DESTINATION_OCI_CREDENTIALS_PATH",
+                        "value": VOLUME_MOUNTS["DEST_DOCKERCONFIG_PATH"],
+                    },
+                    {
+                        "name": "MODEL_SYNC_DESTINATION_OCI_BASE_IMAGE",
+                        "value": MODEL_SYNC_CONFIG["DESTINATION_OCI_BASE_IMAGE"],
+                    },
+                    {
+                        "name": "MODEL_SYNC_DESTINATION_OCI_ENABLE_TLS_VERIFY",
+                        "value": MODEL_SYNC_CONFIG["DESTINATION_OCI_ENABLE_TLS_VERIFY"],
+                    },
+                    # Model parameters
+                    {"name": "MODEL_SYNC_MODEL_ID", "value": MODEL_SYNC_CONFIG["MODEL_ID"]},
+                    {"name": "MODEL_SYNC_MODEL_VERSION_ID", "value": MODEL_SYNC_CONFIG["MODEL_VERSION_ID"]},
+                    {
+                        "name": "MODEL_SYNC_MODEL_ARTIFACT_ID",
+                        "value": MODEL_SYNC_CONFIG["MODEL_ARTIFACT_ID"],
+                    },
+                    # Model Registry client params
+                    {
+                        "name": "MODEL_SYNC_REGISTRY_SERVER_ADDRESS",
+                        "value": f"https://{mr_host}",
+                    },
+                    {"name": "MODEL_SYNC_REGISTRY_PORT", "value": mr_port},
+                    {"name": "MODEL_SYNC_REGISTRY_AUTHOR", "value": "RHOAI async job test"},
+                    {"name": "MODEL_SYNC_REGISTRY_USER_TOKEN", "value": sa_token},
+                    {"name": "MODEL_SYNC_REGISTRY_IS_SECURE", "value": "False"},
+                ],
+            }
+        ],
+        volumes=[
+            {
+                "name": "source-credentials",
+                "secret": {
+                    "secretName": s3_secret_for_async_job.name,
+                },
+            },
+            {
+                "name": "destination-credentials",
+                "secret": {
+                    "secretName": oci_secret_for_async_job.name,
+                },
+            },
+        ],
+        teardown=teardown_resources,
+    ) as job:
+        job.wait_for_condition(condition="Complete", status="True")
+        yield job
 
 
 # OCI Registry
@@ -129,3 +349,41 @@ def oci_registry_route(admin_client: DynamicClient, oci_registry_service: Servic
         service=oci_registry_service.name,
     ) as oci_route:
         yield oci_route
+
+
+@pytest.fixture(scope="class")
+def oci_registry_host(oci_registry_route: Route) -> str:
+    """Get the OCI registry host from the route"""
+    return oci_registry_route.instance.spec.host
+
+
+@pytest.fixture(scope="class")
+def create_test_data_in_minio_from_image(
+    minio_service: Service,
+    admin_client: DynamicClient,
+    model_registry_namespace: str,
+) -> None:
+    """Extract and upload test model from KSERVE_MINIO_IMAGE to MinIO"""
+    upload_test_model_to_minio_from_image(
+        admin_client=admin_client,
+        namespace=model_registry_namespace,
+        minio_service=minio_service,
+        object_key="my-model/model.onnx",
+    )
+
+
+@pytest.fixture(scope="class")
+def registered_model_from_image(
+    request: FixtureRequest, model_registry_client: list[ModelRegistryClient]
+) -> Generator[RegisteredModel, None, None]:
+    """Create a registered model for testing with KSERVE_MINIO_IMAGE data"""
+    yield model_registry_client[0].register_model(
+        name=request.param.get("model_name"),
+        uri=request.param.get("model_uri"),
+        version=request.param.get("model_version"),
+        description=request.param.get("model_description"),
+        model_format_name=request.param.get("model_format"),
+        model_format_version=request.param.get("model_format_version"),
+        storage_key=request.param.get("model_storage_key"),
+        storage_path=request.param.get("model_storage_path"),
+    )

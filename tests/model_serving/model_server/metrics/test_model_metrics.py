@@ -28,7 +28,7 @@ pytestmark = [
     "unprivileged_model_namespace, serving_runtime_from_template, s3_models_inference_service",
     [
         pytest.param(
-            {"name": "kserve-tgis-metrics"},
+            {"name": "test-kserve-tgis-metrics"},
             {
                 "name": f"{Protocols.HTTP}-{ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME}",
                 "template-name": RuntimeTemplates.CAIKIT_TGIS_SERVING,
