@@ -1,0 +1,4 @@
+name: delete-image-tag.yml
+on:
+
+jobs:
