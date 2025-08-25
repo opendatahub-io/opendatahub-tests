@@ -7,7 +7,6 @@ import yaml
 from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
-from tests.model_explainability.constants import MNT_MODELS
 from tests.model_explainability.guardrails.constants import (
     QWEN_ISVC_NAME,
     CHAT_GENERATION_CONFIG,
@@ -23,7 +22,7 @@ from tests.model_explainability.guardrails.utils import (
     get_chat_detections_payload,
 )
 from tests.model_explainability.utils import validate_tai_component_images
-from utilities.constants import Timeout, MinIo
+from utilities.constants import Timeout
 from utilities.plugins.constant import OpenAIEnpoints
 
 LOGGER = get_logger(name=__name__)
@@ -46,6 +45,7 @@ HF_DETECTORS: Dict[str, Dict[str, Any]] = {
 }
 
 QWEN_MODEL_ID: str = "qwen"
+
 
 @pytest.mark.parametrize(
     "model_namespace, orchestrator_config, guardrails_orchestrator",
