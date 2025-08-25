@@ -66,7 +66,7 @@ def kserve_s3_secret(
     """
     with kserve_s3_endpoint_secret(
         admin_client=admin_client,
-        name="mlserver-models-bucket-secret",
+        name="models-bucket-secret",
         namespace=model_namespace.name,
         aws_access_key=aws_access_key_id,
         aws_secret_access_key=aws_secret_access_key,
