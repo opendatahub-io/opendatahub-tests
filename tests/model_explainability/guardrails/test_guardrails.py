@@ -173,7 +173,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         verify_builtin_detector_unsuitable_input_response(
             response=response,
             detector_id="regex",
-            detection_name="EmailAddress",
+            detection_name="email_address",
             detection_type="pii",
             detection_text=EXAMPLE_EMAIL_ADDRESS,
         )
@@ -194,7 +194,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         )
 
         verify_builtin_detector_unsuitable_output_response(
-            response=response, detector_id="regex", detection_name="EmailAddress", detection_type="pii"
+            response=response, detector_id="regex", detection_name="email_address", detection_type="pii"
         )
 
     @pytest.mark.parametrize(
@@ -205,7 +205,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
                 PII_ENDPOINT,
                 id="harmless_input",
             ),
-            pytest.param(PROMPT_WITH_PII, "/passthrough", id="pastthrough_endpoint"),
+            pytest.param(PROMPT_WITH_PII, "/passthrough", id="passthrough_endpoint"),
         ],
     )
     def test_guardrails_builtin_detectors_negative_detection(
@@ -235,7 +235,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
     [
         pytest.param(
             {"name": "test-guardrails-huggingface"},
-            MinIo.PodConfig.QWEN_MINIO_CONFIG,
+            MinIo.PodConfig.QWEN_HAP_BPIV2_MINIO_CONFIG,
             {"bucket": "llms"},
             {
                 "orchestrator_config_data": {
@@ -363,7 +363,7 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
 
         assert "detections" in data
 
-        score = data.get("score")
+        score = data["detections"][0]["score"]
         assert score > 0.9, f"Expected score > 0.9, got {score}"
 
 
