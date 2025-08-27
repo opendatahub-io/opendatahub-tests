@@ -1,4 +1,3 @@
-DEFAULT_MODEL_CATALOG: str = "model-catalog-sources"
 CUSTOM_ECHO_CATALOG_ID: str = "sample_rhec_catalog"
 CUSTOM_MODEL_NAME = "rhelai1/modelcar-granite-7b-starter"
 CUSTOM_ECOSYSTEM_CATALOG: str = f"""catalogs:
