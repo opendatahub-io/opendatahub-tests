@@ -39,9 +39,9 @@ def llama_stack_server_config(
     model_namespace: Namespace,
 ) -> Dict[str, Any]:
     fms_orchestrator_url = "http://localhost"
-    inference_model = os.getenv("INFERENCE_MODEL", "")
-    vllm_api_token = os.getenv("VLLM_API_TOKEN", "")
-    vllm_url = os.getenv("VLLM_URL", "")
+    inference_model = os.getenv("LLS_CORE_INFERENCE_MODEL", "")
+    vllm_api_token = os.getenv("LLS_CORE_VLLM_API_TOKEN", "")
+    vllm_url = os.getenv("LLS_CORE_VLLM_URL", "")
 
     if hasattr(request, "param"):
         if request.param.get("fms_orchestrator_url_fixture"):
@@ -84,7 +84,7 @@ def llama_stack_server_config(
             "name": "llama-stack",
             "port": 8321,
         },
-        "distribution": {"image": "quay.io/ruimvieira/llama-stack-lmeval-fix:latest"},
+        "distribution": {"name": "rh-dev"},
         "storage": {
             "size": "20Gi",
         },

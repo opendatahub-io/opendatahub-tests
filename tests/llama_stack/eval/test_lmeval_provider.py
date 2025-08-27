@@ -13,7 +13,7 @@ TRUSTYAI_LMEVAL_ARCEASY = f"{LlamaStackProviders.Eval.TRUSTYAI_LMEVAL}::arc_easy
     "model_namespace, minio_pod, minio_data_connection, llama_stack_server_config",
     [
         pytest.param(
-            {"name": "test-guardrails-lls"},
+            {"name": "test-llamastack-lmeval"},
             MinIo.PodConfig.QWEN_HAP_BPIV2_MINIO_CONFIG,
             {"bucket": "llms"},
             {
@@ -53,10 +53,10 @@ class TestLlamaStackLMEvalProvider:
         assert benchmarks[0].provider_id == LlamaStackProviders.Eval.TRUSTYAI_LMEVAL
 
     def test_llamastack_run_eval(
-        self, minio_pod, minio_data_connection, patched_trustyai_operator_configmap_allow_online, llama_stack_client
+        self, minio_pod, minio_data_connection, patched_trustyai_configmap_allow_online, llama_stack_client
     ):
         job = llama_stack_client.eval.run_eval(
-            benchmark_id=f"{LlamaStackProviders.Eval.TRUSTYAI_LMEVAL}::arc_easy",
+            benchmark_id=TRUSTYAI_LMEVAL_ARCEASY,
             benchmark_config={
                 "eval_candidate": {
                     "model": QWEN_MODEL_NAME,

@@ -9,7 +9,7 @@ from utilities.constants import MinIo
     "model_namespace, minio_pod, minio_data_connection, llama_stack_server_config",
     [
         pytest.param(
-            {"name": "test-guardrails-lls"},
+            {"name": "test-llamastack-core"},
             MinIo.PodConfig.QWEN_HAP_BPIV2_MINIO_CONFIG,
             {"bucket": "llms"},
             {"vllm_url_fixture": "qwen_isvc_url", "inference_model": QWEN_MODEL_NAME},

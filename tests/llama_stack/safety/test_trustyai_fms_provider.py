@@ -16,7 +16,7 @@ SECURE_SHIELD_ID: str = "secure_shield"
     "orchestrator_config, guardrails_orchestrator, llama_stack_server_config",
     [
         pytest.param(
-            {"name": "test-guardrails-lls"},
+            {"name": "test-llamastack-gorch"},
             MinIo.PodConfig.QWEN_HAP_BPIV2_MINIO_CONFIG,
             {"bucket": "llms"},
             {

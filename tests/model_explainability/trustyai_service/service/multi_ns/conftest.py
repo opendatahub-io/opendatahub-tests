@@ -10,7 +10,7 @@ from ocp_resources.trustyai_service import TrustyAIService
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
-from utilities.constants import OPENSHIFT_OPERATORS, MARIADB
+from utilities.constants import OPENSHIFT_OPERATORS, MARIADB, TRUSTYAI_SERVICE_NAME
 from ocp_resources.maria_db import MariaDB
 from tests.model_explainability.trustyai_service.constants import (
     TAI_METRICS_CONFIG,
@@ -28,7 +28,6 @@ from tests.model_explainability.trustyai_service.constants import (
     TAI_DB_STORAGE_CONFIG,
 )
 from tests.model_explainability.trustyai_service.trustyai_service_utils import (
-    TRUSTYAI_SERVICE_NAME,
     wait_for_isvc_deployment_registered_by_trustyai_service,
 )
 from tests.model_explainability.trustyai_service.utils import (

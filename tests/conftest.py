@@ -61,7 +61,7 @@ from utilities.operator_utils import get_csv_related_images, get_cluster_service
 
 LOGGER = get_logger(name=__name__)
 
-pytest_plugins = ["tests.fixtures.inference", "tests.fixtures.guardrails", "tests.fixtures.evals"]
+pytest_plugins = ["tests.fixtures.inference", "tests.fixtures.guardrails", "tests.fixtures.trustyai"]
 
 
 @pytest.fixture(scope="session")

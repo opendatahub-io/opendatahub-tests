@@ -27,7 +27,7 @@ def lmevaljob_hf(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    patched_trustyai_operator_configmap_allow_online: ConfigMap,
+    patched_trustyai_configmap_allow_online: ConfigMap,
     lmeval_hf_access_token: Secret,
 ) -> Generator[LMEvalJob, None, None]:
     with LMEvalJob(
@@ -74,7 +74,7 @@ def lmevaljob_local_offline(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    patched_trustyai_operator_configmap_allow_online: ConfigMap,
+    patched_trustyai_configmap_allow_online: ConfigMap,
     lmeval_data_downloader_pod: Pod,
 ) -> Generator[LMEvalJob, Any, Any]:
     with LMEvalJob(
@@ -104,7 +104,7 @@ def lmevaljob_local_offline(
 def lmevaljob_vllm_emulator(
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    patched_trustyai_operator_configmap_allow_online: ConfigMap,
+    patched_trustyai_configmap_allow_online: ConfigMap,
     vllm_emulator_deployment: Deployment,
     vllm_emulator_service: Service,
     vllm_emulator_route: Route,

@@ -10,8 +10,6 @@ from timeout_sampler import retry
 from tests.model_explainability.constants import QWEN_MODEL_NAME
 from tests.model_explainability.guardrails.constants import (
     QWEN_ISVC_NAME,
-    CHAT_GENERATION_CONFIG,
-    BUILTIN_DETECTOR_CONFIG,
     PROMPT_WITH_PII,
     EXAMPLE_EMAIL_ADDRESS,
     GUARDRAILS_MULTI_DETECTOR_INPUT_PROMPTS,
@@ -25,7 +23,7 @@ from tests.model_explainability.guardrails.utils import (
     log_request_and_response,
 )
 from tests.model_explainability.utils import validate_tai_component_images
-from utilities.constants import Timeout
+from utilities.constants import Timeout, CHAT_GENERATION_CONFIG, BUILTIN_DETECTOR_CONFIG, MinIo
 from utilities.plugins.constant import OpenAIEnpoints
 
 LOGGER = get_logger(name=__name__)
@@ -46,7 +44,6 @@ HF_DETECTORS: Dict[str, Dict[str, Any]] = {
     "input": {"prompt_injection": {}, "hap": {}},
     "output": {"prompt_injection": {}, "hap": {}},
 }
-
 
 
 @pytest.mark.parametrize(

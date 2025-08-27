@@ -7,7 +7,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from pytest_testconfig import config as py_config
 
-from tests.model_explainability.trustyai_service.trustyai_service_utils import TRUSTYAI_SERVICE_NAME
+from utilities.constants import TRUSTYAI_SERVICE_NAME
 
 
 @pytest.fixture(scope="class")
