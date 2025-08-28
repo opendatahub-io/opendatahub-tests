@@ -4,7 +4,6 @@ from ocp_resources.job import Job
 from ocp_resources.pod import Pod
 from ocp_resources.service import Service
 from utilities.constants import MinIo
-from utilities.general import b64_encoded_string
 from simple_logger.logger import get_logger
 
 LOGGER = get_logger(name=__name__)
@@ -41,36 +40,6 @@ def pull_manifest_from_oci_registry(registry_url: str, repo: str, tag: str) -> d
     LOGGER.info(f"Manifest pull: {response.status_code}")
     assert response.status_code == 200, f"Failed to pull manifest: {response.status_code}"
     return response.json()
-
-
-def get_async_job_s3_secret_dict(
-    access_key: str,
-    secret_access_key: str,
-    s3_bucket: str,
-    s3_endpoint: str,
-    s3_region: str,
-) -> dict[str, str]:
-    """
-    Returns a dictionary of s3 secret values
-
-    Args:
-        access_key (str): access key
-        secret_access_key (str): secret key
-        s3_bucket (str): S3 bucket
-        s3_endpoint (str): S3 endpoint
-        s3_region (str): S3 region
-
-    Returns:
-        dict[str, str]: A dictionary of s3 secret encoded values
-
-    """
-    return {
-        "AWS_ACCESS_KEY_ID": b64_encoded_string(string_to_encode=access_key),
-        "AWS_SECRET_ACCESS_KEY": b64_encoded_string(string_to_encode=secret_access_key),
-        "AWS_BUCKET": b64_encoded_string(string_to_encode=s3_bucket),
-        "AWS_ENDPOINT_URL": b64_encoded_string(string_to_encode=s3_endpoint),
-        "AWS_REGION": b64_encoded_string(string_to_encode=s3_region),
-    }
 
 
 def upload_test_model_to_minio_from_image(

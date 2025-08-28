@@ -29,11 +29,12 @@ from model_registry.types import RegisteredModel
 from model_registry import ModelRegistry as ModelRegistryClient
 
 from utilities.infra import create_ns
-from utilities.constants import OCIRegistry, MinIo, Protocols, Labels
+from utilities.constants import OCIRegistry, MinIo, Protocols, Labels, ApiGroups
 from utilities.general import b64_encoded_string
-from tests.model_registry.async_job.utils import get_async_job_s3_secret_dict, upload_test_model_to_minio_from_image
+from tests.model_registry.async_job.utils import upload_test_model_to_minio_from_image
 from tests.model_registry.utils import get_mr_service_by_label, get_endpoint_from_mr_service
 from tests.model_registry.async_job.constants import REPO_NAME
+from utilities.general import get_s3_secret_dict
 
 
 # We need to upstream this to the wrapper library
@@ -57,7 +58,7 @@ def s3_secret_for_async_job(
     service_account: ServiceAccount,
     minio_service: Service,
 ) -> Generator[Secret, Any, Any]:
-    """Create S3 credentials secret for async upload job"""
+    """Create S3 data connection for async upload job"""
     # Construct MinIO endpoint from service
     minio_endpoint = (
         f"http://{minio_service.name}.{minio_service.namespace}.svc.cluster.local:{MinIo.Metadata.DEFAULT_PORT}"
@@ -65,16 +66,23 @@ def s3_secret_for_async_job(
 
     with Secret(
         client=admin_client,
-        name=f"async-job-s3-secret-{shortuuid.uuid().lower()}",
+        name=f"async-job-s3-connection-{shortuuid.uuid().lower()}",
         namespace=service_account.namespace,
-        data_dict=get_async_job_s3_secret_dict(
-            access_key=MinIo.Credentials.ACCESS_KEY_VALUE,
-            secret_access_key=MinIo.Credentials.SECRET_KEY_VALUE,
-            s3_bucket=MinIo.Buckets.MODELMESH_EXAMPLE_MODELS,
-            s3_endpoint=minio_endpoint,
-            s3_region="us-east-1",  # Default region for MinIO
+        data_dict=get_s3_secret_dict(
+            aws_access_key=MinIo.Credentials.ACCESS_KEY_VALUE,
+            aws_secret_access_key=MinIo.Credentials.SECRET_KEY_VALUE,
+            aws_s3_bucket=MinIo.Buckets.MODELMESH_EXAMPLE_MODELS,
+            aws_s3_endpoint=minio_endpoint,
+            aws_default_region="us-east-1",  # Default region for MinIO
         ),
-        type="Opaque",
+        label={
+            Labels.OpenDataHub.DASHBOARD: "true",
+            Labels.OpenDataHubIo.MANAGED: "true",
+        },
+        annotations={
+            f"{ApiGroups.OPENDATAHUB_IO}/connection-type": "s3",
+            "openshift.io/display-name": "My S3 Credentials",
+        },
     ) as secret:
         yield secret
 
@@ -85,27 +93,36 @@ def oci_secret_for_async_job(
     service_account: ServiceAccount,
     oci_registry_host: str,
 ) -> Generator[Secret, Any, Any]:
-    """Create OCI registry credentials secret for async upload job"""
+    """Create OCI registry data connection for async upload job"""
 
     # Create anonymous dockerconfig for OCI registry (no authentication)
-    # This matches the zot registry setup which allows anonymous access
     dockerconfig = {
         "auths": {
             f"{oci_registry_host}:{OCIRegistry.Metadata.DEFAULT_PORT}": {
                 "auth": "",
-                "email": "user@example.com",  # Anonymous access
+                "email": "user@example.com",
             }
         }
     }
 
+    data_dict = {
+        ".dockerconfigjson": b64_encoded_string(json.dumps(dockerconfig)),
+        "ACCESS_TYPE": b64_encoded_string(json.dumps('["Push,Pull"]')),
+        "OCI_HOST": b64_encoded_string(json.dumps(f"{oci_registry_host}:{OCIRegistry.Metadata.DEFAULT_PORT}")),
+    }
+
     with Secret(
         client=admin_client,
-        name=f"async-job-oci-secret-{shortuuid.uuid().lower()}",
+        name=f"async-job-oci-connection-{shortuuid.uuid().lower()}",
         namespace=service_account.namespace,
-        data_dict={
-            ".dockerconfigjson": b64_encoded_string(json.dumps(dockerconfig)),
-            "ACCESS_TYPE": b64_encoded_string(json.dumps('["Push,Pull"]')),
-            "OCI_HOST": b64_encoded_string(json.dumps(f"{oci_registry_host}:{OCIRegistry.Metadata.DEFAULT_PORT}")),
+        data_dict=data_dict,
+        label={
+            Labels.OpenDataHub.DASHBOARD: "true",
+            Labels.OpenDataHubIo.MANAGED: "true",
+        },
+        annotations={
+            f"{ApiGroups.OPENDATAHUB_IO}/connection-type-ref": "oci-v1",
+            "openshift.io/display-name": "My OCI Credentials",
         },
         type="kubernetes.io/dockerconfigjson",
     ) as secret:
@@ -125,18 +142,78 @@ def model_sync_async_job(
     mr_access_role_binding: RoleBinding,
     teardown_resources: bool,
 ) -> Generator[Job, Any, Any]:
-    """Core Job fixture focused on Job deployment and configuration"""
-    # Get dynamic OCI URI from route
-    dynamic_oci_uri = f"{oci_registry_host}/{REPO_NAME}"
+    """
+    Job fixture for async model upload with mounted secret files.
 
-    # Get model registry service and endpoint
-    mr_instance = model_registry_instance[0]  # Use first instance
+    This fixture creates a Kubernetes Job that:
+    1. Mounts S3 credentials for source model access
+    2. Mounts OCI credentials for destination registry
+    3. Configures environment variables for model sync parameters
+    4. Waits for job completion before yielding
+
+    Args:
+        admin_client: Kubernetes client for resource management
+        sa_token: Service account token for Model Registry authentication
+        service_account: Service account for the job
+        model_registry_namespace: Namespace containing Model Registry
+        model_registry_instance: List of Model Registry instances
+        s3_secret_for_async_job: Secret containing S3 credentials
+        oci_secret_for_async_job: Secret containing OCI registry credentials
+        oci_registry_host: OCI registry hostname
+        mr_access_role_binding: Role binding for Model Registry access
+        teardown_resources: Whether to clean up resources after test
+
+    Returns:
+        Generator yielding the created Job resource
+    """
+
+    # Get Model Registry service endpoint for connection
+    mr_instance = model_registry_instance[0]
     mr_service = get_mr_service_by_label(
         client=admin_client, namespace_name=model_registry_namespace, mr_instance=mr_instance
     )
     mr_endpoint = get_endpoint_from_mr_service(svc=mr_service, protocol=Protocols.REST)
     mr_host = mr_endpoint.split(":")[0]
-    mr_port = mr_endpoint.split(":")[1]
+
+    # Volume mounts for credentials
+    volume_mounts = [
+        {
+            "name": "source-credentials",
+            "readOnly": True,
+            "mountPath": VOLUME_MOUNTS["SOURCE_CREDS_PATH"],
+        },
+        {
+            "name": "destination-credentials",
+            "readOnly": True,
+            "mountPath": VOLUME_MOUNTS["DEST_CREDS_PATH"],
+        },
+    ]
+
+    environment_variables = [
+        # Source configuration - S3 credentials and model location
+        {"name": "MODEL_SYNC_SOURCE_TYPE", "value": MODEL_SYNC_CONFIG["SOURCE_TYPE"]},
+        {"name": "MODEL_SYNC_SOURCE_AWS_KEY", "value": MODEL_SYNC_CONFIG["SOURCE_AWS_KEY"]},
+        {"name": "MODEL_SYNC_SOURCE_S3_CREDENTIALS_PATH", "value": VOLUME_MOUNTS["SOURCE_CREDS_PATH"]},
+        # Model identification parameters
+        {"name": "MODEL_SYNC_MODEL_ID", "value": MODEL_SYNC_CONFIG["MODEL_ID"]},
+        {"name": "MODEL_SYNC_MODEL_VERSION_ID", "value": MODEL_SYNC_CONFIG["MODEL_VERSION_ID"]},
+        {"name": "MODEL_SYNC_MODEL_ARTIFACT_ID", "value": MODEL_SYNC_CONFIG["MODEL_ARTIFACT_ID"]},
+        # Model Registry connection parameters
+        {"name": "MODEL_SYNC_REGISTRY_SERVER_ADDRESS", "value": f"https://{mr_host}"},
+        {"name": "MODEL_SYNC_REGISTRY_USER_TOKEN", "value": sa_token},
+        {"name": "MODEL_SYNC_REGISTRY_IS_SECURE", "value": "False"},
+        # OCI destination configuration
+        {
+            "name": "MODEL_SYNC_DESTINATION_OCI_REGISTRY",
+            "value": f"{oci_registry_host}:{OCIRegistry.Metadata.DEFAULT_PORT}",
+        },
+        {"name": "MODEL_SYNC_DESTINATION_OCI_URI", "value": f"{oci_registry_host}/{REPO_NAME}"},
+        {"name": "MODEL_SYNC_DESTINATION_OCI_BASE_IMAGE", "value": MODEL_SYNC_CONFIG["DESTINATION_OCI_BASE_IMAGE"]},
+        {
+            "name": "MODEL_SYNC_DESTINATION_OCI_ENABLE_TLS_VERIFY",
+            "value": MODEL_SYNC_CONFIG["DESTINATION_OCI_ENABLE_TLS_VERIFY"],
+        },
+    ]
 
     with JobWithVolumes(
         client=admin_client,
@@ -149,84 +226,13 @@ def model_sync_async_job(
             {
                 "name": "async-upload",
                 "image": ASYNC_UPLOAD_IMAGE,
-                "volumeMounts": [
-                    {
-                        "name": "source-credentials",
-                        "readOnly": True,
-                        "mountPath": VOLUME_MOUNTS["SOURCE_CREDS_PATH"],
-                    },
-                    {
-                        "name": "destination-credentials",
-                        "readOnly": True,
-                        "mountPath": VOLUME_MOUNTS["DEST_CREDS_PATH"],
-                    },
-                ],
-                "env": [
-                    # Proxy settings
-                    {"name": "HTTP_PROXY", "value": ""},
-                    {"name": "HTTPS_PROXY", "value": ""},
-                    {"name": "NO_PROXY", "value": "*.svc.cluster.local"},
-                    # Source configuration
-                    {"name": "MODEL_SYNC_SOURCE_TYPE", "value": MODEL_SYNC_CONFIG["SOURCE_TYPE"]},
-                    {"name": "MODEL_SYNC_SOURCE_AWS_KEY", "value": MODEL_SYNC_CONFIG["SOURCE_AWS_KEY"]},
-                    {
-                        "name": "MODEL_SYNC_SOURCE_S3_CREDENTIALS_PATH",
-                        "value": VOLUME_MOUNTS["SOURCE_CREDS_PATH"],
-                    },
-                    # Destination configuration
-                    {"name": "MODEL_SYNC_DESTINATION_TYPE", "value": MODEL_SYNC_CONFIG["DESTINATION_TYPE"]},
-                    {
-                        "name": "MODEL_SYNC_DESTINATION_OCI_URI",
-                        "value": f"{dynamic_oci_uri}",
-                    },
-                    {
-                        "name": "MODEL_SYNC_DESTINATION_OCI_REGISTRY",
-                        "value": f"{oci_registry_host}:{OCIRegistry.Metadata.DEFAULT_PORT}",
-                    },
-                    {
-                        "name": "MODEL_SYNC_DESTINATION_OCI_CREDENTIALS_PATH",
-                        "value": VOLUME_MOUNTS["DEST_DOCKERCONFIG_PATH"],
-                    },
-                    {
-                        "name": "MODEL_SYNC_DESTINATION_OCI_BASE_IMAGE",
-                        "value": MODEL_SYNC_CONFIG["DESTINATION_OCI_BASE_IMAGE"],
-                    },
-                    {
-                        "name": "MODEL_SYNC_DESTINATION_OCI_ENABLE_TLS_VERIFY",
-                        "value": MODEL_SYNC_CONFIG["DESTINATION_OCI_ENABLE_TLS_VERIFY"],
-                    },
-                    # Model parameters
-                    {"name": "MODEL_SYNC_MODEL_ID", "value": MODEL_SYNC_CONFIG["MODEL_ID"]},
-                    {"name": "MODEL_SYNC_MODEL_VERSION_ID", "value": MODEL_SYNC_CONFIG["MODEL_VERSION_ID"]},
-                    {
-                        "name": "MODEL_SYNC_MODEL_ARTIFACT_ID",
-                        "value": MODEL_SYNC_CONFIG["MODEL_ARTIFACT_ID"],
-                    },
-                    # Model Registry client params
-                    {
-                        "name": "MODEL_SYNC_REGISTRY_SERVER_ADDRESS",
-                        "value": f"https://{mr_host}",
-                    },
-                    {"name": "MODEL_SYNC_REGISTRY_PORT", "value": mr_port},
-                    {"name": "MODEL_SYNC_REGISTRY_AUTHOR", "value": "RHOAI async job test"},
-                    {"name": "MODEL_SYNC_REGISTRY_USER_TOKEN", "value": sa_token},
-                    {"name": "MODEL_SYNC_REGISTRY_IS_SECURE", "value": "False"},
-                ],
+                "volumeMounts": volume_mounts,
+                "env": environment_variables,
             }
         ],
         volumes=[
-            {
-                "name": "source-credentials",
-                "secret": {
-                    "secretName": s3_secret_for_async_job.name,
-                },
-            },
-            {
-                "name": "destination-credentials",
-                "secret": {
-                    "secretName": oci_secret_for_async_job.name,
-                },
-            },
+            {"name": "source-credentials", "secret": {"secretName": s3_secret_for_async_job.name}},
+            {"name": "destination-credentials", "secret": {"secretName": oci_secret_for_async_job.name}},
         ],
         teardown=teardown_resources,
     ) as job:
