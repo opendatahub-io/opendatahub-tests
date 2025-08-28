@@ -9,6 +9,7 @@ from timeout_sampler import retry
 
 from class_generator.parsers.explain_parser import ResourceNotFoundError
 from ocp_resources.pod import Pod
+from tests.model_registry.utils import get_model_catalog_pod
 
 LOGGER = get_logger(name=__name__)
 
@@ -60,9 +61,3 @@ def wait_for_model_catalog_update(client: DynamicClient, model_registry_namespac
         pods[0].wait_for_status(status=Pod.Status.RUNNING)
         return True
     return False
-
-
-def get_model_catalog_pod(client: DynamicClient, model_registry_namespace: str) -> list[Pod]:
-    return list(
-        Pod.get(namespace=model_registry_namespace, label_selector="component=model-catalog", dyn_client=client)
-    )

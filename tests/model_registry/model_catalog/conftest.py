@@ -9,7 +9,7 @@ from ocp_resources.resource import ResourceEditor
 
 from ocp_resources.route import Route
 from tests.model_registry.constants import MR_INSTANCE_BASE_NAME
-from tests.model_registry.model_catalog.constants import DEFAULT_MODEL_CATALOG
+from tests.model_registry.constants import DEFAULT_MODEL_CATALOG
 from tests.model_registry.model_catalog.utils import is_model_catalog_ready, wait_for_model_catalog_api
 from tests.model_registry.utils import get_model_registry_objects, wait_for_pods_running
 
