@@ -53,7 +53,7 @@ def pytest_addoption(parser: Parser) -> None:
     serving_arguments_group = parser.getgroup(name="Serving arguments")
     model_validation_automation_group = parser.getgroup(name="Model Validation Automation")
     hf_group = parser.getgroup(name="Hugging Face")
-
+    model_registry_group = parser.getgroup(name="Model Registry options")
     # AWS config and credentials options
     aws_group.addoption(
         "--aws-secret-access-key",
@@ -190,6 +190,13 @@ def pytest_addoption(parser: Parser) -> None:
 
     # HuggingFace options
     hf_group.addoption("--hf-access-token", default=os.environ.get("HF_ACCESS_TOKEN"), help="HF access token")
+    # Model Registry options
+    model_registry_group.addoption(
+        "--custom-namespace",
+        default=False,
+        action="store_true",
+        help="Indicates if the model registry tests are to be run against custom namespace",
+    )
 
 
 def pytest_cmdline_main(config: Any) -> None:
