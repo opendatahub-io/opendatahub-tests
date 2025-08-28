@@ -10,7 +10,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.pod import Pod
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.service import Service
-from tests.model_registry.model_catalog.constants import DEFAULT_MODEL_CATALOG
+from tests.model_registry.constants import DEFAULT_MODEL_CATALOG
 from tests.model_registry.model_catalog.utils import (
     validate_model_catalog_enabled,
     execute_get_command,
