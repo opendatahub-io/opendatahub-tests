@@ -73,6 +73,7 @@ class TestModelRegistryCreationRest:
             ),
         ],
     )
+    @pytest.mark.smoke
     def test_validate_model_registry_resource(
         self: Self,
         registered_model_rest_api: dict[str, Any],
@@ -140,6 +141,7 @@ class TestModelRegistryCreationRest:
         ],
         indirect=["updated_model_registry_resource"],
     )
+    @pytest.mark.smoke
     def test_create_update_model_artifact(
         self,
         updated_model_registry_resource: dict[str, Any],

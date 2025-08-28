@@ -35,6 +35,7 @@ LOGGER = get_logger(name=__name__)
     "model_registry_instance",
 )
 class TestModelRegistryMultipleInstances:
+    @pytest.mark.smoke
     def test_validate_multiple_model_registry(
         self: Self, model_registry_instance: list[ModelRegistry], model_registry_namespace: str
     ):
