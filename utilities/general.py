@@ -27,7 +27,8 @@ def get_s3_secret_dict(
     aws_secret_access_key: str,
     aws_s3_bucket: str,
     aws_s3_endpoint: str,
-    aws_s3_region: str,
+    aws_s3_region: str | None = None,
+    aws_default_region: str | None = None,
 ) -> dict[str, str]:
     """
     Returns a dictionary of s3 secret values
@@ -38,17 +39,19 @@ def get_s3_secret_dict(
         aws_s3_bucket (str): AWS S3 bucket
         aws_s3_endpoint (str): AWS S3 endpoint
         aws_s3_region (str): AWS S3 region
+        aws_default_region (str): AWS default region
 
     Returns:
         dict[str, str]: A dictionary of s3 secret encoded values
 
     """
+    region = aws_default_region or aws_s3_region or "us-east-1"
     return {
         "AWS_ACCESS_KEY_ID": b64_encoded_string(string_to_encode=aws_access_key),
         "AWS_SECRET_ACCESS_KEY": b64_encoded_string(string_to_encode=aws_secret_access_key),
         "AWS_S3_BUCKET": b64_encoded_string(string_to_encode=aws_s3_bucket),
         "AWS_S3_ENDPOINT": b64_encoded_string(string_to_encode=aws_s3_endpoint),
-        "AWS_DEFAULT_REGION": b64_encoded_string(string_to_encode=aws_s3_region),
+        "AWS_DEFAULT_REGION": b64_encoded_string(string_to_encode=region),
     }
 
 
