@@ -34,7 +34,7 @@ LOGGER = get_logger(name=__name__)
     "model_registry_instance",
     "updated_catalog_config_map",
 )
-class TestModelCatalogRhec:
+class TestModelCatalogCustom:
     def test_model_custom_catalog_sources(
         self: Self,
         updated_catalog_config_map: tuple[ConfigMap, str, str],

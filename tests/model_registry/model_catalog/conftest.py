@@ -4,11 +4,14 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.model_registry_components_platform_opendatahub_io import ModelRegistry
 from ocp_resources.resource import ResourceEditor
 
 from ocp_resources.route import Route
+from tests.model_registry.constants import MR_INSTANCE_BASE_NAME
 from tests.model_registry.model_catalog.constants import DEFAULT_MODEL_CATALOG
 from tests.model_registry.model_catalog.utils import is_model_catalog_ready, wait_for_model_catalog_api
+from tests.model_registry.utils import get_model_registry_objects, wait_for_pods_running
 
 
 @pytest.fixture(scope="class")
@@ -59,3 +62,34 @@ def updated_catalog_config_map(
 @pytest.fixture(scope="class")
 def expected_catalog_values(request: pytest.FixtureRequest) -> dict[str, str]:
     return request.param
+
+
+@pytest.fixture(scope="class")
+def created_model_registry_for_catalog(admin_client: DynamicClient, model_registry_namespace: str) -> ModelRegistry:
+    mr_object = get_model_registry_objects(
+        client=admin_client,
+        namespace=model_registry_namespace,
+        base_name=MR_INSTANCE_BASE_NAME,
+        num=1,
+        teardown_resources=False,
+        params={},
+        db_backend="mysql",
+    )[0]
+    mr_object.deploy(wait=True)
+    mr_object.wait_for_condition(condition="Available", status="True")
+    mr_object.wait_for_condition(condition="OAuthProxyAvailable", status="True")
+    wait_for_pods_running(
+        admin_client=admin_client, namespace_name=model_registry_namespace, number_of_consecutive_checks=6
+    )
+    return mr_object
+
+
+@pytest.fixture(scope="function")
+def deleted_model_registry_for_catalog(
+    admin_client: DynamicClient, created_model_registry_for_catalog: ModelRegistry, model_registry_namespace: str
+) -> Generator[None, None, None]:
+    created_model_registry_for_catalog.delete(wait=True)
+    yield
+    config_map = ConfigMap(name=DEFAULT_MODEL_CATALOG, namespace=model_registry_namespace, client=admin_client)
+    if config_map.exists:
+        config_map.delete(wait=True)
