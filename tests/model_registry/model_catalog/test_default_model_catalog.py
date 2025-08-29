@@ -18,6 +18,7 @@ LOGGER = get_logger(name=__name__)
     "model_registry_metadata_db_resources",
 )
 class TestModelCatalog:
+    @pytest.mark.sanity
     def test_config_map_not_created(self: Self, catalog_config_map: ConfigMap):
         # Check that the default configmaps does not exist, when model registry is not created
         assert not catalog_config_map.exists
@@ -29,11 +30,13 @@ class TestModelCatalog:
         models = yaml.safe_load(catalog_config_map.instance.data["sources.yaml"])["catalogs"]
         assert not models, f"Expected no default models to be present. Actual: {models}"
 
+    @pytest.mark.sanity
     def test_operator_pod_enabled_model_catalog(
         self: Self, model_registry_instance: ModelRegistry, model_registry_operator_pod: Pod
     ):
         assert validate_model_catalog_enabled(pod=model_registry_operator_pod)
 
+    @pytest.mark.sanity
     def test_model_catalog_no_custom_catalog(
         self,
         model_registry_instance: ModelRegistry,

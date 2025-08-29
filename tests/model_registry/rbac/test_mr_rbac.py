@@ -145,6 +145,7 @@ class TestUserMultiProjectPermission:
         MR_MULTIPROJECT_TEST_SCENARIO_PARAMS,
         indirect=True,
     )
+    @pytest.mark.sanity
     def test_user_permission_multi_project_parametrized(
         self: Self,
         test_idp_user: UserTestSession,

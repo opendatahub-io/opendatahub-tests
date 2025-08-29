@@ -35,6 +35,7 @@ LOGGER = get_logger(name=__name__)
     "updated_catalog_config_map",
 )
 class TestModelCatalogRhec:
+    @pytest.mark.sanity
     def test_model_custom_catalog_sources(
         self: Self,
         updated_catalog_config_map: tuple[ConfigMap, str, str],
@@ -52,6 +53,7 @@ class TestModelCatalogRhec:
         assert len(result) == 1
         assert result[0]["id"] == expected_catalog_values["id"]
 
+    @pytest.mark.sanity
     def test_model_custom_catalog_models(
         self: Self,
         updated_catalog_config_map: tuple[ConfigMap, str, str],
@@ -68,6 +70,7 @@ class TestModelCatalogRhec:
         )["items"]
         assert result, f"Expected custom models to be present. Actual: {result}"
 
+    @pytest.mark.sanity
     def test_model_custom_catalog_get_model_by_name(
         self: Self,
         updated_catalog_config_map: tuple[ConfigMap, str, str],
@@ -85,6 +88,7 @@ class TestModelCatalogRhec:
         )
         assert result["name"] == model_name
 
+    @pytest.mark.sanity
     def test_model_custom_catalog_get_artifact(
         self: Self,
         updated_catalog_config_map: tuple[ConfigMap, str, str],
