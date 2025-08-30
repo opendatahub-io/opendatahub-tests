@@ -53,7 +53,7 @@ from tests.model_registry.utils import (
 from utilities.constants import DscComponents
 from model_registry import ModelRegistry as ModelRegistryClient
 from utilities.general import wait_for_pods_by_labels
-from utilities.infra import get_data_science_cluster
+from utilities.infra import get_data_science_cluster, wait_for_dsc_status_ready
 
 DEFAULT_TOKEN_DURATION = "10m"
 LOGGER = get_logger(name=__name__)
@@ -174,52 +174,68 @@ def updated_dsc_component_state_scope_session(
     pytestconfig: Config,
     request: FixtureRequest,
     admin_client: DynamicClient,
-    teardown_resources: bool,
 ) -> Generator[DataScienceCluster, Any, Any]:
     dsc_resource = get_data_science_cluster(client=admin_client)
-    if not teardown_resources or pytestconfig.option.post_upgrade:
-        # if we are not tearing down resources or we are in post upgrade, we don't need to do anything
-        # the pre_upgrade/post_upgrade fixtures will handle the rest
-        yield dsc_resource
-    else:
-        original_components = dsc_resource.instance.spec.components
-        component_patch = {
-            DscComponents.MODELREGISTRY: {
-                "managementState": DscComponents.ManagementState.MANAGED,
-                "registriesNamespace": py_config["model_registry_namespace"],
-            },
-        }
-        LOGGER.info(f"Applying patch {component_patch}")
-
-        with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
-            for component_name in component_patch:
-                dsc_resource.wait_for_condition(
-                    condition=DscComponents.COMPONENT_MAPPING[component_name], status="True"
+    original_namespace_name = dsc_resource.instance.spec.components.modelregistry.registriesNamespace
+    if pytestconfig.option.custom_namespace:
+        resource_editor = ResourceEditor(
+            patches={
+                dsc_resource: {
+                    "spec": {
+                        "components": {
+                            DscComponents.MODELREGISTRY: {
+                                "managementState": DscComponents.ManagementState.REMOVED,
+                                "registriesNamespace": original_namespace_name,
+                            },
+                        }
+                    }
+                }
+            }
+        )
+        try:
+            # first disable MR
+            resource_editor.update(backup_resources=True)
+            wait_for_dsc_status_ready(dsc_resource=dsc_resource)
+            # now delete the original namespace:
+            original_namespace = Namespace(name=original_namespace_name, wait_for_resource=True)
+            original_namespace.delete(wait=True)
+            # Now enable it with the custom namespace
+            with ResourceEditor(
+                patches={
+                    dsc_resource: {
+                        "spec": {
+                            "components": {
+                                DscComponents.MODELREGISTRY: {
+                                    "managementState": DscComponents.ManagementState.MANAGED,
+                                    "registriesNamespace": py_config["model_registry_namespace"],
+                                },
+                            }
+                        }
+                    }
+                }
+            ):
+                namespace = Namespace(name=py_config["model_registry_namespace"], wait_for_resource=True)
+                namespace.wait_for_status(status=Namespace.Status.ACTIVE)
+                wait_for_pods_running(
+                    admin_client=admin_client,
+                    namespace_name=py_config["applications_namespace"],
+                    number_of_consecutive_checks=6,
                 )
-            namespace = Namespace(name=py_config["model_registry_namespace"], wait_for_resource=True)
-            namespace.wait_for_status(status=Namespace.Status.ACTIVE)
+                yield dsc_resource
+        finally:
+            resource_editor.restore()
+            Namespace(name=py_config["model_registry_namespace"]).delete(wait=True)
+            # create the original namespace object again, so that we can wait for it to be created first
+            original_namespace = Namespace(name=original_namespace_name, wait_for_resource=True)
+            original_namespace.wait_for_status(status=Namespace.Status.ACTIVE)
             wait_for_pods_running(
                 admin_client=admin_client,
                 namespace_name=py_config["applications_namespace"],
                 number_of_consecutive_checks=6,
             )
-            yield dsc_resource
-
-        for component_name, value in component_patch.items():
-            LOGGER.info(f"Waiting for component {component_name} to be updated.")
-            if original_components[component_name]["managementState"] == DscComponents.ManagementState.MANAGED:
-                dsc_resource.wait_for_condition(
-                    condition=DscComponents.COMPONENT_MAPPING[component_name], status="True"
-                )
-            if (
-                component_name == DscComponents.MODELREGISTRY
-                and value.get("managementState") == DscComponents.ManagementState.MANAGED
-            ):
-                # Since namespace specified in registriesNamespace is automatically created after setting
-                # managementStateto Managed. We need to explicitly delete it on clean up.
-                namespace = Namespace(name=py_config["model_registry_namespace"], ensure_exists=True)
-                if namespace:
-                    namespace.delete(wait=True)
+    else:
+        LOGGER.info("Model Registry is enabled by default and does not require any setup.")
+        yield dsc_resource
 
 
 @pytest.fixture(scope="class")
