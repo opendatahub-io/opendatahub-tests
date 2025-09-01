@@ -363,6 +363,7 @@ class OpenTelemetryCollector(NamespacedResource):
     """
     OpenTelemetryCollector is the Schema for the OpenTelemetry Collectors
     """
+
     api_group: str = "opentelemetry.io"
 
     def __init__(self, **kwargs: Any) -> None:
@@ -378,6 +379,7 @@ class OpenTelemetryOperator(NamespacedResource):
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
+
 
 @pytest.fixture(scope="class")
 def installed_opentelemetry_operator(admin_client: DynamicClient, model_namespace: Namespace):
@@ -424,6 +426,7 @@ def installed_opentelemetry_operator(admin_client: DynamicClient, model_namespac
         clean_up_namespace=True,
     )
 
+
 @pytest.fixture(scope="class")
 def otel_operator_cr(
     admin_client: DynamicClient,
@@ -460,10 +463,12 @@ class Jaeger(NamespacedResource):
     """
     Jaeger instance CR for Red Hat OpenShift distributed tracing platform.
     """
+
     api_group: str = "io.jaegertracing.openshift.v1"  # usually something like this
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
+
 
 @pytest.fixture(scope="session")
 def installed_jaeger_operator(admin_client: DynamicClient) -> Generator[None, Any, None]:
@@ -486,15 +491,12 @@ def installed_jaeger_operator(admin_client: DynamicClient) -> Generator[None, An
 
     yield
 
+
 @pytest.fixture(scope="class")
-def jaeger_instance(
-    admin_client: DynamicClient, model_namespace: Namespace
-) -> Generator[Jaeger, Any, None]:
+def jaeger_instance(admin_client: DynamicClient, model_namespace: Namespace) -> Generator[Jaeger, Any, None]:
     """Create a Jaeger instance in the test namespace using default all-in-one strategy."""
     jaeger_csv: ClusterServiceVersion = get_cluster_service_version(
-        client=admin_client,
-        prefix="jaeger",
-        namespace="openshift-distributed-tracing"
+        client=admin_client, prefix="jaeger", namespace="openshift-distributed-tracing"
     )
     alm_examples: list[dict[str, Any]] = jaeger_csv.get_alm_examples()
     jaeger_dict: dict[str, Any] = next(example for example in alm_examples if example["kind"] == "Jaeger")
@@ -514,6 +516,7 @@ def jaeger_instance(
         )
         yield jaeger
 
+
 def wait_for_jaeger_operator_deployments(namespace: str) -> None:
     """
     Wait for the Jaeger operator deployment to be ready.
@@ -524,10 +527,13 @@ def wait_for_jaeger_operator_deployments(namespace: str) -> None:
     deployment.wait_for_replicas()
 
 
-def wait_for_jaeger_pods(client: DynamicClient, jaeger_name: str, namespace: str, timeout: int = Timeout.TIMEOUT_15MIN) -> None:
+def wait_for_jaeger_pods(
+    client: DynamicClient, jaeger_name: str, namespace: str, timeout: int = Timeout.TIMEOUT_15MIN
+) -> None:
     """
     Wait for pods created by a Jaeger instance to be ready.
     """
+
     def _get_jaeger_pods() -> list[Pod]:
         return [
             _pod
@@ -550,4 +556,3 @@ def wait_for_jaeger_pods(client: DynamicClient, jaeger_name: str, namespace: str
             condition=Pod.Condition.READY,
             status="True",
         )
-

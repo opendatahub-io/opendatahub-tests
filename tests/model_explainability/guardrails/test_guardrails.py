@@ -484,6 +484,7 @@ class TestGuardrailsOrchestratorWithSeveralDetectors:
 
         verify_negative_detection_response(response=response)
 
+
 @pytest.mark.parametrize(
     "model_namespace, orchestrator_config, guardrails_orchestrator",
     [
@@ -509,10 +510,10 @@ class TestGuardrailsOrchestratorWithOpenTelemetry:
     """
 
     def test_guardrails_with_opentelemetry(
-            self,
-            guardrails_orchestrator,
-            otel_operator_cr,
-            jaeger_instance,
+        self,
+        guardrails_orchestrator,
+        otel_operator_cr,
+        jaeger_instance,
     ):
         orchestrator = guardrails_orchestrator
         assert orchestrator.exists
@@ -525,16 +526,12 @@ class TestGuardrailsOrchestratorWithOpenTelemetry:
         )
 
         for pod in pods:
-            pod.wait_for_condition(
-                condition=Pod.Condition.READY,
-                status="True",
-                timeout=Timeout.TIMEOUT_10MIN
-            )
+            pod.wait_for_condition(condition=Pod.Condition.READY, status="True", timeout=Timeout.TIMEOUT_10MIN)
 
         # Wait for Jaeger instance pods to be ready
         wait_for_jaeger_pods(
             client=jaeger_instance.client,
             jaeger_name=jaeger_instance.name,
             namespace=jaeger_instance.namespace,
-            timeout=Timeout.TIMEOUT_10MIN
+            timeout=Timeout.TIMEOUT_10MIN,
         )
