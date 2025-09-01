@@ -4,10 +4,12 @@ from typing import Dict, Any
 import pytest
 import requests
 import yaml
+from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
 from tests.model_explainability.constants import MNT_MODELS
+from tests.model_explainability.guardrails.conftest import wait_for_jaeger_pods
 from tests.model_explainability.guardrails.constants import (
     QWEN_ISVC_NAME,
     CHAT_GENERATION_CONFIG,
@@ -481,3 +483,55 @@ class TestGuardrailsOrchestratorWithSeveralDetectors:
         )
 
         verify_negative_detection_response(response=response)
+
+
+@pytest.mark.parametrize(
+    "model_namespace, orchestrator_config, guardrails_orchestrator",
+    [
+        pytest.param(
+            {"name": "test-guardrails-opentelemetry"},
+            {
+                "orchestrator_config_data": {
+                    "config.yaml": yaml.dump({
+                        "chat_generation": CHAT_GENERATION_CONFIG,
+                        "detectors": BUILTIN_DETECTOR_CONFIG,
+                    })
+                },
+            },
+            {"enable_built_in_detectors": False, "enable_guardrails_gateway": False},
+        )
+    ],
+    indirect=True,
+)
+@pytest.mark.rawdeployment
+class TestGuardrailsOrchestratorWithOpenTelemetry:
+    """
+    Tests that Guardrails Orchestrator can be instrumented with OpenTelemetry.
+    """
+
+    def test_guardrails_with_opentelemetry(
+        self,
+        guardrails_orchestrator,
+        otel_operator_cr,
+        jaeger_instance,
+    ):
+        orchestrator = guardrails_orchestrator
+        assert orchestrator.exists
+
+        # Wait for all orchestrator pods to be ready
+        pods = Pod.get(
+            dyn_client=orchestrator.client,
+            namespace=orchestrator.namespace,
+            label_selector=f"app={orchestrator.name}",
+        )
+
+        for pod in pods:
+            pod.wait_for_condition(condition=Pod.Condition.READY, status="True", timeout=Timeout.TIMEOUT_10MIN)
+
+        # Wait for Jaeger instance pods to be ready
+        wait_for_jaeger_pods(
+            client=jaeger_instance.client,
+            jaeger_name=jaeger_instance.name,
+            namespace=jaeger_instance.namespace,
+            timeout=Timeout.TIMEOUT_10MIN,
+        )
