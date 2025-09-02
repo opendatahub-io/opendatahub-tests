@@ -61,3 +61,16 @@ def wait_for_model_catalog_update(client: DynamicClient, model_registry_namespac
         pods[0].wait_for_status(status=Pod.Status.RUNNING)
         return True
     return False
+
+
+def validate_model_catalog_resource(kind: Any, admin_client: DynamicClient, namespace: str) -> None:
+    resource = list(kind.get(namespace=namespace, label_selector="component=model-catalog", dyn_client=admin_client))
+    assert resource
+    assert len(resource) == 1, f"Unexpected number of {kind} resources found: {[res.name for res in resource]}"
+
+
+def validate_default_catalog(default_catalog) -> None:
+    assert default_catalog["name"] == "Default Catalog"
+    assert default_catalog["id"] == "default_catalog"
+    assert default_catalog["type"] == "yaml"
+    assert default_catalog["properties"].get("yamlCatalogPath") == "/default/default-catalog.yaml"
