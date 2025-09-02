@@ -76,6 +76,7 @@ class TestModelRegistrySecurityContextValidation:
         ],
         indirect=["model_registry_resource"],
     )
+    @pytest.mark.sanity
     def test_model_registry_deployment_security_context_validation(
         self: Self,
         model_registry_resource: Deployment,
@@ -101,6 +102,7 @@ class TestModelRegistrySecurityContextValidation:
         ],
         indirect=["model_registry_resource"],
     )
+    @pytest.mark.sanity
     def test_model_registry_pod_security_context_validation(
         self: Self,
         model_registry_resource: Pod,

@@ -22,7 +22,6 @@ class TestModelCatalog:
         # Check that the default configmaps does not exist, when model registry is not created
         assert not catalog_config_map.exists
 
-    @pytest.mark.smoke
     def test_config_map_exists(self: Self, model_registry_instance: ModelRegistry, catalog_config_map: ConfigMap):
         # Check that the default configmaps is created when model registry is enabled.
         assert catalog_config_map.exists, f"{catalog_config_map.name} does not exist"

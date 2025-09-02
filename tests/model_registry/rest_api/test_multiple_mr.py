@@ -45,6 +45,7 @@ class TestModelRegistryMultipleInstances:
             )
             LOGGER.info(f"{mr.name} found")
 
+    @pytest.mark.sanity
     def test_validate_one_model_catalog_configmap(
         self: Self, admin_client: DynamicClient, model_registry_namespace: str
     ):
@@ -60,6 +61,7 @@ class TestModelRegistryMultipleInstances:
             f"Expected {expected_number_config_maps} modelcatalog sources, found: {config_map_names}"
         )
 
+    # FAILS until https://github.com/opendatahub-io/model-registry-operator/pull/298/ is merged downstream
     def test_validate_one_model_catalog_pod(self: Self, admin_client: DynamicClient, model_registry_namespace: str):
         """
         Validate that even when multiple MR exists on a cluster, only one model catalog pod is created
@@ -73,6 +75,7 @@ class TestModelRegistryMultipleInstances:
             f"Expected {expected_number_pods} model catalog pods, found: {[pod.name for pod in catalog_pods]}"
         )
 
+    @pytest.mark.sanity
     def test_validate_register_models_multiple_registries(
         self: Self, model_registry_rest_url: list[str], model_registry_rest_headers: dict[str, str]
     ):
