@@ -6,6 +6,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 
 from simple_logger.logger import get_logger
+from pytest_testconfig import config as py_config
 
 
 LOGGER = get_logger(name=__name__)
@@ -23,12 +24,12 @@ class TestMrDefault:
             dsc_resource.instance.spec.components[DscComponents.MODELREGISTRY].managementState
             == DscComponents.ManagementState.MANAGED
         )
-
         namespace = Namespace(
             name=dsc_resource.instance.spec.components[DscComponents.MODELREGISTRY].registriesNamespace,
             ensure_exists=True,
         )
         assert namespace.instance.status.phase == Namespace.Status.ACTIVE
+        assert namespace.instance.metadata.name == py_config["model_registry_namespace"]
 
         for condition in dsc_resource.instance.status.conditions:
             if condition.type == DscComponents.COMPONENT_MAPPING[DscComponents.MODELREGISTRY]:
