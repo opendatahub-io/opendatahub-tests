@@ -17,7 +17,7 @@ from ocp_resources.serving_runtime import ServingRuntime
 from pytest_testconfig import config as py_config
 
 from tests.model_explainability.guardrails.constants import QWEN_ISVC_NAME
-from tests.model_explainability.constants import MNT_MODELS
+from tests.model_explainability.constants import QWEN_MODEL_NAME
 from tests.model_explainability.trustyai_service.trustyai_service_utils import TRUSTYAI_SERVICE_NAME
 from utilities.constants import KServeDeploymentType, RuntimeTemplates
 from utilities.inference_utils import create_isvc
@@ -78,7 +78,7 @@ def llamastack_distribution(
                     },
                     {
                         "name": "INFERENCE_MODEL",
-                        "value": MNT_MODELS,
+                        "value": QWEN_MODEL_NAME,
                     },
                     {
                         "name": "MILVUS_DB_PATH",
@@ -165,10 +165,11 @@ def vllm_runtime(
         containers={
             "kserve-container": {
                 "args": [
-                    f"--port={str(8032)}",
+                    "--port=8032",
                     "--model=/mnt/models",
+                    f"--served-model-name={QWEN_MODEL_NAME}",
                 ],
-                "ports": [{"containerPort": 8032, "protocol": "TCP"}],
+                "ports": [{"name": "http", "containerPort": 8032, "protocol": "TCP"}],
                 "volumeMounts": [{"mountPath": "/dev/shm", "name": "shm"}],
             }
         },
@@ -197,8 +198,8 @@ def qwen_isvc(
         storage_path="Qwen2.5-0.5B-Instruct",
         wait_for_predictor_pods=False,
         resources={
-            "requests": {"cpu": "1", "memory": "8Gi"},
-            "limits": {"cpu": "2", "memory": "10Gi"},
+            "requests": {"cpu": "2", "memory": "10Gi"},
+            "limits": {"cpu": "2", "memory": "12Gi"},
         },
     ) as isvc:
         yield isvc

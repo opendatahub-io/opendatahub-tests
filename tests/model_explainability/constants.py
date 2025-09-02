@@ -1,1 +1,1 @@
-MNT_MODELS: str = "/mnt/models"
+QWEN_MODEL_NAME: str = "qwen2.5-0.5b-instruct"
