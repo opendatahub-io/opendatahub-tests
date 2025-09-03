@@ -75,6 +75,7 @@ class RuntimeTemplates:
     MLSERVER_REST: str = "mlserver-rest-runtime-template"
     TRITON_REST: str = "triton-rest-runtime-template"
     TRITON_GRPC: str = "triton-grpc-runtime-template"
+    GUARDRAILS_DETECTOR_HUGGINGFACE: str = "guardrails-detector-huggingface-serving-template"
 
 
 class ModelInferenceRuntime:

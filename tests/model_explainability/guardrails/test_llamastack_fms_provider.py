@@ -7,7 +7,7 @@ from tests.model_explainability.guardrails.constants import (
     BUILTIN_DETECTOR_CONFIG,
     PROMPT_WITH_PII,
 )
-from tests.model_explainability.constants import MNT_MODELS
+from tests.model_explainability.constants import QWEN_MODEL_NAME
 from utilities.constants import MinIo
 
 LOGGER = get_logger(name=__name__)
@@ -25,7 +25,7 @@ PII_REGEX_SHIELD_ID = "regex"
             {
                 "orchestrator_config_data": {
                     "config.yaml": yaml.dump({
-                        "chat_generation": CHAT_GENERATION_CONFIG,
+                        "openai": CHAT_GENERATION_CONFIG,
                         "detectors": BUILTIN_DETECTOR_CONFIG,
                     })
                 },
@@ -54,13 +54,13 @@ class TestLlamaStackFMSGuardrailsProvider:
     def test_fms_guardrails_register_model(self, qwen_isvc, llamastack_client):
         provider_id = "vllm-inference"
         model_type = "llm"
-        llamastack_client.models.register(provider_id=provider_id, model_type=model_type, model_id=MNT_MODELS)
+        llamastack_client.models.register(provider_id=provider_id, model_type=model_type, model_id=QWEN_MODEL_NAME)
         models = llamastack_client.models.list()
 
         # We only need to check the first model;
         # second is a granite embedding model present by default
         assert len(models) == 2
-        assert models[0].identifier == MNT_MODELS
+        assert models[0].identifier == QWEN_MODEL_NAME
         assert models[0].provider_id == "vllm-inference"
         assert models[0].model_type == "llm"
 

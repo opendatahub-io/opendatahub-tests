@@ -1,7 +1,7 @@
 import pytest
 from simple_logger.logger import get_logger
 
-from tests.model_explainability.constants import MNT_MODELS
+from tests.model_explainability.constants import QWEN_MODEL_NAME
 from utilities.constants import MinIo
 
 LOGGER = get_logger(name=__name__)
@@ -30,7 +30,7 @@ class TestLlamaStackLMEvalProvider:
     """
 
     def test_lmeval_register_benchmark(self, llamastack_client):
-        llamastack_client.models.register(provider_id="vllm-inference", model_type="llm", model_id=MNT_MODELS)
+        llamastack_client.models.register(provider_id="vllm-inference", model_type="llm", model_id=QWEN_MODEL_NAME)
 
         provider_id = "trustyai_lmeval"
         trustyai_lmeval_arc_easy = f"{provider_id}::arc_easy"
