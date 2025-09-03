@@ -7,11 +7,7 @@ import yaml
 from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
-from tests.model_explainability.constants import QWEN_MODEL_NAME
 from tests.model_explainability.guardrails.constants import (
-    QWEN_ISVC_NAME,
-    CHAT_GENERATION_CONFIG,
-    BUILTIN_DETECTOR_CONFIG,
     PROMPT_WITH_PII,
     EXAMPLE_EMAIL_ADDRESS,
     GUARDRAILS_MULTI_DETECTOR_INPUT_PROMPTS,
@@ -24,7 +20,14 @@ from tests.model_explainability.guardrails.utils import (
     get_chat_detections_payload,
 )
 from tests.model_explainability.utils import validate_tai_component_images
-from utilities.constants import Timeout, MinIo
+from utilities.constants import (
+    Timeout,
+    CHAT_GENERATION_CONFIG,
+    BUILTIN_DETECTOR_CONFIG,
+    MinIo,
+    QWEN_MODEL_NAME,
+    QWEN_ISVC_NAME,
+)
 from utilities.plugins.constant import OpenAIEnpoints
 
 LOGGER = get_logger(name=__name__)
@@ -147,10 +150,12 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
             return False
 
         response = check_health_endpoint()
+
         assert "fms-guardrails-orchestr8" in response.text
 
     def test_guardrails_info_endpoint(self, qwen_isvc, guardrails_orchestrator_health_route):
         response = requests.get(url=f"https://{guardrails_orchestrator_health_route.host}/info", verify=False)
+
         assert response.status_code == http.HTTPStatus.OK
 
         healthy_status = "HEALTHY"

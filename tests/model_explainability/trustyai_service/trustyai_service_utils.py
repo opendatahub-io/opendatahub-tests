@@ -13,14 +13,12 @@ from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from utilities.certificates_utils import create_ca_bundle_file
-from utilities.constants import Protocols, Timeout
+from utilities.constants import Protocols, Timeout, TRUSTYAI_SERVICE_NAME
 from utilities.exceptions import MetricValidationError
 from utilities.general import create_isvc_label_selector_str
 from utilities.inference_utils import Inference, UserInference
 
 LOGGER = get_logger(name=__name__)
-
-TRUSTYAI_SERVICE_NAME: str = "trustyai-service"
 
 
 class NoMetricsFoundError(ValueError):
