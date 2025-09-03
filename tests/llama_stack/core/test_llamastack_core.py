@@ -1,8 +1,7 @@
 import pytest
 
 from tests.llama_stack.constants import LlamaStackProviders
-from tests.model_explainability.constants import QWEN_MODEL_NAME
-from utilities.constants import MinIo
+from utilities.constants import MinIo, QWEN_MODEL_NAME
 
 
 @pytest.mark.parametrize(
