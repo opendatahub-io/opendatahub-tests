@@ -204,7 +204,7 @@ To add a new runtime, you need to:
 ## AI Usage
 If using AI tooling to assist you in the process of writing or reviewing code:
 1. Understand what you are doing --as a developer, you are ultimately responsible for the code. Always assume the code produced by the AI tools is unsafe and incorrect, and always double-check it.
-2. We support [AGENTS.md](../AGENTS.md), an [open format](https://agents.md/) for guiding coding agents. If you use any proprietary tool that do not support `AGENTS.md` (e.g. Claude Code, Qwen Code, Gemini Code), you can create a symlink:
+2. We support [AGENTS.md](../AGENTS.md), an [open format](https://agents.md/) for guiding coding agents. If you use any proprietary tool that does not support `AGENTS.md` (e.g. Claude Code, Qwen Code, Gemini Code), you can create a symlink:
 ```bash
 ln -s AGENTS.md CLAUDE.md
 ```

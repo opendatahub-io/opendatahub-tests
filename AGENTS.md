@@ -1,5 +1,5 @@
 # Overview
-This is a testing repo for OpenDataHub and OpenShift AI, an MLOps platform for OpenShift.
+This is a testing repo for OpenDataHub and OpenShift AI, which are MLOps platforms for OpenShift.
 The tests contained in the repo are high-level integration tests at the Kubernetes API level.
 
 # Documentation
