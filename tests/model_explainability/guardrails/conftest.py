@@ -9,7 +9,7 @@ from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 
 from utilities.certificates_utils import create_ca_bundle_file
-from utilities.constants import KServeDeploymentType, Labels, RuntimeTemplates, Annotations
+from utilities.constants import KServeDeploymentType, RuntimeTemplates
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
