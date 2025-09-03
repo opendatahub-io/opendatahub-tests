@@ -9,6 +9,12 @@ from timeout_sampler import retry
 
 from class_generator.parsers.explain_parser import ResourceNotFoundError
 from ocp_resources.pod import Pod
+from tests.model_registry.model_catalog.constants import (
+    DEFAULT_CATALOG_NAME,
+    DEFAULT_CATALOG_ID,
+    CATALOG_TYPE,
+    DEFAULT_CATALOG_FILE,
+)
 from tests.model_registry.utils import get_model_catalog_pod
 
 LOGGER = get_logger(name=__name__)
@@ -70,7 +76,7 @@ def validate_model_catalog_resource(kind: Any, admin_client: DynamicClient, name
 
 
 def validate_default_catalog(default_catalog) -> None:
-    assert default_catalog["name"] == "Default Catalog"
-    assert default_catalog["id"] == "default_catalog"
-    assert default_catalog["type"] == "yaml"
-    assert default_catalog["properties"].get("yamlCatalogPath") == "/default/default-catalog.yaml"
+    assert default_catalog["name"] == DEFAULT_CATALOG_NAME
+    assert default_catalog["id"] == DEFAULT_CATALOG_ID
+    assert default_catalog["type"] == CATALOG_TYPE
+    assert default_catalog["properties"].get("yamlCatalogPath") == DEFAULT_CATALOG_FILE
