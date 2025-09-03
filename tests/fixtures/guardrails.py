@@ -102,7 +102,7 @@ def guardrails_orchestrator_route(
         patches={
             guardrails_orchestrator_route: {
                 "metadata": {
-                    "annotations": {"haproxy.router.openshift.io/timeout": "10m"},
+                    "annotations": {Annotations.HaproxyRouterOpenshiftIo.TIMEOUT: "10m"},
                 }
             }
         }

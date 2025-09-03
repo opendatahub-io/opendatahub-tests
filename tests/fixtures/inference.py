@@ -33,7 +33,7 @@ def vllm_cpu_runtime(
         containers={
             "kserve-container": {
                 "args": [
-                    f"--port={str(8032)}",
+                    "--port=8032",
                     "--model=/mnt/models",
                 ],
                 "ports": [{"containerPort": 8032, "protocol": "TCP"}],
@@ -65,8 +65,8 @@ def qwen_isvc(
         storage_path="Qwen2.5-0.5B-Instruct",
         wait_for_predictor_pods=False,
         resources={
-            "requests": {"cpu": "1", "memory": "8Gi"},
-            "limits": {"cpu": "2", "memory": "10Gi"},
+            "requests": {"cpu": "2", "memory": "10Gi"},
+            "limits": {"cpu": "2", "memory": "12Gi"},
         },
     ) as isvc:
         yield isvc
