@@ -5,15 +5,30 @@ import pytest
 from llama_stack_client import Agent, LlamaStackClient, RAGDocument
 from llama_stack_client.types import EmbeddingsResponse, QueryChunksResponse
 from llama_stack_client.types.vector_io_insert_params import Chunk
-from ocp_resources.deployment import Deployment
 from simple_logger.logger import get_logger
 
+from utilities.constants import MinIo, QWEN_MODEL_NAME
 from utilities.rag_utils import TurnExpectation, validate_rag_agent_responses
 
 LOGGER = get_logger(name=__name__)
 
 
-class TestRag:
+@pytest.mark.parametrize(
+    "model_namespace, minio_pod, minio_data_connection, llama_stack_server_config",
+    [
+        pytest.param(
+            {"name": "test-llamastack-rag"},
+            MinIo.PodConfig.QWEN_HAP_BPIV2_MINIO_CONFIG,
+            {"bucket": "llms"},
+            {
+                "vllm_url_fixture": "qwen_isvc_url",
+                "inference_model": QWEN_MODEL_NAME,
+            },
+        )
+    ],
+    indirect=True,
+)
+class TestLlamaStackRag:
     """
     Test suite for LlamaStack RAG (Retrieval-Augmented Generation) functionality.
 
@@ -22,76 +37,20 @@ class TestRag:
     """
 
     @pytest.mark.smoke
-    def test_llama_stack_server(
-        self, llama_stack_distribution_deployment: Deployment, rag_lls_client: LlamaStackClient
+    def test_rag_inference_embeddings(
+        self, minio_pod, minio_data_connection, llama_stack_client: LlamaStackClient
     ) -> None:
-        """
-        Test LlamaStack Server deployment and verify required models are available.
-
-        Validates that the LlamaStack distribution is properly deployed with:
-        - LLM model for text generation
-        - Embedding model for document encoding
-        - Proper embedding dimension configuration
-        """
-        llama_stack_distribution_deployment.wait_for_replicas()
-
-        models = rag_lls_client.models.list()
-        assert models is not None, "No models returned from LlamaStackClient"
-
-        llm_model = next((m for m in models if m.api_model_type == "llm"), None)
-        assert llm_model is not None, "No LLM model found in available models"
-        model_id = llm_model.identifier
-        assert model_id is not None, "No identifier set in LLM model"
-
-        embedding_model = next((m for m in models if m.api_model_type == "embedding"), None)
-        assert embedding_model is not None, "No embedding model found in available models"
-        embedding_model_id = embedding_model.identifier
-        assert embedding_model_id is not None, "No embedding model returned from LlamaStackClient"
-        assert "embedding_dimension" in embedding_model.metadata, "embedding_dimension not found in model metadata"
-        embedding_dimension = embedding_model.metadata["embedding_dimension"]
-        assert embedding_dimension is not None, "No embedding_dimension set in embedding model"
-
-    @pytest.mark.smoke
-    def test_rag_chat_completions(self, rag_lls_client: LlamaStackClient) -> None:
-        """
-        Test basic chat completion inference through LlamaStack client.
-
-        Validates that the server can perform text generation using the chat completions API
-        and provides factually correct responses.
-
-        Based on the example available at
-        https://llama-stack.readthedocs.io/en/latest/getting_started/detailed_tutorial.html#step-4-run-the-demos
-        """
-        models = rag_lls_client.models.list()
-        model_id = next(m for m in models if m.api_model_type == "llm").identifier
-
-        response = rag_lls_client.chat.completions.create(
-            model=model_id,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": "What is the capital of France?"},
-            ],
-        )
-        assert len(response.choices) > 0, "No response after basic inference on llama-stack server"
-
-        # Check if response has the expected structure and content
-        content = response.choices[0].message.content
-        assert content is not None, "LLM response content is None"
-        assert "Paris" in content, "The LLM didn't provide the expected answer to the prompt"
-
-    @pytest.mark.smoke
-    def test_rag_inference_embeddings(self, rag_lls_client: LlamaStackClient) -> None:
         """
         Test embedding model functionality and vector generation.
 
         Validates that the server can generate properly formatted embedding vectors
         for text input with correct dimensions as specified in model metadata.
         """
-        models = rag_lls_client.models.list()
+        models = llama_stack_client.models.list()
         embedding_model = next(m for m in models if m.api_model_type == "embedding")
         embedding_dimension = embedding_model.metadata["embedding_dimension"]
 
-        embeddings_response = rag_lls_client.inference.embeddings(
+        embeddings_response = llama_stack_client.inference.embeddings(
             model_id=embedding_model.identifier,
             contents=["First chunk of text"],
             output_dimension=embedding_dimension,  # type: ignore
@@ -102,7 +61,9 @@ class TestRag:
         assert isinstance(embeddings_response.embeddings[0][0], float)
 
     @pytest.mark.smoke
-    def test_rag_vector_io_ingestion_retrieval(self, rag_lls_client: LlamaStackClient) -> None:
+    def test_rag_vector_io_ingestion_retrieval(
+        self, minio_pod, minio_data_connection, llama_stack_client: LlamaStackClient
+    ) -> None:
         """
         Validates basic vector_db API in llama-stack using milvus
 
@@ -111,7 +72,7 @@ class TestRag:
         Based on the example available at
         https://llama-stack.readthedocs.io/en/latest/building_applications/rag.html
         """
-        models = rag_lls_client.models.list()
+        models = llama_stack_client.models.list()
         embedding_model = next(m for m in models if m.api_model_type == "embedding")
         embedding_dimension = embedding_model.metadata["embedding_dimension"]
 
@@ -119,7 +80,7 @@ class TestRag:
         vector_db_id = f"v{uuid.uuid4().hex}"
 
         try:
-            rag_lls_client.vector_dbs.register(
+            llama_stack_client.vector_dbs.register(
                 vector_db_id=vector_db_id,
                 embedding_model=embedding_model.identifier,
                 embedding_dimension=embedding_dimension,  # type: ignore
@@ -127,7 +88,7 @@ class TestRag:
             )
 
             # Calculate embeddings
-            embeddings_response = rag_lls_client.inference.embeddings(
+            embeddings_response = llama_stack_client.inference.embeddings(
                 model_id=embedding_model.identifier,
                 contents=["First chunk of text"],
                 output_dimension=embedding_dimension,  # type: ignore
@@ -142,10 +103,10 @@ class TestRag:
                     embedding=embeddings_response.embeddings[0],
                 ),
             ]
-            rag_lls_client.vector_io.insert(vector_db_id=vector_db_id, chunks=chunks_with_embeddings)
+            llama_stack_client.vector_io.insert(vector_db_id=vector_db_id, chunks=chunks_with_embeddings)
 
             # Query the vector db to find the chunk
-            chunks_response = rag_lls_client.vector_io.query(
+            chunks_response = llama_stack_client.vector_io.query(
                 vector_db_id=vector_db_id, query="What do you know about..."
             )
             assert isinstance(chunks_response, QueryChunksResponse)
@@ -156,12 +117,12 @@ class TestRag:
         finally:
             # Cleanup: unregister the vector database to prevent resource leaks
             try:
-                rag_lls_client.vector_dbs.unregister(vector_db_id)
+                llama_stack_client.vector_dbs.unregister(vector_db_id)
             except Exception as e:
                 LOGGER.warning(f"Failed to unregister vector database {vector_db_id}: {e}")
 
     @pytest.mark.smoke
-    def test_rag_simple_agent(self, rag_lls_client: LlamaStackClient) -> None:
+    def test_rag_simple_agent(self, minio_pod, minio_data_connection, llama_stack_client: LlamaStackClient) -> None:
         """
         Test basic agent creation and conversation capabilities.
 
@@ -171,9 +132,9 @@ class TestRag:
         Based on the example available at
         https://llama-stack.readthedocs.io/en/latest/getting_started/detailed_tutorial.html#step-4-run-the-demos
         """
-        models = rag_lls_client.models.list()
+        models = llama_stack_client.models.list()
         model_id = next(m for m in models if m.api_model_type == "llm").identifier
-        agent = Agent(client=rag_lls_client, model=model_id, instructions="You are a helpful assistant.")
+        agent = Agent(client=llama_stack_client, model=model_id, instructions="You are a helpful assistant.")
         s_id = agent.create_session(session_name=f"s{uuid.uuid4().hex}")
 
         # Test identity question
@@ -197,7 +158,7 @@ class TestRag:
         assert "answers" in content, "The LLM didn't provide the expected answer to the prompt"
 
     @pytest.mark.smoke
-    def test_rag_build_rag_agent(self, rag_lls_client: LlamaStackClient) -> None:
+    def test_rag_build_rag_agent(self, minio_pod, minio_data_connection, llama_stack_client: LlamaStackClient) -> None:
         """
         Test full RAG pipeline with vector database integration and knowledge retrieval.
 
@@ -208,7 +169,7 @@ class TestRag:
         Based on the example available at
         https://llama-stack.readthedocs.io/en/latest/getting_started/detailed_tutorial.html#step-4-run-the-demos
         """
-        models = rag_lls_client.models.list()
+        models = llama_stack_client.models.list()
         model_id = next(m for m in models if m.api_model_type == "llm").identifier
         embedding_model = next(m for m in models if m.api_model_type == "embedding")
 
@@ -217,7 +178,7 @@ class TestRag:
         # Create a vector database instance
         vector_db_id = f"v{uuid.uuid4().hex}"
 
-        rag_lls_client.vector_dbs.register(
+        llama_stack_client.vector_dbs.register(
             vector_db_id=vector_db_id,
             embedding_model=embedding_model.identifier,
             embedding_dimension=embedding_dimension,
@@ -227,7 +188,7 @@ class TestRag:
         try:
             # Create the RAG agent connected to the vector database
             rag_agent = Agent(
-                client=rag_lls_client,
+                client=llama_stack_client,
                 model=model_id,
                 instructions="You are a helpful assistant. Use the RAG tool to answer questions as needed.",
                 tools=[
@@ -257,7 +218,7 @@ class TestRag:
                 for i, url in enumerate(urls)
             ]
 
-            rag_lls_client.tool_runtime.rag_tool.insert(
+            llama_stack_client.tool_runtime.rag_tool.insert(
                 documents=documents,
                 vector_db_id=vector_db_id,
                 chunk_size_in_tokens=512,
@@ -329,6 +290,6 @@ class TestRag:
         finally:
             # Cleanup: unregister the vector database to prevent resource leaks
             try:
-                rag_lls_client.vector_dbs.unregister(vector_db_id)
+                llama_stack_client.vector_dbs.unregister(vector_db_id)
             except Exception as e:
                 LOGGER.warning(f"Failed to unregister vector database {vector_db_id}: {e}")
