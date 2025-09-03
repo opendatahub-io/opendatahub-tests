@@ -325,18 +325,6 @@ wheels = [
 ]
 
 [[package]]
-name = "curlify"
-version = "3.0.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "requests" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/62/df/e9c2720d32c5de985ce64d5dedf883b52c26ff5e9aa2ba2becea00098320/curlify-3.0.0.tar.gz", hash = "sha256:7b488ff3c924dba3433a1cc74044c0942da21f0a97fa26c3138319ba640ca412", size = 3668, upload-time = "2025-05-25T11:50:00.785Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/9e/f8/912ebddbff8ea603d4c90fa31557096f927b17efd30a166ce7ac1242910a/curlify-3.0.0-py3-none-any.whl", hash = "sha256:52060c0eb7a656b7bde6b668c32f337bed4d736ce230755767e3ada56a09c338", size = 3580, upload-time = "2025-05-25T11:49:59.335Z" },
-]
-
-[[package]]
 name = "cyclopts"
 version = "3.22.5"
 source = { registry = "https://pypi.org/simple" }
@@ -1185,7 +1173,6 @@ name = "opendatahub-tests"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "curlify" },
     { name = "fire" },
     { name = "grpcio-reflection" },
     { name = "ipython" },
@@ -1226,7 +1213,6 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "curlify", specifier = ">=3.0.0" },
     { name = "fire" },
     { name = "grpcio-reflection" },
     { name = "ipython", specifier = ">=8.18.1" },

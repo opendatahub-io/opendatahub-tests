@@ -2,8 +2,6 @@ from typing import Any, Dict
 
 from ocp_resources.resource import Resource
 
-from tests.model_explainability.guardrails.constants import QWEN_ISVC_NAME
-
 
 class KServeDeploymentType:
     SERVERLESS: str = "Serverless"
@@ -369,6 +367,7 @@ BUILTIN_DETECTOR_CONFIG: Dict[str, Any] = {
     }
 }
 
+QWEN_ISVC_NAME = "qwen-isvc"
 CHAT_GENERATION_CONFIG: Dict[str, Any] = {
     "service": {"hostname": f"{QWEN_ISVC_NAME}-predictor", "port": 8032, "request_timeout": 600}
 }
