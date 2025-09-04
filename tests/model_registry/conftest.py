@@ -221,6 +221,11 @@ def updated_dsc_component_state_scope_session(
                     namespace_name=py_config["applications_namespace"],
                     number_of_consecutive_checks=6,
                 )
+                wait_for_pods_running(
+                    admin_client=admin_client,
+                    namespace_name=py_config["model_registry_namespace"],
+                    number_of_consecutive_checks=6,
+                )
                 yield dsc_resource
         finally:
             resource_editor.restore()

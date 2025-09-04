@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Dict
 
 from ocp_resources.resource import Resource
 
@@ -75,6 +75,7 @@ class RuntimeTemplates:
     MLSERVER_REST: str = "mlserver-rest-runtime-template"
     TRITON_REST: str = "triton-rest-runtime-template"
     TRITON_GRPC: str = "triton-grpc-runtime-template"
+    GUARDRAILS_DETECTOR_HUGGINGFACE: str = "guardrails-detector-huggingface-serving-template"
 
 
 class ModelInferenceRuntime:
@@ -354,3 +355,21 @@ OPENSHIFT_OPERATORS: str = "openshift-operators"
 MARIADB: str = "mariadb"
 MODEL_REGISTRY_CUSTOM_NAMESPACE: str = "model-registry-custom-ns"
 THANOS_QUERIER_ADDRESS = "https://thanos-querier.openshift-monitoring.svc:9092"
+BUILTIN_DETECTOR_CONFIG: Dict[str, Any] = {
+    "regex": {
+        "type": "text_contents",
+        "service": {
+            "hostname": "127.0.0.1",
+            "port": 8080,
+        },
+        "chunker_id": "whole_doc_chunker",
+        "default_threshold": 0.5,
+    }
+}
+
+QWEN_ISVC_NAME = "qwen-isvc"
+CHAT_GENERATION_CONFIG: Dict[str, Any] = {
+    "service": {"hostname": f"{QWEN_ISVC_NAME}-predictor", "port": 8032, "request_timeout": 600}
+}
+TRUSTYAI_SERVICE_NAME: str = "trustyai-service"
+QWEN_MODEL_NAME: str = "qwen2.5-0.5b-instruct"
