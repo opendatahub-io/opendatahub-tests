@@ -24,9 +24,9 @@ from tests.model_registry.constants import (
     MARIADB_MY_CNF,
     PORT_MAP,
     MODEL_REGISTRY_POD_FILTER,
+    DEFAULT_MODEL_CATALOG,
 )
 from tests.model_registry.exceptions import ModelRegistryResourceNotFoundError
-from tests.model_registry.model_catalog.constants import DEFAULT_MODEL_CATALOG
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
 from utilities.constants import Protocols, Annotations, Timeout
 from model_registry import ModelRegistry as ModelRegistryClient
@@ -723,3 +723,9 @@ def delete_model_catalog_configmap(admin_client: DynamicClient, namespace: str) 
     cfg = ConfigMap(name=DEFAULT_MODEL_CATALOG, client=admin_client, namespace=namespace)
     if cfg.exists:
         cfg.delete(wait=True)
+
+
+def get_model_catalog_pod(client: DynamicClient, model_registry_namespace: str) -> list[Pod]:
+    return list(
+        Pod.get(namespace=model_registry_namespace, label_selector="component=model-catalog", dyn_client=client)
+    )

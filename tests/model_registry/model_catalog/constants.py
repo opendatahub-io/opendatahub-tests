@@ -1,4 +1,3 @@
-DEFAULT_MODEL_CATALOG: str = "model-catalog-sources"
 CUSTOM_ECHO_CATALOG_ID: str = "sample_rhec_catalog"
 CUSTOM_MODEL_NAME = "rhelai1/modelcar-granite-7b-starter"
 CUSTOM_ECOSYSTEM_CATALOG: str = f"""catalogs:
@@ -39,3 +38,7 @@ models:
     - uri: https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.3/resolve/main/consolidated.safetensors
 """
 EXPECTED_CUSTOM_CATALOG_VALUES: dict[str, str] = {"id": CUSTOM_CATALOG_ID, "model_name": SAMPLE_CATALOG_FILE_NAME}
+DEFAULT_CATALOG_NAME: str = "Default Catalog"
+DEFAULT_CATALOG_ID: str = "default_catalog"
+CATALOG_TYPE: str = "yaml"
+DEFAULT_CATALOG_FILE: str = "/default/default-catalog.yaml"

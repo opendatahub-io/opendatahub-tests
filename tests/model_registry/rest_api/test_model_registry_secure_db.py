@@ -42,6 +42,7 @@ class TestModelRegistryWithSecureDB:
         "patch_mysql_deployment_with_ssl_ca",
         "patch_invalid_ca",
     )
+    @pytest.mark.sanity
     def test_register_model_with_invalid_ca(
         self: Self,
         admin_client: DynamicClient,

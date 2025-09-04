@@ -59,8 +59,9 @@ MODEL_DATA = {
     indirect=True,
 )
 class TestAsyncUploadE2E:
-    """RHOAIENG-29344: Test for async upload job with real MinIO, OCI registry, and Model Registry"""
+    """RHOAIENG-32501: Test for async upload job with real MinIO, OCI registry, Connection Secrets and Model Registry"""
 
+    # FAILS until https://github.com/kubeflow/model-registry/pull/1499 is merged downstream
     @pytest.mark.dependency(name="job_creation_and_pod_spawning")
     def test_job_creation_and_pod_spawning(
         self: Self,

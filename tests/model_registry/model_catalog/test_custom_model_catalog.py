@@ -28,13 +28,10 @@ LOGGER = get_logger(name=__name__)
     indirect=True,
 )
 @pytest.mark.usefixtures(
-    "updated_dsc_component_state_scope_session",
     "model_registry_namespace",
-    "model_registry_metadata_db_resources",
-    "model_registry_instance",
     "updated_catalog_config_map",
 )
-class TestModelCatalogRhec:
+class TestModelCatalogCustom:
     def test_model_custom_catalog_sources(
         self: Self,
         updated_catalog_config_map: tuple[ConfigMap, str, str],

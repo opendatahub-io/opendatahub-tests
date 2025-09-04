@@ -30,11 +30,13 @@ LOGGER = get_logger(name=__name__)
             {},
             {},
             MODEL_REGISTER_DATA,
+            marks=(pytest.mark.smoke),
         ),
         pytest.param(
             {"db_name": "mariadb"},
             {"db_name": "mariadb"},
             MODEL_REGISTER_DATA,
+            marks=(pytest.mark.sanity),
         ),
     ],
     indirect=True,
