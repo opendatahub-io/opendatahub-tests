@@ -32,7 +32,6 @@ from model_registry.types import RegisteredModel
 from tests.model_registry.utils import generate_namespace_name
 from utilities.general import generate_random_name
 
-from tests.model_registry.utils import delete_model_catalog_configmap
 
 from tests.model_registry.constants import (
     MR_OPERATOR_NAME,
@@ -79,7 +78,6 @@ def model_registry_instance(
         mr_instance = ModelRegistry(name=MR_INSTANCE_NAME, namespace=model_registry_namespace, ensure_exists=True)
         yield [mr_instance]
         mr_instance.delete(wait=True)
-        delete_model_catalog_configmap(admin_client=admin_client, namespace=model_registry_namespace)
     else:
         LOGGER.warning("Requested Oauth Proxy configuration:")
         mr_objects = get_model_registry_objects(
@@ -100,9 +98,6 @@ def model_registry_instance(
                     admin_client=admin_client, namespace_name=model_registry_namespace, number_of_consecutive_checks=6
                 )
             yield mr_instances
-
-        # since model catalog is associated with model registry instances, we need to clean up the config map manually
-        delete_model_catalog_configmap(admin_client=admin_client, namespace=model_registry_namespace)
 
 
 @pytest.fixture(scope="class")
