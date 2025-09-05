@@ -9,7 +9,7 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
 
-from utilities.constants import RuntimeTemplates, KServeDeploymentType
+from utilities.constants import RuntimeTemplates, KServeDeploymentType, QWEN_MODEL_NAME
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -35,6 +35,7 @@ def vllm_cpu_runtime(
                 "args": [
                     "--port=8032",
                     "--model=/mnt/models",
+                    f"--served-model-name={QWEN_MODEL_NAME}",
                 ],
                 "ports": [{"containerPort": 8032, "protocol": "TCP"}],
                 "volumeMounts": [{"mountPath": "/dev/shm", "name": "shm"}],
