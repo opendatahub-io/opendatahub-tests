@@ -61,6 +61,8 @@ from utilities.operator_utils import get_csv_related_images, get_cluster_service
 
 LOGGER = get_logger(name=__name__)
 
+pytest_plugins = ["tests.fixtures.inference", "tests.fixtures.guardrails", "tests.fixtures.trustyai"]
+
 
 @pytest.fixture(scope="session")
 def admin_client() -> DynamicClient:
@@ -695,3 +697,28 @@ def mariadb_operator_cr(
         )
         wait_for_mariadb_operator_deployments(mariadb_operator=mariadb_operator_cr)
         yield mariadb_operator_cr
+
+
+@pytest.fixture(scope="session")
+def gpu_count_on_cluster(nodes: list[Any]) -> int:
+    """Return total GPU count across all nodes in the cluster.
+
+    Counts full-GPU extended resources only:
+      - nvidia.com/gpu
+      - amd.com/gpu
+      - gpu.intel.com/*  (e.g., i915, xe)
+    Note: MIG slice resources (nvidia.com/mig-*) are intentionally ignored.
+    """
+    total_gpus = 0
+    allowed_exact = {"nvidia.com/gpu", "amd.com/gpu", "intel.com/gpu"}
+    allowed_prefixes = ("gpu.intel.com/",)
+    for node in nodes:
+        allocatable = getattr(node.instance.status, "allocatable", {}) or {}
+        for key, val in allocatable.items():
+            if key in allowed_exact or any(key.startswith(p) for p in allowed_prefixes):
+                try:
+                    total_gpus += int(val)
+                except (ValueError, TypeError):
+                    LOGGER.debug(f"Skipping non-integer allocatable for {key} on {node.name}: {val!r}")
+                    continue
+    return total_gpus

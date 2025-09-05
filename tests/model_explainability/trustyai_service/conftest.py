@@ -41,7 +41,6 @@ from tests.model_explainability.trustyai_service.trustyai_service_utils import (
 from tests.model_explainability.trustyai_service.utils import (
     create_trustyai_service,
     wait_for_mariadb_pods,
-    TRUSTYAI_SERVICE_NAME,
     create_isvc_getter_role,
     create_isvc_getter_role_binding,
     create_isvc_getter_service_account,
@@ -49,7 +48,7 @@ from tests.model_explainability.trustyai_service.utils import (
 )
 from utilities.logger import RedactedString
 from utilities.operator_utils import get_cluster_service_version
-from utilities.constants import KServeDeploymentType, Labels, OPENSHIFT_OPERATORS, MARIADB
+from utilities.constants import KServeDeploymentType, Labels, OPENSHIFT_OPERATORS, MARIADB, TRUSTYAI_SERVICE_NAME
 from utilities.inference_utils import create_isvc
 from utilities.infra import update_configmap_data, create_inference_token
 

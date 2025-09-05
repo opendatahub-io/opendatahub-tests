@@ -8,15 +8,13 @@ from ocp_resources.lm_eval_job import LMEvalJob
 from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
-from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from pytest import Config, FixtureRequest
-from pytest_testconfig import py_config
 
 from tests.model_explainability.lm_eval.utils import get_lmevaljob_pod
-from utilities.constants import Annotations, Labels, MinIo, Protocols, Timeout
+from utilities.constants import Labels, MinIo, Protocols, Timeout
 from utilities.exceptions import MissingParameter
 
 VLLM_EMULATOR: str = "vllm-emulator"
@@ -29,7 +27,7 @@ def lmevaljob_hf(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    patched_trustyai_operator_configmap_allow_online: ConfigMap,
+    patched_trustyai_configmap_allow_online: ConfigMap,
     lmeval_hf_access_token: Secret,
 ) -> Generator[LMEvalJob, None, None]:
     with LMEvalJob(
@@ -76,7 +74,7 @@ def lmevaljob_local_offline(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    patched_trustyai_operator_configmap_allow_online: ConfigMap,
+    patched_trustyai_configmap_allow_online: ConfigMap,
     lmeval_data_downloader_pod: Pod,
 ) -> Generator[LMEvalJob, Any, Any]:
     with LMEvalJob(
@@ -106,7 +104,7 @@ def lmevaljob_local_offline(
 def lmevaljob_vllm_emulator(
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    patched_trustyai_operator_configmap_allow_online: ConfigMap,
+    patched_trustyai_configmap_allow_online: ConfigMap,
     vllm_emulator_deployment: Deployment,
     vllm_emulator_service: Service,
     vllm_emulator_route: Route,
@@ -135,38 +133,6 @@ def lmevaljob_vllm_emulator(
         ],
     ) as job:
         yield job
-
-
-@pytest.fixture(scope="function")
-def patched_trustyai_operator_configmap_allow_online(admin_client: DynamicClient) -> Generator[ConfigMap, Any, Any]:
-    namespace: str = py_config["applications_namespace"]
-    trustyai_service_operator: str = "trustyai-service-operator"
-
-    configmap: ConfigMap = ConfigMap(
-        client=admin_client, name=f"{trustyai_service_operator}-config", namespace=namespace, ensure_exists=True
-    )
-    with ResourceEditor(
-        patches={
-            configmap: {
-                "metadata": {"annotations": {Annotations.OpenDataHubIo.MANAGED: "false"}},
-                "data": {
-                    "lmes-allow-online": "true",
-                    "lmes-allow-code-execution": "true",
-                },
-            }
-        }
-    ):
-        deployment: Deployment = Deployment(
-            client=admin_client,
-            name=f"{trustyai_service_operator}-controller-manager",
-            namespace=namespace,
-            ensure_exists=True,
-        )
-        num_replicas: int = deployment.replicas
-        deployment.scale_replicas(replica_count=0)
-        deployment.scale_replicas(replica_count=num_replicas)
-        deployment.wait_for_replicas()
-        yield configmap
 
 
 @pytest.fixture(scope="function")

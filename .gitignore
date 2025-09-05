@@ -168,7 +168,13 @@ cython_debug/
 .vscode/
 
 # AI Assistant Config Files
+.cursor/
+.clinerules/
+.roorules/
+AGENT.md
 CLAUDE.md
+GEMINI.md
+QWEN.md
 
 # Must-Gather Artifacts
 must-gather-collected/
