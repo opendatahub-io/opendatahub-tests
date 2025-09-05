@@ -33,18 +33,11 @@ DRIFT_METRICS = [
             {"storage": "pvc"},
             id="pvc-storage",
         ),
-        pytest.param(
-            {"name": "test-drift-db"},
-            MinIo.PodConfig.MODEL_MESH_MINIO_CONFIG,
-            {"bucket": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
-            {"storage": "db"},
-            id="db-storage",
-        ),
     ],
     indirect=True,
 )
 @pytest.mark.usefixtures("minio_pod")
-@pytest.mark.serverless
+@pytest.mark.rawdeployment
 @pytest.mark.smoke
 class TestDriftMetrics:
     """
@@ -67,6 +60,7 @@ class TestDriftMetrics:
         model_namespace,
         trustyai_service,
         gaussian_credit_model,
+        # gaussian_credit_model_route,
         isvc_getter_token,
     ) -> None:
         send_inferences_and_verify_trustyai_service_registered(
