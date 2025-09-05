@@ -372,4 +372,4 @@ CHAT_GENERATION_CONFIG: Dict[str, Any] = {
     "service": {"hostname": f"{QWEN_ISVC_NAME}-predictor", "port": 8032, "request_timeout": 600}
 }
 TRUSTYAI_SERVICE_NAME: str = "trustyai-service"
-QWEN_MODEL_NAME: str = "qwen2.5-0.5b-instruct"
+QWEN_MODEL_NAME: str = "qwen25-05b-instruct"

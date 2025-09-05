@@ -46,9 +46,9 @@ class TestLlamaStackCore:
         models = llama_stack_client.models.list()
 
         # We only need to check the first model;
-        # second is a granite embedding model present by default
-        assert len(models) == 2
-        assert models[0].identifier == QWEN_MODEL_NAME
+        # Second and third are embedding models present by default
+        assert len(models) >= 2
+        assert models[0].identifier == f"{LlamaStackProviders.Inference.VLLM_INFERENCE.value}/{QWEN_MODEL_NAME}"
         assert models[0].model_type == "llm"
         assert models[0].provider_id == LlamaStackProviders.Inference.VLLM_INFERENCE
 
