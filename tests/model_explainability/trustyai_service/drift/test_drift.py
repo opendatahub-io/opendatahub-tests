@@ -44,7 +44,7 @@ DRIFT_METRICS = [
     indirect=True,
 )
 @pytest.mark.usefixtures("minio_pod")
-@pytest.mark.serverless
+@pytest.mark.rawdeployment
 @pytest.mark.smoke
 class TestDriftMetrics:
     """

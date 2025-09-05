@@ -317,6 +317,7 @@ def send_inferences_and_verify_trustyai_service_registered(
                 inference_input=data,
                 use_default_query=False,
                 token=inference_token,
+                insecure=True,
             )
             LOGGER.debug(f"Inference response: {res}")
             samples = TimeoutSampler(
@@ -372,7 +373,7 @@ def wait_for_isvc_deployment_registered_by_trustyai_service(
         for deployment in deployments:
             if (
                 deployment.instance.metadata.annotations.get("internal.serving.kserve.io/logger-sink-url")
-                == f"http://{trustyai_service.name}.{isvc.namespace}.svc.cluster.local"
+                == f"https://{trustyai_service.name}.{isvc.namespace}.svc.cluster.local"
             ):
                 deployment.wait_for_replicas()
             elif deployment.instance.spec.replicas != 0:

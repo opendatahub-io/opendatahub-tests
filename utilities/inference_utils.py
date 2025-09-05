@@ -94,7 +94,7 @@ class Inference:
 
         """
         if self.visibility_exposed:
-            if self.deployment_mode == KServeDeploymentType.MODEL_MESH:
+            if self.deployment_mode in [KServeDeploymentType.MODEL_MESH, KServeDeploymentType.RAW_DEPLOYMENT]:
                 route = get_model_route(client=self.inference_service.client, isvc=self.inference_service)
                 return route.instance.spec.host
 

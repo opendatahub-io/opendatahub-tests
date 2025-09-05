@@ -2,6 +2,7 @@ from typing import Any, Generator
 
 import pytest
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
@@ -44,12 +45,14 @@ def onnx_loan_model(
     minio_service: Service,
     minio_data_connection: Secret,
     ovms_runtime: ServingRuntime,
+    kserve_raw_config: ConfigMap,
+    kserve_logger_ca_bundle: ConfigMap,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
         name="demo-loan-nn-onnx-alpha",
         namespace=model_namespace.name,
-        deployment_mode=KServeDeploymentType.SERVERLESS,
+        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         model_format=ModelFormat.ONNX,
         runtime=ovms_runtime.name,
         storage_key=minio_data_connection.name,
@@ -57,6 +60,7 @@ def onnx_loan_model(
         min_replicas=1,
         resources={"limits": {"cpu": "2", "memory": "8Gi"}, "requests": {"cpu": "1", "memory": "4Gi"}},
         enable_auth=True,
+        external_route=True,
         model_version="1",
         wait=True,
         wait_for_predictor_pods=False,

@@ -71,7 +71,7 @@ def get_fairness_request_json_data(isvc: InferenceService) -> dict[str, Any]:
     indirect=True,
 )
 @pytest.mark.usefixtures("minio_pod")
-@pytest.mark.serverless
+@pytest.mark.rawdeployment
 @pytest.mark.smoke
 class TestFairnessMetrics:
     """
