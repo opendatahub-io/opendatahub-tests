@@ -136,7 +136,6 @@ class TestDriftMetricsWithDBStorageMultiNs:
         model_namespaces,
         trustyai_service_with_db_storage_multi_ns,
         gaussian_credit_model_multi_ns,
-        gaussian_credit_model_routes_multi_ns,
         isvc_getter_token_multi_ns,
     ):
         for tai, inference_model, inference_token in zip(

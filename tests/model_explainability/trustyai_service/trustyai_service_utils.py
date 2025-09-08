@@ -318,7 +318,6 @@ def send_inferences_and_verify_trustyai_service_registered(
                 inference_input=data,
                 use_default_query=False,
                 token=inference_token,
-                insecure=True,
             )
             LOGGER.debug(f"Inference response: {res}")
             samples = TimeoutSampler(
