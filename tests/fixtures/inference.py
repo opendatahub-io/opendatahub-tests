@@ -9,7 +9,7 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
 
-from utilities.constants import RuntimeTemplates, KServeDeploymentType
+from utilities.constants import RuntimeTemplates, KServeDeploymentType, QWEN_MODEL_NAME
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -32,10 +32,7 @@ def vllm_cpu_runtime(
         "@sha256:ada6b3ba98829eb81ae4f89364d9b431c0222671eafb9a04aa16f31628536af2",
         containers={
             "kserve-container": {
-                "args": [
-                    "--port=8032",
-                    "--model=/mnt/models",
-                ],
+                "args": ["--port=8032", "--model=/mnt/models", "--served-model-name={{.Name}}"],
                 "ports": [{"containerPort": 8032, "protocol": "TCP"}],
                 "volumeMounts": [{"mountPath": "/dev/shm", "name": "shm"}],
             }
@@ -56,7 +53,7 @@ def qwen_isvc(
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
-        name="qwen-isvc",
+        name=QWEN_MODEL_NAME,
         namespace=model_namespace.name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         model_format="vLLM",

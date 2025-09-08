@@ -37,21 +37,6 @@ from tests.model_registry.async_job.constants import REPO_NAME
 from utilities.general import get_s3_secret_dict
 
 
-# We need to upstream this to the wrapper library
-class JobWithVolumes(Job):
-    """Extended Job class that supports volumes"""
-
-    def __init__(self, volumes=None, **kwargs):
-        super().__init__(**kwargs)
-        self.volumes = volumes or []
-
-    def to_dict(self) -> None:
-        super().to_dict()
-        if not self.kind_dict and not self.yaml_file and self.volumes:
-            self.res["spec"].setdefault("template", {}).setdefault("spec", {})
-            self.res["spec"]["template"]["spec"]["volumes"] = self.volumes
-
-
 @pytest.fixture(scope="class")
 def s3_secret_for_async_job(
     admin_client: DynamicClient,
@@ -215,7 +200,7 @@ def model_sync_async_job(
         },
     ]
 
-    with JobWithVolumes(
+    with Job(
         client=admin_client,
         name=ASYNC_UPLOAD_JOB_NAME,
         namespace=service_account.namespace,

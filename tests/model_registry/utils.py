@@ -24,7 +24,6 @@ from tests.model_registry.constants import (
     MARIADB_MY_CNF,
     PORT_MAP,
     MODEL_REGISTRY_POD_FILTER,
-    DEFAULT_MODEL_CATALOG,
 )
 from tests.model_registry.exceptions import ModelRegistryResourceNotFoundError
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
@@ -717,12 +716,6 @@ def validate_mlmd_removal_in_model_registry_pod_log(
         if "MLMD" in log:
             errors.append(f"MLMD reference found in {container_name} log")
     assert not errors, f"Log validation failed with error(s): {errors}"
-
-
-def delete_model_catalog_configmap(admin_client: DynamicClient, namespace: str) -> None:
-    cfg = ConfigMap(name=DEFAULT_MODEL_CATALOG, client=admin_client, namespace=namespace)
-    if cfg.exists:
-        cfg.delete(wait=True)
 
 
 def get_model_catalog_pod(client: DynamicClient, model_registry_namespace: str) -> list[Pod]:

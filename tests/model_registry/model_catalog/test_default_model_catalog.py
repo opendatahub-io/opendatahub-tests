@@ -10,6 +10,7 @@ from ocp_resources.pod import Pod
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.route import Route
 from ocp_resources.service import Service
+from tests.model_registry.model_catalog.constants import DEFAULT_CATALOG_ID, DEFAULT_CATALOG_NAME
 from tests.model_registry.model_catalog.utils import (
     validate_model_catalog_enabled,
     execute_get_command,
@@ -25,6 +26,7 @@ LOGGER = get_logger(name=__name__)
     "model_registry_namespace",
 )
 class TestModelCatalog:
+    @pytest.mark.post_upgrade
     def test_config_map_exists(self: Self, catalog_config_map: ConfigMap):
         # Check that the default configmaps is created when model registry is
         # enabled on data science cluster.
@@ -55,6 +57,7 @@ class TestModelCatalog:
             ),
         ],
     )
+    @pytest.mark.post_upgrade
     def test_model_catalog_resources_exists(
         self: Self, admin_client: DynamicClient, model_registry_namespace: str, resource_name: Any
     ):
@@ -79,6 +82,8 @@ class TestModelCatalog:
         )["items"]
         assert result
         assert len(result) == 1, f"Expected no custom models to be present. Actual: {result}"
+        assert result[0]["id"] == DEFAULT_CATALOG_ID
+        assert result[0]["name"] == DEFAULT_CATALOG_NAME
 
     def test_default_config_map_not_present(self: Self, model_registry_namespace: str):
         # RHOAIENG-33246: Introduced a new configmap. It should be removed before 2.25 release
