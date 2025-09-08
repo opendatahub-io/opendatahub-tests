@@ -53,7 +53,7 @@ from utilities.operator_utils import get_cluster_service_version
 from utilities.constants import KServeDeploymentType, Labels, OPENSHIFT_OPERATORS, MARIADB, TRUSTYAI_SERVICE_NAME
 from utilities.inference_utils import create_isvc
 from ocp_resources.resource import ResourceEditor
-from utilities.infra import create_inference_token, get_kserve_storage_initialize_image
+from utilities.infra import create_inference_token, get_kserve_storage_initialize_image, update_configmap_data
 
 DB_CREDENTIALS_SECRET_NAME: str = "db-credentials"
 DB_NAME: str = "trustyai_db"
@@ -151,22 +151,13 @@ def kserve_logger_ca_bundle(admin_client: DynamicClient, model_namespace: Namesp
 
 @pytest.fixture(scope="session")
 def user_workload_monitoring_config(admin_client: DynamicClient) -> Generator[ConfigMap, Any, Any]:
-    data = {"config.yaml": yaml.dump(data={"prometheus": {"logLevel": "debug", "retention": "15d"}})}
-
-    cm = ConfigMap(
+    data = {"config.yaml": yaml.dump({"prometheus": {"logLevel": "debug", "retention": "15d"}})}
+    with update_configmap_data(
         client=admin_client,
         name="user-workload-monitoring-config",
         namespace="openshift-user-workload-monitoring",
-        ensure_exists=True,
-    )
-
-    with ResourceEditor(
-        patches={
-            cm: {
-                "data": data,
-            }
-        }
-    ):
+        data=data,
+    ) as cm:
         yield cm
 
 
