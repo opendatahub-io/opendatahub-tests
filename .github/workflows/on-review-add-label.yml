@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 'Download artifact'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             let allArtifacts = await github.rest.actions.listWorkflowRunArtifacts({
@@ -48,7 +48,7 @@ jobs:
       - name: 'Unzip artifact'
         run: unzip context.zip
       - name: 'Return Parsed JSON'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         id: return-parsed-json
         with:
           script: |
@@ -79,7 +79,7 @@ jobs:
           echo "REVIEW_COMMENT_BODY=${{ needs.download_context_artifact.outputs.review_comment_body }}"  >> "$GITHUB_ENV"
           echo "GITHUB_USER_LOGIN=${{ needs.download_context_artifact.outputs.user_login }}"  >> "$GITHUB_ENV"
           echo "ACTION=${{ needs.download_context_artifact.outputs.action }}"  >> "$GITHUB_ENV"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install uv
         uses: astral-sh/setup-uv@v6
