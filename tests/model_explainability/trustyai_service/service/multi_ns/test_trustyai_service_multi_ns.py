@@ -123,6 +123,7 @@ class TestTrustyAIServiceMultipleNS:
     indirect=True,
 )
 @pytest.mark.usefixtures("minio_pod")
+@pytest.mark.rawdeployment
 class TestDriftMetricsWithDBStorageMultiNs:
     """
     Verifies drift metric functionality in TrustyAI using MariaDB storage
