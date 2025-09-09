@@ -50,7 +50,14 @@ from tests.model_explainability.trustyai_service.utils import (
 )
 from utilities.logger import RedactedString
 from utilities.operator_utils import get_cluster_service_version
-from utilities.constants import KServeDeploymentType, Labels, OPENSHIFT_OPERATORS, MARIADB, TRUSTYAI_SERVICE_NAME
+from utilities.constants import (
+    KServeDeploymentType,
+    Labels,
+    OPENSHIFT_OPERATORS,
+    MARIADB,
+    TRUSTYAI_SERVICE_NAME,
+    Annotations,
+)
 from utilities.inference_utils import create_isvc
 from ocp_resources.resource import ResourceEditor
 from utilities.infra import create_inference_token, get_kserve_storage_initialize_image, update_configmap_data
@@ -128,7 +135,7 @@ def kserve_raw_config(admin_client: DynamicClient) -> Generator[ConfigMap, Any, 
     with ResourceEditor(
         patches={
             cm: {
-                "metadata": {"annotations": {"opendatahub.io/managed": "false"}},
+                "metadata": {"annotations": {Annotations.OpenDataHubIo.MANAGED: "false"}},
                 "data": data,
             }
         }
@@ -295,7 +302,6 @@ def gaussian_credit_model(
             enable_auth=True,
             external_route=True,
             wait_for_predictor_pods=False,
-            wait=False,
             resources=GAUSSIAN_CREDIT_MODEL_RESOURCES,
             teardown=teardown_resources,
             **gaussian_credit_model_kwargs,

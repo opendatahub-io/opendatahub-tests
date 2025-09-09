@@ -35,7 +35,6 @@ class TestPreUpgradeTrustyAIService:
         isvc_getter_token,
         trustyai_service,
         gaussian_credit_model,
-        gaussian_credit_model_route,
     ) -> None:
         """Set up a TrustyAIService with a model and inference before upgrade."""
         send_inferences_and_verify_trustyai_service_registered(
