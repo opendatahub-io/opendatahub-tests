@@ -8,7 +8,8 @@ from ocp_resources.resource import ResourceEditor
 
 from ocp_resources.route import Route
 from tests.model_registry.constants import DEFAULT_MODEL_CATALOG
-from tests.model_registry.model_catalog.utils import is_model_catalog_ready, wait_for_model_catalog_api
+from tests.model_registry.model_catalog.constants import SAMPLE_MODEL_NAME3, CUSTOM_CATALOG_ID1
+from tests.model_registry.model_catalog.utils import is_model_catalog_ready, wait_for_model_catalog_api, get_model_str
 
 
 @pytest.fixture(scope="class")
@@ -47,7 +48,8 @@ def updated_catalog_config_map(
 ) -> Generator[ConfigMap, None, None]:
     patches = {"data": {"sources.yaml": request.param["sources_yaml"]}}
     if "sample_yaml" in request.param:
-        patches["data"]["sample-catalog.yaml"] = request.param["sample_yaml"]
+        for key in request.param["sample_yaml"]:
+            patches["data"][key] = request.param["sample_yaml"][key]
 
     with ResourceEditor(patches={catalog_config_map: patches}):
         is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
@@ -59,3 +61,21 @@ def updated_catalog_config_map(
 @pytest.fixture(scope="class")
 def expected_catalog_values(request: pytest.FixtureRequest) -> dict[str, str]:
     return request.param
+
+
+@pytest.fixture(scope="function")
+def update_configmap_data_add_model(
+    request: pytest.FixtureRequest,
+    catalog_config_map: ConfigMap,
+    model_registry_namespace: str,
+    admin_client: DynamicClient,
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+) -> Generator[ConfigMap, None, None]:
+    patches = catalog_config_map.instance.to_dict()
+    patches["data"][f"{CUSTOM_CATALOG_ID1.replace('_', '-')}.yaml"] += get_model_str(model=SAMPLE_MODEL_NAME3)
+    with ResourceEditor(patches={catalog_config_map: patches}):
+        is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+        wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
+        yield catalog_config_map
+    is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
