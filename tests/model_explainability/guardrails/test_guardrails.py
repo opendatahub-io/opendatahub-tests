@@ -5,12 +5,9 @@ from typing import Dict, Any
 import pytest
 import requests
 import yaml
-from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
-from tests.model_explainability.constants import MNT_MODELS
-from tests.model_explainability.guardrails.conftest import wait_for_jaeger_pods
 from tests.model_explainability.guardrails.constants import (
     PROMPT_WITH_PII,
     EXAMPLE_EMAIL_ADDRESS,
@@ -206,17 +203,16 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         )
 
     def test_guardrails_traces_in_jaeger(
-            self,
-            admin_client,
-            jaeger_instance,
-            otel_operator_cr,
-            model_namespace,
-            minio_pod,
-            minio_data_connection,
-            orchestrator_config,
-            guardrails_orchestrator,
-            guardrails_gateway_config,
-
+        self,
+        admin_client,
+        jaeger_instance,
+        otel_operator_cr,
+        model_namespace,
+        minio_pod,
+        minio_data_connection,
+        orchestrator_config,
+        guardrails_orchestrator,
+        guardrails_gateway_config,
     ):
         """
         Ensure that OpenTelemetry traces from Guardrails Orchestrator are collected in Jaeger.
@@ -519,4 +515,3 @@ class TestGuardrailsOrchestratorWithMultipleDetectors:
         )
 
         verify_negative_detection_response(response=response)
-
