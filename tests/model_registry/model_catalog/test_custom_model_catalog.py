@@ -85,13 +85,11 @@ class TestModelCatalogCustom:
         Validate models api for model catalog associated with a specific source
         """
         for expected_entry in expected_catalog_values:
-            LOGGER.info(f"Expected entry: {expected_entry}")
             url = f"{model_catalog_rest_url[0]}models?source={expected_entry['id']}"
             result = execute_get_command(
                 url=url,
                 headers=model_registry_rest_headers,
             )["items"]
-            LOGGER.info(f"URL: {url} Result: {result}")
             assert result, f"Expected custom models to be present. Actual: {result}"
 
     def test_model_custom_catalog_get_model_by_name(
@@ -105,14 +103,12 @@ class TestModelCatalogCustom:
         Get Model by name associated with a specific source
         """
         for expected_entry in expected_catalog_values:
-            LOGGER.info(f"Expected entry: {expected_entry}")
             model_name = expected_entry["model_name"]
             url = f"{model_catalog_rest_url[0]}sources/{expected_entry['id']}/models/{model_name}"
             result = execute_get_command(
                 url=url,
                 headers=model_registry_rest_headers,
             )
-            LOGGER.info(f"URL: {url} Result: {result}")
             assert result["name"] == model_name
 
     def test_model_custom_catalog_get_model_artifact(
@@ -126,8 +122,6 @@ class TestModelCatalogCustom:
         Get Model artifacts for model associated with specific source
         """
         for expected_entry in expected_catalog_values:
-            LOGGER.info(f"Expected entry: {expected_entry}")
-
             model_name = expected_entry["model_name"]
             url = f"{model_catalog_rest_url[0]}sources/{expected_entry['id']}/models/{model_name}/artifacts"
 
@@ -135,7 +129,6 @@ class TestModelCatalogCustom:
                 url=url,
                 headers=model_registry_rest_headers,
             )["items"]
-            LOGGER.info(f"URL: {url} Result: {artifacts}")
 
             assert artifacts, f"No artifacts found for {model_name}"
             assert artifacts[0]["uri"]
@@ -156,7 +149,6 @@ class TestModelCatalogCustom:
             url=url,
             headers=model_registry_rest_headers,
         )
-        LOGGER.info(f"URL: {url} Result: {result}")
         assert result["name"] == SAMPLE_MODEL_NAME3
 
     @pytest.mark.dependency(depends=["test_model_custom_catalog_add_model"])
