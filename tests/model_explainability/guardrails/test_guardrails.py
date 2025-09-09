@@ -1,4 +1,5 @@
 import http
+import time
 from typing import Dict, Any
 
 import pytest
@@ -199,6 +200,40 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         verify_builtin_detector_unsuitable_output_response(
             response=response, detector_id="regex", detection_name="email_address", detection_type="pii"
         )
+
+    def test_guardrails_traces_in_jaeger(
+        self,
+        admin_client,
+        jaeger_instance,
+        otel_operator_cr,
+        model_namespace,
+        minio_pod,
+        minio_data_connection,
+        orchestrator_config,
+        guardrails_orchestrator,
+        guardrails_gateway_config,
+    ):
+        """
+        Ensure that OpenTelemetry traces from Guardrails Orchestrator are collected in Jaeger.
+        Equivalent to clicking 'Find Traces' in the Jaeger UI.
+        """
+        # Jaeger query service URL (in-cluster)
+        jaeger_query_service = f"http://{jaeger_instance.name}-query.{model_namespace.name}.svc:16686/api/traces"
+
+        # Wait a bit to allow traces to be generated
+        time.sleep(10)
+
+        @retry(wait_timeout=Timeout.TIMEOUT_1MIN, sleep=5)
+        def check_traces():
+            response = requests.get(f"{jaeger_query_service}?service=jaeger-all-in-one")
+            if response.status_code == http.HTTPStatus.OK:
+                data = response.json()
+                if data.get("data"):  # non-empty list of traces
+                    return data
+            return False
+
+        traces = check_traces()
+        assert traces["data"], "No traces found in Jaeger for service jaeger-all-in-one"
 
     @pytest.mark.parametrize(
         "message, url_path",
