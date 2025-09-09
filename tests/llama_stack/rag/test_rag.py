@@ -6,24 +6,16 @@ from llama_stack_client import Agent, LlamaStackClient, RAGDocument
 from llama_stack_client.types import EmbeddingsResponse, QueryChunksResponse
 from llama_stack_client.types.vector_io_insert_params import Chunk
 from simple_logger.logger import get_logger
-
-from utilities.constants import MinIo, QWEN_MODEL_NAME
 from utilities.rag_utils import TurnExpectation, validate_rag_agent_responses
 
 LOGGER = get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(
-    "model_namespace, minio_pod, minio_data_connection, llama_stack_server_config",
+    "model_namespace",
     [
         pytest.param(
             {"name": "test-llamastack-rag"},
-            MinIo.PodConfig.QWEN_HAP_BPIV2_MINIO_CONFIG,
-            {"bucket": "llms"},
-            {
-                "vllm_url_fixture": "qwen_isvc_url",
-                "inference_model": QWEN_MODEL_NAME,
-            },
         )
     ],
     indirect=True,
@@ -37,9 +29,7 @@ class TestLlamaStackRag:
     """
 
     @pytest.mark.smoke
-    def test_rag_inference_embeddings(
-        self, minio_pod, minio_data_connection, llama_stack_client: LlamaStackClient
-    ) -> None:
+    def test_rag_inference_embeddings(self, llama_stack_client: LlamaStackClient) -> None:
         """
         Test embedding model functionality and vector generation.
 
@@ -61,9 +51,7 @@ class TestLlamaStackRag:
         assert isinstance(embeddings_response.embeddings[0][0], float)
 
     @pytest.mark.smoke
-    def test_rag_vector_io_ingestion_retrieval(
-        self, minio_pod, minio_data_connection, llama_stack_client: LlamaStackClient
-    ) -> None:
+    def test_rag_vector_io_ingestion_retrieval(self, llama_stack_client: LlamaStackClient) -> None:
         """
         Validates basic vector_db API in llama-stack using milvus
 
@@ -122,7 +110,7 @@ class TestLlamaStackRag:
                 LOGGER.warning(f"Failed to unregister vector database {vector_db_id}: {e}")
 
     @pytest.mark.smoke
-    def test_rag_simple_agent(self, minio_pod, minio_data_connection, llama_stack_client: LlamaStackClient) -> None:
+    def test_rag_simple_agent(self, llama_stack_client: LlamaStackClient) -> None:
         """
         Test basic agent creation and conversation capabilities.
 
@@ -153,12 +141,15 @@ class TestLlamaStackRag:
             session_id=s_id,
             stream=False,
         )
-        content = response.output_message.content
+        content = response.output_message.content.lower()
         assert content is not None, "LLM response content is None"
-        assert "answers" in content, "The LLM didn't provide the expected answer to the prompt"
+        assert "answer" in content, "The LLM didn't provide the expected answer to the prompt"
+        assert "translate" in content, "The LLM didn't provide the expected answer to the prompt"
+        assert "summarize" in content, "The LLM didn't provide the expected answer to the prompt"
+        assert "chat" in content, "The LLM didn't provide the expected answer to the prompt"
 
     @pytest.mark.smoke
-    def test_rag_build_rag_agent(self, minio_pod, minio_data_connection, llama_stack_client: LlamaStackClient) -> None:
+    def test_rag_build_rag_agent(self, llama_stack_client: LlamaStackClient) -> None:
         """
         Test full RAG pipeline with vector database integration and knowledge retrieval.
 
