@@ -26,7 +26,6 @@ from utilities.constants import (
     BUILTIN_DETECTOR_CONFIG,
     MinIo,
     QWEN_MODEL_NAME,
-    QWEN_ISVC_NAME,
 )
 from utilities.plugins.constant import OpenAIEnpoints
 
@@ -246,7 +245,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
                     "config.yaml": yaml.dump({
                         "openai": {
                             "service": {
-                                "hostname": f"{QWEN_ISVC_NAME}-predictor",
+                                "hostname": f"{QWEN_MODEL_NAME}-predictor",
                                 "port": 8032,
                             }
                         },
@@ -383,7 +382,7 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
                     "config.yaml": yaml.dump({
                         "openai": {
                             "service": {
-                                "hostname": f"{QWEN_ISVC_NAME}-predictor",
+                                "hostname": f"{QWEN_MODEL_NAME}-predictor",
                                 "port": 8032,
                             }
                         },

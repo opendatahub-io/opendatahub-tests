@@ -368,8 +368,9 @@ BUILTIN_DETECTOR_CONFIG: Dict[str, Any] = {
 }
 
 QWEN_ISVC_NAME = "qwen-isvc"
+QWEN_MODEL_NAME: str = "qwen25-05b-instruct"
+
 CHAT_GENERATION_CONFIG: Dict[str, Any] = {
-    "service": {"hostname": f"{QWEN_ISVC_NAME}-predictor", "port": 8032, "request_timeout": 600}
+    "service": {"hostname": f"{QWEN_MODEL_NAME}-predictor", "port": 8032, "request_timeout": 600}
 }
 TRUSTYAI_SERVICE_NAME: str = "trustyai-service"
-QWEN_MODEL_NAME: str = "qwen25-05b-instruct"
