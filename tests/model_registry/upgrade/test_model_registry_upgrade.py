@@ -28,7 +28,7 @@ LOGGER = get_logger(name=__name__)
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("pre_upgrade_dsc_patch", "model_registry_metadata_db_resources", "model_registry_instance")
+@pytest.mark.usefixtures("model_registry_metadata_db_resources", "model_registry_instance")
 class TestPreUpgradeModelRegistry:
     @pytest.mark.pre_upgrade
     def test_registering_model_pre_upgrade(
@@ -43,7 +43,6 @@ class TestPreUpgradeModelRegistry:
             pytest.fail("errors found in model registry response validation:\n{}".format("\n".join(errors)))
 
 
-@pytest.mark.usefixtures("post_upgrade_dsc_patch")
 class TestPostUpgradeModelRegistry:
     @pytest.mark.post_upgrade
     def test_retrieving_model_post_upgrade(
