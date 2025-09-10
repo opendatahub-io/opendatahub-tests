@@ -449,6 +449,7 @@ def pytest_exception_interact(node: Item | Collector, call: CallInfo[Any], repor
 
         try:
             collect_rhoai_must_gather(
+                base_file_name=f"mg-{test_start_time}",
                 since=calculate_must_gather_timer(test_start_time=test_start_time),
                 target_dir=os.path.join(get_must_gather_collector_dir(), "pytest_exception_interact"),
             )

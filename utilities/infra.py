@@ -1,16 +1,13 @@
-import base64
 import json
 import os
 import re
 import shlex
 import stat
 import tarfile
-import tempfile
 import zipfile
 from contextlib import contextmanager
 from functools import cache
 from typing import Any, Generator, Optional, Set, Callable
-from json import JSONDecodeError
 
 import kubernetes
 import platform
@@ -1025,15 +1022,6 @@ def get_rhods_operator_installed_csv() -> ClusterServiceVersion | None:
     return None
 
 
-def get_rhods_csv_version() -> Version | None:
-    rhoai_csv = get_rhods_operator_installed_csv()
-    if rhoai_csv:
-        LOGGER.info(f"RHOAI CSV version: {rhoai_csv.instance.spec.version}")
-        return Version.parse(version=rhoai_csv.instance.spec.version)
-    LOGGER.warning("No RHOAI CSV found. Potentially ODH cluster")
-    return None
-
-
 @retry(
     wait_timeout=120,
     sleep=5,
@@ -1113,56 +1101,6 @@ def verify_cluster_sanity(
 
         # TODO: Write to file to easily report the failure in jenkins
         pytest.exit(reason=error_msg, returncode=return_code)
-
-
-def get_openshift_pull_secret(client: DynamicClient = None) -> Secret:
-    openshift_config_namespace = "openshift-config"
-    pull_secret_name = "pull-secret"  # pragma: allowlist secret
-    secret = Secret(
-        client=client or get_client(),
-        name=pull_secret_name,
-        namespace=openshift_config_namespace,
-    )
-    assert secret.exists, f"Pull-secret {pull_secret_name} not found in namespace {openshift_config_namespace}"
-    return secret
-
-
-def generate_openshift_pull_secret_file(client: DynamicClient = None) -> str:
-    pull_secret = get_openshift_pull_secret(client=client)
-    pull_secret_path = tempfile.mkdtemp(suffix="odh-pull-secret")
-    json_file = os.path.join(pull_secret_path, "pull-secrets.json")
-    secret = base64.b64decode(pull_secret.instance.data[".dockerconfigjson"]).decode(encoding="utf-8")
-    with open(file=json_file, mode="w") as outfile:
-        outfile.write(secret)
-    return json_file
-
-
-def get_oc_image_info(
-    image: str,
-    architecture: str,
-    pull_secret: str | None = None,
-) -> Any:
-    def _get_image_json(cmd: str) -> Any:
-        return json.loads(run_command(command=shlex.split(cmd), check=False)[1])
-
-    base_command = f"oc image -o json info {image} --filter-by-os {architecture}"
-    if pull_secret:
-        base_command = f"{base_command} --registry-config={pull_secret}"
-
-    sample = None
-    try:
-        for sample in TimeoutSampler(
-            wait_timeout=10,
-            sleep=5,
-            exceptions_dict={JSONDecodeError: [], TypeError: []},
-            func=_get_image_json,
-            cmd=base_command,
-        ):
-            if sample:
-                return sample
-    except TimeoutExpiredError:
-        LOGGER.error(f"Failed to parse {base_command}")
-        raise
 
 
 def get_machine_platform() -> str:
