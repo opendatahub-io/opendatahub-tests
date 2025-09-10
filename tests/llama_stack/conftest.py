@@ -83,18 +83,9 @@ def llama_stack_server_config(
                     "name": "MILVUS_DB_PATH",
                     "value": "~/.llama/milvus.db",
                 },
-                {
-                    "name": "MILVUS_ENDPOINT", 
-                    "value": "http://rag-milvus-service:19530"
-                },
-                {
-                    "name": "MILVUS_TOKEN", 
-                    "value": "root:Milvus"
-                },
-                {
-                    "name": "FMS_ORCHESTRATOR_URL", 
-                    "value": fms_orchestrator_url
-                },
+                {"name": "MILVUS_ENDPOINT", "value": "http://rag-milvus-service:19530"},
+                {"name": "MILVUS_TOKEN", "value": "root:Milvus"},
+                {"name": "FMS_ORCHESTRATOR_URL", "value": fms_orchestrator_url},
             ],
             "name": "llama-stack",
             "port": 8321,

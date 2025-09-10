@@ -59,7 +59,7 @@ def get_milvus_deployment_template() -> dict[str, Any]:
             "containers": [
                 {
                     "name": "milvus-standalone",
-                    "image": "quay.io/mcampbel/milvus:v2.6.0", # TODO: Replace this image
+                    "image": "quay.io/mcampbel/milvus:v2.6.0",  # TODO: Replace this image
                     "args": ["milvus", "run", "standalone"],
                     "ports": [{"containerPort": 19530, "protocol": "TCP"}],
                     "volumeMounts": [
