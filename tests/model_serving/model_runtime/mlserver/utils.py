@@ -12,7 +12,7 @@ import base64
 import json
 import os
 import subprocess
-from typing import Any
+from typing import Any, Dict
 
 import portforward
 import requests
@@ -32,6 +32,15 @@ from tests.model_serving.model_runtime.mlserver.constant import (
     SERVERLESS_DEPLOYMENT_TYPE,
     BASE_RAW_DEPLOYMENT_CONFIG,
     BASE_SERVERLESS_DEPLOYMENT_CONFIG,
+    MLSERVER_RUNTIME_LABELS,
+    MLSERVER_RUNTIME_ANNOTATIONS,
+    MLSERVER_SUPPORTED_MODEL_FORMATS,
+    MLSERVER_IMAGE,
+    MLSERVER_CONTAINER_ENV,
+    MLSERVER_CONTAINER_SECURITY_CONTEXT,
+    MLSERVER_PORTS_MAP,
+    TEMPLATE_NAME_MAP,
+    RUNTIME_NAME_MAP,
 )
 from utilities.constants import KServeDeploymentType, Protocols
 
@@ -346,3 +355,51 @@ def get_test_case_id(model_format_name: str, deployment_type: str, protocol_type
               Example: "onnx-raw-rest-deployment"
     """
     return f"{model_format_name.strip()}-{deployment_type.strip()}-{protocol_type.strip()}-deployment"
+
+
+def mlserver_runtime_template_dict(protocol: str) -> Dict[str, Any]:
+    """
+    Build MLSERVER ServingRuntime template dict for REST or gRPC protocol.
+    Args:
+        protocol: "rest" or "grpc"
+    Returns:
+        Dict representing ServingRuntime template
+    """
+    if protocol not in {"rest", "grpc"}:
+        raise ValueError("protocol must be either 'rest' or 'grpc'")
+
+    # Port differs based on protocol
+    ports_map = MLSERVER_PORTS_MAP.get(protocol, MLSERVER_PORTS_MAP[Protocols.REST])
+
+    return {
+        "metadata": {"name": TEMPLATE_NAME_MAP.get(protocol)},
+        "objects": [
+            {
+                "apiVersion": "serving.kserve.io/v1alpha1",
+                "kind": "ServingRuntime",
+                "metadata": {
+                    "name": RUNTIME_NAME_MAP.get(protocol),
+                    "labels": MLSERVER_RUNTIME_LABELS,
+                },
+                "spec": {
+                    "annotations": MLSERVER_RUNTIME_ANNOTATIONS,
+                    "multiModel": False,
+                    "protocolVersions": ["v2"],
+                    "supportedModelFormats": MLSERVER_SUPPORTED_MODEL_FORMATS,
+                    "containers": [
+                        {
+                            "name": "kserve-container",
+                            "image": MLSERVER_IMAGE,
+                            "env": MLSERVER_CONTAINER_ENV,
+                            "resources": {
+                                "requests": {"cpu": "1", "memory": "2Gi"},
+                                "limits": {"cpu": "1", "memory": "2Gi"},
+                            },
+                            "ports": ports_map,
+                            "securityContext": MLSERVER_CONTAINER_SECURITY_CONTEXT,
+                        }
+                    ],
+                },
+            }
+        ],
+    }
