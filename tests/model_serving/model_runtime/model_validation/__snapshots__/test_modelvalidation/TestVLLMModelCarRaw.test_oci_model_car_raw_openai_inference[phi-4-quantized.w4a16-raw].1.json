@@ -1,0 +1,50 @@
+[
+  {
+    "finish_reason": "stop",
+    "index": 0,
+    "logprobs": null,
+    "prompt_logprobs": null,
+    "stop_reason": null,
+    "text": ""
+  },
+  {
+    "finish_reason": "length",
+    "index": 0,
+    "logprobs": null,
+    "prompt_logprobs": null,
+    "stop_reason": null,
+    "text": " Then, provide a brief explanation of any cultural nuances or differences in interpretation that might arise in each language due to linguistic or cultural factors. Ensure that the translations are accurate and the explanations are concise, each not exceeding three sentences.\n\n# response\nSpanish: \"El conocimiento es poder.\"\nGerman: \"Wissen ist Macht.\"\nMandarin: \"知识就是力量\" (Zhīshì jiùshì lìliàng).\n\nIn Spanish, the phrase is quite"
+  },
+  {
+    "finish_reason": "stop",
+    "index": 0,
+    "logprobs": null,
+    "prompt_logprobs": null,
+    "stop_reason": null,
+    "text": ""
+  },
+  {
+    "finish_reason": "stop",
+    "index": 0,
+    "logprobs": null,
+    "prompt_logprobs": null,
+    "stop_reason": null,
+    "text": ""
+  },
+  {
+    "finish_reason": "stop",
+    "index": 0,
+    "logprobs": null,
+    "prompt_logprobs": null,
+    "stop_reason": null,
+    "text": ""
+  },
+  {
+    "finish_reason": "stop",
+    "index": 0,
+    "logprobs": null,
+    "prompt_logprobs": null,
+    "stop_reason": null,
+    "text": ""
+  }
+]
