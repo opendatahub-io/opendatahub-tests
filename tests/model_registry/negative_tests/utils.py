@@ -3,7 +3,7 @@ from tests.model_registry.constants import MODEL_REGISTRY_DB_SECRET_STR_DATA
 import base64
 
 
-def crate_mysql_credentials_file(model_registry_db_instance_pod: Pod) -> None:
+def create_mysql_credentials_file(model_registry_db_instance_pod: Pod) -> None:
     """
     Setup MySQL configuration file with credentials.
     """
