@@ -25,6 +25,7 @@ from tests.model_registry.utils import get_model_registry_deployment_template_di
 from utilities.constants import MODEL_REGISTRY_CUSTOM_NAMESPACE
 from utilities.general import wait_for_pods_by_labels
 from utilities.infra import create_ns
+from tests.model_registry.negative_tests.utils import execute_mysql_command, create_mysql_credentials_file
 
 DB_RESOURCES_NAME_NEGATIVE = "db-model-registry-negative"
 
@@ -139,28 +140,15 @@ def model_registry_db_deployment_negative_test(
 @pytest.fixture()
 def set_mr_db_dirty(model_registry_db_instance_pod: Pod) -> int:
     """Set the model registry database dirty and return the latest migration version"""
-    output = model_registry_db_instance_pod.execute(
-        command=[
-            "mysql",
-            "-u",
-            MODEL_REGISTRY_DB_SECRET_STR_DATA["database-user"],
-            f"-p{MODEL_REGISTRY_DB_SECRET_STR_DATA['database-password']}",
-            "-e",
-            "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1;",
-            MODEL_REGISTRY_DB_SECRET_STR_DATA["database-name"],
-        ]
+    create_mysql_credentials_file(model_registry_db_instance_pod=model_registry_db_instance_pod)
+    output = execute_mysql_command(
+        sql_query="SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1;",
+        model_registry_db_instance_pod=model_registry_db_instance_pod,
     )
     latest_migration_version = int(output.strip().split()[1])
-    model_registry_db_instance_pod.execute(
-        command=[
-            "mysql",
-            "-u",
-            MODEL_REGISTRY_DB_SECRET_STR_DATA["database-user"],
-            f"-p{MODEL_REGISTRY_DB_SECRET_STR_DATA['database-password']}",
-            "-e",
-            f"UPDATE schema_migrations SET dirty = 1 WHERE version = {latest_migration_version};",
-            MODEL_REGISTRY_DB_SECRET_STR_DATA["database-name"],
-        ]
+    execute_mysql_command(
+        sql_query=f"UPDATE schema_migrations SET dirty = 1 WHERE version = {latest_migration_version};",
+        model_registry_db_instance_pod=model_registry_db_instance_pod,
     )
     return latest_migration_version
 

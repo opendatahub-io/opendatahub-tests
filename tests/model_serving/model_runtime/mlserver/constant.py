@@ -5,8 +5,7 @@ This module defines configuration values, resource specifications, deployment co
 and input queries used across MLServer runtime tests for different frameworks.
 """
 
-import os
-from typing import Any, Union
+from typing import Any, Union, List, Dict
 
 from utilities.constants import (
     KServeDeploymentType,
@@ -50,19 +49,59 @@ REST_PROTOCOL_TYPE_DICT: dict[str, str] = {"protocol_type": Protocols.REST}
 
 GRPC_PROTOCOL_TYPE_DICT: dict[str, str] = {"protocol_type": Protocols.GRPC}
 
-MLSERVER_TESTS_DIR: str = os.path.dirname(__file__)
 
-TEMPLATE_FILE_PATH: dict[str, str] = {
-    Protocols.REST: os.path.join(MLSERVER_TESTS_DIR, "mlserver_rest_serving_template.yaml"),
-    Protocols.GRPC: os.path.join(MLSERVER_TESTS_DIR, "mlserver_grpc_serving_template.yaml"),
+MLSERVER_IMAGE: str = (
+    "docker.io/seldonio/mlserver@sha256:07890828601515d48c0fb73842aaf197cbcf245a5c855c789e890282b15ce390"
+)
+
+MLSERVER_RUNTIME_LABELS: Dict[str, str] = {
+    "opendatahub.io/dashboard": "true",
 }
 
-TEMPLATE_MAP: dict[str, str] = {
+MLSERVER_RUNTIME_ANNOTATIONS: Dict[str, str] = {
+    "openshift.io/display-name": "Seldon MLServer",
+    "prometheus.kserve.io/port": "8080",
+    "prometheus.kserve.io/path": "/metrics",
+}
+
+MLSERVER_SUPPORTED_MODEL_FORMATS: List[Dict[str, Any]] = [
+    {"name": "sklearn", "version": "0", "autoSelect": True, "priority": 2},
+    {"name": "sklearn", "version": "1", "autoSelect": True, "priority": 2},
+    {"name": "xgboost", "version": "1", "autoSelect": True, "priority": 2},
+    {"name": "xgboost", "version": "2", "autoSelect": True, "priority": 2},
+    {"name": "lightgbm", "version": "3", "autoSelect": True, "priority": 2},
+    {"name": "lightgbm", "version": "4", "autoSelect": True, "priority": 2},
+    {"name": "mlflow", "version": "1", "autoSelect": True, "priority": 1},
+    {"name": "mlflow", "version": "2", "autoSelect": True, "priority": 1},
+    {"name": "catboost", "version": "1", "autoSelect": True, "priority": 1},
+    {"name": "sparkmlib", "version": "1", "autoSelect": True, "priority": 1},
+    {"name": "huggingface", "version": "1", "autoSelect": True, "priority": 1},
+]
+
+MLSERVER_CONTAINER_ENV: List[Dict[str, str]] = [
+    {"name": "MLSERVER_HTTP_PORT", "value": str(MLSERVER_REST_PORT)},
+    {"name": "MLSERVER_GRPC_PORT", "value": str(MLSERVER_GRPC_PORT)},
+    {"name": "MODELS_DIR", "value": "/mnt/models"},
+]
+
+MLSERVER_CONTAINER_SECURITY_CONTEXT: Dict[str, Any] = {
+    "allowPrivilegeEscalation": False,
+    "capabilities": {"drop": ["ALL"]},
+    "privileged": False,
+    "runAsNonRoot": True,
+}
+
+MLSERVER_PORTS_MAP = {
+    Protocols.REST: [{"containerPort": MLSERVER_REST_PORT, "protocol": "TCP"}],
+    Protocols.GRPC: [{"containerPort": MLSERVER_GRPC_PORT, "name": "h2c", "protocol": "TCP"}],
+}
+
+TEMPLATE_NAME_MAP: dict[str, str] = {
     Protocols.REST: RuntimeTemplates.MLSERVER_REST,
     Protocols.GRPC: RuntimeTemplates.MLSERVER_GRPC,
 }
 
-RUNTIME_MAP: dict[str, str] = {
+RUNTIME_NAME_MAP: dict[str, str] = {
     Protocols.REST: "mlserver-rest-runtime",
     Protocols.GRPC: "mlserver-grpc-runtime",
 }
