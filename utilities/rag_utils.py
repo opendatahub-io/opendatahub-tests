@@ -1,11 +1,19 @@
 from contextlib import contextmanager
 from ocp_resources.llama_stack_distribution import LlamaStackDistribution
 from kubernetes.dynamic import DynamicClient
-from typing import Any, Dict, Generator, List, TypedDict, cast
+from typing import Any, Callable, Dict, Generator, List, NamedTuple, TypedDict, cast
 from llama_stack_client import Agent, AgentEventLogger
 from simple_logger.logger import get_logger
 
 LOGGER = get_logger(name=__name__)
+
+
+class ModelInfo(NamedTuple):
+    """Container for model information from LlamaStack client."""
+
+    model_id: str
+    embedding_model: str
+    embedding_dimension: int
 
 
 @contextmanager
@@ -213,3 +221,91 @@ def validate_rag_agent_responses(
         LOGGER.info(f"Overall result: {'✓ PASSED' if overall_success else '✗ FAILED'}")
 
     return cast(ValidationResult, {"success": overall_success, "results": all_results, "summary": summary})
+
+
+def validate_api_responses(
+    response_fn: Callable[..., str],
+    test_cases: List[TurnExpectation],
+    min_keywords_required: int = 1,
+    verbose: bool = True,
+) -> ValidationResult:
+    """
+    Validate API responses against expected keywords.
+
+    Tests multiple questions and validates that responses contain expected keywords.
+    Returns validation results with success status and detailed results for each turn.
+    """
+    all_results = []
+    successful = 0
+
+    for idx, test in enumerate(test_cases, 1):
+        question = test["question"]
+        expected_keywords = test["expected_keywords"]
+        description = test.get("description", "")
+
+        if verbose:
+            LOGGER.info(f"\n[{idx}] Question: {question}")
+            if description:
+                LOGGER.info(f"    Expectation: {description}")
+
+        try:
+            response = response_fn(question=question)
+            response_lower = response.lower()
+
+            found = [kw for kw in expected_keywords if kw.lower() in response_lower]
+            missing = [kw for kw in expected_keywords if kw.lower() not in response_lower]
+            success = len(found) >= min_keywords_required
+
+            if success:
+                successful += 1
+
+            result = {
+                "question": question,
+                "description": description,
+                "expected_keywords": expected_keywords,
+                "found_keywords": found,
+                "missing_keywords": missing,
+                "response": response,
+                "success": success,
+            }
+
+            all_results.append(result)
+
+            if verbose:
+                LOGGER.info(f"✓ Found: {found}")
+                if missing:
+                    LOGGER.info(f"✗ Missing: {missing}")
+                LOGGER.info(f"Result: {'PASS' if success else 'FAIL'}")
+                LOGGER.info(f"Response: {response}")
+
+        except Exception as e:
+            all_results.append({
+                "question": question,
+                "description": description,
+                "expected_keywords": expected_keywords,
+                "found_keywords": [],
+                "missing_keywords": expected_keywords,
+                "response": "",
+                "success": False,
+                "error": str(e),
+            })
+            if verbose:
+                LOGGER.error(f"ERROR: {str(e)}")
+
+    total = len(test_cases)
+    summary = {
+        "total": total,
+        "passed": successful,
+        "failed": total - successful,
+        "success_rate": successful / total if total > 0 else 0,
+    }
+
+    if verbose:
+        LOGGER.info("\n" + "=" * 40)
+        LOGGER.info("Validation Summary:")
+        LOGGER.info(f"Total: {summary['total']}")
+        LOGGER.info(f"Passed: {summary['passed']}")
+        LOGGER.info(f"Failed: {summary['failed']}")
+        LOGGER.info(f"Success rate: {summary['success_rate']:.1%}")
+
+    return cast(ValidationResult, {"success": successful == total, "results": all_results, "summary": summary})
