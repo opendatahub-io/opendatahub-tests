@@ -140,6 +140,7 @@ def guardrails_orchestrator_health_route(
     ):
         yield guardrails_orchestrator_health_route
 
+
 @pytest.fixture(scope="class")
 def guardrails_orchestrator_gateway_route(
     admin_client: DynamicClient,
