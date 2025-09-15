@@ -1,12 +1,13 @@
 import os
 import shlex
+import shutil
 
 from pytest_testconfig import config as py_config
 from pytest import Item
 from pyhelper_utils.shell import run_command
 from simple_logger.logger import get_logger
 from utilities.exceptions import InvalidArgumentsError
-from utilities.infra import get_rhods_csv_version, get_oc_image_info, generate_openshift_pull_secret_file
+from utilities.infra import get_rhods_operator_installed_csv
 
 BASE_DIRECTORY_NAME = "must-gather-collected"
 BASE_RESULTS_DIR = "/home/odh/opendatahub-tests/"
@@ -132,48 +133,56 @@ def run_must_gather(
     return run_command(command=shlex.split(must_gather_command), check=False)[1]
 
 
-def get_must_gather_image_info(architecture: str = "linux/amd64") -> str:
-    try:
-        csv_version = get_rhods_csv_version()
-        if csv_version:
-            must_gather_image_manifest = f"quay.io/modh/must-gather:rhoai-{csv_version.major}.{csv_version.minor}"
-            pull_secret = generate_openshift_pull_secret_file()
-            image_info = get_oc_image_info(
-                image=must_gather_image_manifest, architecture=architecture, pull_secret=pull_secret
-            )
-            return f"quay.io/modh/must-gather@{image_info['digest']}"
-        else:
-            LOGGER.warning(
-                "No RHAOI CSV found. Potentially ODH cluster and must-gather collection is not "
-                "relevant for this cluster"
-            )
-            return ""
-    except Exception as exec:
-        raise RuntimeError(f"Failed to retrieve must-gather image info: {str(exec)}") from exec
+def get_must_gather_image_info() -> str:
+    csv_object = get_rhods_operator_installed_csv()
+    if not csv_object:
+        return ""
+    must_gather_image = [
+        image["image"] for image in csv_object.instance.spec.relatedImages if "odh-must-gather" in image["image"]
+    ]
+    if not must_gather_image:
+        LOGGER.warning(
+            "No RHAOI CSV found. Potentially ODH cluster and must-gather collection is not relevant for this cluster"
+        )
+        return ""
+    return must_gather_image[0]
 
 
 def collect_rhoai_must_gather(
-    target_dir: str, since: int, save_collection_output: bool = True, architecture: str = "linux/amd64"
-) -> str:
+    base_file_name: str,
+    target_dir: str,
+    since: int,
+    save_collection_output: bool = True,
+) -> None:
     """
     Collect must-gather data for RHOAI cluster.
 
     Args:
+        base_file_name: (str): Base file name for must-gather compressed file
         target_dir (str): Directory to store the must-gather output
         since (int): Time in seconds to collect logs from
         save_collection_output (bool, optional): Whether to save must-gather command output. Defaults to True.
-        architecture (str, optional): Target architecture for must-gather image. Defaults to "linux/amd64".
 
     Returns:
         str: Path to the must-gather output directory, or empty string if collection is skipped
     """
-    must_gather_image = get_must_gather_image_info(architecture=architecture)
+    must_gather_image = get_must_gather_image_info()
     if must_gather_image:
         output = run_must_gather(image_url=must_gather_image, target_dir=target_dir, since=f"{since}s")
         if save_collection_output:
             with open(os.path.join(target_dir, "output.log"), "w") as _file:
                 _file.write(output)
-        return get_must_gather_output_dir(must_gather_path=target_dir)
+        # get must gather directory to archive
+        path = get_must_gather_output_dir(must_gather_path=target_dir)
+        if os.getenv("ARCHIVE_MUST_GATHER", "true") == "true":
+            # archive the folder and get the zip file's name
+            file_name = shutil.make_archive(base_name=base_file_name, format="zip", base_dir=path)
+            # remove the folder that was archived
+            shutil.rmtree(path=path, ignore_errors=True)
+            # copy back the archived file to the same path
+            dest_file = os.path.join(target_dir, file_name)
+            shutil.copy(src=file_name, dst=dest_file)
+            LOGGER.info(f"{dest_file} is collected successfully")
+            os.unlink(file_name)
     else:
-        LOGGER.warning("Must-gather collection would be skipped.")
-        return ""
+        LOGGER.error("No must-gather image is found from the csv. Must-gather collection would be skipped.")

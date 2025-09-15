@@ -26,15 +26,15 @@ from ocp_resources.service_account import ServiceAccount
 
 from tests.model_serving.model_runtime.mlserver.constant import (
     PREDICT_RESOURCES,
-    RUNTIME_MAP,
-    TEMPLATE_MAP,
-    TEMPLATE_FILE_PATH,
+    RUNTIME_NAME_MAP,
+    TEMPLATE_NAME_MAP,
 )
+
+from tests.model_serving.model_runtime.mlserver.utils import mlserver_runtime_template_dict
 
 from utilities.constants import (
     KServeDeploymentType,
     Labels,
-    RuntimeTemplates,
     Protocols,
 )
 from utilities.inference_utils import create_isvc
@@ -58,10 +58,9 @@ def mlserver_grpc_serving_runtime_template(admin_client: DynamicClient) -> Gener
     Yields:
         Template: The loaded gRPC serving runtime Template.
     """
-    grpc_template_yaml = TEMPLATE_FILE_PATH.get(Protocols.GRPC)
     with Template(
         client=admin_client,
-        yaml_file=grpc_template_yaml,
+        kind_dict=mlserver_runtime_template_dict(protocol=Protocols.GRPC),
         namespace=py_config["applications_namespace"],
     ) as tp:
         yield tp
@@ -78,10 +77,9 @@ def mlserver_rest_serving_runtime_template(admin_client: DynamicClient) -> Gener
     Yields:
         Template: The loaded REST serving runtime Template.
     """
-    rest_template_yaml = TEMPLATE_FILE_PATH.get(Protocols.REST)
     with Template(
         client=admin_client,
-        yaml_file=rest_template_yaml,
+        kind_dict=mlserver_runtime_template_dict(Protocols.REST),
         namespace=py_config["applications_namespace"],
     ) as tp:
         yield tp
@@ -108,12 +106,11 @@ def mlserver_serving_runtime(
     Yields:
         ServingRuntime: An instance of the MLServer ServingRuntime configured as per parameters.
     """
-    template_name = TEMPLATE_MAP.get(protocol, RuntimeTemplates.MLSERVER_REST)
     with ServingRuntimeFromTemplate(
         client=admin_client,
-        name=RUNTIME_MAP.get(protocol, "mlserver-runtime"),
+        name=RUNTIME_NAME_MAP.get(protocol, f"mlserver-{protocol}-runtime"),
         namespace=model_namespace.name,
-        template_name=template_name,
+        template_name=TEMPLATE_NAME_MAP.get(protocol, f"mlserver-{protocol}-template"),
         deployment_type=request.param["deployment_type"],
         runtime_image=mlserver_runtime_image,
     ) as model_runtime:
