@@ -1,5 +1,6 @@
 from typing import List
 import re
+from pyhelper_utils.general import tts
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.lm_eval_job import LMEvalJob
 from ocp_resources.pod import Pod
@@ -100,9 +101,9 @@ def validate_lmeval_job_pod_and_logs(lmevaljob_pod: Pod) -> None:
         r"INFO\sdriver\supdate status: job completed\s\{\"state\":\s\{\"state\""
         r":\"Complete\",\"reason\":\"Succeeded\",\"message\":\"job completed\""
     )
-    lmevaljob_pod.wait_for_status(status=lmevaljob_pod.Status.RUNNING, timeout=Timeout.TIMEOUT_5MIN)
+    lmevaljob_pod.wait_for_status(status=lmevaljob_pod.Status.RUNNING, timeout=tts("5m"))
     try:
-        lmevaljob_pod.wait_for_status(status=Pod.Status.SUCCEEDED, timeout=Timeout.TIMEOUT_20MIN)
+        lmevaljob_pod.wait_for_status(status=Pod.Status.SUCCEEDED, timeout=tts("1h"))
     except TimeoutExpiredError as e:
         raise UnexpectedFailureError("LMEval job pod failed from a running state.") from e
     if not bool(re.search(pod_success_log_regex, lmevaljob_pod.log())):
