@@ -50,8 +50,7 @@ def llmd_s3_secret(
 
 @pytest.fixture(scope="class")
 def llmd_s3_service_account(
-    admin_client: DynamicClient, 
-    llmd_s3_secret: Secret
+    admin_client: DynamicClient, llmd_s3_secret: Secret
 ) -> Generator[ServiceAccount, None, None]:
     with ServiceAccount(
         client=admin_client,
@@ -80,7 +79,7 @@ def llmd_gateway(
         gateway_class_name=gateway_class_name,
         wait_for_condition=True,
         timeout=Timeout.TIMEOUT_5MIN,
-        **kwargs
+        **kwargs,
     ) as gateway:
         yield gateway
 
@@ -97,12 +96,12 @@ def llmd_inference_service(
     else:
         name_suffix = request.param.get("name_suffix", "basic")
         kwargs = {k: v for k, v in request.param.items() if k != "name_suffix"}
-    
+
     service_name = kwargs.get("name", f"llm-{name_suffix}")
 
     if "llmd_gateway" in request.fixturenames:
         request.getfixturevalue("llmd_gateway")
-    
+
     container_resources = kwargs.get(
         "container_resources",
         {
@@ -120,7 +119,7 @@ def llmd_inference_service(
         container_resources=container_resources,
         wait=True,
         timeout=Timeout.TIMEOUT_15MIN,
-        **{k: v for k, v in kwargs.items() if k != "name"}
+        **{k: v for k, v in kwargs.items() if k != "name"},
     ) as llm_service:
         yield llm_service
 
@@ -139,15 +138,15 @@ def llmd_inference_service_s3(
     else:
         name_suffix = request.param.get("name_suffix", "s3")
         kwargs = {k: v for k, v in request.param.items() if k != "name_suffix"}
-    
+
     service_name = kwargs.get("name", f"llm-{name_suffix}")
-    
+
     if "storage_key" not in kwargs:
         kwargs["storage_key"] = llmd_s3_secret.name
-    
+
     if "storage_path" not in kwargs:
         kwargs["storage_path"] = DEFAULT_S3_STORAGE_PATH
-    
+
     container_resources = kwargs.get(
         "container_resources",
         {
@@ -167,7 +166,10 @@ def llmd_inference_service_s3(
         service_account=llmd_s3_service_account.name,
         wait=True,
         timeout=Timeout.TIMEOUT_15MIN,
-        **{k: v for k, v in kwargs.items() if k not in ["name", "storage_key", "storage_path", "container_image", "container_resources"]}
+        **{
+            k: v
+            for k, v in kwargs.items()
+            if k not in ["name", "storage_key", "storage_path", "container_image", "container_resources"]
+        },
     ) as llm_service:
         yield llm_service
-

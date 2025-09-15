@@ -27,6 +27,4 @@ DEFAULT_MEMORY_LIMIT = "10Gi"
 DEFAULT_CPU_REQUEST = "100m"
 DEFAULT_MEMORY_REQUEST = "8Gi"
 
-BASIC_LLMD_PARAMS = [
-    ({"name": "llmd-comprehensive-test"}, "openshift-default", "basic")
-]
+BASIC_LLMD_PARAMS = [({"name": "llmd-comprehensive-test"}, "openshift-default", "basic")]

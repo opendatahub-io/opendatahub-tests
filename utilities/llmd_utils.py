@@ -1,4 +1,5 @@
 """Utilities for LLM Deployment (LLMD) resources."""
+
 import json
 import re
 import shlex
@@ -42,18 +43,18 @@ def create_gateway(
 ) -> Generator[Gateway, None, None]:
     """
     Context manager to create and manage a Gateway resource using ocp_resources.
-    
+
     Args:
         client: Kubernetes dynamic client
         name: Gateway name
-        namespace: Gateway namespace  
+        namespace: Gateway namespace
         gateway_class_name: The name of the GatewayClass resource
         listeners: List of listener configurations
         infrastructure: Infrastructure configuration
         wait_for_condition: Whether to wait for the gateway to be programmed
         timeout: Timeout in seconds for waiting
         teardown: Whether to clean up the resource
-        
+
     Yields:
         Gateway: The created Gateway resource
     """
@@ -92,9 +93,9 @@ def create_gateway(
             "gatewayClassName": gateway_class_name,
             "listeners": listeners,
             "infrastructure": infrastructure,
-        }
+        },
     }
-    
+
     with Gateway(
         client=client,
         teardown=teardown,
@@ -109,7 +110,7 @@ def create_gateway(
                 timeout=timeout,
             )
             LOGGER.info(f"Gateway {name} is programmed and ready")
-        
+
         yield gateway
 
 
@@ -172,7 +173,7 @@ def create_llmisvc(
     """
     if labels is None:
         labels = {}
-    
+
     if annotations is None:
         annotations = {}
 
@@ -188,58 +189,45 @@ def create_llmisvc(
         raise ValueError("Provide either storage_uri or (storage_key and storage_path) for the model")
 
     if router_config is None:
-        router_config = {
-            "scheduler": {},
-            "route": {},
-            "gateway": {}
-        }
-    
+        router_config = {"scheduler": {}, "route": {}, "gateway": {}}
+
     if container_resources is None:
         raise ValueError("container_resources must be provided for LLMInferenceService")
-    
+
     if container_env is None:
-        container_env = [
-            {
-                "name": "VLLM_LOGGING_LEVEL",
-                "value": "DEBUG"
-            }
-        ]
-    template_config: Dict[str, Any] = {
-        "containers": []
-    }
-    
-    main_container: Dict[str, Any] = {
-        "name": "main"
-    }
-    
+        container_env = [{"name": "VLLM_LOGGING_LEVEL", "value": "DEBUG"}]
+    template_config: Dict[str, Any] = {"containers": []}
+
+    main_container: Dict[str, Any] = {"name": "main"}
+
     if container_image:
         main_container["image"] = container_image
     else:
         raise ValueError("container_image must be provided for LLMInferenceService")
-    
+
     if container_resources:
         main_container["resources"] = container_resources
-    
+
     if container_env:
         main_container["env"] = container_env
-    
+
     if liveness_probe:
         main_container["livenessProbe"] = liveness_probe
-    
+
     if readiness_probe:
         main_container["readinessProbe"] = readiness_probe
-    
+
     if volume_mounts:
         main_container["volumeMounts"] = volume_mounts
-    
+
     template_config["containers"].append(main_container)
-    
+
     if volumes:
         template_config["volumes"] = volumes
-    
+
     if service_account:
         template_config["serviceAccountName"] = service_account
-    
+
     if image_pull_secrets:
         template_config["imagePullSecrets"] = [{"name": secret} for secret in image_pull_secrets]
 
@@ -247,7 +235,7 @@ def create_llmisvc(
         annotations["serving.kserve.io/auth"] = "true"
 
     LOGGER.info(f"Creating LLMInferenceService {name} in namespace {namespace}")
-    
+
     with LLMInferenceService(
         client=client,
         name=name,
@@ -277,18 +265,18 @@ def create_llmisvc(
 def get_llm_inference_url(llm_service: LLMInferenceService) -> str:
     """
     Get the inference URL for an LLMInferenceService.
-    
+
     This function attempts to resolve the URL in the following order:
     1. External URL from service status
     2. Service discovery via labels
     3. Fallback to service name pattern
-    
+
     Args:
         llm_service: The LLMInferenceService resource
-        
+
     Returns:
         str: The inference URL (full URL including protocol and path)
-        
+
     Raises:
         ValueError: If the inference URL cannot be determined
     """
@@ -296,7 +284,7 @@ def get_llm_inference_url(llm_service: LLMInferenceService) -> str:
         url = llm_service.instance.status["url"]
         LOGGER.debug(f"Using external URL for {llm_service.name}: {url}")
         return url
-    
+
     try:
         services = get_services_by_isvc_label(
             client=llm_service.client,
@@ -382,10 +370,10 @@ class LLMUserInference:
     """
     LLM-specific inference handler following the pattern of UserInference.
     """
-    
+
     STREAMING = "streaming"
     INFER = "infer"
-    
+
     def __init__(
         self,
         llm_service: LLMInferenceService,
@@ -398,7 +386,7 @@ class LLMUserInference:
         self.inference_type = inference_type
         self.protocol = protocol
         self.runtime_config = self.get_runtime_config()
-        
+
     def get_runtime_config(self) -> Dict[str, Any]:
         """Get runtime config from inference config based on inference type and protocol."""
         if inference_type_config := self.inference_config.get(self.inference_type):
@@ -409,17 +397,17 @@ class LLMUserInference:
                 raise ValueError(f"Protocol {protocol} not supported for inference type {self.inference_type}")
         else:
             raise ValueError(f"Inference type {self.inference_type} not supported in config")
-    
+
     @property
     def inference_response_text_key_name(self) -> Optional[str]:
         """Get inference response text key name from runtime config."""
         return self.runtime_config.get("response_fields_map", {}).get("response_output")
-    
+
     @property
     def inference_response_key_name(self) -> str:
         """Get inference response key name from runtime config."""
         return self.runtime_config.get("response_fields_map", {}).get("response", "output")
-    
+
     def get_inference_body(
         self,
         model_name: str,
@@ -429,12 +417,12 @@ class LLMUserInference:
         """Get inference body for LLM request."""
         if not use_default_query and inference_input is None:
             raise ValueError("Either pass `inference_input` or set `use_default_query` to True")
-        
+
         if use_default_query:
             default_query_config = self.inference_config.get("default_query_model")
             if not default_query_config:
                 raise ValueError(f"Missing default query config for {model_name}")
-            
+
             if self.inference_config.get("support_multi_default_queries"):
                 query_config = default_query_config.get(self.inference_type)
                 if not query_config:
@@ -442,7 +430,7 @@ class LLMUserInference:
                 template_str = query_config.get("query_input", "")
             else:
                 template_str = default_query_config.get("query_input", "")
-            
+
             # Use template substitution for model name
             template = Template(template_str)
             body = template.safe_substitute(model_name=model_name)
@@ -453,13 +441,13 @@ class LLMUserInference:
                     "model": model_name,
                     "messages": [{"role": "user", "content": inference_input}],
                     "max_tokens": 100,
-                    "temperature": 0.0
+                    "temperature": 0.0,
                 })
             else:
                 body = json.dumps(inference_input)
-        
+
         return body
-    
+
     def generate_command(
         self,
         model_name: str,
@@ -490,6 +478,7 @@ class LLMUserInference:
         else:
             try:
                 from ocp_resources.resource import get_client  # type: ignore
+
                 client = get_client()
                 ca_bundle = get_ca_bundle(client=client, deployment_mode="raw")
                 if ca_bundle:
@@ -547,10 +536,10 @@ class LLMUserInference:
 def _validate_unauthorized_response(res: Dict[str, Any], token: Optional[str], inference: LLMUserInference) -> None:
     """Validate response for unauthorized users."""
     auth_header = "x-ext-auth-reason"
-    
+
     if auth_reason := re.search(rf"{auth_header}: (.*)", res["output"], re.MULTILINE):
         reason = auth_reason.group(1).lower()
-        
+
         if token:
             assert re.search(r"not (?:authenticated|authorized)", reason)
         else:
@@ -558,10 +547,10 @@ def _validate_unauthorized_response(res: Dict[str, Any], token: Optional[str], i
     else:
         forbidden_patterns = ["Forbidden", "401", "403", "Unauthorized"]
         output = res["output"]
-        
+
         if any(pattern in output for pattern in forbidden_patterns):
             return
-        
+
         raise ValueError(f"Auth header {auth_header} not found in response. Response: {output}")
 
 
@@ -575,16 +564,16 @@ def _validate_authorized_response(
     model_name: str,
 ) -> None:
     """Validate response for authorized users."""
-    
+
     use_regex = False
-    
+
     if use_default_query:
         expected_response_text_config = inference_config.get("default_query_model", {})
         use_regex = expected_response_text_config.get("use_regex", False)
-        
+
         if not expected_response_text_config:
             raise ValueError(f"Missing default_query_model config for inference {inference_config}")
-        
+
         if inference_config.get("support_multi_default_queries"):
             query_config = expected_response_text_config.get(inference_type)
             if not query_config:
@@ -593,17 +582,17 @@ def _validate_authorized_response(
             use_regex = query_config.get("use_regex", False)
         else:
             expected_response_text = expected_response_text_config.get("query_output")
-        
+
         if not expected_response_text:
             raise ValueError(f"Missing response text key for inference {inference_config}")
-        
+
         if isinstance(expected_response_text, str):
             expected_response_text = Template(expected_response_text).safe_substitute(model_name=model_name)
         elif isinstance(expected_response_text, dict):
             expected_response_text = Template(expected_response_text.get("response_output")).safe_substitute(
                 model_name=model_name
             )
-    
+
     if inference.inference_response_text_key_name:
         if inference_type == inference.STREAMING:
             if output := re.findall(
@@ -629,7 +618,7 @@ def _validate_authorized_response(
             response = res[inference.inference_response_key_name]
             if isinstance(response, list):
                 response = response[0]
-            
+
             if isinstance(response, dict):
                 response_text = response[inference.inference_response_text_key_name]
                 assert response_text == expected_response_text, (
@@ -648,22 +637,22 @@ def validate_llm_response_format(response_data: Dict[str, Any]) -> bool:
     """Validate that a response follows the expected LLM inference format."""
     if "choices" not in response_data:
         raise InferenceResponseError("Response missing required field: 'choices'")
-    
+
     if not isinstance(response_data["choices"], list):
         raise InferenceResponseError("'choices' field must be a list")
-    
+
     if not response_data["choices"]:
         raise InferenceResponseError("'choices' list cannot be empty")
-    
+
     choice = response_data["choices"][0]
     if "message" not in choice:
         raise InferenceResponseError("Choice missing 'message' field")
-    
+
     message = choice["message"]
     if "content" not in message:
         raise InferenceResponseError("Message missing 'content' field")
-    
+
     if not isinstance(message["content"], str):
         raise InferenceResponseError("Message content must be a string")
-    
+
     return True

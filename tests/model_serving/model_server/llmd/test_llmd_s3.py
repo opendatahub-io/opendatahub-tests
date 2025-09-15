@@ -13,9 +13,7 @@ pytestmark = [
 
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, llmd_gateway, llmd_inference_service_s3",
-    [
-        ({"name": "llmd-s3-test"}, "openshift-default", {"storage_path": "opt-125m/"})
-    ],
+    [({"name": "llmd-s3-test"}, "openshift-default", {"storage_path": "opt-125m/"})],
     indirect=True,
 )
 @pytest.mark.usefixtures("valid_aws_config")
@@ -25,7 +23,7 @@ class TestLLMDS3Inference:
     def test_llmd_s3(self, llmd_gateway, llmd_inference_service_s3):
         assert verify_gateway_status(llmd_gateway), "Gateway should be ready"
         assert verify_llm_service_status(llmd_inference_service_s3), "LLMInferenceService should be ready"
-        
+
         verify_inference_response_llmd(
             llm_service=llmd_inference_service_s3,
             inference_config=OPT125M_CPU_INFERENCE_CONFIG,
@@ -34,4 +32,3 @@ class TestLLMDS3Inference:
             use_default_query=True,
             insecure=True,
         )
-

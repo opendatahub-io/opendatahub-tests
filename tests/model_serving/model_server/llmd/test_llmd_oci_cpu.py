@@ -23,7 +23,7 @@ class TestLLMDOCICPUInference:
     def test_llmd_oci(self, llmd_gateway, llmd_inference_service):
         assert verify_gateway_status(llmd_gateway), "Gateway should be ready"
         assert verify_llm_service_status(llmd_inference_service), "LLMInferenceService should be ready"
-        
+
         verify_inference_response_llmd(
             llm_service=llmd_inference_service,
             inference_config=OPT125M_CPU_INFERENCE_CONFIG,
