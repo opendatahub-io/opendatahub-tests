@@ -8,6 +8,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    concurrency:
+      group: ${{ github.workflow }}-${{github.event.pull_request.number}}
+      cancel-in-progress: true
+
     steps:
       - name: Checkout Pull Request Branch
         uses: actions/checkout@v5

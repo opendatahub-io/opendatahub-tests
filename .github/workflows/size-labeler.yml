@@ -11,6 +11,10 @@ jobs:
   add-pr-size-label:
     runs-on: ubuntu-latest
 
+    concurrency:
+      group: ${{ github.workflow }}-${{github.event.pull_request.number}}
+      cancel-in-progress: true
+
     steps:
       - uses: actions/checkout@v5
 

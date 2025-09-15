@@ -3,7 +3,9 @@ from contextlib import ExitStack
 from typing import Generator, Any, List
 import pytest
 from ocp_resources.namespace import Namespace
+from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
+from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.trustyai_service import TrustyAIService
@@ -12,6 +14,7 @@ from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from utilities.constants import OPENSHIFT_OPERATORS, MARIADB, TRUSTYAI_SERVICE_NAME
 from ocp_resources.maria_db import MariaDB
+from ocp_resources.config_map import ConfigMap
 from tests.model_explainability.trustyai_service.constants import (
     TAI_METRICS_CONFIG,
     TAI_DATA_CONFIG,
@@ -105,6 +108,28 @@ def trustyai_service_with_pvc_storage_multi_ns(
 
 
 @pytest.fixture(scope="class")
+def kserve_logger_ca_bundle_multi_ns(
+    admin_client: DynamicClient, model_namespaces: List[Namespace]
+) -> Generator[List[ConfigMap], Any, None]:
+    """Create CA certificate ConfigMaps required for KServeRaw logger in each namespace."""
+    with ExitStack() as stack:
+        ca_bundles = [
+            stack.enter_context(
+                ConfigMap(
+                    client=admin_client,
+                    name="kserve-logger-ca-bundle",
+                    namespace=ns.name,
+                    annotations={"service.beta.openshift.io/inject-cabundle": "true"},
+                    data={},
+                    teardown=False,
+                )
+            )
+            for ns in model_namespaces
+        ]
+        yield ca_bundles
+
+
+@pytest.fixture(scope="class")
 def mlserver_runtime_multi_ns(admin_client, model_namespaces) -> Generator[List[ServingRuntime], Any, None]:
     with ExitStack() as stack:
         runtimes = [
@@ -128,7 +153,14 @@ def mlserver_runtime_multi_ns(admin_client, model_namespaces) -> Generator[List[
 
 @pytest.fixture(scope="class")
 def gaussian_credit_model_multi_ns(
-    admin_client, model_namespaces, minio_pod, minio_service, minio_data_connection_multi_ns, mlserver_runtime_multi_ns
+    admin_client: DynamicClient,
+    model_namespaces: List[Namespace],
+    minio_pod: Pod,
+    minio_service: Service,
+    minio_data_connection_multi_ns: List[Secret],
+    mlserver_runtime_multi_ns: List[ServingRuntime],
+    kserve_raw_config: ConfigMap,
+    kserve_logger_ca_bundle_multi_ns: List[ConfigMap],
 ) -> Generator[List[InferenceService], Any, None]:
     with ExitStack() as stack:
         models = []
@@ -137,12 +169,13 @@ def gaussian_credit_model_multi_ns(
                 client=admin_client,
                 namespace=ns.name,
                 name=GAUSSIAN_CREDIT_MODEL,
-                deployment_mode=KServeDeploymentType.SERVERLESS,
+                deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
                 model_format=XGBOOST,
                 runtime=runtime.name,
                 storage_key=secret.name,
                 storage_path=GAUSSIAN_CREDIT_MODEL_STORAGE_PATH,
                 enable_auth=True,
+                external_route=True,
                 wait_for_predictor_pods=False,
                 resources=GAUSSIAN_CREDIT_MODEL_RESOURCES,
             )

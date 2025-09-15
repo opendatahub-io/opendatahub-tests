@@ -56,25 +56,19 @@ pytestmark = pytest.mark.usefixtures(
     ),
     [
         pytest.param(
-            {**REST_PROTOCOL_TYPE_DICT},
-            {
-                **get_model_namespace_dict(
-                    model_format_name=CATBOOST_MODEL_FORMAT_NAME,
-                    deployment_type=RAW_DEPLOYMENT_TYPE,
-                    protocol_type=Protocols.REST,
-                )
-            },
-            {
-                **get_deployment_config_dict(
-                    model_format_name=CATBOOST_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
-                )
-            },
-            {**get_model_storage_uri_dict(model_format_name=CATBOOST_MODEL_FORMAT_NAME)},
-            {
-                **get_deployment_config_dict(
-                    model_format_name=CATBOOST_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
-                )
-            },
+            REST_PROTOCOL_TYPE_DICT,
+            get_model_namespace_dict(
+                model_format_name=CATBOOST_MODEL_FORMAT_NAME,
+                deployment_type=RAW_DEPLOYMENT_TYPE,
+                protocol_type=Protocols.REST,
+            ),
+            get_deployment_config_dict(
+                model_format_name=CATBOOST_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
+            ),
+            get_model_storage_uri_dict(model_format_name=CATBOOST_MODEL_FORMAT_NAME),
+            get_deployment_config_dict(
+                model_format_name=CATBOOST_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
+            ),
             CATBOOST_MODEL_FORMAT_NAME,
             id=get_test_case_id(
                 model_format_name=CATBOOST_MODEL_FORMAT_NAME,
@@ -83,25 +77,19 @@ pytestmark = pytest.mark.usefixtures(
             ),
         ),
         pytest.param(
-            {**GRPC_PROTOCOL_TYPE_DICT},
-            {
-                **get_model_namespace_dict(
-                    model_format_name=CATBOOST_MODEL_FORMAT_NAME,
-                    deployment_type=RAW_DEPLOYMENT_TYPE,
-                    protocol_type=Protocols.GRPC,
-                )
-            },
-            {
-                **get_deployment_config_dict(
-                    model_format_name=CATBOOST_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
-                )
-            },
-            {**get_model_storage_uri_dict(model_format_name=CATBOOST_MODEL_FORMAT_NAME)},
-            {
-                **get_deployment_config_dict(
-                    model_format_name=CATBOOST_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
-                )
-            },
+            GRPC_PROTOCOL_TYPE_DICT,
+            get_model_namespace_dict(
+                model_format_name=CATBOOST_MODEL_FORMAT_NAME,
+                deployment_type=RAW_DEPLOYMENT_TYPE,
+                protocol_type=Protocols.GRPC,
+            ),
+            get_deployment_config_dict(
+                model_format_name=CATBOOST_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
+            ),
+            get_model_storage_uri_dict(model_format_name=CATBOOST_MODEL_FORMAT_NAME),
+            get_deployment_config_dict(
+                model_format_name=CATBOOST_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
+            ),
             CATBOOST_MODEL_FORMAT_NAME,
             id=get_test_case_id(
                 model_format_name=CATBOOST_MODEL_FORMAT_NAME,
@@ -110,25 +98,19 @@ pytestmark = pytest.mark.usefixtures(
             ),
         ),
         pytest.param(
-            {**REST_PROTOCOL_TYPE_DICT},
-            {
-                **get_model_namespace_dict(
-                    model_format_name=CATBOOST_MODEL_FORMAT_NAME,
-                    deployment_type=SERVERLESS_DEPLOYMENT_TYPE,
-                    protocol_type=Protocols.REST,
-                )
-            },
-            {
-                **get_deployment_config_dict(
-                    model_format_name=CATBOOST_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
-                )
-            },
-            {**get_model_storage_uri_dict(model_format_name=CATBOOST_MODEL_FORMAT_NAME)},
-            {
-                **get_deployment_config_dict(
-                    model_format_name=CATBOOST_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
-                )
-            },
+            REST_PROTOCOL_TYPE_DICT,
+            get_model_namespace_dict(
+                model_format_name=CATBOOST_MODEL_FORMAT_NAME,
+                deployment_type=SERVERLESS_DEPLOYMENT_TYPE,
+                protocol_type=Protocols.REST,
+            ),
+            get_deployment_config_dict(
+                model_format_name=CATBOOST_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
+            ),
+            get_model_storage_uri_dict(model_format_name=CATBOOST_MODEL_FORMAT_NAME),
+            get_deployment_config_dict(
+                model_format_name=CATBOOST_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
+            ),
             CATBOOST_MODEL_FORMAT_NAME,
             id=get_test_case_id(
                 model_format_name=CATBOOST_MODEL_FORMAT_NAME,
@@ -137,25 +119,19 @@ pytestmark = pytest.mark.usefixtures(
             ),
         ),
         pytest.param(
-            {**GRPC_PROTOCOL_TYPE_DICT},
-            {
-                **get_model_namespace_dict(
-                    model_format_name=CATBOOST_MODEL_FORMAT_NAME,
-                    deployment_type=SERVERLESS_DEPLOYMENT_TYPE,
-                    protocol_type=Protocols.GRPC,
-                )
-            },
-            {
-                **get_deployment_config_dict(
-                    model_format_name=CATBOOST_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
-                )
-            },
-            {**get_model_storage_uri_dict(model_format_name=CATBOOST_MODEL_FORMAT_NAME)},
-            {
-                **get_deployment_config_dict(
-                    model_format_name=CATBOOST_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
-                )
-            },
+            GRPC_PROTOCOL_TYPE_DICT,
+            get_model_namespace_dict(
+                model_format_name=CATBOOST_MODEL_FORMAT_NAME,
+                deployment_type=SERVERLESS_DEPLOYMENT_TYPE,
+                protocol_type=Protocols.GRPC,
+            ),
+            get_deployment_config_dict(
+                model_format_name=CATBOOST_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
+            ),
+            get_model_storage_uri_dict(model_format_name=CATBOOST_MODEL_FORMAT_NAME),
+            get_deployment_config_dict(
+                model_format_name=CATBOOST_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
+            ),
             CATBOOST_MODEL_FORMAT_NAME,
             id=get_test_case_id(
                 model_format_name=CATBOOST_MODEL_FORMAT_NAME,
@@ -164,25 +140,19 @@ pytestmark = pytest.mark.usefixtures(
             ),
         ),
         pytest.param(
-            {**REST_PROTOCOL_TYPE_DICT},
-            {
-                **get_model_namespace_dict(
-                    model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME,
-                    deployment_type=RAW_DEPLOYMENT_TYPE,
-                    protocol_type=Protocols.REST,
-                )
-            },
-            {
-                **get_deployment_config_dict(
-                    model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
-                )
-            },
-            {**get_model_storage_uri_dict(model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME)},
-            {
-                **get_deployment_config_dict(
-                    model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
-                )
-            },
+            REST_PROTOCOL_TYPE_DICT,
+            get_model_namespace_dict(
+                model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME,
+                deployment_type=RAW_DEPLOYMENT_TYPE,
+                protocol_type=Protocols.REST,
+            ),
+            get_deployment_config_dict(
+                model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
+            ),
+            get_model_storage_uri_dict(model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME),
+            get_deployment_config_dict(
+                model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
+            ),
             HUGGING_FACE_MODEL_FORMAT_NAME,
             id=get_test_case_id(
                 model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME,
@@ -191,25 +161,19 @@ pytestmark = pytest.mark.usefixtures(
             ),
         ),
         pytest.param(
-            {**GRPC_PROTOCOL_TYPE_DICT},
-            {
-                **get_model_namespace_dict(
-                    model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME,
-                    deployment_type=RAW_DEPLOYMENT_TYPE,
-                    protocol_type=Protocols.GRPC,
-                )
-            },
-            {
-                **get_deployment_config_dict(
-                    model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
-                )
-            },
-            {**get_model_storage_uri_dict(model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME)},
-            {
-                **get_deployment_config_dict(
-                    model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
-                )
-            },
+            GRPC_PROTOCOL_TYPE_DICT,
+            get_model_namespace_dict(
+                model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME,
+                deployment_type=RAW_DEPLOYMENT_TYPE,
+                protocol_type=Protocols.GRPC,
+            ),
+            get_deployment_config_dict(
+                model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
+            ),
+            get_model_storage_uri_dict(model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME),
+            get_deployment_config_dict(
+                model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
+            ),
             HUGGING_FACE_MODEL_FORMAT_NAME,
             id=get_test_case_id(
                 model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME,
@@ -218,25 +182,19 @@ pytestmark = pytest.mark.usefixtures(
             ),
         ),
         pytest.param(
-            {**REST_PROTOCOL_TYPE_DICT},
-            {
-                **get_model_namespace_dict(
-                    model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME,
-                    deployment_type=SERVERLESS_DEPLOYMENT_TYPE,
-                    protocol_type=Protocols.REST,
-                )
-            },
-            {
-                **get_deployment_config_dict(
-                    model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
-                )
-            },
-            {**get_model_storage_uri_dict(model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME)},
-            {
-                **get_deployment_config_dict(
-                    model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
-                )
-            },
+            REST_PROTOCOL_TYPE_DICT,
+            get_model_namespace_dict(
+                model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME,
+                deployment_type=SERVERLESS_DEPLOYMENT_TYPE,
+                protocol_type=Protocols.REST,
+            ),
+            get_deployment_config_dict(
+                model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
+            ),
+            get_model_storage_uri_dict(model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME),
+            get_deployment_config_dict(
+                model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
+            ),
             HUGGING_FACE_MODEL_FORMAT_NAME,
             id=get_test_case_id(
                 model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME,
@@ -245,25 +203,19 @@ pytestmark = pytest.mark.usefixtures(
             ),
         ),
         pytest.param(
-            {**GRPC_PROTOCOL_TYPE_DICT},
-            {
-                **get_model_namespace_dict(
-                    model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME,
-                    deployment_type=SERVERLESS_DEPLOYMENT_TYPE,
-                    protocol_type=Protocols.GRPC,
-                )
-            },
-            {
-                **get_deployment_config_dict(
-                    model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
-                )
-            },
-            {**get_model_storage_uri_dict(model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME)},
-            {
-                **get_deployment_config_dict(
-                    model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
-                )
-            },
+            GRPC_PROTOCOL_TYPE_DICT,
+            get_model_namespace_dict(
+                model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME,
+                deployment_type=SERVERLESS_DEPLOYMENT_TYPE,
+                protocol_type=Protocols.GRPC,
+            ),
+            get_deployment_config_dict(
+                model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
+            ),
+            get_model_storage_uri_dict(model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME),
+            get_deployment_config_dict(
+                model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
+            ),
             HUGGING_FACE_MODEL_FORMAT_NAME,
             id=get_test_case_id(
                 model_format_name=HUGGING_FACE_MODEL_FORMAT_NAME,
@@ -272,25 +224,19 @@ pytestmark = pytest.mark.usefixtures(
             ),
         ),
         pytest.param(
-            {**REST_PROTOCOL_TYPE_DICT},
-            {
-                **get_model_namespace_dict(
-                    model_format_name=LIGHTGBM_MODEL_FORMAT_NAME,
-                    deployment_type=RAW_DEPLOYMENT_TYPE,
-                    protocol_type=Protocols.REST,
-                )
-            },
-            {
-                **get_deployment_config_dict(
-                    model_format_name=LIGHTGBM_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
-                )
-            },
-            {**get_model_storage_uri_dict(model_format_name=LIGHTGBM_MODEL_FORMAT_NAME)},
-            {
-                **get_deployment_config_dict(
-                    model_format_name=LIGHTGBM_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
-                )
-            },
+            REST_PROTOCOL_TYPE_DICT,
+            get_model_namespace_dict(
+                model_format_name=LIGHTGBM_MODEL_FORMAT_NAME,
+                deployment_type=RAW_DEPLOYMENT_TYPE,
+                protocol_type=Protocols.REST,
+            ),
+            get_deployment_config_dict(
+                model_format_name=LIGHTGBM_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
+            ),
+            get_model_storage_uri_dict(model_format_name=LIGHTGBM_MODEL_FORMAT_NAME),
+            get_deployment_config_dict(
+                model_format_name=LIGHTGBM_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
+            ),
             LIGHTGBM_MODEL_FORMAT_NAME,
             id=get_test_case_id(
                 model_format_name=LIGHTGBM_MODEL_FORMAT_NAME,
@@ -299,25 +245,19 @@ pytestmark = pytest.mark.usefixtures(
             ),
         ),
         pytest.param(
-            {**GRPC_PROTOCOL_TYPE_DICT},
-            {
-                **get_model_namespace_dict(
-                    model_format_name=LIGHTGBM_MODEL_FORMAT_NAME,
-                    deployment_type=RAW_DEPLOYMENT_TYPE,
-                    protocol_type=Protocols.GRPC,
-                )
-            },
-            {
-                **get_deployment_config_dict(
-                    model_format_name=LIGHTGBM_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
-                )
-            },
-            {**get_model_storage_uri_dict(model_format_name=LIGHTGBM_MODEL_FORMAT_NAME)},
-            {
-                **get_deployment_config_dict(
-                    model_format_name=LIGHTGBM_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
-                )
-            },
+            GRPC_PROTOCOL_TYPE_DICT,
+            get_model_namespace_dict(
+                model_format_name=LIGHTGBM_MODEL_FORMAT_NAME,
+                deployment_type=RAW_DEPLOYMENT_TYPE,
+                protocol_type=Protocols.GRPC,
+            ),
+            get_deployment_config_dict(
+                model_format_name=LIGHTGBM_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
+            ),
+            get_model_storage_uri_dict(model_format_name=LIGHTGBM_MODEL_FORMAT_NAME),
+            get_deployment_config_dict(
+                model_format_name=LIGHTGBM_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
+            ),
             LIGHTGBM_MODEL_FORMAT_NAME,
             id=get_test_case_id(
                 model_format_name=LIGHTGBM_MODEL_FORMAT_NAME,
@@ -326,25 +266,19 @@ pytestmark = pytest.mark.usefixtures(
             ),
         ),
         pytest.param(
-            {**REST_PROTOCOL_TYPE_DICT},
-            {
-                **get_model_namespace_dict(
-                    model_format_name=LIGHTGBM_MODEL_FORMAT_NAME,
-                    deployment_type=SERVERLESS_DEPLOYMENT_TYPE,
-                    protocol_type=Protocols.REST,
-                )
-            },
-            {
-                **get_deployment_config_dict(
-                    model_format_name=LIGHTGBM_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
-                )
-            },
-            {**get_model_storage_uri_dict(model_format_name=LIGHTGBM_MODEL_FORMAT_NAME)},
-            {
-                **get_deployment_config_dict(
-                    model_format_name=LIGHTGBM_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
-                )
-            },
+            REST_PROTOCOL_TYPE_DICT,
+            get_model_namespace_dict(
+                model_format_name=LIGHTGBM_MODEL_FORMAT_NAME,
+                deployment_type=SERVERLESS_DEPLOYMENT_TYPE,
+                protocol_type=Protocols.REST,
+            ),
+            get_deployment_config_dict(
+                model_format_name=LIGHTGBM_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
+            ),
+            get_model_storage_uri_dict(model_format_name=LIGHTGBM_MODEL_FORMAT_NAME),
+            get_deployment_config_dict(
+                model_format_name=LIGHTGBM_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
+            ),
             LIGHTGBM_MODEL_FORMAT_NAME,
             id=get_test_case_id(
                 model_format_name=LIGHTGBM_MODEL_FORMAT_NAME,
@@ -353,25 +287,19 @@ pytestmark = pytest.mark.usefixtures(
             ),
         ),
         pytest.param(
-            {**GRPC_PROTOCOL_TYPE_DICT},
-            {
-                **get_model_namespace_dict(
-                    model_format_name=LIGHTGBM_MODEL_FORMAT_NAME,
-                    deployment_type=SERVERLESS_DEPLOYMENT_TYPE,
-                    protocol_type=Protocols.GRPC,
-                )
-            },
-            {
-                **get_deployment_config_dict(
-                    model_format_name=LIGHTGBM_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
-                )
-            },
-            {**get_model_storage_uri_dict(model_format_name=LIGHTGBM_MODEL_FORMAT_NAME)},
-            {
-                **get_deployment_config_dict(
-                    model_format_name=LIGHTGBM_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
-                )
-            },
+            GRPC_PROTOCOL_TYPE_DICT,
+            get_model_namespace_dict(
+                model_format_name=LIGHTGBM_MODEL_FORMAT_NAME,
+                deployment_type=SERVERLESS_DEPLOYMENT_TYPE,
+                protocol_type=Protocols.GRPC,
+            ),
+            get_deployment_config_dict(
+                model_format_name=LIGHTGBM_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
+            ),
+            get_model_storage_uri_dict(model_format_name=LIGHTGBM_MODEL_FORMAT_NAME),
+            get_deployment_config_dict(
+                model_format_name=LIGHTGBM_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
+            ),
             LIGHTGBM_MODEL_FORMAT_NAME,
             id=get_test_case_id(
                 model_format_name=LIGHTGBM_MODEL_FORMAT_NAME,
@@ -380,25 +308,15 @@ pytestmark = pytest.mark.usefixtures(
             ),
         ),
         pytest.param(
-            {**REST_PROTOCOL_TYPE_DICT},
-            {
-                **get_model_namespace_dict(
-                    model_format_name=MLFLOW_MODEL_FORMAT_NAME,
-                    deployment_type=RAW_DEPLOYMENT_TYPE,
-                    protocol_type=Protocols.REST,
-                )
-            },
-            {
-                **get_deployment_config_dict(
-                    model_format_name=MLFLOW_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
-                )
-            },
-            {**get_model_storage_uri_dict(model_format_name=MLFLOW_MODEL_FORMAT_NAME)},
-            {
-                **get_deployment_config_dict(
-                    model_format_name=MLFLOW_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
-                )
-            },
+            REST_PROTOCOL_TYPE_DICT,
+            get_model_namespace_dict(
+                model_format_name=MLFLOW_MODEL_FORMAT_NAME,
+                deployment_type=RAW_DEPLOYMENT_TYPE,
+                protocol_type=Protocols.REST,
+            ),
+            get_deployment_config_dict(model_format_name=MLFLOW_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE),
+            get_model_storage_uri_dict(model_format_name=MLFLOW_MODEL_FORMAT_NAME),
+            get_deployment_config_dict(model_format_name=MLFLOW_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE),
             MLFLOW_MODEL_FORMAT_NAME,
             id=get_test_case_id(
                 model_format_name=MLFLOW_MODEL_FORMAT_NAME,
@@ -407,25 +325,15 @@ pytestmark = pytest.mark.usefixtures(
             ),
         ),
         pytest.param(
-            {**GRPC_PROTOCOL_TYPE_DICT},
-            {
-                **get_model_namespace_dict(
-                    model_format_name=MLFLOW_MODEL_FORMAT_NAME,
-                    deployment_type=RAW_DEPLOYMENT_TYPE,
-                    protocol_type=Protocols.GRPC,
-                )
-            },
-            {
-                **get_deployment_config_dict(
-                    model_format_name=MLFLOW_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
-                )
-            },
-            {**get_model_storage_uri_dict(model_format_name=MLFLOW_MODEL_FORMAT_NAME)},
-            {
-                **get_deployment_config_dict(
-                    model_format_name=MLFLOW_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
-                )
-            },
+            GRPC_PROTOCOL_TYPE_DICT,
+            get_model_namespace_dict(
+                model_format_name=MLFLOW_MODEL_FORMAT_NAME,
+                deployment_type=RAW_DEPLOYMENT_TYPE,
+                protocol_type=Protocols.GRPC,
+            ),
+            get_deployment_config_dict(model_format_name=MLFLOW_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE),
+            get_model_storage_uri_dict(model_format_name=MLFLOW_MODEL_FORMAT_NAME),
+            get_deployment_config_dict(model_format_name=MLFLOW_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE),
             MLFLOW_MODEL_FORMAT_NAME,
             id=get_test_case_id(
                 model_format_name=MLFLOW_MODEL_FORMAT_NAME,
@@ -434,25 +342,19 @@ pytestmark = pytest.mark.usefixtures(
             ),
         ),
         pytest.param(
-            {**REST_PROTOCOL_TYPE_DICT},
-            {
-                **get_model_namespace_dict(
-                    model_format_name=MLFLOW_MODEL_FORMAT_NAME,
-                    deployment_type=SERVERLESS_DEPLOYMENT_TYPE,
-                    protocol_type=Protocols.REST,
-                )
-            },
-            {
-                **get_deployment_config_dict(
-                    model_format_name=MLFLOW_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
-                )
-            },
-            {**get_model_storage_uri_dict(model_format_name=MLFLOW_MODEL_FORMAT_NAME)},
-            {
-                **get_deployment_config_dict(
-                    model_format_name=MLFLOW_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
-                )
-            },
+            REST_PROTOCOL_TYPE_DICT,
+            get_model_namespace_dict(
+                model_format_name=MLFLOW_MODEL_FORMAT_NAME,
+                deployment_type=SERVERLESS_DEPLOYMENT_TYPE,
+                protocol_type=Protocols.REST,
+            ),
+            get_deployment_config_dict(
+                model_format_name=MLFLOW_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
+            ),
+            get_model_storage_uri_dict(model_format_name=MLFLOW_MODEL_FORMAT_NAME),
+            get_deployment_config_dict(
+                model_format_name=MLFLOW_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
+            ),
             MLFLOW_MODEL_FORMAT_NAME,
             id=get_test_case_id(
                 model_format_name=MLFLOW_MODEL_FORMAT_NAME,
@@ -461,25 +363,19 @@ pytestmark = pytest.mark.usefixtures(
             ),
         ),
         pytest.param(
-            {**GRPC_PROTOCOL_TYPE_DICT},
-            {
-                **get_model_namespace_dict(
-                    model_format_name=MLFLOW_MODEL_FORMAT_NAME,
-                    deployment_type=SERVERLESS_DEPLOYMENT_TYPE,
-                    protocol_type=Protocols.GRPC,
-                )
-            },
-            {
-                **get_deployment_config_dict(
-                    model_format_name=MLFLOW_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
-                )
-            },
-            {**get_model_storage_uri_dict(model_format_name=MLFLOW_MODEL_FORMAT_NAME)},
-            {
-                **get_deployment_config_dict(
-                    model_format_name=MLFLOW_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
-                )
-            },
+            GRPC_PROTOCOL_TYPE_DICT,
+            get_model_namespace_dict(
+                model_format_name=MLFLOW_MODEL_FORMAT_NAME,
+                deployment_type=SERVERLESS_DEPLOYMENT_TYPE,
+                protocol_type=Protocols.GRPC,
+            ),
+            get_deployment_config_dict(
+                model_format_name=MLFLOW_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
+            ),
+            get_model_storage_uri_dict(model_format_name=MLFLOW_MODEL_FORMAT_NAME),
+            get_deployment_config_dict(
+                model_format_name=MLFLOW_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
+            ),
             MLFLOW_MODEL_FORMAT_NAME,
             id=get_test_case_id(
                 model_format_name=MLFLOW_MODEL_FORMAT_NAME,
@@ -488,25 +384,19 @@ pytestmark = pytest.mark.usefixtures(
             ),
         ),
         pytest.param(
-            {**REST_PROTOCOL_TYPE_DICT},
-            {
-                **get_model_namespace_dict(
-                    model_format_name=SKLEARN_MODEL_FORMAT_NAME,
-                    deployment_type=RAW_DEPLOYMENT_TYPE,
-                    protocol_type=Protocols.REST,
-                )
-            },
-            {
-                **get_deployment_config_dict(
-                    model_format_name=SKLEARN_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
-                )
-            },
-            {**get_model_storage_uri_dict(model_format_name=SKLEARN_MODEL_FORMAT_NAME)},
-            {
-                **get_deployment_config_dict(
-                    model_format_name=SKLEARN_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
-                )
-            },
+            REST_PROTOCOL_TYPE_DICT,
+            get_model_namespace_dict(
+                model_format_name=SKLEARN_MODEL_FORMAT_NAME,
+                deployment_type=RAW_DEPLOYMENT_TYPE,
+                protocol_type=Protocols.REST,
+            ),
+            get_deployment_config_dict(
+                model_format_name=SKLEARN_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
+            ),
+            get_model_storage_uri_dict(model_format_name=SKLEARN_MODEL_FORMAT_NAME),
+            get_deployment_config_dict(
+                model_format_name=SKLEARN_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
+            ),
             SKLEARN_MODEL_FORMAT_NAME,
             id=get_test_case_id(
                 model_format_name=SKLEARN_MODEL_FORMAT_NAME,
@@ -515,25 +405,19 @@ pytestmark = pytest.mark.usefixtures(
             ),
         ),
         pytest.param(
-            {**GRPC_PROTOCOL_TYPE_DICT},
-            {
-                **get_model_namespace_dict(
-                    model_format_name=SKLEARN_MODEL_FORMAT_NAME,
-                    deployment_type=RAW_DEPLOYMENT_TYPE,
-                    protocol_type=Protocols.GRPC,
-                )
-            },
-            {
-                **get_deployment_config_dict(
-                    model_format_name=SKLEARN_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
-                )
-            },
-            {**get_model_storage_uri_dict(model_format_name=SKLEARN_MODEL_FORMAT_NAME)},
-            {
-                **get_deployment_config_dict(
-                    model_format_name=SKLEARN_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
-                )
-            },
+            GRPC_PROTOCOL_TYPE_DICT,
+            get_model_namespace_dict(
+                model_format_name=SKLEARN_MODEL_FORMAT_NAME,
+                deployment_type=RAW_DEPLOYMENT_TYPE,
+                protocol_type=Protocols.GRPC,
+            ),
+            get_deployment_config_dict(
+                model_format_name=SKLEARN_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
+            ),
+            get_model_storage_uri_dict(model_format_name=SKLEARN_MODEL_FORMAT_NAME),
+            get_deployment_config_dict(
+                model_format_name=SKLEARN_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
+            ),
             SKLEARN_MODEL_FORMAT_NAME,
             id=get_test_case_id(
                 model_format_name=SKLEARN_MODEL_FORMAT_NAME,
@@ -542,25 +426,19 @@ pytestmark = pytest.mark.usefixtures(
             ),
         ),
         pytest.param(
-            {**REST_PROTOCOL_TYPE_DICT},
-            {
-                **get_model_namespace_dict(
-                    model_format_name=SKLEARN_MODEL_FORMAT_NAME,
-                    deployment_type=SERVERLESS_DEPLOYMENT_TYPE,
-                    protocol_type=Protocols.REST,
-                )
-            },
-            {
-                **get_deployment_config_dict(
-                    model_format_name=SKLEARN_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
-                )
-            },
-            {**get_model_storage_uri_dict(model_format_name=SKLEARN_MODEL_FORMAT_NAME)},
-            {
-                **get_deployment_config_dict(
-                    model_format_name=SKLEARN_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
-                )
-            },
+            REST_PROTOCOL_TYPE_DICT,
+            get_model_namespace_dict(
+                model_format_name=SKLEARN_MODEL_FORMAT_NAME,
+                deployment_type=SERVERLESS_DEPLOYMENT_TYPE,
+                protocol_type=Protocols.REST,
+            ),
+            get_deployment_config_dict(
+                model_format_name=SKLEARN_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
+            ),
+            get_model_storage_uri_dict(model_format_name=SKLEARN_MODEL_FORMAT_NAME),
+            get_deployment_config_dict(
+                model_format_name=SKLEARN_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
+            ),
             SKLEARN_MODEL_FORMAT_NAME,
             id=get_test_case_id(
                 model_format_name=SKLEARN_MODEL_FORMAT_NAME,
@@ -569,25 +447,19 @@ pytestmark = pytest.mark.usefixtures(
             ),
         ),
         pytest.param(
-            {**GRPC_PROTOCOL_TYPE_DICT},
-            {
-                **get_model_namespace_dict(
-                    model_format_name=SKLEARN_MODEL_FORMAT_NAME,
-                    deployment_type=SERVERLESS_DEPLOYMENT_TYPE,
-                    protocol_type=Protocols.GRPC,
-                )
-            },
-            {
-                **get_deployment_config_dict(
-                    model_format_name=SKLEARN_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
-                )
-            },
-            {**get_model_storage_uri_dict(model_format_name=SKLEARN_MODEL_FORMAT_NAME)},
-            {
-                **get_deployment_config_dict(
-                    model_format_name=SKLEARN_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
-                )
-            },
+            GRPC_PROTOCOL_TYPE_DICT,
+            get_model_namespace_dict(
+                model_format_name=SKLEARN_MODEL_FORMAT_NAME,
+                deployment_type=SERVERLESS_DEPLOYMENT_TYPE,
+                protocol_type=Protocols.GRPC,
+            ),
+            get_deployment_config_dict(
+                model_format_name=SKLEARN_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
+            ),
+            get_model_storage_uri_dict(model_format_name=SKLEARN_MODEL_FORMAT_NAME),
+            get_deployment_config_dict(
+                model_format_name=SKLEARN_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
+            ),
             SKLEARN_MODEL_FORMAT_NAME,
             id=get_test_case_id(
                 model_format_name=SKLEARN_MODEL_FORMAT_NAME,
@@ -596,25 +468,19 @@ pytestmark = pytest.mark.usefixtures(
             ),
         ),
         pytest.param(
-            {**REST_PROTOCOL_TYPE_DICT},
-            {
-                **get_model_namespace_dict(
-                    model_format_name=XGBOOST_MODEL_FORMAT_NAME,
-                    deployment_type=RAW_DEPLOYMENT_TYPE,
-                    protocol_type=Protocols.REST,
-                )
-            },
-            {
-                **get_deployment_config_dict(
-                    model_format_name=XGBOOST_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
-                )
-            },
-            {**get_model_storage_uri_dict(model_format_name=XGBOOST_MODEL_FORMAT_NAME)},
-            {
-                **get_deployment_config_dict(
-                    model_format_name=XGBOOST_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
-                )
-            },
+            REST_PROTOCOL_TYPE_DICT,
+            get_model_namespace_dict(
+                model_format_name=XGBOOST_MODEL_FORMAT_NAME,
+                deployment_type=RAW_DEPLOYMENT_TYPE,
+                protocol_type=Protocols.REST,
+            ),
+            get_deployment_config_dict(
+                model_format_name=XGBOOST_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
+            ),
+            get_model_storage_uri_dict(model_format_name=XGBOOST_MODEL_FORMAT_NAME),
+            get_deployment_config_dict(
+                model_format_name=XGBOOST_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
+            ),
             XGBOOST_MODEL_FORMAT_NAME,
             id=get_test_case_id(
                 model_format_name=XGBOOST_MODEL_FORMAT_NAME,
@@ -623,25 +489,19 @@ pytestmark = pytest.mark.usefixtures(
             ),
         ),
         pytest.param(
-            {**GRPC_PROTOCOL_TYPE_DICT},
-            {
-                **get_model_namespace_dict(
-                    model_format_name=XGBOOST_MODEL_FORMAT_NAME,
-                    deployment_type=RAW_DEPLOYMENT_TYPE,
-                    protocol_type=Protocols.GRPC,
-                )
-            },
-            {
-                **get_deployment_config_dict(
-                    model_format_name=XGBOOST_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
-                )
-            },
-            {**get_model_storage_uri_dict(model_format_name=XGBOOST_MODEL_FORMAT_NAME)},
-            {
-                **get_deployment_config_dict(
-                    model_format_name=XGBOOST_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
-                )
-            },
+            GRPC_PROTOCOL_TYPE_DICT,
+            get_model_namespace_dict(
+                model_format_name=XGBOOST_MODEL_FORMAT_NAME,
+                deployment_type=RAW_DEPLOYMENT_TYPE,
+                protocol_type=Protocols.GRPC,
+            ),
+            get_deployment_config_dict(
+                model_format_name=XGBOOST_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
+            ),
+            get_model_storage_uri_dict(model_format_name=XGBOOST_MODEL_FORMAT_NAME),
+            get_deployment_config_dict(
+                model_format_name=XGBOOST_MODEL_FORMAT_NAME, deployment_type=RAW_DEPLOYMENT_TYPE
+            ),
             XGBOOST_MODEL_FORMAT_NAME,
             id=get_test_case_id(
                 model_format_name=XGBOOST_MODEL_FORMAT_NAME,
@@ -650,25 +510,19 @@ pytestmark = pytest.mark.usefixtures(
             ),
         ),
         pytest.param(
-            {**REST_PROTOCOL_TYPE_DICT},
-            {
-                **get_model_namespace_dict(
-                    model_format_name=XGBOOST_MODEL_FORMAT_NAME,
-                    deployment_type=SERVERLESS_DEPLOYMENT_TYPE,
-                    protocol_type=Protocols.REST,
-                )
-            },
-            {
-                **get_deployment_config_dict(
-                    model_format_name=XGBOOST_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
-                )
-            },
-            {**get_model_storage_uri_dict(model_format_name=XGBOOST_MODEL_FORMAT_NAME)},
-            {
-                **get_deployment_config_dict(
-                    model_format_name=XGBOOST_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
-                )
-            },
+            REST_PROTOCOL_TYPE_DICT,
+            get_model_namespace_dict(
+                model_format_name=XGBOOST_MODEL_FORMAT_NAME,
+                deployment_type=SERVERLESS_DEPLOYMENT_TYPE,
+                protocol_type=Protocols.REST,
+            ),
+            get_deployment_config_dict(
+                model_format_name=XGBOOST_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
+            ),
+            get_model_storage_uri_dict(model_format_name=XGBOOST_MODEL_FORMAT_NAME),
+            get_deployment_config_dict(
+                model_format_name=XGBOOST_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
+            ),
             XGBOOST_MODEL_FORMAT_NAME,
             id=get_test_case_id(
                 model_format_name=XGBOOST_MODEL_FORMAT_NAME,
@@ -677,25 +531,19 @@ pytestmark = pytest.mark.usefixtures(
             ),
         ),
         pytest.param(
-            {**GRPC_PROTOCOL_TYPE_DICT},
-            {
-                **get_model_namespace_dict(
-                    model_format_name=XGBOOST_MODEL_FORMAT_NAME,
-                    deployment_type=SERVERLESS_DEPLOYMENT_TYPE,
-                    protocol_type=Protocols.GRPC,
-                )
-            },
-            {
-                **get_deployment_config_dict(
-                    model_format_name=XGBOOST_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
-                )
-            },
-            {**get_model_storage_uri_dict(model_format_name=XGBOOST_MODEL_FORMAT_NAME)},
-            {
-                **get_deployment_config_dict(
-                    model_format_name=XGBOOST_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
-                )
-            },
+            GRPC_PROTOCOL_TYPE_DICT,
+            get_model_namespace_dict(
+                model_format_name=XGBOOST_MODEL_FORMAT_NAME,
+                deployment_type=SERVERLESS_DEPLOYMENT_TYPE,
+                protocol_type=Protocols.GRPC,
+            ),
+            get_deployment_config_dict(
+                model_format_name=XGBOOST_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
+            ),
+            get_model_storage_uri_dict(model_format_name=XGBOOST_MODEL_FORMAT_NAME),
+            get_deployment_config_dict(
+                model_format_name=XGBOOST_MODEL_FORMAT_NAME, deployment_type=SERVERLESS_DEPLOYMENT_TYPE
+            ),
             XGBOOST_MODEL_FORMAT_NAME,
             id=get_test_case_id(
                 model_format_name=XGBOOST_MODEL_FORMAT_NAME,

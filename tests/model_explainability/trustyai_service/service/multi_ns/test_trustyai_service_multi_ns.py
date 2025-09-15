@@ -29,7 +29,7 @@ from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
     ],
     indirect=True,
 )
-@pytest.mark.serverless
+@pytest.mark.rawdeployment
 class TestTrustyAIServiceMultipleNS:
     """Verifies TrustyAIService operations across multiple namespaces,
     i.e. registering inference requests, uploading data, scheduling and deleting metrics,
@@ -123,6 +123,7 @@ class TestTrustyAIServiceMultipleNS:
     indirect=True,
 )
 @pytest.mark.usefixtures("minio_pod")
+@pytest.mark.rawdeployment
 class TestDriftMetricsWithDBStorageMultiNs:
     """
     Verifies drift metric functionality in TrustyAI using MariaDB storage

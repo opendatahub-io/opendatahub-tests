@@ -7,6 +7,7 @@ import requests
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
+from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 from ocp_resources.trustyai_service import TrustyAIService
 from simple_logger.logger import get_logger
@@ -347,6 +348,7 @@ def wait_for_isvc_deployment_registered_by_trustyai_service(
         runtime_name (str): The name of the serving runtime of the isvc
     """
     label_selector = create_isvc_label_selector_str(isvc=isvc, resource_type="deployment", runtime_name=runtime_name)
+    pod_label_selector = create_isvc_label_selector_str(isvc=isvc, resource_type="pod", runtime_name=runtime_name)
     trustyai_service = TrustyAIService(name=TRUSTYAI_SERVICE_NAME, namespace=isvc.namespace, ensure_exists=True)
 
     def _get_deployments() -> list[Deployment]:
@@ -355,6 +357,15 @@ def wait_for_isvc_deployment_registered_by_trustyai_service(
                 label_selector=label_selector,
                 client=client,
                 namespace=isvc.namespace,
+            )
+        )
+
+    def _get_pods() -> list[Pod]:
+        return list(
+            Pod.get(
+                dyn_client=client,
+                namespace=isvc.namespace,
+                label_selector=pod_label_selector,
             )
         )
 
@@ -372,9 +383,21 @@ def wait_for_isvc_deployment_registered_by_trustyai_service(
         for deployment in deployments:
             if (
                 deployment.instance.metadata.annotations.get("internal.serving.kserve.io/logger-sink-url")
-                == f"http://{trustyai_service.name}.{isvc.namespace}.svc.cluster.local"
+                == f"https://{trustyai_service.name}.{isvc.namespace}.svc.cluster.local"
             ):
                 deployment.wait_for_replicas()
+                deployment.wait_for_condition(condition="Available", status="True")
+
+                pods = _get_pods()
+                if len(pods) != 1:
+                    all_ready = False
+                    break
+
+                pod = pods[0]
+                if pod.instance.status.phase != "Running":
+                    all_ready = False
+                    break
+
             elif deployment.instance.spec.replicas != 0:
                 all_ready = False
                 break

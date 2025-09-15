@@ -26,7 +26,6 @@ from utilities.constants import (
     BUILTIN_DETECTOR_CONFIG,
     MinIo,
     QWEN_MODEL_NAME,
-    QWEN_ISVC_NAME,
 )
 from utilities.plugins.constant import OpenAIEnpoints
 
@@ -164,10 +163,10 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         assert response_data["services"]["regex"]["status"] == healthy_status
 
     def test_guardrails_builtin_detectors_unsuitable_input(
-        self, current_client_token, openshift_ca_bundle_file, qwen_isvc, guardrails_orchestrator_route
+        self, current_client_token, openshift_ca_bundle_file, qwen_isvc, guardrails_orchestrator_gateway_route
     ):
         response = requests.post(
-            url=f"https://{guardrails_orchestrator_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
+            url=f"https://{guardrails_orchestrator_gateway_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
             headers=get_auth_headers(token=current_client_token),
             json=get_chat_detections_payload(
                 content=PROMPT_WITH_PII,
@@ -185,10 +184,10 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         )
 
     def test_guardrails_builtin_detectors_unsuitable_output(
-        self, current_client_token, openshift_ca_bundle_file, qwen_isvc, guardrails_orchestrator_route
+        self, current_client_token, openshift_ca_bundle_file, qwen_isvc, guardrails_orchestrator_gateway_route
     ):
         response = requests.post(
-            url=f"https://{guardrails_orchestrator_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
+            url=f"https://{guardrails_orchestrator_gateway_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
             headers=get_auth_headers(token=current_client_token),
             json=get_chat_detections_payload(
                 content="Output example email address, nothing else.",
@@ -217,12 +216,12 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         current_client_token,
         openshift_ca_bundle_file,
         qwen_isvc,
-        guardrails_orchestrator_route,
+        guardrails_orchestrator_gateway_route,
         message,
         url_path,
     ):
         response = requests.post(
-            url=f"https://{guardrails_orchestrator_route.host}{url_path}{OpenAIEnpoints.CHAT_COMPLETIONS}",
+            url=f"https://{guardrails_orchestrator_gateway_route.host}{url_path}{OpenAIEnpoints.CHAT_COMPLETIONS}",
             headers=get_auth_headers(token=current_client_token),
             json=get_chat_detections_payload(
                 content=str(message),
@@ -246,7 +245,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
                     "config.yaml": yaml.dump({
                         "openai": {
                             "service": {
-                                "hostname": f"{QWEN_ISVC_NAME}-predictor",
+                                "hostname": f"{QWEN_MODEL_NAME}-predictor",
                                 "port": 8032,
                             }
                         },
@@ -383,7 +382,7 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
                     "config.yaml": yaml.dump({
                         "openai": {
                             "service": {
-                                "hostname": f"{QWEN_ISVC_NAME}-predictor",
+                                "hostname": f"{QWEN_MODEL_NAME}-predictor",
                                 "port": 8032,
                             }
                         },
