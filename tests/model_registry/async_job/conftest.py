@@ -3,6 +3,7 @@ import json
 
 import pytest
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.job import Job
 
 from tests.model_registry.async_job.constants import (
@@ -137,7 +138,7 @@ def async_upload_image(admin_client: DynamicClient) -> str:
     )
 
     if not config_map.exists:
-        raise RuntimeError(
+        raise ResourceNotFoundError(
             "ConfigMap 'model-registry-operator-parameters' not found in namespace 'redhat-ods-applications'"
         )
 
