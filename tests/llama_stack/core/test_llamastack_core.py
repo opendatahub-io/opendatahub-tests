@@ -14,7 +14,11 @@ from ocp_resources.secret import Secret
             {"name": "test-llamastack-core"},
             MinIo.PodConfig.QWEN_HAP_BPIV2_MINIO_CONFIG,
             {"bucket": "llms"},
-            {"vllm_url_fixture": "qwen_isvc_url", "inference_model": QWEN_MODEL_NAME},
+            {
+                "vllm_url_fixture": "qwen_isvc_url",
+                "inference_model": QWEN_MODEL_NAME,
+                "llama_stack_storage_size": "10Gi",
+            },
         )
     ],
     indirect=True,

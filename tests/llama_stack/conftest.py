@@ -1,5 +1,6 @@
 import os
 import tempfile
+from pathlib import Path
 from typing import Generator, Any, Dict
 
 import portforward
@@ -7,6 +8,7 @@ import pytest
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from llama_stack_client import LlamaStackClient
+from llama_stack_client.types.vector_store import VectorStore
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.llama_stack_distribution import LlamaStackDistribution
@@ -59,7 +61,7 @@ def llama_stack_server_config(
         if request.param.get("vllm_url_fixture"):
             vllm_url = request.getfixturevalue(argname=request.param.get("vllm_url_fixture"))
 
-    return {
+    server_config: Dict[str, Any] = {
         "containerSpec": {
             "resources": {
                 "requests": {"cpu": "250m", "memory": "500Mi"},
@@ -85,176 +87,59 @@ def llama_stack_server_config(
                 },
                 {"name": "FMS_ORCHESTRATOR_URL", "value": fms_orchestrator_url},
             ],
-            "command": ["/bin/sh", "-c", "llama stack run /etc/llama-stack/run.yaml"],
             "name": "llama-stack",
             "port": 8321,
         },
         "distribution": {"name": "rh-dev"},
-        "userConfig": {"configMapName": "rag-llama-stack-config-map"},
-        "storage": {
-            "size": "20Gi",
-        },
     }
+
+    if request.param.get("llama_stack_storage_size"):
+        storage_size = request.param.get("llama_stack_storage_size")
+        server_config["storage"] = {"size": storage_size}
+
+    if request.param.get("llama_stack_user_config_enabled"):
+        # Create configmap trigering the llama_stack_user_config_configmap fixture
+        request.getfixturevalue(argname="llama_stack_user_config_configmap")
+        server_config["userConfig"] = {"configMapName": "llama-stack-user-config"}
+        server_config["containerSpec"]["command"] = ["/bin/sh", "-c", "llama stack run /etc/llama-stack/run.yaml"]
+
+    return server_config
 
 
 @pytest.fixture(scope="class")
-def llama_stack_config_map(
+def llama_stack_user_config_configmap(
+    request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
 ) -> Generator[ConfigMap, Any, Any]:
+    """Create a ConfigMap with user configuration from a file.
+
+    Args:
+        request: Fixture request containing llama_stack_user_config_configmap_path parameter
+        admin_client: Kubernetes dynamic client
+        model_namespace: Target namespace for the ConfigMap
+
+    Yields:
+        ConfigMap: The created ConfigMap with user configuration data
+    """
+
+    if hasattr(request, "param"):
+        if request.param.get("llama_stack_user_config_configmap_path"):
+            llama_stack_user_config_configmap_path = request.param.get("llama_stack_user_config_configmap_path")
+
+    assert llama_stack_user_config_configmap_path is not None, (
+        "Fixture parameter llama_stack_user_config_configmap_path is required"
+    )
+    config_path = Path(__file__).parent / llama_stack_user_config_configmap_path
+
+    with open(config_path, "r") as f:
+        llama_stack_userconfig_configmap_data = f.read()
+
     with ConfigMap(
         client=admin_client,
         namespace=model_namespace.name,
-        name="rag-llama-stack-config-map",
-        data={
-            "run.yaml": """version: 2
-image_name: rh
-apis:
-- agents
-- datasetio
-- eval
-- inference
-- safety
-- files
-- scoring
-- telemetry
-- tool_runtime
-- vector_io
-providers:
-  inference:
-  - provider_id: vllm-inference
-    provider_type: remote::vllm
-    config:
-      url: ${env.VLLM_URL:=http://localhost:8000/v1}
-      max_tokens: ${env.VLLM_MAX_TOKENS:=4096}
-      api_token: ${env.VLLM_API_TOKEN:=fake}
-      tls_verify: ${env.VLLM_TLS_VERIFY:=true}
-  - provider_id: sentence-transformers
-    provider_type: inline::sentence-transformers
-    config: {}
-  vector_io:
-  - provider_id: milvus
-    provider_type: inline::milvus
-    config:
-      db_path: /opt/app-root/src/.llama/distributions/rh/milvus.db
-      kvstore:
-        type: sqlite
-        namespace: null
-        db_path: /opt/app-root/src/.llama/distributions/rh/milvus_registry.db
-  files:
-  - provider_id: meta-reference-files
-    provider_type: inline::localfs
-    config:
-      storage_dir: /opt/app-root/src/.llama/distributions/rh/files
-      metadata_store:
-        type: sqlite
-        db_path: /opt/app-root/src/.llama/distributions/rh/files_metadata.db
-  safety:
-    - provider_id: trustyai_fms
-      provider_type: remote::trustyai_fms
-      config:
-        orchestrator_url: ${env.FMS_ORCHESTRATOR_URL:=}
-        ssl_cert_path: ${env.FMS_SSL_CERT_PATH:=}
-        shields: {}
-  agents:
-  - provider_id: meta-reference
-    provider_type: inline::meta-reference
-    config:
-      persistence_store:
-        type: sqlite
-        namespace: null
-        db_path: /opt/app-root/src/.llama/distributions/rh/agents_store.db
-      responses_store:
-        type: sqlite
-        db_path: /opt/app-root/src/.llama/distributions/rh/responses_store.db
-  eval:
-  - provider_id: trustyai_lmeval
-    provider_type: remote::trustyai_lmeval
-    config:
-        use_k8s: True
-        base_url: ${env.VLLM_URL:=http://localhost:8000/v1}
-  datasetio:
-  - provider_id: huggingface
-    provider_type: remote::huggingface
-    config:
-      kvstore:
-        type: sqlite
-        namespace: null
-        db_path: /opt/app-root/src/.llama/distributions/rh/huggingface_datasetio.db
-  - provider_id: localfs
-    provider_type: inline::localfs
-    config:
-      kvstore:
-        type: sqlite
-        namespace: null
-        db_path: /opt/app-root/src/.llama/distributions/rh/localfs_datasetio.db
-  scoring:
-  - provider_id: basic
-    provider_type: inline::basic
-    config: {}
-  - provider_id: llm-as-judge
-    provider_type: inline::llm-as-judge
-    config: {}
-  - provider_id: braintrust
-    provider_type: inline::braintrust
-    config:
-      openai_api_key: ${env.OPENAI_API_KEY:=}
-  telemetry:
-  - provider_id: meta-reference
-    provider_type: inline::meta-reference
-    config:
-      service_name: "${env.OTEL_SERVICE_NAME:=\u200b}"
-      sinks: ${env.TELEMETRY_SINKS:=console,sqlite}
-      sqlite_db_path: /opt/app-root/src/.llama/distributions/rh/trace_store.db
-      otel_exporter_otlp_endpoint: ${env.OTEL_EXPORTER_OTLP_ENDPOINT:=}
-  tool_runtime:
-  - provider_id: brave-search
-    provider_type: remote::brave-search
-    config:
-      api_key: ${env.BRAVE_SEARCH_API_KEY:=}
-      max_results: 3
-  - provider_id: tavily-search
-    provider_type: remote::tavily-search
-    config:
-      api_key: ${env.TAVILY_SEARCH_API_KEY:=}
-      max_results: 3
-  - provider_id: rag-runtime
-    provider_type: inline::rag-runtime
-    config: {}
-  - provider_id: model-context-protocol
-    provider_type: remote::model-context-protocol
-    config: {}
-metadata_store:
-  type: sqlite
-  db_path: /opt/app-root/src/.llama/distributions/rh/registry.db
-inference_store:
-  type: sqlite
-  db_path: /opt/app-root/src/.llama/distributions/rh/inference_store.db
-models:
-- metadata: {}
-  model_id: ${env.INFERENCE_MODEL}
-  provider_id: vllm-inference
-  model_type: llm
-- metadata:
-    embedding_dimension: 768
-  model_id: granite-embedding-125m
-  provider_id: sentence-transformers
-  provider_model_id: ibm-granite/granite-embedding-125m-english
-  model_type: embedding
-shields: []
-vector_dbs: []
-datasets: []
-scoring_fns: []
-benchmarks: []
-tool_groups:
-- toolgroup_id: builtin::websearch
-  provider_id: tavily-search
-- toolgroup_id: builtin::rag
-  provider_id: rag-runtime
-server:
-  port: 8321
-external_providers_dir: /opt/app-root/src/.llama/providers.d"""
-        },
+        name="llama-stack-user-config",
+        data={"run.yaml": llama_stack_userconfig_configmap_data},
     ) as config_map:
         yield config_map
 
@@ -265,7 +150,6 @@ def llama_stack_distribution(
     model_namespace: Namespace,
     enabled_llama_stack_operator: DataScienceCluster,
     llama_stack_server_config: Dict[str, Any],
-    llama_stack_config_map: ConfigMap,
 ) -> Generator[LlamaStackDistribution, None, None]:
     with create_llama_stack_distribution(
         client=admin_client,
@@ -354,7 +238,9 @@ def llama_stack_models(llama_stack_client: LlamaStackClient) -> ModelInfo:
 
 
 @pytest.fixture(scope="class")
-def vector_store(llama_stack_client: LlamaStackClient, llama_stack_models: ModelInfo) -> Generator[Any, None, None]:
+def vector_store(
+    llama_stack_client: LlamaStackClient, llama_stack_models: ModelInfo
+) -> Generator[VectorStore, None, None]:
     """
     Creates a vector store for testing and automatically cleans it up.
 
@@ -371,7 +257,7 @@ def vector_store(llama_stack_client: LlamaStackClient, llama_stack_models: Model
     # Setup
     vector_store = llama_stack_client.vector_stores.create(
         name="test_vector_store",
-        embedding_model=llama_stack_models.embedding_model.identifier,
+        embedding_model=llama_stack_models.embedding_model.identifier,  # type: ignore
         embedding_dimension=llama_stack_models.embedding_dimension,
     )
 

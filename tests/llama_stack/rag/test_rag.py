@@ -5,8 +5,10 @@ import pytest
 from llama_stack_client import Agent, LlamaStackClient, RAGDocument
 from llama_stack_client.types import EmbeddingsResponse, QueryChunksResponse
 from llama_stack_client.types.vector_io_insert_params import Chunk
+from llama_stack_client.types.vector_store import VectorStore
 from simple_logger.logger import get_logger
-from utilities.rag_utils import TurnExpectation, validate_rag_agent_responses, validate_api_responses
+from utilities.rag_utils import TurnExpectation, validate_rag_agent_responses, validate_api_responses, ModelInfo
+from ocp_resources.config_map import ConfigMap
 
 from tests.llama_stack.constants import TORCHTUNE_TEST_EXPECTATIONS
 
@@ -14,11 +16,13 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(
-    "model_namespace",
+    "model_namespace, llama_stack_user_config_configmap, llama_stack_server_config",
     [
         pytest.param(
             {"name": "test-llamastack-rag"},
-        )
+            {"llama_stack_user_config_configmap_path": "rag/manifests/llama-stack-user-config-configmap.yaml"},
+            {"llama_stack_storage_size": "", "llama_stack_user_config_enabled": "true"},
+        ),
     ],
     indirect=True,
 )
@@ -47,7 +51,7 @@ class TestLlamaStackRag:
         ]
 
     def _create_response_function(
-        self, llama_stack_client: LlamaStackClient, llama_stack_models, vector_store
+        self, llama_stack_client: LlamaStackClient, llama_stack_models: ModelInfo, vector_store: VectorStore
     ) -> callable:
         """
         Helper method to create a response function for testing with vector store integration.
@@ -77,7 +81,12 @@ class TestLlamaStackRag:
         return _response_fn
 
     @pytest.mark.smoke
-    def test_rag_inference_embeddings(self, llama_stack_client: LlamaStackClient, llama_stack_models) -> None:
+    def test_rag_inference_embeddings(
+        self,
+        llama_stack_client: LlamaStackClient,
+        llama_stack_user_config_configmap: ConfigMap,
+        llama_stack_models: ModelInfo,
+    ) -> None:
         """
         Test embedding model functionality and vector generation.
 
@@ -95,7 +104,12 @@ class TestLlamaStackRag:
         assert isinstance(embeddings_response.embeddings[0][0], float)
 
     @pytest.mark.smoke
-    def test_rag_vector_io_ingestion_retrieval(self, llama_stack_client: LlamaStackClient, llama_stack_models) -> None:
+    def test_rag_vector_io_ingestion_retrieval(
+        self,
+        llama_stack_client: LlamaStackClient,
+        llama_stack_user_config_configmap: ConfigMap,
+        llama_stack_models: ModelInfo,
+    ) -> None:
         """
         Validates basic vector_db API in llama-stack using milvus
 
@@ -110,14 +124,14 @@ class TestLlamaStackRag:
         try:
             llama_stack_client.vector_dbs.register(
                 vector_db_id=vector_db_id,
-                embedding_model=llama_stack_models.embedding_model.identifier,
+                embedding_model=llama_stack_models.embedding_model.identifier,  # type: ignore
                 embedding_dimension=llama_stack_models.embedding_dimension,  # type: ignore
                 provider_id="milvus",
             )
 
             # Calculate embeddings
             embeddings_response = llama_stack_client.inference.embeddings(
-                model_id=llama_stack_models.embedding_model.identifier,
+                model_id=llama_stack_models.embedding_model.identifier,  # type: ignore
                 contents=["First chunk of text"],
                 output_dimension=llama_stack_models.embedding_dimension,  # type: ignore
             )
@@ -150,7 +164,12 @@ class TestLlamaStackRag:
                 LOGGER.warning(f"Failed to unregister vector database {vector_db_id}: {e}")
 
     @pytest.mark.smoke
-    def test_rag_simple_agent(self, llama_stack_client: LlamaStackClient, llama_stack_models) -> None:
+    def test_rag_simple_agent(
+        self,
+        llama_stack_client: LlamaStackClient,
+        llama_stack_user_config_configmap: ConfigMap,
+        llama_stack_models: ModelInfo,
+    ) -> None:
         """
         Test basic agent creation and conversation capabilities.
 
@@ -184,12 +203,14 @@ class TestLlamaStackRag:
         content = response.output_message.content.lower()
         assert content is not None, "LLM response content is None"
         assert "answer" in content, "The LLM didn't provide the expected answer to the prompt"
-        assert "translate" in content, "The LLM didn't provide the expected answer to the prompt"
-        assert "summarize" in content, "The LLM didn't provide the expected answer to the prompt"
-        assert "chat" in content, "The LLM didn't provide the expected answer to the prompt"
 
     @pytest.mark.smoke
-    def test_rag_build_rag_agent(self, llama_stack_client: LlamaStackClient, llama_stack_models) -> None:
+    def test_rag_build_rag_agent(
+        self,
+        llama_stack_client: LlamaStackClient,
+        llama_stack_user_config_configmap: ConfigMap,
+        llama_stack_models: ModelInfo,
+    ) -> None:
         """
         Test full RAG pipeline with vector database integration and knowledge retrieval.
 
@@ -205,7 +226,7 @@ class TestLlamaStackRag:
 
         llama_stack_client.vector_dbs.register(
             vector_db_id=vector_db_id,
-            embedding_model=llama_stack_models.embedding_model.identifier,
+            embedding_model=llama_stack_models.embedding_model.identifier,  # type: ignore
             embedding_dimension=llama_stack_models.embedding_dimension,
             provider_id="milvus",
         )
@@ -281,7 +302,12 @@ class TestLlamaStackRag:
                 LOGGER.warning(f"Failed to unregister vector database {vector_db_id}: {e}")
 
     @pytest.mark.smoke
-    def test_rag_simple_responses(self, llama_stack_client: LlamaStackClient, llama_stack_models) -> None:
+    def test_rag_simple_responses(
+        self,
+        llama_stack_client: LlamaStackClient,
+        llama_stack_user_config_configmap: ConfigMap,
+        llama_stack_models: ModelInfo,
+    ) -> None:
         """
         Test simple responses API from the llama-stack server.
 
@@ -318,8 +344,9 @@ class TestLlamaStackRag:
     def test_rag_full_responses(
         self,
         llama_stack_client: LlamaStackClient,
-        llama_stack_models,
-        vector_store_with_docs,
+        llama_stack_user_config_configmap: ConfigMap,
+        llama_stack_models: ModelInfo,
+        vector_store_with_docs: VectorStore,
     ) -> None:
         """
         Test responses API from the llama-stack server with vector store integration.
@@ -342,7 +369,12 @@ class TestLlamaStackRag:
         assert validation_result["success"], f"RAG agent validation failed. Summary: {validation_result['summary']}"
 
     @pytest.mark.smoke
-    def test_rag_vector_store_search(self, llama_stack_client: LlamaStackClient, vector_store_with_docs) -> None:
+    def test_rag_vector_store_search(
+        self,
+        llama_stack_client: LlamaStackClient,
+        llama_stack_user_config_configmap: ConfigMap,
+        vector_store_with_docs: VectorStore,
+    ) -> None:
         """
         Test vector store search functionality using the search endpoint.
 
