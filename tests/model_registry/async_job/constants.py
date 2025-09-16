@@ -1,6 +1,5 @@
 # Job identification
 ASYNC_UPLOAD_JOB_NAME = "model-sync-async-job"
-ASYNC_UPLOAD_IMAGE = "quay.io/opendatahub/model-registry-job-async-upload:v0.3.0"
 
 # Job labels and annotations
 ASYNC_JOB_LABELS = {

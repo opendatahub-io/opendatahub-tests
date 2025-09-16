@@ -3,12 +3,12 @@ import json
 
 import pytest
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.job import Job
 
 from tests.model_registry.async_job.constants import (
     ASYNC_JOB_ANNOTATIONS,
     ASYNC_JOB_LABELS,
-    ASYNC_UPLOAD_IMAGE,
     ASYNC_UPLOAD_JOB_NAME,
     MODEL_SYNC_CONFIG,
     VOLUME_MOUNTS,
@@ -16,6 +16,7 @@ from tests.model_registry.async_job.constants import (
 
 import shortuuid
 from pytest import FixtureRequest
+from pytest_testconfig import py_config
 
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
@@ -25,6 +26,7 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from ocp_resources.config_map import ConfigMap
 from model_registry.types import RegisteredModel
 from model_registry import ModelRegistry as ModelRegistryClient
 
@@ -115,6 +117,39 @@ def oci_secret_for_async_job(
 
 
 @pytest.fixture(scope="class")
+def async_upload_image(admin_client: DynamicClient) -> str:
+    """
+    Get the async upload image dynamically from the model-registry-operator-parameters ConfigMap.
+
+    This fetches the image from the cluster at runtime instead of using a hardcoded value.
+
+    Args:
+        admin_client: Kubernetes client for resource access
+
+    Returns:
+        str: The async upload image URL from the ConfigMap
+
+    Raises:
+        KeyError: If the ConfigMap or the required key doesn't exist
+    """
+    config_map = ConfigMap(
+        client=admin_client,
+        name="model-registry-operator-parameters",
+        namespace=py_config["applications_namespace"],
+    )
+
+    if not config_map.exists:
+        raise ResourceNotFoundError(
+            f"ConfigMap 'model-registry-operator-parameters' not found in namespace '{py_config['applications_namespace']}'"  # noqa: E501
+        )
+
+    try:
+        return config_map.instance.data["IMAGES_JOBS_ASYNC_UPLOAD"]
+    except KeyError as e:
+        raise KeyError(f"Key 'IMAGES_JOBS_ASYNC_UPLOAD' not found in ConfigMap data: {e}") from e
+
+
+@pytest.fixture(scope="class")
 def model_sync_async_job(
     admin_client: DynamicClient,
     sa_token: str,
@@ -125,6 +160,7 @@ def model_sync_async_job(
     oci_secret_for_async_job: Secret,
     oci_registry_host: str,
     mr_access_role_binding: RoleBinding,
+    async_upload_image: str,
     teardown_resources: bool,
 ) -> Generator[Job, Any, Any]:
     """
@@ -146,6 +182,7 @@ def model_sync_async_job(
         oci_secret_for_async_job: Secret containing OCI registry credentials
         oci_registry_host: OCI registry hostname
         mr_access_role_binding: Role binding for Model Registry access
+        async_upload_image: Container image URL for async upload job (fetched dynamically)
         teardown_resources: Whether to clean up resources after test
 
     Returns:
@@ -210,7 +247,7 @@ def model_sync_async_job(
         containers=[
             {
                 "name": "async-upload",
-                "image": ASYNC_UPLOAD_IMAGE,
+                "image": async_upload_image,
                 "volumeMounts": volume_mounts,
                 "env": environment_variables,
             }

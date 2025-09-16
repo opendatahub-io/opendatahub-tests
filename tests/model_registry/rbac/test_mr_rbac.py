@@ -135,7 +135,6 @@ class TestUserMultiProjectPermission:
 
     @pytest.mark.parametrize(
         (
-            "updated_dsc_component_state_scope_session, "
             "db_secret_parametrized, "
             "db_pvc_parametrized, "
             "db_service_parametrized, "
