@@ -342,9 +342,9 @@ def model_registry_instance_parametrized(
     """Create Model Registry instance parametrized"""
     with ExitStack() as stack:
         model_registry_instances = []
-        for param in request.param:
+        mr_instances = [stack.enter_context(ModelRegistry(**param)) for param in request.param]
+        for mr_instance in mr_instances:
             # Common parameters for both ModelRegistry classes
-            mr_instance = stack.enter_context(ModelRegistry(**param))  # noqa: FCN001
             mr_instance.wait_for_condition(condition="Available", status="True")
             mr_instance.wait_for_condition(condition="OAuthProxyAvailable", status="True")
             model_registry_instances.append(mr_instance)

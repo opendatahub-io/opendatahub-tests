@@ -17,7 +17,6 @@ from tests.model_registry.utils import (
 )
 
 ns_name = py_config["model_registry_namespace"]
-ns_params = {"ns_name": ns_name}
 
 resource_names = [f"{DB_BASE_RESOURCES_NAME}{index}" for index in range(0, NUM_MR_INSTANCES)]
 
@@ -92,7 +91,6 @@ model_registry_instance_params = [
 # Add this complete set of parameters as a pytest.param tuple to the list.
 MR_MULTIPROJECT_TEST_SCENARIO_PARAMS = [
     pytest.param(
-        ns_params,  # updated_dsc_component_state_parametrized (expects dict)
         db_secret_params,
         db_pvc_params,
         db_service_params,

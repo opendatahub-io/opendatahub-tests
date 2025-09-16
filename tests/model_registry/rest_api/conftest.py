@@ -257,6 +257,9 @@ def patch_mysql_deployment_with_ssl_ca(
 
     patch = {"spec": {"template": {"spec": {"volumes": volumes, "containers": [my_sql_container]}}}}
     with ResourceEditor(patches={model_registry_db_deployments[0]: patch}):
+        wait_for_pods_running(
+            admin_client=admin_client, namespace_name=model_registry_namespace, number_of_consecutive_checks=3
+        )
         model_registry_db_deployments[0].wait_for_condition(condition="Available", status="True")
         yield model_registry_db_deployments[0]
 
@@ -323,6 +326,12 @@ def mysql_ssl_secrets(
         "server_cert_secret": server_cert_secret,
         "server_key_secret": server_key_secret,
     }
+    if ca_secret.exists:
+        ca_secret.delete(wait=True)
+    if server_cert_secret.exists:
+        server_cert_secret.delete(wait=True)
+    if server_key_secret.exists:
+        server_key_secret.delete(wait=True)
 
 
 @pytest.fixture(scope="function")

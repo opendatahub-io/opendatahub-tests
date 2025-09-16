@@ -167,7 +167,6 @@ def model_registry_instance_rest_endpoint(admin_client: DynamicClient, model_reg
 @pytest.fixture(scope="session")
 def updated_dsc_component_state_scope_session(
     pytestconfig: Config,
-    request: FixtureRequest,
     admin_client: DynamicClient,
 ) -> Generator[DataScienceCluster, Any, Any]:
     dsc_resource = get_data_science_cluster(client=admin_client)
