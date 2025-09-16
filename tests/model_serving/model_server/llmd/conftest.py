@@ -100,7 +100,7 @@ def llmd_inference_service(
     service_name = kwargs.get("name", f"llm-{name_suffix}")
 
     if "llmd_gateway" in request.fixturenames:
-        request.getfixturevalue("llmd_gateway")
+        request.getfixturevalue(argname="llmd_gateway")
     container_resources = kwargs.get(
         "container_resources",
         {
