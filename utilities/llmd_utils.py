@@ -478,6 +478,7 @@ class LLMUserInference:
         else:
             try:
                 from ocp_resources.resource import get_client
+
                 client = get_client()
                 ca_bundle = get_ca_bundle(client=client, deployment_mode="raw")
                 if ca_bundle:
@@ -590,9 +591,7 @@ def _validate_authorized_response(
         elif isinstance(expected_response_text, dict):
             response_output = expected_response_text.get("response_output")
             if response_output is not None:
-                expected_response_text = Template(template=response_output).safe_substitute(
-                    model_name=model_name
-                )
+                expected_response_text = Template(template=response_output).safe_substitute(model_name=model_name)
     if inference.inference_response_text_key_name:
         if inference_type == inference.STREAMING:
             if output := re.findall(
