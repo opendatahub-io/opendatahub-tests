@@ -50,15 +50,15 @@ def llama_stack_server_config(
     vllm_url = os.getenv("LLS_CORE_VLLM_URL", "")
 
     # Override env vars with request parameters if provided
-    params = getattr(request, "param", {})
+    params = getattr(request, "param", {}) or {}
     if params.get("fms_orchestrator_url_fixture"):
-        fms_orchestrator_url = request.getfixturevalue(argname=request.param.get("fms_orchestrator_url_fixture"))
+        fms_orchestrator_url = request.getfixturevalue(argname=params.get("fms_orchestrator_url_fixture"))
     if params.get("inference_model"):
-        inference_model = request.param.get("inference_model")
+        inference_model = params.get("inference_model")  # type: ignore
     if params.get("vllm_api_token"):
-        vllm_api_token = request.param.get("vllm_api_token")
+        vllm_api_token = params.get("vllm_api_token")  # type: ignore
     if params.get("vllm_url_fixture"):
-        vllm_url = request.getfixturevalue(argname=request.param.get("vllm_url_fixture"))
+        vllm_url = request.getfixturevalue(argname=params.get("vllm_url_fixture"))
 
     server_config: Dict[str, Any] = {
         "containerSpec": {
