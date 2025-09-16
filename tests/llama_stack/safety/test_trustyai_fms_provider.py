@@ -26,7 +26,7 @@ SECURE_SHIELD_ID: str = "secure_shield"
                     })
                 },
             },
-            {"enable_built_in_detectors": True, "enable_guardrails_gateway": False},
+            {"orchestrator_config": True, "enable_built_in_detectors": True, "enable_guardrails_gateway": False},
             {
                 "vllm_url_fixture": "qwen_isvc_url",
                 "inference_model": QWEN_MODEL_NAME,

@@ -8,6 +8,7 @@ from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 
+from tests.model_explainability.guardrails.constants import AUTOCONFIG_DETECTOR_LABEL
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import KServeDeploymentType, RuntimeTemplates
 from utilities.inference_utils import create_isvc
@@ -60,6 +61,7 @@ def prompt_injection_detector_isvc(
         min_replicas=1,
         labels={
             "opendatahub.io/dashboard": "true",
+            AUTOCONFIG_DETECTOR_LABEL: "true",
         },
     ) as isvc:
         yield isvc
@@ -113,6 +115,7 @@ def hap_detector_isvc(
         min_replicas=1,
         labels={
             "opendatahub.io/dashboard": "true",
+            AUTOCONFIG_DETECTOR_LABEL: "true",
         },
     ) as isvc:
         yield isvc
