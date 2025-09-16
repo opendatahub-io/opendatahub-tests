@@ -51,4 +51,3 @@ HAP_INPUT_DETECTION_PROMPT: GuardrailsDetectionPrompt = GuardrailsDetectionPromp
     detection_type="LABEL_1",
     detection_text=HAP_PROMPT,
 )
-
