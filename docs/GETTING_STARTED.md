@@ -41,6 +41,21 @@ OC_BINARY_PATH=/usr/local/bin/oc uv run pytest
 
 **Note:** Ensure your local `oc` binary is executable and compatible with your target cluster version.
 
+## Must gather
+
+In order to collect must-gather on failure point one may use `--collect-must-gather` to the pytest command. e.g.
+
+```bash
+uv run pytest tests/<your component> --collect-must-gather
+```
+
+By default, the collected must-gather would be archived. To skip archiving, please set environment variable
+ARCHIVE_MUST_GATHER to any value other than "true". e.g.
+
+```bash
+export ARCHIVE_MUST_GATHER="false"
+```
+
 ### Benefits of Using Local Binary
 
 - Faster test startup (no download time)

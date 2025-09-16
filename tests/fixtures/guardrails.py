@@ -139,3 +139,27 @@ def guardrails_orchestrator_health_route(
         }
     ):
         yield guardrails_orchestrator_health_route
+
+
+@pytest.fixture(scope="class")
+def guardrails_orchestrator_gateway_route(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    guardrails_orchestrator: GuardrailsOrchestrator,
+) -> Generator[Route, Any, Any]:
+    guardrails_orchestrator_gateway_route = Route(
+        name=f"{guardrails_orchestrator.name}-gateway",
+        namespace=guardrails_orchestrator.namespace,
+        wait_for_resource=True,
+        ensure_exists=True,
+    )
+    with ResourceEditor(
+        patches={
+            guardrails_orchestrator_gateway_route: {
+                "metadata": {
+                    "annotations": {Annotations.HaproxyRouterOpenshiftIo.TIMEOUT: "10m"},
+                }
+            }
+        }
+    ):
+        yield guardrails_orchestrator_gateway_route
