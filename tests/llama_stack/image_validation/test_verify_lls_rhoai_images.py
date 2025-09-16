@@ -7,16 +7,12 @@ from utilities.general import (
     validate_container_images,
 )
 from ocp_resources.pod import Pod
-from ocp_resources.namespace import Namespace
 
 
 LOGGER = get_logger(name=__name__)
 
 
-@pytest.mark.usefixtures(
-    "enabled_llama_stack_operator"
-)
-
+@pytest.mark.usefixtures("enabled_llama_stack_operator")
 @pytest.mark.parametrize(
     "model_namespace",
     [
@@ -26,7 +22,6 @@ LOGGER = get_logger(name=__name__)
     ],
     indirect=True,
 )
-
 @pytest.mark.rawdeployment
 @pytest.mark.downstream_only
 class TestLLSImages:
