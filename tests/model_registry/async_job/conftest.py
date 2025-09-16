@@ -16,6 +16,7 @@ from tests.model_registry.async_job.constants import (
 
 import shortuuid
 from pytest import FixtureRequest
+from pytest_testconfig import py_config
 
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
@@ -134,12 +135,12 @@ def async_upload_image(admin_client: DynamicClient) -> str:
     config_map = ConfigMap(
         client=admin_client,
         name="model-registry-operator-parameters",
-        namespace="redhat-ods-applications",
+        namespace=py_config["applications_namespace"],
     )
 
     if not config_map.exists:
         raise ResourceNotFoundError(
-            "ConfigMap 'model-registry-operator-parameters' not found in namespace 'redhat-ods-applications'"
+            f"ConfigMap 'model-registry-operator-parameters' not found in namespace '{py_config['applications_namespace']}'"  # noqa: E501
         )
 
     try:
