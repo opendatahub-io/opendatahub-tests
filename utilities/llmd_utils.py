@@ -630,28 +630,3 @@ def _validate_authorized_response(
                 )
     else:
         raise InferenceResponseError(f"Inference response output not found in response. Response: {res}")
-
-
-def validate_llm_response_format(response_data: Dict[str, Any]) -> bool:
-    """Validate that a response follows the expected LLM inference format."""
-    if "choices" not in response_data:
-        raise InferenceResponseError("Response missing required field: 'choices'")
-
-    if not isinstance(response_data["choices"], list):
-        raise InferenceResponseError("'choices' field must be a list")
-
-    if not response_data["choices"]:
-        raise InferenceResponseError("'choices' list cannot be empty")
-
-    choice = response_data["choices"][0]
-    if "message" not in choice:
-        raise InferenceResponseError("Choice missing 'message' field")
-
-    message = choice["message"]
-    if "content" not in message:
-        raise InferenceResponseError("Message missing 'content' field")
-
-    if not isinstance(message["content"], str):
-        raise InferenceResponseError("Message content must be a string")
-
-    return True
