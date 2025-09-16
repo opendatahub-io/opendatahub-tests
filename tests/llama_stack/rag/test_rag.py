@@ -1,5 +1,4 @@
 import uuid
-from typing import List
 
 import pytest
 from llama_stack_client import Agent, LlamaStackClient, RAGDocument
@@ -7,21 +6,19 @@ from llama_stack_client.types import EmbeddingsResponse, QueryChunksResponse
 from llama_stack_client.types.vector_io_insert_params import Chunk
 from llama_stack_client.types.vector_store import VectorStore
 from simple_logger.logger import get_logger
-from utilities.rag_utils import TurnExpectation, validate_rag_agent_responses, validate_api_responses, ModelInfo
-from ocp_resources.config_map import ConfigMap
+from utilities.rag_utils import validate_rag_agent_responses, validate_api_responses, ModelInfo
 
-from tests.llama_stack.constants import TORCHTUNE_TEST_EXPECTATIONS
+from tests.llama_stack.utils import get_torchtune_test_expectations, create_response_function
 
 LOGGER = get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(
-    "model_namespace, llama_stack_user_config_configmap, llama_stack_server_config",
+    "model_namespace, llama_stack_server_config",
     [
         pytest.param(
             {"name": "test-llamastack-rag"},
-            {"llama_stack_user_config_configmap_path": "rag/manifests/llama-stack-user-config-configmap.yaml"},
-            {"llama_stack_storage_size": "", "llama_stack_user_config_enabled": "true"},
+            {"llama_stack_storage_size": ""},
         ),
     ],
     indirect=True,
@@ -34,57 +31,10 @@ class TestLlamaStackRag:
     vector databases, and document retrieval with the Red Hat LlamaStack Distribution.
     """
 
-    def _get_torchtune_test_expectations(self) -> List[TurnExpectation]:
-        """
-        Helper method to get the test expectations for TorchTune documentation questions.
-
-        Returns:
-            List of TurnExpectation objects for testing RAG responses
-        """
-        return [
-            {
-                "question": expectation.question,
-                "expected_keywords": expectation.expected_keywords,
-                "description": expectation.description,
-            }
-            for expectation in TORCHTUNE_TEST_EXPECTATIONS
-        ]
-
-    def _create_response_function(
-        self, llama_stack_client: LlamaStackClient, llama_stack_models: ModelInfo, vector_store: VectorStore
-    ) -> callable:
-        """
-        Helper method to create a response function for testing with vector store integration.
-
-        Args:
-            llama_stack_client: The LlamaStack client instance
-            llama_stack_models: The model configuration
-            vector_store: The vector store instance
-
-        Returns:
-            A callable function that takes a question and returns a response
-        """
-
-        def _response_fn(*, question: str) -> str:
-            response = llama_stack_client.responses.create(
-                input=question,
-                model=llama_stack_models.model_id,
-                tools=[
-                    {
-                        "type": "file_search",
-                        "vector_store_ids": [vector_store.id],
-                    }
-                ],
-            )
-            return response.output_text
-
-        return _response_fn
-
     @pytest.mark.smoke
     def test_rag_inference_embeddings(
         self,
         llama_stack_client: LlamaStackClient,
-        llama_stack_user_config_configmap: ConfigMap,
         llama_stack_models: ModelInfo,
     ) -> None:
         """
@@ -107,7 +57,6 @@ class TestLlamaStackRag:
     def test_rag_vector_io_ingestion_retrieval(
         self,
         llama_stack_client: LlamaStackClient,
-        llama_stack_user_config_configmap: ConfigMap,
         llama_stack_models: ModelInfo,
     ) -> None:
         """
@@ -167,7 +116,6 @@ class TestLlamaStackRag:
     def test_rag_simple_agent(
         self,
         llama_stack_client: LlamaStackClient,
-        llama_stack_user_config_configmap: ConfigMap,
         llama_stack_models: ModelInfo,
     ) -> None:
         """
@@ -208,7 +156,6 @@ class TestLlamaStackRag:
     def test_rag_build_rag_agent(
         self,
         llama_stack_client: LlamaStackClient,
-        llama_stack_user_config_configmap: ConfigMap,
         llama_stack_models: ModelInfo,
     ) -> None:
         """
@@ -270,7 +217,7 @@ class TestLlamaStackRag:
                 chunk_size_in_tokens=512,
             )
 
-            turns_with_expectations = self._get_torchtune_test_expectations()
+            turns_with_expectations = get_torchtune_test_expectations()
 
             # Ask the agent about the inserted documents and validate responses
             validation_result = validate_rag_agent_responses(
@@ -305,7 +252,6 @@ class TestLlamaStackRag:
     def test_rag_simple_responses(
         self,
         llama_stack_client: LlamaStackClient,
-        llama_stack_user_config_configmap: ConfigMap,
         llama_stack_models: ModelInfo,
     ) -> None:
         """
@@ -315,36 +261,28 @@ class TestLlamaStackRag:
         Tests identity and capability questions to ensure the LLM can provide
         appropriate responses about itself and its functionality.
         """
+        test_cases = [
+            ("Who are you?", ["model", "assistant", "ai", "artificial", "language model"]),
+            ("What can you do?", ["answer"]),
+        ]
 
-        response = llama_stack_client.responses.create(
-            model=llama_stack_models.model_id,
-            input="Who are you?",
-            instructions="You are a helpful assistant.",
-        )
+        for question, expected_keywords in test_cases:
+            response = llama_stack_client.responses.create(
+                model=llama_stack_models.model_id,
+                input=question,
+                instructions="You are a helpful assistant.",
+            )
 
-        content = response.output_text
-        assert content is not None, "LLM response content is None"
-        assert any(
-            answer in content.lower() for answer in ["model", "assistant", "ai", "artificial", "language model"]
-        ), (
-            f"The LLM didn't provide any of the expected answers "
-            f"['model', 'assistant', 'ai', 'llm', 'language model']. Got: {content}"
-        )
-
-        response = llama_stack_client.responses.create(
-            model=llama_stack_models.model_id,
-            input="What can you do?",
-            instructions="You are a helpful assistant.",
-        )
-        content = response.output_text
-        assert content is not None, "LLM response content is None"
-        assert "answer" in content, "The LLM didn't provide the expected answer to the prompt"
+            content = response.output_text
+            assert content is not None, "LLM response content is None"
+            assert any(keyword in content.lower() for keyword in expected_keywords), (
+                f"The LLM didn't provide any of the expected keywords {expected_keywords}. Got: {content}"
+            )
 
     @pytest.mark.smoke
     def test_rag_full_responses(
         self,
         llama_stack_client: LlamaStackClient,
-        llama_stack_user_config_configmap: ConfigMap,
         llama_stack_models: ModelInfo,
         vector_store_with_docs: VectorStore,
     ) -> None:
@@ -356,13 +294,13 @@ class TestLlamaStackRag:
         knowledge from uploaded documents to answer questions.
         """
 
-        _response_fn = self._create_response_function(
+        _response_fn = create_response_function(
             llama_stack_client=llama_stack_client,
             llama_stack_models=llama_stack_models,
             vector_store=vector_store_with_docs,
         )
 
-        turns_with_expectations = self._get_torchtune_test_expectations()
+        turns_with_expectations = get_torchtune_test_expectations()
 
         validation_result = validate_api_responses(response_fn=_response_fn, test_cases=turns_with_expectations)
 
@@ -372,7 +310,6 @@ class TestLlamaStackRag:
     def test_rag_vector_store_search(
         self,
         llama_stack_client: LlamaStackClient,
-        llama_stack_user_config_configmap: ConfigMap,
         vector_store_with_docs: VectorStore,
     ) -> None:
         """

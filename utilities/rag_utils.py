@@ -227,7 +227,6 @@ def validate_api_responses(
     response_fn: Callable[..., str],
     test_cases: List[TurnExpectation],
     min_keywords_required: int = 1,
-    verbose: bool = True,
 ) -> ValidationResult:
     """
     Validate API responses against expected keywords.
@@ -243,10 +242,9 @@ def validate_api_responses(
         expected_keywords = test["expected_keywords"]
         description = test.get("description", "")
 
-        if verbose:
-            LOGGER.info(f"\n[{idx}] Question: {question}")
-            if description:
-                LOGGER.info(f"    Expectation: {description}")
+        LOGGER.debug(f"\n[{idx}] Question: {question}")
+        if description:
+            LOGGER.debug(f"    Expectation: {description}")
 
         try:
             response = response_fn(question=question)
@@ -271,12 +269,10 @@ def validate_api_responses(
 
             all_results.append(result)
 
-            if verbose:
-                LOGGER.info(f"✓ Found: {found}")
-                if missing:
-                    LOGGER.info(f"✗ Missing: {missing}")
-                LOGGER.info(f"Result: {'PASS' if success else 'FAIL'}")
-                LOGGER.info(f"Response: {response}")
+            LOGGER.debug(f"✓ Found: {found}")
+            if missing:
+                LOGGER.debug(f"✗ Missing: {missing}")
+            LOGGER.info(f"[{idx}] Result: {'PASS' if success else 'FAIL'}")
 
         except Exception as e:
             all_results.append({
@@ -289,8 +285,7 @@ def validate_api_responses(
                 "success": False,
                 "error": str(e),
             })
-            if verbose:
-                LOGGER.error(f"ERROR: {str(e)}")
+            LOGGER.error(f"[{idx}] ERROR: {str(e)}")
 
     total = len(test_cases)
     summary = {
@@ -300,12 +295,11 @@ def validate_api_responses(
         "success_rate": successful / total if total > 0 else 0,
     }
 
-    if verbose:
-        LOGGER.info("\n" + "=" * 40)
-        LOGGER.info("Validation Summary:")
-        LOGGER.info(f"Total: {summary['total']}")
-        LOGGER.info(f"Passed: {summary['passed']}")
-        LOGGER.info(f"Failed: {summary['failed']}")
-        LOGGER.info(f"Success rate: {summary['success_rate']:.1%}")
+    LOGGER.info("\n" + "=" * 40)
+    LOGGER.info("Validation Summary:")
+    LOGGER.info(f"Total: {summary['total']}")
+    LOGGER.info(f"Passed: {summary['passed']}")
+    LOGGER.info(f"Failed: {summary['failed']}")
+    LOGGER.info(f"Success rate: {summary['success_rate']:.1%}")
 
-    return cast(ValidationResult, {"success": successful == total, "results": all_results, "summary": summary})
+    return cast("ValidationResult", {"success": successful == total, "results": all_results, "summary": summary})

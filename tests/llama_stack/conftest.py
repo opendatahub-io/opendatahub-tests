@@ -1,10 +1,10 @@
 import os
 import tempfile
-from pathlib import Path
 from typing import Generator, Any, Dict
 
 import portforward
 import pytest
+import requests
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from llama_stack_client import LlamaStackClient
@@ -13,7 +13,6 @@ from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.llama_stack_distribution import LlamaStackDistribution
 from ocp_resources.namespace import Namespace
-from ocp_resources.config_map import ConfigMap
 from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
@@ -96,51 +95,7 @@ def llama_stack_server_config(
         storage_size = params.get("llama_stack_storage_size")
         server_config["storage"] = {"size": storage_size}
 
-    if params.get("llama_stack_user_config_enabled"):
-        # Create configmap trigering the llama_stack_user_config_configmap fixture
-        request.getfixturevalue(argname="llama_stack_user_config_configmap")
-        server_config["userConfig"] = {"configMapName": "llama-stack-user-config"}
-        server_config["containerSpec"]["command"] = ["/bin/sh", "-c", "llama stack run /etc/llama-stack/run.yaml"]
-
     return server_config
-
-
-@pytest.fixture(scope="class")
-def llama_stack_user_config_configmap(
-    request: FixtureRequest,
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-) -> Generator[ConfigMap, Any, Any]:
-    """Create a ConfigMap with user configuration from a file.
-
-    Args:
-        request: Fixture request containing llama_stack_user_config_configmap_path parameter
-        admin_client: Kubernetes dynamic client
-        model_namespace: Target namespace for the ConfigMap
-
-    Yields:
-        ConfigMap: The created ConfigMap with user configuration data
-    """
-
-    if hasattr(request, "param"):
-        if request.param.get("llama_stack_user_config_configmap_path"):
-            llama_stack_user_config_configmap_path = request.param.get("llama_stack_user_config_configmap_path")
-
-    assert llama_stack_user_config_configmap_path is not None, (
-        "Fixture parameter llama_stack_user_config_configmap_path is required"
-    )
-    config_path = Path(__file__).parent / llama_stack_user_config_configmap_path
-
-    with open(config_path, "r") as f:
-        llama_stack_userconfig_configmap_data = f.read()
-
-    with ConfigMap(
-        client=admin_client,
-        namespace=model_namespace.name,
-        name="llama-stack-user-config",
-        data={"run.yaml": llama_stack_userconfig_configmap_data},
-    ) as config_map:
-        yield config_map
 
 
 @pytest.fixture(scope="class")
@@ -269,7 +224,11 @@ def vector_store(
         LOGGER.warning(f"Failed to delete vector store {vector_store.id}: {e}")
 
 
-@retry(wait_timeout=Timeout.TIMEOUT_1MIN, sleep=5)
+@retry(
+    wait_timeout=Timeout.TIMEOUT_1MIN,
+    sleep=5,
+    exceptions_dict={requests.exceptions.RequestException: [], Exception: []},
+)
 def _download_and_upload_file(url: str, llama_stack_client: LlamaStackClient, vector_store: Any) -> bool:
     """
     Downloads a file from URL and uploads it to the vector store.
@@ -282,8 +241,6 @@ def _download_and_upload_file(url: str, llama_stack_client: LlamaStackClient, ve
     Returns:
         bool: True if successful, raises exception if failed
     """
-    import requests
-
     try:
         response = requests.get(url, timeout=30)
         response.raise_for_status()
