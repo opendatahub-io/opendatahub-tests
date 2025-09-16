@@ -263,7 +263,7 @@ def vector_store(
     yield vector_store
 
     try:
-        llama_stack_client.vector_stores.delete(id=vector_store.id)
+        llama_stack_client.vector_stores.delete(vector_store_id=vector_store.id)
         LOGGER.info(f"Deleted vector store {vector_store.id}")
     except Exception as e:
         LOGGER.warning(f"Failed to delete vector store {vector_store.id}: {e}")
