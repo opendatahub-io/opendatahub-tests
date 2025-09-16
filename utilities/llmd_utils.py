@@ -353,7 +353,7 @@ def verify_inference_response_llmd(
     )
 
     if authorized_user is False:
-        _validate_unauthorized_response(res, token, inference)
+        _validate_unauthorized_response(res=res, token=token, inference=inference)
     else:
         _validate_authorized_response(
             res=res,
@@ -432,7 +432,7 @@ class LLMUserInference:
                 template_str = default_query_config.get("query_input", "")
 
             # Use template substitution for model name
-            template = Template(template_str)
+            template = Template(template=template_str)
             body = template.safe_substitute(model_name=model_name)
         else:
             # For custom input, create OpenAI-compatible format
@@ -457,7 +457,7 @@ class LLMUserInference:
         token: Optional[str] = None,
     ) -> str:
         """Generate curl command string for LLM inference."""
-        base_url = get_llm_inference_url(self.llm_service)
+        base_url = get_llm_inference_url(llm_service=self.llm_service)
         endpoint_url = f"{base_url}{DEFAULT_LLM_ENDPOINT}"
 
         body = self.get_inference_body(
@@ -477,8 +477,7 @@ class LLMUserInference:
             cmd += " --insecure"
         else:
             try:
-                from ocp_resources.resource import get_client  # type: ignore
-
+                from ocp_resources.resource import get_client
                 client = get_client()
                 ca_bundle = get_ca_bundle(client=client, deployment_mode="raw")
                 if ca_bundle:
@@ -587,12 +586,13 @@ def _validate_authorized_response(
             raise ValueError(f"Missing response text key for inference {inference_config}")
 
         if isinstance(expected_response_text, str):
-            expected_response_text = Template(expected_response_text).safe_substitute(model_name=model_name)
+            expected_response_text = Template(template=expected_response_text).safe_substitute(model_name=model_name)
         elif isinstance(expected_response_text, dict):
-            expected_response_text = Template(expected_response_text.get("response_output")).safe_substitute(
-                model_name=model_name
-            )
-
+            response_output = expected_response_text.get("response_output")
+            if response_output is not None:
+                expected_response_text = Template(template=response_output).safe_substitute(
+                    model_name=model_name
+                )
     if inference.inference_response_text_key_name:
         if inference_type == inference.STREAMING:
             if output := re.findall(
@@ -605,7 +605,7 @@ def _validate_authorized_response(
                 )
         elif inference_type == inference.INFER or use_regex:
             formatted_res = json.dumps(res[inference.inference_response_text_key_name]).replace(" ", "")
-            if use_regex:
+            if use_regex and expected_response_text is not None:
                 assert re.search(expected_response_text, formatted_res), (
                     f"Expected: {expected_response_text} not found in: {formatted_res}"
                 )
