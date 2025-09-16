@@ -49,17 +49,16 @@ def llama_stack_server_config(
     vllm_api_token = os.getenv("LLS_CORE_VLLM_API_TOKEN", "")
     vllm_url = os.getenv("LLS_CORE_VLLM_URL", "")
 
-    if hasattr(request, "param"):
-        if request.param.get("fms_orchestrator_url_fixture"):
-            fms_orchestrator_url = request.getfixturevalue(argname=request.param.get("fms_orchestrator_url_fixture"))
-
-        # Override env vars with request parameters if provided
-        if request.param.get("inference_model"):
-            inference_model = request.param.get("inference_model")
-        if request.param.get("vllm_api_token"):
-            vllm_api_token = request.param.get("vllm_api_token")
-        if request.param.get("vllm_url_fixture"):
-            vllm_url = request.getfixturevalue(argname=request.param.get("vllm_url_fixture"))
+    # Override env vars with request parameters if provided
+    params = getattr(request, "param", {})
+    if params.get("fms_orchestrator_url_fixture"):
+        fms_orchestrator_url = request.getfixturevalue(argname=request.param.get("fms_orchestrator_url_fixture"))
+    if params.get("inference_model"):
+        inference_model = request.param.get("inference_model")
+    if params.get("vllm_api_token"):
+        vllm_api_token = request.param.get("vllm_api_token")
+    if params.get("vllm_url_fixture"):
+        vllm_url = request.getfixturevalue(argname=request.param.get("vllm_url_fixture"))
 
     server_config: Dict[str, Any] = {
         "containerSpec": {
@@ -93,11 +92,11 @@ def llama_stack_server_config(
         "distribution": {"name": "rh-dev"},
     }
 
-    if request.param.get("llama_stack_storage_size"):
-        storage_size = request.param.get("llama_stack_storage_size")
+    if params.get("llama_stack_storage_size"):
+        storage_size = params.get("llama_stack_storage_size")
         server_config["storage"] = {"size": storage_size}
 
-    if request.param.get("llama_stack_user_config_enabled"):
+    if params.get("llama_stack_user_config_enabled"):
         # Create configmap trigering the llama_stack_user_config_configmap fixture
         request.getfixturevalue(argname="llama_stack_user_config_configmap")
         server_config["userConfig"] = {"configMapName": "llama-stack-user-config"}
