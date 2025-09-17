@@ -55,6 +55,9 @@ def default_notebook(
     namespace = request.param["namespace"]
     name = request.param["name"]
 
+    # Optional OAuth annotations
+    oauth_annotations = request.param.get("oauth_annotations", {})
+
     # Set new Route url
     route_name = "odh-dashboard" if py_config.get("distribution") == "upstream" else "rhods-dashboard"
     route = Route(client=admin_client, name=route_name, namespace=py_config["applications_namespace"])
@@ -97,6 +100,8 @@ def default_notebook(
                 "opendatahub.io/accelerator-name": "",
                 "opendatahub.io/service-mesh": "false",
                 "notebooks.opendatahub.io/last-image-selection": minimal_image,
+                # Add any additional annotations if provided
+                **oauth_annotations,
             },
             "labels": {
                 Labels.Openshift.APP: name,
