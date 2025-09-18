@@ -24,9 +24,9 @@ LOGGER = get_logger(name=__name__)
 
 
 def llama_stack_server() -> Dict[str, Any]:
-    rag_vllm_url = os.getenv("RAG_VLLM_URL")
-    rag_vllm_model = os.getenv("RAG_VLLM_MODEL")
-    rag_vllm_token = os.getenv("RAG_VLLM_TOKEN")
+    rag_vllm_url = os.getenv("LLS_CORE_VLLM_URL")
+    rag_vllm_model = os.getenv("LLS_CORE_INFERENCE_MODEL")
+    rag_vllm_token = os.getenv("LLS_CORE_VLLM_API_TOKEN")
 
     return {
         "containerSpec": {
