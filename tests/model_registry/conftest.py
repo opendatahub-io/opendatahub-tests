@@ -10,6 +10,8 @@ from pyhelper_utils.shell import run_command
 from typing import Generator, Any, List, Dict
 
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.infrastructure import Infrastructure
+from ocp_resources.oauth import OAuth
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.namespace import Namespace
@@ -29,7 +31,9 @@ from simple_logger.logger import get_logger
 from kubernetes.dynamic import DynamicClient
 from pytest_testconfig import config as py_config
 from model_registry.types import RegisteredModel
-from tests.model_registry.utils import generate_namespace_name
+
+from tests.model_registry.rbac.utils import wait_for_oauth_openshift_deployment
+from tests.model_registry.utils import generate_namespace_name, get_rest_headers
 from utilities.general import generate_random_name
 
 
@@ -52,7 +56,8 @@ from tests.model_registry.utils import (
 from utilities.constants import DscComponents
 from model_registry import ModelRegistry as ModelRegistryClient
 from utilities.general import wait_for_pods_by_labels
-from utilities.infra import get_data_science_cluster, wait_for_dsc_status_ready
+from utilities.infra import get_data_science_cluster, wait_for_dsc_status_ready, login_with_user_password
+from utilities.user_utils import UserTestSession, wait_for_user_creation, create_htpasswd_file
 
 DEFAULT_TOKEN_DURATION = "10m"
 LOGGER = get_logger(name=__name__)
@@ -303,11 +308,7 @@ def model_registry_rest_url(model_registry_instance_rest_endpoint: list[str]) ->
 
 @pytest.fixture(scope="class")
 def model_registry_rest_headers(current_client_token: str) -> dict[str, str]:
-    return {
-        "Authorization": f"Bearer {current_client_token}",
-        "accept": "application/json",
-        "Content-Type": "application/json",
-    }
+    return get_rest_headers(token=current_client_token)
 
 
 @pytest.fixture(scope="class")
@@ -472,3 +473,125 @@ def mr_access_role_binding(
         LOGGER.info(f"RoleBinding {binding.name} created successfully.")
         yield binding
         LOGGER.info(f"RoleBinding {binding.name} deletion initiated by context manager.")
+
+
+@pytest.fixture(scope="module")
+def test_idp_user(
+    original_user: str,
+    user_credentials_rbac: dict[str, str],
+    created_htpasswd_secret: Generator[UserTestSession, None, None],
+    updated_oauth_config: Generator[Any, None, None],
+    api_server_url: str,
+) -> Generator[UserTestSession, None, None]:
+    """
+    Session-scoped fixture that creates a test IDP user and cleans it up after all tests.
+    Returns a UserTestSession object that contains all necessary credentials and contexts.
+    """
+    idp_session = None
+    try:
+        if wait_for_user_creation(
+            username=user_credentials_rbac["username"],
+            password=user_credentials_rbac["password"],
+            cluster_url=api_server_url,
+        ):
+            # undo the login as test user if we were successful in logging in as test user
+            LOGGER.info(f"Undoing login as test user and logging in as {original_user}")
+            login_with_user_password(api_address=api_server_url, user=original_user)
+
+        idp_session = UserTestSession(
+            idp_name=user_credentials_rbac["idp_name"],
+            secret_name=user_credentials_rbac["secret_name"],
+            username=user_credentials_rbac["username"],
+            password=user_credentials_rbac["password"],
+            original_user=original_user,
+            api_server_url=api_server_url,
+        )
+        LOGGER.info(f"Created session test IDP user: {idp_session.username}")
+
+        yield idp_session
+
+    finally:
+        if idp_session:
+            LOGGER.info(f"Cleaning up test IDP user: {idp_session.username}")
+            idp_session.cleanup()
+
+
+@pytest.fixture(scope="session")
+def api_server_url(admin_client: DynamicClient) -> str:
+    """
+    Get api server url from the cluster.
+    """
+    infrastructure = Infrastructure(client=admin_client, name="cluster", ensure_exists=True)
+    return infrastructure.instance.status.apiServerURL
+
+
+@pytest.fixture(scope="session")
+def original_user() -> str:
+    current_user = run_command(command=["oc", "whoami"])[1].strip()
+    LOGGER.info(f"Original user: {current_user}")
+    return current_user
+
+
+@pytest.fixture(scope="module")
+def created_htpasswd_secret(
+    original_user: str, user_credentials_rbac: dict[str, str]
+) -> Generator[UserTestSession, None, None]:
+    """
+    Session-scoped fixture that creates a test IDP user and cleans it up after all tests.
+    Returns a UserTestSession object that contains all necessary credentials and contexts.
+    """
+
+    temp_path, htpasswd_b64 = create_htpasswd_file(
+        username=user_credentials_rbac["username"], password=user_credentials_rbac["password"]
+    )
+    try:
+        LOGGER.info(f"Creating secret {user_credentials_rbac['secret_name']} in openshift-config namespace")
+        with Secret(
+            name=user_credentials_rbac["secret_name"],
+            namespace="openshift-config",
+            htpasswd=htpasswd_b64,
+            type="Opaque",
+            wait_for_resource=True,
+        ) as secret:
+            yield secret
+    finally:
+        # Clean up the temporary file
+        temp_path.unlink(missing_ok=True)
+
+
+@pytest.fixture(scope="module")
+def updated_oauth_config(
+    admin_client: DynamicClient, original_user: str, user_credentials_rbac: dict[str, str]
+) -> Generator[Any, None, None]:
+    # Get current providers and add the new one
+    oauth = OAuth(name="cluster")
+    identity_providers = oauth.instance.spec.identityProviders
+
+    new_idp = {
+        "name": user_credentials_rbac["idp_name"],
+        "mappingMethod": "claim",
+        "type": "HTPasswd",
+        "htpasswd": {"fileData": {"name": user_credentials_rbac["secret_name"]}},
+    }
+    updated_providers = identity_providers + [new_idp]
+
+    LOGGER.info("Updating OAuth")
+    identity_providers_patch = ResourceEditor(patches={oauth: {"spec": {"identityProviders": updated_providers}}})
+    identity_providers_patch.update(backup_resources=True)
+    # Wait for OAuth server to be ready
+    wait_for_oauth_openshift_deployment()
+    LOGGER.info(f"Added IDP {user_credentials_rbac['idp_name']} to OAuth configuration")
+    yield
+    identity_providers_patch.restore()
+    wait_for_oauth_openshift_deployment()
+
+
+@pytest.fixture(scope="module")
+def user_credentials_rbac() -> dict[str, str]:
+    random_str = generate_random_name()
+    return {
+        "username": f"test-user-{random_str}",
+        "password": f"test-password-{random_str}",
+        "idp_name": f"test-htpasswd-idp-{random_str}",
+        "secret_name": f"test-htpasswd-secret-{random_str}",
+    }
