@@ -280,7 +280,6 @@ def validate_container_images(
 
     pod_images = get_pod_images(pod=pod)
     for image in pod_images:
-        LOGGER.info(f"Validating image {image}")
         # Skip images matching any skip patterns
         if any(pattern in image for pattern in skip_patterns):
             LOGGER.warning(f"Skipping image {image} as it matches skip patterns")
