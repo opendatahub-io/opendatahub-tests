@@ -196,7 +196,10 @@ def get_pod_images(pod: Pod) -> List[str]:
     Returns:
         List of container image strings
     """
-    return [container.image for container in pod.instance.spec.containers]
+    containers = [container.image for container in pod.instance.spec.containers]
+    if pod.instance.spec.initContainers:
+        containers.extend([init.image for init in pod.instance.spec.initContainers])
+    return containers
 
 
 def validate_image_format(image: str) -> Tuple[bool, str]:
@@ -277,6 +280,7 @@ def validate_container_images(
 
     pod_images = get_pod_images(pod=pod)
     for image in pod_images:
+        LOGGER.info(f"Validating image {image}")
         # Skip images matching any skip patterns
         if any(pattern in image for pattern in skip_patterns):
             LOGGER.warning(f"Skipping image {image} as it matches skip patterns")
