@@ -31,7 +31,7 @@ LOGGER = get_logger(name=__name__)
                 "sample_yaml": {"sample-custom-catalog1.yaml": get_sample_yaml_str(models=[SAMPLE_MODEL_NAME1])},
             },
             EXPECTED_CUSTOM_CATALOG_VALUES,
-            id="file_test_catalog",
+            id="test_file_test_catalog",
         ),
         pytest.param(
             {
@@ -42,7 +42,7 @@ LOGGER = get_logger(name=__name__)
                 },
             },
             MULTIPLE_CUSTOM_CATALOG_VALUES,
-            id="file_test_catalog",
+            id="test_file_test_catalog_multiple_sources",
         ),
     ],
     indirect=True,
@@ -68,7 +68,6 @@ class TestModelCatalogCustom:
             headers=model_registry_rest_headers,
         )["items"]
 
-        LOGGER.info(f"Results: for uri {url}: {results}")
         assert len(results) == len(expected_catalog_values)
         ids_from_query = [result_entry["id"] for result_entry in results]
         ids_expected = [expected_entry["id"] for expected_entry in expected_catalog_values]
@@ -159,7 +158,7 @@ class TestModelCatalogCustom:
         expected_catalog_values: dict[str, str],
     ):
         """
-        Add a model to a source and ensure it is added to the catalog
+        Ensure models are removed from the catalog
         """
         url = f"{model_catalog_rest_url[0]}sources/{CUSTOM_CATALOG_ID1}/models/{SAMPLE_MODEL_NAME3}"
         with pytest.raises(ResourceNotFoundError):

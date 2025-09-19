@@ -722,3 +722,11 @@ def get_model_catalog_pod(client: DynamicClient, model_registry_namespace: str) 
     return list(
         Pod.get(namespace=model_registry_namespace, label_selector="component=model-catalog", dyn_client=client)
     )
+
+
+def get_rest_headers(token: str) -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {token}",
+        "accept": "application/json",
+        "Content-Type": "application/json",
+    }
