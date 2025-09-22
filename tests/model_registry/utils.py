@@ -34,7 +34,7 @@ from model_registry.types import RegisteredModel
 
 ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
 MARIA_DB_IMAGE = (
-    "registry.redhat.io/rhel9/mariadb-1011@sha256:e89fe8e65e3ad6d3cf5a90f53032ef73eb63e68bf76ecf06464e30c08c700338"
+    "registry.redhat.io/rhel9/mariadb-1011@sha256:5608cce9ca8fed81027c97336d526b80320b0f4517ca5d3d141c0bbd7d563f8a"
 )
 LOGGER = get_logger(name=__name__)
 
