@@ -73,12 +73,6 @@ class TestModelCatalogGeneral:
     def test_operator_pod_enabled_model_catalog(self: Self, model_registry_operator_pod: Pod):
         assert validate_model_catalog_enabled(pod=model_registry_operator_pod)
 
-    def test_default_config_map_not_present(self: Self, model_registry_namespace: str):
-        # RHOAIENG-33246: Introduced a new configmap. It should be removed before 2.25 release
-        # This test is temporary. So not parameterizing it.
-        cfg_map = ConfigMap(name="default-model-catalog", namespace=model_registry_namespace)
-        assert not cfg_map.exists, f"{cfg_map.name} should not exist"
-
 
 @pytest.mark.parametrize(
     "user_token_for_api_calls,",
