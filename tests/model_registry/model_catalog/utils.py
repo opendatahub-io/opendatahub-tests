@@ -144,7 +144,6 @@ def get_validate_default_model_catalog_source(token: str, model_catalog_url: str
         headers=get_rest_headers(token=token),
     )["items"]
     assert result
-    assert result
     assert len(result) == 1, f"Expected no custom models to be present. Actual: {result}"
     assert result[0]["id"] == DEFAULT_CATALOG_ID
     assert result[0]["name"] == DEFAULT_CATALOG_NAME
