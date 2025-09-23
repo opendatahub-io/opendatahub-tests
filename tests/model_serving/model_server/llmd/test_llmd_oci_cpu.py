@@ -36,5 +36,5 @@ class TestLLMDOCICPUInference:
             use_default_query=True,
             insecure=True,
         )
-        
+
         verify_llmd_pods_not_restarted(client=admin_client, llm_service=llmd_inference_service)

@@ -43,7 +43,7 @@ def create_gateway(
 ) -> Generator[Gateway, None, None]:
     """
     Context manager to create and manage a Gateway resource using ocp_resources.
-    
+
     This function implements smart gateway management:
     - Only creates gateway if it doesn't already exist
     - Reuses existing gateways to avoid conflicts
@@ -86,7 +86,7 @@ def create_gateway(
         )
         if existing_gateway.exists:
             LOGGER.info(f"Using existing Gateway {name} in namespace {namespace}")
-            
+
             if wait_for_condition:
                 LOGGER.info(f"Waiting for existing Gateway {name} to be programmed...")
                 existing_gateway.wait_for_condition(
@@ -95,7 +95,7 @@ def create_gateway(
                     timeout=timeout,
                 )
                 LOGGER.info(f"Existing Gateway {name} is programmed and ready")
-            
+
             # Yield the existing gateway without teardown
             yield existing_gateway
             return
