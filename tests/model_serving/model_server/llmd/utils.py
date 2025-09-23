@@ -85,7 +85,10 @@ def verify_llmd_pods_not_restarted(client: DynamicClient, llm_service: LLMInfere
     for pod in Pod.get(
         dyn_client=client,
         namespace=llm_service.namespace,
-        label_selector=f"{Pod.ApiGroup.APP_KUBERNETES_IO}/part-of=llminferenceservice,{Pod.ApiGroup.APP_KUBERNETES_IO}/name={llm_service.name}",
+        label_selector=(
+            f"{Pod.ApiGroup.APP_KUBERNETES_IO}/part-of=llminferenceservice,"
+            f"{Pod.ApiGroup.APP_KUBERNETES_IO}/name={llm_service.name}"
+        ),
     ):
         labels = pod.instance.metadata.get("labels", {})
         if labels.get("kserve.io/component") == "workload":
