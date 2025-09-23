@@ -42,7 +42,7 @@ def users_persistent_volume_claim(
 def minimal_image() -> Generator[str, None, None]:
     """Provides a full image name of a minimal workbench image"""
     image_name = "jupyter-minimal-notebook" if py_config.get("distribution") == "upstream" else "s2i-minimal-notebook"
-    yield f"{image_name}:{'2025.1'}"
+    yield f"{image_name}:{'2025.2'}"
 
 
 @pytest.fixture(scope="function")
@@ -54,6 +54,9 @@ def default_notebook(
     """Returns a new Notebook CR for a given namespace, name, and image"""
     namespace = request.param["namespace"]
     name = request.param["name"]
+
+    # Optional OAuth annotations
+    oauth_annotations = request.param.get("oauth_annotations", {})
 
     # Set new Route url
     route_name = "odh-dashboard" if py_config.get("distribution") == "upstream" else "rhods-dashboard"
@@ -97,6 +100,8 @@ def default_notebook(
                 "opendatahub.io/accelerator-name": "",
                 "opendatahub.io/service-mesh": "false",
                 "notebooks.opendatahub.io/last-image-selection": minimal_image,
+                # Add any additional annotations if provided
+                **oauth_annotations,
             },
             "labels": {
                 Labels.Openshift.APP: name,
