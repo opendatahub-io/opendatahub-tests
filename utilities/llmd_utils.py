@@ -43,7 +43,7 @@ def create_llmd_gateway(
 ) -> Generator[Gateway, None, None]:
     """
     Context manager to create and manage LLMD Gateway resources using ocp_resources.
-    
+
     This function implements smart LLMD gateway management:
     - Only creates gateway if it doesn't already exist
     - Reuses existing gateways to avoid conflicts

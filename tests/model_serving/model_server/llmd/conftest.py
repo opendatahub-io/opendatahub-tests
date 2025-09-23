@@ -69,9 +69,9 @@ def llmd_gateway(
 ) -> Generator[Gateway, None, None]:
     """
     Pytest fixture for LLMD Gateway management using create_llmd_gateway.
-    
+
     Implements persistent LLMD gateway strategy:
-    - Reuses existing gateways if available  
+    - Reuses existing gateways if available
     - Creates new gateway only if needed
     - Does not delete gateway in teardown
     - Uses LLMD-specific gateway configuration
@@ -82,7 +82,7 @@ def llmd_gateway(
     else:
         gateway_class_name = request.param.get("gateway_class_name", "openshift-default")
         kwargs = {k: v for k, v in request.param.items() if k != "gateway_class_name"}
-        
+
     with create_llmd_gateway(
         client=admin_client,
         namespace=gateway_namespace,
