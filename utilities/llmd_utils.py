@@ -39,10 +39,15 @@ def create_gateway(
     infrastructure: Optional[Dict[str, Any]] = None,
     wait_for_condition: bool = True,
     timeout: int = 300,
-    teardown: bool = True,
+    teardown: bool = False,
 ) -> Generator[Gateway, None, None]:
     """
     Context manager to create and manage a Gateway resource using ocp_resources.
+    
+    This function implements smart gateway management:
+    - Only creates gateway if it doesn't already exist
+    - Reuses existing gateways to avoid conflicts
+    - Does not delete gateway in teardown (persistent gateway strategy)
 
     Args:
         client: Kubernetes dynamic client
@@ -53,10 +58,10 @@ def create_gateway(
         infrastructure: Infrastructure configuration
         wait_for_condition: Whether to wait for the gateway to be programmed
         timeout: Timeout in seconds for waiting
-        teardown: Whether to clean up the resource
+        teardown: Whether to clean up the resource (default: False for persistent strategy)
 
     Yields:
-        Gateway: The created Gateway resource
+        Gateway: The Gateway resource (existing or newly created)
     """
     if listeners is None:
         listeners = [
@@ -70,6 +75,8 @@ def create_gateway(
 
     if infrastructure is None:
         infrastructure = {"labels": {"serving.kserve.io/gateway": "kserve-ingress-gateway"}}
+
+    # Check if gateway already exists
     try:
         existing_gateway = Gateway(
             client=client,
@@ -78,10 +85,24 @@ def create_gateway(
             api_group="gateway.networking.k8s.io",
         )
         if existing_gateway.exists:
-            LOGGER.info(f"Cleaning up existing Gateway {name} in namespace {namespace}")
-            existing_gateway.delete(wait=True, timeout=Timeout.TIMEOUT_2MIN)
+            LOGGER.info(f"Using existing Gateway {name} in namespace {namespace}")
+            
+            if wait_for_condition:
+                LOGGER.info(f"Waiting for existing Gateway {name} to be programmed...")
+                existing_gateway.wait_for_condition(
+                    condition="Programmed",
+                    status="True",
+                    timeout=timeout,
+                )
+                LOGGER.info(f"Existing Gateway {name} is programmed and ready")
+            
+            # Yield the existing gateway without teardown
+            yield existing_gateway
+            return
     except Exception as e:
-        LOGGER.debug(f"No existing Gateway to clean up: {e}")
+        LOGGER.debug(f"No existing Gateway found, will create new one: {e}")
+
+    # Create new gateway only if it doesn't exist
     gateway_body = {
         "apiVersion": "gateway.networking.k8s.io/v1",
         "kind": "Gateway",
@@ -96,6 +117,7 @@ def create_gateway(
         },
     }
 
+    LOGGER.info(f"Creating new Gateway {name} in namespace {namespace}")
     with Gateway(
         client=client,
         teardown=teardown,

@@ -67,18 +67,28 @@ def llmd_gateway(
     admin_client: DynamicClient,
     gateway_namespace: str,
 ) -> Generator[Gateway, None, None]:
+    """
+    Pytest fixture for LLMD Gateway management.
+    
+    Implements persistent gateway strategy:
+    - Reuses existing gateways if available
+    - Creates new gateway only if needed
+    - Does not delete gateway in teardown
+    """
     if isinstance(request.param, str):
         gateway_class_name = request.param
         kwargs = {}
     else:
         gateway_class_name = request.param.get("gateway_class_name", "openshift-default")
         kwargs = {k: v for k, v in request.param.items() if k != "gateway_class_name"}
+        
     with create_gateway(
         client=admin_client,
         namespace=gateway_namespace,
         gateway_class_name=gateway_class_name,
         wait_for_condition=True,
         timeout=Timeout.TIMEOUT_5MIN,
+        teardown=False,  # Don't delete gateway in teardown
         **kwargs,
     ) as gateway:
         yield gateway

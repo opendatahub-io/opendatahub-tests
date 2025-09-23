@@ -5,9 +5,13 @@ This module provides helper functions for LLMD test operations using ocp_resourc
 Follows the established model server utils pattern for consistency.
 """
 
+from kubernetes.dynamic import DynamicClient
 from ocp_resources.gateway import Gateway
 from ocp_resources.llm_inference_service import LLMInferenceService
+from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
+
+from utilities.exceptions import PodContainersRestartError
 
 
 LOGGER = get_logger(name=__name__)
@@ -59,3 +63,45 @@ def verify_llm_service_status(llm_service: LLMInferenceService) -> bool:
 
     LOGGER.warning(f"LLMInferenceService {llm_service.name} is not in Ready state")
     return False
+
+
+def verify_llmd_pods_not_restarted(client: DynamicClient, llm_service: LLMInferenceService) -> None:
+    """
+    Verify that LLMD inference pods containers have not restarted.
+    
+    This function checks for container restarts in pods related to the specific LLMInferenceService.
+    
+    Args:
+        client (DynamicClient): DynamicClient instance
+        llm_service (LLMInferenceService): The LLMInferenceService to check pods for
+        
+    Raises:
+        PodContainersRestartError: If any containers in LLMD pods have restarted
+    """
+    LOGGER.info(f"Verifying that pods for LLMInferenceService {llm_service.name} have not restarted")
+    
+    restarted_containers = {}
+    
+    for pod in Pod.get(
+        dyn_client=client,
+        namespace=llm_service.namespace,
+        label_selector=f"{Pod.ApiGroup.APP_KUBERNETES_IO}/part-of=llminferenceservice,{Pod.ApiGroup.APP_KUBERNETES_IO}/name={llm_service.name}",
+    ):
+        labels = pod.instance.metadata.get("labels", {})
+        if labels.get("kserve.io/component") == "workload":
+            LOGGER.debug(f"Checking pod {pod.name} for container restarts")
+            
+            if pod.instance.status.containerStatuses:
+                if _restarted_containers := [
+                    container.name for container in pod.instance.status.containerStatuses 
+                    if container.restartCount > 0
+                ]:
+                    restarted_containers[pod.name] = _restarted_containers
+                    LOGGER.warning(f"Pod {pod.name} has restarted containers: {_restarted_containers}")
+    
+    if restarted_containers:
+        error_msg = f"LLMD inference containers restarted for {llm_service.name}: {restarted_containers}"
+        LOGGER.error(error_msg)
+        raise PodContainersRestartError(error_msg)
+    
+    LOGGER.info(f"All pods for LLMInferenceService {llm_service.name} have no container restarts")
