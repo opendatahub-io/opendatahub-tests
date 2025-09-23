@@ -1,3 +1,5 @@
+import os
+
 import requests
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.job import Job
@@ -5,6 +7,9 @@ from ocp_resources.pod import Pod
 from ocp_resources.service import Service
 from utilities.constants import MinIo
 from simple_logger.logger import get_logger
+from timeout_sampler import TimeoutExpiredError
+
+from utilities.must_gather_collector import get_base_dir, get_must_gather_collector_dir
 
 LOGGER = get_logger(name=__name__)
 
@@ -115,7 +120,11 @@ def upload_test_model_to_minio_from_image(
         wait_for_resource=True,
     ) as upload_pod:
         LOGGER.info(f"Extracting model from image {model_image} and uploading to MinIO: {object_key}")
-        upload_pod.wait_for_status(status="Succeeded", timeout=300)
+        try:
+            upload_pod.wait_for_status(status="Succeeded", timeout=300)
+        except TimeoutExpiredError:
+            collect_pod_information(pod=upload_pod)
+            raise
 
         # Get upload logs for verification
         try:
@@ -127,3 +136,22 @@ def upload_test_model_to_minio_from_image(
         LOGGER.info(
             f"Test model file uploaded successfully to s3://{MinIo.Buckets.MODELMESH_EXAMPLE_MODELS}/{object_key}"
         )
+
+
+def collect_pod_information(pod: Pod) -> None:
+    try:
+        base_dir_name = get_must_gather_collector_dir() or get_base_dir()
+        LOGGER.info(f"Collecting pod information for {pod.name}: {base_dir_name}")
+        os.makedirs(base_dir_name, exist_ok=True)
+        yaml_file_path = os.path.join(base_dir_name, f"{pod.name}.yaml")
+        with open(yaml_file_path, "w") as fd:
+            fd.write(pod.instance.to_str())
+        # get all the containers of the pod:
+
+        containers = [container["name"] for container in pod.instance.status.containerStatuses]
+        for container in containers:
+            file_path = os.path.join(base_dir_name, f"{pod.name}_{container}.log")
+            with open(file_path, "w") as fd:
+                fd.write(pod.log(**{"container": container}))
+    except Exception:
+        LOGGER.warning(f"For pod: {pod.name} information gathering failed.")
