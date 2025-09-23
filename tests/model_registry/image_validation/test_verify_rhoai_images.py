@@ -7,6 +7,7 @@ from utilities.general import (
     validate_container_images,
 )
 from ocp_resources.pod import Pod
+from tests.model_registry.utils import get_model_catalog_pod
 
 LOGGER = get_logger(name=__name__)
 
@@ -33,10 +34,14 @@ class TestModelRegistryImages:
         admin_client: DynamicClient,
         model_registry_operator_pod: Pod,
         model_registry_instance_pod_by_label: Pod,
+        model_registry_namespace: str,
         related_images_refs: Set[str],
     ):
+        model_catalog_pod = get_model_catalog_pod(
+            client=admin_client, model_registry_namespace=model_registry_namespace
+        )[0]
         validation_errors = []
-        for pod in [model_registry_operator_pod, model_registry_instance_pod_by_label]:
+        for pod in [model_registry_operator_pod, model_registry_instance_pod_by_label, model_catalog_pod]:
             validation_errors.extend(
                 validate_container_images(
                     pod=pod, valid_image_refs=related_images_refs, skip_patterns=["openshift-service-mesh"]

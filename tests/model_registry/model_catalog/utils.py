@@ -14,7 +14,7 @@ from tests.model_registry.model_catalog.constants import (
     CATALOG_TYPE,
     DEFAULT_CATALOG_FILE,
 )
-from tests.model_registry.utils import get_model_catalog_pod, wait_for_pods_running
+from tests.model_registry.utils import get_model_catalog_pod, wait_for_pods_running, get_rest_headers
 
 LOGGER = get_logger(name=__name__)
 
@@ -24,6 +24,7 @@ class ResourceNotFoundError(Exception):
 
 
 def _execute_get_call(url: str, headers: dict[str, str], verify: bool | str = False) -> requests.Response:
+    LOGGER.info(f"Executing get call: {url}")
     resp = requests.get(url=url, headers=headers, verify=verify, timeout=60)
     if resp.status_code not in [200, 201]:
         raise ResourceNotFoundError(f"Get call failed for resource: {url}, {resp.status_code}: {resp.text}")
@@ -134,3 +135,16 @@ def get_model_str(model: str) -> str:
   artifacts:
     - uri: https://huggingface.co/{model}/resolve/main/consolidated.safetensors
 """
+
+
+def get_validate_default_model_catalog_source(token: str, model_catalog_url: str) -> None:
+    LOGGER.info("Attempting client connection with token")
+    result = execute_get_command(
+        url=model_catalog_url,
+        headers=get_rest_headers(token=token),
+    )["items"]
+    assert result
+    assert len(result) == 1, f"Expected no custom models to be present. Actual: {result}"
+    assert result[0]["id"] == DEFAULT_CATALOG_ID
+    assert result[0]["name"] == DEFAULT_CATALOG_NAME
+    assert str(result[0]["enabled"]) == "True", result[0]["enabled"]

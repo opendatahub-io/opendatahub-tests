@@ -196,7 +196,10 @@ def get_pod_images(pod: Pod) -> List[str]:
     Returns:
         List of container image strings
     """
-    return [container.image for container in pod.instance.spec.containers]
+    containers = [container.image for container in pod.instance.spec.containers]
+    if pod.instance.spec.initContainers:
+        containers.extend([init.image for init in pod.instance.spec.initContainers])
+    return containers
 
 
 def validate_image_format(image: str) -> Tuple[bool, str]:
