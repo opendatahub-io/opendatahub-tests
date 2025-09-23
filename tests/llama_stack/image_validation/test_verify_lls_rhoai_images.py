@@ -12,7 +12,7 @@ from ocp_resources.pod import Pod
 LOGGER = get_logger(name=__name__)
 
 
-@pytest.mark.usefixtures("enabled_llama_stack_operator")
+@pytest.mark.usefixtures("llama_stack_distribution")
 @pytest.mark.parametrize(
     "model_namespace",
     [
@@ -36,11 +36,11 @@ class TestLLSImages:
     def test_verify_lls_operator_images(
         self: Self,
         admin_client: DynamicClient,
-        lls_operator_pod_by_label: Pod,
+        lls_pods: Pod,
         related_images_refs: Set[str],
     ):
         validation_errors = []
-        for pod in [lls_operator_pod_by_label]:
+        for pod in [lls_pods]:
             validation_errors.extend(
                 validate_container_images(
                     pod=pod, valid_image_refs=related_images_refs, skip_patterns=["openshift-service-mesh"]
