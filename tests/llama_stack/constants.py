@@ -15,7 +15,9 @@ class LlamaStackProviders:
     class Eval(str, Enum):
         TRUSTYAI_LMEVAL = "trustyai_lmeval"
 
+
 LLS_CORE_POD_FILTER: str = "app=llama-stack"
+
 
 @dataclass
 class TorchTuneTestExpectation:

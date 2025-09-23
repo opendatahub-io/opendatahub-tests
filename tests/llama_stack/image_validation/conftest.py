@@ -2,7 +2,6 @@ from typing import Generator, Any
 
 import pytest
 from kubernetes.dynamic import DynamicClient
-from pytest_testconfig import config as py_config
 
 from ocp_resources.pod import Pod
 from tests.llama_stack.constants import LLS_CORE_POD_FILTER
