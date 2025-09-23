@@ -30,7 +30,7 @@ LOGGER = get_logger(name=__name__)
 
 
 @contextmanager
-def create_gateway(
+def create_llmd_gateway(
     client: DynamicClient,
     name: str = DEFAULT_GATEWAY_NAME,
     namespace: str = DEFAULT_GATEWAY_NAMESPACE,
@@ -42,17 +42,18 @@ def create_gateway(
     teardown: bool = False,
 ) -> Generator[Gateway, None, None]:
     """
-    Context manager to create and manage a Gateway resource using ocp_resources.
-
-    This function implements smart gateway management:
+    Context manager to create and manage LLMD Gateway resources using ocp_resources.
+    
+    This function implements smart LLMD gateway management:
     - Only creates gateway if it doesn't already exist
     - Reuses existing gateways to avoid conflicts
     - Does not delete gateway in teardown (persistent gateway strategy)
+    - Specifically designed for LLMD (LLM Deployment) infrastructure
 
     Args:
         client: Kubernetes dynamic client
-        name: Gateway name
-        namespace: Gateway namespace
+        name: Gateway name (defaults to openshift-ai-inference)
+        namespace: Gateway namespace (defaults to openshift-ingress)
         gateway_class_name: The name of the GatewayClass resource
         listeners: List of listener configurations
         infrastructure: Infrastructure configuration
