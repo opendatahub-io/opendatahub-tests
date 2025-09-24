@@ -288,7 +288,7 @@ class MinIo:
 
     class PodConfig:
         KSERVE_MINIO_IMAGE: str = (
-            "quay.io/jooholee/model-minio@sha256:b50aa0fbfea740debb314ece8e925b3e8e761979f345b6cd12a6833efd04e2c2"
+            "quay.io/jooholee/model-minio@sha256:b9554be19a223830cf792d5de984ccc57fc140b954949f5ffc6560fab977ca7a"
             # noqa: E501
         )
 
