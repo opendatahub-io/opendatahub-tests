@@ -40,11 +40,7 @@ class TestLLSImages:
     ):
         validation_errors = []
         for pod in [lls_pods]:
-            validation_errors.extend(
-                validate_container_images(
-                    pod=pod, valid_image_refs=related_images_refs
-                )
-            )
+            validation_errors.extend(validate_container_images(pod=pod, valid_image_refs=related_images_refs))
 
         if validation_errors:
             pytest.fail("\n".join(validation_errors))
