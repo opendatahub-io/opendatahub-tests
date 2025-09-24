@@ -1,12 +1,11 @@
-import pytest
 from typing import Self, Set
-from simple_logger.logger import get_logger
-from kubernetes.dynamic import DynamicClient
 
-from utilities.general import (
-    validate_container_images,
-)
+from kubernetes.dynamic import DynamicClient
 from ocp_resources.pod import Pod
+import pytest
+from simple_logger.logger import get_logger
+
+from utilities.general import validate_container_images
 
 
 LOGGER = get_logger(name=__name__)
@@ -26,7 +25,7 @@ LOGGER = get_logger(name=__name__)
 @pytest.mark.downstream_only
 class TestLLSImages:
     """
-    Tests to verify that all LLS (LlamaStack) component images meet the requirements:
+    Tests to verify that LLS (LlamaStack) Distribution image meets the requirements:
     1. Images are hosted in registry.redhat.io
     2. Images use sha256 digest instead of tags
     3. Images are listed in the CSV's relatedImages section
@@ -43,7 +42,7 @@ class TestLLSImages:
         for pod in [lls_pods]:
             validation_errors.extend(
                 validate_container_images(
-                    pod=pod, valid_image_refs=related_images_refs, skip_patterns=["openshift-service-mesh"]
+                    pod=pod, valid_image_refs=related_images_refs
                 )
             )
 

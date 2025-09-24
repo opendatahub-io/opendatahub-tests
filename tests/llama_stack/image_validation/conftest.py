@@ -11,7 +11,7 @@ from utilities.general import wait_for_pods_by_labels
 
 @pytest.fixture(scope="class")
 def lls_pods(admin_client: DynamicClient, model_namespace) -> Generator[Pod, Any, Any]:
-    """Get the LLS operator pod."""
+    """Get the LLS core deployment pod."""
     yield wait_for_pods_by_labels(
         admin_client=admin_client,
         namespace=model_namespace.name,
