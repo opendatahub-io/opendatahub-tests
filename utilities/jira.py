@@ -56,10 +56,7 @@ def is_jira_open(jira_id: str, admin_client: DynamicClient) -> bool:
                 jira_fix_versions.append(Version(_fix_version.group()))
 
         if not jira_fix_versions:
-            LOGGER.warning(
-                f"Jira {jira_id}: status is {jira_status} but no valid fix version(s) found; treating as open"
-            )
-            return True
+            raise ValueError(f"Jira {jira_id}: status is {jira_status} but does not have fix version(s)")
 
         operator_version: str = ""
         for csv in ClusterServiceVersion.get(dyn_client=admin_client, namespace=py_config["applications_namespace"]):
