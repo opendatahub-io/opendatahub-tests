@@ -27,6 +27,7 @@ from kubernetes.dynamic.exceptions import (
 from ocp_resources.catalog_source import CatalogSource
 from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.config_imageregistry_operator_openshift_io import Config
 from ocp_resources.console_cli_download import ConsoleCLIDownload
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
@@ -1227,3 +1228,19 @@ def download_oc_console_cli(tmpdir: LocalPath) -> str:
     binary_path = os.path.join(tmpdir, extracted_filenames[0])
     os.chmod(binary_path, stat.S_IRUSR | stat.S_IXUSR)
     return binary_path
+
+
+def check_internal_image_registry_available(admin_client: DynamicClient) -> bool:
+    """Check if internal image registry is available by checking the imageregistry config managementState"""
+    try:
+        # Access the imageregistry.operator.openshift.io/v1 Config resource named "cluster"
+        config_instance = Config(client=admin_client, name="cluster")
+
+        management_state = config_instance.instance.spec.get("managementState", "").lower()
+        is_available = management_state == "managed"
+
+        LOGGER.info(f"Image registry management state: {management_state}, available: {is_available}")
+        return is_available
+    except (ResourceNotFoundError, Exception) as e:
+        LOGGER.warning(f"Failed to check image registry config: {e}")
+        return False
