@@ -63,133 +63,181 @@ def model_registry_namespace(updated_dsc_component_state_scope_class: DataScienc
 
 @pytest.fixture(scope="class")
 def model_registry_db_service(
-    admin_client: DynamicClient, model_registry_namespace: str, is_model_registry_oauth: bool
+    pytestconfig: Config,
+    admin_client: DynamicClient,
+    model_registry_namespace: str,
+    is_model_registry_oauth: bool,
+    teardown_resources: bool,
 ) -> Generator[Service, Any, Any]:
-    with Service(
-        client=admin_client,
-        name=DB_RESOURCES_NAME,
-        namespace=model_registry_namespace,
-        ports=[
-            {
-                "name": "mysql",
-                "nodePort": 0,
-                "port": 3306,
-                "protocol": "TCP",
-                "appProtocol": "tcp",
-                "targetPort": 3306,
-            }
-        ],
-        selector={
-            "name": DB_RESOURCES_NAME,
-        },
-        label=get_model_registry_db_label_dict(db_resource_name=DB_RESOURCES_NAME),
-        annotations={
-            "template.openshift.io/expose-uri": r"mysql://{.spec.clusterIP}:{.spec.ports[?(.name==\mysql\)].port}",
-        },
-    ) as mr_db_service:
+    if pytestconfig.option.post_upgrade:
+        mr_db_service = Service(name=DB_RESOURCES_NAME, namespace=model_registry_namespace, ensure_exists=True)
         yield mr_db_service
+        mr_db_service.delete(wait=True)
+    else:
+        with Service(
+            client=admin_client,
+            name=DB_RESOURCES_NAME,
+            namespace=model_registry_namespace,
+            ports=[
+                {
+                    "name": "mysql",
+                    "nodePort": 0,
+                    "port": 3306,
+                    "protocol": "TCP",
+                    "appProtocol": "tcp",
+                    "targetPort": 3306,
+                }
+            ],
+            selector={
+                "name": DB_RESOURCES_NAME,
+            },
+            label=get_model_registry_db_label_dict(db_resource_name=DB_RESOURCES_NAME),
+            annotations={
+                "template.openshift.io/expose-uri": r"mysql://{.spec.clusterIP}:{.spec.ports[?(.name==\mysql\)].port}",
+            },
+            teardown=teardown_resources,
+        ) as mr_db_service:
+            yield mr_db_service
 
 
 @pytest.fixture(scope="class")
 def model_registry_db_pvc(
-    admin_client: DynamicClient, model_registry_namespace: str, is_model_registry_oauth: bool
+    pytestconfig: Config,
+    admin_client: DynamicClient,
+    model_registry_namespace: str,
+    is_model_registry_oauth: bool,
+    teardown_resources: bool,
 ) -> Generator[PersistentVolumeClaim, Any, Any]:
-    with PersistentVolumeClaim(
-        accessmodes="ReadWriteOnce",
-        name=DB_RESOURCES_NAME,
-        namespace=model_registry_namespace,
-        client=admin_client,
-        size="5Gi",
-        label=get_model_registry_db_label_dict(db_resource_name=DB_RESOURCES_NAME),
-    ) as pvc:
-        yield pvc
+    if pytestconfig.option.post_upgrade:
+        mr_db_pvc = PersistentVolumeClaim(
+            name=DB_RESOURCES_NAME, namespace=model_registry_namespace, ensure_exists=True
+        )
+        yield mr_db_pvc
+        mr_db_pvc.delete(wait=True)
+    else:
+        with PersistentVolumeClaim(
+            accessmodes="ReadWriteOnce",
+            name=DB_RESOURCES_NAME,
+            namespace=model_registry_namespace,
+            client=admin_client,
+            size="5Gi",
+            label=get_model_registry_db_label_dict(db_resource_name=DB_RESOURCES_NAME),
+            teardown=teardown_resources,
+        ) as pvc:
+            yield pvc
 
 
 @pytest.fixture(scope="class")
 def model_registry_db_secret(
+    pytestconfig: Config,
     admin_client: DynamicClient,
     model_registry_namespace: str,
     is_model_registry_oauth: bool,
+    teardown_resources: bool,
 ) -> Generator[Secret, Any, Any]:
-    with Secret(
-        client=admin_client,
-        name=DB_RESOURCES_NAME,
-        namespace=model_registry_namespace,
-        string_data=MODEL_REGISTRY_DB_SECRET_STR_DATA,
-        label=get_model_registry_db_label_dict(db_resource_name=DB_RESOURCES_NAME),
-        annotations=MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
-    ) as mr_db_secret:
+    if pytestconfig.option.post_upgrade:
+        mr_db_secret = Secret(name=DB_RESOURCES_NAME, namespace=model_registry_namespace, ensure_exists=True)
         yield mr_db_secret
+        mr_db_secret.delete(wait=True)
+    else:
+        with Secret(
+            client=admin_client,
+            name=DB_RESOURCES_NAME,
+            namespace=model_registry_namespace,
+            string_data=MODEL_REGISTRY_DB_SECRET_STR_DATA,
+            label=get_model_registry_db_label_dict(db_resource_name=DB_RESOURCES_NAME),
+            annotations=MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
+            teardown=teardown_resources,
+        ) as mr_db_secret:
+            yield mr_db_secret
 
 
 @pytest.fixture(scope="class")
 def model_registry_db_deployment(
+    pytestconfig: Config,
     admin_client: DynamicClient,
     model_registry_namespace: str,
     model_registry_db_secret: Secret,
     model_registry_db_pvc: PersistentVolumeClaim,
     model_registry_db_service: Service,
     is_model_registry_oauth: bool,
+    teardown_resources: bool,
 ) -> Generator[Deployment, Any, Any]:
-    with Deployment(
-        name=DB_RESOURCES_NAME,
-        namespace=model_registry_namespace,
-        annotations={
-            "template.alpha.openshift.io/wait-for-ready": "true",
-        },
-        label=get_model_registry_db_label_dict(db_resource_name=DB_RESOURCES_NAME),
-        replicas=1,
-        revision_history_limit=0,
-        selector={"matchLabels": {"name": DB_RESOURCES_NAME}},
-        strategy={"type": "Recreate"},
-        template=get_model_registry_deployment_template_dict(
-            secret_name=model_registry_db_secret.name, resource_name=DB_RESOURCES_NAME
-        ),
-        wait_for_resource=True,
-    ) as mr_db_deployment:
-        mr_db_deployment.wait_for_replicas(deployed=True)
-        yield mr_db_deployment
+    if pytestconfig.option.post_upgrade:
+        db_deployment = Deployment(name=DB_RESOURCES_NAME, namespace=model_registry_namespace, ensure_exists=True)
+        yield db_deployment
+        db_deployment.delete(wait=True)
+    else:
+        with Deployment(
+            name=DB_RESOURCES_NAME,
+            namespace=model_registry_namespace,
+            annotations={
+                "template.alpha.openshift.io/wait-for-ready": "true",
+            },
+            label=get_model_registry_db_label_dict(db_resource_name=DB_RESOURCES_NAME),
+            replicas=1,
+            revision_history_limit=0,
+            selector={"matchLabels": {"name": DB_RESOURCES_NAME}},
+            strategy={"type": "Recreate"},
+            template=get_model_registry_deployment_template_dict(
+                secret_name=model_registry_db_secret.name, resource_name=DB_RESOURCES_NAME
+            ),
+            wait_for_resource=True,
+            teardown=teardown_resources,
+        ) as mr_db_deployment:
+            mr_db_deployment.wait_for_replicas(deployed=True)
+            yield mr_db_deployment
 
 
 @pytest.fixture(scope="class")
 def model_registry_instance(
-    model_registry_namespace: str, model_registry_mysql_config: dict[str, Any], is_model_registry_oauth: bool
+    pytestconfig: Config,
+    model_registry_namespace: str,
+    model_registry_mysql_config: dict[str, Any],
+    is_model_registry_oauth: bool,
+    teardown_resources: bool,
 ) -> Generator[ModelRegistry, Any, Any]:
-    istio_config = None
-    oauth_config = None
-    if is_model_registry_oauth:
-        LOGGER.warning("Requested Ouath Proxy configuration:")
-        oauth_config = OAUTH_PROXY_CONFIG_DICT
+    if pytestconfig.option.post_upgrade:
+        mr_instance = ModelRegistry(name=MR_INSTANCE_NAME, namespace=model_registry_namespace, ensure_exists=True)
+        yield mr_instance
+        mr_instance.delete(wait=True)
     else:
-        LOGGER.warning("Requested OSSM configuration:")
-        istio_config = ISTIO_CONFIG_DICT
-    """Creates a model registry instance with oauth proxy/service mesh configuration."""
-    with ModelRegistry(
-        name=MR_INSTANCE_NAME,
-        namespace=model_registry_namespace,
-        label=MODEL_REGISTRY_STANDARD_LABELS,
-        grpc={},
-        rest={},
-        istio=istio_config,
-        oauth_proxy=oauth_config,
-        mysql=model_registry_mysql_config,
-        wait_for_resource=True,
-    ) as mr:
-        mr.wait_for_condition(condition="Available", status="True")
-        yield mr
+        istio_config = None
+        oauth_config = None
+        if is_model_registry_oauth:
+            LOGGER.warning("Requested Ouath Proxy configuration:")
+            oauth_config = OAUTH_PROXY_CONFIG_DICT
+        else:
+            LOGGER.warning("Requested OSSM configuration:")
+            istio_config = ISTIO_CONFIG_DICT
+        """Creates a model registry instance with oauth proxy/service mesh configuration."""
+        with ModelRegistry(
+            name=MR_INSTANCE_NAME,
+            namespace=model_registry_namespace,
+            label=MODEL_REGISTRY_STANDARD_LABELS,
+            grpc={},
+            rest={},
+            istio=istio_config,
+            oauth_proxy=oauth_config,
+            mysql=model_registry_mysql_config,
+            wait_for_resource=True,
+            teardown=teardown_resources,
+        ) as mr:
+            mr.wait_for_condition(condition="Available", status="True")
+            yield mr
 
 
 @pytest.fixture(scope="class")
 def model_registry_mysql_config(
-    model_registry_db_deployment: Deployment, model_registry_db_secret: Secret
+    model_registry_db_deployment: Deployment,
 ) -> dict[str, Any]:
     return {
         "host": f"{model_registry_db_deployment.name}.{model_registry_db_deployment.namespace}.svc.cluster.local",
-        "database": model_registry_db_secret.string_data["database-name"],
+        "database": MODEL_REGISTRY_DB_SECRET_STR_DATA["database-name"],
         "passwordSecret": {"key": "database-password", "name": model_registry_db_deployment.name},
         "port": 3306,
         "skipDBCreation": False,
-        "username": model_registry_db_secret.string_data["database-user"],
+        "username": MODEL_REGISTRY_DB_SECRET_STR_DATA["database-user"],
     }
 
 
@@ -267,41 +315,52 @@ def state_machine(generated_schema: BaseOpenAPISchema, current_client_token: str
 @pytest.fixture(scope="class")
 def updated_dsc_component_state_scope_class(
     request: FixtureRequest,
+    pytestconfig: Config,
     dsc_resource: DataScienceCluster,
     admin_client: DynamicClient,
     is_model_registry_oauth: bool,
+    teardown_resources: bool,
 ) -> Generator[DataScienceCluster, Any, Any]:
-    original_components = dsc_resource.instance.spec.components
-    component_patch = request.param["component_patch"]
-
-    with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
-        for component_name in component_patch:
-            dsc_resource.wait_for_condition(condition=DscComponents.COMPONENT_MAPPING[component_name], status="True")
-        if component_patch.get(DscComponents.MODELREGISTRY):
-            namespace = Namespace(
-                name=dsc_resource.instance.spec.components.modelregistry.registriesNamespace, ensure_exists=True
-            )
-            namespace.wait_for_status(status=Namespace.Status.ACTIVE)
-        wait_for_pods_running(
-            admin_client=admin_client,
-            namespace_name=py_config["applications_namespace"],
-            number_of_consecutive_checks=6,
-        )
+    if not teardown_resources or pytestconfig.option.post_upgrade:
+        # if we are not tearing down resources or we are in post upgrade, we don't need to do anything
+        # the pre_upgrade/post_upgrade fixtures will handle the rest
         yield dsc_resource
+    else:
+        original_components = dsc_resource.instance.spec.components
+        component_patch = request.param["component_patch"]
 
-    for component_name, value in component_patch.items():
-        LOGGER.info(f"Waiting for component {component_name} to be updated.")
-        if original_components[component_name]["managementState"] == DscComponents.ManagementState.MANAGED:
-            dsc_resource.wait_for_condition(condition=DscComponents.COMPONENT_MAPPING[component_name], status="True")
-        if (
-            component_name == DscComponents.MODELREGISTRY
-            and value.get("managementState") == DscComponents.ManagementState.MANAGED
-        ):
-            # Since namespace specified in registriesNamespace is automatically created after setting
-            # managementStateto Managed. We need to explicitly delete it on clean up.
-            namespace = Namespace(name=value["registriesNamespace"], ensure_exists=True)
-            if namespace:
-                namespace.delete(wait=True)
+        with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
+            for component_name in component_patch:
+                dsc_resource.wait_for_condition(
+                    condition=DscComponents.COMPONENT_MAPPING[component_name], status="True"
+                )
+            if component_patch.get(DscComponents.MODELREGISTRY):
+                namespace = Namespace(
+                    name=dsc_resource.instance.spec.components.modelregistry.registriesNamespace, ensure_exists=True
+                )
+                namespace.wait_for_status(status=Namespace.Status.ACTIVE)
+            wait_for_pods_running(
+                admin_client=admin_client,
+                namespace_name=py_config["applications_namespace"],
+                number_of_consecutive_checks=6,
+            )
+            yield dsc_resource
+
+        for component_name, value in component_patch.items():
+            LOGGER.info(f"Waiting for component {component_name} to be updated.")
+            if original_components[component_name]["managementState"] == DscComponents.ManagementState.MANAGED:
+                dsc_resource.wait_for_condition(
+                    condition=DscComponents.COMPONENT_MAPPING[component_name], status="True"
+                )
+            if (
+                component_name == DscComponents.MODELREGISTRY
+                and value.get("managementState") == DscComponents.ManagementState.MANAGED
+            ):
+                # Since namespace specified in registriesNamespace is automatically created after setting
+                # managementStateto Managed. We need to explicitly delete it on clean up.
+                namespace = Namespace(name=value["registriesNamespace"], ensure_exists=True)
+                if namespace:
+                    namespace.delete(wait=True)
 
 
 @pytest.fixture(scope="class")
