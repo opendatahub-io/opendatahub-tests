@@ -11,12 +11,15 @@ COMMENTED_BY_LABEL_PREFIX: str = "commented-by-"
 SUCCESS_STR: str = "success"
 FAILURE_STR: str = "failure"
 QUEUED_STR: str = "queued"
+APPROVED: str = "approved"
 
 SUPPORTED_LABELS: set[str] = {
     f"{LABEL_PREFIX}{WIP_LABEL_STR}",
     f"{LABEL_PREFIX}{LGTM_LABEL_STR}",
     f"{LABEL_PREFIX}{VERIFIED_LABEL_STR}",
     f"{LABEL_PREFIX}{HOLD_LABEL_STR}",
+    f"{LABEL_PREFIX}build-push-pr-image",
+    f"{LABEL_PREFIX}cherry-pick",
 }
 
 CANCEL_ACTION: str = "cancel"
@@ -26,6 +29,7 @@ The following are automatically added/executed:
  * Run [pre-commit](https://pre-commit.ci/)
  * Run [tox](https://tox.wiki/)
  * Add PR author as the PR assignee
+ * Build image based on the PR
 
 Available user actions:
  * To mark a PR as `WIP`, add `/wip` in a comment. To remove it from the PR comment `/wip cancel` to the PR.
@@ -34,6 +38,10 @@ Available user actions:
         `lgtm` label removed on each new commit push.
  * To mark PR as verified comment `/verified` to the PR, to un-verify comment `/verified cancel` to the PR.
         `verified` label removed on each new commit push.
+ * To Cherry-pick a merged PR `/cherry-pick <target_branch_name>` to the PR. If <target_branch_name> is valid,
+         and the current PR is merged, a cherry-picked PR would be created and linked to the current PR.
+ * To build and push image to quay, add `/build-push-pr-image` in a comment. This would create an image with tag
+ pr-<pr_number> to quay repository. This image tag, however would be deleted on PR merge or close action.
 
 <details>
 <summary>Supported labels</summary>
