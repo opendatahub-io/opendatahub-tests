@@ -29,6 +29,7 @@ class TestModelRegistryImages:
     """
 
     @pytest.mark.smoke
+    @pytest.mark.skip_must_gather
     def test_verify_model_registry_images(
         self: Self,
         admin_client: DynamicClient,

@@ -30,6 +30,7 @@ pytestmark = [
 ]
 
 
+@pytest.mark.skip_must_gather
 class TestModelCatalogGeneral:
     @pytest.mark.post_upgrade
     def test_config_map_exists(self: Self, catalog_config_map: ConfigMap):
