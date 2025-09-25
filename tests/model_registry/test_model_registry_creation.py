@@ -44,7 +44,3 @@ class TestModelRegistryCreation:
         get_and_validate_registered_model(
             model_registry_client=model_registry_client, model_name=MODEL_NAME, registered_model=model
         )
-
-    @pytest.mark.smoke
-    def test_registering_modelfail(self):
-        pytest.fail("test failure")
