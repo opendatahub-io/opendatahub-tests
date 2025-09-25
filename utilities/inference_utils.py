@@ -475,7 +475,8 @@ class UserInference(Inference):
                 )
 
         else:
-            raise ValueError(f"Inference failed with error: {err}\nOutput: {out}\nCommand: {cmd}")
+            sanitized_cmd = re.sub(r"('Authorization: Bearer ).*?(')", r"\1***REDACTED***2", cmd)
+            raise ValueError(f"Inference failed with error: {err}\nOutput: {out}\nCommand: {sanitized_cmd}")
 
         LOGGER.info(f"Inference output:\n{out}")
 
