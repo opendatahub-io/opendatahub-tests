@@ -107,7 +107,7 @@ def llama_stack_distribution(
 ) -> Generator[LlamaStackDistribution, None, None]:
     with create_llama_stack_distribution(
         client=admin_client,
-        name="llama-stack-distribution",
+        name="test-lama-stack-distribution",
         namespace=model_namespace.name,
         replicas=1,
         server=llama_stack_server_config,
