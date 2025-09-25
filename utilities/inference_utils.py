@@ -462,10 +462,10 @@ class UserInference(Inference):
                 from_port=port,
                 to_port=port,
             ):
-                res, out, err = run_command(command=shlex.split(cmd), verify_stderr=False, check=False)
+                res, out, err = run_command(command=shlex.split(cmd), verify_stderr=False, check=False, hide_log_command=True)
 
         else:
-            res, out, err = run_command(command=shlex.split(cmd), verify_stderr=False, check=False)
+            res, out, err = run_command(command=shlex.split(cmd), verify_stderr=False, check=False, hide_log_command=True)
 
         if res:
             if f"http/1.0 {HTTPStatus.SERVICE_UNAVAILABLE}" in out.lower():
