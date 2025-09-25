@@ -186,7 +186,7 @@ def model_registry_db_deployment(
                             "/var/lib/mysql/datadir",
                             "--default-authentication-plugin=mysql_native_password",
                         ],
-                        "image": "public.ecr.aws/docker/library/mysql@sha256:9de9d54fecee6253130e65154b930978b1fcc336bcc86dfd06e89b72a2588ebe",
+                        "image": "public.ecr.aws/docker/library/mysql@sha256:9de9d54fecee6253130e65154b930978b1fcc336bcc86dfd06e89b72a2588ebe",  # noqa: E501
                         "imagePullPolicy": "IfNotPresent",
                         "livenessProbe": {
                             "exec": {
