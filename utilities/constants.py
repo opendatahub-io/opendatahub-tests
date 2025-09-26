@@ -1,3 +1,5 @@
+import re
+from datetime import timedelta
 from typing import Any, Dict
 
 from ocp_resources.resource import Resource
@@ -210,18 +212,38 @@ class Labels:
         MANAGED: str = "kueue.openshift.io/managed"
 
 
-class Timeout:
-    TIMEOUT_15_SEC: int = 15
-    TIMEOUT_30SEC: int = 30
-    TIMEOUT_1MIN: int = 60
-    TIMEOUT_2MIN: int = 2 * TIMEOUT_1MIN
-    TIMEOUT_4MIN: int = 4 * TIMEOUT_1MIN
-    TIMEOUT_5MIN: int = 5 * TIMEOUT_1MIN
-    TIMEOUT_10MIN: int = 10 * TIMEOUT_1MIN
-    TIMEOUT_15MIN: int = 15 * TIMEOUT_1MIN
-    TIMEOUT_20MIN: int = 20 * TIMEOUT_1MIN
-    TIMEOUT_30MIN: int = 30 * TIMEOUT_1MIN
-    TIMEOUT_40MIN: int = 40 * TIMEOUT_1MIN
+class TimeoutMeta(type):
+    def __getattribute__(self, timeout: str) -> int:
+        if "TIMEOUT_" not in timeout:
+            raise AttributeError("Invalid timeout specified, it should be in the format TIMEOUT_XXYY.")
+        delta = timedelta()
+        for split_timeout in timeout.split("_")[1:]:
+            if parsed := re.search(
+                r"(\d+)(SEC$|MIN$|HR$|DAY$|WEEK$|SECS$|MINS$|HRS$|DAYS$|MINS$|WEEKS$)", split_timeout
+            ):
+                number, duration = parsed.groups()
+                number = int(number)
+                match duration:
+                    case "SEC" | "SECS":
+                        delta += timedelta(seconds=number)
+                    case "MIN" | "MINS":
+                        delta += timedelta(minutes=number)
+                    case "HR" | "HRS":
+                        delta += timedelta(hours=number)
+                    case "DAY" | "DAYS":
+                        delta += timedelta(days=number)
+                    case "WEEK" | "WEEKS":
+                        delta += timedelta(weeks=number)
+            else:
+                raise AttributeError(
+                    f"Invalid time duration {split_timeout} specified. It must be in the format NUMBERTIME e.g. 10MIN."
+                )
+        return int(delta.total_seconds())
+
+
+class Timeout(metaclass=TimeoutMeta):
+    def __init__(self) -> None:
+        raise AttributeError("cannot instantiate class of type Timeout.")
 
 
 class OpenshiftRouteTimeout:
