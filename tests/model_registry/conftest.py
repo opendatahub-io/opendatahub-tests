@@ -320,15 +320,12 @@ def model_registry_deployment_containers(model_registry_namespace: str) -> list[
 
 @pytest.fixture(scope="class")
 def model_registry_pod(admin_client: DynamicClient, model_registry_namespace: str) -> Pod:
-    mr_pod = list(
-        Pod.get(
-            dyn_client=admin_client,
-            namespace=model_registry_namespace,
-            label_selector=MODEL_REGISTRY_POD_FILTER,
-        )
-    )
-    assert len(mr_pod) == 1
-    return mr_pod[0]
+    return wait_for_pods_by_labels(
+        admin_client=admin_client,
+        namespace=model_registry_namespace,
+        label_selector=MODEL_REGISTRY_POD_FILTER,
+        expected_num_pods=1,
+    )[0]
 
 
 @pytest.fixture(scope="class")
