@@ -120,24 +120,25 @@ def model_registry_db_secret(
         mr_db_secret = Secret(name=DB_RESOURCES_NAME, namespace=model_registry_namespace, ensure_exists=True)
         yield mr_db_secret
         mr_db_secret.delete(wait=True)
-    with Secret(
-        client=admin_client,
-        name=DB_RESOURCES_NAME,
-        namespace=model_registry_namespace,
-        string_data={
-            "database-name": "model_registry",
-            "database-password": "TheBlurstOfTimes",  # pragma: allowlist secret
-            "database-user": "mlmduser",  # pragma: allowlist secret
-        },
-        label=DEFAULT_LABEL_DICT_DB,
-        annotations={
-            "template.openshift.io/expose-database_name": "'{.data[''database-name'']}'",
-            "template.openshift.io/expose-password": "'{.data[''database-password'']}'",
-            "template.openshift.io/expose-username": "'{.data[''database-user'']}'",
-        },
-        teardown=teardown_resources,
-    ) as mr_db_secret:
-        yield mr_db_secret
+    else:
+        with Secret(
+            client=admin_client,
+            name=DB_RESOURCES_NAME,
+            namespace=model_registry_namespace,
+            string_data={
+                "database-name": "model_registry",
+                "database-password": "TheBlurstOfTimes",  # pragma: allowlist secret
+                "database-user": "mlmduser",  # pragma: allowlist secret
+            },
+            label=DEFAULT_LABEL_DICT_DB,
+            annotations={
+                "template.openshift.io/expose-database_name": "'{.data[''database-name'']}'",
+                "template.openshift.io/expose-password": "'{.data[''database-password'']}'",
+                "template.openshift.io/expose-username": "'{.data[''database-user'']}'",
+            },
+            teardown=teardown_resources,
+        ) as mr_db_secret:
+            yield mr_db_secret
 
 
 @pytest.fixture(scope="class")
