@@ -462,10 +462,14 @@ class UserInference(Inference):
                 from_port=port,
                 to_port=port,
             ):
-                res, out, err = run_command(command=shlex.split(cmd), verify_stderr=False, check=False)
+                res, out, err = run_command(
+                    command=shlex.split(cmd), verify_stderr=False, check=False, hide_log_command=True
+                )
 
         else:
-            res, out, err = run_command(command=shlex.split(cmd), verify_stderr=False, check=False)
+            res, out, err = run_command(
+                command=shlex.split(cmd), verify_stderr=False, check=False, hide_log_command=True
+            )
 
         if res:
             if f"http/1.0 {HTTPStatus.SERVICE_UNAVAILABLE}" in out.lower():
@@ -475,7 +479,8 @@ class UserInference(Inference):
                 )
 
         else:
-            raise ValueError(f"Inference failed with error: {err}\nOutput: {out}\nCommand: {cmd}")
+            sanitized_cmd = re.sub(r"('Authorization: Bearer ).*?(')", r"\1***REDACTED***2", cmd)
+            raise ValueError(f"Inference failed with error: {err}\nOutput: {out}\nCommand: {sanitized_cmd}")
 
         LOGGER.info(f"Inference output:\n{out}")
 
