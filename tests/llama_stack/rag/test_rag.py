@@ -14,7 +14,7 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(
-    "model_namespace, llama_stack_server_config",
+    "unprivileged_model_namespace, llama_stack_server_config",
     [
         pytest.param(
             {"name": "test-llamastack-rag"},

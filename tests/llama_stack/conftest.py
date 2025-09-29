@@ -40,8 +40,7 @@ def enabled_llama_stack_operator(dsc_resource: DataScienceCluster) -> Generator[
 @pytest.fixture(scope="class")
 def llama_stack_server_config(
     request: FixtureRequest,
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
+    unprivileged_model_namespace: Namespace,
 ) -> Dict[str, Any]:
     fms_orchestrator_url = "http://localhost"
     inference_model = os.getenv("LLS_CORE_INFERENCE_MODEL", "")
@@ -100,15 +99,15 @@ def llama_stack_server_config(
 
 @pytest.fixture(scope="class")
 def llama_stack_distribution(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
     enabled_llama_stack_operator: DataScienceCluster,
     llama_stack_server_config: Dict[str, Any],
 ) -> Generator[LlamaStackDistribution, None, None]:
     with create_llama_stack_distribution(
-        client=admin_client,
+        client=unprivileged_client,
         name="test-lama-stack-distribution",
-        namespace=model_namespace.name,
+        namespace=unprivileged_model_namespace.name,
         replicas=1,
         server=llama_stack_server_config,
     ) as lls_dist:
@@ -118,11 +117,11 @@ def llama_stack_distribution(
 
 @pytest.fixture(scope="class")
 def llama_stack_distribution_deployment(
-    admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
     llama_stack_distribution: LlamaStackDistribution,
 ) -> Generator[Deployment, Any, Any]:
     deployment = Deployment(
-        client=admin_client,
+        client=unprivileged_client,
         namespace=llama_stack_distribution.namespace,
         name=llama_stack_distribution.name,
     )
@@ -133,7 +132,6 @@ def llama_stack_distribution_deployment(
 
 @pytest.fixture(scope="class")
 def llama_stack_client(
-    admin_client: DynamicClient,
     llama_stack_distribution_deployment: Deployment,
 ) -> Generator[LlamaStackClient, Any, Any]:
     """
@@ -141,7 +139,6 @@ def llama_stack_client(
     from the llama-stack-server service:8321 to localhost:8321
 
     Args:
-        admin_client (DynamicClient): Kubernetes dynamic client for cluster operations
         llama_stack_distribution_deployment (Deployment): LlamaStack distribution deployment resource
 
     Yields:
