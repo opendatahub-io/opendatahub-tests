@@ -14,5 +14,3 @@ Please follow the [Contributing Guide](docs/CONTRIBUTING.md) and the [Developer 
 
 ## GitHub workflows
 Please follow the [GitHub workflows Guide](docs/GITHUB_WORKFLOWS.md) for more information.
-
-## Creating 2.25 tag
