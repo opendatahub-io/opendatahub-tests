@@ -119,6 +119,9 @@ def upload_test_model_to_minio_from_image(
         ],
         wait_for_resource=True,
     ) as upload_pod:
+        import pdb
+
+        pdb.set_trace()
         LOGGER.info(f"Extracting model from image {model_image} and uploading to MinIO: {object_key}")
         try:
             upload_pod.wait_for_status(status="Succeeded", timeout=300)
