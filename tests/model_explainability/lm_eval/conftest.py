@@ -325,6 +325,12 @@ def lmeval_minio_copy_pod(
                 "command": ["/bin/sh", "-c"],
                 "args": ["cp -r /mnt/data /shared"],
                 "volumeMounts": [{"name": "shared-data", "mountPath": "/shared"}],
+                "securityContext": {
+                    "allowPrivilegeEscalation": False,
+                    "capabilities": {"drop": ["ALL"]},
+                    "runAsNonRoot": True,
+                    "seccompProfile": {"type": "RuntimeDefault"},
+                },
             }
         ],
         containers=[
@@ -338,7 +344,14 @@ def lmeval_minio_copy_pod(
                     "mc mb --ignore-existing myminio/models &&\n"
                     "mc cp --recursive /shared/data/ myminio/models"
                 ],
+                "env": [{"name": "MC_CONFIG_DIR", "value": "/tmp/.mc"}],
                 "volumeMounts": [{"name": "shared-data", "mountPath": "/shared"}],
+                "securityContext": {
+                    "allowPrivilegeEscalation": False,
+                    "capabilities": {"drop": ["ALL"]},
+                    "runAsNonRoot": True,
+                    "seccompProfile": {"type": "RuntimeDefault"},
+                },
             }
         ],
         wait_for_resource=True,

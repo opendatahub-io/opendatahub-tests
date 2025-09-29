@@ -114,7 +114,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
             url=f"https://{guardrails_orchestrator_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
             headers=get_auth_headers(token=current_client_token),
             json=get_chat_payload(
-                content="Hi, write three and only three examples of email adresses "
+                content="Hi, write three and only three examples of email addresses "
                 "that I can use to create an account for an online service."
                 "Don't provide any additional explanation."
             ),
