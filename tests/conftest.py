@@ -517,6 +517,7 @@ def minio_pod(
         label=pod_labels,
         annotations=request.param.get("annotations"),
     ) as minio_pod:
+        minio_pod.wait_for_status(status=Pod.Status.RUNNING)
         yield minio_pod
 
 
