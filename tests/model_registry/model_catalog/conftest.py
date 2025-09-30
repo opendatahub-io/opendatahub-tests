@@ -1,5 +1,7 @@
 import random
 from typing import Generator, Any
+
+import yaml
 from simple_logger.logger import get_logger
 
 import pytest
@@ -17,6 +19,7 @@ from tests.model_registry.model_catalog.utils import (
     wait_for_model_catalog_api,
     get_model_str,
     execute_get_command,
+    get_default_model_catalog_yaml,
 )
 from tests.model_registry.utils import get_rest_headers
 from utilities.infra import get_openshift_token, login_with_user_password, create_inference_token
@@ -59,7 +62,15 @@ def updated_catalog_config_map(
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
 ) -> Generator[ConfigMap, None, None]:
-    patches = {"data": {"sources.yaml": request.param["sources_yaml"]}}
+    defaults = yaml.dump(
+        get_default_model_catalog_yaml(config_map=catalog_config_map),
+        default_flow_style=False,
+    )
+    catalog_str = f"""catalogs:
+{defaults}
+{request.param["sources_yaml"]}
+    """
+    patches = {"data": {"sources.yaml": catalog_str}}
     if "sample_yaml" in request.param:
         for key in request.param["sample_yaml"]:
             patches["data"][key] = request.param["sample_yaml"][key]
