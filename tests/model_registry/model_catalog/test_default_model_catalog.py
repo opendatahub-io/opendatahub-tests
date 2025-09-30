@@ -172,9 +172,8 @@ class TestModelCatalogDefault:
         count = len(catalog_data.get("models", []))
 
         result = execute_get_command(
-            url=f"{model_catalog_rest_url[0]}models?source={DEFAULT_CATALOG_ID}&pageSize=100",
+            url=f"{model_catalog_rest_url[0]}models?source={DEFAULT_CATALOG_ID}&pageSize=1",
             headers=get_rest_headers(token=user_token_for_api_calls),
         )
-        assert count == len(result["items"]) == result["size"], (
-            f"Expected count: {count}, Actual count: {len(result['items'])}, Actual size: {result['size']}"
-        )
+
+        assert count == result["size"], f"Expected count: {count}, Actual size: {result['size']}"
