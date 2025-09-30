@@ -10,7 +10,7 @@ from ocp_resources.pod import Pod
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.route import Route
 from ocp_resources.service import Service
-from tests.model_registry.model_catalog.constants import DEFAULT_CATALOG_ID, POD_DEFAULT_CATALOG_FILE, CATALOG_CONTAINER
+from tests.model_registry.model_catalog.constants import DEFAULT_CATALOG_ID, DEFAULT_CATALOG_FILE, CATALOG_CONTAINER
 from tests.model_registry.model_catalog.utils import (
     validate_model_catalog_enabled,
     execute_get_command,
@@ -167,10 +167,10 @@ class TestModelCatalogDefault:
             client=admin_client, model_registry_namespace=model_registry_namespace
         )[0]
 
-        command = ["sh", "-c", f"grep '^ *- name:' {POD_DEFAULT_CATALOG_FILE} | wc -l"]
+        catalog_content = model_catalog_pod.execute(command=["cat", DEFAULT_CATALOG_FILE], container=CATALOG_CONTAINER)
+        catalog_data = yaml.safe_load(catalog_content)
+        count = len(catalog_data.get("models", []))
 
-        result = model_catalog_pod.execute(command=command, container=CATALOG_CONTAINER)
-        count = int(result.strip())
         result = execute_get_command(
             url=f"{model_catalog_rest_url[0]}models?source={DEFAULT_CATALOG_ID}&pageSize=100",
             headers=get_rest_headers(token=user_token_for_api_calls),
