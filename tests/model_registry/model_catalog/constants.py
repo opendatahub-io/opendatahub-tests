@@ -11,5 +11,5 @@ MULTIPLE_CUSTOM_CATALOG_VALUES: list[dict[str, str]] = [
 DEFAULT_CATALOG_NAME: str = "Default Catalog"
 DEFAULT_CATALOG_ID: str = "default_catalog"
 CATALOG_TYPE: str = "yaml"
-DEFAULT_CATALOG_FILE: str = "/default/default-catalog.yaml"
+DEFAULT_CATALOG_FILE: str = "/shared-data/default-catalog.yaml"
 SAMPLE_MODEL_NAME3 = "mistralai/Ministral-8B-Instruct-2410"
