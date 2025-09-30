@@ -67,16 +67,15 @@ class TestLlamaStackRag:
         Based on the example available at
         https://llama-stack.readthedocs.io/en/latest/building_applications/rag.html
         """
-        # Create a vector database instance
-        vector_db_id = f"v{uuid.uuid4().hex}"
-
         try:
-            llama_stack_client.vector_dbs.register(
-                vector_db_id=vector_db_id,
+            res = llama_stack_client.vector_dbs.register(
+                vector_db_id="my-test-vector_db",
                 embedding_model=llama_stack_models.embedding_model.identifier,  # type: ignore
                 embedding_dimension=llama_stack_models.embedding_dimension,  # type: ignore
                 provider_id="milvus",
             )
+
+            vector_db_id = res.identifier
 
             # Calculate embeddings
             embeddings_response = llama_stack_client.inference.embeddings(
@@ -168,15 +167,14 @@ class TestLlamaStackRag:
         Based on the example available at
         https://llama-stack.readthedocs.io/en/latest/getting_started/detailed_tutorial.html#step-4-run-the-demos
         """
-        # Create a vector database instance
-        vector_db_id = f"v{uuid.uuid4().hex}"
-
-        llama_stack_client.vector_dbs.register(
-            vector_db_id=vector_db_id,
+        res = llama_stack_client.vector_dbs.register(
+            vector_db_id="my-test-vector_db",
             embedding_model=llama_stack_models.embedding_model.identifier,  # type: ignore
-            embedding_dimension=llama_stack_models.embedding_dimension,
+            embedding_dimension=llama_stack_models.embedding_dimension,  # type: ignore
             provider_id="milvus",
         )
+
+        vector_db_id = res.identifier
 
         try:
             # Create the RAG agent connected to the vector database
