@@ -10,7 +10,7 @@ from ocp_resources.pod import Pod
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.route import Route
 from ocp_resources.service import Service
-from tests.model_registry.model_catalog.constants import DEFAULT_CATALOG_ID
+from tests.model_registry.model_catalog.constants import DEFAULT_CATALOG_ID, POD_DEFAULT_CATALOG_FILE, CATALOG_CONTAINER
 from tests.model_registry.model_catalog.utils import (
     validate_model_catalog_enabled,
     execute_get_command,
@@ -18,7 +18,7 @@ from tests.model_registry.model_catalog.utils import (
     validate_default_catalog,
     get_validate_default_model_catalog_source,
 )
-from tests.model_registry.utils import get_rest_headers
+from tests.model_registry.utils import get_rest_headers, get_model_catalog_pod
 from utilities.user_utils import UserTestSession
 
 LOGGER = get_logger(name=__name__)
@@ -151,3 +151,30 @@ class TestModelCatalogDefault:
         )["items"]
         assert result, f"No artifacts found for {model_name}"
         assert result[0]["uri"]
+
+    def test_model_default_catalog_number_of_models(
+        self: Self,
+        admin_client: DynamicClient,
+        model_registry_namespace: str,
+        model_catalog_rest_url: list[str],
+        user_token_for_api_calls: str,
+    ):
+        """
+        RHOAIENG-33667: Validate number of models in default catalog
+        """
+
+        model_catalog_pod = get_model_catalog_pod(
+            client=admin_client, model_registry_namespace=model_registry_namespace
+        )[0]
+
+        command = ["sh", "-c", f"grep '^ *- name:' {POD_DEFAULT_CATALOG_FILE} | wc -l"]
+
+        result = model_catalog_pod.execute(command=command, container=CATALOG_CONTAINER)
+        count = int(result.strip())
+        result = execute_get_command(
+            url=f"{model_catalog_rest_url[0]}models?source={DEFAULT_CATALOG_ID}&pageSize=100",
+            headers=get_rest_headers(token=user_token_for_api_calls),
+        )
+        assert count == len(result["items"]) == result["size"], (
+            f"Expected count: {count}, Actual count: {len(result['items'])}, Actual size: {result['size']}"
+        )
