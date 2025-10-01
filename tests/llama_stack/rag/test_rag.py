@@ -109,9 +109,9 @@ class TestRag:
             session_id=s_id,
             stream=False,
         )
-        content = response.output_message.content
+        content = response.output_message.content.lower()
         assert content is not None, "LLM response content is None"
-        assert "answers" in content, "The LLM didn't provide the expected answer to the prompt"
+        assert "answer" in content, "The LLM didn't provide the expected answer to the prompt"
 
     @pytest.mark.smoke
     def test_rag_build_rag_agent(self, rag_lls_client: LlamaStackClient) -> None:

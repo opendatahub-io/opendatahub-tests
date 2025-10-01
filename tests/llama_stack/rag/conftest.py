@@ -24,9 +24,9 @@ LOGGER = get_logger(name=__name__)
 
 
 def llama_stack_server() -> Dict[str, Any]:
-    rag_vllm_url = os.getenv("RAG_VLLM_URL")
-    rag_vllm_model = os.getenv("RAG_VLLM_MODEL")
-    rag_vllm_token = os.getenv("RAG_VLLM_TOKEN")
+    inference_model = os.getenv("LLS_CORE_INFERENCE_MODEL", "")
+    vllm_api_token = os.getenv("LLS_CORE_VLLM_API_TOKEN", "")
+    vllm_url = os.getenv("LLS_CORE_VLLM_URL", "")
 
     return {
         "containerSpec": {
@@ -35,10 +35,10 @@ def llama_stack_server() -> Dict[str, Any]:
                 "limits": {"cpu": "2", "memory": "12Gi"},
             },
             "env": [
-                {"name": "INFERENCE_MODEL", "value": rag_vllm_model},
+                {"name": "INFERENCE_MODEL", "value": inference_model},
                 {"name": "VLLM_TLS_VERIFY", "value": "false"},
-                {"name": "VLLM_API_TOKEN", "value": rag_vllm_token},
-                {"name": "VLLM_URL", "value": rag_vllm_url},
+                {"name": "VLLM_API_TOKEN", "value": vllm_api_token},
+                {"name": "VLLM_URL", "value": vllm_url},
                 {"name": "FMS_ORCHESTRATOR_URL", "value": "http://localhost"},
             ],
             "name": "llama-stack",
