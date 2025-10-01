@@ -1,6 +1,7 @@
 import random
 from typing import Generator, Any
 from simple_logger.logger import get_logger
+import yaml
 
 import pytest
 from kubernetes.dynamic import DynamicClient
@@ -11,12 +12,19 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 from ocp_resources.service_account import ServiceAccount
 from tests.model_registry.constants import DEFAULT_MODEL_CATALOG
-from tests.model_registry.model_catalog.constants import SAMPLE_MODEL_NAME3, CUSTOM_CATALOG_ID1, DEFAULT_CATALOG_ID
+from tests.model_registry.model_catalog.constants import (
+    SAMPLE_MODEL_NAME3,
+    CUSTOM_CATALOG_ID1,
+    DEFAULT_CATALOG_ID,
+    DEFAULT_CATALOG_FILE,
+    CATALOG_CONTAINER,
+)
 from tests.model_registry.model_catalog.utils import (
     is_model_catalog_ready,
     wait_for_model_catalog_api,
     get_model_str,
     execute_get_command,
+    get_model_catalog_pod,
 )
 from tests.model_registry.utils import get_rest_headers
 from utilities.infra import get_openshift_token, login_with_user_password, create_inference_token
@@ -138,3 +146,9 @@ def randomly_picked_model_from_default_catalog(
     assert result, f"Expected Default models to be present. Actual: {result}"
     LOGGER.info(f"{len(result)} models found")
     return random.choice(seq=result)
+
+
+@pytest.fixture(scope="class")
+def default_model_catalog_yaml_content(admin_client: DynamicClient, model_registry_namespace: str) -> dict[Any, Any]:
+    model_catalog_pod = get_model_catalog_pod(client=admin_client, model_registry_namespace=model_registry_namespace)[0]
+    return yaml.safe_load(model_catalog_pod.execute(command=["cat", DEFAULT_CATALOG_FILE], container=CATALOG_CONTAINER))
