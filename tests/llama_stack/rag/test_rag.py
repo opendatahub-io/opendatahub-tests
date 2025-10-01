@@ -68,13 +68,13 @@ class TestLlamaStackRag:
         https://llama-stack.readthedocs.io/en/latest/building_applications/rag.html
         """
         try:
+            vector_db = f"my-test-vector_db-{uuid.uuid4().hex}"
             res = llama_stack_client.vector_dbs.register(
-                vector_db_id="my-test-vector_db",
+                vector_db_id=vector_db,
                 embedding_model=llama_stack_models.embedding_model.identifier,  # type: ignore
                 embedding_dimension=llama_stack_models.embedding_dimension,  # type: ignore
                 provider_id="milvus",
             )
-
             vector_db_id = res.identifier
 
             # Calculate embeddings
@@ -167,13 +167,13 @@ class TestLlamaStackRag:
         Based on the example available at
         https://llama-stack.readthedocs.io/en/latest/getting_started/detailed_tutorial.html#step-4-run-the-demos
         """
+        vector_db = f"my-test-vector_db-{uuid.uuid4().hex}"
         res = llama_stack_client.vector_dbs.register(
-            vector_db_id="my-test-vector_db",
+            vector_db_id=vector_db,
             embedding_model=llama_stack_models.embedding_model.identifier,  # type: ignore
             embedding_dimension=llama_stack_models.embedding_dimension,  # type: ignore
             provider_id="milvus",
         )
-
         vector_db_id = res.identifier
 
         try:
