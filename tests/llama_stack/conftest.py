@@ -83,6 +83,9 @@ def llama_stack_server_config(
                     "value": "~/.llama/milvus.db",
                 },
                 {"name": "FMS_ORCHESTRATOR_URL", "value": fms_orchestrator_url},
+                {"name": "MILVUS_ENDPOINT", "value": "http://rag-milvus-service:19530"},
+                {"name": "MILVUS_TOKEN", "value": "root:Milvus"},
+                {"name": "MILVUS_CONSISTENCY_LEVEL", "value": "Bounded"},
             ],
             "name": "llama-stack",
             "port": 8321,
@@ -314,3 +317,82 @@ def vector_store(
         LOGGER.info(f"Deleted vector store {vector_store.id}")
     except Exception as e:
         LOGGER.warning(f"Failed to delete vector store {vector_store.id}: {e}")
+@pytest.fixture(scope="class")
+def etcd_deployment(
+    unprivileged_model_namespace: Namespace,
+    admin_client: DynamicClient,
+) -> Generator[Deployment, Any, Any]:
+    with Deployment(
+        client=admin_client,
+        namespace=unprivileged_model_namespace.name,
+        name="rag-etcd-deployment",
+        replicas=1,
+        selector={"matchLabels": {"app": "etcd"}},
+        strategy={"type": "Recreate"},
+        template=get_etcd_deployment_template(),
+        teardown=True,
+    ) as deployment:
+        deployment.wait_for_replicas(deployed=True, timeout=Timeout.TIMEOUT_2MIN)
+        yield deployment
+
+
+@pytest.fixture(scope="class")
+def etcd_service(
+    admin_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+) -> Generator[Service, Any, Any]:
+    with Service(
+        client=admin_client,
+        namespace=unprivileged_model_namespace.name,
+        name="rag-etcd-service",
+        ports=[
+            {
+                "port": 2379,
+                "targetPort": 2379,
+            }
+        ],
+        selector={"app": "etcd"},
+    ) as service:
+        yield service
+
+
+@pytest.fixture(scope="class")
+def remote_milvus_deployment(
+    unprivileged_model_namespace: Namespace,
+    admin_client: DynamicClient,
+    etcd_deployment: Deployment,
+    etcd_service: Service,
+) -> Generator[Deployment, Any, Any]:
+    with Deployment(
+        client=admin_client,
+        namespace=unprivileged_model_namespace.name,
+        name="rag-milvus-deployment",
+        replicas=1,
+        selector={"matchLabels": {"app": "milvus-standalone"}},
+        strategy={"type": "Recreate"},
+        template=get_milvus_deployment_template(),
+        teardown=True,
+    ) as deployment:
+        deployment.wait_for_replicas(deployed=True, timeout=Timeout.TIMEOUT_2MIN)
+        yield deployment
+
+
+@pytest.fixture(scope="class")
+def milvus_service(
+    admin_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+) -> Generator[Service, Any, Any]:
+    with Service(
+        client=admin_client,
+        namespace=unprivileged_model_namespace.name,
+        name="rag-milvus-service",
+        ports=[
+            {
+                "name": "grpc",
+                "port": 19530,
+                "targetPort": 19530,
+            },
+        ],
+        selector={"app": "milvus-standalone"},
+    ) as service:
+        yield service
