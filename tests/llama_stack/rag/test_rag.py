@@ -1,4 +1,5 @@
 import uuid
+from typing import List
 
 import pytest
 from llama_stack_client import Agent, LlamaStackClient, RAGDocument
@@ -282,7 +283,7 @@ class TestLlamaStackRag:
         self,
         llama_stack_client: LlamaStackClient,
         llama_stack_models: ModelInfo,
-        vector_store_with_docs: VectorStore,
+        vector_stores_with_docs: List[VectorStore],
     ) -> None:
         """
         Test responses API from the llama-stack server with vector store integration.
@@ -292,23 +293,24 @@ class TestLlamaStackRag:
         knowledge from uploaded documents to answer questions.
         """
 
-        _response_fn = create_response_function(
-            llama_stack_client=llama_stack_client,
-            llama_stack_models=llama_stack_models,
-            vector_store=vector_store_with_docs,
-        )
+        for vector_store_with_docs in vector_stores_with_docs:
+            _response_fn = create_response_function(
+                llama_stack_client=llama_stack_client,
+                llama_stack_models=llama_stack_models,
+                vector_store=vector_store_with_docs,
+            )
 
-        turns_with_expectations = get_torchtune_test_expectations()
+            turns_with_expectations = get_torchtune_test_expectations()
 
-        validation_result = validate_api_responses(response_fn=_response_fn, test_cases=turns_with_expectations)
+            validation_result = validate_api_responses(response_fn=_response_fn, test_cases=turns_with_expectations)
 
-        assert validation_result["success"], f"RAG agent validation failed. Summary: {validation_result['summary']}"
+            assert validation_result["success"], f"RAG agent validation failed. Summary: {validation_result['summary']}"
 
     @pytest.mark.smoke
     def test_rag_vector_store_search(
         self,
         llama_stack_client: LlamaStackClient,
-        vector_store_with_docs: VectorStore,
+        vector_stores_with_docs: List[VectorStore],
     ) -> None:
         """
         Test vector store search functionality using the search endpoint.
@@ -326,24 +328,25 @@ class TestLlamaStackRag:
             "What is TorchTune?",
         ]
 
-        for query in search_queries:
-            # Use the vector store search endpoint
-            search_response = llama_stack_client.vector_stores.search(
-                vector_store_id=vector_store_with_docs.id, query=query
-            )
+        for vector_store_with_docs in vector_stores_with_docs:
+            for query in search_queries:
+                # Use the vector store search endpoint
+                search_response = llama_stack_client.vector_stores.search(
+                    vector_store_id=vector_store_with_docs.id, query=query
+                )
 
-            # Validate search response
-            assert search_response is not None, f"Search response is None for query: {query}"
-            assert hasattr(search_response, "data"), "Search response missing 'data' attribute"
-            assert isinstance(search_response.data, list), "Search response data should be a list"
+                # Validate search response
+                assert search_response is not None, f"Search response is None for query: {query}"
+                assert hasattr(search_response, "data"), "Search response missing 'data' attribute"
+                assert isinstance(search_response.data, list), "Search response data should be a list"
 
-            # Check that we got some results
-            assert len(search_response.data) > 0, f"No search results returned for query: {query}"
+                # Check that we got some results
+                assert len(search_response.data) > 0, f"No search results returned for query: {query}"
 
-            # Validate each search result
-            for result in search_response.data:
-                assert hasattr(result, "content"), "Search result missing 'content' attribute"
-                assert result.content is not None, "Search result content should not be None"
-                assert len(result.content) > 0, "Search result content should not be empty"
+                # Validate each search result
+                for result in search_response.data:
+                    assert hasattr(result, "content"), "Search result missing 'content' attribute"
+                    assert result.content is not None, "Search result content should not be None"
+                    assert len(result.content) > 0, "Search result content should not be empty"
 
-            LOGGER.info(f"Successfully tested vector store search with {len(search_queries)} queries")
+                LOGGER.info(f"Successfully tested vector store search with {len(search_queries)} queries")

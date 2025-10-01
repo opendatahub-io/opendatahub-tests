@@ -11,18 +11,25 @@ from llama_stack_client import LlamaStackClient
 from llama_stack_client.types.vector_store import VectorStore
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
+from ocp_resources.service import Service
 from ocp_resources.llama_stack_distribution import LlamaStackDistribution
 from ocp_resources.namespace import Namespace
 from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
-from tests.llama_stack.utils import create_llama_stack_distribution, wait_for_llama_stack_client_ready
+from tests.llama_stack.utils import (
+    create_llama_stack_distribution,
+    wait_for_llama_stack_client_ready,
+    get_etcd_deployment_template,
+    get_milvus_deployment_template,
+)
 from utilities.constants import DscComponents, Timeout
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.rag_utils import ModelInfo
 
 
 LOGGER = get_logger(name=__name__)
+VECTOR_DBS = ["milvus", "milvus-remote"]
 
 
 @pytest.fixture(scope="class")
@@ -83,6 +90,9 @@ def llama_stack_server_config(
                     "value": "~/.llama/milvus.db",
                 },
                 {"name": "FMS_ORCHESTRATOR_URL", "value": fms_orchestrator_url},
+                {"name": "MILVUS_ENDPOINT", "value": "http://rag-milvus-service:19530"},
+                {"name": "MILVUS_TOKEN", "value": "root:Milvus"},
+                {"name": "MILVUS_CONSISTENCY_LEVEL", "value": "Bounded"},
             ],
             "name": "llama-stack",
             "port": 8321,
@@ -102,6 +112,10 @@ def llama_stack_distribution(
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     enabled_llama_stack_operator: DataScienceCluster,
+    remote_milvus_deployment: Deployment,
+    milvus_service: Service,
+    etcd_deployment: Deployment,
+    etcd_service: Service,
     llama_stack_server_config: Dict[str, Any],
 ) -> Generator[LlamaStackDistribution, None, None]:
     with create_llama_stack_distribution(
@@ -189,34 +203,40 @@ def llama_stack_models(llama_stack_client: LlamaStackClient) -> ModelInfo:
 
 
 @pytest.fixture(scope="class")
-def vector_store(
+def vector_stores(
     llama_stack_client: LlamaStackClient, llama_stack_models: ModelInfo
 ) -> Generator[VectorStore, None, None]:
     """
-    Creates a vector store for testing and automatically cleans it up.
+    Creates vector stores for testing and automatically cleans them up.
 
-    This fixture creates a vector store, yields it to the test,
-    and ensures it's deleted after the test completes (whether it passes or fails).
+    This fixture creates vector stores for each vector db, yields them to the test,
+    and ensures they're deleted after the test completes (whether it passes or fails).
 
     Args:
         llama_stack_client: The configured LlamaStackClient
         llama_stack_models: Model information including embedding model details
 
     Yields:
-        Vector store object that can be used in tests
+        A list of vector store objects that can be used in tests
     """
-    # Setup
-    vector_store = llama_stack_client.vector_stores.create(
-        name="test_vector_store",
-        embedding_model=llama_stack_models.embedding_model.identifier,  # type: ignore
-        embedding_dimension=llama_stack_models.embedding_dimension,
-    )
 
-    yield vector_store
+    vector_stores = []
+    for provider_id in VECTOR_DBS:
+        # Setup
+        vector_store = llama_stack_client.vector_stores.create(
+            name="test_vector_store",
+            embedding_model=llama_stack_models.embedding_model.identifier,  # type: ignore
+            embedding_dimension=llama_stack_models.embedding_dimension,
+            provider_id=provider_id,
+        )
+        vector_stores.append(vector_store)
+
+    yield vector_stores
 
     try:
-        llama_stack_client.vector_stores.delete(vector_store_id=vector_store.id)
-        LOGGER.info(f"Deleted vector store {vector_store.id}")
+        for vector_store in vector_stores:
+            llama_stack_client.vector_stores.delete(vector_store_id=vector_store.id)
+            LOGGER.info(f"Deleted vector store {vector_store.id}")
     except Exception as e:
         LOGGER.warning(f"Failed to delete vector store {vector_store.id}: {e}")
 
@@ -254,7 +274,6 @@ def _download_and_upload_file(url: str, llama_stack_client: LlamaStackClient, ve
             # Upload saved file to LlamaStack
             with open(temp_file_path, "rb") as file_to_upload:
                 uploaded_file = llama_stack_client.files.create(file=file_to_upload, purpose="assistants")
-
             # Add file to vector store
             llama_stack_client.vector_stores.files.create(vector_store_id=vector_store.id, file_id=uploaded_file.id)
 
@@ -266,20 +285,20 @@ def _download_and_upload_file(url: str, llama_stack_client: LlamaStackClient, ve
 
 
 @pytest.fixture(scope="class")
-def vector_store_with_docs(llama_stack_client: LlamaStackClient, vector_store: Any) -> Generator[Any, None, None]:
+def vector_stores_with_docs(llama_stack_client: LlamaStackClient, vector_stores: Any) -> Generator[Any, None, None]:
     """
     Creates a vector store with TorchTune documentation files uploaded.
 
-    This fixture depends on the vector_store fixture and uploads the TorchTune
+    This fixture depends on the vector_stores fixture and uploads the TorchTune
     documentation files to the vector store for testing purposes. The files
     are automatically cleaned up after the test completes.
 
     Args:
         llama_stack_client: The configured LlamaStackClient
-        vector_store: The vector store fixture to upload files to
+        vector_stores: A list of the vector stores to upload files to
 
     Yields:
-        Vector store object with uploaded TorchTune documentation files
+        A list of vector store objects with uploaded TorchTune documentation files
     """
     # Download TorchTune documentation files
     urls = [
@@ -292,8 +311,90 @@ def vector_store_with_docs(llama_stack_client: LlamaStackClient, vector_store: A
 
     base_url = "https://raw.githubusercontent.com/pytorch/torchtune/refs/tags/v0.6.1/docs/source/tutorials/"
 
-    for file_name in urls:
-        url = f"{base_url}{file_name}"
-        _download_and_upload_file(url=url, llama_stack_client=llama_stack_client, vector_store=vector_store)
+    for vector_store in vector_stores:
+        for file_name in urls:
+            url = f"{base_url}{file_name}"
+            _download_and_upload_file(url=url, llama_stack_client=llama_stack_client, vector_store=vector_store)
 
-    yield vector_store
+    yield vector_stores
+
+
+@pytest.fixture(scope="class")
+def etcd_deployment(
+    unprivileged_model_namespace: Namespace,
+    admin_client: DynamicClient,
+) -> Generator[Deployment, Any, Any]:
+    with Deployment(
+        client=admin_client,
+        namespace=unprivileged_model_namespace.name,
+        name="rag-etcd-deployment",
+        replicas=1,
+        selector={"matchLabels": {"app": "etcd"}},
+        strategy={"type": "Recreate"},
+        template=get_etcd_deployment_template(),
+        teardown=True,
+    ) as deployment:
+        deployment.wait_for_replicas(deployed=True, timeout=Timeout.TIMEOUT_2MIN)
+        yield deployment
+
+
+@pytest.fixture(scope="class")
+def etcd_service(
+    admin_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+) -> Generator[Service, Any, Any]:
+    with Service(
+        client=admin_client,
+        namespace=unprivileged_model_namespace.name,
+        name="rag-etcd-service",
+        ports=[
+            {
+                "port": 2379,
+                "targetPort": 2379,
+            }
+        ],
+        selector={"app": "etcd"},
+    ) as service:
+        yield service
+
+
+@pytest.fixture(scope="class")
+def remote_milvus_deployment(
+    unprivileged_model_namespace: Namespace,
+    admin_client: DynamicClient,
+    etcd_deployment: Deployment,
+    etcd_service: Service,
+) -> Generator[Deployment, Any, Any]:
+    with Deployment(
+        client=admin_client,
+        namespace=unprivileged_model_namespace.name,
+        name="rag-milvus-deployment",
+        replicas=1,
+        selector={"matchLabels": {"app": "milvus-standalone"}},
+        strategy={"type": "Recreate"},
+        template=get_milvus_deployment_template(),
+        teardown=True,
+    ) as deployment:
+        deployment.wait_for_replicas(deployed=True, timeout=Timeout.TIMEOUT_2MIN)
+        yield deployment
+
+
+@pytest.fixture(scope="class")
+def milvus_service(
+    admin_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+) -> Generator[Service, Any, Any]:
+    with Service(
+        client=admin_client,
+        namespace=unprivileged_model_namespace.name,
+        name="rag-milvus-service",
+        ports=[
+            {
+                "name": "grpc",
+                "port": 19530,
+                "targetPort": 19530,
+            },
+        ],
+        selector={"app": "milvus-standalone"},
+    ) as service:
+        yield service
