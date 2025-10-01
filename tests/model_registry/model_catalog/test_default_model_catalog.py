@@ -201,9 +201,8 @@ class TestModelCatalogDefault:
 
             # Exclude artifacts and null-valued properties from YAML model comparison
             model_filtered = {k: v for k, v in model.items() if k != "artifacts" and v is not None}
-            api_model_filtered = {k: v for k, v in api_model.items() if v is not None}
 
-            differences = list(diff(model_filtered, api_model_filtered))
+            differences = list(diff(model_filtered, api_model))
             if differences:
                 models_with_differences[model["name"]] = differences
                 LOGGER.warning(f"Found differences for {model['name']}: {differences}")
