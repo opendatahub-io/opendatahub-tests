@@ -137,7 +137,7 @@ def _get_llama_stack_distribution_deployment(
     llama_stack_distribution: LlamaStackDistribution,
 ) -> Generator[Deployment, Any, Any]:
     """
-    Creates a deployment resource for a LlamaStack distribution.
+    Gets the Deployment resource for a given LLamaStackDistribution.
 
     Args:
         client (DynamicClient): Kubernetes client
