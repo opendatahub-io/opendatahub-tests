@@ -2,7 +2,7 @@ from typing import Any, Generator
 
 import pytest
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.config_map import ConfigMap
+from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.lm_eval_job import LMEvalJob
 from ocp_resources.namespace import Namespace
@@ -27,7 +27,7 @@ def lmevaljob_hf(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    patched_trustyai_configmap_allow_online: ConfigMap,
+    patched_dsc_lmeval_allow_all: DataScienceCluster,
     lmeval_hf_access_token: Secret,
 ) -> Generator[LMEvalJob, None, None]:
     with LMEvalJob(
@@ -74,7 +74,7 @@ def lmevaljob_local_offline(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    patched_trustyai_configmap_allow_online: ConfigMap,
+    patched_dsc_lmeval_allow_all: DataScienceCluster,
     lmeval_data_downloader_pod: Pod,
 ) -> Generator[LMEvalJob, Any, Any]:
     with LMEvalJob(
@@ -104,7 +104,7 @@ def lmevaljob_local_offline(
 def lmevaljob_vllm_emulator(
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    patched_trustyai_configmap_allow_online: ConfigMap,
+    patched_dsc_lmeval_allow_all: DataScienceCluster,
     vllm_emulator_deployment: Deployment,
     vllm_emulator_service: Service,
     vllm_emulator_route: Route,

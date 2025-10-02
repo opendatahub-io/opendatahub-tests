@@ -52,7 +52,7 @@ class TestLlamaStackLMEvalProvider:
         assert benchmarks[0].provider_id == LlamaStackProviders.Eval.TRUSTYAI_LMEVAL
 
     def test_llamastack_run_eval(
-        self, minio_pod, minio_data_connection, patched_trustyai_configmap_allow_online, llama_stack_client
+        self, minio_pod, minio_data_connection, patched_dsc_lmeval_allow_all, llama_stack_client
     ):
         job = llama_stack_client.eval.run_eval(
             benchmark_id=TRUSTYAI_LMEVAL_ARCEASY,
