@@ -152,3 +152,14 @@ def randomly_picked_model_from_default_catalog(
 def default_model_catalog_yaml_content(admin_client: DynamicClient, model_registry_namespace: str) -> dict[Any, Any]:
     model_catalog_pod = get_model_catalog_pod(client=admin_client, model_registry_namespace=model_registry_namespace)[0]
     return yaml.safe_load(model_catalog_pod.execute(command=["cat", DEFAULT_CATALOG_FILE], container=CATALOG_CONTAINER))
+
+
+@pytest.fixture(scope="class")
+def default_catalog_api_response(
+    model_catalog_rest_url: list[str], model_registry_rest_headers: dict[str, str]
+) -> dict[Any, Any]:
+    """Fetch all models from default catalog API (used for data validation tests)"""
+    return execute_get_command(
+        url=f"{model_catalog_rest_url[0]}models?source={DEFAULT_CATALOG_ID}&pageSize=100",
+        headers=model_registry_rest_headers,
+    )
