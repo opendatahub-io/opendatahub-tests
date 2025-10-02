@@ -6,6 +6,7 @@ from tests.model_registry.model_catalog.constants import (
     SAMPLE_MODEL_NAME2,
     MULTIPLE_CUSTOM_CATALOG_VALUES,
     SAMPLE_MODEL_NAME3,
+    DEFAULT_CATALOG_ID,
 )
 from ocp_resources.config_map import ConfigMap
 import pytest
@@ -31,7 +32,7 @@ LOGGER = get_logger(name=__name__)
                 "sample_yaml": {"sample-custom-catalog1.yaml": get_sample_yaml_str(models=[SAMPLE_MODEL_NAME1])},
             },
             EXPECTED_CUSTOM_CATALOG_VALUES,
-            id="file_test_catalog",
+            id="test_file_test_catalog",
         ),
         pytest.param(
             {
@@ -42,7 +43,7 @@ LOGGER = get_logger(name=__name__)
                 },
             },
             MULTIPLE_CUSTOM_CATALOG_VALUES,
-            id="file_test_catalog",
+            id="test_file_test_catalog_multiple_sources",
         ),
     ],
     indirect=True,
@@ -67,11 +68,11 @@ class TestModelCatalogCustom:
             url=url,
             headers=model_registry_rest_headers,
         )["items"]
-
-        LOGGER.info(f"Results: for uri {url}: {results}")
-        assert len(results) == len(expected_catalog_values)
+        # since we expect one default catalog
+        assert len(results) == len(expected_catalog_values) + 1
         ids_from_query = [result_entry["id"] for result_entry in results]
         ids_expected = [expected_entry["id"] for expected_entry in expected_catalog_values]
+        ids_expected.append(DEFAULT_CATALOG_ID)
         assert sorted(ids_from_query) == sorted(ids_expected), f"Expected: {expected_catalog_values}. Actual: {results}"
 
     def test_model_custom_catalog_get_models_by_source(
@@ -159,7 +160,7 @@ class TestModelCatalogCustom:
         expected_catalog_values: dict[str, str],
     ):
         """
-        Add a model to a source and ensure it is added to the catalog
+        Ensure models are removed from the catalog
         """
         url = f"{model_catalog_rest_url[0]}sources/{CUSTOM_CATALOG_ID1}/models/{SAMPLE_MODEL_NAME3}"
         with pytest.raises(ResourceNotFoundError):

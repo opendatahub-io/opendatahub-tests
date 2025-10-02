@@ -1,5 +1,7 @@
 import json
 from typing import Any
+import time
+import yaml
 
 from kubernetes.dynamic import DynamicClient
 from simple_logger.logger import get_logger
@@ -7,6 +9,7 @@ from simple_logger.logger import get_logger
 import requests
 from timeout_sampler import retry
 
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.pod import Pod
 from tests.model_registry.model_catalog.constants import (
     DEFAULT_CATALOG_NAME,
@@ -14,7 +17,7 @@ from tests.model_registry.model_catalog.constants import (
     CATALOG_TYPE,
     DEFAULT_CATALOG_FILE,
 )
-from tests.model_registry.utils import get_model_catalog_pod, wait_for_pods_running
+from tests.model_registry.utils import get_model_catalog_pod, wait_for_pods_running, get_rest_headers
 
 LOGGER = get_logger(name=__name__)
 
@@ -24,6 +27,7 @@ class ResourceNotFoundError(Exception):
 
 
 def _execute_get_call(url: str, headers: dict[str, str], verify: bool | str = False) -> requests.Response:
+    LOGGER.info(f"Executing get call: {url}")
     resp = requests.get(url=url, headers=headers, verify=verify, timeout=60)
     if resp.status_code not in [200, 201]:
         raise ResourceNotFoundError(f"Get call failed for resource: {url}, {resp.status_code}: {resp.text}")
@@ -94,18 +98,16 @@ def validate_default_catalog(default_catalog) -> None:
 
 def get_catalog_str(ids: list[str]) -> str:
     catalog_str: str = ""
-    for id in ids:
+    for index, id in enumerate(ids):
         catalog_str += f"""
-- name: Sample Catalog
+- name: Sample Catalog {index}
   id: {id}
   type: yaml
   enabled: true
   properties:
     yamlCatalogPath: {id.replace("_", "-")}.yaml
 """
-    return f"""catalogs:
-{catalog_str}
-    """
+    return catalog_str
 
 
 def get_sample_yaml_str(models: list[str]) -> str:
@@ -121,6 +123,7 @@ models:
 
 
 def get_model_str(model: str) -> str:
+    current_time = int(time.time() * 1000)
     return f"""
 - name: {model}
   description: test description.
@@ -133,4 +136,23 @@ def get_model_str(model: str) -> str:
   libraryName: transformers
   artifacts:
     - uri: https://huggingface.co/{model}/resolve/main/consolidated.safetensors
+  createTimeSinceEpoch: \"{str(current_time - 10000)}\"
+  lastUpdateTimeSinceEpoch: \"{str(current_time)}\"
 """
+
+
+def get_validate_default_model_catalog_source(token: str, model_catalog_url: str) -> None:
+    LOGGER.info("Attempting client connection with token")
+    result = execute_get_command(
+        url=model_catalog_url,
+        headers=get_rest_headers(token=token),
+    )["items"]
+    assert result
+    assert len(result) == 1, f"Expected no custom models to be present. Actual: {result}"
+    assert result[0]["id"] == DEFAULT_CATALOG_ID
+    assert result[0]["name"] == DEFAULT_CATALOG_NAME
+    assert str(result[0]["enabled"]) == "True", result[0]["enabled"]
+
+
+def get_default_model_catalog_yaml(config_map: ConfigMap) -> str:
+    return yaml.safe_load(config_map.instance.data["sources.yaml"])["catalogs"]

@@ -33,7 +33,7 @@ MODEL_DATA = {
     "minio_pod, oci_registry_pod_with_minio",
     [
         pytest.param(
-            MinIo.PodConfig.MODEL_MESH_MINIO_CONFIG,
+            MinIo.PodConfig.MODEL_REGISTRY_MINIO_CONFIG,
             OCIRegistry.PodConfig.REGISTRY_BASE_CONFIG,
         )
     ],

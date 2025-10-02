@@ -16,6 +16,9 @@ class LlamaStackProviders:
         TRUSTYAI_LMEVAL = "trustyai_lmeval"
 
 
+LLS_CORE_POD_FILTER: str = "app=llama-stack"
+
+
 @dataclass
 class TorchTuneTestExpectation:
     """Test expectation for TorchTune documentation questions."""
