@@ -192,14 +192,14 @@ class TestModelCatalogDefaultData:
 
             api_model = api_models.get(model["name"])
 
-            # Exclude artifacts and null-valued properties from YAML model comparison
-            model_filtered = {k: v for k, v in model.items() if k != "artifacts" and v is not None}
+            # Exclude artifacts from YAML model comparison - Artifacts are validated in a separate test
+            model_filtered = {k: v for k, v in model.items() if k != "artifacts"}
 
             differences = list(diff(model_filtered, api_model))
             if differences:
                 models_with_differences[model["name"]] = differences
                 LOGGER.warning(f"Found differences for {model['name']}: {differences}")
-
+        # FAILS for null-valued properties in YAML model until https://issues.redhat.com/browse/RHOAIENG-35322 is fixed
         assert not models_with_differences, (
             f"Found differences in {len(models_with_differences)} model(s): {models_with_differences}"
         )
