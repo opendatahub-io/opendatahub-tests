@@ -1,5 +1,6 @@
 import pytest
 import yaml
+import random
 from kubernetes.dynamic import DynamicClient
 from dictdiffer import diff
 from ocp_resources.deployment import Deployment
@@ -10,7 +11,7 @@ from ocp_resources.pod import Pod
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.route import Route
 from ocp_resources.service import Service
-from tests.model_registry.model_catalog.constants import DEFAULT_CATALOG_ID, DEFAULT_CATALOG_FILE, CATALOG_CONTAINER
+from tests.model_registry.model_catalog.constants import DEFAULT_CATALOG_ID
 from tests.model_registry.model_catalog.utils import (
     validate_model_catalog_enabled,
     execute_get_command,
@@ -18,7 +19,7 @@ from tests.model_registry.model_catalog.utils import (
     validate_default_catalog,
     get_validate_default_model_catalog_source,
 )
-from tests.model_registry.utils import get_rest_headers, get_model_catalog_pod
+from tests.model_registry.utils import get_rest_headers
 from utilities.user_utils import UserTestSession
 
 LOGGER = get_logger(name=__name__)
@@ -152,28 +153,89 @@ class TestModelCatalogDefault:
         assert result, f"No artifacts found for {model_name}"
         assert result[0]["uri"]
 
+
+@pytest.mark.skip_must_gather
+class TestModelCatalogDefaultData:
+    """Test class for validating default catalog data (not user-specific)"""
+
     def test_model_default_catalog_number_of_models(
         self: Self,
-        admin_client: DynamicClient,
-        model_registry_namespace: str,
-        model_catalog_rest_url: list[str],
-        user_token_for_api_calls: str,
+        default_catalog_api_response: dict[Any, Any],
+        default_model_catalog_yaml_content: dict[Any, Any],
     ):
         """
         RHOAIENG-33667: Validate number of models in default catalog
         """
 
-        model_catalog_pod = get_model_catalog_pod(
-            client=admin_client, model_registry_namespace=model_registry_namespace
-        )[0]
+        count = len(default_model_catalog_yaml_content.get("models", []))
 
-        catalog_content = model_catalog_pod.execute(command=["cat", DEFAULT_CATALOG_FILE], container=CATALOG_CONTAINER)
-        catalog_data = yaml.safe_load(catalog_content)
-        count = len(catalog_data.get("models", []))
+        assert count == default_catalog_api_response["size"], (
+            f"Expected count: {count}, Actual size: {default_catalog_api_response['size']}"
+        )
+        LOGGER.info("Model count matches")
 
-        result = execute_get_command(
-            url=f"{model_catalog_rest_url[0]}models?source={DEFAULT_CATALOG_ID}&pageSize=1",
-            headers=get_rest_headers(token=user_token_for_api_calls),
+    def test_model_default_catalog_correspondence_of_model_name(
+        self: Self,
+        default_catalog_api_response: dict[Any, Any],
+        default_model_catalog_yaml_content: dict[Any, Any],
+    ):
+        """
+        RHOAIENG-35260: Validate the correspondence of model parameters in default catalog yaml and model catalog api
+        """
+
+        api_models = {model["name"]: model for model in default_catalog_api_response.get("items", [])}
+
+        models_with_differences = {}
+
+        for model in default_model_catalog_yaml_content.get("models", []):
+            LOGGER.info(f"Validating model: {model['name']}")
+
+            api_model = api_models.get(model["name"])
+
+            # Exclude artifacts from YAML model comparison - Artifacts are validated in a separate test
+            model_filtered = {k: v for k, v in model.items() if k != "artifacts"}
+
+            differences = list(diff(model_filtered, api_model))
+            if differences:
+                models_with_differences[model["name"]] = differences
+                LOGGER.warning(f"Found differences for {model['name']}: {differences}")
+        # FAILS for null-valued properties in YAML model until https://issues.redhat.com/browse/RHOAIENG-35322 is fixed
+        assert not models_with_differences, (
+            f"Found differences in {len(models_with_differences)} model(s): {models_with_differences}"
         )
 
-        assert count == result["size"], f"Expected count: {count}, Actual size: {result['size']}"
+    def test_model_default_catalog_random_artifact(
+        self: Self,
+        default_model_catalog_yaml_content: dict[Any, Any],
+        model_catalog_rest_url: list[str],
+        model_registry_rest_headers: dict[str, str],
+    ):
+        """
+        RHOAIENG-35260: Validate the random artifact in default catalog yaml matches API response
+        """
+
+        random_model = random.choice(seq=default_model_catalog_yaml_content.get("models", []))
+        LOGGER.info(f"Random model: {random_model['name']}")
+
+        api_model_artifacts = execute_get_command(
+            url=f"{model_catalog_rest_url[0]}sources/{DEFAULT_CATALOG_ID}/models/{random_model['name']}/artifacts",
+            headers=model_registry_rest_headers,
+        )["items"]
+
+        yaml_artifacts = random_model.get("artifacts", [])
+
+        assert api_model_artifacts, f"No artifacts found in API for {random_model['name']}"
+        assert yaml_artifacts, f"No artifacts found in YAML for {random_model['name']}"
+
+        # Compare artifacts (excluding timestamps which may differ)
+        yaml_artifacts_filtered = [
+            {k: v for k, v in artifact.items() if k not in ["lastUpdateTimeSinceEpoch"]} for artifact in yaml_artifacts
+        ]
+        api_artifacts_filtered = [
+            {k: v for k, v in artifact.items() if k not in ["lastUpdateTimeSinceEpoch"]}
+            for artifact in api_model_artifacts
+        ]
+
+        differences = list(diff(yaml_artifacts_filtered, api_artifacts_filtered))
+        assert not differences, f"Artifacts mismatch for {random_model['name']}: {differences}"
+        LOGGER.info("Artifacts match")
