@@ -40,7 +40,6 @@ def enabled_llama_stack_operator(dsc_resource: DataScienceCluster) -> Generator[
 @pytest.fixture(scope="class")
 def llama_stack_server_config(
     request: FixtureRequest,
-    unprivileged_model_namespace: Namespace,
 ) -> Dict[str, Any]:
     fms_orchestrator_url = "http://localhost"
     inference_model = os.getenv("LLS_CORE_INFERENCE_MODEL", "")
@@ -98,7 +97,7 @@ def llama_stack_server_config(
 
 
 @pytest.fixture(scope="class")
-def llama_stack_distribution(
+def unprivileged_llama_stack_distribution(
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     enabled_llama_stack_operator: DataScienceCluster,
@@ -116,12 +115,39 @@ def llama_stack_distribution(
 
 
 @pytest.fixture(scope="class")
-def llama_stack_distribution_deployment(
-    unprivileged_client: DynamicClient,
+def llama_stack_distribution(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    enabled_llama_stack_operator: DataScienceCluster,
+    llama_stack_server_config: Dict[str, Any],
+) -> Generator[LlamaStackDistribution, None, None]:
+    with create_llama_stack_distribution(
+        client=admin_client,
+        name="test-lama-stack-distribution",
+        namespace=model_namespace.name,
+        replicas=1,
+        server=llama_stack_server_config,
+    ) as lls_dist:
+        lls_dist.wait_for_status(status=LlamaStackDistribution.Status.READY, timeout=600)
+        yield lls_dist
+
+
+def _get_llama_stack_distribution_deployment(
+    client: DynamicClient,
     llama_stack_distribution: LlamaStackDistribution,
 ) -> Generator[Deployment, Any, Any]:
+    """
+    Gets the Deployment resource for a given LLamaStackDistribution.
+
+    Args:
+        client (DynamicClient): Kubernetes client
+        llama_stack_distribution (LlamaStackDistribution): LlamaStack distribution resource
+
+    Yields:
+        Generator[Deployment, Any, Any]: Deployment resource
+    """
     deployment = Deployment(
-        client=unprivileged_client,
+        client=client,
         namespace=llama_stack_distribution.namespace,
         name=llama_stack_distribution.name,
     )
@@ -131,19 +157,48 @@ def llama_stack_distribution_deployment(
 
 
 @pytest.fixture(scope="class")
-def llama_stack_client(
-    llama_stack_distribution_deployment: Deployment,
-) -> Generator[LlamaStackClient, Any, Any]:
+def unprivileged_llama_stack_distribution_deployment(
+    unprivileged_client: DynamicClient,
+    unprivileged_llama_stack_distribution: LlamaStackDistribution,
+) -> Generator[Deployment, Any, Any]:
     """
-    Returns a ready to use LlamaStackClient,  enabling port forwarding
-    from the llama-stack-server service:8321 to localhost:8321
+    Returns a deployment resource for unprivileged LlamaStack distribution.
 
     Args:
-        llama_stack_distribution_deployment (Deployment): LlamaStack distribution deployment resource
+        unprivileged_client (DynamicClient): Unprivileged Kubernetes client
+        unprivileged_llama_stack_distribution (LlamaStackDistribution): Unprivileged LlamaStack distribution resource
 
     Yields:
-        Generator[LlamaStackClient, Any, Any]: Configured LlamaStackClient for RAG testing
+        Generator[Deployment, Any, Any]: Deployment resource
     """
+    yield from _get_llama_stack_distribution_deployment(
+        client=unprivileged_client, llama_stack_distribution=unprivileged_llama_stack_distribution
+    )
+
+
+@pytest.fixture(scope="class")
+def llama_stack_distribution_deployment(
+    admin_client: DynamicClient,
+    llama_stack_distribution: LlamaStackDistribution,
+) -> Generator[Deployment, Any, Any]:
+    """
+    Returns a deployment resource for admin LlamaStack distribution.
+
+    Args:
+        admin_client (DynamicClient): Admin Kubernetes client
+        llama_stack_distribution (LlamaStackDistribution): LlamaStack distribution resource
+
+    Yields:
+        Generator[Deployment, Any, Any]: Deployment resource
+    """
+    yield from _get_llama_stack_distribution_deployment(
+        client=admin_client, llama_stack_distribution=llama_stack_distribution
+    )
+
+
+def _create_llama_stack_client(
+    llama_stack_distribution_deployment: Deployment,
+) -> Generator[LlamaStackClient, Any, Any]:
     try:
         with portforward.forward(
             pod_or_service=f"{llama_stack_distribution_deployment.name}-service",
@@ -161,6 +216,40 @@ def llama_stack_client(
     except Exception as e:
         LOGGER.error(f"Failed to set up port forwarding: {e}")
         raise
+
+
+@pytest.fixture(scope="class")
+def unprivileged_llama_stack_client(
+    unprivileged_llama_stack_distribution_deployment: Deployment,
+) -> Generator[LlamaStackClient, Any, Any]:
+    """
+    Returns a ready to use LlamaStackClient for unprivileged deployment.
+
+    Args:
+        unprivileged_llama_stack_distribution_deployment (Deployment): LlamaStack distribution deployment resource
+
+    Yields:
+        Generator[LlamaStackClient, Any, Any]: Configured LlamaStackClient for RAG testing
+    """
+    yield from _create_llama_stack_client(
+        llama_stack_distribution_deployment=unprivileged_llama_stack_distribution_deployment
+    )
+
+
+@pytest.fixture(scope="class")
+def llama_stack_client(
+    llama_stack_distribution_deployment: Deployment,
+) -> Generator[LlamaStackClient, Any, Any]:
+    """
+    Returns a ready to use LlamaStackClient.
+
+    Args:
+        llama_stack_distribution_deployment (Deployment): LlamaStack distribution deployment resource
+
+    Yields:
+        Generator[LlamaStackClient, Any, Any]: Configured LlamaStackClient for RAG testing
+    """
+    yield from _create_llama_stack_client(llama_stack_distribution_deployment=llama_stack_distribution_deployment)
 
 
 @pytest.fixture(scope="class")
