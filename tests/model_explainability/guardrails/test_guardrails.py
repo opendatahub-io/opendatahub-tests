@@ -1,15 +1,12 @@
 import http
-import time
 from typing import Dict, Any
 
 import pytest
 import requests
 import yaml
-from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
-from tests.model_explainability.constants import MNT_MODELS
 from tests.model_explainability.guardrails.constants import (
     AUTOCONFIG_DETECTOR_LABEL,
     PII_INPUT_DETECTION_PROMPT,
@@ -213,8 +210,8 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         qwen_isvc,
         orchestrator_config,
         guardrails_orchestrator_gateway_route,
-            otel_operator_cr,
-            tempo_instance,
+        otel_operator_cr,
+        tempo_instance,
     ):
         response = requests.post(
             url=f"https://{guardrails_orchestrator_gateway_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
@@ -241,8 +238,8 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         qwen_isvc,
         orchestrator_config,
         guardrails_orchestrator_gateway_route,
-            otel_operator_cr,
-            tempo_instance,
+        otel_operator_cr,
+        tempo_instance,
     ):
         response = requests.post(
             url=f"https://{guardrails_orchestrator_gateway_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
@@ -262,24 +259,25 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         )
 
     def test_guardrails_traces_in_tempo(
-            self,
-            admin_client,
-            otel_operator_cr,
-            tempo_instance,
-            model_namespace,
-            minio_pod,
-            minio_data_connection,
-            orchestrator_config,
-            guardrails_orchestrator,
-            guardrails_gateway_config,
+        self,
+        admin_client,
+        otel_operator_cr,
+        tempo_instance,
+        model_namespace,
+        minio_pod,
+        minio_data_connection,
+        orchestrator_config,
+        guardrails_orchestrator,
+        guardrails_gateway_config,
     ):
         """
         Ensure that OpenTelemetry traces from Guardrails Orchestrator are collected in Tempo.
         Equivalent to clicking 'Find Traces' in the Tempo UI.
         """
 
-
-        tempo_query_service = "https://tempo-my-tempo-test-guardrails-builtin.apps.ods-qe-psi-10.osp.rh-ods.com/api/traces"
+        tempo_query_service = (
+            "https://tempo-my-tempo-test-guardrails-builtin.apps.ods-qe-psi-10.osp.rh-ods.com/api/traces"
+        )
 
         @retry(wait_timeout=Timeout.TIMEOUT_1MIN, sleep=5)
         def check_traces():
@@ -797,4 +795,3 @@ class TestGuardrailsOrchestratorAutoConfigWithGateway:
         )
 
         verify_negative_detection_response(response=response)
-
