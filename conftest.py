@@ -307,6 +307,8 @@ def updated_global_config(admin_client: DynamicClient, config: Config) -> None:
     distribution = get_operator_distribution(client=admin_client)
     if distribution == "Open Data Hub":
         py_config["distribution"] = "upstream"
+        # override the operator namespace
+        py_config["operator_namespace"] = "opendatahub-operators"
 
     elif distribution.startswith("OpenShift AI"):
         py_config["distribution"] = "downstream"
