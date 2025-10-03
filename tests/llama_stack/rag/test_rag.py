@@ -9,7 +9,6 @@ from simple_logger.logger import get_logger
 from utilities.rag_utils import validate_rag_agent_responses, validate_api_responses, ModelInfo
 
 from tests.llama_stack.utils import get_torchtune_test_expectations, create_response_function
-from utilities.general import generate_random_name
 
 LOGGER = get_logger(name=__name__)
 
