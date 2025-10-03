@@ -111,7 +111,7 @@ def llama_stack_distribution(
         replicas=1,
         server=llama_stack_server_config,
     ) as lls_dist:
-        lls_dist.wait_for_status(status=LlamaStackDistribution.Status.READY, timeout=600)
+        lls_dist.wait_for_status(status=LlamaStackDistribution.Status.READY, timeout=180)
         yield lls_dist
 
 
