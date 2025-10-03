@@ -17,7 +17,8 @@ from tests.model_registry.model_catalog.constants import (
     CATALOG_TYPE,
     DEFAULT_CATALOG_FILE,
 )
-from tests.model_registry.utils import get_model_catalog_pod, wait_for_pods_running, get_rest_headers
+from tests.model_registry.utils import get_model_catalog_pod, get_rest_headers
+from utilities.general import wait_for_pods_running
 
 LOGGER = get_logger(name=__name__)
 
