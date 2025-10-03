@@ -9,6 +9,7 @@ from simple_logger.logger import get_logger
 from utilities.rag_utils import validate_rag_agent_responses, validate_api_responses, ModelInfo
 
 from tests.llama_stack.utils import get_torchtune_test_expectations, create_response_function
+from utilities.general import generate_random_name
 
 LOGGER = get_logger(name=__name__)
 
@@ -17,7 +18,7 @@ LOGGER = get_logger(name=__name__)
     "unprivileged_model_namespace, llama_stack_server_config",
     [
         pytest.param(
-            {"name": "test-llamastack-rag"},
+            {"name": "test-llamastack-rag", "randomize_name": True},
             {"llama_stack_storage_size": "2Gi"},
         ),
     ],
