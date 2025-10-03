@@ -34,8 +34,7 @@ from model_registry.types import RegisteredModel
 
 from tests.model_registry.rbac.utils import wait_for_oauth_openshift_deployment
 from tests.model_registry.utils import generate_namespace_name, get_rest_headers
-from utilities.general import generate_random_name
-
+from utilities.general import generate_random_name, wait_for_pods_running
 
 from tests.model_registry.constants import (
     MR_OPERATOR_NAME,
@@ -49,7 +48,6 @@ from utilities.constants import Labels, Protocols
 from tests.model_registry.utils import (
     get_endpoint_from_mr_service,
     get_mr_service_by_label,
-    wait_for_pods_running,
     get_model_registry_objects,
     get_model_registry_metadata_resources,
 )
