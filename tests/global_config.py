@@ -1,3 +1,5 @@
+from utilities.constants import RHOAI_OPERATOR_NAMESPACE
+
 global config  # type:ignore[unused-ignore]
 
 dsc_name: str = "default-dsc"
@@ -9,6 +11,7 @@ use_unprivileged_client: bool = True
 distribution: str = "downstream"
 applications_namespace: str = "redhat-ods-applications"
 model_registry_namespace: str = "rhoai-model-registries"
+operator_namespace: str = RHOAI_OPERATOR_NAMESPACE
 
 for _dir in dir():
     val = locals()[_dir]
