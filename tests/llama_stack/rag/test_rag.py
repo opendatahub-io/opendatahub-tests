@@ -18,7 +18,13 @@ LOGGER = get_logger(name=__name__)
     [
         pytest.param(
             {"name": "test-llamastack-rag", "randomize_name": True},
+            {"llama_stack_storage_size": ""},
+            id="empty_storage_size",
+        ),
+        pytest.param(
+            {"name": "test-llamastack-rag", "randomize_name": True},
             {"llama_stack_storage_size": "2Gi"},
+            id="2gi_storage_size",
         ),
     ],
     indirect=True,
