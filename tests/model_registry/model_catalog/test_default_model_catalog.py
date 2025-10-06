@@ -258,7 +258,7 @@ class TestModelCatalogDefaultData:
         assert yaml_artifacts, f"No artifacts found in YAML for {random_model['name']}"
 
         # Validate all required fields are present in both YAML and API artifact
-        # FAILS: artifactType is not in YAML nor in API
+        # FAILS artifactType is not in YAML nor in API until https://issues.redhat.com/browse/RHOAIENG-35569 is fixed
         for field in required_artifact_fields:
             for artifact in yaml_artifacts:
                 assert field in artifact, f"YAML artifact for {random_model['name']} missing REQUIRED field: {field}"
