@@ -17,7 +17,7 @@ LOGGER = get_logger(name=__name__)
     "unprivileged_model_namespace, llama_stack_server_config",
     [
         pytest.param(
-            {"name": "test-llamastack-rag"},
+            {"name": "test-llamastack-rag", "randomize_name": True},
             {"llama_stack_storage_size": "2Gi"},
         ),
     ],
