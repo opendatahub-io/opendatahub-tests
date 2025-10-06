@@ -108,6 +108,7 @@ def default_notebook(
                 Labels.OpenDataHub.DASHBOARD: "true",
                 "opendatahub.io/odh-managed": "true",
                 "sidecar.istio.io/inject": "false",
+                **request.param.get("labels", {}),  # Merge custom labels from parametrize
             },
             "name": name,
             "namespace": namespace,
@@ -143,7 +144,10 @@ def default_notebook(
                             "readinessProbe": probe_config,
                             "resources": {
                                 "limits": {"cpu": "2", "memory": "4Gi"},
-                                "requests": {"cpu": "1", "memory": "1Gi"},
+                                "requests": {
+                                    "cpu": request.param.get("cpu_request", "1"),
+                                    "memory": request.param.get("memory_request", "1Gi"),
+                                },
                             },
                             "volumeMounts": [
                                 {"mountPath": "/opt/app-root/src", "name": name},
