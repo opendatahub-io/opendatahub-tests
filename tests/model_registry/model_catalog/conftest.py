@@ -1,5 +1,6 @@
 import random
 from typing import Generator, Any
+import requests
 
 from simple_logger.logger import get_logger
 import yaml
@@ -30,6 +31,7 @@ from tests.model_registry.model_catalog.utils import (
 from tests.model_registry.utils import get_rest_headers
 from utilities.infra import get_openshift_token, login_with_user_password, create_inference_token
 from utilities.user_utils import UserTestSession
+
 
 LOGGER = get_logger(name=__name__)
 
@@ -172,3 +174,12 @@ def default_catalog_api_response(
         url=f"{model_catalog_rest_url[0]}models?source={DEFAULT_CATALOG_ID}&pageSize=100",
         headers=model_registry_rest_headers,
     )
+
+
+@pytest.fixture(scope="class")
+def catalog_openapi_schema() -> dict[Any, Any]:
+    """Fetch and cache the catalog OpenAPI schema (fetched once per class)"""
+    OPENAPI_SCHEMA_URL = "https://raw.githubusercontent.com/kubeflow/model-registry/main/api/openapi/catalog.yaml"
+    response = requests.get(OPENAPI_SCHEMA_URL, timeout=10)
+    response.raise_for_status()
+    return yaml.safe_load(response.text)

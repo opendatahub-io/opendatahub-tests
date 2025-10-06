@@ -18,6 +18,7 @@ from tests.model_registry.model_catalog.utils import (
     validate_model_catalog_resource,
     validate_default_catalog,
     get_validate_default_model_catalog_source,
+    extract_schema_fields,
 )
 from tests.model_registry.utils import get_rest_headers
 from utilities.user_utils import UserTestSession
@@ -178,12 +179,20 @@ class TestModelCatalogDefaultData:
         self: Self,
         default_catalog_api_response: dict[Any, Any],
         default_model_catalog_yaml_content: dict[Any, Any],
+        catalog_openapi_schema: dict[Any, Any],
     ):
         """
         RHOAIENG-35260: Validate the correspondence of model parameters in default catalog yaml and model catalog api
         """
 
+        all_model_fields, required_model_fields = extract_schema_fields(
+            openapi_schema=catalog_openapi_schema, schema_name="CatalogModel"
+        )
+        LOGGER.info(f"All model fields from OpenAPI schema: {all_model_fields}")
+        LOGGER.info(f"Required model fields from OpenAPI schema: {required_model_fields}")
+
         api_models = {model["name"]: model for model in default_catalog_api_response.get("items", [])}
+        assert api_models
 
         models_with_differences = {}
 
@@ -191,28 +200,50 @@ class TestModelCatalogDefaultData:
             LOGGER.info(f"Validating model: {model['name']}")
 
             api_model = api_models.get(model["name"])
+            assert api_model, f"Model {model['name']} not found in API response"
 
-            # Exclude artifacts from YAML model comparison - Artifacts are validated in a separate test
-            model_filtered = {k: v for k, v in model.items() if k != "artifacts"}
+            # Check required fields are present in both YAML and API
+            yaml_missing_required = required_model_fields - set(model.keys())
+            api_missing_required = required_model_fields - set(api_model.keys())
 
-            differences = list(diff(model_filtered, api_model))
+            assert not yaml_missing_required, (
+                f"Model {model['name']} missing REQUIRED fields in YAML: {yaml_missing_required}"
+            )
+            assert not api_missing_required, (
+                f"Model {model['name']} missing REQUIRED fields in API: {api_missing_required}"
+            )
+
+            # Filter to only schema-defined fields for value comparison
+            model_filtered = {k: v for k, v in model.items() if k in all_model_fields}
+            api_model_filtered = {k: v for k, v in api_model.items() if k in all_model_fields}
+
+            differences = list(diff(model_filtered, api_model_filtered))
             if differences:
                 models_with_differences[model["name"]] = differences
-                LOGGER.warning(f"Found differences for {model['name']}: {differences}")
+                LOGGER.warning(f"Found value differences for {model['name']}: {differences}")
+
         # FAILS for null-valued properties in YAML model until https://issues.redhat.com/browse/RHOAIENG-35322 is fixed
         assert not models_with_differences, (
             f"Found differences in {len(models_with_differences)} model(s): {models_with_differences}"
         )
+        LOGGER.info("Model correspondence matches")
 
     def test_model_default_catalog_random_artifact(
         self: Self,
         default_model_catalog_yaml_content: dict[Any, Any],
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
+        catalog_openapi_schema: dict[Any, Any],
     ):
         """
         RHOAIENG-35260: Validate the random artifact in default catalog yaml matches API response
         """
+
+        all_artifact_fields, required_artifact_fields = extract_schema_fields(
+            openapi_schema=catalog_openapi_schema, schema_name="CatalogModelArtifact"
+        )
+        LOGGER.info(f"All artifact fields from OpenAPI schema: {all_artifact_fields}")
+        LOGGER.info(f"Required artifact fields from OpenAPI schema: {required_artifact_fields}")
 
         random_model = random.choice(seq=default_model_catalog_yaml_content.get("models", []))
         LOGGER.info(f"Random model: {random_model['name']}")
@@ -223,17 +254,23 @@ class TestModelCatalogDefaultData:
         )["items"]
 
         yaml_artifacts = random_model.get("artifacts", [])
-
         assert api_model_artifacts, f"No artifacts found in API for {random_model['name']}"
         assert yaml_artifacts, f"No artifacts found in YAML for {random_model['name']}"
 
-        # Compare artifacts (excluding timestamps which may differ)
+        # Validate all required fields are present in both YAML and API artifact
+        # FAILS: artifactType is not in YAML nor in API
+        for field in required_artifact_fields:
+            for artifact in yaml_artifacts:
+                assert field in artifact, f"YAML artifact for {random_model['name']} missing REQUIRED field: {field}"
+            for artifact in api_model_artifacts:
+                assert field in artifact, f"API artifact for {random_model['name']} missing REQUIRED field: {field}"
+
+        # Filter artifacts to only include schema-defined fields for comparison
         yaml_artifacts_filtered = [
-            {k: v for k, v in artifact.items() if k not in ["lastUpdateTimeSinceEpoch"]} for artifact in yaml_artifacts
+            {k: v for k, v in artifact.items() if k in all_artifact_fields} for artifact in yaml_artifacts
         ]
         api_artifacts_filtered = [
-            {k: v for k, v in artifact.items() if k not in ["lastUpdateTimeSinceEpoch"]}
-            for artifact in api_model_artifacts
+            {k: v for k, v in artifact.items() if k in all_artifact_fields} for artifact in api_model_artifacts
         ]
 
         differences = list(diff(yaml_artifacts_filtered, api_artifacts_filtered))
