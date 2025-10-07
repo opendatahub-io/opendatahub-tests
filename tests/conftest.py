@@ -255,18 +255,6 @@ def dsc_resource(admin_client: DynamicClient) -> DataScienceCluster:
     raise ResourceNotFoundError(f"DSC resource {name} not found")
 
 
-@pytest.fixture(scope="module")
-def updated_dsc_component_state(
-    request: FixtureRequest,
-    dsc_resource: DataScienceCluster,
-) -> Generator[DataScienceCluster, Any, Any]:
-    with update_components_in_dsc(
-        dsc=dsc_resource,
-        components={request.param["component_name"]: request.param["desired_state"]},
-    ) as dsc:
-        yield dsc
-
-
 @pytest.fixture(scope="package")
 def enabled_modelmesh_in_dsc(dsc_resource: DataScienceCluster) -> Generator[DataScienceCluster, Any, Any]:
     with update_components_in_dsc(

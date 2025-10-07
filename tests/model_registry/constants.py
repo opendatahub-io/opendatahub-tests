@@ -7,8 +7,8 @@ class ModelRegistryEndpoints:
 
 MODEL_NAME: str = "my-model"
 MODEL_DESCRIPTION: str = "lorem ipsum"
-DB_RESOURCES_NAME: str = "model-registry-db"
-MR_INSTANCE_NAME: str = "model-registry"
+DB_RESOURCES_NAME: str = "db-model-registry0"
+MR_INSTANCE_NAME: str = "model-registry0"
 MR_OPERATOR_NAME: str = "model-registry-operator"
 MR_NAMESPACE: str = "rhoai-model-registries"
 DEFAULT_LABEL_DICT_DB: dict[str, str] = {
