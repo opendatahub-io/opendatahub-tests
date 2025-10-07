@@ -33,6 +33,7 @@ def pytest_addoption(parser: Parser) -> None:
     runtime_group = parser.getgroup(name="Runtime details")
     upgrade_group = parser.getgroup(name="Upgrade options")
     platform_group = parser.getgroup(name="Platform")
+    must_gather_group = parser.getgroup(name="MustGather")
 
     # AWS config and credentials options
     aws_group.addoption(
@@ -110,6 +111,13 @@ def pytest_addoption(parser: Parser) -> None:
     platform_group.addoption(
         "--applications-namespace",
         help="RHOAI/ODH applications namespace",
+    )
+
+    must_gather_group.addoption(
+        "--collect-must-gather",
+        help="Indicate if must-gather should be collected on failure.",
+        action="store_true",
+        default=False,
     )
 
 
