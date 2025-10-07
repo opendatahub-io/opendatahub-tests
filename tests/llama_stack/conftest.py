@@ -15,6 +15,8 @@ from ocp_resources.llama_stack_distribution import LlamaStackDistribution
 from ocp_resources.namespace import Namespace
 from simple_logger.logger import get_logger
 from timeout_sampler import retry
+from utilities.general import generate_random_name
+
 
 from tests.llama_stack.utils import create_llama_stack_distribution, wait_for_llama_stack_client_ready
 from utilities.constants import DscComponents, Timeout
@@ -103,9 +105,11 @@ def unprivileged_llama_stack_distribution(
     enabled_llama_stack_operator: DataScienceCluster,
     llama_stack_server_config: Dict[str, Any],
 ) -> Generator[LlamaStackDistribution, None, None]:
+    # Distribution name needs a random substring due to bug RHAIENG-999 / RHAIENG-1139
+    distribution_name = generate_random_name(prefix="llama-stack-distribution")
     with create_llama_stack_distribution(
         client=unprivileged_client,
-        name="test-lama-stack-distribution",
+        name=distribution_name,
         namespace=unprivileged_model_namespace.name,
         replicas=1,
         server=llama_stack_server_config,
@@ -121,9 +125,11 @@ def llama_stack_distribution(
     enabled_llama_stack_operator: DataScienceCluster,
     llama_stack_server_config: Dict[str, Any],
 ) -> Generator[LlamaStackDistribution, None, None]:
+    # Distribution name needs a random substring due to bug RHAIENG-999 / RHAIENG-1139
+    distribution_name = generate_random_name(prefix="llama-stack-distribution")
     with create_llama_stack_distribution(
         client=admin_client,
-        name="test-lama-stack-distribution",
+        name=distribution_name,
         namespace=model_namespace.name,
         replicas=1,
         server=llama_stack_server_config,
