@@ -21,7 +21,9 @@ from utilities.general import generate_random_name
 from tests.llama_stack.utils import create_llama_stack_distribution, wait_for_llama_stack_client_ready
 from utilities.constants import DscComponents, Timeout
 from utilities.data_science_cluster_utils import update_components_in_dsc
-from utilities.rag_utils import ModelInfo
+from tests.llama_stack.constants import (
+    ModelInfo,
+)
 
 
 LOGGER = get_logger(name=__name__)
@@ -138,7 +140,7 @@ def llama_stack_distribution(
         yield lls_dist
 
 
-def _get_llama_stack_distribution_deployment(
+def _create_llama_stack_distribution_deployment(
     client: DynamicClient,
     llama_stack_distribution: LlamaStackDistribution,
 ) -> Generator[Deployment, Any, Any]:
@@ -177,7 +179,7 @@ def unprivileged_llama_stack_distribution_deployment(
     Yields:
         Generator[Deployment, Any, Any]: Deployment resource
     """
-    yield from _get_llama_stack_distribution_deployment(
+    yield from _create_llama_stack_distribution_deployment(
         client=unprivileged_client, llama_stack_distribution=unprivileged_llama_stack_distribution
     )
 
@@ -197,7 +199,7 @@ def llama_stack_distribution_deployment(
     Yields:
         Generator[Deployment, Any, Any]: Deployment resource
     """
-    yield from _get_llama_stack_distribution_deployment(
+    yield from _create_llama_stack_distribution_deployment(
         client=admin_client, llama_stack_distribution=llama_stack_distribution
     )
 
@@ -259,7 +261,7 @@ def llama_stack_client(
 
 
 @pytest.fixture(scope="class")
-def llama_stack_models(llama_stack_client: LlamaStackClient) -> ModelInfo:
+def llama_stack_models(unprivileged_llama_stack_client: LlamaStackClient) -> ModelInfo:
     """
     Returns model information from the LlamaStack client.
 
@@ -269,12 +271,12 @@ def llama_stack_models(llama_stack_client: LlamaStackClient) -> ModelInfo:
         - embedding_dimension: The dimension of the embedding model
 
     Args:
-        llama_stack_client: The configured LlamaStackClient
+        unprivileged_llama_stack_client: The configured LlamaStackClient
 
     Returns:
         ModelInfo: NamedTuple containing model information
     """
-    models = llama_stack_client.models.list()
+    models = unprivileged_llama_stack_client.models.list()
     model_id = next(m for m in models if m.api_model_type == "llm").identifier
 
     embedding_model = next(m for m in models if m.api_model_type == "embedding")
@@ -285,7 +287,7 @@ def llama_stack_models(llama_stack_client: LlamaStackClient) -> ModelInfo:
 
 @pytest.fixture(scope="class")
 def vector_store(
-    llama_stack_client: LlamaStackClient, llama_stack_models: ModelInfo
+    unprivileged_llama_stack_client: LlamaStackClient, llama_stack_models: ModelInfo
 ) -> Generator[VectorStore, None, None]:
     """
     Creates a vector store for testing and automatically cleans it up.
@@ -301,7 +303,7 @@ def vector_store(
         Vector store object that can be used in tests
     """
     # Setup
-    vector_store = llama_stack_client.vector_stores.create(
+    vector_store = unprivileged_llama_stack_client.vector_stores.create(
         name="test_vector_store",
         embedding_model=llama_stack_models.embedding_model.identifier,  # type: ignore
         embedding_dimension=llama_stack_models.embedding_dimension,
@@ -358,37 +360,3 @@ def _download_and_upload_file(url: str, llama_stack_client: LlamaStackClient, ve
     except (requests.exceptions.RequestException, Exception) as e:
         LOGGER.warning(f"Failed to download and upload file {url}: {e}")
         raise
-
-
-@pytest.fixture(scope="class")
-def vector_store_with_docs(llama_stack_client: LlamaStackClient, vector_store: Any) -> Generator[Any, None, None]:
-    """
-    Creates a vector store with TorchTune documentation files uploaded.
-
-    This fixture depends on the vector_store fixture and uploads the TorchTune
-    documentation files to the vector store for testing purposes. The files
-    are automatically cleaned up after the test completes.
-
-    Args:
-        llama_stack_client: The configured LlamaStackClient
-        vector_store: The vector store fixture to upload files to
-
-    Yields:
-        Vector store object with uploaded TorchTune documentation files
-    """
-    # Download TorchTune documentation files
-    urls = [
-        "llama3.rst",
-        "chat.rst",
-        "lora_finetune.rst",
-        "qat_finetune.rst",
-        "memory_optimizations.rst",
-    ]
-
-    base_url = "https://raw.githubusercontent.com/pytorch/torchtune/refs/tags/v0.6.1/docs/source/tutorials/"
-
-    for file_name in urls:
-        url = f"{base_url}{file_name}"
-        _download_and_upload_file(url=url, llama_stack_client=llama_stack_client, vector_store=vector_store)
-
-    yield vector_store

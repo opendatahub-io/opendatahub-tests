@@ -11,7 +11,7 @@ from ocp_resources.secret import Secret
     "model_namespace, minio_pod, minio_data_connection, llama_stack_server_config",
     [
         pytest.param(
-            {"name": "test-llamastack-core"},
+            {"name": "test-llamastack-models"},
             MinIo.PodConfig.QWEN_HAP_BPIV2_MINIO_CONFIG,
             {"bucket": "llms"},
             {
@@ -25,10 +25,18 @@ from ocp_resources.secret import Secret
 )
 @pytest.mark.rawdeployment
 @pytest.mark.smoke
-class TestLlamaStackCore:
-    def test_lls_server_initial_state(
+class TestLlamaStackModels:
+    """Test class for LlamaStack models API functionality.
+
+    For more information about this API, see:
+    - https://github.com/llamastack/llama-stack-client-python/blob/main/api.md#models
+    - https://github.com/openai/openai-python/blob/main/api.md#models
+    """
+
+    def test_models_list(
         self, minio_pod: Pod, minio_data_connection: Secret, llama_stack_client: LlamaStackClient
     ) -> None:
+        """Test the initial state of the LlamaStack server and available models."""
         models = llama_stack_client.models.list()
         assert models is not None, "No models returned from LlamaStackClient"
 
@@ -45,9 +53,10 @@ class TestLlamaStackCore:
         embedding_dimension = embedding_model.metadata["embedding_dimension"]
         assert embedding_dimension is not None, "No embedding_dimension set in embedding model"
 
-    def test_model_register(
+    def test_models_register(
         self, minio_pod: Pod, minio_data_connection: Secret, llama_stack_client: LlamaStackClient
     ) -> None:
+        """Test model registration functionality."""
         response = llama_stack_client.models.register(
             provider_id=LlamaStackProviders.Inference.VLLM_INFERENCE, model_type="llm", model_id=QWEN_MODEL_NAME
         )
@@ -56,6 +65,7 @@ class TestLlamaStackCore:
     def test_model_list(
         self, minio_pod: Pod, minio_data_connection: Secret, llama_stack_client: LlamaStackClient
     ) -> None:
+        """Test listing available models and verify their properties."""
         models = llama_stack_client.models.list()
 
         # We only need to check the first model;
@@ -64,22 +74,3 @@ class TestLlamaStackCore:
         assert models[0].identifier == f"{LlamaStackProviders.Inference.VLLM_INFERENCE.value}/{QWEN_MODEL_NAME}"
         assert models[0].model_type == "llm"
         assert models[0].provider_id == LlamaStackProviders.Inference.VLLM_INFERENCE
-
-    def test_inference(
-        self, minio_pod: Pod, minio_data_connection: Secret, llama_stack_client: LlamaStackClient
-    ) -> None:
-        response = llama_stack_client.chat.completions.create(
-            model=QWEN_MODEL_NAME,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": "Just respond ACK."},
-            ],
-            temperature=0,
-        )
-
-        assert len(response.choices) > 0, "No response after basic inference on llama-stack server"
-
-        # Check if response has the expected structure and content
-        content = response.choices[0].message.content
-        assert content is not None, "LLM response content is None"
-        assert "ACK" in content, "The LLM didn't provide the expected answer to the prompt"
