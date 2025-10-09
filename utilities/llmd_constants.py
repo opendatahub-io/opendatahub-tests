@@ -18,9 +18,6 @@ DEFAULT_TIMEOUT = Timeout.TIMEOUT_30SEC
 VLLM_STORAGE_OCI = "oci://quay.io/mwaykole/test@sha256:f6691433a8fe554e60e42edcec4003aa0fec80f538d205530baf09840b3f36f1"
 VLLM_STORAGE_HF = "hf://Qwen/Qwen2.5-7B-Instruct"
 VLLM_CPU_IMAGE = "quay.io/pierdipi/vllm-cpu:latest"
-# Note: GPU tests now let the system choose appropriate image based on resource requirements
-# Users can still override by providing container_image parameter
-VLLM_GPU_IMAGE = "quay.io/rh-aiservices-bu/vllm-openai-ubi9:0.6.3.post1"  # Legacy fallback
 
 DEFAULT_LLMD_REPLICAS = 1
 DEFAULT_S3_STORAGE_PATH = "opt-125m"
