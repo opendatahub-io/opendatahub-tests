@@ -46,7 +46,6 @@ class TestLLMDHFGPUInference:
         assert verify_llm_service_status(llmd_inference_service_gpu), "LLMInferenceService should be ready"
 
         # Extract test variant information for inference
-        test_params = request.node.callspec.params.get("llmd_inference_service_gpu", {})
         service = llmd_inference_service_gpu
 
         # Test inference - the core E2E validation
