@@ -25,6 +25,7 @@ from ocp_resources.secret import Secret
 )
 @pytest.mark.rawdeployment
 @pytest.mark.smoke
+@pytest.mark.team_llama_stack
 class TestLlamaStackModels:
     """Test class for LlamaStack models API functionality.
 

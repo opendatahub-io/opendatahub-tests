@@ -24,6 +24,7 @@ LOGGER = get_logger(name=__name__)
     ],
     indirect=True,
 )
+@pytest.mark.team_rag
 class TestLlamaStackVectorStores:
     """Test class for LlamaStack OpenAI Compatible Vector Stores API
 

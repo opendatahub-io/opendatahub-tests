@@ -12,6 +12,7 @@ from tests.llama_stack.constants import ModelInfo
     ],
     indirect=True,
 )
+@pytest.mark.team_rag
 class TestLlamaStackResponses:
     """Test class for LlamaStack responses API functionality.
 

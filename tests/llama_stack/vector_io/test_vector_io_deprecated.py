@@ -20,6 +20,7 @@ LOGGER = get_logger(name=__name__)
     ],
     indirect=True,
 )
+@pytest.mark.team_rag
 class TestLlamaStackVectorIODeprecated:
     """Test class for LlamaStack VectorIO API (VectorIO and VectorDBs)
 
