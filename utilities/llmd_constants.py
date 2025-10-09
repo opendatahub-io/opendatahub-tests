@@ -22,7 +22,9 @@ class LLMEndpoint:
 
 
 class ModelStorage:
-    VLLM_OCI: str = "oci://quay.io/mwaykole/test@sha256:f6691433a8fe554e60e42edcec4003aa0fec80f538d205530baf09840b3f36f1"
+    VLLM_OCI: str = (
+        "oci://quay.io/mwaykole/test@sha256:f6691433a8fe554e60e42edcec4003aa0fec80f538d205530baf09840b3f36f1"
+    )
     HF_QWEN: str = "hf://Qwen/Qwen2.5-7B-Instruct"
     HF_TINYLLAMA: str = "hf://TinyLlama/TinyLlama-1.1B-Chat-v1.0"
 
@@ -44,11 +46,11 @@ class ResourceLimits:
     class CPU:
         LIMIT: str = "1"
         REQUEST: str = "100m"
-    
+
     class Memory:
         LIMIT: str = "10Gi"
         REQUEST: str = "8Gi"
-    
+
     class GPU:
         LIMIT: str = "1"
         REQUEST: str = "1"
@@ -56,5 +58,3 @@ class ResourceLimits:
         CPU_REQUEST: str = "2"
         MEMORY_LIMIT: str = "32Gi"
         MEMORY_REQUEST: str = "16Gi"
-
-
