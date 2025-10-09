@@ -3,12 +3,13 @@ import pytest
 from tests.model_serving.model_server.llmd.utils import (
     verify_llm_service_status,
     verify_gateway_status,
-    verify_llmd_pods_not_restarted,
+    verify_llmd_no_failed_pods,
 )
 from utilities.constants import Protocols
 from utilities.llmd_utils import verify_inference_response_llmd
+
 from utilities.llmd_constants import BASIC_LLMD_PARAMS
-from utilities.manifests.opt125m_cpu import OPT125M_CPU_INFERENCE_CONFIG
+from utilities.manifests.tinyllama_oci import TINYLLAMA_OCI_INFERENCE_CONFIG
 
 pytestmark = [
     pytest.mark.llmd_cpu,
@@ -16,7 +17,7 @@ pytestmark = [
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, llmd_gateway, llmd_inference_service",
+    "unprivileged_model_namespace, llmd_inference_service",
     BASIC_LLMD_PARAMS,
     indirect=True,
 )
@@ -30,11 +31,12 @@ class TestLLMDOCICPUInference:
 
         verify_inference_response_llmd(
             llm_service=llmd_inference_service,
-            inference_config=OPT125M_CPU_INFERENCE_CONFIG,
+            inference_config=TINYLLAMA_OCI_INFERENCE_CONFIG,
             inference_type="chat_completions",
             protocol=Protocols.HTTP,
             use_default_query=True,
             insecure=True,
+            model_name=llmd_inference_service.name,
         )
 
-        verify_llmd_pods_not_restarted(client=admin_client, llm_service=llmd_inference_service)
+        verify_llmd_no_failed_pods(client=admin_client, llm_service=llmd_inference_service)

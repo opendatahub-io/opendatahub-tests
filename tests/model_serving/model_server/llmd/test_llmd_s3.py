@@ -3,10 +3,11 @@ import pytest
 from tests.model_serving.model_server.llmd.utils import (
     verify_llm_service_status,
     verify_gateway_status,
-    verify_llmd_pods_not_restarted,
+    verify_llmd_no_failed_pods,
 )
 from utilities.constants import Protocols
 from utilities.llmd_utils import verify_inference_response_llmd
+
 from utilities.manifests.opt125m_cpu import OPT125M_CPU_INFERENCE_CONFIG
 
 pytestmark = [
@@ -15,8 +16,8 @@ pytestmark = [
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, llmd_gateway, llmd_inference_service_s3",
-    [({"name": "llmd-s3-test"}, "openshift-default", {"storage_path": "opt-125m/"})],
+    "unprivileged_model_namespace, llmd_inference_service_s3",
+    [({"name": "llmd-s3-test"}, {"storage_path": "opt-125m/"})],
     indirect=True,
 )
 @pytest.mark.usefixtures("valid_aws_config")
@@ -35,6 +36,7 @@ class TestLLMDS3Inference:
             protocol=Protocols.HTTP,
             use_default_query=True,
             insecure=True,
+            model_name=llmd_inference_service_s3.name,
         )
 
-        verify_llmd_pods_not_restarted(client=admin_client, llm_service=llmd_inference_service_s3)
+        verify_llmd_no_failed_pods(client=admin_client, llm_service=llmd_inference_service_s3)
