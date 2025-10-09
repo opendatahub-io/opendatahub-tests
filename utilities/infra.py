@@ -63,6 +63,7 @@ from utilities.exceptions import ClusterLoginError, FailedPodsError, ResourceNot
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, TimeoutWatch, retry
 import utilities.general
 from ocp_resources.utils.constants import DEFAULT_CLUSTER_RETRY_EXCEPTIONS
+from utilities.general import generate_random_name
 
 LOGGER = get_logger(name=__name__)
 
@@ -79,6 +80,7 @@ def create_ns(
     model_mesh_enabled: bool = False,
     add_dashboard_label: bool = False,
     add_kueue_label: bool = False,
+    randomize_name: bool = False,
     pytest_request: FixtureRequest | None = None,
 ) -> Generator[Namespace | Project, Any, Any]:
     """
@@ -104,6 +106,8 @@ def create_ns(
         add_dashboard_label (bool): if True, dashboard label will be added to namespace
             Can be overwritten by `request.param["add-dashboard-label"]`
         pytest_request (FixtureRequest): pytest request
+        randomize_name (bool): if True, randomize the namespace name.
+            Can be overwritten by `request.param["randomize_name"]`
 
     Yields:
         Namespace | Project: namespace or project
@@ -115,6 +119,12 @@ def create_ns(
         model_mesh_enabled = pytest_request.param.get("modelmesh-enabled", model_mesh_enabled)
         add_dashboard_label = pytest_request.param.get("add-dashboard-label", add_dashboard_label)
         add_kueue_label = pytest_request.param.get("add-kueue-label", add_kueue_label)
+        randomize_name = pytest_request.param.get("randomize_name", randomize_name)
+
+    # Handle randomization
+    base_name = name or "test-namespace"
+    if randomize_name:
+        name = generate_random_name(prefix=base_name, length=4)
 
     namespace_kwargs = {
         "name": name,

@@ -1,9 +1,9 @@
 import random
 from typing import Generator, Any
+import requests
 
-import yaml
 from simple_logger.logger import get_logger
-
+import yaml
 import pytest
 from kubernetes.dynamic import DynamicClient
 
@@ -13,17 +13,25 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 from ocp_resources.service_account import ServiceAccount
 from tests.model_registry.constants import DEFAULT_MODEL_CATALOG
-from tests.model_registry.model_catalog.constants import SAMPLE_MODEL_NAME3, CUSTOM_CATALOG_ID1, DEFAULT_CATALOG_ID
+from tests.model_registry.model_catalog.constants import (
+    SAMPLE_MODEL_NAME3,
+    CUSTOM_CATALOG_ID1,
+    DEFAULT_CATALOG_ID,
+    DEFAULT_CATALOG_FILE,
+    CATALOG_CONTAINER,
+)
 from tests.model_registry.model_catalog.utils import (
     is_model_catalog_ready,
     wait_for_model_catalog_api,
     get_model_str,
     execute_get_command,
+    get_model_catalog_pod,
     get_default_model_catalog_yaml,
 )
 from tests.model_registry.utils import get_rest_headers
 from utilities.infra import get_openshift_token, login_with_user_password, create_inference_token
 from utilities.user_utils import UserTestSession
+
 
 LOGGER = get_logger(name=__name__)
 
@@ -149,3 +157,29 @@ def randomly_picked_model_from_default_catalog(
     assert result, f"Expected Default models to be present. Actual: {result}"
     LOGGER.info(f"{len(result)} models found")
     return random.choice(seq=result)
+
+
+@pytest.fixture(scope="class")
+def default_model_catalog_yaml_content(admin_client: DynamicClient, model_registry_namespace: str) -> dict[Any, Any]:
+    model_catalog_pod = get_model_catalog_pod(client=admin_client, model_registry_namespace=model_registry_namespace)[0]
+    return yaml.safe_load(model_catalog_pod.execute(command=["cat", DEFAULT_CATALOG_FILE], container=CATALOG_CONTAINER))
+
+
+@pytest.fixture(scope="class")
+def default_catalog_api_response(
+    model_catalog_rest_url: list[str], model_registry_rest_headers: dict[str, str]
+) -> dict[Any, Any]:
+    """Fetch all models from default catalog API (used for data validation tests)"""
+    return execute_get_command(
+        url=f"{model_catalog_rest_url[0]}models?source={DEFAULT_CATALOG_ID}&pageSize=100",
+        headers=model_registry_rest_headers,
+    )
+
+
+@pytest.fixture(scope="class")
+def catalog_openapi_schema() -> dict[Any, Any]:
+    """Fetch and cache the catalog OpenAPI schema (fetched once per class)"""
+    OPENAPI_SCHEMA_URL = "https://raw.githubusercontent.com/kubeflow/model-registry/main/api/openapi/catalog.yaml"
+    response = requests.get(OPENAPI_SCHEMA_URL, timeout=10)
+    response.raise_for_status()
+    return yaml.safe_load(response.text)
