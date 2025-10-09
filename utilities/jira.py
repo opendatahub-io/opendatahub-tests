@@ -52,7 +52,7 @@ def is_jira_open(jira_id: str, admin_client: DynamicClient) -> bool:
         # Check if the operator version in ClusterServiceVersion is greater than the jira fix version
         jira_fix_versions: list[Version] = []
         for fix_version in jira_fields.fixVersions:
-            if _fix_version := re.search(r"\d.\d+.\d+", fix_version.name):
+            if _fix_version := re.search(r"\d+\.\d+(?:\.\d+)?", fix_version.name):
                 jira_fix_versions.append(Version(_fix_version.group()))
 
         if not jira_fix_versions:

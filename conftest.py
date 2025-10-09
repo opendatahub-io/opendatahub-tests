@@ -19,6 +19,7 @@ from pytest import (
     Config,
     CollectReport,
 )
+from _pytest.nodes import Node
 from _pytest.terminal import TerminalReporter
 from typing import Optional, Any
 from pytest_testconfig import config as py_config
@@ -306,6 +307,8 @@ def updated_global_config(admin_client: DynamicClient, config: Config) -> None:
     distribution = get_operator_distribution(client=admin_client)
     if distribution == "Open Data Hub":
         py_config["distribution"] = "upstream"
+        # override the operator namespace
+        py_config["operator_namespace"] = "opendatahub-operators"
 
     elif distribution.startswith("OpenShift AI"):
         py_config["distribution"] = "downstream"
@@ -434,9 +437,17 @@ def calculate_must_gather_timer(test_start_time: int) -> int:
         return default_duration
 
 
+def get_all_node_markers(node: Node) -> list[str]:
+    return [mark.name for mark in list(node.iter_markers())]
+
+
+def is_skip_must_gather(node: Node) -> bool:
+    return "skip_must_gather" in get_all_node_markers(node=node)
+
+
 def pytest_exception_interact(node: Item | Collector, call: CallInfo[Any], report: TestReport | CollectReport) -> None:
     LOGGER.error(report.longreprtext)
-    if node.config.getoption("--collect-must-gather"):
+    if node.config.getoption("--collect-must-gather") and not is_skip_must_gather(node=node):
         test_name = f"{node.fspath}::{node.name}"
         LOGGER.info(f"Must-gather collection is enabled for {test_name}.")
 
