@@ -100,7 +100,6 @@ def verify_llmd_no_failed_pods(
 
     LOGGER.info(f"Comprehensive health check for LLMInferenceService {llm_service.name}")
 
-    # Define error states that indicate pod failures
     container_wait_base_errors = ["InvalidImageName", "CrashLoopBackOff", "ImagePullBackOff", "ErrImagePull"]
     container_terminated_base_errors = [Resource.Status.ERROR, "CrashLoopBackOff"]
 
@@ -118,9 +117,8 @@ def verify_llmd_no_failed_pods(
             labels = pod.instance.metadata.get("labels", {})
             if labels.get("kserve.io/component") == "workload":
                 pods.append(pod)
-        return pods
+            return pods
 
-    # Use TimeoutSampler to wait for pods to be ready
     for pods in TimeoutSampler(
         wait_timeout=timeout,
         sleep=10,
@@ -133,27 +131,20 @@ def verify_llmd_no_failed_pods(
         ready_pods = 0
         failed_pods: dict[str, Any] = {}
         restarted_containers: dict[str, list[str]] = {}
-
-        # Check pod readiness
         for pod in pods:
             for condition in pod.instance.status.conditions:
                 if condition.type == pod.Status.READY and condition.status == pod.Condition.Status.TRUE:
                     ready_pods += 1
                     break
-
-        # If all pods are ready, perform final health checks
         if ready_pods == len(pods):
             LOGGER.info(f"All {len(pods)} LLMD pods are ready, performing health checks")
 
             for pod in pods:
                 pod_status = pod.instance.status
-
-                # Check container statuses
                 if pod_status.containerStatuses:
                     for container_status in pod_status.get("containerStatuses", []) + pod_status.get(
                         "initContainerStatuses", []
                     ):
-                        # CHECK FOR CONTAINER RESTARTS
                         if hasattr(container_status, "restartCount") and container_status.restartCount > 0:
                             if pod.name not in restarted_containers:
                                 restarted_containers[pod.name] = []
@@ -162,13 +153,10 @@ def verify_llmd_no_failed_pods(
                                 f"Container {container_status.name} in pod {pod.name} has restarted "
                                 f"{container_status.restartCount} times"
                             )
-
-                        # CHECK FOR WAITING CONTAINERS WITH ERRORS
                         is_waiting_error = (
                             wait_state := container_status.state.waiting
                         ) and wait_state.reason in container_wait_base_errors
 
-                        # CHECK FOR TERMINATED CONTAINERS WITH ERRORS
                         is_terminated_error = (
                             terminate_state := container_status.state.terminated
                         ) and terminate_state.reason in container_terminated_base_errors
@@ -179,16 +167,12 @@ def verify_llmd_no_failed_pods(
                             LOGGER.error(
                                 f"Container {container_status.name} in pod {pod.name} has error state: {reason}"
                             )
-
-                # CHECK POD PHASE
                 elif pod_status.phase in (
                     pod.Status.CRASH_LOOPBACK_OFF,
                     pod.Status.FAILED,
                 ):
                     failed_pods[pod.name] = pod_status
                     LOGGER.error(f"Pod {pod.name} is in failed phase: {pod_status.phase}")
-
-            # Raise errors for any failures found
             if restarted_containers:
                 error_msg = f"LLMD containers restarted for {llm_service.name}: {restarted_containers}"
                 LOGGER.error(error_msg)
@@ -200,9 +184,5 @@ def verify_llmd_no_failed_pods(
 
             LOGGER.info(f"All LLMD pods for {llm_service.name} are healthy - no restarts or failures detected")
             return
-
-        # Log current status
         LOGGER.debug(f"LLMD pods status: {ready_pods}/{len(pods)} ready for {llm_service.name}")
-
-    # If we reach here, timeout occurred
     raise TimeoutError(f"LLMD pods for {llm_service.name} did not become ready within {timeout} seconds")

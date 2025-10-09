@@ -79,7 +79,6 @@ def shared_llmd_gateway(
     Created once at the beginning of the LLMD test session and reused.
     Uses the correct gateway class for the cluster.
     """
-    # Use the correct gateway class for this cluster
     gateway_class_name = "data-science-gateway-class"
 
     with create_llmd_gateway(
@@ -88,17 +87,14 @@ def shared_llmd_gateway(
         gateway_class_name=gateway_class_name,
         wait_for_condition=True,
         timeout=Timeout.TIMEOUT_5MIN,
-        teardown=True,  # Clean up at end of session
+        teardown=True,
     ) as gateway:
         yield gateway
 
 
 @pytest.fixture(scope="class")
 def llmd_gateway(shared_llmd_gateway: Gateway) -> Gateway:
-    """
-    Use the shared session-scoped gateway for LLMD tests.
-    No need to create/destroy gateway per test class.
-    """
+    """Use the shared session-scoped gateway for LLMD tests."""
     return shared_llmd_gateway
 
 
@@ -127,7 +123,6 @@ def llmd_inference_service(
         },
     )
 
-    # Allow users to specify custom image, fallback to CPU default if needed
     create_kwargs = {
         "client": admin_client,
         "name": service_name,
@@ -175,7 +170,6 @@ def llmd_inference_service_s3(
         },
     )
 
-    # Allow users to specify custom image, fallback to CPU default if needed
     create_kwargs = {
         "client": admin_client,
         "name": service_name,
@@ -216,9 +210,7 @@ def llmd_inference_service_gpu(
     if "llmd_gateway" in request.fixturenames:
         request.getfixturevalue(argname="llmd_gateway")
 
-    # GPU resource configuration (reduce for prefill/decode with smaller model)
     if kwargs.get("enable_prefill_decode", False):
-        # Reduced resources for prefill/decode with TinyLlama
         container_resources = kwargs.get(
             "container_resources",
             {
@@ -227,7 +219,6 @@ def llmd_inference_service_gpu(
             },
         )
     else:
-        # Standard GPU resource configuration (matches temp YAML files)
         container_resources = kwargs.get(
             "container_resources",
             {
@@ -244,7 +235,6 @@ def llmd_inference_service_gpu(
             },
         )
 
-    # Configure liveness probe (from temp YAML files)
     liveness_probe = {
         "httpGet": {"path": "/health", "port": 8000, "scheme": "HTTPS"},
         "initialDelaySeconds": 120,
@@ -253,19 +243,16 @@ def llmd_inference_service_gpu(
         "failureThreshold": 5,
     }
 
-    # Support variable replicas based on configuration type
     replicas = kwargs.get("replicas", DEFAULT_LLMD_REPLICAS)
     if kwargs.get("enable_prefill_decode", False):
-        replicas = kwargs.get("replicas", 3)  # Default to 3 for prefill/decode as per temp YAML
+        replicas = kwargs.get("replicas", 3)
 
-    # Build minimal prefill configuration - let config reference handle details
     prefill_config = None
     if kwargs.get("enable_prefill_decode", False):
         prefill_config = {
-            "replicas": kwargs.get("prefill_replicas", 1),  # Use parameter or default to 1 for cluster constraints
+            "replicas": kwargs.get("prefill_replicas", 1),
         }
 
-    # Base configuration following temp YAML structure and supported parameters
     create_kwargs = {
         "client": admin_client,
         "name": service_name,
@@ -282,7 +269,6 @@ def llmd_inference_service_gpu(
         "timeout": Timeout.TIMEOUT_15MIN,
     }
 
-    # Only set container_image if explicitly provided by user (follows temp YAML pattern)
     if "container_image" in kwargs:
         create_kwargs["container_image"] = kwargs["container_image"]
 
