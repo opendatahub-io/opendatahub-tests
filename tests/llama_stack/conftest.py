@@ -1,10 +1,8 @@
 import os
-import tempfile
 from typing import Generator, Any, Dict
 
 import portforward
 import pytest
-import requests
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from llama_stack_client import LlamaStackClient
@@ -14,7 +12,6 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.llama_stack_distribution import LlamaStackDistribution
 from ocp_resources.namespace import Namespace
 from simple_logger.logger import get_logger
-from timeout_sampler import retry
 from utilities.general import generate_random_name
 
 
@@ -316,47 +313,3 @@ def vector_store(
         LOGGER.info(f"Deleted vector store {vector_store.id}")
     except Exception as e:
         LOGGER.warning(f"Failed to delete vector store {vector_store.id}: {e}")
-
-
-@retry(
-    wait_timeout=Timeout.TIMEOUT_1MIN,
-    sleep=5,
-    exceptions_dict={requests.exceptions.RequestException: [], Exception: []},
-)
-def _download_and_upload_file(url: str, llama_stack_client: LlamaStackClient, vector_store: Any) -> bool:
-    """
-    Downloads a file from URL and uploads it to the vector store.
-
-    Args:
-        url: The URL to download the file from
-        llama_stack_client: The configured LlamaStackClient
-        vector_store: The vector store to upload the file to
-
-    Returns:
-        bool: True if successful, raises exception if failed
-    """
-    try:
-        response = requests.get(url, timeout=30)
-        response.raise_for_status()
-
-        # Save file locally first and pretend it's a txt file, not sure why this is needed
-        # but it works locally without it,
-        # though llama stack version is the newer one.
-        file_name = url.split("/")[-1]
-        local_file_name = file_name.replace(".rst", ".txt")
-        with tempfile.NamedTemporaryFile(mode="wb", suffix=f"_{local_file_name}") as temp_file:
-            temp_file.write(response.content)
-            temp_file_path = temp_file.name
-
-            # Upload saved file to LlamaStack
-            with open(temp_file_path, "rb") as file_to_upload:
-                uploaded_file = llama_stack_client.files.create(file=file_to_upload, purpose="assistants")
-
-            # Add file to vector store
-            llama_stack_client.vector_stores.files.create(vector_store_id=vector_store.id, file_id=uploaded_file.id)
-
-        return True
-
-    except (requests.exceptions.RequestException, Exception) as e:
-        LOGGER.warning(f"Failed to download and upload file {url}: {e}")
-        raise

@@ -345,6 +345,11 @@ def validate_api_responses(
     return cast("ValidationResult", {"success": successful == total, "results": all_results, "summary": summary})
 
 
+@retry(
+    wait_timeout=Timeout.TIMEOUT_1MIN,
+    sleep=5,
+    exceptions_dict={requests.exceptions.RequestException: [], Exception: []},
+)
 def vector_store_create_file_from_url(url: str, llama_stack_client: LlamaStackClient, vector_store: Any) -> bool:
     """
     Downloads a file from URL to a temporally file and uploads it to the files provider (files.create)
