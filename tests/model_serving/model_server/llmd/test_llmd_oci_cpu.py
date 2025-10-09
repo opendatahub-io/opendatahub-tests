@@ -8,12 +8,13 @@ from tests.model_serving.model_server.llmd.utils import (
 from utilities.constants import Protocols
 from utilities.llmd_utils import verify_inference_response_llmd
 
-from utilities.llmd_constants import BASIC_LLMD_PARAMS
 from utilities.manifests.tinyllama_oci import TINYLLAMA_OCI_INFERENCE_CONFIG
 
 pytestmark = [
     pytest.mark.llmd_cpu,
 ]
+
+BASIC_LLMD_PARAMS = [({"name": "llmd-comprehensive-test"}, "basic")]
 
 
 @pytest.mark.parametrize(

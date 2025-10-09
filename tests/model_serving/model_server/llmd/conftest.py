@@ -13,24 +13,17 @@ from utilities.constants import Timeout
 from utilities.infra import s3_endpoint_secret
 from utilities.llmd_utils import create_llmd_gateway, create_llmisvc
 from utilities.llmd_constants import (
-    DEFAULT_GATEWAY_NAMESPACE,
-    VLLM_STORAGE_OCI,
-    VLLM_STORAGE_HF,
-    VLLM_CPU_IMAGE,
-    DEFAULT_S3_STORAGE_PATH,
-    DEFAULT_GPU_LIMIT,
-    DEFAULT_GPU_REQUEST,
-    DEFAULT_GPU_CPU_LIMIT,
-    DEFAULT_GPU_MEMORY_LIMIT,
-    DEFAULT_GPU_CPU_REQUEST,
-    DEFAULT_GPU_MEMORY_REQUEST,
-    DEFAULT_LLMD_REPLICAS,
+    LLMDGateway,
+    ModelStorage,
+    ContainerImages,
+    LLMDDefaults,
+    ResourceLimits,
 )
 
 
 @pytest.fixture(scope="session")
 def gateway_namespace(admin_client: DynamicClient) -> str:
-    return DEFAULT_GATEWAY_NAMESPACE
+    return LLMDGateway.DEFAULT_NAMESPACE
 
 
 @pytest.fixture(scope="class")
@@ -127,8 +120,8 @@ def llmd_inference_service(
         "client": admin_client,
         "name": service_name,
         "namespace": unprivileged_model_namespace.name,
-        "storage_uri": kwargs.get("storage_uri", VLLM_STORAGE_OCI),
-        "container_image": kwargs.get("container_image", VLLM_CPU_IMAGE),
+        "storage_uri": kwargs.get("storage_uri", ModelStorage.VLLM_OCI),
+        "container_image": kwargs.get("container_image", ContainerImages.VLLM_CPU),
         "container_resources": container_resources,
         "wait": True,
         "timeout": Timeout.TIMEOUT_15MIN,
@@ -149,7 +142,7 @@ def llmd_inference_service_s3(
 ) -> Generator[LLMInferenceService, None, None]:
     if isinstance(request.param, str):
         name_suffix = request.param
-        kwargs = {"storage_path": DEFAULT_S3_STORAGE_PATH}
+        kwargs = {"storage_path": LLMDDefaults.S3_STORAGE_PATH}
     else:
         name_suffix = request.param.get("name_suffix", "s3")
         kwargs = {k: v for k, v in request.param.items() if k != "name_suffix"}
@@ -160,7 +153,7 @@ def llmd_inference_service_s3(
         kwargs["storage_key"] = llmd_s3_secret.name
 
     if "storage_path" not in kwargs:
-        kwargs["storage_path"] = DEFAULT_S3_STORAGE_PATH
+        kwargs["storage_path"] = LLMDDefaults.S3_STORAGE_PATH
 
     container_resources = kwargs.get(
         "container_resources",
@@ -176,7 +169,7 @@ def llmd_inference_service_s3(
         "namespace": unprivileged_model_namespace.name,
         "storage_key": kwargs.get("storage_key"),
         "storage_path": kwargs.get("storage_path"),
-        "container_image": kwargs.get("container_image", VLLM_CPU_IMAGE),
+        "container_image": kwargs.get("container_image", ContainerImages.VLLM_CPU),
         "container_resources": container_resources,
         "service_account": llmd_s3_service_account.name,
         "wait": True,
@@ -223,14 +216,14 @@ def llmd_inference_service_gpu(
             "container_resources",
             {
                 "limits": {
-                    "cpu": DEFAULT_GPU_CPU_LIMIT,
-                    "memory": DEFAULT_GPU_MEMORY_LIMIT,
-                    "nvidia.com/gpu": DEFAULT_GPU_LIMIT,
+                    "cpu": ResourceLimits.GPU.CPU_LIMIT,
+                    "memory": ResourceLimits.GPU.MEMORY_LIMIT,
+                    "nvidia.com/gpu": ResourceLimits.GPU.LIMIT,
                 },
                 "requests": {
-                    "cpu": DEFAULT_GPU_CPU_REQUEST,
-                    "memory": DEFAULT_GPU_MEMORY_REQUEST,
-                    "nvidia.com/gpu": DEFAULT_GPU_REQUEST,
+                    "cpu": ResourceLimits.GPU.CPU_REQUEST,
+                    "memory": ResourceLimits.GPU.MEMORY_REQUEST,
+                    "nvidia.com/gpu": ResourceLimits.GPU.REQUEST,
                 },
             },
         )
@@ -243,7 +236,7 @@ def llmd_inference_service_gpu(
         "failureThreshold": 5,
     }
 
-    replicas = kwargs.get("replicas", DEFAULT_LLMD_REPLICAS)
+    replicas = kwargs.get("replicas", LLMDDefaults.REPLICAS)
     if kwargs.get("enable_prefill_decode", False):
         replicas = kwargs.get("replicas", 3)
 
@@ -257,7 +250,7 @@ def llmd_inference_service_gpu(
         "client": admin_client,
         "name": service_name,
         "namespace": unprivileged_model_namespace.name,
-        "storage_uri": kwargs.get("storage_uri", VLLM_STORAGE_HF),
+        "storage_uri": kwargs.get("storage_uri", ModelStorage.HF_QWEN),
         "model_name": kwargs.get("model_name", "Qwen/Qwen2.5-7B-Instruct"),
         "replicas": replicas,
         "container_resources": container_resources,

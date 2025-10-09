@@ -19,11 +19,8 @@ from utilities.constants import HTTPRequest, Timeout
 from utilities.exceptions import InferenceResponseError
 from utilities.infra import get_services_by_isvc_label
 from utilities.llmd_constants import (
-    DEFAULT_GATEWAY_NAME,
-    DEFAULT_GATEWAY_NAMESPACE,
-    OPENSHIFT_DEFAULT_GATEWAY_CLASS,
-    DEFAULT_LLM_ENDPOINT,
-    DEFAULT_TIMEOUT,
+    LLMDGateway,
+    LLMEndpoint,
 )
 
 LOGGER = get_logger(name=__name__)
@@ -32,9 +29,9 @@ LOGGER = get_logger(name=__name__)
 @contextmanager
 def create_llmd_gateway(
     client: DynamicClient,
-    name: str = DEFAULT_GATEWAY_NAME,
-    namespace: str = DEFAULT_GATEWAY_NAMESPACE,
-    gateway_class_name: str = OPENSHIFT_DEFAULT_GATEWAY_CLASS,
+    name: str = LLMDGateway.DEFAULT_NAME,
+    namespace: str = LLMDGateway.DEFAULT_NAMESPACE,
+    gateway_class_name: str = LLMDGateway.DEFAULT_CLASS,
     listeners: Optional[list[Dict[str, Any]]] = None,
     infrastructure: Optional[Dict[str, Any]] = None,
     wait_for_condition: bool = True,
@@ -569,7 +566,7 @@ class LLMUserInference:
     ) -> str:
         """Generate curl command string for LLM inference."""
         base_url = get_llm_inference_url(llm_service=self.llm_service)
-        endpoint_url = f"{base_url}{DEFAULT_LLM_ENDPOINT}"
+        endpoint_url = f"{base_url}{LLMEndpoint.CHAT_COMPLETIONS}"
 
         body = self.get_inference_body(
             model_name=model_name,
@@ -599,7 +596,7 @@ class LLMUserInference:
             except Exception:
                 cmd += " --insecure"
 
-        cmd += f" --max-time {DEFAULT_TIMEOUT} {endpoint_url}"
+        cmd += f" --max-time {LLMEndpoint.DEFAULT_TIMEOUT} {endpoint_url}"
         return cmd
 
     @retry(wait_timeout=Timeout.TIMEOUT_30SEC, sleep=5)
