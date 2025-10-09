@@ -49,7 +49,7 @@ pytest tests/llama_stack/
 To run tests for a specific team (e.g., agents team):
 
 ```bash
-pytest -m team-rag tests/llama_stack/
+pytest -m team_rag tests/llama_stack/
 ```
 
 ### Run Tests with Additional Markers
@@ -58,10 +58,10 @@ You can combine team markers with other pytest markers:
 
 ```bash
 # Run only smoke tests for the rag team
-pytest -m "team-rag and smoke" tests/llama_stack/
+pytest -m "team_rag and smoke" tests/llama_stack/
 
 # Run all team-rag tests except slow ones
-pytest -m "team-rag and not slow" tests/llama_stack/
+pytest -m "team_rag and not slow" tests/llama_stack/
 ```
 
 ## Related Testing Repositories

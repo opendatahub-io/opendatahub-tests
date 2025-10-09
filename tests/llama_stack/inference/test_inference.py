@@ -76,7 +76,7 @@ class TestLlamaStackInference:
         embeddings_response = unprivileged_llama_stack_client.inference.embeddings(
             model_id=llama_stack_models.embedding_model.identifier,
             contents=["First chunk of text"],
-            output_dimension=llama_stack_models.embedding_dimension,  # type: ignore
+            output_dimension=llama_stack_models.embedding_dimension,
         )
         assert isinstance(embeddings_response, EmbeddingsResponse)
         assert len(embeddings_response.embeddings) == 1

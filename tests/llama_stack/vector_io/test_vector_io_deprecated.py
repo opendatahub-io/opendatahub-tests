@@ -51,21 +51,22 @@ class TestLlamaStackVectorIODeprecated:
         Based on the example available at
         https://llama-stack.readthedocs.io/en/latest/building_applications/rag.html
         """
+        vector_db_id = None
         try:
             vector_db = f"my-test-vector_db-{uuid.uuid4().hex}"
             res = unprivileged_llama_stack_client.vector_dbs.register(
                 vector_db_id=vector_db,
-                embedding_model=llama_stack_models.embedding_model.identifier,  # type: ignore
-                embedding_dimension=llama_stack_models.embedding_dimension,  # type: ignore
+                embedding_model=llama_stack_models.embedding_model.identifier,
+                embedding_dimension=llama_stack_models.embedding_dimension,
                 provider_id="milvus",
             )
             vector_db_id = res.identifier
 
             # Calculate embeddings
             embeddings_response = unprivileged_llama_stack_client.inference.embeddings(
-                model_id=llama_stack_models.embedding_model.identifier,  # type: ignore
+                model_id=llama_stack_models.embedding_model.identifier,
                 contents=["First chunk of text"],
-                output_dimension=llama_stack_models.embedding_dimension,  # type: ignore
+                output_dimension=llama_stack_models.embedding_dimension,
             )
 
             # Insert chunk into the vector db
@@ -90,7 +91,8 @@ class TestLlamaStackVectorIODeprecated:
 
         finally:
             # Cleanup: unregister the vector database to prevent resource leaks
-            try:
-                unprivileged_llama_stack_client.vector_dbs.unregister(vector_db_id)
-            except Exception as e:
-                LOGGER.warning(f"Failed to unregister vector database {vector_db_id}: {e}")
+            if vector_db_id is not None:
+                try:
+                    unprivileged_llama_stack_client.vector_dbs.unregister(vector_db_id)
+                except Exception as e:
+                    LOGGER.warning(f"Failed to unregister vector database {vector_db_id}: {e}")

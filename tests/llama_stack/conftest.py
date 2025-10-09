@@ -137,12 +137,13 @@ def llama_stack_distribution(
         yield lls_dist
 
 
-def _create_llama_stack_distribution_deployment(
+def _get_llama_stack_distribution_deployment(
     client: DynamicClient,
     llama_stack_distribution: LlamaStackDistribution,
 ) -> Generator[Deployment, Any, Any]:
     """
-    Gets the Deployment resource for a given LLamaStackDistribution.
+    Returns the Deployment resource for a given LlamaStackDistribution.
+    Note: The deployment is created by the operator; this function retrieves it.
 
     Args:
         client (DynamicClient): Kubernetes client
@@ -176,7 +177,7 @@ def unprivileged_llama_stack_distribution_deployment(
     Yields:
         Generator[Deployment, Any, Any]: Deployment resource
     """
-    yield from _create_llama_stack_distribution_deployment(
+    yield from _get_llama_stack_distribution_deployment(
         client=unprivileged_client, llama_stack_distribution=unprivileged_llama_stack_distribution
     )
 
@@ -196,7 +197,7 @@ def llama_stack_distribution_deployment(
     Yields:
         Generator[Deployment, Any, Any]: Deployment resource
     """
-    yield from _create_llama_stack_distribution_deployment(
+    yield from _get_llama_stack_distribution_deployment(
         client=admin_client, llama_stack_distribution=llama_stack_distribution
     )
 
@@ -302,14 +303,14 @@ def vector_store(
     # Setup
     vector_store = unprivileged_llama_stack_client.vector_stores.create(
         name="test_vector_store",
-        embedding_model=llama_stack_models.embedding_model.identifier,  # type: ignore
+        embedding_model=llama_stack_models.embedding_model.identifier,
         embedding_dimension=llama_stack_models.embedding_dimension,
     )
 
     yield vector_store
 
     try:
-        llama_stack_client.vector_stores.delete(vector_store_id=vector_store.id)
+        unprivileged_llama_stack_client.vector_stores.delete(vector_store_id=vector_store.id)
         LOGGER.info(f"Deleted vector store {vector_store.id}")
     except Exception as e:
         LOGGER.warning(f"Failed to delete vector store {vector_store.id}: {e}")

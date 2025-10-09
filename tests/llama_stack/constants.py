@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum
 from typing import List, NamedTuple, TypedDict
+from llama_stack_client.types import Model
 
 
 class LlamaStackProviders:
@@ -20,7 +21,7 @@ class ModelInfo(NamedTuple):
     """Container for model information from LlamaStack client."""
 
     model_id: str
-    embedding_model: str
+    embedding_model: Model
     embedding_dimension: int
 
 

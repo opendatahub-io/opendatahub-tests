@@ -223,8 +223,8 @@ def validate_rag_agent_responses(
                 if turn_idx < total_turns:  # Don't print separator after last turn
                     LOGGER.info("-" * 50)
 
-        except Exception as e:
-            LOGGER.error(f"Error processing turn '{question}': {str(e)}")
+        except Exception as exc:
+            LOGGER.exception("Error processing turn %s: %s", question, exc)
             turn_result = {
                 "question": question,
                 "description": description,
@@ -235,7 +235,7 @@ def validate_rag_agent_responses(
                 "response_length": 0,
                 "event_count": 0,
                 "success": False,
-                "error": str(e),
+                "error": str(exc),
             }
             all_results.append(turn_result)
 
@@ -303,8 +303,11 @@ def validate_api_responses(
                 "expected_keywords": expected_keywords,
                 "found_keywords": found,
                 "missing_keywords": missing,
-                "response": response,
+                "response_content": response,
+                "response_length": len(response) if isinstance(response, str) else 0,
+                "event_count": len(response.events) if hasattr(response, "events") else 0,
                 "success": success,
+                "error": None,
             }
 
             all_results.append(result)
@@ -321,11 +324,13 @@ def validate_api_responses(
                 "expected_keywords": expected_keywords,
                 "found_keywords": [],
                 "missing_keywords": expected_keywords,
-                "response": "",
+                "response_content": "",
+                "response_length": 0,
+                "event_count": 0,
                 "success": False,
                 "error": str(e),
             })
-            LOGGER.error(f"[{idx}] ERROR: {str(e)}")
+            LOGGER.exception(f"[{idx}] ERROR")
 
     total = len(test_cases)
     summary = {

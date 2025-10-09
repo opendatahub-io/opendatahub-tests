@@ -102,7 +102,7 @@ class TestLlamaStackVectorStores:
                 assert result.content is not None, "Search result content should not be None"
                 assert len(result.content) > 0, "Search result content should not be empty"
 
-            LOGGER.info(f"Successfully tested vector store search with {len(search_queries)} queries")
+        LOGGER.info(f"Successfully tested vector store search with {len(search_queries)} queries")
 
 
 @pytest.fixture(scope="class")
@@ -117,7 +117,7 @@ def vector_store_with_example_docs(
     are automatically cleaned up after the test completes.
 
     Args:
-        llama_stack_client: The configured LlamaStackClient
+        unprivileged_llama_stack_client: The configured LlamaStackClient
         vector_store: The vector store fixture to upload files to
 
     Yields:

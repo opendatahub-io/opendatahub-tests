@@ -57,8 +57,9 @@ class TestLlamaStackAgents:
             stream=False,
         )
         content = response.output_message.content
-        assert content is not None, "LLM response content is None"
-        assert "model" in content, "The LLM didn't provide the expected answer to the prompt"
+        text = str(content or "")
+        assert text, "LLM response content is empty"
+        assert "model" in text.lower(), "The LLM didn't provide the expected answer to the prompt"
 
         # Test capability question
         response = agent.create_turn(
@@ -66,9 +67,10 @@ class TestLlamaStackAgents:
             session_id=s_id,
             stream=False,
         )
-        content = response.output_message.content.lower()
-        assert content is not None, "LLM response content is None"
-        assert "answer" in content, "The LLM didn't provide the expected answer to the prompt"
+        content = response.output_message.content
+        text = str(content or "")
+        assert text, "LLM response content is empty"
+        assert "answer" in text.lower(), "The LLM didn't provide the expected answer to the prompt"
 
     @pytest.mark.smoke
     def test_agents_rag_agent(
@@ -89,16 +91,18 @@ class TestLlamaStackAgents:
 
         # TODO: update this example to use the vector_store API
         """
-        vector_db = f"my-test-vector_db-{uuid.uuid4().hex}"
-        res = unprivileged_llama_stack_client.vector_dbs.register(
-            vector_db_id=vector_db,
-            embedding_model=llama_stack_models.embedding_model.identifier,  # type: ignore
-            embedding_dimension=llama_stack_models.embedding_dimension,  # type: ignore
-            provider_id="milvus",
-        )
-        vector_db_id = res.identifier
 
+        vector_db_id: str | None = None
         try:
+            vector_db = f"my-test-vector_db-{uuid.uuid4().hex}"
+            res = unprivileged_llama_stack_client.vector_dbs.register(
+                vector_db_id=vector_db,
+                embedding_model=llama_stack_models.embedding_model.identifier,
+                embedding_dimension=llama_stack_models.embedding_dimension,
+                provider_id="milvus",
+            )
+            vector_db_id = res.identifier
+
             # Create the RAG agent connected to the vector database
             rag_agent = Agent(
                 client=unprivileged_llama_stack_client,
@@ -163,7 +167,8 @@ class TestLlamaStackAgents:
 
         finally:
             # Cleanup: unregister the vector database to prevent resource leaks
-            try:
-                unprivileged_llama_stack_client.vector_dbs.unregister(vector_db_id)
-            except Exception as e:
-                LOGGER.warning(f"Failed to unregister vector database {vector_db_id}: {e}")
+            if vector_db_id:
+                try:
+                    unprivileged_llama_stack_client.vector_dbs.unregister(vector_db_id)
+                except Exception as exc:
+                    LOGGER.warning("Failed to unregister vector database %s: %s", vector_db_id, exc)
