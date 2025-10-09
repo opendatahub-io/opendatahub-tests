@@ -27,4 +27,3 @@ QWEN2_7B_INSTRUCT_GPU_INFERENCE_CONFIG = {
         },
     },
 }
-
