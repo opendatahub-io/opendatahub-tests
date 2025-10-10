@@ -35,6 +35,7 @@ pytestmark = [
 @pytest.mark.skip_must_gather
 class TestModelCatalogGeneral:
     @pytest.mark.post_upgrade
+    @pytest.mark.install
     def test_config_map_exists(self: Self, catalog_config_map: ConfigMap):
         # Check that the default configmaps is created when model registry is
         # enabled on data science cluster.
@@ -66,6 +67,7 @@ class TestModelCatalogGeneral:
         ],
     )
     @pytest.mark.post_upgrade
+    @pytest.mark.install
     def test_model_catalog_resources_exists(
         self: Self, admin_client: DynamicClient, model_registry_namespace: str, resource_name: Any
     ):
