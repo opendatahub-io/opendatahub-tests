@@ -29,7 +29,7 @@ def test_vector_stores_functionality():
 
 ### Available Team Markers  (to be expanded)
 
-- `@pytest.mark.team_ai_safety` - Evaluation team tests
+- `@pytest.mark.team_ai_safety` - AI Safety team tests
 - `@pytest.mark.team_llama_stack` - LlamaStack Core team tests
 - `@pytest.mark.team_rag` - RAG team tests
 
@@ -72,13 +72,6 @@ The `operator/` folder contains tests specifically for the llama-stack-k8s-opera
 
 There is also a separate operator repository with additional tests related to llama-stack-operator verifications. The main end-to-end (e2e) tests for the operator are implemented in the [llama-stack-k8s-operator repository](https://github.com/llamastack/llama-stack-k8s-operator/tree/main/tests/e2e).
 
-## Shift-Left Testing Practices
-
-To follow shift-left practices, we encourage contributing new unit and integration tests to the upstream [llama-stack integration tests](https://github.com/llamastack/llama-stack/tree/main/tests/integration) because:
-
-- They are run to verify llama-stack releases
-- They are run when building the Red Hat LlamaStack Distribution (see [run_integration_tests.sh](https://github.com/opendatahub-io/llama-stack-distribution/blob/main/tests/run_integration_tests.sh))
-
 ### Test Scope Guidelines
 
 Tests in this repository should be specific to OpenDataHub and OpenShift AI, such as:
@@ -87,6 +80,8 @@ Tests in this repository should be specific to OpenDataHub and OpenShift AI, suc
 - Testing particular scenarios like ODH/RHOAI upgrades
 - Validating OpenShift AI-specific configurations and integrations
 - Testing Red Hat LlamaStack Distribution-specific features
+
+For generic llama-stack testing, it is preferred to contribute to the upstream llama-stack [unit](https://github.com/llamastack/llama-stack/tree/main/tests/unit) and [integration](https://github.com/llamastack/llama-stack/tree/main/tests/integration) tests.
 
 ## Red Hat LlamaStack Distribution
 
