@@ -16,7 +16,7 @@ from utilities.general import validate_container_images
     indirect=True,
 )
 @pytest.mark.downstream_only
-@pytest.mark.team_llama_stack
+@pytest.mark.llama_stack
 class TestLlamaStackDistribution:
     """
     Test class that implements multiple tests to verify LlamaStack distribution functionality.

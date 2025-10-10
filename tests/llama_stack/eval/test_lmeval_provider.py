@@ -24,7 +24,7 @@ TRUSTYAI_LMEVAL_ARCEASY = f"{LlamaStackProviders.Eval.TRUSTYAI_LMEVAL}::arc_easy
     indirect=True,
 )
 @pytest.mark.rawdeployment
-@pytest.mark.team_ai_safety
+@pytest.mark.model_explainability
 class TestLlamaStackLMEvalProvider:
     """
     Tests for the LlamaStack LMEval provider.

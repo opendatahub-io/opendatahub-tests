@@ -19,24 +19,35 @@ The folder structure is based on the upstream Llama Stack integration tests, ava
 
 ## Test Markers
 
-Each test suite should have a marker indicating the team that owns it. The marker format is `@pytest.mark.team_<team_name>`. For example:
+Each test suite should have a marker indicating the component/team name. The marker format is `@pytest.mark.<component_name>`. For example:
 
 ```python
-@pytest.mark.team_rag
+@pytest.mark.rag
 def test_vector_stores_functionality():
     # Test implementation
 ```
 
 ### Available Team Markers  (to be expanded)
 
-- `@pytest.mark.team_ai_safety` - AI Safety team tests
-- `@pytest.mark.team_llama_stack` - LlamaStack Core team tests
-- `@pytest.mark.team_rag` - RAG team tests
+- `@pytest.mark.llama_stack` - LlamaStack Core team tests
+- `@pytest.mark.model_explainability` - AI Safety team tests
+- `@pytest.mark.rag` - RAG team tests
 
 
 ## Running Tests
 
+### Required environment variables
+
+LlamaStack tests require setting the following environment variables (for example in a .env file at the root folder):
+```bash
+OC_BINARY_PATH=/usr/local/sbin/oc
+LLS_CORE_VLLM_URL=<LLAMA-3.2-3b-ENDPOINT>/v1  (ends with /v1)
+LLS_CORE_INFERENCE_MODEL=<LLAMA-3.2-3b-MODEL_NAME>
+LLS_CORE_VLLM_API_TOKEN=<LLAMA-3.2-3b-TOKEN>
+```
+
 ### Run All Llama Stack Tests
+
 
 To run all tests in the `/tests/llama_stack` directory:
 
@@ -44,24 +55,33 @@ To run all tests in the `/tests/llama_stack` directory:
 pytest tests/llama_stack/
 ```
 
-### Run Tests by Team Marker
+### Run Tests by Component/Team
 
-To run tests for a specific team (e.g., agents team):
+To run tests for a specific team (e.g. rag):
 
 ```bash
-pytest -m team_rag tests/llama_stack/
+pytest -m rag tests/llama_stack/
 ```
+
+### Run Tests for a llama-stack API
+
+To run tests for a specific API (e.g., vector_io):
+
+```bash
+pytest tests/llama_stack/vector_io
+```
+
 
 ### Run Tests with Additional Markers
 
 You can combine team markers with other pytest markers:
 
 ```bash
-# Run only smoke tests for the rag team
-pytest -m "team_rag and smoke" tests/llama_stack/
+# Run only smoke tests for rag
+pytest -m "rag and smoke" tests/llama_stack/
 
-# Run all team-rag tests except slow ones
-pytest -m "team_rag and not slow" tests/llama_stack/
+# Run all rag tests except the ones requiring a GPU
+pytest -m "rag and not gpu" tests/llama_stack/
 ```
 
 ## Related Testing Repositories

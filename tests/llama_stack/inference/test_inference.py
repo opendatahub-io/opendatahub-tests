@@ -13,7 +13,7 @@ from tests.llama_stack.constants import ModelInfo
     ],
     indirect=True,
 )
-@pytest.mark.team_llama_stack
+@pytest.mark.llama_stack
 class TestLlamaStackInference:
     """Test class for LlamaStack Inference API (chat_completion, completion and embeddings)
 

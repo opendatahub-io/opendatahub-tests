@@ -18,7 +18,7 @@ LOGGER = get_logger(name=__name__)
     ],
     indirect=True,
 )
-@pytest.mark.team_rag
+@pytest.mark.rag
 class TestLlamaStackAgents:
     """Test class for LlamaStack Agents API
 
