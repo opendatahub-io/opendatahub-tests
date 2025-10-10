@@ -244,11 +244,17 @@ def pytest_collection_modifyitems(session: Session, config: Config, items: list[
             _item=item, _upgrade_deployment_modes=upgrade_deployment_modes
         ):
             pre_upgrade_tests.append(item)
+            # Add support to be able to reuse tests in both upgrade and fresh install scenarios
+            if "install" in item.keywords:
+                non_upgrade_tests.append(item)
 
         elif "post_upgrade" in item.keywords and _add_upgrade_test(
             _item=item, _upgrade_deployment_modes=upgrade_deployment_modes
         ):
             post_upgrade_tests.append(item)
+            # Add support to be able to reuse tests in both upgrade and fresh install scenarios
+            if "install" in item.keywords:
+                non_upgrade_tests.append(item)
 
         else:
             non_upgrade_tests.append(item)
