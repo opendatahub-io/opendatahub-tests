@@ -224,7 +224,7 @@ def validate_rag_agent_responses(
                     LOGGER.info("-" * 50)
 
         except Exception as exc:
-            LOGGER.exception("Error processing turn %s: %s", question, exc)
+            LOGGER.exception("Error processing turn %s", question)
             turn_result = {
                 "question": question,
                 "description": description,

@@ -49,7 +49,7 @@ class TestLlamaStackVectorIODeprecated:
             vector_io.query
 
         Based on the example available at
-        https://llama-stack.readthedocs.io/en/latest/building_applications/rag.html
+        https://llamastack.github.io/docs/building_applications/rag
         """
         vector_db_id = None
         try:

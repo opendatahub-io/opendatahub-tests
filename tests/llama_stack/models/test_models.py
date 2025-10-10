@@ -24,8 +24,7 @@ from utilities.constants import MinIo, QWEN_MODEL_NAME
 @pytest.mark.rawdeployment
 @pytest.mark.smoke
 @pytest.mark.team_llama_stack
-@pytest.mark.usefixtures("minio_pod")
-@pytest.mark.usefixtures("minio_data_connection")
+@pytest.mark.usefixtures("minio_pod", "minio_data_connection")
 class TestLlamaStackModels:
     """Test class for LlamaStack models API functionality.
 
@@ -39,12 +38,12 @@ class TestLlamaStackModels:
         models = llama_stack_client.models.list()
         assert models is not None, "No models returned from LlamaStackClient"
 
-        llm_model = next((m for m in models if m.api_model_type == "llm"), None)
+        llm_model = next((model for model in models if model.api_model_type == "llm"), None)
         assert llm_model is not None, "No LLM model found in available models"
         model_id = llm_model.identifier
         assert model_id is not None, "No identifier set in LLM model"
 
-        embedding_model = next((m for m in models if m.api_model_type == "embedding"), None)
+        embedding_model = next((model for model in models if model.api_model_type == "embedding"), None)
         assert embedding_model is not None, "No embedding model found in available models"
         embedding_model_id = embedding_model.identifier
         assert embedding_model_id is not None, "No embedding model returned from LlamaStackClient"
@@ -65,8 +64,13 @@ class TestLlamaStackModels:
 
         # Find the registered LLM by identifier suffix
         expected_id_suffix = f"/{QWEN_MODEL_NAME}"
-        target = next((m for m in models if m.model_type == "llm" and m.identifier.endswith(expected_id_suffix)), None)
-        assert target is not None, f"LLM {QWEN_MODEL_NAME} not found in models: {[m.identifier for m in models]}"
+        target = next(
+            (model for model in models if model.model_type == "llm" and model.identifier.endswith(expected_id_suffix)),
+            None,
+        )
+        assert target is not None, (
+            f"LLM {QWEN_MODEL_NAME} not found in models: {[model.identifier for model in models]}"
+        )
         assert target.identifier.endswith(expected_id_suffix)
         assert target.model_type == "llm"
         assert target.provider_id == LlamaStackProviders.Inference.VLLM_INFERENCE.value

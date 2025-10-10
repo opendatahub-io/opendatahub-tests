@@ -127,12 +127,12 @@ class TestLlamaStackAgents:
             ]
             documents = [
                 RAGDocument(
-                    document_id=f"num-{i}",
+                    document_id=f"num-{index}",
                     content=f"https://raw.githubusercontent.com/pytorch/torchtune/refs/tags/v0.6.1/docs/source/tutorials/{url}",  # noqa
                     mime_type="text/plain",
                     metadata={},
                 )
-                for i, url in enumerate(urls)
+                for index, url in enumerate(urls)
             ]
 
             unprivileged_llama_stack_client.tool_runtime.rag_tool.insert(
