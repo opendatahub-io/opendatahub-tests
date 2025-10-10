@@ -1,5 +1,7 @@
 import json
 from typing import Any
+import time
+import yaml
 
 from kubernetes.dynamic import DynamicClient
 from simple_logger.logger import get_logger
@@ -7,6 +9,7 @@ from simple_logger.logger import get_logger
 import requests
 from timeout_sampler import retry
 
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.pod import Pod
 from tests.model_registry.model_catalog.constants import (
     DEFAULT_CATALOG_NAME,
@@ -14,7 +17,8 @@ from tests.model_registry.model_catalog.constants import (
     CATALOG_TYPE,
     DEFAULT_CATALOG_FILE,
 )
-from tests.model_registry.utils import get_model_catalog_pod, wait_for_pods_running, get_rest_headers
+from tests.model_registry.utils import get_model_catalog_pod, get_rest_headers
+from utilities.general import wait_for_pods_running
 
 LOGGER = get_logger(name=__name__)
 
@@ -95,18 +99,16 @@ def validate_default_catalog(default_catalog) -> None:
 
 def get_catalog_str(ids: list[str]) -> str:
     catalog_str: str = ""
-    for id in ids:
+    for index, id in enumerate(ids):
         catalog_str += f"""
-- name: Sample Catalog
+- name: Sample Catalog {index}
   id: {id}
   type: yaml
   enabled: true
   properties:
     yamlCatalogPath: {id.replace("_", "-")}.yaml
 """
-    return f"""catalogs:
-{catalog_str}
-    """
+    return catalog_str
 
 
 def get_sample_yaml_str(models: list[str]) -> str:
@@ -122,6 +124,7 @@ models:
 
 
 def get_model_str(model: str) -> str:
+    current_time = int(time.time() * 1000)
     return f"""
 - name: {model}
   description: test description.
@@ -134,6 +137,8 @@ def get_model_str(model: str) -> str:
   libraryName: transformers
   artifacts:
     - uri: https://huggingface.co/{model}/resolve/main/consolidated.safetensors
+  createTimeSinceEpoch: \"{str(current_time - 10000)}\"
+  lastUpdateTimeSinceEpoch: \"{str(current_time)}\"
 """
 
 
@@ -148,3 +153,54 @@ def get_validate_default_model_catalog_source(token: str, model_catalog_url: str
     assert result[0]["id"] == DEFAULT_CATALOG_ID
     assert result[0]["name"] == DEFAULT_CATALOG_NAME
     assert str(result[0]["enabled"]) == "True", result[0]["enabled"]
+
+
+def get_default_model_catalog_yaml(config_map: ConfigMap) -> str:
+    return yaml.safe_load(config_map.instance.data["sources.yaml"])["catalogs"]
+
+
+def extract_schema_fields(openapi_schema: dict[Any, Any], schema_name: str) -> tuple[set[str], set[str]]:
+    """
+    Extract all and required fields from an OpenAPI schema for validation.
+
+    Args:
+        openapi_schema: The parsed OpenAPI schema dictionary
+        schema_name: Name of the schema to extract (e.g., "CatalogModel", "CatalogModelArtifact")
+
+    Returns:
+        Tuple of (all_fields, required_fields) excluding server-generated fields and timestamps.
+    """
+
+    def _extract_properties_and_required(schema: dict[Any, Any]) -> tuple[set[str], set[str]]:
+        """Recursively extract properties and required fields from a schema."""
+        props = set(schema.get("properties", {}).keys())
+        required = set(schema.get("required", []))
+
+        # Properties from allOf (inheritance/composition)
+        if "allOf" in schema:
+            for item in schema["allOf"]:
+                sub_schema = item
+                if "$ref" in item:
+                    # Follow reference and recursively extract
+                    ref_schema_name = item["$ref"].split("/")[-1]
+                    sub_schema = openapi_schema["components"]["schemas"][ref_schema_name]
+                sub_props, sub_required = _extract_properties_and_required(schema=sub_schema)
+                props.update(sub_props)
+                required.update(sub_required)
+
+        return props, required
+
+    target_schema = openapi_schema["components"]["schemas"][schema_name]
+    all_properties, required_fields = _extract_properties_and_required(schema=target_schema)
+
+    # Exclude fields that shouldn't be compared
+    excluded_fields = {
+        "id",  # Server-generated
+        "externalId",  # Server-generated
+        "createTimeSinceEpoch",  # Timestamps may differ
+        "lastUpdateTimeSinceEpoch",  # Timestamps may differ
+        "artifacts",  # CatalogModel only
+        "source_id",  # CatalogModel only
+    }
+
+    return all_properties - excluded_fields, required_fields - excluded_fields
