@@ -3,7 +3,7 @@
 from utilities.constants import (
     Timeout,
     ModelName,
-    ContainerImages,
+    ContainerImages as SharedContainerImages,
     ModelStorage as SharedModelStorage,
     Labels,
 )
@@ -40,7 +40,7 @@ class ModelStorage:
 class ContainerImages:
     """LLMD-specific container image aliases."""
 
-    VLLM_CPU: str = ContainerImages.VLLM.CPU
+    VLLM_CPU: str = SharedContainerImages.VLLM.CPU
 
 
 class ModelNames:

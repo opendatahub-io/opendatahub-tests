@@ -309,7 +309,7 @@ def create_llmisvc(
         }
 
         if service_account:
-            prefill_template["serviceAccountName"] = service_account
+            prefill_template["serviceAccountName"] = service_account  # type: ignore[assignment]
 
         spec_config["prefill"] = {
             "replicas": prefill_config.get("replicas", 1),

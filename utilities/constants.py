@@ -355,20 +355,17 @@ class MinIo:
         }
 
         MODEL_MESH_MINIO_CONFIG: dict[str, Any] = {
-            "image": "quay.io/trustyai_testing/modelmesh-minio-examples@sha256:d2ccbe92abf9aa5085b594b2cae6c65de2bf06306c30ff5207956eb949bb49da",
-            # noqa: E501
+            "image": "quay.io/trustyai_testing/modelmesh-minio-examples@sha256:d2ccbe92abf9aa5085b594b2cae6c65de2bf06306c30ff5207956eb949bb49da",  # noqa: E501
             **MINIO_BASE_CONFIG,
         }
 
         QWEN_MINIO_CONFIG: dict[str, Any] = {
-            "image": "quay.io/trustyai_testing/hf-llm-minio@sha256:2404a37d578f2a9c7adb3971e26a7438fedbe7e2e59814f396bfa47cd5fe93bb",
-            # noqa: E501
+            "image": "quay.io/trustyai_testing/hf-llm-minio@sha256:2404a37d578f2a9c7adb3971e26a7438fedbe7e2e59814f396bfa47cd5fe93bb",  # noqa: E501
             **MINIO_BASE_CONFIG,
         }
 
         QWEN_HAP_BPIV2_MINIO_CONFIG: dict[str, Any] = {
-            "image": "quay.io/trustyai_testing/qwen2.5-0.5b-instruct-hap-bpiv2-minio@sha256:eac1ca56f62606e887c80b4a358b3061c8d67f0b071c367c0aa12163967d5b2b",
-            # noqa: E501
+            "image": "quay.io/trustyai_testing/qwen2.5-0.5b-instruct-hap-bpiv2-minio@sha256:eac1ca56f62606e887c80b4a358b3061c8d67f0b071c367c0aa12163967d5b2b",  # noqa: E501
             **MINIO_BASE_CONFIG,
         }
 
@@ -436,9 +433,9 @@ class ContainerImages:
         KSERVE: str = (
             "quay.io/jooholee/model-minio@sha256:b9554be19a223830cf792d5de984ccc57fc140b954949f5ffc6560fab977ca7a"
         )
-        MODEL_MESH: str = "quay.io/trustyai_testing/modelmesh-minio-examples@sha256:d2ccbe92abf9aa5085b594b2cae6c65de2bf06306c30ff5207956eb949bb49da"
-        QWEN: str = "quay.io/trustyai_testing/hf-llm-minio@sha256:2404a37d578f2a9c7adb3971e26a7438fedbe7e2e59814f396bfa47cd5fe93bb"
-        QWEN_HAP_BPIV2: str = "quay.io/trustyai_testing/qwen2.5-0.5b-instruct-hap-bpiv2-minio@sha256:eac1ca56f62606e887c80b4a358b3061c8d67f0b071c367c0aa12163967d5b2b"
+        MODEL_MESH: str = "quay.io/trustyai_testing/modelmesh-minio-examples@sha256:d2ccbe92abf9aa5085b594b2cae6c65de2bf06306c30ff5207956eb949bb49da"  # noqa: E501
+        QWEN: str = "quay.io/trustyai_testing/hf-llm-minio@sha256:2404a37d578f2a9c7adb3971e26a7438fedbe7e2e59814f396bfa47cd5fe93bb"  # noqa: E501
+        QWEN_HAP_BPIV2: str = "quay.io/trustyai_testing/qwen2.5-0.5b-instruct-hap-bpiv2-minio@sha256:eac1ca56f62606e887c80b4a358b3061c8d67f0b071c367c0aa12163967d5b2b"  # noqa: E501
         MODEL_REGISTRY: str = (
             "quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"
         )
@@ -447,10 +444,14 @@ class ContainerImages:
         REGISTRY: str = "ghcr.io/project-zot/zot:v2.1.8"
 
     class OpenVINO:
-        MODEL_SERVER: str = "quay.io/opendatahub/openvino_model_server@sha256:564664371d3a21b9e732a5c1b4b40bacad714a5144c0a9aaf675baec4a04b148"
+        MODEL_SERVER: str = "quay.io/opendatahub/openvino_model_server@sha256:564664371d3a21b9e732a5c1b4b40bacad714a5144c0a9aaf675baec4a04b148"  # noqa: E501
 
 
 CHAT_GENERATION_CONFIG: Dict[str, Any] = {
-    "service": {"hostname": f"{QWEN_MODEL_NAME}-predictor", "port": 8032, "request_timeout": 600}
+    "service": {
+        "hostname": f"{QWEN_MODEL_NAME}-predictor",
+        "port": 8032,
+        "request_timeout": 600,
+    }
 }
 TRUSTYAI_SERVICE_NAME: str = "trustyai-service"
