@@ -30,6 +30,7 @@ class LLMEndpoint:
 
 class ModelStorage:
     """LLMD-specific model storage aliases for convenience."""
+
     TINYLLAMA_OCI: str = SharedModelStorage.OCI.TINYLLAMA
     TINYLLAMA_S3: str = SharedModelStorage.S3.TINYLLAMA
     S3_QWEN: str = SharedModelStorage.S3.QWEN_7B_INSTRUCT
@@ -38,13 +39,16 @@ class ModelStorage:
 
 class ContainerImages:
     """LLMD-specific container image aliases."""
+
     VLLM_CPU: str = ContainerImages.VLLM.CPU
 
 
 class ModelNames:
     """LLMD-specific model name aliases."""
+
     QWEN: str = ModelName.QWEN
     TINYLLAMA: str = ModelName.TINYLLAMA
+
 
 class LLMDDefaults:
     REPLICAS: int = 1

@@ -14,7 +14,6 @@ from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
-from utilities.constants import Timeout
 from utilities.exceptions import PodContainersRestartError
 
 
@@ -97,7 +96,6 @@ def verify_llmd_no_failed_pods(
         FailedPodsError: If any pods are in failed state
         TimeoutError: If pods don't become ready within timeout
     """
-    from timeout_sampler import TimeoutSampler
     from utilities.exceptions import FailedPodsError
     from ocp_resources.resource import Resource
 

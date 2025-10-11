@@ -231,7 +231,7 @@ class Timeout:
 
 class ResourceLimits:
     """Standard resource limits for different workload types."""
-    
+
     class CPU:
         LIMIT: str = "1"
         REQUEST: str = "100m"
@@ -244,11 +244,11 @@ class ResourceLimits:
         # GPU resource limits
         LIMIT: str = "1"
         REQUEST: str = "1"
-        
+
         # CPU limits for GPU workloads (higher requirements)
         CPU_LIMIT: str = "4"
         CPU_REQUEST: str = "2"
-        
+
         # Memory limits for GPU workloads (higher requirements)
         MEMORY_LIMIT: str = "32Gi"
         MEMORY_REQUEST: str = "16Gi"
@@ -279,17 +279,19 @@ class ModelCarImage:
 
 class ModelStorage:
     """Model storage URIs for different storage backends."""
-    
+
     class OCI:
-        TINYLLAMA: str = "oci://quay.io/mwaykole/test@sha256:b604e00d5c815184a473dda8449e8ccc85f4c7aaf32b9b5244da4d9aeecdf197"
+        TINYLLAMA: str = (
+            "oci://quay.io/mwaykole/test@sha256:b604e00d5c815184a473dda8449e8ccc85f4c7aaf32b9b5244da4d9aeecdf197"
+        )
         MNIST_8_1: str = ModelCarImage.MNIST_8_1
         GRANITE_8B_CODE_INSTRUCT: str = ModelCarImage.GRANITE_8B_CODE_INSTRUCT
-    
+
     class S3:
         QWEN_7B_INSTRUCT: str = "s3://ods-ci-wisdom/Qwen2.5-7B-Instruct/"
         TINYLLAMA: str = "s3://ods-ci-wisdom/TinyLlama-1.1B-Chat-v1.0/"
         OPT_125M: str = "s3://ods-ci-wisdom/opt-125m/"
-    
+
     class HuggingFace:
         TINYLLAMA: str = "hf://TinyLlama/TinyLlama-1.1B-Chat-v1.0"
 
@@ -426,22 +428,27 @@ QWEN_MODEL_NAME: str = "qwen25-05b-instruct"
 
 class ContainerImages:
     """Centralized container images for various runtimes and models."""
-    
+
     class VLLM:
         CPU: str = "quay.io/pierdipi/vllm-cpu@sha256:f084b3c272ede8a899d3b5051e8aed57752ff4e759842e48120ada68d47b446a"
-    
+
     class MinIO:
-        KSERVE: str = "quay.io/jooholee/model-minio@sha256:b9554be19a223830cf792d5de984ccc57fc140b954949f5ffc6560fab977ca7a"
+        KSERVE: str = (
+            "quay.io/jooholee/model-minio@sha256:b9554be19a223830cf792d5de984ccc57fc140b954949f5ffc6560fab977ca7a"
+        )
         MODEL_MESH: str = "quay.io/trustyai_testing/modelmesh-minio-examples@sha256:d2ccbe92abf9aa5085b594b2cae6c65de2bf06306c30ff5207956eb949bb49da"
         QWEN: str = "quay.io/trustyai_testing/hf-llm-minio@sha256:2404a37d578f2a9c7adb3971e26a7438fedbe7e2e59814f396bfa47cd5fe93bb"
         QWEN_HAP_BPIV2: str = "quay.io/trustyai_testing/qwen2.5-0.5b-instruct-hap-bpiv2-minio@sha256:eac1ca56f62606e887c80b4a358b3061c8d67f0b071c367c0aa12163967d5b2b"
-        MODEL_REGISTRY: str = "quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"
-    
+        MODEL_REGISTRY: str = (
+            "quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"
+        )
+
     class OCI:
         REGISTRY: str = "ghcr.io/project-zot/zot:v2.1.8"
-    
+
     class OpenVINO:
         MODEL_SERVER: str = "quay.io/opendatahub/openvino_model_server@sha256:564664371d3a21b9e732a5c1b4b40bacad714a5144c0a9aaf675baec4a04b148"
+
 
 CHAT_GENERATION_CONFIG: Dict[str, Any] = {
     "service": {"hostname": f"{QWEN_MODEL_NAME}-predictor", "port": 8032, "request_timeout": 600}

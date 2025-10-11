@@ -23,7 +23,7 @@ BASIC_LLMD_PARAMS = [({"name": "llmd-comprehensive-test"}, "basic")]
 )
 class TestLLMDOCICPUInference:
     """LLMD inference testing with OCI storage and CPU runtime using vLLM.
-    
+
     Tests CPU-based LLMD inference using OCI container registry for model storage.
     This test validates the basic LLMD functionality with CPU resources and
     ensures proper integration with the TinyLlama model from OCI storage.
