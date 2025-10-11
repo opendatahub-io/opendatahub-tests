@@ -6,7 +6,7 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from ocp_resources.pod import Pod
 
-from tests.model_registry.constants import MR_INSTANCE_BASE_NAME, NUM_RESOURCES, DEFAULT_MODEL_CATALOG
+from tests.model_registry.constants import MR_INSTANCE_BASE_NAME, NUM_RESOURCES, DEFAULT_CUSTOM_MODEL_CATALOG
 from tests.model_registry.rest_api.utils import (
     validate_resource_attributes,
     get_register_model_data,
@@ -55,7 +55,7 @@ class TestModelRegistryMultipleInstances:
         config_map_names: list[str] = []
         expected_number_config_maps: int = 1
         for config_map in list(ConfigMap.get(namespace=model_registry_namespace, dyn_client=admin_client)):
-            if config_map.name.startswith(DEFAULT_MODEL_CATALOG):
+            if config_map.name.startswith(DEFAULT_CUSTOM_MODEL_CATALOG):
                 config_map_names.append(config_map.name)
         assert len(config_map_names) == expected_number_config_maps, (
             f"Expected {expected_number_config_maps} modelcatalog sources, found: {config_map_names}"

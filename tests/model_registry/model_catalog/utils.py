@@ -108,7 +108,9 @@ def get_catalog_str(ids: list[str]) -> str:
   properties:
     yamlCatalogPath: {id.replace("_", "-")}.yaml
 """
-    return catalog_str
+    return f"""catalogs:
+{catalog_str}
+"""
 
 
 def get_sample_yaml_str(models: list[str]) -> str:
