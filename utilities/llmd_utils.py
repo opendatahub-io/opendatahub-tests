@@ -21,6 +21,7 @@ from utilities.infra import get_services_by_isvc_label
 from utilities.llmd_constants import (
     LLMDGateway,
     LLMEndpoint,
+    KServeGateway,
 )
 
 LOGGER = get_logger(name=__name__)
@@ -66,13 +67,13 @@ def create_llmd_gateway(
         ]
 
     if infrastructure is None:
-        infrastructure = {"labels": {"serving.kserve.io/gateway": "kserve-ingress-gateway"}}
+        infrastructure = {"labels": {KServeGateway.LABEL: KServeGateway.INGRESS_GATEWAY}}
     try:
         existing_gateway = Gateway(
             client=client,
             name=name,
             namespace=namespace,
-            api_group="gateway.networking.k8s.io",
+            api_group=KServeGateway.API_GROUP,
         )
         if existing_gateway.exists:
             LOGGER.info(f"Cleaning up existing Gateway {name} in namespace {namespace}")
@@ -80,7 +81,7 @@ def create_llmd_gateway(
     except Exception as e:
         LOGGER.debug(f"No existing Gateway to clean up: {e}")
     gateway_body = {
-        "apiVersion": "gateway.networking.k8s.io/v1",
+        "apiVersion": f"{KServeGateway.API_GROUP}/v1",
         "kind": "Gateway",
         "metadata": {
             "name": name,
@@ -133,17 +134,14 @@ def _get_llm_config_references(enable_prefill_decode: bool = False, disable_sche
     }
 
     if enable_prefill_decode:
-        # Prefill/decode pattern uses prefill and decode templates + scheduler
         base_configs.update({
             "prefill_template_ref": "kserve-config-llm-prefill-template",
             "decode_template_ref": "kserve-config-llm-decode-template",
             "scheduler_ref": "kserve-config-llm-scheduler",
         })
     elif not disable_scheduler:
-        # Standard pattern uses scheduler
         base_configs["scheduler_ref"] = "kserve-config-llm-scheduler"
 
-    # No-scheduler pattern uses only template_ref (no additional configs)
     return base_configs
 
 
@@ -172,7 +170,6 @@ def create_llmisvc(
     labels: Optional[Dict[str, str]] = None,
     timeout: int = Timeout.TIMEOUT_15MIN,
     teardown: bool = True,
-    # New parameters for prefill/decode support
     model_name: Optional[str] = None,
     prefill_config: Optional[Dict[str, Any]] = None,
     disable_scheduler: bool = False,
@@ -219,48 +216,40 @@ def create_llmisvc(
     if annotations is None:
         annotations = {}
 
-    if storage_key and storage_path:
-        model_config = {
-            "uri": f"s3://ods-ci-wisdom/{storage_path}",
-        }
-    elif storage_uri:
+    if storage_uri:
         model_config = {
             "uri": storage_uri,
+        }
+    elif storage_key and storage_path:
+        # LLMInferenceService requires full URI, construct it from bucket + path
+        model_config = {
+            "uri": f"s3://ods-ci-wisdom/{storage_path}",
         }
     else:
         raise ValueError("Provide either storage_uri or (storage_key and storage_path) for the model")
 
-    # Add model name if provided (from temp YAML pattern)
     if model_name:
         model_config["name"] = model_name
 
-    # Build config references instead of hardcoded configurations
     config_refs = _get_llm_config_references(
         enable_prefill_decode=enable_prefill_decode, disable_scheduler=disable_scheduler
     )
 
-    # Configure router based on temp YAML patterns using config references
     if router_config is None:
         if disable_scheduler:
-            # No-scheduler pattern: only route
             router_config = {"route": {}}
         elif enable_prefill_decode:
-            # Prefill/decode pattern: use scheduler config reference
             router_config = {"scheduler": {"configRef": config_refs["scheduler_ref"]}, "route": {}, "gateway": {}}
         else:
-            # Standard pattern: use scheduler config reference
             router_config = {"scheduler": {"configRef": config_refs["scheduler_ref"]}, "route": {}, "gateway": {}}
 
     if container_resources is None:
         raise ValueError("container_resources must be provided for LLMInferenceService")
 
-    # Use minimal environment variables - let config references handle the rest
     if container_env is None:
         container_env = [{"name": "VLLM_LOGGING_LEVEL", "value": "DEBUG"}]
-    # Build template configuration with config reference
     template_config: Dict[str, Any] = {"configRef": config_refs["template_ref"]}
 
-    # Add container overrides while preserving configRef (following temp YAML approach)
     if any([
         container_image,
         container_resources,
@@ -270,7 +259,6 @@ def create_llmisvc(
         volumes,
         service_account,
     ]):
-        # Create containers override only if we have customizations
         main_container: Dict[str, Any] = {"name": "main"}
 
         if container_image:
@@ -286,7 +274,6 @@ def create_llmisvc(
         if volume_mounts:
             main_container["volumeMounts"] = volume_mounts
 
-        # Add containers override to template while keeping configRef
         template_config["containers"] = [main_container]
 
         if volumes:
@@ -301,7 +288,6 @@ def create_llmisvc(
 
     LOGGER.info(f"Creating LLMInferenceService {name} in namespace {namespace}")
 
-    # Build spec configuration
     spec_config = {
         "model": model_config,
         "replicas": replicas,
@@ -309,26 +295,28 @@ def create_llmisvc(
         "template": template_config,
     }
 
-    # Add prefill configuration (simplified for cluster constraints)
     if enable_prefill_decode and prefill_config:
-        # Use configRef approach but with simplified configuration
+        prefill_template = {
+            "containers": [
+                {
+                    "name": "main",
+                    "resources": container_resources,
+                    "env": container_env
+                    + [
+                        {"name": "VLLM_PREFILL_MODE", "value": "true"}
+                    ]
+                    if container_env
+                    else [{"name": "VLLM_PREFILL_MODE", "value": "true"}],
+                }
+            ]
+        }
+        
+        if service_account:
+            prefill_template["serviceAccountName"] = service_account
+            
         spec_config["prefill"] = {
             "replicas": prefill_config.get("replicas", 1),
-            # Use base template with minimal modifications for prefill
-            "template": {
-                "containers": [
-                    {
-                        "name": "main",
-                        "resources": container_resources,
-                        "env": container_env
-                        + [
-                            {"name": "VLLM_PREFILL_MODE", "value": "true"}  # Simple flag for prefill mode
-                        ]
-                        if container_env
-                        else [{"name": "VLLM_PREFILL_MODE", "value": "true"}],
-                    }
-                ]
-            },
+            "template": prefill_template,
         }
 
     with LLMInferenceService(

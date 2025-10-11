@@ -1,7 +1,7 @@
 TINYLLAMA_OCI_INFERENCE_CONFIG = {
     "default_query_model": {
         "query_input": "What is the capital of France?",
-        "query_output": r'.*[Pp][Aa][Rr][Ii][Ss].*',  # Validate response contains "Paris" (case insensitive)
+        "query_output": r'.*[Pp][Aa][Rr][Ii][Ss].*',
         "use_regex": True,
     },
     "chat_completions": {

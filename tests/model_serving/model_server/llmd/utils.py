@@ -6,12 +6,15 @@ Follows the established model server utils pattern for consistency.
 """
 
 from typing import Any
+
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.gateway import Gateway
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
+from timeout_sampler import TimeoutSampler
 
+from utilities.constants import Timeout
 from utilities.exceptions import PodContainersRestartError
 
 
@@ -117,7 +120,7 @@ def verify_llmd_no_failed_pods(
             labels = pod.instance.metadata.get("labels", {})
             if labels.get("kserve.io/component") == "workload":
                 pods.append(pod)
-            return pods
+        return pods
 
     for pods in TimeoutSampler(
         wait_timeout=timeout,
