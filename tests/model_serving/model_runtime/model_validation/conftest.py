@@ -1,5 +1,5 @@
 import json
-from typing import Any, Generator
+from typing import Any, Generator, List, Dict
 
 import pytest
 import yaml
@@ -11,6 +11,9 @@ from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
 from utilities.infra import get_pods_by_isvc_label
+from contextlib import contextmanager
+from ocp_resources.template import Template
+from pytest_testconfig import config as py_config
 
 from tests.model_serving.model_runtime.model_validation.constant import (
     ACCELERATOR_IDENTIFIER,
@@ -28,7 +31,7 @@ from tests.model_serving.model_runtime.model_validation.constant import (
 )
 from tests.model_serving.model_runtime.model_validation.utils import safe_k8s_name
 from tests.model_serving.model_runtime.vllm.utils import validate_supported_quantization_schema
-from utilities.constants import KServeDeploymentType, Labels, RuntimeTemplates
+from utilities.constants import KServeDeploymentType, Labels, RuntimeTemplates, Protocols
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 from simple_logger.logger import get_logger
@@ -59,6 +62,103 @@ def model_car_serving_runtime(
         yield model_runtime
 
 
+@contextmanager
+def create_vllm_spyre_template(
+    admin_client: DynamicClient, protocol: str, vllm_runtime_image: str
+) -> Generator[Template, Any, Any]:
+    template_dict = {
+        "apiVersion": "template.openshift.io/v1",
+        "kind": "Template",
+        "metadata": {
+            "name": f"vllm-{protocol}-spyre-runtime-template",
+            "namespace": py_config["applications_namespace"],
+        },
+        "objects": [create_vllm_spyre_serving_runtime(protocol=protocol, vllm_runtime_image=vllm_runtime_image)],
+        "parameters": [],
+    }
+
+    with Template(
+        client=admin_client,
+        namespace=py_config["applications_namespace"],
+        body=template_dict,
+        wait_for_resource=True,
+    ) as template:
+        yield template
+
+
+def create_vllm_spyre_serving_runtime(protocol: str, vllm_runtime_image: str) -> dict[str, Any]:
+    volumes = []
+    volume_mounts = []
+    if protocol == Protocols.GRPC:
+        volumes.append({"name": "shm", "emptyDir": {"medium": "Memory", "sizeLimit": "2Gi"}})
+        volume_mounts.append({"name": "shm", "mountPath": "/dev/shm"})
+
+    port_config = {
+        "name": "h2c" if protocol == Protocols.GRPC else "http1",
+        "containerPort": 9000 if protocol == Protocols.GRPC else 8000,
+        "protocol": "TCP",
+    }
+
+    container_args = ["--served-model-name={{.Name}}", "--model=/mnt/models", "--port=8000"]
+
+    container_command = [
+        "- /bin/bash",
+        "- -c",
+        "- |",
+        "source /etc/profile.d/ibm-aiu-setup.sh && ",
+        'exec python3 -m vllm.entrypoints.openai.api_server "$@"',
+    ]
+
+    kserve_container: List[Dict[str, Any]] = [
+        {
+            "name": "vllm",
+            "image": vllm_runtime_image,
+            "ports": [port_config],
+            "command": container_command,
+            "args": container_args,
+            "volumeMounts": volume_mounts,
+            "resources": {
+                "requests": {
+                    "cpu": "1",
+                    "memory": "2Gi",
+                },
+                "limits": {
+                    "cpu": "1",
+                    "memory": "2Gi",
+                },
+            },
+        }
+    ]
+
+    supported_model_formats = List[Dict[str, Any]] = [
+        {
+            "name": "vLLM",
+            "autoSelect": True,
+        }
+    ]
+
+    return {
+        "apiVersion": "serving.kserve.io/v1beta1",
+        "kind": "ServingRuntime",
+        "metadata": {
+            "name": "vllm-spyre-runtime",
+            "annotations": {
+                "openshift.io/display-name": "vLLM IBM Spyre ServingRuntime for KServe",
+                "opendatahub.io/recommended-accelerators": '["ibm.com/spyre_pf"]',
+            },
+        },
+        "spec": {
+            "annotations": {
+                "prometheus.io/port": "8080",
+                "prometheus.io/path": "/metrics",
+            },
+            "containers": kserve_container,
+            "volumes": volumes,
+            "supportedModelFormats": supported_model_formats,
+        },
+    }
+
+
 @pytest.fixture(scope="class")
 def vllm_model_car_inference_service(
     request: FixtureRequest,
@@ -87,6 +187,9 @@ def vllm_model_car_inference_service(
     resources["requests"][identifier] = gpu_count
     resources["limits"][identifier] = gpu_count
     isvc_kwargs["resources"] = resources
+
+    if identifier == Labels.Spyre.SPYRE_COM_GPU:
+        isvc_kwargs["schedulerName"] = "spyre-scheduler"
 
     if timeout:
         isvc_kwargs["timeout"] = timeout

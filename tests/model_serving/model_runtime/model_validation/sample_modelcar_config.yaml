@@ -1,4 +1,15 @@
 model-car:
+  - name: modelcar-granite-3-1-8b-instruct
+    image: oci://registry.redhat.io/rhelai1/modelcar-granite-3-1-8b-instruct:1.5
+    model_output_type: text
+    serving_arguments:
+      args:
+        - "--uvicorn-log-level=info"
+        - "--max-model-len=2048"
+        - "--trust-remote-code"
+        - "--distributed-executor-backend=mp"
+      gpu_count: 1
+
   - name: granite-3.1-8b-base-quantized.w4a16
     image: oci://registry.redhat.io/rhelai1/modelcar-granite-3-1-8b-base-quantized-w4a16:1.5
     model_output_type: text
@@ -53,7 +64,6 @@ model-car:
   - name: Qwen2.5-7B-Instruct-quantized.w8a8
     image: oci://registry.redhat.io/rhelai1/modelcar-qwen2-5-7b-instruct-quantized-w8a8:1.5
     model_output_type: text
-
 
   - name: Qwen2.5-7B-Instruct-FP8-dynamic
     image: oci://registry.redhat.io/rhelai1/modelcar-qwen2-5-7b-instruct-fp8-dynamic:1.5
