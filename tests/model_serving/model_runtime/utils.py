@@ -247,6 +247,7 @@ def validate_serverless_openai_inference_request(
             completion_responses,
             response_snapshot=response_snapshot,
         )
+        assert False
     else:
         raise NotSupportedError(
             f"Model output type {model_output_type} is not supported for serverless inference request."
