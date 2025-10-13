@@ -20,7 +20,7 @@ from utilities.infra import get_pods_by_isvc_label
 def ci_bucket_downloaded_model_data(
     request: FixtureRequest,
     admin_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     model_pvc: PersistentVolumeClaim,
     aws_secret_access_key: str,
     aws_access_key_id: str,
@@ -32,7 +32,7 @@ def ci_bucket_downloaded_model_data(
         client=admin_client,
         aws_access_key_id=aws_access_key_id,
         aws_secret_access_key=aws_secret_access_key,
-        model_namespace=unprivileged_model_namespace.name,
+        model_namespace=model_namespace.name,
         model_pvc_name=model_pvc.name,
         bucket_name=ci_s3_bucket_name,
         aws_endpoint_url=ci_s3_bucket_endpoint,
@@ -84,7 +84,7 @@ def patched_read_only_isvc(
 def pvc_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     serving_runtime_from_template: ServingRuntime,
     model_pvc: PersistentVolumeClaim,
     ci_bucket_downloaded_model_data: str,
@@ -92,7 +92,7 @@ def pvc_inference_service(
     isvc_kwargs = {
         "client": unprivileged_client,
         "name": request.param["name"],
-        "namespace": unprivileged_model_namespace.name,
+        "namespace": model_namespace.name,
         "runtime": serving_runtime_from_template.name,
         "storage_uri": f"pvc://{model_pvc.name}/{ci_bucket_downloaded_model_data}",
         "model_format": serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,

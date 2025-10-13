@@ -80,7 +80,7 @@ def kueue_resource_flavor_from_template(
 @pytest.fixture(scope="class")
 def kueue_local_queue_from_template(
     request: FixtureRequest,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     admin_client: DynamicClient,
 ) -> Generator[LocalQueue, Any, Any]:
     if request.param.get("name") is None:
@@ -89,7 +89,7 @@ def kueue_local_queue_from_template(
         raise ValueError("cluster_queue is required")
     with create_local_queue(
         name=request.param.get("name"),
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         cluster_queue=request.param.get("cluster_queue"),
         client=admin_client,
     ) as local_queue:
@@ -100,14 +100,14 @@ def kueue_local_queue_from_template(
 def kueue_raw_inference_service(
     request: FixtureRequest,
     admin_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     kueue_kserve_serving_runtime: ServingRuntime,
     ci_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
         name=f"{request.param['name']}-raw",
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         external_route=True,
         runtime=kueue_kserve_serving_runtime.name,
         storage_path=request.param["model-dir"],
@@ -129,7 +129,7 @@ def kueue_raw_inference_service(
 def kueue_kserve_inference_service(
     request: FixtureRequest,
     admin_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     kueue_kserve_serving_runtime: ServingRuntime,
     ci_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
@@ -137,7 +137,7 @@ def kueue_kserve_inference_service(
     isvc_kwargs = {
         "client": admin_client,
         "name": f"{request.param['name']}-{deployment_mode.lower()}",
-        "namespace": unprivileged_model_namespace.name,
+        "namespace": model_namespace.name,
         "runtime": kueue_kserve_serving_runtime.name,
         "storage_path": request.param["model-dir"],
         "storage_key": ci_endpoint_s3_secret.name,
@@ -178,11 +178,11 @@ def kueue_kserve_inference_service(
 def kueue_kserve_serving_runtime(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
     runtime_kwargs = {
         "client": unprivileged_client,
-        "namespace": unprivileged_model_namespace.name,
+        "namespace": model_namespace.name,
         "name": request.param["runtime-name"],
         "template_name": RuntimeTemplates.OVMS_KSERVE,
         "multi_model": False,

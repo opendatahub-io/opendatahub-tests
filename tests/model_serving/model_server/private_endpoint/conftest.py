@@ -45,11 +45,11 @@ def endpoint_isvc(
 
 @pytest.fixture()
 def endpoint_pod_with_istio_sidecar(
-    unprivileged_client: DynamicClient, unprivileged_model_namespace: Namespace
+    unprivileged_client: DynamicClient, model_namespace: Namespace
 ) -> Generator[Pod, Any, Any]:
     with create_sidecar_pod(
         client=unprivileged_client,
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         use_istio=True,
         pod_name="test-with-istio",
     ) as pod:
@@ -58,11 +58,11 @@ def endpoint_pod_with_istio_sidecar(
 
 @pytest.fixture()
 def endpoint_pod_without_istio_sidecar(
-    unprivileged_client: DynamicClient, unprivileged_model_namespace: Namespace
+    unprivileged_client: DynamicClient, model_namespace: Namespace
 ) -> Generator[Pod, Any, Any]:
     with create_sidecar_pod(
         client=unprivileged_client,
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         use_istio=False,
         pod_name="test",
     ) as pod:

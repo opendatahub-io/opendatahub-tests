@@ -101,7 +101,7 @@ def llama_stack_server_config(
 @pytest.fixture(scope="class")
 def unprivileged_llama_stack_distribution(
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     enabled_llama_stack_operator: DataScienceCluster,
     llama_stack_server_config: Dict[str, Any],
 ) -> Generator[LlamaStackDistribution, None, None]:
@@ -110,7 +110,7 @@ def unprivileged_llama_stack_distribution(
     with create_llama_stack_distribution(
         client=unprivileged_client,
         name=distribution_name,
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         replicas=1,
         server=llama_stack_server_config,
     ) as lls_dist:

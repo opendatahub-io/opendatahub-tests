@@ -165,7 +165,7 @@ def stressed_keda_vllm_inference_service(
 def stressed_ovms_keda_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     ovms_kserve_serving_runtime: ServingRuntime,
     ci_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
@@ -173,7 +173,7 @@ def stressed_ovms_keda_inference_service(
     with create_isvc(
         client=unprivileged_client,
         name=model_name,
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         external_route=True,
         runtime=ovms_kserve_serving_runtime.name,
         storage_path=request.param["model-dir"],
@@ -187,7 +187,7 @@ def stressed_ovms_keda_inference_service(
         auto_scaling=create_keda_auto_scaling_config(
             query=request.param["metrics_query"],
             model_name=model_name,
-            namespace=unprivileged_model_namespace.name,
+            namespace=model_namespace.name,
             target_value=str(request.param["metrics_threshold"]),
         ),
     ) as isvc:

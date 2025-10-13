@@ -15,14 +15,14 @@ from utilities.inference_utils import create_isvc
 def model_car_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     serving_runtime_from_template: ServingRuntime,
 ) -> Generator[InferenceService, Any, Any]:
     deployment_mode = request.param.get("deployment-mode", KServeDeploymentType.SERVERLESS)
     with create_isvc(
         client=unprivileged_client,
         name=f"model-car-{deployment_mode.lower()}",
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         runtime=serving_runtime_from_template.name,
         storage_uri=request.param["storage-uri"],
         model_format=serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,

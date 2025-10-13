@@ -15,14 +15,14 @@ from utilities.inference_utils import create_isvc
 def s3_models_second_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     serving_runtime_from_template: ServingRuntime,
     models_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=unprivileged_client,
         name=request.param["name"],
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         runtime=serving_runtime_from_template.name,
         model_format=serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
         deployment_mode=request.param["deployment-mode"],

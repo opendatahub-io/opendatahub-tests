@@ -19,7 +19,7 @@ pytestmark = [pytest.mark.modelmesh, pytest.mark.minio, pytest.mark.sanity]
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, minio_pod, unprivileged_minio_data_connection, "
+    "model_namespace, minio_pod, unprivileged_minio_data_connection, "
     "http_s3_ovms_model_mesh_serving_runtime, model_mesh_ovms_minio_inference_service",
     [
         pytest.param(

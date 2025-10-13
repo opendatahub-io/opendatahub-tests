@@ -28,7 +28,7 @@ def gateway_namespace(admin_client: DynamicClient) -> str:
 @pytest.fixture(scope="class")
 def llmd_s3_secret(
     admin_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     aws_access_key_id: str,
     aws_secret_access_key: str,
     models_s3_bucket_name: str,
@@ -38,7 +38,7 @@ def llmd_s3_secret(
     with s3_endpoint_secret(
         client=admin_client,
         name="llmd-s3-secret",
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         aws_access_key=aws_access_key_id,
         aws_secret_access_key=aws_secret_access_key,
         aws_s3_region=models_s3_bucket_region,
@@ -99,7 +99,7 @@ def llmd_gateway(
 def llmd_inference_service(
     request: FixtureRequest,
     admin_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
 ) -> Generator[LLMInferenceService, None, None]:
     if isinstance(request.param, str):
         name_suffix = request.param
@@ -123,7 +123,7 @@ def llmd_inference_service(
     with create_llmisvc(
         client=admin_client,
         name=service_name,
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         storage_uri=kwargs.get("storage_uri", VLLM_STORAGE_OCI),
         container_image=kwargs.get("container_image", VLLM_CPU_IMAGE),
         container_resources=container_resources,
@@ -138,7 +138,7 @@ def llmd_inference_service(
 def llmd_inference_service_s3(
     request: FixtureRequest,
     admin_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     llmd_s3_secret: Secret,
     llmd_s3_service_account: ServiceAccount,
 ) -> Generator[LLMInferenceService, None, None]:
@@ -168,7 +168,7 @@ def llmd_inference_service_s3(
     with create_llmisvc(
         client=admin_client,
         name=service_name,
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         storage_key=kwargs.get("storage_key"),
         storage_path=kwargs.get("storage_path"),
         container_image=kwargs.get("container_image", VLLM_CPU_IMAGE),

@@ -57,7 +57,7 @@ class TestVllmKedaScaling:
 
     def test_vllm_keda_scaling_verify_scaledobject(
         self,
-        unprivileged_model_namespace: Namespace,
+        model_namespace: Namespace,
         vllm_cuda_serving_runtime,
         unprivileged_client: DynamicClient,
         stressed_keda_vllm_inference_service: Generator[InferenceService, Any, Any],
@@ -72,7 +72,7 @@ class TestVllmKedaScaling:
 
     def test_vllm_keda_scaling_verify_metrics(
         self,
-        unprivileged_model_namespace: Namespace,
+        model_namespace: Namespace,
         unprivileged_client: DynamicClient,
         vllm_cuda_serving_runtime,
         stressed_keda_vllm_inference_service: Generator[InferenceService, Any, Any],
@@ -87,7 +87,7 @@ class TestVllmKedaScaling:
 
     def test_vllm_keda_scaling_verify_final_pod_count(
         self,
-        unprivileged_model_namespace: Namespace,
+        model_namespace: Namespace,
         unprivileged_client: DynamicClient,
         vllm_cuda_serving_runtime,
         stressed_keda_vllm_inference_service: Generator[InferenceService, Any, Any],

@@ -11,7 +11,7 @@ pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config"
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, s3_models_storage_uri",
+    "model_namespace, s3_models_storage_uri",
     [
         pytest.param(
             {"name": "test-kserve-token-authentication"},

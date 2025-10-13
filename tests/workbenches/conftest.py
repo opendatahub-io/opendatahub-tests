@@ -24,12 +24,12 @@ LOGGER = get_logger(name=__name__)
 
 @pytest.fixture(scope="function")
 def users_persistent_volume_claim(
-    request: pytest.FixtureRequest, unprivileged_model_namespace: Namespace, unprivileged_client: DynamicClient
+    request: pytest.FixtureRequest, model_namespace: Namespace, unprivileged_client: DynamicClient
 ) -> Generator[PersistentVolumeClaim, None, None]:
     with PersistentVolumeClaim(
         client=unprivileged_client,
         name=request.param["name"],
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         label={constants.Labels.OpenDataHub.DASHBOARD: "true"},
         accessmodes=PersistentVolumeClaim.AccessMode.RWO,
         size="10Gi",

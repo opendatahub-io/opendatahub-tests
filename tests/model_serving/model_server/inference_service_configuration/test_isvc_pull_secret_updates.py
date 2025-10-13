@@ -9,7 +9,7 @@ from utilities.constants import ModelName, RuntimeTemplates
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, serving_runtime_from_template, model_car_raw_inference_service_with_pull_secret",
+    "model_namespace, serving_runtime_from_template, model_car_raw_inference_service_with_pull_secret",
     [
         pytest.param(
             {"name": "test-pull-secret-modelcar"},

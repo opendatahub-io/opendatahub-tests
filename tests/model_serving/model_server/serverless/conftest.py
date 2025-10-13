@@ -79,14 +79,14 @@ def multiple_onnx_inference_requests(
 def s3_mnist_serverless_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     ovms_kserve_serving_runtime: ServingRuntime,
     ci_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=unprivileged_client,
         name="mnist-model",
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         runtime=ovms_kserve_serving_runtime.name,
         storage_key=ci_endpoint_s3_secret.name,
         storage_path=ModelStoragePath.MNIST_8_ONNX,

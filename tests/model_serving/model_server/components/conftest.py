@@ -34,7 +34,7 @@ def managed_modelmesh_kserve_in_dsc(
 def invalid_s3_models_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     serving_runtime_from_template: ServingRuntime,
     models_s3_bucket_name: str,
     model_service_account: ServiceAccount,
@@ -42,7 +42,7 @@ def invalid_s3_models_inference_service(
     with create_isvc(
         client=unprivileged_client,
         name=request.param["name"],
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         runtime=serving_runtime_from_template.name,
         storage_uri=f"s3://{models_s3_bucket_name}/non-existing-path/",
         model_format=serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,

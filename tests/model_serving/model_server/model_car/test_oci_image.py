@@ -8,7 +8,7 @@ from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, serving_runtime_from_template, model_car_inference_service",
+    "model_namespace, serving_runtime_from_template, model_car_inference_service",
     [
         pytest.param(
             {"name": f"{ModelFormat.OPENVINO}-model-car"},

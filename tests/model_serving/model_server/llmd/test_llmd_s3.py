@@ -15,7 +15,7 @@ pytestmark = [
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, llmd_gateway, llmd_inference_service_s3",
+    "model_namespace, llmd_gateway, llmd_inference_service_s3",
     [({"name": "llmd-s3-test"}, "openshift-default", {"storage_path": "opt-125m/"})],
     indirect=True,
 )

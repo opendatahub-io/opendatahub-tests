@@ -16,7 +16,7 @@ pytestmark = [
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, llmd_gateway, llmd_inference_service",
+    "model_namespace, llmd_gateway, llmd_inference_service",
     BASIC_LLMD_PARAMS,
     indirect=True,
 )

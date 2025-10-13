@@ -49,12 +49,12 @@ def grpc_model_service_account(
 @pytest.fixture(scope="class")
 def grpc_s3_caikit_serving_runtime(
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
     with ServingRuntimeFromTemplate(
         client=unprivileged_client,
         name=f"{Protocols.GRPC}-{ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME}",
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         template_name=RuntimeTemplates.CAIKIT_TGIS_SERVING,
         multi_model=False,
         enable_http=False,
@@ -66,7 +66,7 @@ def grpc_s3_caikit_serving_runtime(
 @pytest.fixture(scope="class")
 def grpc_s3_inference_service(
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     grpc_s3_caikit_serving_runtime: ServingRuntime,
     s3_models_storage_uri: str,
     models_endpoint_s3_secret: Secret,
@@ -74,7 +74,7 @@ def grpc_s3_inference_service(
     with create_isvc(
         client=unprivileged_client,
         name=f"{Protocols.GRPC}-{ModelFormat.CAIKIT}",
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         runtime=grpc_s3_caikit_serving_runtime.name,
         model_format=grpc_s3_caikit_serving_runtime.instance.spec.supportedModelFormats[0].name,
         storage_key=models_endpoint_s3_secret.name,
@@ -257,7 +257,7 @@ def grpc_inference_token(grpc_model_service_account: ServiceAccount, grpc_role_b
 def http_s3_caikit_serverless_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     http_s3_caikit_tgis_serving_runtime: ServingRuntime,
     s3_models_storage_uri: str,
     models_endpoint_s3_secret: Secret,
@@ -265,7 +265,7 @@ def http_s3_caikit_serverless_inference_service(
     with create_isvc(
         client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelFormat.CAIKIT}",
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         runtime=http_s3_caikit_tgis_serving_runtime.name,
         model_format=http_s3_caikit_tgis_serving_runtime.instance.spec.supportedModelFormats[0].name,
         deployment_mode=KServeDeploymentType.SERVERLESS,
@@ -280,7 +280,7 @@ def http_s3_caikit_serverless_inference_service(
 def http_s3_caikit_raw_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     http_s3_caikit_tgis_serving_runtime: ServingRuntime,
     s3_models_storage_uri: str,
     models_endpoint_s3_secret: Secret,
@@ -289,7 +289,7 @@ def http_s3_caikit_raw_inference_service(
     with create_isvc(
         client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelFormat.CAIKIT}",
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         runtime=http_s3_caikit_tgis_serving_runtime.name,
         storage_key=models_endpoint_s3_secret.name,
         storage_path=urlparse(s3_models_storage_uri).path,
@@ -306,7 +306,7 @@ def http_s3_caikit_raw_inference_service(
 def http_s3_caikit_raw_inference_service_2(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     http_s3_caikit_tgis_serving_runtime: ServingRuntime,
     s3_models_storage_uri: str,
     model_service_account_2: ServiceAccount,
@@ -314,7 +314,7 @@ def http_s3_caikit_raw_inference_service_2(
     with create_isvc(
         client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelFormat.CAIKIT}-2",
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         runtime=http_s3_caikit_tgis_serving_runtime.name,
         storage_uri=s3_models_storage_uri,
         model_format=http_s3_caikit_tgis_serving_runtime.instance.spec.supportedModelFormats[0].name,
@@ -330,12 +330,12 @@ def http_s3_caikit_raw_inference_service_2(
 def http_s3_caikit_tgis_serving_runtime(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
     with ServingRuntimeFromTemplate(
         client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME}",
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         template_name=RuntimeTemplates.CAIKIT_TGIS_SERVING,
         multi_model=False,
         enable_http=True,
