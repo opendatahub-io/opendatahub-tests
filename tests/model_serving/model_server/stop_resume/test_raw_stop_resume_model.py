@@ -33,9 +33,7 @@ pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config"
     indirect=True,
 )
 class TestStopRaw:
-    def test_raw_onnx_rest_inference(
-        self, model_namespace, ovms_kserve_serving_runtime, ovms_raw_inference_service
-    ):
+    def test_raw_onnx_rest_inference(self, model_namespace, ovms_kserve_serving_runtime, ovms_raw_inference_service):
         """Verify that kserve Raw ONNX model can be queried using REST"""
         verify_inference_response(
             inference_service=ovms_raw_inference_service,

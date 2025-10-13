@@ -17,8 +17,7 @@ POD_TOUCH_SPLIT_COMMAND: list[str] = shlex.split("touch /mnt/models/test")
 
 
 @pytest.mark.parametrize(
-    "model_namespace, ci_bucket_downloaded_model_data, model_pvc, serving_runtime_from_template,"
-    "pvc_inference_service",
+    "model_namespace, ci_bucket_downloaded_model_data, model_pvc, serving_runtime_from_template,pvc_inference_service",
     [
         pytest.param(
             {"name": "pvc-write-access"},
