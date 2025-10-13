@@ -13,8 +13,7 @@ ACCELERATOR_IDENTIFIER: dict[str, str] = {
 TEMPLATE_MAP: dict[str, str] = {
     AcceleratorType.NVIDIA: RuntimeTemplates.VLLM_CUDA,
     AcceleratorType.AMD: RuntimeTemplates.VLLM_ROCM,
-    AcceleratorType.GAUDI: RuntimeTemplates.VLLM_GAUDUI,
-    AcceleratorType.SPYRE: RuntimeTemplates.VLLM_SPYRE,
+    AcceleratorType.GAUDI: RuntimeTemplates.VLLM_GAUDI,
 }
 
 

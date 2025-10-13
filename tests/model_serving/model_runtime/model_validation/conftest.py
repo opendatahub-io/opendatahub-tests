@@ -1,5 +1,5 @@
 import json
-from typing import Any, Generator, List, Dict
+from typing import Any, Generator
 
 import pytest
 import yaml
@@ -29,11 +29,12 @@ from tests.model_serving.model_runtime.model_validation.constant import PULL_SEC
 from tests.model_serving.model_runtime.model_validation.constant import (
     TIMEOUT_20MIN,
 )
-from tests.model_serving.model_runtime.model_validation.utils import safe_k8s_name
+from tests.model_serving.model_runtime.model_validation.utils import safe_k8s_name, create_vllm_spyre_serving_runtime
 from tests.model_serving.model_runtime.vllm.utils import validate_supported_quantization_schema
 from utilities.constants import KServeDeploymentType, Labels, RuntimeTemplates, Protocols
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
+
 from simple_logger.logger import get_logger
 
 LOGGER = get_logger(name=__name__)
@@ -48,8 +49,26 @@ def model_car_serving_runtime(
     vllm_runtime_image: str,
 ) -> Generator[ServingRuntime, None, None]:
     accelerator_type = supported_accelerator_type.lower()
-    template_name = TEMPLATE_MAP.get(accelerator_type, RuntimeTemplates.VLLM_CUDA)
-    LOGGER.info(f"using template: {template_name}")
+    if accelerator_type == Labels.Spyre.SPYRE_COM_GPU:
+        with create_vllm_spyre_template(
+            admin_client=admin_client, protocol=Protocols.REST, vllm_runtime_image=vllm_runtime_image
+        ) as template:
+            template_name = template.name
+            LOGGER.info(f"using template: {template_name}")
+            assert model_namespace.name is not None
+            with ServingRuntimeFromTemplate(
+                client=admin_client,
+                name=f"vllm-{request.param['deployment_type'].lower()}-runtime",
+                namespace=model_namespace.name,
+                template_name=template_name,
+                deployment_type=request.param["deployment_type"],
+                runtime_image=vllm_runtime_image,
+            ) as model_runtime:
+                yield model_runtime
+        return
+    else:
+        template_name = TEMPLATE_MAP.get(accelerator_type, RuntimeTemplates.VLLM_CUDA)
+        LOGGER.info(f"using template: {template_name}")
     assert model_namespace.name is not None
     with ServingRuntimeFromTemplate(
         client=admin_client,
@@ -86,79 +105,6 @@ def create_vllm_spyre_template(
         yield template
 
 
-def create_vllm_spyre_serving_runtime(protocol: str, vllm_runtime_image: str) -> dict[str, Any]:
-    volumes = []
-    volume_mounts = []
-    if protocol == Protocols.GRPC:
-        volumes.append({"name": "shm", "emptyDir": {"medium": "Memory", "sizeLimit": "2Gi"}})
-        volume_mounts.append({"name": "shm", "mountPath": "/dev/shm"})
-
-    port_config = {
-        "name": "h2c" if protocol == Protocols.GRPC else "http1",
-        "containerPort": 9000 if protocol == Protocols.GRPC else 8000,
-        "protocol": "TCP",
-    }
-
-    container_args = ["--served-model-name={{.Name}}", "--model=/mnt/models", "--port=8000"]
-
-    container_command = [
-        "- /bin/bash",
-        "- -c",
-        "- |",
-        "source /etc/profile.d/ibm-aiu-setup.sh && ",
-        'exec python3 -m vllm.entrypoints.openai.api_server "$@"',
-    ]
-
-    kserve_container: List[Dict[str, Any]] = [
-        {
-            "name": "vllm",
-            "image": vllm_runtime_image,
-            "ports": [port_config],
-            "command": container_command,
-            "args": container_args,
-            "volumeMounts": volume_mounts,
-            "resources": {
-                "requests": {
-                    "cpu": "1",
-                    "memory": "2Gi",
-                },
-                "limits": {
-                    "cpu": "1",
-                    "memory": "2Gi",
-                },
-            },
-        }
-    ]
-
-    supported_model_formats = List[Dict[str, Any]] = [
-        {
-            "name": "vLLM",
-            "autoSelect": True,
-        }
-    ]
-
-    return {
-        "apiVersion": "serving.kserve.io/v1beta1",
-        "kind": "ServingRuntime",
-        "metadata": {
-            "name": "vllm-spyre-runtime",
-            "annotations": {
-                "openshift.io/display-name": "vLLM IBM Spyre ServingRuntime for KServe",
-                "opendatahub.io/recommended-accelerators": '["ibm.com/spyre_pf"]',
-            },
-        },
-        "spec": {
-            "annotations": {
-                "prometheus.io/port": "8080",
-                "prometheus.io/path": "/metrics",
-            },
-            "containers": kserve_container,
-            "volumes": volumes,
-            "supportedModelFormats": supported_model_formats,
-        },
-    }
-
-
 @pytest.fixture(scope="class")
 def vllm_model_car_inference_service(
     request: FixtureRequest,
@@ -189,7 +135,7 @@ def vllm_model_car_inference_service(
     isvc_kwargs["resources"] = resources
 
     if identifier == Labels.Spyre.SPYRE_COM_GPU:
-        isvc_kwargs["schedulerName"] = "spyre-scheduler"
+        isvc_kwargs["scheduler_name"] = "spyre-scheduler"
 
     if timeout:
         isvc_kwargs["timeout"] = timeout
@@ -288,7 +234,7 @@ def build_serverless_params(
 ) -> tuple[Any, str]:
     test_id = f"{name}-serverless"
     param = pytest.param(
-        {"name": "serverless-model-validation"},
+        {"name": "serverless-model-validation", "modelmesh-enabled": False},
         {"deployment_type": KServeDeploymentType.SERVERLESS},
         {
             "model_name": name,
