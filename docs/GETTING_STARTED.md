@@ -99,6 +99,9 @@ uv run pytest -c custom-pytest.ini
 uv run pytest -k test_name
 ```
 
+### LlamaStack Integration Tests
+For more information about LlamaStack integration tests, see [/tests/llama_stack/README.md](../tests/llama_stack/README.md).
+
 ### Running on different distributions
 Bt default, RHOAI distribution is set.  
 To run on ODH, pass `--tc=distribution:upstream` to pytest.
