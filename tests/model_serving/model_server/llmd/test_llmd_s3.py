@@ -16,13 +16,7 @@ pytestmark = [
 
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, llmd_inference_service_s3",
-    [
-        pytest.param(
-            {"name": "llmd-s3-test"}, 
-            {"name_suffix": "s3"}, 
-            id="s3-cpu-basic"
-        )
-    ],
+    [pytest.param({"name": "llmd-s3-test"}, {"name_suffix": "s3"}, id="s3-cpu-basic")],
     indirect=True,
 )
 @pytest.mark.usefixtures("valid_aws_config")
