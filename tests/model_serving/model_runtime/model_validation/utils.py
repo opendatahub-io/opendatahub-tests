@@ -1,6 +1,5 @@
 import re
 from typing import Any, Dict, List
-from utilities.constants import Protocols
 from tests.model_serving.model_runtime.vllm.constant import VLLM_SUPPORTED_QUANTIZATION
 
 
@@ -55,27 +54,23 @@ def safe_k8s_name(model_name: str, max_length: int = 20) -> str:
 def create_vllm_spyre_serving_runtime(protocol: str, vllm_runtime_image: str) -> dict[str, Any]:
     volumes = []
     volume_mounts = []
-    if protocol == Protocols.GRPC:
-        volumes.append({"name": "shm", "emptyDir": {"medium": "Memory", "sizeLimit": "2Gi"}})
-        volume_mounts.append({"name": "shm", "mountPath": "/dev/shm"})
 
     port_config = {
-        "name": "h2c" if protocol == Protocols.GRPC else "http1",
-        "containerPort": 9000 if protocol == Protocols.GRPC else 8000,
+        "name": "http1",
+        "containerPort": 8000,
         "protocol": "TCP",
     }
 
     container_args = ["--served-model-name={{.Name}}", "--model=/mnt/models", "--port=8000"]
 
     container_command = [
-        "- /bin/bash",
-        "- -c",
-        "- |",
+        "/bin/bash",
+        "-lc",
         "source /etc/profile.d/ibm-aiu-setup.sh && ",
         'exec python3 -m vllm.entrypoints.openai.api_server "$@"',
     ]
 
-    env_variables = [
+    env_variables: List[Dict[str, str]] = [
         {"name": "HF_HOME", "value": "/tmp/hf_home"},
         {"name": "FLEX_COMPUTE", "value": "SENTIENT"},
         {"name": "FLEX_DEVICE", "value": "PF"},
@@ -115,7 +110,7 @@ def create_vllm_spyre_serving_runtime(protocol: str, vllm_runtime_image: str) ->
     ]
 
     return {
-        "apiVersion": "serving.kserve.io/v1beta1",
+        "apiVersion": "serving.kserve.io/v1alpha1",
         "kind": "ServingRuntime",
         "metadata": {
             "name": "vllm-spyre-runtime",
