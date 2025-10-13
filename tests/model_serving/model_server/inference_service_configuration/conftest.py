@@ -78,13 +78,13 @@ def patched_isvc_replicas(
 def model_car_raw_inference_service_with_pull_secret(
     request: pytest.FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     serving_runtime_from_template: ServingRuntime,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=unprivileged_client,
         name="model-car-raw",
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         runtime=serving_runtime_from_template.name,
         storage_uri=request.param["storage-uri"],
         model_format=serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,

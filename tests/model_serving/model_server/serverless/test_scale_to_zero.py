@@ -25,7 +25,7 @@ INFERENCE_AFTER_SCALE_TEST_NAME: str = "test_serverless_inference_after_scale_to
 
 @pytest.mark.serverless
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service",
+    "model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service",
     [
         pytest.param(
             {"name": "serverless-scale-zero"},

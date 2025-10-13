@@ -43,7 +43,7 @@ def skip_if_no_gpu_nodes(nvidia_gpu_nodes: list[Node]) -> None:
 def models_bucket_downloaded_model_data(
     request: FixtureRequest,
     admin_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     models_s3_bucket_name: str,
     model_pvc: PersistentVolumeClaim,
     aws_secret_access_key: str,
@@ -55,7 +55,7 @@ def models_bucket_downloaded_model_data(
         client=admin_client,
         aws_access_key_id=aws_access_key_id,
         aws_secret_access_key=aws_secret_access_key,
-        model_namespace=unprivileged_model_namespace.name,
+        model_namespace=model_namespace.name,
         model_pvc_name=model_pvc.name,
         bucket_name=models_s3_bucket_name,
         aws_endpoint_url=models_s3_bucket_endpoint,
@@ -68,12 +68,12 @@ def models_bucket_downloaded_model_data(
 def multi_node_serving_runtime(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
     with ServingRuntimeFromTemplate(
         client=unprivileged_client,
         name="vllm-multinode-runtime",  # TODO: rename servingruntime when RHOAIENG-16147 is resolved
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         template_name="vllm-multinode-runtime-template",
         multi_model=False,
         enable_http=True,

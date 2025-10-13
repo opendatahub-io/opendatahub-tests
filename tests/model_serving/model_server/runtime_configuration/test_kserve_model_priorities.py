@@ -26,7 +26,7 @@ SERVERLESS_ISVC_PARAMS = {
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, serving_runtime_from_template, s3_models_inference_service, "
+    "model_namespace, serving_runtime_from_template, s3_models_inference_service, "
     "s3_models_second_inference_service",
     [
         pytest.param(
@@ -83,7 +83,7 @@ class TestServerlessModelPriority:
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, serving_runtime_from_template, s3_models_inference_service, "
+    "model_namespace, serving_runtime_from_template, s3_models_inference_service, "
     "s3_models_second_inference_service",
     [
         pytest.param(

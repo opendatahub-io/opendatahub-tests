@@ -23,7 +23,7 @@ pytestmark = [pytest.mark.usefixtures("valid_aws_config"), pytest.mark.rawdeploy
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, serving_runtime_from_template, s3_models_inference_service",
+    "model_namespace, serving_runtime_from_template, s3_models_inference_service",
     [
         pytest.param(
             {"name": "raw-deployment-caikit-flan-rest"},
@@ -105,7 +105,7 @@ class TestRestRawDeploymentRoutes:
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, serving_runtime_from_template, s3_models_inference_service",
+    "model_namespace, serving_runtime_from_template, s3_models_inference_service",
     [
         pytest.param(
             {"name": "raw-deployment-caikit-flan-rest-timeout"},
@@ -170,7 +170,7 @@ class TestRestRawDeploymentRoutesTimeout:
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, serving_runtime_from_template, s3_models_inference_service",
+    "model_namespace, serving_runtime_from_template, s3_models_inference_service",
     [
         pytest.param(
             {"name": "raw-deployment-caikit-flan-grpc"},
@@ -226,7 +226,7 @@ class TestGrpcRawDeployment:
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, serving_runtime_from_template, s3_models_inference_service",
+    "model_namespace, serving_runtime_from_template, s3_models_inference_service",
     [
         pytest.param(
             {"name": "raw-deployment-caikit-flan-grpc-timeout"},

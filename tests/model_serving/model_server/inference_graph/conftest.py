@@ -21,7 +21,7 @@ from utilities.infra import create_inference_token, create_inference_graph_view_
 def dog_breed_inference_graph(
     request: FixtureRequest,
     admin_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     dog_cat_inference_service: InferenceService,
     dog_breed_inference_service: InferenceService,
 ) -> Generator[InferenceGraph, Any, Any]:
@@ -71,7 +71,7 @@ def dog_breed_inference_graph(
     with InferenceGraph(
         client=admin_client,
         name=name,
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         nodes=nodes,
         annotations=annotations,
         label=labels,
@@ -83,14 +83,14 @@ def dog_breed_inference_graph(
 @pytest.fixture(scope="class")
 def dog_cat_inference_service(
     admin_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     ovms_kserve_serving_runtime: ServingRuntime,
     models_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
         name="dog-cat-classifier",
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         runtime=ovms_kserve_serving_runtime.name,
         storage_key=models_endpoint_s3_secret.name,
         storage_path=ModelStoragePath.CAT_DOG_ONNX,
@@ -104,14 +104,14 @@ def dog_cat_inference_service(
 @pytest.fixture(scope="class")
 def dog_breed_inference_service(
     admin_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     ovms_kserve_serving_runtime: ServingRuntime,
     models_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
         name="dog-breed-classifier",
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         runtime=ovms_kserve_serving_runtime.name,
         storage_key=models_endpoint_s3_secret.name,
         storage_path=ModelStoragePath.DOG_BREED_ONNX,
@@ -139,19 +139,19 @@ def inference_graph_sa_token_with_access(
 @pytest.fixture
 def service_account_with_access(
     admin_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     dog_breed_inference_graph: InferenceGraph,
     bare_service_account: ServiceAccount,
 ) -> Generator[ServiceAccount, Any, Any]:
     with create_inference_graph_view_role(
         client=admin_client,
         name=f"{dog_breed_inference_graph.name}-view",
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         resource_names=[dog_breed_inference_graph.name],
     ) as role:
         with RoleBinding(
             client=admin_client,
-            namespace=unprivileged_model_namespace.name,
+            namespace=model_namespace.name,
             name=f"{bare_service_account.name}-view",
             role_ref_name=role.name,
             role_ref_kind=role.kind,
@@ -165,7 +165,7 @@ def service_account_with_access(
 def bare_service_account(
     request: FixtureRequest,
     admin_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
 ) -> Generator[ServiceAccount, Any, Any]:
     try:
         if request.param["name"]:
@@ -175,7 +175,7 @@ def bare_service_account(
 
     with ServiceAccount(
         client=admin_client,
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         name=name,
     ) as sa:
         yield sa

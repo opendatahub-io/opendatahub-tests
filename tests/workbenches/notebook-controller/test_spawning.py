@@ -11,7 +11,7 @@ from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 class TestNotebook:
     @pytest.mark.smoke
     @pytest.mark.parametrize(
-        "unprivileged_model_namespace,users_persistent_volume_claim,default_notebook",
+        "model_namespace,users_persistent_volume_claim,default_notebook",
         [
             pytest.param(
                 {
@@ -30,7 +30,7 @@ class TestNotebook:
     def test_create_simple_notebook(
         self,
         unprivileged_client: DynamicClient,
-        unprivileged_model_namespace: Namespace,
+        model_namespace: Namespace,
         users_persistent_volume_claim: PersistentVolumeClaim,
         default_notebook: Notebook,
     ):
@@ -47,7 +47,7 @@ class TestNotebook:
 
     @pytest.mark.smoke
     @pytest.mark.parametrize(
-        "unprivileged_model_namespace,users_persistent_volume_claim,default_notebook",
+        "model_namespace,users_persistent_volume_claim,default_notebook",
         [
             pytest.param(
                 {
@@ -72,7 +72,7 @@ class TestNotebook:
     def test_oauth_container_resource_customization(
         self,
         unprivileged_client: DynamicClient,
-        unprivileged_model_namespace: Namespace,
+        model_namespace: Namespace,
         users_persistent_volume_claim: PersistentVolumeClaim,
         default_notebook: Notebook,
     ):

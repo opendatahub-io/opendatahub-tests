@@ -21,7 +21,7 @@ pytestmark = [pytest.mark.usefixtures("valid_aws_config"), pytest.mark.serverles
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, serving_runtime_from_template, s3_models_inference_service",
+    "model_namespace, serving_runtime_from_template, s3_models_inference_service",
     [
         pytest.param(
             {"name": "serverless-rcaikit-routes"},
@@ -101,7 +101,7 @@ class TestRestServerlessRoutes:
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, serving_runtime_from_template, s3_models_inference_service",
+    "model_namespace, serving_runtime_from_template, s3_models_inference_service",
     [
         pytest.param(
             {"name": "serverless-rcaikit-routes-timeout"},

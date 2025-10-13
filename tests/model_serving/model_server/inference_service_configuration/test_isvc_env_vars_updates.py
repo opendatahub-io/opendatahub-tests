@@ -29,7 +29,7 @@ SERVERLESS_DEPLOYMENT_ISVC_CONFIG = {
 
 @pytest.mark.rawdeployment
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service",
+    "model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service",
     [
         pytest.param(
             {"name": "test-raw-update"},
@@ -59,7 +59,7 @@ class TestRawISVCEnvVarsUpdates:
 
 @pytest.mark.serverless
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service",
+    "model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service",
     [
         pytest.param(
             {"name": "test-serverless-update"},

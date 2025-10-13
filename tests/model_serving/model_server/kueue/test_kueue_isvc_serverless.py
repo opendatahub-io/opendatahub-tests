@@ -40,7 +40,7 @@ EXPECTED_UPDATED_DEPLOYMENTS = 2
 
 @pytest.mark.serverless
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, kueue_kserve_serving_runtime, kueue_kserve_inference_service, "
+    "model_namespace, kueue_kserve_serving_runtime, kueue_kserve_inference_service, "
     "kueue_cluster_queue_from_template, kueue_resource_flavor_from_template, kueue_local_queue_from_template",
     [
         pytest.param(

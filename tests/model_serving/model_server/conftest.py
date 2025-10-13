@@ -41,7 +41,7 @@ LOGGER = get_logger(name=__name__)
 @pytest.fixture(scope="class")
 def models_endpoint_s3_secret(
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     aws_access_key_id: str,
     aws_secret_access_key: str,
     models_s3_bucket_name: str,
@@ -51,7 +51,7 @@ def models_endpoint_s3_secret(
     with s3_endpoint_secret(
         client=unprivileged_client,
         name="models-bucket-secret",
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         aws_access_key=aws_access_key_id,
         aws_secret_access_key=aws_secret_access_key,
         aws_s3_region=models_s3_bucket_region,
@@ -79,12 +79,12 @@ def model_service_account(
 def serving_runtime_from_template(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
     runtime_kwargs = {
         "client": unprivileged_client,
         "name": request.param["name"],
-        "namespace": unprivileged_model_namespace.name,
+        "namespace": model_namespace.name,
         "template_name": request.param["template-name"],
         "multi_model": request.param["multi-model"],
         "models_priorities": request.param.get("models-priorities"),
@@ -105,14 +105,14 @@ def serving_runtime_from_template(
 def s3_models_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     serving_runtime_from_template: ServingRuntime,
     models_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     isvc_kwargs = {
         "client": unprivileged_client,
         "name": request.param["name"],
-        "namespace": unprivileged_model_namespace.name,
+        "namespace": model_namespace.name,
         "runtime": serving_runtime_from_template.name,
         "model_format": serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
         "deployment_mode": request.param["deployment-mode"],
@@ -157,12 +157,12 @@ def s3_models_inference_service_patched_annotations(
 def model_pvc(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
 ) -> Generator[PersistentVolumeClaim, Any, Any]:
     access_mode = "ReadWriteOnce"
     pvc_kwargs = {
         "name": "model-pvc",
-        "namespace": unprivileged_model_namespace.name,
+        "namespace": model_namespace.name,
         "client": unprivileged_client,
         "size": request.param["pvc-size"],
     }
@@ -189,7 +189,7 @@ def skip_if_no_nfs_storage_class(admin_client: DynamicClient) -> None:
 def http_s3_openvino_model_mesh_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     http_s3_ovms_model_mesh_serving_runtime: ServingRuntime,
     ci_endpoint_s3_secret: Secret,
     ci_service_account: ServiceAccount,
@@ -197,7 +197,7 @@ def http_s3_openvino_model_mesh_inference_service(
     with create_isvc(
         client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelFormat.OPENVINO}",
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         runtime=http_s3_ovms_model_mesh_serving_runtime.name,
         model_service_account=ci_service_account.name,
         storage_key=ci_endpoint_s3_secret.name,
@@ -213,11 +213,11 @@ def http_s3_openvino_model_mesh_inference_service(
 def http_s3_ovms_model_mesh_serving_runtime(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
     runtime_kwargs = {
         "client": unprivileged_client,
-        "namespace": unprivileged_model_namespace.name,
+        "namespace": model_namespace.name,
         "name": f"{Protocols.HTTP}-{ModelInferenceRuntime.OPENVINO_RUNTIME}",
         "template_name": RuntimeTemplates.OVMS_MODEL_MESH,
         "multi_model": True,
@@ -253,11 +253,11 @@ def http_s3_ovms_model_mesh_serving_runtime(
 def ovms_kserve_serving_runtime(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
     runtime_kwargs = {
         "client": unprivileged_client,
-        "namespace": unprivileged_model_namespace.name,
+        "namespace": model_namespace.name,
         "name": request.param["runtime-name"],
         "template_name": RuntimeTemplates.OVMS_KSERVE,
         "multi_model": False,
@@ -285,7 +285,7 @@ def ovms_kserve_serving_runtime(
 @pytest.fixture(scope="class")
 def ci_endpoint_s3_secret(
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     aws_access_key_id: str,
     aws_secret_access_key: str,
     ci_s3_bucket_name: str,
@@ -295,7 +295,7 @@ def ci_endpoint_s3_secret(
     with s3_endpoint_secret(
         client=unprivileged_client,
         name="ci-bucket-secret",
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         aws_access_key=aws_access_key_id,
         aws_secret_access_key=aws_secret_access_key,
         aws_s3_region=ci_s3_bucket_region,
@@ -322,7 +322,7 @@ def ci_service_account(
 def ovms_kserve_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     ovms_kserve_serving_runtime: ServingRuntime,
     ci_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
@@ -330,7 +330,7 @@ def ovms_kserve_inference_service(
     isvc_kwargs = {
         "client": unprivileged_client,
         "name": f"{request.param['name']}-{deployment_mode.lower()}",
-        "namespace": unprivileged_model_namespace.name,
+        "namespace": model_namespace.name,
         "runtime": ovms_kserve_serving_runtime.name,
         "storage_path": request.param["model-dir"],
         "storage_key": ci_endpoint_s3_secret.name,
@@ -366,14 +366,14 @@ def ovms_kserve_inference_service(
 def ovms_raw_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     ovms_kserve_serving_runtime: ServingRuntime,
     ci_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=unprivileged_client,
         name=f"{request.param['name']}-raw",
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         external_route=True,
         runtime=ovms_kserve_serving_runtime.name,
         storage_path=request.param["model-dir"],
@@ -390,7 +390,7 @@ def ovms_raw_inference_service(
 def http_s3_tensorflow_model_mesh_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     http_s3_ovms_model_mesh_serving_runtime: ServingRuntime,
     ci_endpoint_s3_secret: Secret,
     ci_service_account: ServiceAccount,
@@ -398,7 +398,7 @@ def http_s3_tensorflow_model_mesh_inference_service(
     with create_isvc(
         client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelFormat.TENSORFLOW}",
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         runtime=http_s3_ovms_model_mesh_serving_runtime.name,
         model_service_account=ci_service_account.name,
         storage_key=ci_endpoint_s3_secret.name,
@@ -443,11 +443,11 @@ def user_workload_monitoring_config_map(
 def http_s3_ovms_external_route_model_mesh_serving_runtime(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
     runtime_kwargs = {
         "client": unprivileged_client,
-        "namespace": unprivileged_model_namespace.name,
+        "namespace": model_namespace.name,
         "name": f"{Protocols.HTTP}-{ModelInferenceRuntime.OPENVINO_RUNTIME}-exposed",
         "template_name": RuntimeTemplates.OVMS_MODEL_MESH,
         "multi_model": True,
@@ -472,7 +472,7 @@ def http_s3_ovms_external_route_model_mesh_serving_runtime(
 def http_s3_openvino_second_model_mesh_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     ci_endpoint_s3_secret: Secret,
     ci_service_account: ServiceAccount,
 ) -> Generator[InferenceService, Any, Any]:
@@ -481,7 +481,7 @@ def http_s3_openvino_second_model_mesh_inference_service(
     with create_isvc(
         client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelFormat.OPENVINO}-2",
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         runtime=runtime.name,
         model_service_account=ci_service_account.name,
         storage_key=ci_endpoint_s3_secret.name,
@@ -497,14 +497,14 @@ def http_s3_openvino_second_model_mesh_inference_service(
 def unprivileged_s3_caikit_raw_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     unprivileged_s3_caikit_serving_runtime: ServingRuntime,
     unprivileged_models_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelFormat.CAIKIT}-raw",
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         runtime=unprivileged_s3_caikit_serving_runtime.name,
         model_format=unprivileged_s3_caikit_serving_runtime.instance.spec.supportedModelFormats[0].name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
@@ -518,13 +518,13 @@ def unprivileged_s3_caikit_raw_inference_service(
 def unprivileged_s3_caikit_serving_runtime(
     admin_client: DynamicClient,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
     with ServingRuntimeFromTemplate(
         client=admin_client,
         unprivileged_client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME}",
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         template_name=RuntimeTemplates.CAIKIT_TGIS_SERVING,
         multi_model=False,
         enable_http=True,
@@ -536,7 +536,7 @@ def unprivileged_s3_caikit_serving_runtime(
 @pytest.fixture(scope="class")
 def unprivileged_models_endpoint_s3_secret(
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     aws_access_key_id: str,
     aws_secret_access_key: str,
     models_s3_bucket_name: str,
@@ -546,7 +546,7 @@ def unprivileged_models_endpoint_s3_secret(
     with s3_endpoint_secret(
         client=unprivileged_client,
         name="models-bucket-secret",
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         aws_access_key=aws_access_key_id,
         aws_secret_access_key=aws_secret_access_key,
         aws_s3_region=models_s3_bucket_region,
@@ -560,14 +560,14 @@ def unprivileged_models_endpoint_s3_secret(
 def unprivileged_s3_caikit_serverless_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     unprivileged_s3_caikit_serving_runtime: ServingRuntime,
     unprivileged_models_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelFormat.CAIKIT}",
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         runtime=unprivileged_s3_caikit_serving_runtime.name,
         model_format=unprivileged_s3_caikit_serving_runtime.instance.spec.supportedModelFormats[0].name,
         deployment_mode=KServeDeploymentType.SERVERLESS,

@@ -19,14 +19,14 @@ from utilities.minio import create_minio_data_connection_secret
 def kserve_ovms_minio_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     unprivileged_minio_data_connection: Secret,
     ovms_kserve_serving_runtime: ServingRuntime,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=unprivileged_client,
         name=request.param["name"],
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         deployment_mode=request.param["deployment-mode"],
         model_format=request.param["model-format"],
         runtime=ovms_kserve_serving_runtime.name,
@@ -57,13 +57,13 @@ def model_mesh_ovms_minio_inference_service(
     unprivileged_client: DynamicClient,
     unprivileged_minio_data_connection: Secret,
     minio_service_account: ServiceAccount,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     http_s3_ovms_model_mesh_serving_runtime: ServingRuntime,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=unprivileged_client,
         name=request.param["name"],
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         runtime=http_s3_ovms_model_mesh_serving_runtime.name,
         model_service_account=minio_service_account.name,
         storage_key=unprivileged_minio_data_connection.name,
@@ -79,12 +79,12 @@ def model_mesh_ovms_minio_inference_service(
 def unprivileged_minio_data_connection(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     minio_service: Service,
 ) -> Generator[Secret, Any, Any]:
     with create_minio_data_connection_secret(
         minio_service=minio_service,
-        model_namespace=unprivileged_model_namespace.name,
+        model_namespace=model_namespace.name,
         aws_s3_bucket=request.param["bucket"],
         client=unprivileged_client,
     ) as secret:

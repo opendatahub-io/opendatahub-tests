@@ -15,7 +15,7 @@ pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("skip_if_no_nfs_st
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, ci_bucket_downloaded_model_data, model_pvc, serving_runtime_from_template, "
+    "model_namespace, ci_bucket_downloaded_model_data, model_pvc, serving_runtime_from_template, "
     "pvc_inference_service",
     [
         pytest.param(

@@ -14,7 +14,7 @@ pytestmark = [pytest.mark.rawdeployment, pytest.mark.minio, pytest.mark.sanity]
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, minio_pod, unprivileged_minio_data_connection, ovms_kserve_serving_runtime, "
+    "model_namespace, minio_pod, unprivileged_minio_data_connection, ovms_kserve_serving_runtime, "
     "kserve_ovms_minio_inference_service",
     [
         pytest.param(

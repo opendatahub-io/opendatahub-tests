@@ -58,14 +58,14 @@ def patched_default_deployment_mode_in_dsc(
 def ovms_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
+    model_namespace: Namespace,
     ovms_kserve_serving_runtime: ServingRuntime,
     ci_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=unprivileged_client,
         name=request.param["name"],
-        namespace=unprivileged_model_namespace.name,
+        namespace=model_namespace.name,
         runtime=ovms_kserve_serving_runtime.name,
         storage_path=request.param["model-dir"],
         storage_key=ci_endpoint_s3_secret.name,

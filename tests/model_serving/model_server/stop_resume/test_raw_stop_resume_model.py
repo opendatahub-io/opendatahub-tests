@@ -17,7 +17,7 @@ pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config"
 @pytest.mark.rawdeployment
 @pytest.mark.smoke
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_raw_inference_service",
+    "model_namespace, ovms_kserve_serving_runtime, ovms_raw_inference_service",
     [
         pytest.param(
             {"name": "kserve-raw-stop-resume"},
@@ -34,7 +34,7 @@ pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config"
 )
 class TestStopRaw:
     def test_raw_onnx_rest_inference(
-        self, unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_raw_inference_service
+        self, model_namespace, ovms_kserve_serving_runtime, ovms_raw_inference_service
     ):
         """Verify that kserve Raw ONNX model can be queried using REST"""
         verify_inference_response(
@@ -53,7 +53,7 @@ class TestStopRaw:
     def test_stop_and_update_to_true_delete_pod_rollout(
         self,
         unprivileged_client,
-        unprivileged_model_namespace,
+        model_namespace,
         ovms_kserve_serving_runtime,
         ovms_raw_inference_service,
         patched_raw_inference_service_stop_annotation,
@@ -70,7 +70,7 @@ class TestStopRaw:
 @pytest.mark.rawdeployment
 @pytest.mark.smoke
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_raw_inference_service",
+    "model_namespace, ovms_kserve_serving_runtime, ovms_raw_inference_service",
     [
         pytest.param(
             {"name": "kserve-raw-stop-resume"},
@@ -89,7 +89,7 @@ class TestStoppedResumeRaw:
     def test_stop_and_true_no_pod_rollout(
         self,
         unprivileged_client,
-        unprivileged_model_namespace,
+        model_namespace,
         ovms_kserve_serving_runtime,
         ovms_raw_inference_service,
     ):
@@ -109,7 +109,7 @@ class TestStoppedResumeRaw:
     def test_stop_and_update_to_false_pod_rollout(
         self,
         unprivileged_client,
-        unprivileged_model_namespace,
+        model_namespace,
         ovms_kserve_serving_runtime,
         ovms_raw_inference_service,
         patched_raw_inference_service_stop_annotation,

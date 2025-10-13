@@ -37,7 +37,7 @@ pytestmark = [pytest.mark.keda, pytest.mark.usefixtures("valid_aws_config")]
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, ovms_kserve_serving_runtime, stressed_ovms_keda_inference_service",
+    "model_namespace, ovms_kserve_serving_runtime, stressed_ovms_keda_inference_service",
     [
         pytest.param(
             {"name": OVMS_MODEL_NAMESPACE},
@@ -64,7 +64,7 @@ class TestOVMSKedaScaling:
 
     def test_ovms_keda_scaling_verify_scaledobject(
         self,
-        unprivileged_model_namespace: Namespace,
+        model_namespace: Namespace,
         unprivileged_client: DynamicClient,
         ovms_kserve_serving_runtime,
         stressed_ovms_keda_inference_service: Generator[InferenceService, Any, Any],
@@ -116,7 +116,7 @@ class TestOVMSKedaScaling:
 
     def test_ovms_keda_scaling_verify_metrics(
         self,
-        unprivileged_model_namespace: Namespace,
+        model_namespace: Namespace,
         unprivileged_client: DynamicClient,
         ovms_kserve_serving_runtime,
         stressed_ovms_keda_inference_service: Generator[InferenceService, Any, Any],
@@ -133,7 +133,7 @@ class TestOVMSKedaScaling:
 
     def test_ovms_keda_scaling_verify_final_pod_count(
         self,
-        unprivileged_model_namespace: Namespace,
+        model_namespace: Namespace,
         unprivileged_client: DynamicClient,
         ovms_kserve_serving_runtime,
         stressed_ovms_keda_inference_service: Generator[InferenceService, Any, Any],

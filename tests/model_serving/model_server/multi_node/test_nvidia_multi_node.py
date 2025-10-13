@@ -31,7 +31,7 @@ MAX_NUM_BATCHED_TOKENS_ARG: str = "--max-num-batched-tokens=256"
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, models_bucket_downloaded_model_data, model_pvc, multi_node_inference_service",
+    "model_namespace, models_bucket_downloaded_model_data, model_pvc, multi_node_inference_service",
     [
         pytest.param(
             {"name": "gpu-multi-node"},

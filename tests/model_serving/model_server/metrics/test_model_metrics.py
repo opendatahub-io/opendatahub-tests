@@ -25,7 +25,7 @@ pytestmark = [
 
 @pytest.mark.serverless
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, serving_runtime_from_template, s3_models_inference_service",
+    "model_namespace, serving_runtime_from_template, s3_models_inference_service",
     [
         pytest.param(
             {"name": "test-kserve-tgis-metrics"},
