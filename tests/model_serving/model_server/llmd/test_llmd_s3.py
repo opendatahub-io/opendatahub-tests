@@ -7,7 +7,7 @@ from tests.model_serving.model_server.llmd.utils import (
 )
 from utilities.constants import Protocols
 from utilities.llmd_utils import verify_inference_response_llmd
-from utilities.manifests.tinyllama_oci import TINYLLAMA_OCI_INFERENCE_CONFIG
+from utilities.manifests.tinyllama import TINYLLAMA_INFERENCE_CONFIG
 
 pytestmark = [
     pytest.mark.llmd_cpu,
@@ -16,7 +16,13 @@ pytestmark = [
 
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, llmd_inference_service_s3",
-    [({"name": "llmd-s3-test"}, {})],
+    [
+        pytest.param(
+            {"name": "llmd-s3-test"}, 
+            {"name_suffix": "s3"}, 
+            id="s3-cpu-basic"
+        )
+    ],
     indirect=True,
 )
 @pytest.mark.usefixtures("valid_aws_config")
@@ -30,7 +36,7 @@ class TestLLMDS3Inference:
 
         verify_inference_response_llmd(
             llm_service=llmd_inference_service_s3,
-            inference_config=TINYLLAMA_OCI_INFERENCE_CONFIG,
+            inference_config=TINYLLAMA_INFERENCE_CONFIG,
             inference_type="chat_completions",
             protocol=Protocols.HTTP,
             use_default_query=True,
