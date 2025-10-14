@@ -1,10 +1,8 @@
 import os
-import tempfile
 from typing import Generator, Any, Dict
 
 import portforward
 import pytest
-import requests
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from llama_stack_client import LlamaStackClient
@@ -14,14 +12,15 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.llama_stack_distribution import LlamaStackDistribution
 from ocp_resources.namespace import Namespace
 from simple_logger.logger import get_logger
-from timeout_sampler import retry
 from utilities.general import generate_random_name
 
 
 from tests.llama_stack.utils import create_llama_stack_distribution, wait_for_llama_stack_client_ready
 from utilities.constants import DscComponents, Timeout
 from utilities.data_science_cluster_utils import update_components_in_dsc
-from utilities.rag_utils import ModelInfo
+from tests.llama_stack.constants import (
+    ModelInfo,
+)
 
 
 LOGGER = get_logger(name=__name__)
@@ -143,7 +142,8 @@ def _get_llama_stack_distribution_deployment(
     llama_stack_distribution: LlamaStackDistribution,
 ) -> Generator[Deployment, Any, Any]:
     """
-    Gets the Deployment resource for a given LLamaStackDistribution.
+    Returns the Deployment resource for a given LlamaStackDistribution.
+    Note: The deployment is created by the operator; this function retrieves it.
 
     Args:
         client (DynamicClient): Kubernetes client
@@ -259,7 +259,7 @@ def llama_stack_client(
 
 
 @pytest.fixture(scope="class")
-def llama_stack_models(llama_stack_client: LlamaStackClient) -> ModelInfo:
+def llama_stack_models(unprivileged_llama_stack_client: LlamaStackClient) -> ModelInfo:
     """
     Returns model information from the LlamaStack client.
 
@@ -269,12 +269,12 @@ def llama_stack_models(llama_stack_client: LlamaStackClient) -> ModelInfo:
         - embedding_dimension: The dimension of the embedding model
 
     Args:
-        llama_stack_client: The configured LlamaStackClient
+        unprivileged_llama_stack_client: The configured LlamaStackClient
 
     Returns:
         ModelInfo: NamedTuple containing model information
     """
-    models = llama_stack_client.models.list()
+    models = unprivileged_llama_stack_client.models.list()
     model_id = next(m for m in models if m.api_model_type == "llm").identifier
 
     embedding_model = next(m for m in models if m.api_model_type == "embedding")
@@ -285,7 +285,7 @@ def llama_stack_models(llama_stack_client: LlamaStackClient) -> ModelInfo:
 
 @pytest.fixture(scope="class")
 def vector_store(
-    llama_stack_client: LlamaStackClient, llama_stack_models: ModelInfo
+    unprivileged_llama_stack_client: LlamaStackClient, llama_stack_models: ModelInfo
 ) -> Generator[VectorStore, None, None]:
     """
     Creates a vector store for testing and automatically cleans it up.
@@ -301,94 +301,16 @@ def vector_store(
         Vector store object that can be used in tests
     """
     # Setup
-    vector_store = llama_stack_client.vector_stores.create(
+    vector_store = unprivileged_llama_stack_client.vector_stores.create(
         name="test_vector_store",
-        embedding_model=llama_stack_models.embedding_model.identifier,  # type: ignore
+        embedding_model=llama_stack_models.embedding_model.identifier,
         embedding_dimension=llama_stack_models.embedding_dimension,
     )
 
     yield vector_store
 
     try:
-        llama_stack_client.vector_stores.delete(vector_store_id=vector_store.id)
+        unprivileged_llama_stack_client.vector_stores.delete(vector_store_id=vector_store.id)
         LOGGER.info(f"Deleted vector store {vector_store.id}")
     except Exception as e:
         LOGGER.warning(f"Failed to delete vector store {vector_store.id}: {e}")
-
-
-@retry(
-    wait_timeout=Timeout.TIMEOUT_1MIN,
-    sleep=5,
-    exceptions_dict={requests.exceptions.RequestException: [], Exception: []},
-)
-def _download_and_upload_file(url: str, llama_stack_client: LlamaStackClient, vector_store: Any) -> bool:
-    """
-    Downloads a file from URL and uploads it to the vector store.
-
-    Args:
-        url: The URL to download the file from
-        llama_stack_client: The configured LlamaStackClient
-        vector_store: The vector store to upload the file to
-
-    Returns:
-        bool: True if successful, raises exception if failed
-    """
-    try:
-        response = requests.get(url, timeout=30)
-        response.raise_for_status()
-
-        # Save file locally first and pretend it's a txt file, not sure why this is needed
-        # but it works locally without it,
-        # though llama stack version is the newer one.
-        file_name = url.split("/")[-1]
-        local_file_name = file_name.replace(".rst", ".txt")
-        with tempfile.NamedTemporaryFile(mode="wb", suffix=f"_{local_file_name}") as temp_file:
-            temp_file.write(response.content)
-            temp_file_path = temp_file.name
-
-            # Upload saved file to LlamaStack
-            with open(temp_file_path, "rb") as file_to_upload:
-                uploaded_file = llama_stack_client.files.create(file=file_to_upload, purpose="assistants")
-
-            # Add file to vector store
-            llama_stack_client.vector_stores.files.create(vector_store_id=vector_store.id, file_id=uploaded_file.id)
-
-        return True
-
-    except (requests.exceptions.RequestException, Exception) as e:
-        LOGGER.warning(f"Failed to download and upload file {url}: {e}")
-        raise
-
-
-@pytest.fixture(scope="class")
-def vector_store_with_docs(llama_stack_client: LlamaStackClient, vector_store: Any) -> Generator[Any, None, None]:
-    """
-    Creates a vector store with TorchTune documentation files uploaded.
-
-    This fixture depends on the vector_store fixture and uploads the TorchTune
-    documentation files to the vector store for testing purposes. The files
-    are automatically cleaned up after the test completes.
-
-    Args:
-        llama_stack_client: The configured LlamaStackClient
-        vector_store: The vector store fixture to upload files to
-
-    Yields:
-        Vector store object with uploaded TorchTune documentation files
-    """
-    # Download TorchTune documentation files
-    urls = [
-        "llama3.rst",
-        "chat.rst",
-        "lora_finetune.rst",
-        "qat_finetune.rst",
-        "memory_optimizations.rst",
-    ]
-
-    base_url = "https://raw.githubusercontent.com/pytorch/torchtune/refs/tags/v0.6.1/docs/source/tutorials/"
-
-    for file_name in urls:
-        url = f"{base_url}{file_name}"
-        _download_and_upload_file(url=url, llama_stack_client=llama_stack_client, vector_store=vector_store)
-
-    yield vector_store
