@@ -295,6 +295,7 @@ class ModelStorage:
 
     class HuggingFace:
         TINYLLAMA: str = "hf://TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+        OPT125M: str = "hf://facebook/opt-125m"
 
 
 class OCIRegistry:
