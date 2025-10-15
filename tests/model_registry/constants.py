@@ -65,3 +65,4 @@ PORT_MAP = {
 }
 MODEL_REGISTRY_POD_FILTER: str = "component=model-registry"
 DEFAULT_CUSTOM_MODEL_CATALOG: str = "model-catalog-sources"
+DEFAULT_MODEL_CATALOG_CFG: str = "model-catalog-default-sources"
