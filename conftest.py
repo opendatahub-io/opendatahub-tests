@@ -293,7 +293,9 @@ def pytest_sessionstart(session: Session) -> None:
     if config.getoption("--collect-only") or config.getoption("--setup-plan"):
         LOGGER.info("Skipping global config update for collect-only or setup-plan")
         return
-    updated_global_config(admin_client=get_client(), config=config)
+    from typing import cast
+
+    updated_global_config(admin_client=cast(DynamicClient, get_client()), config=config)
 
 
 def updated_global_config(admin_client: DynamicClient, config: Config) -> None:
@@ -359,16 +361,16 @@ def pytest_runtest_setup(item: Item) -> None:
             LOGGER.error(f"Database error: {db_exception}. Must-gather collection may not be accurate")
 
     if KServeDeploymentType.SERVERLESS.lower() in item.keywords:
-        item.fixturenames.insert(0, "fail_if_missing_dependent_operators")
+        item.fixturenames.insert(0, "fail_if_missing_dependent_operators")  # type: ignore[attr-defined]
 
     if KServeDeploymentType.SERVERLESS.lower() in item.keywords:
-        item.fixturenames.insert(0, "enabled_kserve_in_dsc")
+        item.fixturenames.insert(0, "enabled_kserve_in_dsc")  # type: ignore[attr-defined]
 
     elif KServeDeploymentType.RAW_DEPLOYMENT.lower() in item.keywords:
-        item.fixturenames.insert(0, "enabled_kserve_in_dsc")
+        item.fixturenames.insert(0, "enabled_kserve_in_dsc")  # type: ignore[attr-defined]
 
     elif KServeDeploymentType.MODEL_MESH.lower() in item.keywords:
-        item.fixturenames.insert(0, "enabled_modelmesh_in_dsc")
+        item.fixturenames.insert(0, "enabled_modelmesh_in_dsc")  # type: ignore[attr-defined]
 
 
 def pytest_runtest_call(item: Item) -> None:

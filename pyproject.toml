@@ -8,15 +8,10 @@ extend-exclude = ["utilities/manifests"]
 [tool.ruff.format]
 exclude = [".git", ".venv", ".mypy_cache", ".tox", "__pycache__", "utilities/manifests"]
 
-[tool.mypy]
-check_untyped_defs = true
-disallow_any_generics = true
-disallow_incomplete_defs = true
-disallow_untyped_defs = true
-no_implicit_optional = true
-show_error_codes = true
-warn_unused_ignores = true
+[tool.pyrefly]
 ignore_missing_imports = true
+permissive-ignores = true
+untyped-def-behavior = "check-and-infer-return-type"
 
 [tool.uv.sources]
 
@@ -72,6 +67,7 @@ dependencies = [
     "llama_stack_client==0.2.23",
     "pytest-xdist==3.8.0",
     "dictdiffer>=0.9.0",
+    "pyrefly>=0.37.0",
 ]
 
 [project.urls]
