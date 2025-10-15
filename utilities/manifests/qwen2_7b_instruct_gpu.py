@@ -1,7 +1,9 @@
-OPT125M_CPU_INFERENCE_CONFIG = {
+"""Inference configuration for Qwen2.5-7B-Instruct GPU model."""
+
+QWEN2_7B_INSTRUCT_GPU_INFERENCE_CONFIG = {
     "default_query_model": {
-        "query_input": "What is the boiling point of water?",
-        "query_output": r'.*',
+        "query_input": "What is the capital of France?",
+        "query_output": r'.*[Pp][Aa][Rr][Ii][Ss].*',
         "use_regex": True,
     },
     "chat_completions": {

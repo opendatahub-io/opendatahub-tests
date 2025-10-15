@@ -42,6 +42,16 @@ def catalog_config_map(admin_client: DynamicClient, model_registry_namespace: st
 
 
 @pytest.fixture(scope="class")
+def model_catalog_config_map(
+    request: pytest.FixtureRequest, admin_client: DynamicClient, model_registry_namespace: str
+) -> ConfigMap:
+    """Parameterized fixture that takes a dict with configmap_name key and ensures it exists"""
+    param = getattr(request, "param", {})
+    configmap_name = param.get("configmap_name", "model-catalog-default-sources")
+    return ConfigMap(name=configmap_name, client=admin_client, namespace=model_registry_namespace, ensure_exists=True)
+
+
+@pytest.fixture(scope="class")
 def model_catalog_routes(admin_client: DynamicClient, model_registry_namespace: str) -> list[Route]:
     return list(
         Route.get(namespace=model_registry_namespace, label_selector="component=model-catalog", dyn_client=admin_client)

@@ -18,13 +18,13 @@ show_error_codes = true
 warn_unused_ignores = true
 ignore_missing_imports = true
 
-[tool.uv]
-dev-dependencies = [
+[tool.uv.sources]
+
+[dependency-groups]
+dev = [
     "ipdb>=0.13.13",
     "ipython>=8.12.3",
 ]
-
-[tool.uv.sources]
 
 [project]
 requires-python = "==3.13.*"

@@ -6,7 +6,9 @@ from ocp_resources.namespace import Namespace
 
 from simple_logger.logger import get_logger
 from pytest_testconfig import config as py_config
+from kubernetes.dynamic import DynamicClient
 
+from utilities.general import wait_for_pods_running
 
 LOGGER = get_logger(name=__name__)
 
@@ -37,3 +39,9 @@ class TestMrDefault:
                 break
         else:
             pytest.fail("MR ready condition not found in DSC")
+
+    @pytest.mark.cluster_health
+    def test_mr_pods_health(self, admin_client: DynamicClient):
+        namespace = py_config["model_registry_namespace"]
+        LOGGER.info(f"Testing Pods in namespace {namespace} for cluster health")
+        wait_for_pods_running(admin_client=admin_client, namespace_name=namespace)
