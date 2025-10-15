@@ -1,5 +1,7 @@
 from typing import Generator, Any, Callable, Dict
 import pytest
+import os
+import secrets
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from utilities.constants import Timeout
@@ -10,8 +12,12 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
 from ocp_resources.service import Service
 
-# TODO: host this image in a non-personal quay repo
-MILVUS_IMAGE = "quay.io/mcampbel/milvus@sha256:7d23d1cc78f3243ef3357e108373dc9b277f107a71a1990af065188ac48c6146"
+
+MILVUS_IMAGE = os.getenv(
+    "LLS_VECTOR_IO_MILVUS_IMAGE",
+    "docker.io/milvusdb/milvus@sha256:3d772c3eae3a6107b778636cea5715b9353360b92e5dcfdcaf4ca7022f4f497c",  # Milvus 2.6.3
+)
+MILVUS_TOKEN = os.getenv("LLS_VECTOR_IO_MILVUS_TOKEN", secrets.token_urlsafe(32))
 
 
 @pytest.fixture(scope="class")
@@ -58,7 +64,7 @@ def vector_io_provider_deployment_factory(
         elif provider_name == "milvus-remote":
             request.getfixturevalue(argname="milvus_service")
             env_vars.append({"name": "MILVUS_ENDPOINT", "value": "http://vector-io-milvus-service:19530"})
-            env_vars.append({"name": "MILVUS_TOKEN", "value": "root:Milvus"})
+            env_vars.append({"name": "MILVUS_TOKEN", "value": MILVUS_TOKEN})
             env_vars.append({"name": "MILVUS_CONSISTENCY_LEVEL", "value": "Bounded"})
 
         return env_vars
@@ -160,7 +166,7 @@ def get_milvus_deployment_template() -> Dict[str, Any]:
             "containers": [
                 {
                     "name": "milvus-standalone",
-                    "image": MILVUS_IMAGE,  # TODO: Replace this image
+                    "image": MILVUS_IMAGE,
                     "args": ["milvus", "run", "standalone"],
                     "ports": [{"containerPort": 19530, "protocol": "TCP"}],
                     "volumeMounts": [

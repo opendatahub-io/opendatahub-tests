@@ -127,7 +127,7 @@ def llama_stack_server_config(
     env_vars.append({"name": "FMS_ORCHESTRATOR_URL", "value": fms_orchestrator_url})
 
     # Depending on parameter vector_io_provider, deploy vector_io provider and obtain required env_vars
-    vector_io_provider = str(params.get("vector_io_provider"))
+    vector_io_provider = params.get("vector_io_provider") or "milvus"
     env_vars_vector_io = vector_io_provider_deployment_factory(provider_name=vector_io_provider)
     env_vars.extend(env_vars_vector_io)
 

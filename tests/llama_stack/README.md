@@ -40,10 +40,12 @@ def test_vector_stores_functionality():
 
 LlamaStack tests require setting the following environment variables (for example in a .env file at the root folder):
 ```bash
-OC_BINARY_PATH=/usr/local/sbin/oc
+OC_BINARY_PATH=/usr/local/sbin/oc   # Optional
 LLS_CORE_VLLM_URL=<LLAMA-3.2-3b-ENDPOINT>/v1  (ends with /v1)
 LLS_CORE_INFERENCE_MODEL=<LLAMA-3.2-3b-MODEL_NAME>
 LLS_CORE_VLLM_API_TOKEN=<LLAMA-3.2-3b-TOKEN>
+LLS_VECTOR_IO_MILVUS_IMAGE=<CUSTOM-MILVUS-IMAGE>  # Optional
+LLS_VECTOR_IO_MILVUS_TOKEN=<CUSTOM-MILVUS-TOKEN>  # Optional
 ```
 
 ### Run All Llama Stack Tests
