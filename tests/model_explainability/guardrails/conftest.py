@@ -214,7 +214,8 @@ def tempo_stack(
 
     # Find the TempoStack kind example
     tempo_stack_dict: dict[str, Any] = next(
-        example for example in alm_examples
+        example
+        for example in alm_examples
         if example["kind"] == "TempoStack" and example["apiVersion"].startswith("tempo.grafana.com/")
     )
 
@@ -320,7 +321,8 @@ def otel_collector(
     # Extract OpenTelemetryCollector CR example from ALM examples
     alm_examples: list[dict[str, Any]] = otel_csv.get_alm_examples()
     otel_cr_dict: dict[str, Any] = next(
-        example for example in alm_examples
+        example
+        for example in alm_examples
         if example["kind"] == "OpenTelemetryCollector" and example["apiVersion"] == "opentelemetry.io/v1beta1"
     )
 
