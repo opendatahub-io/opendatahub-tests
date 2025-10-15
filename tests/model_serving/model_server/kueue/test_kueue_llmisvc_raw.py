@@ -93,10 +93,8 @@ class TestKueueLLMDScaleUp:
         # The llmd_inference_service is already created by the fixture with 1 replica.
         # Wait for the service and its single pod to become ready.
         assert verify_gateway_status(llmd_gateway), "Gateway should be ready"
-        assert verify_llm_service_status(
-            llmd_inference_service, timeout=600
-        ), "LLMInferenceService should be ready"
-        
+        assert verify_llm_service_status(llmd_inference_service, timeout=600), "LLMInferenceService should be ready"
+
         selector_labels = [f"app.kubernetes.io/name={llmd_inference_service.name}"]
         deployments = list(
             Deployment.get(
@@ -131,7 +129,7 @@ class TestKueueLLMDScaleUp:
                 break
 
         # Verify that Kueue correctly gates the second pod.
-        
+
         try:
             for running_pods, gated_pods in TimeoutSampler(
                 wait_timeout=120,
@@ -140,10 +138,7 @@ class TestKueueLLMDScaleUp:
                     selector_labels, unprivileged_model_namespace.name, unprivileged_client
                 ),
             ):
-                if (
-                    running_pods == EXPECTED_RUNNING_PODS
-                    and gated_pods == EXPECTED_GATED_PODS
-                ):
+                if running_pods == EXPECTED_RUNNING_PODS and gated_pods == EXPECTED_GATED_PODS:
                     break
         except TimeoutExpiredError:
             running_pods, gated_pods = check_gated_pods_and_running_pods(

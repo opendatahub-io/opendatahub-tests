@@ -3,7 +3,6 @@ from typing import Generator
 import pytest
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.gateway import Gateway
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
@@ -11,9 +10,8 @@ from ocp_resources.service_account import ServiceAccount
 
 from utilities.constants import Timeout, ResourceLimits
 from utilities.infra import s3_endpoint_secret
-from utilities.llmd_utils import create_llmd_gateway, create_llmisvc
+from utilities.llmd_utils import create_llmisvc
 from utilities.llmd_constants import (
-    LLMDGateway,
     ModelStorage,
     ContainerImages,
     ModelNames,
@@ -55,6 +53,7 @@ def llmd_s3_service_account(
         secrets=[{"name": llmd_s3_secret.name}],
     ) as sa:
         yield sa
+
 
 @pytest.fixture(scope="class")
 def llmd_inference_service_s3(

@@ -36,8 +36,6 @@ from utilities.llmd_constants import (
     LLMDGateway,
     ModelStorage,
     ContainerImages,
-    ModelNames,
-    LLMDDefaults,
 )
 from utilities.infra import (
     s3_endpoint_secret,
@@ -90,16 +88,18 @@ def llmd_inference_service(
     with create_llmisvc(**create_kwargs) as llm_service:
         yield llm_service
 
+
 @pytest.fixture(scope="session")
 def gateway_namespace(admin_client: DynamicClient) -> str:
     return LLMDGateway.DEFAULT_NAMESPACE
+
 
 @pytest.fixture(scope="session")
 def shared_llmd_gateway(
     admin_client: DynamicClient,
     gateway_namespace: str,
 ) -> Generator[Gateway, None, None]:
-    gateway_class_name = "openshift-default"#"data-science-gateway-class"
+    gateway_class_name = "openshift-default"  # "data-science-gateway-class"
 
     with create_llmd_gateway(
         client=admin_client,
@@ -111,9 +111,11 @@ def shared_llmd_gateway(
     ) as gateway:
         yield gateway
 
+
 @pytest.fixture(scope="class")
 def llmd_gateway(shared_llmd_gateway: Gateway) -> Gateway:
     return shared_llmd_gateway
+
 
 @pytest.fixture(scope="class")
 def models_endpoint_s3_secret(
