@@ -25,10 +25,10 @@ CLUSTER_QUEUE_NAME = "llmd-cluster-queue-raw"
 RESOURCE_FLAVOR_NAME = "llmd-flavor-raw"
 
 # Set a quota sufficient for only ONE model to run
-CPU_QUOTA = "2"
-MEMORY_QUOTA = "6Gi"
+CPU_QUOTA = "3"
+MEMORY_QUOTA = "20Gi"
 LLMISVC_RESOURCES = {
-    "requests": {"cpu": "1", "memory": "4Gi"},
+    "requests": {"cpu": "2", "memory": "16Gi"},
     "limits": {"cpu": CPU_QUOTA, "memory": MEMORY_QUOTA},
 }
 
@@ -55,10 +55,9 @@ EXPECTED_GATED_PODS = 1
             {"name": NAMESPACE_NAME, "add-kueue-label": True},
             {
                 "name": "llmd-kueue-scaleup-test",
-                "min-replicas": MIN_REPLICAS,
-                "max-replicas": MAX_REPLICAS,
+                "replicas": MIN_REPLICAS,
                 "labels": {"kueue.x-k8s.io/queue-name": LOCAL_QUEUE_NAME},
-                "resources": LLMISVC_RESOURCES,
+                "container_resources": LLMISVC_RESOURCES,
             },
             {
                 "name": CLUSTER_QUEUE_NAME,
@@ -84,6 +83,8 @@ class TestKueueLLMDScaleUp:
         unprivileged_model_namespace,
         llmd_gateway,
         llmd_inference_service,
+        kueue_resource_flavor_from_template,
+        kueue_cluster_queue_from_template,
         kueue_local_queue_from_template,
     ):
         """
