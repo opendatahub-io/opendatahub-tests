@@ -31,7 +31,7 @@ from tests.model_serving.model_runtime.model_validation.constant import (
 )
 from tests.model_serving.model_runtime.model_validation.utils import safe_k8s_name, create_vllm_spyre_serving_runtime
 from tests.model_serving.model_runtime.vllm.utils import validate_supported_quantization_schema
-from utilities.constants import KServeDeploymentType, Labels, RuntimeTemplates, Protocols
+from utilities.constants import KServeDeploymentType, Labels, RuntimeTemplates
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -47,28 +47,14 @@ def model_car_serving_runtime(
     model_namespace: Namespace,
     supported_accelerator_type: str,
     vllm_runtime_image: str,
+    vllm_spyre_runtime_template: Template | None,
 ) -> Generator[ServingRuntime, None, None]:
     accelerator_type = supported_accelerator_type.lower()
-    if accelerator_type == Labels.Spyre.SPYRE_COM_GPU:
-        with create_vllm_spyre_template(
-            admin_client=admin_client, protocol=Protocols.REST, vllm_runtime_image=vllm_runtime_image
-        ) as template:
-            template_name = template.name
-            LOGGER.info(f"using template: {template_name}")
-            assert model_namespace.name is not None
-            with ServingRuntimeFromTemplate(
-                client=admin_client,
-                name=f"vllm-{request.param['deployment_type'].lower()}-runtime",
-                namespace=model_namespace.name,
-                template_name=template_name,
-                deployment_type=request.param["deployment_type"],
-                runtime_image=vllm_runtime_image,
-            ) as model_runtime:
-                yield model_runtime
-        return
-    else:
-        template_name = TEMPLATE_MAP.get(accelerator_type, RuntimeTemplates.VLLM_CUDA)
-        LOGGER.info(f"using template: {template_name}")
+    if accelerator_type == "spyre":
+        _ = vllm_spyre_runtime_template
+
+    template_name = TEMPLATE_MAP.get(accelerator_type, RuntimeTemplates.VLLM_CUDA)
+    LOGGER.info(f"using template: {template_name}")
     assert model_namespace.name is not None
     with ServingRuntimeFromTemplate(
         client=admin_client,
@@ -82,26 +68,41 @@ def model_car_serving_runtime(
 
 
 @contextmanager
-def create_vllm_spyre_template(
-    admin_client: DynamicClient, protocol: str, vllm_runtime_image: str
-) -> Generator[Template, Any, Any]:
+def create_vllm_spyre_template(admin_client: DynamicClient, vllm_runtime_image: str) -> Generator[Template, Any, Any]:
+    if not vllm_runtime_image:
+        raise ValueError("`vllm_runtime_image` must be provided when using the Spyre accelerator.")
+
     template_dict = {
         "apiVersion": "template.openshift.io/v1",
         "kind": "Template",
         "metadata": {
-            "name": f"vllm-{protocol}-spyre-runtime-template",
+            "name": "vllm-spyre-runtime-template",
             "namespace": py_config["applications_namespace"],
         },
-        "objects": [create_vllm_spyre_serving_runtime(protocol=protocol, vllm_runtime_image=vllm_runtime_image)],
+        "objects": [create_vllm_spyre_serving_runtime(vllm_runtime_image=vllm_runtime_image)],
         "parameters": [],
     }
 
     with Template(
         client=admin_client,
         namespace=py_config["applications_namespace"],
-        body=template_dict,
+        kind_dict=template_dict,
         wait_for_resource=True,
     ) as template:
+        yield template
+
+
+@pytest.fixture(scope="class")
+def vllm_spyre_runtime_template(
+    admin_client: DynamicClient,
+    supported_accelerator_type: str,
+    vllm_runtime_image: str,
+) -> Generator[Template, None, None]:
+    accelerator_type = supported_accelerator_type.lower()
+    if accelerator_type != "spyre":
+        yield None
+        return
+    with create_vllm_spyre_template(admin_client=admin_client, vllm_runtime_image=vllm_runtime_image) as template:
         yield template
 
 
@@ -136,6 +137,12 @@ def vllm_model_car_inference_service(
 
     if identifier == Labels.Spyre.SPYRE_COM_GPU:
         isvc_kwargs["scheduler_name"] = "spyre-scheduler"
+        resources["requests"] = {
+            "ibm.com/spyre_pf": gpu_count,
+        }
+        resources["limits"] = {
+            "ibm.com/spyre_pf": gpu_count,
+        }
 
     if timeout:
         isvc_kwargs["timeout"] = timeout
@@ -234,7 +241,7 @@ def build_serverless_params(
 ) -> tuple[Any, str]:
     test_id = f"{name}-serverless"
     param = pytest.param(
-        {"name": "serverless-model-validation", "modelmesh-enabled": False},
+        {"name": "serverless-model-validation"},
         {"deployment_type": KServeDeploymentType.SERVERLESS},
         {
             "model_name": name,
@@ -268,7 +275,6 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
     if not isinstance(model_car_data, list):
         raise ValueError("Invalid format for `model-car` in YAML. Expected a list of objects.")
 
-    # Check if metafunc.cls is not None to avoid linter errors
     if not metafunc.cls:
         return
 

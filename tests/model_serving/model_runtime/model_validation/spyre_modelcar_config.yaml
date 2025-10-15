@@ -2,3 +2,5 @@ model-car:
   - name: Granite-3-1-8b-Instruct
     image: oci://registry.redhat.io/rhelai1/modelcar-granite-3-1-8b-instruct:1.5
     model_output_type: text
+    serving_arguments:
+      gpu_count: 1

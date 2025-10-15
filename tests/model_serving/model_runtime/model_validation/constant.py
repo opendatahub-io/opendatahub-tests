@@ -14,6 +14,7 @@ TEMPLATE_MAP: dict[str, str] = {
     AcceleratorType.NVIDIA: RuntimeTemplates.VLLM_CUDA,
     AcceleratorType.AMD: RuntimeTemplates.VLLM_ROCM,
     AcceleratorType.GAUDI: RuntimeTemplates.VLLM_GAUDI,
+    AcceleratorType.SPYRE: RuntimeTemplates.VLLM_SPYRE,
 }
 
 
@@ -74,8 +75,8 @@ CHAT_QUERY: list[list[dict[str, str]]] = [
 
 PULL_SECRET_ACCESS_TYPE: str = "WyJQdWxsIl0="  # Base64 encoded value for "Pull"
 PULL_SECRET_NAME: str = "oci-registry-pull-secret"
-INFERENCE_SERVICE_PORT: int = 8080
-CONTAINER_PORT: int = 8080
+SPYRE_INFERENCE_SERVICE_PORT: int = 8000
+SPYRE_CONTAINER_PORT: int = 8000
 TIMEOUT_20MIN: int = 30 * 60
 OPENAI_ENDPOINT_NAME: str = "openai"
 TGIS_ENDPOINT_NAME: str = "tgis"
