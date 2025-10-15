@@ -34,6 +34,7 @@ class TestVLLMModelCarRaw:
             response_snapshot=response_snapshot,
             completion_query=COMPLETION_QUERY,
             model_output_type=deployment_config.get("model_output_type"),
+            port=deployment_config.get("rest_port"),
         )
 
 
