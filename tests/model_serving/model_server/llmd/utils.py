@@ -5,11 +5,14 @@ This module provides helper functions for LLMD test operations using ocp_resourc
 Follows the established model server utils pattern for consistency.
 """
 
+from typing import Any
+
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.gateway import Gateway
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
+from timeout_sampler import TimeoutSampler
 
 from utilities.exceptions import PodContainersRestartError
 
@@ -65,45 +68,122 @@ def verify_llm_service_status(llm_service: LLMInferenceService) -> bool:
     return False
 
 
-def verify_llmd_pods_not_restarted(client: DynamicClient, llm_service: LLMInferenceService) -> None:
+def verify_llmd_no_failed_pods(
+    client: DynamicClient,
+    llm_service: LLMInferenceService,
+    timeout: int = 300,
+) -> None:
     """
-    Verify that LLMD inference pods containers have not restarted.
+    Comprehensive verification that LLMD pods are healthy with no failures.
 
-    This function checks for container restarts in pods related to the specific LLMInferenceService.
+    This function combines restart detection with comprehensive failure detection,
+    similar to verify_no_failed_pods but specifically designed for LLMInferenceService resources.
+
+    Checks for:
+    - Container restarts (restartCount > 0)
+    - Container waiting states with errors (ImagePullBackOff, CrashLoopBackOff, etc.)
+    - Container terminated states with errors
+    - Pod failures (CrashLoopBackOff, Failed phases)
+    - Pod readiness within timeout
 
     Args:
         client (DynamicClient): DynamicClient instance
         llm_service (LLMInferenceService): The LLMInferenceService to check pods for
+        timeout (int): Timeout in seconds for pod readiness check
 
     Raises:
-        PodContainersRestartError: If any containers in LLMD pods have restarted
+        PodContainersRestartError: If any containers have restarted
+        FailedPodsError: If any pods are in failed state
+        TimeoutError: If pods don't become ready within timeout
     """
-    LOGGER.info(f"Verifying that pods for LLMInferenceService {llm_service.name} have not restarted")
+    from utilities.exceptions import FailedPodsError
+    from ocp_resources.resource import Resource
 
-    restarted_containers = {}
+    LOGGER.info(f"Comprehensive health check for LLMInferenceService {llm_service.name}")
 
-    for pod in Pod.get(
-        dyn_client=client,
-        namespace=llm_service.namespace,
-        label_selector=(
-            f"{Pod.ApiGroup.APP_KUBERNETES_IO}/part-of=llminferenceservice,"
-            f"{Pod.ApiGroup.APP_KUBERNETES_IO}/name={llm_service.name}"
-        ),
+    container_wait_base_errors = ["InvalidImageName", "CrashLoopBackOff", "ImagePullBackOff", "ErrImagePull"]
+    container_terminated_base_errors = [Resource.Status.ERROR, "CrashLoopBackOff"]
+
+    def get_llmd_pods():
+        """Get LLMD workload pods for this LLMInferenceService."""
+        pods = []
+        for pod in Pod.get(
+            dyn_client=client,
+            namespace=llm_service.namespace,
+            label_selector=(
+                f"{Pod.ApiGroup.APP_KUBERNETES_IO}/part-of=llminferenceservice,"
+                f"{Pod.ApiGroup.APP_KUBERNETES_IO}/name={llm_service.name}"
+            ),
+        ):
+            labels = pod.instance.metadata.get("labels", {})
+            if labels.get("kserve.io/component") == "workload":
+                pods.append(pod)
+        return pods
+
+    for pods in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=10,
+        func=get_llmd_pods,
     ):
-        labels = pod.instance.metadata.get("labels", {})
-        if labels.get("kserve.io/component") == "workload":
-            LOGGER.debug(f"Checking pod {pod.name} for container restarts")
+        if not pods:
+            LOGGER.debug(f"No LLMD workload pods found for {llm_service.name} yet")
+            continue
 
-            if pod.instance.status.containerStatuses:
-                if _restarted_containers := [
-                    container.name for container in pod.instance.status.containerStatuses if container.restartCount > 0
-                ]:
-                    restarted_containers[pod.name] = _restarted_containers
-                    LOGGER.warning(f"Pod {pod.name} has restarted containers: {_restarted_containers}")
+        ready_pods = 0
+        failed_pods: dict[str, Any] = {}
+        restarted_containers: dict[str, list[str]] = {}
+        for pod in pods:
+            for condition in pod.instance.status.conditions:
+                if condition.type == pod.Status.READY and condition.status == pod.Condition.Status.TRUE:
+                    ready_pods += 1
+                    break
+        if ready_pods == len(pods):
+            LOGGER.info(f"All {len(pods)} LLMD pods are ready, performing health checks")
 
-    if restarted_containers:
-        error_msg = f"LLMD inference containers restarted for {llm_service.name}: {restarted_containers}"
-        LOGGER.error(error_msg)
-        raise PodContainersRestartError(error_msg)
+            for pod in pods:
+                pod_status = pod.instance.status
+                if pod_status.containerStatuses:
+                    for container_status in pod_status.get("containerStatuses", []) + pod_status.get(
+                        "initContainerStatuses", []
+                    ):
+                        if hasattr(container_status, "restartCount") and container_status.restartCount > 0:
+                            if pod.name not in restarted_containers:
+                                restarted_containers[pod.name] = []
+                            restarted_containers[pod.name].append(container_status.name)
+                            LOGGER.warning(
+                                f"Container {container_status.name} in pod {pod.name} has restarted "
+                                f"{container_status.restartCount} times"
+                            )
+                        is_waiting_error = (
+                            wait_state := container_status.state.waiting
+                        ) and wait_state.reason in container_wait_base_errors
 
-    LOGGER.info(f"All pods for LLMInferenceService {llm_service.name} have no container restarts")
+                        is_terminated_error = (
+                            terminate_state := container_status.state.terminated
+                        ) and terminate_state.reason in container_terminated_base_errors
+
+                        if is_waiting_error or is_terminated_error:
+                            failed_pods[pod.name] = pod_status
+                            reason = wait_state.reason if is_waiting_error else terminate_state.reason
+                            LOGGER.error(
+                                f"Container {container_status.name} in pod {pod.name} has error state: {reason}"
+                            )
+                elif pod_status.phase in (
+                    pod.Status.CRASH_LOOPBACK_OFF,
+                    pod.Status.FAILED,
+                ):
+                    failed_pods[pod.name] = pod_status
+                    LOGGER.error(f"Pod {pod.name} is in failed phase: {pod_status.phase}")
+            if restarted_containers:
+                error_msg = f"LLMD containers restarted for {llm_service.name}: {restarted_containers}"
+                LOGGER.error(error_msg)
+                raise PodContainersRestartError(error_msg)
+
+            if failed_pods:
+                LOGGER.error(f"LLMD pods failed for {llm_service.name}: {list(failed_pods.keys())}")
+                raise FailedPodsError(pods=failed_pods)
+
+            LOGGER.info(f"All LLMD pods for {llm_service.name} are healthy - no restarts or failures detected")
+            return
+        LOGGER.debug(f"LLMD pods status: {ready_pods}/{len(pods)} ready for {llm_service.name}")
+    raise TimeoutError(f"LLMD pods for {llm_service.name} did not become ready within {timeout} seconds")
