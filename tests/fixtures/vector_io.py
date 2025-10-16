@@ -47,8 +47,7 @@ def vector_io_provider_deployment_factory(
         - "milvus-remote": Remote Milvus service requiring external deployment
 
     Environment Variables by Provider:
-        - "milvus":
-          * MILVUS_DB_PATH: Path to local Milvus database file
+        - "milvus": no env vars available
         - "milvus-remote":
           * MILVUS_ENDPOINT: Remote Milvus service endpoint URL
           * MILVUS_TOKEN: Authentication token for remote service
@@ -64,7 +63,8 @@ def vector_io_provider_deployment_factory(
         env_vars: list[dict[str, str]] = []
 
         if provider_name is None or provider_name == "milvus":
-            env_vars.append({"name": "MILVUS_DB_PATH", "value": "~/.llama/milvus.db"})
+            # Default case - no additional environment variables needed
+            pass
         elif provider_name == "milvus-remote":
             request.getfixturevalue(argname="milvus_service")
             env_vars.append({"name": "MILVUS_ENDPOINT", "value": "http://vector-io-milvus-service:19530"})
