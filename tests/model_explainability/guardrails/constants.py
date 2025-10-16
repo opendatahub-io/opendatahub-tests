@@ -29,7 +29,7 @@ PII_INPUT_DETECTION_PROMPT: GuardrailsDetectionPrompt = GuardrailsDetectionPromp
 )
 
 PII_OUTPUT_DETECTION_PROMPT: GuardrailsDetectionPrompt = GuardrailsDetectionPrompt(
-    content="Output example email address, nothing else.",
+    content="Give me one email and nothing else.",
     detector_id="regex",
     detection_name="email_address",
     detection_type="pii",

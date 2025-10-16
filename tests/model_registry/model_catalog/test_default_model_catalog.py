@@ -301,21 +301,22 @@ class TestModelCatalogDefaultData:
         yaml_artifacts = random_model.get("artifacts", [])
         assert api_model_artifacts, f"No artifacts found in API for {model_name}"
         assert yaml_artifacts, f"No artifacts found in YAML for {model_name}"
+        assert len(yaml_artifacts) == len(api_model_artifacts), (
+            f"Artifact count mismatch for {model_name}: YAML has {len(yaml_artifacts)}, API {len(api_model_artifacts)}"
+        )
 
-        # Validate all required fields are present in both YAML and API artifact
-        # FAILS artifactType is not in YAML nor in API until https://issues.redhat.com/browse/RHOAIENG-35569 is fixed
-        for field in required_artifact_fields:
-            for artifact in yaml_artifacts:
-                assert field in artifact, f"YAML artifact for {model_name} missing REQUIRED field: {field}"
-            for artifact in api_model_artifacts:
-                assert field in artifact, f"API artifact for {model_name} missing REQUIRED field: {field}"
+        for artifact in api_model_artifacts:
+            missing_fields = required_artifact_fields - set(artifact.keys())
+            assert not missing_fields, f"API artifact for {model_name} missing REQUIRED fields: {missing_fields}"
+
+        comparable_fields = all_artifact_fields - {"artifactType"}
 
         # Filter artifacts to only include schema-defined fields for comparison
         yaml_artifacts_filtered = [
-            {k: v for k, v in artifact.items() if k in all_artifact_fields} for artifact in yaml_artifacts
+            {k: v for k, v in artifact.items() if k in comparable_fields} for artifact in yaml_artifacts
         ]
         api_artifacts_filtered = [
-            {k: v for k, v in artifact.items() if k in all_artifact_fields} for artifact in api_model_artifacts
+            {k: v for k, v in artifact.items() if k in comparable_fields} for artifact in api_model_artifacts
         ]
 
         differences = list(diff(yaml_artifacts_filtered, api_artifacts_filtered))
