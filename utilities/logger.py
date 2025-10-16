@@ -21,7 +21,9 @@ class RedactedString(str):
         return "'***REDACTED***'"
 
 
-def setup_logging(log_level: int, log_file: str = "/tmp/pytest-tests.log") -> QueueListener:
+def setup_logging(
+    log_level: int, log_file: str = "/tmp/pytest-tests.log", thread_name: str | None = None
+) -> QueueListener:
     """
     Setup basic/root logging using QueueHandler/QueueListener
     to consolidate log messages into a single stream to be written to multiple outputs.
@@ -29,6 +31,7 @@ def setup_logging(log_level: int, log_file: str = "/tmp/pytest-tests.log") -> Qu
     Args:
         log_level (int): log level
         log_file (str): logging output file
+        thread_name (str | None): optional thread_name id prefix, e.g., [gw0]
 
     Returns:
         QueueListener: Process monitoring the log Queue
@@ -38,9 +41,16 @@ def setup_logging(log_level: int, log_file: str = "/tmp/pytest-tests.log") -> Qu
                          ├> Queue -> QueueListener ┤
       basic QueueHandler ┘                         └> FileHandler
     """
-    basic_log_formatter = logging.Formatter(fmt="%(message)s")
+    basic_fmt_str = "%(message)s"
+    root_fmt_str = "%(asctime)s %(name)s %(log_color)s%(levelname)s%(reset)s %(message)s"
+
+    if thread_name:
+        basic_fmt_str = f"[{thread_name}] {basic_fmt_str}"
+        root_fmt_str = f"[{thread_name}] {root_fmt_str}"
+
+    basic_log_formatter = logging.Formatter(fmt=basic_fmt_str)
     root_log_formatter = WrapperLogFormatter(
-        fmt="%(asctime)s %(name)s %(log_color)s%(levelname)s%(reset)s %(message)s",
+        fmt=root_fmt_str,
         log_colors={
             "DEBUG": "cyan",
             "INFO": "green",
@@ -67,19 +77,27 @@ def setup_logging(log_level: int, log_file: str = "/tmp/pytest-tests.log") -> Qu
 
     basic_logger = logging.getLogger(name="basic")
     basic_logger.setLevel(level=log_level)
+    basic_logger.handlers.clear()
     basic_logger.addHandler(hdlr=basic_log_queue_handler)
 
     root_log_queue_handler = QueueHandler(queue=log_queue)
     root_log_queue_handler.set_name(name="root")
     root_log_queue_handler.setFormatter(fmt=root_log_formatter)
 
-    root_logger = logging.getLogger()
+    root_logger = logging.getLogger(name="root")
     root_logger.setLevel(level=log_level)
+    root_logger.handlers.clear()
     root_logger.addHandler(hdlr=root_log_queue_handler)
     root_logger.addFilter(filter=DuplicateFilter())
 
     root_logger.propagate = False
     basic_logger.propagate = False
+
+    for name, logger in logging.root.manager.loggerDict.items():
+        if isinstance(logger, logging.Logger) and (name not in ("root", "basic")):
+            logger.handlers.clear()
+            logger.addHandler(hdlr=root_log_queue_handler)
+            logger.propagate = False
 
     log_listener.start()
     return log_listener
