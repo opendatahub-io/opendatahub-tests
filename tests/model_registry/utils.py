@@ -649,10 +649,10 @@ def validate_mlmd_removal_in_model_registry_pod_log(
     assert not errors, f"Log validation failed with error(s): {errors}"
 
 
-def get_model_catalog_pod(client: DynamicClient, model_registry_namespace: str) -> list[Pod]:
-    return list(
-        Pod.get(namespace=model_registry_namespace, label_selector="component=model-catalog", dyn_client=client)
-    )
+def get_model_catalog_pod(
+    client: DynamicClient, model_registry_namespace: str, label_selector: str = "component=model-catalog"
+) -> list[Pod]:
+    return list(Pod.get(namespace=model_registry_namespace, label_selector=label_selector, dyn_client=client))
 
 
 def get_rest_headers(token: str) -> dict[str, str]:
