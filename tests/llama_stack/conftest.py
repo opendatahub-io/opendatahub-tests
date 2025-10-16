@@ -41,7 +41,7 @@ def enabled_llama_stack_operator(dsc_resource: DataScienceCluster) -> Generator[
 @pytest.fixture(scope="class")
 def llama_stack_server_config(
     request: FixtureRequest,
-    vector_io_provider_deployment_factory: Callable[[str], list[Dict[str, str]]],
+    vector_io_provider_deployment_config_factory: Callable[[str], list[Dict[str, str]]],
 ) -> Dict[str, Any]:
     """
     Generate server configuration for LlamaStack distribution deployment and deploy vector I/O provider resources.
@@ -54,7 +54,7 @@ def llama_stack_server_config(
 
     Args:
         request: Pytest fixture request object containing test parameters
-        vector_io_provider_deployment_factory: Factory function to deploy vector I/O providers
+        vector_io_provider_deployment_config_factory: Factory function to deploy vector I/O providers
             and return their configuration environment variables
 
     Returns:
@@ -128,7 +128,7 @@ def llama_stack_server_config(
 
     # Depending on parameter vector_io_provider, deploy vector_io provider and obtain required env_vars
     vector_io_provider = params.get("vector_io_provider") or "milvus"
-    env_vars_vector_io = vector_io_provider_deployment_factory(provider_name=vector_io_provider)
+    env_vars_vector_io = vector_io_provider_deployment_config_factory(provider_name=vector_io_provider)
     env_vars.extend(env_vars_vector_io)
 
     server_config: Dict[str, Any] = {

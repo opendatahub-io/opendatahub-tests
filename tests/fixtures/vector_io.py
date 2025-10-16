@@ -25,7 +25,7 @@ ETCD_IMAGE = os.getenv(
 
 
 @pytest.fixture(scope="class")
-def vector_io_provider_deployment_factory(
+def vector_io_provider_deployment_config_factory(
     request: FixtureRequest,
 ) -> Callable[[str], list[Dict[str, str]]]:
     """
@@ -54,8 +54,8 @@ def vector_io_provider_deployment_factory(
           * MILVUS_CONSISTENCY_LEVEL: Consistency level for operations
 
     Example:
-        def test_with_milvus(vector_io_provider_deployment_factory):
-            env_vars = vector_io_provider_deployment_factory("milvus-remote")
+        def test_with_milvus(vector_io_provider_deployment_config_factory):
+            env_vars = vector_io_provider_deployment_config_factory("milvus-remote")
             # env_vars contains MILVUS_ENDPOINT, MILVUS_TOKEN, etc.
     """
 
@@ -113,6 +113,7 @@ def etcd_service(
             }
         ],
         selector={"app": "etcd"},
+        wait_for_resource=True,
     ) as service:
         yield service
 
@@ -158,6 +159,7 @@ def milvus_service(
             },
         ],
         selector={"app": "milvus-standalone"},
+        wait_for_resource=True,
     ) as service:
         yield service
 
