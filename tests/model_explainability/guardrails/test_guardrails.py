@@ -112,6 +112,7 @@ def test_validate_guardrails_orchestrator_images(
                 "enable_built_in_detectors": True,
                 "enable_guardrails_gateway": True,
                 "guardrails_gateway_config": True,
+                "otel_exporter_config": True,
             },
         )
     ],
@@ -119,7 +120,17 @@ def test_validate_guardrails_orchestrator_images(
 )
 @pytest.mark.smoke
 @pytest.mark.rawdeployment
-@pytest.mark.usefixtures("guardrails_gateway_config")
+@pytest.mark.usefixtures(
+    "guardrails_gateway_config",
+    "minio_pvc_otel",
+    "minio_deployment_otel",
+    "minio_service_otel",
+    "minio_secret_otel",
+    "installed_tempo_operator",
+    "installed_opentelemetry_operator",
+    "tempo_stack",
+    "otel_collector",
+)
 class TestGuardrailsOrchestratorWithBuiltInDetectors:
     """
     Tests that the basic functionality of the GuardrailsOrchestrator work properly with the built-in (regex) detectors.
@@ -170,6 +181,8 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         qwen_isvc,
         orchestrator_config,
         guardrails_orchestrator_gateway_route,
+        otel_collector,
+        tempo_stack,
     ):
         send_and_verify_unsuitable_input_detection(
             url=f"https://{guardrails_orchestrator_gateway_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
@@ -186,6 +199,8 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         qwen_isvc,
         orchestrator_config,
         guardrails_orchestrator_gateway_route,
+        otel_collector,
+        tempo_stack,
     ):
         send_and_verify_unsuitable_output_detection(
             url=f"https://{guardrails_orchestrator_gateway_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
@@ -194,6 +209,36 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
             prompt=PII_OUTPUT_DETECTION_PROMPT,
             model=QWEN_MODEL_NAME,
         )
+
+    def test_guardrails_traces_in_tempo(
+        self,
+        admin_client,
+        model_namespace,
+        orchestrator_config,
+        minio_pod,
+        minio_data_connection,
+        guardrails_orchestrator,
+        guardrails_gateway_config,
+        otel_collector,
+        tempo_stack,
+        tempo_traces_service_portforward,
+    ):
+        """
+        Ensure that OpenTelemetry traces from Guardrails Orchestrator are collected in Tempo.
+        Equivalent to clicking 'Find Traces' in the Tempo UI.
+        """
+
+        @retry(wait_timeout=Timeout.TIMEOUT_1MIN, sleep=5)
+        def check_traces():
+            response = requests.get(f"{tempo_traces_service_portforward}/api/traces?service=fms_guardrails_orchestr8")
+            if response.status_code == http.HTTPStatus.OK:
+                data = response.json()
+                if data.get("data"):  # non-empty list of traces
+                    return data
+            return False
+
+        traces = check_traces()
+        assert traces["data"], "No traces found in Tempo for Guardrails Orchestrator"
 
     @pytest.mark.parametrize(
         "message, url_path",
