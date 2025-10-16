@@ -11,7 +11,7 @@ from ocp_resources.pod import Pod
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.route import Route
 from ocp_resources.service import Service
-from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CFG
+from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
 from tests.model_registry.model_catalog.constants import REDHAT_AI_CATALOG_ID, CATALOG_CONTAINER
 from tests.model_registry.model_catalog.utils import (
     validate_model_catalog_enabled,
@@ -45,7 +45,7 @@ class TestModelCatalogGeneral:
                 id="test_model_catalog_sources_configmap",
             ),
             pytest.param(
-                {"configmap_name": DEFAULT_MODEL_CATALOG_CFG},
+                {"configmap_name": DEFAULT_MODEL_CATALOG_CM},
                 2,
                 id="test_model_catalog_default_sources_configmap",
             ),
