@@ -6,6 +6,7 @@ from tests.model_registry.model_catalog.constants import (
     SAMPLE_MODEL_NAME2,
     MULTIPLE_CUSTOM_CATALOG_VALUES,
     SAMPLE_MODEL_NAME3,
+    DEFAULT_CATALOG_ID,
 )
 from ocp_resources.config_map import ConfigMap
 import pytest
@@ -67,11 +68,12 @@ class TestModelCatalogCustom:
             url=url,
             headers=model_registry_rest_headers,
         )["items"]
+        # since we expect one default catalog
+        assert len(results) == len(expected_catalog_values) + 1
         ids_from_query = [result_entry["id"] for result_entry in results]
         ids_expected = [expected_entry["id"] for expected_entry in expected_catalog_values]
-        assert set(ids_expected).issubset(set(ids_from_query)), (
-            f"Expected model catalogs: {expected_catalog_values}. Actual model catalogs: {results}"
-        )
+        ids_expected.append(DEFAULT_CATALOG_ID)
+        assert sorted(ids_from_query) == sorted(ids_expected), f"Expected: {expected_catalog_values}. Actual: {results}"
 
     def test_model_custom_catalog_get_models_by_source(
         self: Self,

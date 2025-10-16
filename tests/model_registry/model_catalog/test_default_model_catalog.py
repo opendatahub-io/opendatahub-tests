@@ -11,8 +11,7 @@ from ocp_resources.pod import Pod
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.route import Route
 from ocp_resources.service import Service
-from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CFG
-from tests.model_registry.model_catalog.constants import REDHAT_AI_CATALOG_ID, CATALOG_CONTAINER
+from tests.model_registry.model_catalog.constants import DEFAULT_CATALOG_ID, CATALOG_CONTAINER
 from tests.model_registry.model_catalog.utils import (
     validate_model_catalog_enabled,
     execute_get_command,
@@ -37,30 +36,26 @@ pytestmark = [
 @pytest.mark.skip_must_gather
 class TestModelCatalogGeneral:
     @pytest.mark.parametrize(
-        "model_catalog_config_map, expected_catalogs",
+        "model_catalog_config_map",
         [
             pytest.param(
-                {"configmap_name": DEFAULT_CUSTOM_MODEL_CATALOG},
-                0,
+                {"configmap_name": "model-catalog-sources"},
                 id="test_model_catalog_sources_configmap",
             ),
             pytest.param(
-                {"configmap_name": DEFAULT_MODEL_CATALOG_CFG},
-                2,
+                {"configmap_name": "model-catalog-default-sources"},
                 id="test_model_catalog_default_sources_configmap",
             ),
         ],
         indirect=["model_catalog_config_map"],
     )
-    def test_config_map_exists(self: Self, model_catalog_config_map: ConfigMap, expected_catalogs: int):
+    def test_config_map_exists(self: Self, model_catalog_config_map: ConfigMap):
         # Check that model catalog configmaps is created when model registry is
         # enabled on data science cluster.
         catalogs = yaml.safe_load(model_catalog_config_map.instance.data["sources.yaml"])["catalogs"]
-        assert len(catalogs) == expected_catalogs, (
-            f"{model_catalog_config_map.name} should have {expected_catalogs} catalog"
-        )
-        if expected_catalogs:
-            validate_default_catalog(catalogs=catalogs)
+        assert catalogs
+        assert len(catalogs) == 1, f"{model_catalog_config_map.name} should have 1 catalog"
+        validate_default_catalog(default_catalog=catalogs[0])
 
     @pytest.mark.parametrize(
         "resource_name, expected_resource_count",
@@ -175,7 +170,7 @@ class TestModelCatalogDefault:
         """
         model_name = randomly_picked_model_from_default_catalog["name"]
         result = execute_get_command(
-            url=f"{model_catalog_rest_url[0]}sources/{REDHAT_AI_CATALOG_ID}/models/{model_name}",
+            url=f"{model_catalog_rest_url[0]}sources/{DEFAULT_CATALOG_ID}/models/{model_name}",
             headers=get_rest_headers(token=user_token_for_api_calls),
         )
         differences = list(diff(randomly_picked_model_from_default_catalog, result))
@@ -192,7 +187,7 @@ class TestModelCatalogDefault:
         """
         model_name = randomly_picked_model_from_default_catalog["name"]
         result = execute_get_command(
-            url=f"{model_catalog_rest_url[0]}sources/{REDHAT_AI_CATALOG_ID}/models/{model_name}/artifacts",
+            url=f"{model_catalog_rest_url[0]}sources/{DEFAULT_CATALOG_ID}/models/{model_name}/artifacts",
             headers=get_rest_headers(token=user_token_for_api_calls),
         )["items"]
         assert result, f"No artifacts found for {model_name}"
@@ -290,25 +285,24 @@ class TestModelCatalogDefaultData:
         LOGGER.info(f"Required artifact fields from OpenAPI schema: {required_artifact_fields}")
 
         random_model = random.choice(seq=default_model_catalog_yaml_content.get("models", []))
-        model_name = random_model["name"]
-        LOGGER.info(f"Random model: {model_name}")
+        LOGGER.info(f"Random model: {random_model['name']}")
 
         api_model_artifacts = execute_get_command(
-            url=f"{model_catalog_rest_url[0]}sources/{REDHAT_AI_CATALOG_ID}/models/{model_name}/artifacts",
+            url=f"{model_catalog_rest_url[0]}sources/{DEFAULT_CATALOG_ID}/models/{random_model['name']}/artifacts",
             headers=model_registry_rest_headers,
         )["items"]
 
         yaml_artifacts = random_model.get("artifacts", [])
-        assert api_model_artifacts, f"No artifacts found in API for {model_name}"
-        assert yaml_artifacts, f"No artifacts found in YAML for {model_name}"
+        assert api_model_artifacts, f"No artifacts found in API for {random_model['name']}"
+        assert yaml_artifacts, f"No artifacts found in YAML for {random_model['name']}"
 
         # Validate all required fields are present in both YAML and API artifact
         # FAILS artifactType is not in YAML nor in API until https://issues.redhat.com/browse/RHOAIENG-35569 is fixed
         for field in required_artifact_fields:
             for artifact in yaml_artifacts:
-                assert field in artifact, f"YAML artifact for {model_name} missing REQUIRED field: {field}"
+                assert field in artifact, f"YAML artifact for {random_model['name']} missing REQUIRED field: {field}"
             for artifact in api_model_artifacts:
-                assert field in artifact, f"API artifact for {model_name} missing REQUIRED field: {field}"
+                assert field in artifact, f"API artifact for {random_model['name']} missing REQUIRED field: {field}"
 
         # Filter artifacts to only include schema-defined fields for comparison
         yaml_artifacts_filtered = [
@@ -319,5 +313,5 @@ class TestModelCatalogDefaultData:
         ]
 
         differences = list(diff(yaml_artifacts_filtered, api_artifacts_filtered))
-        assert not differences, f"Artifacts mismatch for {model_name}: {differences}"
+        assert not differences, f"Artifacts mismatch for {random_model['name']}: {differences}"
         LOGGER.info("Artifacts match")
