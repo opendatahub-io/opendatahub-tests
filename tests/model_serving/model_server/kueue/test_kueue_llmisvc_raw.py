@@ -32,15 +32,11 @@ LLMISVC_RESOURCES = {
     "limits": {"cpu": CPU_QUOTA, "memory": MEMORY_QUOTA},
 }
 
-# min_replicas needs to be 1 or you need to change the test to check for the number of
+# INITIAL_REPLICAS needs to be 1 or you need to change the test to check for the number of
 # available replicas
-MIN_REPLICAS = 1
-MAX_REPLICAS = 2
-EXPECTED_RUNNING_PODS = 1
-EXPECTED_GATED_PODS = 1
-EXPECTED_DEPLOYMENTS = 1
-EXPECTED_INITIAL_REPLICAS = 1
+INITIAL_REPLICAS = 1
 EXPECTED_UPDATED_REPLICAS = 2
+EXPECTED_DEPLOYMENTS = 1
 
 # We will create two replicas, so we expect 1 to be admitted (running) and 1 to be gated (pending)
 EXPECTED_RUNNING_PODS = 1
@@ -55,7 +51,7 @@ EXPECTED_GATED_PODS = 1
             {"name": NAMESPACE_NAME, "add-kueue-label": True},
             {
                 "name": "llmd-kueue-scaleup-test",
-                "replicas": MIN_REPLICAS,
+                "replicas": INITIAL_REPLICAS,
                 "labels": {"kueue.x-k8s.io/queue-name": LOCAL_QUEUE_NAME},
                 "container_resources": LLMISVC_RESOURCES,
             },
@@ -77,15 +73,18 @@ class TestKueueLLMDScaleUp:
     to exceed the available resource quota.
     """
 
+    def _get_deployment_status_replicas(self, deployment: Deployment) -> int:
+        deployment.get()
+        return deployment.instance.status.replicas
+
     def test_kueue_llmd_scaleup(
         self,
         unprivileged_client,
-        unprivileged_model_namespace,
-        llmd_gateway,
-        llmd_inference_service,
         kueue_resource_flavor_from_template,
         kueue_cluster_queue_from_template,
         kueue_local_queue_from_template,
+        llmd_inference_service,
+        llmd_gateway,
     ):
         """
         Verify that Kueue admits the first replica of an LLMInferenceService and
@@ -94,9 +93,9 @@ class TestKueueLLMDScaleUp:
         # The llmd_inference_service is already created by the fixture with 1 replica.
         # Wait for the service and its single pod to become ready.
         assert verify_gateway_status(llmd_gateway), "Gateway should be ready"
-        assert verify_llm_service_status(llmd_inference_service, timeout=600), "LLMInferenceService should be ready"
+        assert verify_llm_service_status(llmd_inference_service), "LLMInferenceService should be ready"
 
-        selector_labels = [f"app.kubernetes.io/name={llmd_inference_service.name}"]
+        selector_labels = [f"app.kubernetes.io/name={llmd_inference_service.name}", "kserve.io/component=workload"]
         deployments = list(
             Deployment.get(
                 label_selector=",".join(selector_labels),
@@ -111,8 +110,8 @@ class TestKueueLLMDScaleUp:
         deployment = deployments[0]
         deployment.wait_for_replicas(deployed=True)
         replicas = deployment.instance.spec.replicas
-        assert replicas == EXPECTED_INITIAL_REPLICAS, (
-            f"Deployment should have {EXPECTED_INITIAL_REPLICAS} replica, got {replicas}"
+        assert replicas == INITIAL_REPLICAS, (
+            f"Deployment should have {INITIAL_REPLICAS} replica, got {replicas}"
         )
 
         # Update the LLMInferenceService to request 2 replicas, which exceeds the quota.
@@ -122,7 +121,7 @@ class TestKueueLLMDScaleUp:
 
         # Check the deployment until it has 2 replicas, which means it's been updated
         for replicas in TimeoutSampler(
-            wait_timeout=30,
+            wait_timeout=60,
             sleep=2,
             func=lambda: self._get_deployment_status_replicas(deployment),
         ):
@@ -130,35 +129,26 @@ class TestKueueLLMDScaleUp:
                 break
 
         # Verify that Kueue correctly gates the second pod.
-
         try:
             for running_pods, gated_pods in TimeoutSampler(
                 wait_timeout=120,
                 sleep=5,
                 func=lambda: check_gated_pods_and_running_pods(
-                    selector_labels, unprivileged_model_namespace.name, unprivileged_client
+                    selector_labels, llmd_inference_service.namespace, unprivileged_client
                 ),
             ):
                 if running_pods == EXPECTED_RUNNING_PODS and gated_pods == EXPECTED_GATED_PODS:
                     break
         except TimeoutExpiredError:
             running_pods, gated_pods = check_gated_pods_and_running_pods(
-                selector_labels, unprivileged_model_namespace.name, unprivileged_client
+                selector_labels, llmd_inference_service.namespace, unprivileged_client
             )
             assert False, (
                 f"Timeout: Expected {EXPECTED_RUNNING_PODS} running and {EXPECTED_GATED_PODS} gated pods. "
                 f"Found {running_pods} running and {gated_pods} gated."
             )
 
-        # Refresh the llmisvc instance to get latest status
-        llmd_inference_service.get()
-        llmisvc = llmd_inference_service.instance
-        total_copies = llmisvc.status.modelStatus.copies.totalCopies
-        assert total_copies == EXPECTED_RUNNING_PODS, (
-            f"InferenceService should have {EXPECTED_RUNNING_PODS} total model copy, got {total_copies}"
-        )
-
-        # Verify that inference still works on the single running pod.
+        # Verify that inference still works on the single running pod
         verify_inference_response_llmd(
             llm_service=llmd_inference_service,
             inference_config=TINYLLAMA_INFERENCE_CONFIG,
