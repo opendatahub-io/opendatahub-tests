@@ -1,11 +1,6 @@
-import http
-from typing import Dict, Any
-
 import pytest
-import requests
 import yaml
 from simple_logger.logger import get_logger
-from timeout_sampler import retry
 
 from tests.model_explainability.guardrails.constants import (
     AUTOCONFIG_DETECTOR_LABEL,
@@ -15,15 +10,16 @@ from tests.model_explainability.guardrails.constants import (
     HAP_INPUT_DETECTION_PROMPT,
 )
 from tests.model_explainability.guardrails.utils import (
-    verify_builtin_detector_unsuitable_input_response,
-    verify_negative_detection_response,
-    verify_builtin_detector_unsuitable_output_response,
-    get_auth_headers,
-    get_chat_detections_payload,
+    create_detector_config,
+    check_guardrails_health_endpoint,
+    verify_health_info_response,
+    send_and_verify_unsuitable_input_detection,
+    send_and_verify_unsuitable_output_detection,
+    send_and_verify_negative_detection,
+    send_and_verify_standalone_detection,
 )
 from tests.model_explainability.utils import validate_tai_component_images
 from utilities.constants import (
-    Timeout,
     CHAT_GENERATION_CONFIG,
     BUILTIN_DETECTOR_CONFIG,
     MinIo,
@@ -43,42 +39,6 @@ STANDALONE_DETECTION_ENDPOINT: str = "api/v2/text/detection/content"
 
 PROMPT_INJECTION_DETECTOR: str = "prompt-injection-detector"
 HAP_DETECTOR: str = "hap-detector"
-
-
-def create_detector_config(*detector_names: str) -> Dict[str, Dict[str, Any]]:
-    detectors_dict = {name: {} for name in detector_names}
-    return {
-        "input": detectors_dict.copy(),
-        "output": detectors_dict.copy(),
-    }
-
-
-@retry(exceptions_dict={TimeoutError: []}, wait_timeout=Timeout.TIMEOUT_1MIN, sleep=1)
-def check_guardrails_health_endpoint(
-    host,
-    token,
-    ca_bundle_file,
-):
-    response = requests.get(url=f"https://{host}/health", headers=get_auth_headers(token=token), verify=ca_bundle_file)
-    if response.status_code == http.HTTPStatus.OK:
-        return response
-    raise TimeoutError(
-        f"Timeout waiting GuardrailsOrchestrator to be healthy. Response status code: {response.status_code}"
-    )
-
-
-def verify_health_info_response(host, token, ca_bundle_file):
-    response = requests.get(url=f"https://{host}/info", headers=get_auth_headers(token=token), verify=ca_bundle_file)
-    assert response.status_code == http.HTTPStatus.OK
-
-    healthy_status = "HEALTHY"
-    response_data = response.json()
-    mismatches = []
-    for service_name, service_info in response_data["services"].items():
-        if service_info["status"] != healthy_status:
-            mismatches.append(f"Service {service_name} is not healthy: {service_info['status']}")
-
-    assert not mismatches, f"GuardrailsOrchestrator service failures: {mismatches}"
 
 
 @pytest.mark.parametrize(
@@ -211,22 +171,12 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         orchestrator_config,
         guardrails_orchestrator_gateway_route,
     ):
-        response = requests.post(
+        send_and_verify_unsuitable_input_detection(
             url=f"https://{guardrails_orchestrator_gateway_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
-            headers=get_auth_headers(token=current_client_token),
-            json=get_chat_detections_payload(
-                content=PII_INPUT_DETECTION_PROMPT.content,
-                model=QWEN_MODEL_NAME,
-            ),
-            verify=openshift_ca_bundle_file,
-        )
-
-        verify_builtin_detector_unsuitable_input_response(
-            response=response,
-            detector_id=PII_INPUT_DETECTION_PROMPT.detector_id,
-            detection_name=PII_INPUT_DETECTION_PROMPT.detection_name,
-            detection_type=PII_INPUT_DETECTION_PROMPT.detection_type,
-            detection_text=PII_INPUT_DETECTION_PROMPT.detection_text,
+            token=current_client_token,
+            ca_bundle_file=openshift_ca_bundle_file,
+            prompt=PII_INPUT_DETECTION_PROMPT,
+            model=QWEN_MODEL_NAME,
         )
 
     def test_guardrails_builtin_detectors_unsuitable_output(
@@ -237,21 +187,12 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         orchestrator_config,
         guardrails_orchestrator_gateway_route,
     ):
-        response = requests.post(
+        send_and_verify_unsuitable_output_detection(
             url=f"https://{guardrails_orchestrator_gateway_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
-            headers=get_auth_headers(token=current_client_token),
-            json=get_chat_detections_payload(
-                content=PII_OUTPUT_DETECTION_PROMPT.content,
-                model=QWEN_MODEL_NAME,
-            ),
-            verify=openshift_ca_bundle_file,
-        )
-
-        verify_builtin_detector_unsuitable_output_response(
-            response=response,
-            detector_id=PII_OUTPUT_DETECTION_PROMPT.detector_id,
-            detection_name=PII_OUTPUT_DETECTION_PROMPT.detection_name,
-            detection_type=PII_OUTPUT_DETECTION_PROMPT.detection_type,
+            token=current_client_token,
+            ca_bundle_file=openshift_ca_bundle_file,
+            prompt=PII_OUTPUT_DETECTION_PROMPT,
+            model=QWEN_MODEL_NAME,
         )
 
     @pytest.mark.parametrize(
@@ -275,17 +216,13 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         message,
         url_path,
     ):
-        response = requests.post(
+        send_and_verify_negative_detection(
             url=f"https://{guardrails_orchestrator_gateway_route.host}{url_path}{OpenAIEnpoints.CHAT_COMPLETIONS}",
-            headers=get_auth_headers(token=current_client_token),
-            json=get_chat_detections_payload(
-                content=str(message),
-                model=QWEN_MODEL_NAME,
-            ),
-            verify=openshift_ca_bundle_file,
+            token=current_client_token,
+            ca_bundle_file=openshift_ca_bundle_file,
+            content=str(message),
+            model=QWEN_MODEL_NAME,
         )
-
-        verify_negative_detection_response(response=response)
 
 
 @pytest.mark.parametrize(
@@ -357,23 +294,13 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
         prompt_injection_detector_route,
         openshift_ca_bundle_file,
     ):
-        response = requests.post(
+        send_and_verify_unsuitable_input_detection(
             url=f"https://{guardrails_orchestrator_route.host}/{CHAT_COMPLETIONS_DETECTION_ENDPOINT}",
-            headers=get_auth_headers(token=current_client_token),
-            json=get_chat_detections_payload(
-                content=PROMPT_INJECTION_INPUT_DETECTION_PROMPT.content,
-                model=QWEN_MODEL_NAME,
-                detectors=create_detector_config(PROMPT_INJECTION_DETECTOR),
-            ),
-            verify=openshift_ca_bundle_file,
-        )
-
-        verify_builtin_detector_unsuitable_input_response(
-            response=response,
-            detector_id=PROMPT_INJECTION_INPUT_DETECTION_PROMPT.detector_id,
-            detection_name=PROMPT_INJECTION_INPUT_DETECTION_PROMPT.detection_name,
-            detection_type=PROMPT_INJECTION_INPUT_DETECTION_PROMPT.detection_type,
-            detection_text=PROMPT_INJECTION_INPUT_DETECTION_PROMPT.detection_text,
+            token=current_client_token,
+            ca_bundle_file=openshift_ca_bundle_file,
+            prompt=PROMPT_INJECTION_INPUT_DETECTION_PROMPT,
+            model=QWEN_MODEL_NAME,
+            detectors=create_detector_config(PROMPT_INJECTION_DETECTOR),
         )
 
     def test_guardrails_hf_detector_negative_detection(
@@ -387,18 +314,14 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
         prompt_injection_detector_route,
         openshift_ca_bundle_file,
     ):
-        response = requests.post(
+        send_and_verify_negative_detection(
             url=f"https://{guardrails_orchestrator_route.host}/{CHAT_COMPLETIONS_DETECTION_ENDPOINT}",
-            headers=get_auth_headers(token=current_client_token),
-            json=get_chat_detections_payload(
-                content=HARMLESS_PROMPT,
-                model=QWEN_MODEL_NAME,
-                detectors=create_detector_config(PROMPT_INJECTION_DETECTOR),
-            ),
-            verify=openshift_ca_bundle_file,
+            token=current_client_token,
+            ca_bundle_file=openshift_ca_bundle_file,
+            content=HARMLESS_PROMPT,
+            model=QWEN_MODEL_NAME,
+            detectors=create_detector_config(PROMPT_INJECTION_DETECTOR),
         )
-
-        verify_negative_detection_response(response=response)
 
     def test_guardrails_standalone_detector_endpoint(
         self,
@@ -409,26 +332,14 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
         guardrails_orchestrator_route,
         hap_detector_route,
     ):
-        url = f"https://{guardrails_orchestrator_route.host}/{STANDALONE_DETECTION_ENDPOINT}"
-        headers = get_auth_headers(token=current_client_token)
-        payload = {"detectors": {HAP_DETECTOR: {}}, "content": HAP_INPUT_DETECTION_PROMPT.content}
-
-        response = requests.post(
-            url=url,
-            headers=headers,
-            json=payload,
-            verify=openshift_ca_bundle_file,
+        send_and_verify_standalone_detection(
+            url=f"https://{guardrails_orchestrator_route.host}/{STANDALONE_DETECTION_ENDPOINT}",
+            token=current_client_token,
+            ca_bundle_file=openshift_ca_bundle_file,
+            detector_name=HAP_DETECTOR,
+            content=HAP_INPUT_DETECTION_PROMPT.content,
+            expected_min_score=0.9,
         )
-
-        assert response.status_code == http.HTTPStatus.OK, (
-            f"Unexpected status code: {response.status_code}, body: {response.text}"
-        )
-        data = response.json()
-
-        assert "detections" in data
-
-        score = data["detections"][0]["score"]
-        assert score > 0.9, f"Expected score > 0.9, got {score}"
 
 
 @pytest.mark.parametrize(
@@ -502,23 +413,13 @@ class TestGuardrailsOrchestratorWithMultipleDetectors:
         guardrails_orchestrator,
     ):
         for prompt in [PROMPT_INJECTION_INPUT_DETECTION_PROMPT, HAP_INPUT_DETECTION_PROMPT]:
-            response = requests.post(
+            send_and_verify_unsuitable_input_detection(
                 url=f"https://{guardrails_orchestrator_route.host}/{CHAT_COMPLETIONS_DETECTION_ENDPOINT}",
-                headers=get_auth_headers(token=current_client_token),
-                json=get_chat_detections_payload(
-                    content=prompt.content,
-                    model=QWEN_MODEL_NAME,
-                    detectors=create_detector_config(PROMPT_INJECTION_DETECTOR, HAP_DETECTOR),
-                ),
-                verify=openshift_ca_bundle_file,
-            )
-
-            verify_builtin_detector_unsuitable_input_response(
-                response=response,
-                detector_id=prompt.detector_id,
-                detection_name=prompt.detection_name,
-                detection_type=prompt.detection_type,
-                detection_text=prompt.detection_text,
+                token=current_client_token,
+                ca_bundle_file=openshift_ca_bundle_file,
+                prompt=prompt,
+                model=QWEN_MODEL_NAME,
+                detectors=create_detector_config(PROMPT_INJECTION_DETECTOR, HAP_DETECTOR),
             )
 
     def test_guardrails_multi_detector_negative_detection(
@@ -533,18 +434,14 @@ class TestGuardrailsOrchestratorWithMultipleDetectors:
         prompt_injection_detector_route,
         openshift_ca_bundle_file,
     ):
-        response = requests.post(
+        send_and_verify_negative_detection(
             url=f"https://{guardrails_orchestrator_route.host}/{CHAT_COMPLETIONS_DETECTION_ENDPOINT}",
-            headers=get_auth_headers(token=current_client_token),
-            json=get_chat_detections_payload(
-                content=HARMLESS_PROMPT,
-                model=QWEN_MODEL_NAME,
-                detectors=create_detector_config(PROMPT_INJECTION_DETECTOR, HAP_DETECTOR),
-            ),
-            verify=openshift_ca_bundle_file,
+            token=current_client_token,
+            ca_bundle_file=openshift_ca_bundle_file,
+            content=HARMLESS_PROMPT,
+            model=QWEN_MODEL_NAME,
+            detectors=create_detector_config(PROMPT_INJECTION_DETECTOR, HAP_DETECTOR),
         )
-
-        verify_negative_detection_response(response=response)
 
 
 @pytest.mark.parametrize(
@@ -606,23 +503,13 @@ class TestGuardrailsOrchestratorAutoConfig:
         guardrails_orchestrator_route,
     ):
         for prompt in [HAP_INPUT_DETECTION_PROMPT, PROMPT_INJECTION_INPUT_DETECTION_PROMPT]:
-            response = requests.post(
+            send_and_verify_unsuitable_input_detection(
                 url=f"https://{guardrails_orchestrator_route.host}/{CHAT_COMPLETIONS_DETECTION_ENDPOINT}",
-                headers=get_auth_headers(token=current_client_token),
-                json=get_chat_detections_payload(
-                    content=prompt.content,
-                    model=QWEN_MODEL_NAME,
-                    detectors=create_detector_config(PROMPT_INJECTION_DETECTOR, HAP_DETECTOR),
-                ),
-                verify=openshift_ca_bundle_file,
-            )
-
-            verify_builtin_detector_unsuitable_input_response(
-                response=response,
-                detector_id=prompt.detector_id,
-                detection_name=prompt.detection_name,
-                detection_type=prompt.detection_type,
-                detection_text=prompt.detection_text,
+                token=current_client_token,
+                ca_bundle_file=openshift_ca_bundle_file,
+                prompt=prompt,
+                model=QWEN_MODEL_NAME,
+                detectors=create_detector_config(PROMPT_INJECTION_DETECTOR, HAP_DETECTOR),
             )
 
     def test_guardrails_autoconfig_negative_detection(
@@ -632,18 +519,14 @@ class TestGuardrailsOrchestratorAutoConfig:
         guardrails_orchestrator_route,
         openshift_ca_bundle_file,
     ):
-        response = requests.post(
+        send_and_verify_negative_detection(
             url=f"https://{guardrails_orchestrator_route.host}/{CHAT_COMPLETIONS_DETECTION_ENDPOINT}",
-            headers=get_auth_headers(token=current_client_token),
-            json=get_chat_detections_payload(
-                content=str(HARMLESS_PROMPT),
-                model=QWEN_MODEL_NAME,
-                detectors=create_detector_config(PROMPT_INJECTION_DETECTOR, HAP_DETECTOR),
-            ),
-            verify=openshift_ca_bundle_file,
+            token=current_client_token,
+            ca_bundle_file=openshift_ca_bundle_file,
+            content=str(HARMLESS_PROMPT),
+            model=QWEN_MODEL_NAME,
+            detectors=create_detector_config(PROMPT_INJECTION_DETECTOR, HAP_DETECTOR),
         )
-
-        verify_negative_detection_response(response=response)
 
 
 @pytest.mark.parametrize(
@@ -708,23 +591,13 @@ class TestGuardrailsOrchestratorAutoConfigWithGateway:
         guardrails_orchestrator_gateway_route,
     ):
         for prompt in [HAP_INPUT_DETECTION_PROMPT, PROMPT_INJECTION_INPUT_DETECTION_PROMPT]:
-            response = requests.post(
+            send_and_verify_unsuitable_input_detection(
                 url=f"https://{guardrails_orchestrator_gateway_route.host}"
                 f"{AUTOCONFIG_GATEWAY_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
-                headers=get_auth_headers(token=current_client_token),
-                json=get_chat_detections_payload(
-                    content=prompt.content,
-                    model=QWEN_MODEL_NAME,
-                ),
-                verify=openshift_ca_bundle_file,
-            )
-
-            verify_builtin_detector_unsuitable_input_response(
-                response=response,
-                detector_id=prompt.detector_id,
-                detection_name=prompt.detection_name,
-                detection_type=prompt.detection_type,
-                detection_text=prompt.detection_text,
+                token=current_client_token,
+                ca_bundle_file=openshift_ca_bundle_file,
+                prompt=prompt,
+                model=QWEN_MODEL_NAME,
             )
 
     @pytest.mark.parametrize(
@@ -747,14 +620,10 @@ class TestGuardrailsOrchestratorAutoConfigWithGateway:
         url_path,
         message,
     ):
-        response = requests.post(
+        send_and_verify_negative_detection(
             url=f"https://{guardrails_orchestrator_gateway_route.host}{url_path}{OpenAIEnpoints.CHAT_COMPLETIONS}",
-            headers=get_auth_headers(token=current_client_token),
-            json=get_chat_detections_payload(
-                content=str(message),
-                model=QWEN_MODEL_NAME,
-            ),
-            verify=openshift_ca_bundle_file,
+            token=current_client_token,
+            ca_bundle_file=openshift_ca_bundle_file,
+            content=str(message),
+            model=QWEN_MODEL_NAME,
         )
-
-        verify_negative_detection_response(response=response)

@@ -1,9 +1,14 @@
 import http
 import json
 
+import requests
 from requests import Response
 from simple_logger.logger import get_logger
 from typing import Dict, Any, List, Optional
+
+from timeout_sampler import retry
+
+from tests.model_explainability.guardrails.constants import GuardrailsDetectionPrompt
 
 LOGGER = get_logger(name=__name__)
 
@@ -224,3 +229,164 @@ def verify_negative_detection_response(response: Response) -> None:
             errors.append(f"Expected refusal to be null, got {refusal}")
 
     assert_no_errors(errors=errors, failure_message_prefix="Negative detection verification failed")
+
+
+def create_detector_config(*detector_names: str) -> Dict[str, Dict[str, Any]]:
+    detectors_dict = {name: {} for name in detector_names}
+    return {
+        "input": detectors_dict.copy(),
+        "output": detectors_dict.copy(),
+    }
+
+
+@retry(exceptions_dict={TimeoutError: []}, wait_timeout=10, sleep=1)
+def check_guardrails_health_endpoint(
+    host,
+    token,
+    ca_bundle_file,
+):
+    response = requests.get(url=f"https://{host}/health", headers=get_auth_headers(token=token), verify=ca_bundle_file)
+    if response.status_code == http.HTTPStatus.OK:
+        return response
+    raise TimeoutError(
+        f"Timeout waiting GuardrailsOrchestrator to be healthy. Response status code: {response.status_code}"
+    )
+
+
+def verify_health_info_response(host, token, ca_bundle_file):
+    response = requests.get(url=f"https://{host}/info", headers=get_auth_headers(token=token), verify=ca_bundle_file)
+    assert response.status_code == http.HTTPStatus.OK
+
+    healthy_status = "HEALTHY"
+    response_data = response.json()
+    mismatches = []
+    for service_name, service_info in response_data["services"].items():
+        if service_info["status"] != healthy_status:
+            mismatches.append(f"Service {service_name} is not healthy: {service_info['status']}")
+
+    assert not mismatches, f"GuardrailsOrchestrator service failures: {mismatches}"
+
+
+def _send_guardrails_orchestrator_post_request(
+    url: str,
+    token: str,
+    ca_bundle_file: str,
+    payload: Dict[str, Any],
+) -> requests.Response:
+    response = requests.post(
+        url=url,
+        headers=get_auth_headers(token=token),
+        json=payload,
+        verify=ca_bundle_file,
+    )
+
+    if response.status_code != http.HTTPStatus.OK:
+        raise TimeoutError(f"Endpoint not available. Status code: {response.status_code}, response: {response.text}")
+
+    return response
+
+
+def send_chat_detections_request(
+    url: str,
+    token: str,
+    ca_bundle_file: str,
+    content: str,
+    model: str,
+    detectors: Dict[str, Any] = None,
+) -> requests.Response:
+    payload = get_chat_detections_payload(content=content, model=model, detectors=detectors)
+    return _send_guardrails_orchestrator_post_request(
+        url=url, token=token, ca_bundle_file=ca_bundle_file, payload=payload
+    )
+
+
+@retry(exceptions_dict={TimeoutError: []}, wait_timeout=10, sleep=1)
+def send_and_verify_unsuitable_input_detection(
+    url: str,
+    token: str,
+    ca_bundle_file: str,
+    prompt: GuardrailsDetectionPrompt,
+    model: str,
+    detectors: Dict[str, Any] = None,
+):
+    """Send a prompt to the GuardrailsOrchestrator and verify that it triggers an unsuitable input detection"""
+    response = send_chat_detections_request(
+        url=url, token=token, ca_bundle_file=ca_bundle_file, content=prompt.content, model=model, detectors=detectors
+    )
+
+    verify_builtin_detector_unsuitable_input_response(
+        response=response,
+        detector_id=prompt.detector_id,
+        detection_name=prompt.detection_name,
+        detection_type=prompt.detection_type,
+        detection_text=prompt.detection_text,
+    )
+    return response
+
+
+@retry(exceptions_dict={TimeoutError: []}, wait_timeout=10, sleep=1)
+def send_and_verify_unsuitable_output_detection(
+    url: str,
+    token: str,
+    ca_bundle_file: str,
+    prompt: GuardrailsDetectionPrompt,
+    model: str,
+    detectors: Dict[str, Any] = None,
+):
+    """Send a prompt to the GuardrailsOrchestrator and verify that it triggers an unsuitable output detection"""
+
+    response = send_chat_detections_request(
+        url=url, token=token, ca_bundle_file=ca_bundle_file, content=prompt.content, model=model, detectors=detectors
+    )
+
+    verify_builtin_detector_unsuitable_output_response(
+        response=response,
+        detector_id=prompt.detector_id,
+        detection_name=prompt.detection_name,
+        detection_type=prompt.detection_type,
+    )
+    return response
+
+
+@retry(exceptions_dict={TimeoutError: []}, wait_timeout=10, sleep=1)
+def send_and_verify_negative_detection(
+    url: str,
+    token: str,
+    ca_bundle_file: str,
+    content: str,
+    model: str,
+    detectors: Dict[str, Any] = None,
+):
+    """Send a prompt to the GuardrailsOrchestrator and verify that it doesn't trigger any detection"""
+
+    response = send_chat_detections_request(
+        url=url, token=token, ca_bundle_file=ca_bundle_file, content=content, model=model, detectors=detectors
+    )
+
+    verify_negative_detection_response(response=response)
+    return response
+
+
+@retry(exceptions_dict={TimeoutError: []}, wait_timeout=10, sleep=1)
+def send_and_verify_standalone_detection(
+    url: str,
+    token: str,
+    ca_bundle_file: str,
+    detector_name: str,
+    content: str,
+    expected_min_score: float = 0.9,
+):
+    """Send a prompt to the standalone detections endpoint and verify that it triggers a detection"""
+
+    payload = {"detectors": {detector_name: {}}, "content": content}
+    response = _send_guardrails_orchestrator_post_request(
+        url=url, token=token, ca_bundle_file=ca_bundle_file, payload=payload
+    )
+
+    data = response.json()
+    assert "detections" in data, f"Expected 'detections' key in response, got: {data}"
+
+    score = data["detections"][0]["score"]
+    assert score > expected_min_score, f"Expected score > {expected_min_score}, got {score}"
+
+    return response
