@@ -10,6 +10,7 @@ from tests.model_serving.model_runtime.model_validation.constant import (
     OPENAI_ENDPOINT_NAME,
     AUDIO_FILE_URL,
     AUDIO_FILE_LOCAL_PATH,
+    SPYRE_INFERENCE_SERVICE_PORT,
 )
 from utilities.constants import Ports
 from utilities.exceptions import NotSupportedError
@@ -162,7 +163,9 @@ def validate_raw_openai_inference_request(
         return
     elif model_output_type == "text":
         LOGGER.info("Running text inference test")
-        port = port or Ports.REST_PORT
+        scheduler_name = getattr(isvc.instance.spec.predictor, "schedulerName", "") or ""
+        if scheduler_name.lower() == "spyre-scheduler":
+            port = SPYRE_INFERENCE_SERVICE_PORT
         model_info, completion_responses = run_raw_inference(
             pod_name=pod_name,
             isvc=isvc,

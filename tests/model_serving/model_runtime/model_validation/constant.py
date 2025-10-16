@@ -73,7 +73,7 @@ CHAT_QUERY: list[list[dict[str, str]]] = [
     ],
 ]
 
-PULL_SECRET_ACCESS_TYPE: str = "WyJQdWxsIl0="  # Base64 encoded value for "Pull"
+PULL_SECRET_ACCESS_TYPE: str = '["Pull"]'
 PULL_SECRET_NAME: str = "oci-registry-pull-secret"
 SPYRE_INFERENCE_SERVICE_PORT: int = 8000
 SPYRE_CONTAINER_PORT: int = 8000

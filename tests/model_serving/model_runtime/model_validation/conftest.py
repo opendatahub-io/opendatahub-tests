@@ -28,11 +28,10 @@ from tests.model_serving.model_runtime.model_validation.constant import (
 from tests.model_serving.model_runtime.model_validation.constant import PULL_SECRET_NAME
 from tests.model_serving.model_runtime.model_validation.constant import (
     TIMEOUT_20MIN,
-    SPYRE_INFERENCE_SERVICE_PORT,
 )
 from tests.model_serving.model_runtime.model_validation.utils import safe_k8s_name, create_vllm_spyre_serving_runtime
 from tests.model_serving.model_runtime.vllm.utils import validate_supported_quantization_schema
-from utilities.constants import KServeDeploymentType, Labels, RuntimeTemplates, Ports, AcceleratorType
+from utilities.constants import KServeDeploymentType, Labels, RuntimeTemplates
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -188,13 +187,14 @@ def kserve_registry_pull_secret(
             "ACCESS_TYPE": PULL_SECRET_ACCESS_TYPE,
             "OCI_HOST": registry_host,
         },
+        type="kubernetes.io/dockerconfigjson",
         wait_for_resource=True,
     ) as secret:
         yield secret
 
 
 @pytest.fixture(scope="class")
-def deployment_config(request: FixtureRequest, supported_accelerator_type: str | None) -> dict[str, Any]:
+def deployment_config(request: FixtureRequest) -> dict[str, Any]:
     """
     Fixture to provide the base deployment configuration for serverless deployments.
     """
@@ -210,12 +210,6 @@ def deployment_config(request: FixtureRequest, supported_accelerator_type: str |
     config["deployment_type"] = deployment_type
     config["gpu_count"] = request.param.get("gpu_count", 1)
     config["model_output_type"] = request.param.get("model_output_type", "text")
-    accelerator = (supported_accelerator_type or "").lower()
-    rest_port = Ports.REST_PORT
-    if accelerator == AcceleratorType.SPYRE:
-        rest_port = SPYRE_INFERENCE_SERVICE_PORT
-
-    config["rest_port"] = rest_port
     config["timeout"] = TIMEOUT_20MIN
     return config
 
