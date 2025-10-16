@@ -96,7 +96,7 @@ def model_registry_instance(
             mr_instances = [stack.enter_context(mr_obj) for mr_obj in mr_objects]
             for mr_instance in mr_instances:
                 mr_instance.wait_for_condition(condition="Available", status="True")
-                mr_instance.wait_for_condition(condition="OAuthProxyAvailable", status="True")
+                mr_instance.wait_for_condition(condition="KubeRBACProxyAvailable", status="True")
                 wait_for_pods_running(
                     admin_client=admin_client, namespace_name=model_registry_namespace, number_of_consecutive_checks=6
                 )
