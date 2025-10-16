@@ -11,6 +11,9 @@ from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
 from utilities.infra import get_pods_by_isvc_label
+from contextlib import contextmanager
+from ocp_resources.template import Template
+from pytest_testconfig import config as py_config
 
 from tests.model_serving.model_runtime.model_validation.constant import (
     ACCELERATOR_IDENTIFIER,
@@ -26,11 +29,12 @@ from tests.model_serving.model_runtime.model_validation.constant import PULL_SEC
 from tests.model_serving.model_runtime.model_validation.constant import (
     TIMEOUT_20MIN,
 )
-from tests.model_serving.model_runtime.model_validation.utils import safe_k8s_name
+from tests.model_serving.model_runtime.model_validation.utils import safe_k8s_name, create_vllm_spyre_serving_runtime
 from tests.model_serving.model_runtime.vllm.utils import validate_supported_quantization_schema
 from utilities.constants import KServeDeploymentType, Labels, RuntimeTemplates
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
+
 from simple_logger.logger import get_logger
 
 LOGGER = get_logger(name=__name__)
@@ -43,8 +47,12 @@ def model_car_serving_runtime(
     model_namespace: Namespace,
     supported_accelerator_type: str,
     vllm_runtime_image: str,
+    vllm_spyre_runtime_template: Template | None,
 ) -> Generator[ServingRuntime, None, None]:
     accelerator_type = supported_accelerator_type.lower()
+    if accelerator_type == "spyre":
+        _ = vllm_spyre_runtime_template
+
     template_name = TEMPLATE_MAP.get(accelerator_type, RuntimeTemplates.VLLM_CUDA)
     LOGGER.info(f"using template: {template_name}")
     assert model_namespace.name is not None
@@ -57,6 +65,45 @@ def model_car_serving_runtime(
         runtime_image=vllm_runtime_image,
     ) as model_runtime:
         yield model_runtime
+
+
+@contextmanager
+def create_vllm_spyre_template(admin_client: DynamicClient, vllm_runtime_image: str) -> Generator[Template, Any, Any]:
+    if not vllm_runtime_image:
+        raise ValueError("`vllm_runtime_image` must be provided when using the Spyre accelerator.")
+
+    template_dict = {
+        "apiVersion": "template.openshift.io/v1",
+        "kind": "Template",
+        "metadata": {
+            "name": "vllm-spyre-runtime-template",
+            "namespace": py_config["applications_namespace"],
+        },
+        "objects": [create_vllm_spyre_serving_runtime(vllm_runtime_image=vllm_runtime_image)],
+        "parameters": [],
+    }
+
+    with Template(
+        client=admin_client,
+        namespace=py_config["applications_namespace"],
+        kind_dict=template_dict,
+        wait_for_resource=True,
+    ) as template:
+        yield template
+
+
+@pytest.fixture(scope="class")
+def vllm_spyre_runtime_template(
+    admin_client: DynamicClient,
+    supported_accelerator_type: str,
+    vllm_runtime_image: str,
+) -> Generator[Template, None, None]:
+    accelerator_type = supported_accelerator_type.lower()
+    if accelerator_type != "spyre":
+        yield None
+        return
+    with create_vllm_spyre_template(admin_client=admin_client, vllm_runtime_image=vllm_runtime_image) as template:
+        yield template
 
 
 @pytest.fixture(scope="class")
@@ -87,6 +134,15 @@ def vllm_model_car_inference_service(
     resources["requests"][identifier] = gpu_count
     resources["limits"][identifier] = gpu_count
     isvc_kwargs["resources"] = resources
+
+    if identifier == Labels.Spyre.SPYRE_COM_GPU:
+        isvc_kwargs["scheduler_name"] = "spyre-scheduler"
+        resources["requests"] = {
+            "ibm.com/spyre_pf": gpu_count,
+        }
+        resources["limits"] = {
+            "ibm.com/spyre_pf": gpu_count,
+        }
 
     if timeout:
         isvc_kwargs["timeout"] = timeout
@@ -131,6 +187,7 @@ def kserve_registry_pull_secret(
             "ACCESS_TYPE": PULL_SECRET_ACCESS_TYPE,
             "OCI_HOST": registry_host,
         },
+        type="kubernetes.io/dockerconfigjson",
         wait_for_resource=True,
     ) as secret:
         yield secret
@@ -219,7 +276,6 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
     if not isinstance(model_car_data, list):
         raise ValueError("Invalid format for `model-car` in YAML. Expected a list of objects.")
 
-    # Check if metafunc.cls is not None to avoid linter errors
     if not metafunc.cls:
         return
 

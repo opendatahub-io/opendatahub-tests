@@ -73,7 +73,8 @@ class RuntimeTemplates:
     TGIS_GRPC_SERVING: str = "tgis-grpc-serving-template"
     VLLM_CUDA: str = "vllm-cuda-runtime-template"
     VLLM_ROCM: str = "vllm-rocm-runtime-template"
-    VLLM_GAUDUI: str = "vllm-gaudi-runtime-template"
+    VLLM_GAUDI: str = "vllm-gaudi-runtime-template"
+    VLLM_SPYRE: str = "vllm-spyre-runtime-template"
     MLSERVER_GRPC: str = "mlserver-grpc-runtime-template"
     MLSERVER_REST: str = "mlserver-rest-runtime-template"
     TRITON_REST: str = "triton-rest-runtime-template"
@@ -122,7 +123,8 @@ class AcceleratorType:
     NVIDIA: str = "nvidia"
     AMD: str = "amd"
     GAUDI: str = "gaudi"
-    SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI]
+    SPYRE: str = "spyre"
+    SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI, SPYRE]
 
 
 class ApiGroups:
@@ -151,6 +153,9 @@ class Annotations:
 
     class HaproxyRouterOpenshiftIo:
         TIMEOUT: str = f"{ApiGroups.HAPROXY_ROUTER_OPENSHIFT_IO}/timeout"
+
+    class KnativeDev:
+        PROGRESS_DEADLINE: str = "serving.knative.dev/progress-deadline"
 
 
 class StorageClassName:
@@ -210,6 +215,9 @@ class Labels:
 
     class ROCm:
         ROCM_GPU: str = "amd.com/gpu"
+
+    class Spyre:
+        SPYRE_COM_GPU: str = "ibm.com/spyre_pf"
 
     class Kueue:
         MANAGED: str = "kueue.openshift.io/managed"
