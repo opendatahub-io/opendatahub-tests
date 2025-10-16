@@ -61,6 +61,7 @@ def qwen_isvc(
         storage_key=minio_data_connection.name,
         storage_path="Qwen2.5-0.5B-Instruct",
         wait_for_predictor_pods=False,
+        enable_auth=True,
         resources={
             "requests": {"cpu": "2", "memory": "10Gi"},
             "limits": {"cpu": "2", "memory": "12Gi"},
