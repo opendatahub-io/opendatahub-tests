@@ -141,8 +141,9 @@ class TestKueueLLMDScaleUp:
             running_pods, gated_pods = check_gated_pods_and_running_pods(
                 selector_labels, llmd_inference_service.namespace, unprivileged_client
             )
-            assert False, (
-                f"Timeout: Expected {EXPECTED_RUNNING_PODS} running and {EXPECTED_GATED_PODS} gated pods. "
+            raise AssertionError(
+                "Timeout: "
+                f"Expected {EXPECTED_RUNNING_PODS} running and {EXPECTED_GATED_PODS} gated pods. "
                 f"Found {running_pods} running and {gated_pods} gated."
             )
 
