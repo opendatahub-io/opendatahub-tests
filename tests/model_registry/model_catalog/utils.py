@@ -79,10 +79,15 @@ def wait_for_model_catalog_pod_created(client: DynamicClient, model_registry_nam
     raise PodNotFound("Model catalog pod not found")
 
 
-def validate_model_catalog_resource(kind: Any, admin_client: DynamicClient, namespace: str) -> None:
+def validate_model_catalog_resource(
+    kind: Any, admin_client: DynamicClient, namespace: str, expected_resource_count: int
+) -> None:
     resource = list(kind.get(namespace=namespace, label_selector="component=model-catalog", dyn_client=admin_client))
     assert resource
-    assert len(resource) == 1, f"Unexpected number of {kind} resources found: {[res.name for res in resource]}"
+    LOGGER.info(f"Validating resource: {kind}: Found {len(resource)})")
+    assert len(resource) == expected_resource_count, (
+        f"Unexpected number of {kind} resources found: {[res.name for res in resource]}"
+    )
 
 
 def validate_default_catalog(catalogs: list[dict[Any, Any]]) -> None:
