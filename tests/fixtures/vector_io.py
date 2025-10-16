@@ -18,6 +18,10 @@ MILVUS_IMAGE = os.getenv(
     "docker.io/milvusdb/milvus@sha256:3d772c3eae3a6107b778636cea5715b9353360b92e5dcfdcaf4ca7022f4f497c",  # Milvus 2.6.3
 )
 MILVUS_TOKEN = os.getenv("LLS_VECTOR_IO_MILVUS_TOKEN", secrets.token_urlsafe(32))
+ETCD_IMAGE = os.getenv(
+    "LLS_VECTOR_IO_ETCD_IMAGE",
+    "quay.io/coreos/etcd@sha256:3397341272b9e0a6f44d7e3fc7c321c6efe6cbe82ce866b9b01d0c704bfc5bf3",  # etcd v3.6.5
+)
 
 
 @pytest.fixture(scope="class")
@@ -59,7 +63,7 @@ def vector_io_provider_deployment_factory(
     def _factory(provider_name: str) -> list[Dict[str, str]]:
         env_vars: list[dict[str, str]] = []
 
-        if provider_name is None or (provider_name == "milvus"):
+        if provider_name is None or provider_name == "milvus":
             env_vars.append({"name": "MILVUS_DB_PATH", "value": "~/.llama/milvus.db"})
         elif provider_name == "milvus-remote":
             request.getfixturevalue(argname="milvus_service")
@@ -201,7 +205,7 @@ def get_etcd_deployment_template() -> Dict[str, Any]:
             "containers": [
                 {
                     "name": "etcd",
-                    "image": "quay.io/coreos/etcd:v3.5.5",
+                    "image": ETCD_IMAGE,
                     "command": [
                         "etcd",
                         "--advertise-client-urls=http://vector-io-etcd-service:2379",

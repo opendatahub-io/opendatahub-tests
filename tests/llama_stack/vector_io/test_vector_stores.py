@@ -15,7 +15,7 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, llama_stack_server_config, vector_store, ",
+    "unprivileged_model_namespace, llama_stack_server_config, vector_store",
     [
         pytest.param(
             {"name": "test-llamastack-vector-stores", "randomize_name": True},
