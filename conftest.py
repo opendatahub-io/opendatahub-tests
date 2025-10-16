@@ -244,11 +244,17 @@ def pytest_collection_modifyitems(session: Session, config: Config, items: list[
             _item=item, _upgrade_deployment_modes=upgrade_deployment_modes
         ):
             pre_upgrade_tests.append(item)
+            # Add support to be able to reuse tests in both upgrade and fresh install scenarios
+            if "install" in item.keywords:
+                non_upgrade_tests.append(item)
 
         elif "post_upgrade" in item.keywords and _add_upgrade_test(
             _item=item, _upgrade_deployment_modes=upgrade_deployment_modes
         ):
             post_upgrade_tests.append(item)
+            # Add support to be able to reuse tests in both upgrade and fresh install scenarios
+            if "install" in item.keywords:
+                non_upgrade_tests.append(item)
 
         else:
             non_upgrade_tests.append(item)
@@ -280,9 +286,11 @@ def pytest_sessionstart(session: Session) -> None:
         pathlib.Path(tests_log_file).unlink()
     if session.config.getoption("--collect-must-gather"):
         session.config.option.must_gather_db = Database()
+    thread_name = os.environ.get("PYTEST_XDIST_WORKER", "master")
     session.config.option.log_listener = setup_logging(
         log_file=tests_log_file,
         log_level=session.config.getoption("log_cli_level") or logging.INFO,
+        thread_name=thread_name,
     )
     must_gather_dict = set_must_gather_collector_values()
     shutil.rmtree(

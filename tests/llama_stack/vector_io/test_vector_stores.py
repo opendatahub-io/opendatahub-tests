@@ -15,11 +15,25 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, llama_stack_server_config",
+    "unprivileged_model_namespace, llama_stack_server_config, vector_store",
     [
         pytest.param(
             {"name": "test-llamastack-vector-stores", "randomize_name": True},
-            {"llama_stack_storage_size": "2Gi"},
+            {
+                "llama_stack_storage_size": "2Gi",
+                "vector_io_provider": "milvus",
+            },
+            {"vector_io_provider": "milvus"},
+            id="vector_io_provider_milvus",
+        ),
+        pytest.param(
+            {"name": "test-llamastack-vector-stores", "randomize_name": True},
+            {
+                "llama_stack_storage_size": "2Gi",
+                "vector_io_provider": "milvus-remote",
+            },
+            {"vector_io_provider": "milvus-remote"},
+            id="vector_io_provider_milvus-remote",
         ),
     ],
     indirect=True,
@@ -27,6 +41,8 @@ LOGGER = get_logger(name=__name__)
 @pytest.mark.rag
 class TestLlamaStackVectorStores:
     """Test class for LlamaStack OpenAI Compatible Vector Stores API
+
+    Note: multiple vector_io providers are tested thanks to the pytest.param vector_io_provider
 
     For more information about this API, see:
     - https://github.com/llamastack/llama-stack-client-python/blob/main/api.md#vectorstores

@@ -643,7 +643,8 @@ def create_isvc(
     if model_version:
         predictor_dict["model"]["modelFormat"]["version"] = model_version
 
-    _check_storage_arguments(storage_uri=storage_uri, storage_key=storage_key, storage_path=storage_path)
+    if storage_uri or storage_path or storage_key:
+        _check_storage_arguments(storage_uri=storage_uri, storage_key=storage_key, storage_path=storage_path)
     if storage_uri:
         predictor_dict["model"]["storageUri"] = storage_uri
     elif storage_key:

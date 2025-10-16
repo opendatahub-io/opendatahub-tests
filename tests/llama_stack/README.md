@@ -27,6 +27,11 @@ def test_vector_stores_functionality():
     # Test implementation
 ```
 
+## Adding Support for New API Providers
+
+To add support for testing new LlamaStack API providers (e.g., a new vector_io provider), create deployment fixtures in the appropriate `/tests/fixtures/` file, update the corresponding provider factory function to return the required environment variables, and add the new provider as a test parameter in the relevant test files. For example, to add a new vector_io provider, add deployment fixtures in `/tests/fixtures/vector_io.py`, update the `vector_io_provider_deployment_config_factory` function, and add a new `pytest.param` entry in `/tests/llama_stack/vector_io/test_vector_stores.py`.
+
+
 ### Available Team Markers  (to be expanded)
 
 - `@pytest.mark.llama_stack` - LlamaStack Core team tests
@@ -40,10 +45,13 @@ def test_vector_stores_functionality():
 
 LlamaStack tests require setting the following environment variables (for example in a .env file at the root folder):
 ```bash
-OC_BINARY_PATH=/usr/local/sbin/oc
+OC_BINARY_PATH=/usr/local/sbin/oc                 # Optional
 LLS_CORE_VLLM_URL=<LLAMA-3.2-3b-ENDPOINT>/v1  (ends with /v1)
 LLS_CORE_INFERENCE_MODEL=<LLAMA-3.2-3b-MODEL_NAME>
 LLS_CORE_VLLM_API_TOKEN=<LLAMA-3.2-3b-TOKEN>
+LLS_VECTOR_IO_MILVUS_IMAGE=<CUSTOM-MILVUS-IMAGE>  # Optional
+LLS_VECTOR_IO_MILVUS_TOKEN=<CUSTOM-MILVUS-TOKEN>  # Optional
+LLS_VECTOR_IO_ETCD_IMAGE=<CUSTOM-ETCD-IMAGE>      # Optional
 ```
 
 ### Run All Llama Stack Tests

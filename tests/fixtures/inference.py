@@ -9,7 +9,12 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
 
-from utilities.constants import RuntimeTemplates, KServeDeploymentType, QWEN_MODEL_NAME
+from utilities.constants import (
+    RuntimeTemplates,
+    KServeDeploymentType,
+    QWEN_MODEL_NAME,
+    LLMdInferenceSimConfig,
+)
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -61,6 +66,7 @@ def qwen_isvc(
         storage_key=minio_data_connection.name,
         storage_path="Qwen2.5-0.5B-Instruct",
         wait_for_predictor_pods=False,
+        enable_auth=True,
         resources={
             "requests": {"cpu": "2", "memory": "10Gi"},
             "limits": {"cpu": "2", "memory": "12Gi"},
@@ -72,3 +78,102 @@ def qwen_isvc(
 @pytest.fixture(scope="class")
 def qwen_isvc_url(qwen_isvc: InferenceService) -> str:
     return f"http://{qwen_isvc.name}-predictor.{qwen_isvc.namespace}.svc.cluster.local:8032/v1"
+
+
+@pytest.fixture(scope="class")
+def llm_d_inference_sim_serving_runtime(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+) -> Generator[ServingRuntime, Any, Any]:
+    """Serving runtime for LLM-d Inference Simulator.
+
+    While llm-d-inference-sim supports any model name, the /tokenizers endpoint will only support two models
+        - qwen2.5-0.5b-instruct
+        - Qwen2.5-1.5B-Instruct
+
+    For other models, ensure:
+        - the correct write permissions on the Pod
+        - the model name matches what is available on HuggingFace (e.g., Qwen/Qwen2.5-1.5B-Instruct)
+        - you have set a writeable "--tokenizers-cache-dir"
+        - the cluster can pull from HuggingFace
+
+    """
+    with ServingRuntime(
+        client=admin_client,
+        name=LLMdInferenceSimConfig.serving_runtime_name,
+        namespace=model_namespace.name,
+        annotations={
+            "description": "LLM-d Simulator KServe",
+            "opendatahub.io/template-display-name": "LLM-d Inference Simulator Runtime",
+            "openshift.io/display-name": "LLM-d Inference Simulator Runtime",
+            "serving.kserve.io/enable-agent": "false",
+        },
+        label={
+            "app.kubernetes.io/component": LLMdInferenceSimConfig.name,
+            "app.kubernetes.io/instance": "llm-d-inference-sim-kserve",
+            "app.kubernetes.io/name": "llm-d-sim",
+            "app.kubernetes.io/version": "1.0.0",
+            "opendatahub.io/dashboard": "true",
+        },
+        spec_annotations={
+            "prometheus.io/path": "/metrics",
+            "prometheus.io/port": "8000",
+        },
+        spec_labels={
+            "opendatahub.io/dashboard": "true",
+        },
+        containers=[
+            {
+                "name": "kserve-container",
+                "image": "quay.io/trustyai_testing/llmd-inference-sim-dataset-builtin"
+                "@sha256:dfaa32cf0878a2fb522133e34369412c90e8ffbfa18b690b92602cf7c019fbbe",
+                "imagePullPolicy": "Always",
+                "args": ["--model", LLMdInferenceSimConfig.model_name, "--port", str(LLMdInferenceSimConfig.port)],
+                "ports": [{"containerPort": LLMdInferenceSimConfig.port, "protocol": "TCP"}],
+                "securityContext": {
+                    "allowPrivilegeEscalation": False,
+                },
+                "livenessProbe": {
+                    "failureThreshold": 3,
+                    "httpGet": {"path": "/health", "port": LLMdInferenceSimConfig.port, "scheme": "HTTP"},
+                    "initialDelaySeconds": 15,
+                    "periodSeconds": 20,
+                    "timeoutSeconds": 5,
+                },
+                "readinessProbe": {
+                    "failureThreshold": 3,
+                    "httpGet": {"path": "/health", "port": LLMdInferenceSimConfig.port, "scheme": "HTTP"},
+                    "initialDelaySeconds": 5,
+                    "periodSeconds": 10,
+                    "timeoutSeconds": 5,
+                },
+            }
+        ],
+        multi_model=False,
+        supported_model_formats=[{"autoSelect": True, "name": LLMdInferenceSimConfig.name}],
+    ) as serving_runtime:
+        yield serving_runtime
+
+
+@pytest.fixture(scope="class")
+def llm_d_inference_sim_isvc(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    llm_d_inference_sim_serving_runtime: ServingRuntime,
+) -> Generator[InferenceService, Any, Any]:
+    with create_isvc(
+        client=admin_client,
+        name=LLMdInferenceSimConfig.isvc_name,
+        namespace=model_namespace.name,
+        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+        model_format=LLMdInferenceSimConfig.name,
+        runtime=llm_d_inference_sim_serving_runtime.name,
+        wait_for_predictor_pods=True,
+        min_replicas=1,
+        max_replicas=1,
+        resources={
+            "requests": {"cpu": "1", "memory": "1Gi"},
+            "limits": {"cpu": "1", "memory": "1Gi"},
+        },
+    ) as isvc:
+        yield isvc

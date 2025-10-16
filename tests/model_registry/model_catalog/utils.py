@@ -1,7 +1,6 @@
 import json
 from typing import Any
 import time
-import yaml
 
 from kubernetes.dynamic import DynamicClient
 from simple_logger.logger import get_logger
@@ -9,13 +8,9 @@ from simple_logger.logger import get_logger
 import requests
 from timeout_sampler import retry
 
-from ocp_resources.config_map import ConfigMap
 from ocp_resources.pod import Pod
 from tests.model_registry.model_catalog.constants import (
-    DEFAULT_CATALOG_NAME,
-    DEFAULT_CATALOG_ID,
-    CATALOG_TYPE,
-    DEFAULT_CATALOG_FILE,
+    DEFAULT_CATALOGS,
 )
 from tests.model_registry.utils import get_model_catalog_pod, get_rest_headers
 from utilities.general import wait_for_pods_running
@@ -84,17 +79,27 @@ def wait_for_model_catalog_pod_created(client: DynamicClient, model_registry_nam
     raise PodNotFound("Model catalog pod not found")
 
 
-def validate_model_catalog_resource(kind: Any, admin_client: DynamicClient, namespace: str) -> None:
+def validate_model_catalog_resource(
+    kind: Any, admin_client: DynamicClient, namespace: str, expected_resource_count: int
+) -> None:
     resource = list(kind.get(namespace=namespace, label_selector="component=model-catalog", dyn_client=admin_client))
     assert resource
-    assert len(resource) == 1, f"Unexpected number of {kind} resources found: {[res.name for res in resource]}"
+    LOGGER.info(f"Validating resource: {kind}: Found {len(resource)})")
+    assert len(resource) == expected_resource_count, (
+        f"Unexpected number of {kind} resources found: {[res.name for res in resource]}"
+    )
 
 
-def validate_default_catalog(default_catalog) -> None:
-    assert default_catalog["name"] == DEFAULT_CATALOG_NAME
-    assert default_catalog["id"] == DEFAULT_CATALOG_ID
-    assert default_catalog["type"] == CATALOG_TYPE
-    assert default_catalog["properties"].get("yamlCatalogPath") == DEFAULT_CATALOG_FILE
+def validate_default_catalog(catalogs: list[dict[Any, Any]]) -> None:
+    errors = ""
+    for catalog in catalogs:
+        expected_catalog = DEFAULT_CATALOGS.get(catalog["id"])
+        assert expected_catalog, f"Unexpected catalog: {catalog}"
+        for field in ["type", "name", "properties"]:
+            if catalog[field] != expected_catalog[field]:
+                errors += f"For {catalog['id']} expected {field}={expected_catalog[field]}, but got {catalog[field]}"
+
+    assert not errors, errors
 
 
 def get_catalog_str(ids: list[str]) -> str:
@@ -108,7 +113,9 @@ def get_catalog_str(ids: list[str]) -> str:
   properties:
     yamlCatalogPath: {id.replace("_", "-")}.yaml
 """
-    return catalog_str
+    return f"""catalogs:
+{catalog_str}
+"""
 
 
 def get_sample_yaml_str(models: list[str]) -> str:
@@ -149,14 +156,11 @@ def get_validate_default_model_catalog_source(token: str, model_catalog_url: str
         headers=get_rest_headers(token=token),
     )["items"]
     assert result
-    assert len(result) == 1, f"Expected no custom models to be present. Actual: {result}"
-    assert result[0]["id"] == DEFAULT_CATALOG_ID
-    assert result[0]["name"] == DEFAULT_CATALOG_NAME
-    assert str(result[0]["enabled"]) == "True", result[0]["enabled"]
-
-
-def get_default_model_catalog_yaml(config_map: ConfigMap) -> str:
-    return yaml.safe_load(config_map.instance.data["sources.yaml"])["catalogs"]
+    assert len(result) == 2, f"Expected no custom models to be present. Actual: {result}"
+    ids_actual = [entry["id"] for entry in result]
+    assert sorted(ids_actual) == sorted(DEFAULT_CATALOGS.keys()), (
+        f"Actual default catalog entries: {ids_actual},Expected: {DEFAULT_CATALOGS.keys()}"
+    )
 
 
 def extract_schema_fields(openapi_schema: dict[Any, Any], schema_name: str) -> tuple[set[str], set[str]]:
