@@ -12,7 +12,7 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.route import Route
 from ocp_resources.service import Service
 from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CFG
-from tests.model_registry.model_catalog.constants import RANDOM_DEFAULT_CATALOG_ID, CATALOG_CONTAINER
+from tests.model_registry.model_catalog.constants import REDHAT_AI_CATALOG_ID, CATALOG_CONTAINER
 from tests.model_registry.model_catalog.utils import (
     validate_model_catalog_enabled,
     execute_get_command,
@@ -175,7 +175,7 @@ class TestModelCatalogDefault:
         """
         model_name = randomly_picked_model_from_default_catalog["name"]
         result = execute_get_command(
-            url=f"{model_catalog_rest_url[0]}sources/{RANDOM_DEFAULT_CATALOG_ID}/models/{model_name}",
+            url=f"{model_catalog_rest_url[0]}sources/{REDHAT_AI_CATALOG_ID}/models/{model_name}",
             headers=get_rest_headers(token=user_token_for_api_calls),
         )
         differences = list(diff(randomly_picked_model_from_default_catalog, result))
@@ -192,7 +192,7 @@ class TestModelCatalogDefault:
         """
         model_name = randomly_picked_model_from_default_catalog["name"]
         result = execute_get_command(
-            url=f"{model_catalog_rest_url[0]}sources/{RANDOM_DEFAULT_CATALOG_ID}/models/{model_name}/artifacts",
+            url=f"{model_catalog_rest_url[0]}sources/{REDHAT_AI_CATALOG_ID}/models/{model_name}/artifacts",
             headers=get_rest_headers(token=user_token_for_api_calls),
         )["items"]
         assert result, f"No artifacts found for {model_name}"
@@ -294,7 +294,7 @@ class TestModelCatalogDefaultData:
         LOGGER.info(f"Random model: {model_name}")
 
         api_model_artifacts = execute_get_command(
-            url=f"{model_catalog_rest_url[0]}sources/{RANDOM_DEFAULT_CATALOG_ID}/models/{model_name}/artifacts",
+            url=f"{model_catalog_rest_url[0]}sources/{REDHAT_AI_CATALOG_ID}/models/{model_name}/artifacts",
             headers=model_registry_rest_headers,
         )["items"]
 

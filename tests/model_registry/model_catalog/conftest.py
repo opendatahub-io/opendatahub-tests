@@ -18,7 +18,7 @@ from tests.model_registry.model_catalog.constants import (
     CUSTOM_CATALOG_ID1,
     DEFAULT_CATALOG_FILE,
     CATALOG_CONTAINER,
-    RANDOM_DEFAULT_CATALOG_ID,
+    REDHAT_AI_CATALOG_ID,
 )
 from tests.model_registry.model_catalog.utils import (
     is_model_catalog_ready,
@@ -150,7 +150,7 @@ def user_token_for_api_calls(
 def randomly_picked_model_from_default_catalog(
     model_catalog_rest_url: list[str], user_token_for_api_calls: str
 ) -> dict[Any, Any]:
-    url = f"{model_catalog_rest_url[0]}models?source={RANDOM_DEFAULT_CATALOG_ID}&pageSize=100"
+    url = f"{model_catalog_rest_url[0]}models?source={REDHAT_AI_CATALOG_ID}&pageSize=100"
     result = execute_get_command(
         url=url,
         headers=get_rest_headers(token=user_token_for_api_calls),
@@ -172,7 +172,7 @@ def default_catalog_api_response(
 ) -> dict[Any, Any]:
     """Fetch all models from default catalog API (used for data validation tests)"""
     return execute_get_command(
-        url=f"{model_catalog_rest_url[0]}models?source={RANDOM_DEFAULT_CATALOG_ID}&pageSize=100",
+        url=f"{model_catalog_rest_url[0]}models?source={REDHAT_AI_CATALOG_ID}&pageSize=100",
         headers=model_registry_rest_headers,
     )
 

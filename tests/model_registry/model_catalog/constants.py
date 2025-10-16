@@ -25,5 +25,5 @@ DEFAULT_CATALOGS: dict[str, Any] = {
         "properties": {"yamlCatalogPath": "/shared-data/validated-models-catalog.yaml"},
     },
 }
-RANDOM_DEFAULT_CATALOG_ID: str = next(iter(DEFAULT_CATALOGS))
-DEFAULT_CATALOG_FILE: str = DEFAULT_CATALOGS[RANDOM_DEFAULT_CATALOG_ID]["properties"]["yamlCatalogPath"]
+REDHAT_AI_CATALOG_ID: str = next(iter(DEFAULT_CATALOGS))
+DEFAULT_CATALOG_FILE: str = DEFAULT_CATALOGS[REDHAT_AI_CATALOG_ID]["properties"]["yamlCatalogPath"]
