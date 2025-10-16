@@ -12,13 +12,13 @@ from ocp_resources.resource import ResourceEditor
 
 from ocp_resources.route import Route
 from ocp_resources.service_account import ServiceAccount
-from tests.model_registry.constants import DEFAULT_MODEL_CATALOG
+from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG
 from tests.model_registry.model_catalog.constants import (
     SAMPLE_MODEL_NAME3,
     CUSTOM_CATALOG_ID1,
-    DEFAULT_CATALOG_ID,
     DEFAULT_CATALOG_FILE,
     CATALOG_CONTAINER,
+    REDHAT_AI_CATALOG_ID,
 )
 from tests.model_registry.model_catalog.utils import (
     is_model_catalog_ready,
@@ -26,7 +26,6 @@ from tests.model_registry.model_catalog.utils import (
     get_model_str,
     execute_get_command,
     get_model_catalog_pod,
-    get_default_model_catalog_yaml,
 )
 from tests.model_registry.utils import get_rest_headers
 from utilities.infra import get_openshift_token, login_with_user_password, create_inference_token
@@ -38,7 +37,7 @@ LOGGER = get_logger(name=__name__)
 
 @pytest.fixture(scope="class")
 def catalog_config_map(admin_client: DynamicClient, model_registry_namespace: str) -> ConfigMap:
-    return ConfigMap(name=DEFAULT_MODEL_CATALOG, client=admin_client, namespace=model_registry_namespace)
+    return ConfigMap(name=DEFAULT_CUSTOM_MODEL_CATALOG, client=admin_client, namespace=model_registry_namespace)
 
 
 @pytest.fixture(scope="class")
@@ -80,15 +79,7 @@ def updated_catalog_config_map(
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
 ) -> Generator[ConfigMap, None, None]:
-    defaults = yaml.dump(
-        get_default_model_catalog_yaml(config_map=catalog_config_map),
-        default_flow_style=False,
-    )
-    catalog_str = f"""catalogs:
-{defaults}
-{request.param["sources_yaml"]}
-    """
-    patches = {"data": {"sources.yaml": catalog_str}}
+    patches = {"data": {"sources.yaml": request.param["sources_yaml"]}}
     if "sample_yaml" in request.param:
         for key in request.param["sample_yaml"]:
             patches["data"][key] = request.param["sample_yaml"][key]
@@ -159,7 +150,7 @@ def user_token_for_api_calls(
 def randomly_picked_model_from_default_catalog(
     model_catalog_rest_url: list[str], user_token_for_api_calls: str
 ) -> dict[Any, Any]:
-    url = f"{model_catalog_rest_url[0]}models?source={DEFAULT_CATALOG_ID}&pageSize=100"
+    url = f"{model_catalog_rest_url[0]}models?source={REDHAT_AI_CATALOG_ID}&pageSize=100"
     result = execute_get_command(
         url=url,
         headers=get_rest_headers(token=user_token_for_api_calls),
@@ -181,7 +172,7 @@ def default_catalog_api_response(
 ) -> dict[Any, Any]:
     """Fetch all models from default catalog API (used for data validation tests)"""
     return execute_get_command(
-        url=f"{model_catalog_rest_url[0]}models?source={DEFAULT_CATALOG_ID}&pageSize=100",
+        url=f"{model_catalog_rest_url[0]}models?source={REDHAT_AI_CATALOG_ID}&pageSize=100",
         headers=model_registry_rest_headers,
     )
 
