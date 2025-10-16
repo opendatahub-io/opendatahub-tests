@@ -100,14 +100,14 @@ class TestModelRegistryCreationRest:
         expected_version = f"{ModelRegistry.ApiGroup.MODELREGISTRY_OPENDATAHUB_IO}/{ModelRegistry.ApiVersion.V1BETA1}"
         assert api_version == expected_version
 
-    def test_model_registry_validate_oauthproxy_enabled(
+    def test_model_registry_validate_kuberbacproxy_enabled(
         self: Self,
         model_registry_instance,
     ):
         model_registry_instance_spec = model_registry_instance[0].instance.spec
-        LOGGER.info(f"Validating that MR is using oauth proxy {model_registry_instance_spec}")
+        LOGGER.info(f"Validating that MR is using kubeRBAC proxy {model_registry_instance_spec}")
         assert not model_registry_instance_spec.istio
-        assert model_registry_instance_spec.oauthProxy.serviceRoute == "enabled"
+        assert model_registry_instance_spec.kubeRBACProxy.serviceRoute == "enabled"
 
     @pytest.mark.parametrize(
         "updated_model_registry_resource, expected_param",
