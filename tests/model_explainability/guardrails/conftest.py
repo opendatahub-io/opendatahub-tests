@@ -5,7 +5,6 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.route import Route
-from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 
 from tests.model_explainability.guardrails.constants import AUTOCONFIG_DETECTOR_LABEL
@@ -39,7 +38,6 @@ def huggingface_sr(
 def prompt_injection_detector_isvc(
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    minio_data_connection: Secret,
     huggingface_sr: ServingRuntime,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
@@ -49,8 +47,8 @@ def prompt_injection_detector_isvc(
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         model_format="guardrails-detector-huggingface",
         runtime=huggingface_sr.name,
-        storage_key=minio_data_connection.name,
-        storage_path="deberta-v3-base-prompt-injection-v2",
+        storage_uri="oci://quay.io/trustyai_testing/detectors/deberta-v3-base-prompt-injection-v2"
+        "@sha256:8737d6c7c09edf4c16dc87426624fd8ed7d118a12527a36b670be60f089da215",
         wait_for_predictor_pods=False,
         enable_auth=False,
         resources={
@@ -93,7 +91,6 @@ def openshift_ca_bundle_file(
 def hap_detector_isvc(
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    minio_data_connection: Secret,
     huggingface_sr: ServingRuntime,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
@@ -103,8 +100,8 @@ def hap_detector_isvc(
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         model_format="guardrails-detector-huggingface",
         runtime=huggingface_sr.name,
-        storage_key=minio_data_connection.name,
-        storage_path="granite-guardian-hap-38m",
+        storage_uri="oci://quay.io/trustyai_testing/detectors/granite-guardian-hap-38m"
+        "@sha256:9dd129668cce86dac674814c0a965b1526a01de562fd1e9a28d1892429bdad7b",
         wait_for_predictor_pods=False,
         enable_auth=False,
         resources={
