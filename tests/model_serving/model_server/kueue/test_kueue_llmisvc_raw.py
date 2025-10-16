@@ -110,9 +110,7 @@ class TestKueueLLMDScaleUp:
         deployment = deployments[0]
         deployment.wait_for_replicas(deployed=True)
         replicas = deployment.instance.spec.replicas
-        assert replicas == INITIAL_REPLICAS, (
-            f"Deployment should have {INITIAL_REPLICAS} replica, got {replicas}"
-        )
+        assert replicas == INITIAL_REPLICAS, f"Deployment should have {INITIAL_REPLICAS} replica, got {replicas}"
 
         # Update the LLMInferenceService to request 2 replicas, which exceeds the quota.
         isvc_to_update = llmd_inference_service.instance.to_dict()
