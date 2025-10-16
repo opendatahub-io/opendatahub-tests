@@ -1,6 +1,7 @@
 import json
 from typing import Any
 import time
+import yaml
 
 from kubernetes.dynamic import DynamicClient
 from simple_logger.logger import get_logger
@@ -9,6 +10,7 @@ import requests
 from timeout_sampler import retry
 
 from ocp_resources.pod import Pod
+from ocp_resources.config_map import ConfigMap
 from tests.model_registry.model_catalog.constants import (
     DEFAULT_CATALOGS,
 )
@@ -208,3 +210,7 @@ def extract_schema_fields(openapi_schema: dict[Any, Any], schema_name: str) -> t
     }
 
     return all_properties - excluded_fields, required_fields - excluded_fields
+
+
+def get_default_model_catalog_yaml(config_map: ConfigMap) -> str:
+    return yaml.safe_load(config_map.instance.data["sources.yaml"])["catalogs"]

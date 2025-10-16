@@ -27,3 +27,6 @@ DEFAULT_CATALOGS: dict[str, Any] = {
 }
 REDHAT_AI_CATALOG_ID: str = next(iter(DEFAULT_CATALOGS))
 DEFAULT_CATALOG_FILE: str = DEFAULT_CATALOGS[REDHAT_AI_CATALOG_ID]["properties"]["yamlCatalogPath"]
+DEFAULT_CATALOG_ID: str = "default_catalog"
+DEFAULT_CATALOG_NAME: str = "Default Catalog"
+DEFAULT_MODEL_CATALOG: str = "model-catalog-sources"
