@@ -11,7 +11,7 @@ from ocp_resources.pod import Pod
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.route import Route
 from ocp_resources.service import Service
-from tests.model_registry.model_catalog.constants import DEFAULT_CATALOG_ID
+from tests.model_registry.model_catalog.constants import DEFAULT_CATALOG_ID, CATALOG_CONTAINER
 from tests.model_registry.model_catalog.utils import (
     validate_model_catalog_enabled,
     execute_get_command,
@@ -19,6 +19,7 @@ from tests.model_registry.model_catalog.utils import (
     validate_default_catalog,
     get_validate_default_model_catalog_source,
     extract_schema_fields,
+    get_model_catalog_pod,
 )
 from tests.model_registry.utils import get_rest_headers
 from utilities.user_utils import UserTestSession
@@ -99,6 +100,20 @@ class TestModelCatalogGeneral:
 
     def test_operator_pod_enabled_model_catalog(self: Self, model_registry_operator_pod: Pod):
         assert validate_model_catalog_enabled(pod=model_registry_operator_pod)
+
+    def test_model_catalog_uses_postgres(self: Self, admin_client: DynamicClient, model_registry_namespace: str):
+        """
+        Validate that model catalog pod is using PostgreSQL database
+        """
+        model_catalog_pods = get_model_catalog_pod(
+            client=admin_client,
+            model_registry_namespace=model_registry_namespace,
+            label_selector="app.kubernetes.io/name=model-catalog",
+        )
+        assert len(model_catalog_pods) == 1
+        model_catalog_pod = model_catalog_pods[0]
+        model_catalog_pod_log = model_catalog_pod.log(container=CATALOG_CONTAINER)
+        assert "Successfully connected to PostgreSQL database" in model_catalog_pod_log
 
 
 @pytest.mark.parametrize(
