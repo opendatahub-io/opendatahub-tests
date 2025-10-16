@@ -90,7 +90,7 @@ class TestKueueLLMDScaleUp:
         Verify that Kueue admits the first replica of an LLMInferenceService and
         gates the second replica when the service is scaled up beyond the queue's quota.
         """
-        # The llmd_inference_service is already created by the fixture with 1 replica.
+        # The llmd_inference_service is created with 1 replica at first to ensure the LLMISVC is ready
         # Wait for the service and its single pod to become ready.
         assert verify_gateway_status(llmd_gateway), "Gateway should be ready"
         assert verify_llm_service_status(llmd_inference_service), "LLMInferenceService should be ready"

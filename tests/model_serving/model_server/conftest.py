@@ -99,7 +99,7 @@ def shared_llmd_gateway(
     admin_client: DynamicClient,
     gateway_namespace: str,
 ) -> Generator[Gateway, None, None]:
-    gateway_class_name = "openshift-default"  # "data-science-gateway-class"
+    gateway_class_name = "data-science-gateway-class"
 
     with create_llmd_gateway(
         client=admin_client,
