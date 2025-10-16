@@ -57,31 +57,44 @@ class TestModelCatalogGeneral:
         validate_default_catalog(default_catalog=catalogs[0])
 
     @pytest.mark.parametrize(
-        "resource_name",
+        "resource_name, expected_resource_count",
         [
             pytest.param(
                 Deployment,
+                1,
                 id="test_model_catalog_deployment_resource",
             ),
             pytest.param(
                 Route,
+                1,
                 id="test_model_catalog_route_resource",
             ),
             pytest.param(
                 Service,
+                1,
                 id="test_model_catalog_service_resource",
             ),
             pytest.param(
                 Pod,
+                2,
                 id="test_model_catalog_pod_resource",
             ),
         ],
     )
+    @pytest.mark.post_upgrade
+    @pytest.mark.install
     def test_model_catalog_resources_exists(
-        self: Self, admin_client: DynamicClient, model_registry_namespace: str, resource_name: Any
+        self: Self,
+        admin_client: DynamicClient,
+        model_registry_namespace: str,
+        resource_name: Any,
+        expected_resource_count: int,
     ):
         validate_model_catalog_resource(
-            kind=resource_name, admin_client=admin_client, namespace=model_registry_namespace
+            kind=resource_name,
+            admin_client=admin_client,
+            namespace=model_registry_namespace,
+            expected_resource_count=expected_resource_count,
         )
 
     def test_operator_pod_enabled_model_catalog(self: Self, model_registry_operator_pod: Pod):
