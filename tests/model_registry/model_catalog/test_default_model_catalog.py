@@ -82,6 +82,8 @@ class TestModelCatalogGeneral:
             ),
         ],
     )
+    @pytest.mark.post_upgrade
+    @pytest.mark.install
     def test_model_catalog_resources_exists(
         self: Self, admin_client: DynamicClient, model_registry_namespace: str, resource_name: Any
     ):
