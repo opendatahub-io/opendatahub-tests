@@ -150,7 +150,7 @@ class TestKueueLLMDScaleUp:
                 f"Expected {EXPECTED_RUNNING_PODS} running and {EXPECTED_GATED_PODS} gated pods. "
                 f"Found {running_pods} running and {gated_pods} gated."
             ) from None
-        
+
         # Verify that inference still works on the single running pod
         verify_inference_response_llmd(
             llm_service=llmd_inference_service,
