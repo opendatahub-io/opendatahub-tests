@@ -18,8 +18,9 @@ from tests.model_registry.model_catalog.utils import (
     get_sample_yaml_str,
     get_default_model_catalog_yaml,
     ResourceNotFoundError,
+    validate_default_catalog,
 )
-from tests.model_registry.model_catalog.constants import DEFAULT_CATALOG_ID, DEFAULT_CATALOGS
+from tests.model_registry.model_catalog.constants import DEFAULT_CATALOG_ID
 from tests.model_registry.constants import DEFAULT_MODEL_CATALOG
 from simple_logger.logger import get_logger
 from timeout_sampler import retry
@@ -27,15 +28,6 @@ from timeout_sampler import retry
 from .constants import TEST_DATA
 
 LOGGER = get_logger(name=__name__)
-
-
-def _validate_catalog_properties(catalog, expected_name, expected_type, expected_yaml_path):
-    """Helper function to validate catalog properties against expected values"""
-    assert catalog["name"] == expected_name, f"Expected name '{expected_name}', got '{catalog.get('name')}'"
-    assert catalog["type"] == expected_type, f"Expected type '{expected_type}', got '{catalog.get('type')}'"
-    assert catalog.get("properties", {}).get("yamlCatalogPath") == expected_yaml_path, (
-        f"Expected yamlCatalogPath '{expected_yaml_path}', got '{catalog.get('properties', {}).get('yamlCatalogPath')}'"
-    )
 
 
 @pytest.mark.usefixtures(
@@ -312,13 +304,8 @@ class TestPostUpgradeCatalog:
             f"Found: {[c.get('id') for c in default_catalogs]}"
         )
 
-        # Validate properties using helper function (this still results in one logical assertion)
-        _validate_catalog_properties(
-            catalog=redhat_ai_models_catalog,
-            expected_name=DEFAULT_CATALOGS["redhat_ai_models"]["name"],
-            expected_type=DEFAULT_CATALOGS["redhat_ai_models"]["type"],
-            expected_yaml_path=DEFAULT_CATALOGS["redhat_ai_models"]["properties"]["yamlCatalogPath"],
-        )
+        # Validate properties using existing utility function
+        validate_default_catalog(catalogs=[redhat_ai_models_catalog])
 
     @pytest.mark.post_upgrade
     def test_verify_redhat_ai_validated_models_catalog_post_upgrade(
@@ -344,13 +331,8 @@ class TestPostUpgradeCatalog:
             f"Found: {[c.get('id') for c in default_catalogs]}"
         )
 
-        # Validate properties using helper function (this still results in one logical assertion)
-        _validate_catalog_properties(
-            catalog=redhat_ai_validated_models_catalog,
-            expected_name=DEFAULT_CATALOGS["redhat_ai_validated_models"]["name"],
-            expected_type=DEFAULT_CATALOGS["redhat_ai_validated_models"]["type"],
-            expected_yaml_path=DEFAULT_CATALOGS["redhat_ai_validated_models"]["properties"]["yamlCatalogPath"],
-        )
+        # Validate properties using existing utility function
+        validate_default_catalog(catalogs=[redhat_ai_validated_models_catalog])
 
     def _get_sources_response_with_retry(
         self, model_catalog_rest_url: list[str], model_registry_rest_headers: dict[str, str]
