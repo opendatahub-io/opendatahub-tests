@@ -10,7 +10,7 @@ from tests.model_registry.constants import (
     MR_INSTANCE_BASE_NAME,
     NUM_RESOURCES,
     DEFAULT_CUSTOM_MODEL_CATALOG,
-    DEFAULT_MODEL_CATALOG_CFG,
+    DEFAULT_MODEL_CATALOG_CM,
 )
 from tests.model_registry.rest_api.utils import (
     validate_resource_attributes,
@@ -60,7 +60,7 @@ class TestModelRegistryMultipleInstances:
         config_map_names: list[str] = []
         expected_number_config_maps: int = 2
         for config_map in list(ConfigMap.get(namespace=model_registry_namespace, dyn_client=admin_client)):
-            if config_map.name.startswith(tuple([DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CFG])):
+            if config_map.name.startswith(tuple([DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM])):
                 config_map_names.append(config_map.name)
         assert len(config_map_names) == expected_number_config_maps, (
             f"Expected {expected_number_config_maps} model catalog sources, found: {config_map_names}"

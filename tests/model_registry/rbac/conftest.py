@@ -24,6 +24,7 @@ from utilities.user_utils import UserTestSession
 from tests.model_registry.rbac.group_utils import create_group
 from tests.model_registry.constants import (
     MR_INSTANCE_NAME,
+    KUBERBACPROXY_STR,
 )
 
 LOGGER = get_logger(name=__name__)
@@ -211,7 +212,7 @@ def model_registry_instance_parametrized(
         for mr_instance in mr_instances:
             # Common parameters for both ModelRegistry classes
             mr_instance.wait_for_condition(condition="Available", status="True")
-            mr_instance.wait_for_condition(condition="KubeRBACProxyAvailable", status="True")
+            mr_instance.wait_for_condition(condition=KUBERBACPROXY_STR, status="True")
             model_registry_instances.append(mr_instance)
 
         LOGGER.info(
