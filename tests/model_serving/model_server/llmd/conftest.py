@@ -300,7 +300,7 @@ def llmisvc_auth(
     def _create_llmd_auth_service(
         service_name: str,
         service_account_name: str,
-        storage_uri: str = ModelStorage.HF_OPT125M,
+        storage_uri: str = ModelStorage.TINYLLAMA_OCI,
         container_image: str = ContainerImages.VLLM_CPU,
         container_resources: dict | None = None,
     ) -> tuple[LLMInferenceService, ServiceAccount]:

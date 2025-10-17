@@ -32,13 +32,13 @@ class TestLLMISVCAuth:
         llmisvc_user_a, sa_user_a = llmisvc_auth(
             service_name=llmisvc_auth_prefix + "a",
             service_account_name=sa_prefix + "a",
-            storage_uri=ModelStorage.HF_TINYLLAMA,
+            storage_uri=ModelStorage.TINYLLAMA_OCI,
             container_image=ContainerImages.VLLM_CPU,
         )
         llmisvc_user_b, sa_user_b = llmisvc_auth(
             service_name=llmisvc_auth_prefix + "b",
             service_account_name=sa_prefix + "b",
-            storage_uri=ModelStorage.HF_TINYLLAMA,
+            storage_uri=ModelStorage.TINYLLAMA_OCI,
             container_image=ContainerImages.VLLM_CPU,
         )
 
