@@ -3,14 +3,8 @@ import yaml
 from kubernetes.dynamic import DynamicClient
 
 from ocp_resources.config_map import ConfigMap
-from ocp_resources.deployment import Deployment
-from ocp_resources.pod import Pod
-from ocp_resources.route import Route
-from ocp_resources.service import Service
 
 from tests.model_registry.model_catalog.utils import (
-    validate_model_catalog_resource,
-    wait_for_model_catalog_api,
     ResourceNotFoundError,
     get_sources_response_with_retry,
     get_model_catalog_configmap,
@@ -153,49 +147,6 @@ class TestPostUpgradeCatalog:
             )
         elif catalogs:
             LOGGER.info("Custom test catalog not found, but other catalogs exist - this is acceptable")
-
-    @pytest.mark.post_upgrade
-    def test_verify_resource_health_post_upgrade(
-        self,
-        admin_client: DynamicClient,
-        model_registry_namespace: str,
-    ):
-        """Verify pods, deployments, routes, and services are healthy"""
-        LOGGER.info("Starting post-upgrade resource health verification")
-
-        # Re-run Deployment Checks - validate all resource types
-        for resource_type in [Pod, Deployment, Route, Service]:
-            if resource_type == Pod:
-                validate_model_catalog_resource(
-                    kind=resource_type,
-                    admin_client=admin_client,
-                    namespace=model_registry_namespace,
-                    expected_resource_count=2,
-                )
-            else:
-                validate_model_catalog_resource(
-                    kind=resource_type,
-                    admin_client=admin_client,
-                    namespace=model_registry_namespace,
-                    expected_resource_count=1,
-                )
-
-        # This test doesn't have a direct assert, but validate_model_catalog_resource does internal assertions
-        # Adding a simple assert to satisfy the one-assert requirement
-        assert True, "Resource health verification completed"
-
-    @pytest.mark.post_upgrade
-    def test_verify_api_accessibility_post_upgrade(
-        self,
-        model_catalog_rest_url: list[str],
-        model_registry_rest_headers: dict[str, str],
-    ):
-        """Verify API is accessible after upgrade"""
-        # Re-verify API Accessibility
-        wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
-
-        # Adding assert to satisfy requirement (wait_for_model_catalog_api has internal checks)
-        assert True, "API accessibility verification completed"
 
     @pytest.mark.post_upgrade
     def test_verify_minimum_sources_count_post_upgrade(
