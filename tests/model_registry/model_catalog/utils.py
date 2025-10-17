@@ -214,3 +214,58 @@ def extract_schema_fields(openapi_schema: dict[Any, Any], schema_name: str) -> t
 
 def get_default_model_catalog_yaml(config_map: ConfigMap) -> str:
     return yaml.safe_load(config_map.instance.data["sources.yaml"])["catalogs"]
+
+
+# Helper functions for catalog upgrade tests
+
+
+def get_sources_response_with_retry(
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+    wait_timeout: int = 120,
+    sleep: int = 10,
+):
+    """Helper function to get sources response with configurable retry logic"""
+
+    @retry(wait_timeout=wait_timeout, sleep=sleep, exceptions_dict={AssertionError: [], ResourceNotFoundError: []})
+    def get_sources():
+        return execute_get_command(url=f"{model_catalog_rest_url[0]}sources", headers=model_registry_rest_headers)
+
+    return get_sources()
+
+
+def get_model_catalog_configmap(admin_client: DynamicClient, model_registry_namespace: str, configmap_name: str):
+    """Helper function to get model catalog ConfigMaps"""
+    return ConfigMap(name=configmap_name, client=admin_client, namespace=model_registry_namespace)
+
+
+def find_catalog_by_id(catalogs: list, catalog_id: str):
+    """Helper function to find a catalog by its ID in a list of catalogs"""
+    for catalog in catalogs:
+        if catalog.get("id") == catalog_id:
+            return catalog
+    return None
+
+
+def verify_model_accessibility(
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+    catalog_id: str,
+    model_name: str,
+    wait_timeout: int = 120,
+    sleep: int = 10,
+):
+    """Helper function to verify model accessibility with retry logic"""
+
+    @retry(wait_timeout=wait_timeout, sleep=sleep, exceptions_dict={ResourceNotFoundError: []})
+    def verify_model():
+        model_response = execute_get_command(
+            url=f"{model_catalog_rest_url[0]}sources/{catalog_id}/models/{model_name}",
+            headers=model_registry_rest_headers,
+        )
+        assert model_response["name"] == model_name, (
+            f"Model name mismatch: expected {model_name}, got {model_response.get('name')}"
+        )
+        return model_response
+
+    return verify_model()
