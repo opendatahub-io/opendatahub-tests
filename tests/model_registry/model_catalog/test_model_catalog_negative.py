@@ -55,11 +55,13 @@ def model_catalog_pod_error_state(
     model_registry_namespace: str,
 ) -> Pod:
     """Fixture that returns a model catalog pod in error state"""
-    model_catalog_pod = get_model_catalog_pod(
+    pods = get_model_catalog_pod(
         client=admin_client,
         model_registry_namespace=model_registry_namespace,
         label_selector="app.kubernetes.io/name=model-catalog",
-    )[0]
+    )
+    assert pods, "Model catalog pod not found in the namespace"
+    model_catalog_pod = pods[0]
     assert wait_for_container_status(
         pod=model_catalog_pod,
         container_name=CATALOG_CONTAINER,
