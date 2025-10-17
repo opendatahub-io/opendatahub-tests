@@ -52,6 +52,8 @@ class TestModelCatalogGeneral:
         ],
         indirect=["model_catalog_config_map"],
     )
+    @pytest.mark.post_upgrade
+    @pytest.mark.install
     def test_config_map_exists(self: Self, model_catalog_config_map: ConfigMap, expected_catalogs: int):
         # Check that model catalog configmaps is created when model registry is
         # enabled on data science cluster.

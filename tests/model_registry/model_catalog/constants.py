@@ -30,3 +30,15 @@ DEFAULT_CATALOG_FILE: str = DEFAULT_CATALOGS[REDHAT_AI_CATALOG_ID]["properties"]
 DEFAULT_CATALOG_ID: str = "default_catalog"
 DEFAULT_CATALOG_NAME: str = "Default Catalog"
 DEFAULT_MODEL_CATALOG: str = "model-catalog-sources"
+
+# ConfigMap names
+MODEL_CATALOG_DEFAULT_SOURCES_CM: str = "model-catalog-default-sources"
+
+# YAML keys
+CATALOGS_KEY: str = "catalogs"
+SOURCES_YAML_KEY: str = "sources.yaml"
+YAML_TYPE: str = "yaml"
+
+# Default catalog IDs (derived from DEFAULT_CATALOGS)
+REDHAT_AI_MODELS_ID: str = "redhat_ai_models"
+REDHAT_AI_VALIDATED_MODELS_ID: str = "redhat_ai_validated_models"

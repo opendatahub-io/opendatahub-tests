@@ -18,7 +18,15 @@ from tests.model_registry.model_catalog.utils import (
     find_catalog_by_id,
     verify_model_accessibility,
 )
-from tests.model_registry.model_catalog.constants import DEFAULT_CATALOG_ID
+from tests.model_registry.model_catalog.constants import (
+    DEFAULT_CATALOG_ID,
+    MODEL_CATALOG_DEFAULT_SOURCES_CM,
+    CATALOGS_KEY,
+    SOURCES_YAML_KEY,
+    YAML_TYPE,
+    REDHAT_AI_MODELS_ID,
+    REDHAT_AI_VALIDATED_MODELS_ID,
+)
 from tests.model_registry.constants import DEFAULT_MODEL_CATALOG
 from simple_logger.logger import get_logger
 
@@ -29,7 +37,7 @@ LOGGER = get_logger(name=__name__)
 
 @pytest.mark.usefixtures(
     "model_registry_namespace", "admin_client", "model_catalog_rest_url", "model_registry_rest_headers"
-)  # noqa: E501
+)
 class TestPreUpgradeCatalog:
     @pytest.mark.pre_upgrade
     def test_create_custom_catalog_setup_pre_upgrade(
@@ -45,36 +53,37 @@ class TestPreUpgradeCatalog:
         assert custom_catalog_setup["catalog_id"] == TEST_DATA["catalog_id"]
         assert custom_catalog_setup["models"] == TEST_DATA["models"]
 
+    @pytest.mark.parametrize(
+        "catalog_id, catalog_description",
+        [
+            pytest.param(
+                TEST_DATA["catalog_id"],
+                "Custom catalog",
+                id="test_verify_custom_catalog_exists_pre_upgrade",
+            ),
+            pytest.param(
+                DEFAULT_CATALOG_ID,
+                "Default catalog",
+                id="test_verify_default_catalog_preserved_pre_upgrade",
+            ),
+        ],
+    )
     @pytest.mark.pre_upgrade
-    def test_verify_custom_catalog_exists_pre_upgrade(
+    def test_verify_catalog_exists_pre_upgrade(
         self,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
+        catalog_id: str,
+        catalog_description: str,
     ):
-        """Verify custom catalog exists alongside default catalog"""
+        """Verify catalog exists in sources"""
         sources_response = get_sources_response_with_retry(
             model_catalog_rest_url=model_catalog_rest_url, model_registry_rest_headers=model_registry_rest_headers
         )
 
-        custom_catalog_found = any(source["id"] == TEST_DATA["catalog_id"] for source in sources_response["items"])
-        assert custom_catalog_found, (
-            f"Custom catalog {TEST_DATA['catalog_id']} not found in sources: {[s['id'] for s in sources_response['items']]}"  # noqa: E501
-        )
-
-    @pytest.mark.pre_upgrade
-    def test_verify_default_catalog_preserved_pre_upgrade(
-        self,
-        model_catalog_rest_url: list[str],
-        model_registry_rest_headers: dict[str, str],
-    ):
-        """Verify default catalog still exists alongside custom catalog"""
-        sources_response = get_sources_response_with_retry(
-            model_catalog_rest_url=model_catalog_rest_url, model_registry_rest_headers=model_registry_rest_headers
-        )
-
-        default_catalog_found = any(source["id"] == DEFAULT_CATALOG_ID for source in sources_response["items"])
-        assert default_catalog_found, (
-            f"Default catalog should still exist alongside custom catalog. Available sources: {[s['id'] for s in sources_response['items']]}"  # noqa: E501
+        catalog_found = any(source["id"] == catalog_id for source in sources_response["items"])
+        assert catalog_found, (
+            f"{catalog_description} {catalog_id} not found in sources: {[s['id'] for s in sources_response['items']]}"
         )
 
     @pytest.mark.pre_upgrade
@@ -103,12 +112,13 @@ class TestPreUpgradeCatalog:
         model_registry_namespace: str,
     ):
         """Verify both catalogs are present in configmap with proper integrity"""
-        current_configmap_data = ConfigMap(
-            name=DEFAULT_MODEL_CATALOG, client=admin_client, namespace=model_registry_namespace
-        ).instance.data
+        current_configmap_data = (
+            ConfigMap(name=DEFAULT_MODEL_CATALOG, client=admin_client, namespace=model_registry_namespace).instance.data
+            or {}
+        )
 
         # Parse the current sources.yaml to verify structure
-        current_catalogs = yaml.safe_load(current_configmap_data["sources.yaml"])["catalogs"]
+        current_catalogs = yaml.safe_load(current_configmap_data[SOURCES_YAML_KEY])[CATALOGS_KEY]
         catalog_ids = [catalog["id"] for catalog in current_catalogs]
 
         # Single assertion: verify we have at least default and custom catalogs
@@ -122,38 +132,6 @@ class TestPreUpgradeCatalog:
 )
 class TestPostUpgradeCatalog:
     @pytest.mark.post_upgrade
-    def test_verify_model_catalog_sources_configmap_exists_post_upgrade(
-        self,
-        admin_client: DynamicClient,
-        model_registry_namespace: str,
-    ):
-        """Verify model-catalog-sources ConfigMap exists after upgrade"""
-        LOGGER.info("Starting post-upgrade configmap migration verification")
-
-        model_catalog_sources_cm = get_model_catalog_configmap(
-            admin_client=admin_client,
-            model_registry_namespace=model_registry_namespace,
-            configmap_name="model-catalog-sources",
-        )
-        assert model_catalog_sources_cm.exists, "model-catalog-sources ConfigMap should exist after upgrade"
-
-    @pytest.mark.post_upgrade
-    def test_verify_model_catalog_sources_structure_post_upgrade(
-        self,
-        admin_client: DynamicClient,
-        model_registry_namespace: str,
-    ):
-        """Verify model-catalog-sources ConfigMap has correct structure"""
-        model_catalog_sources_cm = get_model_catalog_configmap(
-            admin_client=admin_client,
-            model_registry_namespace=model_registry_namespace,
-            configmap_name="model-catalog-sources",
-        )
-        sources_data = yaml.safe_load(model_catalog_sources_cm.instance.data["sources.yaml"])
-
-        assert "catalogs" in sources_data, "sources.yaml should contain 'catalogs' key"
-
-    @pytest.mark.post_upgrade
     def test_verify_custom_catalog_properties_post_upgrade(
         self,
         admin_client: DynamicClient,
@@ -163,53 +141,21 @@ class TestPostUpgradeCatalog:
         model_catalog_sources_cm = get_model_catalog_configmap(
             admin_client=admin_client,
             model_registry_namespace=model_registry_namespace,
-            configmap_name="model-catalog-sources",
+            configmap_name=DEFAULT_MODEL_CATALOG,
         )
-        sources_data = yaml.safe_load(model_catalog_sources_cm.instance.data["sources.yaml"])
-        catalogs = sources_data["catalogs"]
+        sources_data = yaml.safe_load(model_catalog_sources_cm.instance.data[SOURCES_YAML_KEY])
+        catalogs = sources_data[CATALOGS_KEY]
 
         # If our test catalog exists, verify it's properly structured
         test_catalog = find_catalog_by_id(catalogs=catalogs, catalog_id=TEST_DATA["catalog_id"])
         if test_catalog:
             # Single assertion combining both checks
-            assert test_catalog.get("type") == "yaml" and "name" in test_catalog, (
-                f"Custom catalog should be yaml type with name. "
+            assert test_catalog.get("type") == YAML_TYPE and "name" in test_catalog, (
+                f"Custom catalog should be {YAML_TYPE} type with name. "
                 f"Got type: {test_catalog.get('type')}, has name: {'name' in test_catalog}"
             )
         elif catalogs:
             LOGGER.info("Custom test catalog not found, but other catalogs exist - this is acceptable")
-
-    @pytest.mark.post_upgrade
-    def test_verify_model_catalog_default_sources_configmap_exists_post_upgrade(
-        self,
-        admin_client: DynamicClient,
-        model_registry_namespace: str,
-    ):
-        """Verify model-catalog-default-sources ConfigMap exists after upgrade"""
-        model_catalog_default_sources_cm = get_model_catalog_configmap(
-            admin_client=admin_client,
-            model_registry_namespace=model_registry_namespace,
-            configmap_name="model-catalog-default-sources",
-        )
-        assert model_catalog_default_sources_cm.exists, (
-            "model-catalog-default-sources ConfigMap should exist after upgrade"
-        )
-
-    @pytest.mark.post_upgrade
-    def test_verify_default_sources_structure_post_upgrade(
-        self,
-        admin_client: DynamicClient,
-        model_registry_namespace: str,
-    ):
-        """Verify default sources ConfigMap has correct structure"""
-        model_catalog_default_sources_cm = get_model_catalog_configmap(
-            admin_client=admin_client,
-            model_registry_namespace=model_registry_namespace,
-            configmap_name="model-catalog-default-sources",
-        )
-        default_sources_data = yaml.safe_load(model_catalog_default_sources_cm.instance.data["sources.yaml"])
-
-        assert "catalogs" in default_sources_data, "default sources.yaml should contain 'catalogs' key"
 
     @pytest.mark.post_upgrade
     def test_verify_redhat_ai_models_catalog_post_upgrade(
@@ -221,15 +167,15 @@ class TestPostUpgradeCatalog:
         model_catalog_default_sources_cm = get_model_catalog_configmap(
             admin_client=admin_client,
             model_registry_namespace=model_registry_namespace,
-            configmap_name="model-catalog-default-sources",
+            configmap_name=MODEL_CATALOG_DEFAULT_SOURCES_CM,
         )
-        default_sources_data = yaml.safe_load(model_catalog_default_sources_cm.instance.data["sources.yaml"])
-        default_catalogs = default_sources_data["catalogs"]
+        default_sources_data = yaml.safe_load(model_catalog_default_sources_cm.instance.data[SOURCES_YAML_KEY])
+        default_catalogs = default_sources_data[CATALOGS_KEY]
 
-        redhat_ai_models_catalog = find_catalog_by_id(catalogs=default_catalogs, catalog_id="redhat_ai_models")
+        redhat_ai_models_catalog = find_catalog_by_id(catalogs=default_catalogs, catalog_id=REDHAT_AI_MODELS_ID)
 
         assert redhat_ai_models_catalog is not None, (
-            f"redhat_ai_models source not found in model-catalog-default-sources. "
+            f"{REDHAT_AI_MODELS_ID} source not found in {MODEL_CATALOG_DEFAULT_SOURCES_CM}. "
             f"Found: {[c.get('id') for c in default_catalogs]}"
         )
 
@@ -246,17 +192,17 @@ class TestPostUpgradeCatalog:
         model_catalog_default_sources_cm = get_model_catalog_configmap(
             admin_client=admin_client,
             model_registry_namespace=model_registry_namespace,
-            configmap_name="model-catalog-default-sources",
+            configmap_name=MODEL_CATALOG_DEFAULT_SOURCES_CM,
         )
-        default_sources_data = yaml.safe_load(model_catalog_default_sources_cm.instance.data["sources.yaml"])
-        default_catalogs = default_sources_data["catalogs"]
+        default_sources_data = yaml.safe_load(model_catalog_default_sources_cm.instance.data[SOURCES_YAML_KEY])
+        default_catalogs = default_sources_data[CATALOGS_KEY]
 
         redhat_ai_validated_models_catalog = find_catalog_by_id(
-            catalogs=default_catalogs, catalog_id="redhat_ai_validated_models"
+            catalogs=default_catalogs, catalog_id=REDHAT_AI_VALIDATED_MODELS_ID
         )
 
         assert redhat_ai_validated_models_catalog is not None, (
-            f"redhat_ai_validated_models source not found in model-catalog-default-sources. "
+            f"{REDHAT_AI_VALIDATED_MODELS_ID} source not found in {MODEL_CATALOG_DEFAULT_SOURCES_CM}. "
             f"Found: {[c.get('id') for c in default_catalogs]}"
         )
 
@@ -322,8 +268,8 @@ class TestPostUpgradeCatalog:
         source_ids = [source["id"] for source in sources_response["items"]]
         LOGGER.info(f"Available sources after upgrade: {source_ids}")
 
-        assert "redhat_ai_models" in source_ids, (
-            f"redhat_ai_models source not found in API response. Available: {source_ids}"
+        assert REDHAT_AI_MODELS_ID in source_ids, (
+            f"{REDHAT_AI_MODELS_ID} source not found in API response. Available: {source_ids}"
         )
 
     @pytest.mark.post_upgrade
@@ -341,8 +287,8 @@ class TestPostUpgradeCatalog:
         )
         source_ids = [source["id"] for source in sources_response["items"]]
 
-        assert "redhat_ai_validated_models" in source_ids, (
-            f"redhat_ai_validated_models source not found in API response. Available: {source_ids}"
+        assert REDHAT_AI_VALIDATED_MODELS_ID in source_ids, (
+            f"{REDHAT_AI_VALIDATED_MODELS_ID} source not found in API response. Available: {source_ids}"
         )
 
     @pytest.mark.post_upgrade
@@ -378,31 +324,28 @@ class TestPostUpgradeCatalog:
             sleep=15,
         )
 
-        # If custom catalog was created in pre-upgrade, verify it persists
+        # Custom catalog should persist after upgrade - if it doesn't exist, that's a bug
         custom_catalog_exists = any(source["id"] == TEST_DATA["catalog_id"] for source in sources_response["items"])
 
-        if custom_catalog_exists:
-            LOGGER.info(f"Custom catalog {TEST_DATA['catalog_id']} persisted after upgrade")
-            LOGGER.info("Verifying custom catalog models are still accessible")
+        assert custom_catalog_exists, (
+            f"Custom catalog {TEST_DATA['catalog_id']} not found after upgrade. "
+            f"Available sources: {[source['id'] for source in sources_response['items']]}"
+        )
 
-            # Test first model from TEST_DATA (keeping it simple with one assert)
-            model_name = TEST_DATA["models"][0]
-            try:
-                verify_model_accessibility(
-                    model_catalog_rest_url=model_catalog_rest_url,
-                    model_registry_rest_headers=model_registry_rest_headers,
-                    catalog_id=TEST_DATA["catalog_id"],
-                    model_name=model_name,
-                )
-                LOGGER.info("Custom model accessibility verification completed successfully")
-            except ResourceNotFoundError as e:
-                pytest.fail(f"Model {model_name} not accessible after upgrade: {e}")
-        else:
-            LOGGER.info(
-                f"Custom catalog {TEST_DATA['catalog_id']} not found - may not have been created in pre-upgrade"
+        LOGGER.info(f"Custom catalog {TEST_DATA['catalog_id']} persisted after upgrade")
+        LOGGER.info("Verifying custom catalog models are still accessible")
+
+        # Test first model from TEST_DATA (keeping it simple with one assert)
+        model_name = TEST_DATA["models"][0]
+        try:
+            verify_model_accessibility(
+                model_catalog_rest_url=model_catalog_rest_url,
+                model_registry_rest_headers=model_registry_rest_headers,
+                catalog_id=TEST_DATA["catalog_id"],
+                model_name=model_name,
             )
-
-        # Single assertion that handles both cases
-        assert custom_catalog_exists or True, "Custom catalog verification completed successfully"
+            LOGGER.info("Custom model accessibility verification completed successfully")
+        except ResourceNotFoundError as e:
+            pytest.fail(f"Model {model_name} not accessible after upgrade: {e}")
 
         LOGGER.info("Post-upgrade service health verification completed successfully")

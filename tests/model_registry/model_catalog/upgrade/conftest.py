@@ -12,19 +12,32 @@ from tests.model_registry.model_catalog.utils import (
     get_sample_yaml_str,
     get_default_model_catalog_yaml,
 )
-from tests.model_registry.constants import DEFAULT_MODEL_CATALOG
 from .constants import TEST_DATA
 
 LOGGER = get_logger(name=__name__)
 
 
 @pytest.fixture(scope="function")
-def custom_catalog_setup(admin_client: DynamicClient, model_registry_namespace: str):
+def custom_catalog_setup(
+    request: pytest.FixtureRequest,
+    admin_client: DynamicClient,
+    model_registry_namespace: str,
+    catalog_config_map: ConfigMap,
+):
     """Fixture to setup custom catalog configuration for upgrade testing"""
+
+    # Only run this setup during pre-upgrade tests
+    if not request.config.getoption("--pre-upgrade", default=False):
+        raise RuntimeError(
+            "custom_catalog_setup fixture should only be used with --pre-upgrade option. "
+            "This fixture creates permanent catalog modifications that are intended for upgrade testing."
+        )
+
     LOGGER.info("Starting custom catalog setup via fixture")
 
-    # Create Custom Catalog Source
-    catalog_config_map = ConfigMap(name=DEFAULT_MODEL_CATALOG, client=admin_client, namespace=model_registry_namespace)
+    # NOTE: This catalog configuration setup is not applicable to 3.0 and will be updated.
+    # The current approach of directly manipulating ConfigMaps may not work with
+    # the new catalog architecture planned for version 3.0.
 
     # Get existing catalog configuration to preserve it
     existing_catalogs = get_default_model_catalog_yaml(config_map=catalog_config_map)
@@ -37,16 +50,18 @@ def custom_catalog_setup(admin_client: DynamicClient, model_registry_namespace: 
     # Parse custom catalog entries properly
     custom_catalog_entries = yaml.safe_load(f"catalogs:\n{custom_catalog_yaml}")["catalogs"]
 
-    # Check if custom catalog already exists to avoid duplicates
+    # Check if custom catalog already exists - this should be treated as a bug
     existing_catalog_ids = {catalog["id"] for catalog in existing_catalogs}
-    new_catalog_entries = [catalog for catalog in custom_catalog_entries if catalog["id"] not in existing_catalog_ids]
+    for catalog_entry in custom_catalog_entries:
+        if catalog_entry["id"] in existing_catalog_ids:
+            raise RuntimeError(
+                f"Custom catalog {catalog_entry['id']} already exists in the system."
+                f"This indicates an unclean test environment or previous test cleanup failure."
+                f"Existing catalog IDs: {existing_catalog_ids}"
+            )
 
-    # Combine catalogs properly as Python objects (only add if not already present)
-    if new_catalog_entries:
-        combined_catalogs = existing_catalogs + new_catalog_entries
-    else:
-        combined_catalogs = existing_catalogs
-        LOGGER.info(f"Custom catalog {TEST_DATA['catalog_id']} already exists, skipping addition")
+    # Combine catalogs (we know there are no duplicates at this point)
+    combined_catalogs = existing_catalogs + custom_catalog_entries
 
     combined_sources_yaml = yaml.dump({"catalogs": combined_catalogs}, default_flow_style=False)
 
@@ -56,7 +71,6 @@ def custom_catalog_setup(admin_client: DynamicClient, model_registry_namespace: 
     # Prepare data for ResourceEditor pattern
     new_data = {"sources.yaml": combined_sources_yaml, custom_sample_yaml_filename: custom_sample_yaml_content}
 
-    # Preserve any existing data that we're not modifying
     for key, value in original_configmap_data.items():
         if key not in new_data:
             new_data[key] = value
