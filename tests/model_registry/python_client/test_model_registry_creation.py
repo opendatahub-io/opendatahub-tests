@@ -109,7 +109,7 @@ class TestModelRegistryCreation:
         "endpoint",
         [
             pytest.param(
-                "oauth/healthz",
+                "healthz",
             ),
             pytest.param(
                 "readyz/isDirty",
