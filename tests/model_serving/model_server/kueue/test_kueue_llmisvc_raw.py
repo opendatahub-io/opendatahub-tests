@@ -128,10 +128,9 @@ class TestKueueLLMDScaleUp:
                 if replicas == EXPECTED_UPDATED_REPLICAS:
                     break
         except TimeoutExpiredError:
-            actual_replicas = self._get_deployment_status_replicas(deployment)
             raise UnexpectedResourceCountError(
                 f"Timeout waiting for deployment to update. "
-                f"Expected {EXPECTED_UPDATED_REPLICAS} replicas, found {actual_replicas}."
+                f"Expected {EXPECTED_UPDATED_REPLICAS} replicas, found {replicas}."
             ) from None
 
         # Verify that Kueue correctly gates the second pod.
@@ -146,15 +145,12 @@ class TestKueueLLMDScaleUp:
                 if running_pods == EXPECTED_RUNNING_PODS and gated_pods == EXPECTED_GATED_PODS:
                     break
         except TimeoutExpiredError:
-            running_pods, gated_pods = check_gated_pods_and_running_pods(
-                selector_labels, llmd_inference_service.namespace, unprivileged_client
-            )
             raise UnexpectedResourceCountError(
                 "Timeout: "
                 f"Expected {EXPECTED_RUNNING_PODS} running and {EXPECTED_GATED_PODS} gated pods. "
                 f"Found {running_pods} running and {gated_pods} gated."
             ) from None
-
+        
         # Verify that inference still works on the single running pod
         verify_inference_response_llmd(
             llm_service=llmd_inference_service,
