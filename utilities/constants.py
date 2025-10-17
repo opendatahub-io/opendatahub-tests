@@ -214,6 +214,7 @@ class Labels:
 
     class Kueue:
         MANAGED: str = "kueue.openshift.io/managed"
+        QUEUE_NAME: str = "kueue.x-k8s.io/queue-name"
 
 
 class Timeout:

@@ -4,7 +4,6 @@ from typing import Generator
 import pytest
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.gateway import Gateway
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.role import Role
@@ -15,19 +14,13 @@ from ocp_resources.service_account import ServiceAccount
 from utilities.constants import Timeout, ResourceLimits
 from utilities.infra import s3_endpoint_secret, create_inference_token
 from utilities.logger import RedactedString
-from utilities.llmd_utils import create_llmd_gateway, create_llmisvc
+from utilities.llmd_utils import create_llmisvc
 from utilities.llmd_constants import (
-    LLMDGateway,
     ModelStorage,
     ContainerImages,
     ModelNames,
     LLMDDefaults,
 )
-
-
-@pytest.fixture(scope="session")
-def gateway_namespace(admin_client: DynamicClient) -> str:
-    return LLMDGateway.DEFAULT_NAMESPACE
 
 
 @pytest.fixture(scope="class")
@@ -64,70 +57,6 @@ def llmd_s3_service_account(
         secrets=[{"name": llmd_s3_secret.name}],
     ) as sa:
         yield sa
-
-
-@pytest.fixture(scope="session")
-def shared_llmd_gateway(
-    admin_client: DynamicClient,
-    gateway_namespace: str,
-) -> Generator[Gateway, None, None]:
-    gateway_class_name = "data-science-gateway-class"
-
-    with create_llmd_gateway(
-        client=admin_client,
-        namespace=gateway_namespace,
-        gateway_class_name=gateway_class_name,
-        wait_for_condition=True,
-        timeout=Timeout.TIMEOUT_5MIN,
-        teardown=True,
-    ) as gateway:
-        yield gateway
-
-
-@pytest.fixture(scope="class")
-def llmd_gateway(shared_llmd_gateway: Gateway) -> Gateway:
-    return shared_llmd_gateway
-
-
-@pytest.fixture(scope="class")
-def llmd_inference_service(
-    request: FixtureRequest,
-    admin_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
-) -> Generator[LLMInferenceService, None, None]:
-    if isinstance(request.param, str):
-        name_suffix = request.param
-        kwargs = {}
-    else:
-        name_suffix = request.param.get("name_suffix", "basic")
-        kwargs = {k: v for k, v in request.param.items() if k != "name_suffix"}
-
-    service_name = kwargs.get("name", f"llm-{name_suffix}")
-
-    if "llmd_gateway" in request.fixturenames:
-        request.getfixturevalue(argname="llmd_gateway")
-    container_resources = kwargs.get(
-        "container_resources",
-        {
-            "limits": {"cpu": "2", "memory": "16Gi"},
-            "requests": {"cpu": "500m", "memory": "12Gi"},
-        },
-    )
-
-    create_kwargs = {
-        "client": admin_client,
-        "name": service_name,
-        "namespace": unprivileged_model_namespace.name,
-        "storage_uri": kwargs.get("storage_uri", ModelStorage.TINYLLAMA_OCI),
-        "container_image": kwargs.get("container_image", ContainerImages.VLLM_CPU),
-        "container_resources": container_resources,
-        "wait": True,
-        "timeout": Timeout.TIMEOUT_15MIN,
-        **{k: v for k, v in kwargs.items() if k != "name"},
-    }
-
-    with create_llmisvc(**create_kwargs) as llm_service:
-        yield llm_service
 
 
 @pytest.fixture(scope="class")
