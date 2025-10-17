@@ -12,20 +12,17 @@ from tests.model_registry.model_catalog.utils import (
     validate_model_catalog_resource,
     wait_for_model_catalog_api,
     ResourceNotFoundError,
-    validate_default_catalog,
     get_sources_response_with_retry,
     get_model_catalog_configmap,
     find_catalog_by_id,
     verify_model_accessibility,
+    is_model_catalog_ready,
 )
 from tests.model_registry.model_catalog.constants import (
     DEFAULT_CATALOG_ID,
-    MODEL_CATALOG_DEFAULT_SOURCES_CM,
     CATALOGS_KEY,
     SOURCES_YAML_KEY,
     YAML_TYPE,
-    REDHAT_AI_MODELS_ID,
-    REDHAT_AI_VALIDATED_MODELS_ID,
 )
 from tests.model_registry.constants import DEFAULT_MODEL_CATALOG
 from simple_logger.logger import get_logger
@@ -158,58 +155,6 @@ class TestPostUpgradeCatalog:
             LOGGER.info("Custom test catalog not found, but other catalogs exist - this is acceptable")
 
     @pytest.mark.post_upgrade
-    def test_verify_redhat_ai_models_catalog_post_upgrade(
-        self,
-        admin_client: DynamicClient,
-        model_registry_namespace: str,
-    ):
-        """Verify redhat_ai_models catalog exists with correct properties in default sources"""
-        model_catalog_default_sources_cm = get_model_catalog_configmap(
-            admin_client=admin_client,
-            model_registry_namespace=model_registry_namespace,
-            configmap_name=MODEL_CATALOG_DEFAULT_SOURCES_CM,
-        )
-        default_sources_data = yaml.safe_load(model_catalog_default_sources_cm.instance.data[SOURCES_YAML_KEY])
-        default_catalogs = default_sources_data[CATALOGS_KEY]
-
-        redhat_ai_models_catalog = find_catalog_by_id(catalogs=default_catalogs, catalog_id=REDHAT_AI_MODELS_ID)
-
-        assert redhat_ai_models_catalog is not None, (
-            f"{REDHAT_AI_MODELS_ID} source not found in {MODEL_CATALOG_DEFAULT_SOURCES_CM}. "
-            f"Found: {[c.get('id') for c in default_catalogs]}"
-        )
-
-        # Validate properties using existing utility function
-        validate_default_catalog(catalogs=[redhat_ai_models_catalog])
-
-    @pytest.mark.post_upgrade
-    def test_verify_redhat_ai_validated_models_catalog_post_upgrade(
-        self,
-        admin_client: DynamicClient,
-        model_registry_namespace: str,
-    ):
-        """Verify redhat_ai_validated_models catalog exists with correct properties in default sources"""
-        model_catalog_default_sources_cm = get_model_catalog_configmap(
-            admin_client=admin_client,
-            model_registry_namespace=model_registry_namespace,
-            configmap_name=MODEL_CATALOG_DEFAULT_SOURCES_CM,
-        )
-        default_sources_data = yaml.safe_load(model_catalog_default_sources_cm.instance.data[SOURCES_YAML_KEY])
-        default_catalogs = default_sources_data[CATALOGS_KEY]
-
-        redhat_ai_validated_models_catalog = find_catalog_by_id(
-            catalogs=default_catalogs, catalog_id=REDHAT_AI_VALIDATED_MODELS_ID
-        )
-
-        assert redhat_ai_validated_models_catalog is not None, (
-            f"{REDHAT_AI_VALIDATED_MODELS_ID} source not found in {MODEL_CATALOG_DEFAULT_SOURCES_CM}. "
-            f"Found: {[c.get('id') for c in default_catalogs]}"
-        )
-
-        # Validate properties using existing utility function
-        validate_default_catalog(catalogs=[redhat_ai_validated_models_catalog])
-
-    @pytest.mark.post_upgrade
     def test_verify_resource_health_post_upgrade(
         self,
         admin_client: DynamicClient,
@@ -251,45 +196,6 @@ class TestPostUpgradeCatalog:
 
         # Adding assert to satisfy requirement (wait_for_model_catalog_api has internal checks)
         assert True, "API accessibility verification completed"
-
-    @pytest.mark.post_upgrade
-    def test_verify_redhat_ai_models_source_available_post_upgrade(
-        self,
-        model_catalog_rest_url: list[str],
-        model_registry_rest_headers: dict[str, str],
-    ):
-        """Verify redhat_ai_models source is available via API"""
-        sources_response = get_sources_response_with_retry(
-            model_catalog_rest_url=model_catalog_rest_url,
-            model_registry_rest_headers=model_registry_rest_headers,
-            wait_timeout=300,
-            sleep=15,
-        )
-        source_ids = [source["id"] for source in sources_response["items"]]
-        LOGGER.info(f"Available sources after upgrade: {source_ids}")
-
-        assert REDHAT_AI_MODELS_ID in source_ids, (
-            f"{REDHAT_AI_MODELS_ID} source not found in API response. Available: {source_ids}"
-        )
-
-    @pytest.mark.post_upgrade
-    def test_verify_redhat_ai_validated_models_source_available_post_upgrade(
-        self,
-        model_catalog_rest_url: list[str],
-        model_registry_rest_headers: dict[str, str],
-    ):
-        """Verify redhat_ai_validated_models source is available via API"""
-        sources_response = get_sources_response_with_retry(
-            model_catalog_rest_url=model_catalog_rest_url,
-            model_registry_rest_headers=model_registry_rest_headers,
-            wait_timeout=300,
-            sleep=15,
-        )
-        source_ids = [source["id"] for source in sources_response["items"]]
-
-        assert REDHAT_AI_VALIDATED_MODELS_ID in source_ids, (
-            f"{REDHAT_AI_VALIDATED_MODELS_ID} source not found in API response. Available: {source_ids}"
-        )
 
     @pytest.mark.post_upgrade
     def test_verify_minimum_sources_count_post_upgrade(
@@ -349,3 +255,28 @@ class TestPostUpgradeCatalog:
             pytest.fail(f"Model {model_name} not accessible after upgrade: {e}")
 
         LOGGER.info("Post-upgrade service health verification completed successfully")
+
+    @pytest.mark.post_upgrade
+    def test_cleanup_custom_catalog_post_upgrade(
+        self,
+        admin_client: DynamicClient,
+        model_registry_namespace: str,
+    ):
+        """Clean up custom catalog by deleting model-catalog-sources ConfigMap"""
+        LOGGER.info("Starting custom catalog cleanup - deleting model-catalog-sources ConfigMap")
+
+        # Delete the ConfigMap containing our custom catalog
+        catalog_config_map = ConfigMap(
+            name=DEFAULT_MODEL_CATALOG, client=admin_client, namespace=model_registry_namespace
+        )
+
+        if catalog_config_map.exists:
+            catalog_config_map.delete()
+            LOGGER.info(f"Deleted ConfigMap {DEFAULT_MODEL_CATALOG}")
+        else:
+            LOGGER.info(f"ConfigMap {DEFAULT_MODEL_CATALOG} already does not exist")
+
+        # Wait for model catalog to stabilize after ConfigMap deletion
+        is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+
+        LOGGER.info("Custom catalog cleanup completed - ConfigMap will be recreated as empty")

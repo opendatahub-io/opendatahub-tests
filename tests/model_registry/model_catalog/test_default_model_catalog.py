@@ -142,6 +142,7 @@ class TestModelCatalogGeneral:
     indirect=["user_token_for_api_calls"],
 )
 class TestModelCatalogDefault:
+    @pytest.mark.post_upgrade
     def test_model_catalog_default_catalog_sources(
         self,
         test_idp_user: UserTestSession,
