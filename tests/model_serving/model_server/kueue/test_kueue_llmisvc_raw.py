@@ -9,7 +9,7 @@ from tests.model_serving.model_server.llmd.utils import (
 from utilities.kueue_utils import check_gated_pods_and_running_pods
 from utilities.llmd_utils import verify_inference_response_llmd
 from utilities.manifests.tinyllama import TINYLLAMA_INFERENCE_CONFIG
-from utilities.constants import Protocols
+from utilities.constants import Protocols, Labels
 from utilities.exceptions import UnexpectedResourceCountError
 
 pytestmark = [
@@ -53,7 +53,7 @@ EXPECTED_GATED_PODS = 1
             {
                 "name": "llmd-kueue-scaleup-test",
                 "replicas": INITIAL_REPLICAS,
-                "labels": {"kueue.x-k8s.io/queue-name": LOCAL_QUEUE_NAME},
+                "labels": {Labels.Kueue.QUEUE_NAME: LOCAL_QUEUE_NAME},
                 "container_resources": LLMISVC_RESOURCES,
             },
             {
