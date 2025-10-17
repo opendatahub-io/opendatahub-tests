@@ -1,6 +1,7 @@
 import json
 from typing import Any
 import time
+import yaml
 
 from kubernetes.dynamic import DynamicClient
 from simple_logger.logger import get_logger
@@ -9,6 +10,7 @@ import requests
 from timeout_sampler import retry
 
 from ocp_resources.pod import Pod
+from ocp_resources.config_map import ConfigMap
 from tests.model_registry.model_catalog.constants import (
     DEFAULT_CATALOGS,
 )
@@ -208,3 +210,19 @@ def extract_schema_fields(openapi_schema: dict[Any, Any], schema_name: str) -> t
     }
 
     return all_properties - excluded_fields, required_fields - excluded_fields
+
+
+def validate_model_catalog_configmap_data(configmap: ConfigMap, num_catalogs: int) -> None:
+    """
+    Validate the model catalog configmap data.
+
+    Args:
+        configmap: The ConfigMap object to validate
+        num_catalogs: Expected number of catalogs in the configmap
+    """
+    # Check that model catalog configmaps is created when model registry is
+    # enabled on data science cluster.
+    catalogs = yaml.safe_load(configmap.instance.data["sources.yaml"])["catalogs"]
+    assert len(catalogs) == num_catalogs, f"{configmap.name} should have {num_catalogs} catalog"
+    if num_catalogs:
+        validate_default_catalog(catalogs=catalogs)
