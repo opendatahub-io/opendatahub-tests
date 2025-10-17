@@ -7,16 +7,11 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 from ocp_resources.service import Service
-from ocp_resources.resource import ResourceEditor
 
 from tests.model_registry.model_catalog.utils import (
     validate_model_catalog_resource,
     wait_for_model_catalog_api,
     execute_get_command,
-    is_model_catalog_ready,
-    get_catalog_str,
-    get_sample_yaml_str,
-    get_default_model_catalog_yaml,
     ResourceNotFoundError,
     validate_default_catalog,
 )
@@ -34,62 +29,6 @@ LOGGER = get_logger(name=__name__)
     "model_registry_namespace", "admin_client", "model_catalog_rest_url", "model_registry_rest_headers"
 )  # noqa: E501
 class TestPreUpgradeCatalog:
-    def _setup_custom_catalog(
-        self,
-        admin_client: DynamicClient,
-        model_registry_namespace: str,
-    ):
-        """Helper method to setup custom catalog configuration"""
-        # Create Custom Catalog Source
-        catalog_config_map = ConfigMap(
-            name=DEFAULT_MODEL_CATALOG, client=admin_client, namespace=model_registry_namespace
-        )
-
-        # Get existing catalog configuration to preserve it
-        existing_catalogs = get_default_model_catalog_yaml(config_map=catalog_config_map)
-
-        # Generate custom catalog configuration
-        custom_catalog_yaml = get_catalog_str(ids=[TEST_DATA["catalog_id"]])
-        custom_sample_yaml_content = get_sample_yaml_str(models=TEST_DATA["models"])
-        custom_sample_yaml_filename = f"{TEST_DATA['catalog_id'].replace('_', '-')}.yaml"
-
-        # Parse custom catalog entries properly
-        custom_catalog_entries = yaml.safe_load(f"catalogs:\n{custom_catalog_yaml}")["catalogs"]
-
-        # Check if custom catalog already exists to avoid duplicates
-        existing_catalog_ids = {catalog["id"] for catalog in existing_catalogs}
-        new_catalog_entries = [
-            catalog for catalog in custom_catalog_entries if catalog["id"] not in existing_catalog_ids
-        ]
-
-        # Combine catalogs properly as Python objects (only add if not already present)
-        if new_catalog_entries:
-            combined_catalogs = existing_catalogs + new_catalog_entries
-        else:
-            combined_catalogs = existing_catalogs
-            LOGGER.info(f"Custom catalog {TEST_DATA['catalog_id']} already exists, skipping addition")
-
-        combined_sources_yaml = yaml.dump({"catalogs": combined_catalogs}, default_flow_style=False)
-
-        # Store original configmap state for potential rollback
-        original_configmap_data = catalog_config_map.instance.data.copy()
-
-        # Prepare data for ResourceEditor pattern
-        new_data = {"sources.yaml": combined_sources_yaml, custom_sample_yaml_filename: custom_sample_yaml_content}
-
-        # Preserve any existing data that we're not modifying
-        for key, value in original_configmap_data.items():
-            if key not in new_data:
-                new_data[key] = value
-
-        # Apply permanent configuration changes using ResourceEditor.update() for persistent changes
-        patches = {catalog_config_map: {"data": new_data}}
-
-        ResourceEditor(patches=patches).update()
-
-        # Wait for model catalog to pick up changes
-        is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
-
     def _get_sources_response(self, model_catalog_rest_url: list[str], model_registry_rest_headers: dict[str, str]):
         """Helper method to get sources response with retry logic"""
 
@@ -102,13 +41,16 @@ class TestPreUpgradeCatalog:
     @pytest.mark.pre_upgrade
     def test_create_custom_catalog_setup_pre_upgrade(
         self,
-        admin_client: DynamicClient,
-        model_registry_namespace: str,
+        custom_catalog_setup: dict,
     ):
         """Create and populate custom catalog source with test data (permanent modification for upgrade)"""
         LOGGER.info("Starting custom catalog creation for upgrade testing")
-        self._setup_custom_catalog(admin_client=admin_client, model_registry_namespace=model_registry_namespace)
-        LOGGER.info("Custom catalog setup completed successfully")
+        # Fixture handles the setup automatically
+        LOGGER.info(f"Custom catalog setup completed: {custom_catalog_setup['catalog_id']}")
+
+        # Simple assertion to verify the fixture worked
+        assert custom_catalog_setup["catalog_id"] == TEST_DATA["catalog_id"]
+        assert custom_catalog_setup["models"] == TEST_DATA["models"]
 
     @pytest.mark.pre_upgrade
     def test_verify_custom_catalog_exists_pre_upgrade(
