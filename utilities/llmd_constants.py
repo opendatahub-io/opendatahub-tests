@@ -36,6 +36,7 @@ class ModelStorage:
     S3_QWEN: str = SharedModelStorage.S3.QWEN_7B_INSTRUCT
     HF_TINYLLAMA: str = SharedModelStorage.HuggingFace.TINYLLAMA
     HF_OPT125M: str = SharedModelStorage.HuggingFace.OPT125M
+    HF_DEEPSEEK_R1_0528: str = SharedModelStorage.HuggingFace.DEEPSEEK_R1_0528
 
 
 class ContainerImages:

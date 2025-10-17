@@ -330,3 +330,119 @@ def llmisvc_auth(
             return (llm_service, sa)
 
         yield _create_llmd_auth_service
+
+
+@pytest.fixture(scope="class")
+def deepseek_r1_inference_service(
+    admin_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+) -> Generator[LLMInferenceService, None, None]:
+    """Fixture for DeepSeek R1 0528 model with multi-node configuration."""
+    service_name = "deepseek-r1-0528"
+
+    # Define common environment variables for both template and worker
+    common_env = [
+        {"name": "VLLM_LOGGING_LEVEL", "value": "INFO"},
+        {"name": "KSERVE_INFER_ROCE", "value": "true"},
+        {"name": "CUDA_DEVICE_ORDER", "value": "PCI_BUS_ID"},
+        # Memory optimizations
+        {"name": "VLLM_ADDITIONAL_ARGS", "value": "--gpu-memory-utilization 0.95 --max-model-len 8192 --enforce-eager"},
+        {"name": "VLLM_ALL2ALL_BACKEND", "value": "deepep_high_throughput"},
+        {"name": "PYTORCH_CUDA_ALLOC_CONF", "value": "expandable_segments:True"},
+        # Essential NCCL configuration
+        {"name": "NCCL_IB_GID_INDEX", "value": "3"},
+        {"name": "NCCL_DEBUG", "value": "WARN"},
+        {"name": "NCCL_SOCKET_IFNAME", "value": "net1"},
+        {"name": "NCCL_IB_TIMEOUT", "value": "100"},
+        # NVSHMEM configuration - optimized for stability
+        {"name": "NVSHMEM_REMOTE_TRANSPORT", "value": "ibgda"},
+        {"name": "NVSHMEM_BOOTSTRAP_TWO_STAGE", "value": "1"},
+        {"name": "NVSHMEM_BOOTSTRAP_TIMEOUT", "value": "300"},
+        {"name": "NVSHMEM_BOOTSTRAP_UID_SOCK_IFNAME", "value": "net1"},
+        {"name": "NVSHMEM_IB_GID_INDEX", "value": "3"},
+        {"name": "NVSHMEM_USE_IBGDA", "value": "1"},
+        {"name": "NVSHMEM_ENABLE_NIC_PE_MAPPING", "value": "1"},
+        {"name": "NVSHMEM_IBGDA_SUPPORT", "value": "1"},
+        {"name": "NVSHMEM_IB_ENABLE_IBGDA", "value": "1"},
+        {"name": "NVSHMEM_IBGDA_NIC_HANDLER", "value": "gpu"},
+        {"name": "NVSHMEM_DEBUG", "value": "WARN"},
+        # UCX configuration for NVSHMEM
+        {"name": "UCX_TLS", "value": "rc,sm,self,cuda_copy,cuda_ipc"},
+        {"name": "UCX_IB_GID_INDEX", "value": "3"},
+        {"name": "UCX_RC_MLX5_TM_ENABLE", "value": "n"},
+        {"name": "UCX_UD_MLX5_RX_QUEUE_LEN", "value": "1024"},
+        {"name": "NVIDIA_GDRCOPY", "value": "enabled"},
+    ]
+
+    container_resources = {
+        "limits": {
+            "cpu": "128",
+            "ephemeral-storage": "800Gi",
+            "memory": "512Gi",
+            "nvidia.com/gpu": "8",
+            "rdma/roce_gdr": "1",
+        },
+        "requests": {
+            "cpu": "64",
+            "ephemeral-storage": "800Gi",
+            "memory": "256Gi",
+            "nvidia.com/gpu": "8",
+            "rdma/roce_gdr": "1",
+        },
+    }
+
+    liveness_probe = {
+        "httpGet": {"path": "/health", "port": 8000, "scheme": "HTTPS"},
+        "initialDelaySeconds": 4800,
+        "periodSeconds": 10,
+        "timeoutSeconds": 10,
+        "failureThreshold": 3,
+    }
+
+    parallelism_config = {
+        "data": 32,
+        "dataLocal": 8,
+        "expert": True,
+        "tensor": 1,
+    }
+
+    router_config = {
+        "scheduler": {},
+        "route": {},
+        "gateway": {},
+    }
+
+    worker_spec = {
+        "serviceAccountName": "hfsa",
+        "containers": [
+            {
+                "name": "main",
+                "env": common_env,
+                "resources": container_resources,
+            }
+        ],
+    }
+
+    annotations = {
+        "k8s.v1.cni.cncf.io/networks": "roce-p2",
+    }
+
+    with create_llmisvc(
+        client=admin_client,
+        name=service_name,
+        namespace=unprivileged_model_namespace.name,
+        storage_uri=ModelStorage.HF_DEEPSEEK_R1_0528,
+        model_name="deepseek-ai/DeepSeek-R1-0528",
+        replicas=1,
+        parallelism=parallelism_config,
+        router_config=router_config,
+        container_env=common_env,
+        container_resources=container_resources,
+        liveness_probe=liveness_probe,
+        service_account="hfsa",
+        worker_config=worker_spec,
+        annotations=annotations,
+        wait=True,
+        timeout=Timeout.TIMEOUT_30MIN,
+    ) as llm_service:
+        yield llm_service
