@@ -11,7 +11,7 @@ from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
 
 import utilities.infra
-from utilities.constants import Annotations, KServeDeploymentType, MODELMESH_SERVING, Timeout
+from utilities.constants import Annotations, KServeDeploymentType, MODELMESH_SERVING
 from utilities.exceptions import UnexpectedResourceCountError, ResourceValueMismatch
 from ocp_resources.resource import Resource
 from timeout_sampler import retry
@@ -340,12 +340,9 @@ def generate_random_name(prefix: str = "", length: int = 8) -> str:
     return f"{prefix}-{suffix}" if prefix else suffix
 
 
-@retry(
-    wait_timeout=Timeout.TIMEOUT_15_SEC,
-    sleep=1,
-    exceptions_dict={ResourceValueMismatch: [], ResourceNotFoundError: [], NotFoundError: []},
-)
-def wait_for_container_status(pod: Pod, container_name: str, expected_status: str) -> bool:
+def wait_for_container_status(
+    pod: Pod, container_name: str, expected_status: str, timeout: int = 15, sleep: int = 1
+) -> bool:
     """
     Wait for a container to be in the expected status.
 
@@ -353,6 +350,8 @@ def wait_for_container_status(pod: Pod, container_name: str, expected_status: st
         pod: The pod to wait for
         container_name: The name of the container to wait for
         expected_status: The expected status
+        timeout: The maximum time in second to wait for the container
+        sleep: The number of seconds to sleep between checks
 
     Returns:
         bool: True if the container is in the expected status, False otherwise
@@ -361,30 +360,41 @@ def wait_for_container_status(pod: Pod, container_name: str, expected_status: st
         ResourceValueMismatch: If the container is not in the expected status
     """
 
-    container_status = None
-    for cs in pod.instance.status.get("containerStatuses", []):
-        if cs.name == container_name:
-            container_status = cs
-            break
-    if container_status is None:
-        raise ResourceValueMismatch(f"Container {container_name} not found in pod {pod.name}")
+    @retry(
+        wait_timeout=timeout,
+        sleep=sleep,
+        exceptions_dict={ResourceValueMismatch: [], ResourceNotFoundError: [], NotFoundError: []},
+    )
+    def get_matching_container_status(_pod: Pod, _container_name: str, _expected_status: str) -> bool:
+        container_status = None
+        for cs in _pod.instance.status.get("containerStatuses", []):
+            if cs.name == _container_name:
+                container_status = cs
+                break
+        if container_status is None:
+            raise ResourceValueMismatch(f"Container {_container_name} not found in pod {_pod.name}")
 
-    if container_status.state.waiting:
-        reason = container_status.state.waiting.reason
-    elif container_status.state.terminated:
-        reason = container_status.state.terminated.reason
-    elif container_status.state.running:
-        # Running container does not have a reason
-        reason = "Running"
-    else:
+        if container_status.state.waiting:
+            reason = container_status.state.waiting.reason
+        elif container_status.state.terminated:
+            reason = container_status.state.terminated.reason
+        elif container_status.state.running:
+            # Running container does not have a reason
+            reason = "Running"
+        else:
+            raise ResourceValueMismatch(
+                f"{_container_name} in {_pod.name} is in an unrecognized or "
+                f"transitional state: {container_status.state}"
+            )
+
+        if reason == expected_status:
+            LOGGER.info(f"Container {_container_name} is in the expected status {_expected_status}")
+            return True
         raise ResourceValueMismatch(
-            f"{container_name} in {pod.name} is in an unrecognized or transitional state: {container_status.state}"
+            f"Container {_container_name} is not in the expected status {container_status.state}"
         )
 
-    if reason == expected_status:
-        LOGGER.info(f"Container {container_name} is in the expected status {expected_status}")
-        return True
-    raise ResourceValueMismatch(f"Container {container_name} is not in the expected status {container_status.state}")
+    return get_matching_container_status(_pod=pod, _container_name=container_name, _expected_status=expected_status)
 
 
 def get_pod_container_error_status(pod: Pod) -> str | None:
