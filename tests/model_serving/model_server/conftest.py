@@ -28,7 +28,6 @@ from utilities.constants import (
 )
 from utilities.constants import (
     ModelAndFormat,
-    ModelVersion,
 )
 from utilities.llmd_utils import create_llmd_gateway, create_llmisvc
 from utilities.inference_utils import create_isvc
