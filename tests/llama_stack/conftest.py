@@ -1,6 +1,5 @@
+from typing import Generator, Any, Dict, Callable
 import os
-from typing import Generator, Any, Dict
-
 import portforward
 import pytest
 from _pytest.fixtures import FixtureRequest
@@ -13,9 +12,10 @@ from ocp_resources.llama_stack_distribution import LlamaStackDistribution
 from ocp_resources.namespace import Namespace
 from simple_logger.logger import get_logger
 from utilities.general import generate_random_name
-
-
-from tests.llama_stack.utils import create_llama_stack_distribution, wait_for_llama_stack_client_ready
+from tests.llama_stack.utils import (
+    create_llama_stack_distribution,
+    wait_for_llama_stack_client_ready,
+)
 from utilities.constants import DscComponents, Timeout
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from tests.llama_stack.constants import (
@@ -41,22 +41,95 @@ def enabled_llama_stack_operator(dsc_resource: DataScienceCluster) -> Generator[
 @pytest.fixture(scope="class")
 def llama_stack_server_config(
     request: FixtureRequest,
+    vector_io_provider_deployment_config_factory: Callable[[str], list[Dict[str, str]]],
 ) -> Dict[str, Any]:
-    fms_orchestrator_url = "http://localhost"
-    inference_model = os.getenv("LLS_CORE_INFERENCE_MODEL", "")
-    vllm_api_token = os.getenv("LLS_CORE_VLLM_API_TOKEN", "")
-    vllm_url = os.getenv("LLS_CORE_VLLM_URL", "")
+    """
+    Generate server configuration for LlamaStack distribution deployment and deploy vector I/O provider resources.
 
-    # Override env vars with request parameters if provided
-    params = getattr(request, "param", {}) or {}
-    if params.get("fms_orchestrator_url_fixture"):
-        fms_orchestrator_url = request.getfixturevalue(argname=params.get("fms_orchestrator_url_fixture"))
+    This fixture creates a comprehensive server configuration dictionary that includes
+    container specifications, environment variables, and optional storage settings.
+    The configuration is built based on test parameters and environment variables.
+    Additionally, it deploys the specified vector I/O provider (e.g., Milvus) and configures
+    the necessary environment variables for the provider integration.
+
+    Args:
+        request: Pytest fixture request object containing test parameters
+        vector_io_provider_deployment_config_factory: Factory function to deploy vector I/O providers
+            and return their configuration environment variables
+
+    Returns:
+        Dict containing server configuration with the following structure:
+        - containerSpec: Container resource limits, environment variables, and port
+        - distribution: Distribution name (defaults to "rh-dev")
+        - storage: Optional storage size configuration
+
+    Environment Variables:
+        The fixture configures the following environment variables:
+        - INFERENCE_MODEL: Model identifier for inference
+        - VLLM_API_TOKEN: API token for VLLM service
+        - VLLM_URL: URL for VLLM service endpoint
+        - VLLM_TLS_VERIFY: TLS verification setting (defaults to "false")
+        - FMS_ORCHESTRATOR_URL: FMS orchestrator service URL
+        - Vector I/O provider specific variables (deployed via factory):
+          * For "milvus": MILVUS_DB_PATH
+          * For "milvus-remote": MILVUS_ENDPOINT, MILVUS_TOKEN, MILVUS_CONSISTENCY_LEVEL
+
+    Test Parameters:
+        The fixture accepts the following optional parameters via request.param:
+        - inference_model: Override for INFERENCE_MODEL environment variable
+        - vllm_api_token: Override for VLLM_API_TOKEN environment variable
+        - vllm_url_fixture: Fixture name to get VLLM URL from
+        - fms_orchestrator_url_fixture: Fixture name to get FMS orchestrator URL from
+        - vector_io_provider: Vector I/O provider type ("milvus" or "milvus-remote")
+        - llama_stack_storage_size: Storage size for the deployment
+
+    Example:
+        @pytest.mark.parametrize("llama_stack_server_config",
+                                [{"vector_io_provider": "milvus-remote"}],
+                                indirect=True)
+        def test_with_remote_milvus(llama_stack_server_config):
+            # Test will use remote Milvus configuration
+            pass
+    """
+
+    env_vars = []
+    params = getattr(request, "param", {})
+
+    # INFERENCE_MODEL
     if params.get("inference_model"):
-        inference_model = params.get("inference_model")  # type: ignore
+        inference_model = str(params.get("inference_model"))
+    else:
+        inference_model = os.getenv("LLS_CORE_INFERENCE_MODEL", "")
+    env_vars.append({"name": "INFERENCE_MODEL", "value": inference_model})
+
+    # VLLM_API_TOKEN
     if params.get("vllm_api_token"):
-        vllm_api_token = params.get("vllm_api_token")  # type: ignore
+        vllm_api_token = str(params.get("vllm_api_token"))
+    else:
+        vllm_api_token = os.getenv("LLS_CORE_VLLM_API_TOKEN", "")
+    env_vars.append({"name": "VLLM_API_TOKEN", "value": vllm_api_token})
+
+    # LLS_CORE_VLLM_URL
     if params.get("vllm_url_fixture"):
-        vllm_url = request.getfixturevalue(argname=params.get("vllm_url_fixture"))
+        vllm_url = str(request.getfixturevalue(argname=params.get("vllm_url_fixture")))
+    else:
+        vllm_url = os.getenv("LLS_CORE_VLLM_URL", "")
+    env_vars.append({"name": "VLLM_URL", "value": vllm_url})
+
+    # VLLM_TLS_VERIFY
+    env_vars.append({"name": "VLLM_TLS_VERIFY", "value": "false"})
+
+    # FMS_ORCHESTRATOR_URL
+    if params.get("fms_orchestrator_url_fixture"):
+        fms_orchestrator_url = str(request.getfixturevalue(argname=params.get("fms_orchestrator_url_fixture")))
+    else:
+        fms_orchestrator_url = "http://localhost"
+    env_vars.append({"name": "FMS_ORCHESTRATOR_URL", "value": fms_orchestrator_url})
+
+    # Depending on parameter vector_io_provider, deploy vector_io provider and obtain required env_vars
+    vector_io_provider = params.get("vector_io_provider") or "milvus"
+    env_vars_vector_io = vector_io_provider_deployment_config_factory(provider_name=vector_io_provider)
+    env_vars.extend(env_vars_vector_io)
 
     server_config: Dict[str, Any] = {
         "containerSpec": {
@@ -64,26 +137,7 @@ def llama_stack_server_config(
                 "requests": {"cpu": "250m", "memory": "500Mi"},
                 "limits": {"cpu": "2", "memory": "12Gi"},
             },
-            "env": [
-                {
-                    "name": "VLLM_URL",
-                    "value": vllm_url,
-                },
-                {"name": "VLLM_API_TOKEN", "value": vllm_api_token},
-                {
-                    "name": "VLLM_TLS_VERIFY",
-                    "value": "false",
-                },
-                {
-                    "name": "INFERENCE_MODEL",
-                    "value": inference_model,
-                },
-                {
-                    "name": "MILVUS_DB_PATH",
-                    "value": "~/.llama/milvus.db",
-                },
-                {"name": "FMS_ORCHESTRATOR_URL", "value": fms_orchestrator_url},
-            ],
+            "env": env_vars,
             "name": "llama-stack",
             "port": 8321,
         },
@@ -285,7 +339,9 @@ def llama_stack_models(unprivileged_llama_stack_client: LlamaStackClient) -> Mod
 
 @pytest.fixture(scope="class")
 def vector_store(
-    unprivileged_llama_stack_client: LlamaStackClient, llama_stack_models: ModelInfo
+    unprivileged_llama_stack_client: LlamaStackClient,
+    llama_stack_models: ModelInfo,
+    request: FixtureRequest,
 ) -> Generator[VectorStore, None, None]:
     """
     Creates a vector store for testing and automatically cleans it up.
@@ -300,12 +356,17 @@ def vector_store(
     Yields:
         Vector store object that can be used in tests
     """
-    # Setup
+
+    params = getattr(request, "param", {"vector_io_provider": "milvus"})
+    vector_io_provider = str(params.get("vector_io_provider"))
+
     vector_store = unprivileged_llama_stack_client.vector_stores.create(
         name="test_vector_store",
         embedding_model=llama_stack_models.embedding_model.identifier,
         embedding_dimension=llama_stack_models.embedding_dimension,
+        provider_id=vector_io_provider,
     )
+    LOGGER.info(f"vector_store successfully created (provider_id={vector_io_provider}, id={vector_store.id})")
 
     yield vector_store
 

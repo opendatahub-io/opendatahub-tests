@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Any, Dict
 
 from ocp_resources.resource import Resource
@@ -213,6 +214,7 @@ class Labels:
 
     class Kueue:
         MANAGED: str = "kueue.openshift.io/managed"
+        QUEUE_NAME: str = "kueue.x-k8s.io/queue-name"
 
 
 class Timeout:
@@ -455,3 +457,19 @@ CHAT_GENERATION_CONFIG: Dict[str, Any] = {
     }
 }
 TRUSTYAI_SERVICE_NAME: str = "trustyai-service"
+
+LLM_D_INFERENCE_SIM_NAME = "llm-d-inference-sim"
+
+
+@dataclass
+class LLMdInferenceSimConfig:
+    name: str = LLM_D_INFERENCE_SIM_NAME
+    port: int = 8032
+    model_name: str = "Qwen2.5-1.5B-Instruct"
+    serving_runtime_name: str = f"{LLM_D_INFERENCE_SIM_NAME}-serving-runtime"
+    isvc_name: str = f"{LLM_D_INFERENCE_SIM_NAME}-isvc"
+
+
+LLM_D_CHAT_GENERATION_CONFIG: Dict[str, Any] = {
+    "service": {"hostname": f"{LLMdInferenceSimConfig.isvc_name}-predictor", "port": 8032}
+}

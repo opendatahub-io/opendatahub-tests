@@ -1,11 +1,6 @@
-import http
-from typing import Dict, Any
-
 import pytest
-import requests
 import yaml
 from simple_logger.logger import get_logger
-from timeout_sampler import retry
 
 from tests.model_explainability.guardrails.constants import (
     AUTOCONFIG_DETECTOR_LABEL,
@@ -15,19 +10,19 @@ from tests.model_explainability.guardrails.constants import (
     HAP_INPUT_DETECTION_PROMPT,
 )
 from tests.model_explainability.guardrails.utils import (
-    verify_builtin_detector_unsuitable_input_response,
-    verify_negative_detection_response,
-    verify_builtin_detector_unsuitable_output_response,
-    get_auth_headers,
-    get_chat_detections_payload,
+    create_detector_config,
+    check_guardrails_health_endpoint,
+    verify_health_info_response,
+    send_and_verify_unsuitable_input_detection,
+    send_and_verify_unsuitable_output_detection,
+    send_and_verify_negative_detection,
+    send_and_verify_standalone_detection,
 )
 from tests.model_explainability.utils import validate_tai_component_images
 from utilities.constants import (
-    Timeout,
-    CHAT_GENERATION_CONFIG,
+    LLM_D_CHAT_GENERATION_CONFIG,
     BUILTIN_DETECTOR_CONFIG,
-    MinIo,
-    QWEN_MODEL_NAME,
+    LLMdInferenceSimConfig,
 )
 from utilities.plugins.constant import OpenAIEnpoints
 
@@ -45,42 +40,6 @@ PROMPT_INJECTION_DETECTOR: str = "prompt-injection-detector"
 HAP_DETECTOR: str = "hap-detector"
 
 
-def create_detector_config(*detector_names: str) -> Dict[str, Dict[str, Any]]:
-    detectors_dict = {name: {} for name in detector_names}
-    return {
-        "input": detectors_dict.copy(),
-        "output": detectors_dict.copy(),
-    }
-
-
-@retry(exceptions_dict={TimeoutError: []}, wait_timeout=Timeout.TIMEOUT_1MIN, sleep=1)
-def check_guardrails_health_endpoint(
-    host,
-    token,
-    ca_bundle_file,
-):
-    response = requests.get(url=f"https://{host}/health", headers=get_auth_headers(token=token), verify=ca_bundle_file)
-    if response.status_code == http.HTTPStatus.OK:
-        return response
-    raise TimeoutError(
-        f"Timeout waiting GuardrailsOrchestrator to be healthy. Response status code: {response.status_code}"
-    )
-
-
-def verify_health_info_response(host, token, ca_bundle_file):
-    response = requests.get(url=f"https://{host}/info", headers=get_auth_headers(token=token), verify=ca_bundle_file)
-    assert response.status_code == http.HTTPStatus.OK
-
-    healthy_status = "HEALTHY"
-    response_data = response.json()
-    mismatches = []
-    for service_name, service_info in response_data["services"].items():
-        if service_info["status"] != healthy_status:
-            mismatches.append(f"Service {service_name} is not healthy: {service_info['status']}")
-
-    assert not mismatches, f"GuardrailsOrchestrator service failures: {mismatches}"
-
-
 @pytest.mark.parametrize(
     "model_namespace, orchestrator_config, guardrails_orchestrator",
     [
@@ -89,7 +48,7 @@ def verify_health_info_response(host, token, ca_bundle_file):
             {
                 "orchestrator_config_data": {
                     "config.yaml": yaml.dump({
-                        "openai": CHAT_GENERATION_CONFIG,
+                        "openai": LLM_D_CHAT_GENERATION_CONFIG,
                         "detectors": BUILTIN_DETECTOR_CONFIG,
                     })
                 },
@@ -101,7 +60,11 @@ def verify_health_info_response(host, token, ca_bundle_file):
 )
 @pytest.mark.smoke
 def test_validate_guardrails_orchestrator_images(
-    orchestrator_config, guardrails_orchestrator_pod, trustyai_operator_configmap
+    model_namespace,
+    orchestrator_config,
+    guardrails_orchestrator,
+    guardrails_orchestrator_pod,
+    trustyai_operator_configmap,
 ):
     """Test to verify Guardrails pod images.
     Checks if the image tag from the ConfigMap is used within the Pod and if it's pinned using a sha256 digest.
@@ -110,17 +73,14 @@ def test_validate_guardrails_orchestrator_images(
 
 
 @pytest.mark.parametrize(
-    "model_namespace, minio_pod, minio_data_connection, "
-    "orchestrator_config, guardrails_gateway_config, guardrails_orchestrator",
+    "model_namespace, orchestrator_config, guardrails_gateway_config, guardrails_orchestrator",
     [
         pytest.param(
             {"name": "test-guardrails-builtin"},
-            MinIo.PodConfig.QWEN_HAP_BPIV2_MINIO_CONFIG,
-            {"bucket": "llms"},
             {
                 "orchestrator_config_data": {
                     "config.yaml": yaml.dump({
-                        "openai": CHAT_GENERATION_CONFIG,
+                        "openai": LLM_D_CHAT_GENERATION_CONFIG,
                         "detectors": BUILTIN_DETECTOR_CONFIG,
                     })
                 },
@@ -162,7 +122,7 @@ def test_validate_guardrails_orchestrator_images(
 @pytest.mark.usefixtures("guardrails_gateway_config")
 class TestGuardrailsOrchestratorWithBuiltInDetectors:
     """
-    Tests that the basic functionality of the GuardrailsOrchestrator work properly with the built-in (regex) detectors.
+    Tests if basic functions of the GuardrailsOrchestrator are working properly with the built-in (regex) detectors.
         1. Deploy an LLM using vLLM as a SR.
         2. Deploy the Guardrails Orchestrator.
         3. Check that the Orchestrator is healthy by querying the health and info endpoints of its /health route.
@@ -178,7 +138,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         self,
         current_client_token,
         openshift_ca_bundle_file,
-        qwen_isvc,
+        llm_d_inference_sim_isvc,
         orchestrator_config,
         guardrails_orchestrator_health_route,
     ):
@@ -193,7 +153,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         self,
         current_client_token,
         openshift_ca_bundle_file,
-        qwen_isvc,
+        llm_d_inference_sim_isvc,
         orchestrator_config,
         guardrails_orchestrator_health_route,
     ):
@@ -207,51 +167,32 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         self,
         current_client_token,
         openshift_ca_bundle_file,
-        qwen_isvc,
+        llm_d_inference_sim_isvc,
         orchestrator_config,
         guardrails_orchestrator_gateway_route,
     ):
-        response = requests.post(
+        send_and_verify_unsuitable_input_detection(
             url=f"https://{guardrails_orchestrator_gateway_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
-            headers=get_auth_headers(token=current_client_token),
-            json=get_chat_detections_payload(
-                content=PII_INPUT_DETECTION_PROMPT.content,
-                model=QWEN_MODEL_NAME,
-            ),
-            verify=openshift_ca_bundle_file,
-        )
-
-        verify_builtin_detector_unsuitable_input_response(
-            response=response,
-            detector_id=PII_INPUT_DETECTION_PROMPT.detector_id,
-            detection_name=PII_INPUT_DETECTION_PROMPT.detection_name,
-            detection_type=PII_INPUT_DETECTION_PROMPT.detection_type,
-            detection_text=PII_INPUT_DETECTION_PROMPT.detection_text,
+            token=current_client_token,
+            ca_bundle_file=openshift_ca_bundle_file,
+            prompt=PII_INPUT_DETECTION_PROMPT,
+            model=LLMdInferenceSimConfig.model_name,
         )
 
     def test_guardrails_builtin_detectors_unsuitable_output(
         self,
         current_client_token,
         openshift_ca_bundle_file,
-        qwen_isvc,
+        llm_d_inference_sim_isvc,
         orchestrator_config,
         guardrails_orchestrator_gateway_route,
     ):
-        response = requests.post(
+        send_and_verify_unsuitable_output_detection(
             url=f"https://{guardrails_orchestrator_gateway_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
-            headers=get_auth_headers(token=current_client_token),
-            json=get_chat_detections_payload(
-                content=PII_OUTPUT_DETECTION_PROMPT.content,
-                model=QWEN_MODEL_NAME,
-            ),
-            verify=openshift_ca_bundle_file,
-        )
-
-        verify_builtin_detector_unsuitable_output_response(
-            response=response,
-            detector_id=PII_OUTPUT_DETECTION_PROMPT.detector_id,
-            detection_name=PII_OUTPUT_DETECTION_PROMPT.detection_name,
-            detection_type=PII_OUTPUT_DETECTION_PROMPT.detection_type,
+            token=current_client_token,
+            ca_bundle_file=openshift_ca_bundle_file,
+            prompt=PII_OUTPUT_DETECTION_PROMPT,
+            model=LLMdInferenceSimConfig.model_name,
         )
 
     @pytest.mark.parametrize(
@@ -269,41 +210,30 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         self,
         current_client_token,
         openshift_ca_bundle_file,
-        qwen_isvc,
+        llm_d_inference_sim_isvc,
         orchestrator_config,
         guardrails_orchestrator_gateway_route,
         message,
         url_path,
     ):
-        response = requests.post(
+        send_and_verify_negative_detection(
             url=f"https://{guardrails_orchestrator_gateway_route.host}{url_path}{OpenAIEnpoints.CHAT_COMPLETIONS}",
-            headers=get_auth_headers(token=current_client_token),
-            json=get_chat_detections_payload(
-                content=str(message),
-                model=QWEN_MODEL_NAME,
-            ),
-            verify=openshift_ca_bundle_file,
+            token=current_client_token,
+            ca_bundle_file=openshift_ca_bundle_file,
+            content=str(message),
+            model=LLMdInferenceSimConfig.model_name,
         )
-
-        verify_negative_detection_response(response=response)
 
 
 @pytest.mark.parametrize(
-    "model_namespace, minio_pod, minio_data_connection, orchestrator_config, guardrails_orchestrator",
+    "model_namespace, orchestrator_config, guardrails_orchestrator",
     [
         pytest.param(
             {"name": "test-guardrails-huggingface"},
-            MinIo.PodConfig.QWEN_HAP_BPIV2_MINIO_CONFIG,
-            {"bucket": "llms"},
             {
                 "orchestrator_config_data": {
                     "config.yaml": yaml.dump({
-                        "openai": {
-                            "service": {
-                                "hostname": f"{QWEN_MODEL_NAME}-predictor",
-                                "port": 8032,
-                            }
-                        },
+                        "openai": LLM_D_CHAT_GENERATION_CONFIG,
                         "detectors": {
                             PROMPT_INJECTION_DETECTOR: {
                                 "type": "text_contents",
@@ -342,158 +272,14 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
         - Deploy a prompt injection detector using the HuggingFace SR.
         - Check that the detector works when we have an unsuitable input.
         - Check that the detector works when we have a harmless input (no detection).
-         - Check the standalone detections by querying its /text/detection/content endpoint, verifying that an input
+         - Check the standalone detections by querying its /text/detection/content endpoint, verifying that input
            detection is correctly performed.
-    """
-
-    def test_guardrails_hf_detector_unsuitable_input(
-        self,
-        current_client_token,
-        minio_pod,
-        minio_data_connection,
-        qwen_isvc,
-        orchestrator_config,
-        guardrails_orchestrator_route,
-        prompt_injection_detector_route,
-        openshift_ca_bundle_file,
-    ):
-        response = requests.post(
-            url=f"https://{guardrails_orchestrator_route.host}/{CHAT_COMPLETIONS_DETECTION_ENDPOINT}",
-            headers=get_auth_headers(token=current_client_token),
-            json=get_chat_detections_payload(
-                content=PROMPT_INJECTION_INPUT_DETECTION_PROMPT.content,
-                model=QWEN_MODEL_NAME,
-                detectors=create_detector_config(PROMPT_INJECTION_DETECTOR),
-            ),
-            verify=openshift_ca_bundle_file,
-        )
-
-        verify_builtin_detector_unsuitable_input_response(
-            response=response,
-            detector_id=PROMPT_INJECTION_INPUT_DETECTION_PROMPT.detector_id,
-            detection_name=PROMPT_INJECTION_INPUT_DETECTION_PROMPT.detection_name,
-            detection_type=PROMPT_INJECTION_INPUT_DETECTION_PROMPT.detection_type,
-            detection_text=PROMPT_INJECTION_INPUT_DETECTION_PROMPT.detection_text,
-        )
-
-    def test_guardrails_hf_detector_negative_detection(
-        self,
-        current_client_token,
-        minio_pod,
-        minio_data_connection,
-        qwen_isvc,
-        orchestrator_config,
-        guardrails_orchestrator_route,
-        prompt_injection_detector_route,
-        openshift_ca_bundle_file,
-    ):
-        response = requests.post(
-            url=f"https://{guardrails_orchestrator_route.host}/{CHAT_COMPLETIONS_DETECTION_ENDPOINT}",
-            headers=get_auth_headers(token=current_client_token),
-            json=get_chat_detections_payload(
-                content=HARMLESS_PROMPT,
-                model=QWEN_MODEL_NAME,
-                detectors=create_detector_config(PROMPT_INJECTION_DETECTOR),
-            ),
-            verify=openshift_ca_bundle_file,
-        )
-
-        verify_negative_detection_response(response=response)
-
-    def test_guardrails_standalone_detector_endpoint(
-        self,
-        current_client_token,
-        openshift_ca_bundle_file,
-        qwen_isvc,
-        orchestrator_config,
-        guardrails_orchestrator_route,
-        hap_detector_route,
-    ):
-        url = f"https://{guardrails_orchestrator_route.host}/{STANDALONE_DETECTION_ENDPOINT}"
-        headers = get_auth_headers(token=current_client_token)
-        payload = {"detectors": {HAP_DETECTOR: {}}, "content": HAP_INPUT_DETECTION_PROMPT.content}
-
-        response = requests.post(
-            url=url,
-            headers=headers,
-            json=payload,
-            verify=openshift_ca_bundle_file,
-        )
-
-        assert response.status_code == http.HTTPStatus.OK, (
-            f"Unexpected status code: {response.status_code}, body: {response.text}"
-        )
-        data = response.json()
-
-        assert "detections" in data
-
-        score = data["detections"][0]["score"]
-        assert score > 0.9, f"Expected score > 0.9, got {score}"
-
-
-@pytest.mark.parametrize(
-    "model_namespace, minio_pod, minio_data_connection, orchestrator_config, guardrails_orchestrator",
-    [
-        pytest.param(
-            {"name": "test-guardrails-huggingface"},
-            MinIo.PodConfig.QWEN_HAP_BPIV2_MINIO_CONFIG,
-            {"bucket": "llms"},
-            {
-                "orchestrator_config_data": {
-                    "config.yaml": yaml.dump({
-                        "openai": {
-                            "service": {
-                                "hostname": f"{QWEN_MODEL_NAME}-predictor",
-                                "port": 8032,
-                            }
-                        },
-                        "detectors": {
-                            PROMPT_INJECTION_DETECTOR: {
-                                "type": "text_contents",
-                                "service": {
-                                    "hostname": f"{PROMPT_INJECTION_DETECTOR}-predictor",
-                                    "port": 8000,
-                                },
-                                "chunker_id": "whole_doc_chunker",
-                                "default_threshold": 0.5,
-                            },
-                            HAP_DETECTOR: {
-                                "type": "text_contents",
-                                "service": {
-                                    "hostname": f"{HAP_DETECTOR}-predictor",
-                                    "port": 8000,
-                                },
-                                "chunker_id": "whole_doc_chunker",
-                                "default_threshold": 0.5,
-                            },
-                        },
-                    })
-                },
-            },
-            {"orchestrator_config": True, "enable_built_in_detectors": False, "enable_guardrails_gateway": False},
-        )
-    ],
-    indirect=True,
-)
-@pytest.mark.rawdeployment
-class TestGuardrailsOrchestratorWithMultipleDetectors:
-    """
-    These tests verify that the GuardrailsOrchestrator works as expected when using two HuggingFace detectors
-    (prompt injection and hap).
-    Steps:
-        - Deploy an LLM (Qwen2.5-0.5B-Instruct) using the vLLM SR.
-        - Deploy the GuardrailsOrchestrator.
-        - Deploy a prompt injection detector and HAP detectors using the HuggingFace SR.
-        - Check that the detectors works when we have an unsuitable input.
-        - Check that the detector works when we have a harmless input (no detection).
     """
 
     def test_guardrails_multi_detector_unsuitable_input(
         self,
         current_client_token,
-        minio_pod,
-        minio_data_connection,
-        qwen_isvc,
+        llm_d_inference_sim_isvc,
         guardrails_orchestrator_route,
         prompt_injection_detector_route,
         hap_detector_route,
@@ -502,61 +288,61 @@ class TestGuardrailsOrchestratorWithMultipleDetectors:
         guardrails_orchestrator,
     ):
         for prompt in [PROMPT_INJECTION_INPUT_DETECTION_PROMPT, HAP_INPUT_DETECTION_PROMPT]:
-            response = requests.post(
+            send_and_verify_unsuitable_input_detection(
                 url=f"https://{guardrails_orchestrator_route.host}/{CHAT_COMPLETIONS_DETECTION_ENDPOINT}",
-                headers=get_auth_headers(token=current_client_token),
-                json=get_chat_detections_payload(
-                    content=prompt.content,
-                    model=QWEN_MODEL_NAME,
-                    detectors=create_detector_config(PROMPT_INJECTION_DETECTOR, HAP_DETECTOR),
-                ),
-                verify=openshift_ca_bundle_file,
-            )
-
-            verify_builtin_detector_unsuitable_input_response(
-                response=response,
-                detector_id=prompt.detector_id,
-                detection_name=prompt.detection_name,
-                detection_type=prompt.detection_type,
-                detection_text=prompt.detection_text,
+                token=current_client_token,
+                ca_bundle_file=openshift_ca_bundle_file,
+                prompt=prompt,
+                model=LLMdInferenceSimConfig.model_name,
+                detectors=create_detector_config(PROMPT_INJECTION_DETECTOR, HAP_DETECTOR),
             )
 
     def test_guardrails_multi_detector_negative_detection(
         self,
         current_client_token,
-        minio_pod,
-        minio_data_connection,
-        qwen_isvc,
+        llm_d_inference_sim_isvc,
         orchestrator_config,
         guardrails_orchestrator_route,
         hap_detector_route,
         prompt_injection_detector_route,
         openshift_ca_bundle_file,
     ):
-        response = requests.post(
+        send_and_verify_negative_detection(
             url=f"https://{guardrails_orchestrator_route.host}/{CHAT_COMPLETIONS_DETECTION_ENDPOINT}",
-            headers=get_auth_headers(token=current_client_token),
-            json=get_chat_detections_payload(
-                content=HARMLESS_PROMPT,
-                model=QWEN_MODEL_NAME,
-                detectors=create_detector_config(PROMPT_INJECTION_DETECTOR, HAP_DETECTOR),
-            ),
-            verify=openshift_ca_bundle_file,
+            token=current_client_token,
+            ca_bundle_file=openshift_ca_bundle_file,
+            content=HARMLESS_PROMPT,
+            model=LLMdInferenceSimConfig.model_name,
+            detectors=create_detector_config(PROMPT_INJECTION_DETECTOR, HAP_DETECTOR),
         )
 
-        verify_negative_detection_response(response=response)
+    def test_guardrails_standalone_detector_endpoint(
+        self,
+        current_client_token,
+        openshift_ca_bundle_file,
+        llm_d_inference_sim_isvc,
+        orchestrator_config,
+        guardrails_orchestrator_route,
+        hap_detector_route,
+    ):
+        send_and_verify_standalone_detection(
+            url=f"https://{guardrails_orchestrator_route.host}/{STANDALONE_DETECTION_ENDPOINT}",
+            token=current_client_token,
+            ca_bundle_file=openshift_ca_bundle_file,
+            detector_name=HAP_DETECTOR,
+            content=HAP_INPUT_DETECTION_PROMPT.content,
+            expected_min_score=0.9,
+        )
 
 
 @pytest.mark.parametrize(
-    "model_namespace, minio_pod, minio_data_connection, guardrails_orchestrator",
+    "model_namespace, guardrails_orchestrator",
     [
         pytest.param(
             {"name": "test-guardrails-autoconfig"},
-            MinIo.PodConfig.QWEN_HAP_BPIV2_MINIO_CONFIG,
-            {"bucket": "llms"},
             {
                 "auto_config": {
-                    "inferenceServiceToGuardrail": QWEN_MODEL_NAME,
+                    "inferenceServiceToGuardrail": LLMdInferenceSimConfig.isvc_name,
                     "detectorServiceLabelToMatch": AUTOCONFIG_DETECTOR_LABEL,
                 },
             },
@@ -573,9 +359,7 @@ class TestGuardrailsOrchestratorAutoConfig:
     def test_guardrails_gateway_health_endpoint(
         self,
         current_client_token,
-        minio_pod,
-        minio_data_connection,
-        qwen_isvc,
+        llm_d_inference_sim_isvc,
         prompt_injection_detector_route,
         hap_detector_route,
         openshift_ca_bundle_file,
@@ -590,7 +374,11 @@ class TestGuardrailsOrchestratorAutoConfig:
         assert "fms-guardrails-orchestr8" in response.text
 
     def test_guardrails_gateway_info_endpoint(
-        self, current_client_token, openshift_ca_bundle_file, qwen_isvc, guardrails_orchestrator_health_route
+        self,
+        current_client_token,
+        openshift_ca_bundle_file,
+        llm_d_inference_sim_isvc,
+        guardrails_orchestrator_health_route,
     ):
         verify_health_info_response(
             host=guardrails_orchestrator_health_route.host,
@@ -602,60 +390,44 @@ class TestGuardrailsOrchestratorAutoConfig:
         self,
         current_client_token,
         openshift_ca_bundle_file,
-        qwen_isvc,
+        llm_d_inference_sim_isvc,
         guardrails_orchestrator_route,
     ):
         for prompt in [HAP_INPUT_DETECTION_PROMPT, PROMPT_INJECTION_INPUT_DETECTION_PROMPT]:
-            response = requests.post(
+            send_and_verify_unsuitable_input_detection(
                 url=f"https://{guardrails_orchestrator_route.host}/{CHAT_COMPLETIONS_DETECTION_ENDPOINT}",
-                headers=get_auth_headers(token=current_client_token),
-                json=get_chat_detections_payload(
-                    content=prompt.content,
-                    model=QWEN_MODEL_NAME,
-                    detectors=create_detector_config(PROMPT_INJECTION_DETECTOR, HAP_DETECTOR),
-                ),
-                verify=openshift_ca_bundle_file,
-            )
-
-            verify_builtin_detector_unsuitable_input_response(
-                response=response,
-                detector_id=prompt.detector_id,
-                detection_name=prompt.detection_name,
-                detection_type=prompt.detection_type,
-                detection_text=prompt.detection_text,
+                token=current_client_token,
+                ca_bundle_file=openshift_ca_bundle_file,
+                prompt=prompt,
+                model=LLMdInferenceSimConfig.model_name,
+                detectors=create_detector_config(PROMPT_INJECTION_DETECTOR, HAP_DETECTOR),
             )
 
     def test_guardrails_autoconfig_negative_detection(
         self,
         current_client_token,
-        qwen_isvc,
+        llm_d_inference_sim_isvc,
         guardrails_orchestrator_route,
         openshift_ca_bundle_file,
     ):
-        response = requests.post(
+        send_and_verify_negative_detection(
             url=f"https://{guardrails_orchestrator_route.host}/{CHAT_COMPLETIONS_DETECTION_ENDPOINT}",
-            headers=get_auth_headers(token=current_client_token),
-            json=get_chat_detections_payload(
-                content=str(HARMLESS_PROMPT),
-                model=QWEN_MODEL_NAME,
-                detectors=create_detector_config(PROMPT_INJECTION_DETECTOR, HAP_DETECTOR),
-            ),
-            verify=openshift_ca_bundle_file,
+            token=current_client_token,
+            ca_bundle_file=openshift_ca_bundle_file,
+            content=str(HARMLESS_PROMPT),
+            model=LLMdInferenceSimConfig.model_name,
+            detectors=create_detector_config(PROMPT_INJECTION_DETECTOR, HAP_DETECTOR),
         )
-
-        verify_negative_detection_response(response=response)
 
 
 @pytest.mark.parametrize(
-    "model_namespace, minio_pod, minio_data_connection, guardrails_orchestrator",
+    "model_namespace, guardrails_orchestrator",
     [
         pytest.param(
             {"name": "test-autoconfig-gateway"},
-            MinIo.PodConfig.QWEN_HAP_BPIV2_MINIO_CONFIG,
-            {"bucket": "llms"},
             {
                 "auto_config": {
-                    "inferenceServiceToGuardrail": QWEN_MODEL_NAME,
+                    "inferenceServiceToGuardrail": LLMdInferenceSimConfig.isvc_name,
                     "detectorServiceLabelToMatch": AUTOCONFIG_DETECTOR_LABEL,
                 },
                 "enable_built_in_detectors": True,
@@ -669,15 +441,13 @@ class TestGuardrailsOrchestratorAutoConfig:
 class TestGuardrailsOrchestratorAutoConfigWithGateway:
     """
     These tests verify that the GuardrailsOrchestrator works as expected when configured
-    through the AutoConfig feature in order to use the gateway route.
+    through the AutoConfig feature to use the gateway route.
     """
 
     def test_guardrails_autoconfig_gateway_health_endpoint(
         self,
         current_client_token,
-        minio_pod,
-        minio_data_connection,
-        qwen_isvc,
+        llm_d_inference_sim_isvc,
         prompt_injection_detector_route,
         hap_detector_route,
         openshift_ca_bundle_file,
@@ -692,7 +462,11 @@ class TestGuardrailsOrchestratorAutoConfigWithGateway:
         assert "fms-guardrails-orchestr8" in response.text
 
     def test_guardrails_autoconfig_gateway_info_endpoint(
-        self, current_client_token, openshift_ca_bundle_file, qwen_isvc, guardrails_orchestrator_health_route
+        self,
+        current_client_token,
+        openshift_ca_bundle_file,
+        llm_d_inference_sim_isvc,
+        guardrails_orchestrator_health_route,
     ):
         verify_health_info_response(
             host=guardrails_orchestrator_health_route.host,
@@ -704,27 +478,17 @@ class TestGuardrailsOrchestratorAutoConfigWithGateway:
         self,
         current_client_token,
         openshift_ca_bundle_file,
-        qwen_isvc,
+        llm_d_inference_sim_isvc,
         guardrails_orchestrator_gateway_route,
     ):
         for prompt in [HAP_INPUT_DETECTION_PROMPT, PROMPT_INJECTION_INPUT_DETECTION_PROMPT]:
-            response = requests.post(
+            send_and_verify_unsuitable_input_detection(
                 url=f"https://{guardrails_orchestrator_gateway_route.host}"
                 f"{AUTOCONFIG_GATEWAY_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
-                headers=get_auth_headers(token=current_client_token),
-                json=get_chat_detections_payload(
-                    content=prompt.content,
-                    model=QWEN_MODEL_NAME,
-                ),
-                verify=openshift_ca_bundle_file,
-            )
-
-            verify_builtin_detector_unsuitable_input_response(
-                response=response,
-                detector_id=prompt.detector_id,
-                detection_name=prompt.detection_name,
-                detection_type=prompt.detection_type,
-                detection_text=prompt.detection_text,
+                token=current_client_token,
+                ca_bundle_file=openshift_ca_bundle_file,
+                prompt=prompt,
+                model=LLMdInferenceSimConfig.model_name,
             )
 
     @pytest.mark.parametrize(
@@ -741,20 +505,16 @@ class TestGuardrailsOrchestratorAutoConfigWithGateway:
     def test_guardrails_autoconfig_gateway_negative_detection(
         self,
         current_client_token,
-        qwen_isvc,
+        llm_d_inference_sim_isvc,
         guardrails_orchestrator_gateway_route,
         openshift_ca_bundle_file,
         url_path,
         message,
     ):
-        response = requests.post(
+        send_and_verify_negative_detection(
             url=f"https://{guardrails_orchestrator_gateway_route.host}{url_path}{OpenAIEnpoints.CHAT_COMPLETIONS}",
-            headers=get_auth_headers(token=current_client_token),
-            json=get_chat_detections_payload(
-                content=str(message),
-                model=QWEN_MODEL_NAME,
-            ),
-            verify=openshift_ca_bundle_file,
+            token=current_client_token,
+            ca_bundle_file=openshift_ca_bundle_file,
+            content=str(message),
+            model=LLMdInferenceSimConfig.model_name,
         )
-
-        verify_negative_detection_response(response=response)

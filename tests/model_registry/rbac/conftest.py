@@ -211,7 +211,7 @@ def model_registry_instance_parametrized(
         for mr_instance in mr_instances:
             # Common parameters for both ModelRegistry classes
             mr_instance.wait_for_condition(condition="Available", status="True")
-            mr_instance.wait_for_condition(condition="OAuthProxyAvailable", status="True")
+            mr_instance.wait_for_condition(condition="KubeRBACProxyAvailable", status="True")
             model_registry_instances.append(mr_instance)
 
         LOGGER.info(

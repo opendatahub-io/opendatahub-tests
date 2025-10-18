@@ -1,5 +1,5 @@
 import json
-from typing import Any, Generator
+from typing import Any, Generator, List
 
 import pytest
 import yaml
@@ -158,49 +158,87 @@ def deployment_config(request: FixtureRequest) -> dict[str, Any]:
 
 
 def build_raw_params(
-    name: str, image: str, args: list[str], gpu_count: int, model_output_type: str = "text"
+    name: str,
+    image: str,
+    args: list[str],
+    gpu_count: int,
+    execution_mode: str,
+    model_output_type: str = "text",
 ) -> tuple[Any, str]:
     test_id = f"{name}-raw"
+    deployment_type = KServeDeploymentType.RAW_DEPLOYMENT
     param = pytest.param(
         {"name": "raw-model-validation"},
-        {"deployment_type": KServeDeploymentType.RAW_DEPLOYMENT},
+        {"deployment_type": deployment_type},
         {
             "model_name": name,
             "model_car_image_uri": image,
         },
         {
-            "deployment_type": KServeDeploymentType.RAW_DEPLOYMENT,
+            "deployment_type": deployment_type,
             "runtime_argument": args,
             "gpu_count": gpu_count,
             "model_output_type": model_output_type,
         },
         id=test_id,
-        marks=[pytest.mark.rawdeployment],
+        marks=build_pytest_markers(deployment_type=deployment_type, execution_mode=execution_mode),
     )
     return param, test_id
 
 
 def build_serverless_params(
-    name: str, image: str, args: list[str], gpu_count: int, model_output_type: str = "text"
+    name: str,
+    image: str,
+    args: list[str],
+    gpu_count: int,
+    execution_mode: str,
+    model_output_type: str = "text",
 ) -> tuple[Any, str]:
     test_id = f"{name}-serverless"
+    deployment_type = KServeDeploymentType.SERVERLESS
     param = pytest.param(
         {"name": "serverless-model-validation"},
-        {"deployment_type": KServeDeploymentType.SERVERLESS},
+        {"deployment_type": deployment_type},
         {
             "model_name": name,
             "model_car_image_uri": image,
         },
         {
-            "deployment_type": KServeDeploymentType.SERVERLESS,
+            "deployment_type": deployment_type,
             "runtime_argument": args,
             "gpu_count": gpu_count,
             "model_output_type": model_output_type,
         },
         id=test_id,
-        marks=[pytest.mark.serverless],
+        marks=build_pytest_markers(deployment_type=deployment_type, execution_mode=execution_mode),
     )
     return param, test_id
+
+
+def build_pytest_markers(deployment_type: str, execution_mode: str) -> List[Any]:
+    """
+    Build a list of pytest markers based on deployment type, execution mode.
+
+    Args:
+        deployment_type (str): Deployment type (e.g., RAW_DEPLOYMENT, SERVERLESS)
+        execution_mode (str): "parallel" or "sequential"
+
+    Returns:
+        List[Any]: List of pytest.mark objects to attach to the test
+    """
+    markers: List[pytest.MarkDecorator] = []
+
+    if deployment_type == KServeDeploymentType.RAW_DEPLOYMENT:
+        markers.append(pytest.mark.rawdeployment)
+    elif deployment_type == KServeDeploymentType.SERVERLESS:
+        markers.append(pytest.mark.serverless)
+
+    # Execution mode markers
+    if execution_mode == "parallel":
+        markers.append(pytest.mark.parallel)
+        markers.append(pytest.mark.skip_must_gather)
+
+    return markers
 
 
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
@@ -232,6 +270,10 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
 
         name = model_car.get("name", "").strip()
         image = model_car.get("image", "").strip()
+        execution_mode = (
+            model_car.get("execution_mode", "").strip()
+            or default_serving_config.get("execution_mode", "sequential").strip()
+        )
 
         if not name or not image:
             continue
@@ -243,11 +285,21 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
 
         if metafunc.cls.__name__ == "TestVLLMModelCarRaw":
             param, test_id = build_raw_params(
-                name=name, image=image, args=args, gpu_count=gpu_count, model_output_type=model_output_type
+                name=name,
+                image=image,
+                args=args,
+                gpu_count=gpu_count,
+                execution_mode=execution_mode,
+                model_output_type=model_output_type,
             )
         elif metafunc.cls.__name__ == "TestVLLMModelCarServerless":
             param, test_id = build_serverless_params(
-                name=name, image=image, args=args, gpu_count=gpu_count, model_output_type=model_output_type
+                name=name,
+                image=image,
+                args=args,
+                gpu_count=gpu_count,
+                execution_mode=execution_mode,
+                model_output_type=model_output_type,
             )
         else:
             continue
