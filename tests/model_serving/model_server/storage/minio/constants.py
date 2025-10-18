@@ -13,6 +13,5 @@ MINIO_INFERENCE_CONFIG = {
     "model-dir": "kserve/openvino-age-gender-recognition",
 }
 KSERVE_MINIO_INFERENCE_CONFIG = {"model-dir": "kserve/openvino-age-gender-recognition", **MINIO_INFERENCE_CONFIG}
-MINIO_MODEL_MESH_INFERENCE_CONFIG = {"model-dir": "modelmesh/openvino-age-gender-recognition", **MINIO_INFERENCE_CONFIG}
 
 AGE_GENDER_INFERENCE_TYPE = "age-gender-recognition"

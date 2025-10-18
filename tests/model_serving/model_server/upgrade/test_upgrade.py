@@ -10,14 +10,12 @@ from utilities.constants import ModelName, Protocols
 from utilities.inference_utils import Inference
 from utilities.manifests.caikit_standalone import CAIKIT_STANDALONE_INFERENCE_CONFIG
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
-from utilities.manifests.openvino import OPENVINO_INFERENCE_CONFIG
 
 
 TEST_SERVERLESS_ONNX_POST_UPGRADE_INFERENCE_SERVICE_EXISTS: str = (
     "test_serverless_onnx_post_upgrade_inference_service_exists"
 )
 TEST_RAW_CAIKIT_BGE_POST_UPGRADE_INFERENCE_EXISTS: str = "test_raw_caikit_bge_post_upgrade_inference_exists"
-TEST_MODEL_MESH_OPENVINO_POST_UPGRADE_INFERENCE_EXISTS: str = "test_model_mesh_openvino_post_upgrade_inference_exists"
 
 
 @pytest.mark.usefixtures("valid_aws_config")
@@ -44,18 +42,6 @@ class TestPreUpgradeModelServer:
             inference_type="embedding",
             protocol=Protocols.HTTP,
             model_name=ModelName.CAIKIT_BGE_LARGE_EN,
-            use_default_query=True,
-        )
-
-    @pytest.mark.pre_upgrade
-    @pytest.mark.modelmesh
-    def test_model_mesh_openvino_pre_upgrade_inference(self, openvino_model_mesh_inference_service_scope_session):
-        """Test OpenVINO ModelMesh inference with internal route before upgrade"""
-        verify_inference_response(
-            inference_service=openvino_model_mesh_inference_service_scope_session,
-            inference_config=OPENVINO_INFERENCE_CONFIG,
-            inference_type=Inference.INFER,
-            protocol=Protocols.HTTP,
             use_default_query=True,
         )
 
@@ -152,52 +138,6 @@ class TestPostUpgradeModelServer:
         )
 
     @pytest.mark.post_upgrade
-    @pytest.mark.modelmesh
-    @pytest.mark.dependency(name=TEST_MODEL_MESH_OPENVINO_POST_UPGRADE_INFERENCE_EXISTS)
-    def test_model_mesh_openvino_post_upgrade_inference_exists(
-        self, openvino_model_mesh_inference_service_scope_session
-    ):
-        """Test that model mesh inference service exists after upgrade"""
-        assert openvino_model_mesh_inference_service_scope_session.exists
-
-    @pytest.mark.post_upgrade
-    @pytest.mark.modelmesh
-    @pytest.mark.dependency(depends=[TEST_MODEL_MESH_OPENVINO_POST_UPGRADE_INFERENCE_EXISTS])
-    def test_model_mesh_openvino_post_upgrade_inference_not_modified(
-        self, openvino_model_mesh_inference_service_scope_session
-    ):
-        """Test that the model mesh deployment inference service is not modified in upgrade"""
-        verify_inference_generation(
-            isvc=openvino_model_mesh_inference_service_scope_session,
-            expected_generation=1,
-        )
-
-    @pytest.mark.post_upgrade
-    @pytest.mark.modelmesh
-    @pytest.mark.dependency(depends=[TEST_MODEL_MESH_OPENVINO_POST_UPGRADE_INFERENCE_EXISTS])
-    def test_model_mesh_openvino_post_upgrade_runtime_not_modified(
-        self, openvino_model_mesh_inference_service_scope_session
-    ):
-        """Test that the model mesh deployment runtime is not modified in upgrade"""
-        verify_serving_runtime_generation(
-            isvc=openvino_model_mesh_inference_service_scope_session,
-            expected_generation=1,
-        )
-
-    @pytest.mark.post_upgrade
-    @pytest.mark.modelmesh
-    @pytest.mark.dependency(depends=[TEST_MODEL_MESH_OPENVINO_POST_UPGRADE_INFERENCE_EXISTS])
-    def test_model_mesh_openvino_post_upgrade_inference(self, openvino_model_mesh_inference_service_scope_session):
-        """Test OpenVINO ModelMesh inference with internal route after upgrade"""
-        verify_inference_response(
-            inference_service=openvino_model_mesh_inference_service_scope_session,
-            inference_config=OPENVINO_INFERENCE_CONFIG,
-            inference_type=Inference.INFER,
-            protocol=Protocols.HTTP,
-            use_default_query=True,
-        )
-
-    @pytest.mark.post_upgrade
     @pytest.mark.serverless
     @pytest.mark.dependency(name="test_serverless_authenticated_onnx_post_upgrade_inference_service_exists")
     def test_serverless_authenticated_onnx_post_upgrade_inference_service_exists(
@@ -227,7 +167,6 @@ class TestPostUpgradeModelServer:
     @pytest.mark.post_upgrade
     @pytest.mark.serverless
     @pytest.mark.rawdeployment
-    @pytest.mark.modelmesh
     def test_verify_odh_model_controller_pod_not_restarted_post_upgrade(self, admin_client):
         """Verify that ODH Model Controller pod is not restarted after upgrade"""
         verify_pod_containers_not_restarted(
@@ -243,16 +182,4 @@ class TestPostUpgradeModelServer:
         verify_pod_containers_not_restarted(
             client=admin_client,
             component_name="kserve",
-        )
-
-    @pytest.mark.post_upgrade
-    @pytest.mark.modelmesh
-    def test_verify_model_mesh_pod_not_restarted_post_upgrade(
-        self,
-        admin_client,
-    ):
-        """Verify that Model Mesh pods are not restarted after upgrade"""
-        verify_pod_containers_not_restarted(
-            client=admin_client,
-            component_name="model-mesh",
         )
