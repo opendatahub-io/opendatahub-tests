@@ -10,8 +10,6 @@ from utilities.constants import DscComponents
 
 COMPONENTS_EXPECTED_REPLICAS: dict[str, int] = {
     "odh-model-controller": 1,
-    "modelmesh-controller": 3,
-    "etcd": 1,
     "kserve-controller-manager": 1,
 }
 
@@ -21,12 +19,9 @@ def component_deployment(
     request: FixtureRequest, admin_client: DynamicClient, dsc_resource: DataScienceCluster
 ) -> Deployment:
     kserve_management_state = dsc_resource.instance.spec.components[DscComponents.KSERVE].managementState
-    modelmesh_management_state = dsc_resource.instance.spec.components[DscComponents.MODELMESHSERVING].managementState
 
     name = request.param["name"]
-    if (
-        name in ("modelmesh-controller", "etcd") and modelmesh_management_state == DscComponents.ManagementState.REMOVED
-    ) or (name == "kserve-controller-manager" and kserve_management_state == DscComponents.ManagementState.REMOVED):
+    if name == "kserve-controller-manager" and kserve_management_state == DscComponents.ManagementState.REMOVED:
         return pytest.skip(f"{name} component state is {DscComponents.ManagementState.REMOVED}")
 
     deployment = Deployment(
@@ -49,16 +44,6 @@ def component_deployment(
             {"name": "odh-model-controller"},
             marks=pytest.mark.polarion("ODS-1919"),
             id="odh-model-controller",
-        ),
-        pytest.param(
-            {"name": "modelmesh-controller"},
-            marks=pytest.mark.polarion("ODS-1919"),
-            id="modelmesh-controller",
-        ),
-        pytest.param(
-            {"name": "etcd"},
-            marks=pytest.mark.polarion("ODS-1919"),
-            id="etcd",
         ),
         pytest.param(
             {"name": "kserve-controller-manager"},
