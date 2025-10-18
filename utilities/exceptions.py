@@ -136,3 +136,13 @@ class MissingParameter(Exception):
 
 class ExceptionUserLogin(Exception):
     pass
+
+
+class ResourceNotFoundError(Exception):
+    pass
+
+
+class PodNotFound(Exception):
+    """Pod not found"""
+
+    pass
