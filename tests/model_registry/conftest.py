@@ -43,6 +43,7 @@ from tests.model_registry.constants import (
     DB_RESOURCE_NAME,
     MR_INSTANCE_NAME,
     MODEL_REGISTRY_POD_FILTER,
+    DEFAULT_CUSTOM_MODEL_CATALOG,
 )
 from utilities.constants import Labels, Protocols
 from tests.model_registry.utils import (
@@ -590,3 +591,8 @@ def user_credentials_rbac() -> dict[str, str]:
         "idp_name": f"test-htpasswd-idp-{random_str}",
         "secret_name": f"test-htpasswd-secret-{random_str}",
     }
+
+
+@pytest.fixture(scope="class")
+def catalog_config_map(admin_client: DynamicClient, model_registry_namespace: str) -> ConfigMap:
+    return ConfigMap(name=DEFAULT_CUSTOM_MODEL_CATALOG, client=admin_client, namespace=model_registry_namespace)

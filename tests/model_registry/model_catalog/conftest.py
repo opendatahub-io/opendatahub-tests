@@ -12,32 +12,26 @@ from ocp_resources.resource import ResourceEditor
 
 from ocp_resources.route import Route
 from ocp_resources.service_account import ServiceAccount
-from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG
 from tests.model_registry.model_catalog.constants import (
     SAMPLE_MODEL_NAME3,
-    CUSTOM_CATALOG_ID1,
     DEFAULT_CATALOG_FILE,
     CATALOG_CONTAINER,
     REDHAT_AI_CATALOG_ID,
 )
-from tests.model_registry.model_catalog.utils import (
+from tests.model_registry.constants import CUSTOM_CATALOG_ID1
+from tests.model_registry.utils import (
+    get_rest_headers,
     is_model_catalog_ready,
-    wait_for_model_catalog_api,
-    get_model_str,
-    execute_get_command,
     get_model_catalog_pod,
+    wait_for_model_catalog_api,
+    execute_get_command,
+    get_model_str,
 )
-from tests.model_registry.utils import get_rest_headers
 from utilities.infra import get_openshift_token, login_with_user_password, create_inference_token
 from utilities.user_utils import UserTestSession
 
 
 LOGGER = get_logger(name=__name__)
-
-
-@pytest.fixture(scope="class")
-def catalog_config_map(admin_client: DynamicClient, model_registry_namespace: str) -> ConfigMap:
-    return ConfigMap(name=DEFAULT_CUSTOM_MODEL_CATALOG, client=admin_client, namespace=model_registry_namespace)
 
 
 @pytest.fixture(scope="class")

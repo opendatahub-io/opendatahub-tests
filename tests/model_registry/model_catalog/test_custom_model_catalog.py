@@ -1,23 +1,20 @@
 from tests.model_registry.model_catalog.constants import (
     EXPECTED_CUSTOM_CATALOG_VALUES,
-    CUSTOM_CATALOG_ID1,
-    SAMPLE_MODEL_NAME1,
     CUSTOM_CATALOG_ID2,
     SAMPLE_MODEL_NAME2,
     MULTIPLE_CUSTOM_CATALOG_VALUES,
     SAMPLE_MODEL_NAME3,
 )
+from tests.model_registry.constants import SAMPLE_MODEL_NAME1, CUSTOM_CATALOG_ID1
 from ocp_resources.config_map import ConfigMap
 import pytest
 from simple_logger.logger import get_logger
 from typing import Self
 
 from tests.model_registry.model_catalog.utils import (
-    execute_get_command,
-    get_catalog_str,
-    get_sample_yaml_str,
     ResourceNotFoundError,
 )
+from tests.model_registry.utils import execute_get_command, get_sample_yaml_str, get_catalog_str
 
 LOGGER = get_logger(name=__name__)
 

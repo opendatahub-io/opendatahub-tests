@@ -66,3 +66,5 @@ PORT_MAP = {
 MODEL_REGISTRY_POD_FILTER: str = "component=model-registry"
 DEFAULT_CUSTOM_MODEL_CATALOG: str = "model-catalog-sources"
 DEFAULT_MODEL_CATALOG_CFG: str = "model-catalog-default-sources"
+SAMPLE_MODEL_NAME1 = "mistralai/Mistral-7B-Instruct-v0.3"
+CUSTOM_CATALOG_ID1: str = "sample_custom_catalog1"

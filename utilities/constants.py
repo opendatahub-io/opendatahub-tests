@@ -473,3 +473,9 @@ class LLMdInferenceSimConfig:
 LLM_D_CHAT_GENERATION_CONFIG: Dict[str, Any] = {
     "service": {"hostname": f"{LLMdInferenceSimConfig.isvc_name}-predictor", "port": 8032}
 }
+
+
+class PodNotFound(Exception):
+    """Pod not found"""
+
+    pass
