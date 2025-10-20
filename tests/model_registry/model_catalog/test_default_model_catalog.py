@@ -156,41 +156,41 @@ class TestModelCatalogDefault:
     def test_model_default_catalog_get_models_by_source(
         self: Self,
         model_catalog_rest_url: list[str],
-        randomly_picked_model_from_default_catalog: dict[Any, Any],
+        randomly_picked_model: dict[Any, Any],
     ):
         """
         Validate a specific user can access models api for model catalog associated with a default source
         """
-        LOGGER.info(f"picked model: {randomly_picked_model_from_default_catalog}")
-        assert randomly_picked_model_from_default_catalog
+        LOGGER.info(f"picked model: {randomly_picked_model}")
+        assert randomly_picked_model
 
     def test_model_default_catalog_get_model_by_name(
         self: Self,
         model_catalog_rest_url: list[str],
         user_token_for_api_calls: str,
-        randomly_picked_model_from_default_catalog: dict[Any, Any],
+        randomly_picked_model: dict[Any, Any],
     ):
         """
         Validate a specific user can access get Model by name associated with a default source
         """
-        model_name = randomly_picked_model_from_default_catalog["name"]
+        model_name = randomly_picked_model["name"]
         result = execute_get_command(
             url=f"{model_catalog_rest_url[0]}sources/{REDHAT_AI_CATALOG_ID}/models/{model_name}",
             headers=get_rest_headers(token=user_token_for_api_calls),
         )
-        differences = list(diff(randomly_picked_model_from_default_catalog, result))
+        differences = list(diff(randomly_picked_model, result))
         assert not differences, f"Expected no differences in model information for {model_name}: {differences}"
 
     def test_model_default_catalog_get_model_artifact(
         self: Self,
         model_catalog_rest_url: list[str],
         user_token_for_api_calls: str,
-        randomly_picked_model_from_default_catalog: dict[Any, Any],
+        randomly_picked_model: dict[Any, Any],
     ):
         """
         Validate a specific user can access get Model artifacts for model associated with default source
         """
-        model_name = randomly_picked_model_from_default_catalog["name"]
+        model_name = randomly_picked_model["name"]
         result = execute_get_command(
             url=f"{model_catalog_rest_url[0]}sources/{REDHAT_AI_CATALOG_ID}/models/{model_name}/artifacts",
             headers=get_rest_headers(token=user_token_for_api_calls),

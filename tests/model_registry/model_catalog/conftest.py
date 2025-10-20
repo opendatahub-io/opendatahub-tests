@@ -147,10 +147,14 @@ def user_token_for_api_calls(
 
 
 @pytest.fixture(scope="class")
-def randomly_picked_model_from_default_catalog(
-    model_catalog_rest_url: list[str], user_token_for_api_calls: str
+def randomly_picked_model(
+    model_catalog_rest_url: list[str], user_token_for_api_calls: str, request: pytest.FixtureRequest
 ) -> dict[Any, Any]:
-    url = f"{model_catalog_rest_url[0]}models?source={REDHAT_AI_CATALOG_ID}&pageSize=100"
+    """Pick a random model"""
+    param = getattr(request, "param", {})
+    source = param.get("source", REDHAT_AI_CATALOG_ID)
+    LOGGER.info(f"Picking random model from {source}")
+    url = f"{model_catalog_rest_url[0]}models?source={source}&pageSize=100"
     result = execute_get_command(
         url=url,
         headers=get_rest_headers(token=user_token_for_api_calls),
