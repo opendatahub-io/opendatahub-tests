@@ -214,6 +214,7 @@ class Labels:
 
     class Kueue:
         MANAGED: str = "kueue.openshift.io/managed"
+        QUEUE_NAME: str = "kueue.x-k8s.io/queue-name"
 
 
 class Timeout:
@@ -272,7 +273,7 @@ class RunTimeConfigs:
 
 class ModelCarImage:
     MNIST_8_1: str = (
-        "oci://quay.io/mwaykole/test@sha256:8a3217bcfa2cc5fa3d07496cff8b234acdf2c9725dd307dc0a80401f55e1a11c"
+        "oci://quay.io/mwaykole/test@sha256:cd9f8e4634b7da17bb367b1588a354dbd94cc0c74d506e27e3c99422cc828af7"
         # noqa: E501
     )
     GRANITE_8B_CODE_INSTRUCT: str = "oci://registry.redhat.io/rhelai1/modelcar-granite-8b-code-instruct:1.4"

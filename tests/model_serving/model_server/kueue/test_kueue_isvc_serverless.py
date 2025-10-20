@@ -6,7 +6,7 @@ This test imports the reusable test logic from utilities.kueue_utils.
 import pytest
 from ocp_resources.deployment import Deployment
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
-from utilities.constants import RunTimeConfigs, KServeDeploymentType
+from utilities.constants import RunTimeConfigs, KServeDeploymentType, Labels
 from utilities.general import create_isvc_label_selector_str
 from utilities.kueue_utils import wait_for_deployments, check_gated_pods_and_running_pods
 from tests.model_serving.model_server.serverless.constants import ONNX_SERVERLESS_INFERENCE_SERVICE_CONFIG
@@ -51,7 +51,7 @@ EXPECTED_UPDATED_DEPLOYMENTS = 2
                 "name": "kueue",
                 "min-replicas": MIN_REPLICAS,
                 "max-replicas": MAX_REPLICAS,
-                "labels": {"kueue.x-k8s.io/queue-name": LOCAL_QUEUE_NAME},
+                "labels": {Labels.Kueue.QUEUE_NAME: LOCAL_QUEUE_NAME},
                 "deployment-mode": KServeDeploymentType.SERVERLESS,
                 "resources": ISVC_RESOURCES,
             },
