@@ -211,7 +211,7 @@ def extract_schema_fields(openapi_schema: dict[Any, Any], schema_name: str) -> t
 
 
 def validate_filter_options_structure(
-    response: dict[Any, Any], expected_properties: set[str] = None
+    response: dict[Any, Any], expected_properties: set[str] | None = None
 ) -> Tuple[bool, List[str]]:
     """
     Comprehensive validation of filter_options response structure.
