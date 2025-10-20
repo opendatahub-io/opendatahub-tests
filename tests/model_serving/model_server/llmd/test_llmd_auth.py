@@ -7,7 +7,6 @@ from tests.model_serving.model_server.llmd.utils import (
 from utilities.constants import Protocols
 from utilities.llmd_utils import verify_inference_response_llmd
 from utilities.manifests.tinyllama import TINYLLAMA_INFERENCE_CONFIG
-from utilities.llmd_constants import ModelStorage, ContainerImages
 
 pytestmark = [
     pytest.mark.llmd_cpu,
@@ -22,8 +21,15 @@ pytestmark = [
 class TestLLMISVCAuth:
     """Authentication testing for LLMD."""
 
-    def test_llmisvc_auth(self, llmd_gateway, llmisvc_auth, llmisvc_auth_token):
-        """Test LLMD inference with S3 storage for two users using authentication tokens."""
+    def test_llmisvc_auth(
+        self,
+        llmd_gateway,
+        llmisvc_auth,
+        llmisvc_auth_token,
+        llmisvc_auth_view_role,
+        llmisvc_auth_role_binding,
+    ):
+        """Test LLMD inference for two users using authentication tokens."""
 
         llmisvc_auth_prefix = "llmisvc-auth-user-"
         sa_prefix = "llmisvc-auth-sa-"
@@ -32,19 +38,25 @@ class TestLLMISVCAuth:
         llmisvc_user_a, sa_user_a = llmisvc_auth(
             service_name=llmisvc_auth_prefix + "a",
             service_account_name=sa_prefix + "a",
-            storage_uri=ModelStorage.TINYLLAMA_OCI,
-            container_image=ContainerImages.VLLM_CPU,
         )
         llmisvc_user_b, sa_user_b = llmisvc_auth(
             service_name=llmisvc_auth_prefix + "b",
             service_account_name=sa_prefix + "b",
-            storage_uri=ModelStorage.TINYLLAMA_OCI,
-            container_image=ContainerImages.VLLM_CPU,
         )
 
         # Create tokens with all RBAC resources
-        token_user_a = llmisvc_auth_token(service_account=sa_user_a, llmisvc=llmisvc_user_a)
-        token_user_b = llmisvc_auth_token(service_account=sa_user_b, llmisvc=llmisvc_user_b)
+        token_user_a = llmisvc_auth_token(
+            service_account=sa_user_a,
+            llmisvc=llmisvc_user_a,
+            view_role_factory=llmisvc_auth_view_role,
+            role_binding_factory=llmisvc_auth_role_binding,
+        )
+        token_user_b = llmisvc_auth_token(
+            service_account=sa_user_b,
+            llmisvc=llmisvc_user_b,
+            view_role_factory=llmisvc_auth_view_role,
+            role_binding_factory=llmisvc_auth_role_binding,
+        )
 
         assert verify_gateway_status(llmd_gateway), "Gateway should be ready"
         assert verify_llm_service_status(llmisvc_user_a), "LLMInferenceService user A should be ready"
@@ -57,7 +69,7 @@ class TestLLMISVCAuth:
             inference_type="chat_completions",
             protocol=Protocols.HTTP,
             use_default_query=True,
-            insecure=True,
+            insecure=False,
             model_name=llmisvc_user_a.name,
             token=token_user_a,
             authorized_user=True,
@@ -70,7 +82,7 @@ class TestLLMISVCAuth:
             inference_type="chat_completions",
             protocol=Protocols.HTTP,
             use_default_query=True,
-            insecure=True,
+            insecure=False,
             model_name=llmisvc_user_b.name,
             token=token_user_b,
             authorized_user=True,
@@ -83,7 +95,7 @@ class TestLLMISVCAuth:
             inference_type="chat_completions",
             protocol=Protocols.HTTP,
             use_default_query=True,
-            insecure=True,
+            insecure=False,
             model_name=llmisvc_user_a.name,
             token=token_user_b,
             authorized_user=False,
