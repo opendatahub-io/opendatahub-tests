@@ -4,8 +4,8 @@ from dictdiffer import diff
 from simple_logger.logger import get_logger
 from typing import Self, Any
 from tests.model_registry.model_catalog.constants import (
-    REDHATI_AI_FILTER,
-    REDHATI_AI_VALIDATED_FILTER,
+    REDHAT_AI_FILTER,
+    REDHAT_AI_VALIDATED_FILTER,
     REDHAT_AI_CATALOG_ID,
     VALIDATED_CATALOG_ID,
 )
@@ -29,13 +29,13 @@ class TestSearchModelCatalog:
         """
 
         result = execute_get_command(
-            url=f"{model_catalog_rest_url[0]}models?sourceLabel={REDHATI_AI_FILTER}&pageSize=100",
+            url=f"{model_catalog_rest_url[0]}models?sourceLabel={REDHAT_AI_FILTER}&pageSize=100",
             headers=model_registry_rest_headers,
         )
         redhai_ai_filter_moldels_size = result["size"]
 
         result = execute_get_command(
-            url=f"{model_catalog_rest_url[0]}models?sourceLabel={REDHATI_AI_VALIDATED_FILTER}&pageSize=100",
+            url=f"{model_catalog_rest_url[0]}models?sourceLabel={REDHAT_AI_VALIDATED_FILTER}&pageSize=100",
             headers=model_registry_rest_headers,
         )
         redhai_ai_validated_filter_models_size = result["size"]
@@ -48,7 +48,7 @@ class TestSearchModelCatalog:
         result = execute_get_command(
             url=(
                 f"{model_catalog_rest_url[0]}models?"
-                f"sourceLabel={REDHATI_AI_VALIDATED_FILTER},{REDHATI_AI_FILTER}&pageSize=100"
+                f"sourceLabel={REDHAT_AI_VALIDATED_FILTER},{REDHAT_AI_FILTER}&pageSize=100"
             ),
             headers=model_registry_rest_headers,
         )
@@ -85,11 +85,11 @@ class TestSearchModelCatalog:
         [
             pytest.param(
                 {"source": VALIDATED_CATALOG_ID},
-                REDHATI_AI_VALIDATED_FILTER,
+                REDHAT_AI_VALIDATED_FILTER,
                 id="test_search_model_catalog_redhat_ai_validated",
             ),
             pytest.param(
-                {"source": REDHAT_AI_CATALOG_ID}, REDHATI_AI_FILTER, id="test_search_model_catalog_redhat_ai_default"
+                {"source": REDHAT_AI_CATALOG_ID}, REDHAT_AI_FILTER, id="test_search_model_catalog_redhat_ai_default"
             ),
         ],
         indirect=["randomly_picked_model"],

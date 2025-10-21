@@ -91,15 +91,16 @@ def validate_model_catalog_resource(
 
 
 def validate_default_catalog(catalogs: list[dict[Any, Any]]) -> None:
-    errors = ""
+    errors = []
     for catalog in catalogs:
         expected_catalog = DEFAULT_CATALOGS.get(catalog["id"])
         assert expected_catalog, f"Unexpected catalog: {catalog}"
-        for field in ["type", "name", "properties"]:
-            if catalog[field] != expected_catalog[field]:
-                errors += f"For {catalog['id']} expected {field}={expected_catalog[field]}, but got {catalog[field]}"
+        for key, expected_value in expected_catalog.items():
+            actual_value = catalog.get(key)
+            if actual_value != expected_value:
+                errors.append(f"For catalog '{catalog['id']}': expected {key}={expected_value}, but got {actual_value}")
 
-    assert not errors, errors
+    assert not errors, "\n".join(errors)
 
 
 def get_catalog_str(ids: list[str]) -> str:
