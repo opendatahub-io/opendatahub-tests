@@ -74,7 +74,7 @@ class TestPostUpgradeModelRegistry:
     ):
         model_registry_instance_spec = model_registry_instance[0].instance.spec
         assert not model_registry_instance_spec.istio
-        assert model_registry_instance_spec.oauthProxy.serviceRoute == "enabled"
+        assert model_registry_instance_spec.kubeRBACProxy.serviceRoute == "enabled"
 
     @pytest.mark.post_upgrade
     def test_model_registry_grpc_container_removal_post_upgrade(

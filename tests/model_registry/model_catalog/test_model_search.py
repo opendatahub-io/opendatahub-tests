@@ -9,7 +9,7 @@ from tests.model_registry.model_catalog.constants import (
     REDHAT_AI_CATALOG_ID,
     VALIDATED_CATALOG_ID,
 )
-from tests.model_registry.model_catalog.utils import (
+from tests.model_registry.utils import (
     execute_get_command,
 )
 

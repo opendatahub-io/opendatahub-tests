@@ -10,10 +10,8 @@ from ocp_resources.config_map import ConfigMap
 import pytest
 from simple_logger.logger import get_logger
 from typing import Self
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 
-from tests.model_registry.model_catalog.utils import (
-    ResourceNotFoundError,
-)
 from tests.model_registry.utils import execute_get_command, get_sample_yaml_str, get_catalog_str
 
 LOGGER = get_logger(name=__name__)

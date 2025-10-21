@@ -1,5 +1,4 @@
 from typing import Any
-import time
 import yaml
 
 from kubernetes.dynamic import DynamicClient

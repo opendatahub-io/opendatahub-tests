@@ -10,7 +10,6 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.resource import ResourceEditor
 
-from ocp_resources.route import Route
 from ocp_resources.service_account import ServiceAccount
 from tests.model_registry.model_catalog.constants import (
     SAMPLE_MODEL_NAME3,
@@ -42,26 +41,6 @@ def model_catalog_config_map(
     param = getattr(request, "param", {})
     configmap_name = param.get("configmap_name", "model-catalog-default-sources")
     return ConfigMap(name=configmap_name, client=admin_client, namespace=model_registry_namespace, ensure_exists=True)
-
-
-@pytest.fixture(scope="class")
-def model_catalog_routes(admin_client: DynamicClient, model_registry_namespace: str) -> list[Route]:
-    return list(
-        Route.get(namespace=model_registry_namespace, label_selector="component=model-catalog", dyn_client=admin_client)
-    )
-
-
-@pytest.fixture(scope="class")
-def model_catalog_rest_url(model_registry_namespace: str, model_catalog_routes: list[Route]) -> list[str]:
-    assert model_catalog_routes, f"Model catalog routes does not exist in {model_registry_namespace}"
-    route_urls = [
-        f"https://{route.instance.spec.host}:443/api/model_catalog/v1alpha1/" for route in model_catalog_routes
-    ]
-    assert route_urls, (
-        "Model catalog routes information could not be found from "
-        f"routes:{[route.name for route in model_catalog_routes]}"
-    )
-    return route_urls
 
 
 @pytest.fixture(scope="class")

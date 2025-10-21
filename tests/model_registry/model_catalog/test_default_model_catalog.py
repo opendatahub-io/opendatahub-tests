@@ -1,5 +1,7 @@
 import pytest
 import random
+
+import yaml
 from kubernetes.dynamic import DynamicClient
 from dictdiffer import diff
 from ocp_resources.deployment import Deployment
@@ -18,7 +20,7 @@ from tests.model_registry.model_catalog.utils import (
     validate_model_catalog_resource,
     get_validate_default_model_catalog_source,
     extract_schema_fields,
-    validate_model_catalog_configmap_data,
+    validate_default_catalog,
 )
 from tests.model_registry.utils import get_rest_headers, get_model_catalog_pod, execute_get_command
 from utilities.user_utils import UserTestSession
@@ -60,8 +62,16 @@ class TestModelCatalogGeneral:
         ],
         indirect=["model_catalog_config_map"],
     )
-    def test_config_map_exists(self: Self, model_catalog_config_map: ConfigMap, expected_catalogs: int):
-        validate_model_catalog_configmap_data(configmap=model_catalog_config_map, num_catalogs=expected_catalogs)
+    def test_config_map_exists(
+        self: Self, model_catalog_config_map: ConfigMap, expected_catalogs: int, validate_catalog: bool
+    ) -> None:
+        assert model_catalog_config_map.exists, f"{model_catalog_config_map.name} does not exist"
+        catalogs = yaml.safe_load(model_catalog_config_map.instance.data["sources.yaml"])["catalogs"]
+        assert len(catalogs) == expected_catalogs, (
+            f"{model_catalog_config_map.name} should have {expected_catalogs} catalog"
+        )
+        if validate_catalog:
+            validate_default_catalog(catalogs=catalogs)
 
     @pytest.mark.parametrize(
         "resource_name, expected_resource_count",

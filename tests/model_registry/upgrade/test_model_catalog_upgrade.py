@@ -39,7 +39,7 @@ def pre_upgrade_config_map_update(
         for key in request.param["sample_yaml"]:
             patches["data"][key] = request.param["sample_yaml"][key]
 
-    ResourceEditor(patches=patches).update()
+    ResourceEditor(patches={catalog_config_map: patches}).update()
     is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
     wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
     return catalog_config_map
@@ -80,8 +80,8 @@ class TestPreUpgradeModelCatalog:
         self: Self,
         pre_upgrade_config_map_update: ConfigMap,
     ):
-        # check that the configmap was updated:
-        assert len(yaml.safe_load(pre_upgrade_config_map_update.instance.data["sources.yaml"])["catalogs"]) == 2
+        # check that the custom source configmap was updated:
+        assert len(yaml.safe_load(pre_upgrade_config_map_update.instance.data["sources.yaml"])["catalogs"]) == 1
         LOGGER.info("Testing model catalog validation")
 
 
@@ -93,6 +93,6 @@ class TestPostUpgradeModelCatalog:
         self: Self,
         post_upgrade_config_map_update: ConfigMap,
     ):
-        # check that the configmap was updated:
+        # check that the configmap was still updated:
         assert len(yaml.safe_load(post_upgrade_config_map_update.instance.data["sources.yaml"])["catalogs"]) == 1
         LOGGER.info("Testing model catalog validation")
