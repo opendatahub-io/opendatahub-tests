@@ -734,6 +734,7 @@ def validate_model_catalog_sources(
     ids_expected = [expected_entry["id"] for expected_entry in expected_catalog_values]
     assert set(ids_expected).issubset(set(ids_from_query)), f"Expected: {expected_catalog_values}. Actual: {results}"
 
+
 def get_catalog_str(ids: list[str]) -> str:
     catalog_str: str = ""
     for index, id in enumerate(ids):
