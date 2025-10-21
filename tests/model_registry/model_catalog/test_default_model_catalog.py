@@ -1,5 +1,4 @@
 import pytest
-import yaml
 import random
 from kubernetes.dynamic import DynamicClient
 from dictdiffer import diff
@@ -11,14 +10,15 @@ from ocp_resources.pod import Pod
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.route import Route
 from ocp_resources.service import Service
-from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CFG
+
+from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
 from tests.model_registry.model_catalog.constants import REDHAT_AI_CATALOG_ID, CATALOG_CONTAINER, DEFAULT_CATALOGS
 from tests.model_registry.model_catalog.utils import (
     validate_model_catalog_enabled,
     validate_model_catalog_resource,
-    validate_default_catalog,
     get_validate_default_model_catalog_source,
     extract_schema_fields,
+    validate_model_catalog_configmap_data,
 )
 from tests.model_registry.utils import get_rest_headers, get_model_catalog_pod, execute_get_command
 from utilities.user_utils import UserTestSession
@@ -52,7 +52,7 @@ class TestModelCatalogGeneral:
                 marks=(pytest.mark.pre_upgrade, pytest.mark.post_upgrade),
             ),
             pytest.param(
-                {"configmap_name": DEFAULT_MODEL_CATALOG_CFG},
+                {"configmap_name": DEFAULT_MODEL_CATALOG_CM},
                 2,
                 True,
                 id="test_model_catalog_default_sources_configmap",
@@ -60,17 +60,8 @@ class TestModelCatalogGeneral:
         ],
         indirect=["model_catalog_config_map"],
     )
-    def test_config_map_exists(
-        self: Self, model_catalog_config_map: ConfigMap, expected_catalogs: int, validate_catalog: bool
-    ) -> None:
-        # Check that model catalog configmaps is created when model registry is
-        # enabled on data science cluster.
-        catalogs = yaml.safe_load(model_catalog_config_map.instance.data["sources.yaml"])["catalogs"]
-        assert len(catalogs) == expected_catalogs, (
-            f"{model_catalog_config_map.name} should have {expected_catalogs} catalog"
-        )
-        if expected_catalogs and validate_catalog:
-            validate_default_catalog(catalogs=catalogs)
+    def test_config_map_exists(self: Self, model_catalog_config_map: ConfigMap, expected_catalogs: int):
+        validate_model_catalog_configmap_data(configmap=model_catalog_config_map, num_catalogs=expected_catalogs)
 
     @pytest.mark.parametrize(
         "resource_name, expected_resource_count",
@@ -187,41 +178,41 @@ class TestModelCatalogDefault:
     def test_model_default_catalog_get_models_by_source(
         self: Self,
         model_catalog_rest_url: list[str],
-        randomly_picked_model_from_default_catalog: dict[Any, Any],
+        randomly_picked_model: dict[Any, Any],
     ):
         """
         Validate a specific user can access models api for model catalog associated with a default source
         """
-        LOGGER.info(f"picked model: {randomly_picked_model_from_default_catalog}")
-        assert randomly_picked_model_from_default_catalog
+        LOGGER.info(f"picked model: {randomly_picked_model}")
+        assert randomly_picked_model
 
     def test_model_default_catalog_get_model_by_name(
         self: Self,
         model_catalog_rest_url: list[str],
         user_token_for_api_calls: str,
-        randomly_picked_model_from_default_catalog: dict[Any, Any],
+        randomly_picked_model: dict[Any, Any],
     ):
         """
         Validate a specific user can access get Model by name associated with a default source
         """
-        model_name = randomly_picked_model_from_default_catalog["name"]
+        model_name = randomly_picked_model["name"]
         result = execute_get_command(
             url=f"{model_catalog_rest_url[0]}sources/{REDHAT_AI_CATALOG_ID}/models/{model_name}",
             headers=get_rest_headers(token=user_token_for_api_calls),
         )
-        differences = list(diff(randomly_picked_model_from_default_catalog, result))
+        differences = list(diff(randomly_picked_model, result))
         assert not differences, f"Expected no differences in model information for {model_name}: {differences}"
 
     def test_model_default_catalog_get_model_artifact(
         self: Self,
         model_catalog_rest_url: list[str],
         user_token_for_api_calls: str,
-        randomly_picked_model_from_default_catalog: dict[Any, Any],
+        randomly_picked_model: dict[Any, Any],
     ):
         """
         Validate a specific user can access get Model artifacts for model associated with default source
         """
-        model_name = randomly_picked_model_from_default_catalog["name"]
+        model_name = randomly_picked_model["name"]
         result = execute_get_command(
             url=f"{model_catalog_rest_url[0]}sources/{REDHAT_AI_CATALOG_ID}/models/{model_name}/artifacts",
             headers=get_rest_headers(token=user_token_for_api_calls),

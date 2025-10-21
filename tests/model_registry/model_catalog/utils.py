@@ -1,10 +1,13 @@
 from typing import Any
+import time
+import yaml
 
 from kubernetes.dynamic import DynamicClient
 from simple_logger.logger import get_logger
 
 
 from ocp_resources.pod import Pod
+from ocp_resources.config_map import ConfigMap
 from tests.model_registry.model_catalog.constants import (
     DEFAULT_CATALOGS,
 )
@@ -36,15 +39,16 @@ def validate_model_catalog_resource(
 
 
 def validate_default_catalog(catalogs: list[dict[Any, Any]]) -> None:
-    errors = ""
+    errors = []
     for catalog in catalogs:
         expected_catalog = DEFAULT_CATALOGS.get(catalog["id"])
         assert expected_catalog, f"Unexpected catalog: {catalog}"
-        for field in ["type", "name", "properties"]:
-            if catalog[field] != expected_catalog[field]:
-                errors += f"For {catalog['id']} expected {field}={expected_catalog[field]}, but got {catalog[field]}"
+        for key, expected_value in expected_catalog.items():
+            actual_value = catalog.get(key)
+            if actual_value != expected_value:
+                errors.append(f"For catalog '{catalog['id']}': expected {key}={expected_value}, but got {actual_value}")
 
-    assert not errors, errors
+    assert not errors, "\n".join(errors)
 
 
 def get_validate_default_model_catalog_source(catalogs: list[dict[Any, Any]]) -> None:
@@ -100,3 +104,19 @@ def extract_schema_fields(openapi_schema: dict[Any, Any], schema_name: str) -> t
     }
 
     return all_properties - excluded_fields, required_fields - excluded_fields
+
+
+def validate_model_catalog_configmap_data(configmap: ConfigMap, num_catalogs: int) -> None:
+    """
+    Validate the model catalog configmap data.
+
+    Args:
+        configmap: The ConfigMap object to validate
+        num_catalogs: Expected number of catalogs in the configmap
+    """
+    # Check that model catalog configmaps is created when model registry is
+    # enabled on data science cluster.
+    catalogs = yaml.safe_load(configmap.instance.data["sources.yaml"])["catalogs"]
+    assert len(catalogs) == num_catalogs, f"{configmap.name} should have {num_catalogs} catalog"
+    if num_catalogs:
+        validate_default_catalog(catalogs=catalogs)
