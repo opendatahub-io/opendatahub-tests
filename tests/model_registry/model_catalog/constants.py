@@ -11,23 +11,28 @@ MULTIPLE_CUSTOM_CATALOG_VALUES: list[dict[str, str]] = [
     {"id": CUSTOM_CATALOG_ID2, "model_name": SAMPLE_MODEL_NAME2},
 ]
 
+REDHAT_AI_CATALOG_NAME: str = "Red Hat AI"
+REDHAT_AI_VALIDATED_CATALOG_NAME: str = "Red Hat AI validated"
+
 SAMPLE_MODEL_NAME3 = "mistralai/Ministral-8B-Instruct-2410"
 CATALOG_CONTAINER: str = "catalog"
 DEFAULT_CATALOGS: dict[str, Any] = {
     "redhat_ai_models": {
-        "name": "Red Hat AI models",
+        "name": REDHAT_AI_CATALOG_NAME,
         "type": "yaml",
         "properties": {"yamlCatalogPath": "/shared-data/models-catalog.yaml"},
+        "labels": [REDHAT_AI_CATALOG_NAME],
     },
     "redhat_ai_validated_models": {
-        "name": "Red Hat AI validated models",
+        "name": REDHAT_AI_VALIDATED_CATALOG_NAME,
         "type": "yaml",
         "properties": {"yamlCatalogPath": "/shared-data/validated-models-catalog.yaml"},
+        "labels": [REDHAT_AI_VALIDATED_CATALOG_NAME],
     },
 }
 REDHAT_AI_CATALOG_ID: str = next(iter(DEFAULT_CATALOGS))
 DEFAULT_CATALOG_FILE: str = DEFAULT_CATALOGS[REDHAT_AI_CATALOG_ID]["properties"]["yamlCatalogPath"]
 VALIDATED_CATALOG_ID: str = tuple(DEFAULT_CATALOGS.keys())[1]
 
-REDHATI_AI_FILTER: str = "Red+Hat+AI"
-REDHATI_AI_VALIDATED_FILTER = "Red+Hat+AI+Validated"
+REDHAT_AI_FILTER: str = "Red+Hat+AI"
+REDHAT_AI_VALIDATED_FILTER = "Red+Hat+AI+Validated"

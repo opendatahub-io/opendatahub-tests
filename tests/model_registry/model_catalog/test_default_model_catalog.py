@@ -1,5 +1,4 @@
 import pytest
-import yaml
 import random
 from kubernetes.dynamic import DynamicClient
 from dictdiffer import diff
@@ -11,16 +10,16 @@ from ocp_resources.pod import Pod
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.route import Route
 from ocp_resources.service import Service
-from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CFG
+from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
 from tests.model_registry.model_catalog.constants import REDHAT_AI_CATALOG_ID, CATALOG_CONTAINER
 from tests.model_registry.model_catalog.utils import (
     validate_model_catalog_enabled,
     execute_get_command,
     validate_model_catalog_resource,
-    validate_default_catalog,
     get_validate_default_model_catalog_source,
     extract_schema_fields,
     get_model_catalog_pod,
+    validate_model_catalog_configmap_data,
 )
 from tests.model_registry.utils import get_rest_headers
 from utilities.user_utils import UserTestSession
@@ -45,7 +44,7 @@ class TestModelCatalogGeneral:
                 id="test_model_catalog_sources_configmap",
             ),
             pytest.param(
-                {"configmap_name": DEFAULT_MODEL_CATALOG_CFG},
+                {"configmap_name": DEFAULT_MODEL_CATALOG_CM},
                 2,
                 id="test_model_catalog_default_sources_configmap",
             ),
@@ -53,14 +52,7 @@ class TestModelCatalogGeneral:
         indirect=["model_catalog_config_map"],
     )
     def test_config_map_exists(self: Self, model_catalog_config_map: ConfigMap, expected_catalogs: int):
-        # Check that model catalog configmaps is created when model registry is
-        # enabled on data science cluster.
-        catalogs = yaml.safe_load(model_catalog_config_map.instance.data["sources.yaml"])["catalogs"]
-        assert len(catalogs) == expected_catalogs, (
-            f"{model_catalog_config_map.name} should have {expected_catalogs} catalog"
-        )
-        if expected_catalogs:
-            validate_default_catalog(catalogs=catalogs)
+        validate_model_catalog_configmap_data(configmap=model_catalog_config_map, num_catalogs=expected_catalogs)
 
     @pytest.mark.parametrize(
         "resource_name, expected_resource_count",
