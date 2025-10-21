@@ -241,7 +241,7 @@ class RunTimeConfigs:
 
 class ModelCarImage:
     MNIST_8_1: str = (
-        "oci://quay.io/mwaykole/test@sha256:8a3217bcfa2cc5fa3d07496cff8b234acdf2c9725dd307dc0a80401f55e1a11c"
+        "oci://quay.io/mwaykole/test@sha256:1ade1f750278d20f229cd4d7a10f1b5bf29755a62486fec043eb62a94ec8ab88"
         # noqa: E501
     )
     GRANITE_8B_CODE_INSTRUCT: str = "oci://registry.redhat.io/rhelai1/modelcar-granite-8b-code-instruct:1.4"
