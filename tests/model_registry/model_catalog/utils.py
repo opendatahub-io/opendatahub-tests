@@ -1,6 +1,7 @@
 import json
-from typing import Any
+from typing import Any, Tuple, List
 import time
+import yaml
 
 from kubernetes.dynamic import DynamicClient
 from simple_logger.logger import get_logger
@@ -9,6 +10,7 @@ import requests
 from timeout_sampler import retry
 
 from ocp_resources.pod import Pod
+from ocp_resources.config_map import ConfigMap
 from tests.model_registry.model_catalog.constants import (
     DEFAULT_CATALOGS,
 )
@@ -91,15 +93,16 @@ def validate_model_catalog_resource(
 
 
 def validate_default_catalog(catalogs: list[dict[Any, Any]]) -> None:
-    errors = ""
+    errors = []
     for catalog in catalogs:
         expected_catalog = DEFAULT_CATALOGS.get(catalog["id"])
         assert expected_catalog, f"Unexpected catalog: {catalog}"
-        for field in ["type", "name", "properties"]:
-            if catalog[field] != expected_catalog[field]:
-                errors += f"For {catalog['id']} expected {field}={expected_catalog[field]}, but got {catalog[field]}"
+        for key, expected_value in expected_catalog.items():
+            actual_value = catalog.get(key)
+            if actual_value != expected_value:
+                errors.append(f"For catalog '{catalog['id']}': expected {key}={expected_value}, but got {actual_value}")
 
-    assert not errors, errors
+    assert not errors, "\n".join(errors)
 
 
 def get_catalog_str(ids: list[str]) -> str:
@@ -208,3 +211,143 @@ def extract_schema_fields(openapi_schema: dict[Any, Any], schema_name: str) -> t
     }
 
     return all_properties - excluded_fields, required_fields - excluded_fields
+
+
+def validate_filter_options_structure(
+    response: dict[Any, Any], expected_properties: set[str] | None = None
+) -> Tuple[bool, List[str]]:
+    """
+    Comprehensive validation of filter_options response structure.
+
+    Validates:
+    - Top-level structure (filters object)
+    - All property types and their required fields
+    - Core properties presence (if specified)
+    - String properties: type, values array, distinct values
+    - Numeric properties: type, range object, min/max validity
+
+    Args:
+        response: The API response to validate
+        expected_properties: Optional set of core properties that must be present
+
+    Returns:
+        Tuple of (is_valid, list_of_errors)
+    """
+    errors = []
+
+    # Validate top-level structure
+    if not isinstance(response, dict):
+        errors.append("Response should be a dictionary")
+        return False, errors
+
+    if "filters" not in response:
+        errors.append("Response should contain 'filters' object")
+        return False, errors
+
+    filters = response["filters"]
+    if not isinstance(filters, dict):
+        errors.append("Filters should be a dictionary")
+        return False, errors
+
+    if not filters:
+        errors.append("Filters object should not be empty")
+        return False, errors
+
+    # Validate expected core properties if specified
+    if expected_properties:
+        for prop in expected_properties:
+            if prop not in filters:
+                errors.append(f"Core property '{prop}' should be present in filter options")
+
+    # Validate each property structure
+    for prop_name, prop_data in filters.items():
+        if not isinstance(prop_data, dict):
+            errors.append(f"Property '{prop_name}' should be a dictionary")
+            continue
+
+        if "type" not in prop_data:
+            errors.append(f"Property '{prop_name}' should have 'type' field")
+            continue
+
+        prop_type = prop_data["type"]
+        if not isinstance(prop_type, str) or not prop_type.strip():
+            errors.append(f"Type for '{prop_name}' should be a non-empty string")
+            continue
+
+        # Validate string properties
+        if prop_type == "string":
+            if "values" not in prop_data:
+                errors.append(f"String property '{prop_name}' should have 'values' array")
+                continue
+
+            values = prop_data["values"]
+            if not isinstance(values, list):
+                errors.append(f"Values for '{prop_name}' should be a list")
+                continue
+
+            if not values:
+                errors.append(f"Values array for '{prop_name}' should not be empty")
+                continue
+
+            # Validate individual values
+            for i, value in enumerate(values):
+                if not isinstance(value, str):
+                    errors.append(f"Value at index {i} for '{prop_name}' should be string, got: {type(value)}")
+                elif not value.strip():
+                    errors.append(f"Value at index {i} for '{prop_name}' should not be empty or whitespace")
+
+            # Check for distinct values (no duplicates)
+            try:
+                if len(values) != len(set(values)):
+                    errors.append(f"Values for '{prop_name}' should be distinct (found duplicates)")
+            except TypeError:
+                errors.append(f"Values for '{prop_name}' should be a list of strings, found unhashable type")
+
+        # Validate numeric properties - checking multiple type names since we don't know what the API will return
+        elif prop_type in ["number", "numeric", "float", "integer", "int"]:
+            if "range" not in prop_data:
+                errors.append(f"Numeric property '{prop_name}' should have 'range' object")
+                continue
+
+            range_obj = prop_data["range"]
+            if not isinstance(range_obj, dict):
+                errors.append(f"Range for '{prop_name}' should be a dictionary")
+                continue
+
+            # Check min/max presence
+            if "min" not in range_obj:
+                errors.append(f"Range for '{prop_name}' should have 'min' value")
+            if "max" not in range_obj:
+                errors.append(f"Range for '{prop_name}' should have 'max' value")
+
+            if "min" in range_obj and "max" in range_obj:
+                min_val = range_obj["min"]
+                max_val = range_obj["max"]
+
+                # Validate min/max are numeric
+                if not isinstance(min_val, (int, float)):
+                    errors.append(f"Min value for '{prop_name}' should be numeric, got: {type(min_val)}")
+                if not isinstance(max_val, (int, float)):
+                    errors.append(f"Max value for '{prop_name}' should be numeric, got: {type(max_val)}")
+
+                # Validate logical relationship (min <= max)
+                if isinstance(min_val, (int, float)) and isinstance(max_val, (int, float)) and min_val > max_val:
+                    errors.append(f"Min value ({min_val}) should be <= max value ({max_val}) for '{prop_name}'")
+
+    return len(errors) == 0, errors
+
+
+def validate_model_catalog_configmap_data(configmap: ConfigMap, num_catalogs: int) -> None:
+    """
+    Validate the model catalog configmap data.
+
+    Args:
+        configmap: The ConfigMap object to validate
+        num_catalogs: Expected number of catalogs in the configmap
+    """
+    # Check that model catalog configmaps is created when model registry is
+    # enabled on data science cluster.
+    catalogs = yaml.safe_load(configmap.instance.data["sources.yaml"])["catalogs"]
+    assert len(catalogs) == num_catalogs, f"{configmap.name} should have {num_catalogs} catalog"
+    if num_catalogs:
+        validate_default_catalog(catalogs=catalogs)

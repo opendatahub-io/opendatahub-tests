@@ -27,6 +27,7 @@ from tests.model_registry.constants import (
     CA_CONFIGMAP_NAME,
     OAUTH_PROXY_CONFIG_DICT,
     SECURE_MR_NAME,
+    KUBERBACPROXY_STR,
 )
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
@@ -165,7 +166,7 @@ def deploy_secure_mysql_and_mr(
         wait_for_resource=True,
     ) as mr:
         mr.wait_for_condition(condition="Available", status="True")
-        mr.wait_for_condition(condition="KubeRBACProxyAvailable", status="True")
+        mr.wait_for_condition(condition=KUBERBACPROXY_STR, status="True")
         wait_for_pods_running(
             admin_client=admin_client, namespace_name=model_registry_namespace, number_of_consecutive_checks=6
         )
