@@ -72,18 +72,6 @@ class TestFilterOptionsEndpoint:
 
         filters = response["filters"]
         LOGGER.info(f"Found {len(filters)} filter properties: {list(filters.keys())}")
-
-        # Log details about the validated properties
-        for prop_name, prop_data in filters.items():
-            if prop_data.get("type") == "string" and "values" in prop_data:
-                values_count = len(prop_data["values"])
-                LOGGER.info(f"String property '{prop_name}' validated with {values_count} distinct values")
-            elif prop_data.get("type") in ["number", "numeric", "float", "integer", "int"] and "range" in prop_data:
-                range_obj = prop_data["range"]
-                LOGGER.info(
-                    f"Numeric property '{prop_name}' validated: {range_obj.get('min')} to {range_obj.get('max')}"
-                )
-
         LOGGER.info("All filter options validation passed successfully")
 
     @pytest.mark.skip(reason="TODO: Implement after investigating backend DB queries")

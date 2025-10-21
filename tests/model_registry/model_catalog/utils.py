@@ -289,16 +289,19 @@ def validate_filter_options_structure(
                 errors.append(f"Values array for '{prop_name}' should not be empty")
                 continue
 
-            # Check for distinct values (no duplicates)
-            if len(values) != len(set(values)):
-                errors.append(f"Values for '{prop_name}' should be distinct (found duplicates)")
-
             # Validate individual values
             for i, value in enumerate(values):
                 if not isinstance(value, str):
                     errors.append(f"Value at index {i} for '{prop_name}' should be string, got: {type(value)}")
                 elif not value.strip():
                     errors.append(f"Value at index {i} for '{prop_name}' should not be empty or whitespace")
+
+            # Check for distinct values (no duplicates)
+            try:
+                if len(values) != len(set(values)):
+                    errors.append(f"Values for '{prop_name}' should be distinct (found duplicates)")
+            except TypeError:
+                errors.append(f"Values for '{prop_name}' should be a list of strings, found unhashable type")
 
         # Validate numeric properties - checking multiple type names since we don't know what the API will return
         elif prop_type in ["number", "numeric", "float", "integer", "int"]:
