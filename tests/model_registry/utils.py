@@ -720,6 +720,20 @@ models:
 """
 
 
+def validate_model_catalog_sources(
+    model_catalog_sources_url: str, rest_headers: dict[str, str], expected_catalog_values: dict[str, str]
+) -> None:
+    results = execute_get_command(
+        url=model_catalog_sources_url,
+        headers=rest_headers,
+    )["items"]
+    LOGGER.info(results)
+    # this is for the default catalog:
+    assert len(results) == len(expected_catalog_values) + 2
+    ids_from_query = [result_entry["id"] for result_entry in results]
+    ids_expected = [expected_entry["id"] for expected_entry in expected_catalog_values]
+    assert set(ids_expected).issubset(set(ids_from_query)), f"Expected: {expected_catalog_values}. Actual: {results}"
+
 def get_catalog_str(ids: list[str]) -> str:
     catalog_str: str = ""
     for index, id in enumerate(ids):

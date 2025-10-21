@@ -12,7 +12,8 @@ from simple_logger.logger import get_logger
 from typing import Self
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 
-from tests.model_registry.utils import execute_get_command, get_sample_yaml_str, get_catalog_str
+from tests.model_registry.utils import execute_get_command, get_sample_yaml_str, get_catalog_str, \
+    validate_model_catalog_sources
 
 LOGGER = get_logger(name=__name__)
 
@@ -27,6 +28,7 @@ LOGGER = get_logger(name=__name__)
             },
             EXPECTED_CUSTOM_CATALOG_VALUES,
             id="test_file_test_catalog",
+            marks=(pytest.mark.pre_upgrade, pytest.mark.post_upgrade, pytest.mark.install),
         ),
         pytest.param(
             {
@@ -57,15 +59,10 @@ class TestModelCatalogCustom:
         """
         Validate sources api for model catalog
         """
-        url = f"{model_catalog_rest_url[0]}sources"
-        results = execute_get_command(
-            url=url,
-            headers=model_registry_rest_headers,
-        )["items"]
-        ids_from_query = [result_entry["id"] for result_entry in results]
-        ids_expected = [expected_entry["id"] for expected_entry in expected_catalog_values]
-        assert set(ids_expected).issubset(set(ids_from_query)), (
-            f"Expected model catalogs: {expected_catalog_values}. Actual model catalogs: {results}"
+        validate_model_catalog_sources(
+            model_catalog_sources_url=f"{model_catalog_rest_url[0]}sources",
+            rest_headers=model_registry_rest_headers,
+            expected_catalog_values=expected_catalog_values,
         )
 
     def test_model_custom_catalog_get_models_by_source(
