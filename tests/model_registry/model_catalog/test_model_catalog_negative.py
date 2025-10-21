@@ -7,7 +7,7 @@ from typing import Self
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
-from tests.model_registry.constants import DEFAULT_MODEL_CATALOG_CFG
+from tests.model_registry.constants import DEFAULT_MODEL_CATALOG_CM
 from tests.model_registry.model_catalog.constants import DEFAULT_CATALOGS, CATALOG_CONTAINER
 from tests.model_registry.model_catalog.utils import validate_model_catalog_configmap_data, is_model_catalog_ready
 from tests.model_registry.utils import get_model_catalog_pod
@@ -102,7 +102,7 @@ class TestDefaultCatalogNegative:
         "model_catalog_config_map, modified_sources_yaml",
         [
             pytest.param(
-                {"configmap_name": DEFAULT_MODEL_CATALOG_CFG},
+                {"configmap_name": DEFAULT_MODEL_CATALOG_CM},
                 """
 catalogs:
   - name: Modified Catalog

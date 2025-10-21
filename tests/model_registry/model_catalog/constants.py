@@ -36,5 +36,3 @@ VALIDATED_CATALOG_ID: str = tuple(DEFAULT_CATALOGS.keys())[1]
 
 REDHAT_AI_FILTER: str = "Red+Hat+AI"
 REDHAT_AI_VALIDATED_FILTER = "Red+Hat+AI+Validated"
-
-DEFAULT_MODEL_CATALOG_CFG: str = "model-catalog-default-sources"
