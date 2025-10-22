@@ -6,7 +6,6 @@ from utilities.constants import ModelInferenceRuntime, Protocols
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 
-@pytest.mark.serverless
 @pytest.mark.sanity
 @pytest.mark.parametrize(
     "unprivileged_model_namespace,ovms_kserve_serving_runtime",

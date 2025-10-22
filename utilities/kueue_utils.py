@@ -2,7 +2,6 @@ from contextlib import contextmanager
 from typing import Optional, Dict, Any, List, Generator
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.resource import NamespacedResource, Resource, MissingRequiredArgumentError
-from ocp_resources.deployment import Deployment
 from ocp_resources.pod import Pod
 
 
@@ -145,17 +144,6 @@ def create_cluster_queue(
         teardown=teardown,
     ) as cluster_queue:
         yield cluster_queue
-
-
-def wait_for_deployments(labels: list[str], namespace: str, admin_client: DynamicClient) -> int:
-    deployments = list(
-        Deployment.get(
-            label_selector=",".join(labels),
-            namespace=namespace,
-            dyn_client=admin_client,
-        )
-    )
-    return len(deployments)
 
 
 def check_gated_pods_and_running_pods(

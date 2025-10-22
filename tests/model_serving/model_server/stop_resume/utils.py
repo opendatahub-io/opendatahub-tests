@@ -1,10 +1,11 @@
 """Utilities for stop/resume model testing."""
 
+import time
 from kubernetes.dynamic.client import DynamicClient
 from ocp_resources.inference_service import InferenceService
-from tests.model_serving.model_server.serverless.utils import verify_no_inference_pods
 from timeout_sampler import TimeoutExpiredError
-import time
+
+from tests.model_serving.model_server.utils import verify_no_inference_pods
 
 
 def consistently_verify_no_pods_exist(

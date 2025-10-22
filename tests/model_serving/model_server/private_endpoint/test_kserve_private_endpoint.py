@@ -10,7 +10,7 @@ from utilities.constants import CurlOutput, ModelEndpoint, Protocols, RuntimeTem
 LOGGER = get_logger(name=__name__)
 
 
-pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config")]
+pytestmark = [pytest.mark.usefixtures("valid_aws_config")]
 
 
 @pytest.mark.parametrize(
