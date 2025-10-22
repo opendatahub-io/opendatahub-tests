@@ -27,7 +27,7 @@ from tests.model_registry.constants import (
     SAMPLE_MODEL_NAME1,
 )
 from tests.model_registry.exceptions import ModelRegistryResourceNotFoundError
-from tests.model_registry.upgrade.utils import get_default_model_catalog_yaml
+from tests.model_registry.upgrade.model_catalog.utils import get_default_model_catalog_yaml
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError, PodNotFound
 from utilities.constants import Protocols, Annotations, Timeout
 from model_registry import ModelRegistry as ModelRegistryClient
@@ -706,7 +706,7 @@ def is_model_catalog_ready(client: DynamicClient, model_registry_namespace: str,
     )
 
 
-def _execute_get_call(url: str, headers: dict[str, str], verify: bool | str = False) -> requests.Response:
+def execute_get_call(url: str, headers: dict[str, str], verify: bool | str = False) -> requests.Response:
     LOGGER.info(f"Executing get call: {url}")
     resp = requests.get(url=url, headers=headers, verify=verify, timeout=60)
     if resp.status_code not in [200, 201]:
@@ -716,7 +716,7 @@ def _execute_get_call(url: str, headers: dict[str, str], verify: bool | str = Fa
 
 @retry(wait_timeout=60, sleep=5, exceptions_dict={ResourceNotFoundError: []})
 def wait_for_model_catalog_api(url: str, headers: dict[str, str], verify: bool | str = False) -> requests.Response:
-    return _execute_get_call(url=f"{url}sources", headers=headers, verify=verify)
+    return execute_get_call(url=f"{url}sources", headers=headers, verify=verify)
 
 
 def get_model_str(model: str) -> str:
@@ -759,7 +759,7 @@ def validate_model_catalog_sources(
 
 
 def execute_get_command(url: str, headers: dict[str, str], verify: bool | str = False) -> dict[Any, Any]:
-    resp = _execute_get_call(url=url, headers=headers, verify=verify)
+    resp = execute_get_call(url=url, headers=headers, verify=verify)
     try:
         return json.loads(resp.text)
     except json.JSONDecodeError:
