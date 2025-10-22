@@ -19,7 +19,6 @@ from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
     indirect=True,
 )
 @pytest.mark.smoke
-@pytest.mark.serverless
 class TestServerlessUnprivilegedUser:
     @pytest.mark.polarion("ODS-2552")
     def test_non_admin_deploy_serverless_and_query_model(self, unprivileged_s3_caikit_serverless_inference_service):

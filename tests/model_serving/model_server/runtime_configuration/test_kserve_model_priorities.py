@@ -12,7 +12,7 @@ from utilities.constants import (
 )
 from utilities.manifests.caikit_standalone import CAIKIT_STANDALONE_INFERENCE_CONFIG
 
-pytestmark = [pytest.mark.serverless, pytest.mark.rawdeployment, pytest.mark.sanity]
+pytestmark = [pytest.mark.rawdeployment, pytest.mark.sanity]
 
 RUNTIME_BASE_PARAMS = {
     "template-name": RuntimeTemplates.CAIKIT_STANDALONE_SERVING,

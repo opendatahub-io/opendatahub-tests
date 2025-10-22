@@ -17,13 +17,11 @@ from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
 from utilities.monitoring import get_metrics_value, validate_metrics_field
 
 pytestmark = [
-    pytest.mark.serverless,
     pytest.mark.usefixtures("valid_aws_config", "user_workload_monitoring_config_map"),
     pytest.mark.metrics,
 ]
 
 
-@pytest.mark.serverless
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, serving_runtime_from_template, s3_models_inference_service",
     [
@@ -37,7 +35,7 @@ pytestmark = [
             },
             {
                 "name": f"{Protocols.HTTP}-{ModelFormat.CAIKIT}",
-                "deployment-mode": KServeDeploymentType.SERVERLESS,
+                "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
                 "model-dir": ModelStoragePath.FLAN_T5_SMALL_CAIKIT,
             },
         )

@@ -57,7 +57,6 @@ class TestRawISVCEnvVarsUpdates:
         verify_env_vars_in_isvc_pods(isvc=removed_isvc_env_vars, env_vars=ISVC_ENV_VARS, vars_exist=False)
 
 
-@pytest.mark.serverless
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service",
     [

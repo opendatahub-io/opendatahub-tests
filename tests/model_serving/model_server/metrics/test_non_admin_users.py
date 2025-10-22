@@ -21,7 +21,6 @@ from utilities.monitoring import validate_metrics_field
     indirect=True,
 )
 @pytest.mark.smoke
-@pytest.mark.serverless
 class TestServerlessUnprivilegedUser:
     @pytest.mark.polarion("ODS-2552")
     def test_non_admin_deploy_serverless_and_query_metrics(self, unprivileged_s3_caikit_serverless_inference_service):

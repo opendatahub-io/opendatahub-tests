@@ -111,13 +111,6 @@ By default, cluster sanity checks are run to make cluster ready for tests.
 To skip cluster sanity checks, pass `--cluster-sanity-skip-check` to skip all tests.
 To skip RHOAI/ODH-related tests (for example when running in upstream), pass `--cluster-sanity-skip-rhoai-check`.
 
-### Check dependent operators
-By default, `Serveless` (serverless-operator), `Authorino` (authorino-operator) and `Service Mesh` (servicemeshoperator) operators are checked to be installed when  
-running model server Serverless tests.
-To check only specific operator, pass `--tc=dependent_operators:<operator_name>` to pytest.
-For example, to check only `Serveless` and `Service Mesh` operators, pass `--tc=dependent_operators:serverless-operator,servicemeshoperator`.
-
-
 ### Running tests with admin client instead of unprivileged client
 To run tests with admin client only, pass `--tc=use_unprivileged_client:False` to pytest.
 
