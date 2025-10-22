@@ -1259,7 +1259,7 @@ requires-dist = [
     { name = "marshmallow", specifier = "==3.26.1,<4" },
     { name = "model-registry", specifier = ">=0.2.13" },
     { name = "openshift-python-utilities", specifier = ">=5.0.71" },
-    { name = "openshift-python-wrapper", specifier = ">=11.0.94" },
+    { name = "openshift-python-wrapper", specifier = ">=11.0.99" },
     { name = "portforward", specifier = ">=0.7.1" },
     { name = "protobuf" },
     { name = "pygithub", specifier = ">=2.5.0" },
