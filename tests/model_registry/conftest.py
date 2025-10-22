@@ -133,24 +133,27 @@ def model_registry_metadata_db_resources(
                 resource.delete(wait=True)
     else:
         resources_instances = {}
-        resources = get_model_registry_metadata_resources(
-            base_name=DB_BASE_RESOURCES_NAME,
-            namespace=model_registry_namespace,
-            num_resources=num_resources,
-            db_backend=db_backend,
-            teardown_resources=teardown_resources,
-            client=admin_client,
-        )
-        with ExitStack() as stack:
-            for kind_name in [Secret, PersistentVolumeClaim, Service, ConfigMap, Deployment]:
-                if resources[kind_name]:
-                    LOGGER.info(f"Creating {num_resources} {kind_name} resources")
-                    resources_instances[kind_name] = [
-                        stack.enter_context(resource_obj) for resource_obj in resources[kind_name]
-                    ]
-            for deployment in resources_instances[Deployment]:
-                deployment.wait_for_replicas(deployed=True)
+        if db_backend == "default":
             yield resources_instances
+        else:
+            resources = get_model_registry_metadata_resources(
+                base_name=DB_BASE_RESOURCES_NAME,
+                namespace=model_registry_namespace,
+                num_resources=num_resources,
+                db_backend=db_backend,
+                teardown_resources=teardown_resources,
+                client=admin_client,
+            )
+            with ExitStack() as stack:
+                for kind_name in [Secret, PersistentVolumeClaim, Service, ConfigMap, Deployment]:
+                    if resources[kind_name]:
+                        LOGGER.info(f"Creating {num_resources} {kind_name} resources")
+                        resources_instances[kind_name] = [
+                            stack.enter_context(resource_obj) for resource_obj in resources[kind_name]
+                        ]
+                for deployment in resources_instances[Deployment]:
+                    deployment.wait_for_replicas(deployed=True)
+                yield resources_instances
 
 
 @pytest.fixture(scope="class")
