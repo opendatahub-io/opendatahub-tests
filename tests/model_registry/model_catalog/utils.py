@@ -355,9 +355,9 @@ def validate_model_catalog_configmap_data(configmap: ConfigMap, num_catalogs: in
 
 def get_models_from_api(
     model_catalog_rest_url: list[str],
-    model_registry_rest_headers: str,
+    model_registry_rest_headers: dict[str, str],
     page_size: int = 100,
-    source_label: str = None,
+    source_label: str | None = None,
     additional_params: str = "",
 ) -> dict[str, Any]:
     """

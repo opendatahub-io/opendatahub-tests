@@ -28,12 +28,12 @@ class TestSearchModelCatalog:
         RHOAIENG-33656: Validate search model catalog by source label
         """
 
-        redhai_ai_filter_moldels_size = get_models_from_api(
+        redhat_ai_filter_moldels_size = get_models_from_api(
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
             source_label=REDHAT_AI_FILTER,
         )["size"]
-        redhai_ai_validated_filter_models_size = get_models_from_api(
+        redhat_ai_validated_filter_models_size = get_models_from_api(
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
             source_label=REDHAT_AI_VALIDATED_FILTER,
@@ -48,7 +48,7 @@ class TestSearchModelCatalog:
         )["size"]
 
         assert no_filtered_models_size == both_filtered_models_size
-        assert redhai_ai_filter_moldels_size + redhai_ai_validated_filter_models_size == both_filtered_models_size
+        assert redhat_ai_filter_moldels_size + redhat_ai_validated_filter_models_size == both_filtered_models_size
 
     def test_search_model_catalog_invalid_source_label(
         self: Self, model_catalog_rest_url: list[str], model_registry_rest_headers: str
