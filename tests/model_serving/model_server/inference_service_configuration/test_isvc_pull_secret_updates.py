@@ -20,7 +20,7 @@ from utilities.constants import ModelName, RuntimeTemplates
             },
             {
                 # Using mnist-8-1 model from OCI image
-                "storage-uri": "oci://quay.io/mwaykole/test@sha256:8a3217bcfa2cc5fa3d07496cff8b234acdf2c9725dd307dc0a80401f55e1a11c"  # noqa: E501
+                "storage-uri": "oci://quay.io/mwaykole/test@sha256:cb7d25c43e52c755e85f5b59199346f30e03b7112ef38b74ed4597aec8748743"  # noqa: E501
             },
         )
     ],
