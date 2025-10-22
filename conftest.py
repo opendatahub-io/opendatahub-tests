@@ -286,7 +286,7 @@ def pytest_sessionstart(session: Session) -> None:
         pathlib.Path(tests_log_file).unlink()
     if session.config.getoption("--collect-must-gather"):
         session.config.option.must_gather_db = Database()
-    thread_name = os.environ.get("PYTEST_XDIST_WORKER", "master")
+    thread_name = os.environ.get("PYTEST_XDIST_WORKER", "")
     session.config.option.log_listener = setup_logging(
         log_file=tests_log_file,
         log_level=session.config.getoption("log_cli_level") or logging.INFO,
