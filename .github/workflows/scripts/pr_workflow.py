@@ -9,7 +9,7 @@ from github.GithubException import UnknownObjectException
 from github.Organization import Organization
 from github.Team import Team
 
-from constants import (
+from .constants import (
     ALL_LABELS_DICT,
     CANCEL_ACTION,
     CHANGED_REQUESTED_BY_LABEL_PREFIX,
@@ -102,6 +102,9 @@ class PrLabeler(PrBaseClass):
         self.verify_labeler_config()
 
     def verify_allowed_user(self) -> bool:
+        if not self.user_login:
+            LOGGER.error("User login is not set.")
+            return False
         org: Organization = self.gh_client.get_organization("opendatahub-io")
         # slug is the team name with replaced special characters,
         # all words to lowercase and spaces replace with a -
