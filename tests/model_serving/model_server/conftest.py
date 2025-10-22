@@ -477,24 +477,3 @@ def unprivileged_models_endpoint_s3_secret(
         aws_s3_endpoint=models_s3_bucket_endpoint,
     ) as secret:
         yield secret
-
-
-@pytest.fixture(scope="class")
-def unprivileged_s3_caikit_serverless_inference_service(
-    request: FixtureRequest,
-    unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
-    unprivileged_s3_caikit_serving_runtime: ServingRuntime,
-    unprivileged_models_endpoint_s3_secret: Secret,
-) -> Generator[InferenceService, Any, Any]:
-    with create_isvc(
-        client=unprivileged_client,
-        name=f"{Protocols.HTTP}-{ModelFormat.CAIKIT}",
-        namespace=unprivileged_model_namespace.name,
-        runtime=unprivileged_s3_caikit_serving_runtime.name,
-        model_format=unprivileged_s3_caikit_serving_runtime.instance.spec.supportedModelFormats[0].name,
-        deployment_mode=KServeDeploymentType.SERVERLESS,
-        storage_key=unprivileged_models_endpoint_s3_secret.name,
-        storage_path=request.param["model-dir"],
-    ) as isvc:
-        yield isvc
