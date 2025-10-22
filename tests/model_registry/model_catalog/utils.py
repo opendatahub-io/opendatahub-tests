@@ -351,3 +351,33 @@ def validate_model_catalog_configmap_data(configmap: ConfigMap, num_catalogs: in
     assert len(catalogs) == num_catalogs, f"{configmap.name} should have {num_catalogs} catalog"
     if num_catalogs:
         validate_default_catalog(catalogs=catalogs)
+
+
+def get_models_from_api(
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: str,
+    page_size: int = 100,
+    source_label: str = None,
+    additional_params: str = "",
+) -> dict[str, Any]:
+    """
+    Helper method to get models from API with optional filtering
+
+    Args:
+        model_catalog_rest_url: REST URL for model catalog
+        model_registry_rest_headers: Headers for model registry REST API
+        page_size: Number of results per page
+        source_label: Source label(s) to filter by (must be comma-separated for multiple filters)
+        additional_params: Additional query parameters (e.g., "&filterQuery=name='model_name'")
+
+    Returns:
+        Dictionary containing the API response
+    """
+    url = f"{model_catalog_rest_url[0]}models?pageSize={page_size}"
+
+    if source_label:
+        url += f"&sourceLabel={source_label}"
+
+    url += additional_params
+
+    return execute_get_command(url=url, headers=model_registry_rest_headers)
