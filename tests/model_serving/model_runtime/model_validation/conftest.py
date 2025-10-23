@@ -148,6 +148,14 @@ def vllm_model_car_inference_service(
     resources["limits"][identifier] = gpu_count
     isvc_kwargs["resources"] = resources
 
+    if (
+        identifier == Labels.Spyre.SPYRE_COM_GPU
+        and deployment_config.get("deployment_type") == KServeDeploymentType.SERVERLESS
+    ):
+        pytest.skip(
+            "Spyre cluster is not setup with TLS/mTLS, so serverless deployment "
+            "aren't accessible from outside the cluster."
+        )
     if identifier == Labels.Spyre.SPYRE_COM_GPU:
         isvc_kwargs["scheduler_name"] = "spyre-scheduler"
         resources["requests"] = {
