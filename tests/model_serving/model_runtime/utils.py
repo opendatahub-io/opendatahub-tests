@@ -210,6 +210,8 @@ def fetch_openai_response(
     model_name: str,
     completion_query: list[dict[str, str]] | None = None,
 ) -> tuple[Any, list[Any]]:
+    model_info = OpenAIClient.get_request_http(host=url, endpoint=OpenAIEnpoints.MODELS_INFO)
+    model_name = model_info[0]["id"] if model_info else model_name
     if completion_query is None:
         completion_query = COMPLETION_QUERY
     completion_responses = []
@@ -221,7 +223,6 @@ def fetch_openai_response(
             )
             completion_responses.append(completion_response)
 
-    model_info = OpenAIClient.get_request_http(host=url, endpoint=OpenAIEnpoints.MODELS_INFO)
     return model_info, completion_responses
 
 

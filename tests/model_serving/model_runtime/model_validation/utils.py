@@ -58,7 +58,7 @@ def create_vllm_spyre_serving_runtime(vllm_runtime_image: str) -> dict[str, Any]
         "protocol": "TCP",
     }
 
-    container_args = ["--served-model-name={{.Name}}", "--model=/mnt/models", "--port=8000"]
+    container_args = ["--served-model-name={{.Name}}", "--model=/mnt/models", f"--port={SPYRE_CONTAINER_PORT}"]
 
     container_command = [
         "/bin/bash",

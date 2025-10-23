@@ -1,6 +1,8 @@
 import json
+import logging
 from typing import Any, Generator
 
+from fake_kubernetes_client import ApiException
 import pytest
 import yaml
 from kubernetes.dynamic import DynamicClient
@@ -76,20 +78,31 @@ def create_vllm_spyre_template(admin_client: DynamicClient, vllm_runtime_image: 
         "apiVersion": "template.openshift.io/v1",
         "kind": "Template",
         "metadata": {
-            "name": "vllm-spyre-runtime-template",
+            "name": "vllm-spyre-custom-runtime-template",
             "namespace": py_config["applications_namespace"],
         },
         "objects": [create_vllm_spyre_serving_runtime(vllm_runtime_image=vllm_runtime_image)],
         "parameters": [],
     }
 
-    with Template(
-        client=admin_client,
-        namespace=py_config["applications_namespace"],
-        kind_dict=template_dict,
-        wait_for_resource=True,
-    ) as template:
-        yield template
+    try:
+        with Template(
+            client=admin_client,
+            namespace=py_config["applications_namespace"],
+            kind_dict=template_dict,
+            wait_for_resource=True,
+        ) as template:
+            yield template
+    except ApiException as exc:
+        if getattr(exc, "status", None) != 409:
+            raise
+        logging.info("Template already exists, fetching existing template.")
+        existing_template = Template(
+            client=admin_client,
+            name=template_dict["metadata"]["name"],
+            namespace=template_dict["metadata"]["namespace"],
+        )
+        yield existing_template
 
 
 @pytest.fixture(scope="class")
