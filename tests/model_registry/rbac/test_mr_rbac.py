@@ -181,6 +181,8 @@ class TestUserMultiProjectPermission:
             endpoint = get_endpoint_from_mr_service(svc=service, protocol=Protocols.REST)
             mr_data.append({"instance": mr_instance, "endpoint": endpoint, "name": mr_instance.name})
 
+        token = get_openshift_token()
+
         # Test each MR instance sequentially
         for i, current_mr_data in enumerate(mr_data):
             current_mr = current_mr_data["instance"]
@@ -202,7 +204,7 @@ class TestUserMultiProjectPermission:
                 sleep=5,
                 func=assert_positive_mr_registry,
                 model_registry_instance_rest_endpoint=current_endpoint,
-                token=get_openshift_token(),
+                token=token,
             )
             for _ in sampler:
                 break
@@ -213,11 +215,11 @@ class TestUserMultiProjectPermission:
                 if i != j:
                     # Wait for role reconciliation - retry until ForbiddenException is raised
                     sampler = TimeoutSampler(
-                        wait_timeout=240,
-                        sleep=5,
+                        wait_timeout=360,
+                        sleep=10,
                         func=assert_forbidden_access,
                         endpoint=other_mr_data["endpoint"],
-                        token=get_openshift_token(),
+                        token=token,
                     )
                     for _ in sampler:
                         break
