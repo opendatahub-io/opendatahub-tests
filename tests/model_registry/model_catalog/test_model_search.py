@@ -22,7 +22,7 @@ pytestmark = [
 class TestSearchModelCatalog:
     @pytest.mark.smoke
     def test_search_model_catalog_source_label(
-        self: Self, model_catalog_rest_url: list[str], model_registry_rest_headers: str
+        self: Self, model_catalog_rest_url: list[str], model_registry_rest_headers: dict[str, str]
     ):
         """
         RHOAIENG-33656: Validate search model catalog by source label
@@ -51,7 +51,7 @@ class TestSearchModelCatalog:
         assert redhat_ai_filter_moldels_size + redhat_ai_validated_filter_models_size == both_filtered_models_size
 
     def test_search_model_catalog_invalid_source_label(
-        self: Self, model_catalog_rest_url: list[str], model_registry_rest_headers: str
+        self: Self, model_catalog_rest_url: list[str], model_registry_rest_headers: dict[str, str]
     ):
         """
         RHOAIENG-33656:
@@ -91,7 +91,7 @@ class TestSearchModelCatalog:
     def test_search_model_catalog_match(
         self: Self,
         model_catalog_rest_url: list[str],
-        model_registry_rest_headers: str,
+        model_registry_rest_headers: dict[str, str],
         randomly_picked_model: dict[Any, Any],
         source_filter: str,
     ):
