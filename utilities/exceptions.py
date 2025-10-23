@@ -138,9 +138,5 @@ class ExceptionUserLogin(Exception):
     pass
 
 
-class ResourceNotFoundError(Exception):
-    pass
-
-
 class PodNotFound(Exception):
     pass
