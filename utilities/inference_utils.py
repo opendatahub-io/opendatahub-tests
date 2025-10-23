@@ -716,7 +716,6 @@ def create_isvc(
 
     if scheduler_name is not None:
         predictor_dict["schedulerName"] = scheduler_name
-        _annotations[Annotations.KnativeDev.PROGRESS_DEADLINE] = "30m"
 
     with InferenceService(
         client=client,

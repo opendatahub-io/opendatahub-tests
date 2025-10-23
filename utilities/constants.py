@@ -155,9 +155,6 @@ class Annotations:
     class HaproxyRouterOpenshiftIo:
         TIMEOUT: str = f"{ApiGroups.HAPROXY_ROUTER_OPENSHIFT_IO}/timeout"
 
-    class KnativeDev:
-        PROGRESS_DEADLINE: str = "serving.knative.dev/progress-deadline"
-
 
 class StorageClassName:
     NFS: str = "nfs"
