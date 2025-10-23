@@ -86,10 +86,6 @@ def verify_inference_response(
             else:
                 assert "credential not found" in reason
 
-        elif inference.deployment_mode == KServeDeploymentType.MODEL_MESH:
-            reason = "Forbidden"
-            assert reason in res["output"], f"{reason} not found in output:\n{res['output']}"
-
         elif (
             isinstance(inference_service, InferenceGraph)
             and inference.deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT

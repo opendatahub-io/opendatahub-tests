@@ -64,4 +64,8 @@ PORT_MAP = {
     "mysql": 3306,
 }
 MODEL_REGISTRY_POD_FILTER: str = "component=model-registry"
-DEFAULT_MODEL_CATALOG: str = "model-catalog-sources"
+DEFAULT_CUSTOM_MODEL_CATALOG: str = "model-catalog-sources"
+SAMPLE_MODEL_NAME1 = "mistralai/Mistral-7B-Instruct-v0.3"
+CUSTOM_CATALOG_ID1: str = "sample_custom_catalog1"
+DEFAULT_MODEL_CATALOG_CM: str = "model-catalog-default-sources"
+KUBERBACPROXY_STR: str = "KubeRBACProxyAvailable"

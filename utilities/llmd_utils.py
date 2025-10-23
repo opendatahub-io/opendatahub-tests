@@ -19,11 +19,9 @@ from utilities.constants import HTTPRequest, Timeout
 from utilities.exceptions import InferenceResponseError
 from utilities.infra import get_services_by_isvc_label
 from utilities.llmd_constants import (
-    DEFAULT_GATEWAY_NAME,
-    DEFAULT_GATEWAY_NAMESPACE,
-    OPENSHIFT_DEFAULT_GATEWAY_CLASS,
-    DEFAULT_LLM_ENDPOINT,
-    DEFAULT_TIMEOUT,
+    LLMDGateway,
+    LLMEndpoint,
+    KServeGateway,
 )
 
 LOGGER = get_logger(name=__name__)
@@ -32,37 +30,31 @@ LOGGER = get_logger(name=__name__)
 @contextmanager
 def create_llmd_gateway(
     client: DynamicClient,
-    name: str = DEFAULT_GATEWAY_NAME,
-    namespace: str = DEFAULT_GATEWAY_NAMESPACE,
-    gateway_class_name: str = OPENSHIFT_DEFAULT_GATEWAY_CLASS,
+    name: str = LLMDGateway.DEFAULT_NAME,
+    namespace: str = LLMDGateway.DEFAULT_NAMESPACE,
+    gateway_class_name: str = LLMDGateway.DEFAULT_CLASS,
     listeners: Optional[list[Dict[str, Any]]] = None,
     infrastructure: Optional[Dict[str, Any]] = None,
     wait_for_condition: bool = True,
     timeout: int = 300,
-    teardown: bool = False,
+    teardown: bool = True,
 ) -> Generator[Gateway, None, None]:
     """
-    Context manager to create and manage LLMD Gateway resources using ocp_resources.
-
-    This function implements smart LLMD gateway management:
-    - Only creates gateway if it doesn't already exist
-    - Reuses existing gateways to avoid conflicts
-    - Does not delete gateway in teardown (persistent gateway strategy)
-    - Specifically designed for LLMD (LLM Deployment) infrastructure
+    Context manager to create and manage a Gateway resource using ocp_resources.
 
     Args:
         client: Kubernetes dynamic client
-        name: Gateway name (defaults to openshift-ai-inference)
-        namespace: Gateway namespace (defaults to openshift-ingress)
+        name: Gateway name
+        namespace: Gateway namespace
         gateway_class_name: The name of the GatewayClass resource
         listeners: List of listener configurations
         infrastructure: Infrastructure configuration
         wait_for_condition: Whether to wait for the gateway to be programmed
         timeout: Timeout in seconds for waiting
-        teardown: Whether to clean up the resource (default: False for persistent strategy)
+        teardown: Whether to clean up the resource
 
     Yields:
-        Gateway: The Gateway resource (existing or newly created)
+        Gateway: The created Gateway resource
     """
     if listeners is None:
         listeners = [
@@ -75,37 +67,21 @@ def create_llmd_gateway(
         ]
 
     if infrastructure is None:
-        infrastructure = {"labels": {"serving.kserve.io/gateway": "kserve-ingress-gateway"}}
-
-    # Check if gateway already exists
+        infrastructure = {"labels": {KServeGateway.LABEL: KServeGateway.INGRESS_GATEWAY}}
     try:
         existing_gateway = Gateway(
             client=client,
             name=name,
             namespace=namespace,
-            api_group="gateway.networking.k8s.io",
+            api_group=KServeGateway.API_GROUP,
         )
         if existing_gateway.exists:
-            LOGGER.info(f"Using existing Gateway {name} in namespace {namespace}")
-
-            if wait_for_condition:
-                LOGGER.info(f"Waiting for existing Gateway {name} to be programmed...")
-                existing_gateway.wait_for_condition(
-                    condition="Programmed",
-                    status="True",
-                    timeout=timeout,
-                )
-                LOGGER.info(f"Existing Gateway {name} is programmed and ready")
-
-            # Yield the existing gateway without teardown
-            yield existing_gateway
-            return
+            LOGGER.info(f"Cleaning up existing Gateway {name} in namespace {namespace}")
+            existing_gateway.delete(wait=True, timeout=Timeout.TIMEOUT_2MIN)
     except Exception as e:
-        LOGGER.debug(f"No existing Gateway found, will create new one: {e}")
-
-    # Create new gateway only if it doesn't exist
+        LOGGER.debug(f"No existing Gateway to clean up: {e}")
     gateway_body = {
-        "apiVersion": "gateway.networking.k8s.io/v1",
+        "apiVersion": f"{KServeGateway.API_GROUP}/v1",
         "kind": "Gateway",
         "metadata": {
             "name": name,
@@ -118,7 +94,6 @@ def create_llmd_gateway(
         },
     }
 
-    LOGGER.info(f"Creating new Gateway {name} in namespace {namespace}")
     with Gateway(
         client=client,
         teardown=teardown,
@@ -135,6 +110,39 @@ def create_llmd_gateway(
             LOGGER.info(f"Gateway {name} is programmed and ready")
 
         yield gateway
+
+
+def _get_llm_config_references(enable_prefill_decode: bool = False, disable_scheduler: bool = False) -> Dict[str, str]:
+    """
+    Get LLMInferenceServiceConfig references based on configuration type.
+
+    Uses existing cluster configs instead of hardcoding complex configurations:
+    - kserve-config-llm-template: Standard main template
+    - kserve-config-llm-scheduler: Scheduler configuration
+    - kserve-config-llm-prefill-template: Prefill template
+    - kserve-config-llm-decode-template: Decode template
+
+    Args:
+        enable_prefill_decode: Enable prefill/decode pattern
+        disable_scheduler: Disable scheduler (no-scheduler pattern)
+
+    Returns:
+        Dict with config references for the specified pattern
+    """
+    base_configs = {
+        "template_ref": "kserve-config-llm-template",
+    }
+
+    if enable_prefill_decode:
+        base_configs.update({
+            "prefill_template_ref": "kserve-config-llm-prefill-template",
+            "decode_template_ref": "kserve-config-llm-decode-template",
+            "scheduler_ref": "kserve-config-llm-scheduler",
+        })
+    elif not disable_scheduler:
+        base_configs["scheduler_ref"] = "kserve-config-llm-scheduler"
+
+    return base_configs
 
 
 @contextmanager
@@ -162,6 +170,10 @@ def create_llmisvc(
     labels: Optional[Dict[str, str]] = None,
     timeout: int = Timeout.TIMEOUT_15MIN,
     teardown: bool = True,
+    model_name: Optional[str] = None,
+    prefill_config: Optional[Dict[str, Any]] = None,
+    disable_scheduler: bool = False,
+    enable_prefill_decode: bool = False,
 ) -> Generator[LLMInferenceService, Any, None]:
     """
     Create LLMInferenceService object following the pattern of create_isvc.
@@ -190,6 +202,10 @@ def create_llmisvc(
         labels: Additional labels
         timeout: Timeout for waiting
         teardown: Whether to clean up on exit
+        model_name: Model name (spec.model.name field)
+        prefill_config: Prefill configuration for prefill/decode pattern
+        disable_scheduler: Disable scheduler in router configuration
+        enable_prefill_decode: Enable prefill/decode configuration
 
     Yields:
         LLMInferenceService: LLMInferenceService object
@@ -200,76 +216,116 @@ def create_llmisvc(
     if annotations is None:
         annotations = {}
 
-    if storage_key and storage_path:
-        model_config = {
-            "uri": f"s3://ods-ci-wisdom/{storage_path}",
-        }
-    elif storage_uri:
+    if storage_uri:
         model_config = {
             "uri": storage_uri,
+        }
+    elif storage_key and storage_path:
+        # LLMInferenceService requires full URI, construct it from bucket + path
+        model_config = {
+            "uri": f"s3://ods-ci-wisdom/{storage_path}",
         }
     else:
         raise ValueError("Provide either storage_uri or (storage_key and storage_path) for the model")
 
+    if model_name:
+        model_config["name"] = model_name
+
+    config_refs = _get_llm_config_references(
+        enable_prefill_decode=enable_prefill_decode, disable_scheduler=disable_scheduler
+    )
+
     if router_config is None:
-        router_config = {"scheduler": {}, "route": {}, "gateway": {}}
+        if disable_scheduler:
+            router_config = {"route": {}}
+        elif enable_prefill_decode:
+            router_config = {"scheduler": {"configRef": config_refs["scheduler_ref"]}, "route": {}, "gateway": {}}
+        else:
+            router_config = {"scheduler": {"configRef": config_refs["scheduler_ref"]}, "route": {}, "gateway": {}}
 
     if container_resources is None:
         raise ValueError("container_resources must be provided for LLMInferenceService")
 
     if container_env is None:
         container_env = [{"name": "VLLM_LOGGING_LEVEL", "value": "DEBUG"}]
-    template_config: Dict[str, Any] = {"containers": []}
+    template_config: Dict[str, Any] = {"configRef": config_refs["template_ref"]}
 
-    main_container: Dict[str, Any] = {"name": "main"}
+    if any([
+        container_image,
+        container_resources,
+        container_env,
+        liveness_probe,
+        readiness_probe,
+        volumes,
+        service_account,
+    ]):
+        main_container: Dict[str, Any] = {"name": "main"}
 
-    if container_image:
-        main_container["image"] = container_image
-    else:
-        raise ValueError("container_image must be provided for LLMInferenceService")
+        if container_image:
+            main_container["image"] = container_image
+        if container_resources:
+            main_container["resources"] = container_resources
+        if container_env:
+            main_container["env"] = container_env
+        if liveness_probe:
+            main_container["livenessProbe"] = liveness_probe
+        if readiness_probe:
+            main_container["readinessProbe"] = readiness_probe
+        if volume_mounts:
+            main_container["volumeMounts"] = volume_mounts
 
-    if container_resources:
-        main_container["resources"] = container_resources
+        template_config["containers"] = [main_container]
 
-    if container_env:
-        main_container["env"] = container_env
-
-    if liveness_probe:
-        main_container["livenessProbe"] = liveness_probe
-
-    if readiness_probe:
-        main_container["readinessProbe"] = readiness_probe
-
-    if volume_mounts:
-        main_container["volumeMounts"] = volume_mounts
-
-    template_config["containers"].append(main_container)
-
-    if volumes:
-        template_config["volumes"] = volumes
-
-    if service_account:
-        template_config["serviceAccountName"] = service_account
-
-    if image_pull_secrets:
-        template_config["imagePullSecrets"] = [{"name": secret} for secret in image_pull_secrets]
+        if volumes:
+            template_config["volumes"] = volumes
+        if service_account:
+            template_config["serviceAccountName"] = service_account
+        if image_pull_secrets:
+            template_config["imagePullSecrets"] = [{"name": secret} for secret in image_pull_secrets]
 
     if enable_auth:
-        annotations["serving.kserve.io/auth"] = "true"
+        annotations["security.opendatahub.io/enable-auth"] = "true"
+    else:
+        annotations["security.opendatahub.io/enable-auth"] = "false"
 
     LOGGER.info(f"Creating LLMInferenceService {name} in namespace {namespace}")
+
+    spec_config = {
+        "model": model_config,
+        "replicas": replicas,
+        "router": router_config,
+        "template": template_config,
+    }
+
+    if enable_prefill_decode and prefill_config:
+        prefill_template = {
+            "containers": [
+                {
+                    "name": "main",
+                    "resources": container_resources,
+                    "env": container_env + [{"name": "VLLM_PREFILL_MODE", "value": "true"}]
+                    if container_env
+                    else [{"name": "VLLM_PREFILL_MODE", "value": "true"}],
+                }
+            ]
+        }
+
+        if service_account:
+            prefill_template["serviceAccountName"] = service_account  # type: ignore[assignment]
+
+        spec_config["prefill"] = {
+            "replicas": prefill_config.get("replicas", 1),
+            "template": prefill_template,
+        }
 
     with LLMInferenceService(
         client=client,
         name=name,
         namespace=namespace,
-        model=model_config,
-        replicas=replicas,
-        router=router_config,
-        template=template_config,
         annotations=annotations,
         label=labels,
         teardown=teardown,
+        **spec_config,
     ) as llm_service:
         timeout_watch = TimeoutWatch(timeout=timeout)
 
@@ -303,9 +359,18 @@ def get_llm_inference_url(llm_service: LLMInferenceService) -> str:
     Raises:
         ValueError: If the inference URL cannot be determined
     """
+    # Check for external URL from status.addresses first
+    if llm_service.instance.status and llm_service.instance.status.get("addresses"):
+        addresses = llm_service.instance.status["addresses"]
+        if addresses and len(addresses) > 0 and addresses[0].get("url"):
+            url = addresses[0]["url"]
+            LOGGER.debug(f"Using external URL for {llm_service.name}: {url}")
+            return url
+
+    # Fallback to legacy status.url field
     if llm_service.instance.status and llm_service.instance.status.get("url"):
         url = llm_service.instance.status["url"]
-        LOGGER.debug(f"Using external URL for {llm_service.name}: {url}")
+        LOGGER.debug(f"Using legacy external URL for {llm_service.name}: {url}")
         return url
 
     try:
@@ -450,13 +515,20 @@ class LLMUserInference:
                 query_config = default_query_config.get(self.inference_type)
                 if not query_config:
                     raise ValueError(f"Missing default query for inference type {self.inference_type}")
-                template_str = query_config.get("query_input", "")
+                query_input = query_config.get("query_input", "")
             else:
-                template_str = default_query_config.get("query_input", "")
+                query_input = default_query_config.get("query_input", "")
 
-            # Use template substitution for model name
-            template = Template(template=template_str)
-            body = template.safe_substitute(model_name=model_name)
+            # Use the proper JSON body template from runtime config
+            body_template = self.runtime_config.get("body", "")
+            if body_template:
+                # Use template substitution for both model name and query input
+                template = Template(template=body_template)
+                body = template.safe_substitute(model_name=model_name, query_input=query_input)
+            else:
+                # Fallback to plain text (legacy behavior)
+                template = Template(template=query_input)
+                body = template.safe_substitute(model_name=model_name)
         else:
             # For custom input, create OpenAI-compatible format
             if isinstance(inference_input, str):
@@ -481,7 +553,7 @@ class LLMUserInference:
     ) -> str:
         """Generate curl command string for LLM inference."""
         base_url = get_llm_inference_url(llm_service=self.llm_service)
-        endpoint_url = f"{base_url}{DEFAULT_LLM_ENDPOINT}"
+        endpoint_url = f"{base_url}{LLMEndpoint.CHAT_COMPLETIONS}"
 
         body = self.get_inference_body(
             model_name=model_name,
@@ -489,7 +561,7 @@ class LLMUserInference:
             use_default_query=use_default_query,
         )
 
-        header = HTTPRequest.CONTENT_JSON.replace("-H ", "").replace("'", "")
+        header = HTTPRequest.CONTENT_JSON.replace("-H ", "")
         cmd_exec = "curl -i -s"
         cmd = f"{cmd_exec} -X POST -d '{body}' -H {header} -H 'Accept: application/json'"
 
@@ -511,7 +583,7 @@ class LLMUserInference:
             except Exception:
                 cmd += " --insecure"
 
-        cmd += f" --max-time {DEFAULT_TIMEOUT} {endpoint_url}"
+        cmd += f" --max-time {LLMEndpoint.DEFAULT_TIMEOUT} {endpoint_url}"
         return cmd
 
     @retry(wait_timeout=Timeout.TIMEOUT_30SEC, sleep=5)

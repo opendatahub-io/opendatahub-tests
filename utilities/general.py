@@ -1,6 +1,6 @@
 import base64
 import re
-from typing import List, Tuple
+from typing import List, Tuple, Any
 import uuid
 
 from kubernetes.dynamic import DynamicClient
@@ -11,10 +11,11 @@ from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
 
 import utilities.infra
-from utilities.constants import Annotations, KServeDeploymentType, MODELMESH_SERVING, Timeout
+from utilities.constants import Annotations, KServeDeploymentType, MODELMESH_SERVING
 from utilities.exceptions import UnexpectedResourceCountError, ResourceValueMismatch
 from ocp_resources.resource import Resource
 from timeout_sampler import retry
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 # Constants for image validation
 SHA256_DIGEST_PATTERN = r"@sha256:[a-f0-9]{64}$"
@@ -339,12 +340,9 @@ def generate_random_name(prefix: str = "", length: int = 8) -> str:
     return f"{prefix}-{suffix}" if prefix else suffix
 
 
-@retry(
-    wait_timeout=Timeout.TIMEOUT_15_SEC,
-    sleep=1,
-    exceptions_dict={ResourceValueMismatch: [], ResourceNotFoundError: [], NotFoundError: []},
-)
-def wait_for_container_status(pod: Pod, container_name: str, expected_status: str) -> bool:
+def wait_for_container_status(
+    pod: Pod, container_name: str, expected_status: str, timeout: int = 15, sleep: int = 1
+) -> bool:
     """
     Wait for a container to be in the expected status.
 
@@ -352,6 +350,8 @@ def wait_for_container_status(pod: Pod, container_name: str, expected_status: st
         pod: The pod to wait for
         container_name: The name of the container to wait for
         expected_status: The expected status
+        timeout: The maximum time in second to wait for the container
+        sleep: The number of seconds to sleep between checks
 
     Returns:
         bool: True if the container is in the expected status, False otherwise
@@ -360,27 +360,106 @@ def wait_for_container_status(pod: Pod, container_name: str, expected_status: st
         ResourceValueMismatch: If the container is not in the expected status
     """
 
-    container_status = None
-    for cs in pod.instance.status.get("containerStatuses", []):
-        if cs.name == container_name:
-            container_status = cs
-            break
-    if container_status is None:
-        raise ResourceValueMismatch(f"Container {container_name} not found in pod {pod.name}")
+    @retry(
+        wait_timeout=timeout,
+        sleep=sleep,
+        exceptions_dict={ResourceValueMismatch: [], ResourceNotFoundError: [], NotFoundError: []},
+    )
+    def get_matching_container_status(_pod: Pod, _container_name: str, _expected_status: str) -> bool:
+        container_status = None
+        for cs in _pod.instance.status.get("containerStatuses", []):
+            if cs.name == _container_name:
+                container_status = cs
+                break
+        if container_status is None:
+            raise ResourceValueMismatch(f"Container {_container_name} not found in pod {_pod.name}")
 
-    if container_status.state.waiting:
-        reason = container_status.state.waiting.reason
-    elif container_status.state.terminated:
-        reason = container_status.state.terminated.reason
-    elif container_status.state.running:
-        # Running container does not have a reason
-        reason = "Running"
-    else:
+        if container_status.state.waiting:
+            reason = container_status.state.waiting.reason
+        elif container_status.state.terminated:
+            reason = container_status.state.terminated.reason
+        elif container_status.state.running:
+            # Running container does not have a reason
+            reason = "Running"
+        else:
+            raise ResourceValueMismatch(
+                f"{_container_name} in {_pod.name} is in an unrecognized or "
+                f"transitional state: {container_status.state}"
+            )
+
+        if reason == expected_status:
+            LOGGER.info(f"Container {_container_name} is in the expected status {_expected_status}")
+            return True
         raise ResourceValueMismatch(
-            f"{container_name} in {pod.name} is in an unrecognized or transitional state: {container_status.state}"
+            f"Container {_container_name} is not in the expected status {container_status.state}"
         )
 
-    if reason == expected_status:
-        LOGGER.info(f"Container {container_name} is in the expected status {expected_status}")
-        return True
-    raise ResourceValueMismatch(f"Container {container_name} is not in the expected status {container_status.state}")
+    return get_matching_container_status(_pod=pod, _container_name=container_name, _expected_status=expected_status)
+
+
+def get_pod_container_error_status(pod: Pod) -> str | None:
+    """
+    Check container error status for a given pod and if any containers is in waiting state, return that information
+    """
+    pod_instance_status = pod.instance.status
+    for container_status in pod_instance_status.get("containerStatuses", []):
+        if waiting_container := container_status.get("state", {}).get("waiting"):
+            return waiting_container["reason"] if waiting_container.get("reason") else waiting_container
+    return ""
+
+
+def get_not_running_pods(pods: list[Pod]) -> list[dict[str, Any]]:
+    # Gets all the non-running pods from a given namespace.
+    # Note: We need to keep track of pods marked for deletion as not running. This would ensure any
+    # pod that was spun up in place of pod marked for deletion, are not ignored
+    pods_not_running = []
+    try:
+        for pod in pods:
+            pod_instance = pod.instance
+            if container_status_error := get_pod_container_error_status(pod=pod):
+                pods_not_running.append({pod.name: container_status_error})
+
+            if pod_instance.metadata.get("deletionTimestamp") or pod_instance.status.phase not in (
+                pod.Status.RUNNING,
+                pod.Status.SUCCEEDED,
+            ):
+                pods_not_running.append({pod.name: pod.status})
+    except (ResourceNotFoundError, NotFoundError) as exc:
+        LOGGER.warning("Ignoring pod that disappeared during cluster sanity check: %s", exc)
+    return pods_not_running
+
+
+def wait_for_pods_running(
+    admin_client: DynamicClient,
+    namespace_name: str,
+    number_of_consecutive_checks: int = 1,
+) -> bool | None:
+    """
+    Waits for all pods in a given namespace to reach Running/Completed state. To avoid catching all pods in running
+    state too soon, use number_of_consecutive_checks with appropriate values.
+    """
+    samples = TimeoutSampler(
+        wait_timeout=180,
+        sleep=5,
+        func=get_not_running_pods,
+        pods=list(Pod.get(dyn_client=admin_client, namespace=namespace_name)),
+        exceptions_dict={NotFoundError: [], ResourceNotFoundError: []},
+    )
+    sample = None
+    try:
+        current_check = 0
+        for sample in samples:
+            if not sample:
+                current_check += 1
+                if current_check >= number_of_consecutive_checks:
+                    return True
+            else:
+                current_check = 0
+    except TimeoutExpiredError:
+        if sample:
+            LOGGER.error(
+                f"timeout waiting for all pods in namespace {namespace_name} to reach "
+                f"running state, following pods are in not running state: {sample}"
+            )
+            raise
+    return None

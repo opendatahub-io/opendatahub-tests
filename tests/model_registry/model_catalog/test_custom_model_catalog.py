@@ -1,22 +1,22 @@
 from tests.model_registry.model_catalog.constants import (
     EXPECTED_CUSTOM_CATALOG_VALUES,
-    CUSTOM_CATALOG_ID1,
-    SAMPLE_MODEL_NAME1,
     CUSTOM_CATALOG_ID2,
     SAMPLE_MODEL_NAME2,
     MULTIPLE_CUSTOM_CATALOG_VALUES,
     SAMPLE_MODEL_NAME3,
 )
+from tests.model_registry.constants import SAMPLE_MODEL_NAME1, CUSTOM_CATALOG_ID1
 from ocp_resources.config_map import ConfigMap
 import pytest
 from simple_logger.logger import get_logger
 from typing import Self
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 
-from tests.model_registry.model_catalog.utils import (
+from tests.model_registry.utils import (
     execute_get_command,
-    get_catalog_str,
     get_sample_yaml_str,
-    ResourceNotFoundError,
+    get_catalog_str,
+    validate_model_catalog_sources,
 )
 
 LOGGER = get_logger(name=__name__)
@@ -32,6 +32,7 @@ LOGGER = get_logger(name=__name__)
             },
             EXPECTED_CUSTOM_CATALOG_VALUES,
             id="test_file_test_catalog",
+            marks=(pytest.mark.pre_upgrade, pytest.mark.post_upgrade, pytest.mark.install),
         ),
         pytest.param(
             {
@@ -62,16 +63,11 @@ class TestModelCatalogCustom:
         """
         Validate sources api for model catalog
         """
-        url = f"{model_catalog_rest_url[0]}sources"
-        results = execute_get_command(
-            url=url,
-            headers=model_registry_rest_headers,
-        )["items"]
-
-        assert len(results) == len(expected_catalog_values)
-        ids_from_query = [result_entry["id"] for result_entry in results]
-        ids_expected = [expected_entry["id"] for expected_entry in expected_catalog_values]
-        assert sorted(ids_from_query) == sorted(ids_expected), f"Expected: {expected_catalog_values}. Actual: {results}"
+        validate_model_catalog_sources(
+            model_catalog_sources_url=f"{model_catalog_rest_url[0]}sources",
+            rest_headers=model_registry_rest_headers,
+            expected_catalog_values=expected_catalog_values,
+        )
 
     def test_model_custom_catalog_get_models_by_source(
         self: Self,

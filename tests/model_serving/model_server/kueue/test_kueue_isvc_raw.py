@@ -6,7 +6,7 @@ This test imports the reusable test logic from utilities.kueue_utils.
 import pytest
 from ocp_resources.deployment import Deployment
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
-from utilities.constants import RunTimeConfigs, KServeDeploymentType, ModelVersion
+from utilities.constants import RunTimeConfigs, KServeDeploymentType, ModelVersion, Labels
 from utilities.general import create_isvc_label_selector_str
 from utilities.kueue_utils import check_gated_pods_and_running_pods
 
@@ -48,7 +48,7 @@ EXPECTED_UPDATED_REPLICAS = 2
                 "name": "kueue-isvc-raw",
                 "min-replicas": MIN_REPLICAS,
                 "max-replicas": MAX_REPLICAS,
-                "labels": {"kueue.x-k8s.io/queue-name": LOCAL_QUEUE_NAME},
+                "labels": {Labels.Kueue.QUEUE_NAME: LOCAL_QUEUE_NAME},
                 "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
                 "model-dir": "test-dir",
                 "model-version": ModelVersion.OPSET13,

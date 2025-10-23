@@ -1,14 +1,17 @@
+from utilities.constants import RHOAI_OPERATOR_NAMESPACE
+
 global config  # type:ignore[unused-ignore]
 
 dsc_name: str = "default-dsc"
 must_gather_base_dir: str = "must-gather-base-dir"
 dsci_name: str = "default-dsci"
-dependent_operators: str = "servicemeshoperator,authorino-operator,serverless-operator"
+dependent_operators: str = "authorino-operator"
 use_unprivileged_client: bool = True
 # overwrite the followings in conftest.py, in updated_global_config() if distribution is upstream
 distribution: str = "downstream"
 applications_namespace: str = "redhat-ods-applications"
 model_registry_namespace: str = "rhoai-model-registries"
+operator_namespace: str = RHOAI_OPERATOR_NAMESPACE
 
 for _dir in dir():
     val = locals()[_dir]

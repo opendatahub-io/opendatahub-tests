@@ -13,6 +13,7 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.infrastructure import Infrastructure
 from ocp_resources.oauth import OAuth
 from ocp_resources.pod import Pod
+from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.namespace import Namespace
 from ocp_resources.service import Service
@@ -34,8 +35,7 @@ from model_registry.types import RegisteredModel
 
 from tests.model_registry.rbac.utils import wait_for_oauth_openshift_deployment
 from tests.model_registry.utils import generate_namespace_name, get_rest_headers
-from utilities.general import generate_random_name
-
+from utilities.general import generate_random_name, wait_for_pods_running
 
 from tests.model_registry.constants import (
     MR_OPERATOR_NAME,
@@ -44,12 +44,13 @@ from tests.model_registry.constants import (
     DB_RESOURCE_NAME,
     MR_INSTANCE_NAME,
     MODEL_REGISTRY_POD_FILTER,
+    DEFAULT_CUSTOM_MODEL_CATALOG,
+    KUBERBACPROXY_STR,
 )
 from utilities.constants import Labels, Protocols
 from tests.model_registry.utils import (
     get_endpoint_from_mr_service,
     get_mr_service_by_label,
-    wait_for_pods_running,
     get_model_registry_objects,
     get_model_registry_metadata_resources,
 )
@@ -98,7 +99,7 @@ def model_registry_instance(
             mr_instances = [stack.enter_context(mr_obj) for mr_obj in mr_objects]
             for mr_instance in mr_instances:
                 mr_instance.wait_for_condition(condition="Available", status="True")
-                mr_instance.wait_for_condition(condition="OAuthProxyAvailable", status="True")
+                mr_instance.wait_for_condition(condition=KUBERBACPROXY_STR, status="True")
                 wait_for_pods_running(
                     admin_client=admin_client, namespace_name=model_registry_namespace, number_of_consecutive_checks=6
                 )
@@ -592,3 +593,28 @@ def user_credentials_rbac() -> dict[str, str]:
         "idp_name": f"test-htpasswd-idp-{random_str}",
         "secret_name": f"test-htpasswd-secret-{random_str}",
     }
+
+
+@pytest.fixture(scope="class")
+def catalog_config_map(admin_client: DynamicClient, model_registry_namespace: str) -> ConfigMap:
+    return ConfigMap(name=DEFAULT_CUSTOM_MODEL_CATALOG, client=admin_client, namespace=model_registry_namespace)
+
+
+@pytest.fixture(scope="class")
+def model_catalog_routes(admin_client: DynamicClient, model_registry_namespace: str) -> list[Route]:
+    return list(
+        Route.get(namespace=model_registry_namespace, label_selector="component=model-catalog", dyn_client=admin_client)
+    )
+
+
+@pytest.fixture(scope="class")
+def model_catalog_rest_url(model_registry_namespace: str, model_catalog_routes: list[Route]) -> list[str]:
+    assert model_catalog_routes, f"Model catalog routes does not exist in {model_registry_namespace}"
+    route_urls = [
+        f"https://{route.instance.spec.host}:443/api/model_catalog/v1alpha1/" for route in model_catalog_routes
+    ]
+    assert route_urls, (
+        "Model catalog routes information could not be found from "
+        f"routes:{[route.name for route in model_catalog_routes]}"
+    )
+    return route_urls

@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Any, Dict
 
 from ocp_resources.resource import Resource
@@ -25,6 +26,9 @@ class ModelName:
     CAIKIT_BGE_LARGE_EN: str = f"bge-large-en-v1.5-{ModelFormat.CAIKIT}"
     BLOOM_560M: str = "bloom-560m"
     MNIST: str = "mnist"
+    # LLM Models
+    QWEN: str = "Qwen"
+    TINYLLAMA: str = "TinyLlama"
 
 
 class ModelAndFormat:
@@ -204,6 +208,8 @@ class Labels:
         NETWORKING_KSERVE_IO: str = "networking.kserve.io/visibility"
         NETWORKING_KNATIVE_IO: str = "networking.knative.dev/visibility"
         EXPOSED: str = "exposed"
+        # Gateway labels
+        GATEWAY_LABEL: str = "serving.kserve.io/gateway"
 
     class Nvidia:
         NVIDIA_COM_GPU: str = "nvidia.com/gpu"
@@ -216,6 +222,7 @@ class Labels:
 
     class Kueue:
         MANAGED: str = "kueue.openshift.io/managed"
+        QUEUE_NAME: str = "kueue.x-k8s.io/queue-name"
 
 
 class Timeout:
@@ -230,6 +237,31 @@ class Timeout:
     TIMEOUT_20MIN: int = 20 * TIMEOUT_1MIN
     TIMEOUT_30MIN: int = 30 * TIMEOUT_1MIN
     TIMEOUT_40MIN: int = 40 * TIMEOUT_1MIN
+
+
+class ResourceLimits:
+    """Standard resource limits for different workload types."""
+
+    class CPU:
+        LIMIT: str = "1"
+        REQUEST: str = "100m"
+
+    class Memory:
+        LIMIT: str = "10Gi"
+        REQUEST: str = "8Gi"
+
+    class GPU:
+        # GPU resource limits
+        LIMIT: str = "1"
+        REQUEST: str = "1"
+
+        # CPU limits for GPU workloads (higher requirements)
+        CPU_LIMIT: str = "4"
+        CPU_REQUEST: str = "2"
+
+        # Memory limits for GPU workloads (higher requirements)
+        MEMORY_LIMIT: str = "32Gi"
+        MEMORY_REQUEST: str = "16Gi"
 
 
 class OpenshiftRouteTimeout:
@@ -249,10 +281,30 @@ class RunTimeConfigs:
 
 class ModelCarImage:
     MNIST_8_1: str = (
-        "oci://quay.io/mwaykole/test@sha256:8a3217bcfa2cc5fa3d07496cff8b234acdf2c9725dd307dc0a80401f55e1a11c"
+        "oci://quay.io/mwaykole/test@sha256:cb7d25c43e52c755e85f5b59199346f30e03b7112ef38b74ed4597aec8748743"
         # noqa: E501
     )
     GRANITE_8B_CODE_INSTRUCT: str = "oci://registry.redhat.io/rhelai1/modelcar-granite-8b-code-instruct:1.4"
+
+
+class ModelStorage:
+    """Model storage URIs for different storage backends."""
+
+    class OCI:
+        TINYLLAMA: str = (
+            "oci://quay.io/mwaykole/test@sha256:b604e00d5c815184a473dda8449e8ccc85f4c7aaf32b9b5244da4d9aeecdf197"
+        )
+        MNIST_8_1: str = ModelCarImage.MNIST_8_1
+        GRANITE_8B_CODE_INSTRUCT: str = ModelCarImage.GRANITE_8B_CODE_INSTRUCT
+
+    class S3:
+        QWEN_7B_INSTRUCT: str = "s3://ods-ci-wisdom/Qwen2.5-7B-Instruct/"
+        TINYLLAMA: str = "s3://ods-ci-wisdom/TinyLlama-1.1B-Chat-v1.0/"
+        OPT_125M: str = "s3://ods-ci-wisdom/opt-125m/"
+
+    class HuggingFace:
+        TINYLLAMA: str = "hf://TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+        OPT125M: str = "hf://facebook/opt-125m"
 
 
 class OCIRegistry:
@@ -314,23 +366,17 @@ class MinIo:
         }
 
         MODEL_MESH_MINIO_CONFIG: dict[str, Any] = {
-            "image": "quay.io/trustyai_testing/modelmesh-minio-examples@"
-            "sha256:d2ccbe92abf9aa5085b594b2cae6c65de2bf06306c30ff5207956eb949bb49da",
-            # noqa: E501
+            "image": "quay.io/trustyai_testing/modelmesh-minio-examples@sha256:d2ccbe92abf9aa5085b594b2cae6c65de2bf06306c30ff5207956eb949bb49da",  # noqa: E501
             **MINIO_BASE_CONFIG,
         }
 
         QWEN_MINIO_CONFIG: dict[str, Any] = {
-            "image": "quay.io/trustyai_testing/hf-llm-minio@"
-            "sha256:2404a37d578f2a9c7adb3971e26a7438fedbe7e2e59814f396bfa47cd5fe93bb",
-            # noqa: E501
+            "image": "quay.io/trustyai_testing/hf-llm-minio@sha256:2404a37d578f2a9c7adb3971e26a7438fedbe7e2e59814f396bfa47cd5fe93bb",  # noqa: E501
             **MINIO_BASE_CONFIG,
         }
 
         QWEN_HAP_BPIV2_MINIO_CONFIG: dict[str, Any] = {
-            "image": "quay.io/trustyai_testing/qwen2.5-0.5b-instruct-hap-bpiv2-minio@"
-            "sha256:eac1ca56f62606e887c80b4a358b3061c8d67f0b071c367c0aa12163967d5b2b",
-            # noqa: E501
+            "image": "quay.io/trustyai_testing/qwen2.5-0.5b-instruct-hap-bpiv2-minio@sha256:eac1ca56f62606e887c80b4a358b3061c8d67f0b071c367c0aa12163967d5b2b",  # noqa: E501
             **MINIO_BASE_CONFIG,
         }
 
@@ -387,7 +433,58 @@ BUILTIN_DETECTOR_CONFIG: Dict[str, Any] = {
 QWEN_ISVC_NAME = "qwen-isvc"
 QWEN_MODEL_NAME: str = "qwen25-05b-instruct"
 
+
+class ContainerImages:
+    """Centralized container images for various runtimes and models."""
+
+    class VLLM:
+        CPU: str = "quay.io/pierdipi/vllm-cpu@sha256:f084b3c272ede8a899d3b5051e8aed57752ff4e759842e48120ada68d47b446a"
+
+    class MinIO:
+        KSERVE: str = (
+            "quay.io/jooholee/model-minio@sha256:b9554be19a223830cf792d5de984ccc57fc140b954949f5ffc6560fab977ca7a"
+        )
+        MODEL_MESH: str = "quay.io/trustyai_testing/modelmesh-minio-examples@sha256:d2ccbe92abf9aa5085b594b2cae6c65de2bf06306c30ff5207956eb949bb49da"  # noqa: E501
+        QWEN: str = "quay.io/trustyai_testing/hf-llm-minio@sha256:2404a37d578f2a9c7adb3971e26a7438fedbe7e2e59814f396bfa47cd5fe93bb"  # noqa: E501
+        QWEN_HAP_BPIV2: str = "quay.io/trustyai_testing/qwen2.5-0.5b-instruct-hap-bpiv2-minio@sha256:eac1ca56f62606e887c80b4a358b3061c8d67f0b071c367c0aa12163967d5b2b"  # noqa: E501
+        MODEL_REGISTRY: str = (
+            "quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"
+        )
+
+    class OCI:
+        REGISTRY: str = "ghcr.io/project-zot/zot:v2.1.8"
+
+    class OpenVINO:
+        MODEL_SERVER: str = "quay.io/opendatahub/openvino_model_server@sha256:564664371d3a21b9e732a5c1b4b40bacad714a5144c0a9aaf675baec4a04b148"  # noqa: E501
+
+
 CHAT_GENERATION_CONFIG: Dict[str, Any] = {
-    "service": {"hostname": f"{QWEN_MODEL_NAME}-predictor", "port": 8032, "request_timeout": 600}
+    "service": {
+        "hostname": f"{QWEN_MODEL_NAME}-predictor",
+        "port": 8032,
+        "request_timeout": 600,
+    }
 }
 TRUSTYAI_SERVICE_NAME: str = "trustyai-service"
+
+LLM_D_INFERENCE_SIM_NAME = "llm-d-inference-sim"
+
+
+@dataclass
+class LLMdInferenceSimConfig:
+    name: str = LLM_D_INFERENCE_SIM_NAME
+    port: int = 8032
+    model_name: str = "Qwen2.5-1.5B-Instruct"
+    serving_runtime_name: str = f"{LLM_D_INFERENCE_SIM_NAME}-serving-runtime"
+    isvc_name: str = f"{LLM_D_INFERENCE_SIM_NAME}-isvc"
+
+
+LLM_D_CHAT_GENERATION_CONFIG: Dict[str, Any] = {
+    "service": {"hostname": f"{LLMdInferenceSimConfig.isvc_name}-predictor", "port": 8032}
+}
+
+
+class PodNotFound(Exception):
+    """Pod not found"""
+
+    pass
