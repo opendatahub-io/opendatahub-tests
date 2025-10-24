@@ -361,10 +361,10 @@ def skip_if_not_default_db(request):
 
 @pytest.fixture()
 def model_registry_default_postgres_deployment_match_label(
-    admin_client: DynamicClient, model_registry_namespace: str, model_registry_instance: list[ModelRegistry]
+    model_registry_namespace: str, model_registry_instance: list[ModelRegistry]
 ) -> dict[str, str]:
     """
-    Fixture that skips the test if not using default postgres database
+    Returns the matchLabels from the default postgres deployment for filtering pods.
     """
     deployment = Deployment(
         namespace=model_registry_namespace, name=f"{model_registry_instance[0].name}-postgres", ensure_exists=True

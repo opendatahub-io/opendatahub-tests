@@ -147,7 +147,7 @@ class TestModelRegistryCreationRest:
         for field in ["controller", "blockOwnerDeletion"]:
             assert owner_reference[0][field] is True
 
-    def test_default_posgres_db_pod_log(
+    def test_default_postgres_db_pod_log(
         self: Self,
         skip_if_not_default_db: None,
         admin_client: DynamicClient,
