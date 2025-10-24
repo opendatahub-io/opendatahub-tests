@@ -12,7 +12,6 @@ from tests.model_explainability.trustyai_service.trustyai_service_utils import (
     verify_trustyai_service_metric_delete_request,
     verify_trustyai_service_metric_scheduling_request,
 )
-from utilities.constants import MinIo
 from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
 from utilities.monitoring import validate_metrics_field, get_metric_label
 

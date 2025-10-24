@@ -12,11 +12,9 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.maria_db import MariaDB
 from ocp_resources.mariadb_operator import MariadbOperator
 from ocp_resources.namespace import Namespace
-from ocp_resources.pod import Pod
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
-from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.trustyai_service import TrustyAIService
@@ -26,17 +24,11 @@ from tests.model_explainability.trustyai_service.constants import (
     TAI_DATA_CONFIG,
     TAI_METRICS_CONFIG,
     TAI_PVC_STORAGE_CONFIG,
-    KSERVE_MLSERVER,
-    KSERVE_MLSERVER_CONTAINERS,
-    KSERVE_MLSERVER_SUPPORTED_MODEL_FORMATS,
-    KSERVE_MLSERVER_ANNOTATIONS,
     KSERVE_TRITONSERVE,
     KSERVE_TRITONSERVE_CONTAINERS,
     KSERVE_TRITONSERVE_SUPPORTED_MODEL_FORMATS,
     KSERVE_TRITONSERVE_ANNOTATIONS,
     GAUSSIAN_CREDIT_MODEL_RESOURCES,
-    GAUSSIAN_CREDIT_MODEL_STORAGE_PATH,
-    XGBOOST,
     GAUSSIAN_CREDIT_MODEL,
     TAI_DB_STORAGE_CONFIG,
     ISVC_GETTER,
@@ -274,15 +266,7 @@ def triton_runtime(
                 Labels.OpenDataHub.DASHBOARD: "true",
                 "name": "triton-ppc64le-runtime",
             },
-            volumes=[
-                {
-                    "name": "shm",
-                    "emptyDir": {
-                        "medium": "Memory",
-                        "sizeLimit": "2Gi"
-                    }
-                }
-            ],
+            volumes=[{"name": "shm", "emptyDir": {"medium": "Memory", "sizeLimit": "2Gi"}}],
             teardown=teardown_resources,
             **triton_runtime_kwargs,
         ) as triton:

@@ -5,9 +5,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
-from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
-from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
 
 from tests.model_explainability.trustyai_service.trustyai_service_utils import (

@@ -65,14 +65,14 @@ KSERVE_TRITONSERVE: str = "kserve-tritonserve"
 KSERVE_TRITONSERVE_SUPPORTED_MODEL_FORMATS: List[Dict[str, Any]] = [
     {"name": "python"},
     {"name": "onnx", "version": "1", "autoSelect": True},
-    {"name": "xgboost"}
+    {"name": "xgboost"},
 ]
 KSERVE_TRITONSERVE_CONTAINERS: List[Dict[str, Any]] = [
     {
         "name": "kserve-container",
         "command": ["tritonserver", "--model-repository=/mnt/models"],
         "image": "nvcr.io/nvidia/tritonserver:25.05-py3",
-        #"image": "quay.io/powercloud/tritonserver:latest",
+        # "image": "quay.io/powercloud/tritonserver:latest",
         "ports": [{"containerPort": 8000, "protocol": "TCP"}],
         "volumeMounts": [{"mountPath": "/dev/shm", "name": "shm"}],
     }
