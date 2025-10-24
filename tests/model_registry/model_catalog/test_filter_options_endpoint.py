@@ -110,7 +110,7 @@ class TestFilterOptionsEndpoint:
         This test executes the exact same SQL query the API uses and compares results
         to catch any discrepancies between database content and API response.
 
-        Expected failure because of RHOAIENG-37069
+        Expected failure because of RHOAIENG-37069 & RHOAIENG-37226
         """
         api_url = f"{model_catalog_rest_url[0]}models/filter_options"
         LOGGER.info(f"Testing comprehensive database coverage for: {api_url}")
