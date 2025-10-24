@@ -190,7 +190,7 @@ class Labels:
         SECURITY: str = f"security.{ApiGroups.OPENDATAHUB_IO}/enable-auth"
 
     class Notebook:
-        INJECT_OAUTH: str = f"notebooks.{ApiGroups.OPENDATAHUB_IO}/inject-oauth"
+        INJECT_AUTH: str = f"notebooks.{ApiGroups.OPENDATAHUB_IO}/inject-auth"
 
     class OpenDataHubIo:
         MANAGED: str = Annotations.OpenDataHubIo.MANAGED
