@@ -30,6 +30,10 @@ from tests.model_explainability.trustyai_service.constants import (
     KSERVE_MLSERVER_CONTAINERS,
     KSERVE_MLSERVER_SUPPORTED_MODEL_FORMATS,
     KSERVE_MLSERVER_ANNOTATIONS,
+    KSERVE_TRITONSERVE,
+    KSERVE_TRITONSERVE_CONTAINERS,
+    KSERVE_TRITONSERVE_SUPPORTED_MODEL_FORMATS,
+    KSERVE_TRITONSERVE_ANNOTATIONS,
     GAUSSIAN_CREDIT_MODEL_RESOURCES,
     GAUSSIAN_CREDIT_MODEL_STORAGE_PATH,
     XGBOOST,
@@ -243,35 +247,46 @@ def trustyai_db_ca_secret(
 
 
 @pytest.fixture(scope="class")
-def mlserver_runtime(
+def triton_runtime(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    minio_data_connection: Secret,
     model_namespace: Namespace,
     teardown_resources: bool,
 ) -> Generator[ServingRuntime, Any, Any]:
-    mlserver_runtime_kwargs = {
+    triton_runtime_kwargs = {
         "client": admin_client,
         "namespace": model_namespace.name,
-        "name": KSERVE_MLSERVER,
+        "name": KSERVE_TRITONSERVE,
     }
 
     if pytestconfig.option.post_upgrade:
-        serving_runtime = ServingRuntime(**mlserver_runtime_kwargs)
+        serving_runtime = ServingRuntime(**triton_runtime_kwargs)
         yield serving_runtime
         serving_runtime.clean_up()
 
     else:
         with ServingRuntime(
-            containers=KSERVE_MLSERVER_CONTAINERS,
-            supported_model_formats=KSERVE_MLSERVER_SUPPORTED_MODEL_FORMATS,
-            protocol_versions=["v2"],
-            annotations=KSERVE_MLSERVER_ANNOTATIONS,
-            label={Labels.OpenDataHub.DASHBOARD: "true"},
+            containers=KSERVE_TRITONSERVE_CONTAINERS,
+            supported_model_formats=KSERVE_TRITONSERVE_SUPPORTED_MODEL_FORMATS,
+            http_data_endpoint="port:8000",
+            annotations=KSERVE_TRITONSERVE_ANNOTATIONS,
+            label={
+                Labels.OpenDataHub.DASHBOARD: "true",
+                "name": "triton-ppc64le-runtime",
+            },
+            volumes=[
+                {
+                    "name": "shm",
+                    "emptyDir": {
+                        "medium": "Memory",
+                        "sizeLimit": "2Gi"
+                    }
+                }
+            ],
             teardown=teardown_resources,
-            **mlserver_runtime_kwargs,
-        ) as mlserver:
-            yield mlserver
+            **triton_runtime_kwargs,
+        ) as triton:
+            yield triton
 
 
 @pytest.fixture(scope="class")
@@ -279,10 +294,7 @@ def gaussian_credit_model(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    minio_pod: Pod,
-    minio_service: Service,
-    minio_data_connection: Secret,
-    mlserver_runtime: ServingRuntime,
+    triton_runtime: ServingRuntime,
     kserve_raw_config: ConfigMap,
     kserve_logger_ca_bundle: ConfigMap,
     teardown_resources: bool,
@@ -300,21 +312,21 @@ def gaussian_credit_model(
     else:
         with create_isvc(
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-            model_format=XGBOOST,
-            runtime=mlserver_runtime.name,
-            storage_key=minio_data_connection.name,
-            storage_path=GAUSSIAN_CREDIT_MODEL_STORAGE_PATH,
-            enable_auth=True,
+            model_format="xgboost",
+            runtime=triton_runtime.name,
+            storage_uri="oci://quay.io/trustyai_testing/gaussian-credit-model-modelcar@sha256:8aa8f28bbc133e4d996d00cacd33205d1b86d9b3aa31eeffe31a295c90b1030e",
             external_route=True,
             wait_for_predictor_pods=False,
             resources=GAUSSIAN_CREDIT_MODEL_RESOURCES,
+            min_replicas=1,
+            max_replicas=1,
             teardown=teardown_resources,
             **gaussian_credit_model_kwargs,
         ) as isvc:
             wait_for_isvc_deployment_registered_by_trustyai_service(
                 client=admin_client,
                 isvc=isvc,
-                runtime_name=mlserver_runtime.name,
+                runtime_name=triton_runtime.name,
             )
             yield isvc
 

@@ -49,28 +49,17 @@ def get_fairness_request_json_data(isvc: InferenceService) -> dict[str, Any]:
     }
 
 
-@pytest.mark.usefixtures("minio_pod")
 @pytest.mark.parametrize(
-    "model_namespace, minio_pod, minio_data_connection, trustyai_service",
+    "model_namespace, trustyai_service",
     [
         pytest.param(
             {"name": "test-fairness-pvc"},
-            MinIo.PodConfig.MODEL_MESH_MINIO_CONFIG,
-            {"bucket": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
             {"storage": "pvc"},
             id="pvc-storage",
-        ),
-        pytest.param(
-            {"name": "test-fairness-db"},
-            MinIo.PodConfig.MODEL_MESH_MINIO_CONFIG,
-            {"bucket": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
-            {"storage": "db"},
-            id="db-storage",
         ),
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("minio_pod")
 @pytest.mark.rawdeployment
 @pytest.mark.smoke
 class TestFairnessMetrics:

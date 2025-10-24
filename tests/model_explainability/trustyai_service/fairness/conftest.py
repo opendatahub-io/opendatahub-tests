@@ -41,22 +41,18 @@ def ovms_runtime(
 def onnx_loan_model(
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    minio_pod: Pod,
-    minio_service: Service,
-    minio_data_connection: Secret,
-    ovms_runtime: ServingRuntime,
+    triton_runtime: ServingRuntime,
     kserve_raw_config: ConfigMap,
     kserve_logger_ca_bundle: ConfigMap,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
-        name="demo-loan-nn-onnx-alpha",
+        name="loanmodelalpha",
         namespace=model_namespace.name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         model_format=ModelFormat.ONNX,
-        runtime=ovms_runtime.name,
-        storage_key=minio_data_connection.name,
-        storage_path="ovms/loan_model_alpha",
+        runtime=triton_runtime.name,
+        storage_uri="oci://quay.io/trustyai_testing/onnx-loan-model-modelcar:latest@sha256:a3a4f34112fd0706d5cac0bb7fef335dff2a71a0430b74be4946ee8c92b90e22",
         min_replicas=1,
         resources={"limits": {"cpu": "2", "memory": "8Gi"}, "requests": {"cpu": "1", "memory": "4Gi"}},
         enable_auth=True,
@@ -68,6 +64,6 @@ def onnx_loan_model(
         wait_for_isvc_deployment_registered_by_trustyai_service(
             client=admin_client,
             isvc=isvc,
-            runtime_name=ovms_runtime.name,
+            runtime_name=triton_runtime.name,
         )
         yield isvc

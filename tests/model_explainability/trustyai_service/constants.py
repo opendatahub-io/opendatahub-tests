@@ -46,7 +46,7 @@ KSERVE_MLSERVER_CONTAINERS: List[Dict[str, Any]] = [
             {"name": "MLSERVER_MODEL_IMPLEMENTATION", "value": "{{.Labels.modelClass}}"},
             {"name": "MLSERVER_HTTP_PORT", "value": str(Ports.REST_PORT)},
             {"name": "MLSERVER_GRPC_PORT", "value": "9000"},
-            {"name": "MODELS_DIR", "value": "/mnt/models/"},
+            {"name": "MODELS_DIR", "value": "/models/"},
         ],
         "resources": {"requests": {"cpu": "1", "memory": "2Gi"}, "limits": {"cpu": "1", "memory": "2Gi"}},
     }
@@ -60,6 +60,32 @@ KSERVE_MLSERVER_ANNOTATIONS: Dict[str, str] = {
 }
 
 ISVC_GETTER: str = "isvc-getter"
+
+KSERVE_TRITONSERVE: str = "kserve-tritonserve"
+KSERVE_TRITONSERVE_SUPPORTED_MODEL_FORMATS: List[Dict[str, Any]] = [
+    {"name": "python"},
+    {"name": "onnx", "version": "1", "autoSelect": True},
+    {"name": "xgboost"}
+]
+KSERVE_TRITONSERVE_CONTAINERS: List[Dict[str, Any]] = [
+    {
+        "name": "kserve-container",
+        "command": ["tritonserver", "--model-repository=/mnt/models"],
+        "image": "nvcr.io/nvidia/tritonserver:25.05-py3",
+        #"image": "quay.io/powercloud/tritonserver:latest",
+        "ports": [{"containerPort": 8000, "protocol": "TCP"}],
+        "volumeMounts": [{"mountPath": "/dev/shm", "name": "shm"}],
+    }
+]
+KSERVE_TRITONSERVE_ANNOTATIONS: Dict[str, str] = {
+    f"{ApiGroups.OPENDATAHUB_IO}/accelerator-name": "",
+    f"{ApiGroups.OPENDATAHUB_IO}/apiProtocol": "REST",
+    f"{ApiGroups.OPENDATAHUB_IO}/hardware-profile-name": "small-serving-1bmle",
+    f"{ApiGroups.OPENDATAHUB_IO}/serving-runtime-scope": "global",
+    f"{ApiGroups.OPENDATAHUB_IO}/template-display-name": "Triton Server ServingRuntime for KServe(ppc64le)",
+    f"{ApiGroups.OPENDATAHUB_IO}/template-name": "triton-ppc64le-runtime",
+    "openshift.io/display-name": "gaussian-credit-model",
+}
 
 TRUSTYAI_DB_MIGRATION_PATCH: dict[str, Any] = {
     "metadata": {"annotations": {"trustyai.opendatahub.io/db-migration": "true"}},

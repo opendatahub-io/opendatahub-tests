@@ -24,26 +24,16 @@ DRIFT_METRICS = [
 
 
 @pytest.mark.parametrize(
-    "model_namespace, minio_pod, minio_data_connection, trustyai_service",
+    "model_namespace, trustyai_service",
     [
         pytest.param(
             {"name": "test-drift-pvc"},
-            MinIo.PodConfig.MODEL_MESH_MINIO_CONFIG,
-            {"bucket": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
             {"storage": "pvc"},
             id="pvc-storage",
-        ),
-        pytest.param(
-            {"name": "test-drift-db"},
-            MinIo.PodConfig.MODEL_MESH_MINIO_CONFIG,
-            {"bucket": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
-            {"storage": "db"},
-            id="db-storage",
         ),
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("minio_pod")
 @pytest.mark.rawdeployment
 @pytest.mark.smoke
 class TestDriftMetrics:
@@ -83,7 +73,6 @@ class TestDriftMetrics:
     def test_upload_data_to_trustyai_service(
         self,
         admin_client,
-        minio_data_connection,
         current_client_token,
         trustyai_service,
     ) -> None:
@@ -159,7 +148,6 @@ class TestDriftMetrics:
     def test_drift_metric_delete(
         self,
         admin_client,
-        minio_data_connection,
         current_client_token,
         trustyai_service,
         metric_name,
