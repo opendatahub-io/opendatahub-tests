@@ -316,6 +316,9 @@ def compare_filter_options_with_database(
     """
     Compare API filter options response with database query results.
 
+    Note: Currently assumes all properties are string types. Numeric/range
+    properties are not returned by the API or DB query at this time.
+
     Args:
         api_filters: The "filters" dict from API response
         db_properties: Raw database properties before API filtering
