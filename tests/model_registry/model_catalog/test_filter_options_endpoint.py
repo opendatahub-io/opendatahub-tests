@@ -2,8 +2,8 @@ import pytest
 from typing import Self
 from simple_logger.logger import get_logger
 
-from tests.model_registry.model_catalog.utils import execute_get_command, validate_filter_options_structure
-from tests.model_registry.utils import get_rest_headers
+from tests.model_registry.model_catalog.utils import validate_filter_options_structure
+from tests.model_registry.utils import get_rest_headers, execute_get_command
 from utilities.user_utils import UserTestSession
 
 LOGGER = get_logger(name=__name__)

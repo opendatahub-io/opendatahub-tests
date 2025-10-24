@@ -1,3 +1,4 @@
+from contextlib import ExitStack
 from typing import Generator
 
 import pytest
@@ -5,11 +6,14 @@ from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.namespace import Namespace
+from ocp_resources.role import Role
+from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 
 from utilities.constants import Timeout, ResourceLimits
-from utilities.infra import s3_endpoint_secret
+from utilities.infra import s3_endpoint_secret, create_inference_token
+from utilities.logger import RedactedString
 from utilities.llmd_utils import create_llmisvc
 from utilities.llmd_constants import (
     ModelStorage,
@@ -186,3 +190,143 @@ def llmd_inference_service_gpu(
 
     with create_llmisvc(**create_kwargs) as llm_service:
         yield llm_service
+
+
+@pytest.fixture(scope="class")
+def llmisvc_auth_service_account(
+    admin_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+) -> Generator:
+    """Factory fixture to create service accounts for authentication testing."""
+    with ExitStack() as stack:
+
+        def _create_service_account(name: str) -> ServiceAccount:
+            """Create a single service account."""
+            return stack.enter_context(
+                cm=ServiceAccount(
+                    client=admin_client,
+                    namespace=unprivileged_model_namespace.name,
+                    name=name,
+                )
+            )
+
+        yield _create_service_account
+
+
+@pytest.fixture(scope="class")
+def llmisvc_auth_view_role(
+    admin_client: DynamicClient,
+) -> Generator:
+    """Factory fixture to create view roles for LLMInferenceServices."""
+    with ExitStack() as stack:
+
+        def _create_view_role(llm_service: LLMInferenceService) -> Role:
+            """Create a single view role for a given LLMInferenceService."""
+            return stack.enter_context(
+                cm=Role(
+                    client=admin_client,
+                    name=f"{llm_service.name}-view",
+                    namespace=llm_service.namespace,
+                    rules=[
+                        {
+                            "apiGroups": [llm_service.api_group],
+                            "resources": ["llminferenceservices"],
+                            "verbs": ["get"],
+                            "resourceNames": [llm_service.name],
+                        },
+                    ],
+                )
+            )
+
+        yield _create_view_role
+
+
+@pytest.fixture(scope="class")
+def llmisvc_auth_role_binding(
+    admin_client: DynamicClient,
+) -> Generator:
+    """Factory fixture to create role bindings."""
+    with ExitStack() as stack:
+
+        def _create_role_binding(
+            service_account: ServiceAccount,
+            role: Role,
+        ) -> RoleBinding:
+            """Create a single role binding."""
+            return stack.enter_context(
+                cm=RoleBinding(
+                    client=admin_client,
+                    namespace=service_account.namespace,
+                    name=f"{service_account.name}-view",
+                    role_ref_name=role.name,
+                    role_ref_kind=role.kind,
+                    subjects_kind="ServiceAccount",
+                    subjects_name=service_account.name,
+                )
+            )
+
+        yield _create_role_binding
+
+
+@pytest.fixture(scope="class")
+def llmisvc_auth_token() -> Generator:
+    """Factory fixture to create inference tokens with all required RBAC resources."""
+
+    def _create_token(
+        service_account: ServiceAccount,
+        llmisvc: LLMInferenceService,
+        view_role_factory,
+        role_binding_factory,
+    ) -> str:
+        """Create role, role binding, and return an inference token for an existing service account."""
+        # Create role and role binding (these factories manage their own cleanup via ExitStack)
+        role = view_role_factory(llm_service=llmisvc)
+        role_binding_factory(service_account=service_account, role=role)
+        return RedactedString(value=create_inference_token(model_service_account=service_account))
+
+    yield _create_token
+
+
+@pytest.fixture(scope="class")
+def llmisvc_auth(
+    admin_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+    llmisvc_auth_service_account,
+) -> Generator:
+    """Factory fixture to create LLMInferenceService instances for authentication testing."""
+    with ExitStack() as stack:
+
+        def _create_llmd_auth_service(
+            service_name: str,
+            service_account_name: str,
+            storage_uri: str = ModelStorage.TINYLLAMA_OCI,
+            container_image: str = ContainerImages.VLLM_CPU,
+            container_resources: dict | None = None,
+        ) -> tuple[LLMInferenceService, ServiceAccount]:
+            """Create a single LLMInferenceService instance with its service account."""
+            if container_resources is None:
+                container_resources = {
+                    "limits": {"cpu": "1", "memory": "10Gi"},
+                    "requests": {"cpu": "100m", "memory": "8Gi"},
+                }
+
+            # Create the service account first
+            sa = llmisvc_auth_service_account(name=service_account_name)
+
+            create_kwargs = {
+                "client": admin_client,
+                "name": service_name,
+                "namespace": unprivileged_model_namespace.name,
+                "storage_uri": storage_uri,
+                "container_image": container_image,
+                "container_resources": container_resources,
+                "service_account": service_account_name,
+                "wait": True,
+                "timeout": Timeout.TIMEOUT_15MIN,
+                "enable_auth": True,
+            }
+
+            llm_service = stack.enter_context(cm=create_llmisvc(**create_kwargs))
+            return (llm_service, sa)
+
+        yield _create_llmd_auth_service

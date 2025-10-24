@@ -296,6 +296,7 @@ class ModelStorage:
 
     class HuggingFace:
         TINYLLAMA: str = "hf://TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+        OPT125M: str = "hf://facebook/opt-125m"
 
 
 class OCIRegistry:
@@ -473,3 +474,9 @@ class LLMdInferenceSimConfig:
 LLM_D_CHAT_GENERATION_CONFIG: Dict[str, Any] = {
     "service": {"hostname": f"{LLMdInferenceSimConfig.isvc_name}-predictor", "port": 8032}
 }
+
+
+class PodNotFound(Exception):
+    """Pod not found"""
+
+    pass

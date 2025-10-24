@@ -1,4 +1,5 @@
 import json
+import time
 from typing import Any, List
 
 import requests
@@ -26,10 +27,11 @@ from tests.model_registry.constants import (
 )
 from tests.model_registry.exceptions import ModelRegistryResourceNotFoundError
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
-from utilities.constants import Protocols, Annotations, Timeout
+from utilities.constants import Protocols, Annotations, Timeout, PodNotFound
 from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
 
+from utilities.general import wait_for_pods_running
 
 ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
 MARIA_DB_IMAGE = (
@@ -677,3 +679,108 @@ def get_rest_headers(token: str) -> dict[str, str]:
         "accept": "application/json",
         "Content-Type": "application/json",
     }
+
+
+def is_model_catalog_ready(client: DynamicClient, model_registry_namespace: str, consecutive_try: int = 6):
+    model_catalog_pods = get_model_catalog_pod(client=client, model_registry_namespace=model_registry_namespace)
+    # We can wait for the pods to reflect updated catalog, however, deleting them ensures the updated config is
+    # applied immediately.
+    for pod in model_catalog_pods:
+        pod.delete()
+    # After the deletion, we need to wait for the pod to be spinned up and get to ready state.
+    assert wait_for_model_catalog_pod_created(client=client, model_registry_namespace=model_registry_namespace)
+    wait_for_pods_running(
+        admin_client=client, namespace_name=model_registry_namespace, number_of_consecutive_checks=consecutive_try
+    )
+
+
+@retry(wait_timeout=30, sleep=5, exceptions_dict={PodNotFound: []})
+def wait_for_model_catalog_pod_created(client: DynamicClient, model_registry_namespace: str) -> bool:
+    pods = get_model_catalog_pod(client=client, model_registry_namespace=model_registry_namespace)
+    if pods:
+        return True
+    raise PodNotFound("Model catalog pod not found")
+
+
+def execute_get_call(url: str, headers: dict[str, str], verify: bool | str = False) -> requests.Response:
+    LOGGER.info(f"Executing get call: {url}")
+    resp = requests.get(url=url, headers=headers, verify=verify, timeout=60)
+    if resp.status_code not in [200, 201]:
+        raise ResourceNotFoundError(f"Get call failed for resource: {url}, {resp.status_code}: {resp.text}")
+    return resp
+
+
+@retry(wait_timeout=60, sleep=5, exceptions_dict={ResourceNotFoundError: []})
+def wait_for_model_catalog_api(url: str, headers: dict[str, str], verify: bool | str = False) -> requests.Response:
+    return execute_get_call(url=f"{url}sources", headers=headers, verify=verify)
+
+
+def execute_get_command(url: str, headers: dict[str, str], verify: bool | str = False) -> dict[Any, Any]:
+    resp = execute_get_call(url=url, headers=headers, verify=verify)
+    try:
+        return json.loads(resp.text)
+    except json.JSONDecodeError:
+        LOGGER.error(f"Unable to parse {resp.text}")
+        raise
+
+
+def get_sample_yaml_str(models: list[str]) -> str:
+    model_str: str = ""
+    for model in models:
+        model_str += f"""
+{get_model_str(model=model)}
+"""
+    return f"""source: Hugging Face
+models:
+{model_str}
+"""
+
+
+def validate_model_catalog_sources(
+    model_catalog_sources_url: str, rest_headers: dict[str, str], expected_catalog_values: dict[str, str]
+) -> None:
+    results = execute_get_command(
+        url=model_catalog_sources_url,
+        headers=rest_headers,
+    )["items"]
+    LOGGER.info(results)
+    # this is for the default catalog:
+    assert len(results) == len(expected_catalog_values) + 2
+    ids_from_query = [result_entry["id"] for result_entry in results]
+    ids_expected = [expected_entry["id"] for expected_entry in expected_catalog_values]
+    assert set(ids_expected).issubset(set(ids_from_query)), f"Expected: {expected_catalog_values}. Actual: {results}"
+
+
+def get_catalog_str(ids: list[str]) -> str:
+    catalog_str: str = ""
+    for index, id in enumerate(ids):
+        catalog_str += f"""
+- name: Sample Catalog {index}
+  id: {id}
+  type: yaml
+  enabled: true
+  properties:
+    yamlCatalogPath: {id.replace("_", "-")}.yaml
+"""
+    return f"""catalogs:
+{catalog_str}
+"""
+
+
+def get_model_str(model: str) -> str:
+    current_time = int(time.time() * 1000)
+    return f"""
+- name: {model}
+  description: test description.
+  readme: |-
+    # test read me information {model}
+  provider: Mistral AI
+  logo: temp placeholder logo
+  license: apache-2.0
+  licenseLink: https://www.apache.org/licenses/LICENSE-2.0.txt
+  libraryName: transformers
+  artifacts:
+    - uri: https://huggingface.co/{model}/resolve/main/consolidated.safetensors
+  createTimeSinceEpoch: \"{str(current_time - 10000)}\"
+  lastUpdateTimeSinceEpoch: \"{str(current_time)}\"
+"""
