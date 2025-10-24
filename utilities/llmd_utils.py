@@ -284,7 +284,9 @@ def create_llmisvc(
             template_config["imagePullSecrets"] = [{"name": secret} for secret in image_pull_secrets]
 
     if enable_auth:
-        annotations["serving.kserve.io/auth"] = "true"
+        annotations["security.opendatahub.io/enable-auth"] = "true"
+    else:
+        annotations["security.opendatahub.io/enable-auth"] = "false"
 
     LOGGER.info(f"Creating LLMInferenceService {name} in namespace {namespace}")
 

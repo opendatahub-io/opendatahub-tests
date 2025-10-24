@@ -10,34 +10,27 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.resource import ResourceEditor
 
-from ocp_resources.route import Route
 from ocp_resources.service_account import ServiceAccount
-from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG
 from tests.model_registry.model_catalog.constants import (
     SAMPLE_MODEL_NAME3,
-    CUSTOM_CATALOG_ID1,
     DEFAULT_CATALOG_FILE,
     CATALOG_CONTAINER,
     REDHAT_AI_CATALOG_ID,
 )
-from tests.model_registry.model_catalog.utils import (
+from tests.model_registry.constants import CUSTOM_CATALOG_ID1
+from tests.model_registry.utils import (
+    get_rest_headers,
     is_model_catalog_ready,
-    wait_for_model_catalog_api,
-    get_model_str,
-    execute_get_command,
     get_model_catalog_pod,
+    wait_for_model_catalog_api,
+    execute_get_command,
+    get_model_str,
 )
-from tests.model_registry.utils import get_rest_headers
 from utilities.infra import get_openshift_token, login_with_user_password, create_inference_token
 from utilities.user_utils import UserTestSession
 
 
 LOGGER = get_logger(name=__name__)
-
-
-@pytest.fixture(scope="class")
-def catalog_config_map(admin_client: DynamicClient, model_registry_namespace: str) -> ConfigMap:
-    return ConfigMap(name=DEFAULT_CUSTOM_MODEL_CATALOG, client=admin_client, namespace=model_registry_namespace)
 
 
 @pytest.fixture(scope="class")
@@ -48,26 +41,6 @@ def model_catalog_config_map(
     param = getattr(request, "param", {})
     configmap_name = param.get("configmap_name", "model-catalog-default-sources")
     return ConfigMap(name=configmap_name, client=admin_client, namespace=model_registry_namespace, ensure_exists=True)
-
-
-@pytest.fixture(scope="class")
-def model_catalog_routes(admin_client: DynamicClient, model_registry_namespace: str) -> list[Route]:
-    return list(
-        Route.get(namespace=model_registry_namespace, label_selector="component=model-catalog", dyn_client=admin_client)
-    )
-
-
-@pytest.fixture(scope="class")
-def model_catalog_rest_url(model_registry_namespace: str, model_catalog_routes: list[Route]) -> list[str]:
-    assert model_catalog_routes, f"Model catalog routes does not exist in {model_registry_namespace}"
-    route_urls = [
-        f"https://{route.instance.spec.host}:443/api/model_catalog/v1alpha1/" for route in model_catalog_routes
-    ]
-    assert route_urls, (
-        "Model catalog routes information could not be found from "
-        f"routes:{[route.name for route in model_catalog_routes]}"
-    )
-    return route_urls
 
 
 @pytest.fixture(scope="class")

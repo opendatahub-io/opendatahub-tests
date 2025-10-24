@@ -273,7 +273,7 @@ class RunTimeConfigs:
 
 class ModelCarImage:
     MNIST_8_1: str = (
-        "oci://quay.io/mwaykole/test@sha256:cd9f8e4634b7da17bb367b1588a354dbd94cc0c74d506e27e3c99422cc828af7"
+        "oci://quay.io/mwaykole/test@sha256:cb7d25c43e52c755e85f5b59199346f30e03b7112ef38b74ed4597aec8748743"
         # noqa: E501
     )
     GRANITE_8B_CODE_INSTRUCT: str = "oci://registry.redhat.io/rhelai1/modelcar-granite-8b-code-instruct:1.4"
@@ -296,6 +296,7 @@ class ModelStorage:
 
     class HuggingFace:
         TINYLLAMA: str = "hf://TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+        OPT125M: str = "hf://facebook/opt-125m"
 
 
 class OCIRegistry:
@@ -473,3 +474,9 @@ class LLMdInferenceSimConfig:
 LLM_D_CHAT_GENERATION_CONFIG: Dict[str, Any] = {
     "service": {"hostname": f"{LLMdInferenceSimConfig.isvc_name}-predictor", "port": 8032}
 }
+
+
+class PodNotFound(Exception):
+    """Pod not found"""
+
+    pass

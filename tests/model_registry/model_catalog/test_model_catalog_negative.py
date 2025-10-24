@@ -9,8 +9,8 @@ from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from tests.model_registry.constants import DEFAULT_MODEL_CATALOG_CM
 from tests.model_registry.model_catalog.constants import DEFAULT_CATALOGS, CATALOG_CONTAINER
-from tests.model_registry.model_catalog.utils import validate_model_catalog_configmap_data, is_model_catalog_ready
-from tests.model_registry.utils import get_model_catalog_pod
+from tests.model_registry.model_catalog.utils import validate_model_catalog_configmap_data
+from tests.model_registry.utils import get_model_catalog_pod, is_model_catalog_ready
 from timeout_sampler import TimeoutExpiredError
 
 from utilities.general import wait_for_container_status

@@ -10,7 +10,7 @@ from tests.model_registry.model_catalog.utils import (
     compare_filter_options_with_database,
 )
 from tests.model_registry.model_catalog.constants import FILTER_OPTIONS_DB_QUERY, API_EXCLUDED_FILTER_FIELDS
-from tests.model_registry.utils import get_rest_headers
+from tests.model_registry.utils import get_rest_headers, execute_get_command
 from utilities.user_utils import UserTestSession
 
 LOGGER = get_logger(name=__name__)
