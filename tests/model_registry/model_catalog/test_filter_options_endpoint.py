@@ -95,6 +95,7 @@ class TestFilterOptionsEndpoint:
         ],
         indirect=["user_token_for_api_calls"],
     )
+    @pytest.mark.xfail(strict=True, reason="RHOAIENG-37069: backend/API discrepancy expected")
     def test_comprehensive_coverage_against_database(
         self: Self,
         model_catalog_rest_url: list[str],
