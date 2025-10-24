@@ -119,22 +119,43 @@ def user_token_for_api_calls(
         raise RuntimeError(f"Unknown user type: {user}")
 
 
-@pytest.fixture(scope="class")
-def randomly_picked_model(
-    model_catalog_rest_url: list[str], user_token_for_api_calls: str, request: pytest.FixtureRequest
+@pytest.fixture(scope="function")
+def randomly_picked_model_from_catalog_api_by_source(
+    model_catalog_rest_url: list[str],
+    user_token_for_api_calls: str,
+    model_registry_rest_headers: dict[str, str],
+    request: pytest.FixtureRequest,
 ) -> dict[Any, Any]:
-    """Pick a random model"""
+    """Pick a random model from a specific catalog (function-scoped for test isolation)
+
+    Supports parameterized headers via 'header_type':
+    - 'user_token': Uses user_token_for_api_calls (default for user-specific tests)
+    - 'registry': Uses model_registry_rest_headers (for catalog/registry tests)
+
+    Accepts 'catalog_id' or 'source' (alias) to specify the catalog.
+    """
     param = getattr(request, "param", {})
-    source = param.get("source", REDHAT_AI_CATALOG_ID)
-    LOGGER.info(f"Picking random model from {source}")
-    url = f"{model_catalog_rest_url[0]}models?source={source}&pageSize=100"
-    result = execute_get_command(
-        url=url,
-        headers=get_rest_headers(token=user_token_for_api_calls),
-    )["items"]
-    assert result, f"Expected Default models to be present. Actual: {result}"
-    LOGGER.info(f"{len(result)} models found")
-    return random.choice(seq=result)
+    # Support both 'catalog_id' and 'source' for backward compatibility
+    catalog_id = param.get("catalog_id") or param.get("source", REDHAT_AI_CATALOG_ID)
+    header_type = param.get("header_type", "user_token")
+
+    # Select headers based on header_type
+    if header_type == "registry":
+        headers = model_registry_rest_headers
+    else:
+        headers = get_rest_headers(token=user_token_for_api_calls)
+
+    LOGGER.info(f"Picking random model from catalog: {catalog_id} with header_type: {header_type}")
+
+    models_response = execute_get_command(
+        url=f"{model_catalog_rest_url[0]}models?source={catalog_id}&pageSize=100",
+        headers=headers,
+    )
+    models = models_response.get("items", [])
+    assert models, f"No models found for catalog: {catalog_id}"
+    LOGGER.info(f"{len(models)} models found in catalog {catalog_id}")
+
+    return random.choice(seq=models)
 
 
 @pytest.fixture(scope="class")

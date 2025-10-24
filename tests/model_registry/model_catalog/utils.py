@@ -378,7 +378,7 @@ def compare_filter_options_with_database(
     return is_valid, comparison_errors
 
 
-def get_models_from_api(
+def get_models_from_catalog_api(
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
     page_size: int = 100,
@@ -386,7 +386,7 @@ def get_models_from_api(
     additional_params: str = "",
 ) -> dict[str, Any]:
     """
-    Helper method to get models from API with optional filtering
+    Helper method to get models from catalog API with optional filtering
 
     Args:
         model_catalog_rest_url: REST URL for model catalog
@@ -406,3 +406,37 @@ def get_models_from_api(
     url += additional_params
 
     return execute_get_command(url=url, headers=model_registry_rest_headers)
+
+
+def fetch_all_artifacts_with_dynamic_paging(
+    url_with_pagesize: str,
+    headers: dict[str, str],
+    page_size: int = 100,
+    page_size_increment: int = 50,
+) -> dict[str, Any]:
+    """
+    Fetch all artifacts from an endpoint with dynamic page size adjustment.
+
+    If pagination is detected (nextPageToken present), automatically increases
+    page size and retries until all items fit in a single page.
+
+    Args:
+        url_with_pagesize: The paginated URL with pageSize parameter
+        headers: Request headers
+        page_size: Starting page size (default: 100)
+        page_size_increment: Amount to increase page size on each retry (default: 50)
+
+    Returns:
+        The complete API response with all items in a single page
+    """
+
+    while True:
+        paginated_url = f"{url_with_pagesize}={page_size}"
+        response = execute_get_command(url=paginated_url, headers=headers)
+
+        if not response.get("nextPageToken"):
+            LOGGER.info(f"Fetched {len(response.get('items', []))} items with pageSize={page_size}")
+            return response
+
+        LOGGER.info(f"Pagination detected with pageSize={page_size}, increasing by {page_size_increment}")
+        page_size += page_size_increment
