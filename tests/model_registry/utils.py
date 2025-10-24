@@ -544,41 +544,28 @@ def get_model_registry_objects(
     model_registry_objects = []
     for num_mr in range(0, num):
         name = f"{base_name}{num_mr}"
-        if db_backend == "default":
-            model_registry_objects.append(
-                ModelRegistry(
-                    client=client,
-                    name=name,
-                    namespace=namespace,
-                    label=get_mr_standard_labels(resource_name=name),
-                    grpc={},
-                    rest={},
-                    oauth_proxy=OAUTH_PROXY_CONFIG_DICT,
-                    postgres={"generateDeployment": True},
-                    wait_for_resource=True,
-                    teardown=teardown_resources,
-                )
-            )
-        else:
+        mysql = None
+        if db_backend != "default":
             mysql = get_mysql_config(
                 base_name=f"{DB_BASE_RESOURCES_NAME}{num_mr}", namespace=namespace, db_backend=db_backend
             )
             if "sslRootCertificateConfigMap" in params:
                 mysql["sslRootCertificateConfigMap"] = params["sslRootCertificateConfigMap"]
-            model_registry_objects.append(
-                ModelRegistry(
-                    client=client,
-                    name=name,
-                    namespace=namespace,
-                    label=get_mr_standard_labels(resource_name=name),
-                    grpc={},
-                    rest={},
-                    oauth_proxy=OAUTH_PROXY_CONFIG_DICT,
-                    mysql=mysql,
-                    wait_for_resource=True,
-                    teardown=teardown_resources,
-                )
+        model_registry_objects.append(
+            ModelRegistry(
+                client=client,
+                name=name,
+                namespace=namespace,
+                label=get_mr_standard_labels(resource_name=name),
+                grpc={},
+                rest={},
+                oauth_proxy=OAUTH_PROXY_CONFIG_DICT,
+                mysql=mysql if mysql else None,
+                postgres={"generateDeployment": True} if db_backend == "default" else None,
+                wait_for_resource=True,
+                teardown=teardown_resources,
             )
+        )
     return model_registry_objects
 
 
