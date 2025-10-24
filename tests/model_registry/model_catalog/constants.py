@@ -36,3 +36,5 @@ VALIDATED_CATALOG_ID: str = "redhat_ai_validated_models"
 
 REDHAT_AI_FILTER: str = "Red+Hat+AI"
 REDHAT_AI_VALIDATED_FILTER = "Red+Hat+AI+Validated"
+MODEL_ARTIFACT_TYPE: str = "model-artifact"
+METRICS_ARTIFACT_TYPE: str = "metrics-artifact"
