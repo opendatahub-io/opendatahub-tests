@@ -334,6 +334,8 @@ def send_inferences_and_verify_trustyai_service_registered(
             else:
                 raise AssertionError(f"Observations not updated. Current: {obs}, Expected: {expected_observations}")
 
+            print("hello!")
+
 
 def wait_for_isvc_deployment_registered_by_trustyai_service(
     client: DynamicClient, isvc: InferenceService, runtime_name: str
