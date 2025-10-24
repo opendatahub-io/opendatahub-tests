@@ -124,6 +124,10 @@ class TestSearchModelCatalog:
 # All the tests in this class are failing for RHOAIENG-36938, there are two problems:
 # 1. The filter parameter is setup to use artifact_type instead of artifactType
 # 2. The filter with multiple artifact types is not working as expected
+@pytest.mark.xfail(
+    strict=True,
+    reason="RHOAIENG-36938: artifact_type is usedinstead of artifactType, multiple artifact types are not working",
+)
 class TestSearchModelArtifact:
     @pytest.mark.parametrize(
         "randomly_picked_model_from_catalog_api_by_source, artifact_type",
