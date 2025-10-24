@@ -8,7 +8,7 @@ from tests.model_registry.model_catalog.utils import (
     get_postgres_pod_in_namespace,
     compare_filter_options_with_database,
 )
-from tests.model_registry.model_catalog.constants import FILTER_OPTIONS_DB_QUERY, API_EXCLUDED_FILTER_FIELDS
+from tests.model_registry.model_catalog.db_constants import FILTER_OPTIONS_DB_QUERY, API_EXCLUDED_FILTER_FIELDS
 from tests.model_registry.utils import get_rest_headers, execute_get_command
 from utilities.user_utils import UserTestSession
 
