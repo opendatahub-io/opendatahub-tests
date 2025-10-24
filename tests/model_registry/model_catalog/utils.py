@@ -299,13 +299,7 @@ def parse_psql_array_agg_output(psql_output: str) -> dict[str, list[str]]:
 
 def get_postgres_pod_in_namespace(namespace: str = "rhoai-model-registries") -> Pod:
     """Get the PostgreSQL pod for model catalog database."""
-    postgres_pods = list(Pod.get(namespace=namespace, label_selector="app=model-catalog-postgres"))
-
-    if not postgres_pods:
-        # Fallback: try finding by name pattern
-        all_pods = list(Pod.get(namespace=namespace))
-        postgres_pods = [pod for pod in all_pods if "postgres" in pod.name]
-
+    postgres_pods = list(Pod.get(namespace=namespace, label_selector="app.kubernetes.io/name=model-catalog-postgres"))
     assert postgres_pods, f"No PostgreSQL pod found in namespace {namespace}"
     return postgres_pods[0]
 
