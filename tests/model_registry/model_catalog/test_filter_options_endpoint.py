@@ -3,7 +3,6 @@ from typing import Self
 from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.utils import (
-    execute_get_command,
     validate_filter_options_structure,
     parse_psql_array_agg_output,
     get_postgres_pod_in_namespace,
