@@ -346,3 +346,27 @@ def model_data_for_test() -> Generator[dict[str, Any], None, None]:
     model_data = copy.deepcopy(MODEL_REGISTER_DATA)
     model_data["register_model_data"]["name"] = model_name
     yield model_data
+
+
+@pytest.fixture()
+def skip_if_not_default_db(request):
+    """
+    Fixture that skips the test if not using default postgres database
+    """
+    default_db = request.node.callspec.params.get("model_registry_metadata_db_resources", {}).get("db_name")
+    LOGGER.info(f"default_db: {default_db}")
+    if not default_db or default_db != "default":
+        pytest.skip(reason="This test is only relevant for default postgres db")
+
+
+@pytest.fixture()
+def model_registry_default_postgres_deployment_match_label(
+    model_registry_namespace: str, model_registry_instance: list[ModelRegistry]
+) -> dict[str, str]:
+    """
+    Returns the matchLabels from the default postgres deployment for filtering pods.
+    """
+    deployment = Deployment(
+        namespace=model_registry_namespace, name=f"{model_registry_instance[0].name}-postgres", ensure_exists=True
+    )
+    return deployment.instance.spec.selector.matchLabels
