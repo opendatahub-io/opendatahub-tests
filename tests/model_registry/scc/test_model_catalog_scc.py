@@ -2,24 +2,15 @@ import pytest
 from typing import Self
 
 from simple_logger.logger import get_logger
-from _pytest.fixtures import FixtureRequest
 
-from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.deployment import Deployment
 from tests.model_registry.scc.constants import MODEL_CATALOG_STR
 from tests.model_registry.scc.utils import (
-    get_uid_from_namespace,
-    validate_pod_security_context,
-    KEYS_TO_VALIDATE,
-    validate_containers_pod_security_context,
-    get_pod_by_deployment_name,
     validate_deployment_scc,
     validate_pod_scc,
 )
-from tests.model_registry.constants import MODEL_DICT, MR_INSTANCE_NAME, MODEL_REGISTRY_POD_FILTER
 
-from kubernetes.dynamic import DynamicClient
 
 LOGGER = get_logger(name=__name__)
 
