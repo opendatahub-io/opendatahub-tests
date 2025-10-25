@@ -22,6 +22,7 @@ from tests.model_registry.rest_api.constants import (
     CUSTOM_PROPERTY,
     REGISTERED_MODEL_DESCRIPTION,
 )
+from tests.model_registry.constants import MR_DEFAULT_DB_OBJECTS
 from tests.model_registry.rest_api.utils import validate_resource_attributes
 from simple_logger.logger import get_logger
 
@@ -100,26 +101,26 @@ class TestModelRegistryCreationRest:
         )
 
     @pytest.mark.parametrize(
-        "kind, name_suffix",
+        "kind, resource_name",
         [
             pytest.param(
                 Secret,
-                "postgres-credentials",
+                MR_DEFAULT_DB_OBJECTS[Secret],
                 id="test_secret_default_db_exists",
             ),
             pytest.param(
                 Deployment,
-                "postgres",
+                MR_DEFAULT_DB_OBJECTS[Deployment],
                 id="test_deployment_default_db_exists",
             ),
             pytest.param(
                 Service,
-                "postgres",
+                MR_DEFAULT_DB_OBJECTS[Service],
                 id="test_service_default_db_exists",
             ),
             pytest.param(
                 PersistentVolumeClaim,
-                "postgres-storage",
+                MR_DEFAULT_DB_OBJECTS[PersistentVolumeClaim],
                 id="test_pvc_default_db_exists",
             ),
         ],
@@ -128,7 +129,7 @@ class TestModelRegistryCreationRest:
         self: Self,
         skip_if_not_default_db: None,
         kind: Any,
-        name_suffix: str,
+        resource_name: str,
         model_registry_instance: list[ModelRegistry],
         model_registry_namespace: str,
     ) -> None:
@@ -136,7 +137,6 @@ class TestModelRegistryCreationRest:
         Check resources created for default postgres database
         """
         model_registry = model_registry_instance[0]
-        resource_name = f"{model_registry.name}-{name_suffix}"
         resource = kind(name=resource_name, namespace=model_registry_namespace)
         if not resource.exists:
             pytest.fail(f"Resource: {resource_name} is not created, in {model_registry_namespace}")
