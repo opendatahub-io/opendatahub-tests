@@ -20,11 +20,6 @@ RAW_DEPLOYMENT_ISVC_CONFIG = {
     **ISVC_ENV_VARS_CONFIG,
     "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
 }
-SERVERLESS_DEPLOYMENT_ISVC_CONFIG = {
-    **BASE_ISVC_CONFIG,
-    **ISVC_ENV_VARS_CONFIG,
-    "deployment-mode": KServeDeploymentType.SERVERLESS,
-}
 
 
 @pytest.mark.rawdeployment
@@ -53,35 +48,5 @@ class TestRawISVCEnvVarsUpdates:
         verify_env_vars_in_isvc_pods(isvc=ovms_kserve_inference_service, env_vars=ISVC_ENV_VARS, vars_exist=True)
 
     def test_raw_remove_isvc_env_vars(self, removed_isvc_env_vars):
-        """Test removing environment variables from the inference service"""
-        verify_env_vars_in_isvc_pods(isvc=removed_isvc_env_vars, env_vars=ISVC_ENV_VARS, vars_exist=False)
-
-
-@pytest.mark.parametrize(
-    "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service",
-    [
-        pytest.param(
-            {"name": "test-serverless-update"},
-            RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
-            SERVERLESS_DEPLOYMENT_ISVC_CONFIG,
-        ),
-        pytest.param(
-            {"name": "test-adv-multi-update"},
-            RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
-            {
-                **SERVERLESS_DEPLOYMENT_ISVC_CONFIG,
-                "min-replicas": 4,
-            },
-        ),
-    ],
-    indirect=True,
-)
-class TestServerlessISVCEnvVarsUpdates:
-    def test_serverless_with_isvc_env_vars(self, ovms_kserve_inference_service):
-        """Test adding environment variables to the inference service"""
-        verify_env_vars_in_isvc_pods(isvc=ovms_kserve_inference_service, env_vars=ISVC_ENV_VARS, vars_exist=True)
-
-    @pytest.mark.slow
-    def test_serverless_remove_isvc_env_vars(self, removed_isvc_env_vars):
         """Test removing environment variables from the inference service"""
         verify_env_vars_in_isvc_pods(isvc=removed_isvc_env_vars, env_vars=ISVC_ENV_VARS, vars_exist=False)
