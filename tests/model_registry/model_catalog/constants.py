@@ -30,9 +30,11 @@ DEFAULT_CATALOGS: dict[str, Any] = {
         "labels": [REDHAT_AI_VALIDATED_CATALOG_NAME],
     },
 }
-REDHAT_AI_CATALOG_ID: str = next(iter(DEFAULT_CATALOGS))
+REDHAT_AI_CATALOG_ID: str = "redhat_ai_models"
 DEFAULT_CATALOG_FILE: str = DEFAULT_CATALOGS[REDHAT_AI_CATALOG_ID]["properties"]["yamlCatalogPath"]
-VALIDATED_CATALOG_ID: str = tuple(DEFAULT_CATALOGS.keys())[1]
+VALIDATED_CATALOG_ID: str = "redhat_ai_validated_models"
 
 REDHAT_AI_FILTER: str = "Red+Hat+AI"
 REDHAT_AI_VALIDATED_FILTER = "Red+Hat+AI+Validated"
+MODEL_ARTIFACT_TYPE: str = "model-artifact"
+METRICS_ARTIFACT_TYPE: str = "metrics-artifact"

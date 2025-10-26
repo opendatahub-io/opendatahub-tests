@@ -2,7 +2,13 @@ import pytest
 from typing import Self
 from simple_logger.logger import get_logger
 
-from tests.model_registry.model_catalog.utils import validate_filter_options_structure
+from tests.model_registry.model_catalog.utils import (
+    validate_filter_options_structure,
+    parse_psql_array_agg_output,
+    get_postgres_pod_in_namespace,
+    compare_filter_options_with_database,
+)
+from tests.model_registry.model_catalog.db_constants import FILTER_OPTIONS_DB_QUERY, API_EXCLUDED_FILTER_FIELDS
 from tests.model_registry.utils import get_rest_headers, execute_get_command
 from utilities.user_utils import UserTestSession
 
@@ -13,30 +19,30 @@ pytestmark = [
 ]
 
 
-@pytest.mark.parametrize(
-    "user_token_for_api_calls,",
-    [
-        pytest.param(
-            {},
-            id="test_filter_options_admin_user",
-        ),
-        pytest.param(
-            {"user_type": "test"},
-            id="test_filter_options_non_admin_user",
-        ),
-        pytest.param(
-            {"user_type": "sa_user"},
-            id="test_filter_options_service_account",
-        ),
-    ],
-    indirect=["user_token_for_api_calls"],
-)
 class TestFilterOptionsEndpoint:
     """
     Test class for validating the models/filter_options endpoint
     RHOAIENG-36696
     """
 
+    @pytest.mark.parametrize(
+        "user_token_for_api_calls,",
+        [
+            pytest.param(
+                {},
+                id="test_filter_options_admin_user",
+            ),
+            pytest.param(
+                {"user_type": "test"},
+                id="test_filter_options_non_admin_user",
+            ),
+            pytest.param(
+                {"user_type": "sa_user"},
+                id="test_filter_options_service_account",
+            ),
+        ],
+        indirect=["user_token_for_api_calls"],
+    )
     def test_filter_options_endpoint_validation(
         self: Self,
         model_catalog_rest_url: list[str],
@@ -74,48 +80,67 @@ class TestFilterOptionsEndpoint:
         LOGGER.info(f"Found {len(filters)} filter properties: {list(filters.keys())}")
         LOGGER.info("All filter options validation passed successfully")
 
-    @pytest.mark.skip(reason="TODO: Implement after investigating backend DB queries")
+    # Cannot use non-admin user for this test as it cannot list the pods in the namespace
+    @pytest.mark.parametrize(
+        "user_token_for_api_calls,",
+        [
+            pytest.param(
+                {},
+                id="test_filter_options_admin_user",
+            ),
+            pytest.param(
+                {"user_type": "sa_user"},
+                id="test_filter_options_service_account",
+            ),
+        ],
+        indirect=["user_token_for_api_calls"],
+    )
+    @pytest.mark.xfail(strict=True, reason="RHOAIENG-37069: backend/API discrepancy expected")
     def test_comprehensive_coverage_against_database(
         self: Self,
         model_catalog_rest_url: list[str],
         user_token_for_api_calls: str,
-        test_idp_user: UserTestSession,
+        model_registry_namespace: str,
     ):
         """
-        STUBBED: Validate filter options are comprehensive across all sources/models in DB.
+        Validate filter options are comprehensive across all sources/models in DB.
         Acceptance Criteria: The returned options are comprehensive and not limited to a
         subset of models or a single source.
 
-        TODO IMPLEMENTATION PLAN:
-        1. Investigate backend endpoint logic:
-           - Find the source code for /models/filter_options endpoint in kubeflow/model-registry
-           - Understand what DB tables it queries (likely model/artifact tables)
-           - Identify the exact SQL queries used to build filter values
-           - Determine database schema and column names
+        This test executes the exact same SQL query the API uses and compares results
+        to catch any discrepancies between database content and API response.
 
-        2. Replicate queries via pod shell:
-           - Use get_model_catalog_pod() to access catalog pod
-           - Execute psql commands via pod.execute()
-           - Query same tables/columns the endpoint uses
-           - Extract all distinct values for string properties: SELECT DISTINCT license FROM models;
-           - Extract min/max ranges for numeric properties: SELECT MIN(metric), MAX(metric) FROM models;
-
-        3. Compare results:
-           - API response filter values should match DB query results exactly
-           - Ensure no values are missing (comprehensive coverage)
-           - Validate across all sources, not just one
-
-        4. DB Access Pattern Example:
-           catalog_pod = get_model_catalog_pod(client, namespace)[0]
-           result = catalog_pod.execute(
-               command=["psql", "-U", "catalog_user", "-d", "catalog_db", "-c", "SELECT DISTINCT license FROM models;"],
-               container="catalog"
-           )
-
-        5. Implementation considerations:
-           - Handle different data types (strings vs arrays like tasks)
-           - Parse psql output correctly
-           - Handle null/empty values
-           - Ensure database connection credentials are available
+        Expected failure because of RHOAIENG-37069 & RHOAIENG-37226
         """
-        pytest.skip("TODO: Implement comprehensive coverage validation after backend investigation")
+        api_url = f"{model_catalog_rest_url[0]}models/filter_options"
+        LOGGER.info(f"Testing comprehensive database coverage for: {api_url}")
+
+        api_response = execute_get_command(
+            url=api_url,
+            headers=get_rest_headers(token=user_token_for_api_calls),
+        )
+
+        api_filters = api_response["filters"]
+        LOGGER.info(f"API returned {len(api_filters)} filter properties: {list(api_filters.keys())}")
+
+        postgres_pod = get_postgres_pod_in_namespace(namespace=model_registry_namespace)
+        LOGGER.info(f"Using PostgreSQL pod: {postgres_pod.name}")
+
+        db_result = postgres_pod.execute(
+            command=["psql", "-U", "catalog_user", "-d", "model_catalog", "-c", FILTER_OPTIONS_DB_QUERY],
+            container="postgresql",
+        )
+
+        db_properties = parse_psql_array_agg_output(psql_output=db_result)
+        LOGGER.info(f"Raw database query returned {len(db_properties)} properties: {list(db_properties.keys())}")
+
+        is_valid, comparison_errors = compare_filter_options_with_database(
+            api_filters=api_filters, db_properties=db_properties, excluded_fields=API_EXCLUDED_FILTER_FIELDS
+        )
+
+        if not is_valid:
+            failure_msg = "Filter options API response does not match database content"
+            failure_msg += "\nDetailed comparison errors:\n" + "\n".join(comparison_errors)
+            assert False, failure_msg
+
+        LOGGER.info("Comprehensive database coverage validation passed - API matches database exactly")
