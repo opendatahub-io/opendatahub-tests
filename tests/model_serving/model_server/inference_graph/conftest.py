@@ -95,7 +95,7 @@ def dog_cat_inference_service(
         storage_key=models_endpoint_s3_secret.name,
         storage_path=ModelStoragePath.CAT_DOG_ONNX,
         model_format=ModelFormat.ONNX,
-        deployment_mode=KServeDeploymentType.SERVERLESS,
+        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         protocol_version="v2",
     ) as isvc:
         yield isvc
@@ -116,7 +116,7 @@ def dog_breed_inference_service(
         storage_key=models_endpoint_s3_secret.name,
         storage_path=ModelStoragePath.DOG_BREED_ONNX,
         model_format=ModelFormat.ONNX,
-        deployment_mode=KServeDeploymentType.SERVERLESS,
+        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         protocol_version="v2",
     ) as isvc:
         yield isvc

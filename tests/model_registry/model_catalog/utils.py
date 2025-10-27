@@ -244,7 +244,141 @@ def validate_model_catalog_configmap_data(configmap: ConfigMap, num_catalogs: in
         validate_default_catalog(catalogs=catalogs)
 
 
-def get_models_from_api(
+def parse_psql_array_agg_output(psql_output: str) -> dict[str, list[str]]:
+    """
+    Parse psql output from array_agg query into Python dict.
+
+    Expected format:
+        name     | array_agg
+        ---------+----------
+        license  | {apache-2.0,mit,bsd}
+        provider | {Meta,Microsoft}
+
+    Returns:
+        dict mapping property names to lists of values
+    """
+    result = {}
+    lines = psql_output.strip().split("\n")
+
+    # Skip header lines (first 2-3 lines are typically headers and separators)
+    data_started = False
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("-") or "|" not in line:
+            continue
+
+        # Skip header row
+        if "array_agg" in line and not data_started:
+            data_started = True
+            continue
+
+        if not data_started:
+            continue
+
+        # Parse data row: "property_name | {val1,val2,val3}"
+        parts = line.split("|", 1)
+        if len(parts) != 2:
+            continue
+
+        property_name = parts[0].strip()
+        array_str = parts[1].strip()
+
+        # Parse PostgreSQL array format: {val1,val2,val3}
+        if array_str.startswith("{") and array_str.endswith("}"):
+            # Remove braces and split by comma
+            values_str = array_str[1:-1]
+            if values_str:
+                # Handle escaped commas and quotes properly
+                values = [v.strip().strip('"') for v in values_str.split(",")]
+                result[property_name] = values
+            else:
+                result[property_name] = []
+
+    return result
+
+
+def get_postgres_pod_in_namespace(namespace: str = "rhoai-model-registries") -> Pod:
+    """Get the PostgreSQL pod for model catalog database."""
+    postgres_pods = list(Pod.get(namespace=namespace, label_selector="app.kubernetes.io/name=model-catalog-postgres"))
+    assert postgres_pods, f"No PostgreSQL pod found in namespace {namespace}"
+    return postgres_pods[0]
+
+
+def compare_filter_options_with_database(
+    api_filters: dict[str, Any], db_properties: dict[str, list[str]], excluded_fields: set[str]
+) -> Tuple[bool, List[str]]:
+    """
+    Compare API filter options response with database query results.
+
+    Note: Currently assumes all properties are string types. Numeric/range
+    properties are not returned by the API or DB query at this time.
+
+    Args:
+        api_filters: The "filters" dict from API response
+        db_properties: Raw database properties before API filtering
+        excluded_fields: Fields that API excludes from response
+
+    Returns:
+        Tuple of (is_valid, list_of_error_messages)
+    """
+    comparison_errors = []
+
+    # Apply the same filtering logic the API uses
+    expected_properties = {name: values for name, values in db_properties.items() if name not in excluded_fields}
+
+    LOGGER.info(f"Database returned {len(db_properties)} total properties")
+    LOGGER.info(
+        f"After applying API filtering, expecting {len(expected_properties)} properties: {list(expected_properties.keys())}"  # noqa: E501
+    )
+
+    # Check for missing/extra properties
+    missing_in_api = set(expected_properties.keys()) - set(api_filters.keys())
+    extra_in_api = set(api_filters.keys()) - set(expected_properties.keys())
+
+    # Log detailed comparison for each property
+    for prop_name in sorted(set(expected_properties.keys()) | set(api_filters.keys())):
+        if prop_name in expected_properties and prop_name in api_filters:
+            db_values = set(expected_properties[prop_name])
+            api_values = set(api_filters[prop_name]["values"])
+
+            missing_values = db_values - api_values
+            extra_values = api_values - db_values
+
+            if missing_values:
+                error_msg = (
+                    f"Property '{prop_name}': DB has {len(missing_values)} values missing from API: {missing_values}"
+                )
+                LOGGER.error(error_msg)
+                comparison_errors.append(error_msg)
+            if extra_values:
+                error_msg = (
+                    f"Property '{prop_name}': API has {len(extra_values)} values missing from DB: {extra_values}"
+                )
+                LOGGER.error(error_msg)
+                comparison_errors.append(error_msg)
+            if not missing_values and not extra_values:
+                LOGGER.info(f"Property '{prop_name}': Perfect match ({len(api_values)} values)")
+        elif prop_name in expected_properties:
+            error_msg = f"Property '{prop_name}': In DB ({len(expected_properties[prop_name])} values) but NOT in API"
+            LOGGER.error(error_msg)
+            comparison_errors.append(error_msg)
+        elif prop_name in api_filters:
+            error_msg = f"Property '{prop_name}': In API ({len(api_filters[prop_name]['values'])} values) but NOT in DB"
+            LOGGER.error(error_msg)
+            comparison_errors.append(error_msg)
+
+    # Check for property-level mismatches
+    if missing_in_api:
+        comparison_errors.append(f"API missing properties found in database: {missing_in_api}")
+
+    if extra_in_api:
+        comparison_errors.append(f"API has extra properties not in database: {extra_in_api}")
+
+    is_valid = len(comparison_errors) == 0
+    return is_valid, comparison_errors
+
+
+def get_models_from_catalog_api(
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
     page_size: int = 100,
@@ -252,7 +386,7 @@ def get_models_from_api(
     additional_params: str = "",
 ) -> dict[str, Any]:
     """
-    Helper method to get models from API with optional filtering
+    Helper method to get models from catalog API with optional filtering
 
     Args:
         model_catalog_rest_url: REST URL for model catalog
@@ -272,3 +406,37 @@ def get_models_from_api(
     url += additional_params
 
     return execute_get_command(url=url, headers=model_registry_rest_headers)
+
+
+def fetch_all_artifacts_with_dynamic_paging(
+    url_with_pagesize: str,
+    headers: dict[str, str],
+    page_size: int = 100,
+    page_size_increment: int = 50,
+) -> dict[str, Any]:
+    """
+    Fetch all artifacts from an endpoint with dynamic page size adjustment.
+
+    If pagination is detected (nextPageToken present), automatically increases
+    page size and retries until all items fit in a single page.
+
+    Args:
+        url_with_pagesize: The paginated URL with pageSize parameter
+        headers: Request headers
+        page_size: Starting page size (default: 100)
+        page_size_increment: Amount to increase page size on each retry (default: 50)
+
+    Returns:
+        The complete API response with all items in a single page
+    """
+
+    while True:
+        paginated_url = f"{url_with_pagesize}={page_size}"
+        response = execute_get_command(url=paginated_url, headers=headers)
+
+        if not response.get("nextPageToken"):
+            LOGGER.info(f"Fetched {len(response.get('items', []))} items with pageSize={page_size}")
+            return response
+
+        LOGGER.info(f"Pagination detected with pageSize={page_size}, increasing by {page_size_increment}")
+        page_size += page_size_increment
