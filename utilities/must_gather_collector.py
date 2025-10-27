@@ -82,6 +82,7 @@ def run_must_gather(
     since: str = "1m",
     component_name: str = "",
     namespaces_dict: dict[str, str] | None = None,
+    timeout: int = 900,
 ) -> str:
     """
     Process the arguments to build must-gather command and run the same
@@ -89,10 +90,11 @@ def run_must_gather(
     Args:
          image_url (str): must-gather image url
          target_dir (str): must-gather target directory
-         since (str): duration in seconds for must-gather log collection
+         since (str): duration in seconds -s, minutes -m for must-gather log collection
          component_name (str): must-gather component name
          namespaces_dict (dict[str, str] | None): namespaces dict for extra data collection from different component
             namespaces
+         timeout (int): timeout in seconds for must-gather command execution
 
     Returns:
         str: must-gather output
@@ -129,7 +131,7 @@ def run_must_gather(
             namespace_str += f"export AUTH_NS={shlex.quote(namespaces_dict['auth'])};"
         must_gather_command += f" -- '{namespace_str} /usr/bin/gather'"
 
-    return run_command(command=shlex.split(must_gather_command), check=False)[1]
+    return run_command(command=shlex.split(must_gather_command), check=False, timeout=timeout)[1]
 
 
 def get_must_gather_image_info(architecture: str = "linux/amd64") -> str:
