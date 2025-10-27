@@ -267,7 +267,10 @@ class UserInference(Inference):
         endpoint = Template(self.runtime_config["endpoint"]).safe_substitute(model_name=self.inference_service.name)
 
         if self.protocol in Protocols.TCP_PROTOCOLS:
-            return f"{self.protocol}://{self.get_inference_url()}/{endpoint}"
+            # When using port-forward (internal/non-exposed services), always use HTTP
+            # because port-forward connects directly to the container port which serves HTTP
+            protocol = Protocols.HTTP if not self.visibility_exposed else self.protocol
+            return f"{protocol}://{self.get_inference_url()}/{endpoint}"
 
         elif self.protocol == "grpc":
             return f"{self.get_inference_url()}{':443' if self.visibility_exposed else ''} {endpoint}"
