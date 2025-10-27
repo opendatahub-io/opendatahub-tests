@@ -125,7 +125,7 @@ def randomly_picked_model_from_catalog_api_by_source(
     user_token_for_api_calls: str,
     model_registry_rest_headers: dict[str, str],
     request: pytest.FixtureRequest,
-) -> dict[Any, Any]:
+) -> tuple[dict[Any, Any], str, str]:
     """Pick a random model from a specific catalog (function-scoped for test isolation)
 
     Supports parameterized headers via 'header_type':
@@ -155,7 +155,14 @@ def randomly_picked_model_from_catalog_api_by_source(
     assert models, f"No models found for catalog: {catalog_id}"
     LOGGER.info(f"{len(models)} models found in catalog {catalog_id}")
 
-    return random.choice(seq=models)
+    random_model = random.choice(seq=models)
+
+    model_name = random_model.get("name")
+    assert model_name, "Model name not found in random model"
+    assert random_model.get("source_id") == catalog_id, f"Catalog ID (source_id) mismatch for model {model_name}"
+    LOGGER.info(f"Testing model '{model_name}' from catalog '{catalog_id}'")
+
+    return random_model, model_name, catalog_id
 
 
 @pytest.fixture(scope="class")
