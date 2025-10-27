@@ -368,13 +368,7 @@ def pytest_runtest_setup(item: Item) -> None:
         except Exception as db_exception:
             LOGGER.error(f"Database error: {db_exception}. Must-gather collection may not be accurate")
 
-    if KServeDeploymentType.SERVERLESS.lower() in item.keywords:
-        item.fixturenames.insert(0, "fail_if_missing_dependent_operators")
-
-    if KServeDeploymentType.SERVERLESS.lower() in item.keywords:
-        item.fixturenames.insert(0, "enabled_kserve_in_dsc")
-
-    elif KServeDeploymentType.RAW_DEPLOYMENT.lower() in item.keywords:
+    if KServeDeploymentType.RAW_DEPLOYMENT.lower() in item.keywords:
         item.fixturenames.insert(0, "enabled_kserve_in_dsc")
 
     elif KServeDeploymentType.MODEL_MESH.lower() in item.keywords:

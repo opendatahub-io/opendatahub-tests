@@ -20,9 +20,8 @@ from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
             {
                 # Using mnist-8-1 model from OCI image
                 "storage-uri": ModelCarImage.MNIST_8_1,
-                "deployment-mode": KServeDeploymentType.SERVERLESS,
+                "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
             },
-            marks=[pytest.mark.serverless],
         ),
         pytest.param(
             {"name": f"{ModelFormat.OPENVINO}-model-car"},
