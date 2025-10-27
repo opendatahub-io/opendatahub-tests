@@ -74,7 +74,7 @@ SAMPLE_MODEL_NAME1 = "mistralai/Mistral-7B-Instruct-v0.3"
 CUSTOM_CATALOG_ID1: str = "sample_custom_catalog1"
 DEFAULT_MODEL_CATALOG_CM: str = "model-catalog-default-sources"
 KUBERBACPROXY_STR: str = "KubeRBACProxyAvailable"
-MR_DEFAULT_DB_OBJECTS: dict[Any, str] = {
+MR_POSTGRES_DB_OBJECT: dict[Any, str] = {
     Service: f"{MR_INSTANCE_NAME}-postgres",
     PersistentVolumeClaim: f"{MR_INSTANCE_NAME}-postgres-storage",
     Deployment: f"{MR_INSTANCE_NAME}-postgres",

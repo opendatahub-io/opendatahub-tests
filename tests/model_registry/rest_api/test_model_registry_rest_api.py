@@ -22,7 +22,7 @@ from tests.model_registry.rest_api.constants import (
     CUSTOM_PROPERTY,
     REGISTERED_MODEL_DESCRIPTION,
 )
-from tests.model_registry.constants import MR_DEFAULT_DB_OBJECTS
+from tests.model_registry.constants import MR_POSTGRES_DB_OBJECT
 from tests.model_registry.rest_api.utils import validate_resource_attributes
 from simple_logger.logger import get_logger
 
@@ -105,22 +105,22 @@ class TestModelRegistryCreationRest:
         [
             pytest.param(
                 Secret,
-                MR_DEFAULT_DB_OBJECTS[Secret],
+                MR_POSTGRES_DB_OBJECT[Secret],
                 id="test_secret_default_db_exists",
             ),
             pytest.param(
                 Deployment,
-                MR_DEFAULT_DB_OBJECTS[Deployment],
+                MR_POSTGRES_DB_OBJECT[Deployment],
                 id="test_deployment_default_db_exists",
             ),
             pytest.param(
                 Service,
-                MR_DEFAULT_DB_OBJECTS[Service],
+                MR_POSTGRES_DB_OBJECT[Service],
                 id="test_service_default_db_exists",
             ),
             pytest.param(
                 PersistentVolumeClaim,
-                MR_DEFAULT_DB_OBJECTS[PersistentVolumeClaim],
+                MR_POSTGRES_DB_OBJECT[PersistentVolumeClaim],
                 id="test_pvc_default_db_exists",
             ),
         ],

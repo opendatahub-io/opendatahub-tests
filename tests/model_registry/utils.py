@@ -24,7 +24,7 @@ from tests.model_registry.constants import (
     MARIADB_MY_CNF,
     PORT_MAP,
     MODEL_REGISTRY_POD_FILTER,
-    MR_DEFAULT_DB_OBJECTS,
+    MR_POSTGRES_DB_OBJECT,
 )
 from tests.model_registry.exceptions import ModelRegistryResourceNotFoundError
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
@@ -782,8 +782,8 @@ class ResourceNotDeleted(Exception):
 def wait_for_default_resource_cleanedup(admin_client: DynamicClient, namespace_name: str) -> bool:
     objects_not_deleted = []
     for kind in [Service, PersistentVolumeClaim, Deployment, Secret]:
-        LOGGER.info(f"Checking if {kind} {MR_DEFAULT_DB_OBJECTS[kind]} is deleted")
-        kind_obj = kind(client=admin_client, namespace=namespace_name, name=MR_DEFAULT_DB_OBJECTS[kind])
+        LOGGER.info(f"Checking if {kind} {MR_POSTGRES_DB_OBJECT[kind]} is deleted")
+        kind_obj = kind(client=admin_client, namespace=namespace_name, name=MR_POSTGRES_DB_OBJECT[kind])
         if kind_obj.exists:
             objects_not_deleted.append(f"{kind_obj.kind} - {kind_obj.name}")
     if not objects_not_deleted:
