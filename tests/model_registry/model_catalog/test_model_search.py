@@ -98,14 +98,13 @@ class TestSearchModelCatalog:
         self: Self,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
-        randomly_picked_model_from_catalog_api_by_source: dict[Any, Any],
+        randomly_picked_model_from_catalog_api_by_source: tuple[dict[Any, Any], str, str],
         source_filter: str,
     ):
         """
         RHOAIENG-33656: Validate search model catalog by match
         """
-        random_model = randomly_picked_model_from_catalog_api_by_source
-        random_model_name = random_model["name"]
+        random_model, random_model_name, _ = randomly_picked_model_from_catalog_api_by_source
         LOGGER.info(f"random_model_name: {random_model_name}")
         result = get_models_from_catalog_api(
             model_catalog_rest_url=model_catalog_rest_url,
@@ -159,17 +158,15 @@ class TestSearchModelArtifact:
         self: Self,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
-        randomly_picked_model_from_catalog_api_by_source: dict[Any, Any],
+        randomly_picked_model_from_catalog_api_by_source: tuple[dict[Any, Any], str, str],
         artifact_type: str,
     ):
         """
         RHOAIENG-33659: Validates that the model artifacts returned by the artifactType filter
         match the complete set of artifacts for a random model.
         """
-        model_name = randomly_picked_model_from_catalog_api_by_source.get("name")
-        catalog_id = randomly_picked_model_from_catalog_api_by_source.get("source_id")
-        assert model_name and catalog_id, "Model name or catalog ID not found in random model"
-        LOGGER.info(f"Testing model '{model_name}' from catalog '{catalog_id}' for artifact type '{artifact_type}'")
+        _, model_name, catalog_id = randomly_picked_model_from_catalog_api_by_source
+        LOGGER.info(f"Artifact type: '{artifact_type}'")
 
         # Fetch all artifacts with dynamic page size adjustment
         all_model_artifacts = fetch_all_artifacts_with_dynamic_paging(
@@ -226,17 +223,16 @@ class TestSearchModelArtifact:
         self: Self,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
-        randomly_picked_model_from_catalog_api_by_source: dict[Any, Any],
+        randomly_picked_model_from_catalog_api_by_source: tuple[dict[Any, Any], str, str],
     ):
         """
         RHOAIENG-33659: Validates that the API returns the correct error when an invalid artifactType
         is provided regardless of catalog or model.
         """
-        model_name = randomly_picked_model_from_catalog_api_by_source.get("name")
-        catalog_id = randomly_picked_model_from_catalog_api_by_source.get("source_id")
-        assert model_name and catalog_id, "Model name or catalog ID not found in random model"
+        _, model_name, catalog_id = randomly_picked_model_from_catalog_api_by_source
 
         invalid_artifact_type = "invalid"
+        LOGGER.info(f"Testing invalid artifact type: '{invalid_artifact_type}'")
 
         with pytest.raises(ResourceNotFoundError, match=f"unsupported catalog artifact type: {invalid_artifact_type}"):
             fetch_all_artifacts_with_dynamic_paging(
@@ -268,17 +264,15 @@ class TestSearchModelArtifact:
         self: Self,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
-        randomly_picked_model_from_catalog_api_by_source: dict[Any, Any],
+        randomly_picked_model_from_catalog_api_by_source: tuple[dict[Any, Any], str, str],
     ):
         """
         RHOAIENG-33659: Validates that the API returns all artifacts of a random model
         when filtering by multiple artifact types.
         """
-        model_name = randomly_picked_model_from_catalog_api_by_source.get("name")
-        catalog_id = randomly_picked_model_from_catalog_api_by_source.get("source_id")
-        assert model_name and catalog_id, "Model name or catalog ID not found in random model"
-        LOGGER.info(f"Testing model '{model_name}' from catalog '{catalog_id}' for multiple artifact types")
+        _, model_name, catalog_id = randomly_picked_model_from_catalog_api_by_source
         artifact_types = f"{METRICS_ARTIFACT_TYPE},{MODEL_ARTIFACT_TYPE}"
+        LOGGER.info(f"Testing multiple artifact types: '{artifact_types}'")
         # Fetch all artifacts with dynamic page size adjustment
         all_model_artifacts = fetch_all_artifacts_with_dynamic_paging(
             url_with_pagesize=f"{model_catalog_rest_url[0]}sources/{catalog_id}/models/{model_name}/artifacts?pageSize",
