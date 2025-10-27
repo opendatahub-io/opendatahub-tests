@@ -17,13 +17,11 @@ from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
 from utilities.monitoring import get_metrics_value, validate_metrics_field
 
 pytestmark = [
-    pytest.mark.serverless,
     pytest.mark.usefixtures("valid_aws_config", "user_workload_monitoring_config_map"),
     pytest.mark.metrics,
 ]
 
 
-@pytest.mark.serverless
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, serving_runtime_from_template, s3_models_inference_service",
     [
@@ -37,7 +35,7 @@ pytestmark = [
             },
             {
                 "name": f"{Protocols.HTTP}-{ModelFormat.CAIKIT}",
-                "deployment-mode": KServeDeploymentType.SERVERLESS,
+                "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
                 "model-dir": ModelStoragePath.FLAN_T5_SMALL_CAIKIT,
             },
         )
@@ -53,7 +51,7 @@ class TestModelMetrics:
             inference_service=s3_models_inference_service,
             inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
             inference_type=Inference.ALL_TOKENS,
-            protocol=Protocols.HTTPS,
+            protocol=Protocols.HTTP,
             model_name=ModelFormat.CAIKIT,
             use_default_query=True,
         )
@@ -73,7 +71,7 @@ class TestModelMetrics:
             isvc=s3_models_inference_service,
             inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
             inference_type=Inference.ALL_TOKENS,
-            protocol=Protocols.HTTPS,
+            protocol=Protocols.HTTP,
             model_name=ModelFormat.CAIKIT,
             iterations=total_runs,
             run_in_parallel=True,
