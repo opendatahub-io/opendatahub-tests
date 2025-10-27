@@ -23,6 +23,7 @@ from kubernetes.dynamic.exceptions import (
 )
 from ocp_resources.catalog_source import CatalogSource
 from ocp_resources.cluster_service_version import ClusterServiceVersion
+from ocp_resources.cluster_version import ClusterVersion
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.config_imageregistry_operator_openshift_io import Config
 from ocp_resources.console_cli_download import ConsoleCLIDownload
@@ -609,6 +610,16 @@ def get_openshift_token() -> str:
 
     """
     return run_command(command=shlex.split("oc whoami -t"))[1].strip()
+
+
+@cache
+def get_openshift_version(admin_client: DynamicClient) -> Version:
+    """Get the OpenShift cluster version."""
+    cluster_version = ClusterVersion(client=admin_client, name="version")
+    if not cluster_version:
+        raise MissingResourceError("ClusterVersion not found")
+
+    return Version.parse(version=str(cluster_version.instance.status.desired.version))
 
 
 def get_kserve_storage_initialize_image(client: DynamicClient) -> str:

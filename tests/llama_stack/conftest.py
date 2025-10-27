@@ -19,8 +19,10 @@ from tests.llama_stack.utils import (
 from utilities.constants import DscComponents, Timeout
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from tests.llama_stack.constants import (
+    LLS_OPENSHIFT_MINIMAL_VERSION,
     ModelInfo,
 )
+from utilities.infra import get_openshift_version
 
 
 LOGGER = get_logger(name=__name__)
@@ -214,6 +216,19 @@ def _get_llama_stack_distribution_deployment(
 
     deployment.wait(timeout=Timeout.TIMEOUT_2MIN)
     yield deployment
+
+
+@pytest.fixture(scope="session", autouse=True)
+def skip_llama_stack_if_not_supported_openshift_version(admin_client: DynamicClient) -> None:
+    """Skip llama-stack tests if OpenShift version is not supported (< 4.17) by llama-stack-operator"""
+    version = get_openshift_version(admin_client=admin_client)
+    if version < LLS_OPENSHIFT_MINIMAL_VERSION:
+        message = (
+            f"Skipping llama-stack tests, as llama-stack-operator is not supported "
+            f"on OpenShift {version} ({LLS_OPENSHIFT_MINIMAL_VERSION} or newer required)"
+        )
+        LOGGER.info(message)
+        pytest.skip(reason=message)
 
 
 @pytest.fixture(scope="class")
