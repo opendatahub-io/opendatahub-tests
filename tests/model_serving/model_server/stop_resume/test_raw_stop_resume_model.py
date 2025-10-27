@@ -11,7 +11,7 @@ from utilities.inference_utils import Inference
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 from tests.model_serving.model_server.stop_resume.utils import consistently_verify_no_pods_exist
 
-pytestmark = [pytest.mark.serverless, pytest.mark.usefixtures("valid_aws_config")]
+pytestmark = [pytest.mark.usefixtures("valid_aws_config")]
 
 
 @pytest.mark.rawdeployment
