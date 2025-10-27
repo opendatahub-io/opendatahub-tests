@@ -91,7 +91,7 @@ def create_vllm_spyre_serving_runtime(vllm_runtime_image: str) -> dict[str, Any]
 
     supported_model_formats: List[Dict[str, Any]] = [
         {
-            "name": "vLLM",
+            "name": "vllm",
             "autoSelect": True,
         }
     ]

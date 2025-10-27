@@ -111,10 +111,6 @@ def vllm_spyre_runtime_template(
     supported_accelerator_type: str,
     vllm_runtime_image: str,
 ) -> Generator[Template, None, None]:
-    accelerator_type = supported_accelerator_type.lower()
-    if accelerator_type != "spyre":
-        yield None
-        return
     with create_vllm_spyre_template(admin_client=admin_client, vllm_runtime_image=vllm_runtime_image) as template:
         yield template
 
