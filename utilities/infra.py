@@ -612,11 +612,10 @@ def get_openshift_token() -> str:
     return run_command(command=shlex.split("oc whoami -t"))[1].strip()
 
 
-@cache
 def get_openshift_version(admin_client: DynamicClient) -> Version:
     """Get the OpenShift cluster version."""
     cluster_version = ClusterVersion(client=admin_client, name="version", ensure_exists=True)
-    return Version.parse(version=str(cluster_version.instance.status.desired.version))
+    return Version.parse(version=str(cluster_version.instance.status.history[0].version))
 
 
 def get_kserve_storage_initialize_image(client: DynamicClient) -> str:
