@@ -124,8 +124,13 @@ def validate_deployment_scc(deployment: Deployment) -> None:
 
     error = []
     for container in deployment.instance.spec.template.spec.containers:
-        if not all([True for key in KEYS_TO_VALIDATE if not container.get(key)]):
-            error.append({container.name: container.securityContext})
+        container_security_context = container.securityContext
+        LOGGER.info(f"Container security context validation for {container.name}")
+        if not container_security_context:
+            LOGGER.info(f"No container security context exists for {container.name}")
+        else:
+            if not all([True for key in ["runAsGroup", "runAsUser"] if not container_security_context.get(key)]):
+                error.append({container.name: container.securityContext})
 
     if error:
         raise AssertionError(

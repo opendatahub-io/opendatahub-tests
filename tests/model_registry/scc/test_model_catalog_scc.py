@@ -19,6 +19,7 @@ LOGGER = get_logger(name=__name__)
     "updated_dsc_component_state_scope_session",
 )
 @pytest.mark.custom_namespace
+@pytest.mark.skip_must_gather
 class TestModelCatalogSecurityContextValidation:
     @pytest.mark.parametrize(
         "deployment_model_registry_ns",

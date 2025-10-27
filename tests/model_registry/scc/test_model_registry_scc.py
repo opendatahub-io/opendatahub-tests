@@ -5,6 +5,7 @@ from simple_logger.logger import get_logger
 
 from ocp_resources.pod import Pod
 from ocp_resources.deployment import Deployment
+from tests.model_registry.scc.constants import MR_POSTGRES_DEPLOYMENT_NAME_STR
 from tests.model_registry.scc.utils import (
     validate_deployment_scc,
     validate_pod_scc,
@@ -13,9 +14,6 @@ from tests.model_registry.constants import MR_INSTANCE_NAME
 
 
 LOGGER = get_logger(name=__name__)
-
-MODEL_CATALOG_STR = "model-catalog"
-MR_POSTGRES_DEPLOYMENT_NAME_STR = f"{MR_INSTANCE_NAME}-postgres"
 
 
 @pytest.mark.parametrize(
@@ -32,6 +30,7 @@ MR_POSTGRES_DEPLOYMENT_NAME_STR = f"{MR_INSTANCE_NAME}-postgres"
     "model_registry_instance",
 )
 @pytest.mark.custom_namespace
+@pytest.mark.skip_must_gather
 class TestModelRegistrySecurityContextValidation:
     @pytest.mark.parametrize(
         "deployment_model_registry_ns",
