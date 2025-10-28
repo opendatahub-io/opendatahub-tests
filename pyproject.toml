@@ -69,7 +69,7 @@ dependencies = [
     "marshmallow==3.26.1,<4", # this version is needed for pytest-jira
     "pytest-html>=4.1.1",
     "fire",
-    "llama_stack_client>=0.3.0<0.4",
+    "llama_stack_client>=0.3.0,<0.4",
     "pytest-xdist==3.8.0",
     "dictdiffer>=0.9.0",
 ]
