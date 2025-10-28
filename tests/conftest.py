@@ -639,7 +639,10 @@ def openshift_version(admin_client: DynamicClient) -> Version:
     if not cluster_version.instance.status.history:
         raise ValueError("ClusterVersion history is empty")
 
-    return Version.parse(version=str(cluster_version.instance.status.history[0].version))
+    try:
+        return Version.parse(version=str(cluster_version.instance.status.history[0].version))
+    except (ValueError, TypeError) as e:
+        raise ValueError(f"Failed to parse OpenShift version: {e}") from e
 
 
 @pytest.fixture(scope="session")
