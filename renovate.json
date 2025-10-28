@@ -8,7 +8,8 @@
   ],
   "prConcurrentLimit": 0,
   "lockFileMaintenance": {
-    "enabled": true
+    "enabled": true,
+    "dependencyDashboardApproval": false
   },
   "baseBranches": ["main"],
   "recreateWhen": "never",
@@ -33,7 +34,8 @@
         "matchManagers": ["github-actions"],
         "matchFileNames": [".github/workflows/**"],
         "schedule": ["before 6pm on wednesday"],
-        "prPriority": 5
+        "prPriority": 5,
+        "dependencyDashboardApproval": false
       }
   ]
 }

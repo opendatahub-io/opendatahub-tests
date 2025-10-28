@@ -51,14 +51,14 @@ class TestNotebook:
         [
             pytest.param(
                 {
-                    "name": "test-oauth-notebook",
+                    "name": "test-auth-notebook",
                     "add-dashboard-label": True,
                 },
-                {"name": "test-oauth-notebook"},
+                {"name": "test-auth-notebook"},
                 {
-                    "namespace": "test-oauth-notebook",
-                    "name": "test-oauth-notebook",
-                    "oauth_annotations": {
+                    "namespace": "test-auth-notebook",
+                    "name": "test-auth-notebook",
+                    "auth_annotations": {
                         "notebooks.opendatahub.io/auth-sidecar-cpu-request": "200m",
                         "notebooks.opendatahub.io/auth-sidecar-memory-request": "128Mi",
                         "notebooks.opendatahub.io/auth-sidecar-cpu-limit": "500m",
@@ -69,7 +69,7 @@ class TestNotebook:
         ],
         indirect=True,
     )
-    def test_oauth_container_resource_customization(
+    def test_auth_container_resource_customization(
         self,
         unprivileged_client: DynamicClient,
         unprivileged_model_namespace: Namespace,
@@ -77,10 +77,10 @@ class TestNotebook:
         default_notebook: Notebook,
     ):
         """
-        Test that OAuth container resource requests and limits can be customized using annotations.
+        Test that Auth container resource requests and limits can be customized using annotations.
 
-        This test verifies that when a Notebook CR is created with custom OAuth container resource
-        annotations, the spawned pod has the OAuth container with the specified resource values.
+        This test verifies that when a Notebook CR is created with custom Auth container resource
+        annotations, the spawned pod has the Auth container with the specified resource values.
         """
         notebook_pod = Pod(
             client=unprivileged_client,
@@ -90,42 +90,42 @@ class TestNotebook:
         notebook_pod.wait()
         notebook_pod.wait_for_condition(condition=Pod.Condition.READY, status=Pod.Condition.Status.TRUE)
 
-        # Verify OAuth container has the expected resource values
-        oauth_container = self._get_oauth_container(pod=notebook_pod)
-        assert oauth_container, "OAuth proxy container not found in the pod"
+        # Verify Auth container has the expected resource values
+        auth_container = self._get_auth_container(pod=notebook_pod)
+        assert auth_container, "Auth proxy container not found in the pod"
 
         # Check CPU request
-        assert oauth_container.resources.requests["cpu"] == "200m", (
-            f"Expected CPU request '200m', got '{oauth_container.resources.requests['cpu']}'"
+        assert auth_container.resources.requests["cpu"] == "200m", (
+            f"Expected CPU request '200m', got '{auth_container.resources.requests['cpu']}'"
         )
 
         # Check memory request
-        assert oauth_container.resources.requests["memory"] == "128Mi", (
-            f"Expected memory request '128Mi', got '{oauth_container.resources.requests['memory']}'"
+        assert auth_container.resources.requests["memory"] == "128Mi", (
+            f"Expected memory request '128Mi', got '{auth_container.resources.requests['memory']}'"
         )
 
         # Check CPU limit
-        assert oauth_container.resources.limits["cpu"] == "500m", (
-            f"Expected CPU limit '500m', got '{oauth_container.resources.limits['cpu']}'"
+        assert auth_container.resources.limits["cpu"] == "500m", (
+            f"Expected CPU limit '500m', got '{auth_container.resources.limits['cpu']}'"
         )
 
         # Check memory limit
-        assert oauth_container.resources.limits["memory"] == "256Mi", (
-            f"Expected memory limit '256Mi', got '{oauth_container.resources.limits['memory']}'"
+        assert auth_container.resources.limits["memory"] == "256Mi", (
+            f"Expected memory limit '256Mi', got '{auth_container.resources.limits['memory']}'"
         )
 
-    def _get_oauth_container(self, pod: Pod):
+    def _get_auth_container(self, pod: Pod):
         """
-        Find and return the OAuth proxy container from the pod spec.
+        Find and return the Auth proxy container from the pod spec.
 
         Args:
             pod: The pod instance to search
 
         Returns:
-            The OAuth container if found, None otherwise
+            The Auth container if found, None otherwise
         """
         containers = pod.instance.spec.containers
         for container in containers:
-            if container.name == "oauth-proxy":
+            if container.name == "kube-rbac-proxy":
                 return container
         return None

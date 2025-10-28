@@ -1,6 +1,12 @@
 from typing import Self, Any
 import pytest
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.deployment import Deployment
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
+from ocp_resources.pod import Pod
+from ocp_resources.secret import Secret
+from ocp_resources.service import Service
 
 from tests.model_registry.rest_api.constants import (
     MODEL_REGISTER,
@@ -16,11 +22,13 @@ from tests.model_registry.rest_api.constants import (
     CUSTOM_PROPERTY,
     REGISTERED_MODEL_DESCRIPTION,
 )
+from tests.model_registry.constants import MR_POSTGRES_DB_OBJECT
 from tests.model_registry.rest_api.utils import validate_resource_attributes
 from simple_logger.logger import get_logger
 
 
 LOGGER = get_logger(name=__name__)
+CONNECTION_STRING: str = "/var/run/postgresql:5432 - accepting connections"
 
 
 @pytest.mark.parametrize(
@@ -37,6 +45,11 @@ LOGGER = get_logger(name=__name__)
             {"db_name": "mariadb"},
             MODEL_REGISTER_DATA,
             marks=(pytest.mark.sanity),
+        ),
+        pytest.param(
+            {"db_name": "default"},
+            {"db_name": "default"},
+            MODEL_REGISTER_DATA,
         ),
     ],
     indirect=True,
@@ -86,6 +99,72 @@ class TestModelRegistryCreationRest:
             actual_resource_data=registered_model_rest_api[data_key],
             resource_name=data_key,
         )
+
+    @pytest.mark.parametrize(
+        "kind, resource_name",
+        [
+            pytest.param(
+                Secret,
+                MR_POSTGRES_DB_OBJECT[Secret],
+                id="test_secret_default_db_exists",
+            ),
+            pytest.param(
+                Deployment,
+                MR_POSTGRES_DB_OBJECT[Deployment],
+                id="test_deployment_default_db_exists",
+            ),
+            pytest.param(
+                Service,
+                MR_POSTGRES_DB_OBJECT[Service],
+                id="test_service_default_db_exists",
+            ),
+            pytest.param(
+                PersistentVolumeClaim,
+                MR_POSTGRES_DB_OBJECT[PersistentVolumeClaim],
+                id="test_pvc_default_db_exists",
+            ),
+        ],
+    )
+    def test_default_postgres_db_resource_exists(
+        self: Self,
+        skip_if_not_default_db: None,
+        kind: Any,
+        resource_name: str,
+        model_registry_instance: list[ModelRegistry],
+        model_registry_namespace: str,
+    ) -> None:
+        """
+        Check resources created for default postgres database
+        """
+        model_registry = model_registry_instance[0]
+        resource = kind(name=resource_name, namespace=model_registry_namespace)
+        if not resource.exists:
+            pytest.fail(f"Resource: {resource_name} is not created, in {model_registry_namespace}")
+        owner_reference = resource.instance.metadata.ownerReferences
+        assert owner_reference, f"Owner reference not found for resource: {resource_name}"
+        assert owner_reference[0].kind == model_registry.kind
+        assert owner_reference[0].name == model_registry.name
+        for field in ["controller", "blockOwnerDeletion"]:
+            assert owner_reference[0][field] is True
+
+    def test_default_postgres_db_pod_log(
+        self: Self,
+        skip_if_not_default_db: None,
+        admin_client: DynamicClient,
+        model_registry_namespace: str,
+        model_registry_default_postgres_deployment_match_label: dict[str, str],
+    ):
+        label_selector = ",".join([
+            f"{k}={v}" for k, v in model_registry_default_postgres_deployment_match_label.items()
+        ])
+        LOGGER.info(label_selector)
+        pods = list(Pod.get(dyn_client=admin_client, namespace=model_registry_namespace, label_selector=label_selector))
+        assert pods, (
+            "No pods found for default postgres deployment with "
+            f"label: {model_registry_default_postgres_deployment_match_label}"
+        )
+        postgres_pod_log = pods[0].log(container="postgres")
+        assert CONNECTION_STRING in postgres_pod_log
 
     def test_model_registry_validate_api_version(
         self: Self,

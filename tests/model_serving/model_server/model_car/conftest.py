@@ -18,7 +18,7 @@ def model_car_inference_service(
     unprivileged_model_namespace: Namespace,
     serving_runtime_from_template: ServingRuntime,
 ) -> Generator[InferenceService, Any, Any]:
-    deployment_mode = request.param.get("deployment-mode", KServeDeploymentType.SERVERLESS)
+    deployment_mode = request.param.get("deployment-mode", KServeDeploymentType.RAW_DEPLOYMENT)
     with create_isvc(
         client=unprivileged_client,
         name=f"model-car-{deployment_mode.lower()}",
