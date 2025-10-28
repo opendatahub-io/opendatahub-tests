@@ -29,7 +29,7 @@ RESOURCE_FLAVOR_NAME = "llmd-flavor-raw"
 CPU_QUOTA = "3"
 MEMORY_QUOTA = "20Gi"
 LLMISVC_RESOURCES = {
-    "requests": {"cpu": "2", "memory": "16Gi"},
+    "requests": {"cpu": "2", "memory": "6Gi"},
     "limits": {"cpu": CPU_QUOTA, "memory": MEMORY_QUOTA},
 }
 
