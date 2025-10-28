@@ -5,6 +5,7 @@ from ast import literal_eval
 from typing import Any, Callable, Generator
 
 import pytest
+from semver import Version
 import shortuuid
 import yaml
 from _pytest._py.path import LocalPath
@@ -13,6 +14,7 @@ from _pytest.tmpdir import TempPathFactory
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 
 from ocp_resources.cluster_service_version import ClusterServiceVersion
+from ocp_resources.cluster_version import ClusterVersion
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
 from ocp_resources.dsc_initialization import DSCInitialization
@@ -627,6 +629,20 @@ def bin_directory_to_os_path(os_path_environment: str, bin_directory: LocalPath,
     LOGGER.info(f"OC binary path: {oc_binary_path}")
     LOGGER.info(f"Adding {bin_directory} to $PATH")
     os.environ["PATH"] = f"{bin_directory}:{os_path_environment}"
+
+
+@pytest.fixture(scope="session")
+def openshift_version(admin_client: DynamicClient) -> Version:
+    """Get the OpenShift cluster version."""
+    cluster_version = ClusterVersion(client=admin_client, name="version", ensure_exists=True)
+
+    if not cluster_version.instance.status.history:
+        raise ValueError("ClusterVersion history is empty")
+
+    try:
+        return Version.parse(version=str(cluster_version.instance.status.history[0].version))
+    except (ValueError, TypeError) as e:
+        raise ValueError(f"Failed to parse OpenShift version: {e}") from e
 
 
 @pytest.fixture(scope="session")
