@@ -289,7 +289,7 @@ class ModelStorage:
 
     class OCI:
         TINYLLAMA: str = (
-            "oci://quay.io/mwaykole/test@sha256:b604e00d5c815184a473dda8449e8ccc85f4c7aaf32b9b5244da4d9aeecdf197"
+            "oci://quay.io/mwaykole/test@sha256:8bfd02132b03977ebbca93789e81c4549d8f724ee78fa378616d9ae4387717c8"
         )
         MNIST_8_1: str = ModelCarImage.MNIST_8_1
         GRANITE_8B_CODE_INSTRUCT: str = ModelCarImage.GRANITE_8B_CODE_INSTRUCT

@@ -312,7 +312,7 @@ def lmeval_minio_copy_pod(
             {
                 "name": "copy-data",
                 "image": "quay.io/trustyai_testing/lmeval-assets-flan-arceasy"
-                "@sha256:11cc9c2f38ac9cc26c4fab1a01a8c02db81c8f4801b5d2b2b90f90f91b97ac98",
+                "@sha256:c627e1fb19252f307bfc4c7de8a3b74442d702789313a428f8a3094b1423c325",
                 "command": ["/bin/sh", "-c"],
                 "args": ["cp -r /mnt/data /shared"],
                 "volumeMounts": [{"name": "shared-data", "mountPath": "/shared"}],
