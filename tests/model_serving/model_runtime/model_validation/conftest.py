@@ -31,6 +31,7 @@ from tests.model_serving.model_runtime.vllm.utils import validate_supported_quan
 from utilities.constants import KServeDeploymentType, Labels, RuntimeTemplates
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
+
 from simple_logger.logger import get_logger
 
 LOGGER = get_logger(name=__name__)
@@ -45,6 +46,7 @@ def model_car_serving_runtime(
     vllm_runtime_image: str,
 ) -> Generator[ServingRuntime, None, None]:
     accelerator_type = supported_accelerator_type.lower()
+
     template_name = TEMPLATE_MAP.get(accelerator_type, RuntimeTemplates.VLLM_CUDA)
     LOGGER.info(f"using template: {template_name}")
     assert model_namespace.name is not None
@@ -87,6 +89,20 @@ def vllm_model_car_inference_service(
     resources["requests"][identifier] = gpu_count
     resources["limits"][identifier] = gpu_count
     isvc_kwargs["resources"] = resources
+
+    if (
+        identifier == Labels.Spyre.SPYRE_COM_GPU
+        and deployment_config.get("deployment_type") == KServeDeploymentType.SERVERLESS
+    ):
+        pytest.skip("Spyre cluster is not setup with TLS/mTLS")
+    if identifier == Labels.Spyre.SPYRE_COM_GPU:
+        isvc_kwargs["scheduler_name"] = "spyre-scheduler"
+        resources["requests"] = {
+            "ibm.com/spyre_pf": gpu_count,
+        }
+        resources["limits"] = {
+            "ibm.com/spyre_pf": gpu_count,
+        }
 
     if timeout:
         isvc_kwargs["timeout"] = timeout
@@ -131,6 +147,7 @@ def kserve_registry_pull_secret(
             "ACCESS_TYPE": PULL_SECRET_ACCESS_TYPE,
             "OCI_HOST": registry_host,
         },
+        type="kubernetes.io/dockerconfigjson",
         wait_for_resource=True,
     ) as secret:
         yield secret
@@ -257,7 +274,6 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
     if not isinstance(model_car_data, list):
         raise ValueError("Invalid format for `model-car` in YAML. Expected a list of objects.")
 
-    # Check if metafunc.cls is not None to avoid linter errors
     if not metafunc.cls:
         return
 
