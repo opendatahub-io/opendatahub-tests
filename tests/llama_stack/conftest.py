@@ -16,6 +16,7 @@ from utilities.general import generate_random_name
 from tests.llama_stack.utils import (
     create_llama_stack_distribution,
     wait_for_llama_stack_client_ready,
+    vector_store_create_file_from_url,
 )
 from utilities.constants import DscComponents, Timeout
 from utilities.data_science_cluster_utils import update_components_in_dsc
@@ -378,9 +379,11 @@ def vector_store(
 
     vector_store = unprivileged_llama_stack_client.vector_stores.create(
         name="test_vector_store",
-        embedding_model=llama_stack_models.embedding_model.identifier,
-        embedding_dimension=llama_stack_models.embedding_dimension,
-        provider_id=vector_io_provider,
+        extra_body={
+            "embedding_model": llama_stack_models.embedding_model.identifier,
+            "embedding_dimension": llama_stack_models.embedding_dimension,
+            "provider_id": vector_io_provider,
+        },
     )
     LOGGER.info(f"vector_store successfully created (provider_id={vector_io_provider}, id={vector_store.id})")
 
@@ -391,3 +394,41 @@ def vector_store(
         LOGGER.info(f"Deleted vector store {vector_store.id}")
     except Exception as e:
         LOGGER.warning(f"Failed to delete vector store {vector_store.id}: {e}")
+
+
+@pytest.fixture(scope="class")
+def vector_store_with_example_docs(
+    unprivileged_llama_stack_client: LlamaStackClient, vector_store: VectorStore
+) -> Generator[VectorStore, None, None]:
+    """
+    Creates a vector store with TorchTune documentation files uploaded.
+
+    This fixture depends on the vector_store fixture and uploads the TorchTune
+    documentation files to the vector store for testing purposes. The files
+    are automatically cleaned up after the test completes.
+
+    Args:
+        unprivileged_llama_stack_client: The configured LlamaStackClient
+        vector_store: The vector store fixture to upload files to
+
+    Yields:
+        Vector store object with uploaded TorchTune documentation files
+    """
+    # Download TorchTune documentation files
+    urls = [
+        "llama3.rst",
+        "chat.rst",
+        "lora_finetune.rst",
+        "qat_finetune.rst",
+        "memory_optimizations.rst",
+    ]
+
+    base_url = "https://raw.githubusercontent.com/pytorch/torchtune/refs/tags/v0.6.1/docs/source/tutorials/"
+
+    for file_name in urls:
+        url = f"{base_url}{file_name}"
+        vector_store_create_file_from_url(
+            url=url, llama_stack_client=unprivileged_llama_stack_client, vector_store=vector_store
+        )
+
+    yield vector_store
