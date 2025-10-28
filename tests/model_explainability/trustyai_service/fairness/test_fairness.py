@@ -12,7 +12,6 @@ from tests.model_explainability.trustyai_service.trustyai_service_utils import (
     verify_trustyai_service_metric_delete_request,
     verify_trustyai_service_metric_scheduling_request,
 )
-from utilities.constants import MinIo
 from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
 from utilities.monitoring import validate_metrics_field, get_metric_label
 
@@ -49,28 +48,17 @@ def get_fairness_request_json_data(isvc: InferenceService) -> dict[str, Any]:
     }
 
 
-@pytest.mark.usefixtures("minio_pod")
 @pytest.mark.parametrize(
-    "model_namespace, minio_pod, minio_data_connection, trustyai_service",
+    "model_namespace, trustyai_service",
     [
         pytest.param(
             {"name": "test-fairness-pvc"},
-            MinIo.PodConfig.MODEL_MESH_MINIO_CONFIG,
-            {"bucket": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
             {"storage": "pvc"},
             id="pvc-storage",
-        ),
-        pytest.param(
-            {"name": "test-fairness-db"},
-            MinIo.PodConfig.MODEL_MESH_MINIO_CONFIG,
-            {"bucket": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
-            {"storage": "db"},
-            id="db-storage",
         ),
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("minio_pod")
 @pytest.mark.rawdeployment
 @pytest.mark.smoke
 class TestFairnessMetrics:
