@@ -10,6 +10,7 @@ from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.llama_stack_distribution import LlamaStackDistribution
 from ocp_resources.namespace import Namespace
+from semver import Version
 from simple_logger.logger import get_logger
 from utilities.general import generate_random_name
 from tests.llama_stack.utils import (
@@ -22,7 +23,6 @@ from tests.llama_stack.constants import (
     LLS_OPENSHIFT_MINIMAL_VERSION,
     ModelInfo,
 )
-from utilities.infra import get_openshift_version
 
 
 LOGGER = get_logger(name=__name__)
@@ -219,13 +219,14 @@ def _get_llama_stack_distribution_deployment(
 
 
 @pytest.fixture(scope="session", autouse=True)
-def skip_llama_stack_if_not_supported_openshift_version(admin_client: DynamicClient) -> None:
+def skip_llama_stack_if_not_supported_openshift_version(
+    admin_client: DynamicClient, openshift_version: Version
+) -> None:
     """Skip llama-stack tests if OpenShift version is not supported (< 4.17) by llama-stack-operator"""
-    version = get_openshift_version(admin_client=admin_client)
-    if version < LLS_OPENSHIFT_MINIMAL_VERSION:
+    if openshift_version < LLS_OPENSHIFT_MINIMAL_VERSION:
         message = (
             f"Skipping llama-stack tests, as llama-stack-operator is not supported "
-            f"on OpenShift {version} ({LLS_OPENSHIFT_MINIMAL_VERSION} or newer required)"
+            f"on OpenShift {openshift_version} ({LLS_OPENSHIFT_MINIMAL_VERSION} or newer required)"
         )
         LOGGER.info(message)
         pytest.skip(reason=message)
