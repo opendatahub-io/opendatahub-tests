@@ -1,7 +1,6 @@
 import re
-from typing import Any, Dict, List
+from typing import Any
 from tests.model_serving.model_runtime.vllm.constant import VLLM_SUPPORTED_QUANTIZATION
-from tests.model_serving.model_runtime.model_validation.constant import SPYRE_CONTAINER_PORT
 
 
 def validate_supported_quantization_schema(q_type: str) -> None:
@@ -50,72 +49,3 @@ def safe_k8s_name(model_name: str, max_length: int = 20) -> str:
         return "model"
 
     return safe_name
-
-
-def create_vllm_spyre_serving_runtime(vllm_runtime_image: str) -> dict[str, Any]:
-    port_config = {
-        "containerPort": SPYRE_CONTAINER_PORT,
-        "protocol": "TCP",
-    }
-
-    container_args = ["--served-model-name={{.Name}}", "--model=/mnt/models", f"--port={SPYRE_CONTAINER_PORT}"]
-
-    container_command = [
-        "/bin/bash",
-        "-c",
-        'source /etc/profile.d/ibm-aiu-setup.sh\nexec python3 -m vllm.entrypoints.openai.api_server "$@"',
-    ]
-
-    env_variables: List[Dict[str, str]] = [
-        {"name": "HF_HOME", "value": "/tmp/hf_home"},
-        {"name": "FLEX_COMPUTE", "value": "SENTIENT"},
-        {"name": "FLEX_DEVICE", "value": "PF"},
-        {"name": "TOKENIZERS_PARALLELISM", "value": "false"},
-        {"name": "DTLOG_LEVEL", "value": "error"},
-        {"name": "TORCH_SENDNN_LOG", "value": "CRITICAL"},
-        {"name": "VLLM_SPYRE_WARMUP_BATCH_SIZES", "value": "4"},
-        {"name": "VLLM_SPYRE_WARMUP_PROMPT_LENS", "value": "1024"},
-        {"name": "VLLM_SPYRE_WARMUP_NEW_TOKENS", "value": "256"},
-    ]
-
-    kserve_container: List[Dict[str, Any]] = [
-        {
-            "name": "kserve-container",
-            "image": vllm_runtime_image,
-            "ports": [port_config],
-            "command": container_command,
-            "args": container_args,
-            "env": env_variables,
-        }
-    ]
-
-    supported_model_formats: List[Dict[str, Any]] = [
-        {
-            "name": "vllm",
-            "autoSelect": True,
-        }
-    ]
-
-    return {
-        "apiVersion": "serving.kserve.io/v1alpha1",
-        "kind": "ServingRuntime",
-        "metadata": {
-            "name": "vllm-spyre-runtime",
-            "annotations": {
-                "openshift.io/display-name": "vLLM IBM Spyre ServingRuntime for KServe",
-                "opendatahub.io/recommended-accelerators": '["ibm.com/spyre_pf"]',
-            },
-            "labels": {
-                "opendatahub.io/dashboard": "true",
-            },
-        },
-        "spec": {
-            "annotations": {
-                "prometheus.io/port": "8080",
-                "prometheus.io/path": "/metrics",
-            },
-            "multiModel": False,
-            "containers": kserve_container,
-            "supportedModelFormats": supported_model_formats,
-        },
-    }

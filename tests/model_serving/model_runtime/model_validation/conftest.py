@@ -1,8 +1,6 @@
 import json
 from typing import Any, Generator, List
-import logging
 
-from fake_kubernetes_client import ApiException
 import pytest
 import yaml
 from kubernetes.dynamic import DynamicClient
@@ -13,9 +11,6 @@ from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
 from utilities.infra import get_pods_by_isvc_label
-from contextlib import contextmanager
-from ocp_resources.template import Template
-from pytest_testconfig import config as py_config
 
 from tests.model_serving.model_runtime.model_validation.constant import (
     ACCELERATOR_IDENTIFIER,
@@ -31,7 +26,7 @@ from tests.model_serving.model_runtime.model_validation.constant import PULL_SEC
 from tests.model_serving.model_runtime.model_validation.constant import (
     TIMEOUT_20MIN,
 )
-from tests.model_serving.model_runtime.model_validation.utils import safe_k8s_name, create_vllm_spyre_serving_runtime
+from tests.model_serving.model_runtime.model_validation.utils import safe_k8s_name
 from tests.model_serving.model_runtime.vllm.utils import validate_supported_quantization_schema
 from utilities.constants import KServeDeploymentType, Labels, RuntimeTemplates
 from utilities.inference_utils import create_isvc
@@ -49,11 +44,8 @@ def model_car_serving_runtime(
     model_namespace: Namespace,
     supported_accelerator_type: str,
     vllm_runtime_image: str,
-    vllm_spyre_runtime_template: Template | None,
 ) -> Generator[ServingRuntime, None, None]:
     accelerator_type = supported_accelerator_type.lower()
-    if accelerator_type == "spyre":
-        _ = vllm_spyre_runtime_template
 
     template_name = TEMPLATE_MAP.get(accelerator_type, RuntimeTemplates.VLLM_CUDA)
     LOGGER.info(f"using template: {template_name}")
@@ -67,52 +59,6 @@ def model_car_serving_runtime(
         runtime_image=vllm_runtime_image,
     ) as model_runtime:
         yield model_runtime
-
-
-@contextmanager
-def create_vllm_spyre_template(admin_client: DynamicClient, vllm_runtime_image: str) -> Generator[Template, Any, Any]:
-    if not vllm_runtime_image:
-        raise ValueError("`vllm_runtime_image` must be provided when using the Spyre accelerator.")
-
-    template_dict = {
-        "apiVersion": "template.openshift.io/v1",
-        "kind": "Template",
-        "metadata": {
-            "name": "vllm-spyre-custom-runtime-template",
-            "namespace": py_config["applications_namespace"],
-        },
-        "objects": [create_vllm_spyre_serving_runtime(vllm_runtime_image=vllm_runtime_image)],
-        "parameters": [],
-    }
-
-    try:
-        with Template(
-            client=admin_client,
-            namespace=py_config["applications_namespace"],
-            kind_dict=template_dict,
-            wait_for_resource=True,
-        ) as template:
-            yield template
-    except ApiException as exc:
-        if getattr(exc, "status", None) != 409:
-            raise
-        logging.info("Template already exists, fetching existing template.")
-        existing_template = Template(
-            client=admin_client,
-            name=template_dict["metadata"]["name"],
-            namespace=template_dict["metadata"]["namespace"],
-        )
-        yield existing_template
-
-
-@pytest.fixture(scope="class")
-def vllm_spyre_runtime_template(
-    admin_client: DynamicClient,
-    supported_accelerator_type: str,
-    vllm_runtime_image: str,
-) -> Generator[Template, None, None]:
-    with create_vllm_spyre_template(admin_client=admin_client, vllm_runtime_image=vllm_runtime_image) as template:
-        yield template
 
 
 @pytest.fixture(scope="class")
@@ -148,10 +94,7 @@ def vllm_model_car_inference_service(
         identifier == Labels.Spyre.SPYRE_COM_GPU
         and deployment_config.get("deployment_type") == KServeDeploymentType.SERVERLESS
     ):
-        pytest.skip(
-            "Spyre cluster is not setup with TLS/mTLS, so serverless deployment "
-            "aren't accessible from outside the cluster."
-        )
+        pytest.skip("Spyre cluster is not setup with TLS/mTLS")
     if identifier == Labels.Spyre.SPYRE_COM_GPU:
         isvc_kwargs["scheduler_name"] = "spyre-scheduler"
         resources["requests"] = {
