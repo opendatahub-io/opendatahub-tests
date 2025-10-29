@@ -14,6 +14,7 @@ from tests.model_registry.model_catalog.constants import (
 from tests.model_registry.model_catalog.utils import (
     get_models_from_catalog_api,
     fetch_all_artifacts_with_dynamic_paging,
+    validate_model_contains_search_term,
 )
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 
@@ -294,3 +295,150 @@ class TestSearchModelArtifact:
             f"Filter returned {len(artifact_type_artifacts)} artifacts, "
             f"but found {len(all_model_artifacts)} in complete list for {model_name}"
         )
+
+
+class TestSearchModelCatalogQParameter:
+    """Test suite for the 'q' search parameter functionality (RHOAIENG-36911)."""
+
+    @pytest.mark.parametrize("search_term", ["granite", "text", "deepseek", "red hat", "base"])
+    def test_q_parameter_basic_search(
+        self: Self, search_term: str, model_catalog_rest_url: list[str], model_registry_rest_headers: dict[str, str]
+    ):
+        """Test basic search functionality with q parameter"""
+        LOGGER.info(f"Testing search for term: {search_term}")
+
+        response = get_models_from_catalog_api(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            q=search_term,
+        )
+
+        assert "items" in response
+        models = response.get("items", [])
+
+        LOGGER.info(f"Found {len(models)} models for search term '{search_term}'")
+
+        for model in models:
+            assert validate_model_contains_search_term(model, search_term), (
+                f"Model '{model.get('name')}' doesn't contain search term '{search_term}' in any searchable field"
+            )
+
+    @pytest.mark.parametrize(
+        "search_term,case_variant", [("granite", "GRANITE"), ("text", "TEXT"), ("deepseek", "DeepSeek")]
+    )
+    def test_q_parameter_case_insensitive(
+        self: Self,
+        search_term: str,
+        case_variant: str,
+        model_catalog_rest_url: list[str],
+        model_registry_rest_headers: dict[str, str],
+    ):
+        """Test that search is case insensitive"""
+        LOGGER.info(f"Testing case insensitivity: '{search_term}' vs '{case_variant}'")
+
+        response1 = get_models_from_catalog_api(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            q=search_term,
+        )
+
+        response2 = get_models_from_catalog_api(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            q=case_variant,
+        )
+
+        models1 = response1.get("items", [])
+        models2 = response2.get("items", [])
+
+        model_ids1 = sorted([m.get("id") for m in models1])
+        model_ids2 = sorted([m.get("id") for m in models2])
+
+        assert model_ids1 == model_ids2, (
+            f"Case insensitive search failed:\n"
+            f"'{search_term}' returned {len(models1)} models\n"
+            f"'{case_variant}' returned {len(models2)} models"
+        )
+
+    def test_q_parameter_no_results(
+        self: Self, model_catalog_rest_url: list[str], model_registry_rest_headers: dict[str, str]
+    ):
+        """Test search with term that should return no results"""
+        nonexistent_term = "nonexistent_search_term_12345_abcdef"
+        LOGGER.info(f"Testing search for nonexistent term: {nonexistent_term}")
+
+        response = get_models_from_catalog_api(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            q=nonexistent_term,
+        )
+
+        models = response.get("items", [])
+        assert len(models) == 0, f"Expected no results for '{nonexistent_term}', got {len(models)} models"
+
+    @pytest.mark.parametrize("search_term", ["", None])
+    def test_q_parameter_empty_query(
+        self: Self, search_term, model_catalog_rest_url: list[str], model_registry_rest_headers: dict[str, str]
+    ):
+        """Test behavior with empty or None q parameter"""
+        LOGGER.info(f"Testing empty query: {repr(search_term)}")
+
+        response = get_models_from_catalog_api(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            q=search_term,
+        )
+
+        models = response.get("items", [])
+        LOGGER.info(f"Empty/None query returned {len(models)} models")
+
+    def test_q_parameter_with_source_label_filter(
+        self: Self, model_catalog_rest_url: list[str], model_registry_rest_headers: dict[str, str]
+    ):
+        """Test q parameter combined with source_label filtering"""
+        search_term = "granite"
+        source_label = REDHAT_AI_FILTER
+
+        LOGGER.info(f"Testing combined search: q='{search_term}' with sourceLabel='{source_label}'")
+
+        response = get_models_from_catalog_api(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            q=search_term,
+            source_label=source_label,
+        )
+
+        models = response.get("items", [])
+        LOGGER.info(f"Combined filter returned {len(models)} models")
+
+        for model in models:
+            assert validate_model_contains_search_term(model, search_term), (
+                f"Model '{model.get('name')}' doesn't contain search term '{search_term}'"
+            )
+
+    @pytest.mark.parametrize(
+        "special_query",
+        [
+            "red hat",
+            "granite-8b",
+            "very_long_query_string" * 10,
+        ],
+    )
+    def test_q_parameter_edge_cases(
+        self: Self, special_query: str, model_catalog_rest_url: list[str], model_registry_rest_headers: dict[str, str]
+    ):
+        """Test edge cases and special characters"""
+        LOGGER.info(f"Testing edge case query: '{special_query[:50]}...'")
+
+        response = get_models_from_catalog_api(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            q=special_query,
+        )
+
+        models = response.get("items", [])
+        if "very_long_query_string" in special_query:
+            assert len(models) == 0, f"Expected no results for very long query string, got {len(models)} models"
+        else:
+            assert len(models) > 0, f"Expected results for edge case query, got {len(models)} models"
+        LOGGER.info(f"Edge case query returned {len(models)} models")

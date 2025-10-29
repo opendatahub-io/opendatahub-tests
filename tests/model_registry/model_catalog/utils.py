@@ -378,11 +378,38 @@ def compare_filter_options_with_database(
     return is_valid, comparison_errors
 
 
+def validate_model_contains_search_term(model: dict[str, Any], search_term: str) -> bool:
+    """
+    Verify model contains search term in searchable fields based on backend implementation.
+
+    Searchable fields: name, description, provider, libraryName, tasks
+
+    Args:
+        model: Model dictionary from API response
+        search_term: Search term to validate
+
+    Returns:
+        True if model contains search term in any searchable field
+    """
+    search_term_lower = search_term.lower()
+
+    searchable_content = [
+        model.get("name", "").lower(),
+        model.get("description", "").lower(),
+        model.get("provider", "").lower(),
+        model.get("libraryName", "").lower(),
+        " ".join(model.get("tasks", [])).lower() if model.get("tasks") else "",
+    ]
+
+    return any(search_term_lower in content for content in searchable_content if content)
+
+
 def get_models_from_catalog_api(
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
     page_size: int = 100,
     source_label: str | None = None,
+    q: str | None = None,
     additional_params: str = "",
 ) -> dict[str, Any]:
     """
@@ -393,6 +420,7 @@ def get_models_from_catalog_api(
         model_registry_rest_headers: Headers for model registry REST API
         page_size: Number of results per page
         source_label: Source label(s) to filter by (must be comma-separated for multiple filters)
+        q: Free-form keyword search to filter models
         additional_params: Additional query parameters (e.g., "&filterQuery=name='model_name'")
 
     Returns:
@@ -402,6 +430,9 @@ def get_models_from_catalog_api(
 
     if source_label:
         url += f"&sourceLabel={source_label}"
+
+    if q:
+        url += f"&q={q}"
 
     url += additional_params
 
