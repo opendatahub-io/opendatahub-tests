@@ -31,9 +31,7 @@ from tests.model_explainability.trustyai_service.constants import (
     KSERVE_MLSERVER_SUPPORTED_MODEL_FORMATS,
     KSERVE_MLSERVER_ANNOTATIONS,
     GAUSSIAN_CREDIT_MODEL_RESOURCES,
-    GAUSSIAN_CREDIT_MODEL_STORAGE_PATH,
     XGBOOST,
-    GAUSSIAN_CREDIT_MODEL,
     TAI_DB_STORAGE_CONFIG,
     ISVC_GETTER,
 )
@@ -290,7 +288,7 @@ def gaussian_credit_model(
     gaussian_credit_model_kwargs = {
         "client": admin_client,
         "namespace": model_namespace.name,
-        "name": GAUSSIAN_CREDIT_MODEL,
+        "name": "models",
     }
 
     if pytestconfig.option.post_upgrade:
@@ -302,8 +300,7 @@ def gaussian_credit_model(
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             model_format=XGBOOST,
             runtime=mlserver_runtime.name,
-            storage_key=minio_data_connection.name,
-            storage_path=GAUSSIAN_CREDIT_MODEL_STORAGE_PATH,
+            storage_uri="oci://quay.io/trustyai_testing/gaussian-credit-model-modelcar:latest",
             enable_auth=True,
             external_route=True,
             wait_for_predictor_pods=False,

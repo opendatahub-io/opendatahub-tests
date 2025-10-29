@@ -106,3 +106,13 @@ LLMAAJ_TASK_DATA = {
         ],
     }
 }
+
+FLAN_T5_IMAGE: str = (
+    "quay.io/trustyai_testing/lmeval-assets-flan-t5-base"
+    "@sha256:f7326d5b4069e9aa0b12ab77b1e8aa8dd25dd0bffd77b08fcc84988ea8869f7f"
+)
+
+ARC_EASY_DATASET_IMAGE: str = (
+    "quay.io/trustyai_testing/lmeval-assets-arc-easy"
+    "@sha256:1558997a838f2ac8ecd887b4f77485d810e5120b9f2700ecb71627e37c6d3a1b"
+)
