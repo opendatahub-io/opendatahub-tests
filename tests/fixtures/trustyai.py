@@ -90,13 +90,13 @@ def custom_dataset():
         {
             "user_input": "what is the meaning of verifying the identity of a person or an entity ",
             "reference": "It means to use methods to ensure that the information in an identification document or from other informational sources matches the information that the person or entity provided.",
-            "response": "Verifying identity is the process of obtaining, recording, and maintaining information to confirm a person or entity's identity. This information can include name, address, date of birth, or other details, depending on the specific method used. The purpose of identity verification is to ensure that financial institutions can confirm that the person they are dealing with is who they claim to be."
+            "response": "Verifying identity is the process of obtaining, recording, and maintaining information to confirm a person or entity's identity. This information can include name, address, date of birth, or other details, depending on the specific method used. The purpose of identity verification is to ensure that financial institutions can confirm that the person they are dealing with is who they claim to be.",
         },
         {
             "user_input": "Why is it important to verify identify?",
             "reference": "Verifying identify is a foundational element of Canada's anti-money laundering and anti-terrorist financing_x000D_\n          regime and a key component of an Reporting Entity's relationship with clients. It helps you to know_x000D_\n          your clients and to understand_x000D_\n          and assess any risk that be associated to their transactions or activities.",
-            "response": "Verifying identity is a critical step in maintaining security and preventing fraud. It's required by Mexican law and is used to protect you, your data, and your financial accounts."
-        }
+            "response": "Verifying identity is a critical step in maintaining security and preventing fraud. It's required by Mexican law and is used to protect you, your data, and your financial accounts.",
+        },
     ]
 
     # Write each record as a line in JSONL format

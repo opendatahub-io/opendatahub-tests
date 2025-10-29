@@ -7,6 +7,7 @@ from timeout_sampler import TimeoutSampler, LOGGER
 TRUSTYAI_LMEVAL_ARCEASY = f"{LlamaStackProviders.Eval.TRUSTYAI_LMEVAL}::arc_easy"
 TRUSTYAI_LMEVAL_CUSTOM = f"{LlamaStackProviders.Eval.TRUSTYAI_LMEVAL}::dk-bench"
 
+
 @pytest.mark.parametrize(
     "model_namespace, minio_pod, minio_data_connection, llama_stack_server_config",
     [
@@ -126,14 +127,13 @@ class TestLlamaStackLMEvalProviderCustomDataset:
         assert benchmark.provider_id == custom_benchmark_config["provider_id"]
         assert benchmark.metadata["dataset_type"] == "custom"
 
-
     def test_run_eval_custom_dataset(
-            self,
-            minio_pod,
-            minio_data_connection,
-            patched_dsc_lmeval_allow_all,
-            llama_stack_client,
-            custom_benchmark_config,
+        self,
+        minio_pod,
+        minio_data_connection,
+        patched_dsc_lmeval_allow_all,
+        llama_stack_client,
+        custom_benchmark_config,
     ):
         job = llama_stack_client.eval.run_eval(
             benchmark_id=custom_benchmark_config["benchmark_id"],
