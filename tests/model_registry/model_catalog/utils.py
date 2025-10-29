@@ -8,6 +8,10 @@ from simple_logger.logger import get_logger
 from ocp_resources.pod import Pod
 from ocp_resources.config_map import ConfigMap
 from tests.model_registry.model_catalog.constants import DEFAULT_CATALOGS
+from tests.model_registry.model_catalog.db_constants import (
+    SEARCH_MODELS_DB_QUERY,
+    SEARCH_MODELS_WITH_SOURCE_ID_DB_QUERY,
+)
 from tests.model_registry.utils import execute_get_command
 
 LOGGER = get_logger(name=__name__)
@@ -244,36 +248,90 @@ def validate_model_catalog_configmap_data(configmap: ConfigMap, num_catalogs: in
         validate_default_catalog(catalogs=catalogs)
 
 
-def parse_psql_array_agg_output(psql_output: str) -> dict[str, list[str]]:
-    """
-    Parse psql output from array_agg query into Python dict.
+def get_postgres_pod_in_namespace(namespace: str = "rhoai-model-registries") -> Pod:
+    """Get the PostgreSQL pod for model catalog database."""
+    postgres_pods = list(Pod.get(namespace=namespace, label_selector="app.kubernetes.io/name=model-catalog-postgres"))
+    assert postgres_pods, f"No PostgreSQL pod found in namespace {namespace}"
+    return postgres_pods[0]
 
-    Expected format:
-        name     | array_agg
-        ---------+----------
-        license  | {apache-2.0,mit,bsd}
-        provider | {Meta,Microsoft}
+
+def execute_database_query(query: str, namespace: str = "rhoai-model-registries") -> str:
+    """
+    Execute a SQL query against the model catalog database.
+
+    Args:
+        query: SQL query to execute
+        namespace: OpenShift namespace containing the PostgreSQL pod
 
     Returns:
-        dict mapping property names to lists of values
+        Raw database query result as string
     """
-    result = {}
+    postgres_pod = get_postgres_pod_in_namespace(namespace=namespace)
+
+    return postgres_pod.execute(
+        command=["psql", "-U", "catalog_user", "-d", "model_catalog", "-c", query],
+        container="postgresql",
+    )
+
+
+def parse_psql_output(psql_output: str) -> dict[str, Any]:
+    """
+    Parse psql CLI output into appropriate Python data structures.
+
+    Handles two main formats:
+    1. Single column: Returns {"values": [list_of_values]}
+    2. Two columns with array_agg: Returns {"properties": {name: [values]}}
+
+    Args:
+        psql_output: Raw psql command output
+
+    Returns:
+        Dictionary with parsed data in appropriate format
+    """
     lines = psql_output.strip().split("\n")
 
-    # Skip header lines (first 2-3 lines are typically headers and separators)
-    data_started = False
-    for line in lines:
+    # Find the header line to determine format
+    header_line = None
+    separator_line = None
+
+    for i, line in enumerate(lines):
         line = line.strip()
-        if not line or line.startswith("-") or "|" not in line:
+        if not line:
             continue
 
-        # Skip header row
-        if "array_agg" in line and not data_started:
-            data_started = True
+        # Look for separator line (all dashes and pipes)
+        if line.replace("-", "").replace("+", "").replace("|", "").strip() == "":
+            separator_line = i
+            if i > 0:
+                header_line = i - 1
+            break
+
+    if header_line is None:
+        return {"values": []}
+
+    header = lines[header_line].strip()
+
+    # Determine format based on header
+    if "|" in header and "array_agg" in header:
+        # Two-column format with array aggregation
+        return {"properties": _parse_array_agg_format(lines, separator_line + 1)}
+    else:
+        # Single column format
+        return {"values": _parse_single_column_format(lines, separator_line + 1)}
+
+
+def _parse_array_agg_format(lines: list[str], data_start: int) -> dict[str, list[str]]:
+    """Parse two-column format with PostgreSQL array aggregation."""
+    result = {}
+
+    for line in lines[data_start:]:
+        line = line.strip()
+        if not line or "|" not in line:
             continue
 
-        if not data_started:
-            continue
+        # Skip summary lines like "(X rows)"
+        if line.startswith("(") and "row" in line:
+            break
 
         # Parse data row: "property_name | {val1,val2,val3}"
         parts = line.split("|", 1)
@@ -297,11 +355,22 @@ def parse_psql_array_agg_output(psql_output: str) -> dict[str, list[str]]:
     return result
 
 
-def get_postgres_pod_in_namespace(namespace: str = "rhoai-model-registries") -> Pod:
-    """Get the PostgreSQL pod for model catalog database."""
-    postgres_pods = list(Pod.get(namespace=namespace, label_selector="app.kubernetes.io/name=model-catalog-postgres"))
-    assert postgres_pods, f"No PostgreSQL pod found in namespace {namespace}"
-    return postgres_pods[0]
+def _parse_single_column_format(lines: list[str], data_start: int) -> list[str]:
+    """Parse single column format."""
+    result = []
+
+    for line in lines[data_start:]:
+        line = line.strip()
+        if not line:
+            continue
+
+        # Skip summary lines like "(X rows)"
+        if line.startswith("(") and "row" in line:
+            break
+
+        result.append(line)
+
+    return result
 
 
 def compare_filter_options_with_database(
@@ -402,6 +471,109 @@ def validate_model_contains_search_term(model: dict[str, Any], search_term: str)
     ]
 
     return any(search_term_lower in content for content in searchable_content if content)
+
+
+def get_models_matching_search_from_database(
+    search_term: str, namespace: str = "rhoai-model-registries", source_label: str | None = None
+) -> list[str]:
+    """
+    Query the database directly to find model IDs that should match the search term.
+
+    Uses SEARCH_MODELS_DB_QUERY from db_constants to replicate the exact backend search logic
+    from applyCatalogModelListFilters function in kubeflow/model-registry.
+
+    Args:
+        search_term: Search term to find
+        namespace: OpenShift namespace containing the PostgreSQL pod
+        source_label: Optional source label to filter by (e.g., "Red+Hat+AI")
+
+    Returns:
+        List of model IDs that contain the search term in searchable fields and match source filter
+    """
+    from tests.model_registry.model_catalog.constants import (
+        REDHAT_AI_FILTER,
+        REDHAT_AI_VALIDATED_FILTER,
+        REDHAT_AI_CATALOG_ID,
+        VALIDATED_CATALOG_ID,
+    )
+
+    # Escape single quotes and create the search pattern: %%%s%%
+    escaped_term = search_term.replace("'", "''")
+    search_pattern = f"%{escaped_term.lower()}%"
+
+    # Choose query based on whether source filtering is needed
+    if source_label:
+        # Simple direct mapping check
+        if source_label == REDHAT_AI_FILTER:
+            catalog_id = REDHAT_AI_CATALOG_ID
+        elif source_label == REDHAT_AI_VALIDATED_FILTER:
+            catalog_id = VALIDATED_CATALOG_ID
+        else:
+            raise ValueError(
+                f"Unknown source_label: '{source_label}'. Supported labels: {REDHAT_AI_FILTER}, {REDHAT_AI_VALIDATED_FILTER}"  # noqa: E501
+            )
+
+        # Use the extended query with source_id filtering from db_constants
+        search_query = SEARCH_MODELS_WITH_SOURCE_ID_DB_QUERY.format(
+            search_pattern=search_pattern, source_ids=f"'{catalog_id}'"
+        )
+    else:
+        # Use the standardized search query from db_constants
+        search_query = SEARCH_MODELS_DB_QUERY.format(search_pattern=search_pattern)
+
+    db_result = execute_database_query(query=search_query, namespace=namespace)
+    parsed_result = parse_psql_output(psql_output=db_result)
+
+    return parsed_result.get("values", [])
+
+
+def validate_search_results_against_database(
+    api_response: dict[str, Any],
+    search_term: str,
+    namespace: str = "rhoai-model-registries",
+    source_label: str | None = None,
+) -> tuple[bool, list[str]]:
+    """
+    Validate API search results against database query results.
+
+    Args:
+        api_response: API response from search query
+        search_term: Search term used
+        namespace: OpenShift namespace for PostgreSQL pod
+        source_label: Optional source label filter used in the API call
+
+    Returns:
+        Tuple of (is_valid, list_of_error_messages)
+    """
+    errors = []
+
+    # Get expected results from database (returns strings)
+    expected_model_ids = set(get_models_matching_search_from_database(search_term, namespace, source_label))
+    filter_desc = f"'{search_term}'" + (f" with source_label='{source_label}'" if source_label else "")
+    LOGGER.info(f"Database query found {len(expected_model_ids)} models for {filter_desc}")
+
+    # Get actual results from API (returns strings)
+    api_models = api_response.get("items", [])
+    actual_model_ids = set(model.get("id") for model in api_models if model.get("id"))
+    LOGGER.info(f"API returned {len(actual_model_ids)} models for {filter_desc}")
+
+    # Compare results
+    missing_in_api = expected_model_ids - actual_model_ids
+    extra_in_api = actual_model_ids - expected_model_ids
+
+    if missing_in_api:
+        errors.append(f"API missing {len(missing_in_api)} models found in database: {missing_in_api}")
+
+    if extra_in_api:
+        errors.append(f"API returned {len(extra_in_api)} extra models not found in database: {extra_in_api}")
+
+    # Log detailed comparison
+    if expected_model_ids == actual_model_ids:
+        LOGGER.info(f"Perfect match: API and database both found {len(expected_model_ids)} models")
+    else:
+        LOGGER.error(f"Mismatch: DB={len(expected_model_ids)}, API={len(actual_model_ids)}")
+
+    return len(errors) == 0, errors
 
 
 def get_models_from_catalog_api(
