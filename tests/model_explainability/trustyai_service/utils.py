@@ -279,7 +279,7 @@ def validate_trustyai_service_images(
     tai_image_refs = set(
         v
         for k, v in trustyai_operator_configmap.instance.data.items()
-        if k in ["oauthProxyImage", "trustyaiServiceImage"]
+        if k in ["kube-rbac-proxy", "trustyaiServiceImage"]
     )
     trustyai_service_pod = wait_for_pods_by_labels(
         admin_client=client, namespace=model_namespace.name, label_selector=label_selector, expected_num_pods=1
