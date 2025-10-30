@@ -13,6 +13,9 @@ MULTIPLE_CUSTOM_CATALOG_VALUES: list[dict[str, str]] = [
 
 REDHAT_AI_CATALOG_NAME: str = "Red Hat AI"
 REDHAT_AI_VALIDATED_CATALOG_NAME: str = "Red Hat AI validated"
+REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME: str = "Red Hat AI Validated"
+REDHAT_AI_FILTER: str = "Red+Hat+AI"
+REDHAT_AI_VALIDATED_FILTER = "Red+Hat+AI+Validated"
 
 SAMPLE_MODEL_NAME3 = "mistralai/Ministral-8B-Instruct-2410"
 CATALOG_CONTAINER: str = "catalog"
@@ -34,7 +37,5 @@ REDHAT_AI_CATALOG_ID: str = "redhat_ai_models"
 DEFAULT_CATALOG_FILE: str = DEFAULT_CATALOGS[REDHAT_AI_CATALOG_ID]["properties"]["yamlCatalogPath"]
 VALIDATED_CATALOG_ID: str = "redhat_ai_validated_models"
 
-REDHAT_AI_FILTER: str = "Red+Hat+AI"
-REDHAT_AI_VALIDATED_FILTER = "Red+Hat+AI+Validated"
 MODEL_ARTIFACT_TYPE: str = "model-artifact"
 METRICS_ARTIFACT_TYPE: str = "metrics-artifact"

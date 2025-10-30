@@ -4,8 +4,8 @@ from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.utils import (
     validate_filter_options_structure,
-    parse_psql_array_agg_output,
-    get_postgres_pod_in_namespace,
+    execute_database_query,
+    parse_psql_output,
     compare_filter_options_with_database,
 )
 from tests.model_registry.model_catalog.db_constants import FILTER_OPTIONS_DB_QUERY, API_EXCLUDED_FILTER_FIELDS
@@ -123,15 +123,12 @@ class TestFilterOptionsEndpoint:
         api_filters = api_response["filters"]
         LOGGER.info(f"API returned {len(api_filters)} filter properties: {list(api_filters.keys())}")
 
-        postgres_pod = get_postgres_pod_in_namespace(namespace=model_registry_namespace)
-        LOGGER.info(f"Using PostgreSQL pod: {postgres_pod.name}")
+        LOGGER.info(f"Executing database query in namespace: {model_registry_namespace}")
 
-        db_result = postgres_pod.execute(
-            command=["psql", "-U", "catalog_user", "-d", "model_catalog", "-c", FILTER_OPTIONS_DB_QUERY],
-            container="postgresql",
-        )
+        db_result = execute_database_query(query=FILTER_OPTIONS_DB_QUERY, namespace=model_registry_namespace)
+        parsed_result = parse_psql_output(psql_output=db_result)
 
-        db_properties = parse_psql_array_agg_output(psql_output=db_result)
+        db_properties = parsed_result.get("properties", {})
         LOGGER.info(f"Raw database query returned {len(db_properties)} properties: {list(db_properties.keys())}")
 
         is_valid, comparison_errors = compare_filter_options_with_database(
