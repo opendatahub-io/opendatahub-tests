@@ -690,9 +690,13 @@ def wait_for_model_catalog_pod_created(client: DynamicClient, model_registry_nam
     raise PodNotFound("Model catalog pod not found")
 
 
-def execute_get_call(url: str, headers: dict[str, str], verify: bool | str = False) -> requests.Response:
+def execute_get_call(
+    url: str, headers: dict[str, str], verify: bool | str = False, params: dict[str, Any] | None = None
+) -> requests.Response:
     LOGGER.info(f"Executing get call: {url}")
-    resp = requests.get(url=url, headers=headers, verify=verify, timeout=60)
+    LOGGER.info(f"params: {params}")
+    resp = requests.get(url=url, headers=headers, verify=verify, timeout=60, params=params)
+    LOGGER.info(f"Encoded url from requests library: {resp.url}")
     if resp.status_code not in [200, 201]:
         raise ResourceNotFoundError(f"Get call failed for resource: {url}, {resp.status_code}: {resp.text}")
     return resp
@@ -703,8 +707,10 @@ def wait_for_model_catalog_api(url: str, headers: dict[str, str], verify: bool |
     return execute_get_call(url=f"{url}sources", headers=headers, verify=verify)
 
 
-def execute_get_command(url: str, headers: dict[str, str], verify: bool | str = False) -> dict[Any, Any]:
-    resp = execute_get_call(url=url, headers=headers, verify=verify)
+def execute_get_command(
+    url: str, headers: dict[str, str], verify: bool | str = False, params: dict[str, Any] | None = None
+) -> dict[Any, Any]:
+    resp = execute_get_call(url=url, headers=headers, verify=verify, params=params)
     try:
         return json.loads(resp.text)
     except json.JSONDecodeError:

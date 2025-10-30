@@ -12,6 +12,12 @@ from tests.model_registry.model_catalog.db_constants import (
     SEARCH_MODELS_DB_QUERY,
     SEARCH_MODELS_WITH_SOURCE_ID_DB_QUERY,
 )
+from tests.model_registry.model_catalog.constants import (
+    REDHAT_AI_CATALOG_NAME,
+    REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
+    REDHAT_AI_CATALOG_ID,
+    VALIDATED_CATALOG_ID,
+)
 from tests.model_registry.utils import execute_get_command
 
 LOGGER = get_logger(name=__name__)
@@ -490,12 +496,6 @@ def get_models_matching_search_from_database(
     Returns:
         List of model IDs that contain the search term in searchable fields and match source filter
     """
-    from tests.model_registry.model_catalog.constants import (
-        REDHAT_AI_FILTER,
-        REDHAT_AI_VALIDATED_FILTER,
-        REDHAT_AI_CATALOG_ID,
-        VALIDATED_CATALOG_ID,
-    )
 
     # Escape single quotes and create the search pattern: %%%s%%
     escaped_term = search_term.replace("'", "''")
@@ -504,13 +504,13 @@ def get_models_matching_search_from_database(
     # Choose query based on whether source filtering is needed
     if source_label:
         # Simple direct mapping check
-        if source_label == REDHAT_AI_FILTER:
+        if source_label == REDHAT_AI_CATALOG_NAME:
             catalog_id = REDHAT_AI_CATALOG_ID
-        elif source_label == REDHAT_AI_VALIDATED_FILTER:
+        elif source_label == REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME:
             catalog_id = VALIDATED_CATALOG_ID
         else:
             raise ValueError(
-                f"Unknown source_label: '{source_label}'. Supported labels: {REDHAT_AI_FILTER}, {REDHAT_AI_VALIDATED_FILTER}"  # noqa: E501
+                f"Unknown source_label: '{source_label}'. Supported labels: {REDHAT_AI_CATALOG_NAME}, {REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME}"  # noqa: E501
             )
 
         # Use the extended query with source_id filtering from db_constants
@@ -598,17 +598,28 @@ def get_models_from_catalog_api(
     Returns:
         Dictionary containing the API response
     """
-    url = f"{model_catalog_rest_url[0]}models?pageSize={page_size}"
+    base_url = f"{model_catalog_rest_url[0]}models"
+
+    # Build params dictionary for proper URL encoding
+    params = {"pageSize": page_size}
 
     if source_label:
-        url += f"&sourceLabel={source_label}"
+        params["sourceLabel"] = source_label
 
     if q:
-        url += f"&q={q}"
+        params["q"] = q
 
-    url += additional_params
+    # Parse additional_params string into params dict for proper URL encoding
+    if additional_params:
+        # Remove leading & if present
+        clean_params = additional_params.lstrip("&")
+        # Split by & and then by = to get key-value pairs
+        for param in clean_params.split("&"):
+            if "=" in param:
+                key, value = param.split("=", 1)  # Split only on first = to handle values with =
+                params[key] = value
 
-    return execute_get_command(url=url, headers=model_registry_rest_headers)
+    return execute_get_command(url=base_url, headers=model_registry_rest_headers, params=params)
 
 
 def fetch_all_artifacts_with_dynamic_paging(
