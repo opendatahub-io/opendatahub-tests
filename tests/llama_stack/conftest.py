@@ -213,7 +213,7 @@ def _get_llama_stack_distribution_deployment(
         client=client,
         namespace=llama_stack_distribution.namespace,
         name=llama_stack_distribution.name,
-        min_ready_seconds=30,
+        min_ready_seconds=Timeout.TIMEOUT_30SEC,
     )
 
     deployment.wait(timeout=Timeout.TIMEOUT_2MIN)
@@ -283,11 +283,11 @@ def _create_llama_stack_client(
             namespace=llama_stack_distribution_deployment.namespace,
             from_port=8321,
             to_port=8321,
-            waiting=30,
+            waiting=Timeout.TIMEOUT_30SEC,
         ):
             client = LlamaStackClient(
                 base_url="http://localhost:8321",
-                timeout=120.0,
+                timeout=180.0,
             )
             wait_for_llama_stack_client_ready(client=client)
             yield client

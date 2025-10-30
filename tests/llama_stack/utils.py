@@ -351,8 +351,8 @@ def validate_api_responses(
 
 
 @retry(
-    wait_timeout=Timeout.TIMEOUT_2MIN,
-    sleep=15,
+    wait_timeout=Timeout.TIMEOUT_4MIN,
+    sleep=Timeout.TIMEOUT_15_SEC,
     exceptions_dict={requests.exceptions.RequestException: [], Exception: []},
 )
 def vector_store_create_file_from_url(url: str, llama_stack_client: LlamaStackClient, vector_store: Any) -> bool:
