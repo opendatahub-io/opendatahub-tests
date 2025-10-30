@@ -10,11 +10,15 @@ from tests.model_registry.model_catalog.constants import (
     VALIDATED_CATALOG_ID,
     MODEL_ARTIFACT_TYPE,
     METRICS_ARTIFACT_TYPE,
+    CATALOG_CONTAINER,
+    PERFORMANCE_DATA_DIR,
 )
 from tests.model_registry.model_catalog.utils import (
     get_models_from_catalog_api,
     fetch_all_artifacts_with_dynamic_paging,
 )
+from tests.model_registry.utils import get_model_catalog_pod
+from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 
 LOGGER = get_logger(name=__name__)
@@ -294,3 +298,93 @@ class TestSearchModelArtifact:
             f"Filter returned {len(artifact_type_artifacts)} artifacts, "
             f"but found {len(all_model_artifacts)} in complete list for {model_name}"
         )
+
+
+class TestSearchModelsByFilterQuery:
+    def test_search_models_by_filter_query(
+        self: Self,
+        model_catalog_rest_url: list[str],
+        model_registry_rest_headers: dict[str, str],
+    ):
+        """
+        RHOAIENG-33658: Tests that the API returns all models matching a given filter query and
+        that the database results are consistent.
+        """
+        # using ILIKE for case-insensitive matching
+        licenses = "'gemma','modified-mit'"
+        languages = "language ILIKE '%iT%' OR language ILIKE '%De%'"
+        filter_query = f"license IN ({licenses}) AND ({languages})"
+        result = get_models_from_catalog_api(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            additional_params=f"&filterQuery={filter_query}",
+        )
+        for item in result["items"]:
+            assert item["license"] in licenses, f"Item license {item['license']} not in {licenses}"
+            assert any(language in item["language"] for language in ["it", "de"]), (
+                f"Item language {item['language']} not in ['it', 'de']"
+            )
+
+        # TODO: check that the DB returns the same models
+
+        LOGGER.info("All models match the filter query")
+
+    def test_search_models_by_invalidfilter_query(
+        self: Self,
+        model_catalog_rest_url: list[str],
+        model_registry_rest_headers: dict[str, str],
+    ):
+        """
+        RHOAIENG-36938: Tests the API's response to invalid and non-matching filter queries.
+        It verifies that an invalid filter query raises the correct error and
+        that a query with no matches returns zero models.
+        """
+        non_existing_filter_query = "fake IN ('gemma','modified-mit'))"
+        with pytest.raises(ResourceNotFoundError, match="invalid filter query"):
+            get_models_from_catalog_api(
+                model_catalog_rest_url=model_catalog_rest_url,
+                model_registry_rest_headers=model_registry_rest_headers,
+                additional_params=f"&filterQuery={non_existing_filter_query}",
+            )
+        no_result_filter_query = "license IN ('fake')"
+        result = get_models_from_catalog_api(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            additional_params=f"&filterQuery={no_result_filter_query}",
+        )
+        LOGGER.info(f"Result: {result['size']}")
+        assert result["size"] == 0, "Expected 0 models for a non-existing filter query"
+
+    @pytest.mark.downstream_only
+    def test_presence_performance_data_on_pod(
+        self: Self,
+        admin_client: DynamicClient,
+        model_registry_namespace: str,
+    ):
+        """
+        RHOAIENG-36938: Checks that performance data files exist for all models in the catalog pod.
+        It ensures that each model has the required metadata and performance files present in the pod.
+        """
+
+        model_catalog_pod = get_model_catalog_pod(
+            client=admin_client, model_registry_namespace=model_registry_namespace
+        )[0]
+
+        providers = model_catalog_pod.execute(container=CATALOG_CONTAINER, command=["ls", PERFORMANCE_DATA_DIR])
+        for provider in providers.splitlines():
+            if provider == "manifest.json":
+                continue
+            models = model_catalog_pod.execute(
+                container=CATALOG_CONTAINER, command=["ls", f"{PERFORMANCE_DATA_DIR}/{provider}"]
+            )
+            for model in models.splitlines():
+                if model == "provider.json":
+                    continue
+                result = model_catalog_pod.execute(
+                    container=CATALOG_CONTAINER, command=["ls", f"{PERFORMANCE_DATA_DIR}/{provider}/{model}"]
+                )
+                # this is still pending a response from the team
+                assert (
+                    "metadata.json" in result and "performance.ndjson" in result and "evaluations.ndjson" in result
+                ), f"No performance model data found on pod for model {model}: {result}"
+        LOGGER.info("All models have performance data on catalog pod")
