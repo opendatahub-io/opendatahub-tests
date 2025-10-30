@@ -50,7 +50,7 @@ def create_llama_stack_distribution(
         yield llama_stack_distribution
 
 
-@retry(wait_timeout=Timeout.TIMEOUT_2MIN, sleep=5)
+@retry(wait_timeout=Timeout.TIMEOUT_4MIN, sleep=Timeout.TIMEOUT_15_SEC)
 def wait_for_llama_stack_client_ready(client: LlamaStackClient) -> bool:
     try:
         client.inspect.health()
