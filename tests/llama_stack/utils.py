@@ -157,20 +157,22 @@ def validate_rag_agent_responses(
 
         try:
             # Create turn with the agent
-            stream_response = rag_agent.create_turn(
+            turn_response = rag_agent.create_turn(
                 messages=[{"role": "user", "content": question}],
                 session_id=session_id,
                 stream=stream,
             )
 
-            # Process events
-            for event in AgentEventLogger().log(stream_response):
-                if print_events:
-                    event.print()
-                event_count += 1
+            if stream:
+                for event in AgentEventLogger().log(turn_response):
+                    if print_events:
+                        event.print()
+                    event_count += 1
 
-                # Extract content from different event types
-                response_content += extract_event_content(event)
+                    # Extract content from different event types
+                    response_content += extract_event_content(event)
+            else:
+                response_content = turn_response.output_text
 
             # Validate response content
             response_lower = response_content.lower()
