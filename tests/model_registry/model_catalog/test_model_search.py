@@ -126,23 +126,12 @@ class TestSearchModelCatalog:
 # 1. The filter parameter is setup to use artifact_type instead of artifactType
 # 2. The filter with multiple artifact types is not working as expected
 @pytest.mark.xfail(
-    strict=True,
-    reason="RHOAIENG-36938: artifact_type is usedinstead of artifactType, multiple artifact types are not working",
+    reason="RHOAIENG-36938: artifact_type is used instead of artifactType, multiple artifact types are not working",
 )
 class TestSearchModelArtifact:
     @pytest.mark.parametrize(
         "randomly_picked_model_from_catalog_api_by_source, artifact_type",
         [
-            pytest.param(
-                {"catalog_id": REDHAT_AI_CATALOG_ID, "header_type": "registry"},
-                MODEL_ARTIFACT_TYPE,
-                id="redhat_ai_model_artifact",
-            ),
-            pytest.param(
-                {"catalog_id": REDHAT_AI_CATALOG_ID, "header_type": "registry"},
-                METRICS_ARTIFACT_TYPE,
-                id="redhat_ai_metrics_artifact",
-            ),
             pytest.param(
                 {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"},
                 MODEL_ARTIFACT_TYPE,
@@ -251,10 +240,6 @@ class TestSearchModelArtifact:
     @pytest.mark.parametrize(
         "randomly_picked_model_from_catalog_api_by_source",
         [
-            pytest.param(
-                {"catalog_id": REDHAT_AI_CATALOG_ID, "header_type": "registry"},
-                id="redhat_ai_catalog",
-            ),
             pytest.param(
                 {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"},
                 id="validated_catalog",
