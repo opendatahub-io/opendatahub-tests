@@ -20,6 +20,7 @@ LOGGER = get_logger(name=__name__)
     indirect=True,
 )
 @pytest.mark.rag
+@pytest.mark.skip_must_gather
 class TestLlamaStackAgents:
     """Test class for LlamaStack Agents API
 

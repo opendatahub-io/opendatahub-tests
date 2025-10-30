@@ -24,6 +24,7 @@ from utilities.constants import MinIo, QWEN_MODEL_NAME
 @pytest.mark.rawdeployment
 @pytest.mark.smoke
 @pytest.mark.llama_stack
+@pytest.mark.skip_must_gather
 @pytest.mark.usefixtures("minio_pod", "minio_data_connection")
 class TestLlamaStackModels:
     """Test class for LlamaStack models API functionality.
