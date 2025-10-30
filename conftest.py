@@ -176,6 +176,12 @@ def pytest_addoption(parser: Parser) -> None:
         action="store_true",
         default=False,
     )
+    must_gather_group.addoption(
+        "--no-collect-must-gather",
+        help="Disables must-gather collection on failure, overriding the --collect-must-gather option.",
+        action="store_true",
+        default=True,
+    )
 
     # Cluster sanity options
     cluster_sanity_group.addoption(
@@ -286,7 +292,7 @@ def pytest_sessionstart(session: Session) -> None:
     LOGGER.info(f"Writing tests log to {tests_log_file}")
     if os.path.exists(tests_log_file):
         pathlib.Path(tests_log_file).unlink()
-    if session.config.getoption("--collect-must-gather"):
+    if session.config.getoption("--collect-must-gather") and not session.config.getoption("--no-collect-must-gather"):
         session.config.option.must_gather_db = Database()
     thread_name = os.environ.get("PYTEST_XDIST_WORKER", "")
     session.config.option.log_listener = setup_logging(
@@ -352,7 +358,7 @@ def pytest_runtest_setup(item: Item) -> None:
     """
     BASIC_LOGGER.info(f"\n{separator(symbol_='-', val=item.name)}")
     BASIC_LOGGER.info(f"{separator(symbol_='-', val='SETUP')}")
-    if item.config.getoption("--collect-must-gather"):
+    if item.config.getoption("--collect-must-gather") and not item.config.getoption("--no-collect-must-gather"):
         # set must-gather collection directory:
         set_must_gather_collector_directory(item=item, directory_path=get_must_gather_collector_dir())
 
@@ -409,7 +415,7 @@ def pytest_sessionfinish(session: Session, exitstatus: int) -> None:
     session.config.option.log_listener.stop()
     if session.config.option.setupplan or session.config.option.collectonly:
         return
-    if session.config.getoption("--collect-must-gather"):
+    if session.config.getoption("--collect-must-gather") and not session.config.getoption("--no-collect-must-gather"):
         db = session.config.option.must_gather_db
         file_path = db.database_file_path
         LOGGER.info(f"Removing database file path {file_path}")
@@ -451,7 +457,11 @@ def is_skip_must_gather(node: Node) -> bool:
 
 def pytest_exception_interact(node: Item | Collector, call: CallInfo[Any], report: TestReport | CollectReport) -> None:
     LOGGER.error(report.longreprtext)
-    if node.config.getoption("--collect-must-gather") and not is_skip_must_gather(node=node):
+    if (
+        node.config.getoption("--collect-must-gather")
+        and not node.config.getoption("--no-collect-must-gather")
+        and not is_skip_must_gather(node=node)
+    ):
         test_name = f"{node.fspath}::{node.name}"
         LOGGER.info(f"Must-gather collection is enabled for {test_name}.")
 
