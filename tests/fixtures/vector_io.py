@@ -86,6 +86,7 @@ def etcd_deployment(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
         name="vector-io-etcd-deployment",
+        min_ready_seconds=15,
         replicas=1,
         selector={"matchLabels": {"app": "etcd"}},
         strategy={"type": "Recreate"},
@@ -130,13 +131,14 @@ def remote_milvus_deployment(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
         name="vector-io-milvus-deployment",
+        min_ready_seconds=30,
         replicas=1,
         selector={"matchLabels": {"app": "milvus-standalone"}},
         strategy={"type": "Recreate"},
         template=get_milvus_deployment_template(),
         teardown=True,
     ) as deployment:
-        deployment.wait_for_replicas(deployed=True, timeout=Timeout.TIMEOUT_2MIN)
+        deployment.wait_for_replicas(deployed=True, timeout=Timeout.TIMEOUT_4MIN)
         yield deployment
 
 

@@ -351,8 +351,8 @@ def validate_api_responses(
 
 
 @retry(
-    wait_timeout=Timeout.TIMEOUT_1MIN,
-    sleep=5,
+    wait_timeout=Timeout.TIMEOUT_2MIN,
+    sleep=15,
     exceptions_dict={requests.exceptions.RequestException: [], Exception: []},
 )
 def vector_store_create_file_from_url(url: str, llama_stack_client: LlamaStackClient, vector_store: Any) -> bool:
@@ -369,7 +369,7 @@ def vector_store_create_file_from_url(url: str, llama_stack_client: LlamaStackCl
         bool: True if successful, raises exception if failed
     """
     try:
-        response = requests.get(url, timeout=30)
+        response = requests.get(url, timeout=60)
         response.raise_for_status()
 
         # Save file locally first and pretend it's a txt file, not sure why this is needed
