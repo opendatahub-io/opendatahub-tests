@@ -43,8 +43,7 @@ OC_BINARY_PATH=/usr/local/bin/oc uv run pytest
 
 ## Must gather
 
-To collect must-gather data at the point of failure, use the `--collect-must-gather` option with the pytest command (disabled by default).
-This behavior can be overridden by adding the `--no-collect-must-gather` option, which takes precedence.
+In order to collect must-gather on failure point one may use `--collect-must-gather` to the pytest command. e.g.
 
 ```bash
 uv run pytest tests/<your component> --collect-must-gather
