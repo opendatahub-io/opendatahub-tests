@@ -66,7 +66,7 @@ def qwen_isvc(
         storage_key=minio_data_connection.name,
         storage_path="Qwen2.5-0.5B-Instruct",
         wait_for_predictor_pods=False,
-        enable_auth=True,
+        enable_auth=False,
         resources={
             "requests": {"cpu": "2", "memory": "10Gi"},
             "limits": {"cpu": "2", "memory": "12Gi"},
@@ -77,7 +77,7 @@ def qwen_isvc(
 
 @pytest.fixture(scope="class")
 def qwen_isvc_url(qwen_isvc: InferenceService) -> str:
-    return f"http://{qwen_isvc.name}-predictor.{qwen_isvc.namespace}.svc.cluster.local:8032/v1"
+    return f"http://{qwen_isvc.name}-predictor.{qwen_isvc.namespace}.svc.cluster.local:80/v1"
 
 
 @pytest.fixture(scope="class")

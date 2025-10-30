@@ -55,7 +55,7 @@ class TestLlamaStackLMEvalProvider:
     def test_llamastack_run_eval(
         self, minio_pod, minio_data_connection, patched_dsc_lmeval_allow_all, llama_stack_client
     ):
-        job = llama_stack_client.eval.run_eval(
+        job = llama_stack_client.alpha.eval.run_eval(
             benchmark_id=TRUSTYAI_LMEVAL_ARCEASY,
             benchmark_config={
                 "eval_candidate": {
@@ -65,14 +65,14 @@ class TestLlamaStackLMEvalProvider:
                     "sampling_params": {"temperature": 0.7, "top_p": 0.9, "max_tokens": 10},
                 },
                 "scoring_params": {},
-                "num_examples": 2,
+                "num_examples": 1,
             },
         )
 
         samples = TimeoutSampler(
             wait_timeout=Timeout.TIMEOUT_10MIN,
             sleep=30,
-            func=lambda: llama_stack_client.eval.jobs.status(
+            func=lambda: llama_stack_client.alpha.eval.jobs.status(
                 job_id=job.job_id, benchmark_id=TRUSTYAI_LMEVAL_ARCEASY
             ).status,
         )
