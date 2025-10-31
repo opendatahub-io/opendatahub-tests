@@ -45,6 +45,7 @@ def model_catalog_config_map(
 
 @pytest.fixture(scope="class")
 def updated_catalog_config_map(
+    pytestconfig: pytest.Config,
     request: pytest.FixtureRequest,
     catalog_config_map: ConfigMap,
     model_registry_namespace: str,
@@ -52,16 +53,19 @@ def updated_catalog_config_map(
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
 ) -> Generator[ConfigMap, None, None]:
-    patches = {"data": {"sources.yaml": request.param["sources_yaml"]}}
-    if "sample_yaml" in request.param:
-        for key in request.param["sample_yaml"]:
-            patches["data"][key] = request.param["sample_yaml"][key]
-
-    with ResourceEditor(patches={catalog_config_map: patches}):
-        is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
-        wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
+    if pytestconfig.option.post_upgrade or pytestconfig.option.pre_upgrade:
         yield catalog_config_map
-    is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+    else:
+        patches = {"data": {"sources.yaml": request.param["sources_yaml"]}}
+        if "sample_yaml" in request.param:
+            for key in request.param["sample_yaml"]:
+                patches["data"][key] = request.param["sample_yaml"][key]
+
+        with ResourceEditor(patches={catalog_config_map: patches}):
+            is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+            wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
+            yield catalog_config_map
+        is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
 
 
 @pytest.fixture(scope="class")
