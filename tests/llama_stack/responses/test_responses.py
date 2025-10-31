@@ -13,6 +13,7 @@ from tests.llama_stack.constants import ModelInfo
     indirect=True,
 )
 @pytest.mark.rag
+@pytest.mark.skip_must_gather
 class TestLlamaStackResponses:
     """Test class for LlamaStack responses API functionality.
 

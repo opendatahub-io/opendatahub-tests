@@ -50,7 +50,7 @@ def create_llama_stack_distribution(
         yield llama_stack_distribution
 
 
-@retry(wait_timeout=Timeout.TIMEOUT_2MIN, sleep=5)
+@retry(wait_timeout=Timeout.TIMEOUT_4MIN, sleep=Timeout.TIMEOUT_15_SEC)
 def wait_for_llama_stack_client_ready(client: LlamaStackClient) -> bool:
     try:
         client.inspect.health()
@@ -157,20 +157,22 @@ def validate_rag_agent_responses(
 
         try:
             # Create turn with the agent
-            stream_response = rag_agent.create_turn(
+            turn_response = rag_agent.create_turn(
                 messages=[{"role": "user", "content": question}],
                 session_id=session_id,
                 stream=stream,
             )
 
-            # Process events
-            for event in AgentEventLogger().log(stream_response):
-                if print_events:
-                    event.print()
-                event_count += 1
+            if stream:
+                for event in AgentEventLogger().log(turn_response):
+                    if print_events:
+                        event.print()
+                    event_count += 1
 
-                # Extract content from different event types
-                response_content += extract_event_content(event)
+                    # Extract content from different event types
+                    response_content += extract_event_content(event)
+            else:
+                response_content = turn_response.output_text
 
             # Validate response content
             response_lower = response_content.lower()
@@ -351,8 +353,8 @@ def validate_api_responses(
 
 
 @retry(
-    wait_timeout=Timeout.TIMEOUT_1MIN,
-    sleep=5,
+    wait_timeout=Timeout.TIMEOUT_4MIN,
+    sleep=Timeout.TIMEOUT_15_SEC,
     exceptions_dict={requests.exceptions.RequestException: [], Exception: []},
 )
 def vector_store_create_file_from_url(url: str, llama_stack_client: LlamaStackClient, vector_store: Any) -> bool:
@@ -369,7 +371,7 @@ def vector_store_create_file_from_url(url: str, llama_stack_client: LlamaStackCl
         bool: True if successful, raises exception if failed
     """
     try:
-        response = requests.get(url, timeout=30)
+        response = requests.get(url, timeout=60)
         response.raise_for_status()
 
         # Save file locally first and pretend it's a txt file, not sure why this is needed

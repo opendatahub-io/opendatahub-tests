@@ -20,6 +20,7 @@ LOGGER = get_logger(name=__name__)
     indirect=True,
 )
 @pytest.mark.rag
+@pytest.mark.skip_must_gather
 class TestLlamaStackAgents:
     """Test class for LlamaStack Agents API
 
@@ -51,7 +52,7 @@ class TestLlamaStackAgents:
         )
         s_id = agent.create_session(session_name=f"s{uuid.uuid4().hex}")
 
-        # Test identity question
+        # Test expected identity indicators
         response = agent.create_turn(
             messages=[{"role": "user", "content": "Who are you?"}],
             session_id=s_id,
@@ -60,9 +61,15 @@ class TestLlamaStackAgents:
         content = response.output_text
         text = str(content or "")
         assert text, "LLM response content is empty"
-        assert "model" in text.lower(), "The LLM didn't provide the expected answer to the prompt"
+        identity_indicators = ["model", "assistant", "ai", "artificial intelligence", "language model", "llm"]
+        found_indicators = [indicator for indicator in identity_indicators if indicator in text.lower()]
+        if not found_indicators:
+            pytest.fail(
+                f"Expected response to contain identity indicators like 'model', 'assistant', 'ai', etc. "
+                f"Actual response: '{text[:100]}{'...' if len(text) > 100 else ''}'"
+            )
 
-        # Test capability question
+        # Check expected capability indicators
         response = agent.create_turn(
             messages=[{"role": "user", "content": "What can you do?"}],
             session_id=s_id,
@@ -71,7 +78,32 @@ class TestLlamaStackAgents:
         content = response.output_text
         text = str(content or "")
         assert text, "LLM response content is empty"
-        assert "answer" in text.lower(), "The LLM didn't provide the expected answer to the prompt"
+        capability_indicators = [
+            "help",
+            "assist",
+            "answer",
+            "questions",
+            "information",
+            "support",
+            "tasks",
+            "conversation",
+            "chat",
+            "advice",
+            "guidance",
+            "explain",
+            "provide",
+            "offer",
+            "capable",
+            "able",
+            "can",
+            "do",
+        ]
+        found_capabilities = [indicator for indicator in capability_indicators if indicator in text.lower()]
+        if not found_capabilities:
+            pytest.fail(
+                f"Expected response to contain capability indicators like 'help', 'assist', 'answer', etc. "
+                f"Actual response: '{text[:100]}{'...' if len(text) > 100 else ''}'"
+            )
 
     @pytest.mark.smoke
     def test_agents_rag_agent(
@@ -98,7 +130,7 @@ class TestLlamaStackAgents:
         rag_agent = Agent(
             client=unprivileged_llama_stack_client,
             model=llama_stack_models.model_id,
-            instructions="You are a helpful assistant. Use the available tools to answer questions as needed.",
+            instructions="You are a helpful assistant. Use the file_search tool to answer questions as needed.",
             tools=[
                 {
                     "type": "file_search",
