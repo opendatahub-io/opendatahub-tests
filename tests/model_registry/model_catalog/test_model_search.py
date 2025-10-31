@@ -10,8 +10,6 @@ from tests.model_registry.model_catalog.constants import (
     METRICS_ARTIFACT_TYPE,
     REDHAT_AI_CATALOG_NAME,
     REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
-    CATALOG_CONTAINER,
-    PERFORMANCE_DATA_DIR,
 )
 from tests.model_registry.model_catalog.utils import (
     get_models_from_catalog_api,
@@ -19,6 +17,7 @@ from tests.model_registry.model_catalog.utils import (
     validate_model_contains_search_term,
     validate_search_results_against_database,
     validate_filter_query_results_against_database,
+    validate_performance_data_files_on_pod,
 )
 from tests.model_registry.utils import get_model_catalog_pod
 from kubernetes.dynamic import DynamicClient
@@ -497,7 +496,7 @@ class TestSearchModelsByFilterQuery:
         """
         # Filter parameters
         licenses = "'gemma','modified-mit'"
-        language_pattern_1 = "%it%"
+        language_pattern_1 = "%iT%"
         language_pattern_2 = "%de%"
 
         # using ILIKE for case-insensitive matching
@@ -530,7 +529,7 @@ class TestSearchModelsByFilterQuery:
 
         LOGGER.info("All models match the filter query and database validation passed")
 
-    def test_search_models_by_invalidfilter_query(
+    def test_search_models_by_invalid_filter_query(
         self: Self,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
@@ -567,6 +566,10 @@ class TestSearchModelsByFilterQuery:
         )
         assert is_valid, f"API filter query results do not match database query: {errors}"
 
+    @pytest.mark.xfail(
+        reason="Performance data are missing for some models, waiting for a decision from the team, \
+    https://redhat-internal.slack.com/archives/C09570S9VV0/p1761834621645019",
+    )
     @pytest.mark.downstream_only
     def test_presence_performance_data_on_pod(
         self: Self,
@@ -582,21 +585,7 @@ class TestSearchModelsByFilterQuery:
             client=admin_client, model_registry_namespace=model_registry_namespace
         )[0]
 
-        providers = model_catalog_pod.execute(container=CATALOG_CONTAINER, command=["ls", PERFORMANCE_DATA_DIR])
-        for provider in providers.splitlines():
-            if provider == "manifest.json":
-                continue
-            models = model_catalog_pod.execute(
-                container=CATALOG_CONTAINER, command=["ls", f"{PERFORMANCE_DATA_DIR}/{provider}"]
-            )
-            for model in models.splitlines():
-                if model == "provider.json":
-                    continue
-                result = model_catalog_pod.execute(
-                    container=CATALOG_CONTAINER, command=["ls", f"{PERFORMANCE_DATA_DIR}/{provider}/{model}"]
-                )
-                # this is still pending a response from the team
-                assert (
-                    "metadata.json" in result and "performance.ndjson" in result and "evaluations.ndjson" in result
-                ), f"No performance model data found on pod for model {model}: {result}"
-        LOGGER.info("All models have performance data on catalog pod")
+        validation_results = validate_performance_data_files_on_pod(model_catalog_pod=model_catalog_pod)
+
+        # Assert that all models have all required performance data files
+        assert not validation_results, f"Models with missing performance data files: {validation_results}"

@@ -19,6 +19,8 @@ from tests.model_registry.model_catalog.constants import (
     REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
     REDHAT_AI_CATALOG_ID,
     VALIDATED_CATALOG_ID,
+    CATALOG_CONTAINER,
+    PERFORMANCE_DATA_DIR,
 )
 from tests.model_registry.utils import execute_get_command
 
@@ -767,3 +769,53 @@ def fetch_all_artifacts_with_dynamic_paging(
 
         LOGGER.info(f"Pagination detected with pageSize={page_size}, increasing by {page_size_increment}")
         page_size += page_size_increment
+
+
+def validate_performance_data_files_on_pod(model_catalog_pod: Pod) -> dict[str, list[str]]:
+    """
+    Validate that performance data files exist for all models in the catalog pod.
+
+    Iterates through providers and models in the performance data directory to check
+    for required metadata and performance files.
+
+    Args:
+        model_catalog_pod: Pod object for the model catalog pod
+
+    Returns:
+        Dictionary with validation results if missing files are found,
+        Returns empty dictionary if all models have all required files.
+    """
+    validation_results = {}
+    required_files = ["metadata.json", "performance.ndjson", "evaluations.ndjson"]
+
+    providers = model_catalog_pod.execute(container=CATALOG_CONTAINER, command=["ls", PERFORMANCE_DATA_DIR])
+
+    for provider in providers.splitlines():
+        if provider == "manifest.json":
+            continue
+
+        models = model_catalog_pod.execute(
+            container=CATALOG_CONTAINER, command=["ls", f"{PERFORMANCE_DATA_DIR}/{provider}"]
+        )
+
+        for model in models.splitlines():
+            if model == "provider.json":
+                continue
+
+            result = model_catalog_pod.execute(
+                container=CATALOG_CONTAINER, command=["ls", f"{PERFORMANCE_DATA_DIR}/{provider}/{model}"]
+            )
+
+            # Check which required files are missing
+            missing_files = [f for f in required_files if f not in result]
+
+            if missing_files:
+                model_key = f"{provider}/{model}"
+                validation_results[model_key] = missing_files
+
+    if not validation_results:
+        LOGGER.info("All models have all required performance data files on catalog pod")
+    else:
+        LOGGER.warning(f"Found models with missing performance data files: {validation_results}")
+
+    return validation_results

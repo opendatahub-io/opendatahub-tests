@@ -656,7 +656,7 @@ def validate_mlmd_removal_in_model_registry_pod_log(
 
 
 def get_model_catalog_pod(
-    client: DynamicClient, model_registry_namespace: str, label_selector: str = "component=model-catalog"
+    client: DynamicClient, model_registry_namespace: str, label_selector: str = "app.kubernetes.io/name=model-catalog"
 ) -> list[Pod]:
     return list(Pod.get(namespace=model_registry_namespace, label_selector=label_selector, dyn_client=client))
 
