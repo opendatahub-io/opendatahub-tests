@@ -80,3 +80,4 @@ MR_POSTGRES_DB_OBJECT: dict[Any, str] = {
     Deployment: f"{MR_INSTANCE_NAME}-postgres",
     Secret: f"{MR_INSTANCE_NAME}-postgres-credentials",
 }
+MR_POSTGRES_DEPLOYMENT_NAME_STR = f"{MR_INSTANCE_NAME}-postgres"

@@ -289,11 +289,15 @@ def validate_container_images(
         # Validate image format
         is_valid, error_msg = validate_image_format(image=image)
         if not is_valid:
-            validation_errors.append(f"Pod {pod.name} image validation failed: {error_msg}")
+            validation_errors.append(
+                f"Pod {pod.name} in namespace: {pod.namespace} image validation failed: {error_msg}"
+            )
 
         # Check if image is in valid references
         if image not in valid_image_refs:
-            validation_errors.append(f"Pod {pod.name} image {image} is not in valid image references")
+            validation_errors.append(
+                f"Pod {pod.name}, namespace: {pod.namespace} image {image} is not in valid image references"
+            )
 
     return validation_errors
 
