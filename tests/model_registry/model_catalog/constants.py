@@ -39,3 +39,4 @@ VALIDATED_CATALOG_ID: str = "redhat_ai_validated_models"
 
 MODEL_ARTIFACT_TYPE: str = "model-artifact"
 METRICS_ARTIFACT_TYPE: str = "metrics-artifact"
+PERFORMANCE_DATA_DIR: str = "/shared-benchmark-data"

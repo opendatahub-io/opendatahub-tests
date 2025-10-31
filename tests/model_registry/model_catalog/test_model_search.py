@@ -16,7 +16,11 @@ from tests.model_registry.model_catalog.utils import (
     fetch_all_artifacts_with_dynamic_paging,
     validate_model_contains_search_term,
     validate_search_results_against_database,
+    validate_filter_query_results_against_database,
+    validate_performance_data_files_on_pod,
 )
+from tests.model_registry.utils import get_model_catalog_pod
+from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 
 LOGGER = get_logger(name=__name__)
@@ -475,3 +479,113 @@ class TestSearchModelCatalogQParameter:
             f"Combined filter results should be a subset of search-only results. "
             f"Extra models in combined: {combined_model_ids - search_only_model_ids}"
         )
+
+
+class TestSearchModelsByFilterQuery:
+    # Downstream only because of a bug in ODH RHOAIENG-37676
+    @pytest.mark.downstream_only
+    def test_search_models_by_filter_query(
+        self: Self,
+        model_catalog_rest_url: list[str],
+        model_registry_rest_headers: dict[str, str],
+        model_registry_namespace: str,
+    ):
+        """
+        RHOAIENG-33658: Tests that the API returns all models matching a given filter query and
+        that the database results are consistent.
+        """
+        # Filter parameters
+        licenses = "'gemma','modified-mit'"
+        language_pattern_1 = "%iT%"
+        language_pattern_2 = "%de%"
+
+        # using ILIKE for case-insensitive matching
+        filter_query = f"license IN ({licenses}) AND (language ILIKE '{language_pattern_1}' \
+            OR language ILIKE '{language_pattern_2}')"
+
+        result = get_models_from_catalog_api(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            additional_params=f"&filterQuery={filter_query}",
+        )
+
+        # Validate API results against database query using same parameters
+        is_valid, errors = validate_filter_query_results_against_database(
+            api_response=result,
+            licenses=licenses,
+            language_pattern_1=language_pattern_1,
+            language_pattern_2=language_pattern_2,
+            namespace=model_registry_namespace,
+        )
+
+        assert is_valid, f"API filter query results do not match database query: {errors}"
+
+        # Additional validation: ensure returned models match the filter criteria
+        for item in result["items"]:
+            assert item["license"] in licenses, f"Item license {item['license']} not in {licenses}"
+            assert any(language in item["language"] for language in ["it", "de"]), (
+                f"Item language {item['language']} not in ['it', 'de']"
+            )
+
+        LOGGER.info("All models match the filter query and database validation passed")
+
+    def test_search_models_by_invalid_filter_query(
+        self: Self,
+        model_catalog_rest_url: list[str],
+        model_registry_rest_headers: dict[str, str],
+        model_registry_namespace: str,
+    ):
+        """
+        RHOAIENG-36938: Tests the API's response to invalid and non-matching filter queries.
+        It verifies that an invalid filter query raises the correct error and
+        that a query with no matches returns zero models.
+        """
+        non_existing_filter_query = "fake IN ('gemma','modified-mit'))"
+        with pytest.raises(ResourceNotFoundError, match="invalid filter query"):
+            get_models_from_catalog_api(
+                model_catalog_rest_url=model_catalog_rest_url,
+                model_registry_rest_headers=model_registry_rest_headers,
+                additional_params=f"&filterQuery={non_existing_filter_query}",
+            )
+        # Test with a valid filter query that should return zero results
+        no_result_licenses = "'fake'"
+        no_result_filter_query = f"license IN ({no_result_licenses})"
+        result = get_models_from_catalog_api(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            additional_params=f"&filterQuery={no_result_filter_query}",
+        )
+        LOGGER.info(f"Result: {result['size']}")
+        assert result["size"] == 0, "Expected 0 models for a non-existing filter query"
+
+        # Validate API results against database query using same license parameter
+        is_valid, errors = validate_filter_query_results_against_database(
+            api_response=result,
+            licenses=no_result_licenses,
+            namespace=model_registry_namespace,
+        )
+        assert is_valid, f"API filter query results do not match database query: {errors}"
+
+    @pytest.mark.xfail(
+        reason="Performance data are missing for some models, waiting for a decision from the team, \
+    https://redhat-internal.slack.com/archives/C09570S9VV0/p1761834621645019",
+    )
+    @pytest.mark.downstream_only
+    def test_presence_performance_data_on_pod(
+        self: Self,
+        admin_client: DynamicClient,
+        model_registry_namespace: str,
+    ):
+        """
+        RHOAIENG-36938: Checks that performance data files exist for all models in the catalog pod.
+        It ensures that each model has the required metadata and performance files present in the pod.
+        """
+
+        model_catalog_pod = get_model_catalog_pod(
+            client=admin_client, model_registry_namespace=model_registry_namespace
+        )[0]
+
+        validation_results = validate_performance_data_files_on_pod(model_catalog_pod=model_catalog_pod)
+
+        # Assert that all models have all required performance data files
+        assert not validation_results, f"Models with missing performance data files: {validation_results}"

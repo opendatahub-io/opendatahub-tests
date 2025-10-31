@@ -11,12 +11,16 @@ from tests.model_registry.model_catalog.constants import DEFAULT_CATALOGS
 from tests.model_registry.model_catalog.db_constants import (
     SEARCH_MODELS_DB_QUERY,
     SEARCH_MODELS_WITH_SOURCE_ID_DB_QUERY,
+    FILTER_MODELS_BY_LICENSE_DB_QUERY,
+    FILTER_MODELS_BY_LICENSE_AND_LANGUAGE_DB_QUERY,
 )
 from tests.model_registry.model_catalog.constants import (
     REDHAT_AI_CATALOG_NAME,
     REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
     REDHAT_AI_CATALOG_ID,
     VALIDATED_CATALOG_ID,
+    CATALOG_CONTAINER,
+    PERFORMANCE_DATA_DIR,
 )
 from tests.model_registry.utils import execute_get_command
 
@@ -527,35 +531,68 @@ def get_models_matching_search_from_database(
     return parsed_result.get("values", [])
 
 
-def validate_search_results_against_database(
-    api_response: dict[str, Any],
-    search_term: str,
+def get_models_matching_filter_query_from_database(
+    licenses: str,
+    language_pattern_1: str | None = None,
+    language_pattern_2: str | None = None,
     namespace: str = "rhoai-model-registries",
-    source_label: str | None = None,
-) -> tuple[bool, list[str]]:
+) -> list[str]:
     """
-    Validate API search results against database query results.
+    Query the database directly to find model IDs that match the filter criteria.
+
+    Uses either FILTER_MODELS_BY_LICENSE_DB_QUERY or FILTER_MODELS_BY_LICENSE_AND_LANGUAGE_DB_QUERY
+    from db_constants to replicate the exact backend filter query logic.
 
     Args:
-        api_response: API response from search query
-        search_term: Search term used
-        namespace: OpenShift namespace for PostgreSQL pod
-        source_label: Optional source label filter used in the API call
+        licenses: License values in SQL IN clause format (e.g., "'gemma','modified-mit'")
+        language_pattern_1: First language pattern for ILIKE (e.g., '%it%'). Optional.
+        language_pattern_2: Second language pattern for ILIKE (e.g., '%de%'). Optional.
+        namespace: OpenShift namespace containing the PostgreSQL pod
+
+    Returns:
+        List of model IDs that match the filter criteria
+    """
+    # Select the appropriate query template based on whether language filters are provided
+    if language_pattern_1 and language_pattern_2:
+        filter_query_sql = FILTER_MODELS_BY_LICENSE_AND_LANGUAGE_DB_QUERY.format(
+            licenses=licenses,
+            language_pattern_1=language_pattern_1,
+            language_pattern_2=language_pattern_2,
+        )
+    else:
+        filter_query_sql = FILTER_MODELS_BY_LICENSE_DB_QUERY.format(licenses=licenses)
+
+    LOGGER.debug(f"Filter query (SQL): {filter_query_sql}")
+
+    # Execute the database query
+    db_result = execute_database_query(query=filter_query_sql, namespace=namespace)
+    parsed_result = parse_psql_output(psql_output=db_result)
+
+    return parsed_result.get("values", [])
+
+
+def _compare_api_and_database_results(
+    api_response: dict[str, Any],
+    expected_model_ids: set[str],
+    description: str,
+) -> tuple[bool, list[str]]:
+    """
+    Compare API response model IDs with expected database model IDs.
+
+    Args:
+        api_response: API response containing model items
+        expected_model_ids: Set of model IDs expected from database
+        description: Description of the query for logging (e.g., "search term 'granite'", "filter query")
 
     Returns:
         Tuple of (is_valid, list_of_error_messages)
     """
     errors = []
 
-    # Get expected results from database (returns strings)
-    expected_model_ids = set(get_models_matching_search_from_database(search_term, namespace, source_label))
-    filter_desc = f"'{search_term}'" + (f" with source_label='{source_label}'" if source_label else "")
-    LOGGER.info(f"Database query found {len(expected_model_ids)} models for {filter_desc}")
-
-    # Get actual results from API (returns strings)
+    # Get actual results from API
     api_models = api_response.get("items", [])
     actual_model_ids = set(model.get("id") for model in api_models if model.get("id"))
-    LOGGER.info(f"API returned {len(actual_model_ids)} models for {filter_desc}")
+    LOGGER.info(f"API returned {len(actual_model_ids)} models for {description}")
 
     # Compare results
     missing_in_api = expected_model_ids - actual_model_ids
@@ -574,6 +611,84 @@ def validate_search_results_against_database(
         LOGGER.error(f"Mismatch: DB={len(expected_model_ids)}, API={len(actual_model_ids)}")
 
     return len(errors) == 0, errors
+
+
+def validate_search_results_against_database(
+    api_response: dict[str, Any],
+    search_term: str,
+    namespace: str = "rhoai-model-registries",
+    source_label: str | None = None,
+) -> tuple[bool, list[str]]:
+    """
+    Validate API search results against database query results.
+
+    Args:
+        api_response: API response from search query
+        search_term: Search term used
+        namespace: OpenShift namespace for PostgreSQL pod
+        source_label: Optional source label filter used in the API call
+
+    Returns:
+        Tuple of (is_valid, list_of_error_messages)
+    """
+    # Get expected results from database
+    expected_model_ids = set(get_models_matching_search_from_database(search_term, namespace, source_label))
+    filter_desc = f"search term '{search_term}'" + (f" with source_label='{source_label}'" if source_label else "")
+    LOGGER.info(f"Database query found {len(expected_model_ids)} models for {filter_desc}")
+
+    # Compare with API results
+    return _compare_api_and_database_results(
+        api_response=api_response, expected_model_ids=expected_model_ids, description=filter_desc
+    )
+
+
+def validate_filter_query_results_against_database(
+    api_response: dict[str, Any],
+    licenses: str,
+    language_pattern_1: str | None = None,
+    language_pattern_2: str | None = None,
+    namespace: str = "rhoai-model-registries",
+) -> tuple[bool, list[str]]:
+    """
+    Validate API filter query results against database query results.
+
+    Supports validation of filter queries with:
+    - License filter only: license IN (...)
+    - License and language filters: license IN (...) AND (language ILIKE ... OR language ILIKE ...)
+
+    Args:
+        api_response: API response from filter query
+        licenses: License values in SQL IN clause format (e.g., "'gemma','modified-mit'")
+        language_pattern_1: First language pattern for ILIKE (e.g., '%it%'). Optional.
+        language_pattern_2: Second language pattern for ILIKE (e.g., '%de%'). Optional.
+        namespace: OpenShift namespace for PostgreSQL pod
+
+    Returns:
+        Tuple of (is_valid, list_of_error_messages)
+    """
+    # Get expected results from database
+    expected_model_ids = set(
+        get_models_matching_filter_query_from_database(
+            licenses=licenses,
+            language_pattern_1=language_pattern_1,
+            language_pattern_2=language_pattern_2,
+            namespace=namespace,
+        )
+    )
+
+    # Build filter description based on whether language patterns are provided
+    if language_pattern_1 and language_pattern_2:
+        filter_desc = f"licenses IN ({licenses}) AND (language ILIKE '{language_pattern_1}' \
+            OR language ILIKE '{language_pattern_2}')"
+    else:
+        filter_desc = f"licenses IN ({licenses})"
+
+    LOGGER.info(f"Database query found {len(expected_model_ids)} models for filter: {filter_desc}")
+
+    # Compare with API results
+    return _compare_api_and_database_results(
+        api_response=api_response, expected_model_ids=expected_model_ids, description=filter_desc
+    )
 
 
 def get_models_from_catalog_api(
@@ -654,3 +769,53 @@ def fetch_all_artifacts_with_dynamic_paging(
 
         LOGGER.info(f"Pagination detected with pageSize={page_size}, increasing by {page_size_increment}")
         page_size += page_size_increment
+
+
+def validate_performance_data_files_on_pod(model_catalog_pod: Pod) -> dict[str, list[str]]:
+    """
+    Validate that performance data files exist for all models in the catalog pod.
+
+    Iterates through providers and models in the performance data directory to check
+    for required metadata and performance files.
+
+    Args:
+        model_catalog_pod: Pod object for the model catalog pod
+
+    Returns:
+        Dictionary with validation results if missing files are found,
+        Returns empty dictionary if all models have all required files.
+    """
+    validation_results = {}
+    required_files = ["metadata.json", "performance.ndjson", "evaluations.ndjson"]
+
+    providers = model_catalog_pod.execute(container=CATALOG_CONTAINER, command=["ls", PERFORMANCE_DATA_DIR])
+
+    for provider in providers.splitlines():
+        if provider == "manifest.json":
+            continue
+
+        models = model_catalog_pod.execute(
+            container=CATALOG_CONTAINER, command=["ls", f"{PERFORMANCE_DATA_DIR}/{provider}"]
+        )
+
+        for model in models.splitlines():
+            if model == "provider.json":
+                continue
+
+            result = model_catalog_pod.execute(
+                container=CATALOG_CONTAINER, command=["ls", f"{PERFORMANCE_DATA_DIR}/{provider}/{model}"]
+            )
+
+            # Check which required files are missing
+            missing_files = [f for f in required_files if f not in result]
+
+            if missing_files:
+                model_key = f"{provider}/{model}"
+                validation_results[model_key] = missing_files
+
+    if not validation_results:
+        LOGGER.info("All models have all required performance data files on catalog pod")
+    else:
+        LOGGER.warning(f"Found models with missing performance data files: {validation_results}")
+
+    return validation_results

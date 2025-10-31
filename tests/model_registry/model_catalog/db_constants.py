@@ -101,6 +101,59 @@ AND EXISTS (
 ORDER BY model_id;
 """
 
+# SQL query for filterQuery parameter database validation with license filter only
+# Replicates the database query used by the filterQuery parameter functionality
+# for the specific pattern: license IN (...)
+# Note: Uses {licenses} placeholder
+FILTER_MODELS_BY_LICENSE_DB_QUERY = """
+SELECT DISTINCT c.id as model_id
+FROM "Context" c
+WHERE c.type_id = (SELECT id FROM "Type" WHERE name = 'kf.CatalogModel')
+AND EXISTS (
+    SELECT 1
+    FROM "ContextProperty" cp
+    WHERE cp.context_id = c.id
+    AND cp.name = 'license'
+    AND cp.string_value IN ({licenses})
+)
+ORDER BY model_id;
+"""
+
+# SQL query for filterQuery parameter database validation with license and language filters
+# Replicates the database query used by the filterQuery parameter functionality
+# for the specific pattern: license IN (...) AND (language ILIKE ... OR language ILIKE ...)
+# Note: Uses {licenses}, {language_pattern_1}, {language_pattern_2} placeholders
+FILTER_MODELS_BY_LICENSE_AND_LANGUAGE_DB_QUERY = """
+SELECT DISTINCT c.id as model_id
+FROM "Context" c
+WHERE c.type_id = (SELECT id FROM "Type" WHERE name = 'kf.CatalogModel')
+AND EXISTS (
+    SELECT 1
+    FROM "ContextProperty" cp
+    WHERE cp.context_id = c.id
+    AND cp.name = 'license'
+    AND cp.string_value IN ({licenses})
+)
+AND (
+    EXISTS (
+        SELECT 1
+        FROM "ContextProperty" cp
+        WHERE cp.context_id = c.id
+        AND cp.name = 'language'
+        AND LOWER(cp.string_value) LIKE LOWER('{language_pattern_1}')
+    )
+    OR
+    EXISTS (
+        SELECT 1
+        FROM "ContextProperty" cp
+        WHERE cp.context_id = c.id
+        AND cp.name = 'language'
+        AND LOWER(cp.string_value) LIKE LOWER('{language_pattern_2}')
+    )
+)
+ORDER BY model_id;
+"""
+
 # Fields that are explicitly filtered out by the filter_options endpoint API
 # From db_catalog.go:204-206 in kubeflow/model-registry GetFilterOptions method
 API_EXCLUDED_FILTER_FIELDS = {"source_id", "logo", "license_link"}
