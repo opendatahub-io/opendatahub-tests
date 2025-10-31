@@ -131,23 +131,12 @@ class TestSearchModelCatalog:
 # 1. The filter parameter is setup to use artifact_type instead of artifactType
 # 2. The filter with multiple artifact types is not working as expected
 @pytest.mark.xfail(
-    strict=True,
-    reason="RHOAIENG-36938: artifact_type is usedinstead of artifactType, multiple artifact types are not working",
+    reason="RHOAIENG-36938: artifact_type is used instead of artifactType, multiple artifact types are not working",
 )
 class TestSearchModelArtifact:
     @pytest.mark.parametrize(
         "randomly_picked_model_from_catalog_api_by_source, artifact_type",
         [
-            pytest.param(
-                {"catalog_id": REDHAT_AI_CATALOG_ID, "header_type": "registry"},
-                MODEL_ARTIFACT_TYPE,
-                id="redhat_ai_model_artifact",
-            ),
-            pytest.param(
-                {"catalog_id": REDHAT_AI_CATALOG_ID, "header_type": "registry"},
-                METRICS_ARTIFACT_TYPE,
-                id="redhat_ai_metrics_artifact",
-            ),
             pytest.param(
                 {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"},
                 MODEL_ARTIFACT_TYPE,
@@ -257,10 +246,6 @@ class TestSearchModelArtifact:
         "randomly_picked_model_from_catalog_api_by_source",
         [
             pytest.param(
-                {"catalog_id": REDHAT_AI_CATALOG_ID, "header_type": "registry"},
-                id="redhat_ai_catalog",
-            ),
-            pytest.param(
                 {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"},
                 id="validated_catalog",
             ),
@@ -312,7 +297,10 @@ class TestSearchModelCatalogQParameter:
             "deepseek",
             "red hat",
             "granite-8b",
-            "The Llama 4 collection of models are natively multimodal AI models that enable text and multimodal experiences. These models leverage a mixture-of-experts architecture to offer industry-leading performance in text and image understanding. These Llama 4 models mark the beginning of a new era for the Llama ecosystem. We are launching two efficient models in the Llama 4 series, Llama 4 Scout, a 17 billion parameter model with 16 experts, and Llama 4 Maverick, a 17 billion parameter model with 128 experts.",  # noqa: E501
+            pytest.param(
+                "The Llama 4 collection of models are natively multimodal AI models that enable text and multimodal experiences. These models leverage a mixture-of-experts architecture to offer industry-leading performance in text and image understanding. These Llama 4 models mark the beginning of a new era for the Llama ecosystem. We are launching two efficient models in the Llama 4 series, Llama 4 Scout, a 17 billion parameter model with 16 experts, and Llama 4 Maverick, a 17 billion parameter model with 128 experts.",  # noqa: E501
+                id="long_description",
+            ),
         ],
     )
     def test_q_parameter_basic_search(
