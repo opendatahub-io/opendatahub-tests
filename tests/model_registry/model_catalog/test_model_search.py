@@ -18,6 +18,7 @@ from tests.model_registry.model_catalog.utils import (
     fetch_all_artifacts_with_dynamic_paging,
     validate_model_contains_search_term,
     validate_search_results_against_database,
+    validate_filter_query_results_against_database,
 )
 from tests.model_registry.utils import get_model_catalog_pod
 from kubernetes.dynamic import DynamicClient
@@ -494,38 +495,58 @@ class TestSearchModelCatalogQParameter:
 
 
 class TestSearchModelsByFilterQuery:
+    # Downstream only because of a bug in ODH RHOAIENG-37676
+    @pytest.mark.downstream_only
     def test_search_models_by_filter_query(
         self: Self,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
+        model_registry_namespace: str,
     ):
         """
         RHOAIENG-33658: Tests that the API returns all models matching a given filter query and
         that the database results are consistent.
         """
-        # using ILIKE for case-insensitive matching
+        # Filter parameters
         licenses = "'gemma','modified-mit'"
-        languages = "language ILIKE '%iT%' OR language ILIKE '%De%'"
-        filter_query = f"license IN ({licenses}) AND ({languages})"
+        language_pattern_1 = "%it%"
+        language_pattern_2 = "%de%"
+
+        # using ILIKE for case-insensitive matching
+        filter_query = f"license IN ({licenses}) AND (language ILIKE '{language_pattern_1}' \
+            OR language ILIKE '{language_pattern_2}')"
+
         result = get_models_from_catalog_api(
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
             additional_params=f"&filterQuery={filter_query}",
         )
+
+        # Validate API results against database query using same parameters
+        is_valid, errors = validate_filter_query_results_against_database(
+            api_response=result,
+            licenses=licenses,
+            language_pattern_1=language_pattern_1,
+            language_pattern_2=language_pattern_2,
+            namespace=model_registry_namespace,
+        )
+
+        assert is_valid, f"API filter query results do not match database query: {errors}"
+
+        # Additional validation: ensure returned models match the filter criteria
         for item in result["items"]:
             assert item["license"] in licenses, f"Item license {item['license']} not in {licenses}"
             assert any(language in item["language"] for language in ["it", "de"]), (
                 f"Item language {item['language']} not in ['it', 'de']"
             )
 
-        # TODO: check that the DB returns the same models
-
-        LOGGER.info("All models match the filter query")
+        LOGGER.info("All models match the filter query and database validation passed")
 
     def test_search_models_by_invalidfilter_query(
         self: Self,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
+        model_registry_namespace: str,
     ):
         """
         RHOAIENG-36938: Tests the API's response to invalid and non-matching filter queries.
@@ -539,7 +560,9 @@ class TestSearchModelsByFilterQuery:
                 model_registry_rest_headers=model_registry_rest_headers,
                 additional_params=f"&filterQuery={non_existing_filter_query}",
             )
-        no_result_filter_query = "license IN ('fake')"
+        # Test with a valid filter query that should return zero results
+        no_result_licenses = "'fake'"
+        no_result_filter_query = f"license IN ({no_result_licenses})"
         result = get_models_from_catalog_api(
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
@@ -547,6 +570,14 @@ class TestSearchModelsByFilterQuery:
         )
         LOGGER.info(f"Result: {result['size']}")
         assert result["size"] == 0, "Expected 0 models for a non-existing filter query"
+
+        # Validate API results against database query using same license parameter
+        is_valid, errors = validate_filter_query_results_against_database(
+            api_response=result,
+            licenses=no_result_licenses,
+            namespace=model_registry_namespace,
+        )
+        assert is_valid, f"API filter query results do not match database query: {errors}"
 
     @pytest.mark.downstream_only
     def test_presence_performance_data_on_pod(
