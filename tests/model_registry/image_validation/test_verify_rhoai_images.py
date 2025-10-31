@@ -1,53 +1,78 @@
+"""
+Tests to verify that all Model Registry component images (operator and instance container images)
+meet the requirements:
+1. Images are hosted in registry.redhat.io
+2. Images use sha256 digest instead of tags
+3. Images are listed in the CSV's relatedImages section
+"""
+
 import pytest
 from typing import Self, Set
 from simple_logger.logger import get_logger
 from kubernetes.dynamic import DynamicClient
 
-from utilities.general import (
-    validate_container_images,
-)
+from tests.model_registry.constants import MR_INSTANCE_NAME, MR_POSTGRES_DEPLOYMENT_NAME_STR, MR_OPERATOR_NAME
+from tests.model_registry.image_validation.utils import validate_images
+from utilities.constants import Labels
 from ocp_resources.pod import Pod
-from tests.model_registry.utils import get_model_catalog_pod
+from pytest_testconfig import config as py_config
 
 LOGGER = get_logger(name=__name__)
+pytestmark = [pytest.mark.downstream_only, pytest.mark.skip_must_gather, pytest.mark.smoke]
 
 
-@pytest.mark.usefixtures(
-    "updated_dsc_component_state_scope_session",
-    "model_registry_namespace",
-    "model_registry_metadata_db_resources",
-    "model_registry_instance",
-)
-@pytest.mark.downstream_only
-class TestModelRegistryImages:
-    """
-    Tests to verify that all Model Registry component images (operator and instance container images)
-    meet the requirements:
-    1. Images are hosted in registry.redhat.io
-    2. Images use sha256 digest instead of tags
-    3. Images are listed in the CSV's relatedImages section
-    """
-
-    @pytest.mark.smoke
-    @pytest.mark.skip_must_gather
-    def test_verify_model_registry_images(
+class TestAIHubResourcesImages:
+    @pytest.mark.parametrize(
+        "resource_pods",
+        [
+            pytest.param(
+                {"namespace": py_config["model_registry_namespace"], "label_selector": "component=model-catalog"},
+                marks=pytest.mark.smoke,
+                id="test_model_catalog_pods_images",
+            ),
+            pytest.param(
+                {
+                    "namespace": py_config["applications_namespace"],
+                    "label_selector": f"{Labels.OpenDataHubIo.NAME}={MR_OPERATOR_NAME}",
+                },
+                marks=pytest.mark.smoke,
+                id="test_model_registry_operator_pods_images",
+            ),
+        ],
+        indirect=True,
+    )
+    def test_verify_pod_images(
         self: Self,
         admin_client: DynamicClient,
-        model_registry_operator_pod: Pod,
-        model_registry_instance_pod_by_label: Pod,
-        model_registry_namespace: str,
+        resource_pods: list[Pod],
         related_images_refs: Set[str],
     ):
-        model_catalog_pod = get_model_catalog_pod(
-            client=admin_client, model_registry_namespace=model_registry_namespace
-        )[0]
-        validation_errors = []
-        for pod in [model_registry_operator_pod, model_registry_instance_pod_by_label, model_catalog_pod]:
-            validation_errors.extend(
-                validate_container_images(
-                    pod=pod, valid_image_refs=related_images_refs, skip_patterns=["openshift-service-mesh"]
-                )
-            )
+        validate_images(pods_to_validate=resource_pods, related_images_refs=related_images_refs)
 
-        if validation_errors:
-            pytest.fail("\n".join(validation_errors))
+
+@pytest.mark.parametrize(
+    "model_registry_metadata_db_resources, model_registry_instance, model_registry_instance_pods_by_label",
+    [
+        pytest.param({}, {}, {"label_selectors": [f"app={MR_INSTANCE_NAME}"]}),
+        pytest.param(
+            {"db_name": "default"},
+            {"db_name": "default"},
+            {"label_selectors": [f"app={MR_INSTANCE_NAME}", f"app={MR_POSTGRES_DEPLOYMENT_NAME_STR}"]},
+        ),
+    ],
+    indirect=True,
+)
+@pytest.mark.usefixtures(
+    "updated_dsc_component_state_scope_session",
+    "model_registry_metadata_db_resources",
+    "model_registry_instance",
+    "model_registry_instance_pods_by_label",
+)
+class TestModelRegistryImages:
+    def test_verify_model_registry_pod_images(
+        self: Self,
+        admin_client: DynamicClient,
+        model_registry_instance_pods_by_label: list[Pod],
+        related_images_refs: Set[str],
+    ):
+        validate_images(pods_to_validate=model_registry_instance_pods_by_label, related_images_refs=related_images_refs)
