@@ -6,21 +6,14 @@ import base64
 import requests
 from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.ingress_config_openshift_io import Ingress as IngressConfig
-from pyhelper_utils.shell import run_command
 from requests import Response
 
 
 def host_from_ingress_domain(client) -> str:
-    """
-    Return 'maas.<ingress-domain>' using the wrapper (no 'oc get' calls).
-    """
-    ing = IngressConfig(name="cluster", client=client)
-    assert ing.exists, "ingresses.config.openshift.io/cluster not found"
-
-    spec = ing.instance.spec
-    domain = spec.get("domain") if isinstance(spec, dict) else getattr(spec, "domain", None)
-    assert domain, "spec.domain is missing on Ingress 'cluster'"
-
+    """Return 'maas.<ingress-domain>'"""
+    ingress_config = IngressConfig(name="cluster", client=client, ensure_exists=True)
+    domain = ingress_config.instance.spec.get("domain")
+    assert domain, "Ingress 'cluster' missing spec.domain (ingresses.config.openshift.io)"
     return f"maas.{domain}"
 
 
@@ -39,27 +32,17 @@ def scheme_from_gateway(gw: Gateway) -> str:
 
 
 def choose_scheme_via_gateway(client) -> str:
-    """Cluster-wide; prefer maas-default-gateway if present, else first."""
-    gateways = list(Gateway.get(client=client))
-    if not gateways:
-        return "http"
+    """Prefer 'maas-default-gateway' if present; else first discovered; else 'http'."""
+    try:
+        named = Gateway(name="maas-default-gateway", client=client)
+        if named.exists:
+            return scheme_from_gateway(gw=named)
+    except Exception:
+        pass
 
-    gw = next(
-        (g for g in gateways if (g.instance.metadata.name or "") == "maas-default-gateway"),
-        gateways[0],
-    )
-    return scheme_from_gateway(gw=gw)
-
-
-def current_user_bearer_via_oc() -> str:
-    """
-    Return the current oc login token from `oc whoami -t`.
-    """
-    rc, out, err = run_command(command=["oc", "whoami", "-t"])
-    assert (rc is True) or (rc == 0), f"failed to get token via 'oc whoami -t': rc={rc} err={err}"
-    token = (out or "").strip()
-    assert token, "empty token from 'oc whoami -t'"
-    return token
+    for gw in Gateway.get(client=client):
+        return scheme_from_gateway(gw=gw)
+    return "http"
 
 
 def maas_auth_headers(token: str) -> Dict[str, str]:

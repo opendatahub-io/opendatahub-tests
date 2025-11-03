@@ -5,11 +5,7 @@ from typing import Generator
 import pytest
 import requests
 
-from tests.model_serving.model_server.maas_billing.utils import (
-    choose_scheme_via_gateway,
-    host_from_ingress_domain,
-    current_user_bearer_via_oc,
-)
+from tests.model_serving.model_server.maas_billing.utils import choose_scheme_via_gateway, host_from_ingress_domain
 
 
 @pytest.fixture(scope="session")
@@ -23,16 +19,10 @@ def request_session_http() -> Generator[requests.Session, None, None]:
         s.close()
 
 
-@pytest.fixture(scope="session")
-def http(request_session_http: requests.Session) -> requests.Session:
-    return request_session_http
-
-
 @pytest.fixture(scope="session", name="maas_user_token_for_api_calls")
-def maas_user_token_for_api_calls() -> str:
-    token = current_user_bearer_via_oc()
-    assert token, "Empty token from 'oc whoami -t'"
-    return token
+def maas_user_token_for_api_calls(current_client_token: str) -> str:
+    assert current_client_token, "Empty token from current_client_token()"
+    return current_client_token
 
 
 @pytest.fixture(scope="module")
