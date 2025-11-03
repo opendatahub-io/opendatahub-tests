@@ -8,7 +8,6 @@ from ocp_resources.llama_stack_distribution import LlamaStackDistribution
 from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
-from utilities.constants import Timeout
 
 from tests.llama_stack.constants import (
     TORCHTUNE_TEST_EXPECTATIONS,
@@ -50,7 +49,7 @@ def create_llama_stack_distribution(
         yield llama_stack_distribution
 
 
-@retry(wait_timeout=Timeout.TIMEOUT_4MIN, sleep=Timeout.TIMEOUT_15_SEC)
+@retry(wait_timeout=240, sleep=15)
 def wait_for_llama_stack_client_ready(client: LlamaStackClient) -> bool:
     try:
         client.inspect.health()
@@ -356,8 +355,8 @@ def validate_api_responses(
 
 
 @retry(
-    wait_timeout=Timeout.TIMEOUT_4MIN,
-    sleep=Timeout.TIMEOUT_15_SEC,
+    wait_timeout=240,
+    sleep=15,
     exceptions_dict={requests.exceptions.RequestException: [], Exception: []},
 )
 def vector_store_create_file_from_url(url: str, llama_stack_client: LlamaStackClient, vector_store: Any) -> bool:
