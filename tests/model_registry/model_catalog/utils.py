@@ -786,14 +786,18 @@ def validate_performance_data_files_on_pod(model_catalog_pod: Pod) -> dict[str, 
         Returns empty dictionary if all models have all required files.
     """
     validation_results = {}
-    required_files = ["metadata.json", "performance.ndjson", "evaluations.ndjson"]
 
     providers = model_catalog_pod.execute(container=CATALOG_CONTAINER, command=["ls", PERFORMANCE_DATA_DIR])
 
     for provider in providers.splitlines():
+        required_files = ["metadata.json", "performance.ndjson", "evaluations.ndjson"]
         if provider == "manifest.json":
             continue
-
+        LOGGER.info(f"Checking provider: {provider}")
+        # Only for RedHatAI model we expect performance.ndjson file, based on edge case definition
+        # https://docs.google.com/document/d/1K6SQi7Se8zljfB0UvXKKqV8VWVh5Pfq4HqKPtNvIQzg/edit?tab=t.0#heading=h.rh09auvgvlxd
+        if provider != "RedHatAI":
+            required_files.remove("performance.ndjson")
         models = model_catalog_pod.execute(
             container=CATALOG_CONTAINER, command=["ls", f"{PERFORMANCE_DATA_DIR}/{provider}"]
         )
@@ -801,6 +805,12 @@ def validate_performance_data_files_on_pod(model_catalog_pod: Pod) -> dict[str, 
         for model in models.splitlines():
             if model == "provider.json":
                 continue
+            # Remove data for specific RH models based on
+            # https://redhat-internal.slack.com/archives/C09570S9VV0/p1762164394782969?thread_ts=1761834621.645019&cid=C09570S9VV0
+            if model == "Mistral-Small-24B-Instruct-2501":
+                required_files.remove("evaluations.ndjson")
+            elif model == "granite-3.1-8b-instruct-quantized.w8a8":
+                required_files.remove("performance.ndjson")
 
             result = model_catalog_pod.execute(
                 container=CATALOG_CONTAINER, command=["ls", f"{PERFORMANCE_DATA_DIR}/{provider}/{model}"]
