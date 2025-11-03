@@ -186,9 +186,12 @@ def validate_rag_agent_responses(
                     missing_keywords.append(keyword)
 
             # Determine if this turn was successful
-            turn_successful = (
-                event_count > 0 and len(response_content) > 0 and len(found_keywords) >= min_keywords_required
-            )
+            if stream:
+                turn_successful = (
+                    event_count > 0 and len(response_content) > 0 and len(found_keywords) >= min_keywords_required
+                )
+            else:
+                turn_successful = len(response_content) > 0 and len(found_keywords) >= min_keywords_required
 
             if turn_successful:
                 successful_turns += 1
