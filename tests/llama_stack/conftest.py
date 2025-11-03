@@ -213,7 +213,7 @@ def _get_llama_stack_distribution_deployment(
         client=client,
         namespace=llama_stack_distribution.namespace,
         name=llama_stack_distribution.name,
-        min_ready_seconds=30,
+        min_ready_seconds=10,
     )
 
     deployment.wait(timeout=120)
