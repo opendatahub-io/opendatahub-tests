@@ -18,9 +18,7 @@ from utilities.constants import ModelName, ModelStorage, RuntimeTemplates
                 "template-name": RuntimeTemplates.OVMS_KSERVE,
                 "multi-model": False,
             },
-            {
-                "storage-uri": ModelStorage.OCI.MNIST_8_1
-            },
+            {"storage-uri": ModelStorage.OCI.MNIST_8_1},
         )
     ],
     indirect=True,
