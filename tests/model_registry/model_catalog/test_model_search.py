@@ -126,12 +126,6 @@ class TestSearchModelCatalog:
         LOGGER.info("Model information matches")
 
 
-# All the tests in this class are failing for RHOAIENG-36938, there are two problems:
-# 1. The filter parameter is setup to use artifact_type instead of artifactType
-# 2. The filter with multiple artifact types is not working as expected
-@pytest.mark.xfail(
-    reason="RHOAIENG-36938: artifact_type is used instead of artifactType, multiple artifact types are not working",
-)
 class TestSearchModelArtifact:
     @pytest.mark.parametrize(
         "randomly_picked_model_from_catalog_api_by_source, artifact_type",
@@ -262,7 +256,7 @@ class TestSearchModelArtifact:
         when filtering by multiple artifact types.
         """
         _, model_name, catalog_id = randomly_picked_model_from_catalog_api_by_source
-        artifact_types = f"{METRICS_ARTIFACT_TYPE},{MODEL_ARTIFACT_TYPE}"
+        artifact_types = f"artifactType={METRICS_ARTIFACT_TYPE}&artifactType={MODEL_ARTIFACT_TYPE}"
         LOGGER.info(f"Testing multiple artifact types: '{artifact_types}'")
         # Fetch all artifacts with dynamic page size adjustment
         all_model_artifacts = fetch_all_artifacts_with_dynamic_paging(
@@ -275,7 +269,7 @@ class TestSearchModelArtifact:
         artifact_type_artifacts = fetch_all_artifacts_with_dynamic_paging(
             url_with_pagesize=(
                 f"{model_catalog_rest_url[0]}sources/{catalog_id}/models/{model_name}/artifacts?"
-                f"artifactType={artifact_types}&pageSize"
+                f"{artifact_types}&pageSize"
             ),
             headers=model_registry_rest_headers,
             page_size=100,
