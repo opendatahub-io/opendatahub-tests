@@ -10,6 +10,7 @@ from utilities.manifests.tinyllama import TINYLLAMA_INFERENCE_CONFIG
 
 pytestmark = [
     pytest.mark.llmd_cpu,
+    pytest.mark.smoke,
 ]
 
 

@@ -11,6 +11,7 @@ from utilities.manifests.tinyllama import TINYLLAMA_INFERENCE_CONFIG
 
 pytestmark = [
     pytest.mark.llmd_cpu,
+    pytest.mark.smoke,
 ]
 
 BASIC_LLMD_PARAMS = [({"name": "llmd-comprehensive-test"}, "basic")]
