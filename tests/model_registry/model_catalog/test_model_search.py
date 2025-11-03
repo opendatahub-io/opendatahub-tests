@@ -566,10 +566,7 @@ class TestSearchModelsByFilterQuery:
         )
         assert is_valid, f"API filter query results do not match database query: {errors}"
 
-    @pytest.mark.xfail(
-        reason="Performance data are missing for some models, waiting for a decision from the team, \
-    https://redhat-internal.slack.com/archives/C09570S9VV0/p1761834621645019",
-    )
+    # Performance data are available only in downstream
     @pytest.mark.downstream_only
     def test_presence_performance_data_on_pod(
         self: Self,
