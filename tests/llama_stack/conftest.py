@@ -18,7 +18,7 @@ from tests.llama_stack.utils import (
     wait_for_llama_stack_client_ready,
     vector_store_create_file_from_url,
 )
-from utilities.constants import DscComponents, Timeout
+from utilities.constants import DscComponents
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from tests.llama_stack.constants import (
     LLS_OPENSHIFT_MINIMAL_VERSION,
@@ -213,10 +213,10 @@ def _get_llama_stack_distribution_deployment(
         client=client,
         namespace=llama_stack_distribution.namespace,
         name=llama_stack_distribution.name,
-        min_ready_seconds=Timeout.TIMEOUT_30SEC,
+        min_ready_seconds=30,
     )
 
-    deployment.wait(timeout=Timeout.TIMEOUT_2MIN)
+    deployment.wait(timeout=120)
     yield deployment
 
 
@@ -283,7 +283,7 @@ def _create_llama_stack_client(
             namespace=llama_stack_distribution_deployment.namespace,
             from_port=8321,
             to_port=8321,
-            waiting=Timeout.TIMEOUT_30SEC,
+            waiting=30,
         ):
             client = LlamaStackClient(
                 base_url="http://localhost:8321",
