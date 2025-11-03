@@ -82,7 +82,6 @@ def etcd_deployment(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
         name="vector-io-etcd-deployment",
-        # min_ready_seconds=5,
         replicas=1,
         selector={"matchLabels": {"app": "etcd"}},
         strategy={"type": "Recreate"},
