@@ -16,11 +16,10 @@ def test_minted_token_generated(
         base_url=base_url,
         oc_user_token=current_client_token,
         minutes=10,
-        http=request_session_http,
+        http_session=request_session_http,
     )
     assert resp.status_code in (200, 201), f"mint failed: {resp.status_code} {resp.text[:200]}"
     tok = body.get("token", "")
-    print(f"[debug] MaaS token (truncated): {tok[:12]}...{tok[-12:]}")
     assert isinstance(tok, str) and len(tok) > 10, f"no usable token in response: {body}"
 
 
@@ -33,7 +32,7 @@ def test_minted_token_is_jwt(
         base_url=base_url,
         oc_user_token=current_client_token,
         minutes=10,
-        http=request_session_http,
+        http_session=request_session_http,
     )
     assert resp.status_code in (200, 201), f"mint failed: {resp.status_code} {resp.text[:200]}"
 

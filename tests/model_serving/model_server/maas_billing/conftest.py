@@ -8,13 +8,12 @@ from tests.model_serving.model_server.maas_billing.utils import choose_scheme_vi
 
 @pytest.fixture(scope="session")
 def request_session_http() -> Generator[requests.Session, None, None]:
-    s = requests.Session()
-    s.verify = False
-    s.headers.update({"User-Agent": "odh-maas-billing-tests/1"})
-    try:
-        yield s
-    finally:
-        s.close()
+    session = requests.Session()
+    session.verify = False
+    session.headers.update({"User-Agent": "odh-maas-billing-tests/1"})
+    yield session
+    session.close()
+
 
 
 @pytest.fixture(scope="module")

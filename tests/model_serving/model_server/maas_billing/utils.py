@@ -1,7 +1,8 @@
-from typing import Dict, Optional
+from typing import Dict
 
 import base64
 import requests
+from json import JSONDecodeError 
 from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.ingress_config_openshift_io import Ingress as IngressConfig
 from requests import Response
@@ -22,7 +23,7 @@ def scheme_from_gateway(gw: Gateway) -> str:
     """
     listeners = gw.instance.spec.get("listeners", [])
     for listener in listeners:
-        protocol = str(listener["protocol"]).upper()
+        protocol = listener["protocol"].upper()
         if protocol in ("HTTPS", "TLS"):
             return "https"
     return "http"
@@ -36,7 +37,6 @@ def choose_scheme_via_gateway(client) -> str:
         client=client,
         ensure_exists=True,
     )
-    assert gw.exists, "Expected Gateway 'maas-default-gateway' to exist in namespace 'openshift-ingress'"
     return scheme_from_gateway(gw=gw)
 
 
@@ -48,21 +48,13 @@ def maas_auth_headers(token: str) -> Dict[str, str]:
 def mint_token(
     base_url: str,
     oc_user_token: str,
+    http_session: requests.Session,
     minutes: int = 10,
-    http: Optional[requests.Session] = None,
 ) -> tuple[Response, dict]:
     """Mint a MaaS token.
-
-    Args:
-        base_url: MaaS API base, e.g. "https://maas.apps.../maas-api".
-        oc_user_token: Bearer used to mint the token (usually `oc whoami -t`).
-        minutes: Token TTL in minutes.
-
-    Returns:
-        (raw requests.Response, parsed_json_or_empty_dict)
     """
-    assert http is not None, "HTTP session is required (pass the fixture)"
-    resp = http.post(
+    # assert http is not None, "HTTP session is required (pass the fixture)"
+    resp = http_session.post(
         f"{base_url}/v1/tokens",
         headers=maas_auth_headers(token=oc_user_token),
         json={"ttl": f"{minutes}m"},
@@ -70,7 +62,7 @@ def mint_token(
     )
     try:
         body = resp.json()
-    except Exception:
+    except (JSONDecodeError, ValueError):
         body = {}
     return resp, body
 
