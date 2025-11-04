@@ -15,7 +15,6 @@ def request_session_http() -> Generator[requests.Session, None, None]:
     session.close()
 
 
-
 @pytest.fixture(scope="module")
 def base_url(admin_client) -> str:
     scheme = choose_scheme_via_gateway(client=admin_client)

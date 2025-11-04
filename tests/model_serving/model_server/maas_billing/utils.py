@@ -2,7 +2,7 @@ from typing import Dict
 
 import base64
 import requests
-from json import JSONDecodeError 
+from json import JSONDecodeError
 from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.ingress_config_openshift_io import Ingress as IngressConfig
 from requests import Response
@@ -51,9 +51,7 @@ def mint_token(
     http_session: requests.Session,
     minutes: int = 10,
 ) -> tuple[Response, dict]:
-    """Mint a MaaS token.
-    """
-    # assert http is not None, "HTTP session is required (pass the fixture)"
+    """Mint a MaaS token."""
     resp = http_session.post(
         f"{base_url}/v1/tokens",
         headers=maas_auth_headers(token=oc_user_token),
