@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Generator
 
 import pytest
@@ -17,12 +15,6 @@ def request_session_http() -> Generator[requests.Session, None, None]:
         yield s
     finally:
         s.close()
-
-
-@pytest.fixture(scope="session", name="maas_user_token_for_api_calls")
-def maas_user_token_for_api_calls(current_client_token: str) -> str:
-    assert current_client_token, "Empty token from current_client_token()"
-    return current_client_token
 
 
 @pytest.fixture(scope="module")

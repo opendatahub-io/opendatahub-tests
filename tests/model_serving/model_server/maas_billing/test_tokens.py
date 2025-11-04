@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import json
 
 from tests.model_serving.model_server.maas_billing.utils import (
@@ -11,12 +9,12 @@ from tests.model_serving.model_server.maas_billing.utils import (
 def test_minted_token_generated(
     request_session_http,
     base_url: str,
-    maas_user_token_for_api_calls: str,
+    current_client_token: str,
 ) -> None:
     """Smoke: a MaaS token can be minted (no JWT shape checks)."""
     resp, body = mint_token(
         base_url=base_url,
-        oc_user_token=maas_user_token_for_api_calls,
+        oc_user_token=current_client_token,
         minutes=10,
         http=request_session_http,
     )
@@ -29,11 +27,11 @@ def test_minted_token_generated(
 def test_minted_token_is_jwt(
     request_session_http,
     base_url: str,
-    maas_user_token_for_api_calls: str,
+    current_client_token: str,
 ) -> None:
     resp, body = mint_token(
         base_url=base_url,
-        oc_user_token=maas_user_token_for_api_calls,
+        oc_user_token=current_client_token,
         minutes=10,
         http=request_session_http,
     )

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Dict, Optional
 
 import base64
@@ -20,29 +18,26 @@ def host_from_ingress_domain(client) -> str:
 def scheme_from_gateway(gw: Gateway) -> str:
     """
     Decide 'http' or 'https' from Gateway listeners.
-    Rule: if any listener has protocol HTTPS or tls set, return 'https'; else 'http'.
-    listeners is a list[dict] per the Gateway wrapper.
+    HTTPS or TLS => 'https'; otherwise 'http'.
     """
     listeners = gw.instance.spec.get("listeners", [])
     for listener in listeners:
-        protocol = (listener.get("protocol") or "").upper()
-        if protocol == "HTTPS" or listener.get("tls"):
+        protocol = str(listener["protocol"]).upper()
+        if protocol in ("HTTPS", "TLS"):
             return "https"
     return "http"
 
 
 def choose_scheme_via_gateway(client) -> str:
-    """Prefer 'maas-default-gateway' if present; else first discovered; else 'http'."""
-    try:
-        named = Gateway(name="maas-default-gateway", client=client)
-        if named.exists:
-            return scheme_from_gateway(gw=named)
-    except Exception:
-        pass
-
-    for gw in Gateway.get(client=client):
-        return scheme_from_gateway(gw=gw)
-    return "http"
+    # Gateway created in namespace 'openshift-ingress'
+    gw = Gateway(
+        name="maas-default-gateway",
+        namespace="openshift-ingress",
+        client=client,
+        ensure_exists=True,
+    )
+    assert gw.exists, "Expected Gateway 'maas-default-gateway' to exist in namespace 'openshift-ingress'"
+    return scheme_from_gateway(gw=gw)
 
 
 def maas_auth_headers(token: str) -> Dict[str, str]:
