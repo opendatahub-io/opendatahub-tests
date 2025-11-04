@@ -476,8 +476,6 @@ class TestSearchModelCatalogQParameter:
 
 
 class TestSearchModelsByFilterQuery:
-    # Downstream only because of a bug in ODH RHOAIENG-37676
-    @pytest.mark.downstream_only
     def test_search_models_by_filter_query(
         self: Self,
         model_catalog_rest_url: list[str],
