@@ -1,5 +1,4 @@
 import json
-
 from tests.model_serving.model_server.maas_billing.utils import (
     mint_token,
     b64url_decode,
@@ -11,7 +10,7 @@ def test_minted_token_generated(
     base_url: str,
     current_client_token: str,
 ) -> None:
-    """Smoke: a MaaS token can be minted (no JWT shape checks)."""
+    """Smoke: a MaaS token can be minted"""
     resp, body = mint_token(
         base_url=base_url,
         oc_user_token=current_client_token,

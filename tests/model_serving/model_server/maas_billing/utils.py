@@ -3,9 +3,11 @@ from typing import Dict
 import base64
 import requests
 from json import JSONDecodeError
-from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.ingress_config_openshift_io import Ingress as IngressConfig
 from requests import Response
+from urllib.parse import urlparse
+from ocp_resources.llm_inference_service import LLMInferenceService
+from utilities.llmd_utils import get_llm_inference_url
 
 
 def host_from_ingress_domain(client) -> str:
@@ -16,28 +18,18 @@ def host_from_ingress_domain(client) -> str:
     return f"maas.{domain}"
 
 
-def scheme_from_gateway(gw: Gateway) -> str:
+def detect_scheme_via_llmisvc(client, namespace: str = "llm") -> str:
     """
-    Decide 'http' or 'https' from Gateway listeners.
-    HTTPS or TLS => 'https'; otherwise 'http'.
+    Using LLMInferenceService's URLto infer the scheme.
     """
-    listeners = gw.instance.spec.get("listeners", [])
-    for listener in listeners:
-        protocol = listener["protocol"].upper()
-        if protocol in ("HTTPS", "TLS"):
-            return "https"
+    for llm in LLMInferenceService.get(dyn_client=client, namespace=namespace):
+        conditions = llm.instance.status.get("conditions", [])
+        if any(c.get("type") == "Ready" and c.get("status") == "True" for c in conditions):
+            url = get_llm_inference_url(llm=llm)
+            scheme = (urlparse(url).scheme or "").lower()
+            if scheme in ("http", "https"):
+                return scheme
     return "http"
-
-
-def choose_scheme_via_gateway(client) -> str:
-    # Gateway created in namespace 'openshift-ingress'
-    gw = Gateway(
-        name="maas-default-gateway",
-        namespace="openshift-ingress",
-        client=client,
-        ensure_exists=True,
-    )
-    return scheme_from_gateway(gw=gw)
 
 
 def maas_auth_headers(token: str) -> Dict[str, str]:
