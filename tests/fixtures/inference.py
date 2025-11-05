@@ -68,7 +68,7 @@ def qwen_isvc(
         wait_for_predictor_pods=False,
         enable_auth=False,
         resources={
-            "requests": {"cpu": "2", "memory": "10Gi"},
+            "requests": {"cpu": "1", "memory": "6Gi"},
             "limits": {"cpu": "2", "memory": "12Gi"},
         },
     ) as isvc:

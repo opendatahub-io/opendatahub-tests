@@ -4,11 +4,7 @@ import os
 import secrets
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
-from utilities.constants import Timeout
-
-
 from ocp_resources.deployment import Deployment
-
 from ocp_resources.namespace import Namespace
 from ocp_resources.service import Service
 
@@ -92,7 +88,7 @@ def etcd_deployment(
         template=get_etcd_deployment_template(),
         teardown=True,
     ) as deployment:
-        deployment.wait_for_replicas(deployed=True, timeout=Timeout.TIMEOUT_2MIN)
+        deployment.wait_for_replicas(deployed=True, timeout=120)
         yield deployment
 
 
@@ -130,13 +126,14 @@ def remote_milvus_deployment(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
         name="vector-io-milvus-deployment",
+        min_ready_seconds=5,
         replicas=1,
         selector={"matchLabels": {"app": "milvus-standalone"}},
         strategy={"type": "Recreate"},
         template=get_milvus_deployment_template(),
         teardown=True,
     ) as deployment:
-        deployment.wait_for_replicas(deployed=True, timeout=Timeout.TIMEOUT_2MIN)
+        deployment.wait_for_replicas(deployed=True, timeout=240)
         yield deployment
 
 
