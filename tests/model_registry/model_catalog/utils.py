@@ -920,16 +920,18 @@ def validate_items_sorted_correctly(items: list[dict], field: str, order: str) -
     values = []
     for item in items:
         if field == "ID":
-            # For models, ID maps to name field, but IDs are numeric
-            value = item.get("id", "0")
+            value = item.get("id")
         elif field == "NAME":
-            value = item.get("name", "")
+            value = item.get("name")
         elif field == "CREATE_TIME":
-            value = item.get("createTimeSinceEpoch", "0")
+            value = item.get("createTimeSinceEpoch")
         elif field == "LAST_UPDATE_TIME":
-            value = item.get("lastUpdateTimeSinceEpoch", "0")
+            value = item.get("lastUpdateTimeSinceEpoch")
         else:
-            value = item.get(field.lower(), "")
+            raise ValueError(f"Invalid field: {field}")
+
+        if value is None:
+            raise ValueError(f"Field {field} is missing from item: {item}")
 
         values.append(value)
 
