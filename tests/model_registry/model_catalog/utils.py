@@ -697,10 +697,12 @@ def get_models_from_catalog_api(
     page_size: int = 100,
     source_label: str | None = None,
     q: str | None = None,
+    order_by: str | None = None,
+    sort_order: str | None = None,
     additional_params: str = "",
 ) -> dict[str, Any]:
     """
-    Helper method to get models from catalog API with optional filtering
+    Helper method to get models from catalog API with optional filtering and sorting
 
     Args:
         model_catalog_rest_url: REST URL for model catalog
@@ -708,6 +710,8 @@ def get_models_from_catalog_api(
         page_size: Number of results per page
         source_label: Source label(s) to filter by (must be comma-separated for multiple filters)
         q: Free-form keyword search to filter models
+        order_by: Field to order results by (ID, NAME, CREATE_TIME, LAST_UPDATE_TIME)
+        sort_order: Sort order (ASC or DESC)
         additional_params: Additional query parameters (e.g., "&filterQuery=name='model_name'")
 
     Returns:
@@ -723,6 +727,12 @@ def get_models_from_catalog_api(
 
     if q:
         params["q"] = q
+
+    if order_by:
+        params["orderBy"] = order_by
+
+    if sort_order:
+        params["sortOrder"] = sort_order
 
     # Parse additional_params string into params dict for proper URL encoding
     if additional_params:
@@ -829,3 +839,113 @@ def validate_performance_data_files_on_pod(model_catalog_pod: Pod) -> dict[str, 
         LOGGER.warning(f"Found models with missing performance data files: {validation_results}")
 
     return validation_results
+
+
+def get_sources_with_sorting(
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+    order_by: str,
+    sort_order: str,
+) -> dict[str, Any]:
+    """
+    Get sources with sorting parameters
+
+    Args:
+        model_catalog_rest_url: REST URL for model catalog
+        model_registry_rest_headers: Headers for model registry REST API
+        order_by: Field to order results by (ID, NAME)
+        sort_order: Sort order (ASC or DESC)
+
+    Returns:
+        Dictionary containing the API response
+    """
+    base_url = f"{model_catalog_rest_url[0]}sources"
+    params = {
+        "orderBy": order_by,
+        "sortOrder": sort_order,
+        "pageSize": 100,
+    }
+
+    return execute_get_command(url=base_url, headers=model_registry_rest_headers, params=params)
+
+
+def get_artifacts_with_sorting(
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+    source_id: str,
+    model_name: str,
+    order_by: str,
+    sort_order: str,
+) -> dict[str, Any]:
+    """
+    Get artifacts with sorting parameters
+
+    Args:
+        model_catalog_rest_url: REST URL for model catalog
+        model_registry_rest_headers: Headers for model registry REST API
+        source_id: Source ID for the model
+        model_name: Name of the model
+        order_by: Field to order results by
+        sort_order: Sort order (ASC or DESC)
+
+    Returns:
+        Dictionary containing the API response
+    """
+    base_url = f"{model_catalog_rest_url[0]}sources/{source_id}/models/{model_name}/artifacts"
+    params = {
+        "orderBy": order_by,
+        "sortOrder": sort_order,
+        "pageSize": 100,
+    }
+
+    return execute_get_command(url=base_url, headers=model_registry_rest_headers, params=params)
+
+
+def validate_items_sorted_correctly(items: list[dict], field: str, order: str) -> bool:
+    """
+    Extract field values and verify they're in correct order
+
+    Args:
+        items: List of items to validate
+        field: Field name to check sorting on
+        order: Sort order (ASC or DESC)
+
+    Returns:
+        True if items are sorted correctly, False otherwise
+    """
+    if len(items) <= 1:
+        return True
+
+    # Extract field values for comparison
+    values = []
+    for item in items:
+        if field == "ID":
+            # For models, ID maps to name field, but IDs are numeric
+            value = item.get("id", "0")
+        elif field == "NAME":
+            value = item.get("name", "")
+        elif field == "CREATE_TIME":
+            value = item.get("createTimeSinceEpoch", "0")
+        elif field == "LAST_UPDATE_TIME":
+            value = item.get("lastUpdateTimeSinceEpoch", "0")
+        else:
+            value = item.get(field.lower(), "")
+
+        values.append(value)
+
+    # Convert values to appropriate types for comparison
+    if field == "ID":
+        # Convert IDs to integers for numeric comparison
+        try:
+            values = [int(v) for v in values]
+        except ValueError:
+            # If conversion fails, fall back to string comparison
+            values = [str(v) for v in values]
+
+    # Check if values are in correct order
+    if order == "ASC":
+        return all(values[i] <= values[i + 1] for i in range(len(values) - 1))
+    elif order == "DESC":
+        return all(values[i] >= values[i + 1] for i in range(len(values) - 1))
+    else:
+        raise ValueError(f"Invalid sort order: {order}")
