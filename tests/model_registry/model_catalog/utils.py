@@ -914,7 +914,8 @@ def validate_items_sorted_correctly(items: list[dict], field: str, order: str) -
         True if items are sorted correctly, False otherwise
     """
     if len(items) <= 1:
-        return True
+        # We currently don't expect this to happen (min response size we get is 2) but it's a good sanity check
+        raise ValueError(f"At least 2 items are required to sort, got {len(items)}")
 
     # Extract field values for comparison
     values = []
