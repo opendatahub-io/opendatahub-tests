@@ -6,6 +6,9 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.resource import NamespacedResource
 from kubernetes.dynamic import DynamicClient
 
+from tests.model_registry.constants import MR_INSTANCE_NAME
+from utilities.jira import is_jira_open
+
 KEYS_TO_VALIDATE = ["runAsGroup", "runAsUser", "allowPrivilegeEscalation", "capabilities"]
 
 LOGGER = get_logger(name=__name__)
@@ -103,9 +106,21 @@ def get_pod_by_deployment_name(admin_client: DynamicClient, namespace: str, depl
     )
     expected_replicas = deployment_instance.status.replicas
     if len(pods) != expected_replicas:
+        # Add workaround for RHOAIENG-38126
+        pod_names = []
+        if pods:
+            pod_names = [pod.name for pod in pods]
+            if (
+                is_jira_open(jira_id="RHOAIENG-38126", admin_client=admin_client)
+                and deployment_name == MR_INSTANCE_NAME
+            ):
+                if all(pod_name.startswith(MR_INSTANCE_NAME) for pod_name in pod_names):
+                    mr_pod = [pod for pod in pods if "postgres" not in pod.name]
+                    assert mr_pod
+                    return mr_pod[0]
         raise AssertionError(
             f"Expected {expected_replicas} pod(s) for deployment '{deployment_name}'. "
-            f"Found {len(pods)} pods: {[pod.name for pod in pods] if pods else None}"
+            f"Found {len(pods)} pods: {pod_names}"
         )
     return pods[0]
 
