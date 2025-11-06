@@ -377,11 +377,18 @@ def kubconfig_filepath() -> str:
 
 
 @pytest.fixture(scope="session")
+def is_byoidc(pytestconfig: pytest.Config) -> bool:
+    auth_type = run_command(command="oc get authentication cluster -o jsonpath={.spec.type}".split())[1].strip()
+    return auth_type == "OIDC"
+
+
+@pytest.fixture(scope="session")
 def unprivileged_client(
     admin_client: DynamicClient,
     use_unprivileged_client: bool,
     kubconfig_filepath: str,
     non_admin_user_password: tuple[str, str],
+    is_byoidc: bool,
 ) -> Generator[DynamicClient, Any, Any]:
     """
     Provides none privileged API client. If non_admin_user_password is None, then it will raise.
@@ -389,6 +396,16 @@ def unprivileged_client(
     if not use_unprivileged_client:
         LOGGER.warning("Unprivileged client is not enabled, using admin client")
         yield admin_client
+
+    elif is_byoidc:
+        # this requires a pre-existing context in $KUBECONFIG with a unprivileged user
+        current_context = run_command(command=["oc", "config", "current-context"])[1].strip()
+        unprivileged_context = current_context + "-unprivileged"
+
+        unprivileged_client = get_client(config_file=kubconfig_filepath, context=unprivileged_context)
+
+        yield unprivileged_client
+
 
     elif non_admin_user_password is None:
         raise ValueError("Unprivileged user not provisioned")
