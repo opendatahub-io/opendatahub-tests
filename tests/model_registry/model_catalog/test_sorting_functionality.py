@@ -8,6 +8,7 @@ from tests.model_registry.model_catalog.utils import (
     get_artifacts_with_sorting,
     validate_items_sorted_correctly,
 )
+from tests.model_registry.model_catalog.constants import VALIDATED_CATALOG_ID
 
 LOGGER = get_logger(name=__name__)
 
@@ -119,16 +120,29 @@ class TestSourcesSorting:
 
 
 class TestArtifactsSorting:
-    """Test sorting functionality for GetAllModelArtifacts endpoint"""
+    """Test sorting functionality for GetAllModelArtifacts endpoint
+    Fixed on a random model from the validated catalog since we need more than 1 artifact to test sorting.
+    """
 
     @pytest.mark.parametrize(
-        "order_by,sort_order",
+        "order_by,sort_order,randomly_picked_model_from_catalog_api_by_source",
         [
-            ("ID", "ASC"),
-            ("ID", "DESC"),
-            ("NAME", "ASC"),
-            ("NAME", "DESC"),
+            ("ID", "ASC", {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"}),
+            ("ID", "DESC", {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"}),
+            pytest.param(
+                "NAME",
+                "ASC",
+                {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"},
+                marks=pytest.mark.xfail(reason="RHOAIENG-38056: falls back to ID sorting"),
+            ),
+            pytest.param(
+                "NAME",
+                "DESC",
+                {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"},
+                marks=pytest.mark.xfail(reason="RHOAIENG-38056: falls back to ID sorting"),
+            ),
         ],
+        indirect=["randomly_picked_model_from_catalog_api_by_source"],
     )
     def test_artifacts_sorting_works_correctly(
         self: Self,
@@ -141,13 +155,13 @@ class TestArtifactsSorting:
         """
         RHOAIENG-37260: Test artifacts endpoint sorts correctly by supported fields
         """
-        _, model_name, source_id = randomly_picked_model_from_catalog_api_by_source
+        _, model_name, _ = randomly_picked_model_from_catalog_api_by_source
         LOGGER.info(f"Testing artifacts sorting for {model_name}: orderBy={order_by}, sortOrder={sort_order}")
 
         response = get_artifacts_with_sorting(
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
-            source_id=source_id,
+            source_id=VALIDATED_CATALOG_ID,
             model_name=model_name,
             order_by=order_by,
             sort_order=sort_order,
