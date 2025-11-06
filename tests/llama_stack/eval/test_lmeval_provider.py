@@ -1,8 +1,8 @@
 import pytest
 
 from tests.llama_stack.constants import LlamaStackProviders
-from utilities.constants import Timeout, MinIo, QWEN_MODEL_NAME
-from timeout_sampler import TimeoutSampler
+from tests.llama_stack.eval.utils import wait_for_eval_job_completion
+from utilities.constants import MinIo, QWEN_MODEL_NAME
 
 
 TRUSTYAI_LMEVAL_ARCEASY = f"{LlamaStackProviders.Eval.TRUSTYAI_LMEVAL}::arc_easy"
@@ -69,14 +69,6 @@ class TestLlamaStackLMEvalProvider:
             },
         )
 
-        samples = TimeoutSampler(
-            wait_timeout=Timeout.TIMEOUT_10MIN,
-            sleep=30,
-            func=lambda: llama_stack_client.alpha.eval.jobs.status(
-                job_id=job.job_id, benchmark_id=TRUSTYAI_LMEVAL_ARCEASY
-            ).status,
+        wait_for_eval_job_completion(
+            llama_stack_client=llama_stack_client, job_id=job.job_id, benchmark_id=TRUSTYAI_LMEVAL_ARCEASY
         )
-
-        for sample in samples:
-            if sample == "completed":
-                break
