@@ -16,8 +16,8 @@ LOGGER = get_logger(name=__name__)
 @pytest.fixture(scope="session")
 def request_session_http() -> Generator[requests.Session, None, None]:
     session = requests.Session()
-    # session.verify = False
     session.headers.update({"User-Agent": "odh-maas-billing-tests/1"})
+    session.verify = False
     yield session
     session.close()
 
