@@ -12,6 +12,7 @@ from ocp_resources.llama_stack_distribution import LlamaStackDistribution
 from ocp_resources.namespace import Namespace
 from semver import Version
 from simple_logger.logger import get_logger
+from timeout_sampler import TimeoutExpiredError
 from utilities.general import generate_random_name
 from tests.llama_stack.utils import (
     create_llama_stack_distribution,
@@ -282,23 +283,32 @@ def llama_stack_distribution_deployment(
 def _create_llama_stack_client(
     llama_stack_distribution_deployment: Deployment,
 ) -> Generator[LlamaStackClient, Any, Any]:
-    try:
-        with portforward.forward(
-            pod_or_service=f"{llama_stack_distribution_deployment.name}-service",
-            namespace=llama_stack_distribution_deployment.namespace,
-            from_port=8321,
-            to_port=8321,
-            waiting=30,
-        ):
-            client = LlamaStackClient(
-                base_url="http://localhost:8321",
-                timeout=180.0,
+    max_attempts = 3
+    for attempt in range(1, max_attempts + 1):
+        try:
+            with portforward.forward(
+                pod_or_service=f"{llama_stack_distribution_deployment.name}-service",
+                namespace=llama_stack_distribution_deployment.namespace,
+                from_port=8321,
+                to_port=8321,
+                waiting=60,
+            ):
+                client = LlamaStackClient(
+                    base_url="http://localhost:8321",
+                    timeout=180.0,
+                )
+                wait_for_llama_stack_client_ready(client=client)
+                yield client
+                return
+        except TimeoutExpiredError as timeoutError:
+            LOGGER.error(
+                f"Timeout reached when creating llama_stack_client (attempt {attempt}/{max_attempts}): {timeoutError}"
             )
-            wait_for_llama_stack_client_ready(client=client)
-            yield client
-    except Exception as e:
-        LOGGER.error(f"Failed to set up port forwarding: {e}")
-        raise
+            if attempt == max_attempts:
+                raise
+        except Exception as e:
+            LOGGER.error(f"Unexpected error while setting up port forwarding: {e}")
+            raise
 
 
 @pytest.fixture(scope="class")
