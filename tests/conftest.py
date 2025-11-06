@@ -406,7 +406,6 @@ def unprivileged_client(
 
         yield unprivileged_client
 
-
     elif non_admin_user_password is None:
         raise ValueError("Unprivileged user not provisioned")
 
