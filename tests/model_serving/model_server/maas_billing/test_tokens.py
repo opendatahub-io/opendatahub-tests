@@ -1,44 +1,18 @@
 import json
-from tests.model_serving.model_server.maas_billing.utils import (
-    mint_token,
-    b64url_decode,
-)
+
+from tests.model_serving.model_server.maas_billing.utils import b64url_decode
 
 
-def test_minted_token_generated(
-    request_session_http,
-    base_url: str,
-    current_client_token: str,
-) -> None:
-    """Smoke: a MaaS token can be minted"""
-    resp, body = mint_token(
-        base_url=base_url,
-        oc_user_token=current_client_token,
-        minutes=10,
-        http_session=request_session_http,
-    )
-    assert resp.status_code in (200, 201), f"mint failed: {resp.status_code} {resp.text[:200]}"
-    tok = body.get("token", "")
-    assert isinstance(tok, str) and len(tok) > 10, f"no usable token in response: {body}"
+class TestMintedToken:
+    def test_minted_token_generated(self, minted_token: str) -> None:
+        """Smoke: a MaaS token can be minted."""
+        assert isinstance(minted_token, str) and len(minted_token) > 10, "no usable token minted"
 
+    def test_minted_token_is_jwt(self, minted_token: str) -> None:
+        """Minted token looks like a JWT and has a JSON header."""
+        parts = minted_token.split(".")
+        assert len(parts) == 3, "not a JWT (expected header.payload.signature)"
 
-def test_minted_token_is_jwt(
-    request_session_http,
-    base_url: str,
-    current_client_token: str,
-) -> None:
-    resp, body = mint_token(
-        base_url=base_url,
-        oc_user_token=current_client_token,
-        minutes=10,
-        http_session=request_session_http,
-    )
-    assert resp.status_code in (200, 201), f"mint failed: {resp.status_code} {resp.text[:200]}"
-
-    token = body.get("token", "")
-    parts = token.split(".")
-    assert len(parts) == 3, "not a JWT (expected header.payload.signature)"
-
-    header_json = b64url_decode(parts[0]).decode("utf-8")
-    header = json.loads(header_json)
-    assert isinstance(header, dict), "JWT header not a JSON object"
+        header_json = b64url_decode(parts[0]).decode("utf-8")
+        header = json.loads(header_json)
+        assert isinstance(header, dict), "JWT header not a JSON object"

@@ -20,12 +20,16 @@ def host_from_ingress_domain(client) -> str:
 
 def detect_scheme_via_llmisvc(client, namespace: str = "llm") -> str:
     """
-    Using LLMInferenceService's URLto infer the scheme.
+    Using LLMInferenceService's URL to infer the scheme.
     """
-    for llm in LLMInferenceService.get(dyn_client=client, namespace=namespace):
-        conditions = llm.instance.status.get("conditions", [])
-        if any(c.get("type") == "Ready" and c.get("status") == "True" for c in conditions):
-            url = get_llm_inference_url(llm=llm)
+    for inference_service in LLMInferenceService.get(dyn_client=client, namespace=namespace):
+        status_conditions = inference_service.instance.status.get("conditions", [])
+        service_is_ready = any(
+            condition_entry.get("type") == "Ready" and condition_entry.get("status") == "True"
+            for condition_entry in status_conditions
+        )
+        if service_is_ready:
+            url = get_llm_inference_url(llm_service=inference_service)
             scheme = (urlparse(url).scheme or "").lower()
             if scheme in ("http", "https"):
                 return scheme
@@ -57,7 +61,7 @@ def mint_token(
     return resp, body
 
 
-def b64url_decode(s: str) -> bytes:
-    pad = "=" * (-len(s) % 4)
-    # keyword-arg to satisfy FCN001 rule:
-    return base64.urlsafe_b64decode(s=(s + pad).encode("utf-8"))
+def b64url_decode(encoded_str: str) -> bytes:
+    padding = "=" * (-len(encoded_str) % 4)
+    padded_bytes = (encoded_str + padding).encode(encoding="utf-8")
+    return base64.urlsafe_b64decode(s=padded_bytes)
