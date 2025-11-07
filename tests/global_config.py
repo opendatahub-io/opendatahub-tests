@@ -6,7 +6,7 @@ dsc_name: str = "default-dsc"
 must_gather_base_dir: str = "must-gather-base-dir"
 dsci_name: str = "default-dsci"
 dependent_operators: str = "authorino-operator"
-use_unprivileged_client: bool = False
+use_unprivileged_client: bool = True
 # overwrite the followings in conftest.py, in updated_global_config() if distribution is upstream
 distribution: str = "downstream"
 applications_namespace: str = "redhat-ods-applications"
