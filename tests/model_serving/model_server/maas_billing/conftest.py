@@ -3,11 +3,13 @@ from typing import Generator
 import pytest
 import requests
 from simple_logger.logger import get_logger
+from utilities.plugins.constant import OpenAIEnpoints
 
 from tests.model_serving.model_server.maas_billing.utils import (
     detect_scheme_via_llmisvc,
     host_from_ingress_domain,
     mint_token,
+    llmis_name,
 )
 
 LOGGER = get_logger(name=__name__)
@@ -44,3 +46,14 @@ def base_url(admin_client) -> str:
     scheme = detect_scheme_via_llmisvc(client=admin_client, namespace="llm")
     host = host_from_ingress_domain(client=admin_client)
     return f"{scheme}://{host}/maas-api"
+
+
+@pytest.fixture(scope="session")
+def model_url(admin_client) -> str:
+    """
+    MODEL_URL:http(s)://<host>/llm/<deployment>/v1/chat/completions
+    """
+    scheme = detect_scheme_via_llmisvc(client=admin_client, namespace="llm")
+    host = host_from_ingress_domain(client=admin_client)
+    deployment = llmis_name(client=admin_client, namespace="llm", label_selector=None)
+    return f"{scheme}://{host}/llm/{deployment}{OpenAIEnpoints.CHAT_COMPLETIONS}"

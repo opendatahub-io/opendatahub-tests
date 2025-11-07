@@ -65,3 +65,17 @@ def b64url_decode(encoded_str: str) -> bytes:
     padding = "=" * (-len(encoded_str) % 4)
     padded_bytes = (encoded_str + padding).encode(encoding="utf-8")
     return base64.urlsafe_b64decode(s=padded_bytes)
+
+
+def llmis_name(client, namespace: str = "llm", label_selector: str | None = None) -> str:
+    """
+    Return the name of the first Ready LLMInferenceService.
+    """
+    for service in LLMInferenceService.get(dyn_client=client, namespace=namespace, label_selector=label_selector):
+        conditions = (service.instance.status or {}).get("conditions", [])
+        is_ready = any(
+            condition.get("type") == "Ready" and condition.get("status") == "True" for condition in conditions
+        )
+        if is_ready:
+            return service.name
+    raise RuntimeError("No Ready LLMInferenceService found")
