@@ -25,6 +25,7 @@ LOGGER = get_logger(name=__name__)
 UPGRADE_NAMESPACE = "upgrade-model-server"
 S3_CONNECTION = "upgrade-connection"
 
+
 @pytest.fixture(scope="session")
 def namespace_fixture(
     pytestconfig: pytest.Config,
