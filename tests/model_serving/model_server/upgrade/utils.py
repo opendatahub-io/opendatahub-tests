@@ -47,7 +47,7 @@ def verify_inference_generation(isvc: InferenceService, expected_generation: int
         ResourceMismatch: If inference generation is not equal to expected generation
     """
     if isvc.instance.status.observedGeneration != expected_generation:
-        ResourceMismatchError(f"Inference service {isvc.name} was modified")
+        raise ResourceMismatchError(f"Inference service {isvc.name} was modified")
 
 
 def verify_serving_runtime_generation(isvc: InferenceService, expected_generation: int) -> None:
@@ -62,4 +62,4 @@ def verify_serving_runtime_generation(isvc: InferenceService, expected_generatio
     """
     runtime = get_inference_serving_runtime(isvc=isvc)
     if runtime.instance.metadata.generation != expected_generation:
-        ResourceMismatchError(f"Serving runtime {runtime.name} was modified")
+        raise ResourceMismatchError(f"Serving runtime {runtime.name} was modified")
