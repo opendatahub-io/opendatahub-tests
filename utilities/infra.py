@@ -600,7 +600,7 @@ def get_pods_by_isvc_label(client: DynamicClient, isvc: InferenceService, runtim
     raise ResourceNotFoundError(f"{isvc.name} has no pods")
 
 
-def get_openshift_token() -> str:
+def get_openshift_token(client: DynamicClient = None) -> str:
     """
     Get the OpenShift token.
 
@@ -608,7 +608,13 @@ def get_openshift_token() -> str:
         str: The OpenShift token.
 
     """
-    return run_command(command=shlex.split("oc whoami -t"))[1].strip()
+    client = client or get_client()
+    LOGGER.info("Getting OpenShift token")
+    bearer_str = client.configuration.api_key["authorization"]
+    assert bearer_str, "No OpenShift token found from client instance"
+    match = re.search(r"Bearer (.+)", bearer_str)
+    assert match, "No OpenShift token found"
+    return match.group(1)
 
 
 def get_kserve_storage_initialize_image(client: DynamicClient) -> str:

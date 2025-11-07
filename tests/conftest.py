@@ -4,7 +4,6 @@ import os
 import shutil
 from ast import literal_eval
 from typing import Any, Callable, Generator
-
 import pytest
 from semver import Version
 import shortuuid
@@ -61,6 +60,7 @@ from utilities.logger import RedactedString
 from utilities.mariadb_utils import wait_for_mariadb_operator_deployments
 from utilities.minio import create_minio_data_connection_secret
 from utilities.operator_utils import get_csv_related_images, get_cluster_service_version
+from utilities.resources.authentication_config_openshift_io import Authentication
 
 LOGGER = get_logger(name=__name__)
 
@@ -90,7 +90,7 @@ def tests_tmp_dir(request: FixtureRequest, tmp_path_factory: TempPathFactory) ->
 
 @pytest.fixture(scope="session")
 def current_client_token(admin_client: DynamicClient) -> str:
-    return RedactedString(value=get_openshift_token())
+    return RedactedString(value=get_openshift_token(client=admin_client))
 
 
 @pytest.fixture(scope="session")
@@ -377,9 +377,19 @@ def kubconfig_filepath() -> str:
 
 
 @pytest.fixture(scope="session")
-def is_byoidc(pytestconfig: pytest.Config) -> bool:
-    auth_type = run_command(command="oc get authentication cluster -o jsonpath={.spec.type}".split())[1].strip()
-    return auth_type == "OIDC"
+def cluster_authentication(admin_client: DynamicClient) -> Authentication | None:
+    auth = Authentication(client=admin_client, name="cluster")
+    if auth.exists:
+        return auth
+    return None
+
+
+@pytest.fixture(scope="session")
+def is_byoidc(cluster_authentication: Authentication | None) -> bool:
+    if cluster_authentication:
+        return cluster_authentication.instance.spec.type == "OIDC"
+    else:
+        return False
 
 
 @pytest.fixture(scope="session")
