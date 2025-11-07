@@ -600,7 +600,7 @@ def get_pods_by_isvc_label(client: DynamicClient, isvc: InferenceService, runtim
     raise ResourceNotFoundError(f"{isvc.name} has no pods")
 
 
-def get_openshift_token(client: DynamicClient = None) -> str:
+def get_openshift_token(client: DynamicClient | None = None) -> str:
     """
     Get the OpenShift token.
 
