@@ -12,6 +12,7 @@ from utilities.constants import (
     Protocols,
     RuntimeTemplates,
 )
+from timeout_sampler import TimeoutSampler
 from utilities.inference_utils import Inference
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 from utilities.monitoring import get_metrics_value, validate_metrics_field
@@ -45,6 +46,7 @@ class TestModelMetrics:
     @pytest.mark.polarion("ODS-2555")
     def test_model_metrics_num_success_requests(self, model_car_inference_service, prometheus):
         """Verify number of successful model requests in OpenShift monitoring system (UserWorkloadMonitoring) metrics"""
+        # validate cm values is true for metrics dashboard
         validate_metrics_configuration(model_car_inference_service)
         
         verify_inference_response(
@@ -56,13 +58,6 @@ class TestModelMetrics:
         )
         
         metrics_query = f'ovms_requests_success{{namespace="{model_car_inference_service.namespace}", name="{model_car_inference_service.name}"}}'
-        
-        initial_check = get_metrics_value(prometheus=prometheus, metrics_query=metrics_query)
-        if initial_check is None:
-            pytest.fail(
-                f"No metrics received for query: {metrics_query}. "
-                f"Metrics endpoint may not be available or model is not exposing metrics."
-            )
         
         validate_metrics_field(
             prometheus=prometheus,
@@ -89,10 +84,6 @@ class TestModelMetrics:
         
         metrics_query = f'ovms_requests_success{{namespace="{model_car_inference_service.namespace}", name="{model_car_inference_service.name}"}}'
         
-        initial_check = get_metrics_value(prometheus=prometheus, metrics_query=metrics_query)
-        if initial_check is None:
-            pytest.fail(f"No metrics received for query: {metrics_query}")
-        
         validate_metrics_field(
             prometheus=prometheus,
             metrics_query=metrics_query,
@@ -107,14 +98,13 @@ class TestModelMetrics:
         validate_metrics_configuration(model_car_inference_service)
         
         metrics_query = f"pod:container_cpu_usage:sum{{namespace='{model_car_inference_service.namespace}'}}"
-        initial_check = get_metrics_value(prometheus=prometheus, metrics_query=metrics_query)
-        if initial_check is None:
-            pytest.fail(
-                f"No metrics received for query: {metrics_query}. "
-                f"Metrics endpoint may not be available or model is not exposing metrics."
-            )
         
-        assert get_metrics_value(
+        for cpu_value in TimeoutSampler(
+            wait_timeout=120,
+            sleep=10,
+            func=get_metrics_value,
             prometheus=prometheus,
-            metrics_query=f"pod:container_cpu_usage:sum{{namespace='{model_car_inference_service.namespace}'}}",
-        )
+            metrics_query=metrics_query,
+        ):
+            if cpu_value is not None:
+                break

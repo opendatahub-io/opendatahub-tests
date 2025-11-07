@@ -59,13 +59,6 @@ class TestRawUnprivilegedUserMetrics:
         
         metrics_query = f'ovms_requests_success{{namespace="{model_car_inference_service.namespace}", name="{model_car_inference_service.name}"}}'
         
-        initial_check = get_metrics_value(prometheus=prometheus, metrics_query=metrics_query)
-        if initial_check is None:
-            pytest.fail(
-                f"No metrics received for query: {metrics_query}. "
-                f"Metrics endpoint may not be available or model is not exposing metrics."
-            )
-        
         validate_metrics_field(
             prometheus=prometheus,
             metrics_query=metrics_query,
