@@ -77,7 +77,7 @@ def qwen_isvc(
 
 @pytest.fixture(scope="class")
 def qwen_isvc_url(qwen_isvc: InferenceService) -> str:
-    return f"http://{qwen_isvc.name}-predictor.{qwen_isvc.namespace}.svc.cluster.local:80/v1"
+    return f"http://{qwen_isvc.name}-predictor.{qwen_isvc.namespace}.svc.cluster.local:8032/v1"
 
 
 @pytest.fixture(scope="class")
