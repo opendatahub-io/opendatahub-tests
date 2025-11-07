@@ -13,7 +13,7 @@ from utilities.constants import (
 )
 from utilities.inference_utils import Inference
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
-from utilities.monitoring import get_metrics_value, validate_metrics_field
+from utilities.monitoring import validate_metrics_field
 
 
 @pytest.mark.parametrize(
@@ -46,7 +46,7 @@ class TestRawUnprivilegedUserMetrics:
     ):
         """Verify number of total model requests in OpenShift monitoring system (UserWorkloadMonitoring) metrics"""
         validate_metrics_configuration(model_car_inference_service)
-        
+
         total_runs = 5
 
         run_inference_multiple_times(
@@ -56,9 +56,9 @@ class TestRawUnprivilegedUserMetrics:
             protocol=Protocols.HTTPS,
             iterations=total_runs,
         )
-        
+
         metrics_query = f'ovms_requests_success{{namespace="{model_car_inference_service.namespace}", name="{model_car_inference_service.name}"}}'
-        
+
         validate_metrics_field(
             prometheus=prometheus,
             metrics_query=metrics_query,

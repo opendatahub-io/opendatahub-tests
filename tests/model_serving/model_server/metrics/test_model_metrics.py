@@ -48,7 +48,7 @@ class TestModelMetrics:
         """Verify number of successful model requests in OpenShift monitoring system (UserWorkloadMonitoring) metrics"""
         # validate cm values is true for metrics dashboard
         validate_metrics_configuration(model_car_inference_service)
-        
+
         verify_inference_response(
             inference_service=model_car_inference_service,
             inference_config=ONNX_INFERENCE_CONFIG,
@@ -56,9 +56,9 @@ class TestModelMetrics:
             protocol=Protocols.HTTPS,
             use_default_query=True,
         )
-        
+
         metrics_query = f'ovms_requests_success{{namespace="{model_car_inference_service.namespace}", name="{model_car_inference_service.name}"}}'
-        
+
         validate_metrics_field(
             prometheus=prometheus,
             metrics_query=metrics_query,
@@ -70,7 +70,7 @@ class TestModelMetrics:
     def test_model_metrics_num_total_requests(self, model_car_inference_service, prometheus):
         """Verify number of total model requests in OpenShift monitoring system (UserWorkloadMonitoring) metrics"""
         validate_metrics_configuration(model_car_inference_service)
-        
+
         total_runs = 5
 
         run_inference_multiple_times(
@@ -81,24 +81,24 @@ class TestModelMetrics:
             iterations=total_runs,
             run_in_parallel=True,
         )
-        
+
         metrics_query = f'ovms_requests_success{{namespace="{model_car_inference_service.namespace}", name="{model_car_inference_service.name}"}}'
-        
+
         validate_metrics_field(
             prometheus=prometheus,
             metrics_query=metrics_query,
             expected_value=str(total_runs),
             greater_than=True,
         )
-        
+
     @pytest.mark.smoke
     @pytest.mark.polarion("ODS-2555")
     def test_model_metrics_cpu_utilization(self, model_car_inference_service, prometheus):
         """Verify CPU utilization data in OpenShift monitoring system (UserWorkloadMonitoring) metrics"""
         validate_metrics_configuration(model_car_inference_service)
-        
+
         metrics_query = f"pod:container_cpu_usage:sum{{namespace='{model_car_inference_service.namespace}'}}"
-        
+
         for cpu_value in TimeoutSampler(
             wait_timeout=120,
             sleep=10,

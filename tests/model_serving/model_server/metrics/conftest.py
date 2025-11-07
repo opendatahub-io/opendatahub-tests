@@ -31,4 +31,3 @@ def model_car_inference_service(
         wait_for_predictor_pods=False,
     ) as isvc:
         yield isvc
-
