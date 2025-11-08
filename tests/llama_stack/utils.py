@@ -54,7 +54,15 @@ def wait_for_llama_stack_client_ready(client: LlamaStackClient) -> bool:
     try:
         client.inspect.health()
         version = client.inspect.version()
-        LOGGER.info(f"Llama Stack server (v{version.version}) is available!")
+        # Check access to llama-stack server database
+        vector_stores = client.vector_stores.list()
+        files = client.files.list()
+        LOGGER.info(
+            f"Llama Stack server is available! "
+            f"(version:{version.version} "
+            f"vector_stores:{len(vector_stores.data)} "
+            f"files:{len(files.data)})"
+        )
         return True
     except APIConnectionError as e:
         LOGGER.debug(f"Llama Stack server not ready yet: {e}")
