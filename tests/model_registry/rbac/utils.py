@@ -1,11 +1,14 @@
 from typing import Any, Dict, Generator, List
 
 from kubernetes.dynamic import DynamicClient
+from semver.version import Version
 from timeout_sampler import TimeoutSampler
 
 from ocp_resources.deployment import Deployment
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
+from ocp_utilities.cluster_versions import get_cluster_version
+from pyhelper_utils.shell import run_command
 from utilities.constants import Protocols
 import logging
 from model_registry import ModelRegistry as ModelRegistryClient
@@ -178,3 +181,12 @@ def assert_forbidden_access(endpoint: str, token: str) -> None:
     except ForbiddenException:
         # This is what we want - access is properly forbidden
         pass
+
+
+def should_skip_rbac_tests() -> bool:
+    """Check if RBAC tests should be skipped"""
+    # Need to get these details here to use this in the skipif statement.
+    out, byoidc, _ = run_command(command=["oc", "get", "authentication", "-o", "jsonpath={.items[0].spec.type}"])
+    if out and byoidc != "OIDC":
+        return False
+    return get_cluster_version() >= Version.parse("4.20.0")
