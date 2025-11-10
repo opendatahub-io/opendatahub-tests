@@ -7,10 +7,12 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from simple_logger.logger import get_logger
-
 from utilities.constants import (
     KServeDeploymentType,
+    ModelAndFormat,
+    ModelFormat,
     ModelStoragePath,
+    ModelVersion,
     RuntimeTemplates,
 )
 from utilities.inference_utils import create_isvc
@@ -20,15 +22,17 @@ from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 LOGGER = get_logger(name=__name__)
 
+UPGRADE_NAMESPACE = "upgrade-model-server"
+S3_CONNECTION = "upgrade-connection"
+
 
 @pytest.fixture(scope="session")
-def model_namespace_scope_session(
+def namespace_fixture(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     teardown_resources: bool,
 ) -> Generator[Namespace, Any, Any]:
-    name = "upgrade-model-server"
-    ns = Namespace(client=admin_client, name=name)
+    ns = Namespace(client=admin_client, name=UPGRADE_NAMESPACE)
 
     if pytestconfig.option.post_upgrade:
         yield ns
@@ -37,7 +41,7 @@ def model_namespace_scope_session(
     else:
         with create_ns(
             admin_client=admin_client,
-            name=name,
+            name=UPGRADE_NAMESPACE,
             model_mesh_enabled=False,
             add_dashboard_label=True,
             teardown=teardown_resources,
@@ -46,10 +50,10 @@ def model_namespace_scope_session(
 
 
 @pytest.fixture(scope="session")
-def models_endpoint_s3_secret_scope_session(
+def s3_connection_fixture(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    model_namespace_scope_session: Namespace,
+    namespace_fixture: Namespace,
     aws_access_key_id: str,
     aws_secret_access_key: str,
     models_s3_bucket_name: str,
@@ -59,8 +63,8 @@ def models_endpoint_s3_secret_scope_session(
 ) -> Generator[Secret, Any, Any]:
     secret_kwargs = {
         "client": admin_client,
-        "name": "models-bucket-secret",
-        "namespace": model_namespace_scope_session.name,
+        "name": S3_CONNECTION,
+        "namespace": namespace_fixture.name,
     }
 
     secret = Secret(**secret_kwargs)
@@ -83,16 +87,16 @@ def models_endpoint_s3_secret_scope_session(
 
 
 @pytest.fixture(scope="session")
-def caikit_raw_serving_runtime_scope_session(
+def serving_runtime_fixture(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    model_namespace_scope_session: Namespace,
+    namespace_fixture: Namespace,
     teardown_resources: bool,
 ) -> Generator[ServingRuntime, Any, Any]:
     runtime_kwargs = {
         "client": admin_client,
-        "name": "caikit-raw",
-        "namespace": model_namespace_scope_session.name,
+        "name": "upgrade-runtime",
+        "namespace": namespace_fixture.name,
     }
 
     model_runtime = ServingRuntime(**runtime_kwargs)
@@ -104,26 +108,32 @@ def caikit_raw_serving_runtime_scope_session(
     else:
         with ServingRuntimeFromTemplate(
             **runtime_kwargs,
-            template_name=RuntimeTemplates.CAIKIT_STANDALONE_SERVING,
+            template_name=RuntimeTemplates.OVMS_KSERVE,
             multi_model=False,
             enable_http=True,
             teardown=teardown_resources,
+            resources={
+                ModelFormat.OVMS: {
+                    "requests": {"cpu": "1", "memory": "4Gi"},
+                    "limits": {"cpu": "2", "memory": "8Gi"},
+                }
+            },
         ) as model_runtime:
             yield model_runtime
 
 
 @pytest.fixture(scope="session")
-def caikit_raw_inference_service_scope_session(
+def inference_service_fixture(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    caikit_raw_serving_runtime_scope_session: ServingRuntime,
-    models_endpoint_s3_secret_scope_session: Secret,
+    serving_runtime_fixture: ServingRuntime,
+    s3_connection_fixture: Secret,
     teardown_resources: bool,
 ) -> Generator[InferenceService, Any, Any]:
     isvc_kwargs = {
         "client": admin_client,
-        "name": caikit_raw_serving_runtime_scope_session.name,
-        "namespace": caikit_raw_serving_runtime_scope_session.namespace,
+        "name": "upgrade-isvc",
+        "namespace": serving_runtime_fixture.namespace,
     }
 
     isvc = InferenceService(**isvc_kwargs)
@@ -135,11 +145,12 @@ def caikit_raw_inference_service_scope_session(
 
     else:
         with create_isvc(
-            runtime=caikit_raw_serving_runtime_scope_session.name,
-            model_format=caikit_raw_serving_runtime_scope_session.instance.spec.supportedModelFormats[0].name,
+            runtime=serving_runtime_fixture.name,
+            model_format=ModelAndFormat.OPENVINO_IR,
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-            storage_key=models_endpoint_s3_secret_scope_session.name,
-            storage_path=ModelStoragePath.EMBEDDING_MODEL,
+            storage_key=s3_connection_fixture.name,
+            storage_path=ModelStoragePath.OPENVINO_EXAMPLE_MODEL,
+            model_version=ModelVersion.OPSET13,
             external_route=False,
             teardown=teardown_resources,
             **isvc_kwargs,
