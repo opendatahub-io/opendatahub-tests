@@ -18,21 +18,44 @@ def host_from_ingress_domain(client) -> str:
     return f"maas.{domain}"
 
 
+def _first_ready_llmisvc(
+    client,
+    namespace: str = "llm",
+    label_selector: str | None = None,
+):
+    """
+    Return the first Ready LLMInferenceService in the given namespace,
+    or None if none are Ready.
+    """
+    for service in LLMInferenceService.get(
+        dyn_client=client,
+        namespace=namespace,
+        label_selector=label_selector,
+    ):
+        status = getattr(service.instance, "status", {}) or {}
+        conditions = status.get("conditions", [])
+        is_ready = any(
+            condition.get("type") == "Ready" and condition.get("status") == "True" for condition in conditions
+        )
+        if is_ready:
+            return service
+
+    return None
+
+
 def detect_scheme_via_llmisvc(client, namespace: str = "llm") -> str:
     """
     Using LLMInferenceService's URL to infer the scheme.
     """
-    for inference_service in LLMInferenceService.get(dyn_client=client, namespace=namespace):
-        status_conditions = inference_service.instance.status.get("conditions", [])
-        service_is_ready = any(
-            condition_entry.get("type") == "Ready" and condition_entry.get("status") == "True"
-            for condition_entry in status_conditions
-        )
-        if service_is_ready:
-            url = get_llm_inference_url(llm_service=inference_service)
-            scheme = (urlparse(url).scheme or "").lower()
-            if scheme in ("http", "https"):
-                return scheme
+    service = _first_ready_llmisvc(client=client, namespace=namespace)
+    if not service:
+        return "http"
+
+    url = get_llm_inference_url(llm_service=service)
+    scheme = (urlparse(url).scheme or "").lower()
+    if scheme in ("http", "https"):
+        return scheme
+
     return "http"
 
 
@@ -71,11 +94,13 @@ def llmis_name(client, namespace: str = "llm", label_selector: str | None = None
     """
     Return the name of the first Ready LLMInferenceService.
     """
-    for service in LLMInferenceService.get(dyn_client=client, namespace=namespace, label_selector=label_selector):
-        conditions = (service.instance.status or {}).get("conditions", [])
-        is_ready = any(
-            condition.get("type") == "Ready" and condition.get("status") == "True" for condition in conditions
-        )
-        if is_ready:
-            return service.name
-    raise RuntimeError("No Ready LLMInferenceService found")
+
+    service = _first_ready_llmisvc(
+        client=client,
+        namespace=namespace,
+        label_selector=label_selector,
+    )
+    if not service:
+        raise RuntimeError("No Ready LLMInferenceService found")
+
+    return service.name

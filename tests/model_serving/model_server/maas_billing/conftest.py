@@ -3,7 +3,8 @@ from typing import Generator
 import pytest
 import requests
 from simple_logger.logger import get_logger
-from utilities.plugins.constant import OpenAIEnpoints
+from utilities.plugins.constant import RestHeader, OpenAIEnpoints
+
 
 from tests.model_serving.model_server.maas_billing.utils import (
     detect_scheme_via_llmisvc,
@@ -13,6 +14,8 @@ from tests.model_serving.model_server.maas_billing.utils import (
 )
 
 LOGGER = get_logger(name=__name__)
+MODELS_INFO = OpenAIEnpoints.MODELS_INFO
+CHAT_COMPLETIONS = OpenAIEnpoints.CHAT_COMPLETIONS
 
 
 @pytest.fixture(scope="session")
@@ -43,7 +46,7 @@ def minted_token(request_session_http, base_url: str, current_client_token: str)
 
 @pytest.fixture(scope="module")
 def base_url(admin_client) -> str:
-    scheme = detect_scheme_via_llmisvc(client=admin_client, namespace="llm")
+    scheme = detect_scheme_via_llmisvc(client=admin_client)
     host = host_from_ingress_domain(client=admin_client)
     return f"{scheme}://{host}/maas-api"
 
@@ -53,7 +56,33 @@ def model_url(admin_client) -> str:
     """
     MODEL_URL:http(s)://<host>/llm/<deployment>/v1/chat/completions
     """
-    scheme = detect_scheme_via_llmisvc(client=admin_client, namespace="llm")
+    scheme = detect_scheme_via_llmisvc(client=admin_client)
     host = host_from_ingress_domain(client=admin_client)
-    deployment = llmis_name(client=admin_client, namespace="llm", label_selector=None)
-    return f"{scheme}://{host}/llm/{deployment}{OpenAIEnpoints.CHAT_COMPLETIONS}"
+    deployment = llmis_name(client=admin_client)
+    return f"{scheme}://{host}/llm/{deployment}{CHAT_COMPLETIONS}"
+
+
+@pytest.fixture
+def maas_headers(minted_token: str) -> dict:
+    """Common headers for MaaS API calls."""
+    return {"Authorization": f"Bearer {minted_token}", **RestHeader.HEADERS}
+
+
+@pytest.fixture
+def maas_models(
+    request_session_http: requests.Session,
+    base_url: str,
+    maas_headers: dict,
+):
+    """
+    Call /v1/models once and return the list of models.
+
+    """
+    models_url = f"{base_url}{MODELS_INFO}"
+    resp = request_session_http.get(models_url, headers=maas_headers, timeout=60)
+
+    assert resp.status_code == 200, f"/v1/models failed: {resp.status_code} {resp.text[:200]}"
+
+    models = resp.json().get("data", [])
+    assert models, "no models available"
+    return models

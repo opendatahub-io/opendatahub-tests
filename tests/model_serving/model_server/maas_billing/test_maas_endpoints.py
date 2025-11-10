@@ -1,5 +1,6 @@
-from utilities.plugins.constant import RestHeader, OpenAIEnpoints
+from utilities.plugins.constant import OpenAIEnpoints
 from simple_logger.logger import get_logger
+import requests
 
 LOGGER = get_logger(name=__name__)
 MODELS_INFO = OpenAIEnpoints.MODELS_INFO
@@ -7,53 +8,50 @@ CHAT_COMPLETIONS = OpenAIEnpoints.CHAT_COMPLETIONS
 
 
 class TestMaasEndpoints:
-    def test_model(self, request_session_http, base_url: str, minted_token: str) -> None:
-        """Verify /v1/models endpoint is reachable and returns available models."""
-        headers = {"Authorization": f"Bearer {minted_token}", **RestHeader.HEADERS}
-        url = f"{base_url}{MODELS_INFO}"
+    def test_model(
+        self,
+        maas_models: list,
+    ) -> None:
+        """Verify /v1/models endpoint returns at least one model."""
+        assert isinstance(maas_models, list)
+        assert maas_models, "no models returned from /v1/models"
 
-        resp = request_session_http.get(url, headers=headers, timeout=60)
-        assert resp.status_code == 200, f"/v1/models failed: {resp.status_code} {resp.text[:200]}"
-
-        body = resp.json()
-        assert isinstance(body.get("data"), list), "'data' missing or not a list"
-        assert body["data"], "no models found"
+        first = maas_models[0]
+        assert "id" in first, "model entry missing 'id'"
 
     def test_chat_completions(
         self,
-        request_session_http,
-        base_url: str,
-        minted_token: str,
+        request_session_http: requests.Session,
         model_url: str,
+        maas_headers: dict,
+        maas_models: list,
     ) -> None:
         """
-        Verify the chat completion endpoint /llm/<deployment>/v1/chat/completions
-        responds correctly to a prompt request.
-
+        Verify /llm/<deployment>/v1/chat/completions responds to a simple prompt.
         """
-        headers = {"Authorization": f"Bearer {minted_token}", **RestHeader.HEADERS}
-
-        # 1) Pick a model id from /v1/models
-        models_url = f"{base_url}{MODELS_INFO}"
-        models_resp = request_session_http.get(models_url, headers=headers, timeout=60)
-        assert models_resp.status_code == 200, f"/v1/models failed: {models_resp.status_code} {models_resp.text[:200]}"
-        models = models_resp.json().get("data", [])
-        assert models, "no models available"
-        model_id = models[0].get("id", "")
+        model_id = maas_models[0].get("id", "")
         LOGGER.info("Using model_id=%s", model_id)
+        assert model_id, "first model from /v1/models has no 'id'"
 
-        # 2) Prepare the chat completion endpoint URL
         payload = {"model": model_id, "prompt": "Hello", "max_tokens": 50}
-        LOGGER.info("POST %s with keys=%s", model_url, list(payload.keys()))
-        resp = request_session_http.post(url=model_url, headers=headers, json=payload, timeout=60)
-        LOGGER.info("POST %s -> %s", model_url, resp.status_code)
+        LOGGER.info(f"POST {model_url} with keys={list(payload.keys())}")
+
+        resp = request_session_http.post(
+            url=model_url,
+            headers=maas_headers,
+            json=payload,
+            timeout=60,
+        )
+        LOGGER.info(f"POST {model_url} -> {resp.status_code}")
+
         assert resp.status_code == 200, (
             f"/v1/chat/completions failed: {resp.status_code} {resp.text[:200]} (url={model_url})"
         )
 
         body = resp.json()
-        assert isinstance(body.get("choices"), list), "'choices' missing or not a list"
-        if body["choices"]:
-            msg = body["choices"][0].get("message", {}) or {}
-            text = msg.get("content") or body["choices"][0].get("text", "")
-            assert isinstance(text, str) and text.strip() != "", "first choice has no text content"
+        choices = body.get("choices", [])
+        assert isinstance(choices, list) and choices, "'choices' missing or empty"
+
+        msg = choices[0].get("message", {}) or {}
+        text = msg.get("content") or choices[0].get("text", "")
+        assert isinstance(text, str) and text.strip(), "first choice has no text content"
