@@ -60,7 +60,7 @@ from utilities.logger import RedactedString
 from utilities.mariadb_utils import wait_for_mariadb_operator_deployments
 from utilities.minio import create_minio_data_connection_secret
 from utilities.operator_utils import get_csv_related_images, get_cluster_service_version
-from utilities.resources.authentication_config_openshift_io import Authentication
+from ocp_resources.authentication_config_openshift_io import Authentication
 
 LOGGER = get_logger(name=__name__)
 
