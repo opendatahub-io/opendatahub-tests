@@ -21,7 +21,7 @@ from kubernetes.dynamic.exceptions import ResourceNotFoundError
 
 LOGGER = get_logger(name=__name__)
 pytestmark = [
-    pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace", "test_idp_user")
+    pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace")
 ]
 
 
