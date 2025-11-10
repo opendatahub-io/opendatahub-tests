@@ -186,7 +186,11 @@ def assert_forbidden_access(endpoint: str, token: str) -> None:
 def should_skip_rbac_tests() -> bool:
     """Check if RBAC tests should be skipped"""
     # Need to get these details here to use this in the skipif statement.
-    out, byoidc, _ = run_command(command=["oc", "get", "authentication", "-o", "jsonpath={.items[0].spec.type}"])
-    if out and byoidc != "OIDC":
+    # Skip RBAC tests on OpenShift 4.20+ with OIDC authentication
+    success, auth_type, _ = run_command(command=["oc", "get", "authentication", "-o", "jsonpath={.items[0].spec.type}"])
+    if not success:
+        LOGGER.warning("Failed to retrieve authentication type, assuming non-OIDC")
+        return False
+    if auth_type and auth_type.strip() != "OIDC":
         return False
     return get_cluster_version() >= Version.parse("4.20.0")

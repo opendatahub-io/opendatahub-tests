@@ -106,7 +106,7 @@ def user_token_for_api_calls(
         LOGGER.info("Logging in as admin user")
         yield get_openshift_token()
     elif user == "test":
-        with test_idp_user.login:
+        with test_idp_user.login():
             yield get_openshift_token()
     elif user == "sa_user":
         yield create_inference_token(service_account)
