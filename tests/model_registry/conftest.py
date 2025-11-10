@@ -486,7 +486,7 @@ def test_idp_user(
     created_htpasswd_secret: Generator[UserTestSession, None, None],
     updated_oauth_config: Generator[Any, None, None],
     api_server_url: str,
-    is_byoidc: bool
+    is_byoidc: bool,
 ) -> Generator[UserTestSession, None, None]:
     """
     Session-scoped fixture that creates a test IDP user and cleans it up after all tests.
