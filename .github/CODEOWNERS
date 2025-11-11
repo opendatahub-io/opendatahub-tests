@@ -13,6 +13,6 @@
 # Test directory specific rules
 tests/model_explainability/       @adolfo-ab @sheltoncyril @kpunwatk
 tests/model_registry/             @dbasunag @lugi0 @fege
-tests/model_serving/              @mwaykole @Raghul-M @brettmthompson @hdefazio @threcc
+tests/model_serving/              @mwaykole @Raghul-M @brettmthompson @hdefazio @threcc @MALHAJFR
 tests/rag/                        @jgarciao @jiripetrlik
 tests/workbenches                 @jstourac @andyatmiami
