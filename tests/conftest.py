@@ -77,7 +77,7 @@ def admin_client() -> DynamicClient:
     return get_client()
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="session")
 def tests_tmp_dir(request: FixtureRequest, tmp_path_factory: TempPathFactory) -> Generator[None, None, None]:
     base_path = os.path.join(request.config.option.basetemp, "tests")
     tests_tmp_path = tmp_path_factory.mktemp(basename=base_path)
@@ -687,8 +687,8 @@ def oc_binary_path(bin_directory: LocalPath) -> str:
 
 
 @pytest.fixture(scope="session", autouse=True)
-@pytest.mark.early(order=0)
 def autouse_fixtures(
+    tests_tmp_dir: None,
     bin_directory_to_os_path: None,
     cluster_sanity_scope_session: None,
 ) -> None:
