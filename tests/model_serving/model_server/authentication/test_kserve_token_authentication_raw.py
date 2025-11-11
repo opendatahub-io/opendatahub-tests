@@ -15,7 +15,7 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
 @pytest.mark.sanity
 @pytest.mark.rawdeployment
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, s3_models_storage_uri",
+    "unprivileged_model_namespace, http_s3_ovms_raw_inference_service",
     [
         pytest.param(
             {"name": "test-kserve-raw-token-authentication"},
@@ -95,6 +95,11 @@ class TestKserveTokenAuthenticationRawForRest:
             token=http_raw_inference_token,
         )
 
+    @pytest.mark.parametrize(
+        "http_s3_ovms_raw_inference_service_2",
+        [pytest.param({"model-dir": "test-dir"})],
+        indirect=True,
+    )
     @pytest.mark.dependency(name="test_cross_model_authentication_raw")
     def test_cross_model_authentication_raw(
         self, http_s3_ovms_raw_inference_service_2, http_raw_inference_token, admin_client
