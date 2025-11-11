@@ -52,8 +52,8 @@ class TestModelRegistrySecurityContextValidation:
     @pytest.mark.parametrize(
         "pod_model_registry_ns",
         [
-            pytest.param({"deployment_name": MR_INSTANCE_NAME}),
-            pytest.param({"deployment_name": MR_POSTGRES_DEPLOYMENT_NAME_STR}),
+            pytest.param({"deployment_name": MR_INSTANCE_NAME}, id="test_pod_scc_deployment_mr"),
+            pytest.param({"deployment_name": MR_POSTGRES_DEPLOYMENT_NAME_STR}, id="test_pod_scc_deployment_postgres"),
         ],
         indirect=["pod_model_registry_ns"],
     )

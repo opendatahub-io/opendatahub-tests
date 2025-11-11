@@ -477,3 +477,25 @@ def unprivileged_models_endpoint_s3_secret(
         aws_s3_endpoint=models_s3_bucket_endpoint,
     ) as secret:
         yield secret
+
+
+@pytest.fixture(scope="class")
+def model_car_inference_service(
+    request: FixtureRequest,
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+    serving_runtime_from_template: ServingRuntime,
+) -> Generator[InferenceService, Any, Any]:
+    deployment_mode = request.param.get("deployment-mode", KServeDeploymentType.RAW_DEPLOYMENT)
+    with create_isvc(
+        client=unprivileged_client,
+        name=f"model-car-{deployment_mode.lower()}",
+        namespace=unprivileged_model_namespace.name,
+        runtime=serving_runtime_from_template.name,
+        storage_uri=request.param["storage-uri"],
+        model_format=serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
+        deployment_mode=deployment_mode,
+        external_route=request.param.get("external-route", True),
+        wait_for_predictor_pods=False,
+    ) as isvc:
+        yield isvc
