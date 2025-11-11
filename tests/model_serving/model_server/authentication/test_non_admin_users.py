@@ -3,7 +3,7 @@ import pytest
 from tests.model_serving.model_server.utils import (
     verify_inference_response,
 )
-from utilities.constants import ModelStoragePath, Protocols
+from utilities.constants import Protocols
 from utilities.inference_utils import Inference
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
