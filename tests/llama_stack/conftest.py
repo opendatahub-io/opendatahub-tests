@@ -352,7 +352,6 @@ def llama_stack_test_route(
 
 
 def _create_llama_stack_client(
-    llama_stack_distribution_deployment: Deployment,
     route: Route,
 ) -> Generator[LlamaStackClient, Any, Any]:
     # LLS_CLIENT_VERIFY_SSL is false by default to be able to test with Self-Signed certificates
@@ -372,40 +371,36 @@ def _create_llama_stack_client(
 
 @pytest.fixture(scope="class")
 def unprivileged_llama_stack_client(
-    unprivileged_llama_stack_distribution_deployment: Deployment,
     unprivileged_llama_stack_test_route: Route,
 ) -> Generator[LlamaStackClient, Any, Any]:
     """
     Returns a ready to use LlamaStackClient for unprivileged deployment.
 
     Args:
-        unprivileged_llama_stack_distribution_deployment (Deployment): LlamaStack distribution deployment resource
+        unprivileged_llama_stack_test_route (Route): Route resource for unprivileged LlamaStack distribution
 
     Yields:
         Generator[LlamaStackClient, Any, Any]: Configured LlamaStackClient for RAG testing
     """
     yield from _create_llama_stack_client(
-        llama_stack_distribution_deployment=unprivileged_llama_stack_distribution_deployment,
         route=unprivileged_llama_stack_test_route,
     )
 
 
 @pytest.fixture(scope="class")
 def llama_stack_client(
-    llama_stack_distribution_deployment: Deployment,
     llama_stack_test_route: Route,
 ) -> Generator[LlamaStackClient, Any, Any]:
     """
     Returns a ready to use LlamaStackClient.
 
     Args:
-        llama_stack_distribution_deployment (Deployment): LlamaStack distribution deployment resource
+        llama_stack_test_route (Route): Route resource for LlamaStack distribution
 
     Yields:
         Generator[LlamaStackClient, Any, Any]: Configured LlamaStackClient for RAG testing
     """
     yield from _create_llama_stack_client(
-        llama_stack_distribution_deployment=llama_stack_distribution_deployment,
         route=llama_stack_test_route,
     )
 
