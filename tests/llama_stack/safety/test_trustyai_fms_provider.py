@@ -1,5 +1,6 @@
 import pytest
 import yaml
+from llama_stack_client.types.chat.completion_create_params import MessageOpenAIUserMessageParam
 from simple_logger.logger import get_logger
 
 from tests.llama_stack.constants import LlamaStackProviders
@@ -61,7 +62,7 @@ class TestLlamaStackFMSGuardrailsProvider:
         shield_params = {
             "type": "content",
             "confidence_threshold": 0.5,
-            "message_types": ["system"],
+            "message_types": ["system", "user"],
             "auth_token": current_client_token,
             "verify_ssl": True,
             "ssl_cert_path": "/etc/llama/certs/orch-certificate.crt",
@@ -86,10 +87,10 @@ class TestLlamaStackFMSGuardrailsProvider:
         run_shields_response = llama_stack_client.safety.run_shield(
             shield_id=SECURE_SHIELD_ID,
             messages=[
-                {
-                    "content": "My email is johndoe@example.com",
-                    "role": "system",
-                },
+                MessageOpenAIUserMessageParam(
+                    content="My email is johndoe@example.com",
+                    role="user",
+                )
             ],
             params={},
         )
@@ -104,3 +105,18 @@ class TestLlamaStackFMSGuardrailsProvider:
         assert run_shields_response.violation.metadata["shield_id"] == SECURE_SHIELD_ID, (
             f"Expected shield_id to be {SECURE_SHIELD_ID}"
         )
+
+    def test_fms_moderations(self, minio_pod, minio_data_connection, llama_stack_client):
+        """Test to check if moderations API works with the registered shield above.
+        refer: https://github.com/m-misiura/demos/tree/main/fms_safety_provider_lllamastack
+        """
+        moderations_response = llama_stack_client.moderations.create(
+            input="My email is juandoe@example.com", model=SECURE_SHIELD_ID
+        )
+        assert len(moderations_response.results) > 0, "Moderation response results was empty."
+        assert moderations_response.model == SECURE_SHIELD_ID, "Moderation shield_id did not match the model."
+        assert moderations_response.results[0].categories["pii"], "The pii moderation category was not triggered."
+        assert moderations_response.results[0].flagged, "The moderation was not flagged."
+        assert moderations_response.results[0].metadata["status"] == "violation"
+        assert moderations_response.results[0].metadata["detection_type"] == "pii"
+        assert moderations_response.results[0].metadata["text"] == "My email is juandoe@example.com"
