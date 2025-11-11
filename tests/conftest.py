@@ -410,7 +410,14 @@ def unprivileged_client(
 
     elif is_byoidc:
         # this requires a pre-existing context in $KUBECONFIG with a unprivileged user
-        unprivileged_context, _ = get_unprivileged_context()
+        try:
+            unprivileged_context, _ = get_unprivileged_context()
+        except ValueError as e:
+            raise ValueError(
+                f"Failed to get unprivileged context for BYOIDC mode. "
+                f"Ensure the context naming follows the convention: <context>-unprivileged. "
+                f"Error: {e}"
+            ) from e
 
         unprivileged_client = get_client(config_file=kubconfig_filepath, context=unprivileged_context)
 

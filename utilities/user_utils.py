@@ -127,11 +127,10 @@ def get_unprivileged_context() -> tuple[str, str]:
     Returns:
         Tuple of (unprivileged context, current context).
     """
-    status, current_context, _ = run_command(command=["oc", "config", "current-context"])[1].strip()
-    if not status:
+    status, current_context, _ = run_command(command=["oc", "config", "current-context"])
+    current_context = current_context.strip()
+    if not status or not current_context:
         raise ValueError("Could not get current context from oc config current-context")
-    if not current_context:
-        raise ValueError("Current context is empty")
     if current_context.endswith("-unprivileged"):
         raise ValueError("Current context is already called [...]-unprivileged")
     return current_context + "-unprivileged", current_context
