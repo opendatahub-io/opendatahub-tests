@@ -20,9 +20,6 @@ from simple_logger.logger import get_logger
 from utilities.constants import (
     KServeDeploymentType,
     ModelFormat,
-    ModelInferenceRuntime,
-    ModelStoragePath,
-    Protocols,
     RuntimeTemplates,
     StorageClassName,
 )
