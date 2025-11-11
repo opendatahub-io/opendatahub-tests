@@ -299,30 +299,29 @@ def _create_llama_stack_test_route(
         Generator[Route, Any, Any]: Route resource with TLS edge termination
     """
     route_name = generate_random_name(prefix="llama-stack", length=12)
-    route = Route(
+    with Route(
         client=client,
         namespace=namespace.name,
         name=route_name,
         service=f"{deployment.name}-service",
         wait_for_resource=True,
-    )
-    route.deploy()
-    with ResourceEditor(
-        patches={
-            route: {
-                "spec": {
-                    "tls": {
-                        "termination": "edge",
-                        "insecureEdgeTerminationPolicy": "Redirect",
-                    }
-                },
-                "metadata": {
-                    "annotations": {Annotations.HaproxyRouterOpenshiftIo.TIMEOUT: "10m"},
-                },
+    ) as route:
+        with ResourceEditor(
+            patches={
+                route: {
+                    "spec": {
+                        "tls": {
+                            "termination": "edge",
+                            "insecureEdgeTerminationPolicy": "Redirect",
+                        }
+                    },
+                    "metadata": {
+                        "annotations": {Annotations.HaproxyRouterOpenshiftIo.TIMEOUT: "10m"},
+                    },
+                }
             }
-        }
-    ):
-        yield route
+        ):
+            yield route
 
 
 @pytest.fixture(scope="class")
