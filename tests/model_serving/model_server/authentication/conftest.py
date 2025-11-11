@@ -67,39 +67,6 @@ def http_raw_role_binding(
 
 
 @pytest.fixture(scope="class")
-def http_raw_view_role_2(
-    unprivileged_client: DynamicClient,
-    http_s3_ovms_raw_inference_service_2: InferenceService,
-) -> Generator[Role, Any, Any]:
-    with create_isvc_view_role(
-        client=unprivileged_client,
-        isvc=http_s3_ovms_raw_inference_service_2,
-        name=f"{http_s3_ovms_raw_inference_service_2.name}-view",
-        resource_names=[http_s3_ovms_raw_inference_service_2.name],
-    ) as role:
-        yield role
-
-
-@pytest.fixture(scope="class")
-def http_raw_role_binding_2(
-    unprivileged_client: DynamicClient,
-    http_raw_view_role_2: Role,
-    model_service_account: ServiceAccount,
-    http_s3_ovms_raw_inference_service_2: InferenceService,
-) -> Generator[RoleBinding, Any, Any]:
-    with RoleBinding(
-        client=unprivileged_client,
-        namespace=model_service_account.namespace,
-        name=f"{Protocols.HTTP}-{model_service_account.name}-view-2",
-        role_ref_name=http_raw_view_role_2.name,
-        role_ref_kind=http_raw_view_role_2.kind,
-        subjects_kind=model_service_account.kind,
-        subjects_name=model_service_account.name,
-    ) as rb:
-        yield rb
-
-
-@pytest.fixture(scope="class")
 def http_raw_inference_token(model_service_account: ServiceAccount, http_raw_role_binding: RoleBinding) -> str:
     return RedactedString(value=create_inference_token(model_service_account=model_service_account))
 
