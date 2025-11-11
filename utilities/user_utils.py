@@ -57,8 +57,7 @@ class UserTestSession:
     @contextmanager
     def login(self) -> Generator[None, None, None]:
         if self.is_byoidc:
-            current_context = run_command(command=["oc", "config", "current-context"])[1].strip()
-            unprivileged_context = current_context + "-unprivileged"
+            unprivileged_context, current_context = get_unprivileged_context()
             _ = run_command(command=["oc", "config", "use-context", unprivileged_context])
             yield
             _ = run_command(command=["oc", "config", "use-context", current_context])
@@ -117,3 +116,22 @@ def wait_for_user_creation(username: str, password: str, cluster_url: str) -> bo
     if res:
         return True
     raise ExceptionUserLogin(f"Could not login as user {username}.")
+
+
+def get_unprivileged_context() -> tuple[str, str]:
+    """
+    Get the unprivileged context from the current context.
+    This only works in BYOIDC mode, and it assumes that the unprivileged context is already created
+    with a precise naming convention: <current_context>-unprivileged.
+
+    Returns:
+        Tuple of (unprivileged context, current context).
+    """
+    status, current_context, _ = run_command(command=["oc", "config", "current-context"])[1].strip()
+    if not status:
+        raise ValueError("Could not get current context from oc config current-context")
+    if not current_context:
+        raise ValueError("Current context is empty")
+    if current_context.endswith("-unprivileged"):
+        raise ValueError("Current context is already called [...]-unprivileged")
+    return current_context + "-unprivileged", current_context

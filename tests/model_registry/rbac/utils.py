@@ -4,11 +4,11 @@ from kubernetes.dynamic import DynamicClient
 from semver.version import Version
 from timeout_sampler import TimeoutSampler
 
+from ocp_resources.authentication_config_openshift_io import Authentication
 from ocp_resources.deployment import Deployment
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_utilities.cluster_versions import get_cluster_version
-from pyhelper_utils.shell import run_command
 from utilities.constants import Protocols
 import logging
 from model_registry import ModelRegistry as ModelRegistryClient
@@ -187,10 +187,14 @@ def should_skip_rbac_tests() -> bool:
     """Check if RBAC tests should be skipped"""
     # Need to get these details here to use this in the skipif statement.
     # Skip RBAC tests on OpenShift 4.20+ with OIDC authentication
-    success, auth_type, _ = run_command(command=["oc", "get", "authentication", "-o", "jsonpath={.items[0].spec.type}"])
-    if not success:
-        LOGGER.warning("Failed to retrieve authentication type, assuming non-OIDC")
+    # Check BYOIDC
+    try:
+        auth = Authentication(name="cluster")
+        if not auth.exists:
+            return False
+        is_byoidc = auth.instance.spec.type == "OIDC"
+    except Exception:
         return False
-    if auth_type and auth_type.strip() != "OIDC":
+    if not is_byoidc:
         return False
     return get_cluster_version() >= Version.parse("4.20.0")

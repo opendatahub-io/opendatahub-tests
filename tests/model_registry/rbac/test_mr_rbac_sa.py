@@ -11,7 +11,10 @@ from tests.model_registry.rbac.utils import should_skip_rbac_tests
 
 LOGGER = get_logger(name=__name__)
 pytestmark = [
-    pytest.mark.skipif(should_skip_rbac_tests(), reason="RBAC tests are not supported in OpenShift 4.20 and later"),
+    pytest.mark.skipif(
+        should_skip_rbac_tests(),
+        reason="RBAC tests are not supported in OpenShift 4.20 and later with OIDC authentication",
+    ),
 ]
 
 

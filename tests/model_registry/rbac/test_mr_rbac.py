@@ -43,7 +43,10 @@ from utilities.constants import Protocols
 LOGGER = get_logger(name=__name__)
 pytestmark = [
     pytest.mark.usefixtures("original_user", "test_idp_user"),
-    pytest.mark.skipif(should_skip_rbac_tests(), reason="RBAC tests are not supported in OpenShift 4.20 and later"),
+    pytest.mark.skipif(
+        should_skip_rbac_tests(),
+        reason="RBAC tests are not supported in OpenShift 4.20 and later with OIDC authentication",
+    ),
 ]
 
 
