@@ -32,12 +32,6 @@ from utilities.serving_runtime import ServingRuntimeFromTemplate
 from utilities.constants import Annotations
 
 
-# Override s3_models_storage_uri to use CI bucket
-@pytest.fixture(scope="session")
-def s3_models_storage_uri(request: FixtureRequest, ci_s3_bucket_name: str) -> str:
-    return f"s3://{ci_s3_bucket_name}/{request.param['model-dir']}/"
-
-
 # HTTP/REST model serving
 @pytest.fixture(scope="class")
 def http_raw_view_role(
@@ -155,17 +149,19 @@ def http_s3_ovms_raw_inference_service(
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     http_s3_ovms_serving_runtime: ServingRuntime,
-    s3_models_storage_uri: str,
+    ci_s3_bucket_name: str,
     ci_endpoint_s3_secret: Secret,
     model_service_account: ServiceAccount,
 ) -> Generator[InferenceService, Any, Any]:
+    # Construct storage URI from CI bucket
+    storage_uri = f"s3://{ci_s3_bucket_name}/{request.param['model-dir']}/"
     with create_isvc(
         client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelFormat.ONNX}",
         namespace=unprivileged_model_namespace.name,
         runtime=http_s3_ovms_serving_runtime.name,
         storage_key=ci_endpoint_s3_secret.name,
-        storage_path=urlparse(s3_models_storage_uri).path,
+        storage_path=urlparse(storage_uri).path,
         model_format=http_s3_ovms_serving_runtime.instance.spec.supportedModelFormats[0].name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         model_service_account=model_service_account.name,
@@ -181,17 +177,19 @@ def http_s3_ovms_raw_inference_service_2(
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     http_s3_ovms_serving_runtime: ServingRuntime,
-    s3_models_storage_uri: str,
+    ci_s3_bucket_name: str,
     ci_endpoint_s3_secret: Secret,
     model_service_account_2: ServiceAccount,
 ) -> Generator[InferenceService, Any, Any]:
+    # Construct storage URI from CI bucket
+    storage_uri = f"s3://{ci_s3_bucket_name}/{request.param['model-dir']}/"
     with create_isvc(
         client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelFormat.ONNX}-2",
         namespace=unprivileged_model_namespace.name,
         runtime=http_s3_ovms_serving_runtime.name,
         storage_key=ci_endpoint_s3_secret.name,
-        storage_path=urlparse(s3_models_storage_uri).path,
+        storage_path=urlparse(storage_uri).path,
         model_format=http_s3_ovms_serving_runtime.instance.spec.supportedModelFormats[0].name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         model_service_account=model_service_account_2.name,
