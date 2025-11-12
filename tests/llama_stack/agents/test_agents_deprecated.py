@@ -21,13 +21,19 @@ LOGGER = get_logger(name=__name__)
 )
 @pytest.mark.rag
 @pytest.mark.skip_must_gather
-class TestLlamaStackAgents:
-    """Test class for LlamaStack Agents API
+class TestLlamaStackAgentsDeprecated:
+    """Test class for LlamaStack Agents API (Deprecated)
 
-    For more information about this API, see:
-    - https://llamastack.github.io/docs/building_applications/agent
-    - https://llamastack.github.io/docs/references/python_sdk_reference#agents
-    - https://llamastack.github.io/docs/building_applications/responses_vs_agents
+    Deprecation Notice: The LlamaStack Agents API was removed server-side in llama-stack 0.3.0.
+    It is partially implemented in llama-stack-client using the Responses API
+    (https://github.com/llamastack/llama-stack-client-python/pull/281).
+
+    Users are encouraged to use the Responses API directly.
+
+    For more information, see:
+    - https://llamastack.github.io/docs/api-deprecated/agents
+    - "Migrating from Agent objects to Responses in Llama Stack":
+      https://github.com/opendatahub-io/agents/blob/5902bef12c25281eecfcd3d25654de8b02857e33/migration/legacy-agents/responses-api-agent-migration.ipynb
     """
 
     @pytest.mark.smoke
@@ -106,11 +112,20 @@ class TestLlamaStackAgents:
             )
 
     @pytest.mark.smoke
+    @pytest.mark.parametrize(
+        "enable_streaming",
+        [
+            pytest.param(False, id="streaming_disabled"),
+            # Streaming test disabled, as it seems to be broken in 0.3.0 (Agents API is only partially implemented)
+            # pytest.param(True, id="streaming_enabled"),
+        ],
+    )
     def test_agents_rag_agent(
         self,
         unprivileged_llama_stack_client: LlamaStackClient,
         llama_stack_models: ModelInfo,
         vector_store_with_example_docs: VectorStore,
+        enable_streaming: bool,
     ) -> None:
         """
         Test RAG agent that can answer questions about the Torchtune project using the documents
@@ -142,7 +157,6 @@ class TestLlamaStackAgents:
         turns_with_expectations = get_torchtune_test_expectations()
 
         # Ask the agent about the inserted documents and validate responses
-        enable_streaming = False
         validation_result = validate_rag_agent_responses(
             rag_agent=rag_agent,
             session_id=session_id,
@@ -154,13 +168,19 @@ class TestLlamaStackAgents:
         )
 
         # Assert that validation was successful
-        assert validation_result["success"], f"RAG agent validation failed. Summary: {validation_result['summary']}"
+        assert validation_result["success"], (
+            f"RAG agent validation failed with streaming={enable_streaming}. Summary: {validation_result['summary']}"
+        )
 
         # Additional assertions for specific requirements
         for result in validation_result["results"]:
-            assert result["response_length"] > 0, f"No response content for question: {result['question']}"
+            assert result["response_length"] > 0, (
+                f"No response content for question: {result['question']} (streaming={enable_streaming})"
+            )
             assert len(result["found_keywords"]) > 0, (
-                f"No expected keywords found in response for: {result['question']}"
+                f"No expected keywords found in response for: {result['question']} (streaming={enable_streaming})"
             )
             if enable_streaming:
-                assert result["event_count"] > 0, f"No events generated for question: {result['question']}"
+                assert result["event_count"] > 0, (
+                    f"No events generated for question: {result['question']} (streaming={enable_streaming})"
+                )
