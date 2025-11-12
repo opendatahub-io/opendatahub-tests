@@ -2,7 +2,7 @@ from contextlib import contextmanager
 from typing import Any, Callable, Dict, Generator, List, cast
 
 from kubernetes.dynamic import DynamicClient
-from llama_stack_client import LlamaStackClient, APIConnectionError
+from llama_stack_client import LlamaStackClient, APIConnectionError, InternalServerError
 from llama_stack_client.types.vector_store import VectorStore
 from ocp_resources.llama_stack_distribution import LlamaStackDistribution
 from simple_logger.logger import get_logger
@@ -49,15 +49,23 @@ def create_llama_stack_distribution(
         yield llama_stack_distribution
 
 
-@retry(wait_timeout=240, sleep=15)
+@retry(wait_timeout=90, sleep=5)
 def wait_for_llama_stack_client_ready(client: LlamaStackClient) -> bool:
     try:
         client.inspect.health()
         version = client.inspect.version()
-        LOGGER.info(f"Llama Stack server (v{version.version}) is available!")
+        # Check access to llama-stack server database
+        vector_stores = client.vector_stores.list()
+        files = client.files.list()
+        LOGGER.info(
+            f"Llama Stack server is available! "
+            f"(version:{version.version} "
+            f"vector_stores:{len(vector_stores.data)} "
+            f"files:{len(files.data)})"
+        )
         return True
-    except APIConnectionError as e:
-        LOGGER.debug(f"Llama Stack server not ready yet: {e}")
+    except (APIConnectionError, InternalServerError) as error:
+        LOGGER.debug(f"Llama Stack server not ready yet: {error}")
         return False
     except Exception as e:
         LOGGER.warning(f"Unexpected error checking Llama Stack readiness: {e}")
