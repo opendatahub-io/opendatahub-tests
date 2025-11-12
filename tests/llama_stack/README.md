@@ -46,6 +46,7 @@ To add support for testing new LlamaStack API providers (e.g., a new vector_io p
 LlamaStack tests require setting the following environment variables (for example in a .env file at the root folder):
 ```bash
 OC_BINARY_PATH=/usr/local/sbin/oc                 # Optional
+LLS_CLIENT_VERIFY_SSL=false                       # Optional
 LLS_CORE_VLLM_URL=<LLAMA-3.2-3b-ENDPOINT>/v1  (ends with /v1)
 LLS_CORE_INFERENCE_MODEL=<LLAMA-3.2-3b-MODEL_NAME>
 LLS_CORE_VLLM_API_TOKEN=<LLAMA-3.2-3b-TOKEN>
