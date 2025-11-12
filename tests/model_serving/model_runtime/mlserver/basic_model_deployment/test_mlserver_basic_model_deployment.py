@@ -34,9 +34,7 @@ from tests.model_serving.model_runtime.mlserver.utils import (
 
 LOGGER = get_logger(name=__name__)
 
-pytestmark = pytest.mark.usefixtures(
-    "root_dir", "valid_aws_config", "mlserver_rest_serving_runtime_template"
-)
+pytestmark = pytest.mark.usefixtures("root_dir", "valid_aws_config", "mlserver_rest_serving_runtime_template")
 
 
 @pytest.mark.parametrize(
