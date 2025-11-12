@@ -20,7 +20,6 @@ from ocp_resources.inference_service import InferenceService
 
 from tests.model_serving.model_runtime.triton.constant import ACCELERATOR_IDENTIFIER, TEMPLATE_MAP
 from tests.model_serving.model_runtime.triton.constant import (
-    TRITON_GRPC_REMOTE_PORT,
     LOCAL_HOST_URL,
     PROTO_FILE_PATH,
     TRITON_REST_PORT,
@@ -120,14 +119,6 @@ def run_triton_inference(
                 else send_grpc_request(host, input_data, root_dir)
             )
 
-    elif deployment_mode == KServeDeploymentType.SERVERLESS:
-        base_url = isvc.instance.status.url.rstrip("/")
-        if is_rest:
-            return send_rest_request(f"{base_url}{rest_endpoint}", input_data)
-        else:
-            grpc_url = get_grpc_url(base_url=base_url, port=TRITON_GRPC_REMOTE_PORT)
-            return send_grpc_request(grpc_url, input_data, root_dir, insecure=True)
-
     return f"Invalid deployment_mode {deployment_mode}"
 
 
@@ -155,15 +146,20 @@ def validate_inference_request(
     assert response == response_snapshot, f"Output mismatch: {response} != {response_snapshot}"
 
 
-def get_gpu_identifier(accelerator_type: str) -> str:
+def get_gpu_identifier(accelerator_type: str | None) -> str:
+    if accelerator_type is None:
+        return Labels.Nvidia.NVIDIA_COM_GPU
     return ACCELERATOR_IDENTIFIER.get(accelerator_type.lower(), Labels.Nvidia.NVIDIA_COM_GPU)
 
 
-def get_template_name(protocol: str, accelerator_type: str) -> str:
+def get_template_name(protocol: str, accelerator_type: str | None) -> str:
     """
     Returns template name based on protocol and accelerator type.
     Falls back to default TRITON_REST if not found.
+    If accelerator_type is None, defaults to "nvidia".
     """
+    if accelerator_type is None:
+        accelerator_type = "nvidia"
     key = f"{protocol.lower()}_{accelerator_type.lower()}"
     return TEMPLATE_MAP.get(key, RuntimeTemplates.TRITON_REST)
 
