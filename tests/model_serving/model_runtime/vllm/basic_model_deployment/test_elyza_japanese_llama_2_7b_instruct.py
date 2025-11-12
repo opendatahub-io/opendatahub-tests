@@ -78,6 +78,7 @@ class TestELYZAJapaneseModel:
             completion_query=COMPLETION_QUERY_JAPANESE,
         )
 
+
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [
@@ -124,4 +125,3 @@ class TestMultiELYZAJapaneseModel:
             response_snapshot=response_snapshot,
             completion_query=COMPLETION_QUERY_JAPANESE,
         )
-

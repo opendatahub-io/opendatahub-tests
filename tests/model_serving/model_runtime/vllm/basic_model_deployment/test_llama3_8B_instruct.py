@@ -78,6 +78,7 @@ class TestLlamaInstructModel:
             completion_query=COMPLETION_QUERY,
         )
 
+
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [
@@ -124,4 +125,3 @@ class TestMultiLlamaInstructModel:
             response_snapshot=response_snapshot,
             completion_query=COMPLETION_QUERY,
         )
-

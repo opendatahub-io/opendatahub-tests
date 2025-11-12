@@ -34,5 +34,3 @@ class TestVLLMModelCarRaw:
             completion_query=COMPLETION_QUERY,
             model_output_type=deployment_config.get("model_output_type"),
         )
-
-
