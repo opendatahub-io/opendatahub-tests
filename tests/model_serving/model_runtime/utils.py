@@ -224,5 +224,3 @@ def fetch_openai_response(
             completion_responses.append(completion_response)
 
     return model_info, completion_responses
-
-
