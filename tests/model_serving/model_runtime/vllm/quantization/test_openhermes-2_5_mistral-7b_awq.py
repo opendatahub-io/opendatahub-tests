@@ -2,7 +2,6 @@ import pytest
 from simple_logger.logger import get_logger
 from utilities.constants import KServeDeploymentType, Ports
 from tests.model_serving.model_runtime.vllm.utils import (
-    fetch_openai_response,
     run_raw_inference,
     validate_inference_output,
 )
@@ -26,19 +25,6 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [
         pytest.param(
-            {"name": "mistral-awq-serverless"},
-            {"model-dir": MODEL_PATH},
-            {"deployment_type": KServeDeploymentType.SERVERLESS},
-            {
-                "deployment_mode": KServeDeploymentType.SERVERLESS,
-                "runtime_argument": SERVING_ARGUMENT,
-                "gpu_count": 1,
-                "name": "mistralawq-ser",
-                "min-replicas": 1,
-            },
-            id="mistral_serverless_deployment",
-        ),
-        pytest.param(
             {"name": "mistral-awq-raw"},
             {"model-dir": MODEL_PATH},
             {"deployment_type": KServeDeploymentType.RAW_DEPLOYMENT},
@@ -50,20 +36,6 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
                 "min-replicas": 1,
             },
             id="mistral_raw_deployment",
-        ),
-        pytest.param(
-            {"name": "mistral-marlin-serverless"},
-            {"model-dir": MODEL_PATH},
-            {"deployment_type": KServeDeploymentType.SERVERLESS},
-            {
-                "deployment_mode": KServeDeploymentType.SERVERLESS,
-                "runtime_argument": SERVING_ARGUMENT,
-                "gpu_count": 1,
-                "quantization": VLLM_SUPPORTED_QUANTIZATION[0],
-                "name": "mistralmar-ser",
-                "min-replicas": 1,
-            },
-            id="mistral_severless_marlin_deployment",
         ),
         pytest.param(
             {"name": "mistral-marlin-raw"},
@@ -78,20 +50,6 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
                 "min-replicas": 1,
             },
             id="mistral_raw_marlin_deployment",
-        ),
-        pytest.param(
-            {"name": "mistral-awq-serverless"},
-            {"model-dir": MODEL_PATH},
-            {"deployment_type": KServeDeploymentType.SERVERLESS},
-            {
-                "deployment_mode": KServeDeploymentType.SERVERLESS,
-                "runtime_argument": SERVING_ARGUMENT,
-                "gpu_count": 1,
-                "quantization": VLLM_SUPPORTED_QUANTIZATION[1],
-                "name": "mistralawq-ser",
-                "min-replicas": 1,
-            },
-            id="mistral_severless_awq_deployment",
         ),
         pytest.param(
             {"name": "mistral-awq-raw"},
@@ -111,21 +69,6 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
     indirect=True,
 )
 class TestOpenHermesAWQModel:
-    def test_deploy_model_inference_serverless(self, vllm_inference_service, response_snapshot):
-        if (
-            vllm_inference_service.instance.metadata.annotations["serving.kserve.io/deploymentMode"]
-            == KServeDeploymentType.SERVERLESS
-        ):
-            model_info, chat_responses, completion_responses = fetch_openai_response(
-                url=vllm_inference_service.instance.status.url,
-                model_name=vllm_inference_service.instance.metadata.name,
-            )
-            validate_inference_output(
-                model_info, chat_responses, completion_responses, response_snapshot=response_snapshot
-            )
-        else:
-            pytest.skip("Model deployment is only for kserve serverless")
-
     def test_deploy_model_inference_raw(self, vllm_inference_service, vllm_pod_resource, response_snapshot):
         if (
             vllm_inference_service.instance.metadata.annotations["serving.kserve.io/deploymentMode"]
@@ -167,19 +110,6 @@ class TestOpenHermesAWQModel:
             id="mistral_raw_marlin_multi_gpu_deployment",
         ),
         pytest.param(
-            {"name": "mistral-sig-multi"},
-            {"model-dir": MODEL_PATH},
-            {"deployment_type": KServeDeploymentType.SERVERLESS},
-            {
-                "deployment_mode": KServeDeploymentType.SERVERLESS,
-                "runtime_argument": SERVING_ARGUMENT,
-                "gpu_count": 2,
-                "name": "mistralawq-ser",
-                "min-replicas": 1,
-            },
-            id="mistral_serverless_multi_gpu_deployment",
-        ),
-        pytest.param(
             {"name": "mistral-awq-multi"},
             {"model-dir": MODEL_PATH},
             {"deployment_type": KServeDeploymentType.RAW_DEPLOYMENT},
@@ -197,21 +127,6 @@ class TestOpenHermesAWQModel:
     indirect=True,
 )
 class TestOpenHermesAWQMultiGPU:
-    def test_deploy_marlin_model_inference_serverless(self, vllm_inference_service, response_snapshot):
-        if (
-            vllm_inference_service.instance.metadata.annotations["serving.kserve.io/deploymentMode"]
-            == KServeDeploymentType.SERVERLESS
-        ):
-            model_info, chat_responses, completion_responses = fetch_openai_response(
-                url=vllm_inference_service.instance.status.url,
-                model_name=vllm_inference_service.instance.metadata.name,
-            )
-            validate_inference_output(
-                model_info, chat_responses, completion_responses, response_snapshot=response_snapshot
-            )
-        else:
-            pytest.skip("Model deployment is only for kserve serverless")
-
     def test_deploy_marlin_model_inference_raw(self, vllm_inference_service, vllm_pod_resource, response_snapshot):
         if (
             vllm_inference_service.instance.metadata.annotations["serving.kserve.io/deploymentMode"]
