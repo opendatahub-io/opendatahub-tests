@@ -193,29 +193,6 @@ def validate_raw_tgis_inference_request(
     )
 
 
-def validate_serverless_openai_inference_request(
-    url: str,
-    model_name: str,
-    response_snapshot: Any,
-    chat_query: list[list[dict[str, str]]],
-    completion_query: list[dict[str, str]],
-    tool_calling: dict[Any, Any] | None = None,
-) -> None:
-    model_info, chat_responses, completion_responses = fetch_openai_response(
-        url=url,
-        model_name=model_name,
-        chat_query=chat_query,
-        completion_query=completion_query,
-        tool_calling=tool_calling,
-    )
-    validate_inference_output(
-        model_info,
-        chat_responses,
-        completion_responses,
-        response_snapshot=response_snapshot,
-    )
-
-
 def skip_if_not_deployment_mode(isvc: InferenceService, deployment_type: str) -> None:
     if isvc.instance.metadata.annotations["serving.kserve.io/deploymentMode"] != deployment_type:
         pytest.skip(f"Test is being skipped because model is not being deployed in {deployment_type} mode")
