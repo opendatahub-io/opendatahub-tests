@@ -38,11 +38,6 @@ BASE_RAW_DEPLOYMENT_CONFIG: dict[str, Any] = {
     "min-replicas": 1,
 }
 
-BASE_SEVERRLESS_DEPLOYMENT_CONFIG: dict[str, Any] = {
-    "deployment_mode": KServeDeploymentType.SERVERLESS,
-    "runtime_argument": None,
-    "min-replicas": 1,
-}
 
 COMPLETION_QUERY: list[dict[str, str]] = [
     {

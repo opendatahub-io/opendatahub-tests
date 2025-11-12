@@ -1,12 +1,15 @@
+import logging
 from secrets import token_hex
 from typing import Generator, Any
 
 import pytest
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
+from ocp_resources.resource import ResourceEditor
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
@@ -17,6 +20,40 @@ from utilities.inference_utils import create_isvc
 from utilities.infra import create_inference_token, create_inference_graph_view_role
 
 
+@pytest.fixture(scope="class")
+def kserve_raw_headless_service_config(
+    dsc_resource: DataScienceCluster,
+) -> Generator[DataScienceCluster, Any, Any]:
+    logger = logging.getLogger(__name__)
+
+    current_config = None
+    if hasattr(dsc_resource.instance.spec.components.kserve, "rawDeploymentServiceConfig"):
+        current_config = dsc_resource.instance.spec.components.kserve.rawDeploymentServiceConfig
+
+    logger.info(msg=f"Current rawDeploymentServiceConfig: {current_config}")
+
+    # If already headed (case-insensitive), skip the patch
+    if current_config and current_config.lower() == "headed":
+        logger.info(msg="rawDeploymentServiceConfig is already Headed, skipping patch")
+        yield dsc_resource
+    else:
+        logger.info(msg=f"Patching rawDeploymentServiceConfig from '{current_config}' to 'Headed'")
+        # Patch DSC to set rawDeploymentServiceConfig to Headed
+        with ResourceEditor(
+            patches={dsc_resource: {"spec": {"components": {"kserve": {"rawDeploymentServiceConfig": "Headed"}}}}}
+        ):
+            logger.info(msg="Waiting for DSC to become ready after patch...")
+            dsc_resource.wait_for_condition(
+                condition=dsc_resource.Condition.READY,
+                status=dsc_resource.Condition.Status.TRUE,
+                timeout=300,
+            )
+            # Verify the patch was applied
+            new_config = dsc_resource.instance.spec.components.kserve.rawDeploymentServiceConfig
+            logger.info(msg=f"After patch, rawDeploymentServiceConfig is: {new_config}")
+            yield dsc_resource
+
+
 @pytest.fixture
 def dog_breed_inference_graph(
     request: FixtureRequest,
@@ -24,6 +61,7 @@ def dog_breed_inference_graph(
     unprivileged_model_namespace: Namespace,
     dog_cat_inference_service: InferenceService,
     dog_breed_inference_service: InferenceService,
+    kserve_raw_headless_service_config: DataScienceCluster,
 ) -> Generator[InferenceGraph, Any, Any]:
     nodes = {
         "root": {
@@ -86,6 +124,7 @@ def dog_cat_inference_service(
     unprivileged_model_namespace: Namespace,
     ovms_kserve_serving_runtime: ServingRuntime,
     models_endpoint_s3_secret: Secret,
+    kserve_raw_headless_service_config: DataScienceCluster,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
@@ -107,6 +146,7 @@ def dog_breed_inference_service(
     unprivileged_model_namespace: Namespace,
     ovms_kserve_serving_runtime: ServingRuntime,
     models_endpoint_s3_secret: Secret,
+    kserve_raw_headless_service_config: DataScienceCluster,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,

@@ -12,7 +12,6 @@ from tests.model_serving.model_runtime.vllm.constant import (
     COMPLETION_QUERY,
     CHAT_QUERY,
     BASE_RAW_DEPLOYMENT_CONFIG,
-    BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
 )
 
 LOGGER = get_logger(name=__name__)
@@ -29,7 +28,6 @@ SERVING_ARGUMENT: list[str] = [
 MODEL_PATH: str = "Llama-2-13b-chat-hf"
 
 BASE_RAW_DEPLOYMENT_CONFIG["runtime_argument"] = SERVING_ARGUMENT
-BASE_SEVERRLESS_DEPLOYMENT_CONFIG["runtime_argument"] = SERVING_ARGUMENT
 
 pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "valid_aws_config")
 
