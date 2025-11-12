@@ -161,3 +161,4 @@ class TestKueueLLMDScaleUp:
             insecure=True,
             model_name=llmd_inference_service.name,
         )
+
