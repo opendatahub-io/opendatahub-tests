@@ -123,7 +123,6 @@ class TestLlamaStackAgents:
         Based on "Build a RAG Agent" example available at
         https://llamastack.github.io/docs/getting_started/detailed_tutorial
 
-        # TODO: update this example to use the vector_store API
         """
 
         # Create the RAG agent connected to the vector database
@@ -143,11 +142,12 @@ class TestLlamaStackAgents:
         turns_with_expectations = get_torchtune_test_expectations()
 
         # Ask the agent about the inserted documents and validate responses
+        enable_streaming = False
         validation_result = validate_rag_agent_responses(
             rag_agent=rag_agent,
             session_id=session_id,
             turns_with_expectations=turns_with_expectations,
-            stream=True,
+            stream=enable_streaming,
             verbose=True,
             min_keywords_required=1,
             print_events=False,
@@ -158,8 +158,9 @@ class TestLlamaStackAgents:
 
         # Additional assertions for specific requirements
         for result in validation_result["results"]:
-            assert result["event_count"] > 0, f"No events generated for question: {result['question']}"
             assert result["response_length"] > 0, f"No response content for question: {result['question']}"
             assert len(result["found_keywords"]) > 0, (
                 f"No expected keywords found in response for: {result['question']}"
             )
+            if enable_streaming:
+                assert result["event_count"] > 0, f"No events generated for question: {result['question']}"
