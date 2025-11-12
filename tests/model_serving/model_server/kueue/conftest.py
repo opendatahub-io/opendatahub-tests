@@ -2,6 +2,7 @@ from typing import Generator, Any, Dict
 
 import pytest
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from _pytest.fixtures import FixtureRequest
 from utilities.kueue_utils import (
     create_local_queue,
@@ -12,16 +13,85 @@ from utilities.kueue_utils import (
     ResourceFlavor,
 )
 from ocp_resources.namespace import Namespace
-from utilities.constants import ModelAndFormat, KServeDeploymentType
+from ocp_resources.data_science_cluster import DataScienceCluster
+from ocp_resources.cluster_service_version import ClusterServiceVersion
+from ocp_resources.resource import ResourceEditor
+from utilities.constants import ModelAndFormat, KServeDeploymentType, DscComponents
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 from ocp_resources.secret import Secret
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.serving_runtime import ServingRuntime
 from utilities.constants import RuntimeTemplates, ModelFormat
+from pytest_testconfig import config as py_config
 import logging
 
 BASIC_LOGGER = logging.getLogger(name="basic")
+
+
+def _is_kueue_operator_installed(admin_client: DynamicClient) -> bool:
+    try:
+        csvs = list(
+            ClusterServiceVersion.get(
+                dyn_client=admin_client,
+                namespace=py_config.get("applications_namespace", "openshift-operators"),
+            )
+        )
+        for csv in csvs:
+            if csv.name.startswith("kueue") and csv.status == csv.Status.SUCCEEDED:
+                BASIC_LOGGER.info(f"Found Kueue operator CSV: {csv.name}")
+                return True
+        return False
+    except ResourceNotFoundError:
+        return False
+
+
+@pytest.fixture(scope="session", autouse=True)
+def ensure_kueue_unmanaged_in_dsc(
+    admin_client: DynamicClient, dsc_resource: DataScienceCluster
+) -> Generator[None, Any, None]:
+    try:
+        if not _is_kueue_operator_installed(admin_client):
+            pytest.skip("Kueue operator is not installed, skipping Kueue tests")
+
+        dsc_resource.get()
+        kueue_management_state = dsc_resource.instance.spec.components[DscComponents.KUEUE].managementState
+        
+        if kueue_management_state == DscComponents.ManagementState.UNMANAGED:
+            BASIC_LOGGER.info("Kueue is already Unmanaged in DSC, proceeding with tests")
+            yield
+        else:
+            BASIC_LOGGER.info(
+                f"Kueue management state is {kueue_management_state}, updating to Unmanaged"
+            )
+            dsc_dict = {
+                "spec": {
+                    "components": {
+                        DscComponents.KUEUE: {"managementState": DscComponents.ManagementState.UNMANAGED}
+                    }
+                }
+            }
+            
+            with ResourceEditor(patches={dsc_resource: dsc_dict}):
+                BASIC_LOGGER.info("Updated Kueue to Unmanaged, waiting for DSC to be ready")
+                dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=300)
+                BASIC_LOGGER.info("DSC is ready, proceeding with tests")
+                yield
+            
+            BASIC_LOGGER.info(f"Restoring Kueue management state to {kueue_management_state}")
+            restore_dict = {
+                "spec": {
+                    "components": {
+                        DscComponents.KUEUE: {"managementState": kueue_management_state}
+                    }
+                }
+            }
+            with ResourceEditor(patches={dsc_resource: restore_dict}):
+                dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=300)
+                BASIC_LOGGER.info("Restored Kueue management state")
+                
+    except (AttributeError, KeyError) as e:
+        pytest.skip(f"Kueue component not found in DSC: {e}")
 
 
 def kueue_resource_groups(
