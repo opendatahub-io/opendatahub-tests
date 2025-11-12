@@ -19,7 +19,6 @@ from tests.model_serving.model_runtime.model_validation.constant import (
     PULL_SECRET_ACCESS_TYPE,
 )
 from tests.model_serving.model_runtime.model_validation.constant import (
-    BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
     BASE_RAW_DEPLOYMENT_CONFIG,
 )
 from tests.model_serving.model_runtime.model_validation.constant import PULL_SECRET_NAME
@@ -78,7 +77,7 @@ def vllm_model_car_inference_service(
         "runtime": model_car_serving_runtime.name,
         "storage_uri": request.param.get("model_car_image_uri"),
         "model_format": model_car_serving_runtime.instance.spec.supportedModelFormats[0].name,
-        "deployment_mode": deployment_config.get("deployment_type", KServeDeploymentType.SERVERLESS),
+        "deployment_mode": deployment_config.get("deployment_type", KServeDeploymentType.RAW_DEPLOYMENT),
         "image_pull_secrets": [kserve_registry_pull_secret.name],
     }
     accelerator_type = supported_accelerator_type.lower()
@@ -90,11 +89,6 @@ def vllm_model_car_inference_service(
     resources["limits"][identifier] = gpu_count
     isvc_kwargs["resources"] = resources
 
-    if (
-        identifier == Labels.Spyre.SPYRE_COM_GPU
-        and deployment_config.get("deployment_type") == KServeDeploymentType.SERVERLESS
-    ):
-        pytest.skip("Spyre cluster is not setup with TLS/mTLS")
     if identifier == Labels.Spyre.SPYRE_COM_GPU:
         isvc_kwargs["scheduler_name"] = "spyre-scheduler"
         resources["requests"] = {
@@ -156,16 +150,12 @@ def kserve_registry_pull_secret(
 @pytest.fixture(scope="class")
 def deployment_config(request: FixtureRequest) -> dict[str, Any]:
     """
-    Fixture to provide the base deployment configuration for serverless deployments.
+    Fixture to provide the base deployment configuration for raw deployments.
     """
-    deployment_type = request.param.get("deployment_type", KServeDeploymentType.SERVERLESS)
+    deployment_type = request.param.get("deployment_type", KServeDeploymentType.RAW_DEPLOYMENT)
     serving_argument = request.param.get("runtime_argument", [])
 
-    config = (
-        BASE_SEVERRLESS_DEPLOYMENT_CONFIG.copy()
-        if deployment_type == KServeDeploymentType.SERVERLESS
-        else BASE_RAW_DEPLOYMENT_CONFIG.copy()
-    )
+    config = BASE_RAW_DEPLOYMENT_CONFIG.copy()
     config["runtime_argument"] = serving_argument
     config["deployment_type"] = deployment_type
     config["gpu_count"] = request.param.get("gpu_count", 1)
@@ -203,41 +193,12 @@ def build_raw_params(
     return param, test_id
 
 
-def build_serverless_params(
-    name: str,
-    image: str,
-    args: list[str],
-    gpu_count: int,
-    execution_mode: str,
-    model_output_type: str = "text",
-) -> tuple[Any, str]:
-    test_id = f"{name}-serverless"
-    deployment_type = KServeDeploymentType.SERVERLESS
-    param = pytest.param(
-        {"name": "serverless-model-validation"},
-        {"deployment_type": deployment_type},
-        {
-            "model_name": name,
-            "model_car_image_uri": image,
-        },
-        {
-            "deployment_type": deployment_type,
-            "runtime_argument": args,
-            "gpu_count": gpu_count,
-            "model_output_type": model_output_type,
-        },
-        id=test_id,
-        marks=build_pytest_markers(deployment_type=deployment_type, execution_mode=execution_mode),
-    )
-    return param, test_id
-
-
 def build_pytest_markers(deployment_type: str, execution_mode: str) -> List[Any]:
     """
     Build a list of pytest markers based on deployment type, execution mode.
 
     Args:
-        deployment_type (str): Deployment type (e.g., RAW_DEPLOYMENT, SERVERLESS)
+        deployment_type (str): Deployment type (e.g., RAW_DEPLOYMENT)
         execution_mode (str): "parallel" or "sequential"
 
     Returns:
@@ -247,8 +208,6 @@ def build_pytest_markers(deployment_type: str, execution_mode: str) -> List[Any]
 
     if deployment_type == KServeDeploymentType.RAW_DEPLOYMENT:
         markers.append(pytest.mark.rawdeployment)
-    elif deployment_type == KServeDeploymentType.SERVERLESS:
-        markers.append(pytest.mark.serverless)
 
     # Execution mode markers
     if execution_mode == "parallel":
@@ -301,15 +260,6 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
 
         if metafunc.cls.__name__ == "TestVLLMModelCarRaw":
             param, test_id = build_raw_params(
-                name=name,
-                image=image,
-                args=args,
-                gpu_count=gpu_count,
-                execution_mode=execution_mode,
-                model_output_type=model_output_type,
-            )
-        elif metafunc.cls.__name__ == "TestVLLMModelCarServerless":
-            param, test_id = build_serverless_params(
                 name=name,
                 image=image,
                 args=args,

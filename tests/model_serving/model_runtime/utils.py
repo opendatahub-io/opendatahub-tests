@@ -224,36 +224,3 @@ def fetch_openai_response(
             completion_responses.append(completion_response)
 
     return model_info, completion_responses
-
-
-def validate_serverless_openai_inference_request(
-    url: str, model_name: str, response_snapshot: Any, completion_query: list[dict[str, str]], model_output_type: str
-) -> None:
-    if model_output_type == "audio":
-        LOGGER.info("Running audio inference test")
-        try:
-            model_info, completion_responses = run_audio_inference(
-                url=url,
-                endpoint=OPENAI_ENDPOINT_NAME,
-                model_name=model_name,
-            )
-            validate_audio_inference_output(model_info=model_info, completion_responses=completion_responses)
-        finally:
-            try:
-                if os.path.exists(AUDIO_FILE_LOCAL_PATH):
-                    os.remove(AUDIO_FILE_LOCAL_PATH)
-            except OSError as e:
-                LOGGER.error("Error removing audio file: %s", e)
-        return
-    elif model_output_type == "text":
-        model_info, completion_responses = fetch_openai_response(
-            url=url, model_name=model_name, completion_query=completion_query
-        )
-        validate_inference_output(
-            completion_responses,
-            response_snapshot=response_snapshot,
-        )
-    else:
-        raise NotSupportedError(
-            f"Model output type {model_output_type} is not supported for serverless inference request."
-        )
