@@ -1,7 +1,7 @@
 """
 Test module for FIL  model served by Triton via KServe.
 
-Validates inference using REST and gRPC protocols with both raw and serverless deployment modes.
+Validates inference using REST and gRPC protocols with raw deployment mode.
 """
 
 from typing import Any
@@ -15,7 +15,6 @@ from utilities.constants import Protocols
 from tests.model_serving.model_runtime.triton.basic_model_deployment.utils import validate_inference_request, load_json
 from tests.model_serving.model_runtime.triton.constant import (
     BASE_RAW_DEPLOYMENT_CONFIG,
-    BASE_SERVERLESS_DEPLOYMENT_CONFIG,
     MODEL_PATH_PREFIX,
     TRITON_GRPC_FIL_INPUT_PATH,
     TRITON_REST_FIL_INPUT_PATH,
@@ -56,28 +55,6 @@ pytestmark = pytest.mark.usefixtures(
             },
             id="fil-raw-grpc-deployment",
         ),
-        pytest.param(
-            {"protocol_type": Protocols.REST},
-            {"name": "fil-serverless"},
-            MODEL_STORAGE_URI_DICT,
-            {**BASE_SERVERLESS_DEPLOYMENT_CONFIG},
-            {
-                "name": "fil-serverless-rest",
-                **BASE_SERVERLESS_DEPLOYMENT_CONFIG,
-            },
-            id="fil-serverless-rest-deployment",
-        ),
-        pytest.param(
-            {"protocol_type": Protocols.GRPC},
-            {"name": "fil-serverless"},
-            MODEL_STORAGE_URI_DICT,
-            {**BASE_SERVERLESS_DEPLOYMENT_CONFIG},
-            {
-                "name": "fil-serverless-grpc",
-                **BASE_SERVERLESS_DEPLOYMENT_CONFIG,
-            },
-            id="fil-serverless-grpc-deployment",
-        ),
     ],
     indirect=True,
 )
@@ -87,7 +64,7 @@ class TestFILModel:
 
     Covers:
     - REST and gRPC protocols
-    - Raw and serverless modes
+    - Raw deployment mode
     - Snapshot validation of inference results
     """
 
