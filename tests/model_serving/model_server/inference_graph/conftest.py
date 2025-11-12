@@ -39,19 +39,19 @@ def kserve_raw_headless_service_config(
     if hasattr(dsc_resource.instance.spec.components.kserve, "rawDeploymentServiceConfig"):
         current_config = dsc_resource.instance.spec.components.kserve.rawDeploymentServiceConfig
 
-    logger.info(f"Current rawDeploymentServiceConfig: {current_config}")
+    logger.info(msg=f"Current rawDeploymentServiceConfig: {current_config}")
 
     # If already headed (case-insensitive), skip the patch
     if current_config and current_config.lower() == "headed":
-        logger.info("rawDeploymentServiceConfig is already Headed, skipping patch")
+        logger.info(msg="rawDeploymentServiceConfig is already Headed, skipping patch")
         yield dsc_resource
     else:
-        logger.info(f"Patching rawDeploymentServiceConfig from '{current_config}' to 'Headed'")
+        logger.info(msg=f"Patching rawDeploymentServiceConfig from '{current_config}' to 'Headed'")
         # Patch DSC to set rawDeploymentServiceConfig to Headed
         with ResourceEditor(
             patches={dsc_resource: {"spec": {"components": {"kserve": {"rawDeploymentServiceConfig": "Headed"}}}}}
         ):
-            logger.info("Waiting for DSC to become ready after patch...")
+            logger.info(msg="Waiting for DSC to become ready after patch...")
             dsc_resource.wait_for_condition(
                 condition=dsc_resource.Condition.READY,
                 status=dsc_resource.Condition.Status.TRUE,
@@ -59,7 +59,7 @@ def kserve_raw_headless_service_config(
             )
             # Verify the patch was applied
             new_config = dsc_resource.instance.spec.components.kserve.rawDeploymentServiceConfig
-            logger.info(f"After patch, rawDeploymentServiceConfig is: {new_config}")
+            logger.info(msg=f"After patch, rawDeploymentServiceConfig is: {new_config}")
             yield dsc_resource
 
 
