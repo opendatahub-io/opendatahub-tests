@@ -68,7 +68,10 @@ def vector_io_provider_deployment_config_factory(
             env_vars.append({"name": "MILVUS_CONSISTENCY_LEVEL", "value": "Bounded"})
         elif provider_name == "faiss":
             env_vars.append({"name": "ENABLE_FAISS", "value": "faiss"})
-            env_vars.append({"name": "FAISS_KVSTORE_DB_PATH", "value": "/opt/app-root/src/.llama/distributions/rh/sqlite_vec.db"})
+            env_vars.append({
+                "name": "FAISS_KVSTORE_DB_PATH",
+                "value": "/opt/app-root/src/.llama/distributions/rh/sqlite_vec.db",
+            })
 
         return env_vars
 
