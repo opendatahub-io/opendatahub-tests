@@ -25,21 +25,22 @@ def kserve_raw_headless_service_config(
 ) -> Generator[DataScienceCluster, Any, Any]:
     """
     Configure KServe rawDeploymentServiceConfig to Headed for InferenceGraph tests.
-    
+
     This fixture ensures that raw deployment services are configured with headed (non-headless) services,
     which is required for InferenceGraph routing to work properly.
     After the test completes, the original configuration is restored.
     """
     import logging
+
     logger = logging.getLogger(__name__)
-    
+
     # Get current rawDeploymentServiceConfig value (it's directly under kserve, not under kserve.serving)
     current_config = None
-    if hasattr(dsc_resource.instance.spec.components.kserve, 'rawDeploymentServiceConfig'):
+    if hasattr(dsc_resource.instance.spec.components.kserve, "rawDeploymentServiceConfig"):
         current_config = dsc_resource.instance.spec.components.kserve.rawDeploymentServiceConfig
-    
+
     logger.info(f"Current rawDeploymentServiceConfig: {current_config}")
-    
+
     # If already headed (case-insensitive), skip the patch
     if current_config and current_config.lower() == "headed":
         logger.info("rawDeploymentServiceConfig is already Headed, skipping patch")
@@ -48,17 +49,7 @@ def kserve_raw_headless_service_config(
         logger.info(f"Patching rawDeploymentServiceConfig from '{current_config}' to 'Headed'")
         # Patch DSC to set rawDeploymentServiceConfig to Headed
         with ResourceEditor(
-            patches={
-                dsc_resource: {
-                    "spec": {
-                        "components": {
-                            "kserve": {
-                                "rawDeploymentServiceConfig": "Headed"
-                            }
-                        }
-                    }
-                }
-            }
+            patches={dsc_resource: {"spec": {"components": {"kserve": {"rawDeploymentServiceConfig": "Headed"}}}}}
         ):
             logger.info("Waiting for DSC to become ready after patch...")
             dsc_resource.wait_for_condition(
