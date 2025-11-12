@@ -1,3 +1,4 @@
+import logging
 from secrets import token_hex
 from typing import Generator, Any
 
@@ -23,18 +24,8 @@ from utilities.infra import create_inference_token, create_inference_graph_view_
 def kserve_raw_headless_service_config(
     dsc_resource: DataScienceCluster,
 ) -> Generator[DataScienceCluster, Any, Any]:
-    """
-    Configure KServe rawDeploymentServiceConfig to Headed for InferenceGraph tests.
-
-    This fixture ensures that raw deployment services are configured with headed (non-headless) services,
-    which is required for InferenceGraph routing to work properly.
-    After the test completes, the original configuration is restored.
-    """
-    import logging
-
     logger = logging.getLogger(__name__)
 
-    # Get current rawDeploymentServiceConfig value (it's directly under kserve, not under kserve.serving)
     current_config = None
     if hasattr(dsc_resource.instance.spec.components.kserve, "rawDeploymentServiceConfig"):
         current_config = dsc_resource.instance.spec.components.kserve.rawDeploymentServiceConfig
