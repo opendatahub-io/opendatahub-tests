@@ -157,7 +157,7 @@ def triton_serving_runtime(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     protocol: str,
-    supported_accelerator_type: str,
+    supported_accelerator_type: str | None,
 ) -> Generator[ServingRuntime, None, None]:
     template_name = get_template_name(protocol=protocol, accelerator_type=supported_accelerator_type)
     with ServingRuntimeFromTemplate(
@@ -178,7 +178,7 @@ def triton_inference_service(
     triton_serving_runtime: ServingRuntime,
     s3_models_storage_uri: str,
     triton_model_service_account: ServiceAccount,
-    supported_accelerator_type: str,
+    supported_accelerator_type: str | None,
 ) -> Generator[InferenceService, Any, Any]:
     params = request.param
     model_format = params.get(

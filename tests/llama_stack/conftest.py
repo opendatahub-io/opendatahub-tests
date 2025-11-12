@@ -1,6 +1,8 @@
 from typing import Generator, Any, Dict, Callable
 import os
-import portforward
+import httpx
+from ocp_resources.route import Route
+from ocp_resources.resource import ResourceEditor
 import pytest
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
@@ -18,7 +20,7 @@ from tests.llama_stack.utils import (
     wait_for_llama_stack_client_ready,
     vector_store_create_file_from_url,
 )
-from utilities.constants import DscComponents
+from utilities.constants import DscComponents, Annotations
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from tests.llama_stack.constants import (
     LLS_OPENSHIFT_MINIMAL_VERSION,
@@ -222,6 +224,7 @@ def _get_llama_stack_distribution_deployment(
     )
 
     deployment.wait(timeout=120)
+    deployment.wait_for_replicas()
     yield deployment
 
 
@@ -279,60 +282,126 @@ def llama_stack_distribution_deployment(
     )
 
 
-def _create_llama_stack_client(
-    llama_stack_distribution_deployment: Deployment,
-) -> Generator[LlamaStackClient, Any, Any]:
-    try:
-        with portforward.forward(
-            pod_or_service=f"{llama_stack_distribution_deployment.name}-service",
-            namespace=llama_stack_distribution_deployment.namespace,
-            from_port=8321,
-            to_port=8321,
-            waiting=30,
+def _create_llama_stack_test_route(
+    client: DynamicClient,
+    namespace: Namespace,
+    deployment: Deployment,
+) -> Generator[Route, Any, Any]:
+    """
+    Creates a Route for LlamaStack distribution with TLS configuration.
+
+    Args:
+        client: Kubernetes client
+        namespace: Namespace where the route will be created
+        deployment: Deployment resource to create the route for
+
+    Yields:
+        Generator[Route, Any, Any]: Route resource with TLS edge termination
+    """
+    route_name = generate_random_name(prefix="llama-stack", length=12)
+    with Route(
+        client=client,
+        namespace=namespace.name,
+        name=route_name,
+        service=f"{deployment.name}-service",
+        wait_for_resource=True,
+    ) as route:
+        with ResourceEditor(
+            patches={
+                route: {
+                    "spec": {
+                        "tls": {
+                            "termination": "edge",
+                            "insecureEdgeTerminationPolicy": "Redirect",
+                        }
+                    },
+                    "metadata": {
+                        "annotations": {Annotations.HaproxyRouterOpenshiftIo.TIMEOUT: "10m"},
+                    },
+                }
+            }
         ):
-            client = LlamaStackClient(
-                base_url="http://localhost:8321",
-                timeout=180.0,
-            )
-            wait_for_llama_stack_client_ready(client=client)
-            yield client
-    except Exception as e:
-        LOGGER.error(f"Failed to set up port forwarding: {e}")
-        raise
+            yield route
+
+
+@pytest.fixture(scope="class")
+def unprivileged_llama_stack_test_route(
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+    unprivileged_llama_stack_distribution_deployment: Deployment,
+) -> Generator[Route, Any, Any]:
+    yield from _create_llama_stack_test_route(
+        client=unprivileged_client,
+        namespace=unprivileged_model_namespace,
+        deployment=unprivileged_llama_stack_distribution_deployment,
+    )
+
+
+@pytest.fixture(scope="class")
+def llama_stack_test_route(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    llama_stack_distribution_deployment: Deployment,
+) -> Generator[Route, Any, Any]:
+    yield from _create_llama_stack_test_route(
+        client=admin_client,
+        namespace=model_namespace,
+        deployment=llama_stack_distribution_deployment,
+    )
+
+
+def _create_llama_stack_client(
+    route: Route,
+) -> Generator[LlamaStackClient, Any, Any]:
+    # LLS_CLIENT_VERIFY_SSL is false by default to be able to test with Self-Signed certificates
+    verifySSL = os.getenv("LLS_CLIENT_VERIFY_SSL", "false").lower() == "true"
+    http_client = httpx.Client(verify=verifySSL)
+    try:
+        client = LlamaStackClient(
+            base_url=f"https://{route.host}",
+            timeout=180.0,
+            http_client=http_client,
+        )
+        wait_for_llama_stack_client_ready(client=client)
+        yield client
+    finally:
+        http_client.close()
 
 
 @pytest.fixture(scope="class")
 def unprivileged_llama_stack_client(
-    unprivileged_llama_stack_distribution_deployment: Deployment,
+    unprivileged_llama_stack_test_route: Route,
 ) -> Generator[LlamaStackClient, Any, Any]:
     """
     Returns a ready to use LlamaStackClient for unprivileged deployment.
 
     Args:
-        unprivileged_llama_stack_distribution_deployment (Deployment): LlamaStack distribution deployment resource
+        unprivileged_llama_stack_test_route (Route): Route resource for unprivileged LlamaStack distribution
 
     Yields:
         Generator[LlamaStackClient, Any, Any]: Configured LlamaStackClient for RAG testing
     """
     yield from _create_llama_stack_client(
-        llama_stack_distribution_deployment=unprivileged_llama_stack_distribution_deployment
+        route=unprivileged_llama_stack_test_route,
     )
 
 
 @pytest.fixture(scope="class")
 def llama_stack_client(
-    llama_stack_distribution_deployment: Deployment,
+    llama_stack_test_route: Route,
 ) -> Generator[LlamaStackClient, Any, Any]:
     """
     Returns a ready to use LlamaStackClient.
 
     Args:
-        llama_stack_distribution_deployment (Deployment): LlamaStack distribution deployment resource
+        llama_stack_test_route (Route): Route resource for LlamaStack distribution
 
     Yields:
         Generator[LlamaStackClient, Any, Any]: Configured LlamaStackClient for RAG testing
     """
-    yield from _create_llama_stack_client(llama_stack_distribution_deployment=llama_stack_distribution_deployment)
+    yield from _create_llama_stack_client(
+        route=llama_stack_test_route,
+    )
 
 
 @pytest.fixture(scope="class")

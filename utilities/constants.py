@@ -165,10 +165,12 @@ class DscComponents:
     KSERVE: str = "kserve"
     MODELREGISTRY: str = "modelregistry"
     LLAMASTACKOPERATOR: str = "llamastackoperator"
+    KUEUE: str = "kueue"
 
     class ManagementState:
         MANAGED: str = "Managed"
         REMOVED: str = "Removed"
+        UNMANAGED: str = "Unmanaged"
 
     class ConditionType:
         MODEL_REGISTRY_READY: str = "ModelRegistryReady"
