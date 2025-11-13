@@ -48,25 +48,6 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")
-def mlserver_grpc_serving_runtime_template(admin_client: DynamicClient) -> Generator[Template, None, None]:
-    """
-    Provides a gRPC serving runtime Template for MLServer within the test class scope.
-
-    Args:
-        admin_client (DynamicClient): Kubernetes dynamic client.
-
-    Yields:
-        Template: The loaded gRPC serving runtime Template.
-    """
-    with Template(
-        client=admin_client,
-        kind_dict=mlserver_runtime_template_dict(protocol=Protocols.GRPC),
-        namespace=py_config["applications_namespace"],
-    ) as tp:
-        yield tp
-
-
-@pytest.fixture(scope="class")
 def mlserver_rest_serving_runtime_template(admin_client: DynamicClient) -> Generator[Template, None, None]:
     """
     Provides a REST serving runtime Template for MLServer within the test class scope.
@@ -101,7 +82,7 @@ def mlserver_serving_runtime(
         admin_client (DynamicClient): Kubernetes dynamic client.
         model_namespace (Namespace): Kubernetes namespace for model deployment.
         mlserver_runtime_image (str): The container image for the MLServer runtime.
-        protocol (str): The protocol to use (e.g., REST or GRPC).
+        protocol (str): The protocol to use (e.g., REST).
 
     Yields:
         ServingRuntime: An instance of the MLServer ServingRuntime configured as per parameters.
