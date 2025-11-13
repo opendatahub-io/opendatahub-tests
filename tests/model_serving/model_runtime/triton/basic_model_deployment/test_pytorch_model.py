@@ -1,7 +1,7 @@
 """
 Test module for Pytorch  model served by Triton via KServe.
 
-Validates inference using REST and gRPC protocols with both raw and serverless deployment modes.
+Validates inference using REST and gRPC protocols with raw deployment mode.
 """
 
 from typing import Any
@@ -15,7 +15,6 @@ from utilities.constants import Protocols
 from tests.model_serving.model_runtime.triton.basic_model_deployment.utils import validate_inference_request, load_json
 from tests.model_serving.model_runtime.triton.constant import (
     BASE_RAW_DEPLOYMENT_CONFIG,
-    BASE_SERVERLESS_DEPLOYMENT_CONFIG,
     MODEL_PATH_PREFIX,
     TRITON_GRPC_PYTORCH_INPUT_PATH,
     TRITON_REST_PYTORCH_INPUT_PATH,
@@ -57,28 +56,6 @@ pytestmark = pytest.mark.usefixtures(
             },
             id="pytorch-raw-grpc-deployment",
         ),
-        pytest.param(
-            {"protocol_type": Protocols.REST},
-            {"name": "pytorch-serverless"},
-            MODEL_STORAGE_URI_DICT,
-            {**BASE_SERVERLESS_DEPLOYMENT_CONFIG},
-            {
-                "name": "pytorch-serverless-rest",
-                **BASE_SERVERLESS_DEPLOYMENT_CONFIG,
-            },
-            id="pytorch-serverless-rest-deployment",
-        ),
-        pytest.param(
-            {"protocol_type": Protocols.GRPC},
-            {"name": "pytorch-serverless"},
-            MODEL_STORAGE_URI_DICT,
-            {**BASE_SERVERLESS_DEPLOYMENT_CONFIG},
-            {
-                "name": "pytorch-serverless-grpc",
-                **BASE_SERVERLESS_DEPLOYMENT_CONFIG,
-            },
-            id="pytorch-serverless-grpc-deployment",
-        ),
     ],
     indirect=True,
 )
@@ -88,7 +65,7 @@ class TestPytorchModel:
 
     Covers:
     - REST and gRPC protocols
-    - Raw and serverless modes
+    - Raw deployment mode
     - Snapshot validation of inference results
     """
 
