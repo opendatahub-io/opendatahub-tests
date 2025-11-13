@@ -1,4 +1,5 @@
 import logging
+import time
 from secrets import token_hex
 from typing import Generator, Any
 
@@ -6,6 +7,7 @@ import pytest
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_cluster import DataScienceCluster
+from ocp_resources.deployment import Deployment
 from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
@@ -23,6 +25,7 @@ from utilities.infra import create_inference_token, create_inference_graph_view_
 @pytest.fixture(scope="class")
 def kserve_raw_headless_service_config(
     dsc_resource: DataScienceCluster,
+    admin_client: DynamicClient,
 ) -> Generator[DataScienceCluster, Any, Any]:
     logger = logging.getLogger(__name__)
 
@@ -51,6 +54,30 @@ def kserve_raw_headless_service_config(
             # Verify the patch was applied
             new_config = dsc_resource.instance.spec.components.kserve.rawDeploymentServiceConfig
             logger.info(msg=f"After patch, rawDeploymentServiceConfig is: {new_config}")
+
+            logger.info(msg="Waiting for KServe controller to be ready and configuration to propagate...")
+            kserve_deployments = list(
+                Deployment.get(
+                    dyn_client=admin_client,
+                    namespace="redhat-ods-applications",
+                    label_selector="control-plane=kserve-controller-manager",
+                )
+            )
+
+            if kserve_deployments:
+                for deployment in kserve_deployments:
+                    deployment.wait_for_replicas(timeout=180)
+
+                # Wait for configuration to be picked up by the controller
+                # The KServe controller reads DSC configuration at runtime but doesn't have an observable
+                # status to wait on. A grace period is required for the controller to reload and apply the
+                # new rawDeploymentServiceConfig before creating InferenceServices.
+                # TODO: Consider creating a canary InferenceService to verify config was applied
+                logger.info(msg="Waiting for KServe controller to process configuration change...")
+                time.sleep(60)
+            else:
+                logger.warning(msg="No KServe controller deployment found, skipping wait")
+
             yield dsc_resource
 
 
