@@ -5,9 +5,7 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from utilities.constants import (
     KServeDeploymentType,
-    ModelStoragePath,
-    Protocols,
-    ModelInferenceRuntime,
+    ModelFormat,
     RuntimeTemplates,
 )
 
@@ -41,10 +39,9 @@ def wait_for_isvc_model_status(isvc: InferenceService, target_model_state: str, 
         pytest.param(
             {"name": "test-non-existing-models-path"},
             {
-                "name": f"{Protocols.HTTP}-{ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME}",
-                "template-name": RuntimeTemplates.CAIKIT_TGIS_SERVING,
+                "name": ModelFormat.ONNX,
+                "template-name": RuntimeTemplates.OVMS_KSERVE,
                 "multi-model": False,
-                "enable-http": True,
             },
             {
                 "name": "missing-path",
@@ -66,7 +63,7 @@ class TestInferenceServiceCustomResources:
 
     @pytest.mark.parametrize(
         "s3_models_storage_uri",
-        [pytest.param({"model-dir": ModelStoragePath.FLAN_T5_SMALL_CAIKIT})],
+        [pytest.param({"model-dir": "test-dir"})],
         indirect=True,
     )
     @pytest.mark.dependency(depends=["test_isvc_with_invalid_models_s3_path"])
