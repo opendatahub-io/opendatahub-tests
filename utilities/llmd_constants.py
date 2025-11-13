@@ -1,7 +1,6 @@
 """LLMD-specific constants that extend the shared constants."""
 
 from utilities.constants import (
-    Timeout,
     ModelName,
     ContainerImages as SharedContainerImages,
     ModelStorage as SharedModelStorage,
