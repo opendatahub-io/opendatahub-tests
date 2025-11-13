@@ -50,40 +50,30 @@ def ensure_kueue_unmanaged_in_dsc(
 
         dsc_resource.get()
         kueue_management_state = dsc_resource.instance.spec.components[DscComponents.KUEUE].managementState
-        
+
         if kueue_management_state == DscComponents.ManagementState.UNMANAGED:
             BASIC_LOGGER.info("Kueue is already Unmanaged in DSC, proceeding with tests")
             yield
         else:
-            BASIC_LOGGER.info(
-                f"Kueue management state is {kueue_management_state}, updating to Unmanaged"
-            )
+            BASIC_LOGGER.info(f"Kueue management state is {kueue_management_state}, updating to Unmanaged")
             dsc_dict = {
                 "spec": {
-                    "components": {
-                        DscComponents.KUEUE: {"managementState": DscComponents.ManagementState.UNMANAGED}
-                    }
+                    "components": {DscComponents.KUEUE: {"managementState": DscComponents.ManagementState.UNMANAGED}}
                 }
             }
-            
+
             with ResourceEditor(patches={dsc_resource: dsc_dict}):
                 BASIC_LOGGER.info("Updated Kueue to Unmanaged, waiting for DSC to be ready")
                 dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=300)
                 BASIC_LOGGER.info("DSC is ready, proceeding with tests")
                 yield
-            
+
             BASIC_LOGGER.info(f"Restoring Kueue management state to {kueue_management_state}")
-            restore_dict = {
-                "spec": {
-                    "components": {
-                        DscComponents.KUEUE: {"managementState": kueue_management_state}
-                    }
-                }
-            }
+            restore_dict = {"spec": {"components": {DscComponents.KUEUE: {"managementState": kueue_management_state}}}}
             with ResourceEditor(patches={dsc_resource: restore_dict}):
                 dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=300)
                 BASIC_LOGGER.info("Restored Kueue management state")
-                
+
     except (AttributeError, KeyError) as e:
         pytest.skip(f"Kueue component not found in DSC: {e}")
 
@@ -158,4 +148,3 @@ def kueue_local_queue_from_template(
         client=admin_client,
     ) as local_queue:
         yield local_queue
-
