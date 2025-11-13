@@ -18,7 +18,7 @@ def invalid_s3_models_inference_service(
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     serving_runtime_from_template: ServingRuntime,
-    models_s3_bucket_name: str,
+    ci_s3_bucket_name: str,
     model_service_account: ServiceAccount,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
@@ -26,7 +26,7 @@ def invalid_s3_models_inference_service(
         name=request.param["name"],
         namespace=unprivileged_model_namespace.name,
         runtime=serving_runtime_from_template.name,
-        storage_uri=f"s3://{models_s3_bucket_name}/non-existing-path/",
+        storage_uri=f"s3://{ci_s3_bucket_name}/non-existing-path/",
         model_format=serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
         model_service_account=model_service_account.name,
         deployment_mode=request.param["deployment-mode"],
