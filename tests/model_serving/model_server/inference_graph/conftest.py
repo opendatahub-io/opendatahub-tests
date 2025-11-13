@@ -67,7 +67,7 @@ def kserve_raw_headless_service_config(
             if kserve_deployments:
                 for deployment in kserve_deployments:
                     deployment.wait_for_replicas(timeout=180)
-                
+
                 # Wait for configuration to be picked up by the controller
                 # The KServe controller reads DSC configuration at runtime but doesn't have an observable
                 # status to wait on. A grace period is required for the controller to reload and apply the
