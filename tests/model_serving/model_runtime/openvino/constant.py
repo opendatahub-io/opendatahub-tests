@@ -23,8 +23,6 @@ OPENVINO_REST_PORT: int = 8888
 
 RAW_DEPLOYMENT_TYPE: str = "raw"
 
-SERVERLESS_DEPLOYMENT_TYPE: str = "serverless"
-
 REST_PROTOCOL_TYPE_DICT: dict[str, str] = {"protocol_type": Protocols.REST}
 
 PREDICT_RESOURCES: dict[str, Union[list[dict[str, Union[str, dict[str, str]]]], dict[str, dict[str, str]]]] = {
@@ -45,12 +43,6 @@ BASE_RAW_DEPLOYMENT_CONFIG: dict[str, Any] = {
     "deployment_type": KServeDeploymentType.RAW_DEPLOYMENT,
     "min-replicas": 1,
     "enable_external_route": False,
-}
-
-BASE_SERVERLESS_DEPLOYMENT_CONFIG: dict[str, Any] = {
-    "deployment_type": KServeDeploymentType.SERVERLESS,
-    "min-replicas": 1,
-    "enable_external_route": True,
 }
 
 OPENVINO_INPUT_BASE_PATH: str = Path(__file__).parent

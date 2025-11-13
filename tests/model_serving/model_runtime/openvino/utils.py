@@ -21,9 +21,7 @@ from tests.model_serving.model_runtime.openvino.constant import (
     LOCAL_HOST_URL,
     MODEL_PATH_PREFIX,
     RAW_DEPLOYMENT_TYPE,
-    SERVERLESS_DEPLOYMENT_TYPE,
     BASE_RAW_DEPLOYMENT_CONFIG,
-    BASE_SERVERLESS_DEPLOYMENT_CONFIG,
 )
 from utilities.constants import KServeDeploymentType
 
@@ -55,8 +53,8 @@ def run_openvino_inference(
     model_version: str,
 ) -> Any:
     """
-    Run inference against an OpenVINO-hosted model using either REST or gRPC protocol.
-    Supports both RAW and SERVERLESS KServe deployment modes.
+    Run inference against an OpenVINO-hosted model using REST protocol.
+    Supports RAW KServe deployment mode.
 
     Args:
         pod_name (str): Name of the pod running the OpenVINO model (used for RAW deployment).
@@ -69,7 +67,7 @@ def run_openvino_inference(
 
     Notes:
         - REST calls expect the model to support V2 REST inference APIs.
-        - RAW deployments use port-forwarding; SERVERLESS assumes accessible endpoints.
+        - RAW deployments use port-forwarding.
     """
     annotations = getattr(isvc.instance.metadata, "annotations", {}) or {}
     deployment_mode = annotations.get("serving.kserve.io/deploymentMode")
@@ -85,12 +83,6 @@ def run_openvino_inference(
         with portforward.forward(pod_or_service=pod_name, namespace=isvc.namespace, from_port=port, to_port=port):
             host = f"{LOCAL_HOST_URL}:{port}"
             return send_rest_request(url=f"{host}{rest_endpoint}", input_data=input_data, verify=False)
-
-    elif deployment_mode == KServeDeploymentType.SERVERLESS:
-        base_url = (getattr(isvc.instance.status, "url", "") or "").rstrip("/")
-        if not base_url:
-            raise RuntimeError(f"InferenceService {isvc.name} has no status.url; is route/ingress ready?")
-        return send_rest_request(url=f"{base_url}{rest_endpoint}", input_data=input_data, verify=False)
 
     raise ValueError(f"Invalid deployment_mode {deployment_mode}")
 
@@ -155,13 +147,13 @@ def get_model_namespace_dict(model_format_name: str, deployment_type: str, proto
     naming model-serving resources, configurations, or deployments.
 
     Args:
-        model_format_name (str): The model format name (e.g., "onnx", "sklearn").
-        deployment_type (str): The type of deployment (e.g., "serverless", "raw").
-        protocol_type (str): The communication protocol (e.g., "rest", "grpc").
+        model_format_name (str): The model format name (e.g., "onnx").
+        deployment_type (str): The type of deployment (e.g., "raw").
+        protocol_type (str): The communication protocol (e.g., "rest").
 
     Returns:
         dict[str, str]: A dictionary with the key "name" and a concatenated identifier as value.
-                        Example: {"name": "onnx-serverless-rest"}
+                        Example: {"name": "onnx-raw-rest"}
     """
     name = f"{model_format_name.strip()}-{deployment_type.strip()}-{protocol_type.strip()}"
     return {"name": name}
@@ -171,12 +163,13 @@ def get_deployment_config_dict(model_format_name: str, deployment_type: str, gpu
     """
     Generate a deployment configuration dictionary based on the model format and deployment type.
 
-    This function merges a base deployment configuration (either raw or serverless)
-    with a given model format name to produce a complete configuration dictionary.
+    This function merges a base deployment configuration (raw) with a given model format
+    name to produce a complete configuration dictionary.
 
     Args:
-        model_format_name (str): The model format name (e.g., "onnx", "sklearn").
-        deployment_type (str): The deployment type (e.g., "raw", "serverless").
+        model_format_name (str): The model format name (e.g., "onnx").
+        deployment_type (str): The deployment type (e.g., "raw").
+        gpu_count (int): The number of GPUs to allocate (default: 0).
 
     Returns:
         dict[str, str]: A dictionary containing the deployment configuration.
@@ -186,13 +179,6 @@ def get_deployment_config_dict(model_format_name: str, deployment_type: str, gpu
     if deployment_type == RAW_DEPLOYMENT_TYPE:
         deployment_config_dict = {"name": model_format_name, "gpu_count": gpu_count, **BASE_RAW_DEPLOYMENT_CONFIG}
 
-    if deployment_type == SERVERLESS_DEPLOYMENT_TYPE:
-        deployment_config_dict = {
-            "name": model_format_name,
-            "gpu_count": gpu_count,
-            **BASE_SERVERLESS_DEPLOYMENT_CONFIG,
-        }
-
     return deployment_config_dict
 
 
@@ -201,9 +187,9 @@ def get_test_case_id(model_format_name: str, deployment_type: str, protocol_type
     Generate a test case identifier string based on model format, deployment type, and protocol type.
 
     Args:
-        model_format_name (str): The model format name (e.g., "onnx", "sklearn").
-        deployment_type (str): The deployment type (e.g., "raw", "serverless").
-        protocol_type (str): The protocol type (e.g., "rest", "grpc").
+        model_format_name (str): The model format name (e.g., "onnx").
+        deployment_type (str): The deployment type (e.g., "raw").
+        protocol_type (str): The protocol type (e.g., "rest").
 
     Returns:
         str: A test case ID in the format: "<model_format>-<deployment_type>-<protocol_type>-deployment".
