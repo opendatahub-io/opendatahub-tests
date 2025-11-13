@@ -4,7 +4,6 @@ import base64
 import requests
 import tempfile
 import shlex
-import time
 from json import JSONDecodeError
 from ocp_resources.ingress_config_openshift_io import Ingress as IngressConfig
 from requests import Response
@@ -121,11 +120,6 @@ def llmis_name(client, namespace: str = "llm", label_selector: str | None = None
     return service.name
 
 
-# =============================================================================
-# MaaS RBAC helper: create/delete OpenShift Group
-# =============================================================================
-
-
 @contextmanager
 def create_maas_group(
     admin_client: DynamicClient,
@@ -143,11 +137,6 @@ def create_maas_group(
     ) as group:
         LOGGER.info(f"MaaS RBAC: created group {group_name} with users {users or []}")
         yield group
-
-
-# =============================================================================
-# MaaS RBAC helper: wait for oauth-openshift rollout
-# =============================================================================
 
 
 def wait_for_oauth_openshift_deployment() -> None:
@@ -189,20 +178,6 @@ def wait_for_oauth_openshift_deployment() -> None:
             return
 
 
-def make_bcrypt_htpasswd_file(username: str, password: str) -> Path:
-    """
-    Create an htpasswd file that uses bcrypt (-B). Returns the temp file Path.
-    """
-    with tempfile.NamedTemporaryFile(mode="w+", delete=False) as temp_file:
-        htpasswd_path = Path(temp_file.name).resolve()
-    # -c create, -B bcrypt, -b batch mode
-    run_command(
-        command=shlex.split(f"htpasswd -c -B -b {htpasswd_path} {username} {password}"),
-        check=True,
-    )
-    return htpasswd_path
-
-
 def make_bcrypt_htpasswd_file_with_users(users: list[tuple[str, str]]) -> Path:
     """
     Create a single htpasswd file (-B bcrypt) containing multiple users.
@@ -213,7 +188,6 @@ def make_bcrypt_htpasswd_file_with_users(users: list[tuple[str, str]]) -> Path:
 
     # First user: create (-c)
     first_user, first_pass = users[0]
-    # run_command(command=shlex.split(f"htpasswd -c -B -b {htpasswd_path} {first_user} {first_pass}"), check=True)
     run_command(
         command=shlex.split(f"htpasswd -c -B -b {htpasswd_path} {first_user} {first_pass}"),
         check=True,
@@ -228,39 +202,40 @@ def make_bcrypt_htpasswd_file_with_users(users: list[tuple[str, str]]) -> Path:
     return htpasswd_path
 
 
-# -----------------------------------------------------------------------------
-# Login with retry (handles short 401/500 blips around OAuth/IDP updates)
-# -----------------------------------------------------------------------------
-
-
 def login_with_retry(
     api: str,
     user: str,
     password: str | None = None,
-    tries: int = 5,
-    initial_delay: float = 2.0,
+    wait_timeout: int = 60,
+    sleep: float = 2.0,
 ) -> None:
     """
     Login helper that retries a few times in case the cluster is not ready.
     This avoids test failures caused by temporary login errors.
     """
-    delay = initial_delay
     last_exc: Exception | None = None
-    for attempt in range(1, tries + 1):
+
+    def _attempt_login() -> bool:
+        nonlocal last_exc
         try:
             login_with_user_password(api_address=api, user=user, password=password)
-            return
-        except Exception as login_error:
+            return True
+        except Exception as login_error:  # noqa: BLE001
             last_exc = login_error
             error_text = str(login_error) or "<no error message>"
-            LOGGER.warning(
-                "MaaS RBAC: login attempt %s/%s failed for %s (%s). Retrying in %.1fs",
-                attempt,
-                tries,
-                user,
-                error_text,
-                delay,
-            )
-            time.sleep(delay)
-            delay *= 2
-    raise last_exc if last_exc else RuntimeError("Login failed with unknown error")
+            LOGGER.warning(f"MaaS RBAC: login failed for {user} ({error_text}); will retry")
+            return False
+
+    sampler = TimeoutSampler(
+        wait_timeout=wait_timeout,
+        sleep=sleep,
+        func=_attempt_login,
+    )
+
+    for ok in sampler:
+        if ok:
+            LOGGER.info(f"MaaS RBAC: login succeeded for {user}")
+            return
+
+    # If we exit the loop without success, timeout was hit
+    raise last_exc if last_exc else RuntimeError(f"Login failed for user {user}")
