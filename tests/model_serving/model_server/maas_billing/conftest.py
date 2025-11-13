@@ -106,15 +106,10 @@ def maas_models(
     return models
 
 
-# =============================================================================
-# Shared helpers: API server URL & original user
-# =============================================================================
-
-
 @pytest.fixture(scope="session")
 def maas_api_server_url(admin_client: DynamicClient) -> str:
     """
-    Get API server URL from the cluster.
+    Get cluster API server URL.
     """
     infrastructure = Infrastructure(client=admin_client, name="cluster", ensure_exists=True)
     return infrastructure.instance.status.apiServerURL
@@ -122,18 +117,15 @@ def maas_api_server_url(admin_client: DynamicClient) -> str:
 
 @pytest.fixture(scope="session")
 def maas_original_user() -> str:
+    """Username of the user who originally ran the tests (before IDP logins)."""
     current_user = run_command(command=["oc", "whoami"])[1].strip()
     LOGGER.info(f"Original user: {current_user}")
     return current_user
 
 
-# =============================================================================
-# MaaS RBAC: user credentials (free & premium)
-# =============================================================================
-
-
 @pytest.fixture(scope="session")
 def maas_user_credentials_both() -> dict[str, str]:
+    """Randomized FREE and PREMIUM usernames/passwords plus IDP/Secret names."""
     random_suffix = generate_random_name()
     return {
         "free_user": f"maas-free-user-{random_suffix}",
@@ -149,6 +141,7 @@ def maas_user_credentials_both() -> dict[str, str]:
 def maas_created_htpasswd_secret_both(
     maas_user_credentials_both: dict[str, str],
 ) -> Generator[None, None, None]:
+    """Create an htpasswd Secret with FREE and PREMIUM users and clean it up."""
     secret_name = maas_user_credentials_both["secret_name"]
 
     htpasswd_path = make_bcrypt_htpasswd_file_with_users(
@@ -182,17 +175,13 @@ def maas_created_htpasswd_secret_both(
         Path(htpasswd_path).unlink(missing_ok=True)
 
 
-# =============================================================================
-# MaaS RBAC: update OAuth once with both IDPs
-# =============================================================================
-
-
 @pytest.fixture(scope="session")
 def maas_updated_oauth_config(
     admin_client: DynamicClient,
     maas_user_credentials_both: dict[str, str],
     maas_created_htpasswd_secret_both,  # ensure secret exists first
 ) -> Generator[None, None, None]:
+    """Patch OAuth to add a single combined MaaS htpasswd IDP, then restore it."""
     oauth = OAuth(name="cluster")
 
     spec = getattr(oauth.instance, "spec", {}) or {}
@@ -235,11 +224,6 @@ def maas_updated_oauth_config(
         wait_for_oauth_openshift_deployment()
 
 
-# =============================================================================
-# MaaS RBAC: IDP user sessions (free & premium)
-# =============================================================================
-
-
 @pytest.fixture(scope="session")
 def maas_free_user_session(
     maas_original_user: str,
@@ -248,6 +232,7 @@ def maas_free_user_session(
     maas_user_credentials_both: dict[str, str],
     maas_updated_oauth_config,  # ensure OAuth is patched
 ) -> Generator[UserTestSession, None, None]:
+    """Create a FREE test IDP user session and clean it up."""
     if is_byoidc:
         pytest.skip("Working on OIDC support for tests that use htpasswd IDP for MaaS")
 
@@ -286,6 +271,7 @@ def maas_premium_user_session(
     maas_user_credentials_both: dict[str, str],
     maas_updated_oauth_config,  # ensure OAuth is patched
 ) -> Generator[UserTestSession, None, None]:
+    """Create a PREMIUM test IDP user session and clean it up."""
     if is_byoidc:
         pytest.skip("Working on OIDC support for tests that use htpasswd IDP for MaaS")
 
@@ -316,16 +302,12 @@ def maas_premium_user_session(
             idp_session.cleanup()
 
 
-# =============================================================================
-# MaaS RBAC: Groups for free & premium tiers
-# =============================================================================
-
-
 @pytest.fixture(scope="session")
 def maas_free_group(
     admin_client: DynamicClient,
     maas_free_user_session: UserTestSession,
 ) -> Generator[str, None, None]:
+    """Create a FREE-tier MaaS group and add the FREE test user to it."""
     with create_maas_group(
         admin_client=admin_client,
         group_name=MAAS_FREE_GROUP,
@@ -340,6 +322,7 @@ def maas_premium_group(
     admin_client: DynamicClient,
     maas_premium_user_session: UserTestSession,
 ) -> Generator[str, None, None]:
+    """Create a PREMIUM-tier MaaS group and add the PREMIUM test user to it."""
     with create_maas_group(
         admin_client=admin_client,
         group_name=MAAS_PREMIUM_GROUP,
@@ -351,11 +334,6 @@ def maas_premium_group(
             maas_premium_user_session.username,
         )
         yield group.name
-
-
-# =============================================================================
-# MaaS RBAC: "actor token" fixture (admin / free / premium)
-# =============================================================================
 
 
 @pytest.fixture
