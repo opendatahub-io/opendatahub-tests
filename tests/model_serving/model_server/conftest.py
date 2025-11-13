@@ -1,4 +1,4 @@
-from typing import Any, Generator
+from typing import Any, Generator, Dict
 
 import pytest
 import yaml
@@ -15,6 +15,18 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.storage_class import StorageClass
 from ocp_resources.llm_inference_service import LLMInferenceService
+from ocp_resources.data_science_cluster import DataScienceCluster
+from ocp_resources.cluster_service_version import ClusterServiceVersion
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
+from utilities.kueue_utils import (
+    create_local_queue,
+    create_cluster_queue,
+    create_resource_flavor,
+    LocalQueue,
+    ClusterQueue,
+    ResourceFlavor,
+)
+from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 
 from utilities.constants import (
@@ -22,6 +34,7 @@ from utilities.constants import (
     ModelFormat,
     RuntimeTemplates,
     StorageClassName,
+    DscComponents,
 )
 from utilities.constants import (
     ModelAndFormat,
@@ -433,3 +446,131 @@ def model_car_inference_service(
         wait_for_predictor_pods=False,
     ) as isvc:
         yield isvc
+
+
+# Kueue Fixtures
+def _is_kueue_operator_installed(admin_client: DynamicClient) -> bool:
+    try:
+        csvs = list(
+            ClusterServiceVersion.get(
+                dyn_client=admin_client,
+                namespace=py_config.get("applications_namespace", "openshift-operators"),
+            )
+        )
+        for csv in csvs:
+            if csv.name.startswith("kueue") and csv.status == csv.Status.SUCCEEDED:
+                LOGGER.info(f"Found Kueue operator CSV: {csv.name}")
+                return True
+        return False
+    except ResourceNotFoundError:
+        return False
+
+
+@pytest.fixture(scope="session", autouse=True)
+def ensure_kueue_unmanaged_in_dsc(
+    admin_client: DynamicClient, dsc_resource: DataScienceCluster
+) -> Generator[None, Any, None]:
+    try:
+        if not _is_kueue_operator_installed(admin_client):
+            pytest.skip("Kueue operator is not installed, skipping Kueue tests")
+
+        dsc_resource.get()
+        kueue_management_state = dsc_resource.instance.spec.components[DscComponents.KUEUE].managementState
+
+        if kueue_management_state == DscComponents.ManagementState.UNMANAGED:
+            LOGGER.info("Kueue is already Unmanaged in DSC, proceeding with tests")
+            yield
+        else:
+            LOGGER.info(f"Kueue management state is {kueue_management_state}, updating to Unmanaged")
+            dsc_dict = {
+                "spec": {
+                    "components": {DscComponents.KUEUE: {"managementState": DscComponents.ManagementState.UNMANAGED}}
+                }
+            }
+
+            with ResourceEditor(patches={dsc_resource: dsc_dict}):
+                LOGGER.info("Updated Kueue to Unmanaged, waiting for DSC to be ready")
+                dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=300)
+                LOGGER.info("DSC is ready, proceeding with tests")
+                yield
+
+            LOGGER.info(f"Restoring Kueue management state to {kueue_management_state}")
+            restore_dict = {"spec": {"components": {DscComponents.KUEUE: {"managementState": kueue_management_state}}}}
+            with ResourceEditor(patches={dsc_resource: restore_dict}):
+                dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=300)
+                LOGGER.info("Restored Kueue management state")
+
+    except (AttributeError, KeyError) as e:
+        pytest.skip(f"Kueue component not found in DSC: {e}")
+
+
+def kueue_resource_groups(
+    flavor_name: str,
+    cpu_quota: int,
+    memory_quota: str,
+) -> list[Dict[str, Any]]:
+    return [
+        {
+            "coveredResources": ["cpu", "memory"],
+            "flavors": [
+                {
+                    "name": flavor_name,
+                    "resources": [
+                        {"name": "cpu", "nominalQuota": cpu_quota},
+                        {"name": "memory", "nominalQuota": memory_quota},
+                    ],
+                }
+            ],
+        }
+    ]
+
+
+@pytest.fixture(scope="class")
+def kueue_cluster_queue_from_template(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+) -> Generator[ClusterQueue, Any, None]:
+    if request.param.get("name") is None:
+        raise ValueError("name is required")
+    with create_cluster_queue(
+        name=request.param.get("name"),
+        client=admin_client,
+        resource_groups=kueue_resource_groups(
+            request.param.get("resource_flavor_name"), request.param.get("cpu_quota"), request.param.get("memory_quota")
+        ),
+        namespace_selector=request.param.get("namespace_selector", {}),
+    ) as cluster_queue:
+        yield cluster_queue
+
+
+@pytest.fixture(scope="class")
+def kueue_resource_flavor_from_template(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+) -> Generator[ResourceFlavor, Any, None]:
+    if request.param.get("name") is None:
+        raise ValueError("name is required")
+    with create_resource_flavor(
+        name=request.param.get("name"),
+        client=admin_client,
+    ) as resource_flavor:
+        yield resource_flavor
+
+
+@pytest.fixture(scope="class")
+def kueue_local_queue_from_template(
+    request: FixtureRequest,
+    unprivileged_model_namespace: Namespace,
+    admin_client: DynamicClient,
+) -> Generator[LocalQueue, Any, None]:
+    if request.param.get("name") is None:
+        raise ValueError("name is required")
+    if request.param.get("cluster_queue") is None:
+        raise ValueError("cluster_queue is required")
+    with create_local_queue(
+        name=request.param.get("name"),
+        namespace=unprivileged_model_namespace.name,
+        cluster_queue=request.param.get("cluster_queue"),
+        client=admin_client,
+    ) as local_queue:
+        yield local_queue
