@@ -25,7 +25,7 @@ class LLMEndpoint:
     CHAT_COMPLETIONS: str = "/v1/chat/completions"
     DEFAULT_MAX_TOKENS: int = 50
     DEFAULT_TEMPERATURE: float = 0.0
-    DEFAULT_TIMEOUT: int = Timeout.TIMEOUT_1MIN
+    DEFAULT_TIMEOUT: int = 60
 
 
 class ModelStorage:
