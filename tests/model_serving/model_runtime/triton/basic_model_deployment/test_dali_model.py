@@ -1,7 +1,7 @@
 """
 Test module for Dali  model served by Triton via KServe.
 
-Validates inference using REST and gRPC protocols with both raw and serverless deployment modes.
+Validates inference using REST and gRPC protocols with raw deployment mode.
 """
 
 from typing import Any
@@ -15,7 +15,6 @@ from utilities.constants import Protocols
 from tests.model_serving.model_runtime.triton.basic_model_deployment.utils import validate_inference_request, load_json
 from tests.model_serving.model_runtime.triton.constant import (
     BASE_RAW_DEPLOYMENT_CONFIG,
-    BASE_SERVERLESS_DEPLOYMENT_CONFIG,
     MODEL_PATH_PREFIX_DALI,
     TRITON_GRPC_DALI_INPUT_PATH,
     TRITON_REST_DALI_INPUT_PATH,
@@ -56,28 +55,6 @@ pytestmark = pytest.mark.usefixtures(
             },
             id="dali-raw-grpc-deployment",
         ),
-        pytest.param(
-            {"protocol_type": Protocols.REST},
-            {"name": "dali-serverless"},
-            MODEL_STORAGE_URI_DICT,
-            {**BASE_SERVERLESS_DEPLOYMENT_CONFIG},
-            {
-                "name": "dali-serverless-rest",
-                **BASE_SERVERLESS_DEPLOYMENT_CONFIG,
-            },
-            id="dali-serverless-rest-deployment",
-        ),
-        pytest.param(
-            {"protocol_type": Protocols.GRPC},
-            {"name": "dali-serverless"},
-            MODEL_STORAGE_URI_DICT,
-            {**BASE_SERVERLESS_DEPLOYMENT_CONFIG},
-            {
-                "name": "dali-serverless-grpc",
-                **BASE_SERVERLESS_DEPLOYMENT_CONFIG,
-            },
-            id="dali-serverless-grpc-deployment",
-        ),
     ],
     indirect=True,
 )
@@ -87,7 +64,7 @@ class TestDaliModel:
 
     Covers:
     - REST and gRPC protocols
-    - Raw and serverless modes
+    - Raw deployment mode
     - Snapshot validation of inference results
     """
 

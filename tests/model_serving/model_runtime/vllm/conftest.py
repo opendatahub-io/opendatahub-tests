@@ -66,7 +66,7 @@ def vllm_inference_service(
         "storage_uri": s3_models_storage_uri,
         "model_format": serving_runtime.instance.spec.supportedModelFormats[0].name,
         "model_service_account": vllm_model_service_account.name,
-        "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.SERVERLESS),
+        "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.RAW_DEPLOYMENT),
     }
     accelerator_type = supported_accelerator_type.lower()
     gpu_count = request.param.get("gpu_count")
@@ -135,14 +135,6 @@ def kserve_endpoint_s3_secret(
 @pytest.fixture
 def vllm_pod_resource(admin_client: DynamicClient, vllm_inference_service: InferenceService) -> Pod:
     return get_pods_by_isvc_label(client=admin_client, isvc=vllm_inference_service)[0]
-
-
-@pytest.fixture
-def skip_if_not_serverless_deployment(vllm_inference_service: InferenceService) -> None:
-    skip_if_not_deployment_mode(
-        isvc=vllm_inference_service,
-        deployment_type=KServeDeploymentType.SERVERLESS,
-    )
 
 
 @pytest.fixture

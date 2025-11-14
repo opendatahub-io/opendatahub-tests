@@ -4,7 +4,6 @@ import os
 import shutil
 from ast import literal_eval
 from typing import Any, Callable, Generator
-
 import pytest
 from semver import Version
 import shortuuid
@@ -61,6 +60,7 @@ from utilities.logger import RedactedString
 from utilities.mariadb_utils import wait_for_mariadb_operator_deployments
 from utilities.minio import create_minio_data_connection_secret
 from utilities.operator_utils import get_csv_related_images, get_cluster_service_version
+from ocp_resources.authentication_config_openshift_io import Authentication
 
 LOGGER = get_logger(name=__name__)
 
@@ -77,7 +77,7 @@ def admin_client() -> DynamicClient:
     return get_client()
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="session")
 def tests_tmp_dir(request: FixtureRequest, tmp_path_factory: TempPathFactory) -> Generator[None, None, None]:
     base_path = os.path.join(request.config.option.basetemp, "tests")
     tests_tmp_path = tmp_path_factory.mktemp(basename=base_path)
@@ -90,7 +90,7 @@ def tests_tmp_dir(request: FixtureRequest, tmp_path_factory: TempPathFactory) ->
 
 @pytest.fixture(scope="session")
 def current_client_token(admin_client: DynamicClient) -> str:
-    return RedactedString(value=get_openshift_token())
+    return RedactedString(value=get_openshift_token(client=admin_client))
 
 
 @pytest.fixture(scope="session")
@@ -377,11 +377,28 @@ def kubconfig_filepath() -> str:
 
 
 @pytest.fixture(scope="session")
+def cluster_authentication(admin_client: DynamicClient) -> Authentication | None:
+    auth = Authentication(client=admin_client, name="cluster")
+    if auth.exists:
+        return auth
+    return None
+
+
+@pytest.fixture(scope="session")
+def is_byoidc(cluster_authentication: Authentication | None) -> bool:
+    if cluster_authentication:
+        return cluster_authentication.instance.spec.type == "OIDC"
+    else:
+        return False
+
+
+@pytest.fixture(scope="session")
 def unprivileged_client(
     admin_client: DynamicClient,
     use_unprivileged_client: bool,
     kubconfig_filepath: str,
     non_admin_user_password: tuple[str, str],
+    is_byoidc: bool,
 ) -> Generator[DynamicClient, Any, Any]:
     """
     Provides none privileged API client. If non_admin_user_password is None, then it will raise.
@@ -389,6 +406,15 @@ def unprivileged_client(
     if not use_unprivileged_client:
         LOGGER.warning("Unprivileged client is not enabled, using admin client")
         yield admin_client
+
+    elif is_byoidc:
+        # this requires a pre-existing context in $KUBECONFIG with a unprivileged user
+        current_context = run_command(command=["oc", "config", "current-context"])[1].strip()
+        unprivileged_context = current_context + "-unprivileged"
+
+        unprivileged_client = get_client(config_file=kubconfig_filepath, context=unprivileged_context)
+
+        yield unprivileged_client
 
     elif non_admin_user_password is None:
         raise ValueError("Unprivileged user not provisioned")
@@ -661,8 +687,8 @@ def oc_binary_path(bin_directory: LocalPath) -> str:
 
 
 @pytest.fixture(scope="session", autouse=True)
-@pytest.mark.early(order=0)
 def autouse_fixtures(
+    tests_tmp_dir: None,
     bin_directory_to_os_path: None,
     cluster_sanity_scope_session: None,
 ) -> None:
