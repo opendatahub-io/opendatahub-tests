@@ -131,6 +131,11 @@ def llama_stack_server_config(
         fms_orchestrator_url = "http://localhost"
     env_vars.append({"name": "FMS_ORCHESTRATOR_URL", "value": fms_orchestrator_url})
 
+    # EMBEDDING_MODEL
+    embedding_model = params.get("embedding_model")
+    if embedding_model:
+        env_vars.append({"name": "EMBEDDING_MODEL", "value": embedding_model})
+
     # Depending on parameter vector_io_provider, deploy vector_io provider and obtain required env_vars
     vector_io_provider = params.get("vector_io_provider") or "milvus"
     env_vars_vector_io = vector_io_provider_deployment_config_factory(provider_name=vector_io_provider)
