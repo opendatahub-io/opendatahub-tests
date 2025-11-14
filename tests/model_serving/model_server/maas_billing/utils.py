@@ -218,24 +218,30 @@ def login_with_retry(
     def _attempt_login() -> bool:
         nonlocal last_exc
         try:
-            login_with_user_password(api_address=api, user=user, password=password)
+            ok = login_with_user_password(
+                api_address=api,
+                user=user,
+                password=password,
+            )
+            if not ok:
+                LOGGER.warning("MaaS RBAC: login returned False for %s; will retry", user)
+                return False
             return True
-        except Exception as login_error:  # noqa: BLE001
+        except Exception as login_error:  # noqa: BLE001 (broad exception is intentional here)
             last_exc = login_error
             error_text = str(login_error) or "<no error message>"
-            LOGGER.warning(f"MaaS RBAC: login failed for {user} ({error_text}); will retry")
+            LOGGER.warning("MaaS RBAC: login failed for %s (%s); will retry", user, error_text)
             return False
+        sampler = TimeoutSampler(
+            wait_timeout=wait_timeout,
+            sleep=sleep,
+            func=_attempt_login,
+        )
 
-    sampler = TimeoutSampler(
-        wait_timeout=wait_timeout,
-        sleep=sleep,
-        func=_attempt_login,
-    )
+        for ok in sampler:
+            if ok:
+                LOGGER.info(f"MaaS RBAC: login succeeded for {user}")
+                return
 
-    for ok in sampler:
-        if ok:
-            LOGGER.info(f"MaaS RBAC: login succeeded for {user}")
-            return
-
-    # If we exit the loop without success, timeout was hit
-    raise last_exc if last_exc else RuntimeError(f"Login failed for user {user}")
+        # If we exit the loop without success, timeout was hit
+        raise last_exc if last_exc else RuntimeError(f"Login failed for user {user}")
