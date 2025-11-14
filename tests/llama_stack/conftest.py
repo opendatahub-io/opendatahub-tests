@@ -359,7 +359,7 @@ def _create_llama_stack_client(
     try:
         client = LlamaStackClient(
             base_url=f"https://{route.host}",
-            timeout=180.0,
+            timeout=240.0,
             http_client=http_client,
         )
         wait_for_llama_stack_client_ready(client=client)
