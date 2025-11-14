@@ -1,7 +1,6 @@
 """LLMD-specific constants that extend the shared constants."""
 
 from utilities.constants import (
-    Timeout,
     ModelName,
     ContainerImages as SharedContainerImages,
     ModelStorage as SharedModelStorage,
@@ -25,7 +24,7 @@ class LLMEndpoint:
     CHAT_COMPLETIONS: str = "/v1/chat/completions"
     DEFAULT_MAX_TOKENS: int = 50
     DEFAULT_TEMPERATURE: float = 0.0
-    DEFAULT_TIMEOUT: int = Timeout.TIMEOUT_30SEC
+    DEFAULT_TIMEOUT: int = 60
 
 
 class ModelStorage:
