@@ -3,11 +3,11 @@ from typing import Any
 import pytest
 from simple_logger.logger import get_logger
 
-from tests.model_serving.model_server.multi_node.constants import (
+from tests.model_serving.model_server.kserve.multi_node.constants import (
     HEAD_POD_ROLE,
     WORKER_POD_ROLE,
 )
-from tests.model_serving.model_server.multi_node.utils import (
+from tests.model_serving.model_server.kserve.multi_node.utils import (
     get_pods_by_isvc_generation,
     is_arg_in_model_spec,
     verify_nvidia_gpu_status,

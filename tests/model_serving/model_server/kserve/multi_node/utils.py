@@ -8,7 +8,7 @@ from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
-from tests.model_serving.model_server.multi_node.constants import HEAD_POD_ROLE, SUPPORTED_ROLES, WORKER_POD_ROLE
+from tests.model_serving.model_server.kserve.multi_node.constants import HEAD_POD_ROLE, SUPPORTED_ROLES, WORKER_POD_ROLE
 from utilities.constants import Timeout
 from utilities.infra import get_pods_by_isvc_label
 

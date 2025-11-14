@@ -2,7 +2,7 @@ import pytest
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
-from tests.model_serving.model_server.inference_service_configuration.constants import (
+from tests.model_serving.model_server.kserve.inference_service_configuration.constants import (
     BASE_ISVC_CONFIG,
 )
 from tests.model_serving.model_server.utils import verify_inference_response
