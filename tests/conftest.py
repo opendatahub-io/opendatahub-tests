@@ -61,6 +61,7 @@ from utilities.mariadb_utils import wait_for_mariadb_operator_deployments
 from utilities.minio import create_minio_data_connection_secret
 from utilities.operator_utils import get_csv_related_images, get_cluster_service_version
 from ocp_resources.authentication_config_openshift_io import Authentication
+from utilities.user_utils import get_unprivileged_context
 
 LOGGER = get_logger(name=__name__)
 
@@ -409,8 +410,14 @@ def unprivileged_client(
 
     elif is_byoidc:
         # this requires a pre-existing context in $KUBECONFIG with a unprivileged user
-        current_context = run_command(command=["oc", "config", "current-context"])[1].strip()
-        unprivileged_context = current_context + "-unprivileged"
+        try:
+            unprivileged_context, _ = get_unprivileged_context()
+        except ValueError as e:
+            raise ValueError(
+                f"Failed to get unprivileged context for BYOIDC mode. "
+                f"Ensure the context naming follows the convention: <context>-unprivileged. "
+                f"Error: {e}"
+            ) from e
 
         unprivileged_client = get_client(config_file=kubconfig_filepath, context=unprivileged_context)
 

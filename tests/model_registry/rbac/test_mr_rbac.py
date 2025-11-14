@@ -23,7 +23,12 @@ from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.service import Service
 from ocp_resources.deployment import Deployment
 from tests.model_registry.rbac.multiple_instance_utils import MR_MULTIPROJECT_TEST_SCENARIO_PARAMS
-from tests.model_registry.rbac.utils import build_mr_client_args, assert_positive_mr_registry, assert_forbidden_access
+from tests.model_registry.rbac.utils import (
+    build_mr_client_args,
+    assert_positive_mr_registry,
+    assert_forbidden_access,
+    should_skip_rbac_tests,
+)
 from tests.model_registry.constants import NUM_MR_INSTANCES
 from utilities.infra import get_openshift_token
 from mr_openapi.exceptions import ForbiddenException
@@ -34,8 +39,15 @@ from tests.model_registry.utils import get_mr_service_by_label, get_endpoint_fro
 from tests.model_registry.rbac.utils import grant_mr_access, revoke_mr_access
 from utilities.constants import Protocols
 
+
 LOGGER = get_logger(name=__name__)
-pytestmark = [pytest.mark.usefixtures("original_user", "test_idp_user")]
+pytestmark = [
+    pytest.mark.usefixtures("original_user", "test_idp_user"),
+    pytest.mark.skipif(
+        should_skip_rbac_tests(),
+        reason="RBAC tests are not supported in OpenShift 4.20 and later with OIDC authentication",
+    ),
+]
 
 
 @pytest.mark.usefixtures(
