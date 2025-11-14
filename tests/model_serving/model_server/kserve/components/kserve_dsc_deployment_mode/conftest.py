@@ -11,7 +11,7 @@ from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest_testconfig import config as py_config
 
-from tests.model_serving.model_server.components.kserve_dsc_deployment_mode.utils import (
+from tests.model_serving.model_server.kserve.components.kserve_dsc_deployment_mode.utils import (
     patch_dsc_default_deployment_mode,
 )
 from utilities.constants import ModelAndFormat
