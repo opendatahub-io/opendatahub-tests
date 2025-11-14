@@ -181,8 +181,11 @@ def wait_for_oauth_openshift_deployment() -> None:
 def make_bcrypt_htpasswd_file_with_users(users: list[tuple[str, str]]) -> Path:
     """
     Create a single htpasswd file (-B bcrypt) containing multiple users.
-    `users` is a list of (username, password) tuples.
+    `users` is a list of (username, password) tuples.The returned file path must be deleted.
     """
+    if not users:
+        raise ValueError("users list cannot be empty")
+
     with tempfile.NamedTemporaryFile(mode="w+", delete=False) as temp_file:
         htpasswd_path = Path(temp_file.name).resolve()
 
@@ -209,10 +212,7 @@ def login_with_retry(
     wait_timeout: int = 60,
     sleep: float = 2.0,
 ) -> None:
-    """
-    Login helper that retries a few times in case the cluster is not ready.
-    This avoids test failures caused by temporary login errors.
-    """
+
     last_exc: Exception | None = None
 
     def _attempt_login() -> bool:
@@ -227,21 +227,21 @@ def login_with_retry(
                 LOGGER.warning("MaaS RBAC: login returned False for %s; will retry", user)
                 return False
             return True
-        except Exception as login_error:  # noqa: BLE001 (broad exception is intentional here)
+        except Exception as login_error:
             last_exc = login_error
             error_text = str(login_error) or "<no error message>"
             LOGGER.warning("MaaS RBAC: login failed for %s (%s); will retry", user, error_text)
             return False
-        sampler = TimeoutSampler(
-            wait_timeout=wait_timeout,
-            sleep=sleep,
-            func=_attempt_login,
-        )
 
-        for ok in sampler:
-            if ok:
-                LOGGER.info(f"MaaS RBAC: login succeeded for {user}")
-                return
+    sampler = TimeoutSampler(
+        wait_timeout=wait_timeout,
+        sleep=sleep,
+        func=_attempt_login,
+    )
 
-        # If we exit the loop without success, timeout was hit
-        raise last_exc if last_exc else RuntimeError(f"Login failed for user {user}")
+    for ok in sampler:
+        if ok:
+            LOGGER.info(f"MaaS RBAC: login succeeded for {user}")
+            return
+
+    raise last_exc if last_exc else RuntimeError(f"Login failed for user {user}")
