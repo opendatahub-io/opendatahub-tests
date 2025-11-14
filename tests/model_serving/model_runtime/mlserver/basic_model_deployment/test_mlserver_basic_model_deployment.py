@@ -36,6 +36,7 @@ LOGGER = get_logger(name=__name__)
 
 pytestmark = pytest.mark.usefixtures("root_dir", "valid_aws_config", "mlserver_rest_serving_runtime_template")
 
+
 @pytest.mark.smoke
 @pytest.mark.parametrize(
     (
