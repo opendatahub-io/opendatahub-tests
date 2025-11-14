@@ -3,7 +3,7 @@ import shlex
 from ocp_resources.pod import ExecOnPodError
 import pytest
 
-from tests.model_serving.model_server.storage.constants import (
+from tests.model_serving.model_server.kserve.storage.constants import (
     INFERENCE_SERVICE_PARAMS,
     KSERVE_OVMS_SERVING_RUNTIME_PARAMS,
 )

@@ -35,6 +35,7 @@ LOGGER = get_logger(name=__name__)
 pytestmark = pytest.mark.usefixtures("valid_aws_config")
 
 
+@pytest.mark.smoke
 @pytest.mark.parametrize(
     (
         "protocol",

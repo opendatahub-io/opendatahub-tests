@@ -10,12 +10,12 @@ from utilities.inference_utils import create_isvc
 from utilities.constants import KServeDeploymentType
 
 
-from tests.model_serving.model_server.inference_service_configuration.constants import (
+from tests.model_serving.model_server.kserve.inference_service_configuration.constants import (
     ISVC_ENV_VARS,
     UPDATED_PULL_SECRET,
     ORIGINAL_PULL_SECRET,
 )
-from tests.model_serving.model_server.inference_service_configuration.utils import (
+from tests.model_serving.model_server.kserve.inference_service_configuration.utils import (
     update_inference_service,
 )
 from utilities.infra import get_pods_by_isvc_label

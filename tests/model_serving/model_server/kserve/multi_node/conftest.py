@@ -14,7 +14,7 @@ from ocp_resources.serving_runtime import ServingRuntime
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutSampler
 
-from tests.model_serving.model_server.multi_node.utils import (
+from tests.model_serving.model_server.kserve.multi_node.utils import (
     delete_multi_node_pod_by_role,
 )
 from utilities.constants import KServeDeploymentType, Labels, Protocols, Timeout, ModelCarImage

@@ -15,7 +15,7 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [
         pytest.param(
-            {"name": "granite-serverless-raw"},
+            {"name": "granite-raw"},
             {"model-dir": "granite-2b-instruct-preview-4k-r240917a"},
             {"deployment_type": KServeDeploymentType.RAW_DEPLOYMENT},
             {

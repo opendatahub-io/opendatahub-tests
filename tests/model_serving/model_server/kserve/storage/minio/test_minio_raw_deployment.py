@@ -1,6 +1,6 @@
 import pytest
 
-from tests.model_serving.model_server.storage.minio.constants import (
+from tests.model_serving.model_server.kserve.storage.minio.constants import (
     AGE_GENDER_INFERENCE_TYPE,
     MINIO_DATA_CONNECTION_CONFIG,
     MINIO_INFERENCE_CONFIG,

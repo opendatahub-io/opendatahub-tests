@@ -1,10 +1,10 @@
 import pytest
 
-from tests.model_serving.model_server.inference_service_configuration.constants import (
+from tests.model_serving.model_server.kserve.inference_service_configuration.constants import (
     BASE_ISVC_CONFIG,
     ISVC_ENV_VARS,
 )
-from tests.model_serving.model_server.inference_service_configuration.utils import (
+from tests.model_serving.model_server.kserve.inference_service_configuration.utils import (
     verify_env_vars_in_isvc_pods,
 )
 from utilities.constants import KServeDeploymentType, RunTimeConfigs

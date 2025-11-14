@@ -1,7 +1,7 @@
 import pytest
 
-from tests.model_serving.model_server.inference_service_configuration.utils import verify_pull_secret
-from tests.model_serving.model_server.inference_service_configuration.constants import (
+from tests.model_serving.model_server.kserve.inference_service_configuration.utils import verify_pull_secret
+from tests.model_serving.model_server.kserve.inference_service_configuration.constants import (
     ORIGINAL_PULL_SECRET,
     UPDATED_PULL_SECRET,
 )

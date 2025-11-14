@@ -9,7 +9,7 @@ from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from simple_logger.logger import get_logger
 
-from tests.model_serving.model_server.private_endpoint.utils import create_sidecar_pod
+from tests.model_serving.model_server.kserve.private_endpoint.utils import create_sidecar_pod
 from utilities.constants import KServeDeploymentType, ModelFormat, ModelStoragePath
 from utilities.inference_utils import create_isvc
 from utilities.infra import create_ns

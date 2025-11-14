@@ -9,7 +9,7 @@ from utilities.constants import (
 )
 from utilities.inference_utils import Inference
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
-from tests.model_serving.model_server.stop_resume.utils import consistently_verify_no_pods_exist
+from tests.model_serving.model_server.kserve.stop_resume.utils import consistently_verify_no_pods_exist
 
 pytestmark = [pytest.mark.usefixtures("valid_aws_config")]
 

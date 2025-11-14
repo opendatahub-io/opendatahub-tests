@@ -18,7 +18,7 @@ from utilities.exceptions import (
 from utilities.constants import Timeout
 from utilities.inference_utils import UserInference
 from utilities.infra import get_pods_by_isvc_label
-from tests.model_serving.model_server.keda.utils import get_isvc_keda_scaledobject
+from tests.model_serving.model_server.kserve.keda.utils import get_isvc_keda_scaledobject
 from utilities.constants import Protocols
 from timeout_sampler import TimeoutWatch, TimeoutSampler, TimeoutExpiredError
 

@@ -3,7 +3,7 @@ from utilities.constants import Containers, KServeDeploymentType, StorageClassNa
 
 import pytest
 
-from tests.model_serving.model_server.storage.constants import (
+from tests.model_serving.model_server.kserve.storage.constants import (
     INFERENCE_SERVICE_PARAMS,
     KSERVE_OVMS_SERVING_RUNTIME_PARAMS,
 )
