@@ -28,6 +28,15 @@ LOGGER = get_logger(name=__name__)
             {"name": "test-llamastack-vector-stores", "randomize_name": True},
             {
                 "llama_stack_storage_size": "2Gi",
+                "vector_io_provider": "faiss",
+            },
+            {"vector_io_provider": "faiss"},
+            id="vector_io_provider_faiss",
+        ),
+        pytest.param(
+            {"name": "test-llamastack-vector-stores", "randomize_name": True},
+            {
+                "llama_stack_storage_size": "2Gi",
                 "vector_io_provider": "milvus-remote",
             },
             {"vector_io_provider": "milvus-remote"},
