@@ -314,7 +314,7 @@ def mlserver_runtime_image(pytestconfig: pytest.Config) -> str | None:
 @pytest.fixture(scope="session")
 def triton_runtime_image(pytestconfig: pytest.Config) -> str:
     from tests.model_serving.model_runtime.triton.constant import TRITON_IMAGE
-    
+
     runtime_image = pytestconfig.option.triton_runtime_image
     if not runtime_image:
         return TRITON_IMAGE

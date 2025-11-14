@@ -30,9 +30,7 @@ LOCAL_HOST_URL: str = "http://localhost"
 TRITON_REST_PORT: int = 8080
 TRITON_GRPC_PORT: int = 9000
 
-TRITON_IMAGE: str = (
-    "nvcr.io/nvidia/tritonserver:23.10-py3"
-)
+TRITON_IMAGE: str = "nvcr.io/nvidia/tritonserver:23.10-py3"
 
 MODEL_PATH_PREFIX_KERAS: str = "triton_resnet/model_repository"
 MODEL_PATH_PREFIX: str = "triton/model_repository"
