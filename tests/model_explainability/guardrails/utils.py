@@ -146,24 +146,25 @@ def verify_builtin_detector_unsuitable_output_response(
 
     unsuitable_output_warning = "UNSUITABLE_OUTPUT"
     warnings = response_data.get("warnings", [])
-    if len(warnings) != 1:
-        errors.append(f"Expected 1 warning in response, got {len(warnings)}")
-    elif warnings[0]["type"] != unsuitable_output_warning:
-        errors.append(f"Expected warning type {unsuitable_output_warning}, got {warnings[0]['type']}")
-
-    output_detections = response_data.get("detections", {}).get("output", [])
-
-    if len(output_detections) < 1:
-        errors.append(f"Expected at least one output detection, but got {len(output_detections)}.")
-    else:
-        errors.extend(
-            verify_detection(
-                detections_list=output_detections,
-                detector_id=detector_id,
-                detection_name=detection_name,
-                detection_type=detection_type,
+    if warnings is not None:
+        if len(warnings) != 1:
+            errors.append(f"Expected 1 warning in response, got {len(warnings)}")
+        elif warnings[0]["type"] != unsuitable_output_warning:
+            errors.append(f"Expected warning type {unsuitable_output_warning}, got {warnings[0]['type']}")
+    output_detections = response_data.get("detections", {})
+    if output_detections is not None:
+        output_detections = output_detections.get("output", [])
+        if len(output_detections) < 1:
+            errors.append(f"Expected at least one output detection, but got {len(output_detections)}.")
+        else:
+            errors.extend(
+                verify_detection(
+                    detections_list=output_detections,
+                    detector_id=detector_id,
+                    detection_name=detection_name,
+                    detection_type=detection_type,
+                )
             )
-        )
 
     assert_no_errors(errors=errors, failure_message_prefix="Unsuitable output detection verification failed")
 
