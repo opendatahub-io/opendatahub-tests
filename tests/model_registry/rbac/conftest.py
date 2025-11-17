@@ -20,6 +20,7 @@ from kubernetes.dynamic import DynamicClient
 
 from tests.model_registry.rbac.utils import create_role_binding
 from utilities.user_utils import UserTestSession
+from utilities.infra import login_with_user_password
 from tests.model_registry.rbac.group_utils import create_group
 from tests.model_registry.constants import (
     MR_INSTANCE_NAME,
@@ -222,10 +223,17 @@ def model_registry_instance_parametrized(
 
 @pytest.fixture()
 def login_as_test_user(
-    api_server_url: str,
-    original_user: str,
-    test_idp_user: UserTestSession,
-    is_byoidc: bool,
+    api_server_url: str, original_user: str, test_idp_user: UserTestSession
 ) -> Generator[None, None, None]:
-    with test_idp_user.login():
-        yield
+    LOGGER.info(f"Logging in as {test_idp_user.username}")
+    login_with_user_password(
+        api_address=api_server_url,
+        user=test_idp_user.username,
+        password=test_idp_user.password,
+    )
+    yield
+    LOGGER.info(f"Logging in as {original_user}")
+    login_with_user_password(
+        api_address=api_server_url,
+        user=original_user,
+    )

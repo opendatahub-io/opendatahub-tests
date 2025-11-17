@@ -492,18 +492,7 @@ def test_idp_user(
     Returns a UserTestSession object that contains all necessary credentials and contexts.
     """
     if is_byoidc:
-        # in BYOIDC we cannot use the UserTestSession as originally intended, we create a somewhat fake one
-        # and do some logic in the post_init method.
-        byoidc_session = UserTestSession(
-            idp_name="byoidc",
-            secret_name="",
-            username="",
-            password="",
-            original_user=original_user,
-            api_server_url=api_server_url,
-            is_byoidc=True,
-        )
-        yield byoidc_session
+        pytest.skip("Working on OIDC support for tests that use test_idp_user")
     else:
         user_credentials_rbac = request.getfixturevalue(argname="user_credentials_rbac")
         _ = request.getfixturevalue(argname="created_htpasswd_secret")

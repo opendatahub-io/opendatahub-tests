@@ -11,8 +11,6 @@ from utilities.exceptions import ExceptionUserLogin
 from utilities.infra import login_with_user_password
 import base64
 from pathlib import Path
-from contextlib import contextmanager
-from typing import Generator
 
 LOGGER = logging.getLogger(__name__)
 SLEEP_TIME = 5
@@ -33,16 +31,6 @@ class UserTestSession:
 
     def __post_init__(self) -> None:
         """Validate the session data after initialization."""
-        if self.is_byoidc:
-            # we need to grab the username in byoidc mode
-            with self.login():
-                success, user, _ = run_command(command=["oc", "whoami"])
-                if success:
-                    self.username = user.strip()
-                    LOGGER.info(f"Username in byoidc mode: {self.username}")
-                else:
-                    raise ValueError("Could not get username from oc whoami")
-                return
         if not all([self.idp_name, self.secret_name, self.username, self.password]):
             raise ValueError("All session fields must be non-empty")
         if not (self.api_server_url and self.original_user):
@@ -53,18 +41,6 @@ class UserTestSession:
         user = User(name=self.username)
         if user.exists:
             user.delete()
-
-    @contextmanager
-    def login(self) -> Generator[None, None, None]:
-        if self.is_byoidc:
-            unprivileged_context, current_context = get_unprivileged_context()
-            _ = run_command(command=["oc", "config", "use-context", unprivileged_context])
-            yield
-            _ = run_command(command=["oc", "config", "use-context", current_context])
-        else:
-            login_with_user_password(api_address=self.api_server_url, user=self.username, password=self.password)
-            yield
-            login_with_user_password(api_address=self.api_server_url, user=self.original_user)
 
 
 def create_htpasswd_file(username: str, password: str) -> tuple[Path, str]:
