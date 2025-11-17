@@ -56,7 +56,6 @@ class TestInferenceGraphRaw:
             insecure=True,
         )
 
-    @pytest.mark.smoke
     @pytest.mark.parametrize(
         "dog_breed_inference_graph",
         [
