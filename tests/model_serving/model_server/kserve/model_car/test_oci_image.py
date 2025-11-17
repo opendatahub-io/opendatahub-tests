@@ -70,7 +70,7 @@ class TestKserveModelCar:
     @pytest.mark.smoke
     @pytest.mark.ocp_interop
     @pytest.mark.jira("RHOAIENG-38674")
-    def test_model_car_model_status(self, model_car_inference_service):
+    def test_model_status_loaded(self, model_car_inference_service):
         """Verify model status on the InferenceService resource is in a valid state."""
         model_status = model_car_inference_service.instance.status.modelStatus
 
