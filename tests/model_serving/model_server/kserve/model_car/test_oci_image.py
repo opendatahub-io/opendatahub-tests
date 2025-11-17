@@ -66,3 +66,15 @@ class TestKserveModelCar:
             protocol=Protocols.HTTPS,
             use_default_query=True,
         )
+
+    @pytest.mark.smoke
+    @pytest.mark.ocp_interop
+    @pytest.mark.jira("RHOAIENG-38674")
+    def test_model_car_model_status(self, model_car_inference_service):
+        """Verify model status on the InferenceService resource is in a valid state."""
+        model_status = model_car_inference_service.instance.status.modelStatus
+
+        # After deployment the model should be fully loaded and up to date.
+        assert model_status.states.activeModelState == "Loaded"
+        assert model_status.states.targetModelState == "Loaded"
+        assert model_status.transitionStatus == "UpToDate"
