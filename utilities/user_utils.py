@@ -12,7 +12,6 @@ from utilities.infra import login_with_user_password
 import base64
 from pathlib import Path
 
-
 LOGGER = logging.getLogger(__name__)
 SLEEP_TIME = 5
 
@@ -28,6 +27,7 @@ class UserTestSession:
     password: str
     original_user: str
     api_server_url: str
+    is_byoidc: bool = False
 
     def __post_init__(self) -> None:
         """Validate the session data after initialization."""
@@ -85,9 +85,28 @@ def wait_for_user_creation(username: str, password: str, cluster_url: str) -> bo
     Returns:
         True if login is successful
     """
+    # not executed in byoidc mode
     LOGGER.info(f"Attempting to login as {username}")
     res = login_with_user_password(api_address=cluster_url, user=username, password=password)
 
     if res:
         return True
     raise ExceptionUserLogin(f"Could not login as user {username}.")
+
+
+def get_unprivileged_context() -> tuple[str, str]:
+    """
+    Get the unprivileged context from the current context.
+    This only works in BYOIDC mode, and it assumes that the unprivileged context is already created
+    with a precise naming convention: <current_context>-unprivileged.
+
+    Returns:
+        Tuple of (unprivileged context, current context).
+    """
+    status, current_context, _ = run_command(command=["oc", "config", "current-context"])
+    current_context = current_context.strip()
+    if not status or not current_context:
+        raise ValueError("Could not get current context from oc config current-context")
+    if current_context.endswith("-unprivileged"):
+        raise ValueError("Current context is already called [...]-unprivileged")
+    return current_context + "-unprivileged", current_context

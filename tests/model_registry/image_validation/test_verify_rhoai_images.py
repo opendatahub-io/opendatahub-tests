@@ -57,7 +57,12 @@ class TestAIHubResourcesImages:
         pytest.param(
             {"db_name": "default"},
             {"db_name": "default"},
-            {"label_selectors": [f"app={MR_INSTANCE_NAME}", f"app={MR_POSTGRES_DEPLOYMENT_NAME_STR}"]},
+            {
+                "label_selectors": [
+                    f"app.kubernetes.io/name={MR_INSTANCE_NAME}",
+                    f"app.kubernetes.io/name={MR_POSTGRES_DEPLOYMENT_NAME_STR}",
+                ]
+            },
         ),
     ],
     indirect=True,

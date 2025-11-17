@@ -61,6 +61,7 @@ from utilities.mariadb_utils import wait_for_mariadb_operator_deployments
 from utilities.minio import create_minio_data_connection_secret
 from utilities.operator_utils import get_csv_related_images, get_cluster_service_version
 from ocp_resources.authentication_config_openshift_io import Authentication
+from utilities.user_utils import get_unprivileged_context
 
 LOGGER = get_logger(name=__name__)
 
@@ -77,14 +78,12 @@ def admin_client() -> DynamicClient:
     return get_client()
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="session")
 def tests_tmp_dir(request: FixtureRequest, tmp_path_factory: TempPathFactory) -> Generator[None, None, None]:
     base_path = os.path.join(request.config.option.basetemp, "tests")
     tests_tmp_path = tmp_path_factory.mktemp(basename=base_path)
     py_config["tmp_base_dir"] = str(tests_tmp_path)
-
     yield
-
     shutil.rmtree(path=str(tests_tmp_path), ignore_errors=True)
 
 
@@ -314,10 +313,12 @@ def mlserver_runtime_image(pytestconfig: pytest.Config) -> str | None:
 
 
 @pytest.fixture(scope="session")
-def triton_runtime_image(pytestconfig: pytest.Config) -> str | None:
+def triton_runtime_image(pytestconfig: pytest.Config) -> str:
+    from tests.model_serving.model_runtime.triton.constant import TRITON_IMAGE
+
     runtime_image = pytestconfig.option.triton_runtime_image
     if not runtime_image:
-        return None
+        return TRITON_IMAGE
     return runtime_image
 
 
@@ -409,8 +410,14 @@ def unprivileged_client(
 
     elif is_byoidc:
         # this requires a pre-existing context in $KUBECONFIG with a unprivileged user
-        current_context = run_command(command=["oc", "config", "current-context"])[1].strip()
-        unprivileged_context = current_context + "-unprivileged"
+        try:
+            unprivileged_context, _ = get_unprivileged_context()
+        except ValueError as e:
+            raise ValueError(
+                f"Failed to get unprivileged context for BYOIDC mode. "
+                f"Ensure the context naming follows the convention: <context>-unprivileged. "
+                f"Error: {e}"
+            ) from e
 
         unprivileged_client = get_client(config_file=kubconfig_filepath, context=unprivileged_context)
 
@@ -687,8 +694,10 @@ def oc_binary_path(bin_directory: LocalPath) -> str:
 
 
 @pytest.fixture(scope="session", autouse=True)
-@pytest.mark.early(order=0)
 def autouse_fixtures(
+    admin_client: DynamicClient,
+    dsc_resource: DataScienceCluster,
+    tests_tmp_dir: None,
     bin_directory_to_os_path: None,
     cluster_sanity_scope_session: None,
 ) -> None:

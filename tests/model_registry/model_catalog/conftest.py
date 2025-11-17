@@ -26,7 +26,7 @@ from tests.model_registry.utils import (
     execute_get_command,
     get_model_str,
 )
-from utilities.infra import get_openshift_token, login_with_user_password, create_inference_token
+from utilities.infra import get_openshift_token, create_inference_token
 from utilities.user_utils import UserTestSession
 
 
@@ -106,17 +106,8 @@ def user_token_for_api_calls(
         LOGGER.info("Logging in as admin user")
         yield get_openshift_token()
     elif user == "test":
-        login_with_user_password(
-            api_address=api_server_url,
-            user=test_idp_user.username,
-            password=test_idp_user.password,
-        )
+        # TODO: implement byoidc check in get_openshift_token
         yield get_openshift_token()
-        LOGGER.info(f"Logging in as {original_user}")
-        login_with_user_password(
-            api_address=api_server_url,
-            user=original_user,
-        )
     elif user == "sa_user":
         yield create_inference_token(service_account)
     else:
