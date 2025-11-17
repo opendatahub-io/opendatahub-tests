@@ -49,7 +49,6 @@ class TestInferenceGraphDeployment:
             use_default_query=True,
         )
 
-    @pytest.mark.smoke
     @pytest.mark.parametrize(
         "dog_breed_inference_graph",
         [{"name": "dog-breed-auth-serverless-ig", "enable-auth": True}],

@@ -230,7 +230,7 @@ class RunTimeConfigs:
 
 class ModelCarImage:
     MNIST_8_1: str = (
-        "oci://quay.io/mwaykole/test@sha256:8a3217bcfa2cc5fa3d07496cff8b234acdf2c9725dd307dc0a80401f55e1a11c"  # noqa: E501
+        "oci://quay.io/mwaykole/test@sha256:1ade1f750278d20f229cd4d7a10f1b5bf29755a62486fec043eb62a94ec8ab88"  # noqa: E501
     )
 
 
