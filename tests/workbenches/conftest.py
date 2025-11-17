@@ -56,19 +56,44 @@ def default_notebook(
     # Optional Auth annotations
     auth_annotations = request.param.get("auth_annotations", {})
 
+    # Optional custom image parameter (for custom workbench image testing)
+    custom_image = request.param.get("custom_image", None)
+
+    # Validate custom_image if provided
+    if custom_image is not None:
+        custom_image = custom_image.strip()
+        if not custom_image:
+            raise ValueError("custom_image cannot be empty or whitespace")
+
     # Set the correct username
     username = get_username(dyn_client=admin_client)
     assert username, "Failed to determine username from the cluster"
 
-    # Check internal image registry availability
-    internal_image_registry = check_internal_image_registry_available(admin_client=admin_client)
-
-    # Set the image path based on internal image registry status
-    minimal_image_path = (
-        f"{INTERNAL_IMAGE_REGISTRY_PATH}/{py_config['applications_namespace']}/{minimal_image}"
-        if internal_image_registry
-        else ":" + minimal_image.rsplit(":", maxsplit=1)[1]
+    # Error messages
+    _ERR_INVALID_CUSTOM_IMAGE = (
+        "custom_image must be a valid OCI image reference "
+        "(e.g., 'quay.io/org/image:tag' or 'quay.io/org/image@sha256:digest'), "
+        "got: '{custom_image}'"
     )
+
+    # Determine which image to use
+    if custom_image:
+        # Custom image provided - use it directly (must be valid OCI image reference)
+        if ":" not in custom_image or "/repository/" in custom_image or "/manifest/" in custom_image:
+            raise ValueError(_ERR_INVALID_CUSTOM_IMAGE.format(custom_image=custom_image))
+        minimal_image_path = custom_image
+        LOGGER.info(f"Using custom workbench image: {custom_image}")
+    else:
+        # No custom image - use default minimal image with registry resolution
+        # Check internal image registry availability
+        internal_image_registry = check_internal_image_registry_available(admin_client=admin_client)
+
+        # Set the image path based on internal image registry status
+        minimal_image_path = (
+            f"{INTERNAL_IMAGE_REGISTRY_PATH}/{py_config['applications_namespace']}/{minimal_image}"
+            if internal_image_registry
+            else ":" + minimal_image.rsplit(":", maxsplit=1)[1]
+        )
 
     probe_config = {
         "failureThreshold": 3,
@@ -90,7 +115,7 @@ def default_notebook(
             "annotations": {
                 Labels.Notebook.INJECT_AUTH: "true",
                 "opendatahub.io/accelerator-name": "",
-                "notebooks.opendatahub.io/last-image-selection": minimal_image,
+                "notebooks.opendatahub.io/last-image-selection": minimal_image_path if custom_image else minimal_image,
                 # Add any additional annotations if provided
                 **auth_annotations,
             },
