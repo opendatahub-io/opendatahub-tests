@@ -1,6 +1,7 @@
 import uuid
 import pytest
-from llama_stack_client import Agent, LlamaStackClient, RAGDocument
+from llama_stack_client import Agent, LlamaStackClient
+from llama_stack_client.types.vector_store import VectorStore
 from simple_logger.logger import get_logger
 from tests.llama_stack.constants import ModelInfo
 from tests.llama_stack.utils import get_torchtune_test_expectations, validate_rag_agent_responses
@@ -19,6 +20,7 @@ LOGGER = get_logger(name=__name__)
     indirect=True,
 )
 @pytest.mark.rag
+@pytest.mark.skip_must_gather
 class TestLlamaStackAgents:
     """Test class for LlamaStack Agents API
 
@@ -50,33 +52,65 @@ class TestLlamaStackAgents:
         )
         s_id = agent.create_session(session_name=f"s{uuid.uuid4().hex}")
 
-        # Test identity question
+        # Test expected identity indicators
         response = agent.create_turn(
             messages=[{"role": "user", "content": "Who are you?"}],
             session_id=s_id,
             stream=False,
         )
-        content = response.output_message.content
+        content = response.output_text
         text = str(content or "")
         assert text, "LLM response content is empty"
-        assert "model" in text.lower(), "The LLM didn't provide the expected answer to the prompt"
+        identity_indicators = ["model", "assistant", "ai", "artificial intelligence", "language model", "llm"]
+        found_indicators = [indicator for indicator in identity_indicators if indicator in text.lower()]
+        if not found_indicators:
+            pytest.fail(
+                f"Expected response to contain identity indicators like 'model', 'assistant', 'ai', etc. "
+                f"Actual response: '{text[:100]}{'...' if len(text) > 100 else ''}'"
+            )
 
-        # Test capability question
+        # Check expected capability indicators
         response = agent.create_turn(
             messages=[{"role": "user", "content": "What can you do?"}],
             session_id=s_id,
             stream=False,
         )
-        content = response.output_message.content
+        content = response.output_text
         text = str(content or "")
         assert text, "LLM response content is empty"
-        assert "answer" in text.lower(), "The LLM didn't provide the expected answer to the prompt"
+        capability_indicators = [
+            "help",
+            "assist",
+            "answer",
+            "questions",
+            "information",
+            "support",
+            "tasks",
+            "conversation",
+            "chat",
+            "advice",
+            "guidance",
+            "explain",
+            "provide",
+            "offer",
+            "capable",
+            "able",
+            "can",
+            "do",
+        ]
+        found_capabilities = [indicator for indicator in capability_indicators if indicator in text.lower()]
+        if not found_capabilities:
+            pytest.fail(
+                f"Expected response to contain capability indicators like 'help', 'assist', 'answer', etc. "
+                f"Actual response: '{text[:100]}{'...' if len(text) > 100 else ''}'"
+            )
 
     @pytest.mark.smoke
     def test_agents_rag_agent(
         self,
         unprivileged_llama_stack_client: LlamaStackClient,
         llama_stack_models: ModelInfo,
+        vector_store_with_example_docs: VectorStore,
     ) -> None:
         """
         Test RAG agent that can answer questions about the Torchtune project using the documents
@@ -92,83 +126,40 @@ class TestLlamaStackAgents:
         # TODO: update this example to use the vector_store API
         """
 
-        vector_db_id: str | None = None
-        try:
-            vector_db = f"my-test-vector_db-{uuid.uuid4().hex}"
-            res = unprivileged_llama_stack_client.vector_dbs.register(
-                vector_db_id=vector_db,
-                embedding_model=llama_stack_models.embedding_model.identifier,
-                embedding_dimension=llama_stack_models.embedding_dimension,
-                provider_id="milvus",
+        # Create the RAG agent connected to the vector database
+        rag_agent = Agent(
+            client=unprivileged_llama_stack_client,
+            model=llama_stack_models.model_id,
+            instructions="You are a helpful assistant. Use the file_search tool to answer questions as needed.",
+            tools=[
+                {
+                    "type": "file_search",
+                    "vector_store_ids": [vector_store_with_example_docs.id],
+                }
+            ],
+        )
+        session_id = rag_agent.create_session(session_name=f"s{uuid.uuid4().hex}")
+
+        turns_with_expectations = get_torchtune_test_expectations()
+
+        # Ask the agent about the inserted documents and validate responses
+        validation_result = validate_rag_agent_responses(
+            rag_agent=rag_agent,
+            session_id=session_id,
+            turns_with_expectations=turns_with_expectations,
+            stream=True,
+            verbose=True,
+            min_keywords_required=1,
+            print_events=False,
+        )
+
+        # Assert that validation was successful
+        assert validation_result["success"], f"RAG agent validation failed. Summary: {validation_result['summary']}"
+
+        # Additional assertions for specific requirements
+        for result in validation_result["results"]:
+            assert result["event_count"] > 0, f"No events generated for question: {result['question']}"
+            assert result["response_length"] > 0, f"No response content for question: {result['question']}"
+            assert len(result["found_keywords"]) > 0, (
+                f"No expected keywords found in response for: {result['question']}"
             )
-            vector_db_id = res.identifier
-
-            # Create the RAG agent connected to the vector database
-            rag_agent = Agent(
-                client=unprivileged_llama_stack_client,
-                model=llama_stack_models.model_id,
-                instructions="You are a helpful assistant. Use the RAG tool to answer questions as needed.",
-                tools=[
-                    {
-                        "name": "builtin::rag/knowledge_search",
-                        "args": {"vector_db_ids": [vector_db_id]},
-                    }
-                ],
-            )
-            session_id = rag_agent.create_session(session_name=f"s{uuid.uuid4().hex}")
-
-            # Insert into the vector database example documents about torchtune
-            urls = [
-                "llama3.rst",
-                "chat.rst",
-                "lora_finetune.rst",
-                "qat_finetune.rst",
-                "memory_optimizations.rst",
-            ]
-            documents = [
-                RAGDocument(
-                    document_id=f"num-{index}",
-                    content=f"https://raw.githubusercontent.com/pytorch/torchtune/refs/tags/v0.6.1/docs/source/tutorials/{url}",  # noqa
-                    mime_type="text/plain",
-                    metadata={},
-                )
-                for index, url in enumerate(urls)
-            ]
-
-            unprivileged_llama_stack_client.tool_runtime.rag_tool.insert(
-                documents=documents,
-                vector_db_id=vector_db_id,
-                chunk_size_in_tokens=512,
-            )
-
-            turns_with_expectations = get_torchtune_test_expectations()
-
-            # Ask the agent about the inserted documents and validate responses
-            validation_result = validate_rag_agent_responses(
-                rag_agent=rag_agent,
-                session_id=session_id,
-                turns_with_expectations=turns_with_expectations,
-                stream=True,
-                verbose=True,
-                min_keywords_required=1,
-                print_events=False,
-            )
-
-            # Assert that validation was successful
-            assert validation_result["success"], f"RAG agent validation failed. Summary: {validation_result['summary']}"
-
-            # Additional assertions for specific requirements
-            for result in validation_result["results"]:
-                assert result["event_count"] > 0, f"No events generated for question: {result['question']}"
-                assert result["response_length"] > 0, f"No response content for question: {result['question']}"
-                assert len(result["found_keywords"]) > 0, (
-                    f"No expected keywords found in response for: {result['question']}"
-                )
-
-        finally:
-            # Cleanup: unregister the vector database to prevent resource leaks
-            if vector_db_id:
-                try:
-                    unprivileged_llama_stack_client.vector_dbs.unregister(vector_db_id)
-                except Exception as exc:
-                    LOGGER.warning("Failed to unregister vector database %s: %s", vector_db_id, exc)

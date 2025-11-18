@@ -2,19 +2,33 @@ from typing import Generator, Any
 
 import pytest
 from kubernetes.dynamic import DynamicClient
-from pytest_testconfig import config as py_config
 
 from ocp_resources.pod import Pod
-from tests.model_registry.constants import MODEL_REGISTRY_POD_FILTER
 from utilities.general import wait_for_pods_by_labels
+from pytest import FixtureRequest
+
+
+@pytest.fixture(scope="class")
+def model_registry_instance_pods_by_label(
+    request: FixtureRequest, admin_client: DynamicClient, model_registry_namespace: str
+) -> Generator[list[Pod], Any, Any]:
+    """Get the model registry instance pod."""
+    pods = []
+    for label in request.param["label_selectors"]:
+        pods.append(
+            wait_for_pods_by_labels(
+                admin_client=admin_client,
+                namespace=model_registry_namespace,
+                label_selector=label,
+                expected_num_pods=1,
+            )[0]
+        )
+    yield pods
 
 
 @pytest.fixture(scope="function")
-def model_registry_instance_pod_by_label(admin_client: DynamicClient) -> Generator[Pod, Any, Any]:
-    """Get the model registry instance pod."""
-    yield wait_for_pods_by_labels(
-        admin_client=admin_client,
-        namespace=py_config["model_registry_namespace"],
-        label_selector=MODEL_REGISTRY_POD_FILTER,
-        expected_num_pods=1,
-    )[0]
+def resource_pods(request: FixtureRequest, admin_client: DynamicClient) -> list[Pod]:
+    namespace = request.param.get("namespace")
+    label_selector = request.param.get("label_selector")
+    assert namespace
+    return list(Pod.get(namespace=namespace, label_selector=label_selector, dyn_client=admin_client))

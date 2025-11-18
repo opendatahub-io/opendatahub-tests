@@ -1,6 +1,6 @@
 import pytest
 from llama_stack_client import LlamaStackClient
-from llama_stack_client.types import EmbeddingsResponse
+from llama_stack_client.types import CreateEmbeddingsResponse
 from tests.llama_stack.constants import ModelInfo
 
 
@@ -73,12 +73,27 @@ class TestLlamaStackInference:
         Validates that the server can generate properly formatted embedding vectors
         for text input with correct dimensions as specified in model metadata.
         """
-        embeddings_response = unprivileged_llama_stack_client.inference.embeddings(
-            model_id=llama_stack_models.embedding_model.identifier,
-            contents=["First chunk of text"],
-            output_dimension=llama_stack_models.embedding_dimension,
+
+        embeddings_response = unprivileged_llama_stack_client.embeddings.create(
+            model=llama_stack_models.embedding_model.identifier,
+            input="The food was delicious and the waiter...",
+            encoding_format="float",
         )
-        assert isinstance(embeddings_response, EmbeddingsResponse)
-        assert len(embeddings_response.embeddings) == 1
-        assert isinstance(embeddings_response.embeddings[0], list)
-        assert isinstance(embeddings_response.embeddings[0][0], float)
+
+        assert isinstance(embeddings_response, CreateEmbeddingsResponse)
+        assert len(embeddings_response.data) == 1
+        assert isinstance(embeddings_response.data[0].embedding, list)
+        assert llama_stack_models.embedding_dimension == len(embeddings_response.data[0].embedding)
+        assert isinstance(embeddings_response.data[0].embedding[0], float)
+
+        input_list = ["Input text 1", "Input text 1", "Input text 1"]
+        embeddings_response = unprivileged_llama_stack_client.embeddings.create(
+            model=llama_stack_models.embedding_model.identifier, input=input_list, encoding_format="float"
+        )
+
+        assert isinstance(embeddings_response, CreateEmbeddingsResponse)
+        assert len(embeddings_response.data) == len(input_list)
+        for item in range(len(input_list)):
+            assert isinstance(embeddings_response.data[item].embedding, list)
+            assert llama_stack_models.embedding_dimension == len(embeddings_response.data[item].embedding)
+            assert isinstance(embeddings_response.data[item].embedding[0], float)

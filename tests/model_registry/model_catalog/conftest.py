@@ -26,7 +26,7 @@ from tests.model_registry.utils import (
     execute_get_command,
     get_model_str,
 )
-from utilities.infra import get_openshift_token, login_with_user_password, create_inference_token
+from utilities.infra import get_openshift_token, create_inference_token
 from utilities.user_utils import UserTestSession
 
 
@@ -45,6 +45,7 @@ def model_catalog_config_map(
 
 @pytest.fixture(scope="class")
 def updated_catalog_config_map(
+    pytestconfig: pytest.Config,
     request: pytest.FixtureRequest,
     catalog_config_map: ConfigMap,
     model_registry_namespace: str,
@@ -52,16 +53,19 @@ def updated_catalog_config_map(
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
 ) -> Generator[ConfigMap, None, None]:
-    patches = {"data": {"sources.yaml": request.param["sources_yaml"]}}
-    if "sample_yaml" in request.param:
-        for key in request.param["sample_yaml"]:
-            patches["data"][key] = request.param["sample_yaml"][key]
-
-    with ResourceEditor(patches={catalog_config_map: patches}):
-        is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
-        wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
+    if pytestconfig.option.post_upgrade or pytestconfig.option.pre_upgrade:
         yield catalog_config_map
-    is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+    else:
+        patches = {"data": {"sources.yaml": request.param["sources_yaml"]}}
+        if "sample_yaml" in request.param:
+            for key in request.param["sample_yaml"]:
+                patches["data"][key] = request.param["sample_yaml"][key]
+
+        with ResourceEditor(patches={catalog_config_map: patches}):
+            is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+            wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
+            yield catalog_config_map
+        is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
 
 
 @pytest.fixture(scope="class")
@@ -102,17 +106,8 @@ def user_token_for_api_calls(
         LOGGER.info("Logging in as admin user")
         yield get_openshift_token()
     elif user == "test":
-        login_with_user_password(
-            api_address=api_server_url,
-            user=test_idp_user.username,
-            password=test_idp_user.password,
-        )
+        # TODO: implement byoidc check in get_openshift_token
         yield get_openshift_token()
-        LOGGER.info(f"Logging in as {original_user}")
-        login_with_user_password(
-            api_address=api_server_url,
-            user=original_user,
-        )
     elif user == "sa_user":
         yield create_inference_token(service_account)
     else:
@@ -125,7 +120,7 @@ def randomly_picked_model_from_catalog_api_by_source(
     user_token_for_api_calls: str,
     model_registry_rest_headers: dict[str, str],
     request: pytest.FixtureRequest,
-) -> dict[Any, Any]:
+) -> tuple[dict[Any, Any], str, str]:
     """Pick a random model from a specific catalog (function-scoped for test isolation)
 
     Supports parameterized headers via 'header_type':
@@ -155,7 +150,14 @@ def randomly_picked_model_from_catalog_api_by_source(
     assert models, f"No models found for catalog: {catalog_id}"
     LOGGER.info(f"{len(models)} models found in catalog {catalog_id}")
 
-    return random.choice(seq=models)
+    random_model = random.choice(seq=models)
+
+    model_name = random_model.get("name")
+    assert model_name, "Model name not found in random model"
+    assert random_model.get("source_id") == catalog_id, f"Catalog ID (source_id) mismatch for model {model_name}"
+    LOGGER.info(f"Testing model '{model_name}' from catalog '{catalog_id}'")
+
+    return random_model, model_name, catalog_id
 
 
 @pytest.fixture(scope="class")

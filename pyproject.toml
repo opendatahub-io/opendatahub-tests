@@ -24,6 +24,7 @@ ignore_missing_imports = true
 dev = [
     "ipdb>=0.13.13",
     "ipython>=8.12.3",
+    "pre-commit>=4.3.0",
 ]
 
 [project]
@@ -69,9 +70,10 @@ dependencies = [
     "marshmallow==3.26.1,<4", # this version is needed for pytest-jira
     "pytest-html>=4.1.1",
     "fire",
-    "llama_stack_client==0.2.23",
+    "llama_stack_client>=0.3.0,<0.4",
     "pytest-xdist==3.8.0",
     "dictdiffer>=0.9.0",
+    "pytest>=9.0.0",
 ]
 
 [project.urls]

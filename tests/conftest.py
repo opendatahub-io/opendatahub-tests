@@ -1,10 +1,11 @@
 import base64
+import binascii
 import os
 import shutil
 from ast import literal_eval
 from typing import Any, Callable, Generator
-
 import pytest
+from semver import Version
 import shortuuid
 import yaml
 from _pytest._py.path import LocalPath
@@ -13,6 +14,7 @@ from _pytest.tmpdir import TempPathFactory
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 
 from ocp_resources.cluster_service_version import ClusterServiceVersion
+from ocp_resources.cluster_version import ClusterVersion
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
 from ocp_resources.dsc_initialization import DSCInitialization
@@ -58,6 +60,8 @@ from utilities.logger import RedactedString
 from utilities.mariadb_utils import wait_for_mariadb_operator_deployments
 from utilities.minio import create_minio_data_connection_secret
 from utilities.operator_utils import get_csv_related_images, get_cluster_service_version
+from ocp_resources.authentication_config_openshift_io import Authentication
+from utilities.user_utils import get_unprivileged_context
 
 LOGGER = get_logger(name=__name__)
 
@@ -74,20 +78,18 @@ def admin_client() -> DynamicClient:
     return get_client()
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="session")
 def tests_tmp_dir(request: FixtureRequest, tmp_path_factory: TempPathFactory) -> Generator[None, None, None]:
     base_path = os.path.join(request.config.option.basetemp, "tests")
     tests_tmp_path = tmp_path_factory.mktemp(basename=base_path)
     py_config["tmp_base_dir"] = str(tests_tmp_path)
-
     yield
-
     shutil.rmtree(path=str(tests_tmp_path), ignore_errors=True)
 
 
 @pytest.fixture(scope="session")
 def current_client_token(admin_client: DynamicClient) -> str:
-    return RedactedString(value=get_openshift_token())
+    return RedactedString(value=get_openshift_token(client=admin_client))
 
 
 @pytest.fixture(scope="session")
@@ -155,7 +157,11 @@ def registry_pull_secret(pytestconfig: Config) -> str:
             "Registry pull secret is not set. "
             "Either pass with `--registry_pull_secret` or set `OCI_REGISTRY_PULL_SECRET` environment variable"
         )
-    return registry_pull_secret
+    try:
+        base64.b64decode(s=registry_pull_secret, validate=True)
+        return registry_pull_secret
+    except binascii.Error:
+        raise ValueError("Registry pull secret is not a valid base64 encoded string")
 
 
 @pytest.fixture(scope="session")
@@ -307,10 +313,12 @@ def mlserver_runtime_image(pytestconfig: pytest.Config) -> str | None:
 
 
 @pytest.fixture(scope="session")
-def triton_runtime_image(pytestconfig: pytest.Config) -> str | None:
+def triton_runtime_image(pytestconfig: pytest.Config) -> str:
+    from tests.model_serving.model_runtime.triton.constant import TRITON_IMAGE
+
     runtime_image = pytestconfig.option.triton_runtime_image
     if not runtime_image:
-        return None
+        return TRITON_IMAGE
     return runtime_image
 
 
@@ -370,11 +378,28 @@ def kubconfig_filepath() -> str:
 
 
 @pytest.fixture(scope="session")
+def cluster_authentication(admin_client: DynamicClient) -> Authentication | None:
+    auth = Authentication(client=admin_client, name="cluster")
+    if auth.exists:
+        return auth
+    return None
+
+
+@pytest.fixture(scope="session")
+def is_byoidc(cluster_authentication: Authentication | None) -> bool:
+    if cluster_authentication:
+        return cluster_authentication.instance.spec.type == "OIDC"
+    else:
+        return False
+
+
+@pytest.fixture(scope="session")
 def unprivileged_client(
     admin_client: DynamicClient,
     use_unprivileged_client: bool,
     kubconfig_filepath: str,
     non_admin_user_password: tuple[str, str],
+    is_byoidc: bool,
 ) -> Generator[DynamicClient, Any, Any]:
     """
     Provides none privileged API client. If non_admin_user_password is None, then it will raise.
@@ -382,6 +407,21 @@ def unprivileged_client(
     if not use_unprivileged_client:
         LOGGER.warning("Unprivileged client is not enabled, using admin client")
         yield admin_client
+
+    elif is_byoidc:
+        # this requires a pre-existing context in $KUBECONFIG with a unprivileged user
+        try:
+            unprivileged_context, _ = get_unprivileged_context()
+        except ValueError as e:
+            raise ValueError(
+                f"Failed to get unprivileged context for BYOIDC mode. "
+                f"Ensure the context naming follows the convention: <context>-unprivileged. "
+                f"Error: {e}"
+            ) from e
+
+        unprivileged_client = get_client(config_file=kubconfig_filepath, context=unprivileged_context)
+
+        yield unprivileged_client
 
     elif non_admin_user_password is None:
         raise ValueError("Unprivileged user not provisioned")
@@ -630,6 +670,20 @@ def bin_directory_to_os_path(os_path_environment: str, bin_directory: LocalPath,
 
 
 @pytest.fixture(scope="session")
+def openshift_version(admin_client: DynamicClient) -> Version:
+    """Get the OpenShift cluster version."""
+    cluster_version = ClusterVersion(client=admin_client, name="version", ensure_exists=True)
+
+    if not cluster_version.instance.status.history:
+        raise ValueError("ClusterVersion history is empty")
+
+    try:
+        return Version.parse(version=str(cluster_version.instance.status.history[0].version))
+    except (ValueError, TypeError) as e:
+        raise ValueError(f"Failed to parse OpenShift version: {e}") from e
+
+
+@pytest.fixture(scope="session")
 def oc_binary_path(bin_directory: LocalPath) -> str:
     installed_oc_binary_path = os.getenv("OC_BINARY_PATH")
     if installed_oc_binary_path:
@@ -640,8 +694,10 @@ def oc_binary_path(bin_directory: LocalPath) -> str:
 
 
 @pytest.fixture(scope="session", autouse=True)
-@pytest.mark.early(order=0)
 def autouse_fixtures(
+    admin_client: DynamicClient,
+    dsc_resource: DataScienceCluster,
+    tests_tmp_dir: None,
     bin_directory_to_os_path: None,
     cluster_sanity_scope_session: None,
 ) -> None:

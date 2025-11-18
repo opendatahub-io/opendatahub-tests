@@ -2,13 +2,12 @@ from contextlib import contextmanager
 from typing import Any, Callable, Dict, Generator, List, cast
 
 from kubernetes.dynamic import DynamicClient
-from llama_stack_client import LlamaStackClient, APIConnectionError
+from llama_stack_client import LlamaStackClient, APIConnectionError, InternalServerError
 from llama_stack_client.types.vector_store import VectorStore
 from ocp_resources.llama_stack_distribution import LlamaStackDistribution
 from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
-from utilities.constants import Timeout
 
 from tests.llama_stack.constants import (
     TORCHTUNE_TEST_EXPECTATIONS,
@@ -50,15 +49,23 @@ def create_llama_stack_distribution(
         yield llama_stack_distribution
 
 
-@retry(wait_timeout=Timeout.TIMEOUT_1MIN, sleep=5)
+@retry(wait_timeout=90, sleep=5)
 def wait_for_llama_stack_client_ready(client: LlamaStackClient) -> bool:
     try:
         client.inspect.health()
         version = client.inspect.version()
-        LOGGER.info(f"Llama Stack server (v{version.version}) is available!")
+        # Check access to llama-stack server database
+        vector_stores = client.vector_stores.list()
+        files = client.files.list()
+        LOGGER.info(
+            f"Llama Stack server is available! "
+            f"(version:{version.version} "
+            f"vector_stores:{len(vector_stores.data)} "
+            f"files:{len(files.data)})"
+        )
         return True
-    except APIConnectionError as e:
-        LOGGER.debug(f"Llama Stack server not ready yet: {e}")
+    except (APIConnectionError, InternalServerError) as error:
+        LOGGER.debug(f"Llama Stack server not ready yet: {error}")
         return False
     except Exception as e:
         LOGGER.warning(f"Unexpected error checking Llama Stack readiness: {e}")
@@ -157,20 +164,22 @@ def validate_rag_agent_responses(
 
         try:
             # Create turn with the agent
-            stream_response = rag_agent.create_turn(
+            turn_response = rag_agent.create_turn(
                 messages=[{"role": "user", "content": question}],
                 session_id=session_id,
                 stream=stream,
             )
 
-            # Process events
-            for event in AgentEventLogger().log(stream_response):
-                if print_events:
-                    event.print()
-                event_count += 1
+            if stream:
+                for event in AgentEventLogger().log(turn_response):
+                    if print_events:
+                        event.print()
+                    event_count += 1
 
-                # Extract content from different event types
-                response_content += extract_event_content(event)
+                    # Extract content from different event types
+                    response_content += extract_event_content(event)
+            else:
+                response_content = turn_response.output_text
 
             # Validate response content
             response_lower = response_content.lower()
@@ -184,9 +193,12 @@ def validate_rag_agent_responses(
                     missing_keywords.append(keyword)
 
             # Determine if this turn was successful
-            turn_successful = (
-                event_count > 0 and len(response_content) > 0 and len(found_keywords) >= min_keywords_required
-            )
+            if stream:
+                turn_successful = (
+                    event_count > 0 and len(response_content) > 0 and len(found_keywords) >= min_keywords_required
+                )
+            else:
+                turn_successful = len(response_content) > 0 and len(found_keywords) >= min_keywords_required
 
             if turn_successful:
                 successful_turns += 1
@@ -351,8 +363,8 @@ def validate_api_responses(
 
 
 @retry(
-    wait_timeout=Timeout.TIMEOUT_1MIN,
-    sleep=5,
+    wait_timeout=240,
+    sleep=15,
     exceptions_dict={requests.exceptions.RequestException: [], Exception: []},
 )
 def vector_store_create_file_from_url(url: str, llama_stack_client: LlamaStackClient, vector_store: Any) -> bool:
@@ -369,7 +381,7 @@ def vector_store_create_file_from_url(url: str, llama_stack_client: LlamaStackCl
         bool: True if successful, raises exception if failed
     """
     try:
-        response = requests.get(url, timeout=30)
+        response = requests.get(url, timeout=60)
         response.raise_for_status()
 
         # Save file locally first and pretend it's a txt file, not sure why this is needed

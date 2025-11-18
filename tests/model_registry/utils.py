@@ -24,6 +24,7 @@ from tests.model_registry.constants import (
     MARIADB_MY_CNF,
     PORT_MAP,
     MODEL_REGISTRY_POD_FILTER,
+    MR_POSTGRES_DB_OBJECT,
 )
 from tests.model_registry.exceptions import ModelRegistryResourceNotFoundError
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
@@ -655,7 +656,7 @@ def validate_mlmd_removal_in_model_registry_pod_log(
 
 
 def get_model_catalog_pod(
-    client: DynamicClient, model_registry_namespace: str, label_selector: str = "component=model-catalog"
+    client: DynamicClient, model_registry_namespace: str, label_selector: str = "app.kubernetes.io/name=model-catalog"
 ) -> list[Pod]:
     return list(Pod.get(namespace=model_registry_namespace, label_selector=label_selector, dyn_client=client))
 
@@ -689,9 +690,13 @@ def wait_for_model_catalog_pod_created(client: DynamicClient, model_registry_nam
     raise PodNotFound("Model catalog pod not found")
 
 
-def execute_get_call(url: str, headers: dict[str, str], verify: bool | str = False) -> requests.Response:
+def execute_get_call(
+    url: str, headers: dict[str, str], verify: bool | str = False, params: dict[str, Any] | None = None
+) -> requests.Response:
     LOGGER.info(f"Executing get call: {url}")
-    resp = requests.get(url=url, headers=headers, verify=verify, timeout=60)
+    LOGGER.info(f"params: {params}")
+    resp = requests.get(url=url, headers=headers, verify=verify, timeout=60, params=params)
+    LOGGER.info(f"Encoded url from requests library: {resp.url}")
     if resp.status_code not in [200, 201]:
         raise ResourceNotFoundError(f"Get call failed for resource: {url}, {resp.status_code}: {resp.text}")
     return resp
@@ -702,8 +707,10 @@ def wait_for_model_catalog_api(url: str, headers: dict[str, str], verify: bool |
     return execute_get_call(url=f"{url}sources", headers=headers, verify=verify)
 
 
-def execute_get_command(url: str, headers: dict[str, str], verify: bool | str = False) -> dict[Any, Any]:
-    resp = execute_get_call(url=url, headers=headers, verify=verify)
+def execute_get_command(
+    url: str, headers: dict[str, str], verify: bool | str = False, params: dict[str, Any] | None = None
+) -> dict[Any, Any]:
+    resp = execute_get_call(url=url, headers=headers, verify=verify, params=params)
     try:
         return json.loads(resp.text)
     except json.JSONDecodeError:
@@ -771,3 +778,20 @@ def get_model_str(model: str) -> str:
   createTimeSinceEpoch: \"{str(current_time - 10000)}\"
   lastUpdateTimeSinceEpoch: \"{str(current_time)}\"
 """
+
+
+class ResourceNotDeleted(Exception):
+    pass
+
+
+@retry(wait_timeout=360, sleep=5, exceptions_dict={ResourceNotDeleted: []})
+def wait_for_default_resource_cleanedup(admin_client: DynamicClient, namespace_name: str) -> bool:
+    objects_not_deleted = []
+    for kind in [Service, PersistentVolumeClaim, Deployment, Secret]:
+        LOGGER.info(f"Checking if {kind} {MR_POSTGRES_DB_OBJECT[kind]} is deleted")
+        kind_obj = kind(client=admin_client, namespace=namespace_name, name=MR_POSTGRES_DB_OBJECT[kind])
+        if kind_obj.exists:
+            objects_not_deleted.append(f"{kind_obj.kind} - {kind_obj.name}")
+    if not objects_not_deleted:
+        return True
+    raise ResourceNotDeleted(f"Following objects are not deleted: {objects_not_deleted}")

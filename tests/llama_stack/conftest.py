@@ -1,6 +1,8 @@
 from typing import Generator, Any, Dict, Callable
 import os
-import portforward
+import httpx
+from ocp_resources.route import Route
+from ocp_resources.resource import ResourceEditor
 import pytest
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
@@ -10,15 +12,18 @@ from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.llama_stack_distribution import LlamaStackDistribution
 from ocp_resources.namespace import Namespace
+from semver import Version
 from simple_logger.logger import get_logger
 from utilities.general import generate_random_name
 from tests.llama_stack.utils import (
     create_llama_stack_distribution,
     wait_for_llama_stack_client_ready,
+    vector_store_create_file_from_url,
 )
-from utilities.constants import DscComponents, Timeout
+from utilities.constants import DscComponents, Annotations
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from tests.llama_stack.constants import (
+    LLS_OPENSHIFT_MINIMAL_VERSION,
     ModelInfo,
 )
 
@@ -126,6 +131,11 @@ def llama_stack_server_config(
         fms_orchestrator_url = "http://localhost"
     env_vars.append({"name": "FMS_ORCHESTRATOR_URL", "value": fms_orchestrator_url})
 
+    # EMBEDDING_MODEL
+    embedding_model = params.get("embedding_model")
+    if embedding_model:
+        env_vars.append({"name": "EMBEDDING_MODEL", "value": embedding_model})
+
     # Depending on parameter vector_io_provider, deploy vector_io provider and obtain required env_vars
     vector_io_provider = params.get("vector_io_provider") or "milvus"
     env_vars_vector_io = vector_io_provider_deployment_config_factory(provider_name=vector_io_provider)
@@ -210,10 +220,26 @@ def _get_llama_stack_distribution_deployment(
         client=client,
         namespace=llama_stack_distribution.namespace,
         name=llama_stack_distribution.name,
+        min_ready_seconds=10,
     )
 
-    deployment.wait(timeout=Timeout.TIMEOUT_2MIN)
+    deployment.wait(timeout=120)
+    deployment.wait_for_replicas()
     yield deployment
+
+
+@pytest.fixture(scope="session", autouse=True)
+def skip_llama_stack_if_not_supported_openshift_version(
+    admin_client: DynamicClient, openshift_version: Version
+) -> None:
+    """Skip llama-stack tests if OpenShift version is not supported (< 4.17) by llama-stack-operator"""
+    if openshift_version < LLS_OPENSHIFT_MINIMAL_VERSION:
+        message = (
+            f"Skipping llama-stack tests, as llama-stack-operator is not supported "
+            f"on OpenShift {openshift_version} ({LLS_OPENSHIFT_MINIMAL_VERSION} or newer required)"
+        )
+        LOGGER.info(message)
+        pytest.skip(reason=message)
 
 
 @pytest.fixture(scope="class")
@@ -256,60 +282,126 @@ def llama_stack_distribution_deployment(
     )
 
 
-def _create_llama_stack_client(
-    llama_stack_distribution_deployment: Deployment,
-) -> Generator[LlamaStackClient, Any, Any]:
-    try:
-        with portforward.forward(
-            pod_or_service=f"{llama_stack_distribution_deployment.name}-service",
-            namespace=llama_stack_distribution_deployment.namespace,
-            from_port=8321,
-            to_port=8321,
-            waiting=15,
+def _create_llama_stack_test_route(
+    client: DynamicClient,
+    namespace: Namespace,
+    deployment: Deployment,
+) -> Generator[Route, Any, Any]:
+    """
+    Creates a Route for LlamaStack distribution with TLS configuration.
+
+    Args:
+        client: Kubernetes client
+        namespace: Namespace where the route will be created
+        deployment: Deployment resource to create the route for
+
+    Yields:
+        Generator[Route, Any, Any]: Route resource with TLS edge termination
+    """
+    route_name = generate_random_name(prefix="llama-stack", length=12)
+    with Route(
+        client=client,
+        namespace=namespace.name,
+        name=route_name,
+        service=f"{deployment.name}-service",
+        wait_for_resource=True,
+    ) as route:
+        with ResourceEditor(
+            patches={
+                route: {
+                    "spec": {
+                        "tls": {
+                            "termination": "edge",
+                            "insecureEdgeTerminationPolicy": "Redirect",
+                        }
+                    },
+                    "metadata": {
+                        "annotations": {Annotations.HaproxyRouterOpenshiftIo.TIMEOUT: "10m"},
+                    },
+                }
+            }
         ):
-            client = LlamaStackClient(
-                base_url="http://localhost:8321",
-                timeout=120.0,
-            )
-            wait_for_llama_stack_client_ready(client=client)
-            yield client
-    except Exception as e:
-        LOGGER.error(f"Failed to set up port forwarding: {e}")
-        raise
+            yield route
+
+
+@pytest.fixture(scope="class")
+def unprivileged_llama_stack_test_route(
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+    unprivileged_llama_stack_distribution_deployment: Deployment,
+) -> Generator[Route, Any, Any]:
+    yield from _create_llama_stack_test_route(
+        client=unprivileged_client,
+        namespace=unprivileged_model_namespace,
+        deployment=unprivileged_llama_stack_distribution_deployment,
+    )
+
+
+@pytest.fixture(scope="class")
+def llama_stack_test_route(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    llama_stack_distribution_deployment: Deployment,
+) -> Generator[Route, Any, Any]:
+    yield from _create_llama_stack_test_route(
+        client=admin_client,
+        namespace=model_namespace,
+        deployment=llama_stack_distribution_deployment,
+    )
+
+
+def _create_llama_stack_client(
+    route: Route,
+) -> Generator[LlamaStackClient, Any, Any]:
+    # LLS_CLIENT_VERIFY_SSL is false by default to be able to test with Self-Signed certificates
+    verifySSL = os.getenv("LLS_CLIENT_VERIFY_SSL", "false").lower() == "true"
+    http_client = httpx.Client(verify=verifySSL)
+    try:
+        client = LlamaStackClient(
+            base_url=f"https://{route.host}",
+            timeout=180.0,
+            http_client=http_client,
+        )
+        wait_for_llama_stack_client_ready(client=client)
+        yield client
+    finally:
+        http_client.close()
 
 
 @pytest.fixture(scope="class")
 def unprivileged_llama_stack_client(
-    unprivileged_llama_stack_distribution_deployment: Deployment,
+    unprivileged_llama_stack_test_route: Route,
 ) -> Generator[LlamaStackClient, Any, Any]:
     """
     Returns a ready to use LlamaStackClient for unprivileged deployment.
 
     Args:
-        unprivileged_llama_stack_distribution_deployment (Deployment): LlamaStack distribution deployment resource
+        unprivileged_llama_stack_test_route (Route): Route resource for unprivileged LlamaStack distribution
 
     Yields:
         Generator[LlamaStackClient, Any, Any]: Configured LlamaStackClient for RAG testing
     """
     yield from _create_llama_stack_client(
-        llama_stack_distribution_deployment=unprivileged_llama_stack_distribution_deployment
+        route=unprivileged_llama_stack_test_route,
     )
 
 
 @pytest.fixture(scope="class")
 def llama_stack_client(
-    llama_stack_distribution_deployment: Deployment,
+    llama_stack_test_route: Route,
 ) -> Generator[LlamaStackClient, Any, Any]:
     """
     Returns a ready to use LlamaStackClient.
 
     Args:
-        llama_stack_distribution_deployment (Deployment): LlamaStack distribution deployment resource
+        llama_stack_test_route (Route): Route resource for LlamaStack distribution
 
     Yields:
         Generator[LlamaStackClient, Any, Any]: Configured LlamaStackClient for RAG testing
     """
-    yield from _create_llama_stack_client(llama_stack_distribution_deployment=llama_stack_distribution_deployment)
+    yield from _create_llama_stack_client(
+        route=llama_stack_test_route,
+    )
 
 
 @pytest.fixture(scope="class")
@@ -362,9 +454,11 @@ def vector_store(
 
     vector_store = unprivileged_llama_stack_client.vector_stores.create(
         name="test_vector_store",
-        embedding_model=llama_stack_models.embedding_model.identifier,
-        embedding_dimension=llama_stack_models.embedding_dimension,
-        provider_id=vector_io_provider,
+        extra_body={
+            "embedding_model": llama_stack_models.embedding_model.identifier,
+            "embedding_dimension": llama_stack_models.embedding_dimension,
+            "provider_id": vector_io_provider,
+        },
     )
     LOGGER.info(f"vector_store successfully created (provider_id={vector_io_provider}, id={vector_store.id})")
 
@@ -375,3 +469,41 @@ def vector_store(
         LOGGER.info(f"Deleted vector store {vector_store.id}")
     except Exception as e:
         LOGGER.warning(f"Failed to delete vector store {vector_store.id}: {e}")
+
+
+@pytest.fixture(scope="class")
+def vector_store_with_example_docs(
+    unprivileged_llama_stack_client: LlamaStackClient, vector_store: VectorStore
+) -> Generator[VectorStore, None, None]:
+    """
+    Creates a vector store with TorchTune documentation files uploaded.
+
+    This fixture depends on the vector_store fixture and uploads the TorchTune
+    documentation files to the vector store for testing purposes. The files
+    are automatically cleaned up after the test completes.
+
+    Args:
+        unprivileged_llama_stack_client: The configured LlamaStackClient
+        vector_store: The vector store fixture to upload files to
+
+    Yields:
+        Vector store object with uploaded TorchTune documentation files
+    """
+    # Download TorchTune documentation files
+    urls = [
+        "llama3.rst",
+        "chat.rst",
+        "lora_finetune.rst",
+        "qat_finetune.rst",
+        "memory_optimizations.rst",
+    ]
+
+    base_url = "https://raw.githubusercontent.com/pytorch/torchtune/refs/tags/v0.6.1/docs/source/tutorials/"
+
+    for file_name in urls:
+        url = f"{base_url}{file_name}"
+        vector_store_create_file_from_url(
+            url=url, llama_stack_client=unprivileged_llama_stack_client, vector_store=vector_store
+        )
+
+    yield vector_store

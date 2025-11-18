@@ -244,7 +244,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
                                 "type": "text_contents",
                                 "service": {
                                     "hostname": f"{PROMPT_INJECTION_DETECTOR}-predictor",
-                                    "port": 8000,
+                                    "port": 80,
                                 },
                                 "chunker_id": "whole_doc_chunker",
                                 "default_threshold": 0.5,
@@ -253,7 +253,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
                                 "type": "text_contents",
                                 "service": {
                                     "hostname": f"{HAP_DETECTOR}-predictor",
-                                    "port": 8000,
+                                    "port": 80,
                                 },
                                 "chunker_id": "whole_doc_chunker",
                                 "default_threshold": 0.5,

@@ -4,11 +4,7 @@ import os
 import secrets
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
-from utilities.constants import Timeout
-
-
 from ocp_resources.deployment import Deployment
-
 from ocp_resources.namespace import Namespace
 from ocp_resources.service import Service
 
@@ -70,6 +66,12 @@ def vector_io_provider_deployment_config_factory(
             env_vars.append({"name": "MILVUS_ENDPOINT", "value": "http://vector-io-milvus-service:19530"})
             env_vars.append({"name": "MILVUS_TOKEN", "value": MILVUS_TOKEN})
             env_vars.append({"name": "MILVUS_CONSISTENCY_LEVEL", "value": "Bounded"})
+        elif provider_name == "faiss":
+            env_vars.append({"name": "ENABLE_FAISS", "value": "faiss"})
+            env_vars.append({
+                "name": "FAISS_KVSTORE_DB_PATH",
+                "value": "/opt/app-root/src/.llama/distributions/rh/sqlite_vec.db",
+            })
 
         return env_vars
 
@@ -92,7 +94,7 @@ def etcd_deployment(
         template=get_etcd_deployment_template(),
         teardown=True,
     ) as deployment:
-        deployment.wait_for_replicas(deployed=True, timeout=Timeout.TIMEOUT_2MIN)
+        deployment.wait_for_replicas(deployed=True, timeout=120)
         yield deployment
 
 
@@ -130,13 +132,14 @@ def remote_milvus_deployment(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
         name="vector-io-milvus-deployment",
+        min_ready_seconds=5,
         replicas=1,
         selector={"matchLabels": {"app": "milvus-standalone"}},
         strategy={"type": "Recreate"},
         template=get_milvus_deployment_template(),
         teardown=True,
     ) as deployment:
-        deployment.wait_for_replicas(deployed=True, timeout=Timeout.TIMEOUT_2MIN)
+        deployment.wait_for_replicas(deployed=True, timeout=240)
         yield deployment
 
 

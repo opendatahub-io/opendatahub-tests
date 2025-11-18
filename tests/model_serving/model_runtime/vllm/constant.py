@@ -15,7 +15,7 @@ ACCELERATOR_IDENTIFIER: dict[str, str] = {
 TEMPLATE_MAP: dict[str, str] = {
     AcceleratorType.NVIDIA: RuntimeTemplates.VLLM_CUDA,
     AcceleratorType.AMD: RuntimeTemplates.VLLM_ROCM,
-    AcceleratorType.GAUDI: RuntimeTemplates.VLLM_GAUDUI,
+    AcceleratorType.GAUDI: RuntimeTemplates.VLLM_GAUDI,
 }
 
 PREDICT_RESOURCES: dict[str, Union[list[dict[str, Union[str, dict[str, str]]]], dict[str, dict[str, str]]]] = {
@@ -204,13 +204,6 @@ MATH_CHAT_QUERY: list[list[dict[str, str]]] = [
 
 BASE_RAW_DEPLOYMENT_CONFIG: dict[str, Any] = {
     "deployment_mode": KServeDeploymentType.RAW_DEPLOYMENT,
-    "runtime_argument": None,
-    "min-replicas": 1,
-}
-
-
-BASE_SEVERRLESS_DEPLOYMENT_CONFIG: dict[str, Any] = {
-    "deployment_mode": KServeDeploymentType.SERVERLESS,
     "runtime_argument": None,
     "min-replicas": 1,
 }

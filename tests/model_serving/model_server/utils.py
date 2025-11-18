@@ -4,9 +4,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 from string import Template
 from typing import Any, Optional
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 
 from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
+from ocp_resources.utils.constants import DEFAULT_CLUSTER_RETRY_EXCEPTIONS
 from simple_logger.logger import get_logger
 
 from utilities.constants import KServeDeploymentType
@@ -16,9 +18,9 @@ from utilities.exceptions import (
 from utilities.constants import Timeout
 from utilities.inference_utils import UserInference
 from utilities.infra import get_pods_by_isvc_label
-from tests.model_serving.model_server.keda.utils import get_isvc_keda_scaledobject
+from tests.model_serving.model_server.kserve.keda.utils import get_isvc_keda_scaledobject
 from utilities.constants import Protocols
-from timeout_sampler import TimeoutWatch, TimeoutSampler
+from timeout_sampler import TimeoutWatch, TimeoutSampler, TimeoutExpiredError
 
 LOGGER = get_logger(name=__name__)
 
@@ -328,3 +330,42 @@ def verify_final_pod_count(unprivileged_client: DynamicClient, isvc: InferenceSe
         if pods and len(pods) == final_pod_count:
             return
     raise AssertionError(f"Timed out waiting for {final_pod_count} pods. Current pod count: {len(pods) if pods else 0}")
+
+
+def verify_no_inference_pods(
+    client: DynamicClient, isvc: InferenceService, wait_timeout: int = Timeout.TIMEOUT_4MIN
+) -> bool:
+    """
+    Verify that no inference pods are running for the given InferenceService.
+
+    Args:
+        client (DynamicClient): DynamicClient object
+        isvc (InferenceService): InferenceService object
+        wait_timeout (int): Timeout in seconds, default is 4 minutes
+
+    Returns:
+        bool: True if no pods are running, False otherwise
+    Raises:
+        TimeoutError: If pods exist after the timeout.
+
+    """
+    pods = []
+
+    try:
+        for pods in TimeoutSampler(
+            wait_timeout=wait_timeout,
+            sleep=5,
+            exceptions_dict=DEFAULT_CLUSTER_RETRY_EXCEPTIONS,
+            func=get_pods_by_isvc_label,
+            client=client,
+            isvc=isvc,
+        ):
+            if not pods:
+                return True
+
+    except TimeoutExpiredError as e:
+        if isinstance(e.last_exp, ResourceNotFoundError):
+            return True
+        LOGGER.error(f"{[pod.name for pod in pods]} were not deleted")
+        return False
+    return True

@@ -1,7 +1,11 @@
 import pytest
 from typing import List
 
-from tests.model_explainability.lm_eval.constants import LLMAAJ_TASK_DATA, CUSTOM_UNITXT_TASK_DATA
+from tests.model_explainability.lm_eval.constants import (
+    LLMAAJ_TASK_DATA,
+    CUSTOM_UNITXT_TASK_DATA,
+    ARC_EASY_DATASET_IMAGE,
+)
 from tests.model_explainability.utils import validate_tai_component_images
 
 from tests.model_explainability.lm_eval.utils import get_lmeval_tasks, validate_lmeval_job_pod_and_logs
@@ -51,10 +55,7 @@ def test_lmeval_huggingface_model(admin_client, model_namespace, lmevaljob_hf_po
     [
         pytest.param(
             {"name": "test-lmeval-local-offline-builtin"},
-            {
-                "image": "quay.io/trustyai_testing/lmeval-assets-flan-arceasy"
-                "@sha256:11cc9c2f38ac9cc26c4fab1a01a8c02db81c8f4801b5d2b2b90f90f91b97ac98"
-            },
+            {"dataset_image": ARC_EASY_DATASET_IMAGE},
             {"task_list": {"taskNames": ["arc_easy"]}},
         )
     ],
@@ -77,8 +78,8 @@ def test_lmeval_local_offline_builtin_tasks_flan_arceasy(
         pytest.param(
             {"name": "test-lmeval-local-offline-unitxt"},
             {
-                "image": "quay.io/trustyai_testing/lmeval-assets-flan-20newsgroups"
-                "@sha256:3778c15079f11ef338a82ee35ae1aa43d6db52bac7bbfdeab343ccabe2608a0c"
+                "dataset_image": "quay.io/trustyai_testing/lmeval-assets-20newsgroups"
+                "@sha256:106023a7ee0c93afad5d27ae50130809ccc232298b903c8b12ea452e9faafce2"
             },
             {
                 "task_list": {

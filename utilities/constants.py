@@ -74,7 +74,8 @@ class RuntimeTemplates:
     TGIS_GRPC_SERVING: str = "tgis-grpc-serving-template"
     VLLM_CUDA: str = "vllm-cuda-runtime-template"
     VLLM_ROCM: str = "vllm-rocm-runtime-template"
-    VLLM_GAUDUI: str = "vllm-gaudi-runtime-template"
+    VLLM_GAUDI: str = "vllm-gaudi-runtime-template"
+    VLLM_SPYRE: str = "vllm-spyre-x86-runtime-template"
     MLSERVER_GRPC: str = "mlserver-grpc-runtime-template"
     MLSERVER_REST: str = "mlserver-rest-runtime-template"
     TRITON_REST: str = "triton-rest-runtime-template"
@@ -123,7 +124,8 @@ class AcceleratorType:
     NVIDIA: str = "nvidia"
     AMD: str = "amd"
     GAUDI: str = "gaudi"
-    SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI]
+    SPYRE: str = "spyre"
+    SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI, SPYRE]
 
 
 class ApiGroups:
@@ -163,10 +165,12 @@ class DscComponents:
     KSERVE: str = "kserve"
     MODELREGISTRY: str = "modelregistry"
     LLAMASTACKOPERATOR: str = "llamastackoperator"
+    KUEUE: str = "kueue"
 
     class ManagementState:
         MANAGED: str = "Managed"
         REMOVED: str = "Removed"
+        UNMANAGED: str = "Unmanaged"
 
     class ConditionType:
         MODEL_REGISTRY_READY: str = "ModelRegistryReady"
@@ -190,7 +194,7 @@ class Labels:
         SECURITY: str = f"security.{ApiGroups.OPENDATAHUB_IO}/enable-auth"
 
     class Notebook:
-        INJECT_OAUTH: str = f"notebooks.{ApiGroups.OPENDATAHUB_IO}/inject-oauth"
+        INJECT_AUTH: str = f"notebooks.{ApiGroups.OPENDATAHUB_IO}/inject-auth"
 
     class OpenDataHubIo:
         MANAGED: str = Annotations.OpenDataHubIo.MANAGED
@@ -211,6 +215,9 @@ class Labels:
 
     class ROCm:
         ROCM_GPU: str = "amd.com/gpu"
+
+    class Spyre:
+        SPYRE_COM_GPU: str = "ibm.com/spyre_pf"
 
     class Kueue:
         MANAGED: str = "kueue.openshift.io/managed"
@@ -284,7 +291,7 @@ class ModelStorage:
 
     class OCI:
         TINYLLAMA: str = (
-            "oci://quay.io/mwaykole/test@sha256:b604e00d5c815184a473dda8449e8ccc85f4c7aaf32b9b5244da4d9aeecdf197"
+            "oci://quay.io/mwaykole/test@sha256:8bfd02132b03977ebbca93789e81c4549d8f724ee78fa378616d9ae4387717c8"
         )
         MNIST_8_1: str = ModelCarImage.MNIST_8_1
         GRANITE_8B_CODE_INSTRUCT: str = ModelCarImage.GRANITE_8B_CODE_INSTRUCT
@@ -473,7 +480,7 @@ class LLMdInferenceSimConfig:
 
 
 LLM_D_CHAT_GENERATION_CONFIG: Dict[str, Any] = {
-    "service": {"hostname": f"{LLMdInferenceSimConfig.isvc_name}-predictor", "port": 8032}
+    "service": {"hostname": f"{LLMdInferenceSimConfig.isvc_name}-predictor", "port": 80}
 }
 
 

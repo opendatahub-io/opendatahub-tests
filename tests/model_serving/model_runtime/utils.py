@@ -10,6 +10,7 @@ from tests.model_serving.model_runtime.model_validation.constant import (
     OPENAI_ENDPOINT_NAME,
     AUDIO_FILE_URL,
     AUDIO_FILE_LOCAL_PATH,
+    SPYRE_INFERENCE_SERVICE_PORT,
 )
 from utilities.constants import Ports
 from utilities.exceptions import NotSupportedError
@@ -145,13 +146,14 @@ def validate_raw_openai_inference_request(
     completion_query: list[dict[str, str]],
     model_output_type: str,
     model_name: str,
+    port: int = Ports.REST_PORT,
 ) -> None:
     if model_output_type == "audio":
         LOGGER.info("Running audio inference test")
         model_info, completion_responses = run_audio_inference(
             pod_name=pod_name,
             isvc=isvc,
-            port=Ports.REST_PORT,
+            port=port,
             endpoint=OPENAI_ENDPOINT_NAME,
             model_name=model_name,
         )
@@ -161,10 +163,13 @@ def validate_raw_openai_inference_request(
         return
     elif model_output_type == "text":
         LOGGER.info("Running text inference test")
+        scheduler_name = getattr(isvc.instance.spec.predictor, "schedulerName", "") or ""
+        if scheduler_name.lower() == "spyre-scheduler":
+            port = SPYRE_INFERENCE_SERVICE_PORT
         model_info, completion_responses = run_raw_inference(
             pod_name=pod_name,
             isvc=isvc,
-            port=Ports.REST_PORT,
+            port=port,
             endpoint=OPENAI_ENDPOINT_NAME,
             completion_query=completion_query,
         )
@@ -205,6 +210,8 @@ def fetch_openai_response(
     model_name: str,
     completion_query: list[dict[str, str]] | None = None,
 ) -> tuple[Any, list[Any]]:
+    model_info = OpenAIClient.get_request_http(host=url, endpoint=OpenAIEnpoints.MODELS_INFO)
+    model_name = model_info[0]["id"] if model_info else model_name
     if completion_query is None:
         completion_query = COMPLETION_QUERY
     completion_responses = []
@@ -216,38 +223,4 @@ def fetch_openai_response(
             )
             completion_responses.append(completion_response)
 
-    model_info = OpenAIClient.get_request_http(host=url, endpoint=OpenAIEnpoints.MODELS_INFO)
     return model_info, completion_responses
-
-
-def validate_serverless_openai_inference_request(
-    url: str, model_name: str, response_snapshot: Any, completion_query: list[dict[str, str]], model_output_type: str
-) -> None:
-    if model_output_type == "audio":
-        LOGGER.info("Running audio inference test")
-        try:
-            model_info, completion_responses = run_audio_inference(
-                url=url,
-                endpoint=OPENAI_ENDPOINT_NAME,
-                model_name=model_name,
-            )
-            validate_audio_inference_output(model_info=model_info, completion_responses=completion_responses)
-        finally:
-            try:
-                if os.path.exists(AUDIO_FILE_LOCAL_PATH):
-                    os.remove(AUDIO_FILE_LOCAL_PATH)
-            except OSError as e:
-                LOGGER.error("Error removing audio file: %s", e)
-        return
-    elif model_output_type == "text":
-        model_info, completion_responses = fetch_openai_response(
-            url=url, model_name=model_name, completion_query=completion_query
-        )
-        validate_inference_output(
-            completion_responses,
-            response_snapshot=response_snapshot,
-        )
-    else:
-        raise NotSupportedError(
-            f"Model output type {model_output_type} is not supported for serverless inference request."
-        )

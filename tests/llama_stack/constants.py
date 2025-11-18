@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import List, NamedTuple, TypedDict
 from llama_stack_client.types import Model
+from semver import VersionInfo
+import semver
 
 
 class LlamaStackProviders:
@@ -15,6 +17,7 @@ class LlamaStackProviders:
 
     class Eval(str, Enum):
         TRUSTYAI_LMEVAL = "trustyai_lmeval"
+        TRUSTYAI_RAGAS_INLINE = "trustyai_ragas_inline"
 
 
 class ModelInfo(NamedTuple):
@@ -26,6 +29,7 @@ class ModelInfo(NamedTuple):
 
 
 LLS_CORE_POD_FILTER: str = "app=llama-stack"
+LLS_OPENSHIFT_MINIMAL_VERSION: VersionInfo = semver.VersionInfo.parse("4.17.0")
 
 
 class TurnExpectation(TypedDict):

@@ -1,5 +1,10 @@
 from typing import Any
+
+from ocp_resources.deployment import Deployment
+from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.resource import Resource
+from ocp_resources.secret import Secret
+from ocp_resources.service import Service
 from utilities.constants import ModelFormat
 
 
@@ -69,3 +74,10 @@ SAMPLE_MODEL_NAME1 = "mistralai/Mistral-7B-Instruct-v0.3"
 CUSTOM_CATALOG_ID1: str = "sample_custom_catalog1"
 DEFAULT_MODEL_CATALOG_CM: str = "model-catalog-default-sources"
 KUBERBACPROXY_STR: str = "KubeRBACProxyAvailable"
+MR_POSTGRES_DB_OBJECT: dict[Any, str] = {
+    Service: f"{MR_INSTANCE_NAME}-postgres",
+    PersistentVolumeClaim: f"{MR_INSTANCE_NAME}-postgres-storage",
+    Deployment: f"{MR_INSTANCE_NAME}-postgres",
+    Secret: f"{MR_INSTANCE_NAME}-postgres-credentials",
+}
+MR_POSTGRES_DEPLOYMENT_NAME_STR = f"{MR_INSTANCE_NAME}-postgres"

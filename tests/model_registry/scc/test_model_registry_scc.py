@@ -2,62 +2,23 @@ import pytest
 from typing import Self
 
 from simple_logger.logger import get_logger
-from _pytest.fixtures import FixtureRequest
 
-from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.deployment import Deployment
 from tests.model_registry.scc.utils import (
-    get_uid_from_namespace,
-    validate_pod_security_context,
-    KEYS_TO_VALIDATE,
-    validate_containers_pod_security_context,
+    validate_deployment_scc,
+    validate_pod_scc,
 )
-from tests.model_registry.constants import MODEL_DICT, MR_INSTANCE_NAME, MODEL_REGISTRY_POD_FILTER
-
-from kubernetes.dynamic import DynamicClient
+from tests.model_registry.constants import MR_INSTANCE_NAME, MR_POSTGRES_DEPLOYMENT_NAME_STR
 
 LOGGER = get_logger(name=__name__)
 
 
-@pytest.fixture(scope="class")
-def model_registry_scc_namespace(model_registry_namespace: str):
-    mr_annotations = Namespace(name=model_registry_namespace).instance.metadata.annotations
-    return {
-        "seLinuxOptions": mr_annotations.get("openshift.io/sa.scc.mcs"),
-        "uid-range": mr_annotations.get("openshift.io/sa.scc.uid-range"),
-    }
-
-
-@pytest.fixture(scope="class")
-def model_registry_resource(
-    request: FixtureRequest, admin_client: DynamicClient, model_registry_namespace: str
-) -> Deployment | Pod:
-    if request.param["kind"] == Deployment:
-        return Deployment(name=MR_INSTANCE_NAME, namespace=model_registry_namespace, ensure_exists=True)
-    elif request.param["kind"] == Pod:
-        pods = list(
-            Pod.get(
-                dyn_client=admin_client,
-                namespace=model_registry_namespace,
-                label_selector=MODEL_REGISTRY_POD_FILTER,
-            )
-        )
-        if len(pods) != 1:
-            pytest.fail(
-                "Expected one model registry pod. Found: {[{pod.name: pod.status} for pod in pods] if pods else None}"
-            )
-        return pods[0]
-    else:
-        raise AssertionError(f"Invalid resource: {request.param['kind']}. Valid options: Deployment and Pod")
-
-
 @pytest.mark.parametrize(
-    "registered_model",
+    "model_registry_metadata_db_resources, model_registry_instance",
     [
-        pytest.param(
-            MODEL_DICT,
-        ),
+        pytest.param({}, {}),
+        pytest.param({"db_name": "default"}, {"db_name": "default"}),
     ],
     indirect=True,
 )
@@ -65,66 +26,46 @@ def model_registry_resource(
     "updated_dsc_component_state_scope_session",
     "model_registry_metadata_db_resources",
     "model_registry_instance",
-    "registered_model",
 )
 @pytest.mark.custom_namespace
+@pytest.mark.skip_must_gather
 class TestModelRegistrySecurityContextValidation:
     @pytest.mark.parametrize(
-        "model_registry_resource",
+        "deployment_model_registry_ns",
         [
-            pytest.param({"kind": Deployment}),
+            pytest.param({"deployment_name": MR_INSTANCE_NAME}),
+            pytest.param({"deployment_name": MR_POSTGRES_DEPLOYMENT_NAME_STR}),
         ],
-        indirect=["model_registry_resource"],
+        indirect=["deployment_model_registry_ns"],
     )
     @pytest.mark.sanity
     def test_model_registry_deployment_security_context_validation(
         self: Self,
-        model_registry_resource: Deployment,
+        skip_if_not_valid_check: None,
+        deployment_model_registry_ns: Deployment,
     ):
         """
         Validate that model registry deployment does not set runAsUser/runAsGroup
         """
-        error = []
-        for container in model_registry_resource.instance.spec.template.spec.containers:
-            if not all([True for key in KEYS_TO_VALIDATE if not container.get(key)]):
-                error.append({container.name: container.securityContext})
-
-        if error:
-            pytest.fail(
-                f"{model_registry_resource.name} {model_registry_resource.kind} containers expected to not "
-                f"set {KEYS_TO_VALIDATE}, actual: {error}"
-            )
+        validate_deployment_scc(deployment=deployment_model_registry_ns)
 
     @pytest.mark.parametrize(
-        "model_registry_resource",
+        "pod_model_registry_ns",
         [
-            pytest.param({"kind": Pod}),
+            pytest.param({"deployment_name": MR_INSTANCE_NAME}, id="test_pod_scc_deployment_mr"),
+            pytest.param({"deployment_name": MR_POSTGRES_DEPLOYMENT_NAME_STR}, id="test_pod_scc_deployment_postgres"),
         ],
-        indirect=["model_registry_resource"],
+        indirect=["pod_model_registry_ns"],
     )
     @pytest.mark.sanity
     def test_model_registry_pod_security_context_validation(
         self: Self,
-        model_registry_resource: Pod,
+        skip_if_not_valid_check: None,
+        pod_model_registry_ns: Pod,
         model_registry_scc_namespace: dict[str, str],
     ):
         """
         Validate that model registry pod gets runAsUser/runAsGroup from openshift and the values matches namespace
         annotations
         """
-        ns_uid = get_uid_from_namespace(namespace_scc=model_registry_scc_namespace)
-        pod_spec = model_registry_resource.instance.spec
-        errors = validate_pod_security_context(
-            pod_security_context=pod_spec.securityContext,
-            namespace_scc=model_registry_scc_namespace,
-            model_registry_pod=model_registry_resource,
-            ns_uid=ns_uid,
-        )
-        errors.extend(
-            validate_containers_pod_security_context(model_registry_pod=model_registry_resource, namespace_uid=ns_uid)
-        )
-        if errors:
-            pytest.fail(
-                f"{model_registry_resource.name} {model_registry_resource.kind} pod security context validation failed"
-                f" with error: {errors}"
-            )
+        validate_pod_scc(pod=pod_model_registry_ns, model_registry_scc_namespace=model_registry_scc_namespace)

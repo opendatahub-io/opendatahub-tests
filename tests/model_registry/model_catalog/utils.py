@@ -8,6 +8,20 @@ from simple_logger.logger import get_logger
 from ocp_resources.pod import Pod
 from ocp_resources.config_map import ConfigMap
 from tests.model_registry.model_catalog.constants import DEFAULT_CATALOGS
+from tests.model_registry.model_catalog.db_constants import (
+    SEARCH_MODELS_DB_QUERY,
+    SEARCH_MODELS_WITH_SOURCE_ID_DB_QUERY,
+    FILTER_MODELS_BY_LICENSE_DB_QUERY,
+    FILTER_MODELS_BY_LICENSE_AND_LANGUAGE_DB_QUERY,
+)
+from tests.model_registry.model_catalog.constants import (
+    REDHAT_AI_CATALOG_NAME,
+    REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
+    REDHAT_AI_CATALOG_ID,
+    VALIDATED_CATALOG_ID,
+    CATALOG_CONTAINER,
+    PERFORMANCE_DATA_DIR,
+)
 from tests.model_registry.utils import execute_get_command
 
 LOGGER = get_logger(name=__name__)
@@ -244,36 +258,90 @@ def validate_model_catalog_configmap_data(configmap: ConfigMap, num_catalogs: in
         validate_default_catalog(catalogs=catalogs)
 
 
-def parse_psql_array_agg_output(psql_output: str) -> dict[str, list[str]]:
-    """
-    Parse psql output from array_agg query into Python dict.
+def get_postgres_pod_in_namespace(namespace: str = "rhoai-model-registries") -> Pod:
+    """Get the PostgreSQL pod for model catalog database."""
+    postgres_pods = list(Pod.get(namespace=namespace, label_selector="app.kubernetes.io/name=model-catalog-postgres"))
+    assert postgres_pods, f"No PostgreSQL pod found in namespace {namespace}"
+    return postgres_pods[0]
 
-    Expected format:
-        name     | array_agg
-        ---------+----------
-        license  | {apache-2.0,mit,bsd}
-        provider | {Meta,Microsoft}
+
+def execute_database_query(query: str, namespace: str = "rhoai-model-registries") -> str:
+    """
+    Execute a SQL query against the model catalog database.
+
+    Args:
+        query: SQL query to execute
+        namespace: OpenShift namespace containing the PostgreSQL pod
 
     Returns:
-        dict mapping property names to lists of values
+        Raw database query result as string
     """
-    result = {}
+    postgres_pod = get_postgres_pod_in_namespace(namespace=namespace)
+
+    return postgres_pod.execute(
+        command=["psql", "-U", "catalog_user", "-d", "model_catalog", "-c", query],
+        container="postgresql",
+    )
+
+
+def parse_psql_output(psql_output: str) -> dict[str, Any]:
+    """
+    Parse psql CLI output into appropriate Python data structures.
+
+    Handles two main formats:
+    1. Single column: Returns {"values": [list_of_values]}
+    2. Two columns with array_agg: Returns {"properties": {name: [values]}}
+
+    Args:
+        psql_output: Raw psql command output
+
+    Returns:
+        Dictionary with parsed data in appropriate format
+    """
     lines = psql_output.strip().split("\n")
 
-    # Skip header lines (first 2-3 lines are typically headers and separators)
-    data_started = False
-    for line in lines:
+    # Find the header line to determine format
+    header_line = None
+    separator_line = None
+
+    for i, line in enumerate(lines):
         line = line.strip()
-        if not line or line.startswith("-") or "|" not in line:
+        if not line:
             continue
 
-        # Skip header row
-        if "array_agg" in line and not data_started:
-            data_started = True
+        # Look for separator line (all dashes and pipes)
+        if line.replace("-", "").replace("+", "").replace("|", "").strip() == "":
+            separator_line = i
+            if i > 0:
+                header_line = i - 1
+            break
+
+    if header_line is None:
+        return {"values": []}
+
+    header = lines[header_line].strip()
+
+    # Determine format based on header
+    if "|" in header and "array_agg" in header:
+        # Two-column format with array aggregation
+        return {"properties": _parse_array_agg_format(lines, separator_line + 1)}
+    else:
+        # Single column format
+        return {"values": _parse_single_column_format(lines, separator_line + 1)}
+
+
+def _parse_array_agg_format(lines: list[str], data_start: int) -> dict[str, list[str]]:
+    """Parse two-column format with PostgreSQL array aggregation."""
+    result = {}
+
+    for line in lines[data_start:]:
+        line = line.strip()
+        if not line or "|" not in line:
             continue
 
-        if not data_started:
-            continue
+        # Skip summary lines like "(X rows)"
+        if line.startswith("(") and "row" in line:
+            break
 
         # Parse data row: "property_name | {val1,val2,val3}"
         parts = line.split("|", 1)
@@ -297,11 +365,22 @@ def parse_psql_array_agg_output(psql_output: str) -> dict[str, list[str]]:
     return result
 
 
-def get_postgres_pod_in_namespace(namespace: str = "rhoai-model-registries") -> Pod:
-    """Get the PostgreSQL pod for model catalog database."""
-    postgres_pods = list(Pod.get(namespace=namespace, label_selector="app.kubernetes.io/name=model-catalog-postgres"))
-    assert postgres_pods, f"No PostgreSQL pod found in namespace {namespace}"
-    return postgres_pods[0]
+def _parse_single_column_format(lines: list[str], data_start: int) -> list[str]:
+    """Parse single column format."""
+    result = []
+
+    for line in lines[data_start:]:
+        line = line.strip()
+        if not line:
+            continue
+
+        # Skip summary lines like "(X rows)"
+        if line.startswith("(") and "row" in line:
+            break
+
+        result.append(line)
+
+    return result
 
 
 def compare_filter_options_with_database(
@@ -378,34 +457,294 @@ def compare_filter_options_with_database(
     return is_valid, comparison_errors
 
 
+def validate_model_contains_search_term(model: dict[str, Any], search_term: str) -> bool:
+    """
+    Verify model contains search term in searchable fields based on backend implementation.
+
+    Searchable fields: name, description, provider, libraryName, tasks
+
+    Args:
+        model: Model dictionary from API response
+        search_term: Search term to validate
+
+    Returns:
+        True if model contains search term in any searchable field
+    """
+    search_term_lower = search_term.lower()
+
+    searchable_content = [
+        model.get("name", "").lower(),
+        model.get("description", "").lower(),
+        model.get("provider", "").lower(),
+        model.get("libraryName", "").lower(),
+        " ".join(model.get("tasks", [])).lower() if model.get("tasks") else "",
+    ]
+
+    return any(search_term_lower in content for content in searchable_content if content)
+
+
+def get_models_matching_search_from_database(
+    search_term: str, namespace: str = "rhoai-model-registries", source_label: str | None = None
+) -> list[str]:
+    """
+    Query the database directly to find model IDs that should match the search term.
+
+    Uses SEARCH_MODELS_DB_QUERY from db_constants to replicate the exact backend search logic
+    from applyCatalogModelListFilters function in kubeflow/model-registry.
+
+    Args:
+        search_term: Search term to find
+        namespace: OpenShift namespace containing the PostgreSQL pod
+        source_label: Optional source label to filter by (e.g., "Red+Hat+AI")
+
+    Returns:
+        List of model IDs that contain the search term in searchable fields and match source filter
+    """
+
+    # Escape single quotes and create the search pattern: %%%s%%
+    escaped_term = search_term.replace("'", "''")
+    search_pattern = f"%{escaped_term.lower()}%"
+
+    # Choose query based on whether source filtering is needed
+    if source_label:
+        # Simple direct mapping check
+        if source_label == REDHAT_AI_CATALOG_NAME:
+            catalog_id = REDHAT_AI_CATALOG_ID
+        elif source_label == REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME:
+            catalog_id = VALIDATED_CATALOG_ID
+        else:
+            raise ValueError(
+                f"Unknown source_label: '{source_label}'. Supported labels: {REDHAT_AI_CATALOG_NAME}, {REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME}"  # noqa: E501
+            )
+
+        # Use the extended query with source_id filtering from db_constants
+        search_query = SEARCH_MODELS_WITH_SOURCE_ID_DB_QUERY.format(
+            search_pattern=search_pattern, source_ids=f"'{catalog_id}'"
+        )
+    else:
+        # Use the standardized search query from db_constants
+        search_query = SEARCH_MODELS_DB_QUERY.format(search_pattern=search_pattern)
+
+    db_result = execute_database_query(query=search_query, namespace=namespace)
+    parsed_result = parse_psql_output(psql_output=db_result)
+
+    return parsed_result.get("values", [])
+
+
+def get_models_matching_filter_query_from_database(
+    licenses: str,
+    language_pattern_1: str | None = None,
+    language_pattern_2: str | None = None,
+    namespace: str = "rhoai-model-registries",
+) -> list[str]:
+    """
+    Query the database directly to find model IDs that match the filter criteria.
+
+    Uses either FILTER_MODELS_BY_LICENSE_DB_QUERY or FILTER_MODELS_BY_LICENSE_AND_LANGUAGE_DB_QUERY
+    from db_constants to replicate the exact backend filter query logic.
+
+    Args:
+        licenses: License values in SQL IN clause format (e.g., "'gemma','modified-mit'")
+        language_pattern_1: First language pattern for ILIKE (e.g., '%it%'). Optional.
+        language_pattern_2: Second language pattern for ILIKE (e.g., '%de%'). Optional.
+        namespace: OpenShift namespace containing the PostgreSQL pod
+
+    Returns:
+        List of model IDs that match the filter criteria
+    """
+    # Select the appropriate query template based on whether language filters are provided
+    if language_pattern_1 and language_pattern_2:
+        filter_query_sql = FILTER_MODELS_BY_LICENSE_AND_LANGUAGE_DB_QUERY.format(
+            licenses=licenses,
+            language_pattern_1=language_pattern_1,
+            language_pattern_2=language_pattern_2,
+        )
+    else:
+        filter_query_sql = FILTER_MODELS_BY_LICENSE_DB_QUERY.format(licenses=licenses)
+
+    LOGGER.debug(f"Filter query (SQL): {filter_query_sql}")
+
+    # Execute the database query
+    db_result = execute_database_query(query=filter_query_sql, namespace=namespace)
+    parsed_result = parse_psql_output(psql_output=db_result)
+
+    return parsed_result.get("values", [])
+
+
+def _compare_api_and_database_results(
+    api_response: dict[str, Any],
+    expected_model_ids: set[str],
+    description: str,
+) -> tuple[bool, list[str]]:
+    """
+    Compare API response model IDs with expected database model IDs.
+
+    Args:
+        api_response: API response containing model items
+        expected_model_ids: Set of model IDs expected from database
+        description: Description of the query for logging (e.g., "search term 'granite'", "filter query")
+
+    Returns:
+        Tuple of (is_valid, list_of_error_messages)
+    """
+    errors = []
+
+    # Get actual results from API
+    api_models = api_response.get("items", [])
+    actual_model_ids = set(model.get("id") for model in api_models if model.get("id"))
+    LOGGER.info(f"API returned {len(actual_model_ids)} models for {description}")
+
+    # Compare results
+    missing_in_api = expected_model_ids - actual_model_ids
+    extra_in_api = actual_model_ids - expected_model_ids
+
+    if missing_in_api:
+        errors.append(f"API missing {len(missing_in_api)} models found in database: {missing_in_api}")
+
+    if extra_in_api:
+        errors.append(f"API returned {len(extra_in_api)} extra models not found in database: {extra_in_api}")
+
+    # Log detailed comparison
+    if expected_model_ids == actual_model_ids:
+        LOGGER.info(f"Perfect match: API and database both found {len(expected_model_ids)} models")
+    else:
+        LOGGER.error(f"Mismatch: DB={len(expected_model_ids)}, API={len(actual_model_ids)}")
+
+    return len(errors) == 0, errors
+
+
+def validate_search_results_against_database(
+    api_response: dict[str, Any],
+    search_term: str,
+    namespace: str = "rhoai-model-registries",
+    source_label: str | None = None,
+) -> tuple[bool, list[str]]:
+    """
+    Validate API search results against database query results.
+
+    Args:
+        api_response: API response from search query
+        search_term: Search term used
+        namespace: OpenShift namespace for PostgreSQL pod
+        source_label: Optional source label filter used in the API call
+
+    Returns:
+        Tuple of (is_valid, list_of_error_messages)
+    """
+    # Get expected results from database
+    expected_model_ids = set(get_models_matching_search_from_database(search_term, namespace, source_label))
+    filter_desc = f"search term '{search_term}'" + (f" with source_label='{source_label}'" if source_label else "")
+    LOGGER.info(f"Database query found {len(expected_model_ids)} models for {filter_desc}")
+
+    # Compare with API results
+    return _compare_api_and_database_results(
+        api_response=api_response, expected_model_ids=expected_model_ids, description=filter_desc
+    )
+
+
+def validate_filter_query_results_against_database(
+    api_response: dict[str, Any],
+    licenses: str,
+    language_pattern_1: str | None = None,
+    language_pattern_2: str | None = None,
+    namespace: str = "rhoai-model-registries",
+) -> tuple[bool, list[str]]:
+    """
+    Validate API filter query results against database query results.
+
+    Supports validation of filter queries with:
+    - License filter only: license IN (...)
+    - License and language filters: license IN (...) AND (language ILIKE ... OR language ILIKE ...)
+
+    Args:
+        api_response: API response from filter query
+        licenses: License values in SQL IN clause format (e.g., "'gemma','modified-mit'")
+        language_pattern_1: First language pattern for ILIKE (e.g., '%it%'). Optional.
+        language_pattern_2: Second language pattern for ILIKE (e.g., '%de%'). Optional.
+        namespace: OpenShift namespace for PostgreSQL pod
+
+    Returns:
+        Tuple of (is_valid, list_of_error_messages)
+    """
+    # Get expected results from database
+    expected_model_ids = set(
+        get_models_matching_filter_query_from_database(
+            licenses=licenses,
+            language_pattern_1=language_pattern_1,
+            language_pattern_2=language_pattern_2,
+            namespace=namespace,
+        )
+    )
+
+    # Build filter description based on whether language patterns are provided
+    if language_pattern_1 and language_pattern_2:
+        filter_desc = f"licenses IN ({licenses}) AND (language ILIKE '{language_pattern_1}' \
+            OR language ILIKE '{language_pattern_2}')"
+    else:
+        filter_desc = f"licenses IN ({licenses})"
+
+    LOGGER.info(f"Database query found {len(expected_model_ids)} models for filter: {filter_desc}")
+
+    # Compare with API results
+    return _compare_api_and_database_results(
+        api_response=api_response, expected_model_ids=expected_model_ids, description=filter_desc
+    )
+
+
 def get_models_from_catalog_api(
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
     page_size: int = 100,
     source_label: str | None = None,
+    q: str | None = None,
+    order_by: str | None = None,
+    sort_order: str | None = None,
     additional_params: str = "",
 ) -> dict[str, Any]:
     """
-    Helper method to get models from catalog API with optional filtering
+    Helper method to get models from catalog API with optional filtering and sorting
 
     Args:
         model_catalog_rest_url: REST URL for model catalog
         model_registry_rest_headers: Headers for model registry REST API
         page_size: Number of results per page
         source_label: Source label(s) to filter by (must be comma-separated for multiple filters)
+        q: Free-form keyword search to filter models
+        order_by: Field to order results by (ID, NAME, CREATE_TIME, LAST_UPDATE_TIME)
+        sort_order: Sort order (ASC or DESC)
         additional_params: Additional query parameters (e.g., "&filterQuery=name='model_name'")
 
     Returns:
         Dictionary containing the API response
     """
-    url = f"{model_catalog_rest_url[0]}models?pageSize={page_size}"
+    base_url = f"{model_catalog_rest_url[0]}models"
+
+    # Build params dictionary for proper URL encoding
+    params = {"pageSize": page_size}
 
     if source_label:
-        url += f"&sourceLabel={source_label}"
+        params["sourceLabel"] = source_label
 
-    url += additional_params
+    if q:
+        params["q"] = q
 
-    return execute_get_command(url=url, headers=model_registry_rest_headers)
+    if order_by:
+        params["orderBy"] = order_by
+
+    if sort_order:
+        params["sortOrder"] = sort_order
+
+    # Parse additional_params string into params dict for proper URL encoding
+    if additional_params:
+        # Remove leading & if present
+        clean_params = additional_params.lstrip("&")
+        # Split by & and then by = to get key-value pairs
+        for param in clean_params.split("&"):
+            if "=" in param:
+                key, value = param.split("=", 1)  # Split only on first = to handle values with =
+                params[key] = value
+
+    return execute_get_command(url=base_url, headers=model_registry_rest_headers, params=params)
 
 
 def fetch_all_artifacts_with_dynamic_paging(
@@ -440,3 +779,190 @@ def fetch_all_artifacts_with_dynamic_paging(
 
         LOGGER.info(f"Pagination detected with pageSize={page_size}, increasing by {page_size_increment}")
         page_size += page_size_increment
+
+
+def validate_performance_data_files_on_pod(model_catalog_pod: Pod) -> dict[str, list[str]]:
+    """
+    Validate that performance data files exist for all models in the catalog pod.
+
+    Iterates through providers and models in the performance data directory to check
+    for required metadata and performance files.
+
+    Args:
+        model_catalog_pod: Pod object for the model catalog pod
+
+    Returns:
+        Dictionary with validation results if missing files are found,
+        Returns empty dictionary if all models have all required files.
+    """
+    validation_results = {}
+
+    providers = model_catalog_pod.execute(container=CATALOG_CONTAINER, command=["ls", PERFORMANCE_DATA_DIR])
+
+    for provider in providers.splitlines():
+        required_files = ["metadata.json", "performance.ndjson", "evaluations.ndjson"]
+        if provider == "manifest.json":
+            continue
+        LOGGER.info(f"Checking provider: {provider}")
+        # Only for RedHatAI model we expect performance.ndjson file, based on edge case definition
+        # https://docs.google.com/document/d/1K6SQi7Se8zljfB0UvXKKqV8VWVh5Pfq4HqKPtNvIQzg/edit?tab=t.0#heading=h.rh09auvgvlxd
+        if provider != "RedHatAI":
+            required_files.remove("performance.ndjson")
+        models = model_catalog_pod.execute(
+            container=CATALOG_CONTAINER, command=["ls", f"{PERFORMANCE_DATA_DIR}/{provider}"]
+        )
+
+        for model in models.splitlines():
+            if model == "provider.json":
+                continue
+            # Remove data for specific RH models based on
+            # https://redhat-internal.slack.com/archives/C09570S9VV0/p1762164394782969?thread_ts=1761834621.645019&cid=C09570S9VV0
+            if model == "Mistral-Small-24B-Instruct-2501":
+                required_files.remove("evaluations.ndjson")
+            elif model == "granite-3.1-8b-instruct-quantized.w8a8":
+                required_files.remove("performance.ndjson")
+
+            result = model_catalog_pod.execute(
+                container=CATALOG_CONTAINER, command=["ls", f"{PERFORMANCE_DATA_DIR}/{provider}/{model}"]
+            )
+
+            # Check which required files are missing
+            missing_files = [f for f in required_files if f not in result]
+
+            if missing_files:
+                model_key = f"{provider}/{model}"
+                validation_results[model_key] = missing_files
+
+    if not validation_results:
+        LOGGER.info("All models have all required performance data files on catalog pod")
+    else:
+        LOGGER.warning(f"Found models with missing performance data files: {validation_results}")
+
+    return validation_results
+
+
+def get_sources_with_sorting(
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+    order_by: str,
+    sort_order: str,
+) -> dict[str, Any]:
+    """
+    Get sources with sorting parameters
+
+    Args:
+        model_catalog_rest_url: REST URL for model catalog
+        model_registry_rest_headers: Headers for model registry REST API
+        order_by: Field to order results by (ID, NAME)
+        sort_order: Sort order (ASC or DESC)
+
+    Returns:
+        Dictionary containing the API response
+    """
+    base_url = f"{model_catalog_rest_url[0]}sources"
+    params = {
+        "orderBy": order_by,
+        "sortOrder": sort_order,
+        "pageSize": 100,
+    }
+
+    return execute_get_command(url=base_url, headers=model_registry_rest_headers, params=params)
+
+
+def get_artifacts_with_sorting(
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+    source_id: str,
+    model_name: str,
+    order_by: str,
+    sort_order: str,
+) -> dict[str, Any]:
+    """
+    Get artifacts with sorting parameters
+
+    Args:
+        model_catalog_rest_url: REST URL for model catalog
+        model_registry_rest_headers: Headers for model registry REST API
+        source_id: Source ID for the model
+        model_name: Name of the model
+        order_by: Field to order results by
+        sort_order: Sort order (ASC or DESC)
+
+    Returns:
+        Dictionary containing the API response
+    """
+    base_url = f"{model_catalog_rest_url[0]}sources/{source_id}/models/{model_name}/artifacts"
+    params = {
+        "orderBy": order_by,
+        "sortOrder": sort_order,
+        "pageSize": 100,
+    }
+
+    return execute_get_command(url=base_url, headers=model_registry_rest_headers, params=params)
+
+
+def validate_items_sorted_correctly(items: list[dict], field: str, order: str) -> bool:
+    """
+    Extract field values and verify they're in correct order
+
+    Args:
+        items: List of items to validate
+        field: Field name to check sorting on
+        order: Sort order (ASC or DESC)
+
+    Returns:
+        True if items are sorted correctly, False otherwise
+    """
+    if len(items) <= 1:
+        if field == "NAME" and items[0].get("artifactType") == "model-artifact":
+            # When testing sorting for model artifacts we use only models from the validated catalog, since
+            # they almost all have more than 1 artifact. However, some of these models still return a single artifact.
+            # Given that this is currently the expected behavior, we return True.
+            single_artifact_models = [
+                "mistral-small-24B",
+                "gemma-2",
+                "granite-3.1-8b-base-quantized.w4a16",
+                "granite-3.1-8b-instruct-FP8-dynamic",
+                "granite-3.1-8b-starter-v2",
+            ]
+            if any(single_artifact_model in items[0].get("uri") for single_artifact_model in single_artifact_models):
+                return True
+        else:
+            # In any other case, we expect at least 2 items to sort.
+            raise ValueError(f"At least 2 items are required to sort, got {len(items)}")
+
+    # Extract field values for comparison
+    values = []
+    for item in items:
+        if field == "ID":
+            value = item.get("id")
+        elif field == "NAME":
+            value = item.get("name")
+        elif field == "CREATE_TIME":
+            value = item.get("createTimeSinceEpoch")
+        elif field == "LAST_UPDATE_TIME":
+            value = item.get("lastUpdateTimeSinceEpoch")
+        else:
+            raise ValueError(f"Invalid field: {field}")
+
+        if value is None:
+            raise ValueError(f"Field {field} is missing from item: {item}")
+
+        values.append(value)
+
+    # Convert values to appropriate types for comparison
+    if field == "ID":
+        # Convert IDs to integers for numeric comparison
+        try:
+            values = [int(v) for v in values]
+        except ValueError:
+            # If conversion fails, fall back to string comparison
+            values = [str(v) for v in values]
+
+    # Check if values are in correct order
+    if order == "ASC":
+        return all(values[i] <= values[i + 1] for i in range(len(values) - 1))
+    elif order == "DESC":
+        return all(values[i] >= values[i + 1] for i in range(len(values) - 1))
+    else:
+        raise ValueError(f"Invalid sort order: {order}")

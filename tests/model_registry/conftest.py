@@ -24,6 +24,7 @@ from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 
+
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from ocp_resources.resource import ResourceEditor
 
@@ -34,7 +35,7 @@ from pytest_testconfig import config as py_config
 from model_registry.types import RegisteredModel
 
 from tests.model_registry.rbac.utils import wait_for_oauth_openshift_deployment
-from tests.model_registry.utils import generate_namespace_name, get_rest_headers
+from tests.model_registry.utils import generate_namespace_name, get_rest_headers, wait_for_default_resource_cleanedup
 from utilities.general import generate_random_name, wait_for_pods_running
 
 from tests.model_registry.constants import (
@@ -86,6 +87,7 @@ def model_registry_instance(
         mr_instance.delete(wait=True)
     else:
         LOGGER.warning("Requested Oauth Proxy configuration:")
+        db_name = param.get("db_name", "mysql")
         mr_objects = get_model_registry_objects(
             client=admin_client,
             namespace=model_registry_namespace,
@@ -93,7 +95,7 @@ def model_registry_instance(
             num=param.get("num_resources", 1),
             teardown_resources=teardown_resources,
             params=param,
-            db_backend=param.get("db_name", "mysql"),
+            db_backend=db_name,
         )
         with ExitStack() as stack:
             mr_instances = [stack.enter_context(mr_obj) for mr_obj in mr_objects]
@@ -104,6 +106,8 @@ def model_registry_instance(
                     admin_client=admin_client, namespace_name=model_registry_namespace, number_of_consecutive_checks=6
                 )
             yield mr_instances
+        if db_name == "default":
+            wait_for_default_resource_cleanedup(admin_client=admin_client, namespace_name=model_registry_namespace)
 
 
 @pytest.fixture(scope="class")
@@ -478,43 +482,48 @@ def mr_access_role_binding(
 
 @pytest.fixture(scope="module")
 def test_idp_user(
+    request: pytest.FixtureRequest,
     original_user: str,
-    user_credentials_rbac: dict[str, str],
-    created_htpasswd_secret: Generator[UserTestSession, None, None],
-    updated_oauth_config: Generator[Any, None, None],
     api_server_url: str,
+    is_byoidc: bool,
 ) -> Generator[UserTestSession, None, None]:
     """
     Session-scoped fixture that creates a test IDP user and cleans it up after all tests.
     Returns a UserTestSession object that contains all necessary credentials and contexts.
     """
-    idp_session = None
-    try:
-        if wait_for_user_creation(
-            username=user_credentials_rbac["username"],
-            password=user_credentials_rbac["password"],
-            cluster_url=api_server_url,
-        ):
-            # undo the login as test user if we were successful in logging in as test user
-            LOGGER.info(f"Undoing login as test user and logging in as {original_user}")
-            login_with_user_password(api_address=api_server_url, user=original_user)
+    if is_byoidc:
+        pytest.skip("Working on OIDC support for tests that use test_idp_user")
+    else:
+        user_credentials_rbac = request.getfixturevalue(argname="user_credentials_rbac")
+        _ = request.getfixturevalue(argname="created_htpasswd_secret")
+        _ = request.getfixturevalue(argname="updated_oauth_config")
+        idp_session = None
+        try:
+            if wait_for_user_creation(
+                username=user_credentials_rbac["username"],
+                password=user_credentials_rbac["password"],
+                cluster_url=api_server_url,
+            ):
+                # undo the login as test user if we were successful in logging in as test user
+                LOGGER.info(f"Undoing login as test user and logging in as {original_user}")
+                login_with_user_password(api_address=api_server_url, user=original_user)
 
-        idp_session = UserTestSession(
-            idp_name=user_credentials_rbac["idp_name"],
-            secret_name=user_credentials_rbac["secret_name"],
-            username=user_credentials_rbac["username"],
-            password=user_credentials_rbac["password"],
-            original_user=original_user,
-            api_server_url=api_server_url,
-        )
-        LOGGER.info(f"Created session test IDP user: {idp_session.username}")
+            idp_session = UserTestSession(
+                idp_name=user_credentials_rbac["idp_name"],
+                secret_name=user_credentials_rbac["secret_name"],
+                username=user_credentials_rbac["username"],
+                password=user_credentials_rbac["password"],
+                original_user=original_user,
+                api_server_url=api_server_url,
+            )
+            LOGGER.info(f"Created session test IDP user: {idp_session.username}")
 
-        yield idp_session
+            yield idp_session
 
-    finally:
-        if idp_session:
-            LOGGER.info(f"Cleaning up test IDP user: {idp_session.username}")
-            idp_session.cleanup()
+        finally:
+            if idp_session:
+                LOGGER.info(f"Cleaning up test IDP user: {idp_session.username}")
+                idp_session.cleanup()
 
 
 @pytest.fixture(scope="session")
