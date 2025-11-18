@@ -670,7 +670,9 @@ def get_rest_headers(token: str) -> dict[str, str]:
 
 
 def is_model_catalog_ready(client: DynamicClient, model_registry_namespace: str, consecutive_try: int = 6):
-    model_catalog_pods = get_model_catalog_pod(client=client, model_registry_namespace=model_registry_namespace)
+    model_catalog_pods = get_model_catalog_pod(
+        client=client, model_registry_namespace=model_registry_namespace, label_selector="app=model-catalog"
+    )
     # We can wait for the pods to reflect updated catalog, however, deleting them ensures the updated config is
     # applied immediately.
     for pod in model_catalog_pods:

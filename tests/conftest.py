@@ -45,6 +45,7 @@ from utilities.infra import (
     login_with_user_password,
     get_openshift_token,
     download_oc_console_cli,
+    get_cluster_authentication,
 )
 from utilities.constants import (
     AcceleratorType,
@@ -379,10 +380,7 @@ def kubconfig_filepath() -> str:
 
 @pytest.fixture(scope="session")
 def cluster_authentication(admin_client: DynamicClient) -> Authentication | None:
-    auth = Authentication(client=admin_client, name="cluster")
-    if auth.exists:
-        return auth
-    return None
+    return get_cluster_authentication(admin_client=admin_client)
 
 
 @pytest.fixture(scope="session")

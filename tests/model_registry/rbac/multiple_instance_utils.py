@@ -3,11 +3,11 @@ from pytest_testconfig import config as py_config
 
 from tests.model_registry.constants import (
     MODEL_REGISTRY_DB_SECRET_STR_DATA,
-    MR_INSTANCE_NAME,
     DB_BASE_RESOURCES_NAME,
     NUM_MR_INSTANCES,
     MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
     OAUTH_PROXY_CONFIG_DICT,
+    MR_INSTANCE_BASE_NAME,
 )
 from tests.model_registry.utils import (
     get_model_registry_db_label_dict,
@@ -76,9 +76,9 @@ db_deployment_params = [
 
 model_registry_instance_params = [
     {
-        "name": f"{MR_INSTANCE_NAME}{index}",
+        "name": f"{MR_INSTANCE_BASE_NAME}{index}",
         "namespace": ns_name,
-        "label": get_mr_standard_labels(resource_name=f"{MR_INSTANCE_NAME}{index}"),
+        "label": get_mr_standard_labels(resource_name=f"{MR_INSTANCE_BASE_NAME}{index}"),
         "grpc": {},
         "rest": {},
         "mysql": get_mysql_config(base_name=f"{DB_BASE_RESOURCES_NAME}{index}", namespace=ns_name, db_backend="mysql"),

@@ -34,7 +34,7 @@ from kubernetes.dynamic import DynamicClient
 from pytest_testconfig import config as py_config
 from model_registry.types import RegisteredModel
 
-from tests.model_registry.rbac.utils import wait_for_oauth_openshift_deployment
+from tests.model_registry.rbac.utils import wait_for_oauth_openshift_deployment, get_byoidc_user_credentials
 from tests.model_registry.utils import generate_namespace_name, get_rest_headers, wait_for_default_resource_cleanedup
 from utilities.general import generate_random_name, wait_for_pods_running
 
@@ -492,7 +492,8 @@ def test_idp_user(
     Returns a UserTestSession object that contains all necessary credentials and contexts.
     """
     if is_byoidc:
-        pytest.skip("Working on OIDC support for tests that use test_idp_user")
+        # For BYOIDC, we would be using a preconfigured group and username for actual api calls.
+        yield
     else:
         user_credentials_rbac = request.getfixturevalue(argname="user_credentials_rbac")
         _ = request.getfixturevalue(argname="created_htpasswd_secret")
@@ -597,14 +598,25 @@ def updated_oauth_config(
 
 
 @pytest.fixture(scope="module")
-def user_credentials_rbac() -> dict[str, str]:
-    random_str = generate_random_name()
-    return {
-        "username": f"test-user-{random_str}",
-        "password": f"test-password-{random_str}",
-        "idp_name": f"test-htpasswd-idp-{random_str}",
-        "secret_name": f"test-htpasswd-secret-{random_str}",
-    }
+def user_credentials_rbac(
+    is_byoidc: bool,
+) -> dict[str, str]:
+    if is_byoidc:
+        byoidc_creds = get_byoidc_user_credentials(username="mr-non-admin")
+        return {
+            "username": byoidc_creds["username"],
+            "password": byoidc_creds["password"],
+            "idp_name": "byoidc",
+            "secret_name": None,
+        }
+    else:
+        random_str = generate_random_name()
+        return {
+            "username": f"test-user-{random_str}",
+            "password": f"test-password-{random_str}",
+            "idp_name": f"test-htpasswd-idp-{random_str}",
+            "secret_name": f"test-htpasswd-secret-{random_str}",
+        }
 
 
 @pytest.fixture(scope="class")

@@ -27,7 +27,7 @@ from tests.model_registry.rbac.utils import (
     build_mr_client_args,
     assert_positive_mr_registry,
     assert_forbidden_access,
-    should_skip_rbac_tests,
+    get_mr_user_token,
 )
 from tests.model_registry.constants import NUM_MR_INSTANCES
 from utilities.infra import get_openshift_token
@@ -41,13 +41,7 @@ from utilities.constants import Protocols
 
 
 LOGGER = get_logger(name=__name__)
-pytestmark = [
-    pytest.mark.usefixtures("original_user", "test_idp_user"),
-    pytest.mark.skipif(
-        should_skip_rbac_tests(),
-        reason="RBAC tests are not supported in OpenShift 4.20 and later with OIDC authentication",
-    ),
-]
+pytestmark = [pytest.mark.usefixtures("original_user", "test_idp_user")]
 
 
 @pytest.mark.usefixtures(
@@ -61,26 +55,35 @@ class TestUserPermission:
     @pytest.mark.sanity
     def test_user_permission_non_admin_user(
         self: Self,
+        is_byoidc: bool,
+        admin_client: DynamicClient,
         test_idp_user,
         model_registry_instance_rest_endpoint: list[str],
+        user_credentials_rbac: dict[str, str],
         login_as_test_user: None,
     ):
         """
         This test verifies that non-admin users cannot access the Model Registry (403 Forbidden)
         """
-        client_args = build_mr_client_args(
-            rest_endpoint=model_registry_instance_rest_endpoint[0], token=get_openshift_token()
-        )
+        if is_byoidc:
+            token = get_mr_user_token(admin_client=admin_client, user_credentials_rbac=user_credentials_rbac)
+        else:
+            token = get_openshift_token()
+
+        client_args = build_mr_client_args(rest_endpoint=model_registry_instance_rest_endpoint[0], token=token)
         with pytest.raises(ForbiddenException) as exc_info:
             ModelRegistryClient(**client_args)
-        assert exc_info.value.status == 403, f"Expected HTTP 403 Forbidden, but got {exc_info.value.status}"
+        assert exc_info.value.status == 403, f"Expected HTTP 403 ForbiddenException, but got {exc_info.value.status}"
         LOGGER.info("Successfully received expected HTTP 403 status code")
 
     @pytest.mark.sanity
     def test_user_added_to_group(
         self: Self,
+        is_byoidc: bool,
+        admin_client: DynamicClient,
         model_registry_instance_rest_endpoint: list[str],
         test_idp_user: UserTestSession,
+        user_credentials_rbac: dict[str, str],
         model_registry_group_with_user: Group,
         login_as_test_user: Generator[UserTestSession, None, None],
     ):
@@ -89,12 +92,15 @@ class TestUserPermission:
         1. After adding the user to the appropriate group, they gain access
         """
         # Wait for access to be granted
+        user_credentials_rbac["username"] = "mr-user1"
         sampler = TimeoutSampler(
             wait_timeout=240,
             sleep=5,
             func=assert_positive_mr_registry,
             model_registry_instance_rest_endpoint=model_registry_instance_rest_endpoint[0],
-            token=get_openshift_token(),
+            token=get_openshift_token()
+            if not is_byoidc
+            else get_mr_user_token(admin_client=admin_client, user_credentials_rbac=user_credentials_rbac),
         )
         for _ in sampler:
             break  # Break after first successful iteration
@@ -103,6 +109,7 @@ class TestUserPermission:
     @pytest.mark.sanity
     def test_create_group(
         self: Self,
+        skip_test_on_byoidc: None,
         test_idp_user: UserTestSession,
         model_registry_instance_rest_endpoint: list[str],
         created_role_binding_group: RoleBinding,
@@ -123,8 +130,11 @@ class TestUserPermission:
     @pytest.mark.sanity
     def test_add_single_user_role_binding(
         self: Self,
+        is_byoidc: bool,
+        admin_client: DynamicClient,
         test_idp_user: UserTestSession,
         model_registry_instance_rest_endpoint: list[str],
+        user_credentials_rbac: dict[str, str],
         created_role_binding_user: RoleBinding,
         login_as_test_user: None,
     ):
@@ -135,9 +145,20 @@ class TestUserPermission:
         1. A single user can be granted Model Registry access via RoleBinding
         2. The user can access the Model Registry after being granted access
         """
-        assert_positive_mr_registry(
-            model_registry_instance_rest_endpoint=model_registry_instance_rest_endpoint[0],
-        )
+        if is_byoidc:
+            user_credentials_rbac["username"] = "mr-non-admin"
+            sampler = TimeoutSampler(
+                wait_timeout=120,
+                sleep=5,
+                func=assert_positive_mr_registry,
+                model_registry_instance_rest_endpoint=model_registry_instance_rest_endpoint[0],
+                token=get_mr_user_token(admin_client=admin_client, user_credentials_rbac=user_credentials_rbac),
+            )
+            for _ in sampler:
+                break  # Break after first successful iteration
+            LOGGER.info("Successfully accessed Model Registry")
+        else:
+            assert_positive_mr_registry(model_registry_instance_rest_endpoint=model_registry_instance_rest_endpoint[0])
 
 
 class TestUserMultiProjectPermission:
@@ -159,6 +180,7 @@ class TestUserMultiProjectPermission:
     @pytest.mark.sanity
     def test_user_permission_multi_project_parametrized(
         self: Self,
+        is_byoidc: bool,
         test_idp_user: UserTestSession,
         admin_client: DynamicClient,
         updated_dsc_component_state_scope_session: DataScienceCluster,
@@ -167,6 +189,7 @@ class TestUserMultiProjectPermission:
         db_pvc_parametrized: List[PersistentVolumeClaim],
         db_service_parametrized: List[Service],
         db_deployment_parametrized: List[Deployment],
+        user_credentials_rbac: dict[str, str],
         model_registry_instance_parametrized: List[ModelRegistry],
         login_as_test_user: None,
     ):
@@ -174,7 +197,6 @@ class TestUserMultiProjectPermission:
         Verify that a user can be granted access to one MR instance at a time.
         All resources (MR instances and databases) are created in the same dynamically generated namespace.
         """
-
         if len(model_registry_instance_parametrized) != NUM_MR_INSTANCES:
             raise ValueError(
                 f"Expected {NUM_MR_INSTANCES} MR instances, but got {len(model_registry_instance_parametrized)}"
@@ -193,7 +215,11 @@ class TestUserMultiProjectPermission:
             endpoint = get_endpoint_from_mr_service(svc=service, protocol=Protocols.REST)
             mr_data.append({"instance": mr_instance, "endpoint": endpoint, "name": mr_instance.name})
 
-        token = get_openshift_token()
+        token = (
+            get_openshift_token()
+            if not is_byoidc
+            else (get_mr_user_token(admin_client=admin_client, user_credentials_rbac=user_credentials_rbac))
+        )
 
         # Test each MR instance sequentially
         for i, current_mr_data in enumerate(mr_data):
@@ -205,7 +231,7 @@ class TestUserMultiProjectPermission:
             # Grant access to current instance
             grant_mr_access(
                 admin_client=admin_client,
-                user=test_idp_user.username,
+                user=user_credentials_rbac["username"],
                 mr_instance_name=current_mr.name,
                 model_registry_namespace=model_registry_namespace,
             )
@@ -242,7 +268,7 @@ class TestUserMultiProjectPermission:
             if i < len(mr_data) - 1:
                 revoke_mr_access(
                     admin_client=admin_client,
-                    user=test_idp_user.username,
+                    user=user_credentials_rbac["username"],
                     mr_instance_name=current_mr.name,
                     model_registry_namespace=model_registry_namespace,
                 )
@@ -250,7 +276,7 @@ class TestUserMultiProjectPermission:
         # Clean up - revoke access from the last instance
         revoke_mr_access(
             admin_client=admin_client,
-            user=test_idp_user.username,
+            user=user_credentials_rbac["username"],
             mr_instance_name=mr_data[-1]["instance"].name,
             model_registry_namespace=model_registry_namespace,
         )
