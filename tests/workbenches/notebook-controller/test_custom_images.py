@@ -193,7 +193,9 @@ def install_packages_in_pod(
     _ERR_INVALID_TIMEOUT_INSTALL = "timeout must be positive"
     _ERR_POD_NOT_EXISTS_INSTALL = "Pod {pod_name} does not exist"
     _ERR_POD_NOT_RUNNING_INSTALL = "Pod {pod_name} is not in Running state (current: {phase})"
-    _ERR_CONTAINER_NOT_FOUND_INSTALL = "Container '{container_name}' not found in pod. Available containers: {containers}"
+    _ERR_CONTAINER_NOT_FOUND_INSTALL = (
+        "Container '{container_name}' not found in pod. Available containers: {containers}"
+    )
 
     # Input validation
     if not pod or not isinstance(packages, list) or not packages:
@@ -213,7 +215,9 @@ def install_packages_in_pod(
     # Verify container exists
     container_names = [c.name for c in pod.instance.spec.containers]
     if container_name not in container_names:
-        raise RuntimeError(_ERR_CONTAINER_NOT_FOUND_INSTALL.format(container_name=container_name, containers=container_names))
+        raise RuntimeError(
+            _ERR_CONTAINER_NOT_FOUND_INSTALL.format(container_name=container_name, containers=container_names)
+        )
 
     LOGGER.info(f"Installing {len(packages)} packages in container '{container_name}' of pod '{pod.name}'")
 
