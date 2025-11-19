@@ -71,17 +71,20 @@ def default_notebook(
 
     # Error messages
     _ERR_INVALID_CUSTOM_IMAGE = (
-        "custom_image must be a valid OCI image reference "
-        "(e.g., 'quay.io/org/image:tag' or 'quay.io/org/image@sha256:digest'), "
+        "custom_image must be a valid OCI image reference with either a tag (:tag) or digest (@sha256:digest), "
+        "e.g., 'quay.io/org/image:tag' or 'quay.io/org/image@sha256:digest', "
         "got: '{custom_image}'"
     )
 
     # Determine which image to use
     if custom_image:
         # Custom image provided - use it directly (must be valid OCI image reference)
-        if ":" not in custom_image or "/repository/" in custom_image or "/manifest/" in custom_image:
+        # Validate OCI format: must have either :tag or @sha256:digest
+        has_digest = "@sha256:" in custom_image
+        has_tag = ":" in custom_image and custom_image.rfind(":") > custom_image.rfind("/")
+        if not (has_digest or has_tag):
             raise ValueError(_ERR_INVALID_CUSTOM_IMAGE.format(custom_image=custom_image))
-        minimal_image_path = custom_image
+        image_path = custom_image
         LOGGER.info(f"Using custom workbench image: {custom_image}")
     else:
         # No custom image - use default minimal image with registry resolution
@@ -89,7 +92,7 @@ def default_notebook(
         internal_image_registry = check_internal_image_registry_available(admin_client=admin_client)
 
         # Set the image path based on internal image registry status
-        minimal_image_path = (
+        image_path = (
             f"{INTERNAL_IMAGE_REGISTRY_PATH}/{py_config['applications_namespace']}/{minimal_image}"
             if internal_image_registry
             else minimal_image
@@ -115,7 +118,7 @@ def default_notebook(
             "annotations": {
                 Labels.Notebook.INJECT_AUTH: "true",
                 "opendatahub.io/accelerator-name": "",
-                "notebooks.opendatahub.io/last-image-selection": minimal_image_path if custom_image else minimal_image,
+                "notebooks.opendatahub.io/last-image-selection": image_path,
                 # Add any additional annotations if provided
                 **auth_annotations,
             },
@@ -149,9 +152,9 @@ def default_notebook(
                                     "                  "
                                     "--ServerApp.quit_button=False\n",
                                 },
-                                {"name": "JUPYTER_IMAGE", "value": minimal_image_path},
+                                {"name": "JUPYTER_IMAGE", "value": image_path},
                             ],
-                            "image": minimal_image_path,
+                            "image": image_path,
                             "imagePullPolicy": "Always",
                             "livenessProbe": probe_config,
                             "name": name,
