@@ -147,6 +147,7 @@ class TestModelCatalogCustom:
         assert result["name"] == SAMPLE_MODEL_NAME3
 
     @pytest.mark.dependency(depends=["test_model_custom_catalog_add_model"])
+    @pytest.mark.xfail(reason="RHOAIENG-38653")
     def test_model_custom_catalog_remove_model(
         self: Self,
         model_catalog_rest_url: list[str],
