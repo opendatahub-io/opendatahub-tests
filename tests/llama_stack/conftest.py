@@ -30,6 +30,8 @@ from tests.llama_stack.constants import (
 
 LOGGER = get_logger(name=__name__)
 
+distribution_name = generate_random_name(prefix="llama-stack-distribution")
+
 
 @pytest.fixture(scope="class")
 def enabled_llama_stack_operator(dsc_resource: DataScienceCluster) -> Generator[DataScienceCluster, Any, Any]:
@@ -87,6 +89,14 @@ def llama_stack_server_config(
         - fms_orchestrator_url_fixture: Fixture name to get FMS orchestrator URL from
         - vector_io_provider: Vector I/O provider type ("milvus" or "milvus-remote")
         - llama_stack_storage_size: Storage size for the deployment
+        - embedding_model: Embedding model identifier for inference
+        - kubeflow_llama_stack_url: LlamaStack service URL for Kubeflow
+        - kubeflow_pipelines_endpoint: Kubeflow Pipelines API endpoint URL
+        - kubeflow_namespace: Namespace for Kubeflow resources
+        - kubeflow_base_image: Base container image for Kubeflow pipelines
+        - kubeflow_results_s3_prefix: S3 prefix for storing Kubeflow results
+        - kubeflow_s3_credentials_secret_name: Secret name for S3 credentials
+        - kubeflow_pipelines_token: Authentication token for Kubeflow Pipelines
 
     Example:
         @pytest.mark.parametrize("llama_stack_server_config",
@@ -135,6 +145,48 @@ def llama_stack_server_config(
     embedding_model = params.get("embedding_model")
     if embedding_model:
         env_vars.append({"name": "EMBEDDING_MODEL", "value": embedding_model})
+
+    # Kubeflow-related environment variables
+    if params.get("enable_ragas_remote"):
+        # Get fixtures only when Ragas Remote/Kubeflow is enabled
+        model_namespace = request.getfixturevalue(argname="model_namespace")
+        current_client_token = request.getfixturevalue(argname="current_client_token")
+        dspa_route = request.getfixturevalue(argname="dspa_route")
+        dspa_s3_secret = request.getfixturevalue(argname="dspa_s3_secret")
+
+        # KUBEFLOW_LLAMA_STACK_URL: Build from LlamaStackDistribution service
+        env_vars.append({
+            "name": "KUBEFLOW_LLAMA_STACK_URL",
+            "value": f"http://{distribution_name}-service.{model_namespace.name}.svc.cluster.local:8321",
+        })
+
+        # KUBEFLOW_PIPELINES_ENDPOINT: Get from DSPA route
+        env_vars.append({"name": "KUBEFLOW_PIPELINES_ENDPOINT", "value": f"https://{dspa_route.instance.spec.host}"})
+
+        # KUBEFLOW_NAMESPACE: Use model namespace
+        env_vars.append({"name": "KUBEFLOW_NAMESPACE", "value": model_namespace.name})
+
+        # KUBEFLOW_BASE_IMAGE
+        env_vars.append({
+            "name": "KUBEFLOW_BASE_IMAGE",
+            "value": params.get(
+                "kubeflow_base_image",
+                "quay.io/diegosquayorg/my-ragas-provider-image"
+                "@sha256:3749096c47f7536d6be2a7932e691abebacd578bafbe65bad2f7db475e2b93fb",
+            ),
+        })
+
+        # KUBEFLOW_RESULTS_S3_PREFIX: Build from MinIO bucket
+        env_vars.append({
+            "name": "KUBEFLOW_RESULTS_S3_PREFIX",
+            "value": params.get("kubeflow_results_s3_prefix", "s3://llms/ragas-results"),
+        })
+
+        # KUBEFLOW_S3_CREDENTIALS_SECRET_NAME: Use DSPA secret name
+        env_vars.append({"name": "KUBEFLOW_S3_CREDENTIALS_SECRET_NAME", "value": dspa_s3_secret.name})
+
+        # KUBEFLOW_PIPELINES_TOKEN: Get from current client token
+        env_vars.append({"name": "KUBEFLOW_PIPELINES_TOKEN", "value": str(current_client_token)})
 
     # Depending on parameter vector_io_provider, deploy vector_io provider and obtain required env_vars
     vector_io_provider = params.get("vector_io_provider") or "milvus"
@@ -189,7 +241,6 @@ def llama_stack_distribution(
     llama_stack_server_config: Dict[str, Any],
 ) -> Generator[LlamaStackDistribution, None, None]:
     # Distribution name needs a random substring due to bug RHAIENG-999 / RHAIENG-1139
-    distribution_name = generate_random_name(prefix="llama-stack-distribution")
     with create_llama_stack_distribution(
         client=admin_client,
         name=distribution_name,

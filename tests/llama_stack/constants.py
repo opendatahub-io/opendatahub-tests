@@ -18,6 +18,7 @@ class LlamaStackProviders:
     class Eval(str, Enum):
         TRUSTYAI_LMEVAL = "trustyai_lmeval"
         TRUSTYAI_RAGAS_INLINE = "trustyai_ragas_inline"
+        TRUSTYAI_RAGAS_REMOTE = "trustyai_ragas_remote"
 
 
 class ModelInfo(NamedTuple):
