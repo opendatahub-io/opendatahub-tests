@@ -24,6 +24,7 @@ from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 
+
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from ocp_resources.resource import ResourceEditor
 
@@ -481,7 +482,10 @@ def mr_access_role_binding(
 
 @pytest.fixture(scope="module")
 def test_idp_user(
-    request: pytest.FixtureRequest, original_user: str, api_server_url: str, is_byoidc: bool
+    request: pytest.FixtureRequest,
+    original_user: str,
+    api_server_url: str,
+    is_byoidc: bool,
 ) -> Generator[UserTestSession, None, None]:
     """
     Session-scoped fixture that creates a test IDP user and cleans it up after all tests.

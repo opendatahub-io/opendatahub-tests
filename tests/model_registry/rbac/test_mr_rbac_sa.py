@@ -7,8 +7,15 @@ from tests.model_registry.rbac.utils import build_mr_client_args
 from utilities.infra import create_inference_token
 from mr_openapi.exceptions import ForbiddenException
 from ocp_resources.service_account import ServiceAccount
+from tests.model_registry.rbac.utils import should_skip_rbac_tests
 
 LOGGER = get_logger(name=__name__)
+pytestmark = [
+    pytest.mark.skipif(
+        should_skip_rbac_tests(),
+        reason="RBAC tests are not supported in OpenShift 4.20 and later with OIDC authentication",
+    ),
+]
 
 
 @pytest.mark.usefixtures(

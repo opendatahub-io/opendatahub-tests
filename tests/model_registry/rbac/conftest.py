@@ -19,8 +19,8 @@ from ocp_resources.resource import ResourceEditor
 from kubernetes.dynamic import DynamicClient
 
 from tests.model_registry.rbac.utils import create_role_binding
-from utilities.infra import login_with_user_password
 from utilities.user_utils import UserTestSession
+from utilities.infra import login_with_user_password
 from tests.model_registry.rbac.group_utils import create_group
 from tests.model_registry.constants import (
     MR_INSTANCE_NAME,
