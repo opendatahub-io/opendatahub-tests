@@ -92,7 +92,7 @@ def verify_package_import(
         raise RuntimeError(_ERR_POD_NOT_RUNNING.format(pod_name=pod.name, phase=pod_status.phase))
 
     # Verify container exists
-    container_names = [c.name for c in pod.instance.spec.containers]
+    container_names = [container.name for container in pod.instance.spec.containers]
     if container_name not in container_names:
         raise RuntimeError(_ERR_CONTAINER_NOT_FOUND.format(container_name=container_name, containers=container_names))
 
@@ -213,7 +213,7 @@ def install_packages_in_pod(
         raise RuntimeError(_ERR_POD_NOT_RUNNING_INSTALL.format(pod_name=pod.name, phase=pod_status.phase))
 
     # Verify container exists
-    container_names = [c.name for c in pod.instance.spec.containers]
+    container_names = [container.name for container in pod.instance.spec.containers]
     if container_name not in container_names:
         raise RuntimeError(
             _ERR_CONTAINER_NOT_FOUND_INSTALL.format(container_name=container_name, containers=container_names)
@@ -254,7 +254,7 @@ class TestCustomImageValidation:
     @pytest.mark.sanity
     @pytest.mark.slow
     @pytest.mark.parametrize(
-        "unprivileged_model_namespace,users_persistent_volume_claim,default_notebook",
+        "unprivileged_model_namespace,users_persistent_volume_claim,default_notebook,packages_to_verify",
         [
             # ========================================
             # HOW TO ADD A NEW CUSTOM IMAGE TEST:
@@ -262,7 +262,7 @@ class TestCustomImageValidation:
             # 1. Obtain image URL and package list from workbench image team
             # 2. Copy the pytest.param template below
             # 3. Update name, namespace, custom_image, and id fields
-            # 4. Update packages_to_verify in the test method (see line ~120)
+            # 4. Update packages_to_verify list
             # 5. Remove the skip marker once the image is available
             # 6. Run the test:
             # pytest tests/workbenches/notebook-controller/\
@@ -291,6 +291,7 @@ class TestCustomImageValidation:
                         "9458a764d861cbe0a782a53e0f5a13a4bcba35d279145d87088ab3cdfabcad1d"  # pragma: allowlist secret
                     ),  # Placeholder - update with sdg_hub image
                 },
+                ["sdg_hub"],
                 id="sdg_hub_image",
                 # marks=pytest.mark.skip(reason="Waiting for sdg_hub image URL from workbench image team"),
             ),
@@ -315,27 +316,32 @@ class TestCustomImageValidation:
                         "9458a764d861cbe0a782a53e0f5a13a4bcba35d279145d87088ab3cdfabcad1d"  # pragma: allowlist secret
                     ),
                 },
+                ["numpy", "pandas", "matplotlib"],
                 id="datascience_image",
             ),
         ],
-        indirect=True,
+        indirect=["unprivileged_model_namespace", "users_persistent_volume_claim", "default_notebook"],
     )
     def test_custom_image_package_verification(
         self,
-        request: pytest.FixtureRequest,
         unprivileged_client: DynamicClient,
         unprivileged_model_namespace: Namespace,  # noqa: ARG002
         users_persistent_volume_claim: PersistentVolumeClaim,  # noqa: ARG002
         default_notebook: Notebook,
+        packages_to_verify: list[str],
     ):
         """
         Validate that custom workbench image contains required packages.
 
+        Note: Packages might not be directly available within the workbench image
+        but this test attempts to install them using pip if they are missing.
+
         This test:
         1. Spawns a workbench with the specified custom image
         2. Waits for the pod to reach Ready state (up to 10 minutes)
-        3. Executes package import verification commands
-        4. Asserts that all required packages are importable
+        3. Installs missing packages via pip if needed
+        4. Executes package import verification commands
+        5. Asserts that all required packages are importable
 
         Test satisfies:
         - FR-001: Spawn workbench with custom image URL
@@ -389,17 +395,6 @@ class TestCustomImageValidation:
                 raise AssertionError(_ERR_POD_NOT_CREATED.format(pod_name=default_notebook.name)) from e
 
         # Verify packages are importable
-        # Different packages per test case (based on test ID from parametrization)
-        test_id = request.node.callspec.id
-        if "sdg_hub" in test_id:
-            # SDG Hub image packages (placeholder - update when image URL is available)
-            packages_to_verify = ["sdg_hub"]
-        elif "datascience" in test_id:
-            # Data science image packages
-            packages_to_verify = ["numpy", "pandas", "matplotlib"]
-        else:
-            # Default: basic Python packages
-            packages_to_verify = ["sys", "os"]
 
         # Install packages if they're not standard library (not in the default list)
         standard_lib_packages = {"sys", "os"}
