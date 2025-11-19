@@ -2,11 +2,14 @@ from contextlib import contextmanager
 from typing import Any, Callable, Dict, Generator, List, cast
 
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from llama_stack_client import LlamaStackClient, APIConnectionError, InternalServerError
 from llama_stack_client.types.vector_store import VectorStore
 from ocp_resources.llama_stack_distribution import LlamaStackDistribution
+from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
 from timeout_sampler import retry
+from utilities.exceptions import UnexpectedResourceCountError
 
 
 from tests.llama_stack.constants import (
@@ -15,6 +18,7 @@ from tests.llama_stack.constants import (
     ModelInfo,
     ValidationResult,
     TurnResult,
+    LLS_CORE_POD_FILTER,
 )
 
 from llama_stack_client import Agent, AgentEventLogger
@@ -49,24 +53,55 @@ def create_llama_stack_distribution(
         yield llama_stack_distribution
 
 
+@retry(
+    wait_timeout=60,
+    sleep=5,
+    exceptions_dict={ResourceNotFoundError: [], UnexpectedResourceCountError: []},
+)
+def wait_for_unique_llama_stack_pod(client: DynamicClient, namespace: str) -> Pod:
+    """Wait until exactly one LlamaStackDistribution pod is found in the
+    namespace (multiple pods may indicate known bug RHAIENG-1819)."""
+    pods = list(
+        Pod.get(
+            dyn_client=client,
+            namespace=namespace,
+            label_selector=LLS_CORE_POD_FILTER,
+        )
+    )
+    if not pods:
+        raise ResourceNotFoundError(f"No pods found with label selector {LLS_CORE_POD_FILTER} in namespace {namespace}")
+    if len(pods) != 1:
+        raise UnexpectedResourceCountError(
+            f"Expected exactly 1 pod with label selector {LLS_CORE_POD_FILTER} "
+            f"in namespace {namespace}, found {len(pods)}. "
+            f"(possibly due to known bug RHAIENG-1819)"
+        )
+    return pods[0]
+
+
 @retry(wait_timeout=90, sleep=5)
 def wait_for_llama_stack_client_ready(client: LlamaStackClient) -> bool:
+    """Wait for LlamaStack client to be ready by checking health, version, and database access."""
     try:
         client.inspect.health()
         version = client.inspect.version()
-        # Check access to llama-stack server database
+        models = client.models.list()
         vector_stores = client.vector_stores.list()
         files = client.files.list()
         LOGGER.info(
             f"Llama Stack server is available! "
             f"(version:{version.version} "
+            f"models:{len(models)} "
             f"vector_stores:{len(vector_stores.data)} "
             f"files:{len(files.data)})"
         )
         return True
+
     except (APIConnectionError, InternalServerError) as error:
         LOGGER.debug(f"Llama Stack server not ready yet: {error}")
+        LOGGER.debug(f"Base URL: {client.base_url}, Error type: {type(error)}, Error details: {str(error)}")
         return False
+
     except Exception as e:
         LOGGER.warning(f"Unexpected error checking Llama Stack readiness: {e}")
         return False
@@ -108,6 +143,7 @@ def create_response_function(
         response = llama_stack_client.responses.create(
             input=question,
             model=llama_stack_models.model_id,
+            stream=False,
             tools=[
                 {
                     "type": "file_search",

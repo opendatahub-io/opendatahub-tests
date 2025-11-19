@@ -116,8 +116,6 @@ class TestLlamaStackAgentsDeprecated:
         "enable_streaming",
         [
             pytest.param(False, id="streaming_disabled"),
-            # Streaming test disabled, as it seems to be broken in 0.3.0 (Agents API is only partially implemented)
-            # pytest.param(True, id="streaming_enabled"),
         ],
     )
     def test_agents_rag_agent(
@@ -138,6 +136,8 @@ class TestLlamaStackAgentsDeprecated:
         Based on "Build a RAG Agent" example available at
         https://llamastack.github.io/docs/getting_started/detailed_tutorial
 
+        Note: streaming is not tested (enable_streaming = False), as it seems to be broken in
+        llama-stack 0.3.0 (Agents API is only partially implemented)
         """
 
         # Create the RAG agent connected to the vector database
