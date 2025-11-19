@@ -456,7 +456,7 @@ def get_mr_pvc_objects(
                 name=name,
                 namespace=namespace,
                 client=client,
-                size="5Gi",
+                size="3Gi",
                 label=get_model_registry_db_label_dict(db_resource_name=name),
                 teardown=teardown_resources,
             )
