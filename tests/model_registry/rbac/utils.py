@@ -4,15 +4,12 @@ import requests
 from typing import Any, Dict, Generator, List
 
 from kubernetes.dynamic import DynamicClient
-from semver.version import Version
 from timeout_sampler import TimeoutSampler
 
-from ocp_resources.authentication_config_openshift_io import Authentication
 from ocp_resources.deployment import Deployment
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
-from ocp_utilities.cluster_versions import get_cluster_version
 from utilities.constants import Protocols
 import logging
 from model_registry import ModelRegistry as ModelRegistryClient
@@ -227,23 +224,6 @@ def get_mr_user_token(admin_client: DynamicClient, user_credentials_rbac: dict[s
         return json_response["id_token"]
     except Exception as e:
         raise e
-
-
-def should_skip_rbac_tests() -> bool:
-    """Check if RBAC tests should be skipped"""
-    # Need to get these details here to use this in the skipif statement.
-    # Skip RBAC tests on OpenShift 4.20+ with OIDC authentication
-    # Check BYOIDC
-    try:
-        auth = Authentication(name="cluster")
-        if not auth.exists:
-            return False
-        is_byoidc = auth.instance.spec.type == "OIDC"
-    except Exception:
-        return False
-    if not is_byoidc:
-        return False
-    return get_cluster_version() >= Version.parse("4.20.0")
 
 
 def get_byoidc_user_credentials(username: str = None) -> Dict[str, str]:
