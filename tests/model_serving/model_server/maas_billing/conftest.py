@@ -7,7 +7,15 @@ from simple_logger.logger import get_logger
 from utilities.plugins.constant import OpenAIEnpoints
 
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.namespace import Namespace
+from ocp_resources.llm_inference_service import LLMInferenceService
+
+from utilities.llmd_utils import create_llmisvc
+from utilities.llmd_constants import ModelStorage as LLMDModelStorage, ContainerImages
+from utilities.constants import Timeout
+
 from ocp_resources.infrastructure import Infrastructure
+
 from ocp_resources.oauth import OAuth
 from ocp_resources.resource import ResourceEditor
 from utilities.general import generate_random_name
@@ -23,6 +31,7 @@ from tests.model_serving.model_server.maas_billing.utils import (
     create_maas_group,
     build_maas_headers,
     get_maas_models_response,
+    patch_llmisvc_with_maas_router,
 )
 
 
@@ -68,9 +77,13 @@ def base_url(admin_client) -> str:
 
 
 @pytest.fixture(scope="session")
-def model_url(admin_client) -> str:
+def model_url(
+    admin_client: DynamicClient,
+    llmd_inference_service_tinyllama: LLMInferenceService,
+) -> str:
     """
     MODEL_URL:http(s)://<host>/llm/<deployment>/v1/chat/completions
+
     """
     scheme = detect_scheme_via_llmisvc(client=admin_client)
     host = host_from_ingress_domain(client=admin_client)
@@ -85,9 +98,10 @@ def maas_headers(minted_token: str) -> dict:
 
 @pytest.fixture
 def maas_models(
-    request_session_http,
-    base_url,
-    maas_headers,
+    request_session_http: requests.Session,
+    base_url: str,
+    maas_headers: dict,
+    llmd_inference_service_tinyllama: LLMInferenceService,
 ):
     resp = get_maas_models_response(
         session=request_session_http,
@@ -458,3 +472,55 @@ def maas_models_response_for_actor(
         base_url=base_url,
         headers=maas_headers_for_actor,
     )
+
+@pytest.fixture
+def llmd_inference_service_tinyllama(
+    admin_client: DynamicClient,
+) -> Generator[LLMInferenceService, None, None]:
+    """
+    Create a real LLMD model (TinyLlama chat HF) in the 'llm' namespace
+    for MaaS Billing tests, and delete it when the session ends.
+    """
+    namespace_name = "llm"
+
+    Namespace(
+        client=admin_client,
+        name=namespace_name,
+        ensure_exists=True,
+    )
+
+    container_resources = {
+        "limits": {"cpu": "2", "memory": "16Gi"},
+        "requests": {"cpu": "1", "memory": "12Gi"},
+    }
+
+    create_kwargs = {
+        "client": admin_client,
+        "name": "llm-hf-tinyllama",
+        "namespace": namespace_name,
+        "storage_uri": LLMDModelStorage.HF_TINYLLAMA,
+        "container_image": ContainerImages.VLLM_CPU,
+        "container_resources": container_resources,
+        "wait": True,
+        "timeout": Timeout.TIMEOUT_15MIN,
+    }
+
+    with create_llmisvc(**create_kwargs) as llm_service:
+        LOGGER.info(
+            "MaaS LLMD: created LLMInferenceService %s/%s for TinyLlama HF",
+            llm_service.namespace,
+            llm_service.name,
+        )
+
+        patch_llmisvc_with_maas_router(
+            llm_service=llm_service,
+            client=admin_client,
+        )
+
+        yield llm_service
+
+        LOGGER.info(
+            "MaaS LLMD: finished tests; LLMInferenceService %s/%s will be deleted by context manager",
+            llm_service.namespace,
+            llm_service.name,
+        )
