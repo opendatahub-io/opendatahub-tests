@@ -92,7 +92,7 @@ def default_notebook(
         minimal_image_path = (
             f"{INTERNAL_IMAGE_REGISTRY_PATH}/{py_config['applications_namespace']}/{minimal_image}"
             if internal_image_registry
-            else ":" + minimal_image.rsplit(":", maxsplit=1)[1]
+            else minimal_image
         )
 
     probe_config = {
