@@ -2,11 +2,18 @@ from typing import Generator, Any
 
 import pytest
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.data_science_pipelines_application import DataSciencePipelinesApplication
 from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
+from ocp_resources.route import Route
+from ocp_resources.secret import Secret
+from ocp_resources.service import Service
+from timeout_sampler import TimeoutSampler
 
 from tests.llama_stack.eval.constants import DK_CUSTOM_DATASET_IMAGE
+from tests.llama_stack.eval.utils import wait_for_dspa_pods
+from utilities.constants import MinIo
 
 
 @pytest.fixture(scope="class")
@@ -87,3 +94,117 @@ def teardown_lmeval_job_pod(admin_client, model_namespace) -> None:
     ]:
         for pod in pods:
             pod.delete()
+
+
+@pytest.fixture(scope="class")
+def dspa(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    minio_pod: Pod,
+    minio_service: Service,
+    dspa_s3_secret: Secret,
+) -> Generator[DataSciencePipelinesApplication, Any, Any]:
+    """
+    Creates a DataSciencePipelinesApplication with MinIO object storage.
+    """
+
+    with DataSciencePipelinesApplication(
+        client=admin_client,
+        name="dspa",
+        namespace=model_namespace.name,
+        dsp_version="v2",
+        pod_to_pod_tls=True,
+        api_server={
+            "deploy": True,
+            "enableOauth": True,
+            "enableSamplePipeline": False,
+            "cacheEnabled": True,
+            "artifactSignedURLExpirySeconds": 60,
+            "pipelineStore": "kubernetes",
+        },
+        database={
+            "disableHealthCheck": False,
+            "mariaDB": {
+                "deploy": True,
+                "pipelineDBName": "mlpipeline",
+                "pvcSize": "10Gi",
+                "username": "mlpipeline",
+            },
+        },
+        object_storage={
+            "disableHealthCheck": False,
+            "enableExternalRoute": False,
+            "externalStorage": {
+                "bucket": "ods-ci-ds-pipelines",
+                "host": f"{minio_service.instance.spec.clusterIP}:{MinIo.Metadata.DEFAULT_PORT}",
+                "region": "us-east-1",
+                "scheme": "http",
+                "s3CredentialsSecret": {
+                    "accessKey": "AWS_ACCESS_KEY_ID",  # pragma: allowlist secret
+                    "secretKey": "AWS_SECRET_ACCESS_KEY",  # pragma: allowlist secret
+                    "secretName": dspa_s3_secret.name,
+                },
+            },
+        },
+        persistence_agent={
+            "deploy": True,
+            "numWorkers": 2,
+        },
+        scheduled_workflow={
+            "deploy": True,
+            "cronScheduleTimezone": "UTC",
+        },
+    ) as dspa_resource:
+        wait_for_dspa_pods(
+            admin_client=admin_client,
+            namespace=model_namespace.name,
+            dspa_name=dspa_resource.name,
+        )
+        yield dspa_resource
+
+
+@pytest.fixture(scope="class")
+def dspa_s3_secret(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    minio_service: Service,
+) -> Generator[Secret, Any, Any]:
+    """
+    Creates a secret for DSPA S3 credentials using MinIO.
+    """
+    with Secret(
+        client=admin_client,
+        name="dashboard-dspa-secret",
+        namespace=model_namespace.name,
+        string_data={
+            "AWS_ACCESS_KEY_ID": MinIo.Credentials.ACCESS_KEY_VALUE,
+            "AWS_SECRET_ACCESS_KEY": MinIo.Credentials.SECRET_KEY_VALUE,
+            "AWS_DEFAULT_REGION": "us-east-1",
+        },
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
+def dspa_route(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    dspa: DataSciencePipelinesApplication,
+) -> Generator[Route, Any, Any]:
+    """
+    Retrieves the Route for the DSPA API server.
+    """
+
+    def _get_dspa_route() -> Route | None:
+        routes = list(
+            Route.get(
+                dyn_client=admin_client,
+                namespace=model_namespace.name,
+                name="ds-pipeline-dspa",
+            )
+        )
+        return routes[0] if routes else None
+
+    for route in TimeoutSampler(wait_timeout=120, sleep=5, func=_get_dspa_route):
+        if route:
+            yield route
