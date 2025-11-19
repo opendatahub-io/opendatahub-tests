@@ -71,7 +71,7 @@ class TestModelRegistryMultipleInstances:
         Validate that even when multiple MR exists on a cluster, only two model catalog pods are created
         """
         catalog_pods: list[Pod] = get_model_catalog_pod(
-            client=admin_client, model_registry_namespace=model_registry_namespace
+            client=admin_client, model_registry_namespace=model_registry_namespace, label_selector="app=model-catalog"
         )
         expected_number_pods: int = 2
 
