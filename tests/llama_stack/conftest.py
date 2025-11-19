@@ -19,6 +19,7 @@ from tests.llama_stack.utils import (
     create_llama_stack_distribution,
     wait_for_llama_stack_client_ready,
     vector_store_create_file_from_url,
+    wait_for_unique_llama_stack_pod,
 )
 from utilities.constants import DscComponents, Annotations
 from utilities.data_science_cluster_utils import update_components_in_dsc
@@ -144,8 +145,8 @@ def llama_stack_server_config(
     server_config: Dict[str, Any] = {
         "containerSpec": {
             "resources": {
-                "requests": {"cpu": "250m", "memory": "500Mi"},
-                "limits": {"cpu": "2", "memory": "12Gi"},
+                "requests": {"cpu": "1", "memory": "3Gi"},
+                "limits": {"cpu": "3", "memory": "6Gi"},
             },
             "env": env_vars,
             "name": "llama-stack",
@@ -208,6 +209,7 @@ def _get_llama_stack_distribution_deployment(
     """
     Returns the Deployment resource for a given LlamaStackDistribution.
     Note: The deployment is created by the operator; this function retrieves it.
+    Includes a workaround for RHAIENG-1819 to ensure exactly one pod exists.
 
     Args:
         client (DynamicClient): Kubernetes client
@@ -222,9 +224,12 @@ def _get_llama_stack_distribution_deployment(
         name=llama_stack_distribution.name,
         min_ready_seconds=10,
     )
-
+    deployment.timeout_seconds = 120
     deployment.wait(timeout=120)
     deployment.wait_for_replicas()
+    # Workaround for RHAIENG-1819 (Incorrect number of llama-stack pods deployed after
+    # creating LlamaStackDistribution after setting custom ca bundle in DSCI)
+    wait_for_unique_llama_stack_pod(client=client, namespace=llama_stack_distribution.namespace)
     yield deployment
 
 
@@ -321,6 +326,7 @@ def _create_llama_stack_test_route(
                 }
             }
         ):
+            route.wait(timeout=60)
             yield route
 
 
@@ -355,11 +361,11 @@ def _create_llama_stack_client(
 ) -> Generator[LlamaStackClient, Any, Any]:
     # LLS_CLIENT_VERIFY_SSL is false by default to be able to test with Self-Signed certificates
     verifySSL = os.getenv("LLS_CLIENT_VERIFY_SSL", "false").lower() == "true"
-    http_client = httpx.Client(verify=verifySSL)
+    http_client = httpx.Client(verify=verifySSL, timeout=240)
     try:
         client = LlamaStackClient(
             base_url=f"https://{route.host}",
-            timeout=180.0,
+            max_retries=3,
             http_client=http_client,
         )
         wait_for_llama_stack_client_ready(client=client)
