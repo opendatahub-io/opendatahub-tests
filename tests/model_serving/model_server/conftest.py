@@ -466,7 +466,7 @@ def _is_kueue_operator_installed(admin_client: DynamicClient) -> bool:
         return False
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="session")
 def ensure_kueue_unmanaged_in_dsc(
     admin_client: DynamicClient, dsc_resource: DataScienceCluster
 ) -> Generator[None, Any, None]:
@@ -529,6 +529,7 @@ def kueue_resource_groups(
 def kueue_cluster_queue_from_template(
     request: FixtureRequest,
     admin_client: DynamicClient,
+    ensure_kueue_unmanaged_in_dsc,
 ) -> Generator[ClusterQueue, Any, None]:
     if request.param.get("name") is None:
         raise ValueError("name is required")
@@ -547,6 +548,7 @@ def kueue_cluster_queue_from_template(
 def kueue_resource_flavor_from_template(
     request: FixtureRequest,
     admin_client: DynamicClient,
+    ensure_kueue_unmanaged_in_dsc,
 ) -> Generator[ResourceFlavor, Any, None]:
     if request.param.get("name") is None:
         raise ValueError("name is required")
@@ -562,6 +564,7 @@ def kueue_local_queue_from_template(
     request: FixtureRequest,
     unprivileged_model_namespace: Namespace,
     admin_client: DynamicClient,
+    ensure_kueue_unmanaged_in_dsc,
 ) -> Generator[LocalQueue, Any, None]:
     if request.param.get("name") is None:
         raise ValueError("name is required")
