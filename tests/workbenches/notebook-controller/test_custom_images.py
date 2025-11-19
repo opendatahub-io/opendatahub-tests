@@ -27,10 +27,10 @@ class PackageVerificationResult:
 
     package_name: str
     import_successful: bool
-    error_message: str | None
     command_executed: str
     execution_time_seconds: float
-    pod_logs: str | None
+    error_message: str | None = None
+    pod_logs: str | None = None
     stdout: str = ""
     stderr: str = ""
 
@@ -123,12 +123,9 @@ def verify_package_import(
             results[package_name] = PackageVerificationResult(
                 package_name=package_name,
                 import_successful=True,
-                error_message=None,
                 command_executed=command,
                 execution_time_seconds=execution_time,
-                pod_logs=None,
                 stdout=output if output else "",
-                stderr="",
             )
             LOGGER.info(f"Package {package_name}: ✓ (import successful in {execution_time:.2f}s)")
 
@@ -151,11 +148,10 @@ def verify_package_import(
             results[package_name] = PackageVerificationResult(
                 package_name=package_name,
                 import_successful=False,
-                error_message=error_message,
                 command_executed=command,
                 execution_time_seconds=execution_time,
+                error_message=error_message,
                 pod_logs=pod_logs,
-                stdout="",
                 stderr=stderr_output,
             )
             LOGGER.warning(f"Package {package_name}: ✗ (import failed: {error_message})")
