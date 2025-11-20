@@ -137,6 +137,8 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
          4.3. No detection.
         5. Check that the /passthrough endpoint forwards the
          query directly to the model without performing any detection.
+        6. Verify that the Guardrails Orchestrator correctly detects unsuitable outputs
+        when using built-in detectors in streaming mode.
     """
 
     def test_guardrails_health_endpoint(
@@ -198,6 +200,23 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
             ca_bundle_file=openshift_ca_bundle_file,
             prompt=PII_OUTPUT_DETECTION_PROMPT,
             model=LLMdInferenceSimConfig.model_name,
+        )
+
+    def test_guardrails_builtin_detectors_unsuitable_output_streaming(
+            self,
+            current_client_token,
+            openshift_ca_bundle_file,
+            llm_d_inference_sim_isvc,
+            orchestrator_config,
+            guardrails_orchestrator_gateway_route,
+    ):
+        send_and_verify_unsuitable_output_detection(
+            url=f"https://{guardrails_orchestrator_gateway_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
+            token=current_client_token,
+            ca_bundle_file=openshift_ca_bundle_file,
+            prompt=PII_OUTPUT_DETECTION_PROMPT,
+            model=LLMdInferenceSimConfig.model_name,
+            stream=True,  # enable streaming
         )
 
     @pytest.mark.parametrize(
