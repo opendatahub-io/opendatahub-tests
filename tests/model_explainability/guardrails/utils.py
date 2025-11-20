@@ -17,7 +17,9 @@ def get_auth_headers(token: str) -> Dict[str, str]:
     return {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
 
 
-def get_chat_detections_payload(content: str, model: str, stream: bool = False, detectors: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def get_chat_detections_payload(
+    content: str, model: str, stream: bool = False, detectors: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
     """
     Constructs a chat detections payload for a given content string.
 
@@ -179,7 +181,7 @@ def verify_builtin_detector_unsuitable_output_response(
                 continue
 
             if line.startswith("data:"):
-                data = line[len("data:"):].strip()
+                data = line[len("data:") :].strip()
                 if data == "[DONE]":
                     break
                 try:
@@ -223,18 +225,13 @@ def verify_builtin_detector_unsuitable_output_response(
     if len(warnings) != 1:
         errors.append(f"Expected 1 warning in response, got {len(warnings)}")
     elif warnings and warnings[0].get("type") != unsuitable_output_warning:
-        errors.append(
-            f"Expected warning type {unsuitable_output_warning}, "
-            f"got {warnings[0].get('type')}"
-        )
+        errors.append(f"Expected warning type {unsuitable_output_warning}, got {warnings[0].get('type')}")
 
     # Validate detections
     output_detections = response_data.get("detections", {}).get("output", [])
 
     if len(output_detections) < 1:
-        errors.append(
-            f"Expected at least one output detection, but got {len(output_detections)}."
-        )
+        errors.append(f"Expected at least one output detection, but got {len(output_detections)}.")
     else:
         errors.extend(
             verify_detection(
@@ -246,10 +243,7 @@ def verify_builtin_detector_unsuitable_output_response(
         )
 
     # Final assertion
-    assert_no_errors(
-        errors=errors,
-        failure_message_prefix="Unsuitable output detection verification failed"
-    )
+    assert_no_errors(errors=errors, failure_message_prefix="Unsuitable output detection verification failed")
 
 
 def verify_negative_detection_response(response: Response) -> None:
@@ -343,12 +337,9 @@ def _send_guardrails_orchestrator_post_request(
     )
 
     if response.status_code != http.HTTPStatus.OK:
-        raise TimeoutError(
-            f"Endpoint not available. Status code: {response.status_code}, response: {response.text}"
-        )
+        raise TimeoutError(f"Endpoint not available. Status code: {response.status_code}, response: {response.text}")
 
     return response
-
 
 
 def send_chat_detections_request(
@@ -360,9 +351,18 @@ def send_chat_detections_request(
     detectors: Dict[str, Any] = None,
     stream: bool = False,
 ) -> requests.Response:
-    payload = get_chat_detections_payload(content=content, model=model, detectors=detectors, stream=stream,  )
+    payload = get_chat_detections_payload(
+        content=content,
+        model=model,
+        detectors=detectors,
+        stream=stream,
+    )
     return _send_guardrails_orchestrator_post_request(
-        url=url, token=token, ca_bundle_file=ca_bundle_file, payload=payload, stream=stream,
+        url=url,
+        token=token,
+        ca_bundle_file=ca_bundle_file,
+        payload=payload,
+        stream=stream,
     )
 
 
@@ -403,7 +403,12 @@ def send_and_verify_unsuitable_output_detection(
     """Send a prompt to the GuardrailsOrchestrator and verify that it triggers an unsuitable output detection"""
 
     response = send_chat_detections_request(
-        url=url, token=token, ca_bundle_file=ca_bundle_file, content=prompt.content, model=model, detectors=detectors,
+        url=url,
+        token=token,
+        ca_bundle_file=ca_bundle_file,
+        content=prompt.content,
+        model=model,
+        detectors=detectors,
         stream=stream,
     )
 
