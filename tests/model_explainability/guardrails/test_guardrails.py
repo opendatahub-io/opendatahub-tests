@@ -124,7 +124,7 @@ def test_validate_guardrails_orchestrator_images(
 )
 @pytest.mark.smoke
 @pytest.mark.rawdeployment
-@pytest.mark.usefixtures("guardrails_gateway_config")
+@pytest.mark.usefixtures("patched_dsc_kserve_headed", "guardrails_gateway_config")
 class TestGuardrailsOrchestratorWithBuiltInDetectors:
     """
     Tests if basic functions of the GuardrailsOrchestrator are working properly with the built-in (regex) detectors.
@@ -297,6 +297,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
 )
 @pytest.mark.rawdeployment
 @pytest.mark.usefixtures(
+    "patched_dsc_kserve_headed",
     "guardrails_gateway_config",
     "minio_pvc_otel",
     "minio_deployment_otel",
@@ -428,6 +429,7 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
     ],
     indirect=True,
 )
+@pytest.mark.usefixtures("patched_dsc_kserve_headed")
 @pytest.mark.rawdeployment
 class TestGuardrailsOrchestratorAutoConfig:
     """
@@ -515,6 +517,7 @@ class TestGuardrailsOrchestratorAutoConfig:
     ],
     indirect=True,
 )
+@pytest.mark.usefixtures("patched_dsc_kserve_headed")
 @pytest.mark.rawdeployment
 class TestGuardrailsOrchestratorAutoConfigWithGateway:
     """

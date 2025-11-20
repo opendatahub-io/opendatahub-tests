@@ -38,7 +38,7 @@ SECURE_SHIELD_ID: str = "secure_shield"
     indirect=True,
 )
 @pytest.mark.rawdeployment
-@pytest.mark.usefixtures("orchestrator_config", "guardrails_orchestrator")
+@pytest.mark.usefixtures("patched_dsc_kserve_headed", "orchestrator_config", "guardrails_orchestrator")
 @pytest.mark.model_explainability
 class TestLlamaStackFMSGuardrailsProvider:
     """
