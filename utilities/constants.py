@@ -458,7 +458,7 @@ class ContainerImages:
 CHAT_GENERATION_CONFIG: Dict[str, Any] = {
     "service": {
         "hostname": f"{QWEN_MODEL_NAME}-predictor",
-        "port": 8032,
+        "port": 80,
         "request_timeout": 600,
     }
 }
