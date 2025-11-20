@@ -27,7 +27,6 @@ from tests.model_registry.rbac.utils import (
     build_mr_client_args,
     assert_positive_mr_registry,
     assert_forbidden_access,
-    get_mr_user_token,
 )
 from tests.model_registry.constants import NUM_MR_INSTANCES
 from utilities.infra import get_openshift_token
@@ -35,7 +34,7 @@ from mr_openapi.exceptions import ForbiddenException
 from utilities.user_utils import UserTestSession
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
-from tests.model_registry.utils import get_mr_service_by_label, get_endpoint_from_mr_service
+from tests.model_registry.utils import get_mr_service_by_label, get_endpoint_from_mr_service, get_mr_user_token
 from tests.model_registry.rbac.utils import grant_mr_access, revoke_mr_access
 from utilities.constants import Protocols
 

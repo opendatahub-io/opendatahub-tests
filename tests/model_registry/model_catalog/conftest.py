@@ -18,7 +18,6 @@ from tests.model_registry.model_catalog.constants import (
     REDHAT_AI_CATALOG_ID,
 )
 from tests.model_registry.constants import CUSTOM_CATALOG_ID1
-from tests.model_registry.rbac.utils import get_mr_user_token
 from tests.model_registry.utils import (
     get_rest_headers,
     is_model_catalog_ready,
@@ -26,6 +25,7 @@ from tests.model_registry.utils import (
     wait_for_model_catalog_api,
     execute_get_command,
     get_model_str,
+    get_mr_user_token,
 )
 from utilities.infra import get_openshift_token, create_inference_token, login_with_user_password
 
