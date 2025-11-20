@@ -6,7 +6,6 @@ from time import time
 
 import pytest
 
-
 from ocp_resources.pod import Pod
 from ocp_resources.pod import ExecOnPodError
 from ocp_resources.namespace import Namespace
@@ -88,7 +87,7 @@ def verify_package_import(
             )
     except (AttributeError, TypeError) as e:
         raise RuntimeError(
-            f"Could not access container list from pod object structure. "
+            "Could not access container list from pod object structure. "
             f"The pod structure may be incomplete or malformed. Original error: {e}"
         )
 
@@ -187,7 +186,7 @@ def install_packages_in_pod(
 
     # Verify container exists
     try:
-        # Use any() with a generator for a fast, short-circuiting check
+        # Use any() with a fast, short-circuiting check
         if not any(container.name == container_name for container in pod.instance.spec.containers):
             container_names = [container.name for container in pod.instance.spec.containers]
             raise RuntimeError(
@@ -195,7 +194,7 @@ def install_packages_in_pod(
             )
     except (AttributeError, TypeError) as e:
         raise RuntimeError(
-            f"Could not access container list from pod object structure. "
+            "Could not access container list from pod object structure. "
             f"The pod structure may be incomplete or malformed. Original error: {e}"
         )
 
