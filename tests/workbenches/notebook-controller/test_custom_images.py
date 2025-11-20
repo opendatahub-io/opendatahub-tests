@@ -1,6 +1,5 @@
 """Custom workbench image validation tests."""
 
-import re
 import shlex
 from dataclasses import dataclass
 from time import time
