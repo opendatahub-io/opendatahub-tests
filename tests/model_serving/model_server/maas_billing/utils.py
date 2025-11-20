@@ -2,8 +2,6 @@ from typing import Dict, Generator
 
 import base64
 import requests
-import tempfile
-import shlex
 from json import JSONDecodeError
 from ocp_resources.ingress_config_openshift_io import Ingress as IngressConfig
 from requests import Response
@@ -15,11 +13,6 @@ from contextlib import contextmanager
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.group import Group
 from simple_logger.logger import get_logger
-from timeout_sampler import TimeoutSampler
-from ocp_resources.deployment import Deployment
-from pathlib import Path
-from pyhelper_utils.shell import run_command
-from utilities.infra import login_with_user_password
 
 LOGGER = get_logger(name=__name__)
 
@@ -137,111 +130,3 @@ def create_maas_group(
     ) as group:
         LOGGER.info(f"MaaS RBAC: created group {group_name} with users {users or []}")
         yield group
-
-
-def wait_for_oauth_openshift_deployment() -> None:
-    """
-    Wait for the oauth-openshift deployment in openshift-authentication
-    to finish rolling out after we update OAuth identityProviders.
-
-    """
-    oauth_deployment = Deployment(
-        name="oauth-openshift",
-        namespace="openshift-authentication",
-        ensure_exists=True,
-    )
-
-    LOGGER.info("Waiting for oauth-openshift rollout to finish")
-
-    def _get_conditions():
-        conditions = getattr(oauth_deployment.instance.status, "conditions", []) or []
-        details = [(condition.type, condition.status, getattr(condition, "reason", "")) for condition in conditions]
-        LOGGER.info(f"oauth-openshift conditions: {details}")
-        return conditions
-
-    # Quick check first – if it's already Available=True
-    initial_conditions = _get_conditions()
-    if any(condition.type == "Available" and condition.status == "True" for condition in initial_conditions):
-        LOGGER.info("oauth-openshift already Available=True; not waiting further for Progressing to clear")
-        return
-
-    # Otherwise, wait up to 5 minutes for Available=True
-    sampler = TimeoutSampler(
-        wait_timeout=300,
-        sleep=5,
-        func=_get_conditions,
-    )
-
-    for conditions in sampler:
-        if any(condition.type == "Available" and condition.status == "True" for condition in conditions):
-            LOGGER.info("oauth-openshift became Available=True")
-            return
-
-
-def make_bcrypt_htpasswd_file_with_users(users: list[tuple[str, str]]) -> Path:
-    """
-    Create a single htpasswd file (-B bcrypt) containing multiple users.
-    `users` is a list of (username, password) tuples.The returned file path must be deleted.
-    """
-    if not users:
-        raise ValueError("users list cannot be empty")
-
-    with tempfile.NamedTemporaryFile(mode="w+", delete=False) as temp_file:
-        htpasswd_path = Path(temp_file.name).resolve()
-
-    # First user: create (-c)
-    first_user, first_pass = users[0]
-    run_command(
-        command=shlex.split(f"htpasswd -c -B -b {htpasswd_path} {first_user} {first_pass}"),
-        check=True,
-    )
-
-    # Remaining users: append (no -c)
-    for username, password_value in users[1:]:
-        run_command(
-            command=shlex.split(f"htpasswd -B -b {htpasswd_path} {username} {password_value}"),
-            check=True,
-        )
-    return htpasswd_path
-
-
-def login_with_retry(
-    api: str,
-    user: str,
-    password: str | None = None,
-    wait_timeout: int = 60,
-    sleep: float = 2.0,
-) -> None:
-
-    last_exc: Exception | None = None
-
-    def _attempt_login() -> bool:
-        nonlocal last_exc
-        try:
-            ok = login_with_user_password(
-                api_address=api,
-                user=user,
-                password=password,
-            )
-            if not ok:
-                LOGGER.warning("MaaS RBAC: login returned False for %s; will retry", user)
-                return False
-            return True
-        except Exception as login_error:
-            last_exc = login_error
-            error_text = str(login_error) or "<no error message>"
-            LOGGER.warning("MaaS RBAC: login failed for %s (%s); will retry", user, error_text)
-            return False
-
-    sampler = TimeoutSampler(
-        wait_timeout=wait_timeout,
-        sleep=sleep,
-        func=_attempt_login,
-    )
-
-    for ok in sampler:
-        if ok:
-            LOGGER.info(f"MaaS RBAC: login succeeded for {user}")
-            return
-
-    raise last_exc if last_exc else RuntimeError(f"Login failed for user {user}")

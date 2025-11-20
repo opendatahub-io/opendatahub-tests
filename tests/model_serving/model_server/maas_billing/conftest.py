@@ -9,11 +9,11 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.infrastructure import Infrastructure
 from ocp_resources.oauth import OAuth
 from ocp_resources.resource import ResourceEditor
-from pyhelper_utils.shell import run_command
 from utilities.general import generate_random_name
-from utilities.user_utils import UserTestSession, wait_for_user_creation
+from utilities.user_utils import UserTestSession, wait_for_user_creation, create_htpasswd_file
 from utilities.infra import login_with_user_password, get_openshift_token
-from pathlib import Path
+from utilities.general import wait_for_oauth_openshift_deployment
+from ocp_resources.secret import Secret
 
 
 from tests.model_serving.model_server.maas_billing.utils import (
@@ -22,9 +22,6 @@ from tests.model_serving.model_server.maas_billing.utils import (
     mint_token,
     llmis_name,
     create_maas_group,
-    wait_for_oauth_openshift_deployment,
-    make_bcrypt_htpasswd_file_with_users,
-    login_with_retry,
 )
 
 
@@ -116,156 +113,186 @@ def maas_api_server_url(admin_client: DynamicClient) -> str:
 
 
 @pytest.fixture(scope="session")
-def maas_original_user() -> str:
-    """Username of the user who originally ran the tests (before IDP logins)."""
-    current_user = run_command(command=["oc", "whoami"])[1].strip()
-    LOGGER.info(f"Original user: {current_user}")
-    return current_user
-
-
-@pytest.fixture(scope="session")
 def maas_user_credentials_both() -> dict[str, str]:
-    """Randomized FREE and PREMIUM usernames/passwords plus IDP/Secret names."""
+    """
+    Randomized FREE and PREMIUM usernames/passwords plus per-tier IDP & Secret names.
+
+    """
     random_suffix = generate_random_name()
+
     return {
+        # FREE user
         "free_user": f"maas-free-user-{random_suffix}",
         "free_pass": f"maas-free-password-{random_suffix}",
+        "free_idp_name": f"maas-free-htpasswd-idp-{random_suffix}",
+        "free_secret_name": f"maas-free-htpasswd-secret-{random_suffix}",
+        # PREMIUM user
         "premium_user": f"maas-premium-user-{random_suffix}",
         "premium_pass": f"maas-premium-password-{random_suffix}",
-        "idp_name": f"maas-htpasswd-idp-{random_suffix}",
-        "secret_name": f"maas-htpasswd-secret-{random_suffix}",
+        "premium_idp_name": f"maas-premium-htpasswd-idp-{random_suffix}",
+        "premium_secret_name": f"maas-premium-htpasswd-secret-{random_suffix}",
     }
 
 
 @pytest.fixture(scope="session")
 def maas_created_htpasswd_secret_both(
+    admin_client: DynamicClient,
     maas_user_credentials_both: dict[str, str],
 ) -> Generator[None, None, None]:
-    """Create an htpasswd Secret with FREE and PREMIUM users and clean it up."""
-    secret_name = maas_user_credentials_both["secret_name"]
+    """
+    Create two htpasswd Secrets (FREE + PREMIUM)
 
-    htpasswd_path = make_bcrypt_htpasswd_file_with_users(
-        users=[
-            (maas_user_credentials_both["free_user"], maas_user_credentials_both["free_pass"]),
-            (maas_user_credentials_both["premium_user"], maas_user_credentials_both["premium_pass"]),
-        ]
+    """
+    free_username = maas_user_credentials_both["free_user"]
+    free_password = maas_user_credentials_both["free_pass"]
+    free_secret_name = maas_user_credentials_both["free_secret_name"]
+
+    premium_username = maas_user_credentials_both["premium_user"]
+    premium_password = maas_user_credentials_both["premium_pass"]
+    premium_secret_name = maas_user_credentials_both["premium_secret_name"]
+
+    free_tmp_path, free_htpasswd_b64 = create_htpasswd_file(
+        username=free_username,
+        password=free_password,
     )
+    premium_tmp_path, premium_htpasswd_b64 = create_htpasswd_file(
+        username=premium_username,
+        password=premium_password,
+    )
+
     try:
-        run_command(
-            command=["oc", "-n", "openshift-config", "delete", "secret", secret_name, "--ignore-not-found=true"]
+        # Create FREE secret
+        free_secret = Secret(
+            client=admin_client,
+            name=free_secret_name,
+            namespace="openshift-config",
+            htpasswd=free_htpasswd_b64,
+            type="Opaque",
+            teardown=False,
+            wait_for_resource=True,
         )
-        run_command(
-            command=[
-                "oc",
-                "-n",
-                "openshift-config",
-                "create",
-                "secret",
-                "generic",
-                secret_name,
-                f"--from-file=htpasswd={htpasswd_path}",
-            ],
-            check=True,
+        free_secret.deploy()
+
+        # Create PREMIUM secret
+        premium_secret = Secret(
+            client=admin_client,
+            name=premium_secret_name,
+            namespace="openshift-config",
+            htpasswd=premium_htpasswd_b64,
+            type="Opaque",
+            teardown=False,
+            wait_for_resource=True,
         )
+        premium_secret.deploy()
+
         yield
+
     finally:
-        run_command(
-            command=["oc", "-n", "openshift-config", "delete", "secret", secret_name, "--ignore-not-found=true"]
-        )
-        Path(htpasswd_path).unlink(missing_ok=True)
+        free_tmp_path.unlink(missing_ok=True)
+        premium_tmp_path.unlink(missing_ok=True)
 
 
 @pytest.fixture(scope="session")
 def maas_updated_oauth_config(
     admin_client: DynamicClient,
     maas_user_credentials_both: dict[str, str],
-    maas_created_htpasswd_secret_both,  # ensure secret exists first
+    maas_created_htpasswd_secret_both,
 ) -> Generator[None, None, None]:
-    """Patch OAuth to add a single combined MaaS htpasswd IDP, then restore it."""
+    """
+    Patch OAuth to add two MaaS htpasswd IDPs (FREE + PREMIUM) backed by
+    the per-user Secrets created above, then restore the original config.
+
+    """
     oauth = OAuth(name="cluster")
 
     spec = getattr(oauth.instance, "spec", {}) or {}
-    original_identity_providers = spec.get("identityProviders", None)
-    current_idps = list(original_identity_providers) if original_identity_providers else []
+    existing_idps = spec.get("identityProviders") or []
 
-    combined_idp = {
-        "name": maas_user_credentials_both["idp_name"],
+    free_idp = {
+        "name": maas_user_credentials_both["free_idp_name"],
         "mappingMethod": "claim",
         "type": "HTPasswd",
         "challenge": True,
         "login": True,
-        "htpasswd": {"fileData": {"name": maas_user_credentials_both["secret_name"]}},
+        "htpasswd": {"fileData": {"name": maas_user_credentials_both["free_secret_name"]}},
     }
 
-    # Drop prior maas-* IDPs to avoid duplicates
-    current_idps = [d for d in current_idps if not str(d.get("name", "")).startswith("maas-")]
-    updated_providers = [combined_idp] + current_idps
+    premium_idp = {
+        "name": maas_user_credentials_both["premium_idp_name"],
+        "mappingMethod": "claim",
+        "type": "HTPasswd",
+        "challenge": True,
+        "login": True,
+        "htpasswd": {"fileData": {"name": maas_user_credentials_both["premium_secret_name"]}},
+    }
 
-    LOGGER.info("MaaS RBAC: updating OAuth with single combined htpasswd IDP")
-    ResourceEditor(patches={oauth: {"spec": {"identityProviders": updated_providers}}}).update(backup_resources=True)
-    wait_for_oauth_openshift_deployment()
-    LOGGER.info("MaaS RBAC: OAuth updated with MaaS IDP")
+    non_maas_idps = [idp for idp in existing_idps if not str(idp.get("name", "")).startswith("maas-")]
+    updated_providers = [free_idp, premium_idp] + non_maas_idps
+
+    LOGGER.info("MaaS RBAC: updating OAuth with FREE + PREMIUM htpasswd IDPs")
+    idp_editor = ResourceEditor(
+        patches={oauth: {"spec": {"identityProviders": updated_providers}}},
+    )
 
     try:
+        idp_editor.update(backup_resources=True)
+        wait_for_oauth_openshift_deployment()
+        LOGGER.info("MaaS RBAC: OAuth updated with MaaS IDPs")
         yield
+
     finally:
         LOGGER.info("MaaS RBAC: restoring OAuth identityProviders to original state")
-        ResourceEditor(
-            patches={
-                oauth: {
-                    "spec": {
-                        "identityProviders": original_identity_providers
-                        if original_identity_providers is not None
-                        else None
-                    }
-                }
-            }
-        ).update(backup_resources=False)
+        idp_editor.restore()
         wait_for_oauth_openshift_deployment()
 
 
 @pytest.fixture(scope="session")
 def maas_free_user_session(
-    maas_original_user: str,
+    original_user: str,
     maas_api_server_url: str,
     is_byoidc: bool,
     maas_user_credentials_both: dict[str, str],
-    maas_updated_oauth_config,  # ensure OAuth is patched
+    maas_updated_oauth_config,
 ) -> Generator[UserTestSession, None, None]:
     """Create a FREE test IDP user session and clean it up."""
     if is_byoidc:
         pytest.skip("Working on OIDC support for tests that use htpasswd IDP for MaaS")
 
-    free_username = maas_user_credentials_both["free_user"]
-    free_password = maas_user_credentials_both["free_pass"]
-    idp_name = maas_user_credentials_both["idp_name"]
-    secret_name = maas_user_credentials_both["secret_name"]
+    username = maas_user_credentials_both["free_user"]
+    password = maas_user_credentials_both["free_pass"]
+    idp_name = maas_user_credentials_both["free_idp_name"]
+    secret_name = maas_user_credentials_both["free_secret_name"]
 
     idp_session: UserTestSession | None = None
     try:
-        if wait_for_user_creation(username=free_username, password=free_password, cluster_url=maas_api_server_url):
-            LOGGER.info(f"Undoing login as test user and logging in as {maas_original_user}")
-            login_with_user_password(api_address=maas_api_server_url, user=maas_original_user)
+        wait_for_user_creation(
+            username=username,
+            password=password,
+            cluster_url=maas_api_server_url,
+        )
+
+        LOGGER.info("Undoing login as test user and logging in as %s", original_user)
+        login_with_user_password(api_address=maas_api_server_url, user=original_user)
 
         idp_session = UserTestSession(
             idp_name=idp_name,
             secret_name=secret_name,
-            username=free_username,
-            password=free_password,
-            original_user=maas_original_user,
+            username=username,
+            password=password,
+            original_user=original_user,
             api_server_url=maas_api_server_url,
         )
-        LOGGER.info(f"Created MaaS FREE test IDP user session: {idp_session.username}")
+        LOGGER.info("Created MaaS FREE test IDP user session: %s", idp_session.username)
         yield idp_session
     finally:
         if idp_session:
-            LOGGER.info(f"Cleaning up MaaS FREE test IDP user: {idp_session.username}")
+            LOGGER.info("Cleaning up MaaS FREE test IDP user: %s", idp_session.username)
             idp_session.cleanup()
 
 
 @pytest.fixture(scope="session")
 def maas_premium_user_session(
-    maas_original_user: str,
+    original_user: str,
     maas_api_server_url: str,
     is_byoidc: bool,
     maas_user_credentials_both: dict[str, str],
@@ -275,23 +302,28 @@ def maas_premium_user_session(
     if is_byoidc:
         pytest.skip("Working on OIDC support for tests that use htpasswd IDP for MaaS")
 
-    user = maas_user_credentials_both["premium_user"]
-    pw = maas_user_credentials_both["premium_pass"]
-    idp = maas_user_credentials_both["idp_name"]
-    sec = maas_user_credentials_both["secret_name"]
+    username = maas_user_credentials_both["premium_user"]
+    password = maas_user_credentials_both["premium_pass"]
+    idp_name = maas_user_credentials_both["premium_idp_name"]
+    secret_name = maas_user_credentials_both["premium_secret_name"]
 
     idp_session: UserTestSession | None = None
     try:
-        if wait_for_user_creation(username=user, password=pw, cluster_url=maas_api_server_url):
-            LOGGER.info("Undoing login as test user and logging in as %s", maas_original_user)
-            login_with_user_password(api_address=maas_api_server_url, user=maas_original_user)
+        wait_for_user_creation(
+            username=username,
+            password=password,
+            cluster_url=maas_api_server_url,
+        )
+
+        LOGGER.info("Undoing login as test user and logging in as %s", original_user)
+        login_with_user_password(api_address=maas_api_server_url, user=original_user)
 
         idp_session = UserTestSession(
-            idp_name=idp,
-            secret_name=sec,
-            username=user,
-            password=pw,
-            original_user=maas_original_user,
+            idp_name=idp_name,
+            secret_name=secret_name,
+            username=username,
+            password=password,
+            original_user=original_user,
             api_server_url=maas_api_server_url,
         )
         LOGGER.info("Created MaaS PREMIUM test IDP user session: %s", idp_session.username)
@@ -340,7 +372,7 @@ def maas_premium_group(
 def ocp_token_for_actor(
     request,
     maas_api_server_url: str,
-    maas_original_user: str,
+    original_user: str,
     admin_client: DynamicClient,
     maas_free_user_session: UserTestSession,
     maas_premium_user_session: UserTestSession,
@@ -365,11 +397,19 @@ def ocp_token_for_actor(
     else:
         raise ValueError(f"Unknown actor kind: {actor!r}")
 
-    LOGGER.info(f"MaaS RBAC: logging in as {user.username}")
-    login_with_retry(api=maas_api_server_url, user=user.username, password=user.password)
+    LOGGER.info("MaaS RBAC: logging in as %s", user.username)
+    assert login_with_user_password(
+        api_address=maas_api_server_url,
+        user=user.username,
+        password=user.password,
+    ), f"Failed to log in as {user.username}"
+
     try:
         token = get_openshift_token()
         yield token
     finally:
-        LOGGER.info(f"MaaS RBAC: logging back in as {maas_original_user}")
-        login_with_retry(api=maas_api_server_url, user=maas_original_user, password=None)
+        LOGGER.info("MaaS RBAC: logging back in as %s", original_user)
+        assert login_with_user_password(
+            api_address=maas_api_server_url,
+            user=original_user,
+        ), f"Failed to log back in as {original_user}"

@@ -68,27 +68,6 @@ def assert_positive_mr_registry(
     LOGGER.info("Client instantiated successfully after granting permissions.")
 
 
-def wait_for_oauth_openshift_deployment() -> None:
-    deployment_obj = Deployment(name="oauth-openshift", namespace="openshift-authentication", ensure_exists=True)
-
-    _log = f"Wait for {deployment_obj.name} -> Type: Progressing -> Reason:"
-
-    def _wait_sampler(_reason: str) -> None:
-        sampler = TimeoutSampler(
-            wait_timeout=240,
-            sleep=5,
-            func=lambda: deployment_obj.instance.status.conditions,
-        )
-        for sample in sampler:
-            for _spl in sample:
-                if _spl.type == "Progressing" and _spl.reason == _reason:
-                    return
-
-    for reason in ("ReplicaSetUpdated", "NewReplicaSetAvailable"):
-        LOGGER.info(f"{_log} {reason}")
-        _wait_sampler(_reason=reason)
-
-
 def create_role_binding(
     admin_client: DynamicClient,
     model_registry_namespace: str,
