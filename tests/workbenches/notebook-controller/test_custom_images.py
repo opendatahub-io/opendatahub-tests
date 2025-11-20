@@ -20,6 +20,12 @@ from simple_logger.logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 
+# Error messages
+_ERR_EMPTY_PACKAGES = "packages list cannot be empty"
+_ERR_POD_NOT_EXISTS = "Pod {pod_name} does not exist"
+_ERR_POD_NOT_RUNNING = "Pod {pod_name} is not in Running state (current: {phase})"
+_ERR_CONTAINER_NOT_FOUND = "Container '{container_name}' not found in pod. Available containers: {containers}"
+
 
 @dataclass
 class PackageVerificationResult:
@@ -59,29 +65,12 @@ def verify_package_import(
         Dictionary mapping package names to PackageVerificationResult objects.
 
     Raises:
-        ValueError: If packages list is empty or contains invalid identifiers
+        ValueError: If packages list is empty
         RuntimeError: If pod is not in Running state or container doesn't exist
     """
-    # Error messages
-    _ERR_EMPTY_PACKAGES = "packages list cannot be empty"
-    _ERR_INVALID_TIMEOUT = "timeout must be positive"
-    _ERR_INVALID_PACKAGE_NAME = "Invalid package name: {package}"
-    _ERR_POD_NOT_EXISTS = "Pod {pod_name} does not exist"
-    _ERR_POD_NOT_RUNNING = "Pod {pod_name} is not in Running state (current: {phase})"
-    _ERR_CONTAINER_NOT_FOUND = "Container '{container_name}' not found in pod. Available containers: {containers}"
-
     # Input validation
     if not packages:
         raise ValueError(_ERR_EMPTY_PACKAGES)
-
-    if timeout <= 0:
-        raise ValueError(_ERR_INVALID_TIMEOUT)
-
-    # Validate package names (Python identifier pattern)
-    package_name_pattern = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
-    for package in packages:
-        if not package_name_pattern.match(package):
-            raise ValueError(_ERR_INVALID_PACKAGE_NAME.format(package=package))
 
     # Check pod exists and is running
     if not pod.exists:
@@ -108,15 +97,8 @@ def verify_package_import(
 
         start_time = time()
         try:
-            # Execute command in container
-            # Note: timeout parameter is passed but may not be supported by pod.execute()
-            # If timeout is not enforced at the pod.execute() level, it's still tracked via execution_time
-            try:
-                output = pod.execute(container=container_name, command=command_list, timeout=timeout)
-            except TypeError:
-                # pod.execute() may not support timeout parameter, fall back to execution without timeout
-                # The timeout is still validated and tracked via execution_time measurement
-                output = pod.execute(container=container_name, command=command_list)
+            # Execute command in container with timeout
+            output = pod.execute(container=container_name, command=command_list, timeout=timeout)
             execution_time = time() - start_time
 
             # Success case
@@ -181,39 +163,25 @@ def install_packages_in_pod(
         Dictionary mapping package names to installation success status (True/False).
 
     Raises:
-        ValueError: If packages list is empty or pod is invalid
+        ValueError: If packages list is empty
         RuntimeError: If pod is not in Running state or container doesn't exist
     """
-    # Error messages
-    _ERR_INVALID_POD_OR_PACKAGES = "pod must be valid and packages must be a non-empty list"
-    _ERR_INVALID_TIMEOUT_INSTALL = "timeout must be positive"
-    _ERR_POD_NOT_EXISTS_INSTALL = "Pod {pod_name} does not exist"
-    _ERR_POD_NOT_RUNNING_INSTALL = "Pod {pod_name} is not in Running state (current: {phase})"
-    _ERR_CONTAINER_NOT_FOUND_INSTALL = (
-        "Container '{container_name}' not found in pod. Available containers: {containers}"
-    )
-
     # Input validation
-    if not pod or not isinstance(packages, list) or not packages:
-        raise ValueError(_ERR_INVALID_POD_OR_PACKAGES)
-
-    if timeout <= 0:
-        raise ValueError(_ERR_INVALID_TIMEOUT_INSTALL)
+    if not packages:
+        raise ValueError(_ERR_EMPTY_PACKAGES)
 
     # Check pod exists and is running
     if not pod.exists:
-        raise RuntimeError(_ERR_POD_NOT_EXISTS_INSTALL.format(pod_name=pod.name))
+        raise RuntimeError(_ERR_POD_NOT_EXISTS.format(pod_name=pod.name))
 
     pod_status = pod.instance.status
     if pod_status.phase != "Running":
-        raise RuntimeError(_ERR_POD_NOT_RUNNING_INSTALL.format(pod_name=pod.name, phase=pod_status.phase))
+        raise RuntimeError(_ERR_POD_NOT_RUNNING.format(pod_name=pod.name, phase=pod_status.phase))
 
     # Verify container exists
     container_names = [container.name for container in pod.instance.spec.containers]
     if container_name not in container_names:
-        raise RuntimeError(
-            _ERR_CONTAINER_NOT_FOUND_INSTALL.format(container_name=container_name, containers=container_names)
-        )
+        raise RuntimeError(_ERR_CONTAINER_NOT_FOUND.format(container_name=container_name, containers=container_names))
 
     LOGGER.info(f"Installing {len(packages)} packages in container '{container_name}' of pod '{pod.name}'")
 
@@ -225,14 +193,8 @@ def install_packages_in_pod(
         LOGGER.debug(f"Executing: {' '.join(command_list)}")
 
         try:
-            # Execute command in container
-            # Note: timeout parameter is passed but may not be supported by pod.execute()
-            # If timeout is not enforced at the pod.execute() level, execution may exceed timeout
-            try:
-                pod.execute(container=container_name, command=command_list, timeout=timeout)
-            except TypeError:
-                # pod.execute() may not support timeout parameter, fall back to execution without timeout
-                pod.execute(container=container_name, command=command_list)
+            # Execute command in container with timeout
+            pod.execute(container=container_name, command=command_list, timeout=timeout)
             results[package_name] = True
             LOGGER.info(f"Package {package_name}: ✓ (installed successfully)")
 
@@ -392,7 +354,8 @@ class TestCustomImageValidation:
 
         # Verify packages are importable
 
-        # Install packages if they're not standard library (not in the default list)
+        # Minimal stdlib safety set: only third-party packages should be in packages_to_verify
+        # This test is designed to validate third-party packages that require pip installation
         standard_lib_packages = {"sys", "os"}
         packages_to_install = [pkg for pkg in packages_to_verify if pkg not in standard_lib_packages]
 
