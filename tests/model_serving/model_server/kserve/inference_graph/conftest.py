@@ -16,6 +16,7 @@ from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
+from pytest_testconfig import config as py_config
 
 from utilities.constants import ModelFormat, KServeDeploymentType, ModelStoragePath, Annotations, Labels
 from utilities.inference_utils import create_isvc
@@ -67,7 +68,7 @@ def kserve_raw_headless_service_config(
         kserve_deployments = list(
             Deployment.get(
                 dyn_client=admin_client,
-                namespace="redhat-ods-applications",
+                namespace=py_config.get("applications_namespace", "redhat-ods-applications"),
                 label_selector="control-plane=kserve-controller-manager",
             )
         )
