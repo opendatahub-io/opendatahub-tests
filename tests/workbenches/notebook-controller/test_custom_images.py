@@ -80,9 +80,16 @@ def verify_package_import(
         raise RuntimeError(_ERR_POD_NOT_RUNNING.format(pod_name=pod.name, phase=pod_status.phase))
 
     # Verify container exists
-    container_names = [container.name for container in pod.instance.spec.containers]
-    if container_name not in container_names:
-        raise RuntimeError(_ERR_CONTAINER_NOT_FOUND.format(container_name=container_name, containers=container_names))
+    try:
+        # Use any() with a generator for a faster check
+        if not any(container.name == container_name for container in pod.instance.spec.containers):
+            container_names = [container.name for container in pod.instance.spec.containers]
+            raise RuntimeError(_ERR_CONTAINER_NOT_FOUND.format(container_name=container_name, containers=container_names))
+    except (AttributeError, TypeError) as e:
+        raise RuntimeError(
+            f"Could not access container list from pod object structure. "
+            f"The pod structure may be incomplete or malformed. Original error: {e}"
+        )
 
     LOGGER.info(f"Verifying {len(packages)} packages in container '{container_name}' of pod '{pod.name}'")
 
@@ -178,9 +185,16 @@ def install_packages_in_pod(
         raise RuntimeError(_ERR_POD_NOT_RUNNING.format(pod_name=pod.name, phase=pod_status.phase))
 
     # Verify container exists
-    container_names = [container.name for container in pod.instance.spec.containers]
-    if container_name not in container_names:
-        raise RuntimeError(_ERR_CONTAINER_NOT_FOUND.format(container_name=container_name, containers=container_names))
+    try:
+        # Use any() with a generator for a fast, short-circuiting check
+        if not any(container.name == container_name for container in pod.instance.spec.containers):
+            container_names = [container.name for container in pod.instance.spec.containers]
+            raise RuntimeError(_ERR_CONTAINER_NOT_FOUND.format(container_name=container_name, containers=container_names))
+    except (AttributeError, TypeError) as e:
+        raise RuntimeError(
+            f"Could not access container list from pod object structure. "
+            f"The pod structure may be incomplete or malformed. Original error: {e}"
+        )
 
     LOGGER.info(f"Installing {len(packages)} packages in container '{container_name}' of pod '{pod.name}'")
 
@@ -281,10 +295,10 @@ class TestCustomImageValidation:
     )
     def test_custom_image_package_verification(
         self,
-        unprivileged_client: DynamicClient,
         unprivileged_model_namespace: Namespace,  # noqa: ARG002
         users_persistent_volume_claim: PersistentVolumeClaim,  # noqa: ARG002
         default_notebook: Notebook,
+        notebook_pod: Pod,
         packages_to_verify: list[str],
     ):
         """
@@ -294,63 +308,18 @@ class TestCustomImageValidation:
         but this test attempts to install them using pip if they are missing.
 
         This test:
-        1. Spawns a workbench with the specified custom image
-        2. Waits for the pod to reach Ready state (up to 10 minutes)
-        3. Installs missing packages via pip if needed
-        4. Executes package import verification commands
-        5. Asserts that all required packages are importable
+        1. Uses a workbench with the specified custom image (via fixtures)
+        2. Installs missing packages via pip if needed
+        3. Executes package import verification commands
+        4. Asserts that all required packages are importable
 
         Test satisfies:
         - FR-001: Spawn workbench with custom image URL
-        - FR-002: Detect running pod and wait for ready state
-        - FR-003: 10-minute timeout for pod readiness
+        - FR-002: Detect running pod and wait for ready state (via notebook_pod fixture)
+        - FR-003: 10-minute timeout for pod readiness (via notebook_pod fixture)
         - FR-004: Execute package import commands
         - FR-005: Report success/failure with details
         """
-        # Wait for notebook pod to be created and reach Ready state
-        notebook_pod = Pod(
-            client=unprivileged_client,
-            namespace=default_notebook.namespace,
-            name=f"{default_notebook.name}-0",
-        )
-
-        # Wait for pod to exist
-        notebook_pod.wait()
-
-        # Error messages
-        _ERR_POD_NOT_READY = (
-            "Pod '{pod_name}-0' failed to reach Ready state within 10 minutes.\n"
-            "Pod Phase: {pod_phase}\n"
-            "Error Details:\n{error_details}\n"
-            "Original Error: {original_error}"
-        )
-        _ERR_POD_NOT_CREATED = "Pod '{pod_name}-0' was not created. Check notebook controller logs."
-
-        # Wait for pod to reach Ready state (10-minute timeout for large custom images)
-        try:
-            notebook_pod.wait_for_condition(
-                condition=Pod.Condition.READY,
-                status=Pod.Condition.Status.TRUE,
-                timeout=Timeout.TIMEOUT_10MIN,
-            )
-        except (TimeoutError, RuntimeError) as e:
-            # Enhanced error handling: Collect pod diagnostic information
-            pod_status = notebook_pod.instance.status if notebook_pod.exists else None
-
-            if pod_status:
-                pod_phase = pod_status.phase
-                error_details = self._get_pod_failure_details(notebook_pod)
-                raise AssertionError(
-                    _ERR_POD_NOT_READY.format(
-                        pod_name=default_notebook.name,
-                        pod_phase=pod_phase,
-                        error_details=error_details,
-                        original_error=e,
-                    )
-                ) from e
-            else:
-                raise AssertionError(_ERR_POD_NOT_CREATED.format(pod_name=default_notebook.name)) from e
-
         # Verify packages are importable
 
         # Minimal stdlib safety set: only third-party packages should be in packages_to_verify
@@ -369,7 +338,10 @@ class TestCustomImageValidation:
 
             failed_installs = [name for name, success in install_results.items() if not success]
             if failed_installs:
-                LOGGER.warning(f"Failed to install packages: {failed_installs}")
+                raise AssertionError(
+                    f"Failed to install {len(failed_installs)} package(s): {', '.join(failed_installs)}. "
+                    f"Cannot proceed with package import verification."
+                )
 
         # Verify packages are importable
         results = verify_package_import(
@@ -389,81 +361,6 @@ class TestCustomImageValidation:
                 pod=notebook_pod,
             )
             raise AssertionError(error_report)
-
-    def _get_pod_failure_details(self, pod: Pod) -> str:
-        """
-        Collect diagnostic information when pod fails to reach ready state.
-
-        Args:
-            pod: The pod instance to diagnose
-
-        Returns:
-            Formatted diagnostic information string
-        """
-        details = []
-
-        pod_status = pod.instance.status
-        if not pod_status:
-            return "Pod status unavailable"
-
-        # Get pod phase
-        details.append(f"Phase: {pod_status.phase}")
-
-        # Get container statuses
-        if pod_status.containerStatuses:
-            details.append("\nContainer Statuses:")
-            for container_status in pod_status.containerStatuses:
-                container_name = container_status.name
-                ready = container_status.ready
-
-                details.append(f"  - {container_name}: ready={ready}")
-
-                # Check waiting state
-                if hasattr(container_status.state, "waiting") and container_status.state.waiting:
-                    waiting = container_status.state.waiting
-                    reason = waiting.reason
-                    message = waiting.message if hasattr(waiting, "message") else ""
-
-                    # Categorize common errors
-                    if reason == "ImagePullBackOff":
-                        details.append(
-                            f"    ⚠️  ImagePullBackOff: Failed to pull custom image\n"
-                            f"    Verify registry access and image URL\n"
-                            f"    Message: {message}"
-                        )
-                    elif reason == "CrashLoopBackOff":
-                        details.append(
-                            f"    ⚠️  CrashLoopBackOff: Container is crashing\n"
-                            f"    Check container logs for startup errors\n"
-                            f"    Message: {message}"
-                        )
-                    elif reason == "ErrImagePull":
-                        details.append(
-                            f"    ⚠️  ErrImagePull: Cannot pull image\n"
-                            f"    Verify image exists and cluster has pull access\n"
-                            f"    Message: {message}"
-                        )
-                    else:
-                        details.append(f"    Waiting Reason: {reason}\n    Message: {message}")
-
-                # Check terminated state
-                if hasattr(container_status.state, "terminated") and container_status.state.terminated:
-                    terminated = container_status.state.terminated
-                    details.append(
-                        f"    ⚠️  Container terminated\n"
-                        f"    Exit Code: {terminated.exitCode}\n"
-                        f"    Reason: {terminated.reason}"
-                    )
-
-        # Try to get pod logs for main container
-        try:
-            logs = pod.log(container=pod.instance.spec.containers[0].name, tail_lines=50)
-            if logs:
-                details.append(f"\nRecent Logs (last 50 lines):\n{logs}")
-        except (RuntimeError, AttributeError, KeyError):
-            details.append("\n(Could not retrieve pod logs)")
-
-        return "\n".join(details)
 
     def _format_package_failure_report(self, failed_packages: list[str], results: dict, pod: Pod) -> str:
         """

@@ -4,15 +4,16 @@ import pytest
 from pytest_testconfig import config as py_config
 
 from simple_logger.logger import get_logger
-from tests.workbenches.utils import get_username
+from tests.workbenches.utils import get_username, get_pod_failure_details
 
 from kubernetes.dynamic import DynamicClient
 
 from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.notebook import Notebook
+from ocp_resources.pod import Pod
 
-from utilities.constants import Labels
+from utilities.constants import Labels, Timeout
 from utilities import constants
 from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH
 from utilities.infra import check_internal_image_registry_available
@@ -195,3 +196,74 @@ def default_notebook(
 
     with Notebook(kind_dict=notebook) as nb:
         yield nb
+
+
+@pytest.fixture(scope="function")
+def notebook_pod(
+    unprivileged_client: DynamicClient,
+    default_notebook: Notebook,
+) -> Pod:
+    """
+    Returns a notebook pod in Ready state.
+
+    This fixture:
+    - Creates a Pod object for the notebook
+    - Waits for pod to exist
+    - Waits for pod to reach Ready state (10-minute timeout)
+    - Provides detailed diagnostics on failure
+
+    Args:
+        unprivileged_client: Client for interacting with the cluster
+        default_notebook: The notebook CR to get the pod for
+
+    Returns:
+        Pod object in Ready state
+
+    Raises:
+        AssertionError: If pod fails to reach Ready state or is not created
+    """
+    # Error messages
+    _ERR_POD_NOT_READY = (
+        "Pod '{pod_name}-0' failed to reach Ready state within 10 minutes.\n"
+        "Pod Phase: {pod_phase}\n"
+        "Error Details:\n{error_details}\n"
+        "Original Error: {original_error}"
+    )
+    _ERR_POD_NOT_CREATED = "Pod '{pod_name}-0' was not created. Check notebook controller logs."
+
+    # Create pod object
+    notebook_pod = Pod(
+        client=unprivileged_client,
+        namespace=default_notebook.namespace,
+        name=f"{default_notebook.name}-0",
+    )
+
+    # Wait for pod to exist
+    notebook_pod.wait()
+
+    # Wait for pod to reach Ready state (10-minute timeout for large custom images)
+    try:
+        notebook_pod.wait_for_condition(
+            condition=Pod.Condition.READY,
+            status=Pod.Condition.Status.TRUE,
+            timeout=Timeout.TIMEOUT_10MIN,
+        )
+    except (TimeoutError, RuntimeError) as e:
+        # Enhanced error handling: Collect pod diagnostic information
+        pod_status = notebook_pod.instance.status if notebook_pod.exists else None
+
+        if pod_status:
+            pod_phase = pod_status.phase
+            error_details = get_pod_failure_details(notebook_pod)
+            raise AssertionError(
+                _ERR_POD_NOT_READY.format(
+                    pod_name=default_notebook.name,
+                    pod_phase=pod_phase,
+                    error_details=error_details,
+                    original_error=e,
+                )
+            ) from e
+        else:
+            raise AssertionError(_ERR_POD_NOT_CREATED.format(pod_name=default_notebook.name)) from e
+
+    return notebook_pod
