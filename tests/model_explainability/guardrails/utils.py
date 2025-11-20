@@ -17,7 +17,9 @@ def get_auth_headers(token: str) -> Dict[str, str]:
     return {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
 
 
-def get_chat_detections_payload(content: str, model: str, stream: bool = False, detectors: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def get_chat_detections_payload(
+    content: str, model: str, stream: bool = False, detectors: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
     """
     Constructs a chat detections payload for a given content string.
 
@@ -157,7 +159,11 @@ def verify_builtin_detector_unsuitable_input_response(
 
 
 def verify_builtin_detector_unsuitable_output_response(
-    response: Response, detector_id: str, detection_name: str, detection_type: str, stream: bool = False,
+    response: Response,
+    detector_id: str,
+    detection_name: str,
+    detection_type: str,
+    stream: bool = False,
 ) -> None:
     """
     Verify that a guardrails response indicates an unsuitable output.
@@ -181,7 +187,7 @@ def verify_builtin_detector_unsuitable_output_response(
                 continue
 
             if line.startswith("data:"):
-                data = line[len("data:"):].strip()
+                data = line[len("data:") :].strip()
                 if data == "[DONE]":
                     break
                 try:
@@ -322,7 +328,6 @@ def _send_guardrails_orchestrator_post_request(
     ca_bundle_file: str,
     payload: Dict[str, Any],
     stream: bool = False,
-
 ) -> requests.Response:
     response = requests.post(
         url=url,
@@ -390,7 +395,13 @@ def send_and_verify_unsuitable_output_detection(
     """Send a prompt to the GuardrailsOrchestrator and verify that it triggers an unsuitable output detection"""
 
     response = send_chat_detections_request(
-        url=url, token=token, ca_bundle_file=ca_bundle_file, content=prompt.content, model=model, detectors=detectors, stream=stream
+        url=url,
+        token=token,
+        ca_bundle_file=ca_bundle_file,
+        content=prompt.content,
+        model=model,
+        detectors=detectors,
+        stream=stream,
     )
 
     verify_builtin_detector_unsuitable_output_response(

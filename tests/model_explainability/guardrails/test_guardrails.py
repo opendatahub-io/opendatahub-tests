@@ -202,14 +202,13 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
             model=LLMdInferenceSimConfig.model_name,
         )
 
-
     def test_guardrails_builtin_detectors_unsuitable_output_streaming(
-            self,
-            current_client_token,
-            openshift_ca_bundle_file,
-            llm_d_inference_sim_isvc,
-            orchestrator_config,
-            guardrails_orchestrator_gateway_route,
+        self,
+        current_client_token,
+        openshift_ca_bundle_file,
+        llm_d_inference_sim_isvc,
+        orchestrator_config,
+        guardrails_orchestrator_gateway_route,
     ):
         send_and_verify_unsuitable_output_detection(
             url=f"https://{guardrails_orchestrator_gateway_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
