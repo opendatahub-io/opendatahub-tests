@@ -19,6 +19,7 @@ from tests.llama_stack.utils import (
     create_llama_stack_distribution,
     wait_for_llama_stack_client_ready,
     vector_store_create_file_from_url,
+    wait_for_unique_llama_stack_pod,
 )
 from utilities.constants import DscComponents, Annotations
 from utilities.data_science_cluster_utils import update_components_in_dsc
@@ -29,6 +30,8 @@ from tests.llama_stack.constants import (
 
 
 LOGGER = get_logger(name=__name__)
+
+distribution_name = generate_random_name(prefix="llama-stack-distribution")
 
 
 @pytest.fixture(scope="class")
@@ -87,6 +90,14 @@ def llama_stack_server_config(
         - fms_orchestrator_url_fixture: Fixture name to get FMS orchestrator URL from
         - vector_io_provider: Vector I/O provider type ("milvus" or "milvus-remote")
         - llama_stack_storage_size: Storage size for the deployment
+        - embedding_model: Embedding model identifier for inference
+        - kubeflow_llama_stack_url: LlamaStack service URL for Kubeflow
+        - kubeflow_pipelines_endpoint: Kubeflow Pipelines API endpoint URL
+        - kubeflow_namespace: Namespace for Kubeflow resources
+        - kubeflow_base_image: Base container image for Kubeflow pipelines
+        - kubeflow_results_s3_prefix: S3 prefix for storing Kubeflow results
+        - kubeflow_s3_credentials_secret_name: Secret name for S3 credentials
+        - kubeflow_pipelines_token: Authentication token for Kubeflow Pipelines
 
     Example:
         @pytest.mark.parametrize("llama_stack_server_config",
@@ -136,6 +147,48 @@ def llama_stack_server_config(
     if embedding_model:
         env_vars.append({"name": "EMBEDDING_MODEL", "value": embedding_model})
 
+    # Kubeflow-related environment variables
+    if params.get("enable_ragas_remote"):
+        # Get fixtures only when Ragas Remote/Kubeflow is enabled
+        model_namespace = request.getfixturevalue(argname="model_namespace")
+        current_client_token = request.getfixturevalue(argname="current_client_token")
+        dspa_route = request.getfixturevalue(argname="dspa_route")
+        dspa_s3_secret = request.getfixturevalue(argname="dspa_s3_secret")
+
+        # KUBEFLOW_LLAMA_STACK_URL: Build from LlamaStackDistribution service
+        env_vars.append({
+            "name": "KUBEFLOW_LLAMA_STACK_URL",
+            "value": f"http://{distribution_name}-service.{model_namespace.name}.svc.cluster.local:8321",
+        })
+
+        # KUBEFLOW_PIPELINES_ENDPOINT: Get from DSPA route
+        env_vars.append({"name": "KUBEFLOW_PIPELINES_ENDPOINT", "value": f"https://{dspa_route.instance.spec.host}"})
+
+        # KUBEFLOW_NAMESPACE: Use model namespace
+        env_vars.append({"name": "KUBEFLOW_NAMESPACE", "value": model_namespace.name})
+
+        # KUBEFLOW_BASE_IMAGE
+        env_vars.append({
+            "name": "KUBEFLOW_BASE_IMAGE",
+            "value": params.get(
+                "kubeflow_base_image",
+                "quay.io/diegosquayorg/my-ragas-provider-image"
+                "@sha256:3749096c47f7536d6be2a7932e691abebacd578bafbe65bad2f7db475e2b93fb",
+            ),
+        })
+
+        # KUBEFLOW_RESULTS_S3_PREFIX: Build from MinIO bucket
+        env_vars.append({
+            "name": "KUBEFLOW_RESULTS_S3_PREFIX",
+            "value": params.get("kubeflow_results_s3_prefix", "s3://llms/ragas-results"),
+        })
+
+        # KUBEFLOW_S3_CREDENTIALS_SECRET_NAME: Use DSPA secret name
+        env_vars.append({"name": "KUBEFLOW_S3_CREDENTIALS_SECRET_NAME", "value": dspa_s3_secret.name})
+
+        # KUBEFLOW_PIPELINES_TOKEN: Get from current client token
+        env_vars.append({"name": "KUBEFLOW_PIPELINES_TOKEN", "value": str(current_client_token)})
+
     # Depending on parameter vector_io_provider, deploy vector_io provider and obtain required env_vars
     vector_io_provider = params.get("vector_io_provider") or "milvus"
     env_vars_vector_io = vector_io_provider_deployment_config_factory(provider_name=vector_io_provider)
@@ -144,8 +197,8 @@ def llama_stack_server_config(
     server_config: Dict[str, Any] = {
         "containerSpec": {
             "resources": {
-                "requests": {"cpu": "250m", "memory": "500Mi"},
-                "limits": {"cpu": "2", "memory": "12Gi"},
+                "requests": {"cpu": "1", "memory": "3Gi"},
+                "limits": {"cpu": "3", "memory": "6Gi"},
             },
             "env": env_vars,
             "name": "llama-stack",
@@ -189,7 +242,6 @@ def llama_stack_distribution(
     llama_stack_server_config: Dict[str, Any],
 ) -> Generator[LlamaStackDistribution, None, None]:
     # Distribution name needs a random substring due to bug RHAIENG-999 / RHAIENG-1139
-    distribution_name = generate_random_name(prefix="llama-stack-distribution")
     with create_llama_stack_distribution(
         client=admin_client,
         name=distribution_name,
@@ -208,6 +260,7 @@ def _get_llama_stack_distribution_deployment(
     """
     Returns the Deployment resource for a given LlamaStackDistribution.
     Note: The deployment is created by the operator; this function retrieves it.
+    Includes a workaround for RHAIENG-1819 to ensure exactly one pod exists.
 
     Args:
         client (DynamicClient): Kubernetes client
@@ -222,9 +275,12 @@ def _get_llama_stack_distribution_deployment(
         name=llama_stack_distribution.name,
         min_ready_seconds=10,
     )
-
+    deployment.timeout_seconds = 120
     deployment.wait(timeout=120)
     deployment.wait_for_replicas()
+    # Workaround for RHAIENG-1819 (Incorrect number of llama-stack pods deployed after
+    # creating LlamaStackDistribution after setting custom ca bundle in DSCI)
+    wait_for_unique_llama_stack_pod(client=client, namespace=llama_stack_distribution.namespace)
     yield deployment
 
 
@@ -321,6 +377,7 @@ def _create_llama_stack_test_route(
                 }
             }
         ):
+            route.wait(timeout=60)
             yield route
 
 
@@ -355,11 +412,11 @@ def _create_llama_stack_client(
 ) -> Generator[LlamaStackClient, Any, Any]:
     # LLS_CLIENT_VERIFY_SSL is false by default to be able to test with Self-Signed certificates
     verifySSL = os.getenv("LLS_CLIENT_VERIFY_SSL", "false").lower() == "true"
-    http_client = httpx.Client(verify=verifySSL)
+    http_client = httpx.Client(verify=verifySSL, timeout=240)
     try:
         client = LlamaStackClient(
             base_url=f"https://{route.host}",
-            timeout=180.0,
+            max_retries=3,
             http_client=http_client,
         )
         wait_for_llama_stack_client_ready(client=client)
