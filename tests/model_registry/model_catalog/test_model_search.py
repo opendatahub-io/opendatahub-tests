@@ -257,7 +257,7 @@ class TestSearchModelArtifact:
         when filtering by multiple artifact types.
         """
         _, model_name, catalog_id = randomly_picked_model_from_catalog_api_by_source
-        artifact_types = f"artifactType={METRICS_ARTIFACT_TYPE}&artifactType={MODEL_ARTIFACT_TYPE}"
+        artifact_types = f"artifactType={METRICS_ARTIFACT_TYPE},{MODEL_ARTIFACT_TYPE}"
         LOGGER.info(f"Testing multiple artifact types: '{artifact_types}'")
         # Fetch all artifacts with dynamic page size adjustment
         all_model_artifacts = fetch_all_artifacts_with_dynamic_paging(
