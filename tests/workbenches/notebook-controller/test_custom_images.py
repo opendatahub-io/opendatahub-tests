@@ -6,7 +6,6 @@ from time import time
 
 import pytest
 
-from kubernetes.dynamic.client import DynamicClient
 
 from ocp_resources.pod import Pod
 from ocp_resources.pod import ExecOnPodError
@@ -84,7 +83,9 @@ def verify_package_import(
         # Use any() with a generator for a faster check
         if not any(container.name == container_name for container in pod.instance.spec.containers):
             container_names = [container.name for container in pod.instance.spec.containers]
-            raise RuntimeError(_ERR_CONTAINER_NOT_FOUND.format(container_name=container_name, containers=container_names))
+            raise RuntimeError(
+                _ERR_CONTAINER_NOT_FOUND.format(container_name=container_name, containers=container_names)
+            )
     except (AttributeError, TypeError) as e:
         raise RuntimeError(
             f"Could not access container list from pod object structure. "
@@ -189,7 +190,9 @@ def install_packages_in_pod(
         # Use any() with a generator for a fast, short-circuiting check
         if not any(container.name == container_name for container in pod.instance.spec.containers):
             container_names = [container.name for container in pod.instance.spec.containers]
-            raise RuntimeError(_ERR_CONTAINER_NOT_FOUND.format(container_name=container_name, containers=container_names))
+            raise RuntimeError(
+                _ERR_CONTAINER_NOT_FOUND.format(container_name=container_name, containers=container_names)
+            )
     except (AttributeError, TypeError) as e:
         raise RuntimeError(
             f"Could not access container list from pod object structure. "
