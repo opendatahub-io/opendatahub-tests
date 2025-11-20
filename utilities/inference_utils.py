@@ -769,6 +769,21 @@ def create_isvc(
                 timeout=timeout_watch.remaining_time(),
             )
 
+            # After the InferenceService reports Ready, the backing model should be fully loaded and up to date,
+            # when modelStatus is reported by the runtime.
+            model_status = getattr(inference_service.instance.status, "modelStatus", None)
+            if model_status and getattr(model_status, "states", None):
+                active_state = model_status.states.activeModelState
+                target_state = model_status.states.targetModelState
+                transition_status = model_status.transitionStatus
+                if not (active_state == "Loaded" and target_state == "Loaded" and transition_status == "UpToDate"):
+                    raise AssertionError(
+                        "InferenceService modelStatus is not in Loaded/UpToDate state. "
+                        f"activeModelState={active_state!r}, "
+                        f"targetModelState={target_state!r}, "
+                        f"transitionStatus={transition_status!r}"
+                    )
+
         yield inference_service
 
 
@@ -777,7 +792,7 @@ def _check_storage_arguments(
     storage_key: Optional[str],
     storage_path: Optional[str],
 ) -> None:
-    """
+    """ 
     Check if storage_uri, storage_key and storage_path are valid.
 
     Args:
