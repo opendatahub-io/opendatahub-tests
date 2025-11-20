@@ -43,10 +43,7 @@ def kserve_raw_headless_service_config(
     # cluster is explicitly configured as Headless.
     if current_config and current_config.lower() == "headed":
         logger.info(
-            msg=(
-                "rawDeploymentServiceConfig is already set to "
-                f"'{current_config}', reusing existing configuration"
-            )
+            msg=(f"rawDeploymentServiceConfig is already set to '{current_config}', reusing existing configuration")
         )
         yield dsc_resource
         return
@@ -176,9 +173,7 @@ def dog_cat_inference_service(
             runtime_name=ovms_kserve_serving_runtime.name,
         )
         is_headed = any(
-            getattr(svc.instance.spec, "clusterIP", None)
-            and svc.instance.spec.clusterIP != "None"
-            for svc in services
+            getattr(svc.instance.spec, "clusterIP", None) and svc.instance.spec.clusterIP != "None" for svc in services
         )
         assert is_headed, (
             "Expected Headed RawDeployment for dog-cat-classifier, but predictor Service is headless. "
