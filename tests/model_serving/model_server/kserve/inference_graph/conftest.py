@@ -16,10 +16,15 @@ from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
+from pytest_testconfig import config as py_config
 
 from utilities.constants import ModelFormat, KServeDeploymentType, ModelStoragePath, Annotations, Labels
 from utilities.inference_utils import create_isvc
-from utilities.infra import create_inference_token, create_inference_graph_view_role
+from utilities.infra import (
+    create_inference_token,
+    create_inference_graph_view_role,
+    get_services_by_isvc_label,
+)
 
 
 @pytest.fixture(scope="class")
@@ -35,50 +40,48 @@ def kserve_raw_headless_service_config(
 
     logger.info(msg=f"Current rawDeploymentServiceConfig: {current_config}")
 
-    # If already headed (case-insensitive), skip the patch
+    # If already Headed, keep the existing mode. For tests we want Headed even if the
+    # cluster is explicitly configured as Headless.
     if current_config and current_config.lower() == "headed":
-        logger.info(msg="rawDeploymentServiceConfig is already Headed, skipping patch")
+        logger.info(
+            msg=(f"rawDeploymentServiceConfig is already set to '{current_config}', reusing existing configuration")
+        )
         yield dsc_resource
-    else:
-        logger.info(msg=f"Patching rawDeploymentServiceConfig from '{current_config}' to 'Headed'")
-        # Patch DSC to set rawDeploymentServiceConfig to Headed
-        with ResourceEditor(
-            patches={dsc_resource: {"spec": {"components": {"kserve": {"rawDeploymentServiceConfig": "Headed"}}}}}
-        ):
-            logger.info(msg="Waiting for DSC to become ready after patch...")
-            dsc_resource.wait_for_condition(
-                condition=dsc_resource.Condition.READY,
-                status=dsc_resource.Condition.Status.TRUE,
-                timeout=300,
+        return
+
+    logger.info(msg=f"Patching rawDeploymentServiceConfig from '{current_config}' to 'Headed'")
+    # Patch DSC to set rawDeploymentServiceConfig to Headed when not explicitly configured
+    with ResourceEditor(
+        patches={dsc_resource: {"spec": {"components": {"kserve": {"rawDeploymentServiceConfig": "Headed"}}}}}
+    ):
+        logger.info(msg="Waiting for DSC to become ready after patch...")
+        dsc_resource.wait_for_condition(
+            condition=dsc_resource.Condition.READY,
+            status=dsc_resource.Condition.Status.TRUE,
+            timeout=300,
+        )
+        # Verify the patch was applied
+        new_config = dsc_resource.instance.spec.components.kserve.rawDeploymentServiceConfig
+        logger.info(msg=f"After patch, rawDeploymentServiceConfig is: {new_config}")
+
+        logger.info(msg="Waiting for KServe controller to be ready and configuration to propagate...")
+        kserve_deployments = list(
+            Deployment.get(
+                dyn_client=admin_client,
+                namespace=py_config.get("applications_namespace", "redhat-ods-applications"),
+                label_selector="control-plane=kserve-controller-manager",
             )
-            # Verify the patch was applied
-            new_config = dsc_resource.instance.spec.components.kserve.rawDeploymentServiceConfig
-            logger.info(msg=f"After patch, rawDeploymentServiceConfig is: {new_config}")
+        )
 
-            logger.info(msg="Waiting for KServe controller to be ready and configuration to propagate...")
-            kserve_deployments = list(
-                Deployment.get(
-                    dyn_client=admin_client,
-                    namespace="redhat-ods-applications",
-                    label_selector="control-plane=kserve-controller-manager",
-                )
-            )
+        if kserve_deployments:
+            for deployment in kserve_deployments:
+                deployment.wait_for_replicas(timeout=180)
+        else:
+            logger.warning(msg="No KServe controller deployment found")
+        logger.info(msg="Waiting for KServe controller to process configuration change...")
+        time.sleep(secs=60)
 
-            if kserve_deployments:
-                for deployment in kserve_deployments:
-                    deployment.wait_for_replicas(timeout=180)
-
-                # Wait for configuration to be picked up by the controller
-                # The KServe controller reads DSC configuration at runtime but doesn't have an observable
-                # status to wait on. A grace period is required for the controller to reload and apply the
-                # new rawDeploymentServiceConfig before creating InferenceServices.
-                # TODO: Consider creating a canary InferenceService to verify config was applied
-                logger.info(msg="Waiting for KServe controller to process configuration change...")
-                time.sleep(60)
-            else:
-                logger.warning(msg="No KServe controller deployment found, skipping wait")
-
-            yield dsc_resource
+        yield dsc_resource
 
 
 @pytest.fixture
@@ -164,6 +167,19 @@ def dog_cat_inference_service(
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         protocol_version="v2",
     ) as isvc:
+        # Canary check: verify RawDeployment is using a headed service (non-headless).
+        services = get_services_by_isvc_label(
+            client=admin_client,
+            isvc=isvc,
+            runtime_name=ovms_kserve_serving_runtime.name,
+        )
+        is_headed = any(
+            getattr(svc.instance.spec, "clusterIP", None) and svc.instance.spec.clusterIP != "None" for svc in services
+        )
+        assert is_headed, (
+            "Expected Headed RawDeployment for dog-cat-classifier, but predictor Service is headless. "
+            "Check rawDeploymentServiceConfig in DataScienceCluster."
+        )
         yield isvc
 
 
