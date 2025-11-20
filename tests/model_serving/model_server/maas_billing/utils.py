@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Generator
 
 import base64
 import requests
@@ -8,6 +8,13 @@ from requests import Response
 from urllib.parse import urlparse
 from ocp_resources.llm_inference_service import LLMInferenceService
 from utilities.llmd_utils import get_llm_inference_url
+
+from contextlib import contextmanager
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.group import Group
+from simple_logger.logger import get_logger
+
+LOGGER = get_logger(name=__name__)
 
 
 def host_from_ingress_domain(client) -> str:
@@ -104,3 +111,22 @@ def llmis_name(client, namespace: str = "llm", label_selector: str | None = None
         raise RuntimeError("No Ready LLMInferenceService found")
 
     return service.name
+
+
+@contextmanager
+def create_maas_group(
+    admin_client: DynamicClient,
+    group_name: str,
+    users: list[str] | None = None,
+) -> Generator[Group, None, None]:
+    """
+    Create an OpenShift Group with optional users and delete it on exit.
+    """
+    with Group(
+        client=admin_client,
+        name=group_name,
+        users=users or [],
+        wait_for_resource=True,
+    ) as group:
+        LOGGER.info(f"MaaS RBAC: created group {group_name} with users {users or []}")
+        yield group

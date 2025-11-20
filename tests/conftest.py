@@ -784,3 +784,10 @@ def gpu_count_on_cluster(nodes: list[Any]) -> int:
                     LOGGER.debug(f"Skipping non-integer allocatable for {key} on {node.name}: {val!r}")
                     continue
     return total_gpus
+
+
+@pytest.fixture(scope="session")
+def original_user() -> str:
+    current_user = run_command(command=["oc", "whoami"])[1].strip()
+    LOGGER.info(f"Original user: {current_user}")
+    return current_user
