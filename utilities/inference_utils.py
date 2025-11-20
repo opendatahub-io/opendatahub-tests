@@ -792,7 +792,7 @@ def _check_storage_arguments(
     storage_key: Optional[str],
     storage_path: Optional[str],
 ) -> None:
-    """ 
+    """
     Check if storage_uri, storage_key and storage_path are valid.
 
     Args:
