@@ -78,7 +78,7 @@ def kserve_raw_headless_service_config(
         else:
             logger.warning(msg="No KServe controller deployment found")
         logger.info(msg="Waiting for KServe controller to process configuration change...")
-        time.sleep(60)
+        time.sleep(secs=60)
 
         yield dsc_resource
 
