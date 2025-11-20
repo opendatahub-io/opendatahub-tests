@@ -21,6 +21,8 @@ from kubernetes.dynamic.exceptions import (
     NotFoundError,
     ResourceNotFoundError,
 )
+
+from ocp_resources.authentication_config_openshift_io import Authentication
 from ocp_resources.catalog_source import CatalogSource
 from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.config_map import ConfigMap
@@ -1208,3 +1210,10 @@ def check_internal_image_registry_available(admin_client: DynamicClient) -> bool
     except (ResourceNotFoundError, Exception) as e:
         LOGGER.warning(f"Failed to check image registry config: {e}")
         return False
+
+
+def get_cluster_authentication(admin_client: DynamicClient) -> Authentication | None:
+    auth = Authentication(client=admin_client, name="cluster")
+    if auth.exists:
+        return auth
+    return None

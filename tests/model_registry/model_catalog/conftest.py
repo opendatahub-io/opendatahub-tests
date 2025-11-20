@@ -25,9 +25,9 @@ from tests.model_registry.utils import (
     wait_for_model_catalog_api,
     execute_get_command,
     get_model_str,
+    get_mr_user_token,
 )
-from utilities.infra import get_openshift_token, create_inference_token
-from utilities.user_utils import UserTestSession
+from utilities.infra import get_openshift_token, create_inference_token, login_with_user_password
 
 
 LOGGER = get_logger(name=__name__)
@@ -93,10 +93,12 @@ def update_configmap_data_add_model(
 
 @pytest.fixture(scope="class")
 def user_token_for_api_calls(
+    is_byoidc: bool,
+    admin_client: DynamicClient,
     request: pytest.FixtureRequest,
     original_user: str,
     api_server_url: str,
-    test_idp_user: UserTestSession,
+    user_credentials_rbac: dict[str, str],
     service_account: ServiceAccount,
 ) -> Generator[str, None, None]:
     param = getattr(request, "param", {})
@@ -106,8 +108,20 @@ def user_token_for_api_calls(
         LOGGER.info("Logging in as admin user")
         yield get_openshift_token()
     elif user == "test":
-        # TODO: implement byoidc check in get_openshift_token
-        yield get_openshift_token()
+        if not is_byoidc:
+            login_with_user_password(
+                api_address=api_server_url,
+                user=user_credentials_rbac["username"],
+                password=user_credentials_rbac["password"],
+            )
+            yield get_openshift_token()
+            LOGGER.info(f"Logging in as {original_user}")
+            login_with_user_password(
+                api_address=api_server_url,
+                user=original_user,
+            )
+        else:
+            yield get_mr_user_token(admin_client=admin_client, user_credentials_rbac=user_credentials_rbac)
     elif user == "sa_user":
         yield create_inference_token(service_account)
     else:

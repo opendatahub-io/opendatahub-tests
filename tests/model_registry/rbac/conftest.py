@@ -57,6 +57,7 @@ def add_user_to_group(
 
 @pytest.fixture(scope="function")
 def model_registry_group_with_user(
+    is_byoidc: bool,
     admin_client: DynamicClient,
     test_idp_user: UserTestSession,
 ) -> Generator[Group, None, None]:
@@ -71,24 +72,28 @@ def model_registry_group_with_user(
     Yields:
         Group: The group with the test user added
     """
-    group_name = f"{MR_INSTANCE_NAME}-users"
-    group = Group(
-        client=admin_client,
-        name=group_name,
-        wait_for_resource=True,
-    )
+    if is_byoidc:
+        # this is no op. byoidc already has a group with user model-registry-user
+        yield
+    else:
+        group_name = f"{MR_INSTANCE_NAME}-users"
+        group = Group(
+            client=admin_client,
+            name=group_name,
+            wait_for_resource=True,
+        )
 
-    # Add user to group
-    with ResourceEditor(
-        patches={
-            group: {
-                "metadata": {"name": group_name},
-                "users": [test_idp_user.username],
+        # Add user to group
+        with ResourceEditor(
+            patches={
+                group: {
+                    "metadata": {"name": group_name},
+                    "users": [test_idp_user.username],
+                }
             }
-        }
-    ) as _:
-        LOGGER.info(f"Added user {test_idp_user.username} to {group_name} group")
-        yield group
+        ) as _:
+            LOGGER.info(f"Added user {test_idp_user.username} to {group_name} group")
+            yield group
 
 
 @pytest.fixture(scope="function")
@@ -111,18 +116,22 @@ def created_role_binding_group(
 
 @pytest.fixture(scope="function")
 def created_role_binding_user(
+    is_byoidc: bool,
     admin_client: DynamicClient,
     model_registry_namespace: str,
     mr_access_role: Role,
-    test_idp_user: UserTestSession,
+    user_credentials_rbac: dict[str, str],
 ) -> Generator[RoleBinding, None, None]:
+    if is_byoidc:
+        user_credentials_rbac["username"] = "mr-non-admin"
+    LOGGER.info(f"Using user {user_credentials_rbac['username']}")
     yield from create_role_binding(
         admin_client=admin_client,
         model_registry_namespace=model_registry_namespace,
         name="test-model-registry-access",
         mr_access_role=mr_access_role,
         subjects_kind="User",
-        subjects_name=test_idp_user.username,
+        subjects_name=user_credentials_rbac["username"],
     )
 
 
@@ -223,17 +232,26 @@ def model_registry_instance_parametrized(
 
 @pytest.fixture()
 def login_as_test_user(
-    api_server_url: str, original_user: str, test_idp_user: UserTestSession
+    is_byoidc: bool, api_server_url: str, original_user: str, test_idp_user: UserTestSession
 ) -> Generator[None, None, None]:
-    LOGGER.info(f"Logging in as {test_idp_user.username}")
-    login_with_user_password(
-        api_address=api_server_url,
-        user=test_idp_user.username,
-        password=test_idp_user.password,
-    )
-    yield
-    LOGGER.info(f"Logging in as {original_user}")
-    login_with_user_password(
-        api_address=api_server_url,
-        user=original_user,
-    )
+    if is_byoidc:
+        yield
+    else:
+        LOGGER.info(f"Logging in as {test_idp_user.username}")
+        login_with_user_password(
+            api_address=api_server_url,
+            user=test_idp_user.username,
+            password=test_idp_user.password,
+        )
+        yield
+        LOGGER.info(f"Logging in as {original_user}")
+        login_with_user_password(
+            api_address=api_server_url,
+            user=original_user,
+        )
+
+
+@pytest.fixture()
+def skip_test_on_byoidc(is_byoidc: bool) -> None:
+    if is_byoidc:
+        pytest.skip(reason="This test is meant to skip on byoidc.")
