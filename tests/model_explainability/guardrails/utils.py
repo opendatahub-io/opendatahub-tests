@@ -17,7 +17,7 @@ def get_auth_headers(token: str) -> Dict[str, str]:
     return {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
 
 
-def get_chat_detections_payload(content: str, model: str, detectors: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def get_chat_detections_payload(content: str, model: str, stream: bool = False, detectors: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
     Constructs a chat detections payload for a given content string.
 
@@ -38,6 +38,9 @@ def get_chat_detections_payload(content: str, model: str, detectors: Optional[Di
         ],
         "temperature": 0,
     }
+
+    if stream:
+        payload["stream"] = True
 
     if detectors is not None:
         payload["detectors"] = detectors
@@ -154,7 +157,7 @@ def verify_builtin_detector_unsuitable_input_response(
 
 
 def verify_builtin_detector_unsuitable_output_response(
-    response: Response, detector_id: str, detection_name: str, detection_type: str
+    response: Response, detector_id: str, detection_name: str, detection_type: str, stream: bool = False,
 ) -> None:
     """
     Verify that a guardrails response indicates an unsuitable output.
@@ -164,8 +167,54 @@ def verify_builtin_detector_unsuitable_output_response(
         detector_id: Expected detector ID
         detection_name: Expected detection name
         detection_type: Expected detection type
+        stream: If true, verify that the output is stream
     """
-    response_data = verify_and_parse_response(response=response)
+
+    response_data = None
+
+    if stream:
+        text_chunks = []
+        metadata_found = False
+
+        for line in response.iter_lines(decode_unicode=True):
+            if not line:
+                continue
+
+            if line.startswith("data:"):
+                data = line[len("data:"):].strip()
+                if data == "[DONE]":
+                    break
+                try:
+                    obj = json.loads(data)
+                    # If guardrails metadata present, use it
+                    if "guardrails_metadata" in obj:
+                        meta = obj["guardrails_metadata"]
+                        warnings = meta.get("warnings", [])
+                        output_detections = meta.get("output_detections", [])
+
+                        response_data = {
+                            "warnings": warnings,
+                            "detections": {"output": output_detections},
+                        }
+                        metadata_found = True
+                        break
+                except json.JSONDecodeError:
+                    # treat as plain text
+                    text_chunks.append(data)
+
+        if not metadata_found:
+            final_text = "".join(text_chunks).strip()
+            if not final_text:
+                raise AssertionError("No streamed text received")
+
+            response_data = {
+                "warnings": [],
+                "detections": {"output": []},
+            }
+
+    else:
+        response_data = verify_and_parse_response(response=response)
+
     errors = []
 
     unsuitable_output_warning = "UNSUITABLE_OUTPUT"
@@ -272,12 +321,15 @@ def _send_guardrails_orchestrator_post_request(
     token: str,
     ca_bundle_file: str,
     payload: Dict[str, Any],
+    stream: bool = False,
+
 ) -> requests.Response:
     response = requests.post(
         url=url,
         headers=get_auth_headers(token=token),
         json=payload,
         verify=ca_bundle_file,
+        stream=stream,
     )
 
     if response.status_code != http.HTTPStatus.OK:
@@ -292,11 +344,12 @@ def send_chat_detections_request(
     ca_bundle_file: str,
     content: str,
     model: str,
+    stream: bool = False,
     detectors: Dict[str, Any] = None,
 ) -> requests.Response:
-    payload = get_chat_detections_payload(content=content, model=model, detectors=detectors)
+    payload = get_chat_detections_payload(content=content, model=model, detectors=detectors, stream=stream)
     return _send_guardrails_orchestrator_post_request(
-        url=url, token=token, ca_bundle_file=ca_bundle_file, payload=payload
+        url=url, token=token, ca_bundle_file=ca_bundle_file, payload=payload, stream=stream
     )
 
 
@@ -331,12 +384,13 @@ def send_and_verify_unsuitable_output_detection(
     ca_bundle_file: str,
     prompt: GuardrailsDetectionPrompt,
     model: str,
+    stream: bool = False,
     detectors: Dict[str, Any] = None,
 ):
     """Send a prompt to the GuardrailsOrchestrator and verify that it triggers an unsuitable output detection"""
 
     response = send_chat_detections_request(
-        url=url, token=token, ca_bundle_file=ca_bundle_file, content=prompt.content, model=model, detectors=detectors
+        url=url, token=token, ca_bundle_file=ca_bundle_file, content=prompt.content, model=model, detectors=detectors, stream=stream
     )
 
     verify_builtin_detector_unsuitable_output_response(
@@ -344,6 +398,7 @@ def send_and_verify_unsuitable_output_detection(
         detector_id=prompt.detector_id,
         detection_name=prompt.detection_name,
         detection_type=prompt.detection_type,
+        stream=stream,
     )
     return response
 
