@@ -33,7 +33,11 @@ class TestMaasEndpoints:
         LOGGER.info("Using model_id=%s", model_id)
         assert model_id, "first model from /v1/models has no 'id'"
 
-        payload = {"model": model_id, "prompt": "Hello", "max_tokens": 50}
+        payload = {
+            "model": model_id,
+            "messages": [{"role": "user", "content": "Hello from MaaS billing test!"}],
+            "max_tokens": 50,
+        }
         LOGGER.info(f"POST {model_url} with keys={list(payload.keys())}")
 
         resp = request_session_http.post(
