@@ -227,7 +227,7 @@ class TestCustomImageValidation:
     @pytest.mark.sanity
     @pytest.mark.slow
     @pytest.mark.parametrize(
-        "unprivileged_model_namespace,users_persistent_volume_claim,default_notebook,packages_to_verify",
+        "unprivileged_model_namespace,users_persistent_volume_claim,default_notebook,notebook_image,packages_to_verify",
         [
             # ========================================
             # HOW TO ADD A NEW CUSTOM IMAGE TEST:
@@ -258,6 +258,8 @@ class TestCustomImageValidation:
                 {
                     "namespace": "test-sdg-hub",
                     "name": "test-sdg-hub",
+                },
+                {
                     "custom_image": (
                         "quay.io/opendatahub/"
                         "odh-workbench-jupyter-minimal-cuda-py312-ubi9@sha256:"
@@ -283,6 +285,8 @@ class TestCustomImageValidation:
                 {
                     "namespace": "test-datascience",
                     "name": "test-datascience",
+                },
+                {
                     "custom_image": (
                         "quay.io/opendatahub/"
                         "odh-workbench-jupyter-minimal-cuda-py312-ubi9@sha256:"
@@ -293,13 +297,14 @@ class TestCustomImageValidation:
                 id="datascience_image",
             ),
         ],
-        indirect=["unprivileged_model_namespace", "users_persistent_volume_claim", "default_notebook"],
+        indirect=["unprivileged_model_namespace", "users_persistent_volume_claim", "default_notebook", "notebook_image"],
     )
     def test_custom_image_package_verification(
         self,
         unprivileged_model_namespace: Namespace,  # noqa: ARG002
         users_persistent_volume_claim: PersistentVolumeClaim,  # noqa: ARG002
         default_notebook: Notebook,
+        notebook_image: str,  # noqa: ARG002
         notebook_pod: Pod,
         packages_to_verify: list[str],
     ):

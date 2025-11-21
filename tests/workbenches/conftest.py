@@ -45,10 +45,59 @@ def minimal_image() -> Generator[str, None, None]:
 
 
 @pytest.fixture(scope="function")
-def default_notebook(
+def notebook_image(
     request: pytest.FixtureRequest,
     admin_client: DynamicClient,
     minimal_image: str,
+) -> str:
+    """
+    Resolves the notebook image path.
+
+    Priority:
+    1. 'custom_image' provided via indirect parametrization
+    2. Default 'minimal_image' (with automatic registry resolution)
+    """
+    # SAFELY get parameters. If test doesn't parameterize this fixture, default to empty dict.
+    params = getattr(request, "param", {})
+    custom_image = params.get("custom_image")
+
+    # Case A: Custom Image (Explicit)
+    if custom_image:
+        custom_image = custom_image.strip()
+        if not custom_image:
+            raise ValueError("custom_image cannot be empty or whitespace")
+
+        # Validation Logic (Moved from default_notebook)
+        _ERR_INVALID_CUSTOM_IMAGE = (
+            "custom_image must be a valid OCI image reference with either a tag (:tag) or digest (@sha256:digest), "
+            "e.g., 'quay.io/org/image:tag' or 'quay.io/org/image@sha256:digest', "
+            "got: '{custom_image}'"
+        )
+        has_digest = "@sha256:" in custom_image
+        has_tag = ":" in custom_image and custom_image.rfind(":") > custom_image.rfind("/")
+
+        if not (has_digest or has_tag):
+            raise ValueError(_ERR_INVALID_CUSTOM_IMAGE.format(custom_image=custom_image))
+
+        LOGGER.info(f"Using custom workbench image: {custom_image}")
+        return custom_image
+
+    # Case B: Default Image (Implicit / Good Default)
+    # This runs for all standard tests in test_spawning.py
+    internal_image_registry = check_internal_image_registry_available(admin_client=admin_client)
+
+    return (
+        f"{INTERNAL_IMAGE_REGISTRY_PATH}/{py_config['applications_namespace']}/{minimal_image}"
+        if internal_image_registry
+        else minimal_image
+    )
+
+
+@pytest.fixture(scope="function")
+def default_notebook(
+    request: pytest.FixtureRequest,
+    admin_client: DynamicClient,
+    notebook_image: str,
 ) -> Generator[Notebook, None, None]:
     """Returns a new Notebook CR for a given namespace, name, and image"""
     namespace = request.param["namespace"]
@@ -57,47 +106,12 @@ def default_notebook(
     # Optional Auth annotations
     auth_annotations = request.param.get("auth_annotations", {})
 
-    # Optional custom image parameter (for custom workbench image testing)
-    custom_image = request.param.get("custom_image", None)
-
-    # Validate custom_image if provided
-    if custom_image is not None:
-        custom_image = custom_image.strip()
-        if not custom_image:
-            raise ValueError("custom_image cannot be empty or whitespace")
-
     # Set the correct username
     username = get_username(dyn_client=admin_client)
     assert username, "Failed to determine username from the cluster"
 
-    # Error messages
-    _ERR_INVALID_CUSTOM_IMAGE = (
-        "custom_image must be a valid OCI image reference with either a tag (:tag) or digest (@sha256:digest), "
-        "e.g., 'quay.io/org/image:tag' or 'quay.io/org/image@sha256:digest', "
-        "got: '{custom_image}'"
-    )
-
-    # Determine which image to use
-    if custom_image:
-        # Custom image provided - use it directly (must be valid OCI image reference)
-        # Validate OCI format: must have either :tag or @sha256:digest
-        has_digest = "@sha256:" in custom_image
-        has_tag = ":" in custom_image and custom_image.rfind(":") > custom_image.rfind("/")
-        if not (has_digest or has_tag):
-            raise ValueError(_ERR_INVALID_CUSTOM_IMAGE.format(custom_image=custom_image))
-        image_path = custom_image
-        LOGGER.info(f"Using custom workbench image: {custom_image}")
-    else:
-        # No custom image - use default minimal image with registry resolution
-        # Check internal image registry availability
-        internal_image_registry = check_internal_image_registry_available(admin_client=admin_client)
-
-        # Set the image path based on internal image registry status
-        image_path = (
-            f"{INTERNAL_IMAGE_REGISTRY_PATH}/{py_config['applications_namespace']}/{minimal_image}"
-            if internal_image_registry
-            else minimal_image
-        )
+    # Set the image path based on the resolved notebook_image
+    image_path = notebook_image
 
     probe_config = {
         "failureThreshold": 3,
