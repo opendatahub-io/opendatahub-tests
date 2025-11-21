@@ -1,5 +1,5 @@
 from contextlib import ExitStack
-from typing import Generator
+from typing import Generator, Literal, Any
 
 import pytest
 from _pytest.fixtures import FixtureRequest
@@ -11,6 +11,20 @@ from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 
+from tests.model_serving.model_server.llmd.constants import (
+    MULTINODE_LIVENESS_PROBE,
+    MULTINODE_SCHEDULER_CONFIG_PD,
+    SINGLENODE_LIVENESS_PROBE,
+    SINGLENODE_SCHEDULER_CONFIG_PD,
+    ROCE_ANNOTATION,
+)
+from tests.model_serving.model_server.llmd.utils import (
+    get_kv_transfer_env,
+    get_scheduler_container_args,
+    get_common_multinode_env,
+    build_scheduler_router_config,
+    build_prefill_config,
+)
 from utilities.constants import Timeout, ResourceLimits
 from utilities.infra import s3_endpoint_secret, create_inference_token
 from utilities.logger import RedactedString
@@ -330,3 +344,354 @@ def llmisvc_auth(
             return (llm_service, sa)
 
         yield _create_llmd_auth_service
+
+
+@pytest.fixture(scope="class")
+def _create_multinode_llmisvc(
+    admin_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+    *,
+    service_name: str,
+    storage_uri: str,
+    model_name: str,
+    mode: Literal["rdma", "tcp", "rdma_pd"],
+    data_parallelism: int,
+    gpu_count: int | str = "8",
+    gpu_memory_util: str = "0.95",
+    max_model_len: str = "8192",
+    enable_kv_transfer: bool = False,
+    prefill_config: dict[str, Any] | None = None,
+    scheduler_config_text: str | None = None,
+    scheduler_verbose_level: str = "",
+    service_account: str = "hfsa",
+    **kwargs,
+) -> Generator[LLMInferenceService, None, None]:
+    """Factory for creating multinode LLMISVC with common logic.
+
+    Args:
+        admin_client: Kubernetes dynamic client
+        unprivileged_model_namespace: Target namespace
+        service_name: Name of the LLM service
+        storage_uri: Model storage URI
+        model_name: Model identifier
+        mode: Network configuration mode ("rdma", "tcp", or "rdma_pd")
+        data_parallelism: Data parallelism count
+        gpu_count: Number of GPUs per node (default: "8")
+        gpu_memory_util: GPU memory utilization (default: "0.95")
+        max_model_len: Maximum model length (default: "8192")
+        enable_kv_transfer: Enable KV cache transfer (default: False)
+        prefill_config: Optional prefill configuration dict
+        scheduler_config_text: Optional scheduler YAML config
+        scheduler_verbose_level: Scheduler verbosity (e.g., "-v=4")
+        service_account: Service account name (default: "hfsa")
+        **kwargs: Additional arguments passed to create_llmisvc
+
+    Yields:
+        LLMInferenceService instance
+    """
+    # Get environment variables based on mode
+    common_env = get_common_multinode_env(
+        mode=mode,
+        gpu_memory_util=gpu_memory_util,
+        max_model_len=max_model_len,
+        enable_kv_transfer=enable_kv_transfer,
+    )
+
+    # Build container resources
+    container_resources = {
+        "limits": {
+            "cpu": "128",
+            "ephemeral-storage": "800Gi" if mode in ("rdma", "rdma_pd") else "100Gi",
+            "memory": "512Gi",
+            "nvidia.com/gpu": str(gpu_count),
+        },
+        "requests": {
+            "cpu": "64",
+            "ephemeral-storage": "800Gi" if mode in ("rdma", "rdma_pd") else "100Gi",
+            "memory": "256Gi",
+            "nvidia.com/gpu": str(gpu_count),
+        },
+    }
+
+    # Add RDMA resources for RDMA modes
+    if mode in ("rdma", "rdma_pd"):
+        container_resources["limits"]["rdma/roce_gdr"] = 1
+        container_resources["requests"]["rdma/roce_gdr"] = 1
+
+    # Build parallelism config
+    parallelism_config = {
+        "data": data_parallelism,
+        "dataLocal": 8,
+        "expert": True,
+        "tensor": 1,
+    }
+
+    # Build router config
+    router_config: dict[str, Any] = {
+        "scheduler": {},
+        "route": {},
+        "gateway": {},
+    }
+
+    # Add scheduler config if provided
+    if scheduler_config_text:
+        router_config["scheduler"] = {
+            "template": {
+                "containers": [
+                    {
+                        "name": "main",
+                        "args": get_scheduler_container_args(
+                            scheduler_config_text,
+                            verbose_level=scheduler_verbose_level,
+                        ),
+                    }
+                ]
+            }
+        }
+
+    # Build worker spec
+    worker_spec: dict[str, Any] = {
+        "containers": [
+            {
+                "name": "main",
+                "env": common_env,
+                "resources": container_resources,
+            }
+        ],
+    }
+
+    # Add service account for RDMA modes or if explicitly provided
+    if mode in ("rdma", "rdma_pd") or service_account:
+        worker_spec["serviceAccountName"] = service_account
+
+    # Determine annotations based on mode
+    if mode in ("rdma", "rdma_pd"):
+        annotations = ROCE_ANNOTATION
+    else:  # mode == "tcp"
+        annotations = {"security.opendatahub.io/enable-network-policies": "false"}
+
+    with create_llmisvc(
+        client=admin_client,
+        name=service_name,
+        namespace=unprivileged_model_namespace.name,
+        storage_uri=storage_uri,
+        model_name=model_name,
+        replicas=1,
+        parallelism=parallelism_config,
+        router_config=router_config,
+        container_env=common_env,
+        container_resources=container_resources,
+        liveness_probe=MULTINODE_LIVENESS_PROBE,
+        worker_config=worker_spec,
+        service_account=service_account if mode in ("rdma", "rdma_pd") else None,
+        prefill_config=prefill_config,
+        annotations=annotations,
+        wait=True,
+        timeout=Timeout.TIMEOUT_30MIN,
+        **kwargs,
+    ) as llm_service:
+        yield llm_service
+
+
+@pytest.fixture(scope="class")
+def llmisvc_multinode_dp_ep(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+) -> Generator[LLMInferenceService, None, None]:
+    """Fixture for DeepSeek R1 with multi-node DP+EP configuration (RDMA-enabled).
+
+    Matches: multi-node-dp-ep.yaml
+    - Data parallelism: 32
+    - RDMA/RoCE networking
+    - IBGDa transport
+    """
+    params = getattr(request, "param", {})
+    if not isinstance(params, dict):
+        params = {}
+
+    yield from _create_multinode_llmisvc(
+        admin_client=admin_client,
+        unprivileged_model_namespace=unprivileged_model_namespace,
+        service_name=params.get("service_name", "deepseek-r1-0528"),
+        storage_uri=params.get("storage_uri", "hf://deepseek-ai/DeepSeek-R1-0528"),
+        model_name=params.get("model_name", "deepseek-ai/DeepSeek-R1-0528"),
+        mode="rdma",
+        data_parallelism=32,
+        gpu_count="8",
+    )
+
+
+@pytest.fixture(scope="class")
+def llmisvc_multinode_dp_ep_tcp(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+) -> Generator[LLMInferenceService, None, None]:
+    """Fixture for DeepSeek Coder V2 with multi-node DP+EP configuration (TCP-only).
+
+    Matches: multi-node-dp-ep-tcp.yaml
+    - Data parallelism: 16
+    - TCP networking (GCP gVNIC)
+    - No RDMA - uses 6 GPUs instead of 8 for cost optimization
+    """
+    params = getattr(request, "param", {})
+    if not isinstance(params, dict):
+        params = {}
+
+    yield from _create_multinode_llmisvc(
+        admin_client=admin_client,
+        unprivileged_model_namespace=unprivileged_model_namespace,
+        service_name=params.get("service_name", "deepseek-coder-v2"),
+        storage_uri=params.get("storage_uri", "hf://deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct"),
+        model_name=params.get("model_name", "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct"),
+        mode="tcp",
+        data_parallelism=16,
+        gpu_count="6",  # TCP uses 6 GPUs for cost optimization on GCP
+    )
+
+
+@pytest.fixture(scope="class")
+def llmisvc_multinode_dp_ep_prefill_decode(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+) -> Generator[LLMInferenceService, None, None]:
+    """Fixture for DeepSeek R1 with multi-node DP+EP and prefill-decode separation.
+
+    Matches: multi-node-dp-ep-prefill-decode.yaml
+    - Data parallelism: 16 (both decode and prefill)
+    - RDMA/RoCE networking
+    - KV cache transfer via NixlConnector
+    - Advanced scheduler with PD separation
+    - Decode uses 0.99 GPU memory, prefill uses 0.97
+    """
+    params = getattr(request, "param", {})
+    if not isinstance(params, dict):
+        params = {}
+
+    # Build prefill environment with different GPU memory utilization (0.97 vs 0.99 for decode)
+    prefill_env = get_common_multinode_env(
+        mode="rdma_pd",
+        gpu_memory_util="0.97",  # Prefill uses slightly less GPU memory
+        max_model_len="4096",
+        enable_kv_transfer=True,
+    )
+
+    # Build container resources (shared by both decode and prefill)
+    container_resources = {
+        "limits": {
+            "cpu": "128",
+            "ephemeral-storage": "800Gi",
+            "memory": "512Gi",
+            "nvidia.com/gpu": "8",
+            "rdma/roce_gdr": 1,
+        },
+        "requests": {
+            "cpu": "64",
+            "ephemeral-storage": "800Gi",
+            "memory": "256Gi",
+            "nvidia.com/gpu": "8",
+            "rdma/roce_gdr": 1,
+        },
+    }
+
+    # Build parallelism config (shared by both decode and prefill)
+    parallelism_config = {
+        "data": 16,
+        "dataLocal": 8,
+        "expert": True,
+        "tensor": 1,
+    }
+
+    # Build prefill configuration using helper
+    prefill_config = build_prefill_config(
+        replicas=1,
+        env=prefill_env,
+        resources=container_resources,
+        liveness_probe=MULTINODE_LIVENESS_PROBE,
+        parallelism=parallelism_config,
+        service_account="hfsa",
+    )
+
+    yield from _create_multinode_llmisvc(
+        admin_client=admin_client,
+        unprivileged_model_namespace=unprivileged_model_namespace,
+        service_name=params.get("service_name", "deepseek-r1-0528-pd"),
+        storage_uri=params.get("storage_uri", "hf://deepseek-ai/DeepSeek-R1-0528"),
+        model_name=params.get("model_name", "deepseek-ai/DeepSeek-R1-0528"),
+        mode="rdma_pd",
+        data_parallelism=16,
+        gpu_count="8",
+        gpu_memory_util="0.99",  # Decode uses higher GPU memory utilization
+        max_model_len="4096",
+        enable_kv_transfer=True,
+        prefill_config=prefill_config,
+        scheduler_config_text=MULTINODE_SCHEDULER_CONFIG_PD,
+        scheduler_verbose_level="-v=4",
+    )
+
+
+@pytest.fixture(scope="class")
+def llmisvc_singlenode_prefill_decode(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+) -> Generator[LLMInferenceService, None, None]:
+    """Fixture for single-node GPU LLMInferenceService with prefill-decode separation."""
+    params = getattr(request, "param", {})
+    if not isinstance(params, dict):
+        params = {}
+
+    service_name = params.get("service_name", "qwen2-7b-instruct-pd")
+    storage_uri = params.get("storage_uri", "hf://Qwen/Qwen2.5-7B-Instruct")
+    model_name = params.get("model_name", "Qwen/Qwen2.5-7B-Instruct")
+    decode_replicas = params.get("decode_replicas", 1)
+    prefill_replicas = params.get("prefill_replicas", 2)
+
+    # Environment variables for KV cache transfer via RDMA
+    common_env = get_kv_transfer_env()
+
+    container_resources = {
+        "limits": {
+            "cpu": "4",
+            "memory": "32Gi",
+            "nvidia.com/gpu": "1",
+            "rdma/roce_gdr": "1",
+        },
+        "requests": {
+            "cpu": "2",
+            "memory": "16Gi",
+            "nvidia.com/gpu": "1",
+            "rdma/roce_gdr": "1",
+        },
+    }
+
+    # Build router config with scheduler using helper
+    router_config = build_scheduler_router_config(scheduler_config_text=SINGLENODE_SCHEDULER_CONFIG_PD)
+
+    # Build prefill configuration using helper
+    prefill_config = build_prefill_config(
+        replicas=prefill_replicas,
+        env=common_env,
+        resources=container_resources,
+        liveness_probe=SINGLENODE_LIVENESS_PROBE,
+    )
+
+    with create_llmisvc(
+        client=admin_client,
+        name=service_name,
+        namespace=unprivileged_model_namespace.name,
+        storage_uri=storage_uri,
+        model_name=model_name,
+        replicas=decode_replicas,
+        router_config=router_config,
+        container_env=common_env,
+        container_resources=container_resources,
+        liveness_probe=SINGLENODE_LIVENESS_PROBE,
+        prefill_config=prefill_config,
+        annotations=ROCE_ANNOTATION,
+        wait=True,
+        timeout=Timeout.TIMEOUT_30MIN,
+    ) as llm_service:
+        yield llm_service
