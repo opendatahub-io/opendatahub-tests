@@ -297,7 +297,12 @@ class TestCustomImageValidation:
                 id="datascience_image",
             ),
         ],
-        indirect=["unprivileged_model_namespace", "users_persistent_volume_claim", "default_notebook", "notebook_image"],
+        indirect=[
+            "unprivileged_model_namespace",
+            "users_persistent_volume_claim",
+            "default_notebook",
+            "notebook_image",
+        ],
     )
     def test_custom_image_package_verification(
         self,
