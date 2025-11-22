@@ -6,7 +6,6 @@ from time import time
 
 import pytest
 
-from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.pod import Pod
 from ocp_resources.pod import ExecOnPodError
 from ocp_resources.namespace import Namespace
@@ -20,8 +19,6 @@ LOGGER = get_logger(name=__name__)
 
 # Error messages
 _ERR_EMPTY_PACKAGES = "packages list cannot be empty"
-_ERR_POD_NOT_EXISTS = "Pod {pod_name} does not exist"
-_ERR_POD_NOT_RUNNING = "Pod {pod_name} is not in Running state (current: {phase})"
 _ERR_CONTAINER_NOT_FOUND = "Container '{container_name}' not found in pod. Available containers: {containers}"
 
 
@@ -64,19 +61,11 @@ def verify_package_import(
 
     Raises:
         ValueError: If packages list is empty
-        RuntimeError: If pod is not in Running state or container doesn't exist
+        RuntimeError: If container doesn't exist
     """
     # Input validation
     if not packages:
         raise ValueError(_ERR_EMPTY_PACKAGES)
-
-    # Check pod exists and is running
-    if not pod.exists:
-        raise ResourceNotFoundError(_ERR_POD_NOT_EXISTS.format(pod_name=pod.name))
-
-    pod_status = pod.instance.status
-    if pod_status.phase != "Running":
-        raise RuntimeError(_ERR_POD_NOT_RUNNING.format(pod_name=pod.name, phase=pod_status.phase))
 
     # Verify container exists
     try:
@@ -103,30 +92,23 @@ def verify_package_import(
         LOGGER.debug(f"Executing: {command}")
 
         start_time = time()
+        output = ""
+        error_message = None
+        import_successful = False
+        pod_logs = None
+        stderr_output = ""
+
         try:
             # Execute command in container with timeout
             output = pod.execute(container=container_name, command=command_list, timeout=timeout)
-            execution_time = time() - start_time
-
-            # Success case
-            results[package_name] = PackageVerificationResult(
-                package_name=package_name,
-                import_successful=True,
-                command_executed=command,
-                execution_time_seconds=execution_time,
-                stdout=output if output else "",
-            )
-            LOGGER.info(f"Package {package_name}: ✓ (import successful in {execution_time:.2f}s)")
-
+            import_successful = True
+            
         except ExecOnPodError as e:
-            execution_time = time() - start_time
-
             # Failure case - extract error message
             error_message = str(e)
             stderr_output = error_message
 
             # Collect pod logs if requested
-            pod_logs = None
             if collect_diagnostics:
                 try:
                     pod_logs = pod.log(container=container_name, tail_lines=100)
@@ -134,16 +116,24 @@ def verify_package_import(
                     LOGGER.warning(f"Failed to collect pod logs: {log_error}")
                     pod_logs = "Could not retrieve pod logs"
 
-            results[package_name] = PackageVerificationResult(
-                package_name=package_name,
-                import_successful=False,
-                command_executed=command,
-                execution_time_seconds=execution_time,
-                error_message=error_message,
-                pod_logs=pod_logs,
-                stderr=stderr_output,
-            )
-            LOGGER.warning(f"Package {package_name}: ✗ (import failed: {error_message})")
+        execution_time = time() - start_time
+        output = output if output else ""
+
+        if import_successful:
+             LOGGER.info(f"Package {package_name}: ✓ (import successful in {execution_time:.2f}s)")
+        else:
+             LOGGER.warning(f"Package {package_name}: ✗ (import failed: {error_message})")
+
+        results[package_name] = PackageVerificationResult(
+            package_name=package_name,
+            import_successful=import_successful,
+            command_executed=command,
+            execution_time_seconds=execution_time,
+            stdout=output,
+            error_message=error_message,
+            pod_logs=pod_logs,
+            stderr=stderr_output,
+        )
 
     return results
 
@@ -171,19 +161,11 @@ def install_packages_in_pod(
 
     Raises:
         ValueError: If packages list is empty
-        RuntimeError: If pod is not in Running state or container doesn't exist
+        RuntimeError: If container doesn't exist
     """
     # Input validation
     if not packages:
         raise ValueError(_ERR_EMPTY_PACKAGES)
-
-    # Check pod exists and is running
-    if not pod.exists:
-        raise RuntimeError(_ERR_POD_NOT_EXISTS.format(pod_name=pod.name))
-
-    pod_status = pod.instance.status
-    if pod_status.phase != "Running":
-        raise RuntimeError(_ERR_POD_NOT_RUNNING.format(pod_name=pod.name, phase=pod_status.phase))
 
     # Verify container exists
     try:
