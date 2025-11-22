@@ -268,7 +268,6 @@ class TestCustomImageValidation:
                 },
                 ["sdg_hub"],
                 id="sdg_hub_image",
-                # marks=pytest.mark.skip(reason="Waiting for sdg_hub image URL from workbench image team"),
             ),
             # Test Case: Data Science Notebook (Demonstration of Pattern Reusability)
             # Image: Standard datascience workbench image
