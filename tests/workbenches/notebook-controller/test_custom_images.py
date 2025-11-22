@@ -6,6 +6,7 @@ from time import time
 
 import pytest
 
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.pod import Pod
 from ocp_resources.pod import ExecOnPodError
 from ocp_resources.namespace import Namespace
@@ -71,7 +72,7 @@ def verify_package_import(
 
     # Check pod exists and is running
     if not pod.exists:
-        raise RuntimeError(_ERR_POD_NOT_EXISTS.format(pod_name=pod.name))
+        raise ResourceNotFoundError(_ERR_POD_NOT_EXISTS.format(pod_name=pod.name))
 
     pod_status = pod.instance.status
     if pod_status.phase != "Running":
