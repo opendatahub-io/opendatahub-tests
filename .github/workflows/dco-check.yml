@@ -1,0 +1,36 @@
+name: DCO Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  dco-check:
+    name: Developer Certificate of Origin Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check DCO Sign-off
+        run: |
+          # Fetch the base branch to compare against
+          git fetch origin ${{ github.base_ref }}
+
+          # Check only commits in this PR (not in base branch), excluding merge commits
+          echo "Checking commits in PR #${{ github.event.pull_request.number }}..."
+          for commit in $(git rev-list --no-merges origin/${{ github.base_ref }}..${{ github.event.pull_request.head.sha }}); do
+            commit_msg=$(git show -s --format=%B $commit)
+            commit_subject=$(git show -s --format=%s $commit)
+
+            if ! echo "$commit_msg" | grep -qE "^Signed-off-by: .+ <.+>$"; then
+              echo "❌ Commit $commit is missing DCO sign-off!"
+              echo "   Subject: $commit_subject"
+              echo ""
+              echo "Please sign your commits with: git commit --signoff"
+              exit 1
+            fi
+          done
+          echo "✅ All commits in this PR are properly signed off!"
