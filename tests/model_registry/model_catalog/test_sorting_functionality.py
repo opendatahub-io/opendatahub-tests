@@ -119,6 +119,8 @@ class TestSourcesSorting:
             )
 
 
+# More than 1 artifact are available only in downstream
+@pytest.mark.downstream_only
 class TestArtifactsSorting:
     """Test sorting functionality for GetAllModelArtifacts endpoint
     Fixed on a random model from the validated catalog since we need more than 1 artifact to test sorting.

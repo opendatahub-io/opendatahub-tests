@@ -70,7 +70,7 @@ class TestFilterOptionsEndpoint:
         LOGGER.info("Filter options endpoint successfully returned 200 OK")
 
         # Expected core properties based on current API response
-        expected_properties = {"license", "provider", "tasks", "validated_on"}
+        expected_properties = {"license", "provider", "tasks", "validated_on.array_value"}
 
         # Comprehensive validation using single function (validates acceptance criteria #2, #3, #4)
         is_valid, errors = validate_filter_options_structure(response=response, expected_properties=expected_properties)
