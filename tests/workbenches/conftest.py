@@ -252,21 +252,16 @@ def notebook_pod(
         name=f"{default_notebook.name}-0",
     )
 
-    # Wait for pod to exist
-    notebook_pod.wait()
-
-    # Wait for pod to reach Ready state (10-minute timeout for large custom images)
     try:
+        notebook_pod.wait()
         notebook_pod.wait_for_condition(
             condition=Pod.Condition.READY,
             status=Pod.Condition.Status.TRUE,
             timeout=Timeout.TIMEOUT_10MIN,
         )
     except (TimeoutError, RuntimeError) as e:
-        # Enhanced error handling: Collect pod diagnostic information
-        pod_status = notebook_pod.instance.status if notebook_pod.exists else None
-
-        if pod_status:
+        if notebook_pod.exists:
+            pod_status = notebook_pod.instance.status
             pod_phase = pod_status.phase
             error_details = get_pod_failure_details(notebook_pod)
             raise AssertionError(
@@ -278,6 +273,7 @@ def notebook_pod(
                 )
             ) from e
         else:
+            # Pod was never created
             raise AssertionError(_ERR_POD_NOT_CREATED.format(pod_name=default_notebook.name)) from e
 
     return notebook_pod
