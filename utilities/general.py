@@ -14,7 +14,6 @@ from simple_logger.logger import get_logger
 import utilities.infra
 from utilities.constants import Annotations, KServeDeploymentType, MODELMESH_SERVING
 from utilities.exceptions import UnexpectedResourceCountError, ResourceValueMismatch
-from utilities.must_gather_collector import get_base_dir, get_must_gather_collector_dir
 from ocp_resources.resource import Resource
 from timeout_sampler import retry
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
@@ -472,6 +471,8 @@ def wait_for_pods_running(
 
 
 def collect_pod_information(pod: Pod) -> None:
+    # Import here to avoid circular import (must_gather_collector -> infra -> general)
+    from utilities.must_gather_collector import get_base_dir, get_must_gather_collector_dir
     try:
         base_dir_name = get_must_gather_collector_dir() or get_base_dir()
         LOGGER.info(f"Collecting pod information for {pod.name}: {base_dir_name}")
