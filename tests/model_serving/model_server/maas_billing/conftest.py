@@ -136,6 +136,7 @@ def maas_user_credentials_both() -> dict[str, str]:
 def maas_rbac_idp_env(
     admin_client: DynamicClient,
     maas_user_credentials_both: dict[str, str],
+    is_byoidc: bool,
 ) -> Generator[dict[str, str], None, None]:
     """
     - Creates a single htpasswd Secret with FREE + PREMIUM users.
@@ -144,6 +145,9 @@ def maas_rbac_idp_env(
     - On teardown, ResourceEditor restores the original OAuth spec and we wait again.
     - Deletes the temporary htpasswd Secret.
     """
+    if is_byoidc:
+        pytest.skip("Working on OIDC support for tests that use htpasswd IDP for MaaS")
+
     free_username = maas_user_credentials_both["free_user"]
     free_password = maas_user_credentials_both["free_pass"]
     premium_username = maas_user_credentials_both["premium_user"]
@@ -155,12 +159,10 @@ def maas_rbac_idp_env(
         username=free_username,
         password=free_password,
     )
-    # gitleaks:allow - test-only htpasswd user, no real secret
-    premium_htpasswd_file_path, premium_htpasswd_b64 = (
-        create_htpasswd_file(  # gitleaks:allow - test-only htpasswd users created at runtime (no real secrets)
-            username=premium_username,
-            password=premium_password,
-        )
+
+    premium_htpasswd_file_path, premium_htpasswd_b64 = create_htpasswd_file(
+        username=premium_username,
+        password=premium_password,
     )
 
     try:
