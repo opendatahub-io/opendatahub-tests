@@ -102,7 +102,7 @@ def verify_package_import(
             # Execute command in container with timeout
             output = pod.execute(container=container_name, command=command_list, timeout=timeout)
             import_successful = True
-            
+
         except ExecOnPodError as e:
             # Failure case - extract error message
             error_message = str(e)
@@ -120,9 +120,9 @@ def verify_package_import(
         output = output if output else ""
 
         if import_successful:
-             LOGGER.info(f"Package {package_name}: ✓ (import successful in {execution_time:.2f}s)")
+            LOGGER.info(f"Package {package_name}: ✓ (import successful in {execution_time:.2f}s)")
         else:
-             LOGGER.warning(f"Package {package_name}: ✗ (import failed: {error_message})")
+            LOGGER.warning(f"Package {package_name}: ✗ (import failed: {error_message})")
 
         results[package_name] = PackageVerificationResult(
             package_name=package_name,
