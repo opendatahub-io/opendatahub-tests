@@ -17,6 +17,7 @@ from utilities.constants import Labels, Timeout
 from utilities import constants
 from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH
 from utilities.infra import check_internal_image_registry_available
+from utilities.general import collect_pod_information
 
 LOGGER = get_logger(name=__name__)
 
@@ -67,16 +68,21 @@ def notebook_image(
         if not custom_image:
             raise ValueError("custom_image cannot be empty or whitespace")
 
-        # Validation Logic (Moved from default_notebook)
+        # Validation Logic: Only digest references are accepted
         _ERR_INVALID_CUSTOM_IMAGE = (
-            "custom_image must be a valid OCI image reference with either a tag (:tag) or digest (@sha256:digest), "
-            "e.g., 'quay.io/org/image:tag' or 'quay.io/org/image@sha256:digest', "
+            "custom_image must be a valid OCI image reference with a digest (@sha256:digest), "
+            "e.g., 'quay.io/org/image@sha256:abc123...', "
             "got: '{custom_image}'"
         )
-        has_digest = "@sha256:" in custom_image
-        has_tag = ":" in custom_image and custom_image.rfind(":") > custom_image.rfind("/")
+        # Check for valid digest: @sha256: must be followed by non-empty content
+        digest_marker = "@sha256:"
+        has_valid_digest = False
+        if digest_marker in custom_image:
+            digest_index = custom_image.rfind(digest_marker)
+            digest_end = digest_index + len(digest_marker)
+            has_valid_digest = digest_end < len(custom_image)
 
-        if not (has_digest or has_tag):
+        if not has_valid_digest:
             raise ValueError(_ERR_INVALID_CUSTOM_IMAGE.format(custom_image=custom_image))
 
         LOGGER.info(f"Using custom workbench image: {custom_image}")
@@ -261,6 +267,8 @@ def notebook_pod(
         )
     except (TimeoutError, RuntimeError) as e:
         if notebook_pod.exists:
+            # Collect pod information for debugging purposes
+            collect_pod_information(notebook_pod)
             pod_status = notebook_pod.instance.status
             pod_phase = pod_status.phase
             error_details = get_pod_failure_details(notebook_pod)
