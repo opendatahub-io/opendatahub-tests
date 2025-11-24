@@ -1,9 +1,5 @@
 from typing import Any, Dict, Generator, List
-
 from kubernetes.dynamic import DynamicClient
-from timeout_sampler import TimeoutSampler
-
-from ocp_resources.deployment import Deployment
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from utilities.constants import Protocols
