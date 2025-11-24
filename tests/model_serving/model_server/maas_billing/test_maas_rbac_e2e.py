@@ -1,6 +1,6 @@
 import pytest
 from simple_logger.logger import get_logger
-from utilities.plugins.constant import RestHeader, OpenAIEnpoints
+from utilities.plugins.constant import OpenAIEnpoints
 
 LOGGER = get_logger(name=__name__)
 
@@ -8,9 +8,9 @@ MODELS_INFO = OpenAIEnpoints.MODELS_INFO
 CHAT_COMPLETIONS = OpenAIEnpoints.CHAT_COMPLETIONS
 
 ACTORS = [
-    {"kind": "admin"},
-    {"kind": "free"},
-    {"kind": "premium"},
+    {"type": "admin"},
+    {"type": "free"},
+    {"type": "premium"},
 ]
 
 
@@ -37,47 +37,29 @@ class TestMaasRBACE2E:
 
     def test_models_visible_for_actors(
         self,
-        request_session_http,
-        base_url: str,
-        ocp_token_for_actor,
-        maas_token_for_actor: str,
+        maas_models_response_for_actor,
     ) -> None:
-        headers = {
-            "Authorization": f"Bearer {maas_token_for_actor}",
-            **RestHeader.HEADERS,
-        }
-        models_url = f"{base_url}{MODELS_INFO}"
-        response = request_session_http.get(
-            url=models_url,
-            headers=headers,
-            timeout=60,
-        )
+        """Use fixture for /v1/models response."""
+        response = maas_models_response_for_actor
 
         LOGGER.info(f"MaaS RBAC: /v1/models -> {response.status_code}")
-
         assert response.status_code == 200, f"/v1/models failed: {response.status_code} {response.text[:200]}"
+
         models = response.json().get("data", [])
         assert isinstance(models, list) and models, "no models returned from /v1/models"
 
     def test_chat_completions_for_actors(
         self,
         request_session_http,
-        base_url: str,
         model_url: str,
-        ocp_token_for_actor,
-        maas_token_for_actor: str,
+        maas_headers_for_actor: dict,
+        maas_models_response_for_actor,
     ) -> None:
-        headers = {
-            "Authorization": f"Bearer {maas_token_for_actor}",
-            **RestHeader.HEADERS,
-        }
-
-        models_url = f"{base_url}{MODELS_INFO}"
-        models_response = request_session_http.get(
-            url=models_url,
-            headers=headers,
-            timeout=60,
-        )
+        """
+        Reuse the models fixture instead of duplicating the /v1/models logic,
+        then call /v1/chat/completions with the first model id.
+        """
+        models_response = maas_models_response_for_actor
         assert models_response.status_code == 200, (
             f"/v1/models failed: {models_response.status_code} {models_response.text[:200]}"
         )
@@ -93,7 +75,7 @@ class TestMaasRBACE2E:
 
         chat_response = request_session_http.post(
             url=model_url,
-            headers=headers,
+            headers=maas_headers_for_actor,
             json=payload,
             timeout=60,
         )
@@ -103,6 +85,7 @@ class TestMaasRBACE2E:
         assert chat_response.status_code == 200, (
             f"/v1/chat/completions failed: {chat_response.status_code} {chat_response.text[:200]} (url={model_url})"
         )
+
         chat_body = chat_response.json()
         choices = chat_body.get("choices", [])
         assert isinstance(choices, list) and choices, "'choices' missing or empty"

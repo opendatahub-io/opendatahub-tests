@@ -13,8 +13,10 @@ from contextlib import contextmanager
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.group import Group
 from simple_logger.logger import get_logger
+from utilities.plugins.constant import RestHeader, OpenAIEnpoints
 
 LOGGER = get_logger(name=__name__)
+MODELS_INFO = OpenAIEnpoints.MODELS_INFO
 
 
 def host_from_ingress_domain(client) -> str:
@@ -67,7 +69,7 @@ def detect_scheme_via_llmisvc(client, namespace: str = "llm") -> str:
 
 
 def maas_auth_headers(token: str) -> Dict[str, str]:
-    """Build Authorization header for MaaS/Billing calls."""
+    """Authorization header only (used for /v1/tokens with OCP user token)."""
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -130,3 +132,23 @@ def create_maas_group(
     ) as group:
         LOGGER.info(f"MaaS RBAC: created group {group_name} with users {users or []}")
         yield group
+
+
+def build_maas_headers(token: str) -> dict:
+    """Return common MaaS headers for a given token."""
+    return {
+        "Authorization": f"Bearer {token}",
+        **RestHeader.HEADERS,
+    }
+
+
+def get_maas_models_response(
+    session: requests.Session,
+    base_url: str,
+    headers: dict,
+) -> requests.Response:
+    """Issue GET /v1/models and return the raw Response."""
+    models_url = f"{base_url}{MODELS_INFO}"
+    resp = session.get(url=models_url, headers=headers, timeout=60)
+    LOGGER.info("MaaS: /v1/models -> %s (url=%s)", resp.status_code, models_url)
+    return resp
