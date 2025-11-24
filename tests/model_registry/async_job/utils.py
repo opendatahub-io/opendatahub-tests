@@ -1,5 +1,3 @@
-import os
-
 import requests
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.job import Job
@@ -9,7 +7,6 @@ from utilities.constants import MinIo
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError
 
-from utilities.must_gather_collector import get_base_dir, get_must_gather_collector_dir
 from utilities.general import collect_pod_information
 
 LOGGER = get_logger(name=__name__)
