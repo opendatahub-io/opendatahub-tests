@@ -4,7 +4,7 @@ import pytest
 from pytest_testconfig import config as py_config
 
 from simple_logger.logger import get_logger
-from tests.workbenches.utils import get_username, get_pod_failure_details
+from tests.workbenches.utils import get_username
 
 from kubernetes.dynamic import DynamicClient
 
@@ -246,8 +246,8 @@ def notebook_pod(
     _ERR_POD_NOT_READY = (
         "Pod '{pod_name}-0' failed to reach Ready state within 10 minutes.\n"
         "Pod Phase: {pod_phase}\n"
-        "Error Details:\n{error_details}\n"
-        "Original Error: {original_error}"
+        "Original Error: {original_error}\n"
+        "Pod information collected to must-gather directory for debugging."
     )
     _ERR_POD_NOT_CREATED = "Pod '{pod_name}-0' was not created. Check notebook controller logs."
 
@@ -267,16 +267,14 @@ def notebook_pod(
         )
     except (TimeoutError, RuntimeError) as e:
         if notebook_pod.exists:
-            # Collect pod information for debugging purposes
+            # Collect pod information for debugging purposes (YAML + logs saved to must-gather dir)
             collect_pod_information(notebook_pod)
             pod_status = notebook_pod.instance.status
             pod_phase = pod_status.phase
-            error_details = get_pod_failure_details(notebook_pod)
             raise AssertionError(
                 _ERR_POD_NOT_READY.format(
                     pod_name=default_notebook.name,
                     pod_phase=pod_phase,
-                    error_details=error_details,
                     original_error=e,
                 )
             ) from e

@@ -13,6 +13,7 @@ from ocp_resources.notebook import Notebook
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 
 from utilities.constants import Timeout
+from utilities.general import collect_pod_information
 from simple_logger.logger import get_logger
 
 LOGGER = get_logger(name=__name__)
@@ -31,7 +32,6 @@ class PackageVerificationResult:
     command_executed: str
     execution_time_seconds: float
     error_message: str | None = None
-    pod_logs: str | None = None
     stdout: str = ""
     stderr: str = ""
 
@@ -95,7 +95,6 @@ def verify_package_import(
         output = ""
         error_message = None
         import_successful = False
-        pod_logs = None
         stderr_output = ""
 
         try:
@@ -108,13 +107,9 @@ def verify_package_import(
             error_message = str(e)
             stderr_output = error_message
 
-            # Collect pod logs if requested
+            # Collect pod information if requested
             if collect_diagnostics:
-                try:
-                    pod_logs = pod.log(container=container_name, tail_lines=100)
-                except (RuntimeError, AttributeError, KeyError) as log_error:
-                    LOGGER.warning(f"Failed to collect pod logs: {log_error}")
-                    pod_logs = "Could not retrieve pod logs"
+                collect_pod_information(pod)
 
         execution_time = time() - start_time
         output = output if output else ""
@@ -131,7 +126,6 @@ def verify_package_import(
             execution_time_seconds=execution_time,
             stdout=output,
             error_message=error_message,
-            pod_logs=pod_logs,
             stderr=stderr_output,
         )
 
@@ -379,20 +373,14 @@ class TestCustomImageValidation:
             report.append(f"     Error: {result.error_message}")
             report.append(f"     Command: {result.command_executed}")
             report.append(f"     Execution Time: {result.execution_time_seconds:.2f}s")
-
-            if result.pod_logs:
-                report.append("     Pod Logs (excerpt):")
-                # Show first 500 characters of logs
-                log_excerpt = result.pod_logs[:500]
-                for line in log_excerpt.split("\n"):
-                    report.append(f"       {line}")
             report.append("")
 
         # Add troubleshooting guidance
         report.append("Troubleshooting:")
-        report.append("  1. Verify the custom image contains the required packages")
-        report.append("  2. Check if packages are installed in the correct Python environment")
-        report.append("  3. Verify package names match import names (pip name vs import name)")
-        report.append("  4. Contact the workbench image team for package installation issues")
+        report.append("  1. Check the must-gather directory for pod logs and YAML")
+        report.append("  2. Verify the custom image contains the required packages")
+        report.append("  3. Check if packages are installed in the correct Python environment")
+        report.append("  4. Verify package names match import names (pip name vs import name)")
+        report.append("  5. Contact the workbench image team for package installation issues")
 
         return "\n".join(report)
