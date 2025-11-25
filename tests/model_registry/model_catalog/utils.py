@@ -966,3 +966,140 @@ def validate_items_sorted_correctly(items: list[dict], field: str, order: str) -
         return all(values[i] >= values[i + 1] for i in range(len(values) - 1))
     else:
         raise ValueError(f"Invalid sort order: {order}")
+
+
+def _validate_single_criterion(
+    artifact_name: str, custom_properties: dict[str, Any], validation: dict[str, Any]
+) -> tuple[bool, str]:
+    """
+    Helper function to validate a single criterion against an artifact.
+
+    Args:
+        artifact_name: Name of the artifact being validated
+        custom_properties: Custom properties dictionary from the artifact
+        validation: Single validation criterion containing key_name, key_type, comparison, value
+
+    Returns:
+        tuple: (condition_met: bool, message: str)
+    """
+    key_name = validation["key_name"]
+    key_type = validation["key_type"]
+    comparison_type = validation["comparison"]
+    expected_val = validation["value"]
+
+    raw_value = custom_properties.get(key_name, {}).get(key_type, None)
+
+    if raw_value is None:
+        return False, f"{key_name}: missing"
+
+    # Convert value to appropriate type
+    try:
+        if key_type == "int_value":
+            artifact_value = int(raw_value)
+        elif key_type == "double_value":
+            artifact_value = float(raw_value)
+        elif key_type == "string_value":
+            artifact_value = str(raw_value)
+        else:
+            LOGGER.warning(f"Unknown key_type: {key_type}")
+            return False, f"{key_name}: unknown type {key_type}"
+    except (ValueError, TypeError):
+        return False, f"{key_name}: conversion error"
+
+    # Perform comparison based on type
+    condition_met = False
+    if comparison_type == "exact":
+        condition_met = artifact_value == expected_val
+    elif comparison_type == "min":
+        condition_met = artifact_value >= expected_val
+    elif comparison_type == "max":
+        condition_met = artifact_value <= expected_val
+    elif comparison_type == "contains" and key_type == "string_value":
+        condition_met = expected_val in artifact_value
+
+    message = f"Artifact {artifact_name} {key_name}: {artifact_value} {comparison_type} {expected_val}"
+    return condition_met, message
+
+
+def validate_model_artifacts_match_criteria_and(
+    all_model_artifacts: list[dict[str, Any]], expected_validations: list[dict[str, Any]], model_name: str
+) -> bool:
+    """
+    Validates that at least one artifact in the model satisfies all expected validation criteria.
+
+    Args:
+        all_model_artifacts: List of artifact dictionaries for a model
+        expected_validations: List of validation criteria dictionaries, each containing:
+            - key_name: The property name to validate
+            - key_type: The type of the property (int_value, double_value, string_value)
+            - comparison: The comparison type (exact, min, max, contains)
+            - value: The expected value for comparison
+        model_name: Name of the model being validated (for logging)
+
+    Returns:
+        bool: True if at least one artifact satisfies all validation criteria, False otherwise
+    """
+    for artifact in all_model_artifacts:
+        artifact_name = artifact.get("name")
+        custom_properties = artifact["customProperties"]
+        validation_results = []
+        conditions_passed = 0
+
+        # Check if this artifact satisfies ALL validations
+        for validation in expected_validations:
+            condition_met, message = _validate_single_criterion(
+                artifact_name=artifact_name, custom_properties=custom_properties, validation=validation
+            )
+
+            if not condition_met:
+                validation_results.append(f"{message}: failed")
+                break  # AND logic: break on first failure
+            else:
+                validation_results.append(f"{message}: passed")
+                conditions_passed += 1
+
+        # If this artifact satisfies all conditions, the model passes
+        if conditions_passed == len(expected_validations):
+            LOGGER.info(
+                f"Model {model_name} passed all {conditions_passed} validations with artifact: {validation_results}"
+            )
+            return True
+
+    return False
+
+
+def validate_model_artifacts_match_criteria_or(
+    all_model_artifacts: list[dict[str, Any]], expected_validations: list[dict[str, Any]], model_name: str
+) -> bool:
+    """
+    Validates that at least one artifact in the model satisfies at least one of the expected validation criteria.
+
+    Args:
+        all_model_artifacts: List of artifact dictionaries for a model
+        expected_validations: List of validation criteria dictionaries, each containing:
+            - key_name: The property name to validate
+            - key_type: The type of the property (int_value, double_value, string_value)
+            - comparison: The comparison type (exact, min, max, contains)
+            - value: The expected value for comparison
+        model_name: Name of the model being validated (for logging)
+
+    Returns:
+        bool: True if at least one artifact satisfies at least one validation criterion, False otherwise
+    """
+    for artifact in all_model_artifacts:
+        artifact_name = artifact.get("name")
+        custom_properties = artifact["customProperties"]
+
+        # Check if this artifact satisfies ANY validation (OR logic)
+        for validation in expected_validations:
+            condition_met, message = _validate_single_criterion(
+                artifact_name=artifact_name, custom_properties=custom_properties, validation=validation
+            )
+
+            if condition_met:
+                LOGGER.info(f"Model {model_name} passed OR validation with artifact: {message}")
+                return True  # OR logic: return immediately on first success
+
+    # No artifact passed any validation
+    LOGGER.info(f"Model {model_name} failed all {len(expected_validations)} OR validations")
+    return False
