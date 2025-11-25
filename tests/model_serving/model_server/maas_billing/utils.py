@@ -147,8 +147,16 @@ def get_maas_models_response(
     base_url: str,
     headers: dict,
 ) -> requests.Response:
-    """Issue GET /v1/models and return the raw Response."""
+    """
+    Issue GET /v1/models and return the raw Response.
+
+    Also validates the status code before returning.
+    """
     models_url = f"{base_url}{MODELS_INFO}"
     resp = session.get(url=models_url, headers=headers, timeout=60)
-    LOGGER.info("MaaS: /v1/models -> %s (url=%s)", resp.status_code, models_url)
+
+    LOGGER.info(f"MaaS: /v1/models -> {resp.status_code} (url={models_url})")
+
+    assert resp.status_code == 200, f"/v1/models failed: {resp.status_code} {resp.text[:200]} (url={models_url})"
+
     return resp

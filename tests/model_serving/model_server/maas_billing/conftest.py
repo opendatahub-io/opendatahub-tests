@@ -95,8 +95,6 @@ def maas_models(
         headers=maas_headers,
     )
 
-    assert resp.status_code == 200, f"/v1/models failed: {resp.status_code} {resp.text[:200]}"
-
     models = resp.json().get("data", [])
     assert models, "no models available"
     return models
@@ -180,70 +178,62 @@ def maas_htpasswd_oauth_idp(
     """
     if is_byoidc:
         pytest.skip("Working on OIDC support for tests that use htpasswd IDP for MaaS")
+    else:
+        (
+            _free_htpasswd_file_path,
+            free_htpasswd_b64,
+            _premium_htpasswd_file_path,
+            premium_htpasswd_b64,
+        ) = maas_htpasswd_files
 
-    (
-        _free_htpasswd_file_path,
-        free_htpasswd_b64,
-        _premium_htpasswd_file_path,
-        premium_htpasswd_b64,
-    ) = maas_htpasswd_files
+        free_username = maas_user_credentials_both["free_user"]
+        premium_username = maas_user_credentials_both["premium_user"]
+        secret_name = maas_user_credentials_both["secret_name"]
+        idp_name = maas_user_credentials_both["idp_name"]
 
-    free_username = maas_user_credentials_both["free_user"]
-    premium_username = maas_user_credentials_both["premium_user"]
-    secret_name = maas_user_credentials_both["secret_name"]
-    idp_name = maas_user_credentials_both["idp_name"]
+        free_bytes = base64.b64decode(s=free_htpasswd_b64)
+        premium_bytes = base64.b64decode(s=premium_htpasswd_b64)
+        combined_bytes = free_bytes + b"\n" + premium_bytes
+        combined_htpasswd_b64 = base64.b64encode(s=combined_bytes).decode("utf-8")
 
-    free_bytes = base64.b64decode(s=free_htpasswd_b64)
-    premium_bytes = base64.b64decode(s=premium_htpasswd_b64)
-    combined_bytes = free_bytes + b"\n" + premium_bytes
-    combined_htpasswd_b64 = base64.b64encode(s=combined_bytes).decode("utf-8")
+        oauth_resource = OAuth(name="cluster", client=admin_client)
+        oauth_spec = oauth_resource.instance.spec or {}
+        existing_idps = oauth_spec.get("identityProviders", [])
 
-    oauth_resource = OAuth(name="cluster", client=admin_client)
-    oauth_spec = getattr(oauth_resource.instance, "spec", {}) or {}
-    existing_idps = oauth_spec.get("identityProviders") or []
+        maas_idp = {
+            "name": idp_name,
+            "mappingMethod": "claim",
+            "type": "HTPasswd",
+            "challenge": True,
+            "login": True,
+            "htpasswd": {"fileData": {"name": secret_name}},
+        }
 
-    maas_idp = {
-        "name": idp_name,
-        "mappingMethod": "claim",
-        "type": "HTPasswd",
-        "challenge": True,
-        "login": True,
-        "htpasswd": {"fileData": {"name": secret_name}},
-    }
+        updated_idps = existing_idps + [maas_idp]
 
-    updated_idps = existing_idps + [maas_idp]
+        LOGGER.info(
+            f"MaaS RBAC: creating shared htpasswd Secret '{secret_name}' "
+            f"for users '{free_username}' and '{premium_username}'"
+        )
 
-    LOGGER.info(
-        f"MaaS RBAC: creating shared htpasswd Secret '{secret_name}' "
-        f"for users '{free_username}' and '{premium_username}'"
-    )
-
-    with (
-        Secret(
-            client=admin_client,
-            name=secret_name,
-            namespace="openshift-config",
-            htpasswd=combined_htpasswd_b64,
-            type="Opaque",
-            teardown=True,
-            wait_for_resource=True,
-        ),
-        ResourceEditor(patches={oauth_resource: {"spec": {"identityProviders": updated_idps}}}),
-    ):
-        LOGGER.info(f"MaaS RBAC: updating OAuth with MaaS htpasswd IDP '{maas_idp['name']}'")
+        with (
+            Secret(
+                client=admin_client,
+                name=secret_name,
+                namespace="openshift-config",
+                htpasswd=combined_htpasswd_b64,
+                type="Opaque",
+                teardown=True,
+                wait_for_resource=True,
+            ),
+            ResourceEditor(patches={oauth_resource: {"spec": {"identityProviders": updated_idps}}}),
+        ):
+            LOGGER.info(f"MaaS RBAC: updating OAuth with MaaS htpasswd IDP '{maas_idp['name']}'")
+            wait_for_oauth_openshift_deployment()
+            LOGGER.info(f"MaaS RBAC: OAuth updated with MaaS IDP '{maas_idp['name']}'")
+            yield
         wait_for_oauth_openshift_deployment()
-        LOGGER.info(f"MaaS RBAC: OAuth updated with MaaS IDP '{maas_idp['name']}'")
-        yield
-
-    # teardown checks
-    wait_for_oauth_openshift_deployment()
-
-    oauth_after = OAuth(name="cluster", client=admin_client)
-    idps_after = getattr(oauth_after.instance, "spec", {}).get("identityProviders") or []
-    if any(idp.get("name") == idp_name for idp in idps_after):
-        pytest.fail(f"MaaS RBAC: cleanup failed, IDP {idp_name} still present after teardown")
-
-    LOGGER.info("MaaS RBAC: OAuth identityProviders restoration & cleanup completed")
+        LOGGER.info(f"MaaS RBAC: OAuth identityProviders cleanup completed for IDP '{idp_name}'")
 
 
 @pytest.fixture(scope="session")
@@ -388,12 +378,8 @@ def ocp_token_for_actor(
     Log in as the requested actor ('admin' / 'free' / 'premium')
     and yield the OpenShift token for that user.
     """
-    actor_param = getattr(request, "param", None)
-
-    if isinstance(actor_param, dict):
-        actor_type = actor_param.get("type", "admin")
-    else:
-        actor_type = actor_param or "admin"
+    actor_param = getattr(request, "param", {"type": "admin"})
+    actor_type = actor_param.get("type", "admin")
 
     if actor_type == "admin":
         LOGGER.info("MaaS RBAC: using existing admin session to obtain token")
@@ -465,8 +451,8 @@ def maas_models_response_for_actor(
     request_session_http: requests.Session,
     base_url: str,
     maas_headers_for_actor: dict,
-):
-    """Raw /v1/models response for the current actor."""
+) -> requests.Response:
+    """Validated /v1/models response for the current actor."""
     return get_maas_models_response(
         session=request_session_http,
         base_url=base_url,

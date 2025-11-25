@@ -41,10 +41,6 @@ class TestMaasRBACE2E:
     ) -> None:
         """Use fixture for /v1/models response."""
         response = maas_models_response_for_actor
-
-        LOGGER.info(f"MaaS RBAC: /v1/models -> {response.status_code}")
-        assert response.status_code == 200, f"/v1/models failed: {response.status_code} {response.text[:200]}"
-
         models = response.json().get("data", [])
         assert isinstance(models, list) and models, "no models returned from /v1/models"
 
@@ -60,10 +56,6 @@ class TestMaasRBACE2E:
         then call /v1/chat/completions with the first model id.
         """
         models_response = maas_models_response_for_actor
-        assert models_response.status_code == 200, (
-            f"/v1/models failed: {models_response.status_code} {models_response.text[:200]}"
-        )
-
         models = models_response.json().get("data", [])
         assert models, "no models returned from /v1/models"
         model_id = models[0].get("id", "")
