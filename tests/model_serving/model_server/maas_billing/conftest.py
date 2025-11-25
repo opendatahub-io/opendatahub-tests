@@ -264,37 +264,40 @@ def maas_free_user_session(
 ) -> Generator[UserTestSession, None, None]:
     if is_byoidc:
         pytest.skip("Working on OIDC support for tests that use htpasswd IDP for MaaS")
+    else:
+        username = maas_rbac_idp_env["free_user"]
+        password = maas_rbac_idp_env["free_pass"]
+        idp_name = maas_rbac_idp_env["idp_name"]
+        secret_name = maas_rbac_idp_env["secret_name"]
 
-    username = maas_rbac_idp_env["free_user"]
-    password = maas_rbac_idp_env["free_pass"]
-    idp_name = maas_rbac_idp_env["idp_name"]
-    secret_name = maas_rbac_idp_env["secret_name"]
+        idp_session: UserTestSession | None = None
+        try:
+            wait_for_user_creation(
+                username=username,
+                password=password,
+                cluster_url=maas_api_server_url,
+            )
 
-    idp_session: UserTestSession | None = None
-    try:
-        wait_for_user_creation(
-            username=username,
-            password=password,
-            cluster_url=maas_api_server_url,
-        )
+            LOGGER.info(f"MaaS RBAC: undoing login as test user and logging in as '{original_user}'")
+            login_with_user_password(
+                api_address=maas_api_server_url,
+                user=original_user,
+            )
 
-        LOGGER.info(f"MaaS RBAC: undoing login as test user and logging in as '{original_user}'")
-        login_with_user_password(api_address=maas_api_server_url, user=original_user)
-
-        idp_session = UserTestSession(
-            idp_name=idp_name,
-            secret_name=secret_name,
-            username=username,
-            password=password,
-            original_user=original_user,
-            api_server_url=maas_api_server_url,
-        )
-        LOGGER.info(f"MaaS RBAC: created FREE test IDP user session '{idp_session.username}'")
-        yield idp_session
-    finally:
-        if idp_session:
-            LOGGER.info(f"MaaS RBAC: cleaning up FREE test IDP user '{idp_session.username}'")
-            idp_session.cleanup()
+            idp_session = UserTestSession(
+                idp_name=idp_name,
+                secret_name=secret_name,
+                username=username,
+                password=password,
+                original_user=original_user,
+                api_server_url=maas_api_server_url,
+            )
+            LOGGER.info(f"MaaS RBAC: created FREE test IDP user session '{idp_session.username}'")
+            yield idp_session
+        finally:
+            if idp_session:
+                LOGGER.info(f"MaaS RBAC: cleaning up FREE test IDP user '{idp_session.username}'")
+                idp_session.cleanup()
 
 
 @pytest.fixture(scope="session")
@@ -306,37 +309,40 @@ def maas_premium_user_session(
 ) -> Generator[UserTestSession, None, None]:
     if is_byoidc:
         pytest.skip("Working on OIDC support for tests that use htpasswd IDP for MaaS")
+    else:
+        username = maas_rbac_idp_env["premium_user"]
+        password = maas_rbac_idp_env["premium_pass"]
+        idp_name = maas_rbac_idp_env["idp_name"]
+        secret_name = maas_rbac_idp_env["secret_name"]
 
-    username = maas_rbac_idp_env["premium_user"]
-    password = maas_rbac_idp_env["premium_pass"]
-    idp_name = maas_rbac_idp_env["idp_name"]
-    secret_name = maas_rbac_idp_env["secret_name"]
+        idp_session: UserTestSession | None = None
+        try:
+            wait_for_user_creation(
+                username=username,
+                password=password,
+                cluster_url=maas_api_server_url,
+            )
 
-    idp_session: UserTestSession | None = None
-    try:
-        wait_for_user_creation(
-            username=username,
-            password=password,
-            cluster_url=maas_api_server_url,
-        )
+            LOGGER.info(f"MaaS RBAC: undoing login as test user and logging in as '{original_user}'")
+            login_with_user_password(
+                api_address=maas_api_server_url,
+                user=original_user,
+            )
 
-        LOGGER.info(f"MaaS RBAC: undoing login as test user and logging in as '{original_user}'")
-        login_with_user_password(api_address=maas_api_server_url, user=original_user)
-
-        idp_session = UserTestSession(
-            idp_name=idp_name,
-            secret_name=secret_name,
-            username=username,
-            password=password,
-            original_user=original_user,
-            api_server_url=maas_api_server_url,
-        )
-        LOGGER.info(f"MaaS RBAC: created PREMIUM test IDP user session '{idp_session.username}'")
-        yield idp_session
-    finally:
-        if idp_session:
-            LOGGER.info(f"MaaS RBAC: cleaning up PREMIUM test IDP user '{idp_session.username}'")
-            idp_session.cleanup()
+            idp_session = UserTestSession(
+                idp_name=idp_name,
+                secret_name=secret_name,
+                username=username,
+                password=password,
+                original_user=original_user,
+                api_server_url=maas_api_server_url,
+            )
+            LOGGER.info(f"MaaS RBAC: created PREMIUM test IDP user session '{idp_session.username}'")
+            yield idp_session
+        finally:
+            if idp_session:
+                LOGGER.info(f"MaaS RBAC: cleaning up PREMIUM test IDP user '{idp_session.username}'")
+                idp_session.cleanup()
 
 
 @pytest.fixture(scope="session")
