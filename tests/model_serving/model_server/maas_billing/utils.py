@@ -8,6 +8,11 @@ from requests import Response
 from urllib.parse import urlparse
 from ocp_resources.llm_inference_service import LLMInferenceService
 from utilities.llmd_utils import get_llm_inference_url
+from simple_logger.logger import get_logger
+from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import DynamicApiError
+
+LOGGER = get_logger(name=__name__)
 
 
 def host_from_ingress_domain(client) -> str:
@@ -104,3 +109,67 @@ def llmis_name(client, namespace: str = "llm", label_selector: str | None = None
         raise RuntimeError("No Ready LLMInferenceService found")
 
     return service.name
+
+
+def patch_llmisvc_with_maas_router(
+    llm_service: LLMInferenceService,
+    client: DynamicClient,
+) -> None:
+    """
+    Patch an existing LLMInferenceService with MaaS router wiring and annotations.
+
+    This is used for TinyLlama so that the model is reachable via the maas-default-gateway
+
+    and participates in MaaS flows.
+    """
+    router_spec = {
+        "gateway": {
+            "refs": [
+                {
+                    "name": "maas-default-gateway",
+                    "namespace": "openshift-ingress",
+                }
+            ]
+        },
+        "route": {},
+    }
+
+    LOGGER.info(
+        f"MaaS LLMD: patching LLMInferenceService "
+        f"{llm_service.namespace}/{llm_service.name} "
+        f"with MaaS router spec: {router_spec}"
+    )
+
+    patch_body = {
+        "metadata": {
+            "annotations": {
+                "alpha.maas.opendatahub.io/tiers": "[]",
+            }
+        },
+        "spec": {
+            "router": router_spec,
+        },
+    }
+
+    llmisvc_res = client.resources.get(
+        api_version="serving.kserve.io/v1alpha1",
+        kind="LLMInferenceService",
+    )
+
+    try:
+        llmisvc_res.patch(
+            name=llm_service.name,
+            namespace=llm_service.namespace,
+            body=patch_body,
+            content_type="application/merge-patch+json",
+        )
+    except DynamicApiError as exc:
+        LOGGER.error(
+            f"MaaS LLMD: failed to patch LLMInferenceService {llm_service.namespace}/{llm_service.name}: {exc}"
+        )
+        raise
+
+    LOGGER.info(
+        f"MaaS LLMD: successfully patched LLMInferenceService "
+        f"{llm_service.namespace}/{llm_service.name} for MaaS routing"
+    )
