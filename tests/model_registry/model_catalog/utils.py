@@ -1040,7 +1040,7 @@ def validate_model_artifacts_match_criteria_and(
         bool: True if at least one artifact satisfies all validation criteria, False otherwise
     """
     for artifact in all_model_artifacts:
-        artifact_name = artifact.get("name")
+        artifact_name = artifact.get("name", "missing_artifact_name")
         custom_properties = artifact["customProperties"]
         validation_results = []
         conditions_passed = 0
