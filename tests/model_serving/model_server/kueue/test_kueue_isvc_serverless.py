@@ -13,10 +13,8 @@ from tests.model_serving.model_server.serverless.constants import ONNX_SERVERLES
 
 pytestmark = [
     pytest.mark.serverless,
-    pytest.mark.sanity,
     pytest.mark.usefixtures("valid_aws_config"),
     pytest.mark.kueue,
-    pytest.mark.smoke,
 ]
 
 NAMESPACE_NAME = "kueue-isvc-serverless-test"
