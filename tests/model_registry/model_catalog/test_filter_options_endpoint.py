@@ -10,7 +10,6 @@ from tests.model_registry.model_catalog.utils import (
 )
 from tests.model_registry.model_catalog.db_constants import FILTER_OPTIONS_DB_QUERY, API_EXCLUDED_FILTER_FIELDS
 from tests.model_registry.utils import get_rest_headers, execute_get_command
-from utilities.user_utils import UserTestSession
 
 LOGGER = get_logger(name=__name__)
 
@@ -47,7 +46,6 @@ class TestFilterOptionsEndpoint:
         self: Self,
         model_catalog_rest_url: list[str],
         user_token_for_api_calls: str,
-        test_idp_user: UserTestSession,
     ):
         """
         Comprehensive test for filter_options endpoint.
@@ -95,7 +93,6 @@ class TestFilterOptionsEndpoint:
         ],
         indirect=["user_token_for_api_calls"],
     )
-    @pytest.mark.xfail(strict=True, reason="RHOAIENG-37069: backend/API discrepancy expected")
     def test_comprehensive_coverage_against_database(
         self: Self,
         model_catalog_rest_url: list[str],
