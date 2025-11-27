@@ -10,6 +10,7 @@ S3_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "minio")
 S3_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "minio123")
 S3_AUTO_CREATE_BUCKET = os.getenv("LLS_FILES_S3_AUTO_CREATE_BUCKET", "true")
 
+
 @pytest.fixture(scope="class")
 def files_provider_config_factory(
     request: FixtureRequest,
@@ -50,7 +51,7 @@ def files_provider_config_factory(
     def _factory(provider_name: str) -> list[Dict[str, str]]:
         env_vars: list[dict[str, str]] = []
 
-        if provider_name is "local" or provider_name is None:
+        if provider_name == "local" or provider_name is None:
             # Default case - no additional environment variables needed
             pass
         elif provider_name == "s3":

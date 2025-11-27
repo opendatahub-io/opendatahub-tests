@@ -189,7 +189,7 @@ def llama_stack_server_config(
 
         # KUBEFLOW_PIPELINES_TOKEN: Get from current client token
         env_vars.append({"name": "KUBEFLOW_PIPELINES_TOKEN", "value": str(current_client_token)})
-    
+
     # Depending on parameter files_provider, configure files provider and obtain required env_vars
     files_provider = params.get("files_provider") or "local"
     env_vars_files = files_provider_config_factory(provider_name=files_provider)
