@@ -12,10 +12,8 @@ from utilities.kueue_utils import check_gated_pods_and_running_pods
 
 pytestmark = [
     pytest.mark.rawdeployment,
-    pytest.mark.sanity,
     pytest.mark.usefixtures("valid_aws_config"),
     pytest.mark.kueue,
-    pytest.mark.smoke,
 ]
 
 NAMESPACE_NAME = "kueue-isvc-raw-test"
