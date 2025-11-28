@@ -3,12 +3,14 @@ import shlex
 import tempfile
 from dataclasses import dataclass
 
+import requests
+from kubernetes.dynamic import DynamicClient
 from ocp_resources.user import User
 from pyhelper_utils.shell import run_command
 from timeout_sampler import retry
 
 from utilities.exceptions import ExceptionUserLogin
-from utilities.infra import login_with_user_password
+from utilities.infra import login_with_user_password, get_cluster_authentication
 import base64
 from pathlib import Path
 
@@ -110,3 +112,45 @@ def get_unprivileged_context() -> tuple[str, str]:
     if current_context.endswith("-unprivileged"):
         raise ValueError("Current context is already called [...]-unprivileged")
     return current_context + "-unprivileged", current_context
+
+
+def get_oidc_tokens(admin_client: DynamicClient, username: str, password: str) -> tuple[str, str]:
+    url = f"{get_byoidc_issuer_url(admin_client=admin_client)}/protocol/openid-connect/token"
+    headers = {"Content-Type": "application/x-www-form-urlencoded", "User-Agent": "python-requests"}
+
+    data = {
+        "username": username,
+        "password": password,
+        "grant_type": "password",
+        "client_id": "oc-cli",
+        "scope": "openid",
+    }
+
+    try:
+        LOGGER.info(f"Requesting token for user {username} in byoidc environment")
+        response = requests.post(
+            url=url,
+            headers=headers,
+            data=data,
+            allow_redirects=True,
+            timeout=30,
+            verify=True,  # Set to False if you need to skip SSL verification
+        )
+        response.raise_for_status()
+        json_response = response.json()
+
+        # Validate that we got an access token
+        if "id_token" not in json_response or "refresh_token" not in json_response:
+            LOGGER.error("Warning: No id_token or refresh_token in response")
+            raise AssertionError(f"No id_token or refresh_token in response: {json_response}")
+        return json_response["id_token"], json_response["refresh_token"]
+    except Exception as e:
+        raise e
+
+
+def get_byoidc_issuer_url(admin_client: DynamicClient) -> str:
+    authentication = get_cluster_authentication(admin_client=admin_client)
+    assert authentication is not None
+    url = authentication.instance.spec.oidcProviders[0].issuer.issuerURL
+    assert url is not None
+    return url
