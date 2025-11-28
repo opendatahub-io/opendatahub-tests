@@ -17,6 +17,7 @@ from utilities.exceptions import UnexpectedResourceCountError, ResourceValueMism
 from ocp_resources.resource import Resource
 from timeout_sampler import retry
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
+from ocp_resources.deployment import Deployment
 
 # Constants for image validation
 SHA256_DIGEST_PATTERN = r"@sha256:[a-f0-9]{64}$"
@@ -470,6 +471,27 @@ def wait_for_pods_running(
     return None
 
 
+def wait_for_oauth_openshift_deployment() -> None:
+    deployment_obj = Deployment(name="oauth-openshift", namespace="openshift-authentication", ensure_exists=True)
+
+    _log = f"Wait for {deployment_obj.name} -> Type: Progressing -> Reason:"
+
+    def _wait_sampler(_reason: str) -> None:
+        sampler = TimeoutSampler(
+            wait_timeout=240,
+            sleep=5,
+            func=lambda: deployment_obj.instance.status.conditions,
+        )
+        for sample in sampler:
+            for _spl in sample:
+                if _spl.type == "Progressing" and _spl.reason == _reason:
+                    return
+
+    for reason in ("ReplicaSetUpdated", "NewReplicaSetAvailable"):
+        LOGGER.info(f"{_log} {reason}")
+        _wait_sampler(_reason=reason)
+
+        
 def collect_pod_information(pod: Pod) -> None:
     # Import here to avoid circular import (must_gather_collector -> infra -> general)
     from utilities.must_gather_collector import get_base_dir, get_must_gather_collector_dir
