@@ -34,13 +34,14 @@ from kubernetes.dynamic import DynamicClient
 from pytest_testconfig import config as py_config
 from model_registry.types import RegisteredModel
 
-from tests.model_registry.rbac.utils import wait_for_oauth_openshift_deployment
+from utilities.general import wait_for_oauth_openshift_deployment
 from tests.model_registry.utils import (
     generate_namespace_name,
     get_rest_headers,
     wait_for_default_resource_cleanedup,
     get_byoidc_user_credentials,
 )
+
 from utilities.general import generate_random_name, wait_for_pods_running
 
 from tests.model_registry.constants import (
@@ -539,13 +540,6 @@ def api_server_url(admin_client: DynamicClient) -> str:
     """
     infrastructure = Infrastructure(client=admin_client, name="cluster", ensure_exists=True)
     return infrastructure.instance.status.apiServerURL
-
-
-@pytest.fixture(scope="session")
-def original_user() -> str:
-    current_user = run_command(command=["oc", "whoami"])[1].strip()
-    LOGGER.info(f"Original user: {current_user}")
-    return current_user
 
 
 @pytest.fixture(scope="module")

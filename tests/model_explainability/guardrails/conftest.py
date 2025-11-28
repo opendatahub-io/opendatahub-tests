@@ -158,19 +158,24 @@ def installed_tempo_operator(admin_client: DynamicClient, model_namespace: Names
     """
     Installs the Tempo operator and waits for its deployment.
     """
-    operator_ns = Namespace(name="openshift-operators", ensure_exists=True)
+
+    operator_ns_name = "openshift-tempo-operator"
+    operator_ns = Namespace(name=operator_ns_name)
+    if not operator_ns.exists:
+        operator_ns.create()
+
     package_name = "tempo-product"
 
     install_operator(
         admin_client=admin_client,
-        target_namespaces=["openshift-operators"],
+        target_namespaces=None,
         name=package_name,
         channel="stable",
         source="redhat-operators",
         operator_namespace=operator_ns.name,
         timeout=Timeout.TIMEOUT_15MIN,
         install_plan_approval="Automatic",
-        starting_csv="tempo-operator.v0.18.0-1",
+        starting_csv="tempo-operator.v0.18.0-2",
     )
 
     deployment = Deployment(
@@ -199,8 +204,7 @@ def tempo_stack(
     minio_secret_otel: Secret,
 ) -> Generator[Any, Any, None]:
     """
-    Create a TempoStack CR in the test namespace, configured to use the MinIO backend.
-    Mirrors the structure and management pattern of the mariadb_operator_cr fixture.
+    Create a TempoStack CR in the test namespace, configured to use MinIO backend.
     """
     csv_prefix = "tempo-operator"
     tempo_name = "my-tempo-stack"
@@ -209,20 +213,21 @@ def tempo_stack(
     tempo_csv: ClusterServiceVersion = get_cluster_service_version(
         client=admin_client,
         prefix=csv_prefix,
-        namespace="openshift-operators",
+        namespace="openshift-tempo-operator",
     )
 
-    # Retrieve example CRs (ALM examples)
+    # Retrieve ALM examples and pick TempoStack CR
     alm_examples: list[dict[str, Any]] = tempo_csv.get_alm_examples()
-
-    # Find the TempoStack kind example
-    tempo_stack_dict: dict[str, Any] = next(
-        example
-        for example in alm_examples
-        if example["kind"] == "TempoStack" and example["apiVersion"].startswith("tempo.grafana.com/")
+    tempo_stack_dict = next(
+        (
+            example
+            for example in alm_examples
+            if example["kind"] == "TempoStack" and example["apiVersion"].startswith("tempo.grafana.com/")
+        ),
+        None,
     )
     if not tempo_stack_dict:
-        raise ResourceNotFoundError(f"No TempoStack dict found in alm_examples for CSV {tempo_csv.name}")
+        raise ResourceNotFoundError(f"No TempoStack dict found in ALM examples for CSV {tempo_csv.name}")
 
     # Customize metadata
     tempo_stack_dict["metadata"]["namespace"] = model_namespace.name
@@ -267,7 +272,10 @@ def installed_opentelemetry_operator(admin_client: DynamicClient) -> Generator[N
     """
     Installs the Red Hat OpenTelemetry Operator and waits for its deployment.
     """
-    operator_ns = Namespace(name="openshift-operators", ensure_exists=True)
+    operator_namespace = "openshift-opentelemetry-operator"
+    operator_ns = Namespace(name=operator_namespace)
+    if not operator_ns.exists:
+        operator_ns.create()
 
     package_name = "opentelemetry-product"
 
@@ -317,7 +325,7 @@ def otel_collector(
     otel_csv: ClusterServiceVersion = get_cluster_service_version(
         client=admin_client,
         prefix="opentelemetry",
-        namespace="openshift-operators",
+        namespace="openshift-opentelemetry-operator",
     )
 
     # Extract OpenTelemetryCollector CR example from ALM examples
@@ -568,7 +576,7 @@ def tempo_traces_service_portforward(admin_client, model_namespace, tempo_stack)
       oc -n <ns> port-forward svc/tempo-my-tempo-stack-query-frontend 16686:16686
     """
     namespace = model_namespace.name
-    service_name = f"tempo-{tempo_stack.name}-query-frontend"  # tempo-my-tempo-stack-query-frontend"
+    service_name = f"tempo-{tempo_stack.name}-query-frontend"
     local_port = 16686
     local_url = f"http://localhost:{local_port}"
 

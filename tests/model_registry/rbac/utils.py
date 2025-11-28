@@ -1,9 +1,5 @@
 from typing import Any, Dict, Generator, List
-
 from kubernetes.dynamic import DynamicClient
-from timeout_sampler import TimeoutSampler
-
-from ocp_resources.deployment import Deployment
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from utilities.constants import Protocols
@@ -66,27 +62,6 @@ def assert_positive_mr_registry(
     mr_client = ModelRegistryClient(**client_args)
     assert mr_client is not None, "Client initialization failed after granting permissions"
     LOGGER.info("Client instantiated successfully after granting permissions.")
-
-
-def wait_for_oauth_openshift_deployment() -> None:
-    deployment_obj = Deployment(name="oauth-openshift", namespace="openshift-authentication", ensure_exists=True)
-
-    _log = f"Wait for {deployment_obj.name} -> Type: Progressing -> Reason:"
-
-    def _wait_sampler(_reason: str) -> None:
-        sampler = TimeoutSampler(
-            wait_timeout=240,
-            sleep=5,
-            func=lambda: deployment_obj.instance.status.conditions,
-        )
-        for sample in sampler:
-            for _spl in sample:
-                if _spl.type == "Progressing" and _spl.reason == _reason:
-                    return
-
-    for reason in ("ReplicaSetUpdated", "NewReplicaSetAvailable"):
-        LOGGER.info(f"{_log} {reason}")
-        _wait_sampler(_reason=reason)
 
 
 def create_role_binding(
