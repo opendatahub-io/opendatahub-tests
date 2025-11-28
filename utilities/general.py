@@ -491,7 +491,7 @@ def wait_for_oauth_openshift_deployment() -> None:
         LOGGER.info(f"{_log} {reason}")
         _wait_sampler(_reason=reason)
 
-        
+
 def collect_pod_information(pod: Pod) -> None:
     # Import here to avoid circular import (must_gather_collector -> infra -> general)
     from utilities.must_gather_collector import get_base_dir, get_must_gather_collector_dir
