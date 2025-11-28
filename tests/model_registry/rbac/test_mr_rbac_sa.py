@@ -47,11 +47,12 @@ class TestModelRegistryRBAC:
 
         # Retry for up to 2 minutes to allow kube-rbac-proxy initialization
         # Accept UnauthorizedException (401) as a transient error during initialization
+        # When we get ForbiddenException (403), stop retrying and let it raise
         sampler = TimeoutSampler(
             wait_timeout=120,
             sleep=5,
             func=lambda: ModelRegistryClient(**client_args),
-            exceptions_dict={UnauthorizedException: []},
+            exceptions_dict={UnauthorizedException: [], ForbiddenException: [ForbiddenException]},
         )
 
         # Expect ForbiddenException (403) once kube-rbac-proxy is fully initialized
