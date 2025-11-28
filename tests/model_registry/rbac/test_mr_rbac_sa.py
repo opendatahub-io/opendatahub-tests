@@ -5,8 +5,9 @@ from simple_logger.logger import get_logger
 from model_registry import ModelRegistry as ModelRegistryClient
 from tests.model_registry.rbac.utils import build_mr_client_args
 from utilities.infra import create_inference_token
-from mr_openapi.exceptions import ForbiddenException
+from mr_openapi.exceptions import ForbiddenException, UnauthorizedException
 from ocp_resources.service_account import ServiceAccount
+from timeout_sampler import TimeoutSampler
 
 LOGGER = get_logger(name=__name__)
 
@@ -69,21 +70,29 @@ class TestModelRegistryRBAC:
         LOGGER.info(f"Targeting Model Registry REST endpoint: {model_registry_instance_rest_endpoint[0]}")
         LOGGER.info("Applied RBAC Role/Binding via fixtures. Expecting access GRANT.")
 
-        # Create a fresh token to bypass OAuth proxy cache from previous test
+        # Create a fresh token to bypass kube-rbac-proxy cache from previous test
         fresh_token = create_inference_token(model_service_account=service_account)
+        client_args = build_mr_client_args(
+            rest_endpoint=model_registry_instance_rest_endpoint[0], token=fresh_token, author="rbac-test-granted"
+        )
+        LOGGER.debug(f"Attempting client connection with args: {client_args}")
+
+        # Retry for up to 2 minutes to allow RBAC propagation
+        # Accept UnauthorizedException (401) as a transient error during RBAC propagation
+        sampler = TimeoutSampler(
+            wait_timeout=120,
+            sleep=5,
+            func=lambda: ModelRegistryClient(**client_args),
+            exceptions_dict={UnauthorizedException: []},
+        )
 
         try:
-            client_args = build_mr_client_args(
-                rest_endpoint=model_registry_instance_rest_endpoint[0], token=fresh_token, author="rbac-test-granted"
-            )
-            LOGGER.debug(f"Attempting client connection with args: {client_args}")
-            mr_client_success = ModelRegistryClient(**client_args)
+            # Get the first successful result
+            mr_client_success = next(iter(sampler))
             assert mr_client_success is not None, "Client initialization failed after granting permissions"
             LOGGER.info("Client instantiated successfully after granting permissions.")
-
         except Exception as e:
-            # If we get an exception here, it's unexpected, especially 403
-            LOGGER.error(f"Received unexpected general error after granting access: {e}", exc_info=True)
+            LOGGER.error(f"Failed to access Model Registry after granting permissions: {e}", exc_info=True)
             raise
 
         LOGGER.info("--- RBAC Test Completed Successfully ---")
