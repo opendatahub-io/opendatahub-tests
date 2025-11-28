@@ -1,38 +1,49 @@
 # Constants useful for querying the model catalog database and parsing its responses
 
 # SQL query for filter_options endpoint database validation
-# Replicates the exact database query used by GetFilterableProperties for the filter_options endpoint
-# in kubeflow/model-registry catalog/internal/db/service/catalog_model.go
-# Note: Uses dynamic type_id lookup via 'kf.CatalogModel' name since type_id appears to be dynamic
+# Queries materialized views (context_property_options, artifact_property_options) that aggregate
+# filterable properties for CatalogModel. Based on GetFilterableProperties in
+# kubeflow/model-registry catalog/internal/db/service/catalog_model.go (PR #1875)
+#
+# Property naming:
+# - Context properties: base name only (special case: 'validated_on.array_value' for arrays)
+# - Artifact properties: 'artifacts.{name}.{type}' where type is string_value/array_value/double_value/int_value
+#
+# Return format:
+# - String/array properties: text array of values
+# - Numeric properties: 2-element text array [min, max] converted from double/int columns
 FILTER_OPTIONS_DB_QUERY = """
-SELECT name, array_agg(string_value) FROM (
-    SELECT
-        name,
-        string_value
-    FROM "ContextProperty" WHERE
-        context_id IN (
-            SELECT id FROM "Context" WHERE type_id = (
-                SELECT id FROM "Type" WHERE name = 'kf.CatalogModel'
-            )
-        )
-        AND string_value IS NOT NULL
-        AND string_value != ''
-        AND string_value IS NOT JSON ARRAY
+SELECT
+    CASE
+        WHEN name = 'validated_on' AND array_value IS NOT NULL THEN name || '.array_value'
+        ELSE name
+    END AS name,
+    COALESCE(string_value, array_value, '{}'::text[]) AS array_agg
+FROM context_property_options
+WHERE type_id = (SELECT id FROM "Type" WHERE name = 'kf.CatalogModel')
 
-    UNION
+UNION ALL
 
-    SELECT
-        name,
-        json_array_elements_text(string_value::json) AS string_value
-    FROM "ContextProperty" WHERE
-        context_id IN (
-            SELECT id FROM "Context" WHERE type_id = (
-                SELECT id FROM "Type" WHERE name = 'kf.CatalogModel'
-            )
-        )
-        AND string_value IS JSON ARRAY
-)
-GROUP BY name HAVING MAX(CHAR_LENGTH(string_value)) <= 100;
+SELECT
+    'artifacts.' ||
+    CASE
+        WHEN string_value IS NOT NULL THEN name || '.string_value'
+        WHEN array_value IS NOT NULL THEN name || '.array_value'
+        WHEN min_double_value IS NOT NULL THEN name || '.double_value'
+        WHEN min_int_value IS NOT NULL THEN name || '.int_value'
+        ELSE name
+    END AS name,
+    CASE
+        WHEN min_double_value IS NOT NULL THEN
+            ARRAY[min_double_value::text, max_double_value::text]
+        WHEN min_int_value IS NOT NULL THEN
+            ARRAY[min_int_value::text, max_int_value::text]
+        ELSE
+            COALESCE(string_value, array_value, '{}'::text[])
+    END AS array_agg
+FROM artifact_property_options
+
+ORDER BY name;
 """
 
 # SQL query for search functionality database validation
@@ -155,5 +166,12 @@ ORDER BY model_id;
 """
 
 # Fields that are explicitly filtered out by the filter_options endpoint API
-# From db_catalog.go:204-206 in kubeflow/model-registry GetFilterOptions method
-API_EXCLUDED_FILTER_FIELDS = {"source_id", "logo", "license_link"}
+# From db_catalog.go in kubeflow/model-registry GetFilterOptions method
+# Updated with PR #1875 to include metricsType and model_id exclusions
+API_EXCLUDED_FILTER_FIELDS = {
+    "source_id",
+    "logo",
+    "license_link",
+    "artifacts.metricsType.string_value",  # artifact property with full name
+    "artifacts.model_id.string_value",  # artifact property with full name
+}
