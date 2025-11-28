@@ -18,15 +18,15 @@ from tests.model_registry.model_catalog.utils import (
     validate_search_results_against_database,
     validate_filter_query_results_against_database,
     validate_performance_data_files_on_pod,
+    validate_model_artifacts_match_criteria_and,
+    validate_model_artifacts_match_criteria_or,
 )
 from tests.model_registry.utils import get_model_catalog_pod
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 
 LOGGER = get_logger(name=__name__)
-pytestmark = [
-    pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace", "test_idp_user")
-]
+pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace")]
 
 
 class TestSearchModelCatalog:
@@ -579,3 +579,101 @@ class TestSearchModelsByFilterQuery:
 
         # Assert that all models have all required performance data files
         assert not validation_results, f"Models with missing performance data files: {validation_results}"
+
+    @pytest.mark.parametrize(
+        "models_from_filter_query, expected_value, logic_type",
+        [
+            pytest.param(
+                "artifacts.requests_per_second > 15.0",
+                [{"key_name": "requests_per_second", "key_type": "double_value", "comparison": "min", "value": 15.0}],
+                "and",
+                id="performance_min_filter",
+            ),
+            pytest.param(
+                "artifacts.hardware_count = 8",
+                [{"key_name": "hardware_count", "key_type": "int_value", "comparison": "exact", "value": 8}],
+                "and",
+                id="hardware_exact_filter",
+            ),
+            pytest.param(
+                "(artifacts.hardware_type LIKE 'H200') AND (artifacts.ttft_p95 < 50)",
+                [
+                    {"key_name": "hardware_type", "key_type": "string_value", "comparison": "exact", "value": "H200"},
+                    {"key_name": "ttft_p95", "key_type": "double_value", "comparison": "max", "value": 50},
+                ],
+                "and",
+                id="test_combined_hardware_performance_filter_mixed_types",
+            ),
+            pytest.param(
+                "(artifacts.ttft_mean < 100) AND (artifacts.requests_per_second > 10)",
+                [
+                    {"key_name": "ttft_mean", "key_type": "double_value", "comparison": "max", "value": 100},
+                    {"key_name": "requests_per_second", "key_type": "double_value", "comparison": "min", "value": 10},
+                ],
+                "and",
+                id="test_combined_hardware_performance_filter_numeric_types",
+            ),
+            pytest.param(
+                "(artifacts.tps_mean < 247) OR (artifacts.hardware_type LIKE 'A100-80')",
+                [
+                    {"key_name": "tps_mean", "key_type": "double_value", "comparison": "max", "value": 247},
+                    {
+                        "key_name": "hardware_type",
+                        "key_type": "string_value",
+                        "comparison": "exact",
+                        "value": "A100-80",
+                    },
+                ],
+                "or",
+                id="performance_or_hardware_filter",
+            ),
+        ],
+        indirect=["models_from_filter_query"],
+    )
+    def test_filter_query_advanced_model_search(
+        self: Self,
+        models_from_filter_query: list[str],
+        expected_value: list[dict[str, Any]],
+        logic_type: str,
+        model_catalog_rest_url: list[str],
+        model_registry_rest_headers: dict[str, str],
+    ):
+        """
+        RHOAIENG-39615: Advanced filter query test for performance-based filtering with AND/OR logic
+        """
+        errors = []
+
+        # Additional validation: ensure returned models match the filter criteria
+        for model_name in models_from_filter_query:
+            url = f"{model_catalog_rest_url[0]}sources/{VALIDATED_CATALOG_ID}/models/{model_name}/artifacts?pageSize"
+            LOGGER.info(f"Validating model: {model_name} with {len(expected_value)} {logic_type.upper()} validation(s)")
+
+            # Fetch all artifacts with dynamic page size adjustment
+            all_model_artifacts = fetch_all_artifacts_with_dynamic_paging(
+                url_with_pagesize=url,
+                headers=model_registry_rest_headers,
+                page_size=100,
+            )["items"]
+
+            validation_result = None
+            # Select validation function based on logic type
+            if logic_type == "and":
+                validation_result = validate_model_artifacts_match_criteria_and(
+                    all_model_artifacts=all_model_artifacts, expected_validations=expected_value, model_name=model_name
+                )
+            elif logic_type == "or":
+                validation_result = validate_model_artifacts_match_criteria_or(
+                    all_model_artifacts=all_model_artifacts, expected_validations=expected_value, model_name=model_name
+                )
+            else:
+                raise ValueError(f"Invalid logic_type: {logic_type}. Must be 'and' or 'or'")
+
+            if validation_result:
+                LOGGER.info(f"For Model: {model_name}, {logic_type.upper()} validation completed successfully")
+            else:
+                errors.append(model_name)
+
+        assert not errors, f"{logic_type.upper()} filter validations failed for {', '.join(errors)}"
+        LOGGER.info(
+            f"Advanced {logic_type.upper()} filter validation completed for {len(models_from_filter_query)} models"
+        )

@@ -698,7 +698,8 @@ def execute_get_call(
     url: str, headers: dict[str, str], verify: bool | str = False, params: dict[str, Any] | None = None
 ) -> requests.Response:
     LOGGER.info(f"Executing get call: {url}")
-    LOGGER.info(f"params: {params}")
+    if params:
+        LOGGER.info(f"params: {params}")
     resp = requests.get(url=url, headers=headers, verify=verify, timeout=60, params=params)
     LOGGER.info(f"Encoded url from requests library: {resp.url}")
     if resp.status_code not in [200, 201]:
