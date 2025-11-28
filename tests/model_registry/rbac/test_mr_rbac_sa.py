@@ -45,9 +45,18 @@ class TestModelRegistryRBAC:
         )
         LOGGER.debug(f"Attempting client connection with args: {client_args}")
 
-        # Expect an exception related to HTTP 403
+        # Retry for up to 2 minutes to allow kube-rbac-proxy initialization
+        # Accept UnauthorizedException (401) as a transient error during initialization
+        sampler = TimeoutSampler(
+            wait_timeout=120,
+            sleep=5,
+            func=lambda: ModelRegistryClient(**client_args),
+            exceptions_dict={UnauthorizedException: []},
+        )
+
+        # Expect ForbiddenException (403) once kube-rbac-proxy is fully initialized
         with pytest.raises(ForbiddenException) as exc_info:
-            _ = ModelRegistryClient(**client_args)
+            _ = next(iter(sampler))
 
         # Verify the status code from the caught exception
         http_error = exc_info.value
