@@ -122,16 +122,16 @@ def created_role_binding_user(
     mr_access_role: Role,
     user_credentials_rbac: dict[str, str],
 ) -> Generator[RoleBinding, None, None]:
-    if is_byoidc:
-        user_credentials_rbac["username"] = "mr-non-admin"
-    LOGGER.info(f"Using user {user_credentials_rbac['username']}")
+    # Determine the username to use without mutating the shared fixture
+    username = "mr-non-admin" if is_byoidc else user_credentials_rbac["username"]
+    LOGGER.info(f"Using user {username}")
     yield from create_role_binding(
         admin_client=admin_client,
         model_registry_namespace=model_registry_namespace,
         name="test-model-registry-access",
         mr_access_role=mr_access_role,
         subjects_kind="User",
-        subjects_name=user_credentials_rbac["username"],
+        subjects_name=username,
     )
 
 
