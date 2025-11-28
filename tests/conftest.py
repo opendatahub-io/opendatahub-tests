@@ -62,7 +62,7 @@ from utilities.mariadb_utils import wait_for_mariadb_operator_deployments
 from utilities.minio import create_minio_data_connection_secret
 from utilities.operator_utils import get_csv_related_images, get_cluster_service_version
 from ocp_resources.authentication_config_openshift_io import Authentication
-from utilities.user_utils import get_unprivileged_context, get_oidc_tokens, get_byoidc_issuer_url
+from utilities.user_utils import get_oidc_tokens, get_byoidc_issuer_url
 
 LOGGER = get_logger(name=__name__)
 
@@ -343,9 +343,7 @@ def use_unprivileged_client(pytestconfig: pytest.Config) -> bool:
 
 @pytest.fixture(scope="session")
 def non_admin_user_password(
-        admin_client: DynamicClient,
-        use_unprivileged_client: bool,
-        is_byoidc: bool
+    admin_client: DynamicClient, use_unprivileged_client: bool, is_byoidc: bool
 ) -> tuple[str, str] | None:
     def _decode_split_data(_data: str) -> list[str]:
         return base64.b64decode(_data).decode().split(",")
@@ -434,10 +432,10 @@ def unprivileged_client(
                         "client-secret": "",
                         "idp-issuer-url": issuer,
                         "id-token": tokens[0],
-                        "refresh-token": tokens[1]
-                    }
+                        "refresh-token": tokens[1],
+                    },
                 }
-            }
+            },
         }
 
         # replace the users - we only need this one users
@@ -451,7 +449,7 @@ def unprivileged_client(
         unprivileged_client = get_client(
             config_dict=kubeconfig_content,
             context=current_context_name,
-            persist_config=False # keep the kubeconfig intact
+            persist_config=False,  # keep the kubeconfig intact
         )
 
         yield unprivileged_client
