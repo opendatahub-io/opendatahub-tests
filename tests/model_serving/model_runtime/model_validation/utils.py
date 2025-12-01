@@ -60,15 +60,11 @@ def validate_inference_output(
     )
 
     # Check for expected keywords/phrases (case-insensitive)
-    found_keywords = [
-        kw for kw in expected_keywords
-        if re.search(re.escape(kw), content, re.IGNORECASE)
-    ]
+    found_keywords = [kw for kw in expected_keywords if re.search(re.escape(kw), content, re.IGNORECASE)]
 
     # Fail if no expected keyword is found
     assert found_keywords, (
-        f"Expected one of {expected_keywords} in response to '{request_text}', "
-        f"but got: {content[:900]}"
+        f"Expected one of {expected_keywords} in response to '{request_text}', but got: {content[:900]}"
     )
 
     print(f"Output validation passed for request '{request_text}'. Found keywords: {found_keywords}")
@@ -100,5 +96,5 @@ def safe_k8s_name(model_name: str, max_length: int = 20) -> str:
     # Ensure it's not empty after all processing
     if not safe_name:
         return "model"
-    
+
     return safe_name
