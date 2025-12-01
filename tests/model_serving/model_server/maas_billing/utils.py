@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Generator
 
 import base64
 import requests
@@ -8,6 +8,15 @@ from requests import Response
 from urllib.parse import urlparse
 from ocp_resources.llm_inference_service import LLMInferenceService
 from utilities.llmd_utils import get_llm_inference_url
+
+from contextlib import contextmanager
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.group import Group
+from simple_logger.logger import get_logger
+from utilities.plugins.constant import RestHeader, OpenAIEnpoints
+
+LOGGER = get_logger(name=__name__)
+MODELS_INFO = OpenAIEnpoints.MODELS_INFO
 
 
 def host_from_ingress_domain(client) -> str:
@@ -60,7 +69,7 @@ def detect_scheme_via_llmisvc(client, namespace: str = "llm") -> str:
 
 
 def maas_auth_headers(token: str) -> Dict[str, str]:
-    """Build Authorization header for MaaS/Billing calls."""
+    """Authorization header only (used for /v1/tokens with OCP user token)."""
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -104,3 +113,50 @@ def llmis_name(client, namespace: str = "llm", label_selector: str | None = None
         raise RuntimeError("No Ready LLMInferenceService found")
 
     return service.name
+
+
+@contextmanager
+def create_maas_group(
+    admin_client: DynamicClient,
+    group_name: str,
+    users: list[str] | None = None,
+) -> Generator[Group, None, None]:
+    """
+    Create an OpenShift Group with optional users and delete it on exit.
+    """
+    with Group(
+        client=admin_client,
+        name=group_name,
+        users=users or [],
+        wait_for_resource=True,
+    ) as group:
+        LOGGER.info(f"MaaS RBAC: created group {group_name} with users {users or []}")
+        yield group
+
+
+def build_maas_headers(token: str) -> dict:
+    """Return common MaaS headers for a given token."""
+    return {
+        "Authorization": f"Bearer {token}",
+        **RestHeader.HEADERS,
+    }
+
+
+def get_maas_models_response(
+    session: requests.Session,
+    base_url: str,
+    headers: dict,
+) -> requests.Response:
+    """
+    Issue GET /v1/models and return the raw Response.
+
+    Also validates the status code before returning.
+    """
+    models_url = f"{base_url}{MODELS_INFO}"
+    resp = session.get(url=models_url, headers=headers, timeout=60)
+
+    LOGGER.info(f"MaaS: /v1/models -> {resp.status_code} (url={models_url})")
+
+    assert resp.status_code == 200, f"/v1/models failed: {resp.status_code} {resp.text[:200]} (url={models_url})"
+
+    return resp

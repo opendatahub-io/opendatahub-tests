@@ -1,12 +1,13 @@
 # AI Disclaimer: Google Gemini 2.5 pro has been used to generate a majority of this code, with human review and editing.
 import pytest
-from typing import Self
+from typing import Any, Self
 from simple_logger.logger import get_logger
 from model_registry import ModelRegistry as ModelRegistryClient
 from tests.model_registry.rbac.utils import build_mr_client_args
 from utilities.infra import create_inference_token
-from mr_openapi.exceptions import ForbiddenException
+from mr_openapi.exceptions import ForbiddenException, UnauthorizedException
 from ocp_resources.service_account import ServiceAccount
+from timeout_sampler import TimeoutSampler, retry
 
 LOGGER = get_logger(name=__name__)
 
@@ -44,12 +45,11 @@ class TestModelRegistryRBAC:
         )
         LOGGER.debug(f"Attempting client connection with args: {client_args}")
 
-        # Expect an exception related to HTTP 403
-        with pytest.raises(ForbiddenException) as exc_info:
-            _ = ModelRegistryClient(**client_args)
+        # Retry for up to 2 minutes if we get UnauthorizedException (401) during kube-rbac-proxy initialization
+        # Expect ForbiddenException (403) once kube-rbac-proxy is fully initialized
+        http_error = _try_connection_expect_forbidden(client_args=client_args)
 
         # Verify the status code from the caught exception
-        http_error = exc_info.value
         assert http_error.body is not None, "HTTPError should have a response object"
         LOGGER.info(f"Received expected HTTP error: Status Code {http_error.status}")
         assert http_error.status == 403, f"Expected HTTP 403 Forbidden, but got {http_error.status}"
@@ -69,21 +69,44 @@ class TestModelRegistryRBAC:
         LOGGER.info(f"Targeting Model Registry REST endpoint: {model_registry_instance_rest_endpoint[0]}")
         LOGGER.info("Applied RBAC Role/Binding via fixtures. Expecting access GRANT.")
 
-        # Create a fresh token to bypass OAuth proxy cache from previous test
+        # Create a fresh token to bypass kube-rbac-proxy cache from previous test
         fresh_token = create_inference_token(model_service_account=service_account)
+        client_args = build_mr_client_args(
+            rest_endpoint=model_registry_instance_rest_endpoint[0], token=fresh_token, author="rbac-test-granted"
+        )
+        LOGGER.debug(f"Attempting client connection with args: {client_args}")
+
+        # Retry for up to 2 minutes to allow RBAC propagation
+        # Accept UnauthorizedException (401) as a transient error during RBAC propagation
+        sampler = TimeoutSampler(
+            wait_timeout=120,
+            sleep=5,
+            func=lambda: ModelRegistryClient(**client_args),
+            exceptions_dict={UnauthorizedException: []},
+        )
 
         try:
-            client_args = build_mr_client_args(
-                rest_endpoint=model_registry_instance_rest_endpoint[0], token=fresh_token, author="rbac-test-granted"
-            )
-            LOGGER.debug(f"Attempting client connection with args: {client_args}")
-            mr_client_success = ModelRegistryClient(**client_args)
+            # Get the first successful result
+            mr_client_success = next(iter(sampler))
             assert mr_client_success is not None, "Client initialization failed after granting permissions"
             LOGGER.info("Client instantiated successfully after granting permissions.")
-
         except Exception as e:
-            # If we get an exception here, it's unexpected, especially 403
-            LOGGER.error(f"Received unexpected general error after granting access: {e}", exc_info=True)
+            LOGGER.error(f"Failed to access Model Registry after granting permissions: {e}", exc_info=True)
             raise
 
         LOGGER.info("--- RBAC Test Completed Successfully ---")
+
+
+@retry(wait_timeout=120, sleep=5, exceptions_dict={UnauthorizedException: []})
+def _try_connection_expect_forbidden(client_args: dict[str, Any]) -> ForbiddenException:
+    """
+    Attempts to create a ModelRegistryClient and expects ForbiddenException.
+    Retries on UnauthorizedException (401) during kube-rbac-proxy initialization.
+    Returns the ForbiddenException when received.
+    """
+    try:
+        ModelRegistryClient(**client_args)
+        raise AssertionError("Expected ForbiddenException but client connection succeeded")
+    except ForbiddenException as e:
+        # This is what we want - 403 Forbidden
+        return e
