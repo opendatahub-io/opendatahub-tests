@@ -652,7 +652,7 @@ class TestSearchModelsByFilterQuery:
             all_model_artifacts = fetch_all_artifacts_with_dynamic_paging(
                 url_with_pagesize=url,
                 headers=model_registry_rest_headers,
-                page_size=100,
+                page_size=200,
             )["items"]
 
             validation_result = None

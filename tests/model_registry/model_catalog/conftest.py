@@ -206,7 +206,7 @@ def models_from_filter_query(
     request,
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
-):
+) -> list[str]:
     """
     Fixture that runs get_models_from_catalog_api with the given filter_query,
     asserts that models are returned, and returns list of model names.

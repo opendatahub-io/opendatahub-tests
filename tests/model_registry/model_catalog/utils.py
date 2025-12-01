@@ -1060,47 +1060,44 @@ def _validate_single_criterion(
     return condition_met, message
 
 
+def _get_artifact_validation_results(
+    artifact: dict[str, Any], expected_validations: list[dict[str, Any]]
+) -> tuple[list[bool], list[str]]:
+    """
+    Checks one artifact against all validations and returns the boolean outcomes and messages.
+    """
+    artifact_name = artifact.get("name", "missing_artifact_name")
+    custom_properties = artifact["customProperties"]
+
+    # Store the boolean results and informative messages
+    bool_results = []
+    messages = []
+
+    for validation in expected_validations:
+        condition_met, message = _validate_single_criterion(
+            artifact_name=artifact_name, custom_properties=custom_properties, validation=validation
+        )
+        bool_results.append(condition_met)
+        messages.append(message)
+
+    return bool_results, messages
+
+
 def validate_model_artifacts_match_criteria_and(
     all_model_artifacts: list[dict[str, Any]], expected_validations: list[dict[str, Any]], model_name: str
 ) -> bool:
     """
-    Validates that at least one artifact in the model satisfies all expected validation criteria.
-
-    Args:
-        all_model_artifacts: List of artifact dictionaries for a model
-        expected_validations: List of validation criteria dictionaries, each containing:
-            - key_name: The property name to validate
-            - key_type: The type of the property (int_value, double_value, string_value)
-            - comparison: The comparison type (exact, min, max, contains)
-            - value: The expected value for comparison
-        model_name: Name of the model being validated (for logging)
-
-    Returns:
-        bool: True if at least one artifact satisfies all validation criteria, False otherwise
+    Validates that at least one artifact in the model satisfies ALL expected validation criteria.
     """
     for artifact in all_model_artifacts:
-        artifact_name = artifact.get("name", "missing_artifact_name")
-        custom_properties = artifact["customProperties"]
-        validation_results = []
-        conditions_passed = 0
-
-        # Check if this artifact satisfies ALL validations
-        for validation in expected_validations:
-            condition_met, message = _validate_single_criterion(
-                artifact_name=artifact_name, custom_properties=custom_properties, validation=validation
-            )
-
-            if not condition_met:
-                validation_results.append(f"{message}: failed")
-                break  # AND logic: break on first failure
-            else:
-                validation_results.append(f"{message}: passed")
-                conditions_passed += 1
-
-        # If this artifact satisfies all conditions, the model passes
-        if conditions_passed == len(expected_validations):
+        bool_results, messages = _get_artifact_validation_results(
+            artifact=artifact, expected_validations=expected_validations
+        )
+        # If ALL results are True
+        if all(bool_results):
+            validation_results = [f"{message}: passed" for message in messages]
             LOGGER.info(
-                f"Model {model_name} passed all {conditions_passed} validations with artifact: {validation_results}"
+                f"Model {model_name} passed all {len(bool_results)} validations with artifact: {validation_results}"
             )
             return True
 
@@ -1111,34 +1108,16 @@ def validate_model_artifacts_match_criteria_or(
     all_model_artifacts: list[dict[str, Any]], expected_validations: list[dict[str, Any]], model_name: str
 ) -> bool:
     """
-    Validates that at least one artifact in the model satisfies at least one of the expected validation criteria.
-
-    Args:
-        all_model_artifacts: List of artifact dictionaries for a model
-        expected_validations: List of validation criteria dictionaries, each containing:
-            - key_name: The property name to validate
-            - key_type: The type of the property (int_value, double_value, string_value)
-            - comparison: The comparison type (exact, min, max, contains)
-            - value: The expected value for comparison
-        model_name: Name of the model being validated (for logging)
-
-    Returns:
-        bool: True if at least one artifact satisfies at least one validation criterion, False otherwise
+    Validates that at least one artifact in the model satisfies AT LEAST ONE of the expected validation criteria.
     """
     for artifact in all_model_artifacts:
-        artifact_name = artifact.get("name")
-        custom_properties = artifact["customProperties"]
+        bool_results, messages = _get_artifact_validation_results(
+            artifact=artifact, expected_validations=expected_validations
+        )
+        if any(bool_results):
+            # Find the first passing message for logging
+            LOGGER.info(f"Model {model_name} passed OR validation with artifact: {messages[bool_results.index(True)]}")
+            return True
 
-        # Check if this artifact satisfies ANY validation (OR logic)
-        for validation in expected_validations:
-            condition_met, message = _validate_single_criterion(
-                artifact_name=artifact_name, custom_properties=custom_properties, validation=validation
-            )
-
-            if condition_met:
-                LOGGER.info(f"Model {model_name} passed OR validation with artifact: {message}")
-                return True  # OR logic: return immediately on first success
-
-    # No artifact passed any validation
-    LOGGER.info(f"Model {model_name} failed all {len(expected_validations)} OR validations")
+    LOGGER.error(f"Model {model_name} failed all OR validations")
     return False
