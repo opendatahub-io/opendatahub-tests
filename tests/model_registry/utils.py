@@ -1,6 +1,7 @@
+import base64
 import json
 import time
-from typing import Any, List
+from typing import Any, List, Dict
 
 import requests
 from kubernetes.dynamic import DynamicClient
@@ -33,6 +34,7 @@ from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
 
 from utilities.general import wait_for_pods_running
+from utilities.infra import get_cluster_authentication
 
 ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
 MARIA_DB_IMAGE = (
@@ -456,7 +458,7 @@ def get_mr_pvc_objects(
                 name=name,
                 namespace=namespace,
                 client=client,
-                size="5Gi",
+                size="3Gi",
                 label=get_model_registry_db_label_dict(db_resource_name=name),
                 teardown=teardown_resources,
             )
@@ -670,7 +672,9 @@ def get_rest_headers(token: str) -> dict[str, str]:
 
 
 def is_model_catalog_ready(client: DynamicClient, model_registry_namespace: str, consecutive_try: int = 6):
-    model_catalog_pods = get_model_catalog_pod(client=client, model_registry_namespace=model_registry_namespace)
+    model_catalog_pods = get_model_catalog_pod(
+        client=client, model_registry_namespace=model_registry_namespace, label_selector="app=model-catalog"
+    )
     # We can wait for the pods to reflect updated catalog, however, deleting them ensures the updated config is
     # applied immediately.
     for pod in model_catalog_pods:
@@ -795,3 +799,91 @@ def wait_for_default_resource_cleanedup(admin_client: DynamicClient, namespace_n
     if not objects_not_deleted:
         return True
     raise ResourceNotDeleted(f"Following objects are not deleted: {objects_not_deleted}")
+
+
+def get_mr_user_token(admin_client: DynamicClient, user_credentials_rbac: dict[str, str]) -> str:
+    url = f"{get_byoidc_issuer_url(admin_client=admin_client)}/protocol/openid-connect/token"
+    headers = {"Content-Type": "application/x-www-form-urlencoded", "User-Agent": "python-requests"}
+
+    data = {
+        "username": user_credentials_rbac["username"],
+        "password": user_credentials_rbac["password"],
+        "grant_type": "password",
+        "client_id": "oc-cli",
+        "scope": "openid",
+    }
+
+    try:
+        LOGGER.info(f"Requesting token for user {user_credentials_rbac['username']} in byoidc environment")
+        response = requests.post(
+            url=url,
+            headers=headers,
+            data=data,
+            allow_redirects=True,
+            timeout=30,
+            verify=True,  # Set to False if you need to skip SSL verification
+        )
+        response.raise_for_status()
+        json_response = response.json()
+
+        # Validate that we got an access token
+        if "id_token" not in json_response:
+            LOGGER.error("Warning: No id_token in response")
+            raise AssertionError(f"No id_token in response: {json_response}")
+        return json_response["id_token"]
+    except Exception as e:
+        raise e
+
+
+def get_byoidc_issuer_url(admin_client: DynamicClient) -> str:
+    authentication = get_cluster_authentication(admin_client=admin_client)
+    assert authentication is not None
+    url = authentication.instance.spec.oidcProviders[0].issuer.issuerURL
+    assert url is not None
+    return url
+
+
+def get_byoidc_user_credentials(username: str = None) -> Dict[str, str]:
+    """
+    Get user credentials from byoidc-credentials secret.
+
+    Args:
+        username: Specific username to look up. If None, returns first user.
+
+    Returns:
+        Dictionary with username and password for the specified user.
+
+    Raises:
+        ValueError: If username not found or no users/passwords in secret.
+        AssertionError: If users or passwords lists are empty.
+    """
+    credentials_secret = Secret(name="byoidc-credentials", namespace="oidc", ensure_exists=True)
+    credential_data = credentials_secret.instance.data
+    user_names = base64.b64decode(credential_data.users).decode().split(",")
+    passwords = base64.b64decode(credential_data.passwords).decode().split(",")
+
+    # Assert that both lists are not empty
+    assert user_names and user_names != [""], "No usernames found in byoidc-credentials secret"
+    assert passwords and passwords != [""], "No passwords found in byoidc-credentials secret"
+
+    # Use specified username or default to first user
+    requested_username = username if username else user_names[0]
+
+    if requested_username and requested_username in user_names:
+        # Find the index of the requested username
+        user_index = user_names.index(requested_username)
+        if user_index < len(passwords):
+            selected_username = user_names[user_index]
+            selected_password = passwords[user_index]
+        else:
+            raise ValueError(f"Password not found for user '{requested_username}' at index {user_index}")
+    elif requested_username:
+        raise ValueError(f"Username '{requested_username}' not found in byoidc credentials")
+    else:
+        raise ValueError("No users found in byoidc credentials")
+
+    LOGGER.info(f"Using byoidc-credentials username='{selected_username}'")
+    return {
+        "username": selected_username,
+        "password": selected_password,
+    }

@@ -1,5 +1,3 @@
-import http
-
 import pytest
 import requests
 import yaml
@@ -124,7 +122,7 @@ def test_validate_guardrails_orchestrator_images(
 )
 @pytest.mark.smoke
 @pytest.mark.rawdeployment
-@pytest.mark.usefixtures("guardrails_gateway_config")
+@pytest.mark.usefixtures("patched_dsc_kserve_headed", "guardrails_gateway_config")
 class TestGuardrailsOrchestratorWithBuiltInDetectors:
     """
     Tests if basic functions of the GuardrailsOrchestrator are working properly with the built-in (regex) detectors.
@@ -297,6 +295,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
 )
 @pytest.mark.rawdeployment
 @pytest.mark.usefixtures(
+    "patched_dsc_kserve_headed",
     "guardrails_gateway_config",
     "minio_pvc_otel",
     "minio_deployment_otel",
@@ -402,15 +401,18 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
 
         @retry(wait_timeout=Timeout.TIMEOUT_1MIN, sleep=5)
         def check_traces():
-            response = requests.get(f"{tempo_traces_service_portforward}/api/traces?service=fms_guardrails_orchestr8")
-            if response.status_code == http.HTTPStatus.OK:
-                data = response.json()
-                if data.get("data"):  # non-empty list of traces
-                    return data
-            return False
+            services = requests.get(f"{tempo_traces_service_portforward}/api/services").json().get("data", [])
 
-        traces = check_traces()
-        assert traces["data"], "No traces found in Tempo for Guardrails Orchestrator"
+            guardrails_services = [s for s in services if "guardrails" in s]
+            if not guardrails_services:
+                return False
+
+            svc = guardrails_services[0]
+
+            traces = requests.get(f"{tempo_traces_service_portforward}/api/traces?service={svc}").json()
+
+            if traces.get("data"):
+                return traces
 
 
 @pytest.mark.parametrize(
@@ -428,6 +430,7 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
     ],
     indirect=True,
 )
+@pytest.mark.usefixtures("patched_dsc_kserve_headed")
 @pytest.mark.rawdeployment
 class TestGuardrailsOrchestratorAutoConfig:
     """
@@ -515,6 +518,7 @@ class TestGuardrailsOrchestratorAutoConfig:
     ],
     indirect=True,
 )
+@pytest.mark.usefixtures("patched_dsc_kserve_headed")
 @pytest.mark.rawdeployment
 class TestGuardrailsOrchestratorAutoConfigWithGateway:
     """

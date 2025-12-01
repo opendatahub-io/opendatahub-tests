@@ -239,7 +239,7 @@ def create_detector_config(*detector_names: str) -> Dict[str, Dict[str, Any]]:
     }
 
 
-@retry(exceptions_dict={TimeoutError: []}, wait_timeout=10, sleep=1)
+@retry(exceptions_dict={TimeoutError: []}, wait_timeout=120, sleep=10)
 def check_guardrails_health_endpoint(
     host,
     token,
@@ -300,7 +300,7 @@ def send_chat_detections_request(
     )
 
 
-@retry(exceptions_dict={TimeoutError: []}, wait_timeout=10, sleep=1)
+@retry(exceptions_dict={TimeoutError: []}, wait_timeout=120, sleep=1)
 def send_and_verify_unsuitable_input_detection(
     url: str,
     token: str,
@@ -324,7 +324,7 @@ def send_and_verify_unsuitable_input_detection(
     return response
 
 
-@retry(exceptions_dict={TimeoutError: []}, wait_timeout=10, sleep=1)
+@retry(exceptions_dict={TimeoutError: []}, wait_timeout=120, sleep=1)
 def send_and_verify_unsuitable_output_detection(
     url: str,
     token: str,

@@ -2,12 +2,16 @@ from typing import Generator, Any
 
 import pytest
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.data_science_cluster import DataScienceCluster
+from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
+from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
+from pytest_testconfig import py_config
 
 from utilities.constants import (
     RuntimeTemplates,
@@ -16,6 +20,7 @@ from utilities.constants import (
     LLMdInferenceSimConfig,
 )
 from utilities.inference_utils import create_isvc
+from utilities.infra import get_data_science_cluster
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
@@ -177,3 +182,24 @@ def llm_d_inference_sim_isvc(
         },
     ) as isvc:
         yield isvc
+
+
+@pytest.fixture(scope="class")
+def kserve_controller_manager_deployment(admin_client: DynamicClient) -> Generator[Deployment, Any, Any]:
+    yield Deployment(
+        client=admin_client,
+        name="kserve-controller-manager",
+        namespace=py_config["applications_namespace"],
+        ensure_exists=True,
+    )
+
+
+@pytest.fixture(scope="class")
+def patched_dsc_kserve_headed(
+    admin_client, kserve_controller_manager_deployment: Deployment
+) -> Generator[DataScienceCluster, None, None]:
+    """Configure KServe Services to work in Headed mode i.e. using the Service port instead of the Pod port"""
+    dsc = get_data_science_cluster(client=admin_client)
+    with ResourceEditor(patches={dsc: {"spec": {"components": {"kserve": {"rawDeploymentServiceConfig": "Headed"}}}}}):
+        kserve_controller_manager_deployment.wait_for_replicas()
+        yield dsc

@@ -218,12 +218,13 @@ class TestSearchModelArtifact:
         RHOAIENG-33659: Validates that the API returns the correct error when an invalid artifactType
         is provided regardless of catalog or model.
         """
-        _, model_name, catalog_id = randomly_picked_model_from_catalog_api_by_source
-
         invalid_artifact_type = "invalid"
+        _, model_name, catalog_id = randomly_picked_model_from_catalog_api_by_source
+        invalid_error = f"artifactType: invalid value '{invalid_artifact_type}' for ArtifactTypeQueryParam"
+
         LOGGER.info(f"Testing invalid artifact type: '{invalid_artifact_type}'")
 
-        with pytest.raises(ResourceNotFoundError, match=f"unsupported catalog artifact type: {invalid_artifact_type}"):
+        with pytest.raises(ResourceNotFoundError, match=invalid_error):
             fetch_all_artifacts_with_dynamic_paging(
                 url_with_pagesize=(
                     f"{model_catalog_rest_url[0]}sources/{catalog_id}/models/{model_name}/artifacts?"
@@ -256,7 +257,7 @@ class TestSearchModelArtifact:
         when filtering by multiple artifact types.
         """
         _, model_name, catalog_id = randomly_picked_model_from_catalog_api_by_source
-        artifact_types = f"artifactType={METRICS_ARTIFACT_TYPE}&artifactType={MODEL_ARTIFACT_TYPE}"
+        artifact_types = f"artifactType={METRICS_ARTIFACT_TYPE},{MODEL_ARTIFACT_TYPE}"
         LOGGER.info(f"Testing multiple artifact types: '{artifact_types}'")
         # Fetch all artifacts with dynamic page size adjustment
         all_model_artifacts = fetch_all_artifacts_with_dynamic_paging(

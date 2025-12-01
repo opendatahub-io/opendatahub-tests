@@ -165,10 +165,12 @@ class DscComponents:
     KSERVE: str = "kserve"
     MODELREGISTRY: str = "modelregistry"
     LLAMASTACKOPERATOR: str = "llamastackoperator"
+    KUEUE: str = "kueue"
 
     class ManagementState:
         MANAGED: str = "Managed"
         REMOVED: str = "Removed"
+        UNMANAGED: str = "Unmanaged"
 
     class ConditionType:
         MODEL_REGISTRY_READY: str = "ModelRegistryReady"
@@ -458,7 +460,7 @@ class ContainerImages:
 CHAT_GENERATION_CONFIG: Dict[str, Any] = {
     "service": {
         "hostname": f"{QWEN_MODEL_NAME}-predictor",
-        "port": 8032,
+        "port": 80,
         "request_timeout": 600,
     }
 }

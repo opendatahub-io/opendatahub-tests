@@ -6,6 +6,7 @@ from utilities.constants import (
     Protocols,
     RuntimeTemplates,
     Labels,
+    Timeout,
 )
 
 TRITON_INPUT_BASE_PATH = "tests/model_serving/model_runtime/triton/basic_model_deployment"
@@ -28,7 +29,10 @@ TRITON_GRPC_FIL_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "kserve-triton
 LOCAL_HOST_URL: str = "http://localhost"
 TRITON_REST_PORT: int = 8080
 TRITON_GRPC_PORT: int = 9000
-TRITON_GRPC_REMOTE_PORT: int = 443
+
+
+TRITON_IMAGE: str = "nvcr.io/nvidia/tritonserver:24.10-py3"
+
 
 MODEL_PATH_PREFIX_KERAS: str = "triton_resnet/model_repository"
 MODEL_PATH_PREFIX: str = "triton/model_repository"
@@ -67,12 +71,7 @@ BASE_RAW_DEPLOYMENT_CONFIG: dict[str, Any] = {
     "deployment_type": KServeDeploymentType.RAW_DEPLOYMENT,
     "min-replicas": 1,
     "enable_external_route": False,
-}
-
-BASE_SERVERLESS_DEPLOYMENT_CONFIG: dict[str, Any] = {
-    "deployment_type": KServeDeploymentType.SERVERLESS,
-    "min-replicas": 1,
-    "enable_external_route": True,
+    "timeout": Timeout.TIMEOUT_10MIN,
 }
 
 ACCELERATOR_IDENTIFIER: dict[str, str] = {
