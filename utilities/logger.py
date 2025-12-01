@@ -1,5 +1,4 @@
 import logging
-import os
 import shutil
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 import multiprocessing
@@ -67,15 +66,11 @@ def setup_logging(
 
     handlers: list[Any] = [log_file_handler]
 
-    # Only add console handler if explicitly enabled
-    # Also respect PYTEST_DISABLE_CONSOLE_LOG environment variable
-    disable_console = os.environ.get("PYTEST_DISABLE_CONSOLE_LOG", "").lower() in ("1", "true", "yes")
-
     # Convert log_level to int if it's a string
     if isinstance(log_level, str):
         log_level = getattr(logging, log_level.upper(), logging.INFO)
 
-    if enable_console and not disable_console:
+    if enable_console:
         console_handler = logging.StreamHandler()
         console_handler.setLevel(level=log_level)  # Set the console handler log level
         handlers.append(console_handler)
