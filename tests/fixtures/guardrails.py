@@ -52,11 +52,11 @@ def guardrails_orchestrator(
         metrics_endpoint = request.getfixturevalue(argname="otelcol_metrics_endpoint")
         traces_endpoint = request.getfixturevalue(argname="tempo_traces_endpoint")
         gorch_kwargs["otel_exporter"] = {
-            "metricsEndpoint": metrics_endpoint,
-            "metricsProtocol": "grpc",
-            "otlpExport": "metrics,traces",
-            "tracesEndpoint": traces_endpoint,
-            "tracesProtocol": "grpc",
+            "otlpProtocol": "grpc",
+            "otlpMetricsEndpoint": metrics_endpoint,
+            "otlpTracesEndpoint": traces_endpoint,
+            "enableMetrics": True,
+            "enableTracing": True,
         }
 
     with GuardrailsOrchestrator(**gorch_kwargs) as gorch:
