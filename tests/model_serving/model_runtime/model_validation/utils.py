@@ -22,20 +22,56 @@ def validate_supported_quantization_schema(q_type: str) -> None:
         raise ValueError(f"Unsupported quantization type: {q_type}")
 
 
-def validate_inference_output(response_output: Any, expected_keywords: list[str]) -> None:
+def is_meaningful_text(text: str) -> bool:
+    """
+    Check if the text contains meaningful alphanumeric content
+    and is not just special characters or random symbols.
+    """
+    # Ensure there's at least one alphabetic character
+    if not re.search(r"[A-Za-z]", text):
+        return False
+    # Disallow texts with only special characters or gibberish
+    if re.fullmatch(r"[\W_]+", text):
+        return False
+    return True
+
+
+def validate_inference_output(
+    response_output: Any,
+    expected_keywords: list[str],
+    request_text: str | None = None,
+) -> None:
     """
     Validate inference response output using regex-based keyword checks.
 
     - Extracts 'content' field from model output.
-    - Fails if content is empty.
-    - Passes if any of the expected keywords/phrases are found in the content (case-insensitive).
+    - Ensures content is non-empty and meaningful.
+    - Optionally validates expected keywords based on the request.
+    - Fails if none of the expected keywords appear in the content.
     """
     content = extract_content_field(output=response_output)
-    assert content, "Inference output is empty or missing 'content' field."
-    found_keywords = [kw for kw in expected_keywords if re.search(rf"\b{re.escape(kw)}\b", content, re.IGNORECASE)]
-    assert found_keywords, f"Expected one of {expected_keywords} in response content, but got: {content[:900]}"
 
-    print(f"Output validation passed. Found keywords: {found_keywords}")
+    # Check for empty content
+    assert content, "Inference output is empty or missing 'content' field."
+
+    # Ensure content is meaningful (not gibberish or special chars)
+    assert is_meaningful_text(content), (
+        f"Inference output is invalid — contains only special characters or non-meaningful text: {content[:200]}"
+    )
+
+    # Check for expected keywords/phrases (case-insensitive)
+    found_keywords = [
+        kw for kw in expected_keywords
+        if re.search(re.escape(kw), content, re.IGNORECASE)
+    ]
+
+    # Fail if no expected keyword is found
+    assert found_keywords, (
+        f"Expected one of {expected_keywords} in response to '{request_text}', "
+        f"but got: {content[:900]}"
+    )
+
+    print(f"Output validation passed for request '{request_text}'. Found keywords: {found_keywords}")
 
 
 def safe_k8s_name(model_name: str, max_length: int = 20) -> str:
@@ -64,5 +100,5 @@ def safe_k8s_name(model_name: str, max_length: int = 20) -> str:
     # Ensure it's not empty after all processing
     if not safe_name:
         return "model"
-
+    
     return safe_name
