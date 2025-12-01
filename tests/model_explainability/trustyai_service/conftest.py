@@ -36,6 +36,8 @@ from tests.model_explainability.trustyai_service.constants import (
     GAUSSIAN_CREDIT_MODEL,
     TAI_DB_STORAGE_CONFIG,
     ISVC_GETTER,
+    GAUSSIAN_CREDIT_MODEL_STORAGE_PATH,
+    GAUSSIAN_CREDIT_MODEL,
 )
 from tests.model_explainability.trustyai_service.trustyai_service_utils import (
     wait_for_isvc_deployment_registered_by_trustyai_service,
