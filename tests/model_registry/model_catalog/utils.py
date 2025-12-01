@@ -417,32 +417,71 @@ def compare_filter_options_with_database(
     # Log detailed comparison for each property
     for prop_name in sorted(set(expected_properties.keys()) | set(api_filters.keys())):
         if prop_name in expected_properties and prop_name in api_filters:
-            db_values = set(expected_properties[prop_name])
-            api_values = set(api_filters[prop_name]["values"])
+            db_data = expected_properties[prop_name]
+            api_filter = api_filters[prop_name]
 
-            missing_values = db_values - api_values
-            extra_values = api_values - db_values
+            # Check if this is a numeric property (has "range" in API response)
+            if "range" in api_filter:
+                # Numeric property: DB has [min, max] as 2-element array
+                if len(db_data) == 2:
+                    try:
+                        db_min, db_max = float(db_data[0]), float(db_data[1])
+                        api_min = api_filter["range"]["min"]
+                        api_max = api_filter["range"]["max"]
 
-            if missing_values:
-                error_msg = (
-                    f"Property '{prop_name}': DB has {len(missing_values)} values missing from API: {missing_values}"
-                )
-                LOGGER.error(error_msg)
-                comparison_errors.append(error_msg)
-            if extra_values:
-                error_msg = (
-                    f"Property '{prop_name}': API has {len(extra_values)} values missing from DB: {extra_values}"
-                )
-                LOGGER.error(error_msg)
-                comparison_errors.append(error_msg)
-            if not missing_values and not extra_values:
-                LOGGER.info(f"Property '{prop_name}': Perfect match ({len(api_values)} values)")
+                        if db_min != api_min or db_max != api_max:
+                            error_msg = (
+                                f"Property '{prop_name}': Range mismatch - DB: [{db_min}, {db_max}], "
+                                f"API: [{api_min}, {api_max}]"
+                            )
+                            LOGGER.error(error_msg)
+                            comparison_errors.append(error_msg)
+                        else:
+                            LOGGER.info(f"Property '{prop_name}': Perfect range match (min={api_min}, max={api_max})")
+                    except (ValueError, TypeError) as e:
+                        error_msg = f"Property '{prop_name}': Failed to parse numeric values - {e}"
+                        LOGGER.error(error_msg)
+                        comparison_errors.append(error_msg)
+                else:
+                    error_msg = f"Property '{prop_name}': Expected 2 values for range, got {len(db_data)}"
+                    LOGGER.error(error_msg)
+                    comparison_errors.append(error_msg)
+            else:
+                # String/array property: compare values as sets
+                db_values = set(db_data)
+                api_values = set(api_filter["values"])
+
+                missing_values = db_values - api_values
+                extra_values = api_values - db_values
+
+                if missing_values:
+                    error_msg = (
+                        f"Property '{prop_name}': DB has {len(missing_values)} "
+                        f"values missing from API: {missing_values}"
+                    )
+                    LOGGER.error(error_msg)
+                    comparison_errors.append(error_msg)
+                if extra_values:
+                    error_msg = (
+                        f"Property '{prop_name}': API has {len(extra_values)} values missing from DB: {extra_values}"
+                    )
+                    LOGGER.error(error_msg)
+                    comparison_errors.append(error_msg)
+                if not missing_values and not extra_values:
+                    LOGGER.info(f"Property '{prop_name}': Perfect match ({len(api_values)} values)")
         elif prop_name in expected_properties:
             error_msg = f"Property '{prop_name}': In DB ({len(expected_properties[prop_name])} values) but NOT in API"
             LOGGER.error(error_msg)
             comparison_errors.append(error_msg)
         elif prop_name in api_filters:
-            error_msg = f"Property '{prop_name}': In API ({len(api_filters[prop_name]['values'])} values) but NOT in DB"
+            LOGGER.info(f"Property name: '{prop_name}' in API filters: {api_filters[prop_name]}")
+            # For properties only in API, we can't reliably get DB values, so skip logging them
+            if "range" in api_filters[prop_name]:
+                error_msg = f"Property '{prop_name}': In API (range property) but NOT in DB"
+            else:
+                error_msg = (
+                    f"Property '{prop_name}': In API ({len(api_filters[prop_name]['values'])} values) but NOT in DB"
+                )
             LOGGER.error(error_msg)
             comparison_errors.append(error_msg)
 
