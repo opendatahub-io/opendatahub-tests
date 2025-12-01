@@ -62,7 +62,7 @@ from utilities.mariadb_utils import wait_for_mariadb_operator_deployments
 from utilities.minio import create_minio_data_connection_secret
 from utilities.operator_utils import get_csv_related_images, get_cluster_service_version
 from ocp_resources.authentication_config_openshift_io import Authentication
-from utilities.user_utils import get_unprivileged_context
+from utilities.user_utils import get_oidc_tokens, get_byoidc_issuer_url
 
 LOGGER = get_logger(name=__name__)
 
@@ -342,28 +342,33 @@ def use_unprivileged_client(pytestconfig: pytest.Config) -> bool:
 
 
 @pytest.fixture(scope="session")
-def non_admin_user_password(admin_client: DynamicClient, use_unprivileged_client: bool) -> tuple[str, str] | None:
+def non_admin_user_password(
+    admin_client: DynamicClient, use_unprivileged_client: bool, is_byoidc: bool
+) -> tuple[str, str] | None:
     def _decode_split_data(_data: str) -> list[str]:
         return base64.b64decode(_data).decode().split(",")
 
     if not use_unprivileged_client:
         return None
 
-    if ldap_Secret := list(
+    secret_name = "byoidc-credentials" if is_byoidc else "openldap"  # pragma: allowlist secret
+    secret_ns = "oidc" if is_byoidc else "openldap"  # pragma: allowlist secret
+
+    if users_Secret := list(
         Secret.get(
             dyn_client=admin_client,
-            name="openldap",
-            namespace="openldap",
+            name=secret_name,
+            namespace=secret_ns,
         )
     ):
-        data = ldap_Secret[0].instance.data
+        data = users_Secret[0].instance.data
         users = _decode_split_data(_data=data.users)
         passwords = _decode_split_data(_data=data.passwords)
         first_user_index = next(index for index, user in enumerate(users) if "user" in user)
 
         return users[first_user_index], passwords[first_user_index]
 
-    LOGGER.error("ldap secret not found")
+    LOGGER.error("user credentials secret not found")
     return None
 
 
@@ -406,23 +411,48 @@ def unprivileged_client(
         LOGGER.warning("Unprivileged client is not enabled, using admin client")
         yield admin_client
 
-    elif is_byoidc:
-        # this requires a pre-existing context in $KUBECONFIG with a unprivileged user
-        try:
-            unprivileged_context, _ = get_unprivileged_context()
-        except ValueError as e:
-            raise ValueError(
-                f"Failed to get unprivileged context for BYOIDC mode. "
-                f"Ensure the context naming follows the convention: <context>-unprivileged. "
-                f"Error: {e}"
-            ) from e
-
-        unprivileged_client = get_client(config_file=kubconfig_filepath, context=unprivileged_context)
-
-        yield unprivileged_client
-
     elif non_admin_user_password is None:
         raise ValueError("Unprivileged user not provisioned")
+
+    elif is_byoidc:
+        tokens = get_oidc_tokens(admin_client, non_admin_user_password[0], non_admin_user_password[1])
+        issuer = get_byoidc_issuer_url(admin_client)
+
+        with open(kubconfig_filepath) as fd:
+            kubeconfig_content = yaml.safe_load(fd)
+
+        # create the oidc user config
+        user = {
+            "name": non_admin_user_password[0],
+            "user": {
+                "auth-provider": {
+                    "name": "oidc",
+                    "config": {
+                        "client-id": "oc-cli",
+                        "client-secret": "",
+                        "idp-issuer-url": issuer,
+                        "id-token": tokens[0],
+                        "refresh-token": tokens[1],
+                    },
+                }
+            },
+        }
+
+        # replace the users - we only need this one user
+        kubeconfig_content["users"] = [user]
+
+        # get the current context and modify the referenced user in place
+        current_context_name = kubeconfig_content["current-context"]
+        current_context = [c for c in kubeconfig_content["contexts"] if c["name"] == current_context_name][0]
+        current_context["context"]["user"] = non_admin_user_password[0]
+
+        unprivileged_client = get_client(
+            config_dict=kubeconfig_content,
+            context=current_context_name,
+            persist_config=False,  # keep the kubeconfig intact
+        )
+
+        yield unprivileged_client
 
     else:
         current_user = run_command(command=["oc", "whoami"])[1].strip()

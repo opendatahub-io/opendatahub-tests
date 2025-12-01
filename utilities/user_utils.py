@@ -3,12 +3,14 @@ import shlex
 import tempfile
 from dataclasses import dataclass
 
+import requests
+from kubernetes.dynamic import DynamicClient
 from ocp_resources.user import User
 from pyhelper_utils.shell import run_command
 from timeout_sampler import retry
 
 from utilities.exceptions import ExceptionUserLogin
-from utilities.infra import login_with_user_password
+from utilities.infra import login_with_user_password, get_cluster_authentication
 import base64
 from pathlib import Path
 
@@ -94,19 +96,43 @@ def wait_for_user_creation(username: str, password: str, cluster_url: str) -> bo
     raise ExceptionUserLogin(f"Could not login as user {username}.")
 
 
-def get_unprivileged_context() -> tuple[str, str]:
-    """
-    Get the unprivileged context from the current context.
-    This only works in BYOIDC mode, and it assumes that the unprivileged context is already created
-    with a precise naming convention: <current_context>-unprivileged.
+def get_oidc_tokens(admin_client: DynamicClient, username: str, password: str) -> tuple[str, str]:
+    url = f"{get_byoidc_issuer_url(admin_client=admin_client)}/protocol/openid-connect/token"
+    headers = {"Content-Type": "application/x-www-form-urlencoded", "User-Agent": "python-requests"}
 
-    Returns:
-        Tuple of (unprivileged context, current context).
-    """
-    status, current_context, _ = run_command(command=["oc", "config", "current-context"])
-    current_context = current_context.strip()
-    if not status or not current_context:
-        raise ValueError("Could not get current context from oc config current-context")
-    if current_context.endswith("-unprivileged"):
-        raise ValueError("Current context is already called [...]-unprivileged")
-    return current_context + "-unprivileged", current_context
+    data = {
+        "username": username,
+        "password": password,
+        "grant_type": "password",
+        "client_id": "oc-cli",
+        "scope": "openid",
+    }
+
+    try:
+        LOGGER.info(f"Requesting token for user {username} in byoidc environment")
+        response = requests.post(
+            url=url,
+            headers=headers,
+            data=data,
+            allow_redirects=True,
+            timeout=30,
+            verify=True,  # Set to False if you need to skip SSL verification
+        )
+        response.raise_for_status()
+        json_response = response.json()
+
+        # Validate that we got an access token
+        if "id_token" not in json_response or "refresh_token" not in json_response:
+            LOGGER.error("Warning: No id_token or refresh_token in response")
+            raise AssertionError(f"No id_token or refresh_token in response: {json_response}")
+        return json_response["id_token"], json_response["refresh_token"]
+    except Exception as e:
+        raise e
+
+
+def get_byoidc_issuer_url(admin_client: DynamicClient) -> str:
+    authentication = get_cluster_authentication(admin_client=admin_client)
+    assert authentication is not None
+    url = authentication.instance.spec.oidcProviders[0].issuer.issuerURL
+    assert url is not None
+    return url

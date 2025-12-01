@@ -2,6 +2,7 @@ import base64
 import re
 from typing import List, Tuple, Any
 import uuid
+import os
 
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError, NotFoundError
@@ -489,3 +490,25 @@ def wait_for_oauth_openshift_deployment() -> None:
     for reason in ("ReplicaSetUpdated", "NewReplicaSetAvailable"):
         LOGGER.info(f"{_log} {reason}")
         _wait_sampler(_reason=reason)
+
+
+def collect_pod_information(pod: Pod) -> None:
+    # Import here to avoid circular import (must_gather_collector -> infra -> general)
+    from utilities.must_gather_collector import get_base_dir, get_must_gather_collector_dir
+
+    try:
+        base_dir_name = get_must_gather_collector_dir() or get_base_dir()
+        LOGGER.info(f"Collecting pod information for {pod.name}: {base_dir_name}")
+        os.makedirs(base_dir_name, exist_ok=True)
+        yaml_file_path = os.path.join(base_dir_name, f"{pod.name}.yaml")
+        with open(yaml_file_path, "w") as fd:
+            fd.write(pod.instance.to_str())
+        # get all the containers of the pod:
+
+        containers = [container["name"] for container in pod.instance.status.containerStatuses]
+        for container in containers:
+            file_path = os.path.join(base_dir_name, f"{pod.name}_{container}.log")
+            with open(file_path, "w") as fd:
+                fd.write(pod.log(**{"container": container}))
+    except Exception:
+        LOGGER.warning(f"For pod: {pod.name} information gathering failed.")

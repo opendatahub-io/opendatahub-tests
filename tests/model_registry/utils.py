@@ -34,7 +34,7 @@ from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
 
 from utilities.general import wait_for_pods_running
-from utilities.infra import get_cluster_authentication
+from utilities.user_utils import get_byoidc_issuer_url
 
 ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
 MARIA_DB_IMAGE = (
@@ -834,14 +834,6 @@ def get_mr_user_token(admin_client: DynamicClient, user_credentials_rbac: dict[s
         return json_response["id_token"]
     except Exception as e:
         raise e
-
-
-def get_byoidc_issuer_url(admin_client: DynamicClient) -> str:
-    authentication = get_cluster_authentication(admin_client=admin_client)
-    assert authentication is not None
-    url = authentication.instance.spec.oidcProviders[0].issuer.issuerURL
-    assert url is not None
-    return url
 
 
 def get_byoidc_user_credentials(username: str = None) -> Dict[str, str]:
