@@ -60,7 +60,6 @@ def test_lmeval_huggingface_model(admin_client, model_namespace, lmevaljob_hf_po
     ],
     indirect=True,
 )
-@pytest.mark.smoke
 def test_lmeval_local_offline_builtin_tasks_flan_arceasy(
     admin_client,
     model_namespace,
