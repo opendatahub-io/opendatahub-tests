@@ -281,19 +281,51 @@ def pytest_collection_modifyitems(session: Session, config: Config, items: list[
 
 
 def pytest_sessionstart(session: Session) -> None:
-    log_file = session.config.getoption("log_file") or "pytest-tests.log"
+    log_file = session.config.getoption(name="log_file") or "pytest-tests.log"
     tests_log_file = os.path.join(get_base_dir(), log_file)
-    LOGGER.info(f"Writing tests log to {tests_log_file}")
+    thread_name = os.environ.get("PYTEST_XDIST_WORKER", "")
+
+    # Get log level and convert to integer if it's a string
+    log_cli_level = session.config.getoption(name="log_cli_level")
+    if log_cli_level and isinstance(log_cli_level, str):
+        log_level = getattr(logging, log_cli_level.upper(), logging.INFO)
+    else:
+        log_level = log_cli_level or logging.INFO
+
+    # Clean up old log file BEFORE setting up logging
     if os.path.exists(tests_log_file):
         pathlib.Path(tests_log_file).unlink()
-    if session.config.getoption("--collect-must-gather"):
-        session.config.option.must_gather_db = Database()
-    thread_name = os.environ.get("PYTEST_XDIST_WORKER", "")
+
+    # Default behavior: enable console unless explicitly disabled
+    enable_console_value = True  # Default to console enabled
+
+    # Check for explicit -o log_cli option in command line overrides
+    try:
+        overrides = getattr(session.config.option, "override_ini", []) or []
+        log_cli_override = next((override for override in overrides if override.startswith("log_cli=")), None)
+
+        if log_cli_override:
+            value = log_cli_override.split("=", 1)[1].lower()
+            enable_console_value = value not in ("false", "0", "no", "off")
+
+    except Exception as e:
+        # If there's any issue with option detection, fall back to default behavior
+        LOGGER.error(f"Error detecting log_cli option: {e}")
+        enable_console_value = True
+
+    # Setup logging before any other operations
     session.config.option.log_listener = setup_logging(
         log_file=tests_log_file,
-        log_level=session.config.getoption("log_cli_level") or logging.INFO,
+        log_level=log_level,
         thread_name=thread_name,
+        enable_console=enable_console_value,
     )
+
+    # Now safe to log after configuration is applied (only to file when console disabled)
+    LOGGER.info(f"Writing tests log to {tests_log_file}")
+
+    if session.config.getoption("--collect-must-gather"):
+        session.config.option.must_gather_db = Database()
     must_gather_dict = set_must_gather_collector_values()
     shutil.rmtree(
         path=must_gather_dict["must_gather_base_directory"],
