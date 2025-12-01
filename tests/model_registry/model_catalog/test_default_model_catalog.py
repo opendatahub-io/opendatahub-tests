@@ -7,6 +7,8 @@ from dictdiffer import diff
 from ocp_resources.deployment import Deployment
 from simple_logger.logger import get_logger
 from typing import Self, Any
+from timeout_sampler import TimeoutSampler
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 
 from ocp_resources.pod import Pod
 from ocp_resources.config_map import ConfigMap
@@ -170,10 +172,20 @@ class TestModelCatalogDefault:
         Validate specific user can access default model catalog source
         """
         LOGGER.info("Attempting client connection with token")
-        result = execute_get_command(
-            url=f"{model_catalog_rest_url[0]}sources",
-            headers=get_rest_headers(token=user_token_for_api_calls),
-        )["items"]
+
+        url = f"{model_catalog_rest_url[0]}sources"
+        headers = get_rest_headers(token=user_token_for_api_calls)
+
+        # Retry for up to 2 minutes to allow RBAC propagation
+        # Accept ResourceNotFoundError (401) as a transient error during RBAC propagation
+        sampler = TimeoutSampler(
+            wait_timeout=120,
+            sleep=5,
+            func=lambda: execute_get_command(url=url, headers=headers)["items"],
+            exceptions_dict={ResourceNotFoundError: []},
+        )
+
+        result = next(iter(sampler))
         assert result
         items_to_validate = []
         if pytestconfig.option.pre_upgrade or pytestconfig.option.post_upgrade:
