@@ -94,6 +94,13 @@ uv run pytest -c custom-pytest.ini
 
 ```
 
+### Turning off console logging
+By default, pytest will output logging reports in the console. You can disable this behavior with `-o log_cli=false`
+
+```bash
+uv run pytest -o log_cli=false
+```
+
 ### Running specific tests
 ```bash
 uv run pytest -k test_name
