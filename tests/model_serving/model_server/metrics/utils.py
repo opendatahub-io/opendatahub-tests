@@ -23,8 +23,7 @@ def validate_metrics_configuration(inference_service: InferenceService) -> None:
     )
 
     assert metrics_cm.exists, (
-        f"Metrics dashboard ConfigMap '{metrics_cm_name}' not found in namespace "
-        f"'{inference_service.namespace}'"
+        f"Metrics dashboard ConfigMap '{metrics_cm_name}' not found in namespace '{inference_service.namespace}'"
     )
 
     supported_value = metrics_cm.instance.data.get("supported")
