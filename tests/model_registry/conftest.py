@@ -25,7 +25,7 @@ from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 
 
-from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from ocp_resources.resource import ResourceEditor
 
 from pytest import FixtureRequest
@@ -92,7 +92,6 @@ def model_registry_instance(
         yield [mr_instance]
         mr_instance.delete(wait=True)
     else:
-        LOGGER.warning("Requested Oauth Proxy configuration:")
         db_name = param.get("db_name", "mysql")
         mr_objects = get_model_registry_objects(
             client=admin_client,
@@ -111,6 +110,14 @@ def model_registry_instance(
                 wait_for_pods_running(
                     admin_client=admin_client, namespace_name=model_registry_namespace, number_of_consecutive_checks=6
                 )
+                if db_name == "default":
+                    # TODO: This is to give extra time to postgres pod due to RHOAIENG-40875. Remove when the Jira is
+                    # addressed
+                    wait_for_pods_running(
+                        admin_client=admin_client,
+                        namespace_name=model_registry_namespace,
+                        number_of_consecutive_checks=6,
+                    )
             yield mr_instances
         if db_name == "default":
             wait_for_default_resource_cleanedup(admin_client=admin_client, namespace_name=model_registry_namespace)

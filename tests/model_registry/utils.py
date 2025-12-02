@@ -12,7 +12,7 @@ from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
-from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from simple_logger.logger import get_logger
 from timeout_sampler import retry
@@ -560,7 +560,6 @@ def get_model_registry_objects(
                 name=name,
                 namespace=namespace,
                 label=get_mr_standard_labels(resource_name=name),
-                grpc={},
                 rest={},
                 oauth_proxy=OAUTH_PROXY_CONFIG_DICT,
                 mysql=mysql if mysql else None,

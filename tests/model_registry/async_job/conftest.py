@@ -25,7 +25,7 @@ from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
-from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from ocp_resources.config_map import ConfigMap
 from model_registry.types import RegisteredModel
 from model_registry import ModelRegistry as ModelRegistryClient
