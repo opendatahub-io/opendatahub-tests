@@ -50,6 +50,7 @@ def enabled_llama_stack_operator(dsc_resource: DataScienceCluster) -> Generator[
 def llama_stack_server_config(
     request: FixtureRequest,
     vector_io_provider_deployment_config_factory: Callable[[str], list[Dict[str, str]]],
+    files_provider_config_factory: Callable[[str], list[Dict[str, str]]],
 ) -> Dict[str, Any]:
     """
         Generate server configuration for LlamaStack distribution deployment and deploy vector I/O provider resources.
@@ -194,6 +195,11 @@ def llama_stack_server_config(
 
         # KUBEFLOW_PIPELINES_TOKEN: Get from current client token
         env_vars.append({"name": "KUBEFLOW_PIPELINES_TOKEN", "value": str(current_client_token)})
+
+    # Depending on parameter files_provider, configure files provider and obtain required env_vars
+    files_provider = params.get("files_provider") or "local"
+    env_vars_files = files_provider_config_factory(provider_name=files_provider)
+    env_vars.extend(env_vars_files)
 
     # Depending on parameter vector_io_provider, deploy vector_io provider and obtain required env_vars
     vector_io_provider = params.get("vector_io_provider") or "milvus"
