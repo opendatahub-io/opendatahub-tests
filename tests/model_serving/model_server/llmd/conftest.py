@@ -2,6 +2,7 @@ from contextlib import ExitStack
 from typing import Generator
 
 import pytest
+import yaml
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.llm_inference_service import LLMInferenceService
@@ -11,6 +12,13 @@ from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 
+from tests.model_serving.model_server.llmd.constants import (
+    LLMD_LIVENESS_PROBE,
+    PREFIX_CACHE_BLOCK_SIZE,
+    PREFIX_CACHE_HASH_ALGO,
+    PREFIX_CACHE_HASH_SEED,
+    SINGLENODE_SCHEDULER_CONFIG_PRECISE_PREFIX_CACHE,
+)
 from utilities.constants import Timeout, ResourceLimits
 from utilities.infra import s3_endpoint_secret, create_inference_token
 from utilities.logger import RedactedString
@@ -330,3 +338,105 @@ def llmisvc_auth(
             return (llm_service, sa)
 
         yield _create_llmd_auth_service
+
+
+@pytest.fixture(scope="class")
+def singlenode_precise_prefix_cache(
+    admin_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+    llmd_s3_secret: Secret,
+    llmd_s3_service_account: ServiceAccount,
+    llmd_gateway,
+) -> Generator[LLMInferenceService, None, None]:
+    """LLMInferenceService fixture for single-node precise prefix cache test."""
+
+    with create_llmisvc(
+        client=admin_client,
+        name="singlenode-prefix-cache-test",
+        namespace=unprivileged_model_namespace.name,
+        storage_uri=ModelStorage.TINYLLAMA_S3,
+        model_name=ModelNames.TINYLLAMA,
+        replicas=2,
+        container_resources={
+            "limits": {
+                "cpu": ResourceLimits.GPU.CPU_LIMIT,
+                "memory": ResourceLimits.GPU.MEMORY_LIMIT,
+                "nvidia.com/gpu": ResourceLimits.GPU.LIMIT,
+            },
+            "requests": {
+                "cpu": ResourceLimits.GPU.CPU_REQUEST,
+                "memory": ResourceLimits.GPU.MEMORY_REQUEST,
+                "nvidia.com/gpu": ResourceLimits.GPU.REQUEST,
+            },
+        },
+        container_env=[
+            {"name": "VLLM_LOGGING_LEVEL", "value": "DEBUG"},
+            {
+                "name": "VLLM_ADDITIONAL_ARGS",
+                "value": (
+                    f"--prefix-caching-hash-algo {PREFIX_CACHE_HASH_ALGO} --block-size {PREFIX_CACHE_BLOCK_SIZE} "
+                    "--kv_transfer_config '{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\"}' "
+                    "--kv-events-config '{\"enable_kv_cache_events\":true,\"publisher\":\"zmq\","
+                    "\"endpoint\":\"tcp://{{ ChildName .ObjectMeta.Name `-epp-service` }}:5557\","
+                    "\"topic\":\"kv@${POD_IP}@${MODEL_NAME}\"}'"
+                ),
+            },
+            {
+                "name": "POD_IP",
+                "valueFrom": {"fieldRef": {"apiVersion": "v1", "fieldPath": "status.podIP"}},
+            },
+            {"name": "MODEL_NAME", "value": "TinyLlama"},
+            {"name": "PYTHONHASHSEED", "value": PREFIX_CACHE_HASH_SEED},
+        ],
+        liveness_probe=LLMD_LIVENESS_PROBE,
+        service_account=llmd_s3_service_account.name,
+        enable_auth=True,
+        router_config={
+            "scheduler": {
+                "template": {
+                    "volumes": [{"name": "tokenizers", "emptyDir": {}}],
+                    "containers": [
+                        {
+                            "name": "main",
+                            "volumeMounts": [
+                                {
+                                    "name": "tokenizers",
+                                    "mountPath": "/mnt/tokenizers",
+                                    "readOnly": False,
+                                }
+                            ],
+                            "args": [
+                                "--v=4",
+                                "--pool-name",
+                                "{{ ChildName .ObjectMeta.Name `-inference-pool` }}",
+                                "--pool-namespace",
+                                "{{ .ObjectMeta.Namespace }}",
+                                "--pool-group",
+                                "inference.networking.x-k8s.io",
+                                "--zap-encoder",
+                                "json",
+                                "--grpc-port",
+                                "9002",
+                                "--grpc-health-port",
+                                "9003",
+                                "--secure-serving",
+                                "--model-server-metrics-scheme",
+                                "https",
+                                "--cert-path",
+                                "/var/run/kserve/tls",
+                                "--config-text",
+                                yaml.dump(SINGLENODE_SCHEDULER_CONFIG_PRECISE_PREFIX_CACHE),
+                            ],
+                        }
+                    ],
+                }
+            },
+            "route": {},
+            "gateway": {},
+        },
+        disable_scheduler=False,
+        enable_prefill_decode=False,
+        wait=True,
+        timeout=Timeout.TIMEOUT_15MIN,
+    ) as llm_service:
+        yield llm_service

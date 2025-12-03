@@ -5,6 +5,8 @@ This module provides helper functions for LLMD test operations using ocp_resourc
 Follows the established model server utils pattern for consistency.
 """
 
+import re
+import time
 from typing import Any
 
 from kubernetes.dynamic import DynamicClient
@@ -14,7 +16,10 @@ from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
+from utilities.constants import Protocols
 from utilities.exceptions import PodContainersRestartError
+from utilities.llmd_utils import verify_inference_response_llmd
+from utilities.manifests.tinyllama import TINYLLAMA_INFERENCE_CONFIG
 
 
 LOGGER = get_logger(name=__name__)
@@ -187,3 +192,252 @@ def verify_llmd_no_failed_pods(
             return
         LOGGER.debug(f"LLMD pods status: {ready_pods}/{len(pods)} ready for {llm_service.name}")
     raise TimeoutError(f"LLMD pods for {llm_service.name} did not become ready within {timeout} seconds")
+
+
+def get_llmd_workload_pods(
+    client: DynamicClient,
+    llmisvc: LLMInferenceService,
+) -> list[Pod]:
+    """
+    Get all workload pods for an LLMInferenceService.
+
+    Args:
+        client: DynamicClient instance
+        llmisvc: The LLMInferenceService to get pods for
+
+    Returns:
+        List of workload Pod objects
+    """
+    pods = []
+    for pod in Pod.get(
+        dyn_client=client,
+        namespace=llmisvc.namespace,
+        label_selector=(
+            f"{Pod.ApiGroup.APP_KUBERNETES_IO}/part-of=llminferenceservice,"
+            f"{Pod.ApiGroup.APP_KUBERNETES_IO}/name={llmisvc.name}"
+        ),
+    ):
+        labels = pod.instance.metadata.get("labels", {})
+        if labels.get("kserve.io/component") == "workload":
+            pods.append(pod)
+    return pods
+
+
+def get_llmd_router_scheduler_pod(
+    client: DynamicClient,
+    llmisvc: LLMInferenceService,
+) -> Pod | None:
+    """
+    Get the router-scheduler pod for an LLMInferenceService.
+
+    Args:
+        client: DynamicClient instance
+        llmisvc: The LLMInferenceService to get router-scheduler pod for
+
+    Returns:
+        Router-scheduler Pod object or None if not found
+    """
+    for pod in Pod.get(
+        dyn_client=client,
+        namespace=llmisvc.namespace,
+        label_selector=(
+            f"{Pod.ApiGroup.APP_KUBERNETES_IO}/part-of=llminferenceservice,"
+            f"{Pod.ApiGroup.APP_KUBERNETES_IO}/name={llmisvc.name}"
+        ),
+    ):
+        labels = pod.instance.metadata.get("labels", {})
+        if labels.get(f"{Pod.ApiGroup.APP_KUBERNETES_IO}/component") == "llminferenceservice-router-scheduler":
+            return pod
+    return None
+
+
+def count_chat_completions_requests_in_pod(pod: Pod) -> int:
+    """
+    Count POST /v1/chat/completions requests in pod logs.
+
+    Args:
+        pod: The vLLM workload pod to check
+
+    Returns:
+        Number of successful chat completion requests found in logs
+    """
+    try:
+        logs = pod.log(container="main", since_seconds=120)
+
+        # Match: "POST /v1/chat/completions HTTP/1.1" 200
+        pattern = r'POST /v1/chat/completions HTTP/1.1.*200'
+        matches = re.findall(pattern, logs)
+
+        LOGGER.info(f"Pod {pod.name}: Found {len(matches)} requests matching pattern")
+
+        # Debug: Show sample log lines if no matches found
+        if len(matches) == 0:
+            log_lines = logs.split('\n')
+            LOGGER.info(f"Pod {pod.name}: Total log lines: {len(log_lines)}")
+            # Show lines containing "POST" or "completions"
+            relevant_lines = [line for line in log_lines if 'POST' in line or 'completion' in line.lower()]
+            if relevant_lines:
+                LOGGER.info(f"Pod {pod.name}: Sample relevant lines (first 5):")
+                for line in relevant_lines[:5]:
+                    LOGGER.info(f"  {line[:200]}")
+
+        return len(matches)
+    except Exception as e:
+        LOGGER.info(f"Failed to count requests for pod {pod.name}: {e}")
+        return 0
+
+
+def get_pod_that_handled_request(
+    workload_pods: list[Pod],
+    query: str,
+    timestamp_before: float,
+    baseline_counts: dict[str, int],
+) -> str | None:
+    """
+    Determine which pod handled a request by counting POST requests.
+
+    Args:
+        workload_pods: List of vLLM workload pods
+        query: Not used (kept for signature compatibility)
+        timestamp_before: Not used (kept for signature compatibility)
+        baseline_counts: Dict of {pod_name: request_count} before this request
+
+    Returns:
+        Pod name that handled the request, or None if not found
+    """
+    time.sleep(5)
+
+    current_counts = {}
+    for pod in workload_pods:
+        current_counts[pod.name] = count_chat_completions_requests_in_pod(pod)
+
+    for pod in workload_pods:
+        baseline = baseline_counts.get(pod.name, 0)
+        current = current_counts.get(pod.name, 0)
+
+        if current > baseline:
+            LOGGER.info(f"Pod {pod.name} handled request: {baseline} -> {current} (+{current - baseline})")
+            return pod.name
+
+    LOGGER.warning("Could not determine which pod handled request")
+    return None
+
+
+def verify_singlenode_prefix_cache_routing(
+    llmisvc: LLMInferenceService,
+    token: str,
+    workload_pods: list[Pod],
+) -> None:
+    """
+    Test single-node precise prefix cache routing with block-level caching validation.
+
+    This function validates the core concept of precise prefix caching:
+    - Repeated prompts should hit the same pod (full cache)
+    - Prompts with shared prefixes should route to same pod (partial cache)
+    - Different prompts may distribute across pods (load balancing)
+
+    Args:
+        llmisvc: The LLMInferenceService to send requests to
+        token: Authentication token
+        workload_pods: List of vLLM workload pods to check routing
+    """
+    LOGGER.info("Testing precise prefix cache routing")
+
+    # Initialize baseline request counts
+    baseline_counts = {}
+
+    for pod in workload_pods:
+        baseline_counts[pod.name] = count_chat_completions_requests_in_pod(pod)
+
+    # Phase 1: Repeated prompts (full cache hit)
+    LOGGER.info("Phase 1: Testing repeated prompts")
+    repeated_prompt = (
+        "Explain in detail the fundamental principles of quantum mechanics including "
+        "wave-particle duality, superposition, and entanglement in simple terms. "
+        "Additionally, describe how these quantum phenomena differ from classical physics "
+        "and why they are important for understanding the nature of reality at the atomic scale."
+    )
+
+    phase1_pods = []
+    for i in range(3):
+        inference_config = {
+            "default_query_model": {
+                "query_input": repeated_prompt,
+                "query_output": r'.*',
+                "use_regex": True,
+            },
+            "chat_completions": TINYLLAMA_INFERENCE_CONFIG["chat_completions"],
+        }
+
+        timestamp_before = time.time()
+        verify_inference_response_llmd(
+            llm_service=llmisvc,
+            inference_config=inference_config,
+            inference_type="chat_completions",
+            protocol=Protocols.HTTPS,
+            use_default_query=True,
+            insecure=False,
+            model_name=llmisvc.instance.spec.model.name,
+            token=token,
+            authorized_user=True,
+        )
+
+        handling_pod = get_pod_that_handled_request(workload_pods, repeated_prompt, timestamp_before, baseline_counts)
+        phase1_pods.append(handling_pod)
+        if handling_pod:
+            baseline_counts[handling_pod] = baseline_counts.get(handling_pod, 0) + 1
+
+    # Verify routing affinity for repeated prompts
+    unique_phase1_pods = set(p for p in phase1_pods if p is not None)
+    assert len(unique_phase1_pods) == 1, f"Repeated prompts should route to same pod, got {unique_phase1_pods}"
+    LOGGER.info(f"Phase 1: All repeated requests routed to {unique_phase1_pods}")
+
+    # Phase 2: Shared prefix prompts (partial cache hit)
+    LOGGER.info("Phase 2: Testing shared prefix prompts")
+    prefix = (
+        "Explain in detail the fundamental principles of quantum mechanics including "
+        "wave-particle duality, the concept of superposition, the measurement problem, "
+        "the Copenhagen interpretation, and how these principles challenge our classical "
+        "understanding of reality and determinism in"
+    )
+    shared_prefix_prompts = [
+        f"{prefix} modern physics",
+        f"{prefix} quantum computing applications",
+        f"{prefix} the study of subatomic particles",
+    ]
+
+    phase2_pods = []
+    for prompt in shared_prefix_prompts:
+        inference_config = {
+            "default_query_model": {
+                "query_input": prompt,
+                "query_output": r'.*',
+                "use_regex": True,
+            },
+            "chat_completions": TINYLLAMA_INFERENCE_CONFIG["chat_completions"],
+        }
+
+        timestamp_before = time.time()
+        verify_inference_response_llmd(
+            llm_service=llmisvc,
+            inference_config=inference_config,
+            inference_type="chat_completions",
+            protocol=Protocols.HTTPS,
+            use_default_query=True,
+            insecure=False,
+            model_name=llmisvc.instance.spec.model.name,
+            token=token,
+            authorized_user=True,
+        )
+
+        handling_pod = get_pod_that_handled_request(workload_pods, prompt, timestamp_before, baseline_counts)
+        phase2_pods.append(handling_pod)
+        if handling_pod:
+            baseline_counts[handling_pod] = baseline_counts.get(handling_pod, 0) + 1
+
+    # Verify routing affinity for shared prefix prompts
+    unique_phase2_pods = set(p for p in phase2_pods if p is not None)
+    assert len(unique_phase2_pods) == 1, f"Shared prefix prompts should route to same pod, got {unique_phase2_pods}"
+    LOGGER.info(f"Phase 2: All shared prefix requests routed to {unique_phase2_pods}")
+
+    LOGGER.info("All cache routing tests completed successfully")
