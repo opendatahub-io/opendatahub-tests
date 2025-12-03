@@ -22,6 +22,7 @@ from tests.model_registry.model_catalog.constants import (
     CATALOG_CONTAINER,
     PERFORMANCE_DATA_DIR,
 )
+from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
 from tests.model_registry.utils import execute_get_command
 from tests.model_registry.utils import get_rest_headers
 
@@ -1138,13 +1139,13 @@ def get_labels_from_configmaps(admin_client: DynamicClient, namespace: str) -> L
     labels = []
 
     # Get labels from default ConfigMap
-    default_cm = ConfigMap(name="model-catalog-default-sources", client=admin_client, namespace=namespace)
+    default_cm = ConfigMap(name=DEFAULT_MODEL_CATALOG_CM, client=admin_client, namespace=namespace)
     default_data = yaml.safe_load(default_cm.instance.data["sources.yaml"])
     if "labels" in default_data:
         labels.extend(default_data["labels"])
 
     # Get labels from sources ConfigMap
-    sources_cm = ConfigMap(name="model-catalog-sources", client=admin_client, namespace=namespace)
+    sources_cm = ConfigMap(name=DEFAULT_CUSTOM_MODEL_CATALOG, client=admin_client, namespace=namespace)
     sources_data = yaml.safe_load(sources_cm.instance.data["sources.yaml"])
     if "labels" in sources_data:
         labels.extend(sources_data["labels"])

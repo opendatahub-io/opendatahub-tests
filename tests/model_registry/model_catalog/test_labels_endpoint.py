@@ -1,11 +1,8 @@
 import pytest
-import yaml
-
+from typing import Any
 from kubernetes.dynamic import DynamicClient
 from simple_logger.logger import get_logger
 
-from ocp_resources.config_map import ConfigMap
-from ocp_resources.resource import ResourceEditor
 
 from utilities.infra import get_openshift_token
 from timeout_sampler import TimeoutSampler
@@ -51,45 +48,24 @@ class TestLabelsEndpoint:
         admin_client: DynamicClient,
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
+        labels_configmap_patch: dict[str, Any],
     ):
         """
         Sanity test: Edit the editable ConfigMap and verify changes are reflected in API.
         """
+        _ = labels_configmap_patch
 
-        # Get the editable ConfigMap
-        sources_cm = ConfigMap(name="model-catalog-sources", client=admin_client, namespace=model_registry_namespace)
+        def _check_updated_labels():
+            # Get updated expected labels from ConfigMaps
+            expected_labels = get_labels_from_configmaps(admin_client=admin_client, namespace=model_registry_namespace)
 
-        # Parse current data and add test label
-        current_data = yaml.safe_load(sources_cm.instance.data["sources.yaml"])
+            # Get labels from API
+            api_labels = get_labels_from_api(
+                model_catalog_rest_url=model_catalog_rest_url[0], user_token=get_openshift_token()
+            )
 
-        new_label = {
-            "name": "test-dynamic",
-            "displayName": "Dynamic Test Label",
-            "description": "A label added during test execution",
-        }
+            # Verify they match (including the new label)
+            verify_labels_match(expected_labels=expected_labels, api_labels=api_labels)
 
-        if "labels" not in current_data:
-            current_data["labels"] = []
-        current_data["labels"].append(new_label)
-
-        # Update ConfigMap temporarily
-        patches = {"data": {"sources.yaml": yaml.dump(current_data, default_flow_style=False)}}
-
-        with ResourceEditor(patches={sources_cm: patches}):
-
-            def _check_updated_labels():
-                # Get updated expected labels from ConfigMaps
-                expected_labels = get_labels_from_configmaps(
-                    admin_client=admin_client, namespace=model_registry_namespace
-                )
-
-                # Get labels from API
-                api_labels = get_labels_from_api(
-                    model_catalog_rest_url=model_catalog_rest_url[0], user_token=get_openshift_token()
-                )
-
-                # Verify they match (including the new label)
-                verify_labels_match(expected_labels=expected_labels, api_labels=api_labels)
-
-            sampler = TimeoutSampler(wait_timeout=60, sleep=5, func=_check_updated_labels)
-            next(iter(sampler))
+        sampler = TimeoutSampler(wait_timeout=60, sleep=5, func=_check_updated_labels)
+        next(iter(sampler))
