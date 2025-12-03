@@ -7,13 +7,12 @@ from tests.model_serving.model_server.utils import (
 from utilities.constants import (
     KServeDeploymentType,
     ModelFormat,
-    ModelInferenceRuntime,
-    ModelStoragePath,
+    ModelVersion,
     Protocols,
     RuntimeTemplates,
 )
 from utilities.inference_utils import Inference
-from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
+from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 from utilities.monitoring import get_metrics_value, validate_metrics_field
 
 pytestmark = [
@@ -28,17 +27,18 @@ pytestmark = [
     "unprivileged_model_namespace, serving_runtime_from_template, s3_models_inference_service",
     [
         pytest.param(
-            {"name": "kserve-tgis-metrics"},
+            {"name": "kserve-ovms-metrics"},
             {
-                "name": f"{Protocols.HTTP}-{ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME}",
-                "template-name": RuntimeTemplates.CAIKIT_TGIS_SERVING,
+                "name": f"{Protocols.HTTP}-{ModelFormat.ONNX}",
+                "template-name": RuntimeTemplates.OVMS_KSERVE,
                 "multi-model": False,
                 "enable-http": True,
             },
             {
-                "name": f"{Protocols.HTTP}-{ModelFormat.CAIKIT}",
+                "name": f"{Protocols.HTTP}-{ModelFormat.ONNX}",
                 "deployment-mode": KServeDeploymentType.SERVERLESS,
-                "model-dir": ModelStoragePath.FLAN_T5_SMALL_CAIKIT,
+                "model-dir": "test-dir",
+                "model-version": ModelVersion.OPSET13,
             },
         )
     ],
@@ -51,15 +51,14 @@ class TestModelMetrics:
         """Verify number of successful model requests in OpenShift monitoring system (UserWorkloadMonitoring) metrics"""
         verify_inference_response(
             inference_service=s3_models_inference_service,
-            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
-            inference_type=Inference.ALL_TOKENS,
+            inference_config=ONNX_INFERENCE_CONFIG,
+            inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
-            model_name=ModelFormat.CAIKIT,
             use_default_query=True,
         )
         validate_metrics_field(
             prometheus=prometheus,
-            metrics_query="tgi_request_success",
+            metrics_query="ovms_requests_success",
             expected_value="1",
         )
 
@@ -71,16 +70,15 @@ class TestModelMetrics:
 
         run_inference_multiple_times(
             isvc=s3_models_inference_service,
-            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
-            inference_type=Inference.ALL_TOKENS,
+            inference_config=ONNX_INFERENCE_CONFIG,
+            inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
-            model_name=ModelFormat.CAIKIT,
             iterations=total_runs,
             run_in_parallel=True,
         )
         validate_metrics_field(
             prometheus=prometheus,
-            metrics_query="tgi_request_count",
+            metrics_query="ovms_requests_success",
             expected_value=str(total_runs + 1),
         )
 
