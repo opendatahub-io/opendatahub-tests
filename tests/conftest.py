@@ -71,6 +71,7 @@ pytest_plugins = [
     "tests.fixtures.guardrails",
     "tests.fixtures.trustyai",
     "tests.fixtures.vector_io",
+    "tests.fixtures.files",
 ]
 
 

@@ -20,6 +20,7 @@ LOGGER = get_logger(name=__name__)
             {
                 "llama_stack_storage_size": "2Gi",
                 "vector_io_provider": "milvus",
+                "files_provider": "s3",
             },
             {"vector_io_provider": "milvus"},
             id="vector_io_provider_milvus",
@@ -29,6 +30,7 @@ LOGGER = get_logger(name=__name__)
             {
                 "llama_stack_storage_size": "2Gi",
                 "vector_io_provider": "faiss",
+                "files_provider": "local",
             },
             {"vector_io_provider": "faiss"},
             id="vector_io_provider_faiss",
@@ -38,6 +40,7 @@ LOGGER = get_logger(name=__name__)
             {
                 "llama_stack_storage_size": "2Gi",
                 "vector_io_provider": "milvus-remote",
+                "files_provider": "s3",
             },
             {"vector_io_provider": "milvus-remote"},
             id="vector_io_provider_milvus-remote",
