@@ -1,4 +1,4 @@
-from typing import Any, Tuple, List
+from typing import Any, Tuple, List, Dict
 import yaml
 
 from kubernetes.dynamic import DynamicClient
@@ -22,7 +22,9 @@ from tests.model_registry.model_catalog.constants import (
     CATALOG_CONTAINER,
     PERFORMANCE_DATA_DIR,
 )
+from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
 from tests.model_registry.utils import execute_get_command
+from tests.model_registry.utils import get_rest_headers
 
 LOGGER = get_logger(name=__name__)
 
@@ -1121,3 +1123,75 @@ def validate_model_artifacts_match_criteria_or(
 
     LOGGER.error(f"Model {model_name} failed all OR validations")
     return False
+
+
+def get_labels_from_configmaps(admin_client: DynamicClient, namespace: str) -> List[Dict[str, Any]]:
+    """
+    Get all labels from both model catalog ConfigMaps.
+
+    Args:
+        admin_client: Kubernetes client
+        namespace: Namespace containing the ConfigMaps
+
+    Returns:
+        List of all label dictionaries from both ConfigMaps
+    """
+    labels = []
+
+    # Get labels from default ConfigMap
+    default_cm = ConfigMap(name=DEFAULT_MODEL_CATALOG_CM, client=admin_client, namespace=namespace)
+    default_data = yaml.safe_load(default_cm.instance.data["sources.yaml"])
+    if "labels" in default_data:
+        labels.extend(default_data["labels"])
+
+    # Get labels from sources ConfigMap
+    sources_cm = ConfigMap(name=DEFAULT_CUSTOM_MODEL_CATALOG, client=admin_client, namespace=namespace)
+    sources_data = yaml.safe_load(sources_cm.instance.data["sources.yaml"])
+    if "labels" in sources_data:
+        labels.extend(sources_data["labels"])
+
+    return labels
+
+
+def get_labels_from_api(model_catalog_rest_url: str, user_token: str) -> List[Dict[str, Any]]:
+    """
+    Get labels from the API endpoint.
+
+    Args:
+        model_catalog_rest_url: Base URL for model catalog API
+        user_token: Authentication token
+
+    Returns:
+        List of label dictionaries from API response
+    """
+    url = f"{model_catalog_rest_url}labels"
+    headers = get_rest_headers(token=user_token)
+    response = execute_get_command(url=url, headers=headers)
+    return response["items"]
+
+
+def verify_labels_match(expected_labels: List[Dict[str, Any]], api_labels: List[Dict[str, Any]]) -> None:
+    """
+    Verify that all expected labels are present in the API response.
+
+    Args:
+        expected_labels: Labels expected from ConfigMaps
+        api_labels: Labels returned by API
+
+    Raises:
+        AssertionError: If any expected label is not found in API response
+    """
+    LOGGER.info(f"Verifying {len(expected_labels)} expected labels against {len(api_labels)} API labels")
+
+    for expected_label in expected_labels:
+        found = False
+        for api_label in api_labels:
+            if (
+                expected_label.get("name") == api_label.get("name")
+                and expected_label.get("displayName") == api_label.get("displayName")
+                and expected_label.get("description") == api_label.get("description")
+            ):
+                found = True
+                break
+
+        assert found, f"Expected label not found in API response: {expected_label}"

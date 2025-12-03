@@ -18,7 +18,7 @@ from tests.model_registry.model_catalog.constants import (
     REDHAT_AI_CATALOG_ID,
 )
 from tests.model_registry.model_catalog.utils import get_models_from_catalog_api
-from tests.model_registry.constants import CUSTOM_CATALOG_ID1
+from tests.model_registry.constants import CUSTOM_CATALOG_ID1, DEFAULT_CUSTOM_MODEL_CATALOG
 from tests.model_registry.utils import (
     get_rest_headers,
     is_model_catalog_ready,
@@ -225,3 +225,27 @@ def models_from_filter_query(
     LOGGER.info(f"Filter query '{filter_query}' returned {len(model_names)} models: {', '.join(model_names)}")
 
     return model_names
+
+
+@pytest.fixture()
+def labels_configmap_patch(admin_client: DynamicClient, model_registry_namespace: str) -> dict[str, Any]:
+    # Get the editable ConfigMap
+    sources_cm = ConfigMap(name=DEFAULT_CUSTOM_MODEL_CATALOG, client=admin_client, namespace=model_registry_namespace)
+
+    # Parse current data and add test label
+    current_data = yaml.safe_load(sources_cm.instance.data["sources.yaml"])
+
+    new_label = {
+        "name": "test-dynamic",
+        "displayName": "Dynamic Test Label",
+        "description": "A label added during test execution",
+    }
+
+    if "labels" not in current_data:
+        current_data["labels"] = []
+    current_data["labels"].append(new_label)
+
+    patches = {"data": {"sources.yaml": yaml.dump(current_data, default_flow_style=False)}}
+
+    with ResourceEditor(patches={sources_cm: patches}):
+        yield patches
