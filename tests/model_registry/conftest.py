@@ -110,14 +110,6 @@ def model_registry_instance(
                 wait_for_pods_running(
                     admin_client=admin_client, namespace_name=model_registry_namespace, number_of_consecutive_checks=6
                 )
-                if db_name == "default":
-                    # TODO: This is to give extra time to postgres pod due to RHOAIENG-40875. Remove when the Jira is
-                    # addressed
-                    wait_for_pods_running(
-                        admin_client=admin_client,
-                        namespace_name=model_registry_namespace,
-                        number_of_consecutive_checks=6,
-                    )
             yield mr_instances
         if db_name == "default":
             wait_for_default_resource_cleanedup(admin_client=admin_client, namespace_name=model_registry_namespace)
