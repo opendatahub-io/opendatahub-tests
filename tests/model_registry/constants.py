@@ -41,7 +41,7 @@ OAUTH_PROXY_CONFIG_DICT: dict[str, Any] = {
 DB_BASE_RESOURCES_NAME: str = "db-model-registry"
 DB_RESOURCE_NAME: str = f"{DB_BASE_RESOURCES_NAME}0"
 MR_DB_IMAGE_DIGEST: str = (
-    "public.ecr.aws/docker/library/mysql@sha256:9de9d54fecee6253130e65154b930978b1fcc336bcc86dfd06e89b72a2588ebe"
+    "public.ecr.aws/docker/library/mysql@sha256:28540698ce89bd72f985044de942d65bd99c6fadb2db105327db57f3f70564f0"
 )
 MODEL_REGISTRY_DB_SECRET_STR_DATA: dict[str, str] = {
     "database-name": "model_registry",
