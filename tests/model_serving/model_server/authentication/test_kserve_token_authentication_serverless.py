@@ -111,4 +111,3 @@ class TestKserveServerlessTokenAuthentication:
         ).update()
 
         check_pod_status_in_time(pod=pod, status={pod.Status.RUNNING})
-

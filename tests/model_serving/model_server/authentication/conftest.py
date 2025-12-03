@@ -25,7 +25,6 @@ from utilities.constants import (
     Protocols,
     ModelInferenceRuntime,
     RuntimeTemplates,
-    ModelStoragePath,
     RunTimeConfigs,
     ModelAndFormat,
     ModelVersion,
@@ -572,7 +571,9 @@ def http_ovms_inference_token(model_service_account: ServiceAccount, http_ovms_r
 
 
 @pytest.fixture(scope="class")
-def http_ovms_raw_inference_token(model_service_account: ServiceAccount, http_ovms_raw_role_binding: RoleBinding) -> str:
+def http_ovms_raw_inference_token(
+    model_service_account: ServiceAccount, http_ovms_raw_role_binding: RoleBinding
+) -> str:
     return RedactedString(value=create_inference_token(model_service_account=model_service_account))
 
 
