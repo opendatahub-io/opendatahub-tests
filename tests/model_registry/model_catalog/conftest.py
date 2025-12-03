@@ -17,6 +17,7 @@ from tests.model_registry.model_catalog.constants import (
     CATALOG_CONTAINER,
     REDHAT_AI_CATALOG_ID,
 )
+from tests.model_registry.model_catalog.utils import get_models_from_catalog_api
 from tests.model_registry.constants import (
     CUSTOM_CATALOG_ID1,
     DEFAULT_MODEL_CATALOG_CM,
@@ -243,3 +244,29 @@ def catalog_openapi_schema() -> dict[Any, Any]:
     response = requests.get(OPENAPI_SCHEMA_URL, timeout=10)
     response.raise_for_status()
     return yaml.safe_load(response.text)
+
+
+@pytest.fixture
+def models_from_filter_query(
+    request,
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+) -> list[str]:
+    """
+    Fixture that runs get_models_from_catalog_api with the given filter_query,
+    asserts that models are returned, and returns list of model names.
+    """
+    filter_query = request.param
+
+    models = get_models_from_catalog_api(
+        model_catalog_rest_url=model_catalog_rest_url,
+        model_registry_rest_headers=model_registry_rest_headers,
+        additional_params=f"&filterQuery={filter_query}",
+    )["items"]
+
+    assert models, f"No models returned from filter query: {filter_query}"
+
+    model_names = [model["name"] for model in models]
+    LOGGER.info(f"Filter query '{filter_query}' returned {len(model_names)} models: {', '.join(model_names)}")
+
+    return model_names
