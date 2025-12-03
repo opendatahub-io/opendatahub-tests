@@ -9,7 +9,7 @@ from utilities.constants import (
     ModelFormat,
     ModelVersion,
     Protocols,
-    RuntimeTemplates,
+    RunTimeConfigs,
 )
 from utilities.inference_utils import Inference
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
@@ -24,16 +24,11 @@ pytestmark = [
 
 @pytest.mark.serverless
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, serving_runtime_from_template, s3_models_inference_service",
+    "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service",
     [
         pytest.param(
             {"name": "kserve-ovms-metrics"},
-            {
-                "name": f"{Protocols.HTTP}-{ModelFormat.ONNX}",
-                "template-name": RuntimeTemplates.OVMS_KSERVE,
-                "multi-model": False,
-                "enable-http": True,
-            },
+            RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
             {
                 "name": f"{Protocols.HTTP}-{ModelFormat.ONNX}",
                 "deployment-mode": KServeDeploymentType.SERVERLESS,
@@ -47,10 +42,10 @@ pytestmark = [
 class TestModelMetrics:
     @pytest.mark.smoke
     @pytest.mark.polarion("ODS-2555")
-    def test_model_metrics_num_success_requests(self, s3_models_inference_service, prometheus):
+    def test_model_metrics_num_success_requests(self, ovms_kserve_inference_service, prometheus):
         """Verify number of successful model requests in OpenShift monitoring system (UserWorkloadMonitoring) metrics"""
         verify_inference_response(
-            inference_service=s3_models_inference_service,
+            inference_service=ovms_kserve_inference_service,
             inference_config=ONNX_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
@@ -64,12 +59,12 @@ class TestModelMetrics:
 
     @pytest.mark.smoke
     @pytest.mark.polarion("ODS-2555")
-    def test_model_metrics_num_total_requests(self, s3_models_inference_service, prometheus):
+    def test_model_metrics_num_total_requests(self, ovms_kserve_inference_service, prometheus):
         """Verify number of total model requests in OpenShift monitoring system (UserWorkloadMonitoring) metrics"""
         total_runs = 5
 
         run_inference_multiple_times(
-            isvc=s3_models_inference_service,
+            isvc=ovms_kserve_inference_service,
             inference_config=ONNX_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
@@ -84,9 +79,9 @@ class TestModelMetrics:
 
     @pytest.mark.smoke
     @pytest.mark.polarion("ODS-2555")
-    def test_model_metrics_cpu_utilization(self, s3_models_inference_service, prometheus):
+    def test_model_metrics_cpu_utilization(self, ovms_kserve_inference_service, prometheus):
         """Verify CPU utilization data in OpenShift monitoring system (UserWorkloadMonitoring) metrics"""
         assert get_metrics_value(
             prometheus=prometheus,
-            metrics_query=f"pod:container_cpu_usage:sum{{namespace='{s3_models_inference_service.namespace}'}}",
+            metrics_query=f"pod:container_cpu_usage:sum{{namespace='{ovms_kserve_inference_service.namespace}'}}",
         )
