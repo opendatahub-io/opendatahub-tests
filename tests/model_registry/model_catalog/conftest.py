@@ -56,14 +56,13 @@ def enabled_model_catalog_config_map(
 
     # Parse the YAML and extract only catalogs, enabling each one
     parsed_yaml = yaml.safe_load(default_sources_yaml)
-    if parsed_yaml and "catalogs" in parsed_yaml:
-        for catalog in parsed_yaml["catalogs"]:
-            catalog["enabled"] = True
-        enabled_yaml_dict = {"catalogs": parsed_yaml["catalogs"]}
-        enabled_sources_yaml = yaml.dump(enabled_yaml_dict, default_flow_style=False, sort_keys=False)
-    else:
-        LOGGER.warning("No catalogs found in default sources ConfigMap")
-        enabled_sources_yaml = default_sources_yaml
+    if not parsed_yaml or "catalogs" not in parsed_yaml:
+        raise RuntimeError("No catalogs found in default sources ConfigMap")
+
+    for catalog in parsed_yaml["catalogs"]:
+        catalog["enabled"] = True
+    enabled_yaml_dict = {"catalogs": parsed_yaml["catalogs"]}
+    enabled_sources_yaml = yaml.dump(enabled_yaml_dict, default_flow_style=False, sort_keys=False)
 
     LOGGER.info("Adding enabled catalogs to model-catalog-sources ConfigMap")
 

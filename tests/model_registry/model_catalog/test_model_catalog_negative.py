@@ -84,7 +84,6 @@ def _get_default_catalog_str() -> str:
     catalog_str = f"""
 - name: {first_catalog_data["name"]}
   id: {first_catalog_id}
-  enabled: true
   type: {first_catalog_data["type"]}
   properties:
     yamlCatalogPath: {first_catalog_data["properties"]["yamlCatalogPath"]}
