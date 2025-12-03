@@ -140,23 +140,26 @@ def create_ns(
         namespace_kwargs["label"][Labels.Kueue.MANAGED] = "true"  # type: ignore
 
     if unprivileged_client:
-        with ProjectRequest(name=name, client=unprivileged_client, teardown=teardown):
-            project = Project(**namespace_kwargs)
-            project.wait_for_status(status=project.Status.ACTIVE, timeout=Timeout.TIMEOUT_2MIN)
-            if _labels := namespace_kwargs.get("label", {}):
-                # To patch the namespace, admin client is required
-                ns = Namespace(client=get_client(), name=name)
-                ResourceEditor({
-                    ns: {
-                        "metadata": {
-                            "labels": _labels,
-                        }
+        namespace_kwargs["client"] = unprivileged_client
+        project = ProjectRequest(**namespace_kwargs).deploy()
+        project.wait_for_status(status=project.Status.ACTIVE, timeout=Timeout.TIMEOUT_2MIN)
+        if _labels := namespace_kwargs.get("label", {}):
+            # To patch the namespace, admin client is required
+            ns = Namespace(client=get_client(), name=name)
+            ResourceEditor({
+                ns: {
+                    "metadata": {
+                        "labels": _labels,
                     }
-                }).update()
-            yield project
+                }
+            }).update()
+        yield project
 
-            if teardown:
-                wait_for_serverless_pods_deletion(resource=project, admin_client=client)
+        if teardown:
+            wait_for_serverless_pods_deletion(resource=project, admin_client=get_client())
+            # cleanup must be done with admin client
+            project.client = get_client()
+            project.clean_up()
 
     else:
         with Namespace(**namespace_kwargs) as ns:
