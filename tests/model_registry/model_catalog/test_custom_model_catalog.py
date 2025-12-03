@@ -55,7 +55,7 @@ LOGGER = get_logger(name=__name__)
 class TestModelCatalogCustom:
     def test_model_custom_catalog_list_sources(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
+        updated_catalog_config_map: tuple[ConfigMap, str, str],
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         expected_catalog_values: dict[str, str],
@@ -71,7 +71,7 @@ class TestModelCatalogCustom:
 
     def test_model_custom_catalog_get_models_by_source(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
+        updated_catalog_config_map: tuple[ConfigMap, str, str],
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         expected_catalog_values: dict[str, str],
