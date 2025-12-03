@@ -6,7 +6,6 @@ from tests.model_registry.model_catalog.constants import (
     SAMPLE_MODEL_NAME3,
 )
 from tests.model_registry.constants import SAMPLE_MODEL_NAME1, CUSTOM_CATALOG_ID1
-from ocp_resources.config_map import ConfigMap
 import pytest
 from simple_logger.logger import get_logger
 from typing import Self
@@ -55,7 +54,6 @@ LOGGER = get_logger(name=__name__)
 class TestModelCatalogCustom:
     def test_model_custom_catalog_list_sources(
         self: Self,
-        updated_catalog_config_map: tuple[ConfigMap, str, str],
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         expected_catalog_values: dict[str, str],
@@ -71,7 +69,6 @@ class TestModelCatalogCustom:
 
     def test_model_custom_catalog_get_models_by_source(
         self: Self,
-        updated_catalog_config_map: tuple[ConfigMap, str, str],
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         expected_catalog_values: dict[str, str],
@@ -89,7 +86,6 @@ class TestModelCatalogCustom:
 
     def test_model_custom_catalog_get_model_by_name(
         self: Self,
-        updated_catalog_config_map: tuple[ConfigMap, str, str],
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         expected_catalog_values: dict[str, str],
@@ -108,7 +104,6 @@ class TestModelCatalogCustom:
 
     def test_model_custom_catalog_get_model_artifact(
         self: Self,
-        updated_catalog_config_map: tuple[ConfigMap, str, str],
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         expected_catalog_values: dict[str, str],

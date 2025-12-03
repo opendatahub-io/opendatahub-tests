@@ -741,9 +741,9 @@ def validate_model_catalog_sources(
         url=model_catalog_sources_url,
         headers=rest_headers,
     )["items"]
-    LOGGER.info(results)
+    LOGGER.info(f"Model catalog sources: {results}")
     # this is for the default catalog:
-    assert len(results) == len(expected_catalog_values) + 2
+    assert len(results) == len(expected_catalog_values)
     ids_from_query = [result_entry["id"] for result_entry in results]
     ids_expected = [expected_entry["id"] for expected_entry in expected_catalog_values]
     assert set(ids_expected).issubset(set(ids_from_query)), f"Expected: {expected_catalog_values}. Actual: {results}"
