@@ -265,17 +265,17 @@ def count_chat_completions_requests_in_pod(pod: Pod) -> int:
         logs = pod.log(container="main", since_seconds=120)
 
         # Match: "POST /v1/chat/completions HTTP/1.1" 200
-        pattern = r'POST /v1/chat/completions HTTP/1.1.*200'
+        pattern = r"POST /v1/chat/completions HTTP/1.1.*200"
         matches = re.findall(pattern, logs)
 
         LOGGER.info(f"Pod {pod.name}: Found {len(matches)} requests matching pattern")
 
         # Debug: Show sample log lines if no matches found
         if len(matches) == 0:
-            log_lines = logs.split('\n')
+            log_lines = logs.split("\n")
             LOGGER.info(f"Pod {pod.name}: Total log lines: {len(log_lines)}")
             # Show lines containing "POST" or "completions"
-            relevant_lines = [line for line in log_lines if 'POST' in line or 'completion' in line.lower()]
+            relevant_lines = [line for line in log_lines if "POST" in line or "completion" in line.lower()]
             if relevant_lines:
                 LOGGER.info(f"Pod {pod.name}: Sample relevant lines (first 5):")
                 for line in relevant_lines[:5]:
@@ -287,29 +287,20 @@ def count_chat_completions_requests_in_pod(pod: Pod) -> int:
         return 0
 
 
-def get_pod_that_handled_request(
-    workload_pods: list[Pod],
-    query: str,
-    timestamp_before: float,
-    baseline_counts: dict[str, int],
-) -> str | None:
+def get_pod_that_handled_request(workload_pods: list[Pod], baseline_counts: dict[str, int]) -> str | None:
     """
     Determine which pod handled a request by counting POST requests.
 
     Args:
         workload_pods: List of vLLM workload pods
-        query: Not used (kept for signature compatibility)
-        timestamp_before: Not used (kept for signature compatibility)
         baseline_counts: Dict of {pod_name: request_count} before this request
 
     Returns:
         Pod name that handled the request, or None if not found
     """
-    time.sleep(5)
-
     current_counts = {}
     for pod in workload_pods:
-        current_counts[pod.name] = count_chat_completions_requests_in_pod(pod)
+        current_counts[pod.name] = count_chat_completions_requests_in_pod(pod=pod)
 
     for pod in workload_pods:
         baseline = baseline_counts.get(pod.name, 0)
@@ -347,7 +338,7 @@ def verify_singlenode_prefix_cache_routing(
     baseline_counts = {}
 
     for pod in workload_pods:
-        baseline_counts[pod.name] = count_chat_completions_requests_in_pod(pod)
+        baseline_counts[pod.name] = count_chat_completions_requests_in_pod(pod=pod)
 
     # Phase 1: Repeated prompts (full cache hit)
     LOGGER.info("Phase 1: Testing repeated prompts")
@@ -363,13 +354,12 @@ def verify_singlenode_prefix_cache_routing(
         inference_config = {
             "default_query_model": {
                 "query_input": repeated_prompt,
-                "query_output": r'.*',
+                "query_output": r".*",
                 "use_regex": True,
             },
             "chat_completions": TINYLLAMA_INFERENCE_CONFIG["chat_completions"],
         }
 
-        timestamp_before = time.time()
         verify_inference_response_llmd(
             llm_service=llmisvc,
             inference_config=inference_config,
@@ -382,7 +372,10 @@ def verify_singlenode_prefix_cache_routing(
             authorized_user=True,
         )
 
-        handling_pod = get_pod_that_handled_request(workload_pods, repeated_prompt, timestamp_before, baseline_counts)
+        handling_pod = get_pod_that_handled_request(
+            workload_pods=workload_pods,
+            baseline_counts=baseline_counts,
+        )
         phase1_pods.append(handling_pod)
         if handling_pod:
             baseline_counts[handling_pod] = baseline_counts.get(handling_pod, 0) + 1
@@ -411,13 +404,12 @@ def verify_singlenode_prefix_cache_routing(
         inference_config = {
             "default_query_model": {
                 "query_input": prompt,
-                "query_output": r'.*',
+                "query_output": r".*",
                 "use_regex": True,
             },
             "chat_completions": TINYLLAMA_INFERENCE_CONFIG["chat_completions"],
         }
 
-        timestamp_before = time.time()
         verify_inference_response_llmd(
             llm_service=llmisvc,
             inference_config=inference_config,
@@ -430,7 +422,10 @@ def verify_singlenode_prefix_cache_routing(
             authorized_user=True,
         )
 
-        handling_pod = get_pod_that_handled_request(workload_pods, prompt, timestamp_before, baseline_counts)
+        handling_pod = get_pod_that_handled_request(
+            workload_pods=workload_pods,
+            baseline_counts=baseline_counts,
+        )
         phase2_pods.append(handling_pod)
         if handling_pod:
             baseline_counts[handling_pod] = baseline_counts.get(handling_pod, 0) + 1

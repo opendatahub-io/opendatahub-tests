@@ -375,10 +375,10 @@ def singlenode_precise_prefix_cache(
                 "name": "VLLM_ADDITIONAL_ARGS",
                 "value": (
                     f"--prefix-caching-hash-algo {PREFIX_CACHE_HASH_ALGO} --block-size {PREFIX_CACHE_BLOCK_SIZE} "
-                    "--kv_transfer_config '{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\"}' "
-                    "--kv-events-config '{\"enable_kv_cache_events\":true,\"publisher\":\"zmq\","
-                    "\"endpoint\":\"tcp://{{ ChildName .ObjectMeta.Name `-epp-service` }}:5557\","
-                    "\"topic\":\"kv@${POD_IP}@${MODEL_NAME}\"}'"
+                    '--kv_transfer_config \'{"kv_connector":"NixlConnector","kv_role":"kv_both"}\' '
+                    '--kv-events-config \'{"enable_kv_cache_events":true,"publisher":"zmq",'
+                    '"endpoint":"tcp://{{ ChildName .ObjectMeta.Name `-epp-service` }}:5557",'
+                    '"topic":"kv@${POD_IP}@${MODEL_NAME}"}\''
                 ),
             },
             {

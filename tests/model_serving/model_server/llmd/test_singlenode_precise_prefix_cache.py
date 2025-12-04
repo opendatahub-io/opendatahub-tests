@@ -1,16 +1,3 @@
-import pytest
-from kubernetes.dynamic import DynamicClient
-from ocp_resources.llm_inference_service import LLMInferenceService
-
-from tests.model_serving.model_server.llmd.utils import (
-    get_llmd_router_scheduler_pod,
-    get_llmd_workload_pods,
-    verify_gateway_status,
-    verify_llm_service_status,
-    verify_singlenode_prefix_cache_routing,
-)
-from simple_logger.logger import get_logger
-
 """
 Test Single-Node Precise Prefix Caching.
 
@@ -24,9 +11,23 @@ Test configuration:
 - Send multiple requests with shared prefixes and size greater than PREFIX_CACHE_BLOCK_SIZE
 """
 
+import pytest
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.llm_inference_service import LLMInferenceService
+
+from tests.model_serving.model_server.llmd.utils import (
+    get_llmd_router_scheduler_pod,
+    get_llmd_workload_pods,
+    verify_gateway_status,
+    verify_llm_service_status,
+    verify_singlenode_prefix_cache_routing,
+)
+from simple_logger.logger import get_logger
+
 LOGGER = get_logger(name=__name__)
 
 pytestmark = [pytest.mark.llmd_gpu]
+
 
 @pytest.mark.parametrize(
     "unprivileged_model_namespace",
@@ -75,12 +76,14 @@ class TestSingleNodePrecisePrefixCache:
         assert verify_llm_service_status(singlenode_precise_prefix_cache), "LLMInferenceService should be ready"
 
         # Verify router-scheduler pod exists and is running
-        router_scheduler_pod = get_llmd_router_scheduler_pod(unprivileged_client, singlenode_precise_prefix_cache)
+        router_scheduler_pod = get_llmd_router_scheduler_pod(
+            client=unprivileged_client, llmisvc=singlenode_precise_prefix_cache
+        )
         assert router_scheduler_pod is not None, "Router-scheduler pod should exist"
         assert router_scheduler_pod.instance.status.phase == "Running", "Router-scheduler pod should be running"
 
         # Verify workload pods
-        workload_pods = get_llmd_workload_pods(unprivileged_client, singlenode_precise_prefix_cache)
+        workload_pods = get_llmd_workload_pods(client=unprivileged_client, llmisvc=singlenode_precise_prefix_cache)
         assert len(workload_pods) == 2, f"Expected 2 workload pods, found {len(workload_pods)}"
 
         # Test prefix cache routing (includes assertions for routing affinity)
