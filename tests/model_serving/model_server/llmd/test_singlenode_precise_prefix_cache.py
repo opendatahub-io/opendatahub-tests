@@ -34,37 +34,26 @@ pytestmark = [pytest.mark.llmd_gpu]
     [pytest.param({"name": "singlenode-prefix-cache-test"})],
     indirect=True,
 )
+@pytest.mark.parametrize(
+    "authenticated_llmisvc_token",
+    [
+        pytest.param({
+            "service_account_fixture": "llmd_s3_service_account",
+            "llmisvc_fixture": "singlenode_precise_prefix_cache",
+        })
+    ],
+    indirect=True,
+)
 @pytest.mark.usefixtures("valid_aws_config")
 class TestSingleNodePrecisePrefixCache:
     """Test class for singlenode precise prefix cache routing."""
-
-    @pytest.fixture(scope="class", autouse=True)
-    def setup_auth(
-        self,
-        llmd_gateway,
-        singlenode_precise_prefix_cache,
-        llmd_s3_service_account,
-        llmisvc_auth_token,
-        llmisvc_auth_view_role,
-        llmisvc_auth_role_binding,
-    ):
-        """Set up authentication for single-node prefix cache test."""
-        # Create token with RBAC resources using factory fixtures
-        token = llmisvc_auth_token(
-            service_account=llmd_s3_service_account,
-            llmisvc=singlenode_precise_prefix_cache,
-            view_role_factory=llmisvc_auth_view_role,
-            role_binding_factory=llmisvc_auth_role_binding,
-        )
-
-        # Store token as class attribute for use in tests
-        TestSingleNodePrecisePrefixCache.auth_token = token
 
     def test_singlenode_precise_prefix_cache(
         self,
         unprivileged_client: DynamicClient,
         llmd_gateway,
         singlenode_precise_prefix_cache: LLMInferenceService,
+        authenticated_llmisvc_token: str,
         gpu_count_on_cluster: int,
     ):
         """Test single-node precise prefix cache routing."""
@@ -89,6 +78,6 @@ class TestSingleNodePrecisePrefixCache:
         # Test prefix cache routing (includes assertions for routing affinity)
         verify_singlenode_prefix_cache_routing(
             llmisvc=singlenode_precise_prefix_cache,
-            token=self.auth_token,
+            token=authenticated_llmisvc_token,
             workload_pods=workload_pods,
         )
