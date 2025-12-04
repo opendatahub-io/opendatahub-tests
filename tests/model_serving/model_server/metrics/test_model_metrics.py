@@ -53,7 +53,7 @@ class TestModelMetrics:
         )
         validate_metrics_field(
             prometheus=prometheus,
-            metrics_query="ovms_requests_success",
+            metrics_query=f"ovms_requests_success{{namespace='{ovms_kserve_inference_service.namespace}'}}",
             expected_value="1",
         )
 
@@ -73,7 +73,7 @@ class TestModelMetrics:
         )
         validate_metrics_field(
             prometheus=prometheus,
-            metrics_query="ovms_requests_success",
+            metrics_query=f"ovms_requests_success{{namespace='{ovms_kserve_inference_service.namespace}'}}",
             expected_value=str(total_runs + 1),
         )
 
