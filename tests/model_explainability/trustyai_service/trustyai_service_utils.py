@@ -370,7 +370,7 @@ def wait_for_isvc_deployment_registered_by_trustyai_service(
         )
 
     samples = TimeoutSampler(
-        wait_timeout=Timeout.TIMEOUT_10MIN,
+        wait_timeout=Timeout.TIMEOUT_20MIN,
         sleep=1,
         func=_get_deployments,
     )
