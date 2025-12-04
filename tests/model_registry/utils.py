@@ -43,6 +43,12 @@ MARIA_DB_IMAGE = (
 LOGGER = get_logger(name=__name__)
 
 
+class TransientUnauthorizedError(Exception):
+    """Exception for transient 401 Unauthorized errors that should be retried."""
+
+    pass
+
+
 def get_mr_service_by_label(client: DynamicClient, namespace_name: str, mr_instance: ModelRegistry) -> Service:
     """
     Args:
@@ -702,13 +708,25 @@ def execute_get_call(
     resp = requests.get(url=url, headers=headers, verify=verify, timeout=60, params=params)
     LOGGER.info(f"Encoded url from requests library: {resp.url}")
     if resp.status_code not in [200, 201]:
+        # Raise custom exception for 401 errors that can be retried (OAuth/kube-rbac-proxy initialization)
+        if resp.status_code == 401:
+            raise TransientUnauthorizedError(f"Get call failed for resource: {url}, 401: {resp.text}")
+        # Raise regular exception for other errors (400, 403, 404, etc.) that should fail immediately
         raise ResourceNotFoundError(f"Get call failed for resource: {url}, {resp.status_code}: {resp.text}")
     return resp
 
 
-@retry(wait_timeout=60, sleep=5, exceptions_dict={ResourceNotFoundError: []})
+@retry(wait_timeout=60, sleep=5, exceptions_dict={ResourceNotFoundError: [], TransientUnauthorizedError: []})
 def wait_for_model_catalog_api(url: str, headers: dict[str, str], verify: bool | str = False) -> requests.Response:
-    return execute_get_call(url=f"{url}sources", headers=headers, verify=verify)
+    """
+    Wait for model catalog API to be ready and fully initialized checks both /sources and /models endpoints
+    to ensure OAuth/kube-rbac-proxy is fully initialized.
+    """
+    LOGGER.info(f"Waiting for model catalog API at {url}sources")
+    execute_get_call(url=f"{url}sources", headers=headers, verify=verify)
+    LOGGER.info(f"Verifying model catalog API readiness at {url}models")
+
+    return execute_get_call(url=f"{url}models", headers=headers, verify=verify)
 
 
 def execute_get_command(
