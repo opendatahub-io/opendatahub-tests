@@ -38,6 +38,6 @@ class TestRawUnprivilegedUserMetrics:
         )
         validate_metrics_field(
             prometheus=prometheus,
-            metrics_query="ovms_requests_success",
+            metrics_query=f"ovms_requests_success{{namespace='{unprivileged_ovms_raw_inference_service.namespace}'}}",
             expected_value=str(total_runs),
         )
