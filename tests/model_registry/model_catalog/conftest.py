@@ -192,7 +192,8 @@ def randomly_picked_model_from_catalog_api_by_source(
     # Support both 'catalog_id' and 'source' for backward compatibility
     catalog_id = param.get("catalog_id") or param.get("source", REDHAT_AI_CATALOG_ID)
     header_type = param.get("header_type", "user_token")
-
+    model_name = param.get("model_name")
+    random_model = None
     # Select headers based on header_type
     if header_type == "registry":
         headers = model_registry_rest_headers
@@ -200,22 +201,27 @@ def randomly_picked_model_from_catalog_api_by_source(
         headers = get_rest_headers(token=user_token_for_api_calls)
 
     LOGGER.info(f"Picking random model from catalog: {catalog_id} with header_type: {header_type}")
-
-    models_response = execute_get_command(
-        url=f"{model_catalog_rest_url[0]}models?source={catalog_id}&pageSize=100",
-        headers=headers,
-    )
-    models = models_response.get("items", [])
-    assert models, f"No models found for catalog: {catalog_id}"
-    LOGGER.info(f"{len(models)} models found in catalog {catalog_id}")
-
-    random_model = random.choice(seq=models)
-
-    model_name = random_model.get("name")
-    assert model_name, "Model name not found in random model"
-    assert random_model.get("source_id") == catalog_id, f"Catalog ID (source_id) mismatch for model {model_name}"
-    LOGGER.info(f"Testing model '{model_name}' from catalog '{catalog_id}'")
-
+    if not model_name:
+        models_response = execute_get_command(
+            url=f"{model_catalog_rest_url[0]}models?source={catalog_id}&pageSize=100",
+            headers=headers,
+        )
+        models = models_response.get("items", [])
+        assert models, f"No models found for catalog: {catalog_id}"
+        LOGGER.info(f"{len(models)} models found in catalog {catalog_id}")
+        random_model = random.choice(seq=models)
+        model_name = random_model.get("name")
+        assert model_name, "Model name not found in random model"
+        assert random_model.get("source_id") == catalog_id, f"Catalog ID (source_id) mismatch for model {model_name}"
+        LOGGER.info(f"Testing model '{model_name}' from catalog '{catalog_id}'")
+    else:
+        # check if the model exists:
+        random_model = execute_get_command(
+            url=f"{model_catalog_rest_url[0]}sources/{catalog_id}/models/{model_name}",
+            headers=headers,
+        )
+        assert random_model["source_id"] == catalog_id, f"Catalog ID (source_id) mismatch for model {model_name}"
+        LOGGER.info(f"Using model '{model_name}' from catalog '{catalog_id}'")
     return random_model, model_name, catalog_id
 
 
