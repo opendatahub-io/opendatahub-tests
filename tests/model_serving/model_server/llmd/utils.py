@@ -6,7 +6,6 @@ Follows the established model server utils pattern for consistency.
 """
 
 import re
-import time
 from typing import Any
 
 from kubernetes.dynamic import DynamicClient
@@ -334,13 +333,13 @@ def verify_singlenode_prefix_cache_routing(
     """
     LOGGER.info("Testing precise prefix cache routing")
 
-    # Initialize baseline request counts
+    # Track request counts per pod to detect which pod handles each request
     baseline_counts = {}
 
     for pod in workload_pods:
         baseline_counts[pod.name] = count_chat_completions_requests_in_pod(pod=pod)
 
-    # Phase 1: Repeated prompts (full cache hit)
+    # Phase 1: Test that identical prompts route to the same pod (full cache reuse)
     LOGGER.info("Phase 1: Testing repeated prompts")
     repeated_prompt = (
         "Explain in detail the fundamental principles of quantum mechanics including "
@@ -350,7 +349,7 @@ def verify_singlenode_prefix_cache_routing(
     )
 
     phase1_pods = []
-    for i in range(3):
+    for _ in range(3):  # Send 3 identical requests to verify cache affinity
         inference_config = {
             "default_query_model": {
                 "query_input": repeated_prompt,
@@ -380,12 +379,12 @@ def verify_singlenode_prefix_cache_routing(
         if handling_pod:
             baseline_counts[handling_pod] = baseline_counts.get(handling_pod, 0) + 1
 
-    # Verify routing affinity for repeated prompts
-    unique_phase1_pods = set(p for p in phase1_pods if p is not None)
+    # All identical prompts should hit the same pod (cache affinity)
+    unique_phase1_pods = {pod for pod in phase1_pods if pod}
     assert len(unique_phase1_pods) == 1, f"Repeated prompts should route to same pod, got {unique_phase1_pods}"
     LOGGER.info(f"Phase 1: All repeated requests routed to {unique_phase1_pods}")
 
-    # Phase 2: Shared prefix prompts (partial cache hit)
+    # Phase 2: Test that prompts with same prefix route to the same pod (partial cache reuse)
     LOGGER.info("Phase 2: Testing shared prefix prompts")
     prefix = (
         "Explain in detail the fundamental principles of quantum mechanics including "
@@ -430,8 +429,8 @@ def verify_singlenode_prefix_cache_routing(
         if handling_pod:
             baseline_counts[handling_pod] = baseline_counts.get(handling_pod, 0) + 1
 
-    # Verify routing affinity for shared prefix prompts
-    unique_phase2_pods = set(p for p in phase2_pods if p is not None)
+    # Prompts sharing a prefix should hit the same pod (prefix cache affinity)
+    unique_phase2_pods = {pod for pod in phase2_pods if pod}
     assert len(unique_phase2_pods) == 1, f"Shared prefix prompts should route to same pod, got {unique_phase2_pods}"
     LOGGER.info(f"Phase 2: All shared prefix requests routed to {unique_phase2_pods}")
 
