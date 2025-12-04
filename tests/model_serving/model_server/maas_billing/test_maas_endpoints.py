@@ -1,12 +1,24 @@
-from utilities.plugins.constant import OpenAIEnpoints
 from simple_logger.logger import get_logger
 import requests
+import pytest
+from tests.model_serving.model_server.maas_billing.utils import verify_chat_completions
 
 LOGGER = get_logger(name=__name__)
-MODELS_INFO = OpenAIEnpoints.MODELS_INFO
-CHAT_COMPLETIONS = OpenAIEnpoints.CHAT_COMPLETIONS
 
 
+@pytest.mark.parametrize(
+    "unprivileged_model_namespace",
+    [
+        pytest.param(
+            {
+                "name": "llm",
+                "modelmesh-enabled": False,
+            },
+            id="maas-billing-namespace",
+        ),
+    ],
+    indirect=True,
+)
 class TestMaasEndpoints:
     def test_model(
         self,
@@ -26,32 +38,11 @@ class TestMaasEndpoints:
         maas_headers: dict,
         maas_models: list,
     ) -> None:
-        """
-        Verify /llm/<deployment>/v1/chat/completions responds to a simple prompt.
-        """
-        model_id = maas_models[0].get("id", "")
-        LOGGER.info("Using model_id=%s", model_id)
-        assert model_id, "first model from /v1/models has no 'id'"
-
-        payload = {"model": model_id, "prompt": "Hello", "max_tokens": 50}
-        LOGGER.info(f"POST {model_url} with keys={list(payload.keys())}")
-
-        resp = request_session_http.post(
-            url=model_url,
+        """Verify /llm/<deployment>/v1/chat/completions responds to a simple prompt."""
+        verify_chat_completions(
+            request_session_http=request_session_http,
+            model_url=model_url,
             headers=maas_headers,
-            json=payload,
-            timeout=60,
+            models_list=maas_models,
+            log_prefix="MaaS Endpoint Test",
         )
-        LOGGER.info(f"POST {model_url} -> {resp.status_code}")
-
-        assert resp.status_code == 200, (
-            f"/v1/chat/completions failed: {resp.status_code} {resp.text[:200]} (url={model_url})"
-        )
-
-        body = resp.json()
-        choices = body.get("choices", [])
-        assert isinstance(choices, list) and choices, "'choices' missing or empty"
-
-        msg = choices[0].get("message", {}) or {}
-        text = msg.get("content") or choices[0].get("text", "")
-        assert isinstance(text, str) and text.strip(), "first choice has no text content"

@@ -5,8 +5,16 @@ import pytest
 import requests
 from simple_logger.logger import get_logger
 from utilities.plugins.constant import OpenAIEnpoints
+from ocp_resources.service_account import ServiceAccount
 
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.namespace import Namespace
+from ocp_resources.llm_inference_service import LLMInferenceService
+
+from utilities.llmd_utils import create_llmisvc
+from utilities.llmd_constants import ModelStorage, ContainerImages
+from utilities.constants import Timeout
+
 from ocp_resources.infrastructure import Infrastructure
 from ocp_resources.oauth import OAuth
 from ocp_resources.resource import ResourceEditor
@@ -15,11 +23,14 @@ from utilities.user_utils import UserTestSession, wait_for_user_creation, create
 from utilities.infra import login_with_user_password, get_openshift_token
 from utilities.general import wait_for_oauth_openshift_deployment
 from ocp_resources.secret import Secret
+
+
 from tests.model_serving.model_server.maas_billing.utils import (
     detect_scheme_via_llmisvc,
     host_from_ingress_domain,
     mint_token,
     llmis_name,
+    patch_llmisvc_with_maas_router,
     create_maas_group,
     build_maas_headers,
     get_maas_models_response,
@@ -60,22 +71,19 @@ def minted_token(request_session_http, base_url: str, current_client_token: str)
     return token
 
 
-@pytest.fixture(scope="module")
-def base_url(admin_client) -> str:
-    scheme = detect_scheme_via_llmisvc(client=admin_client)
-    host = host_from_ingress_domain(client=admin_client)
-    return f"{scheme}://{host}/maas-api"
+@pytest.fixture(scope="class")
+def base_url(maas_scheme: str, maas_host: str) -> str:
+    return f"{maas_scheme}://{maas_host}/maas-api"
 
 
-@pytest.fixture(scope="session")
-def model_url(admin_client) -> str:
-    """
-    MODEL_URL:http(s)://<host>/llm/<deployment>/v1/chat/completions
-    """
-    scheme = detect_scheme_via_llmisvc(client=admin_client)
-    host = host_from_ingress_domain(client=admin_client)
+@pytest.fixture(scope="class")
+def model_url(
+    maas_scheme: str,
+    maas_host: str,
+    admin_client: DynamicClient,
+) -> str:
     deployment = llmis_name(client=admin_client)
-    return f"{scheme}://{host}/llm/{deployment}{CHAT_COMPLETIONS}"
+    return f"{maas_scheme}://{maas_host}/llm/{deployment}{CHAT_COMPLETIONS}"
 
 
 @pytest.fixture
@@ -85,9 +93,10 @@ def maas_headers(minted_token: str) -> dict:
 
 @pytest.fixture
 def maas_models(
-    request_session_http,
-    base_url,
-    maas_headers,
+    request_session_http: requests.Session,
+    base_url: str,
+    maas_headers: dict,
+    maas_inference_service_tinyllama: LLMInferenceService,
 ):
     resp = get_maas_models_response(
         session=request_session_http,
@@ -458,3 +467,69 @@ def maas_models_response_for_actor(
         base_url=base_url,
         headers=maas_headers_for_actor,
     )
+
+
+@pytest.fixture(scope="class")
+def maas_inference_service_tinyllama(
+    admin_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+    model_service_account: ServiceAccount,
+) -> Generator[LLMInferenceService, None, None]:
+    """
+    TinyLlama S3-backed LLMInferenceService wired through MaaS for tests.
+    """
+    with (
+        create_llmisvc(
+            client=admin_client,
+            name="llm-s3-tinyllama",
+            namespace=unprivileged_model_namespace.name,
+            storage_uri=ModelStorage.TINYLLAMA_S3,
+            container_image=ContainerImages.VLLM_CPU,
+            container_resources={
+                "limits": {"cpu": "2", "memory": "12Gi"},
+                "requests": {"cpu": "1", "memory": "8Gi"},
+            },
+            service_account=model_service_account.name,
+            wait=True,
+            timeout=Timeout.TIMEOUT_15MIN,
+        ) as llm_service,
+        patch_llmisvc_with_maas_router(llm_service=llm_service),
+    ):
+        llmd_instance = llm_service.instance
+        model_spec = llmd_instance.spec.model
+
+        storage_uri = model_spec.uri
+        assert storage_uri == ModelStorage.TINYLLAMA_S3, (
+            f"Unexpected storage_uri on TinyLlama LLMInferenceService: {storage_uri}"
+        )
+
+        status = llmd_instance.status
+        conditions = {condition.type: condition.status for condition in status.conditions}
+        assert conditions.get("Ready") == "True", f"TinyLlama LLMInferenceService not Ready, conditions={conditions}"
+
+        LOGGER.info(
+            f"MaaS: TinyLlama S3 LLMInferenceService "
+            f"{llm_service.namespace}/{llm_service.name} "
+            f"is Ready with storage_uri={storage_uri}"
+        )
+
+        yield llm_service
+
+        LOGGER.info(
+            f"MaaS: TinyLlama S3 LLMInferenceService "
+            f"{llm_service.namespace}/{llm_service.name} "
+            f"will be deleted at teardown"
+        )
+
+
+@pytest.fixture(scope="class")
+def maas_scheme(admin_client: DynamicClient, unprivileged_model_namespace: Namespace) -> str:
+    return detect_scheme_via_llmisvc(
+        client=admin_client,
+        namespace=unprivileged_model_namespace.name,
+    )
+
+
+@pytest.fixture(scope="session")
+def maas_host(admin_client):
+    return host_from_ingress_domain(client=admin_client)
