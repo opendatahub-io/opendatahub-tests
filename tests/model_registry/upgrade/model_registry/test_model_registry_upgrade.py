@@ -7,7 +7,7 @@ from ocp_resources.pod import Pod
 from tests.model_registry.constants import MODEL_NAME, MODEL_DICT
 from model_registry.types import RegisteredModel
 from model_registry import ModelRegistry as ModelRegistryClient
-from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from simple_logger.logger import get_logger
 from tests.model_registry.utils import (

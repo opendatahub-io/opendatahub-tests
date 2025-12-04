@@ -7,7 +7,7 @@ from _pytest.fixtures import FixtureRequest
 from simple_logger.logger import get_logger
 
 from ocp_resources.deployment import Deployment
-from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service

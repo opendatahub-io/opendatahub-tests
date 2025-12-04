@@ -12,7 +12,7 @@ from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
-from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from simple_logger.logger import get_logger
 from timeout_sampler import retry
@@ -41,6 +41,12 @@ MARIA_DB_IMAGE = (
     "registry.redhat.io/rhel9/mariadb-1011@sha256:092407d87f8017bb444a462fb3d38ad5070429e94df7cf6b91d82697f36d0fa9"
 )
 LOGGER = get_logger(name=__name__)
+
+
+class TransientUnauthorizedError(Exception):
+    """Exception for transient 401 Unauthorized errors that should be retried."""
+
+    pass
 
 
 def get_mr_service_by_label(client: DynamicClient, namespace_name: str, mr_instance: ModelRegistry) -> Service:
@@ -559,7 +565,6 @@ def get_model_registry_objects(
                 name=name,
                 namespace=namespace,
                 label=get_mr_standard_labels(resource_name=name),
-                grpc={},
                 rest={},
                 oauth_proxy=OAUTH_PROXY_CONFIG_DICT,
                 mysql=mysql if mysql else None,
@@ -702,13 +707,25 @@ def execute_get_call(
     resp = requests.get(url=url, headers=headers, verify=verify, timeout=60, params=params)
     LOGGER.info(f"Encoded url from requests library: {resp.url}")
     if resp.status_code not in [200, 201]:
+        # Raise custom exception for 401 errors that can be retried (OAuth/kube-rbac-proxy initialization)
+        if resp.status_code == 401:
+            raise TransientUnauthorizedError(f"Get call failed for resource: {url}, 401: {resp.text}")
+        # Raise regular exception for other errors (400, 403, 404, etc.) that should fail immediately
         raise ResourceNotFoundError(f"Get call failed for resource: {url}, {resp.status_code}: {resp.text}")
     return resp
 
 
-@retry(wait_timeout=60, sleep=5, exceptions_dict={ResourceNotFoundError: []})
+@retry(wait_timeout=60, sleep=5, exceptions_dict={ResourceNotFoundError: [], TransientUnauthorizedError: []})
 def wait_for_model_catalog_api(url: str, headers: dict[str, str], verify: bool | str = False) -> requests.Response:
-    return execute_get_call(url=f"{url}sources", headers=headers, verify=verify)
+    """
+    Wait for model catalog API to be ready and fully initialized checks both /sources and /models endpoints
+    to ensure OAuth/kube-rbac-proxy is fully initialized.
+    """
+    LOGGER.info(f"Waiting for model catalog API at {url}sources")
+    execute_get_call(url=f"{url}sources", headers=headers, verify=verify)
+    LOGGER.info(f"Verifying model catalog API readiness at {url}models")
+
+    return execute_get_call(url=f"{url}models", headers=headers, verify=verify)
 
 
 def execute_get_command(
@@ -741,9 +758,9 @@ def validate_model_catalog_sources(
         url=model_catalog_sources_url,
         headers=rest_headers,
     )["items"]
-    LOGGER.info(results)
+    LOGGER.info(f"Model catalog sources: {results}")
     # this is for the default catalog:
-    assert len(results) == len(expected_catalog_values) + 2
+    assert len(results) == len(expected_catalog_values)
     ids_from_query = [result_entry["id"] for result_entry in results]
     ids_expected = [expected_entry["id"] for expected_entry in expected_catalog_values]
     assert set(ids_expected).issubset(set(ids_from_query)), f"Expected: {expected_catalog_values}. Actual: {results}"

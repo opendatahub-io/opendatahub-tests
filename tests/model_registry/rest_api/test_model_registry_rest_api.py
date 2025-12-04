@@ -2,7 +2,7 @@ from typing import Self, Any
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
-from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret

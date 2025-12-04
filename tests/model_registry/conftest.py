@@ -25,7 +25,7 @@ from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 
 
-from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from ocp_resources.resource import ResourceEditor
 
 from pytest import FixtureRequest
@@ -92,7 +92,6 @@ def model_registry_instance(
         yield [mr_instance]
         mr_instance.delete(wait=True)
     else:
-        LOGGER.warning("Requested Oauth Proxy configuration:")
         db_name = param.get("db_name", "mysql")
         mr_objects = get_model_registry_objects(
             client=admin_client,

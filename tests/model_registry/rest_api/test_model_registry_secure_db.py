@@ -5,7 +5,7 @@ from tests.model_registry.rest_api.utils import register_model_rest_api, validat
 from tests.model_registry.utils import get_mr_service_by_label, get_endpoint_from_mr_service
 from kubernetes.dynamic import DynamicClient
 from utilities.constants import Protocols
-from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
 from simple_logger.logger import get_logger
 

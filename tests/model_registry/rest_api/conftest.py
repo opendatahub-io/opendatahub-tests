@@ -33,7 +33,7 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.config_map import ConfigMap
 from simple_logger.logger import get_logger
-from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from pytest_testconfig import config as py_config
 from utilities.exceptions import MissingParameter
 import tempfile
@@ -158,9 +158,7 @@ def deploy_secure_mysql_and_mr(
         name=SECURE_MR_NAME,
         namespace=model_registry_namespace,
         label=get_mr_standard_labels(resource_name=SECURE_MR_NAME),
-        grpc={},
         rest={},
-        istio=None,
         oauth_proxy=OAUTH_PROXY_CONFIG_DICT,
         mysql=mysql,
         wait_for_resource=True,

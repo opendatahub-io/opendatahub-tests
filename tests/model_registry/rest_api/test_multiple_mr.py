@@ -3,7 +3,7 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 
 from ocp_resources.config_map import ConfigMap
-from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from ocp_resources.pod import Pod
 
 from tests.model_registry.constants import (
