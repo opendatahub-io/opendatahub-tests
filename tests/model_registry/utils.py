@@ -38,7 +38,7 @@ from utilities.user_utils import get_byoidc_issuer_url
 
 ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
 MARIA_DB_IMAGE = (
-    "registry.redhat.io/rhel9/mariadb-1011@sha256:5608cce9ca8fed81027c97336d526b80320b0f4517ca5d3d141c0bbd7d563f8a"
+    "registry.redhat.io/rhel9/mariadb-1011@sha256:092407d87f8017bb444a462fb3d38ad5070429e94df7cf6b91d82697f36d0fa9"
 )
 LOGGER = get_logger(name=__name__)
 
@@ -131,7 +131,6 @@ def get_model_registry_deployment_template_dict(
                     "args": [
                         "--datadir",
                         "/var/lib/mysql/datadir",
-                        "--default-authentication-plugin=mysql_native_password",
                     ],
                     "image": MR_DB_IMAGE_DIGEST,
                     "imagePullPolicy": "IfNotPresent",
