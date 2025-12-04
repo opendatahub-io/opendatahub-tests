@@ -1,6 +1,9 @@
 import pytest
 from simple_logger.logger import get_logger
 from utilities.plugins.constant import OpenAIEnpoints
+from tests.model_serving.model_server.maas_billing.utils import (
+    verify_chat_completions,
+)
 
 LOGGER = get_logger(name=__name__)
 
@@ -14,6 +17,19 @@ ACTORS = [
 ]
 
 
+@pytest.mark.parametrize(
+    "unprivileged_model_namespace",
+    [
+        pytest.param(
+            {
+                "name": "llm",
+                "modelmesh-enabled": False,
+            },
+            id="maas-billing-namespace",
+        ),
+    ],
+    indirect=True,
+)
 @pytest.mark.usefixtures("maas_free_group", "maas_premium_group")
 @pytest.mark.parametrize(
     "ocp_token_for_actor",
@@ -37,6 +53,7 @@ class TestMaasRBACE2E:
 
     def test_models_visible_for_actors(
         self,
+        model_url: str,
         maas_models_response_for_actor,
     ) -> None:
         """Use fixture for /v1/models response."""
@@ -50,34 +67,24 @@ class TestMaasRBACE2E:
         model_url: str,
         maas_headers_for_actor: dict,
         maas_models_response_for_actor,
+        ocp_token_for_actor,
     ) -> None:
         """
         Reuse the models fixture instead of duplicating the /v1/models logic,
-        then call /v1/chat/completions with the first model id.
+        then call /v1/chat/completions with the first model id using the
+        common verify_chat_completions helper.
         """
         models_response = maas_models_response_for_actor
-        models = models_response.json().get("data", [])
-        assert models, "no models returned from /v1/models"
-        model_id = models[0].get("id", "")
-        assert model_id, "first model from /v1/models has no 'id'"
+        models_list = models_response.json().get("data", [])
+        assert models_list, "no models returned from /v1/models"
 
-        payload = {"model": model_id, "prompt": "Hello", "max_tokens": 16}
-
-        LOGGER.info(f"MaaS RBAC: POST {model_url} with payload keys={list(payload.keys())}")
-
-        chat_response = request_session_http.post(
-            url=model_url,
+        verify_chat_completions(
+            request_session_http=request_session_http,
+            model_url=model_url,
             headers=maas_headers_for_actor,
-            json=payload,
-            timeout=60,
+            models_list=models_list,
+            prompt_text="Hello",
+            max_tokens=16,
+            request_timeout_seconds=60,
+            log_prefix="MaaS RBAC",
         )
-
-        LOGGER.info(f"MaaS RBAC: POST {model_url} -> {chat_response.status_code}")
-
-        assert chat_response.status_code == 200, (
-            f"/v1/chat/completions failed: {chat_response.status_code} {chat_response.text[:200]} (url={model_url})"
-        )
-
-        chat_body = chat_response.json()
-        choices = chat_body.get("choices", [])
-        assert isinstance(choices, list) and choices, "'choices' missing or empty"

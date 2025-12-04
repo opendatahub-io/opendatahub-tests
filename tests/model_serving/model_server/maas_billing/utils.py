@@ -1,20 +1,20 @@
 from typing import Dict, Generator
-from contextlib import contextmanager
-from urllib.parse import urlparse
-from json import JSONDecodeError
-import base64
 
+import base64
 import requests
-from requests import Response
+from json import JSONDecodeError
+from urllib.parse import urlparse
+from contextlib import contextmanager
+
 from kubernetes.dynamic import DynamicClient
-from kubernetes.dynamic.exceptions import DynamicApiError
+from ocp_resources.group import Group
 from ocp_resources.ingress_config_openshift_io import Ingress as IngressConfig
 from ocp_resources.llm_inference_service import LLMInferenceService
-from ocp_resources.group import Group
+from requests import Response
 from simple_logger.logger import get_logger
-
 from utilities.llmd_utils import get_llm_inference_url
 from utilities.plugins.constant import RestHeader, OpenAIEnpoints
+from ocp_resources.resource import ResourceEditor
 
 LOGGER = get_logger(name=__name__)
 MODELS_INFO = OpenAIEnpoints.MODELS_INFO
@@ -45,8 +45,7 @@ def _first_ready_llmisvc(
         status = getattr(service.instance, "status", {}) or {}
         conditions = status.get("conditions", [])
         is_ready = any(
-            condition.get("type") == "Ready" and condition.get("status") == "True"
-            for condition in conditions
+            condition.get("type") == "Ready" and condition.get("status") == "True" for condition in conditions
         )
         if is_ready:
             return service
@@ -101,14 +100,11 @@ def b64url_decode(encoded_str: str) -> bytes:
     return base64.urlsafe_b64decode(s=padded_bytes)
 
 
-def llmis_name(
-    client,
-    namespace: str = "llm",
-    label_selector: str | None = None,
-) -> str:
+def llmis_name(client, namespace: str = "llm", label_selector: str | None = None) -> str:
     """
     Return the name of the first Ready LLMInferenceService.
     """
+
     service = _first_ready_llmisvc(
         client=client,
         namespace=namespace,
@@ -135,11 +131,7 @@ def create_maas_group(
         users=users or [],
         wait_for_resource=True,
     ) as group:
-        LOGGER.info(
-            "MaaS RBAC: created group %s with users %s",
-            group_name,
-            users or [],
-        )
+        LOGGER.info(f"MaaS RBAC: created group {group_name} with users {users or []}")
         yield group
 
 
@@ -164,24 +156,23 @@ def get_maas_models_response(
     models_url = f"{base_url}{MODELS_INFO}"
     resp = session.get(url=models_url, headers=headers, timeout=60)
 
-    LOGGER.info("MaaS: /v1/models -> %s (url=%s)", resp.status_code, models_url)
+    LOGGER.info(f"MaaS: /v1/models -> {resp.status_code} (url={models_url})")
 
-    assert resp.status_code == 200, (
-        f"/v1/models failed: {resp.status_code} {resp.text[:200]} (url={models_url})"
-    )
+    assert resp.status_code == 200, f"/v1/models failed: {resp.status_code} {resp.text[:200]} (url={models_url})"
 
     return resp
 
 
+@contextmanager
 def patch_llmisvc_with_maas_router(
     llm_service: LLMInferenceService,
-    client: DynamicClient,
-) -> None:
+) -> Generator[None, None, None]:
     """
-    Patch an existing LLMInferenceService with MaaS router wiring and annotations.
+    Temporarily patch an existing LLMInferenceService with MaaS router wiring
+    and annotations for the duration of the context.
 
-    This is used for TinyLlama so that the model is reachable via the maas-default-gateway
-    and participates in MaaS flows.
+    This is used for TinyLlama so that the model is reachable via the
+    maas-default-gateway and participates in MaaS flows.
     """
     router_spec = {
         "gateway": {
@@ -195,13 +186,6 @@ def patch_llmisvc_with_maas_router(
         "route": {},
     }
 
-    LOGGER.info(
-        "MaaS LLMD: patching LLMInferenceService %s/%s with MaaS router spec: %s",
-        llm_service.namespace,
-        llm_service.name,
-        router_spec,
-    )
-
     patch_body = {
         "metadata": {
             "annotations": {
@@ -213,29 +197,72 @@ def patch_llmisvc_with_maas_router(
         },
     }
 
-    llmisvc_res = client.resources.get(
-        api_version="serving.kserve.io/v1alpha1",
-        kind="LLMInferenceService",
+    LOGGER.info(
+        f"MaaS LLMD: patching LLMInferenceService "
+        f"{llm_service.namespace}/{llm_service.name} "
+        f"with MaaS router spec: {router_spec}"
     )
 
-    try:
-        llmisvc_res.patch(
-            name=llm_service.name,
-            namespace=llm_service.namespace,
-            body=patch_body,
-            content_type="application/merge-patch+json",
+    with ResourceEditor(patches={llm_service: patch_body}):
+        LOGGER.info(
+            f"MaaS LLMD: successfully patched LLMInferenceService "
+            f"{llm_service.namespace}/{llm_service.name} for MaaS routing"
         )
-    except DynamicApiError as exc:
-        LOGGER.error(
-            "MaaS LLMD: failed to patch LLMInferenceService %s/%s: %s",
-            llm_service.namespace,
-            llm_service.name,
-            exc,
-        )
-        raise
+        yield
 
-    LOGGER.info(
-        "MaaS LLMD: successfully patched LLMInferenceService %s/%s for MaaS routing",
-        llm_service.namespace,
-        llm_service.name,
+
+def verify_chat_completions(
+    request_session_http: requests.Session,
+    model_url: str,
+    headers: dict,
+    models_list: list,
+    *,
+    prompt_text: str = "Hello from MaaS chat e2e test",
+    max_tokens: int = 50,
+    request_timeout_seconds: int = 60,
+    log_prefix: str = "MaaS",
+) -> None:
+    """
+    Common helper to verify /v1/chat/completions responds to a simple prompt.
+    """
+
+    assert models_list, "No models returned from /v1/models"
+    first_model = models_list[0]
+
+    model_id = first_model.get("id", "")
+    assert model_id, "First model from /v1/models has no 'id' field"
+
+    payload_data = {
+        "model": model_id,
+        "messages": [{"role": "user", "content": prompt_text}],
+        "max_tokens": max_tokens,
+    }
+
+    LOGGER.info(f"{log_prefix}: POST {model_url} with payload keys={list(payload_data.keys())}")
+
+    response = request_session_http.post(
+        url=model_url,
+        headers=headers,
+        json=payload_data,
+        timeout=request_timeout_seconds,
+    )
+
+    LOGGER.info(f"{log_prefix}: POST {model_url} -> HTTP {response.status_code}")
+
+    assert response.status_code == 200, (
+        f"/v1/chat/completions failed: HTTP {response.status_code} response={response.text[:200]} (url={model_url})"
+    )
+
+    response_body = response.json()
+    completions_choices = response_body.get("choices", [])
+    assert isinstance(completions_choices, list) and completions_choices, (
+        "'choices' field missing or empty in /v1/chat/completions response"
+    )
+
+    first_choice = completions_choices[0]
+    message_section = first_choice.get("message", {}) or {}
+    content_text = message_section.get("content") or first_choice.get("text", "")
+
+    assert isinstance(content_text, str) and content_text.strip(), (
+        "First choice in /v1/chat/completions response has no text content"
     )
