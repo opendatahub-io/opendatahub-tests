@@ -72,37 +72,18 @@ def minted_token(request_session_http, base_url: str, current_client_token: str)
 
 
 @pytest.fixture(scope="class")
-def base_url(
-    admin_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
-) -> str:
-    # ns = unprivileged_model_namespace.name
-    scheme = detect_scheme_via_llmisvc(
-        client=admin_client,
-        namespace=unprivileged_model_namespace.name,
-    )
-    host = host_from_ingress_domain(client=admin_client)
-    return f"{scheme}://{host}/maas-api"
+def base_url(maas_scheme: str, maas_host: str) -> str:
+    return f"{maas_scheme}://{maas_host}/maas-api"
 
 
 @pytest.fixture(scope="class")
 def model_url(
+    maas_scheme: str,
+    maas_host: str,
     admin_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
-    maas_inference_service_tinyllama: LLMInferenceService,
 ) -> str:
-    """
-    MODEL_URL:http(s)://<host>/llm/<deployment>/v1/chat/completions
-
-    """
-    ns = unprivileged_model_namespace.name
-    scheme = detect_scheme_via_llmisvc(
-        client=admin_client,
-        namespace=ns,
-    )
-    host = host_from_ingress_domain(client=admin_client)
     deployment = llmis_name(client=admin_client)
-    return f"{scheme}://{host}/llm/{deployment}{CHAT_COMPLETIONS}"
+    return f"{maas_scheme}://{maas_host}/llm/{deployment}{CHAT_COMPLETIONS}"
 
 
 @pytest.fixture
@@ -539,3 +520,16 @@ def maas_inference_service_tinyllama(
             f"{llm_service.namespace}/{llm_service.name} "
             f"will be deleted at teardown"
         )
+
+
+@pytest.fixture(scope="class")
+def maas_scheme(admin_client: DynamicClient, unprivileged_model_namespace: Namespace) -> str:
+    return detect_scheme_via_llmisvc(
+        client=admin_client,
+        namespace=unprivileged_model_namespace.name,
+    )
+
+
+@pytest.fixture(scope="session")
+def maas_host(admin_client):
+    return host_from_ingress_domain(client=admin_client)
