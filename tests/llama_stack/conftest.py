@@ -34,6 +34,59 @@ LOGGER = get_logger(name=__name__)
 distribution_name = generate_random_name(prefix="llama-stack-distribution")
 
 
+def _cleanup_s3_files(
+    bucket_name: str,
+    endpoint_url: str,
+    region: str,
+    access_key_id: str,
+    secret_access_key: str,
+) -> None:
+    """
+    Clean up files from S3 bucket that were uploaded during tests.
+
+    Args:
+        bucket_name: S3 bucket name
+        endpoint_url: S3 endpoint URL
+        region: S3 region
+        access_key_id: AWS access key ID
+        secret_access_key: AWS secret access key
+    """
+
+    try:
+        import boto3
+        from botocore.exceptions import ClientError
+
+        s3_client = boto3.client(
+            service_name="s3",
+            endpoint_url=endpoint_url,
+            aws_access_key_id=access_key_id,
+            aws_secret_access_key=secret_access_key,
+            region_name=region,
+        )
+
+        response = s3_client.list_objects_v2(Bucket=bucket_name)
+
+        if "Contents" not in response:
+            LOGGER.info("No files found to clean up from S3")
+            return
+
+        # We only want to delete files that start with "file-"
+        for obj in response["Contents"]:
+            key = obj["Key"]
+            if key.startswith("file-"):
+                s3_client.delete_object(Bucket=bucket_name, Key=key)
+                LOGGER.debug(f"Deleted file from S3: {key}")
+
+        response = s3_client.list_objects_v2(Bucket=bucket_name)
+
+        if "Contents" not in response:
+            LOGGER.info("No files found to clean up from S3")
+            return
+
+    except ClientError as e:
+        LOGGER.warning(f"Failed to clean up S3 files: {e}")
+
+
 @pytest.fixture(scope="class")
 def enabled_llama_stack_operator(dsc_resource: DataScienceCluster) -> Generator[DataScienceCluster, Any, Any]:
     with update_components_in_dsc(
@@ -65,6 +118,8 @@ def llama_stack_server_config(
         request: Pytest fixture request object containing test parameters
         vector_io_provider_deployment_config_factory: Factory function to deploy vector I/O providers
             and return their configuration environment variables
+        files_provider_config_factory: Factory function to configure files storage providers
+            and return their configuration environment variables
 
     Returns:
         Dict containing server configuration with the following structure:
@@ -79,6 +134,8 @@ def llama_stack_server_config(
         - VLLM_URL: URL for VLLM service endpoint
         - VLLM_TLS_VERIFY: TLS verification setting (defaults to "false")
         - FMS_ORCHESTRATOR_URL: FMS orchestrator service URL
+        - Files provider specific variables (configured via factory):
+            * For "s3": S3_BUCKET_NAME, S3_ENDPOINT_URL, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, etc.
         - Vector I/O provider specific variables (deployed via factory):
           * For "milvus": MILVUS_DB_PATH
           * For "milvus-remote": MILVUS_ENDPOINT, MILVUS_TOKEN, MILVUS_CONSISTENCY_LEVEL
@@ -89,6 +146,7 @@ def llama_stack_server_config(
         - vllm_api_token: Override for VLLM_API_TOKEN environment variable
         - vllm_url_fixture: Fixture name to get VLLM URL from
         - fms_orchestrator_url_fixture: Fixture name to get FMS orchestrator URL from
+        - files_provider: Files storage provider type ("local" or "s3", defaults to "local")
         - vector_io_provider: Vector I/O provider type ("milvus" or "milvus-remote")
         - llama_stack_storage_size: Storage size for the deployment
         - embedding_model: Embedding model identifier for inference
@@ -225,6 +283,7 @@ def unprivileged_llama_stack_distribution(
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     enabled_llama_stack_operator: DataScienceCluster,
+    request: FixtureRequest,
     llama_stack_server_config: Dict[str, Any],
 ) -> Generator[LlamaStackDistribution, None, None]:
     # Distribution name needs a random substring due to bug RHAIENG-999 / RHAIENG-1139
@@ -239,12 +298,32 @@ def unprivileged_llama_stack_distribution(
         lls_dist.wait_for_status(status=LlamaStackDistribution.Status.READY, timeout=600)
         yield lls_dist
 
+        try:
+            env_vars = llama_stack_server_config.get("containerSpec", {}).get("env", [])
+            enable_s3 = any(env.get("name") == "ENABLE_S3" and env.get("value") == "s3" for env in env_vars)
+
+            if enable_s3:
+                try:
+                    _cleanup_s3_files(
+                        bucket_name=request.getfixturevalue(argname="ci_s3_bucket_name"),
+                        endpoint_url=request.getfixturevalue(argname="ci_s3_bucket_endpoint"),
+                        region=request.getfixturevalue(argname="ci_s3_bucket_region"),
+                        access_key_id=request.getfixturevalue(argname="aws_access_key_id"),
+                        secret_access_key=request.getfixturevalue(argname="aws_secret_access_key"),
+                    )
+                except Exception as e:
+                    LOGGER.warning(f"Failed to clean up S3 files: {e}")
+
+        except Exception as e:
+            LOGGER.warning(f"Failed to clean up S3 files: {e}")
+
 
 @pytest.fixture(scope="class")
 def llama_stack_distribution(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     enabled_llama_stack_operator: DataScienceCluster,
+    request: FixtureRequest,
     llama_stack_server_config: Dict[str, Any],
 ) -> Generator[LlamaStackDistribution, None, None]:
     # Distribution name needs a random substring due to bug RHAIENG-999 / RHAIENG-1139
@@ -257,6 +336,25 @@ def llama_stack_distribution(
     ) as lls_dist:
         lls_dist.wait_for_status(status=LlamaStackDistribution.Status.READY, timeout=600)
         yield lls_dist
+
+        try:
+            env_vars = llama_stack_server_config.get("containerSpec", {}).get("env", [])
+            enable_s3 = any(env.get("name") == "ENABLE_S3" and env.get("value") == "s3" for env in env_vars)
+
+            if enable_s3:
+                try:
+                    _cleanup_s3_files(
+                        bucket_name=request.getfixturevalue(argname="ci_s3_bucket_name"),
+                        endpoint_url=request.getfixturevalue(argname="ci_s3_bucket_endpoint"),
+                        region=request.getfixturevalue(argname="ci_s3_bucket_region"),
+                        access_key_id=request.getfixturevalue(argname="aws_access_key_id"),
+                        secret_access_key=request.getfixturevalue(argname="aws_secret_access_key"),
+                    )
+                except Exception as e:
+                    LOGGER.warning(f"Failed to clean up S3 files: {e}")
+
+        except Exception as e:
+            LOGGER.warning(f"Failed to clean up S3 files: {e}")
 
 
 def _get_llama_stack_distribution_deployment(
