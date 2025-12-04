@@ -76,10 +76,10 @@ def base_url(
     admin_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
 ) -> str:
-    ns = unprivileged_model_namespace.name
+    # ns = unprivileged_model_namespace.name
     scheme = detect_scheme_via_llmisvc(
         client=admin_client,
-        namespace=ns,
+        namespace=unprivileged_model_namespace.name,
     )
     host = host_from_ingress_domain(client=admin_client)
     return f"{scheme}://{host}/maas-api"
@@ -514,17 +514,16 @@ def maas_inference_service_tinyllama(
         ) as llm_service,
         patch_llmisvc_with_maas_router(llm_service=llm_service),
     ):
-        llmd_resource = llm_service.instance.to_dict()
-        spec = llmd_resource.get("spec", {})
-        model_spec = spec.get("model", {})
+        llmd_instance = llm_service.instance
+        model_spec = llmd_instance.spec.model
 
-        storage_uri = model_spec.get("storageUri") or model_spec.get("storage_uri") or model_spec.get("uri")
+        storage_uri = model_spec.uri
         assert storage_uri == ModelStorage.TINYLLAMA_S3, (
             f"Unexpected storage_uri on TinyLlama LLMInferenceService: {storage_uri}"
         )
 
-        status = llmd_resource.get("status", {})
-        conditions = {condition["type"]: condition["status"] for condition in status.get("conditions", [])}
+        status = llmd_instance.status
+        conditions = {condition.type: condition.status for condition in status.conditions}
         assert conditions.get("Ready") == "True", f"TinyLlama LLMInferenceService not Ready, conditions={conditions}"
 
         LOGGER.info(
