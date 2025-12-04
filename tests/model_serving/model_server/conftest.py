@@ -358,6 +358,9 @@ def ovms_kserve_inference_service(
 
     isvc_kwargs["stop_resume"] = request.param.get("stop", False)
 
+    if "external-route" in request.param:
+        isvc_kwargs["external_route"] = request.param["external-route"]
+
     with create_isvc(**isvc_kwargs) as isvc:
         yield isvc
 

@@ -38,6 +38,7 @@ pytestmark = [
                 "model-dir": ModelStoragePath.KSERVE_OPENVINO_EXAMPLE_MODEL,
                 "model-version": ModelVersion.OPSET1,
                 "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
+                "external-route": True,
             },
         )
     ],
