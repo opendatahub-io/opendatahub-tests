@@ -20,7 +20,7 @@ from tests.model_serving.model_server.llmd.utils import (
     get_llmd_workload_pods,
     verify_gateway_status,
     verify_llm_service_status,
-    verify_singlenode_prefix_cache_routing,
+    verify_singlenode_precise_prefix_cache_routing,
 )
 from simple_logger.logger import get_logger
 
@@ -31,7 +31,7 @@ pytestmark = [pytest.mark.llmd_gpu]
 
 @pytest.mark.parametrize(
     "unprivileged_model_namespace",
-    [pytest.param({"name": "singlenode-prefix-cache-test"})],
+    [pytest.param({"name": "llmd-singlenode-prefix-cache-test"})],
     indirect=True,
 )
 @pytest.mark.parametrize(
@@ -60,23 +60,21 @@ class TestSingleNodePrecisePrefixCache:
         if gpu_count_on_cluster < 2:
             pytest.skip(f"Test requires at least 2 GPUs (found {gpu_count_on_cluster})")
 
-        # Verify gateway and service are ready
+        # Verify infrastructure is ready before testing routing
         assert verify_gateway_status(llmd_gateway), "Gateway should be ready"
         assert verify_llm_service_status(singlenode_precise_prefix_cache), "LLMInferenceService should be ready"
 
-        # Verify router-scheduler pod exists and is running
         router_scheduler_pod = get_llmd_router_scheduler_pod(
             client=unprivileged_client, llmisvc=singlenode_precise_prefix_cache
         )
         assert router_scheduler_pod is not None, "Router-scheduler pod should exist"
         assert router_scheduler_pod.instance.status.phase == "Running", "Router-scheduler pod should be running"
 
-        # Verify workload pods
         workload_pods = get_llmd_workload_pods(client=unprivileged_client, llmisvc=singlenode_precise_prefix_cache)
         assert len(workload_pods) == 2, f"Expected 2 workload pods, found {len(workload_pods)}"
 
-        # Test prefix cache routing (includes assertions for routing affinity)
-        verify_singlenode_prefix_cache_routing(
+        # Verify prefix cache routing behavior
+        verify_singlenode_precise_prefix_cache_routing(
             llmisvc=singlenode_precise_prefix_cache,
             token=authenticated_llmisvc_token,
             workload_pods=workload_pods,

@@ -313,7 +313,7 @@ def get_pod_that_handled_request(workload_pods: list[Pod], baseline_counts: dict
     return None
 
 
-def verify_singlenode_prefix_cache_routing(
+def verify_singlenode_precise_prefix_cache_routing(
     llmisvc: LLMInferenceService,
     token: str,
     workload_pods: list[Pod],
