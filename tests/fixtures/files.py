@@ -71,6 +71,9 @@ def files_provider_config_factory(
             })
             env_vars.append({"name": "S3_AUTO_CREATE_BUCKET", "value": S3_AUTO_CREATE_BUCKET})
 
+        else:
+            raise ValueError(f"Unsupported files provider: {provider_name}")
+
         return env_vars
 
     return _factory
