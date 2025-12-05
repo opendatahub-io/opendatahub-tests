@@ -1,5 +1,6 @@
 import pytest
 from typing import Self
+import random
 from ocp_resources.config_map import ConfigMap
 from simple_logger.logger import get_logger
 from tests.model_registry.model_catalog.utils import (
@@ -178,27 +179,96 @@ class TestArtifactsSorting:
 
 
 @pytest.mark.downstream_only
-@pytest.mark.smoke
 class TestCustomPropertiesSorting:
     """Test sorting functionality for custom properties"""
 
+    MODEL_NAMEs_CUSTOM_PROPERTIES: list[str] = [
+        "RedHatAI/Llama-3.1-Nemotron-70B-Instruct-HF",
+        "RedHatAI/phi-4-quantized.w8a8",
+        "RedHatAI/Qwen2.5-7B-Instruct-quantized.w4a16",
+    ]
+
     @pytest.mark.parametrize(
-        "order_by,sort_order,randomly_picked_model_from_catalog_api_by_source,fallback",
+        "order_by,sort_order,randomly_picked_model_from_catalog_api_by_source,expect_pure_fallback",
         [
-            ("e2e_p90.double_value", "ASC", {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"}, False),
-            ("e2e_p90.double_value", "DESC", {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"}, False),
-            ("mmlu.double_value", "ASC", {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"}, False),
-            ("mmlu.double_value", "DESC", {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"}, False),
+            (
+                "e2e_p90.double_value",
+                "ASC",
+                {
+                    "catalog_id": VALIDATED_CATALOG_ID,
+                    "header_type": "registry",
+                    "model_name": random.choice(MODEL_NAMEs_CUSTOM_PROPERTIES),
+                },
+                False,
+            ),
+            (
+                "e2e_p90.double_value",
+                "DESC",
+                {
+                    "catalog_id": VALIDATED_CATALOG_ID,
+                    "header_type": "registry",
+                    "model_name": random.choice(MODEL_NAMEs_CUSTOM_PROPERTIES),
+                },
+                False,
+            ),
+            (
+                "hardware_count.int_value",
+                "ASC",
+                {
+                    "catalog_id": VALIDATED_CATALOG_ID,
+                    "header_type": "registry",
+                    "model_name": random.choice(MODEL_NAMEs_CUSTOM_PROPERTIES),
+                },
+                False,
+            ),
+            (
+                "hardware_count.int_value",
+                "DESC",
+                {
+                    "catalog_id": VALIDATED_CATALOG_ID,
+                    "header_type": "registry",
+                    "model_name": random.choice(MODEL_NAMEs_CUSTOM_PROPERTIES),
+                },
+                False,
+            ),
+            (
+                "hardware_type.string_value",
+                "ASC",
+                {
+                    "catalog_id": VALIDATED_CATALOG_ID,
+                    "header_type": "registry",
+                    "model_name": random.choice(MODEL_NAMEs_CUSTOM_PROPERTIES),
+                },
+                False,
+            ),
+            (
+                "hardware_type.string_value",
+                "DESC",
+                {
+                    "catalog_id": VALIDATED_CATALOG_ID,
+                    "header_type": "registry",
+                    "model_name": random.choice(MODEL_NAMEs_CUSTOM_PROPERTIES),
+                },
+                False,
+            ),
             (
                 "non_existing_property.double_value",
                 "ASC",
-                {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"},
+                {
+                    "catalog_id": VALIDATED_CATALOG_ID,
+                    "header_type": "registry",
+                    "model_name": random.choice(MODEL_NAMEs_CUSTOM_PROPERTIES),
+                },
                 True,
             ),
             (
                 "non_existing_property.double_value",
                 "DESC",
-                {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"},
+                {
+                    "catalog_id": VALIDATED_CATALOG_ID,
+                    "header_type": "registry",
+                    "model_name": random.choice(MODEL_NAMEs_CUSTOM_PROPERTIES),
+                },
                 True,
             ),
         ],
@@ -212,16 +282,23 @@ class TestCustomPropertiesSorting:
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         randomly_picked_model_from_catalog_api_by_source: tuple[dict, str, str],
-        fallback: bool,
+        expect_pure_fallback: bool,
     ):
         """
         RHOAIENG-38010: Test custom properties endpoint sorts correctly by supported fields
-        Also tests fallback behavior when a non-existing property is used for sorting
+
+        This test validates two scenarios:
+        1. expect_pure_fallback=False: Tests custom property sorting where at least some artifacts
+           have the property. Items with the property are sorted by the property value (ASC/DESC),
+           followed by items without the property sorted by ID ASC (fallback behavior).
+
+        2. expect_pure_fallback=True: Tests pure fallback behavior where NO artifacts have the
+           property. All items are sorted by ID ASC, regardless of the requested sortOrder.
         """
         _, model_name, _ = randomly_picked_model_from_catalog_api_by_source
         LOGGER.info(
             f"Testing custom properties sorting for {model_name}: "
-            f"orderBy={order_by}, sortOrder={sort_order}, fallback={fallback}"
+            f"orderBy={order_by}, sortOrder={sort_order}, expect_pure_fallback={expect_pure_fallback}"
         )
 
         response = get_artifacts_with_sorting(
@@ -239,23 +316,25 @@ class TestCustomPropertiesSorting:
             1 for item in response["items"] if property_name in item.get("customProperties", {})
         )
 
-        if fallback:
-            # Fallback test: verify NO artifacts have the property and sorting falls back to ID ASC
-            # Note: Fallback always uses ASC order regardless of requested sortOrder
+        if expect_pure_fallback:
+            # When property doesn't exist, sorting always falls back to ID ASC regardless of sortOrder
             assert artifacts_with_property == 0, (
-                f"Expected no artifacts to have property {property_name} for fallback test, "
+                f"Expected no artifacts to have property {property_name} for pure fallback test, "
                 f"but found {artifacts_with_property} artifacts with it"
             )
             is_sorted = validate_items_sorted_correctly(items=response["items"], field="ID", order="ASC")
-            assert is_sorted, f"Fallback to ID ASC sorting failed for non-existing property {order_by}"
+            assert is_sorted, f"Pure fallback to ID ASC sorting failed for non-existing property {order_by}"
         else:
-            # Normal test: verify at least some artifacts have the property
+            # This ensures we're testing actual custom property sorting (not silent fallback)
             assert artifacts_with_property > 0, (
                 f"Cannot test custom property sorting: no artifacts have property {property_name}. "
-                f"This would silently fall back to ID sorting."
+                f"This would result in silent fallback to ID sorting."
             )
             LOGGER.info(f"{artifacts_with_property}/{len(response['items'])} artifacts have property {property_name}")
 
+            # verify_custom_properties_sorted validates:
+            # - Items WITH property come first, sorted by property value (respecting sortOrder)
+            # - Items WITHOUT property come after, sorted by ID ASC (fallback)
             is_sorted = verify_custom_properties_sorted(
                 items=response["items"], property_field=order_by, sort_order=sort_order
             )
