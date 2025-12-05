@@ -178,6 +178,7 @@ class TestArtifactsSorting:
 
 
 @pytest.mark.downstream_only
+@pytest.mark.smoke
 class TestCustomPropertiesSorting:
     """Test sorting functionality for custom properties"""
 

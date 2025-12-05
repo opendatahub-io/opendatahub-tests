@@ -1024,9 +1024,12 @@ def verify_custom_properties_sorted(items: list[dict], property_field: str, sort
 
     Returns:
         True if sorted correctly, False otherwise
+
+    Raises:
+        ValueError: If there are not enough items to verify sorting
     """
-    if not items:
-        return True
+    if len(items) < 2:
+        raise ValueError(f"At least 2 items are required to verify sorting, got {len(items)}")
 
     property_name, value_type = property_field.rsplit(".", 1)
     # Separate items into two groups
@@ -1076,10 +1079,7 @@ def _split_items_by_custom_property(
         custom_props = item.get("customProperties", {})
         if property_name in custom_props:
             prop = custom_props[property_name]
-            if isinstance(prop, dict):
-                value = prop.get(value_type)
-            else:
-                value = prop
+            value = prop.get(value_type) if isinstance(prop, dict) else None
 
             # Only add to items_with_property if value is not None
             if value is not None:
@@ -1101,7 +1101,7 @@ def _verify_items_with_property_sorted(items: list[dict], property_name: str, va
     values = []
     for _, item in items:
         prop = item["customProperties"][property_name]
-        value = prop.get(value_type) if isinstance(prop, dict) else prop
+        value = prop.get(value_type)
         values.append(value)
 
     expected_values = sorted(values, reverse=(sort_order == "DESC"))
