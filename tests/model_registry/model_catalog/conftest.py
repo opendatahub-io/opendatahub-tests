@@ -203,9 +203,8 @@ def randomly_picked_model_from_catalog_api_by_source(
         headers = model_registry_rest_headers
     else:
         headers = get_rest_headers(token=user_token_for_api_calls)
-
-    LOGGER.info(f"Picking random model from catalog: {catalog_id} with header_type: {header_type}")
     if not model_name:
+        LOGGER.info(f"Picking random model from catalog: {catalog_id} with header_type: {header_type}")
         models_response = execute_get_command(
             url=f"{model_catalog_rest_url[0]}models?source={catalog_id}&pageSize=100",
             headers=headers,
@@ -219,6 +218,7 @@ def randomly_picked_model_from_catalog_api_by_source(
         assert random_model.get("source_id") == catalog_id, f"Catalog ID (source_id) mismatch for model {model_name}"
         LOGGER.info(f"Testing model '{model_name}' from catalog '{catalog_id}'")
     else:
+        LOGGER.info(f"Looking for pre-selected model: {model_name} from catalog: {catalog_id}")
         # check if the model exists:
         random_model = execute_get_command(
             url=f"{model_catalog_rest_url[0]}sources/{catalog_id}/models/{model_name}",

@@ -1,6 +1,6 @@
 import pytest
 from typing import Self, Any
-
+import random
 from ocp_resources.config_map import ConfigMap
 from tests.model_registry.model_catalog.utils import (
     fetch_all_artifacts_with_dynamic_paging,
@@ -15,7 +15,13 @@ from simple_logger.logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace")]
-MODEL_NAME_ARTIFACT_SEARCH = "RedHatAI/Llama-3.1-8B-Instruct"
+MODEL_NAMEs_ARTIFACT_SEARCH: list[str] = [
+    "RedHatAI/Llama-3.1-8B-Instruct",
+    "RedHatAI/Mistral-Small-3.1-24B-Instruct-2503-FP8-dynamic",
+    "RedHatAI/Mistral-Small-3.1-24B-Instruct-2503-quantized.w4a16",
+    "RedHatAI/Mistral-Small-3.1-24B-Instruct-2503-quantized.w8a8",
+    "RedHatAI/Mixtral-8x7B-Instruct-v0.1",
+]
 
 
 class TestSearchArtifactsByFilterQuery:
@@ -29,7 +35,7 @@ class TestSearchArtifactsByFilterQuery:
             ),
             pytest.param(
                 {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"},
-                "filterQuery=ttft_p90.double_value < abc",
+                "ttft_p90.double_value < abc",
                 id="test_invalid_artifact_filter_query_data_type_mismatch",
             ),
             pytest.param(
@@ -76,7 +82,7 @@ class TestSearchArtifactsByFilterQuery:
                 {
                     "catalog_id": VALIDATED_CATALOG_ID,
                     "header_type": "registry",
-                    "model_name": MODEL_NAME_ARTIFACT_SEARCH,
+                    "model_name": random.choice(MODEL_NAMEs_ARTIFACT_SEARCH),
                 },
                 "hardware_type.string_value = 'ABC-1234'",
                 None,
@@ -87,7 +93,7 @@ class TestSearchArtifactsByFilterQuery:
                 {
                     "catalog_id": VALIDATED_CATALOG_ID,
                     "header_type": "registry",
-                    "model_name": MODEL_NAME_ARTIFACT_SEARCH,
+                    "model_name": random.choice(MODEL_NAMEs_ARTIFACT_SEARCH),
                 },
                 "requests_per_second.double_value > 15.0",
                 [{"key_name": "requests_per_second", "key_type": "double_value", "comparison": "min", "value": 15.0}],
@@ -98,7 +104,7 @@ class TestSearchArtifactsByFilterQuery:
                 {
                     "catalog_id": VALIDATED_CATALOG_ID,
                     "header_type": "registry",
-                    "model_name": MODEL_NAME_ARTIFACT_SEARCH,
+                    "model_name": random.choice(MODEL_NAMEs_ARTIFACT_SEARCH),
                 },
                 "hardware_count.int_value = 8",
                 [{"key_name": "hardware_count", "key_type": "int_value", "comparison": "exact", "value": 8}],
@@ -109,7 +115,7 @@ class TestSearchArtifactsByFilterQuery:
                 {
                     "catalog_id": VALIDATED_CATALOG_ID,
                     "header_type": "registry",
-                    "model_name": MODEL_NAME_ARTIFACT_SEARCH,
+                    "model_name": random.choice(MODEL_NAMEs_ARTIFACT_SEARCH),
                 },
                 "(hardware_type.string_value = 'H100') AND (ttft_p99.double_value < 200)",
                 [
@@ -123,7 +129,7 @@ class TestSearchArtifactsByFilterQuery:
                 {
                     "catalog_id": VALIDATED_CATALOG_ID,
                     "header_type": "registry",
-                    "model_name": MODEL_NAME_ARTIFACT_SEARCH,
+                    "model_name": random.choice(MODEL_NAMEs_ARTIFACT_SEARCH),
                 },
                 "(tps_mean.double_value <260) OR (hardware_type.string_value = 'A100-80')",
                 [
@@ -169,7 +175,7 @@ class TestSearchArtifactsByFilterQuery:
 
         if expected_value is None:
             # Simple validation of length and size for basic filter queries
-            assert len(result["items"]) == [], f"Filter query '{filter_query}' should return valid results"
+            assert result["items"] == [], f"Filter query '{filter_query}' should return valid results"
             assert result["size"] == 0, f"Size should be 0 for filter query '{filter_query}'"
             LOGGER.info(
                 f"Successfully validated that filter query '{filter_query}' returns {len(result['items'])} artifacts"
