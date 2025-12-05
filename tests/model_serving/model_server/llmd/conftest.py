@@ -17,7 +17,7 @@ from tests.model_serving.model_server.llmd.constants import (
     PREFIX_CACHE_BLOCK_SIZE,
     PREFIX_CACHE_HASH_ALGO,
     PREFIX_CACHE_HASH_SEED,
-    SINGLENODE_SCHEDULER_CONFIG_PRECISE_PREFIX_CACHE,
+    ROUTER_SCHEDULER_CONFIG_PRECISE_PREFIX_CACHE,
 )
 from utilities.constants import Timeout, ResourceLimits
 from utilities.infra import s3_endpoint_secret, create_inference_token
@@ -425,7 +425,7 @@ def singlenode_precise_prefix_cache(
                                 "--cert-path",
                                 "/var/run/kserve/tls",
                                 "--config-text",
-                                yaml.dump(SINGLENODE_SCHEDULER_CONFIG_PRECISE_PREFIX_CACHE),
+                                yaml.dump(ROUTER_SCHEDULER_CONFIG_PRECISE_PREFIX_CACHE),
                             ],
                         }
                     ],
