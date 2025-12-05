@@ -1,12 +1,13 @@
 import pytest
 from typing import Self
-
+from ocp_resources.config_map import ConfigMap
 from simple_logger.logger import get_logger
 from tests.model_registry.model_catalog.utils import (
     get_models_from_catalog_api,
     get_sources_with_sorting,
     get_artifacts_with_sorting,
     validate_items_sorted_correctly,
+    verify_custom_properties_sorted,
 )
 from tests.model_registry.model_catalog.constants import VALIDATED_CATALOG_ID
 
@@ -45,6 +46,7 @@ class TestModelsSorting:
     )
     def test_models_sorting_works_correctly(
         self: Self,
+        enabled_model_catalog_config_map: ConfigMap,
         order_by: str,
         sort_order: str,
         model_catalog_rest_url: list[str],
@@ -79,6 +81,7 @@ class TestSourcesSorting:
     )
     def test_sources_sorting_works_correctly(
         self: Self,
+        enabled_model_catalog_config_map: ConfigMap,
         order_by: str,
         sort_order: str,
         model_catalog_rest_url: list[str],
@@ -101,6 +104,7 @@ class TestSourcesSorting:
     @pytest.mark.parametrize("unsupported_field", ["CREATE_TIME", "LAST_UPDATE_TIME"])
     def test_sources_rejects_unsupported_fields(
         self: Self,
+        enabled_model_catalog_config_map: ConfigMap,
         unsupported_field: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
@@ -148,6 +152,7 @@ class TestArtifactsSorting:
     )
     def test_artifacts_sorting_works_correctly(
         self: Self,
+        enabled_model_catalog_config_map: ConfigMap,
         order_by: str,
         sort_order: str,
         model_catalog_rest_url: list[str],
@@ -170,3 +175,47 @@ class TestArtifactsSorting:
         )
 
         assert validate_items_sorted_correctly(response["items"], order_by, sort_order)
+
+
+@pytest.mark.downstream_only
+class TestCustomPropertiesSorting:
+    """Test sorting functionality for custom properties"""
+
+    @pytest.mark.parametrize(
+        "order_by,sort_order,randomly_picked_model_from_catalog_api_by_source",
+        [
+            ("e2e_p90.double_value", "ASC", {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"}),
+            ("e2e_p90.double_value", "DESC", {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"}),
+            ("mmlu.double_value", "ASC", {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"}),
+            ("mmlu.double_value", "DESC", {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"}),
+        ],
+        indirect=["randomly_picked_model_from_catalog_api_by_source"],
+    )
+    def test_custom_properties_sorting_works_correctly(
+        self: Self,
+        enabled_model_catalog_config_map: ConfigMap,
+        order_by: str,
+        sort_order: str,
+        model_catalog_rest_url: list[str],
+        model_registry_rest_headers: dict[str, str],
+        randomly_picked_model_from_catalog_api_by_source: tuple[dict, str, str],
+    ):
+        """
+        RHOAIENG-38010: Test custom properties endpoint sorts correctly by supported fields
+        """
+        _, model_name, _ = randomly_picked_model_from_catalog_api_by_source
+        LOGGER.info(f"Testing custom properties sorting for {model_name}: orderBy={order_by}, sortOrder={sort_order}")
+
+        response = get_artifacts_with_sorting(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            source_id=VALIDATED_CATALOG_ID,
+            model_name=model_name,
+            order_by=order_by,
+            sort_order=sort_order,
+        )
+
+        is_sorted = verify_custom_properties_sorted(
+            items=response["items"], property_field=order_by, sort_order=sort_order
+        )
+        assert is_sorted, f"Custom properties are not sorted correctly for {model_name}"
