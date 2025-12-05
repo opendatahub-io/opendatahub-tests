@@ -1,5 +1,5 @@
 """
-Test Single-Node Precise Prefix Caching.
+Test Single-Node Estimated Prefix Caching.
 
 This test verifies that the LLM-D router correctly routes inference requests
 based on cache state, maximizing prefix cache hits.
@@ -20,7 +20,7 @@ from tests.model_serving.model_server.llmd.utils import (
     get_llmd_workload_pods,
     verify_gateway_status,
     verify_llm_service_status,
-    verify_singlenode_precise_prefix_cache_routing,
+    verify_singlenode_estimated_prefix_cache_routing,
 )
 from simple_logger.logger import get_logger
 
@@ -39,43 +39,43 @@ pytestmark = [pytest.mark.llmd_gpu]
     [
         pytest.param({
             "service_account_fixture": "llmd_s3_service_account",
-            "llmisvc_fixture": "singlenode_precise_prefix_cache",
+            "llmisvc_fixture": "singlenode_estimated_prefix_cache",
         })
     ],
     indirect=True,
 )
 @pytest.mark.usefixtures("valid_aws_config")
-class TestSingleNodePrecisePrefixCache:
-    """Test class for singlenode precise prefix cache routing."""
+class TestSingleNodeEstimatedPrefixCache:
+    """Test class for singlenode estimated prefix cache routing."""
 
-    def test_singlenode_precise_prefix_cache(
+    def test_singlenode_estimated_prefix_cache(
         self,
         unprivileged_client: DynamicClient,
         llmd_gateway,
-        singlenode_precise_prefix_cache: LLMInferenceService,
+        singlenode_estimated_prefix_cache: LLMInferenceService,
         authenticated_llmisvc_token: str,
         gpu_count_on_cluster: int,
     ):
-        """Test single-node precise prefix cache routing."""
+        """Test single-node estimated prefix cache routing."""
         if gpu_count_on_cluster < 2:
             pytest.skip(f"Test requires at least 2 GPUs (found {gpu_count_on_cluster})")
 
         # Verify infrastructure is ready before testing routing
         assert verify_gateway_status(llmd_gateway), "Gateway should be ready"
-        assert verify_llm_service_status(singlenode_precise_prefix_cache), "LLMInferenceService should be ready"
+        assert verify_llm_service_status(singlenode_estimated_prefix_cache), "LLMInferenceService should be ready"
 
         router_scheduler_pod = get_llmd_router_scheduler_pod(
-            client=unprivileged_client, llmisvc=singlenode_precise_prefix_cache
+            client=unprivileged_client, llmisvc=singlenode_estimated_prefix_cache
         )
         assert router_scheduler_pod is not None, "Router-scheduler pod should exist"
         assert router_scheduler_pod.instance.status.phase == "Running", "Router-scheduler pod should be running"
 
-        workload_pods = get_llmd_workload_pods(client=unprivileged_client, llmisvc=singlenode_precise_prefix_cache)
+        workload_pods = get_llmd_workload_pods(client=unprivileged_client, llmisvc=singlenode_estimated_prefix_cache)
         assert len(workload_pods) == 2, f"Expected 2 workload pods, found {len(workload_pods)}"
 
         # Verify prefix cache routing behavior
-        verify_singlenode_precise_prefix_cache_routing(
-            llmisvc=singlenode_precise_prefix_cache,
+        verify_singlenode_estimated_prefix_cache_routing(
+            llmisvc=singlenode_estimated_prefix_cache,
             token=authenticated_llmisvc_token,
             workload_pods=workload_pods,
         )

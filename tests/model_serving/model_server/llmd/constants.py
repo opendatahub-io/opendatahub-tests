@@ -12,15 +12,14 @@ PREFIX_CACHE_BLOCK_SIZE = 64
 PREFIX_CACHE_HASH_ALGO = "sha256"
 PREFIX_CACHE_HASH_SEED = "42"
 
-# Scheduler configuration for single-node with precise prefix cache
-ROUTER_SCHEDULER_CONFIG_PRECISE_PREFIX_CACHE = {
+# Scheduler configuration for single-node with estimated prefix cache
+ROUTER_SCHEDULER_CONFIG_ESTIMATED_PREFIX_CACHE = {
     "apiVersion": "inference.networking.x-k8s.io/v1alpha1",
     "kind": "EndpointPickerConfig",
     "plugins": [
         {
             "type": "prefix-cache-scorer",
             "parameters": {
-                "mode": "cache_tracking",
                 "indexerConfig": {
                     "tokenProcessorConfig": {
                         "blockSize": PREFIX_CACHE_BLOCK_SIZE,

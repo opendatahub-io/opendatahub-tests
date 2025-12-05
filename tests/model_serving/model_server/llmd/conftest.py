@@ -17,7 +17,7 @@ from tests.model_serving.model_server.llmd.constants import (
     PREFIX_CACHE_BLOCK_SIZE,
     PREFIX_CACHE_HASH_ALGO,
     PREFIX_CACHE_HASH_SEED,
-    ROUTER_SCHEDULER_CONFIG_PRECISE_PREFIX_CACHE,
+    ROUTER_SCHEDULER_CONFIG_ESTIMATED_PREFIX_CACHE,
 )
 from utilities.constants import Timeout, ResourceLimits
 from utilities.infra import s3_endpoint_secret, create_inference_token
@@ -341,14 +341,14 @@ def llmisvc_auth(
 
 
 @pytest.fixture(scope="class")
-def singlenode_precise_prefix_cache(
+def singlenode_estimated_prefix_cache(
     admin_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     llmd_s3_secret: Secret,
     llmd_s3_service_account: ServiceAccount,
     llmd_gateway,
 ) -> Generator[LLMInferenceService, None, None]:
-    """LLMInferenceService fixture for single-node precise prefix cache test."""
+    """LLMInferenceService fixture for single-node estimated prefix cache test."""
 
     with create_llmisvc(
         client=admin_client,
@@ -385,7 +385,7 @@ def singlenode_precise_prefix_cache(
                 "name": "POD_IP",
                 "valueFrom": {"fieldRef": {"apiVersion": "v1", "fieldPath": "status.podIP"}},
             },
-            {"name": "MODEL_NAME", "value": "TinyLlama"},
+            {"name": "MODEL_NAME", "value": ModelNames.TINYLLAMA},
             {"name": "PYTHONHASHSEED", "value": PREFIX_CACHE_HASH_SEED},
         ],
         liveness_probe=LLMD_LIVENESS_PROBE,
@@ -425,7 +425,7 @@ def singlenode_precise_prefix_cache(
                                 "--cert-path",
                                 "/var/run/kserve/tls",
                                 "--config-text",
-                                yaml.dump(ROUTER_SCHEDULER_CONFIG_PRECISE_PREFIX_CACHE),
+                                yaml.dump(ROUTER_SCHEDULER_CONFIG_ESTIMATED_PREFIX_CACHE),
                             ],
                         }
                     ],

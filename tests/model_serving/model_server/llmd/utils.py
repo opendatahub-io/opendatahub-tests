@@ -313,15 +313,15 @@ def get_pod_that_handled_request(workload_pods: list[Pod], baseline_counts: dict
     return None
 
 
-def verify_singlenode_precise_prefix_cache_routing(
+def verify_singlenode_estimated_prefix_cache_routing(
     llmisvc: LLMInferenceService,
     token: str,
     workload_pods: list[Pod],
 ) -> None:
     """
-    Test single-node precise prefix cache routing with block-level caching validation.
+    Test single-node estimated prefix cache routing with block-level caching validation.
 
-    This function validates the core concept of precise prefix caching:
+    This function validates the core concept of estimated prefix caching:
     - Repeated prompts should hit the same pod (full cache)
     - Prompts with shared prefixes should route to same pod (partial cache)
     - Different prompts may distribute across pods (load balancing)
@@ -331,7 +331,7 @@ def verify_singlenode_precise_prefix_cache_routing(
         token: Authentication token
         workload_pods: List of vLLM workload pods to check routing
     """
-    LOGGER.info("Testing precise prefix cache routing")
+    LOGGER.info("Testing estimated prefix cache routing")
 
     # Track request counts per pod to detect which pod handles each request
     baseline_counts = {}
