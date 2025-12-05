@@ -180,13 +180,17 @@ def randomly_picked_model_from_catalog_api_by_source(
     model_registry_rest_headers: dict[str, str],
     request: pytest.FixtureRequest,
 ) -> tuple[dict[Any, Any], str, str]:
-    """Pick a random model from a specific catalog (function-scoped for test isolation)
+    """
+    Pick a random model from a specific catalog if a model name is not provided. If model name is provided, verify
+    that it exists and is associated with a given catalog and return the same.
 
     Supports parameterized headers via 'header_type':
     - 'user_token': Uses user_token_for_api_calls (default for user-specific tests)
     - 'registry': Uses model_registry_rest_headers (for catalog/registry tests)
+    - 'model_name': Name of the model
 
-    Accepts 'catalog_id' or 'source' (alias) to specify the catalog.
+    Accepts 'catalog_id' or 'source' (alias) to specify the catalog. Accepts 'model_name' to specify the model to
+    look for.
     """
     param = getattr(request, "param", {})
     # Support both 'catalog_id' and 'source' for backward compatibility

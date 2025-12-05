@@ -50,7 +50,7 @@ class TestSearchArtifactsByFilterQuery:
     ):
         """
         Tests the API's response to invalid filter queries syntax when searching artifacts.
-        It verifies that an invalid filter query syntaxt raises the correct error.
+        It verifies that an invalid filter query syntax raises the correct error.
         """
         _, model_name, catalog_id = randomly_picked_model_from_catalog_api_by_source
 
