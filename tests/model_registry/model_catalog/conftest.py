@@ -180,44 +180,54 @@ def randomly_picked_model_from_catalog_api_by_source(
     model_registry_rest_headers: dict[str, str],
     request: pytest.FixtureRequest,
 ) -> tuple[dict[Any, Any], str, str]:
-    """Pick a random model from a specific catalog (function-scoped for test isolation)
+    """
+    Pick a random model from a specific catalog if a model name is not provided. If model name is provided, verify
+    that it exists and is associated with a given catalog and return the same.
 
     Supports parameterized headers via 'header_type':
     - 'user_token': Uses user_token_for_api_calls (default for user-specific tests)
     - 'registry': Uses model_registry_rest_headers (for catalog/registry tests)
+    - 'model_name': Name of the model
 
-    Accepts 'catalog_id' or 'source' (alias) to specify the catalog.
+    Accepts 'catalog_id' or 'source' (alias) to specify the catalog. Accepts 'model_name' to specify the model to
+    look for.
     """
     param = getattr(request, "param", {})
     # Support both 'catalog_id' and 'source' for backward compatibility
     catalog_id = param.get("catalog_id") or param.get("source", REDHAT_AI_CATALOG_ID)
     header_type = param.get("header_type", "user_token")
-
+    model_name = param.get("model_name")
+    random_model = None
     # Select headers based on header_type
     if header_type == "registry":
         headers = model_registry_rest_headers
     else:
         headers = get_rest_headers(token=user_token_for_api_calls)
-
-    LOGGER.info(f"Picking random model from catalog: {catalog_id} with header_type: {header_type}")
-
     wait_for_model_catalog_api(url=f"{model_catalog_rest_url[0]}", headers=headers)
 
-    models_response = execute_get_command(
-        url=f"{model_catalog_rest_url[0]}models?source={catalog_id}&pageSize=100",
-        headers=headers,
-    )
-    models = models_response.get("items", [])
-    assert models, f"No models found for catalog: {catalog_id}"
-    LOGGER.info(f"{len(models)} models found in catalog {catalog_id}")
-
-    random_model = random.choice(seq=models)
-
-    model_name = random_model.get("name")
-    assert model_name, "Model name not found in random model"
-    assert random_model.get("source_id") == catalog_id, f"Catalog ID (source_id) mismatch for model {model_name}"
-    LOGGER.info(f"Testing model '{model_name}' from catalog '{catalog_id}'")
-
+    if not model_name:
+        LOGGER.info(f"Picking random model from catalog: {catalog_id} with header_type: {header_type}")
+        models_response = execute_get_command(
+            url=f"{model_catalog_rest_url[0]}models?source={catalog_id}&pageSize=100",
+            headers=headers,
+        )
+        models = models_response.get("items", [])
+        assert models, f"No models found for catalog: {catalog_id}"
+        LOGGER.info(f"{len(models)} models found in catalog {catalog_id}")
+        random_model = random.choice(seq=models)
+        model_name = random_model.get("name")
+        assert model_name, "Model name not found in random model"
+        assert random_model.get("source_id") == catalog_id, f"Catalog ID (source_id) mismatch for model {model_name}"
+        LOGGER.info(f"Testing model '{model_name}' from catalog '{catalog_id}'")
+    else:
+        LOGGER.info(f"Looking for pre-selected model: {model_name} from catalog: {catalog_id}")
+        # check if the model exists:
+        random_model = execute_get_command(
+            url=f"{model_catalog_rest_url[0]}sources/{catalog_id}/models/{model_name}",
+            headers=headers,
+        )
+        assert random_model["source_id"] == catalog_id, f"Catalog ID (source_id) mismatch for model {model_name}"
+        LOGGER.info(f"Using model '{model_name}' from catalog '{catalog_id}'")
     return random_model, model_name, catalog_id
 
 

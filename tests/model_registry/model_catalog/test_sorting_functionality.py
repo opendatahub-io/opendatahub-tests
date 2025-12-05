@@ -183,12 +183,24 @@ class TestCustomPropertiesSorting:
     """Test sorting functionality for custom properties"""
 
     @pytest.mark.parametrize(
-        "order_by,sort_order,randomly_picked_model_from_catalog_api_by_source",
+        "order_by,sort_order,randomly_picked_model_from_catalog_api_by_source,fallback",
         [
-            ("e2e_p90.double_value", "ASC", {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"}),
-            ("e2e_p90.double_value", "DESC", {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"}),
-            ("mmlu.double_value", "ASC", {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"}),
-            ("mmlu.double_value", "DESC", {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"}),
+            ("e2e_p90.double_value", "ASC", {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"}, False),
+            ("e2e_p90.double_value", "DESC", {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"}, False),
+            ("mmlu.double_value", "ASC", {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"}, False),
+            ("mmlu.double_value", "DESC", {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"}, False),
+            (
+                "non_existing_property.double_value",
+                "ASC",
+                {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"},
+                True,
+            ),
+            (
+                "non_existing_property.double_value",
+                "DESC",
+                {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"},
+                True,
+            ),
         ],
         indirect=["randomly_picked_model_from_catalog_api_by_source"],
     )
@@ -200,12 +212,17 @@ class TestCustomPropertiesSorting:
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         randomly_picked_model_from_catalog_api_by_source: tuple[dict, str, str],
+        fallback: bool,
     ):
         """
         RHOAIENG-38010: Test custom properties endpoint sorts correctly by supported fields
+        Also tests fallback behavior when a non-existing property is used for sorting
         """
         _, model_name, _ = randomly_picked_model_from_catalog_api_by_source
-        LOGGER.info(f"Testing custom properties sorting for {model_name}: orderBy={order_by}, sortOrder={sort_order}")
+        LOGGER.info(
+            f"Testing custom properties sorting for {model_name}: "
+            f"orderBy={order_by}, sortOrder={sort_order}, fallback={fallback}"
+        )
 
         response = get_artifacts_with_sorting(
             model_catalog_rest_url=model_catalog_rest_url,
@@ -216,7 +233,30 @@ class TestCustomPropertiesSorting:
             sort_order=sort_order,
         )
 
-        is_sorted = verify_custom_properties_sorted(
-            items=response["items"], property_field=order_by, sort_order=sort_order
+        # Verify how many artifacts have the custom property
+        property_name = order_by.rsplit(".", 1)[0]
+        artifacts_with_property = sum(
+            1 for item in response["items"] if property_name in item.get("customProperties", {})
         )
-        assert is_sorted, f"Custom properties are not sorted correctly for {model_name}"
+
+        if fallback:
+            # Fallback test: verify NO artifacts have the property and sorting falls back to ID ASC
+            # Note: Fallback always uses ASC order regardless of requested sortOrder
+            assert artifacts_with_property == 0, (
+                f"Expected no artifacts to have property {property_name} for fallback test, "
+                f"but found {artifacts_with_property} artifacts with it"
+            )
+            is_sorted = validate_items_sorted_correctly(items=response["items"], field="ID", order="ASC")
+            assert is_sorted, f"Fallback to ID ASC sorting failed for non-existing property {order_by}"
+        else:
+            # Normal test: verify at least some artifacts have the property
+            assert artifacts_with_property > 0, (
+                f"Cannot test custom property sorting: no artifacts have property {property_name}. "
+                f"This would silently fall back to ID sorting."
+            )
+            LOGGER.info(f"{artifacts_with_property}/{len(response['items'])} artifacts have property {property_name}")
+
+            is_sorted = verify_custom_properties_sorted(
+                items=response["items"], property_field=order_by, sort_order=sort_order
+            )
+            assert is_sorted, f"Custom properties are not sorted correctly for {model_name}"
