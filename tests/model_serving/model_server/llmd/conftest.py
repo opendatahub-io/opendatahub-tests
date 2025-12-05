@@ -453,32 +453,6 @@ def authenticated_llmisvc_token(
     llmisvc_auth_view_role,
     llmisvc_auth_role_binding,
 ) -> str:
-    """
-    General-purpose fixture to create authentication tokens for any LLMInferenceService.
-
-    This fixture dynamically creates authentication tokens with proper RBAC resources
-    for any combination of service account and LLMInferenceService.
-
-    Args:
-        request: pytest request object with param dict containing:
-            - service_account_fixture: Name of the service account fixture to use
-            - llmisvc_fixture: Name of the LLMInferenceService fixture to use
-        llmisvc_auth_token: Factory fixture for creating tokens
-        llmisvc_auth_view_role: Factory fixture for creating view roles
-        llmisvc_auth_role_binding: Factory fixture for creating role bindings
-
-    Returns:
-        str: Authentication token (RedactedString)
-
-    Example usage:
-        @pytest.mark.parametrize(
-            "authenticated_llmisvc_token",
-            [{"service_account_fixture": "llmd_s3_service_account", "llmisvc_fixture": "my_llmisvc"}],
-            indirect=True,
-        )
-        def test_auth(self, authenticated_llmisvc_token: str):
-            # Use authenticated_llmisvc_token for authenticated requests
-    """
     service_account_fixture_name = request.param["service_account_fixture"]
     llmisvc_fixture_name = request.param["llmisvc_fixture"]
 
