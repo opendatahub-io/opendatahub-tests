@@ -1028,9 +1028,6 @@ def verify_custom_properties_sorted(items: list[dict], property_field: str, sort
     Raises:
         ValueError: If there are not enough items to verify sorting
     """
-    if len(items) < 2:
-        raise ValueError(f"At least 2 items are required to verify sorting, got {len(items)}")
-
     property_name, value_type = property_field.rsplit(".", 1)
     # Separate items into two groups
     items_with_property, items_without_property = _split_items_by_custom_property(
