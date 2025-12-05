@@ -20,6 +20,7 @@ ROUTER_SCHEDULER_CONFIG_PRECISE_PREFIX_CACHE = {
         {
             "type": "prefix-cache-scorer",
             "parameters": {
+                "mode": "cache_tracking",
                 "indexerConfig": {
                     "tokenProcessorConfig": {
                         "blockSize": PREFIX_CACHE_BLOCK_SIZE,
