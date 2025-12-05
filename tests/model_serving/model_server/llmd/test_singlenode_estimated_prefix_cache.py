@@ -18,13 +18,17 @@ from ocp_resources.llm_inference_service import LLMInferenceService
 from tests.model_serving.model_server.llmd.utils import (
     get_llmd_router_scheduler_pod,
     get_llmd_workload_pods,
+    send_prefix_cache_test_requests,
+    verify_estimated_prefix_cache_metrics,
     verify_gateway_status,
     verify_llm_service_status,
-    verify_singlenode_estimated_prefix_cache_routing,
 )
 from simple_logger.logger import get_logger
 
 LOGGER = get_logger(name=__name__)
+
+# Number of requests to send for prefix cache testing
+NUM_REQUESTS = 20
 
 pytestmark = [pytest.mark.llmd_gpu]
 
@@ -44,7 +48,7 @@ pytestmark = [pytest.mark.llmd_gpu]
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("valid_aws_config")
+@pytest.mark.usefixtures("valid_aws_config", "user_workload_monitoring_config_map")
 class TestSingleNodeEstimatedPrefixCache:
     """Test class for singlenode estimated prefix cache routing."""
 
@@ -55,6 +59,7 @@ class TestSingleNodeEstimatedPrefixCache:
         singlenode_estimated_prefix_cache: LLMInferenceService,
         authenticated_llmisvc_token: str,
         gpu_count_on_cluster: int,
+        prometheus,
     ):
         """Test single-node estimated prefix cache routing."""
         if gpu_count_on_cluster < 2:
@@ -73,9 +78,17 @@ class TestSingleNodeEstimatedPrefixCache:
         workload_pods = get_llmd_workload_pods(client=unprivileged_client, llmisvc=singlenode_estimated_prefix_cache)
         assert len(workload_pods) == 2, f"Expected 2 workload pods, found {len(workload_pods)}"
 
-        # Verify prefix cache routing behavior
-        verify_singlenode_estimated_prefix_cache_routing(
+        # Send N identical requests to test prefix cache
+        num_successful_requests = send_prefix_cache_test_requests(
             llmisvc=singlenode_estimated_prefix_cache,
             token=authenticated_llmisvc_token,
+            num_requests=NUM_REQUESTS,
+        )
+
+        # Verify estimated prefix cache routing using Prometheus metrics
+        verify_estimated_prefix_cache_metrics(
+            prometheus=prometheus,
+            llmisvc=singlenode_estimated_prefix_cache,
             workload_pods=workload_pods,
+            expected_requests=num_successful_requests,
         )

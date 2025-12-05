@@ -357,6 +357,10 @@ def singlenode_estimated_prefix_cache(
         storage_uri=ModelStorage.TINYLLAMA_S3,
         model_name=ModelNames.TINYLLAMA,
         replicas=2,
+        annotations={
+            "prometheus.io/port": "8000",
+            "prometheus.io/path": "/metrics",
+        },
         container_resources={
             "limits": {
                 "cpu": ResourceLimits.GPU.CPU_LIMIT,

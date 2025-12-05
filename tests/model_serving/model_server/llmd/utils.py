@@ -5,13 +5,14 @@ This module provides helper functions for LLMD test operations using ocp_resourc
 Follows the established model server utils pattern for consistency.
 """
 
-import re
+import time
 from typing import Any
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.gateway import Gateway
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.pod import Pod
+from ocp_resources.prometheus import Prometheus
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
@@ -19,6 +20,7 @@ from utilities.constants import Protocols
 from utilities.exceptions import PodContainersRestartError
 from utilities.llmd_utils import verify_inference_response_llmd
 from utilities.manifests.tinyllama import TINYLLAMA_INFERENCE_CONFIG
+from utilities.monitoring import get_metrics_value
 
 
 LOGGER = get_logger(name=__name__)
@@ -250,188 +252,183 @@ def get_llmd_router_scheduler_pod(
     return None
 
 
-def count_chat_completions_requests_in_pod(pod: Pod) -> int:
-    """
-    Count POST /v1/chat/completions requests in pod logs.
-
-    Args:
-        pod: The vLLM workload pod to check
-
-    Returns:
-        Number of successful chat completion requests found in logs
-    """
-    try:
-        logs = pod.log(container="main", since_seconds=120)
-
-        # Match: "POST /v1/chat/completions HTTP/1.1" 200
-        pattern = r"POST /v1/chat/completions HTTP/1.1.*200"
-        matches = re.findall(pattern, logs)
-
-        LOGGER.info(f"Pod {pod.name}: Found {len(matches)} requests matching pattern")
-
-        # Debug: Show sample log lines if no matches found
-        if len(matches) == 0:
-            log_lines = logs.split("\n")
-            LOGGER.info(f"Pod {pod.name}: Total log lines: {len(log_lines)}")
-            # Show lines containing "POST" or "completions"
-            relevant_lines = [line for line in log_lines if "POST" in line or "completion" in line.lower()]
-            if relevant_lines:
-                LOGGER.info(f"Pod {pod.name}: Sample relevant lines (first 5):")
-                for line in relevant_lines[:5]:
-                    LOGGER.info(f"  {line[:200]}")
-
-        return len(matches)
-    except Exception as e:
-        LOGGER.info(f"Failed to count requests for pod {pod.name}: {e}")
-        return 0
-
-
-def get_pod_that_handled_request(workload_pods: list[Pod], baseline_counts: dict[str, int]) -> str | None:
-    """
-    Determine which pod handled a request by counting POST requests.
-
-    Args:
-        workload_pods: List of vLLM workload pods
-        baseline_counts: Dict of {pod_name: request_count} before this request
-
-    Returns:
-        Pod name that handled the request, or None if not found
-    """
-    current_counts = {}
-    for pod in workload_pods:
-        current_counts[pod.name] = count_chat_completions_requests_in_pod(pod=pod)
-
-    for pod in workload_pods:
-        baseline = baseline_counts.get(pod.name, 0)
-        current = current_counts.get(pod.name, 0)
-
-        if current > baseline:
-            LOGGER.info(f"Pod {pod.name} handled request: {baseline} -> {current} (+{current - baseline})")
-            return pod.name
-
-    LOGGER.warning("Could not determine which pod handled request")
-    return None
-
-
-def verify_singlenode_estimated_prefix_cache_routing(
+def send_prefix_cache_test_requests(
     llmisvc: LLMInferenceService,
     token: str,
-    workload_pods: list[Pod],
-) -> None:
+    num_requests: int = 20,
+) -> int:
     """
-    Test single-node estimated prefix cache routing with block-level caching validation.
+    Send N identical requests to validate prefix cache.
 
-    This function validates the core concept of estimated prefix caching:
-    - Repeated prompts should hit the same pod (full cache)
-    - Prompts with shared prefixes should route to same pod (partial cache)
-    - Different prompts may distribute across pods (load balancing)
+    This function sends the same prompt multiple times to test cache affinity.
+    All requests after the first should hit the cache and route to the same pod.
 
     Args:
         llmisvc: The LLMInferenceService to send requests to
         token: Authentication token
-        workload_pods: List of vLLM workload pods to check routing
+        num_requests: Number of identical requests to send (default 20)
+
+    Returns:
+        int: Number of successful requests completed
     """
-    LOGGER.info("Testing estimated prefix cache routing")
+    successful_requests = 0
+    failed_requests = 0
 
-    # Track request counts per pod to detect which pod handles each request
-    baseline_counts = {}
-
-    for pod in workload_pods:
-        baseline_counts[pod.name] = count_chat_completions_requests_in_pod(pod=pod)
-
-    # Phase 1: Test that identical prompts route to the same pod (full cache reuse)
-    LOGGER.info("Phase 1: Testing repeated prompts")
-    repeated_prompt = (
+    # Single prompt to be cached
+    cached_prompt = (
         "Explain in detail the fundamental principles of quantum mechanics including "
         "wave-particle duality, superposition, and entanglement in simple terms. "
         "Additionally, describe how these quantum phenomena differ from classical physics "
         "and why they are important for understanding the nature of reality at the atomic scale."
     )
 
-    phase1_pods = []
-    for _ in range(3):  # Send 3 identical requests to verify cache affinity
+    LOGGER.info(f"Sending {num_requests} identical requests to test prefix cache")
+
+    for i in range(num_requests):
+        LOGGER.info(f"Sending request {i + 1}/{num_requests}")
         inference_config = {
             "default_query_model": {
-                "query_input": repeated_prompt,
+                "query_input": cached_prompt,
                 "query_output": r".*",
                 "use_regex": True,
             },
             "chat_completions": TINYLLAMA_INFERENCE_CONFIG["chat_completions"],
         }
 
-        verify_inference_response_llmd(
-            llm_service=llmisvc,
-            inference_config=inference_config,
-            inference_type="chat_completions",
-            protocol=Protocols.HTTPS,
-            use_default_query=True,
-            insecure=False,
-            model_name=llmisvc.instance.spec.model.name,
-            token=token,
-            authorized_user=True,
-        )
+        try:
+            verify_inference_response_llmd(
+                llm_service=llmisvc,
+                inference_config=inference_config,
+                inference_type="chat_completions",
+                protocol=Protocols.HTTPS,
+                use_default_query=True,
+                insecure=False,
+                model_name=llmisvc.instance.spec.model.name,
+                token=token,
+                authorized_user=True,
+            )
+            successful_requests += 1
+        except Exception as e:
+            LOGGER.error(f"Request {i + 1} failed: {e}")
+            failed_requests += 1
 
-        handling_pod = get_pod_that_handled_request(
-            workload_pods=workload_pods,
-            baseline_counts=baseline_counts,
-        )
-        phase1_pods.append(handling_pod)
-        if handling_pod:
-            baseline_counts[handling_pod] = baseline_counts.get(handling_pod, 0) + 1
+    # Log statistics
+    if failed_requests > 0:
+        LOGGER.warning(f"Step 1: {successful_requests}/{num_requests} requests completed, {failed_requests} failed")
+    else:
+        LOGGER.info(f"Step 1: {successful_requests}/{num_requests} requests completed successfully")
 
-    # All identical prompts should hit the same pod (cache affinity)
-    unique_phase1_pods = {pod for pod in phase1_pods if pod}
-    assert len(unique_phase1_pods) == 1, f"Repeated prompts should route to same pod, got {unique_phase1_pods}"
-    LOGGER.info(f"Phase 1: All repeated requests routed to {unique_phase1_pods}")
+    return successful_requests
 
-    # Phase 2: Test that prompts with same prefix route to the same pod (partial cache reuse)
-    LOGGER.info("Phase 2: Testing shared prefix prompts")
-    prefix = (
-        "Explain in detail the fundamental principles of quantum mechanics including "
-        "wave-particle duality, the concept of superposition, the measurement problem, "
-        "the Copenhagen interpretation, and how these principles challenge our classical "
-        "understanding of reality and determinism in"
+
+def get_metrics_request_count_per_pod(
+    prometheus: Prometheus,
+    llmisvc: LLMInferenceService,
+    pods: list[Pod],
+) -> dict[str, float]:
+    """
+    Get request count per pod from Prometheus metrics.
+
+    Args:
+        prometheus: Prometheus instance
+        llmisvc: The LLMInferenceService
+        pods: List of pods to query
+
+    Returns:
+        dict[str, float]: Mapping of pod name to request count
+
+    """
+    pods_request_counts: dict[str, float] = {}
+
+    for pod in pods:
+        query = f'sum(kserve_vllm:request_success_total{{namespace="{llmisvc.namespace}",pod="{pod.name}"}})'
+        count = float(get_metrics_value(prometheus=prometheus, metrics_query=query) or 0)
+        pods_request_counts[pod.name] = count
+
+    return pods_request_counts
+
+
+def get_metrics_prefix_cache_hit_rate(
+    prometheus: Prometheus,
+    namespace: str,
+    service_name: str,
+) -> float:
+    """
+    Get prefix cache hit rate from Prometheus metrics.
+
+    Returns the average cache hit rate for the KServe vLLM service
+    calculated over the last 30 minutes across all pods.
+
+    Args:
+        prometheus: Prometheus instance
+        namespace: Namespace of the service
+        service_name: Service name for pod label matching
+
+    Returns:
+        float: Cache hit rate as decimal between 0 and 1 (e.g., 0.82 = 82%)
+    """
+    query = (
+        f"max("
+        f'rate(kserve_vllm:prefix_cache_hits_total{{namespace="{namespace}",pod=~"{service_name}-.*"}}[30m]) '
+        f"/ "
+        f'rate(kserve_vllm:prefix_cache_queries_total{{namespace="{namespace}",pod=~"{service_name}-.*"}}[30m])'
+        f")"
     )
-    shared_prefix_prompts = [
-        f"{prefix} modern physics",
-        f"{prefix} quantum computing applications",
-        f"{prefix} the study of subatomic particles",
-    ]
+    result = get_metrics_value(prometheus=prometheus, metrics_query=query)
+    return float(result or 0)
 
-    phase2_pods = []
-    for prompt in shared_prefix_prompts:
-        inference_config = {
-            "default_query_model": {
-                "query_input": prompt,
-                "query_output": r".*",
-                "use_regex": True,
-            },
-            "chat_completions": TINYLLAMA_INFERENCE_CONFIG["chat_completions"],
-        }
 
-        verify_inference_response_llmd(
-            llm_service=llmisvc,
-            inference_config=inference_config,
-            inference_type="chat_completions",
-            protocol=Protocols.HTTPS,
-            use_default_query=True,
-            insecure=False,
-            model_name=llmisvc.instance.spec.model.name,
-            token=token,
-            authorized_user=True,
-        )
+def verify_estimated_prefix_cache_metrics(
+    prometheus: Prometheus,
+    llmisvc: LLMInferenceService,
+    workload_pods: list[Pod],
+    expected_requests: int,
+) -> None:
+    """
+    Verify Prometheus metrics for estimated prefix cache test.
 
-        handling_pod = get_pod_that_handled_request(
-            workload_pods=workload_pods,
-            baseline_counts=baseline_counts,
-        )
-        phase2_pods.append(handling_pod)
-        if handling_pod:
-            baseline_counts[handling_pod] = baseline_counts.get(handling_pod, 0) + 1
+    Validates:
+    - Request count per pod (cache affinity: all requests on one pod)
+    - Prefix cache hit rate
 
-    # Prompts sharing a prefix should hit the same pod (prefix cache affinity)
-    unique_phase2_pods = {pod for pod in phase2_pods if pod}
-    assert len(unique_phase2_pods) == 1, f"Shared prefix prompts should route to same pod, got {unique_phase2_pods}"
-    LOGGER.info(f"Phase 2: All shared prefix requests routed to {unique_phase2_pods}")
+    Args:
+        prometheus: Prometheus instance
+        llmisvc: The LLMInferenceService
+        workload_pods: List of vLLM workload pods
+        expected_requests: Expected total request count to validate
 
-    LOGGER.info("All cache routing tests completed successfully")
+    Raises:
+        AssertionError: If request count doesn't match expected or cache affinity failed
+    """
+    # Wait for Prometheus to scrape metrics
+    LOGGER.info("Waiting 30 seconds for Prometheus to scrape metrics")
+    time.sleep(30)  # noqa: FCN001
+
+    # Validate request count per pod (cache affinity)
+    LOGGER.info("Validating request count per pod")
+    pods_request_counts = get_metrics_request_count_per_pod(
+        prometheus=prometheus,
+        llmisvc=llmisvc,
+        pods=workload_pods,
+    )
+
+    # Assert that only one pod received requests (zero requests on the other pod)
+    assert set(pods_request_counts.values()) == {0, expected_requests}, (
+        f"Expected the values across all pods to be exactly {{0, {expected_requests}}}. "
+        f"Got: {pods_request_counts.values()}"
+    )
+
+    # log active pod name
+    active_pod = [name for name, count in pods_request_counts.items() if count == expected_requests][0]
+    LOGGER.info(f"Step 2: ✓ Cache affinity: {expected_requests} requests on {active_pod}, 0 on other pods")
+
+    # Validate prefix cache hit rate
+    hit_rate = get_metrics_prefix_cache_hit_rate(
+        prometheus=prometheus,
+        namespace=llmisvc.namespace,
+        service_name=llmisvc.name,
+    )
+
+    # Assert that the hit rate (a value between 0.0 and 1.0) is greater than 0.
+    LOGGER.info(f"Prefix cache hit rate: {hit_rate:.4f}")
+    assert hit_rate > 0, f"Expected prefix cache hit rate to be greater than 0, but got {hit_rate}. "
