@@ -5,7 +5,6 @@ This module provides helper functions for LLMD test operations using ocp_resourc
 Follows the established model server utils pattern for consistency.
 """
 
-import time
 from typing import Any
 
 from kubernetes.dynamic import DynamicClient
@@ -14,7 +13,7 @@ from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.pod import Pod
 from ocp_resources.prometheus import Prometheus
 from simple_logger.logger import get_logger
-from timeout_sampler import TimeoutSampler
+from timeout_sampler import TimeoutSampler, retry
 
 from utilities.constants import Protocols
 from utilities.exceptions import PodContainersRestartError
@@ -309,7 +308,7 @@ def send_prefix_cache_test_requests(
             )
             successful_requests += 1
         except Exception as e:
-            LOGGER.error(f"Request {i + 1} failed: {e}")
+            LOGGER.error(f"Request {index + 1} failed: {e}")
             failed_requests += 1
 
     # Log statistics
@@ -375,6 +374,7 @@ def get_metrics_prefix_cache_hit_rate(
     return float(result or 0)
 
 
+@retry(wait_timeout=90, sleep=30, exceptions_dict={AssertionError: []}, print_log=False)
 def verify_estimated_prefix_cache_metrics(
     prometheus: Prometheus,
     llmisvc: LLMInferenceService,
@@ -395,19 +395,17 @@ def verify_estimated_prefix_cache_metrics(
         expected_requests: Expected total request count to validate
 
     Raises:
-        AssertionError: If request count doesn't match expected or cache affinity failed
+        TimeoutError: If metrics don't appear with expected values within timeout
     """
-    # Wait for Prometheus to scrape metrics
-    LOGGER.info("Waiting 30 seconds for Prometheus to scrape metrics")
-    time.sleep(30)  # noqa: FCN001
+    LOGGER.info("Checking Prometheus metrics...")
 
-    # Validate request count per pod (cache affinity)
-    LOGGER.info("Validating request count per pod")
     pods_request_counts = get_metrics_request_count_per_pod(
         prometheus=prometheus,
         llmisvc=llmisvc,
         pods=workload_pods,
     )
+
+    LOGGER.info(f"Request count by pod: {pods_request_counts}")
 
     # Assert that only one pod received requests (zero requests on the other pod)
     assert set(pods_request_counts.values()) == {0, expected_requests}, (
@@ -429,3 +427,5 @@ def verify_estimated_prefix_cache_metrics(
     # Assert that the hit rate (a value between 0.0 and 1.0) is greater than 0.
     LOGGER.info(f"Prefix cache hit rate: {hit_rate:.4f}")
     assert hit_rate > 0, f"Expected prefix cache hit rate to be greater than 0, but got {hit_rate}. "
+
+    return True
