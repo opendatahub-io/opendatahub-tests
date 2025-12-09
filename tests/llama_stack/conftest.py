@@ -52,60 +52,62 @@ def llama_stack_server_config(
     vector_io_provider_deployment_config_factory: Callable[[str], list[Dict[str, str]]],
 ) -> Dict[str, Any]:
     """
-    Generate server configuration for LlamaStack distribution deployment and deploy vector I/O provider resources.
+        Generate server configuration for LlamaStack distribution deployment and deploy vector I/O provider resources.
 
-    This fixture creates a comprehensive server configuration dictionary that includes
-    container specifications, environment variables, and optional storage settings.
-    The configuration is built based on test parameters and environment variables.
-    Additionally, it deploys the specified vector I/O provider (e.g., Milvus) and configures
-    the necessary environment variables for the provider integration.
+        This fixture creates a comprehensive server configuration dictionary that includes
+        container specifications, environment variables, and optional storage settings.
+        The configuration is built based on test parameters and environment variables.
+        Additionally, it deploys the specified vector I/O provider (e.g., Milvus) and configures
+        the necessary environment variables for the provider integration.
 
-    Args:
-        request: Pytest fixture request object containing test parameters
-        vector_io_provider_deployment_config_factory: Factory function to deploy vector I/O providers
-            and return their configuration environment variables
+        Args:
+            request: Pytest fixture request object containing test parameters
+            vector_io_provider_deployment_config_factory: Factory function to deploy vector I/O providers
+                and return their configuration environment variables
 
-    Returns:
-        Dict containing server configuration with the following structure:
-        - containerSpec: Container resource limits, environment variables, and port
-        - distribution: Distribution name (defaults to "rh-dev")
-        - storage: Optional storage size configuration
+        Returns:
+            Dict containing server configuration with the following structure:
+            - containerSpec: Container resource limits, environment variables, and port
+            - distribution: Distribution name (defaults to "rh-dev")
+            - storage: Optional storage size configuration
 
-    Environment Variables:
-        The fixture configures the following environment variables:
-        - INFERENCE_MODEL: Model identifier for inference
-        - VLLM_API_TOKEN: API token for VLLM service
-        - VLLM_URL: URL for VLLM service endpoint
-        - VLLM_TLS_VERIFY: TLS verification setting (defaults to "false")
-        - FMS_ORCHESTRATOR_URL: FMS orchestrator service URL
-        - Vector I/O provider specific variables (deployed via factory):
-          * For "milvus": MILVUS_DB_PATH
-          * For "milvus-remote": MILVUS_ENDPOINT, MILVUS_TOKEN, MILVUS_CONSISTENCY_LEVEL
+        Environment Variables:
+            The fixture configures the following environment variables:
+            - INFERENCE_MODEL: Model identifier for inference
+            - VLLM_API_TOKEN: API token for VLLM service
+            - VLLM_URL: URL for VLLM service endpoint
+            - VLLM_TLS_VERIFY: TLS verification setting (defaults to "false")
+            - FMS_ORCHESTRATOR_URL: FMS orchestrator service URL
+            - ENABLE_SENTENCE_TRANSFORMERS: Enable sentence-transformers embeddings (set to "true")
+    +       - EMBEDDING_PROVIDER: Embeddings provider to use (set to "sentence-transformers")
+            - Vector I/O provider specific variables (deployed via factory):
+              * For "milvus": MILVUS_DB_PATH
+              * For "milvus-remote": MILVUS_ENDPOINT, MILVUS_TOKEN, MILVUS_CONSISTENCY_LEVEL
 
-    Test Parameters:
-        The fixture accepts the following optional parameters via request.param:
-        - inference_model: Override for INFERENCE_MODEL environment variable
-        - vllm_api_token: Override for VLLM_API_TOKEN environment variable
-        - vllm_url_fixture: Fixture name to get VLLM URL from
-        - fms_orchestrator_url_fixture: Fixture name to get FMS orchestrator URL from
-        - vector_io_provider: Vector I/O provider type ("milvus" or "milvus-remote")
-        - llama_stack_storage_size: Storage size for the deployment
-        - embedding_model: Embedding model identifier for inference
-        - kubeflow_llama_stack_url: LlamaStack service URL for Kubeflow
-        - kubeflow_pipelines_endpoint: Kubeflow Pipelines API endpoint URL
-        - kubeflow_namespace: Namespace for Kubeflow resources
-        - kubeflow_base_image: Base container image for Kubeflow pipelines
-        - kubeflow_results_s3_prefix: S3 prefix for storing Kubeflow results
-        - kubeflow_s3_credentials_secret_name: Secret name for S3 credentials
-        - kubeflow_pipelines_token: Authentication token for Kubeflow Pipelines
+        Test Parameters:
+            The fixture accepts the following optional parameters via request.param:
+            - inference_model: Override for INFERENCE_MODEL environment variable
+            - vllm_api_token: Override for VLLM_API_TOKEN environment variable
+            - vllm_url_fixture: Fixture name to get VLLM URL from
+            - fms_orchestrator_url_fixture: Fixture name to get FMS orchestrator URL from
+            - vector_io_provider: Vector I/O provider type ("milvus" or "milvus-remote")
+            - llama_stack_storage_size: Storage size for the deployment
+            - embedding_model: Embedding model identifier for inference
+            - kubeflow_llama_stack_url: LlamaStack service URL for Kubeflow
+            - kubeflow_pipelines_endpoint: Kubeflow Pipelines API endpoint URL
+            - kubeflow_namespace: Namespace for Kubeflow resources
+            - kubeflow_base_image: Base container image for Kubeflow pipelines
+            - kubeflow_results_s3_prefix: S3 prefix for storing Kubeflow results
+            - kubeflow_s3_credentials_secret_name: Secret name for S3 credentials
+            - kubeflow_pipelines_token: Authentication token for Kubeflow Pipelines
 
-    Example:
-        @pytest.mark.parametrize("llama_stack_server_config",
-                                [{"vector_io_provider": "milvus-remote"}],
-                                indirect=True)
-        def test_with_remote_milvus(llama_stack_server_config):
-            # Test will use remote Milvus configuration
-            pass
+        Example:
+            @pytest.mark.parametrize("llama_stack_server_config",
+                                    [{"vector_io_provider": "milvus-remote"}],
+                                    indirect=True)
+            def test_with_remote_milvus(llama_stack_server_config):
+                # Test will use remote Milvus configuration
+                pass
     """
 
     env_vars = []
@@ -146,6 +148,10 @@ def llama_stack_server_config(
     embedding_model = params.get("embedding_model")
     if embedding_model:
         env_vars.append({"name": "EMBEDDING_MODEL", "value": embedding_model})
+
+    # Use inline::sentence-transformers embeddings provider
+    env_vars.append({"name": "ENABLE_SENTENCE_TRANSFORMERS", "value": "true"})
+    env_vars.append({"name": "EMBEDDING_PROVIDER", "value": "sentence-transformers"})
 
     # Kubeflow-related environment variables
     if params.get("enable_ragas_remote"):
