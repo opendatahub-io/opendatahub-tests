@@ -284,8 +284,8 @@ def send_prefix_cache_test_requests(
 
     LOGGER.info(f"Sending {num_requests} identical requests to test prefix cache")
 
-    for i in range(num_requests):
-        LOGGER.info(f"Sending request {i + 1}/{num_requests}")
+    for index in range(num_requests):
+        LOGGER.info(f"Sending request {index + 1}/{num_requests}")
         inference_config = {
             "default_query_model": {
                 "query_input": cached_prompt,
@@ -313,10 +313,7 @@ def send_prefix_cache_test_requests(
             failed_requests += 1
 
     # Log statistics
-    if failed_requests > 0:
-        LOGGER.warning(f"Step 1: {successful_requests}/{num_requests} requests completed, {failed_requests} failed")
-    else:
-        LOGGER.info(f"Step 1: {successful_requests}/{num_requests} requests completed successfully")
+    LOGGER.info(f"{successful_requests}/{num_requests} requests completed successfully")
 
     return successful_requests
 
@@ -420,7 +417,7 @@ def verify_estimated_prefix_cache_metrics(
 
     # log active pod name
     active_pod = [name for name, count in pods_request_counts.items() if count == expected_requests][0]
-    LOGGER.info(f"Step 2: ✓ Cache affinity: {expected_requests} requests on {active_pod}, 0 on other pods")
+    LOGGER.info(f"✓ Cache affinity: {expected_requests} requests on {active_pod}, 0 on other pods")
 
     # Validate prefix cache hit rate
     hit_rate = get_metrics_prefix_cache_hit_rate(
