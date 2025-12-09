@@ -9,7 +9,6 @@ from kubernetes.dynamic import DynamicClient
 
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.resource import ResourceEditor
-
 from ocp_resources.service_account import ServiceAccount
 from tests.model_registry.model_catalog.constants import (
     SAMPLE_MODEL_NAME3,
@@ -17,7 +16,7 @@ from tests.model_registry.model_catalog.constants import (
     CATALOG_CONTAINER,
     REDHAT_AI_CATALOG_ID,
 )
-from tests.model_registry.model_catalog.utils import get_models_from_catalog_api
+from tests.model_registry.model_catalog.utils import get_models_from_catalog_api, get_catalog_url_and_headers
 from tests.model_registry.constants import (
     CUSTOM_CATALOG_ID1,
     DEFAULT_MODEL_CATALOG_CM,
@@ -42,6 +41,7 @@ LOGGER = get_logger(name=__name__)
 def enabled_model_catalog_config_map(
     admin_client: DynamicClient,
     model_registry_namespace: str,
+    current_client_token: str,
 ) -> ConfigMap:
     """
     Enable all catalogs in the default model catalog configmap
@@ -74,7 +74,17 @@ def enabled_model_catalog_config_map(
     patches = {"data": {"sources.yaml": enabled_sources_yaml}}
 
     with ResourceEditor(patches={user_sources_cm: patches}):
+        # Wait for the model catalog pod to be ready
         is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+
+        # Get the model catalog URL and headers and wait for the API to be fully ready
+        catalog_url, headers = get_catalog_url_and_headers(
+            admin_client=admin_client,
+            model_registry_namespace=model_registry_namespace,
+            token=current_client_token,
+        )
+        wait_for_model_catalog_api(url=catalog_url, headers=headers)
+
         yield user_sources_cm
 
 
@@ -145,13 +155,16 @@ def user_token_for_api_calls(
     api_server_url: str,
     user_credentials_rbac: dict[str, str],
     service_account: ServiceAccount,
+    model_catalog_rest_url: list[str],
 ) -> Generator[str, None, None]:
     param = getattr(request, "param", {})
     user = param.get("user_type", "admin")
     LOGGER.info("User used: %s", user)
+
+    token = None
     if user == "admin":
         LOGGER.info("Logging in as admin user")
-        yield get_openshift_token()
+        token = get_openshift_token()
     elif user == "test":
         if not is_byoidc:
             login_with_user_password(
@@ -159,18 +172,26 @@ def user_token_for_api_calls(
                 user=user_credentials_rbac["username"],
                 password=user_credentials_rbac["password"],
             )
-            yield get_openshift_token()
-            LOGGER.info(f"Logging in as {original_user}")
-            login_with_user_password(
-                api_address=api_server_url,
-                user=original_user,
-            )
+            token = get_openshift_token()
         else:
-            yield get_mr_user_token(admin_client=admin_client, user_credentials_rbac=user_credentials_rbac)
+            token = get_mr_user_token(admin_client=admin_client, user_credentials_rbac=user_credentials_rbac)
     elif user == "sa_user":
-        yield create_inference_token(service_account)
+        token = create_inference_token(service_account)
+        # retries on 401 errors for OAuth/kube-rbac-proxy initialization
+        headers = get_rest_headers(token=token)
+        wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=headers)
     else:
         raise RuntimeError(f"Unknown user type: {user}")
+
+    yield token
+
+    # Cleanup: log back in as original user if needed
+    if user == "test" and not is_byoidc:
+        LOGGER.info(f"Logging in as {original_user}")
+        login_with_user_password(
+            api_address=api_server_url,
+            user=original_user,
+        )
 
 
 @pytest.fixture(scope="function")
@@ -203,6 +224,7 @@ def randomly_picked_model_from_catalog_api_by_source(
         headers = model_registry_rest_headers
     else:
         headers = get_rest_headers(token=user_token_for_api_calls)
+
     if not model_name:
         LOGGER.info(f"Picking random model from catalog: {catalog_id} with header_type: {header_type}")
         models_response = execute_get_command(

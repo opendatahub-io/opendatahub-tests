@@ -3,10 +3,11 @@ import yaml
 
 from kubernetes.dynamic import DynamicClient
 from simple_logger.logger import get_logger
-
+from timeout_sampler import retry
 
 from ocp_resources.pod import Pod
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.route import Route
 from tests.model_registry.model_catalog.constants import DEFAULT_CATALOGS
 from tests.model_registry.model_catalog.db_constants import (
     SEARCH_MODELS_DB_QUERY,
@@ -23,14 +24,31 @@ from tests.model_registry.model_catalog.constants import (
     PERFORMANCE_DATA_DIR,
 )
 from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
-from tests.model_registry.utils import execute_get_command
-from tests.model_registry.utils import get_rest_headers
+from tests.model_registry.utils import execute_get_command, get_rest_headers
 
 LOGGER = get_logger(name=__name__)
 
 
 class ResourceNotFoundError(Exception):
     pass
+
+
+@retry(wait_timeout=60, sleep=5, exceptions_dict={AssertionError: []})
+def get_catalog_url_and_headers(
+    admin_client: DynamicClient,
+    model_registry_namespace: str,
+    token: str,
+) -> tuple[str, dict[str, str]]:
+    """
+    Get model catalog URL and authentication headers from route.
+    """
+    model_catalog_routes = list(
+        Route.get(namespace=model_registry_namespace, label_selector="component=model-catalog", dyn_client=admin_client)
+    )
+    assert model_catalog_routes, f"Model catalog routes not found in namespace {model_registry_namespace}"
+
+    catalog_url = f"https://{model_catalog_routes[0].instance.spec.host}:443/api/model_catalog/v1alpha1/"
+    return catalog_url, get_rest_headers(token=token)
 
 
 def validate_model_catalog_enabled(pod: Pod) -> bool:
@@ -1007,6 +1025,114 @@ def validate_items_sorted_correctly(items: list[dict], field: str, order: str) -
         return all(values[i] >= values[i + 1] for i in range(len(values) - 1))
     else:
         raise ValueError(f"Invalid sort order: {order}")
+
+
+def verify_custom_properties_sorted(items: list[dict], property_field: str, sort_order: str) -> bool:
+    """
+    Verify if a list of items is sorted by a specific custom property value.
+
+    Expected sorting behavior:
+    1. Items WITH the custom property appear first, sorted by property value (ASC or DESC)
+    2. Items WITHOUT the custom property appear after, sorted by ID in ASC order
+
+    Args:
+        items: List of artifact items (with 'id' and 'customProperties')
+        property_field: Property field to sort by (e.g., "e2e_p90.double_value")
+        sort_order: "ASC" or "DESC" (applies only to items with the property)
+
+    Returns:
+        True if sorted correctly, False otherwise
+    """
+    property_name, value_type = property_field.rsplit(".", 1)
+    # Separate items into two groups
+    items_with_property, items_without_property = _split_items_by_custom_property(
+        items=items, property_name=property_name, value_type=value_type, property_field=property_field
+    )
+
+    LOGGER.info(
+        f"Total items: {len(items)}, with '{property_name}': {len(items_with_property)}, "
+        f"without: {len(items_without_property)}"
+    )
+
+    # Verify items with property come first
+    if items_with_property and items_without_property and items_with_property[-1][0] > items_without_property[0][0]:
+        LOGGER.error(
+            f"Items without property '{property_name}' appear before items with property. "
+            f"Last with property at index {items_with_property[-1][0]}, "
+            f"first without at index {items_without_property[0][0]}"
+        )
+        return False
+
+    if items_with_property and not _verify_items_with_property_sorted(
+        items=items_with_property, property_name=property_name, value_type=value_type, sort_order=sort_order
+    ):
+        return False
+
+    if items_without_property and not _verify_items_without_property_sorted(items=items_without_property):
+        return False
+
+    LOGGER.info(f"All items sorted correctly by '{property_name}' ({sort_order})")
+    return True
+
+
+def _split_items_by_custom_property(
+    items: list[dict],
+    property_name: str,
+    value_type: str,
+    property_field: str,
+) -> tuple[list[dict], list[dict]]:
+    """
+    Split items into two lists based on the presence of a custom property.
+    """
+    items_with_property = []
+    items_without_property = []
+
+    for idx, item in enumerate(items):
+        custom_props = item.get("customProperties", {})
+        if property_name in custom_props:
+            prop = custom_props[property_name]
+            value = prop.get(value_type) if isinstance(prop, dict) else None
+
+            # Only add to items_with_property if value is not None
+            if value is not None:
+                LOGGER.info(f"  [{idx}] ID: {item['id']}, {property_field}: {value}")
+                items_with_property.append((idx, item))
+            else:
+                LOGGER.info(f"  [{idx}] ID: {item['id']} (has {property_name} but value is None)")
+                items_without_property.append((idx, item))
+        else:
+            LOGGER.info(f"  [{idx}] ID: {item['id']} (no {property_name})")
+            items_without_property.append((idx, item))
+    return items_with_property, items_without_property
+
+
+def _verify_items_with_property_sorted(items: list[dict], property_name: str, value_type: str, sort_order: str) -> bool:
+    """
+    Verify if items with property are sorted correctly by property value
+    """
+    values = []
+    for _, item in items:
+        prop = item["customProperties"][property_name]
+        value = prop.get(value_type)
+        values.append(value)
+
+    expected_values = sorted(values, reverse=(sort_order == "DESC"))
+    if values != expected_values:
+        LOGGER.error(f"Items with property not sorted {sort_order}: {values}")
+        return False
+    return True
+
+
+def _verify_items_without_property_sorted(items: list[dict]) -> bool:
+    """
+    Verify if items without property are sorted correctly by ID in ASC order
+    """
+    ids = [int(item["id"]) for _, item in items]
+    expected_ids = sorted(ids)
+    if ids != expected_ids:
+        LOGGER.error(f"Items without property not sorted by ID ASC: {ids}")
+        return False
+    return True
 
 
 def _validate_single_criterion(

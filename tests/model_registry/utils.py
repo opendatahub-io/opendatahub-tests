@@ -715,7 +715,7 @@ def execute_get_call(
     return resp
 
 
-@retry(wait_timeout=60, sleep=5, exceptions_dict={ResourceNotFoundError: [], TransientUnauthorizedError: []})
+@retry(wait_timeout=90, sleep=5, exceptions_dict={ResourceNotFoundError: [], TransientUnauthorizedError: []})
 def wait_for_model_catalog_api(url: str, headers: dict[str, str], verify: bool | str = False) -> requests.Response:
     """
     Wait for model catalog API to be ready and fully initialized checks both /sources and /models endpoints
