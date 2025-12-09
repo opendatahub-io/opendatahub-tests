@@ -74,7 +74,7 @@ def enabled_model_catalog_config_map(
     patches = {"data": {"sources.yaml": enabled_sources_yaml}}
 
     with ResourceEditor(patches={user_sources_cm: patches}):
-        # Wait fot the model catalog pod to be ready
+        # Wait for the model catalog pod to be ready
         is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
 
         # Get the model catalog URL and headers and wait for the API to be fully ready
