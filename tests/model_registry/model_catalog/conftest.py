@@ -9,6 +9,7 @@ from kubernetes.dynamic import DynamicClient
 
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.resource import ResourceEditor
+from ocp_resources.route import Route
 
 from ocp_resources.service_account import ServiceAccount
 from tests.model_registry.model_catalog.constants import (
@@ -42,6 +43,7 @@ LOGGER = get_logger(name=__name__)
 def enabled_model_catalog_config_map(
     admin_client: DynamicClient,
     model_registry_namespace: str,
+    current_client_token: str,
 ) -> ConfigMap:
     """
     Enable all catalogs in the default model catalog configmap
@@ -74,7 +76,20 @@ def enabled_model_catalog_config_map(
     patches = {"data": {"sources.yaml": enabled_sources_yaml}}
 
     with ResourceEditor(patches={user_sources_cm: patches}):
+        # Wait fot the model catalog pod to be ready
         is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+
+        # Wait for the model catalog API to be fully ready
+        # Note: Build URL and headers directly to maintain session scope
+        if model_catalog_routes := list(
+            Route.get(
+                namespace=model_registry_namespace, label_selector="component=model-catalog", dyn_client=admin_client
+            )
+        ):
+            catalog_url = f"https://{model_catalog_routes[0].instance.spec.host}:443/api/model_catalog/v1alpha1/"
+            headers = get_rest_headers(token=current_client_token)
+            wait_for_model_catalog_api(url=catalog_url, headers=headers)
+
         yield user_sources_cm
 
 
@@ -203,7 +218,6 @@ def randomly_picked_model_from_catalog_api_by_source(
         headers = model_registry_rest_headers
     else:
         headers = get_rest_headers(token=user_token_for_api_calls)
-    wait_for_model_catalog_api(url=f"{model_catalog_rest_url[0]}", headers=headers)
 
     if not model_name:
         LOGGER.info(f"Picking random model from catalog: {catalog_id} with header_type: {header_type}")

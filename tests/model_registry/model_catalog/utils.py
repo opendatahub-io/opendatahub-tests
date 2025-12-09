@@ -1024,9 +1024,6 @@ def verify_custom_properties_sorted(items: list[dict], property_field: str, sort
 
     Returns:
         True if sorted correctly, False otherwise
-
-    Raises:
-        ValueError: If there are not enough items to verify sorting
     """
     property_name, value_type = property_field.rsplit(".", 1)
     # Separate items into two groups
