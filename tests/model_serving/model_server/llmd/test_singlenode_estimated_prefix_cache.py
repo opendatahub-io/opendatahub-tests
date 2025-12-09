@@ -13,7 +13,9 @@ Test configuration:
 
 import pytest
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.gateway import Gateway
 from ocp_resources.llm_inference_service import LLMInferenceService
+from ocp_resources.prometheus import Prometheus
 
 from tests.model_serving.model_server.llmd.utils import (
     get_llmd_router_scheduler_pod,
@@ -34,17 +36,15 @@ pytestmark = [pytest.mark.llmd_gpu]
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace",
-    [pytest.param({"name": "llmd-singlenode-prefix-cache-test"})],
-    indirect=True,
-)
-@pytest.mark.parametrize(
-    "authenticated_llmisvc_token",
+    "unprivileged_model_namespace, authenticated_llmisvc_token",
     [
-        pytest.param({
-            "service_account_fixture": "llmd_s3_service_account",
-            "llmisvc_fixture": "singlenode_estimated_prefix_cache",
-        })
+        pytest.param(
+            {"name": "llmd-singlenode-prefix-cache-test"},
+            {
+                "service_account_fixture": "llmd_s3_service_account",
+                "llmisvc_fixture": "singlenode_estimated_prefix_cache",
+            },
+        )
     ],
     indirect=True,
 )
@@ -55,11 +55,11 @@ class TestSingleNodeEstimatedPrefixCache:
     def test_singlenode_estimated_prefix_cache(
         self,
         unprivileged_client: DynamicClient,
-        llmd_gateway,
+        llmd_gateway: Gateway,
         singlenode_estimated_prefix_cache: LLMInferenceService,
         authenticated_llmisvc_token: str,
         gpu_count_on_cluster: int,
-        prometheus,
+        prometheus: Prometheus,
     ):
         """Test single-node estimated prefix cache routing."""
         if gpu_count_on_cluster < 2:

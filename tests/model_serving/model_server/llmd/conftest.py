@@ -5,6 +5,7 @@ import pytest
 import yaml
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.gateway import Gateway
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.role import Role
@@ -346,7 +347,7 @@ def singlenode_estimated_prefix_cache(
     unprivileged_model_namespace: Namespace,
     llmd_s3_secret: Secret,
     llmd_s3_service_account: ServiceAccount,
-    llmd_gateway,
+    llmd_gateway: Gateway,
 ) -> Generator[LLMInferenceService, None, None]:
     """LLMInferenceService fixture for single-node estimated prefix cache test."""
 
