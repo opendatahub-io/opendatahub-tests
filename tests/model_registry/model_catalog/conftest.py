@@ -203,6 +203,8 @@ def randomly_picked_model_from_catalog_api_by_source(
         headers = model_registry_rest_headers
     else:
         headers = get_rest_headers(token=user_token_for_api_calls)
+    wait_for_model_catalog_api(url=f"{model_catalog_rest_url[0]}", headers=headers)
+
     if not model_name:
         LOGGER.info(f"Picking random model from catalog: {catalog_id} with header_type: {header_type}")
         models_response = execute_get_command(
