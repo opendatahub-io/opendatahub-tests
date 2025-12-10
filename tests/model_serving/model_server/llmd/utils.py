@@ -11,10 +11,15 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.gateway import Gateway
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.pod import Pod
+from ocp_resources.prometheus import Prometheus
 from simple_logger.logger import get_logger
-from timeout_sampler import TimeoutSampler
+from timeout_sampler import TimeoutSampler, retry
 
+from utilities.constants import Protocols
 from utilities.exceptions import PodContainersRestartError
+from utilities.llmd_utils import verify_inference_response_llmd
+from utilities.manifests.tinyllama import TINYLLAMA_INFERENCE_CONFIG
+from utilities.monitoring import get_metrics_value
 
 
 LOGGER = get_logger(name=__name__)
@@ -187,3 +192,240 @@ def verify_llmd_no_failed_pods(
             return
         LOGGER.debug(f"LLMD pods status: {ready_pods}/{len(pods)} ready for {llm_service.name}")
     raise TimeoutError(f"LLMD pods for {llm_service.name} did not become ready within {timeout} seconds")
+
+
+def get_llmd_workload_pods(
+    client: DynamicClient,
+    llmisvc: LLMInferenceService,
+) -> list[Pod]:
+    """
+    Get all workload pods for an LLMInferenceService.
+
+    Args:
+        client: DynamicClient instance
+        llmisvc: The LLMInferenceService to get pods for
+
+    Returns:
+        List of workload Pod objects
+    """
+    pods = []
+    for pod in Pod.get(
+        dyn_client=client,
+        namespace=llmisvc.namespace,
+        label_selector=(
+            f"{Pod.ApiGroup.APP_KUBERNETES_IO}/part-of=llminferenceservice,"
+            f"{Pod.ApiGroup.APP_KUBERNETES_IO}/name={llmisvc.name}"
+        ),
+    ):
+        labels = pod.instance.metadata.get("labels", {})
+        if labels.get("kserve.io/component") == "workload":
+            pods.append(pod)
+    return pods
+
+
+def get_llmd_router_scheduler_pod(
+    client: DynamicClient,
+    llmisvc: LLMInferenceService,
+) -> Pod | None:
+    """
+    Get the router-scheduler pod for an LLMInferenceService.
+
+    Args:
+        client: DynamicClient instance
+        llmisvc: The LLMInferenceService to get router-scheduler pod for
+
+    Returns:
+        Router-scheduler Pod object or None if not found
+    """
+    for pod in Pod.get(
+        dyn_client=client,
+        namespace=llmisvc.namespace,
+        label_selector=(
+            f"{Pod.ApiGroup.APP_KUBERNETES_IO}/part-of=llminferenceservice,"
+            f"{Pod.ApiGroup.APP_KUBERNETES_IO}/name={llmisvc.name}"
+        ),
+    ):
+        labels = pod.instance.metadata.get("labels", {})
+        if labels.get(f"{Pod.ApiGroup.APP_KUBERNETES_IO}/component") == "llminferenceservice-router-scheduler":
+            return pod
+    return None
+
+
+def send_prefix_cache_test_requests(
+    llmisvc: LLMInferenceService,
+    token: str,
+    num_requests: int = 20,
+) -> int:
+    """
+    Send N identical requests to validate prefix cache.
+
+    This function sends the same prompt multiple times to test cache affinity.
+    All requests after the first should hit the cache and route to the same pod.
+
+    Args:
+        llmisvc: The LLMInferenceService to send requests to
+        token: Authentication token
+        num_requests: Number of identical requests to send (default 20)
+
+    Returns:
+        int: Number of successful requests completed
+    """
+    successful_requests = 0
+    failed_requests = 0
+
+    # Single prompt to be cached
+    cached_prompt = (
+        "Explain in detail the fundamental principles of quantum mechanics including "
+        "wave-particle duality, superposition, and entanglement in simple terms. "
+        "Additionally, describe how these quantum phenomena differ from classical physics "
+        "and why they are important for understanding the nature of reality at the atomic scale."
+    )
+
+    LOGGER.info(f"Sending {num_requests} identical requests to test prefix cache")
+
+    for index in range(num_requests):
+        LOGGER.info(f"Sending request {index + 1}/{num_requests}")
+        inference_config = {
+            "default_query_model": {
+                "query_input": cached_prompt,
+                "query_output": r".*",
+                "use_regex": True,
+            },
+            "chat_completions": TINYLLAMA_INFERENCE_CONFIG["chat_completions"],
+        }
+
+        try:
+            verify_inference_response_llmd(
+                llm_service=llmisvc,
+                inference_config=inference_config,
+                inference_type="chat_completions",
+                protocol=Protocols.HTTPS,
+                use_default_query=True,
+                insecure=False,
+                model_name=llmisvc.instance.spec.model.name,
+                token=token,
+                authorized_user=True,
+            )
+            successful_requests += 1
+        except Exception as e:
+            LOGGER.error(f"Request {index + 1} failed: {e}")
+            failed_requests += 1
+
+    # Log statistics
+    LOGGER.info(f"{successful_requests}/{num_requests} requests completed successfully")
+
+    return successful_requests
+
+
+def get_metrics_request_count_per_pod(
+    prometheus: Prometheus,
+    llmisvc: LLMInferenceService,
+    pods: list[Pod],
+) -> dict[str, float]:
+    """
+    Get request count per pod from Prometheus metrics.
+
+    Args:
+        prometheus: Prometheus instance
+        llmisvc: The LLMInferenceService
+        pods: List of pods to query
+
+    Returns:
+        dict[str, float]: Mapping of pod name to request count
+
+    """
+    pods_request_counts: dict[str, float] = {}
+
+    for pod in pods:
+        query = f'sum(kserve_vllm:request_success_total{{namespace="{llmisvc.namespace}",pod="{pod.name}"}})'
+        count = float(get_metrics_value(prometheus=prometheus, metrics_query=query) or 0)
+        pods_request_counts[pod.name] = count
+
+    return pods_request_counts
+
+
+def get_metrics_prefix_cache_hit_rate(
+    prometheus: Prometheus,
+    namespace: str,
+    service_name: str,
+) -> float:
+    """
+    Get prefix cache hit rate from Prometheus metrics.
+
+    Returns the average cache hit rate for the KServe vLLM service
+    calculated over the last 30 minutes across all pods.
+
+    Args:
+        prometheus: Prometheus instance
+        namespace: Namespace of the service
+        service_name: Service name for pod label matching
+
+    Returns:
+        float: Cache hit rate as decimal between 0 and 1 (e.g., 0.82 = 82%)
+    """
+    query = (
+        f"max("
+        f'rate(kserve_vllm:prefix_cache_hits_total{{namespace="{namespace}",pod=~"{service_name}-.*"}}[30m]) '
+        f"/ "
+        f'rate(kserve_vllm:prefix_cache_queries_total{{namespace="{namespace}",pod=~"{service_name}-.*"}}[30m])'
+        f")"
+    )
+    result = get_metrics_value(prometheus=prometheus, metrics_query=query)
+    return float(result or 0)
+
+
+@retry(wait_timeout=90, sleep=30, exceptions_dict={AssertionError: []}, print_log=False)
+def verify_estimated_prefix_cache_metrics(
+    prometheus: Prometheus,
+    llmisvc: LLMInferenceService,
+    workload_pods: list[Pod],
+    expected_requests: int,
+) -> None:
+    """
+    Verify Prometheus metrics for estimated prefix cache test.
+
+    Validates:
+    - Request count per pod (cache affinity: all requests on one pod)
+    - Prefix cache hit rate
+
+    Args:
+        prometheus: Prometheus instance
+        llmisvc: The LLMInferenceService
+        workload_pods: List of vLLM workload pods
+        expected_requests: Expected total request count to validate
+
+    Raises:
+        TimeoutError: If metrics don't appear with expected values within timeout
+    """
+    LOGGER.info("Checking Prometheus metrics...")
+
+    pods_request_counts = get_metrics_request_count_per_pod(
+        prometheus=prometheus,
+        llmisvc=llmisvc,
+        pods=workload_pods,
+    )
+
+    LOGGER.info(f"Request count by pod: {pods_request_counts}")
+
+    # Assert that only one pod received requests (zero requests on the other pod)
+    assert set(pods_request_counts.values()) == {0, expected_requests}, (
+        f"Expected the values across all pods to be exactly {{0, {expected_requests}}}. "
+        f"Got: {pods_request_counts.values()}"
+    )
+
+    # log active pod name
+    active_pod = [name for name, count in pods_request_counts.items() if count == expected_requests][0]
+    LOGGER.info(f"✓ Cache affinity: {expected_requests} requests on {active_pod}, 0 on other pods")
+
+    # Validate prefix cache hit rate
+    hit_rate = get_metrics_prefix_cache_hit_rate(
+        prometheus=prometheus,
+        namespace=llmisvc.namespace,
+        service_name=llmisvc.name,
+    )
+
+    # Assert that the hit rate (a value between 0.0 and 1.0) is greater than 0.
+    LOGGER.info(f"Prefix cache hit rate: {hit_rate:.4f}")
+    assert hit_rate > 0, f"Expected prefix cache hit rate to be greater than 0, but got {hit_rate}. "
+
+    return True
