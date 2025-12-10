@@ -1,8 +1,8 @@
-from typing import Generator
-
+from typing import Generator, Callable, Dict, List, Tuple
 import base64
 import pytest
 import requests
+import time
 from simple_logger.logger import get_logger
 from utilities.plugins.constant import OpenAIEnpoints
 from ocp_resources.service_account import ServiceAccount
@@ -34,6 +34,7 @@ from tests.model_serving.model_server.maas_billing.utils import (
     create_maas_group,
     build_maas_headers,
     get_maas_models_response,
+    verify_chat_completions,
 )
 
 
@@ -81,6 +82,7 @@ def model_url(
     maas_scheme: str,
     maas_host: str,
     admin_client: DynamicClient,
+    maas_inference_service_tinyllama: LLMInferenceService,
 ) -> str:
     deployment = llmis_name(client=admin_client)
     return f"{maas_scheme}://{maas_host}/llm/{deployment}{CHAT_COMPLETIONS}"
@@ -467,6 +469,65 @@ def maas_models_response_for_actor(
         base_url=base_url,
         headers=maas_headers_for_actor,
     )
+
+
+@pytest.fixture
+def exercise_rate_limiter() -> Callable[..., Tuple[List[int], List[int]]]:
+    """
+    Shared helper for both request-rate and token-rate tests.
+
+    """
+
+    def _exercise_rate_limiter(
+        *,
+        actor_label: str,
+        request_session_http: requests.Session,
+        model_url: str,
+        maas_headers_for_actor: Dict[str, str],
+        maas_models_response_for_actor: requests.Response,
+        max_requests: int,
+        max_tokens: int,
+        sleep_between_seconds: float,
+        log_prefix: str,
+    ) -> Tuple[List[int], List[int]]:
+        models_list = maas_models_response_for_actor.json().get("data", [])
+        assert models_list, "no models returned from /v1/models"
+
+        status_codes_list: List[int] = []
+        total_tokens_seen_list: List[int] = []
+
+        for attempt_index in range(max_requests):
+            LOGGER.info(f"{log_prefix}[{actor_label}]: attempt {attempt_index + 1}/{max_requests}")
+
+            response = verify_chat_completions(
+                request_session_http=request_session_http,
+                model_url=model_url,
+                headers=maas_headers_for_actor,
+                models_list=models_list,
+                prompt_text="Hello – rate-limit test",
+                max_tokens=max_tokens,
+                request_timeout_seconds=60,
+                log_prefix=f"{log_prefix}[{actor_label}]",
+                expected_status_codes=(200, 429),
+            )
+
+            status_codes_list.append(response.status_code)
+
+            total_tokens_header = response.headers.get("x-odhu-usage-total-tokens")
+            if total_tokens_header:
+                if total_tokens_header.isdigit():
+                    total_tokens_seen_list.append(int(total_tokens_header))
+                else:
+                    LOGGER.warning(
+                        f"{log_prefix}[{actor_label}]: invalid total-tokens header value: {total_tokens_header}"
+                    )
+
+            time.sleep(sleep_between_seconds)  # noqa: FCN001
+
+        LOGGER.info(f"{log_prefix}[{actor_label}]: status_codes={status_codes_list}, tokens={total_tokens_seen_list}")
+        return status_codes_list, total_tokens_seen_list
+
+    return _exercise_rate_limiter
 
 
 @pytest.fixture(scope="class")

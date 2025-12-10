@@ -190,6 +190,7 @@ def patch_llmisvc_with_maas_router(
         "metadata": {
             "annotations": {
                 "alpha.maas.opendatahub.io/tiers": "[]",
+                "security.opendatahub.io/enable-auth": "true",
             }
         },
         "spec": {
@@ -221,9 +222,18 @@ def verify_chat_completions(
     max_tokens: int = 50,
     request_timeout_seconds: int = 60,
     log_prefix: str = "MaaS",
-) -> None:
+    expected_status_codes: tuple[int, ...] = (200,),
+) -> Response:
     """
     Common helper to verify /v1/chat/completions responds to a simple prompt.
+
+    - For the usual happy-path tests, leave expected_status_codes=(200,)
+      and this behaves exactly as before: assert HTTP 200 and validate the
+      basic response shape (choices, content, etc.).
+
+    - For special tests (e.g. rate limiting) you can pass a tuple like
+      expected_status_codes=(200, 429) and then inspect response.status_code
+      in the test. Only HTTP 200 responses will have their body validated.
     """
 
     assert models_list, "No models returned from /v1/models"
@@ -249,20 +259,25 @@ def verify_chat_completions(
 
     LOGGER.info(f"{log_prefix}: POST {model_url} -> HTTP {response.status_code}")
 
-    assert response.status_code == 200, (
-        f"/v1/chat/completions failed: HTTP {response.status_code} response={response.text[:200]} (url={model_url})"
+    assert response.status_code in expected_status_codes, (
+        f"/v1/chat/completions failed: HTTP {response.status_code} "
+        f"response={response.text[:200]} (url={model_url}), "
+        f"expected one of {expected_status_codes}"
     )
 
-    response_body = response.json()
-    completions_choices = response_body.get("choices", [])
-    assert isinstance(completions_choices, list) and completions_choices, (
-        "'choices' field missing or empty in /v1/chat/completions response"
-    )
+    if response.status_code == 200:
+        response_body = response.json()
+        completions_choices = response_body.get("choices", [])
+        assert isinstance(completions_choices, list) and completions_choices, (
+            "'choices' field missing or empty in /v1/chat/completions response"
+        )
 
-    first_choice = completions_choices[0]
-    message_section = first_choice.get("message", {}) or {}
-    content_text = message_section.get("content") or first_choice.get("text", "")
+        first_choice = completions_choices[0]
+        message_section = first_choice.get("message", {}) or {}
+        content_text = message_section.get("content") or first_choice.get("text", "")
 
-    assert isinstance(content_text, str) and content_text.strip(), (
-        "First choice in /v1/chat/completions response has no text content"
-    )
+        assert isinstance(content_text, str) and content_text.strip(), (
+            "First choice in /v1/chat/completions response has no text content"
+        )
+
+    return response
