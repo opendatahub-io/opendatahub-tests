@@ -59,7 +59,7 @@ class TestSearchModelCatalog:
             model_registry_rest_headers=model_registry_rest_headers,
             source_label=f"{REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME},{REDHAT_AI_CATALOG_NAME}",
         )["size"]
-
+        assert no_filtered_models_size > 0
         assert no_filtered_models_size == both_filtered_models_size
         assert redhat_ai_filter_moldels_size + redhat_ai_validated_filter_models_size == both_filtered_models_size
 
