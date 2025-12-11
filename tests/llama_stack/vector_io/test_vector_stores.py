@@ -42,6 +42,15 @@ LOGGER = get_logger(name=__name__)
             {"vector_io_provider": "milvus-remote"},
             id="vector_io_provider_milvus-remote",
         ),
+        pytest.param(
+            {"name": "test-llamastack-vector-stores", "randomize_name": True},
+            {
+                "llama_stack_storage_size": "2Gi",
+                "vector_io_provider": "pgvector",
+            },
+            {"vector_io_provider": "pgvector"},
+            id="vector_io_provider_pgvector",
+        ),
     ],
     indirect=True,
 )
