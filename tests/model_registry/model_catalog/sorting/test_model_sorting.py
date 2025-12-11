@@ -79,7 +79,7 @@ class TestAccuracySorting:
     def test_accuracy_sorting_works_correctly(
         self: Self,
         enabled_model_catalog_config_map: ConfigMap,
-        sort_order: str,
+        sort_order: str | None,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
     ):
