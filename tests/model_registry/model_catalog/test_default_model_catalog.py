@@ -31,7 +31,11 @@ LOGGER = get_logger(name=__name__)
 
 pytestmark = [
     pytest.mark.usefixtures(
-        "updated_dsc_component_state_scope_session", "model_registry_namespace", "original_user", "test_idp_user"
+        "updated_dsc_component_state_scope_session",
+        "model_registry_namespace",
+        "original_user",
+        "test_idp_user",
+        "enabled_model_catalog_config_map",
     )
 ]
 
@@ -43,7 +47,7 @@ class TestModelCatalogGeneral:
         [
             pytest.param(
                 {"configmap_name": DEFAULT_CUSTOM_MODEL_CATALOG},
-                0,
+                2,
                 False,
                 id="test_model_catalog_sources_configmap_install",
                 marks=pytest.mark.install,
