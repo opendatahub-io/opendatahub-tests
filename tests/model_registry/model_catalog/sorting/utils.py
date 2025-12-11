@@ -221,7 +221,7 @@ def validate_accuracy_sorting_against_database(
     LOGGER.info(f"Database query found {len(models_with_accuracy)} models with accuracy{filter_info}{sort_info}")
 
     # Get all models from API response (preserving order) - extract only name and id
-    api_models = [(m.get("name"), m.get("id")) for m in api_response.get("items", [])]
+    api_models = [(model.get("name"), model.get("id")) for model in api_response.get("items", [])]
     LOGGER.info(f"API returned {len(api_models)} total models")
 
     # Split API models into two groups: with accuracy and without accuracy
