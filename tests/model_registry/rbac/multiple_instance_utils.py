@@ -6,7 +6,6 @@ from tests.model_registry.constants import (
     DB_BASE_RESOURCES_NAME,
     NUM_MR_INSTANCES,
     MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
-    OAUTH_PROXY_CONFIG_DICT,
     MR_INSTANCE_BASE_NAME,
 )
 from tests.model_registry.utils import (
@@ -83,7 +82,7 @@ model_registry_instance_params = [
         "rest": {},
         "mysql": get_mysql_config(base_name=f"{DB_BASE_RESOURCES_NAME}{index}", namespace=ns_name, db_backend="mysql"),
         "wait_for_resource": True,
-        "oauth_proxy": OAUTH_PROXY_CONFIG_DICT,
+        "kube_rbac_proxy": {},
     }
     for index in range(0, NUM_MR_INSTANCES)
 ]

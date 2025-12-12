@@ -33,11 +33,6 @@ MODEL_DICT: dict[str, Any] = {
 MR_INSTANCE_BASE_NAME: str = "model-registry"
 MR_INSTANCE_NAME: str = f"{MR_INSTANCE_BASE_NAME}0"
 SECURE_MR_NAME: str = "secure-db-mr"
-OAUTH_PROXY_CONFIG_DICT: dict[str, Any] = {
-    "port": 8443,
-    "routePort": 443,
-    "serviceRoute": "enabled",
-}
 DB_BASE_RESOURCES_NAME: str = "db-model-registry"
 DB_RESOURCE_NAME: str = f"{DB_BASE_RESOURCES_NAME}0"
 MR_DB_IMAGE_DIGEST: str = (
