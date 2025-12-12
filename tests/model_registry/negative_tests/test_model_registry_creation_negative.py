@@ -12,7 +12,6 @@ from tests.model_registry.constants import (
     MR_OPERATOR_NAME,
     MR_INSTANCE_NAME,
     DB_RESOURCE_NAME,
-    OAUTH_PROXY_CONFIG_DICT,
 )
 from kubernetes.dynamic.exceptions import ForbiddenError
 
@@ -61,7 +60,7 @@ class TestModelRegistryCreationNegative:
                 },
                 grpc={},
                 rest={},
-                oauth_proxy=OAUTH_PROXY_CONFIG_DICT,
+                kube_rbac_proxy={},
                 mysql=my_sql_dict,
                 wait_for_resource=True,
             ):
