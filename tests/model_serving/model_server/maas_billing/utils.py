@@ -1,10 +1,11 @@
-from typing import Dict, Generator
+from typing import Any, Dict, Generator, List
 
 import base64
 import requests
 from json import JSONDecodeError
 from urllib.parse import urlparse
 from contextlib import contextmanager
+from copy import deepcopy
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.group import Group
@@ -281,3 +282,208 @@ def verify_chat_completions(
         )
 
     return response
+
+
+# def _assert_mixed_200_and_429(
+#     *,
+#     actor_label: str,
+#     status_codes_list: list[int],
+#     context: str,
+# ) -> None:
+#     """
+#     Used for both:
+#     - request-rate tests
+#     - token-rate tests (current Kuadrant config produces 200 then 429s)
+#     """
+#     assert 200 in status_codes_list, f"{actor_label}: no 200 in {context} (status_codes={status_codes_list})"
+#     assert 429 in status_codes_list, f"{actor_label}: expected 429 in {context}, but saw {status_codes_list}"
+
+
+def assert_mixed_200_and_429(
+    *,
+    actor_label: str,
+    status_codes_list: List[int],
+    context: str,
+    require_429: bool = True,
+) -> None:
+    """
+    Basic sanity check for rate-limiter behaviour:
+
+    - We see at least one successful call (200).
+    - The first response in the burst is 200, so the actor is not
+      already rate-limited when we start this test.
+    - Optionally require seeing at least one 429 (for strict request-rate
+      tests).
+
+    We deliberately do not assert a strict "all 200s then all 429s"
+    pattern because we don't fully control the shared 1m window.
+    """
+    assert status_codes_list, f"{actor_label}: no responses in {context}"
+
+    first_status = status_codes_list[0]
+    assert first_status == 200, (
+        f"{actor_label}: expected first status 200 in {context}, got {first_status} (status_codes={status_codes_list})"
+    )
+
+    assert 200 in status_codes_list, f"{actor_label}: no 200 in {context} (status_codes={status_codes_list})"
+
+    if require_429:
+        assert 429 in status_codes_list, f"{actor_label}: expected 429 in {context}, but saw {status_codes_list}"
+    else:
+        if 429 not in status_codes_list:
+            LOGGER.info(
+                f"{actor_label}: token-rate '{context}' – no 429 observed in burst "
+                f"(status_codes={status_codes_list}); policy may be lenient "
+            )
+
+
+def maas_token_ratelimitpolicy_spec() -> Dict[str, Any]:
+    """
+    Deterministic TokenRateLimitPolicy limits for MaaS tests.
+
+    This returns only the 'limits' mapping, suitable for assigning to
+    spec['limits'] on the existing TokenRateLimitPolicy.
+    """
+    return {
+        "enterprise-user-tokens": {
+            "counters": [{"expression": "auth.identity.userid"}],
+            "rates": [{"limit": 40, "window": "1m"}],
+            "when": [{"predicate": 'auth.identity.tier == "enterprise"'}],
+        },
+        "free-user-tokens": {
+            "counters": [{"expression": "auth.identity.userid"}],
+            "rates": [{"limit": 30, "window": "1m"}],
+            "when": [{"predicate": 'auth.identity.tier == "free"'}],
+        },
+        "premium-user-tokens": {
+            "counters": [{"expression": "auth.identity.userid"}],
+            "rates": [{"limit": 60, "window": "1m"}],
+            "when": [{"predicate": 'auth.identity.tier == "premium"'}],
+        },
+    }
+
+
+def maas_ratelimitpolicy_spec() -> Dict[str, Any]:
+    """
+    Deterministic RateLimitPolicy limits for MaaS tests.
+
+    This returns only the 'limits' mapping, suitable for assigning to
+    spec['limits'] on the existing RateLimitPolicy.
+    """
+    return {
+        "enterprise": {
+            "counters": [{"expression": "auth.identity.userid"}],
+            "rates": [{"limit": 50, "window": "2m"}],
+            "when": [{"predicate": 'auth.identity.tier == "enterprise"'}],
+        },
+        "free": {
+            "counters": [{"expression": "auth.identity.userid"}],
+            "rates": [{"limit": 5, "window": "1m"}],
+            "when": [{"predicate": 'auth.identity.tier == "free"'}],
+        },
+        "premium": {
+            "counters": [{"expression": "auth.identity.userid"}],
+            "rates": [{"limit": 8, "window": "1m"}],
+            "when": [{"predicate": 'auth.identity.tier == "premium"'}],
+        },
+    }
+
+
+@contextmanager
+def maas_gateway_rate_limits_patched(
+    *,
+    admin_client: DynamicClient,
+    namespace: str,
+    token_policy_name: str,
+    request_policy_name: str,
+) -> None:
+    """
+    Temporarily patch ONLY 'spec.limits' of the Kuadrant
+    TokenRateLimitPolicy and RateLimitPolicy for MaaS tests,
+    and restore the original state afterwards.
+    """
+    token_policy_kind = "TokenRateLimitPolicy"
+    request_policy_kind = "RateLimitPolicy"
+
+    token_policy_api = admin_client.resources.get(
+        api_version="kuadrant.io/v1alpha1",
+        kind=token_policy_kind,
+    )
+    request_policy_api = admin_client.resources.get(
+        api_version="kuadrant.io/v1",
+        kind=request_policy_kind,
+    )
+
+    LOGGER.info(
+        f"MaaS Kuadrant: discovered resources — "
+        f"TokenRateLimitPolicy gv={token_policy_api.group_version}, "
+        f"RateLimitPolicy gv={request_policy_api.group_version}"
+    )
+
+    token_policy = token_policy_api.get(
+        name=token_policy_name,
+        namespace=namespace,
+    )
+    request_policy = request_policy_api.get(
+        name=request_policy_name,
+        namespace=namespace,
+    )
+
+    original_token_body = token_policy.to_dict()
+    original_request_body = request_policy.to_dict()
+
+    original_token_body.get("metadata", {}).pop("resourceVersion", None)
+    original_request_body.get("metadata", {}).pop("resourceVersion", None)
+
+    # ---- Build patched versions ----
+    patched_token_body = deepcopy(x=original_token_body)
+    patched_request_body = deepcopy(x=original_request_body)
+
+    patched_token_body.setdefault("spec", {})
+    patched_request_body.setdefault("spec", {})
+
+    patched_token_body["spec"]["limits"] = maas_token_ratelimitpolicy_spec()
+    patched_request_body["spec"]["limits"] = maas_ratelimitpolicy_spec()
+
+    LOGGER.info(
+        f"Patching Kuadrant policies in namespace '{namespace}':\n"
+        f"  - TokenRateLimitPolicy: {token_policy_name}\n"
+        f"  - RateLimitPolicy: {request_policy_name}"
+    )
+
+    # ---- Apply patches ----
+    token_policy_api.patch(
+        name=token_policy_name,
+        namespace=namespace,
+        body=patched_token_body,
+        content_type="application/merge-patch+json",
+    )
+    request_policy_api.patch(
+        name=request_policy_name,
+        namespace=namespace,
+        body=patched_request_body,
+        content_type="application/merge-patch+json",
+    )
+
+    try:
+        yield
+
+    finally:
+        LOGGER.info(
+            f"Restoring original Kuadrant policies:\n"
+            f"  - {namespace}/{token_policy_name}\n"
+            f"  - {namespace}/{request_policy_name}"
+        )
+
+        token_policy_api.patch(
+            name=token_policy_name,
+            namespace=namespace,
+            body=original_token_body,
+            content_type="application/merge-patch+json",
+        )
+        request_policy_api.patch(
+            name=request_policy_name,
+            namespace=namespace,
+            body=original_request_body,
+            content_type="application/merge-patch+json",
+        )

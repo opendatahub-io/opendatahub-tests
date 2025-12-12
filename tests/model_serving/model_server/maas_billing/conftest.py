@@ -1,4 +1,4 @@
-from typing import Generator, Callable, Dict, List, Tuple
+from typing import Generator, Dict, List, Tuple
 import base64
 import pytest
 import requests
@@ -6,6 +6,7 @@ import time
 from simple_logger.logger import get_logger
 from utilities.plugins.constant import OpenAIEnpoints
 from ocp_resources.service_account import ServiceAccount
+from timeout_sampler import TimeoutSampler
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
@@ -23,8 +24,6 @@ from utilities.user_utils import UserTestSession, wait_for_user_creation, create
 from utilities.infra import login_with_user_password, get_openshift_token
 from utilities.general import wait_for_oauth_openshift_deployment
 from ocp_resources.secret import Secret
-
-
 from tests.model_serving.model_server.maas_billing.utils import (
     detect_scheme_via_llmisvc,
     host_from_ingress_domain,
@@ -35,6 +34,7 @@ from tests.model_serving.model_server.maas_billing.utils import (
     build_maas_headers,
     get_maas_models_response,
     verify_chat_completions,
+    maas_gateway_rate_limits_patched,
 )
 
 
@@ -472,62 +472,81 @@ def maas_models_response_for_actor(
 
 
 @pytest.fixture
-def exercise_rate_limiter() -> Callable[..., Tuple[List[int], List[int]]]:
-    """
-    Shared helper for both request-rate and token-rate tests.
+def maas_models_for_actor(
+    maas_models_response_for_actor: requests.Response,
+) -> List[Dict]:
 
-    """
+    models_list = maas_models_response_for_actor.json().get("data", [])
+    assert models_list, "no models returned from /v1/models"
+    return models_list
 
-    def _exercise_rate_limiter(
-        *,
-        actor_label: str,
-        request_session_http: requests.Session,
-        model_url: str,
-        maas_headers_for_actor: Dict[str, str],
-        maas_models_response_for_actor: requests.Response,
-        max_requests: int,
-        max_tokens: int,
-        sleep_between_seconds: float,
-        log_prefix: str,
-    ) -> Tuple[List[int], List[int]]:
-        models_list = maas_models_response_for_actor.json().get("data", [])
-        assert models_list, "no models returned from /v1/models"
 
-        status_codes_list: List[int] = []
-        total_tokens_seen_list: List[int] = []
+@pytest.fixture
+def exercise_rate_limiter(
+    actor_label: str,
+    scenario: dict,
+    request_session_http: requests.Session,
+    model_url: str,
+    maas_headers_for_actor: Dict[str, str],
+    maas_models_for_actor: List[Dict],
+) -> Tuple[List[int], List[int]]:
 
-        for attempt_index in range(max_requests):
-            LOGGER.info(f"{log_prefix}[{actor_label}]: attempt {attempt_index + 1}/{max_requests}")
+    if scenario["id"] == "token-rate":
+        LOGGER.info(
+            f"Waiting 65s before token-rate scenario for actor={actor_label} to let "
+            "TokenRateLimitPolicy 1m window reset"
+        )
 
-            response = verify_chat_completions(
-                request_session_http=request_session_http,
-                model_url=model_url,
-                headers=maas_headers_for_actor,
-                models_list=models_list,
-                prompt_text="Hello – rate-limit test",
-                max_tokens=max_tokens,
-                request_timeout_seconds=60,
-                log_prefix=f"{log_prefix}[{actor_label}]",
-                expected_status_codes=(200, 429),
-            )
+        start_time = time.time()
+        for _ in TimeoutSampler(
+            wait_timeout=70,
+            sleep=1,
+            func=lambda: time.time() - start_time > 65,
+        ):
+            if _:
+                break
 
-            status_codes_list.append(response.status_code)
+    models_list = maas_models_for_actor
 
-            total_tokens_header = response.headers.get("x-odhu-usage-total-tokens")
-            if total_tokens_header:
-                if total_tokens_header.isdigit():
-                    total_tokens_seen_list.append(int(total_tokens_header))
-                else:
-                    LOGGER.warning(
-                        f"{log_prefix}[{actor_label}]: invalid total-tokens header value: {total_tokens_header}"
-                    )
+    max_requests = scenario["max_requests"]
+    max_tokens = scenario["max_tokens"]
+    log_prefix = scenario["log_prefix"]
 
-            time.sleep(sleep_between_seconds)  # noqa: FCN001
+    status_codes_list: List[int] = []
+    total_tokens_seen_list: List[int] = []
 
-        LOGGER.info(f"{log_prefix}[{actor_label}]: status_codes={status_codes_list}, tokens={total_tokens_seen_list}")
-        return status_codes_list, total_tokens_seen_list
+    for attempt_index in range(max_requests):
+        LOGGER.info(f"{log_prefix}[{actor_label}]: attempt {attempt_index + 1}/{max_requests}")
 
-    return _exercise_rate_limiter
+        response = verify_chat_completions(
+            request_session_http=request_session_http,
+            model_url=model_url,
+            headers=maas_headers_for_actor,
+            models_list=models_list,
+            prompt_text="Hello – rate-limit test",
+            max_tokens=max_tokens,
+            request_timeout_seconds=60,
+            log_prefix=f"{log_prefix}[{actor_label}]",
+            expected_status_codes=(200, 429),
+        )
+
+        status_codes_list.append(response.status_code)
+
+        total_tokens_header = response.headers.get("x-odhu-usage-total-tokens")
+        if total_tokens_header:
+            if total_tokens_header.isdigit():
+                total_tokens_seen_list.append(int(total_tokens_header))
+            else:
+                LOGGER.warning(f"{log_prefix}[{actor_label}]: invalid total-tokens header value: {total_tokens_header}")
+        else:
+            if response.status_code == 200:
+                LOGGER.warning(
+                    f"{log_prefix}[{actor_label}]: "
+                    f"total-tokens header missing in response (status={response.status_code})"
+                )
+
+    LOGGER.info(f"{log_prefix}[{actor_label}]: status_codes={status_codes_list}, tokens={total_tokens_seen_list}")
+    return status_codes_list, total_tokens_seen_list
 
 
 @pytest.fixture(scope="class")
@@ -591,6 +610,23 @@ def maas_scheme(admin_client: DynamicClient, unprivileged_model_namespace: Names
     )
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="class")
 def maas_host(admin_client):
     return host_from_ingress_domain(client=admin_client)
+
+
+@pytest.fixture(scope="class")
+def maas_gateway_rate_limits(
+    admin_client: DynamicClient,
+) -> Generator[None, None, None]:
+    namespace = "openshift-ingress"
+    token_policy_name = "gateway-token-rate-limits"  # <= use real name from cluster
+    request_policy_name = "gateway-rate-limits"  # <= this you already showed
+
+    with maas_gateway_rate_limits_patched(
+        admin_client=admin_client,
+        namespace=namespace,
+        token_policy_name=token_policy_name,
+        request_policy_name=request_policy_name,
+    ):
+        yield

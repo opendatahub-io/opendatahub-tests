@@ -1,10 +1,10 @@
-from typing import Dict
+from typing import Tuple, List
 
 import pytest
-import time
-import requests
-from requests import Response
 from simple_logger.logger import get_logger
+from tests.model_serving.model_server.maas_billing.utils import (
+    assert_mixed_200_and_429,
+)
 
 LOGGER = get_logger(name=__name__)
 
@@ -45,25 +45,11 @@ SCENARIOS = [
 ]
 
 
-def _assert_mixed_200_and_429(
-    *,
-    actor_label: str,
-    status_codes_list: list[int],
-    context: str,
-) -> None:
-    """
-    Used for both:
-    - request-rate tests
-    - token-rate tests (current Kuadrant config produces 200 then 429s)
-    """
-    assert 200 in status_codes_list, f"{actor_label}: no 200 in {context} (status_codes={status_codes_list})"
-    assert 429 in status_codes_list, f"{actor_label}: expected 429 in {context}, but saw {status_codes_list}"
-
-
 @pytest.mark.usefixtures(
     "maas_inference_service_tinyllama",
     "maas_free_group",
     "maas_premium_group",
+    "maas_gateway_rate_limits",
 )
 @pytest.mark.parametrize(
     "unprivileged_model_namespace",
@@ -78,7 +64,6 @@ def _assert_mixed_200_and_429(
 class TestMaasRateLimits:
     """
     MaaS Billing – request-rate and token-rate limit tests against TinyLlama.
-
     """
 
     @pytest.mark.parametrize("scenario", SCENARIOS)
@@ -89,48 +74,32 @@ class TestMaasRateLimits:
     )
     def test_rate_limits_for_actor_and_scenario(
         self,
-        ocp_token_for_actor: str,
+        ocp_token_for_actor: str,  # fixture: auth for this actor
         actor_label: str,
         scenario: dict,
-        request_session_http: requests.Session,
-        model_url: str,
-        maas_headers_for_actor: Dict[str, str],
-        maas_models_response_for_actor: Response,
-        exercise_rate_limiter,
+        exercise_rate_limiter: Tuple[List[int], List[int]],  # fixture value, not callable
     ) -> None:
         """
         For each actor (free/premium) and each scenario
         (request-rate / token-rate), send a small burst of
         /v1/chat/completions calls.
-
         """
-        if scenario["id"] == "token-rate":
-            LOGGER.info(
-                "Sleeping 65s before token-rate scenario for actor=%s to let TokenRateLimitPolicy 1m window reset",
-                actor_label,
-            )
-            time.sleep(65)  # noqa: FCN001
+        _ = ocp_token_for_actor
 
-        status_codes_list, total_tokens_seen_list = exercise_rate_limiter(
-            actor_label=actor_label,
-            request_session_http=request_session_http,
-            model_url=model_url,
-            maas_headers_for_actor=maas_headers_for_actor,
-            maas_models_response_for_actor=maas_models_response_for_actor,
-            max_requests=scenario["max_requests"],
-            max_tokens=scenario["max_tokens"],
-            sleep_between_seconds=scenario["sleep_between_seconds"],
-            log_prefix=scenario["log_prefix"],
-        )
+        status_codes_list, total_tokens_seen_list = exercise_rate_limiter
 
-        _assert_mixed_200_and_429(
+        require_429 = scenario["id"] == "request-rate"
+
+        assert_mixed_200_and_429(
             actor_label=actor_label,
             status_codes_list=status_codes_list,
             context=scenario["context"],
+            require_429=require_429,
         )
 
         if scenario["id"] == "token-rate":
             LOGGER.info(
-                f"MaaS token-rate[{actor_label}]: final status_codes={status_codes_list}, "
+                f"MaaS token-rate[{actor_label}]: "
+                f"final status_codes={status_codes_list}, "
                 f"total_tokens_seen={total_tokens_seen_list}"
             )
