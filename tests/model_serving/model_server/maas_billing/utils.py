@@ -284,21 +284,6 @@ def verify_chat_completions(
     return response
 
 
-# def _assert_mixed_200_and_429(
-#     *,
-#     actor_label: str,
-#     status_codes_list: list[int],
-#     context: str,
-# ) -> None:
-#     """
-#     Used for both:
-#     - request-rate tests
-#     - token-rate tests (current Kuadrant config produces 200 then 429s)
-#     """
-#     assert 200 in status_codes_list, f"{actor_label}: no 200 in {context} (status_codes={status_codes_list})"
-#     assert 429 in status_codes_list, f"{actor_label}: expected 429 in {context}, but saw {status_codes_list}"
-
-
 def assert_mixed_200_and_429(
     *,
     actor_label: str,
@@ -306,18 +291,7 @@ def assert_mixed_200_and_429(
     context: str,
     require_429: bool = True,
 ) -> None:
-    """
-    Basic sanity check for rate-limiter behaviour:
 
-    - We see at least one successful call (200).
-    - The first response in the burst is 200, so the actor is not
-      already rate-limited when we start this test.
-    - Optionally require seeing at least one 429 (for strict request-rate
-      tests).
-
-    We deliberately do not assert a strict "all 200s then all 429s"
-    pattern because we don't fully control the shared 1m window.
-    """
     assert status_codes_list, f"{actor_label}: no responses in {context}"
 
     first_status = status_codes_list[0]
@@ -396,7 +370,7 @@ def maas_gateway_rate_limits_patched(
     namespace: str,
     token_policy_name: str,
     request_policy_name: str,
-) -> None:
+) -> Generator[None, None, None]:
     """
     Temporarily patch ONLY 'spec.limits' of the Kuadrant
     TokenRateLimitPolicy and RateLimitPolicy for MaaS tests,
