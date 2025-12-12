@@ -78,23 +78,6 @@ def validate_items_sorted_correctly(items: list[dict], field: str, order: str) -
     Returns:
         True if items are sorted correctly, False otherwise
     """
-    if len(items) <= 1:
-        if field == "NAME" and items[0].get("artifactType") == "model-artifact":
-            # When testing sorting for model artifacts we use only models from the validated catalog, since
-            # they almost all have more than 1 artifact. However, some of these models still return a single artifact.
-            # Given that this is currently the expected behavior, we return True.
-            single_artifact_models = [
-                "mistral-small-24B",
-                "gemma-2",
-                "granite-3.1-8b-base-quantized.w4a16",
-                "granite-3.1-8b-instruct-FP8-dynamic",
-                "granite-3.1-8b-starter-v2",
-            ]
-            if any(single_artifact_model in items[0].get("uri") for single_artifact_model in single_artifact_models):
-                return True
-        else:
-            # In any other case, we expect at least 2 items to sort.
-            raise ValueError(f"At least 2 items are required to sort, got {len(items)}")
 
     # Extract field values for comparison
     values = []
