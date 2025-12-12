@@ -1,3 +1,4 @@
+import time
 from contextlib import ExitStack
 
 import pytest
@@ -109,6 +110,8 @@ def model_registry_instance(
                 wait_for_pods_running(
                     admin_client=admin_client, namespace_name=model_registry_namespace, number_of_consecutive_checks=6
                 )
+            # TODO remove when RHOAIENG-41728 is addressed
+            time.sleep(60.0)  # noqa: FCN001
             yield mr_instances
         if db_name == "default":
             wait_for_default_resource_cleanedup(admin_client=admin_client, namespace_name=model_registry_namespace)

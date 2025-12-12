@@ -14,6 +14,12 @@ LOGGER = get_logger(name=__name__)
 
 pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace")]
 
+MODEL_NAMES_CUSTOM_PROPERTIES: list[str] = [
+    "RedHatAI/Llama-3.1-Nemotron-70B-Instruct-HF",
+    "RedHatAI/phi-4-quantized.w8a8",
+    "RedHatAI/Qwen2.5-7B-Instruct-quantized.w4a16",
+]
+
 
 # More than 1 artifact are available only in downstream
 @pytest.mark.downstream_only
@@ -25,18 +31,42 @@ class TestArtifactsSorting:
     @pytest.mark.parametrize(
         "order_by,sort_order,randomly_picked_model_from_catalog_api_by_source",
         [
-            ("ID", "ASC", {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"}),
-            ("ID", "DESC", {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"}),
+            (
+                "ID",
+                "ASC",
+                {
+                    "catalog_id": VALIDATED_CATALOG_ID,
+                    "header_type": "registry",
+                    "model_name": random.choice(MODEL_NAMES_CUSTOM_PROPERTIES),
+                },
+            ),
+            (
+                "ID",
+                "DESC",
+                {
+                    "catalog_id": VALIDATED_CATALOG_ID,
+                    "header_type": "registry",
+                    "model_name": random.choice(MODEL_NAMES_CUSTOM_PROPERTIES),
+                },
+            ),
             pytest.param(
                 "NAME",
                 "ASC",
-                {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"},
+                {
+                    "catalog_id": VALIDATED_CATALOG_ID,
+                    "header_type": "registry",
+                    "model_name": random.choice(MODEL_NAMES_CUSTOM_PROPERTIES),
+                },
                 marks=pytest.mark.xfail(reason="RHOAIENG-38056: falls back to ID sorting"),
             ),
             pytest.param(
                 "NAME",
                 "DESC",
-                {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"},
+                {
+                    "catalog_id": VALIDATED_CATALOG_ID,
+                    "header_type": "registry",
+                    "model_name": random.choice(MODEL_NAMES_CUSTOM_PROPERTIES),
+                },
                 marks=pytest.mark.xfail(reason="RHOAIENG-38056: falls back to ID sorting"),
             ),
         ],
@@ -73,12 +103,6 @@ class TestArtifactsSorting:
 class TestCustomPropertiesSorting:
     """Test sorting functionality for custom properties"""
 
-    MODEL_NAMEs_CUSTOM_PROPERTIES: list[str] = [
-        "RedHatAI/Llama-3.1-Nemotron-70B-Instruct-HF",
-        "RedHatAI/phi-4-quantized.w8a8",
-        "RedHatAI/Qwen2.5-7B-Instruct-quantized.w4a16",
-    ]
-
     @pytest.mark.parametrize(
         "order_by,sort_order,randomly_picked_model_from_catalog_api_by_source,expect_pure_fallback",
         [
@@ -88,7 +112,7 @@ class TestCustomPropertiesSorting:
                 {
                     "catalog_id": VALIDATED_CATALOG_ID,
                     "header_type": "registry",
-                    "model_name": random.choice(MODEL_NAMEs_CUSTOM_PROPERTIES),
+                    "model_name": random.choice(MODEL_NAMES_CUSTOM_PROPERTIES),
                 },
                 False,
             ),
@@ -98,7 +122,7 @@ class TestCustomPropertiesSorting:
                 {
                     "catalog_id": VALIDATED_CATALOG_ID,
                     "header_type": "registry",
-                    "model_name": random.choice(MODEL_NAMEs_CUSTOM_PROPERTIES),
+                    "model_name": random.choice(MODEL_NAMES_CUSTOM_PROPERTIES),
                 },
                 False,
             ),
@@ -108,7 +132,7 @@ class TestCustomPropertiesSorting:
                 {
                     "catalog_id": VALIDATED_CATALOG_ID,
                     "header_type": "registry",
-                    "model_name": random.choice(MODEL_NAMEs_CUSTOM_PROPERTIES),
+                    "model_name": random.choice(MODEL_NAMES_CUSTOM_PROPERTIES),
                 },
                 False,
             ),
@@ -118,7 +142,7 @@ class TestCustomPropertiesSorting:
                 {
                     "catalog_id": VALIDATED_CATALOG_ID,
                     "header_type": "registry",
-                    "model_name": random.choice(MODEL_NAMEs_CUSTOM_PROPERTIES),
+                    "model_name": random.choice(MODEL_NAMES_CUSTOM_PROPERTIES),
                 },
                 False,
             ),
@@ -128,7 +152,7 @@ class TestCustomPropertiesSorting:
                 {
                     "catalog_id": VALIDATED_CATALOG_ID,
                     "header_type": "registry",
-                    "model_name": random.choice(MODEL_NAMEs_CUSTOM_PROPERTIES),
+                    "model_name": random.choice(MODEL_NAMES_CUSTOM_PROPERTIES),
                 },
                 False,
             ),
@@ -138,7 +162,7 @@ class TestCustomPropertiesSorting:
                 {
                     "catalog_id": VALIDATED_CATALOG_ID,
                     "header_type": "registry",
-                    "model_name": random.choice(MODEL_NAMEs_CUSTOM_PROPERTIES),
+                    "model_name": random.choice(MODEL_NAMES_CUSTOM_PROPERTIES),
                 },
                 False,
             ),
@@ -148,7 +172,7 @@ class TestCustomPropertiesSorting:
                 {
                     "catalog_id": VALIDATED_CATALOG_ID,
                     "header_type": "registry",
-                    "model_name": random.choice(MODEL_NAMEs_CUSTOM_PROPERTIES),
+                    "model_name": random.choice(MODEL_NAMES_CUSTOM_PROPERTIES),
                 },
                 True,
             ),
@@ -158,7 +182,7 @@ class TestCustomPropertiesSorting:
                 {
                     "catalog_id": VALIDATED_CATALOG_ID,
                     "header_type": "registry",
-                    "model_name": random.choice(MODEL_NAMEs_CUSTOM_PROPERTIES),
+                    "model_name": random.choice(MODEL_NAMES_CUSTOM_PROPERTIES),
                 },
                 True,
             ),
