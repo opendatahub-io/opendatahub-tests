@@ -1,11 +1,10 @@
-from typing import Any, Dict, Generator, List
+from typing import Any, Dict, Generator, List, Optional
 
 import base64
 import requests
 from json import JSONDecodeError
 from urllib.parse import urlparse
 from contextlib import contextmanager
-from copy import deepcopy
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.group import Group
@@ -16,6 +15,9 @@ from simple_logger.logger import get_logger
 from utilities.llmd_utils import get_llm_inference_url
 from utilities.plugins.constant import RestHeader, OpenAIEnpoints
 from ocp_resources.resource import ResourceEditor
+from utilities.resources.rate_limit_policy import RateLimitPolicy
+from utilities.resources.token_rate_limit_policy import TokenRateLimitPolicy
+from timeout_sampler import TimeoutSampler
 
 LOGGER = get_logger(name=__name__)
 MODELS_INFO = OpenAIEnpoints.MODELS_INFO
@@ -291,24 +293,24 @@ def assert_mixed_200_and_429(
     context: str,
     require_429: bool = True,
 ) -> None:
-
     assert status_codes_list, f"{actor_label}: no responses in {context}"
 
-    first_status = status_codes_list[0]
-    assert first_status == 200, (
-        f"{actor_label}: expected first status 200 in {context}, got {first_status} (status_codes={status_codes_list})"
+    allowed_status_codes = {200, 429}
+    unexpected_status_codes = [code for code in status_codes_list if code not in allowed_status_codes]
+
+    assert not unexpected_status_codes, (
+        f"{actor_label}: unexpected HTTP status codes in {context}: {unexpected_status_codes}. "
+        f"Full sequence={status_codes_list}. "
+        "Likely wrong endpoint/route (404) or server/gateway issue (5xx)."
     )
 
-    assert 200 in status_codes_list, f"{actor_label}: no 200 in {context} (status_codes={status_codes_list})"
+    assert status_codes_list[0] == 200, (
+        f"{actor_label}: expected first status 200 in {context}, got {status_codes_list[0]} "
+        f"(status_codes={status_codes_list})"
+    )
 
     if require_429:
         assert 429 in status_codes_list, f"{actor_label}: expected 429 in {context}, but saw {status_codes_list}"
-    else:
-        if 429 not in status_codes_list:
-            LOGGER.info(
-                f"{actor_label}: token-rate '{context}' – no 429 observed in burst "
-                f"(status_codes={status_codes_list}); policy may be lenient "
-            )
 
 
 def maas_token_ratelimitpolicy_spec() -> Dict[str, Any]:
@@ -321,17 +323,17 @@ def maas_token_ratelimitpolicy_spec() -> Dict[str, Any]:
     return {
         "enterprise-user-tokens": {
             "counters": [{"expression": "auth.identity.userid"}],
-            "rates": [{"limit": 40, "window": "1m"}],
+            "rates": [{"limit": 240, "window": "1m"}],
             "when": [{"predicate": 'auth.identity.tier == "enterprise"'}],
         },
         "free-user-tokens": {
             "counters": [{"expression": "auth.identity.userid"}],
-            "rates": [{"limit": 30, "window": "1m"}],
+            "rates": [{"limit": 60, "window": "1m"}],
             "when": [{"predicate": 'auth.identity.tier == "free"'}],
         },
         "premium-user-tokens": {
             "counters": [{"expression": "auth.identity.userid"}],
-            "rates": [{"limit": 60, "window": "1m"}],
+            "rates": [{"limit": 120, "window": "1m"}],
             "when": [{"predicate": 'auth.identity.tier == "premium"'}],
         },
     }
@@ -376,88 +378,82 @@ def maas_gateway_rate_limits_patched(
     TokenRateLimitPolicy and RateLimitPolicy for MaaS tests,
     and restore the original state afterwards.
     """
-    token_policy_kind = "TokenRateLimitPolicy"
-    request_policy_kind = "RateLimitPolicy"
-
-    token_policy_api = admin_client.resources.get(
-        api_version="kuadrant.io/v1alpha1",
-        kind=token_policy_kind,
-    )
-    request_policy_api = admin_client.resources.get(
-        api_version="kuadrant.io/v1",
-        kind=request_policy_kind,
-    )
-
-    LOGGER.info(
-        f"MaaS Kuadrant: discovered resources — "
-        f"TokenRateLimitPolicy gv={token_policy_api.group_version}, "
-        f"RateLimitPolicy gv={request_policy_api.group_version}"
-    )
-
-    token_policy = token_policy_api.get(
+    token_policy = TokenRateLimitPolicy(
+        client=admin_client,
         name=token_policy_name,
         namespace=namespace,
     )
-    request_policy = request_policy_api.get(
+    request_policy = RateLimitPolicy(
+        client=admin_client,
         name=request_policy_name,
         namespace=namespace,
     )
 
-    original_token_body = token_policy.to_dict()
-    original_request_body = request_policy.to_dict()
+    LOGGER.info(f"MaaS Kuadrant: using policies {namespace}/{token_policy_name} and {namespace}/{request_policy_name}")
 
-    original_token_body.get("metadata", {}).pop("resourceVersion", None)
-    original_request_body.get("metadata", {}).pop("resourceVersion", None)
+    token_body = token_policy.instance.to_dict()
+    request_body = request_policy.instance.to_dict()
 
-    # ---- Build patched versions ----
-    patched_token_body = deepcopy(x=original_token_body)
-    patched_request_body = deepcopy(x=original_request_body)
+    if "resourceVersion" in token_body["metadata"]:
+        del token_body["metadata"]["resourceVersion"]
+    if "resourceVersion" in request_body["metadata"]:
+        del request_body["metadata"]["resourceVersion"]
 
-    patched_token_body.setdefault("spec", {})
-    patched_request_body.setdefault("spec", {})
+    token_body.setdefault("spec", {})["limits"] = maas_token_ratelimitpolicy_spec()
+    request_body.setdefault("spec", {})["limits"] = maas_ratelimitpolicy_spec()
 
-    patched_token_body["spec"]["limits"] = maas_token_ratelimitpolicy_spec()
-    patched_request_body["spec"]["limits"] = maas_ratelimitpolicy_spec()
+    patches = {
+        token_policy: token_body,
+        request_policy: request_body,
+    }
 
-    LOGGER.info(
-        f"Patching Kuadrant policies in namespace '{namespace}':\n"
-        f"  - TokenRateLimitPolicy: {token_policy_name}\n"
-        f"  - RateLimitPolicy: {request_policy_name}"
-    )
+    LOGGER.info(f"Patching Kuadrant policies in namespace '{namespace}' via ResourceEditor")
 
-    # ---- Apply patches ----
-    token_policy_api.patch(
-        name=token_policy_name,
-        namespace=namespace,
-        body=patched_token_body,
-        content_type="application/merge-patch+json",
-    )
-    request_policy_api.patch(
-        name=request_policy_name,
-        namespace=namespace,
-        body=patched_request_body,
-        content_type="application/merge-patch+json",
-    )
+    with ResourceEditor(patches=patches):
 
-    try:
+        def _wait_for_enforced(policy):
+            for condition in policy.instance.status.conditions:
+                if condition.type in ("Enforced", "Ready") and condition.status == "True":
+                    return True
+            return False
+
+        def _check_enforced():
+            return _wait_for_enforced(token_policy) and _wait_for_enforced(request_policy)
+
+        LOGGER.info("Waiting for patched policies to be Enforced/Ready...")
+        sampler = TimeoutSampler(
+            wait_timeout=60,
+            sleep=5,
+            func=_check_enforced,
+        )
+        for sample in sampler:
+            if sample:
+                break
+
         yield
 
-    finally:
-        LOGGER.info(
-            f"Restoring original Kuadrant policies:\n"
-            f"  - {namespace}/{token_policy_name}\n"
-            f"  - {namespace}/{request_policy_name}"
-        )
+    LOGGER.info("Restored original Kuadrant policies")
 
-        token_policy_api.patch(
-            name=token_policy_name,
-            namespace=namespace,
-            body=original_token_body,
-            content_type="application/merge-patch+json",
-        )
-        request_policy_api.patch(
-            name=request_policy_name,
-            namespace=namespace,
-            body=original_request_body,
-            content_type="application/merge-patch+json",
-        )
+
+def get_total_tokens(resp: requests.Response) -> Optional[int]:
+
+    header_val = resp.headers.get("x-odhu-usage-total-tokens")
+    if header_val is not None:
+        try:
+            return int(header_val)
+        except (TypeError, ValueError):
+            return None
+
+    try:
+        body: Any = resp.json()
+    except ValueError:
+        return None
+
+    if isinstance(body, dict):
+        usage = body.get("usage")
+        if isinstance(usage, dict):
+            total = usage.get("total_tokens")
+            if isinstance(total, int):
+                return total
+
+    return None

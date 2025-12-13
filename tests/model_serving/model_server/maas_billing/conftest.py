@@ -1,12 +1,10 @@
-from typing import Generator, Dict, List, Tuple
+from typing import Generator, Dict, List
 import base64
 import pytest
 import requests
-import time
 from simple_logger.logger import get_logger
 from utilities.plugins.constant import OpenAIEnpoints
 from ocp_resources.service_account import ServiceAccount
-from timeout_sampler import TimeoutSampler
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
@@ -24,6 +22,7 @@ from utilities.user_utils import UserTestSession, wait_for_user_creation, create
 from utilities.infra import login_with_user_password, get_openshift_token
 from utilities.general import wait_for_oauth_openshift_deployment
 from ocp_resources.secret import Secret
+from tests.model_serving.model_server.maas_billing.utils import get_total_tokens
 from tests.model_serving.model_server.maas_billing.utils import (
     detect_scheme_via_llmisvc,
     host_from_ingress_domain,
@@ -85,6 +84,7 @@ def model_url(
     maas_inference_service_tinyllama: LLMInferenceService,
 ) -> str:
     deployment = llmis_name(client=admin_client)
+    # deployment = maas_inference_service_tinyllama.name
     return f"{maas_scheme}://{maas_host}/llm/{deployment}{CHAT_COMPLETIONS}"
 
 
@@ -376,7 +376,7 @@ def maas_premium_group(
         yield group.name
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def ocp_token_for_actor(
     request,
     maas_api_server_url: str,
@@ -423,7 +423,7 @@ def ocp_token_for_actor(
             assert original_login_successful, f"Failed to log back in as original user '{original_user}'"
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def maas_token_for_actor(
     request_session_http: requests.Session,
     base_url: str,
@@ -451,13 +451,13 @@ def maas_token_for_actor(
     return token
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def maas_headers_for_actor(maas_token_for_actor: str) -> dict:
     """Headers for the current actor (admin/free/premium)."""
     return build_maas_headers(token=maas_token_for_actor)
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def maas_models_response_for_actor(
     request_session_http: requests.Session,
     base_url: str,
@@ -471,7 +471,7 @@ def maas_models_response_for_actor(
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def maas_models_for_actor(
     maas_models_response_for_actor: requests.Response,
 ) -> List[Dict]:
@@ -481,7 +481,7 @@ def maas_models_for_actor(
     return models_list
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def exercise_rate_limiter(
     actor_label: str,
     scenario: dict,
@@ -489,22 +489,7 @@ def exercise_rate_limiter(
     model_url: str,
     maas_headers_for_actor: Dict[str, str],
     maas_models_for_actor: List[Dict],
-) -> Tuple[List[int], List[int]]:
-
-    if scenario["id"] == "token-rate":
-        LOGGER.info(
-            f"Waiting 65s before token-rate scenario for actor={actor_label} to let "
-            "TokenRateLimitPolicy 1m window reset"
-        )
-
-        start_time = time.time()
-        for _ in TimeoutSampler(
-            wait_timeout=70,
-            sleep=1,
-            func=lambda: time.time() - start_time > 65,
-        ):
-            if _:
-                break
+) -> List[int]:
 
     models_list = maas_models_for_actor
 
@@ -513,7 +498,6 @@ def exercise_rate_limiter(
     log_prefix = scenario["log_prefix"]
 
     status_codes_list: List[int] = []
-    total_tokens_seen_list: List[int] = []
 
     for attempt_index in range(max_requests):
         LOGGER.info(f"{log_prefix}[{actor_label}]: attempt {attempt_index + 1}/{max_requests}")
@@ -523,7 +507,7 @@ def exercise_rate_limiter(
             model_url=model_url,
             headers=maas_headers_for_actor,
             models_list=models_list,
-            prompt_text="Hello – rate-limit test",
+            prompt_text="Repeat the word 'token' 60 times, separated by spaces. No extra text.",
             max_tokens=max_tokens,
             request_timeout_seconds=60,
             log_prefix=f"{log_prefix}[{actor_label}]",
@@ -532,21 +516,18 @@ def exercise_rate_limiter(
 
         status_codes_list.append(response.status_code)
 
-        total_tokens_header = response.headers.get("x-odhu-usage-total-tokens")
-        if total_tokens_header:
-            if total_tokens_header.isdigit():
-                total_tokens_seen_list.append(int(total_tokens_header))
-            else:
-                LOGGER.warning(f"{log_prefix}[{actor_label}]: invalid total-tokens header value: {total_tokens_header}")
-        else:
-            if response.status_code == 200:
-                LOGGER.warning(
-                    f"{log_prefix}[{actor_label}]: "
-                    f"total-tokens header missing in response (status={response.status_code})"
-                )
+        total_tokens = get_total_tokens(resp=response)
 
-    LOGGER.info(f"{log_prefix}[{actor_label}]: status_codes={status_codes_list}, tokens={total_tokens_seen_list}")
-    return status_codes_list, total_tokens_seen_list
+        if scenario["id"] == "token-rate" and response.status_code == 200:
+            if total_tokens is None:
+                raise AssertionError(
+                    f"{log_prefix}[{actor_label}]: token usage not found in header or JSON body; "
+                    f"headers={dict(response.headers)} body={response.text[:500]}"
+                )
+            LOGGER.info(f"{log_prefix}[{actor_label}]: total_tokens={total_tokens}")
+
+    LOGGER.info(f"{log_prefix}[{actor_label}]: status_codes={status_codes_list}")
+    return status_codes_list
 
 
 @pytest.fixture(scope="class")
@@ -620,8 +601,8 @@ def maas_gateway_rate_limits(
     admin_client: DynamicClient,
 ) -> Generator[None, None, None]:
     namespace = "openshift-ingress"
-    token_policy_name = "gateway-token-rate-limits"  # <= use real name from cluster
-    request_policy_name = "gateway-rate-limits"  # <= this you already showed
+    token_policy_name = "gateway-token-rate-limits"
+    request_policy_name = "gateway-rate-limits"
 
     with maas_gateway_rate_limits_patched(
         admin_client=admin_client,
