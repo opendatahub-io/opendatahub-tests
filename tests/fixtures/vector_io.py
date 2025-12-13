@@ -19,6 +19,14 @@ ETCD_IMAGE = os.getenv(
     "quay.io/coreos/etcd@sha256:3397341272b9e0a6f44d7e3fc7c321c6efe6cbe82ce866b9b01d0c704bfc5bf3",  # etcd v3.6.5
 )
 
+PGVECTOR_IMAGE = os.getenv(
+    "LLS_VECTOR_IO_PGVECTOR_IMAGE",
+    (
+        "docker.io/pgvector/pgvector:sha256@sha256:"
+        "0a07c4114ba6d1d04effcce3385e9f5ce305eb02e56a3d35948a415a52f193ec"  # pgvector 16  # pragma: allowlist secret
+    ),
+)
+
 
 @pytest.fixture(scope="class")
 def vector_io_provider_deployment_config_factory(
@@ -72,6 +80,14 @@ def vector_io_provider_deployment_config_factory(
                 "name": "FAISS_KVSTORE_DB_PATH",
                 "value": "/opt/app-root/src/.llama/distributions/rh/sqlite_vec.db",
             })
+        elif provider_name == "pgvector":
+            request.getfixturevalue(argname="pgvector_service")
+            env_vars.append({"name": "ENABLE_PGVECTOR", "value": "true"})
+            env_vars.append({"name": "PGVECTOR_HOST", "value": "vector-io-pgvector-service"})
+            env_vars.append({"name": "PGVECTOR_PORT", "value": "5432"})
+            env_vars.append({"name": "PGVECTOR_USER", "value": "vector_user"})
+            env_vars.append({"name": "PGVECTOR_PASSWORD", "value": "yourpassword"})
+            env_vars.append({"name": "PGVECTOR_DB", "value": "pgvector"})
 
         return env_vars
 
@@ -238,5 +254,89 @@ def get_etcd_deployment_template() -> Dict[str, Any]:
                     "emptyDir": {},
                 }
             ],
+        },
+    }
+
+
+@pytest.fixture(scope="class")
+def pgvector_deployment(
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+) -> Generator[Deployment, Any, Any]:
+    """Deploy a PGVector instance for vector I/O provider testing."""
+    with Deployment(
+        client=unprivileged_client,
+        namespace=unprivileged_model_namespace.name,
+        name="vector-io-pgvector-deployment",
+        min_ready_seconds=5,
+        replicas=1,
+        selector={"matchLabels": {"app": "pgvector"}},
+        strategy={"type": "Recreate"},
+        template=get_pgvector_deployment_template(),
+        teardown=True,
+    ) as deployment:
+        deployment.wait_for_replicas(deployed=True, timeout=240)
+        yield deployment
+
+
+@pytest.fixture(scope="class")
+def pgvector_service(
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+    pgvector_deployment: Deployment,
+) -> Generator[Service, Any, Any]:
+    """Create a service for the PGVector deployment."""
+    with Service(
+        client=unprivileged_client,
+        namespace=unprivileged_model_namespace.name,
+        name="vector-io-pgvector-service",
+        ports=[
+            {
+                "name": "postgres",
+                "port": 5432,
+                "targetPort": 5432,
+            },
+        ],
+        selector={"app": "pgvector"},
+        wait_for_resource=True,
+    ) as service:
+        yield service
+
+
+def get_pgvector_deployment_template() -> Dict[str, Any]:
+    """Return a Kubernetes deployment for PGVector"""
+    return {
+        "metadata": {"labels": {"app": "pgvector"}},
+        "spec": {
+            "containers": [
+                {
+                    "name": "pgvector",
+                    "image": PGVECTOR_IMAGE,
+                    "ports": [{"containerPort": 5432}],
+                    "env": [
+                        {"name": "POSTGRES_DB", "value": "pgvector"},
+                        {"name": "POSTGRES_USER", "value": "vector_user"},
+                        {"name": "POSTGRES_PASSWORD", "value": "yourpassword"},
+                        {"name": "PGDATA", "value": "/var/lib/postgresql/data/pgdata"},
+                    ],
+                    "lifecycle": {
+                        "postStart": {
+                            "exec": {
+                                "command": [
+                                    "/bin/sh",
+                                    "-c",
+                                    (
+                                        "sleep 5\n"
+                                        "PGPASSWORD=yourpassword psql -h localhost -U vector_user "
+                                        '-d pgvector -c "CREATE EXTENSION IF NOT EXISTS vector;" || true'
+                                    ),
+                                ]
+                            }
+                        }
+                    },
+                    "volumeMounts": [{"name": "pgdata", "mountPath": "/var/lib/postgresql/data"}],
+                }
+            ],
+            "volumes": [{"name": "pgdata", "emptyDir": {}}],
         },
     }
