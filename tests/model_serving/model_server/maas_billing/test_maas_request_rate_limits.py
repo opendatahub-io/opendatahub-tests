@@ -1,4 +1,4 @@
-from typing import Tuple, List
+from typing import List
 import pytest
 from simple_logger.logger import get_logger
 from tests.model_serving.model_server.maas_billing.utils import (
@@ -7,7 +7,7 @@ from tests.model_serving.model_server.maas_billing.utils import (
 
 LOGGER = get_logger(name=__name__)
 
-REQUEST_RATE_MAX_REQUESTS = 10 
+REQUEST_RATE_MAX_REQUESTS = 10
 
 ACTORS = [
     pytest.param({"type": "free"}, "free", id="free"),
@@ -72,4 +72,3 @@ class TestMaasRequestRateLimits:
             context=scenario["context"],
             require_429=True,
         )
-

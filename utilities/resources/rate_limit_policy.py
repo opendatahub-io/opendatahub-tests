@@ -6,6 +6,7 @@ from ocp_resources.resource import NamespacedResource
 from ocp_resources.exceptions import MissingRequiredArgumentError
 from utilities.constants import ApiGroups
 
+
 class RateLimitPolicy(NamespacedResource):
     """
     RateLimitPolicy enables rate limiting for service workloads in a Gateway API network
@@ -60,13 +61,10 @@ class RateLimitPolicy(NamespacedResource):
             if self.target_ref is None:
                 raise MissingRequiredArgumentError(argument="self.target_ref")
 
-
             self.res["spec"] = {}
             _spec = self.res["spec"]
 
-
             _spec["targetRef"] = self.target_ref
-
 
             if self.defaults is not None:
                 _spec["defaults"] = self.defaults
