@@ -276,7 +276,6 @@ class TestModelCatalogDefaultData:
         )
         LOGGER.info("Model count matches")
 
-    @pytest.mark.smoke
     def test_model_default_catalog_correspondence_of_model_name(
         self: Self,
         enabled_model_catalog_config_map: ConfigMap,
