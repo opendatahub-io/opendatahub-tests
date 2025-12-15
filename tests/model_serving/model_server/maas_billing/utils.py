@@ -312,6 +312,15 @@ def assert_mixed_200_and_429(
     if require_429:
         assert 429 in status_codes_list, f"{actor_label}: expected 429 in {context}, but saw {status_codes_list}"
 
+        first_429_idx = status_codes_list.index(429)
+        start = first_429_idx + 1
+        tail_after_429 = status_codes_list[start:]
+
+        assert 200 not in tail_after_429, (
+            f"{actor_label}: saw 200 after first 429 in {context}. "
+            f"First 429 at index {first_429_idx}. Full sequence={status_codes_list}"
+        )
+
 
 def maas_token_ratelimitpolicy_spec() -> Dict[str, Any]:
     """
