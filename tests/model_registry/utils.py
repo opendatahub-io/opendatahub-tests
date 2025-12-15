@@ -758,12 +758,29 @@ def validate_model_catalog_sources(
         url=model_catalog_sources_url,
         headers=rest_headers,
     )["items"]
-    LOGGER.info(f"Model catalog sources: {results}")
-    # this is for the default catalog:
-    assert len(results) == len(expected_catalog_values)
-    ids_from_query = [result_entry["id"] for result_entry in results]
+    LOGGER.info(f"Model catalog sources (all): {results}")
+
+    # Filter only enabled sources
+    enabled_results = [result for result in results if result.get("enabled", False)]
+    disabled_count = len(results) - len(enabled_results)
+
+    LOGGER.info(f"Model catalog sources (enabled only): {enabled_results}")
+    LOGGER.info(f"Enabled sources count: {len(enabled_results)}")
+    LOGGER.info(f"Disabled sources count: {disabled_count}")
+
+    # Validate disabled sources count
+    assert disabled_count == 2, f"Expected 2 disabled sources, got {disabled_count}"
+
+    # Validate against expected catalog values (only enabled sources)
+    assert len(enabled_results) == len(expected_catalog_values), (
+        f"Expected {len(expected_catalog_values)} enabled sources, got {len(enabled_results)}"
+    )
+
+    ids_from_query = [result_entry["id"] for result_entry in enabled_results]
     ids_expected = [expected_entry["id"] for expected_entry in expected_catalog_values]
-    assert set(ids_expected).issubset(set(ids_from_query)), f"Expected: {expected_catalog_values}. Actual: {results}"
+    assert set(ids_expected).issubset(set(ids_from_query)), (
+        f"Expected: {expected_catalog_values}. Actual: {enabled_results}"
+    )
 
 
 def get_catalog_str(ids: list[str]) -> str:
