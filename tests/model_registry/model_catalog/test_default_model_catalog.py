@@ -327,8 +327,8 @@ class TestModelCatalogDefaultData:
             # Exclude 'license' field from value comparison
             comparable_fields = all_model_fields - {"license"}
             # Filter to only schema-defined fields for value comparison
-            model_filtered = {k: v for k, v in model.items() if k in comparable_fields}
-            api_model_filtered = {k: v for k, v in api_model.items() if k in comparable_fields}
+            model_filtered = {key: value for key, value in model.items() if key in comparable_fields}
+            api_model_filtered = {key: value for key, value in api_model.items() if key in comparable_fields}
 
             differences = list(diff(model_filtered, api_model_filtered))
             if differences:
