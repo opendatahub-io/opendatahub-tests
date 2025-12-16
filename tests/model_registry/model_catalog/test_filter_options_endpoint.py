@@ -8,7 +8,11 @@ from tests.model_registry.model_catalog.utils import (
     parse_psql_output,
     compare_filter_options_with_database,
 )
-from tests.model_registry.model_catalog.db_constants import FILTER_OPTIONS_DB_QUERY, API_EXCLUDED_FILTER_FIELDS
+from tests.model_registry.model_catalog.db_constants import (
+    FILTER_OPTIONS_DB_QUERY,
+    API_EXCLUDED_FILTER_FIELDS,
+    API_COMPUTED_FILTER_FIELDS,
+)
 from tests.model_registry.utils import get_rest_headers, execute_get_command
 from utilities.user_utils import UserTestSession
 
@@ -132,8 +136,15 @@ class TestFilterOptionsEndpoint:
         db_properties = parsed_result.get("properties", {})
         LOGGER.info(f"Raw database query returned {len(db_properties)} properties: {list(db_properties.keys())}")
 
+        # Remove API-computed fields from API response before comparison
+        filtered_api_filters = {
+            key: value for key, value in api_filters.items() if key not in API_COMPUTED_FILTER_FIELDS
+        }
+
         is_valid, comparison_errors = compare_filter_options_with_database(
-            api_filters=api_filters, db_properties=db_properties, excluded_fields=API_EXCLUDED_FILTER_FIELDS
+            api_filters=filtered_api_filters,
+            db_properties=db_properties,
+            excluded_fields=API_EXCLUDED_FILTER_FIELDS,
         )
 
         if not is_valid:

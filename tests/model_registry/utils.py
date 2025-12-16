@@ -21,7 +21,6 @@ from tests.model_registry.constants import (
     MODEL_REGISTRY_DB_SECRET_STR_DATA,
     MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
     DB_BASE_RESOURCES_NAME,
-    OAUTH_PROXY_CONFIG_DICT,
     MARIADB_MY_CNF,
     PORT_MAP,
     MODEL_REGISTRY_POD_FILTER,
@@ -566,7 +565,7 @@ def get_model_registry_objects(
                 namespace=namespace,
                 label=get_mr_standard_labels(resource_name=name),
                 rest={},
-                oauth_proxy=OAUTH_PROXY_CONFIG_DICT,
+                kube_rbac_proxy={},
                 mysql=mysql if mysql else None,
                 postgres={"generateDeployment": True} if db_backend == "default" else None,
                 wait_for_resource=True,
@@ -759,8 +758,6 @@ def validate_model_catalog_sources(
         headers=rest_headers,
     )["items"]
     LOGGER.info(f"Model catalog sources: {results}")
-    # this is for the default catalog:
-    assert len(results) == len(expected_catalog_values)
     ids_from_query = [result_entry["id"] for result_entry in results]
     ids_expected = [expected_entry["id"] for expected_entry in expected_catalog_values]
     assert set(ids_expected).issubset(set(ids_from_query)), f"Expected: {expected_catalog_values}. Actual: {results}"

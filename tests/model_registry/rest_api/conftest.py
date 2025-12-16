@@ -1,3 +1,4 @@
+import time
 from typing import Any, Generator
 import os
 from kubernetes.dynamic import DynamicClient
@@ -25,7 +26,6 @@ from tests.model_registry.constants import (
     CA_MOUNT_PATH,
     CA_FILE_PATH,
     CA_CONFIGMAP_NAME,
-    OAUTH_PROXY_CONFIG_DICT,
     SECURE_MR_NAME,
     KUBERBACPROXY_STR,
 )
@@ -159,7 +159,7 @@ def deploy_secure_mysql_and_mr(
         namespace=model_registry_namespace,
         label=get_mr_standard_labels(resource_name=SECURE_MR_NAME),
         rest={},
-        oauth_proxy=OAUTH_PROXY_CONFIG_DICT,
+        kube_rbac_proxy={},
         mysql=mysql,
         wait_for_resource=True,
     ) as mr:
@@ -168,6 +168,8 @@ def deploy_secure_mysql_and_mr(
         wait_for_pods_running(
             admin_client=admin_client, namespace_name=model_registry_namespace, number_of_consecutive_checks=6
         )
+        # TODO remove when RHOAIENG-41728 is addressed
+        time.sleep(60.0)  # noqa: FCN001
         yield mr
 
 

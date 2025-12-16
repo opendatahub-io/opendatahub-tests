@@ -5,17 +5,26 @@
 # filterable properties for CatalogModel. Based on GetFilterableProperties in
 # kubeflow/model-registry catalog/internal/db/service/catalog_model.go (PR #1875)
 #
-# Property naming:
-# - Context properties: base name only (special case: 'validated_on.array_value' for arrays)
-# - Artifact properties: 'artifacts.{name}.{type}' where type is string_value/array_value/double_value/int_value
+# Query structure:
+# 1. First SELECT: Context properties (model-level metadata)
+#    - Core properties: Return base name only (e.g., license, provider, tasks)
+#    - Custom properties with known types: Add type suffix (e.g., model_type.string_value, validated_on.array_value)
+# 2. UNION ALL
+# 3. Second SELECT: Artifact properties (model artifact metadata)
+#    - Format: 'artifacts.{property_name}.{value_type}'
+#    - Value types: string_value, array_value, double_value, int_value
 #
 # Return format:
-# - String/array properties: text array of values
+# - String/array properties: PostgreSQL text array of distinct values
 # - Numeric properties: 2-element text array [min, max] converted from double/int columns
 FILTER_OPTIONS_DB_QUERY = """
 SELECT
     CASE
-        WHEN name = 'validated_on' AND array_value IS NOT NULL THEN name || '.array_value'
+        -- Custom properties with array_value get .array_value suffix
+        WHEN name IN ('validated_on') AND array_value IS NOT NULL THEN name || '.array_value'
+        -- Custom properties with string_value get .string_value suffix
+        WHEN name IN ('model_type', 'size', 'tensor_type', 'variant_group_id') THEN name || '.string_value'
+        -- Core properties keep base name only
         ELSE name
     END AS name,
     COALESCE(string_value, array_value, '{}'::text[]) AS array_agg
@@ -175,3 +184,44 @@ API_EXCLUDED_FILTER_FIELDS = {
     "artifacts.metricsType.string_value",  # artifact property with full name
     "artifacts.model_id.string_value",  # artifact property with full name
 }
+
+# Fields that are dynamically computed and added by the API but do not exist in the database
+API_COMPUTED_FILTER_FIELDS = {
+    "status",  # Computed from CatalogSource.status field
+}
+
+# SQL query for accuracy sorting database validation
+# Returns an ordered list of model names (context names) that have accuracy metrics.
+# Models are ordered by their overall_average (accuracy) value from artifact properties.
+# Only returns the model name column for easy comparison with API results.
+GET_MODELS_BY_ACCURACY_DB_QUERY = """
+SELECT c.name
+FROM "ArtifactProperty" ap
+JOIN "Artifact" a ON a.id = ap.artifact_id
+JOIN "Attribution" attr ON attr.artifact_id = a.id
+JOIN "Context" c ON c.id = attr.context_id
+WHERE ap.name ILIKE '%average%'
+ORDER BY ap.double_value {sort_order};
+"""
+
+# SQL query for accuracy sorting with task filter database validation
+# Returns an ordered list of model names (context names) that have accuracy metrics
+# and match the specified task filter.
+# Models are ordered by their overall_average (accuracy) value from artifact properties.
+# The tasks field is stored as a JSON array, so we use LIKE pattern matching
+GET_MODELS_BY_ACCURACY_WITH_TASK_FILTER_DB_QUERY = """
+SELECT c.name
+FROM "ArtifactProperty" ap
+JOIN "Artifact" a ON a.id = ap.artifact_id
+JOIN "Attribution" attr ON attr.artifact_id = a.id
+JOIN "Context" c ON c.id = attr.context_id
+WHERE ap.name ILIKE '%average%'
+AND EXISTS (
+    SELECT 1
+    FROM "ContextProperty" cp
+    WHERE cp.context_id = c.id
+    AND cp.name = 'tasks'
+    AND cp.string_value LIKE '%"{task_value}"%'
+)
+ORDER BY ap.double_value {sort_order};
+"""

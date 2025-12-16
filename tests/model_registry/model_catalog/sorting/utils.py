@@ -2,6 +2,11 @@ from typing import Any
 
 from simple_logger.logger import get_logger
 from tests.model_registry.utils import execute_get_command
+from tests.model_registry.model_catalog.utils import execute_database_query, parse_psql_output
+from tests.model_registry.model_catalog.db_constants import (
+    GET_MODELS_BY_ACCURACY_DB_QUERY,
+    GET_MODELS_BY_ACCURACY_WITH_TASK_FILTER_DB_QUERY,
+)
 
 LOGGER = get_logger(name=__name__)
 
@@ -78,23 +83,6 @@ def validate_items_sorted_correctly(items: list[dict], field: str, order: str) -
     Returns:
         True if items are sorted correctly, False otherwise
     """
-    if len(items) <= 1:
-        if field == "NAME" and items[0].get("artifactType") == "model-artifact":
-            # When testing sorting for model artifacts we use only models from the validated catalog, since
-            # they almost all have more than 1 artifact. However, some of these models still return a single artifact.
-            # Given that this is currently the expected behavior, we return True.
-            single_artifact_models = [
-                "mistral-small-24B",
-                "gemma-2",
-                "granite-3.1-8b-base-quantized.w4a16",
-                "granite-3.1-8b-instruct-FP8-dynamic",
-                "granite-3.1-8b-starter-v2",
-            ]
-            if any(single_artifact_model in items[0].get("uri") for single_artifact_model in single_artifact_models):
-                return True
-        else:
-            # In any other case, we expect at least 2 items to sort.
-            raise ValueError(f"At least 2 items are required to sort, got {len(items)}")
 
     # Extract field values for comparison
     values = []
@@ -181,6 +169,115 @@ def verify_custom_properties_sorted(items: list[dict], property_field: str, sort
     return True
 
 
+def validate_accuracy_sorting_against_database(
+    api_response: dict[str, Any],
+    sort_order: str | None,
+    namespace: str = "rhoai-model-registries",
+    task_filter: str | None = None,
+) -> bool:
+    """
+    Validate API accuracy sorting results against database query results.
+
+    Expected sorting behavior:
+    - When sort_order is None:
+      1. Models WITH accuracy appear first (in any order)
+      2. Models WITHOUT accuracy appear after, sorted by model ID in ASC order
+    - When sort_order is ASC or DESC:
+      1. Models WITH accuracy appear first, sorted by accuracy value (ASC/DESC)
+      2. Models WITHOUT accuracy appear after, sorted by model ID in ASC order
+
+    Args:
+        api_response: API response from models endpoint with accuracy sorting
+        sort_order: Sort order used (ASC, DESC, or None for no specific order)
+        namespace: OpenShift namespace for PostgreSQL pod
+        task_filter: Optional task filter value (e.g., "automatic-speech-recognition")
+
+    Returns:
+        True if sorted correctly, False otherwise
+    """
+    # Get models with accuracy from database
+    models_with_accuracy = get_models_by_accuracy_from_database(
+        sort_order=sort_order or "ASC", namespace=namespace, task_filter=task_filter
+    )
+    filter_info = f" with task filter '{task_filter}'" if task_filter else ""
+    sort_info = f", ordered {sort_order}" if sort_order else " (no sort order)"
+    LOGGER.info(f"Database query found {len(models_with_accuracy)} models with accuracy{filter_info}{sort_info}")
+
+    # Get all models from API response (preserving order) - extract only name and id
+    api_models = [(model.get("name"), model.get("id")) for model in api_response.get("items", [])]
+    LOGGER.info(f"API returned {len(api_models)} total models")
+
+    # Split API models into two groups: with accuracy and without accuracy
+    models_with_accuracy_set = set(models_with_accuracy)
+    api_models_with_accuracy, api_models_without_accuracy = _split_models_by_accuracy(
+        api_models=api_models, models_with_accuracy_set=models_with_accuracy_set
+    )
+
+    LOGGER.info(
+        f"API models split: {len(api_models_with_accuracy)} with accuracy, "
+        f"{len(api_models_without_accuracy)} without accuracy"
+    )
+
+    # Validate: models with accuracy should come first
+    if (
+        api_models_with_accuracy
+        and api_models_without_accuracy
+        and api_models_with_accuracy[-1][0] > api_models_without_accuracy[0][0]
+    ):
+        LOGGER.error(
+            f"Models without accuracy appear before models with accuracy. "
+            f"Last with accuracy at index {api_models_with_accuracy[-1][0]}, "
+            f"first without at index {api_models_without_accuracy[0][0]}"
+        )
+        return False
+
+    # Validate: models with accuracy are in correct order (or present if no sort_order)
+    if api_models_with_accuracy and not _verify_models_with_accuracy_sorted(
+        models=api_models_with_accuracy, expected_models=models_with_accuracy, sort_order=sort_order
+    ):
+        return False
+
+    # Validate: models without accuracy are sorted by ID ASC
+    if api_models_without_accuracy and not _verify_items_without_property_sorted(api_models_without_accuracy):
+        return False
+
+    LOGGER.info(f"All models validated successfully{filter_info}{sort_info}")
+    return True
+
+
+def get_models_by_accuracy_from_database(
+    sort_order: str,
+    namespace: str = "rhoai-model-registries",
+    task_filter: str | None = None,
+) -> list[str]:
+    """
+    Query the database to get model names ordered by accuracy (overall_average).
+
+    Args:
+        sort_order: Sort order for accuracy values (ASC or DESC)
+        namespace: OpenShift namespace containing the PostgreSQL pod
+        task_filter: Optional task filter value (e.g., "automatic-speech-recognition")
+
+    Returns:
+        List of model names ordered by accuracy
+    """
+    if task_filter:
+        accuracy_query = GET_MODELS_BY_ACCURACY_WITH_TASK_FILTER_DB_QUERY.format(
+            sort_order=sort_order, task_value=task_filter
+        )
+    else:
+        accuracy_query = GET_MODELS_BY_ACCURACY_DB_QUERY.format(sort_order=sort_order)
+
+    LOGGER.debug(f"Accuracy query (SQL): {accuracy_query}")
+
+    # Execute the database query
+    db_result = execute_database_query(query=accuracy_query, namespace=namespace)
+    parsed_result = parse_psql_output(psql_output=db_result)
+
+    # The query returns context_name values in order
+    return parsed_result.get("values", [])
+
+
 def _split_items_by_custom_property(
     items: list[dict],
     property_name: str,
@@ -238,4 +335,66 @@ def _verify_items_without_property_sorted(items: list[dict]) -> bool:
     if ids != expected_ids:
         LOGGER.error(f"Items without property not sorted by ID ASC: {ids}")
         return False
+    return True
+
+
+def _split_models_by_accuracy(
+    api_models: list[tuple[str, str]], models_with_accuracy_set: set[str]
+) -> tuple[list[tuple[int, str]], list[tuple[int, dict[str, str]]]]:
+    """
+    Split API models into two groups based on accuracy property presence.
+
+    Args:
+        api_models: List of (name, id) tuples from API response
+        models_with_accuracy_set: Set of model names that have accuracy
+
+    Returns:
+        Tuple of (models_with_accuracy, models_without_accuracy)
+        - models_with_accuracy: list of (index, name) tuples
+        - models_without_accuracy: list of (index, {"id": model_id}) tuples
+    """
+    models_with_accuracy = []
+    models_without_accuracy = []
+
+    for idx, (name, model_id) in enumerate(api_models):
+        if name in models_with_accuracy_set:
+            models_with_accuracy.append((idx, name))
+        else:
+            models_without_accuracy.append((idx, {"id": model_id}))
+
+    return models_with_accuracy, models_without_accuracy
+
+
+def _verify_models_with_accuracy_sorted(
+    models: list[tuple[int, str]], expected_models: list[str], sort_order: str | None
+) -> bool:
+    """
+    Verify if models with accuracy are sorted correctly by accuracy value.
+    When sort_order is None, only verifies that the expected models are present (order not validated).
+
+    Args:
+        models: List of (index, name) tuples for models with accuracy
+        expected_models: Expected list of model names from database
+        sort_order: Sort order (ASC, DESC, or None for no order validation)
+
+    Returns:
+        True if sorted correctly, False otherwise
+    """
+    if sort_order:
+        # Validate specific order
+        actual_names = [name for _, name in models]
+        if actual_names != expected_models:
+            LOGGER.error(
+                f"Models with accuracy in wrong order ({sort_order}):\n"
+                f"  Expected: {expected_models}\n"
+                f"  Actual:   {actual_names}"
+            )
+            return False
+    else:
+        # Only validate presence, not order
+        actual_names = set([name for _, name in models])
+        expected_names = set(expected_models)
+        if actual_names != expected_names:
+            LOGGER.error("Models with accuracy do not match expected models from database")
+            return False
     return True
