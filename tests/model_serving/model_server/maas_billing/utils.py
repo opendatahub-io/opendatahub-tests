@@ -1,4 +1,4 @@
-from typing import Dict, Generator
+from typing import Any, Dict, Generator, List
 
 import base64
 import requests
@@ -15,6 +15,8 @@ from simple_logger.logger import get_logger
 from utilities.llmd_utils import get_llm_inference_url
 from utilities.plugins.constant import RestHeader, OpenAIEnpoints
 from ocp_resources.resource import ResourceEditor
+from utilities.resources.rate_limit_policy import RateLimitPolicy
+from utilities.resources.token_rate_limit_policy import TokenRateLimitPolicy
 
 LOGGER = get_logger(name=__name__)
 MODELS_INFO = OpenAIEnpoints.MODELS_INFO
@@ -190,6 +192,7 @@ def patch_llmisvc_with_maas_router(
         "metadata": {
             "annotations": {
                 "alpha.maas.opendatahub.io/tiers": "[]",
+                "security.opendatahub.io/enable-auth": "true",
             }
         },
         "spec": {
@@ -221,9 +224,18 @@ def verify_chat_completions(
     max_tokens: int = 50,
     request_timeout_seconds: int = 60,
     log_prefix: str = "MaaS",
-) -> None:
+    expected_status_codes: tuple[int, ...] = (200,),
+) -> Response:
     """
     Common helper to verify /v1/chat/completions responds to a simple prompt.
+
+    - For the usual happy-path tests, leave expected_status_codes=(200,)
+      and this behaves exactly as before: assert HTTP 200 and validate the
+      basic response shape (choices, content, etc.).
+
+    - For special tests (e.g. rate limiting) you can pass a tuple like
+      expected_status_codes=(200, 429) and then inspect response.status_code
+      in the test. Only HTTP 200 responses will have their body validated.
     """
 
     assert models_list, "No models returned from /v1/models"
@@ -249,20 +261,204 @@ def verify_chat_completions(
 
     LOGGER.info(f"{log_prefix}: POST {model_url} -> HTTP {response.status_code}")
 
-    assert response.status_code == 200, (
-        f"/v1/chat/completions failed: HTTP {response.status_code} response={response.text[:200]} (url={model_url})"
+    assert response.status_code in expected_status_codes, (
+        f"/v1/chat/completions failed: HTTP {response.status_code} "
+        f"response={response.text[:200]} (url={model_url}), "
+        f"expected one of {expected_status_codes}"
     )
 
-    response_body = response.json()
-    completions_choices = response_body.get("choices", [])
-    assert isinstance(completions_choices, list) and completions_choices, (
-        "'choices' field missing or empty in /v1/chat/completions response"
+    if response.status_code == 200:
+        response_body = response.json()
+        completions_choices = response_body.get("choices", [])
+        assert isinstance(completions_choices, list) and completions_choices, (
+            "'choices' field missing or empty in /v1/chat/completions response"
+        )
+
+        first_choice = completions_choices[0]
+        message_section = first_choice.get("message", {}) or {}
+        content_text = message_section.get("content") or first_choice.get("text", "")
+
+        assert isinstance(content_text, str) and content_text.strip(), (
+            "First choice in /v1/chat/completions response has no text content"
+        )
+
+    return response
+
+
+def assert_mixed_200_and_429(
+    *,
+    actor_label: str,
+    status_codes_list: List[int],
+    context: str,
+    require_429: bool = True,
+) -> None:
+    assert status_codes_list, f"{actor_label}: no responses in {context}"
+
+    allowed_status_codes = {200, 429}
+    unexpected_status_codes = [code for code in status_codes_list if code not in allowed_status_codes]
+
+    assert not unexpected_status_codes, (
+        f"{actor_label}: unexpected HTTP status codes in {context}: {unexpected_status_codes}. "
+        f"Full sequence={status_codes_list}. "
+        "Likely wrong endpoint/route (404) or server/gateway issue (5xx)."
     )
 
-    first_choice = completions_choices[0]
-    message_section = first_choice.get("message", {}) or {}
-    content_text = message_section.get("content") or first_choice.get("text", "")
-
-    assert isinstance(content_text, str) and content_text.strip(), (
-        "First choice in /v1/chat/completions response has no text content"
+    assert status_codes_list[0] == 200, (
+        f"{actor_label}: expected first status 200 in {context}, got {status_codes_list[0]} "
+        f"(status_codes={status_codes_list})"
     )
+
+    if require_429:
+        assert 429 in status_codes_list, f"{actor_label}: expected 429 in {context}, but saw {status_codes_list}"
+
+        first_429_idx = status_codes_list.index(429)
+        start = first_429_idx + 1
+        tail_after_429 = status_codes_list[start:]
+
+        assert 200 not in tail_after_429, (
+            f"{actor_label}: saw 200 after first 429 in {context}. "
+            f"First 429 at index {first_429_idx}. Full sequence={status_codes_list}"
+        )
+
+
+def maas_token_ratelimitpolicy_spec() -> Dict[str, Any]:
+    """
+    Deterministic TokenRateLimitPolicy limits for MaaS tests.
+
+    This returns only the 'limits' mapping, suitable for assigning to
+    spec['limits'] on the existing TokenRateLimitPolicy.
+    """
+    return {
+        "enterprise-user-tokens": {
+            "counters": [{"expression": "auth.identity.userid"}],
+            "rates": [{"limit": 240, "window": "1m"}],
+            "when": [{"predicate": 'auth.identity.tier == "enterprise"'}],
+        },
+        "free-user-tokens": {
+            "counters": [{"expression": "auth.identity.userid"}],
+            "rates": [{"limit": 60, "window": "1m"}],
+            "when": [{"predicate": 'auth.identity.tier == "free"'}],
+        },
+        "premium-user-tokens": {
+            "counters": [{"expression": "auth.identity.userid"}],
+            "rates": [{"limit": 120, "window": "1m"}],
+            "when": [{"predicate": 'auth.identity.tier == "premium"'}],
+        },
+    }
+
+
+def maas_ratelimitpolicy_spec() -> Dict[str, Any]:
+    """
+    Deterministic RateLimitPolicy limits for MaaS tests.
+
+    This returns only the 'limits' mapping, suitable for assigning to
+    spec['limits'] on the existing RateLimitPolicy.
+    """
+    return {
+        "enterprise": {
+            "counters": [{"expression": "auth.identity.userid"}],
+            "rates": [{"limit": 50, "window": "2m"}],
+            "when": [{"predicate": 'auth.identity.tier == "enterprise"'}],
+        },
+        "free": {
+            "counters": [{"expression": "auth.identity.userid"}],
+            "rates": [{"limit": 5, "window": "1m"}],
+            "when": [{"predicate": 'auth.identity.tier == "free"'}],
+        },
+        "premium": {
+            "counters": [{"expression": "auth.identity.userid"}],
+            "rates": [{"limit": 8, "window": "1m"}],
+            "when": [{"predicate": 'auth.identity.tier == "premium"'}],
+        },
+    }
+
+
+@contextmanager
+def maas_gateway_rate_limits_patched(
+    *,
+    admin_client: DynamicClient,
+    namespace: str,
+    token_policy_name: str,
+    request_policy_name: str,
+) -> Generator[None, None, None]:
+    """
+    Temporarily patch ONLY `spec.limits` of the Kuadrant TokenRateLimitPolicy and
+    RateLimitPolicy for MaaS tests, and restore the original state afterwards.
+    """
+    token_policy = TokenRateLimitPolicy(
+        client=admin_client,
+        name=token_policy_name,
+        namespace=namespace,
+        ensure_exists=True,
+    )
+    request_policy = RateLimitPolicy(
+        client=admin_client,
+        name=request_policy_name,
+        namespace=namespace,
+        ensure_exists=True,
+    )
+
+    LOGGER.info(f"MaaS Kuadrant: using policies {namespace}/{token_policy_name} and {namespace}/{request_policy_name}")
+
+    LOGGER.info(f"Patching TokenRateLimitPolicy in namespace '{namespace}' via ResourceEditor")
+    with ResourceEditor(patches={token_policy: {"spec": {"limits": maas_token_ratelimitpolicy_spec()}}}):
+        LOGGER.info("Waiting for TokenRateLimitPolicy condition Enforced=True")
+        token_policy.wait_for_condition(condition="Enforced", status="True", timeout=60)
+
+        LOGGER.info(f"Patching RateLimitPolicy in namespace '{namespace}' via ResourceEditor")
+        with ResourceEditor(patches={request_policy: {"spec": {"limits": maas_ratelimitpolicy_spec()}}}):
+            LOGGER.info("Waiting for RateLimitPolicy condition Enforced=True")
+            request_policy.wait_for_condition(condition="Enforced", status="True", timeout=60)
+            yield
+
+    LOGGER.info("Restored original Kuadrant policies")
+
+
+def get_total_tokens(resp: Response, *, fail_if_missing: bool = False) -> int | None:
+    """Extract total token usage from a MaaS response.
+
+    The helper first checks for the `x-odhu-usage-total-tokens` response header.
+    If it is missing or not parseable as an integer, the JSON body is used.
+
+    Args:
+        resp: HTTP response returned by a MaaS inference endpoint.
+        fail_if_missing: If True, raise AssertionError when token usage cannot be extracted.
+
+    Returns:
+        Total token count if available, otherwise None.
+
+    Raises:
+        AssertionError: If fail_if_missing=True and token usage cannot be extracted.
+    """
+    header_val = resp.headers.get("x-odhu-usage-total-tokens")
+    if header_val is not None:
+        try:
+            return int(header_val)
+        except (TypeError, ValueError):
+            if fail_if_missing:
+                raise AssertionError(
+                    f"Token usage header is not parseable as int; headers={dict(resp.headers)} body={resp.text[:500]}"
+                ) from None
+            return None
+
+    try:
+        body: Any = resp.json()
+    except ValueError:
+        if fail_if_missing:
+            raise AssertionError(
+                f"Token usage not found: response body is not JSON; headers={dict(resp.headers)} body={resp.text[:500]}"
+            ) from None
+        return None
+
+    if isinstance(body, dict):
+        usage = body.get("usage")
+        if isinstance(usage, dict):
+            total = usage.get("total_tokens")
+            if isinstance(total, int):
+                return total
+
+    if fail_if_missing:
+        raise AssertionError(
+            f"Token usage not found in header or JSON body; headers={dict(resp.headers)} body={resp.text[:500]}"
+        )
+    return None
