@@ -22,10 +22,13 @@ ETCD_IMAGE = os.getenv(
 PGVECTOR_IMAGE = os.getenv(
     "LLS_VECTOR_IO_PGVECTOR_IMAGE",
     (
-        "docker.io/pgvector/pgvector:sha256@sha256:"
+        "docker.io/pgvector/pgvector@sha256:"
         "0a07c4114ba6d1d04effcce3385e9f5ce305eb02e56a3d35948a415a52f193ec"  # pgvector 16  # pragma: allowlist secret
     ),
 )
+
+PGVECTOR_USER = os.getenv("LLS_VECTOR_IO_PGVECTOR_USER", "vector_user")
+PGVECTOR_PASSWORD = os.getenv("LLS_VECTOR_IO_PGVECTOR_PASSWORD", "yourpassword")
 
 
 @pytest.fixture(scope="class")
@@ -56,6 +59,13 @@ def vector_io_provider_deployment_config_factory(
           * MILVUS_ENDPOINT: Remote Milvus service endpoint URL
           * MILVUS_TOKEN: Authentication token for remote service
           * MILVUS_CONSISTENCY_LEVEL: Consistency level for operations
+        - "pgvector":
+          * ENABLE_PGVECTOR: Enable pgvector provider
+          * PGVECTOR_HOST: PGVector service hostname
+          * PGVECTOR_PORT: PGVector port
+          * PGVECTOR_USER: Database user
+          * PGVECTOR_PASSWORD: Database password
+          * PGVECTOR_DB: Database name
 
     Example:
         def test_with_milvus(vector_io_provider_deployment_config_factory):
@@ -85,8 +95,8 @@ def vector_io_provider_deployment_config_factory(
             env_vars.append({"name": "ENABLE_PGVECTOR", "value": "true"})
             env_vars.append({"name": "PGVECTOR_HOST", "value": "vector-io-pgvector-service"})
             env_vars.append({"name": "PGVECTOR_PORT", "value": "5432"})
-            env_vars.append({"name": "PGVECTOR_USER", "value": "vector_user"})
-            env_vars.append({"name": "PGVECTOR_PASSWORD", "value": "yourpassword"})
+            env_vars.append({"name": "PGVECTOR_USER", "value": PGVECTOR_USER})
+            env_vars.append({"name": "PGVECTOR_PASSWORD", "value": PGVECTOR_PASSWORD})
             env_vars.append({"name": "PGVECTOR_DB", "value": "pgvector"})
 
         return env_vars
@@ -315,8 +325,8 @@ def get_pgvector_deployment_template() -> Dict[str, Any]:
                     "ports": [{"containerPort": 5432}],
                     "env": [
                         {"name": "POSTGRES_DB", "value": "pgvector"},
-                        {"name": "POSTGRES_USER", "value": "vector_user"},
-                        {"name": "POSTGRES_PASSWORD", "value": "yourpassword"},
+                        {"name": "POSTGRES_USER", "value": PGVECTOR_USER},
+                        {"name": "POSTGRES_PASSWORD", "value": PGVECTOR_PASSWORD},
                         {"name": "PGDATA", "value": "/var/lib/postgresql/data/pgdata"},
                     ],
                     "lifecycle": {
@@ -327,7 +337,7 @@ def get_pgvector_deployment_template() -> Dict[str, Any]:
                                     "-c",
                                     (
                                         "sleep 5\n"
-                                        "PGPASSWORD=yourpassword psql -h localhost -U vector_user "
+                                        f"PGPASSWORD={PGVECTOR_PASSWORD} psql -h localhost -U {PGVECTOR_USER} "
                                         '-d pgvector -c "CREATE EXTENSION IF NOT EXISTS vector;" || true'
                                     ),
                                 ]
