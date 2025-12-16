@@ -288,6 +288,11 @@ def unprivileged_llama_stack_distribution(
     enabled_llama_stack_operator: DataScienceCluster,
     request: FixtureRequest,
     llama_stack_server_config: Dict[str, Any],
+    ci_s3_bucket_name: str,
+    ci_s3_bucket_endpoint: str,
+    ci_s3_bucket_region: str,
+    aws_access_key_id: str,
+    aws_secret_access_key: str,
 ) -> Generator[LlamaStackDistribution, None, None]:
     # Distribution name needs a random substring due to bug RHAIENG-999 / RHAIENG-1139
     distribution_name = generate_random_name(prefix="llama-stack-distribution")
@@ -308,11 +313,11 @@ def unprivileged_llama_stack_distribution(
             if enable_s3:
                 try:
                     _cleanup_s3_files(
-                        bucket_name=request.getfixturevalue(argname="ci_s3_bucket_name"),
-                        endpoint_url=request.getfixturevalue(argname="ci_s3_bucket_endpoint"),
-                        region=request.getfixturevalue(argname="ci_s3_bucket_region"),
-                        access_key_id=request.getfixturevalue(argname="aws_access_key_id"),
-                        secret_access_key=request.getfixturevalue(argname="aws_secret_access_key"),
+                        bucket_name=ci_s3_bucket_name,
+                        endpoint_url=ci_s3_bucket_endpoint,
+                        region=ci_s3_bucket_region,
+                        access_key_id=aws_access_key_id,
+                        secret_access_key=aws_secret_access_key,
                     )
                 except Exception as e:
                     LOGGER.warning(f"Failed to clean up S3 files: {e}")
@@ -328,6 +333,11 @@ def llama_stack_distribution(
     enabled_llama_stack_operator: DataScienceCluster,
     request: FixtureRequest,
     llama_stack_server_config: Dict[str, Any],
+    ci_s3_bucket_name: str,
+    ci_s3_bucket_endpoint: str,
+    ci_s3_bucket_region: str,
+    aws_access_key_id: str,
+    aws_secret_access_key: str,
 ) -> Generator[LlamaStackDistribution, None, None]:
     # Distribution name needs a random substring due to bug RHAIENG-999 / RHAIENG-1139
     with create_llama_stack_distribution(
@@ -347,11 +357,11 @@ def llama_stack_distribution(
             if enable_s3:
                 try:
                     _cleanup_s3_files(
-                        bucket_name=request.getfixturevalue(argname="ci_s3_bucket_name"),
-                        endpoint_url=request.getfixturevalue(argname="ci_s3_bucket_endpoint"),
-                        region=request.getfixturevalue(argname="ci_s3_bucket_region"),
-                        access_key_id=request.getfixturevalue(argname="aws_access_key_id"),
-                        secret_access_key=request.getfixturevalue(argname="aws_secret_access_key"),
+                        bucket_name=ci_s3_bucket_name,
+                        endpoint_url=ci_s3_bucket_endpoint,
+                        region=ci_s3_bucket_region,
+                        access_key_id=aws_access_key_id,
+                        secret_access_key=aws_secret_access_key,
                     )
                 except Exception as e:
                     LOGGER.warning(f"Failed to clean up S3 files: {e}")
