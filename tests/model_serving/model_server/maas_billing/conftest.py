@@ -519,13 +519,8 @@ def exercise_rate_limiter(
         total_tokens = get_total_tokens(resp=response)
 
         if scenario["id"] == "token-rate" and response.status_code == 200:
-            if total_tokens is None:
-                raise AssertionError(
-                    f"{log_prefix}[{actor_label}]: token usage not found in header or JSON body; "
-                    f"headers={dict(response.headers)} body={response.text[:500]}"
-                )
+            total_tokens = get_total_tokens(resp=response, fail_if_missing=True)
             LOGGER.info(f"{log_prefix}[{actor_label}]: total_tokens={total_tokens}")
-
     LOGGER.info(f"{log_prefix}[{actor_label}]: status_codes={status_codes_list}")
     return status_codes_list
 

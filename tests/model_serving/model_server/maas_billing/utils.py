@@ -1,4 +1,4 @@
-from typing import Any, Dict, Generator, List, Optional
+from typing import Any, Dict, Generator, List
 
 import base64
 import requests
@@ -398,13 +398,7 @@ def maas_gateway_rate_limits_patched(
         ensure_exists=True,
     )
 
-    LOGGER.info(
-        "MaaS Kuadrant: using policies %s/%s and %s/%s",
-        namespace,
-        token_policy_name,
-        namespace,
-        request_policy_name,
-    )
+    LOGGER.info(f"MaaS Kuadrant: using policies {namespace}/{token_policy_name} and {namespace}/{request_policy_name}")
 
     LOGGER.info(f"Patching TokenRateLimitPolicy in namespace '{namespace}' via ResourceEditor")
     with ResourceEditor(patches={token_policy: {"spec": {"limits": maas_token_ratelimitpolicy_spec()}}}):
@@ -420,39 +414,51 @@ def maas_gateway_rate_limits_patched(
     LOGGER.info("Restored original Kuadrant policies")
 
 
-def get_total_tokens(resp: Response) -> Optional[int]:
+def get_total_tokens(resp: Response, *, fail_if_missing: bool = False) -> int | None:
     """Extract total token usage from a MaaS response.
-
-    In MaaS, token usage is currently observed in the response JSON body:
-      {"usage": {"total_tokens": <int>}}
 
     The helper first checks for the `x-odhu-usage-total-tokens` response header.
     If it is missing or not parseable as an integer, the JSON body is used.
 
     Args:
         resp: HTTP response returned by a MaaS inference endpoint.
+        fail_if_missing: If True, raise AssertionError when token usage cannot be extracted.
 
     Returns:
         Total token count if available, otherwise None.
+
+    Raises:
+        AssertionError: If fail_if_missing=True and token usage cannot be extracted.
     """
     header_val = resp.headers.get("x-odhu-usage-total-tokens")
     if header_val is not None:
         try:
             return int(header_val)
         except (TypeError, ValueError):
+            if fail_if_missing:
+                raise AssertionError(
+                    f"Token usage header is not parseable as int; headers={dict(resp.headers)} body={resp.text[:500]}"
+                ) from None
             return None
 
     try:
         body: Any = resp.json()
     except ValueError:
+        if fail_if_missing:
+            raise AssertionError(
+                f"Token usage not found: response body is not JSON; headers={dict(resp.headers)} body={resp.text[:500]}"
+            ) from None
         return None
 
-    if not isinstance(body, dict):
-        return None
+    if isinstance(body, dict):
+        usage = body.get("usage")
+        if isinstance(usage, dict):
+            total = usage.get("total_tokens")
+            if isinstance(total, int):
+                return total
 
-    usage = body.get("usage")
-    if not isinstance(usage, dict):
-        return None
-
-    total = usage.get("total_tokens")
-    return total if isinstance(total, int) else None
+    if fail_if_missing:
+        raise AssertionError(
+            f"Token usage not found in header or JSON body; headers={dict(resp.headers)} body={resp.text[:500]}"
+        )
+    return None
