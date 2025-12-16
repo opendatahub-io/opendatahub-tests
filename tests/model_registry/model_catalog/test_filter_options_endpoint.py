@@ -137,7 +137,9 @@ class TestFilterOptionsEndpoint:
         LOGGER.info(f"Raw database query returned {len(db_properties)} properties: {list(db_properties.keys())}")
 
         # Remove API-computed fields from API response before comparison
-        filtered_api_filters = {k: v for k, v in api_filters.items() if k not in API_COMPUTED_FILTER_FIELDS}
+        filtered_api_filters = {
+            key: value for key, value in api_filters.items() if key not in API_COMPUTED_FILTER_FIELDS
+        }
 
         is_valid, comparison_errors = compare_filter_options_with_database(
             api_filters=filtered_api_filters,
