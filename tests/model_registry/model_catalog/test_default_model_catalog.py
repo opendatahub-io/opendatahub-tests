@@ -315,9 +315,20 @@ class TestModelCatalogDefaultData:
                 f"Model {model['name']} missing REQUIRED fields in API: {api_missing_required}"
             )
 
+            # Check 'license' field presence without value comparison (API transforms format and tested u/s)
+            if "license" in all_model_fields:
+                yaml_has_license = "license" in model
+                api_has_license = "license" in api_model
+                assert yaml_has_license == api_has_license, (
+                    f"License field presence mismatch for {model['name']}: "
+                    f"YAML has license={yaml_has_license}, API has license={api_has_license}"
+                )
+
+            # Exclude 'license' field from value comparison
+            comparable_fields = all_model_fields - {"license"}
             # Filter to only schema-defined fields for value comparison
-            model_filtered = {k: v for k, v in model.items() if k in all_model_fields}
-            api_model_filtered = {k: v for k, v in api_model.items() if k in all_model_fields}
+            model_filtered = {key: value for key, value in model.items() if key in comparable_fields}
+            api_model_filtered = {key: value for key, value in api_model.items() if key in comparable_fields}
 
             differences = list(diff(model_filtered, api_model_filtered))
             if differences:

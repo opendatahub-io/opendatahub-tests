@@ -5,17 +5,26 @@
 # filterable properties for CatalogModel. Based on GetFilterableProperties in
 # kubeflow/model-registry catalog/internal/db/service/catalog_model.go (PR #1875)
 #
-# Property naming:
-# - Context properties: base name only (special case: 'validated_on.array_value' for arrays)
-# - Artifact properties: 'artifacts.{name}.{type}' where type is string_value/array_value/double_value/int_value
+# Query structure:
+# 1. First SELECT: Context properties (model-level metadata)
+#    - Core properties: Return base name only (e.g., license, provider, tasks)
+#    - Custom properties with known types: Add type suffix (e.g., model_type.string_value, validated_on.array_value)
+# 2. UNION ALL
+# 3. Second SELECT: Artifact properties (model artifact metadata)
+#    - Format: 'artifacts.{property_name}.{value_type}'
+#    - Value types: string_value, array_value, double_value, int_value
 #
 # Return format:
-# - String/array properties: text array of values
+# - String/array properties: PostgreSQL text array of distinct values
 # - Numeric properties: 2-element text array [min, max] converted from double/int columns
 FILTER_OPTIONS_DB_QUERY = """
 SELECT
     CASE
-        WHEN name = 'validated_on' AND array_value IS NOT NULL THEN name || '.array_value'
+        -- Custom properties with array_value get .array_value suffix
+        WHEN name IN ('validated_on') AND array_value IS NOT NULL THEN name || '.array_value'
+        -- Custom properties with string_value get .string_value suffix
+        WHEN name IN ('model_type', 'size', 'tensor_type', 'variant_group_id') THEN name || '.string_value'
+        -- Core properties keep base name only
         ELSE name
     END AS name,
     COALESCE(string_value, array_value, '{}'::text[]) AS array_agg
@@ -174,6 +183,11 @@ API_EXCLUDED_FILTER_FIELDS = {
     "license_link",
     "artifacts.metricsType.string_value",  # artifact property with full name
     "artifacts.model_id.string_value",  # artifact property with full name
+}
+
+# Fields that are dynamically computed and added by the API but do not exist in the database
+API_COMPUTED_FILTER_FIELDS = {
+    "status",  # Computed from CatalogSource.status field
 }
 
 # SQL query for accuracy sorting database validation

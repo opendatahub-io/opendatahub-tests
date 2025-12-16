@@ -26,7 +26,6 @@ from tests.model_registry.constants import (
     CA_MOUNT_PATH,
     CA_FILE_PATH,
     CA_CONFIGMAP_NAME,
-    OAUTH_PROXY_CONFIG_DICT,
     SECURE_MR_NAME,
     KUBERBACPROXY_STR,
 )
@@ -160,7 +159,7 @@ def deploy_secure_mysql_and_mr(
         namespace=model_registry_namespace,
         label=get_mr_standard_labels(resource_name=SECURE_MR_NAME),
         rest={},
-        oauth_proxy=OAUTH_PROXY_CONFIG_DICT,
+        kube_rbac_proxy={},
         mysql=mysql,
         wait_for_resource=True,
     ) as mr:
