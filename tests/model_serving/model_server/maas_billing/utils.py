@@ -17,7 +17,6 @@ from utilities.plugins.constant import RestHeader, OpenAIEnpoints
 from ocp_resources.resource import ResourceEditor
 from utilities.resources.rate_limit_policy import RateLimitPolicy
 from utilities.resources.token_rate_limit_policy import TokenRateLimitPolicy
-from timeout_sampler import TimeoutSampler
 
 LOGGER = get_logger(name=__name__)
 MODELS_INFO = OpenAIEnpoints.MODELS_INFO
@@ -383,69 +382,59 @@ def maas_gateway_rate_limits_patched(
     request_policy_name: str,
 ) -> Generator[None, None, None]:
     """
-    Temporarily patch ONLY 'spec.limits' of the Kuadrant
-    TokenRateLimitPolicy and RateLimitPolicy for MaaS tests,
-    and restore the original state afterwards.
+    Temporarily patch ONLY `spec.limits` of the Kuadrant TokenRateLimitPolicy and
+    RateLimitPolicy for MaaS tests, and restore the original state afterwards.
     """
     token_policy = TokenRateLimitPolicy(
         client=admin_client,
         name=token_policy_name,
         namespace=namespace,
+        ensure_exists=True,
     )
     request_policy = RateLimitPolicy(
         client=admin_client,
         name=request_policy_name,
         namespace=namespace,
+        ensure_exists=True,
     )
 
-    LOGGER.info(f"MaaS Kuadrant: using policies {namespace}/{token_policy_name} and {namespace}/{request_policy_name}")
+    LOGGER.info(
+        "MaaS Kuadrant: using policies %s/%s and %s/%s",
+        namespace,
+        token_policy_name,
+        namespace,
+        request_policy_name,
+    )
 
-    token_body = token_policy.instance.to_dict()
-    request_body = request_policy.instance.to_dict()
+    LOGGER.info(f"Patching TokenRateLimitPolicy in namespace '{namespace}' via ResourceEditor")
+    with ResourceEditor(patches={token_policy: {"spec": {"limits": maas_token_ratelimitpolicy_spec()}}}):
+        LOGGER.info("Waiting for TokenRateLimitPolicy condition Enforced=True")
+        token_policy.wait_for_condition(condition="Enforced", status="True", timeout=60)
 
-    if "resourceVersion" in token_body["metadata"]:
-        del token_body["metadata"]["resourceVersion"]
-    if "resourceVersion" in request_body["metadata"]:
-        del request_body["metadata"]["resourceVersion"]
-
-    token_body.setdefault("spec", {})["limits"] = maas_token_ratelimitpolicy_spec()
-    request_body.setdefault("spec", {})["limits"] = maas_ratelimitpolicy_spec()
-
-    patches = {
-        token_policy: token_body,
-        request_policy: request_body,
-    }
-
-    LOGGER.info(f"Patching Kuadrant policies in namespace '{namespace}' via ResourceEditor")
-
-    with ResourceEditor(patches=patches):
-
-        def _wait_for_enforced(policy):
-            for condition in policy.instance.status.conditions:
-                if condition.type in ("Enforced", "Ready") and condition.status == "True":
-                    return True
-            return False
-
-        def _check_enforced():
-            return _wait_for_enforced(token_policy) and _wait_for_enforced(request_policy)
-
-        LOGGER.info("Waiting for patched policies to be Enforced/Ready...")
-        sampler = TimeoutSampler(
-            wait_timeout=60,
-            sleep=5,
-            func=_check_enforced,
-        )
-        for sample in sampler:
-            if sample:
-                break
-
-        yield
+        LOGGER.info(f"Patching RateLimitPolicy in namespace '{namespace}' via ResourceEditor")
+        with ResourceEditor(patches={request_policy: {"spec": {"limits": maas_ratelimitpolicy_spec()}}}):
+            LOGGER.info("Waiting for RateLimitPolicy condition Enforced=True")
+            request_policy.wait_for_condition(condition="Enforced", status="True", timeout=60)
+            yield
 
     LOGGER.info("Restored original Kuadrant policies")
 
 
-def get_total_tokens(resp: requests.Response) -> Optional[int]:
+def get_total_tokens(resp: Response) -> Optional[int]:
+    """Extract total token usage from a MaaS response.
 
+    In MaaS, token usage is currently observed in the response JSON body:
+      {"usage": {"total_tokens": <int>}}
+
+    The helper first checks for the `x-odhu-usage-total-tokens` response header.
+    If it is missing or not parseable as an integer, the JSON body is used.
+
+    Args:
+        resp: HTTP response returned by a MaaS inference endpoint.
+
+    Returns:
+        Total token count if available, otherwise None.
+    """
     header_val = resp.headers.get("x-odhu-usage-total-tokens")
     if header_val is not None:
         try:
@@ -458,11 +447,12 @@ def get_total_tokens(resp: requests.Response) -> Optional[int]:
     except ValueError:
         return None
 
-    if isinstance(body, dict):
-        usage = body.get("usage")
-        if isinstance(usage, dict):
-            total = usage.get("total_tokens")
-            if isinstance(total, int):
-                return total
+    if not isinstance(body, dict):
+        return None
 
-    return None
+    usage = body.get("usage")
+    if not isinstance(usage, dict):
+        return None
+
+    total = usage.get("total_tokens")
+    return total if isinstance(total, int) else None
