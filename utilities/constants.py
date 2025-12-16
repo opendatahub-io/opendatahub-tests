@@ -132,6 +132,7 @@ class ApiGroups:
     HAPROXY_ROUTER_OPENSHIFT_IO: str = "haproxy.router.openshift.io"
     OPENDATAHUB_IO: str = "opendatahub.io"
     KSERVE: str = "serving.kserve.io"
+    KUADRANT_IO: str = "kuadrant.io"
 
 
 class Annotations:
