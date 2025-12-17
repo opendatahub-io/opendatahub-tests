@@ -153,3 +153,62 @@ class TestFilterOptionsEndpoint:
             assert False, failure_msg
 
         LOGGER.info("Comprehensive database coverage validation passed - API matches database exactly")
+
+    @pytest.mark.parametrize(
+        "user_token_for_api_calls,",
+        [
+            pytest.param(
+                {},
+                id="test_named_queries_admin_user",
+            ),
+            pytest.param(
+                {"user_type": "test"},
+                id="test_named_queries_non_admin_user",
+            ),
+            pytest.param(
+                {"user_type": "sa_user"},
+                id="test_named_queries_service_account",
+            ),
+        ],
+        indirect=["user_token_for_api_calls"],
+    )
+    def test_named_queries_in_filter_options(
+        self: Self,
+        enabled_model_catalog_config_map: ConfigMap,
+        model_catalog_rest_url: list[str],
+        user_token_for_api_calls: str,
+        test_idp_user: UserTestSession,
+    ):
+        """
+        Test for: RHOAIENG-38836
+        Validate that namedQueries field is present in filter_options response.
+        Validates that default-performance-filters named query exists with expected properties.
+        """
+        default_performance_filters = "default-performance-filters"
+        url = f"{model_catalog_rest_url[0]}models/filter_options"
+        LOGGER.info(f"Testing namedQueries in filter_options endpoint: {url}")
+
+        response = execute_get_command(
+            url=url,
+            headers=get_rest_headers(token=user_token_for_api_calls),
+        )
+
+        named_queries = response.get("namedQueries", {})
+        assert named_queries, "Named queries should be present in the response"
+
+        default_perf_filters = named_queries.get(default_performance_filters, {})
+        assert default_perf_filters, f"Named query '{default_performance_filters}' should be present"
+
+        # Validate expected properties are present in the named query
+        expected_properties = {
+            "artifacts.requests_per_second.double_value",
+            "artifacts.ttft_p90.double_value",
+            "artifacts.use_case.string_value",
+        }
+
+        assert expected_properties == default_perf_filters.keys(), (
+            f"default-performance-filters should contain exactly {expected_properties}, "
+            f"but got {default_perf_filters.keys()}"
+        )
+
+        LOGGER.info("Named queries validation passed successfully")
