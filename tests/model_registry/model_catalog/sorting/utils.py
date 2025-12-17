@@ -2,7 +2,11 @@ from typing import Any
 
 from simple_logger.logger import get_logger
 from tests.model_registry.utils import execute_get_command
-from tests.model_registry.model_catalog.utils import execute_database_query, parse_psql_output
+from tests.model_registry.model_catalog.utils import (
+    execute_database_query,
+    parse_psql_output,
+    get_models_from_catalog_api,
+)
 from tests.model_registry.model_catalog.db_constants import (
     GET_MODELS_BY_ACCURACY_DB_QUERY,
     GET_MODELS_BY_ACCURACY_WITH_TASK_FILTER_DB_QUERY,
@@ -102,7 +106,6 @@ def validate_items_sorted_correctly(items: list[dict], field: str, order: str) -
             raise ValueError(f"Field {field} is missing from item: {item}")
 
         values.append(value)
-
     # Convert values to appropriate types for comparison
     if field == "ID":
         # Convert IDs to integers for numeric comparison
@@ -111,6 +114,7 @@ def validate_items_sorted_correctly(items: list[dict], field: str, order: str) -
         except ValueError:
             # If conversion fails, fall back to string comparison
             values = [str(v) for v in values]
+    LOGGER.info(f"Found {len(values)} {values} items")
 
     # Check if values are in correct order
     if order == "ASC":
@@ -398,3 +402,21 @@ def _verify_models_with_accuracy_sorted(
             LOGGER.error("Models with accuracy do not match expected models from database")
             return False
     return True
+
+
+def assert_model_sorting(
+    order_by: str,
+    sort_order: str | None,
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+) -> None:
+    LOGGER.info(f"Testing models sorting: orderBy={order_by}, sortOrder={sort_order}")
+
+    response = get_models_from_catalog_api(
+        model_catalog_rest_url=model_catalog_rest_url,
+        model_registry_rest_headers=model_registry_rest_headers,
+        order_by=order_by,
+        sort_order=sort_order,
+    )
+
+    assert validate_items_sorted_correctly(items=response["items"], field=order_by, order=sort_order)

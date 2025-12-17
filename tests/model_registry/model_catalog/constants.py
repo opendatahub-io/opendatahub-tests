@@ -43,7 +43,13 @@ PERFORMANCE_DATA_DIR: str = "/shared-benchmark-data"
 HF_SOURCE_ID: str = "huggingface_mixed"
 HF_MODEL_NAME: str = "ibm-granite/granite-speech-3.2-8b"
 HF_MODELS: dict[str, Any] = {
-    "mixed": ["ibm-granite/granite-4.0-h-1b", "microsoft/phi-2", "meta-llama/Llama-3.1-8B-Instruct"],
+    "mixed": [
+        "ibm-granite/granite-4.0-h-1b",
+        "microsoft/phi-2",
+        "meta-llama/Llama-3.1-8B-Instruct",
+        "RedHatAI/phi-4-quantized.w8a8",
+        "RedHatAI/Qwen2.5-7B-Instruct",
+    ],
     "granite": [
         "ibm-granite/granite-4.0-h-small",
         "ibm-granite/granite-4.0-micro",
