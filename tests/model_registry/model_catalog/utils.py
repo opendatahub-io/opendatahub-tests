@@ -8,7 +8,7 @@ from timeout_sampler import retry
 from ocp_resources.pod import Pod
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.route import Route
-from tests.model_registry.model_catalog.constants import DEFAULT_CATALOGS
+from tests.model_registry.model_catalog.constants import DEFAULT_CATALOGS, MODELS
 from tests.model_registry.model_catalog.db_constants import (
     SEARCH_MODELS_DB_QUERY,
     SEARCH_MODELS_WITH_SOURCE_ID_DB_QUERY,
@@ -27,10 +27,6 @@ from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT
 from tests.model_registry.utils import execute_get_command, get_rest_headers
 
 LOGGER = get_logger(name=__name__)
-
-
-class ResourceNotFoundError(Exception):
-    pass
 
 
 @retry(wait_timeout=60, sleep=5, exceptions_dict={AssertionError: []})
@@ -1086,3 +1082,47 @@ def verify_labels_match(expected_labels: List[Dict[str, Any]], api_labels: List[
                 break
 
         assert found, f"Expected label not found in API response: {expected_label}"
+
+
+def get_hf_catalog_str(ids):
+    """
+    Generate a HuggingFace catalog configuration string in YAML format.
+    Similar to get_catalog_str() but for HuggingFace catalogs.
+
+    Args:
+        ids (list): List of model set identifiers that correspond to keys in MODELS dict
+
+    Returns:
+        str: YAML formatted catalog configuration with multiple catalog entries
+    """
+    catalog_entries = ""
+
+    for source_id in ids:
+        if source_id not in MODELS:
+            raise ValueError(f"Model ID '{source_id}' not found in MODELS dictionary")
+        name = f"HuggingFace Source {source_id}"
+        # Build catalog entry
+        catalog_entries += f"""
+- name: {name}
+  id: huggingface_{source_id}
+  type: "hf"
+  enabled: true
+  includedModels:
+  {get_included_model_str(models=MODELS[source_id])}
+  labels:
+  - {name}
+"""
+
+    # Combine all catalog entries
+    return f"""catalogs:
+    {catalog_entries}
+    """
+
+
+def get_included_model_str(models: list[str]) -> str:
+    included_models: str = ""
+    for model_name in models:
+        included_models += f"""
+    - {model_name}
+"""
+    return included_models
