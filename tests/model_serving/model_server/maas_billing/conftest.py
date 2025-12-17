@@ -1,5 +1,4 @@
-from typing import Generator
-
+from typing import Generator, Dict, List
 import base64
 import pytest
 import requests
@@ -23,8 +22,7 @@ from utilities.user_utils import UserTestSession, wait_for_user_creation, create
 from utilities.infra import login_with_user_password, get_openshift_token
 from utilities.general import wait_for_oauth_openshift_deployment
 from ocp_resources.secret import Secret
-
-
+from tests.model_serving.model_server.maas_billing.utils import get_total_tokens
 from tests.model_serving.model_server.maas_billing.utils import (
     detect_scheme_via_llmisvc,
     host_from_ingress_domain,
@@ -34,6 +32,8 @@ from tests.model_serving.model_server.maas_billing.utils import (
     create_maas_group,
     build_maas_headers,
     get_maas_models_response,
+    verify_chat_completions,
+    maas_gateway_rate_limits_patched,
 )
 
 
@@ -81,8 +81,10 @@ def model_url(
     maas_scheme: str,
     maas_host: str,
     admin_client: DynamicClient,
+    maas_inference_service_tinyllama: LLMInferenceService,
 ) -> str:
     deployment = llmis_name(client=admin_client)
+    # deployment = maas_inference_service_tinyllama.name
     return f"{maas_scheme}://{maas_host}/llm/{deployment}{CHAT_COMPLETIONS}"
 
 
@@ -374,7 +376,7 @@ def maas_premium_group(
         yield group.name
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def ocp_token_for_actor(
     request,
     maas_api_server_url: str,
@@ -421,7 +423,7 @@ def ocp_token_for_actor(
             assert original_login_successful, f"Failed to log back in as original user '{original_user}'"
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def maas_token_for_actor(
     request_session_http: requests.Session,
     base_url: str,
@@ -449,13 +451,13 @@ def maas_token_for_actor(
     return token
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def maas_headers_for_actor(maas_token_for_actor: str) -> dict:
     """Headers for the current actor (admin/free/premium)."""
     return build_maas_headers(token=maas_token_for_actor)
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def maas_models_response_for_actor(
     request_session_http: requests.Session,
     base_url: str,
@@ -467,6 +469,60 @@ def maas_models_response_for_actor(
         base_url=base_url,
         headers=maas_headers_for_actor,
     )
+
+
+@pytest.fixture(scope="class")
+def maas_models_for_actor(
+    maas_models_response_for_actor: requests.Response,
+) -> List[Dict]:
+
+    models_list = maas_models_response_for_actor.json().get("data", [])
+    assert models_list, "no models returned from /v1/models"
+    return models_list
+
+
+@pytest.fixture(scope="class")
+def exercise_rate_limiter(
+    actor_label: str,
+    scenario: dict,
+    request_session_http: requests.Session,
+    model_url: str,
+    maas_headers_for_actor: Dict[str, str],
+    maas_models_for_actor: List[Dict],
+) -> List[int]:
+
+    models_list = maas_models_for_actor
+
+    max_requests = scenario["max_requests"]
+    max_tokens = scenario["max_tokens"]
+    log_prefix = scenario["log_prefix"]
+
+    status_codes_list: List[int] = []
+
+    for attempt_index in range(max_requests):
+        LOGGER.info(f"{log_prefix}[{actor_label}]: attempt {attempt_index + 1}/{max_requests}")
+
+        response = verify_chat_completions(
+            request_session_http=request_session_http,
+            model_url=model_url,
+            headers=maas_headers_for_actor,
+            models_list=models_list,
+            prompt_text="Repeat the word 'token' 60 times, separated by spaces. No extra text.",
+            max_tokens=max_tokens,
+            request_timeout_seconds=60,
+            log_prefix=f"{log_prefix}[{actor_label}]",
+            expected_status_codes=(200, 429),
+        )
+
+        status_codes_list.append(response.status_code)
+
+        total_tokens = get_total_tokens(resp=response)
+
+        if scenario["id"] == "token-rate" and response.status_code == 200:
+            total_tokens = get_total_tokens(resp=response, fail_if_missing=True)
+            LOGGER.info(f"{log_prefix}[{actor_label}]: total_tokens={total_tokens}")
+    LOGGER.info(f"{log_prefix}[{actor_label}]: status_codes={status_codes_list}")
+    return status_codes_list
 
 
 @pytest.fixture(scope="class")
@@ -530,6 +586,23 @@ def maas_scheme(admin_client: DynamicClient, unprivileged_model_namespace: Names
     )
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="class")
 def maas_host(admin_client):
     return host_from_ingress_domain(client=admin_client)
+
+
+@pytest.fixture(scope="class")
+def maas_gateway_rate_limits(
+    admin_client: DynamicClient,
+) -> Generator[None, None, None]:
+    namespace = "openshift-ingress"
+    token_policy_name = "gateway-token-rate-limits"
+    request_policy_name = "gateway-rate-limits"
+
+    with maas_gateway_rate_limits_patched(
+        admin_client=admin_client,
+        namespace=namespace,
+        token_policy_name=token_policy_name,
+        request_policy_name=request_policy_name,
+    ):
+        yield
