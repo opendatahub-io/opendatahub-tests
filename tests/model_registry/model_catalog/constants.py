@@ -42,7 +42,7 @@ METRICS_ARTIFACT_TYPE: str = "metrics-artifact"
 PERFORMANCE_DATA_DIR: str = "/shared-benchmark-data"
 HF_SOURCE_ID: str = "huggingface_mixed"
 HF_MODEL_NAME: str = "ibm-granite/granite-speech-3.2-8b"
-MODELS: dict[str, Any] = {
+HF_MODELS: dict[str, Any] = {
     "mixed": ["ibm-granite/granite-4.0-h-1b", "microsoft/phi-2", "meta-llama/Llama-3.1-8B-Instruct"],
     "granite": [
         "ibm-granite/granite-4.0-h-small",
@@ -52,8 +52,8 @@ MODELS: dict[str, Any] = {
         "ibm-granite/granite-4.0-h-micro",
     ],
 }
-EXPECTED_HF_CATALOG_VALUES: list[dict[str, str]] = [{"id": HF_SOURCE_ID, "model_name": MODELS["mixed"][0]}]
+EXPECTED_HF_CATALOG_VALUES: list[dict[str, str]] = [{"id": HF_SOURCE_ID, "model_name": HF_MODELS["mixed"][0]}]
 EXPECTED_MULTIPLE_HF_CATALOG_VALUES: list[dict[str, str]] = [
-    {"id": HF_SOURCE_ID, "model_name": MODELS["mixed"][0]},
-    {"id": "huggingface_granite", "model_name": MODELS["granite"][0]},
+    {"id": HF_SOURCE_ID, "model_name": HF_MODELS["mixed"][0]},
+    {"id": "huggingface_granite", "model_name": HF_MODELS["granite"][0]},
 ]

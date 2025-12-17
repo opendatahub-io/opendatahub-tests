@@ -8,7 +8,7 @@ from timeout_sampler import retry
 from ocp_resources.pod import Pod
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.route import Route
-from tests.model_registry.model_catalog.constants import DEFAULT_CATALOGS, MODELS
+from tests.model_registry.model_catalog.constants import DEFAULT_CATALOGS, HF_MODELS
 from tests.model_registry.model_catalog.db_constants import (
     SEARCH_MODELS_DB_QUERY,
     SEARCH_MODELS_WITH_SOURCE_ID_DB_QUERY,
@@ -1098,7 +1098,7 @@ def get_hf_catalog_str(ids):
     catalog_entries = ""
 
     for source_id in ids:
-        if source_id not in MODELS:
+        if source_id not in HF_MODELS:
             raise ValueError(f"Model ID '{source_id}' not found in MODELS dictionary")
         name = f"HuggingFace Source {source_id}"
         # Build catalog entry
@@ -1108,7 +1108,7 @@ def get_hf_catalog_str(ids):
   type: "hf"
   enabled: true
   includedModels:
-  {get_included_model_str(models=MODELS[source_id])}
+  {get_included_model_str(models=HF_MODELS[source_id])}
   labels:
   - {name}
 """
