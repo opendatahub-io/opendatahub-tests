@@ -107,10 +107,13 @@ def validate_items_sorted_correctly(items: list[dict], field: str, order: str) -
     if field == "ID":
         # Convert IDs to integers for numeric comparison
         try:
-            values = [int(v) for v in values]
+            values = [int(value) for value in values]
         except ValueError:
             # If conversion fails, fall back to string comparison
-            values = [str(v) for v in values]
+            values = [str(value) for value in values]
+    elif field == "NAME":
+        # For NAME field, convert to lowercase for case-insensitive comparison
+        values = [str(value).lower() for value in values]
 
     # Check if values are in correct order
     if order == "ASC":
