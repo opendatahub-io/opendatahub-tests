@@ -1084,13 +1084,14 @@ def verify_labels_match(expected_labels: List[Dict[str, Any]], api_labels: List[
         assert found, f"Expected label not found in API response: {expected_label}"
 
 
-def get_hf_catalog_str(ids: list[str]) -> str:
+def get_hf_catalog_str(ids: list[str], excluded_models: list[str] = None) -> str:
     """
     Generate a HuggingFace catalog configuration string in YAML format.
     Similar to get_catalog_str() but for HuggingFace catalogs.
 
     Args:
         ids (list): List of model set identifiers that correspond to keys in MODELS dict
+        excluded_models (list, optional): List of model names to exclude from the catalog
 
     Returns:
         str: YAML formatted catalog configuration with multiple catalog entries
@@ -1102,16 +1103,25 @@ def get_hf_catalog_str(ids: list[str]) -> str:
             raise ValueError(f"Model ID '{source_id}' not found in MODELS dictionary")
         name = f"HuggingFace Source {source_id}"
         # Build catalog entry
-        catalog_entries += f"""
+        catalog_entry = f"""
 - name: {name}
   id: huggingface_{source_id}
   type: "hf"
   enabled: true
   includedModels:
-  {get_included_model_str(models=HF_MODELS[source_id])}
+  {get_included_model_str(models=HF_MODELS[source_id])}"""
+
+        # Add excludedModels if provided
+        if excluded_models:
+            catalog_entry += f"""
+  excludedModels:
+  {get_excluded_model_str(models=excluded_models)}"""
+
+        catalog_entry += f"""
   labels:
   - {name}
 """
+        catalog_entries += catalog_entry
 
     # Combine all catalog entries
     return f"""catalogs:
@@ -1126,3 +1136,12 @@ def get_included_model_str(models: list[str]) -> str:
     - {model_name}
 """
     return included_models
+
+
+def get_excluded_model_str(models: list[str]) -> str:
+    excluded_models: str = ""
+    for model_name in models:
+        excluded_models += f"""
+    - {model_name}
+"""
+    return excluded_models
