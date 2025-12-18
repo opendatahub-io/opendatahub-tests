@@ -34,6 +34,59 @@ LOGGER = get_logger(name=__name__)
 distribution_name = generate_random_name(prefix="llama-stack-distribution")
 
 
+def _cleanup_s3_files(
+    bucket_name: str,
+    endpoint_url: str,
+    region: str,
+    access_key_id: str,
+    secret_access_key: str,
+) -> None:
+    """
+    Clean up files from S3 bucket that were uploaded during tests.
+
+    Args:
+        bucket_name: S3 bucket name
+        endpoint_url: S3 endpoint URL
+        region: S3 region
+        access_key_id: AWS access key ID
+        secret_access_key: AWS secret access key
+    """
+
+    try:
+        import boto3
+        from botocore.exceptions import ClientError
+
+        s3_client = boto3.client(
+            service_name="s3",
+            endpoint_url=endpoint_url,
+            aws_access_key_id=access_key_id,
+            aws_secret_access_key=secret_access_key,
+            region_name=region,
+        )
+
+        response = s3_client.list_objects_v2(Bucket=bucket_name)
+
+        if "Contents" not in response:
+            LOGGER.info("No files found to clean up from S3")
+            return
+
+        # We only want to delete files that start with "file-"
+        for obj in response["Contents"]:
+            key = obj["Key"]
+            if key.startswith("file-"):
+                s3_client.delete_object(Bucket=bucket_name, Key=key)
+                LOGGER.debug(f"Deleted file from S3: {key}")
+
+        response = s3_client.list_objects_v2(Bucket=bucket_name)
+
+        if "Contents" not in response:
+            LOGGER.info("No files found to clean up from S3")
+            return
+
+    except ClientError as e:
+        LOGGER.warning(f"Failed to clean up S3 files: {e}")
+
+
 @pytest.fixture(scope="class")
 def enabled_llama_stack_operator(dsc_resource: DataScienceCluster) -> Generator[DataScienceCluster, Any, Any]:
     with update_components_in_dsc(
@@ -50,64 +103,67 @@ def enabled_llama_stack_operator(dsc_resource: DataScienceCluster) -> Generator[
 def llama_stack_server_config(
     request: FixtureRequest,
     vector_io_provider_deployment_config_factory: Callable[[str], list[Dict[str, str]]],
+    files_provider_config_factory: Callable[[str], list[Dict[str, str]]],
 ) -> Dict[str, Any]:
     """
-        Generate server configuration for LlamaStack distribution deployment and deploy vector I/O provider resources.
+    Generate server configuration for LlamaStack distribution deployment and deploy vector I/O provider resources.
 
-        This fixture creates a comprehensive server configuration dictionary that includes
-        container specifications, environment variables, and optional storage settings.
-        The configuration is built based on test parameters and environment variables.
-        Additionally, it deploys the specified vector I/O provider (e.g., Milvus) and configures
-        the necessary environment variables for the provider integration.
+    This fixture creates a comprehensive server configuration dictionary that includes
+    container specifications, environment variables, and optional storage settings.
+    The configuration is built based on test parameters and environment variables.
+    Additionally, it deploys the specified vector I/O provider (e.g., Milvus) and configures
+    the necessary environment variables for the provider integration.
 
-        Args:
-            request: Pytest fixture request object containing test parameters
-            vector_io_provider_deployment_config_factory: Factory function to deploy vector I/O providers
-                and return their configuration environment variables
+    Args:
+        request: Pytest fixture request object containing test parameters
+        vector_io_provider_deployment_config_factory: Factory function to deploy vector I/O providers
+            and return their configuration environment variables
+        files_provider_config_factory: Factory function to configure files storage providers
+            and return their configuration environment variables
 
-        Returns:
-            Dict containing server configuration with the following structure:
-            - containerSpec: Container resource limits, environment variables, and port
-            - distribution: Distribution name (defaults to "rh-dev")
-            - storage: Optional storage size configuration
+    Returns:
+        Dict containing server configuration with the following structure:
+        - containerSpec: Container resource limits, environment variables, and port
+        - distribution: Distribution name (defaults to "rh-dev")
+        - storage: Optional storage size configuration
 
-        Environment Variables:
-            The fixture configures the following environment variables:
-            - INFERENCE_MODEL: Model identifier for inference
-            - VLLM_API_TOKEN: API token for VLLM service
-            - VLLM_URL: URL for VLLM service endpoint
-            - VLLM_TLS_VERIFY: TLS verification setting (defaults to "false")
-            - FMS_ORCHESTRATOR_URL: FMS orchestrator service URL
-            - ENABLE_SENTENCE_TRANSFORMERS: Enable sentence-transformers embeddings (set to "true")
-    +       - EMBEDDING_PROVIDER: Embeddings provider to use (set to "sentence-transformers")
-            - Vector I/O provider specific variables (deployed via factory):
-              * For "milvus": MILVUS_DB_PATH
-              * For "milvus-remote": MILVUS_ENDPOINT, MILVUS_TOKEN, MILVUS_CONSISTENCY_LEVEL
+    Environment Variables:
+        The fixture configures the following environment variables:
+        - INFERENCE_MODEL: Model identifier for inference
+        - VLLM_API_TOKEN: API token for VLLM service
+        - VLLM_URL: URL for VLLM service endpoint
+        - VLLM_TLS_VERIFY: TLS verification setting (defaults to "false")
+        - FMS_ORCHESTRATOR_URL: FMS orchestrator service URL
+        - ENABLE_SENTENCE_TRANSFORMERS: Enable sentence-transformers embeddings (set to "true")
+        - EMBEDDING_PROVIDER: Embeddings provider to use (set to "sentence-transformers")
+        - Vector I/O provider specific variables (deployed via factory):
+          * For "milvus": MILVUS_DB_PATH
+          * For "milvus-remote": MILVUS_ENDPOINT, MILVUS_TOKEN, MILVUS_CONSISTENCY_LEVEL
 
-        Test Parameters:
-            The fixture accepts the following optional parameters via request.param:
-            - inference_model: Override for INFERENCE_MODEL environment variable
-            - vllm_api_token: Override for VLLM_API_TOKEN environment variable
-            - vllm_url_fixture: Fixture name to get VLLM URL from
-            - fms_orchestrator_url_fixture: Fixture name to get FMS orchestrator URL from
-            - vector_io_provider: Vector I/O provider type ("milvus" or "milvus-remote")
-            - llama_stack_storage_size: Storage size for the deployment
-            - embedding_model: Embedding model identifier for inference
-            - kubeflow_llama_stack_url: LlamaStack service URL for Kubeflow
-            - kubeflow_pipelines_endpoint: Kubeflow Pipelines API endpoint URL
-            - kubeflow_namespace: Namespace for Kubeflow resources
-            - kubeflow_base_image: Base container image for Kubeflow pipelines
-            - kubeflow_results_s3_prefix: S3 prefix for storing Kubeflow results
-            - kubeflow_s3_credentials_secret_name: Secret name for S3 credentials
-            - kubeflow_pipelines_token: Authentication token for Kubeflow Pipelines
+    Test Parameters:
+        The fixture accepts the following optional parameters via request.param:
+        - inference_model: Override for INFERENCE_MODEL environment variable
+        - vllm_api_token: Override for VLLM_API_TOKEN environment variable
+        - vllm_url_fixture: Fixture name to get VLLM URL from
+        - fms_orchestrator_url_fixture: Fixture name to get FMS orchestrator URL from
+        - vector_io_provider: Vector I/O provider type ("milvus" or "milvus-remote")
+        - llama_stack_storage_size: Storage size for the deployment
+        - embedding_model: Embedding model identifier for inference
+        - kubeflow_llama_stack_url: LlamaStack service URL for Kubeflow
+        - kubeflow_pipelines_endpoint: Kubeflow Pipelines API endpoint URL
+        - kubeflow_namespace: Namespace for Kubeflow resources
+        - kubeflow_base_image: Base container image for Kubeflow pipelines
+        - kubeflow_results_s3_prefix: S3 prefix for storing Kubeflow results
+        - kubeflow_s3_credentials_secret_name: Secret name for S3 credentials
+        - kubeflow_pipelines_token: Authentication token for Kubeflow Pipelines
 
-        Example:
-            @pytest.mark.parametrize("llama_stack_server_config",
-                                    [{"vector_io_provider": "milvus-remote"}],
-                                    indirect=True)
-            def test_with_remote_milvus(llama_stack_server_config):
-                # Test will use remote Milvus configuration
-                pass
+    Example:
+        @pytest.mark.parametrize("llama_stack_server_config",
+                                [{"vector_io_provider": "milvus-remote"}],
+                                indirect=True)
+        def test_with_remote_milvus(llama_stack_server_config):
+            # Test will use remote Milvus configuration
+            pass
     """
 
     env_vars = []
@@ -195,6 +251,11 @@ def llama_stack_server_config(
         # KUBEFLOW_PIPELINES_TOKEN: Get from current client token
         env_vars.append({"name": "KUBEFLOW_PIPELINES_TOKEN", "value": str(current_client_token)})
 
+    # Depending on parameter files_provider, configure files provider and obtain required env_vars
+    files_provider = params.get("files_provider") or "local"
+    env_vars_files = files_provider_config_factory(provider_name=files_provider)
+    env_vars.extend(env_vars_files)
+
     # Depending on parameter vector_io_provider, deploy vector_io provider and obtain required env_vars
     vector_io_provider = params.get("vector_io_provider") or "milvus"
     env_vars_vector_io = vector_io_provider_deployment_config_factory(provider_name=vector_io_provider)
@@ -225,7 +286,13 @@ def unprivileged_llama_stack_distribution(
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     enabled_llama_stack_operator: DataScienceCluster,
+    request: FixtureRequest,
     llama_stack_server_config: Dict[str, Any],
+    ci_s3_bucket_name: str,
+    ci_s3_bucket_endpoint: str,
+    ci_s3_bucket_region: str,
+    aws_access_key_id: str,
+    aws_secret_access_key: str,
 ) -> Generator[LlamaStackDistribution, None, None]:
     # Distribution name needs a random substring due to bug RHAIENG-999 / RHAIENG-1139
     distribution_name = generate_random_name(prefix="llama-stack-distribution")
@@ -239,13 +306,38 @@ def unprivileged_llama_stack_distribution(
         lls_dist.wait_for_status(status=LlamaStackDistribution.Status.READY, timeout=600)
         yield lls_dist
 
+        try:
+            env_vars = llama_stack_server_config.get("containerSpec", {}).get("env", [])
+            enable_s3 = any(env.get("name") == "ENABLE_S3" and env.get("value") == "s3" for env in env_vars)
+
+            if enable_s3:
+                try:
+                    _cleanup_s3_files(
+                        bucket_name=ci_s3_bucket_name,
+                        endpoint_url=ci_s3_bucket_endpoint,
+                        region=ci_s3_bucket_region,
+                        access_key_id=aws_access_key_id,
+                        secret_access_key=aws_secret_access_key,
+                    )
+                except Exception as e:
+                    LOGGER.warning(f"Failed to clean up S3 files: {e}")
+
+        except Exception as e:
+            LOGGER.warning(f"Failed to clean up S3 files: {e}")
+
 
 @pytest.fixture(scope="class")
 def llama_stack_distribution(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     enabled_llama_stack_operator: DataScienceCluster,
+    request: FixtureRequest,
     llama_stack_server_config: Dict[str, Any],
+    ci_s3_bucket_name: str,
+    ci_s3_bucket_endpoint: str,
+    ci_s3_bucket_region: str,
+    aws_access_key_id: str,
+    aws_secret_access_key: str,
 ) -> Generator[LlamaStackDistribution, None, None]:
     # Distribution name needs a random substring due to bug RHAIENG-999 / RHAIENG-1139
     with create_llama_stack_distribution(
@@ -257,6 +349,25 @@ def llama_stack_distribution(
     ) as lls_dist:
         lls_dist.wait_for_status(status=LlamaStackDistribution.Status.READY, timeout=600)
         yield lls_dist
+
+        try:
+            env_vars = llama_stack_server_config.get("containerSpec", {}).get("env", [])
+            enable_s3 = any(env.get("name") == "ENABLE_S3" and env.get("value") == "s3" for env in env_vars)
+
+            if enable_s3:
+                try:
+                    _cleanup_s3_files(
+                        bucket_name=ci_s3_bucket_name,
+                        endpoint_url=ci_s3_bucket_endpoint,
+                        region=ci_s3_bucket_region,
+                        access_key_id=aws_access_key_id,
+                        secret_access_key=aws_secret_access_key,
+                    )
+                except Exception as e:
+                    LOGGER.warning(f"Failed to clean up S3 files: {e}")
+
+        except Exception as e:
+            LOGGER.warning(f"Failed to clean up S3 files: {e}")
 
 
 def _get_llama_stack_distribution_deployment(
