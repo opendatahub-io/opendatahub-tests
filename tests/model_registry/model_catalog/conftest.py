@@ -128,6 +128,11 @@ def expected_catalog_values(request: pytest.FixtureRequest) -> dict[str, str]:
     return request.param
 
 
+@pytest.fixture(scope="class")
+def is_huggingface(request: pytest.FixtureRequest) -> dict[str, str]:
+    return request.param
+
+
 @pytest.fixture(scope="function")
 def update_configmap_data_add_model(
     request: pytest.FixtureRequest,
@@ -325,3 +330,27 @@ def labels_configmap_patch(admin_client: DynamicClient, model_registry_namespace
 
     with ResourceEditor(patches={sources_cm: patches}):
         yield patches
+
+
+@pytest.fixture()
+def skip_on_huggingface_source(is_huggingface: bool) -> None:
+    if is_huggingface:
+        pytest.skip(reason="Huggingface models does not support artifacts endpoints")
+
+
+@pytest.fixture()
+def updated_catalog_config_map_scope_function(
+    pytestconfig: pytest.Config,
+    request: pytest.FixtureRequest,
+    catalog_config_map: ConfigMap,
+    model_registry_namespace: str,
+    admin_client: DynamicClient,
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+) -> Generator[ConfigMap, None, None]:
+    patches = {"data": {"sources.yaml": request.param}}
+    with ResourceEditor(patches={catalog_config_map: patches}):
+        is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+        wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
+        yield catalog_config_map
+    is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
