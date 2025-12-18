@@ -1,10 +1,10 @@
 from typing import Any, Dict, Generator, List
-
+import time
 import base64
 import requests
 from json import JSONDecodeError
 from urllib.parse import urlparse
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.group import Group
@@ -17,6 +17,15 @@ from utilities.plugins.constant import RestHeader, OpenAIEnpoints
 from ocp_resources.resource import ResourceEditor
 from utilities.resources.rate_limit_policy import RateLimitPolicy
 from utilities.resources.token_rate_limit_policy import TokenRateLimitPolicy
+from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
+from ocp_resources.data_science_cluster import DataScienceCluster
+from utilities.constants import (
+    MAAS_GATEWAY_NAME,
+    MAAS_GATEWAY_NAMESPACE,
+    MAAS_RATE_LIMIT_POLICY_NAME,
+    MAAS_TOKEN_RATE_LIMIT_POLICY_NAME,
+)
+
 
 LOGGER = get_logger(name=__name__)
 MODELS_INFO = OpenAIEnpoints.MODELS_INFO
@@ -164,24 +173,135 @@ def get_maas_models_response(
 
     return resp
 
+# Original
+# @contextmanager
+# def patch_llmisvc_with_maas_router(
+#     llm_service: LLMInferenceService,
+# ) -> Generator[None, None, None]:
+#     """
+#     Temporarily patch an existing LLMInferenceService with MaaS router wiring
+#     and annotations for the duration of the context.
+
+#     This is used for TinyLlama so that the model is reachable via the
+#     maas-default-gateway and participates in MaaS flows.
+#     """
+#     router_spec = {
+#         "gateway": {
+#             "refs": [
+#                 {
+#                     "name": "maas-default-gateway",
+#                     "namespace": "openshift-ingress",
+#                 }
+#             ]
+#         },
+#         "route": {},
+#     }
+
+#     patch_body = {
+#         "metadata": {
+#             "annotations": {
+#                 "alpha.maas.opendatahub.io/tiers": "[]",
+#                 "security.opendatahub.io/enable-auth": "true",
+#             }
+#         },
+#         "spec": {
+#             "router": router_spec,
+#         },
+#     }
+
+#     LOGGER.info(
+#         f"MaaS LLMD: patching LLMInferenceService "
+#         f"{llm_service.namespace}/{llm_service.name} "
+#         f"with MaaS router spec: {router_spec}"
+#     )
+
+#     with ResourceEditor(patches={llm_service: patch_body}):
+#         LOGGER.info(
+#             f"MaaS LLMD: successfully patched LLMInferenceService "
+#             f"{llm_service.namespace}/{llm_service.name} for MaaS routing"
+#         )
+#         yield
+
+# @contextmanager
+# def patch_llmisvc_with_maas_router(
+#     *,
+#     llm_service: LLMInferenceService,
+# ) -> Generator[None, None, None]:
+#     """
+#     Temporarily patch an existing LLMInferenceService with MaaS router wiring
+#     and annotations for the duration of the context.
+#     """
+#     router_spec = {
+#         "gateway": {
+#             "refs": [
+#                 {
+#                     "name": MAAS_GATEWAY_NAME,
+#                     "namespace": MAAS_GATEWAY_NAMESPACE,
+#                 }
+#             ]
+#         },
+#         "route": {},
+#     }
+
+#     patch_body = {
+#         "metadata": {
+#             "annotations": {
+#                 "alpha.maas.opendatahub.io/tiers": "[]",
+#                 "security.opendatahub.io/enable-auth": "true",
+#             }
+#         },
+#         "spec": {"router": router_spec},
+#     }
+
+#     LOGGER.info(
+#         "MaaS LLMD: patching LLMI %s/%s with gateway ref %s/%s",
+#         llm_service.namespace,
+#         llm_service.name,
+#         MAAS_GATEWAY_NAMESPACE,
+#         MAAS_GATEWAY_NAME,
+#     )
+
+#     with ResourceEditor(patches={llm_service: patch_body}):
+#         # 1) Prove router refs are present
+#         wait_for_maas_router_refs(
+#             llm_service=llm_service,
+#             timeout_seconds=90,
+#             sleep_seconds=2,
+#         )
+
+#         # 2) Prove enable-auth stuck too (quick check, no new helper needed)
+#         inst = llm_service.instance
+#         enable_auth = (inst.metadata.annotations or {}).get("security.opendatahub.io/enable-auth")
+#         if enable_auth != "true":
+#             LOGGER.warning(
+#                 "PATCH-DEBUG: enable-auth did not stick for %s/%s (got %r)",
+#                 llm_service.namespace,
+#                 llm_service.name,
+#                 enable_auth,
+#             )
+
+#         LOGGER.info(
+#             "MaaS LLMD: patch verified for %s/%s (router refs present)",
+#             llm_service.namespace,
+#             llm_service.name,
+#         )
+#         yield
 
 @contextmanager
 def patch_llmisvc_with_maas_router(
+    *,
     llm_service: LLMInferenceService,
 ) -> Generator[None, None, None]:
     """
     Temporarily patch an existing LLMInferenceService with MaaS router wiring
     and annotations for the duration of the context.
-
-    This is used for TinyLlama so that the model is reachable via the
-    maas-default-gateway and participates in MaaS flows.
     """
     router_spec = {
         "gateway": {
             "refs": [
                 {
-                    "name": "maas-default-gateway",
-                    "namespace": "openshift-ingress",
+                    "name": MAAS_GATEWAY_NAME,
+                    "namespace": MAAS_GATEWAY_NAMESPACE,
                 }
             ]
         },
@@ -195,21 +315,21 @@ def patch_llmisvc_with_maas_router(
                 "security.opendatahub.io/enable-auth": "true",
             }
         },
-        "spec": {
-            "router": router_spec,
-        },
+        "spec": {"router": router_spec},
     }
 
     LOGGER.info(
-        f"MaaS LLMD: patching LLMInferenceService "
-        f"{llm_service.namespace}/{llm_service.name} "
-        f"with MaaS router spec: {router_spec}"
+        f"MaaS LLMD: patching LLMI {llm_service.namespace}/{llm_service.name} "
+        f"with gateway ref {MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_NAME}"
     )
 
     with ResourceEditor(patches={llm_service: patch_body}):
+        inst = llm_service.instance
+        router = getattr(getattr(inst, "spec", None), "router", None)
+
         LOGGER.info(
-            f"MaaS LLMD: successfully patched LLMInferenceService "
-            f"{llm_service.namespace}/{llm_service.name} for MaaS routing"
+            f"MaaS LLMD: patch applied; current spec.router for "
+            f"{llm_service.namespace}/{llm_service.name} -> {router}"
         )
         yield
 
@@ -283,7 +403,6 @@ def verify_chat_completions(
         )
 
     return response
-
 
 def assert_mixed_200_and_429(
     *,
@@ -462,3 +581,153 @@ def get_total_tokens(resp: Response, *, fail_if_missing: bool = False) -> int | 
             f"Token usage not found in header or JSON body; headers={dict(resp.headers)} body={resp.text[:500]}"
         )
     return None
+
+def maas_gateway_listeners(hostname: str) -> List[Dict[str, Any]]:
+    """
+    Build listeners for MaaS Gateway (matches maas-gateway-api.yaml, but in Python).
+    """
+    return [
+        {
+            "name": "http",
+            "hostname": hostname,
+            "port": 80,
+            "protocol": "HTTP",
+            "allowedRoutes": {"namespaces": {"from": "All"}},
+        },
+        {
+            "name": "https",
+            "hostname": hostname,
+            "port": 443,
+            "protocol": "HTTPS",
+            "allowedRoutes": {"namespaces": {"from": "All"}},
+            "tls": {
+                "mode": "Terminate",
+                "certificateRefs": [
+                    {"group": "", "kind": "Secret", "name": "default-ingress-cert"},
+                ],
+            },
+        },
+    ]
+
+
+@contextmanager
+def ensure_maas_gateway_api(
+    *,
+    admin_client,
+    hostname: str,
+) -> Generator[None, None, None]:
+    """
+    Ensure MaaS default Gateway exists for the session.
+    - Create if missing
+    - Reuse if already present
+    """
+    LOGGER.info(
+        f"Ensuring MaaS Gateway exists: "
+        f"name={MAAS_GATEWAY_NAME}, "
+        f"namespace={MAAS_GATEWAY_NAMESPACE}, "
+        f"hostname={hostname}"
+    )
+
+    gateway = Gateway(
+        client=admin_client,
+        name=MAAS_GATEWAY_NAME,
+        namespace=MAAS_GATEWAY_NAMESPACE,
+        gateway_class_name="openshift-default",
+        listeners=maas_gateway_listeners(hostname=hostname),
+        annotations={"opendatahub.io/managed": "false"},
+        label={
+            "app.kubernetes.io/name": "maas",
+            "app.kubernetes.io/instance": MAAS_GATEWAY_NAME,
+            "app.kubernetes.io/component": "gateway",
+            "opendatahub.io/managed": "false",
+        },
+        wait_for_resource=True,
+    )
+
+    if gateway.exists:
+        LOGGER.info(f"MaaS Gateway already exists: {MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_NAME}")
+        yield
+    else:
+        LOGGER.info(f"MaaS Gateway missing; creating: {MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_NAME}")
+        with gateway:
+            yield
+
+@contextmanager
+def ensure_maas_usage_policies(
+    *,
+    admin_client: DynamicClient,
+) -> Generator[None, None, None]:
+    """
+    Ensure RateLimitPolicy + TokenRateLimitPolicy exist.
+
+    - Create if missing (ensure_exists=True)
+    - Enforce correct spec.targetRef
+    - DO NOT wipe spec.limits here (tests patch limits in maas_gateway_rate_limits_patched)
+    """
+    request_policy = RateLimitPolicy(
+        client=admin_client,
+        name=MAAS_RATE_LIMIT_POLICY_NAME,
+        namespace=MAAS_GATEWAY_NAMESPACE,
+        ensure_exists=True,
+    )
+
+    LOGGER.info(
+        f"Ensuring MaaS policies exist: "
+        f"RateLimitPolicy={MAAS_GATEWAY_NAMESPACE}/{MAAS_RATE_LIMIT_POLICY_NAME}, "
+        f"TokenRateLimitPolicy={MAAS_GATEWAY_NAMESPACE}/{MAAS_TOKEN_RATE_LIMIT_POLICY_NAME}"
+    )
+
+    token_policy = TokenRateLimitPolicy(
+        client=admin_client,
+        name=MAAS_TOKEN_RATE_LIMIT_POLICY_NAME,
+        namespace=MAAS_GATEWAY_NAMESPACE,
+        ensure_exists=True,
+    )
+
+    target_ref = {
+        "group": "gateway.networking.k8s.io",
+        "kind": "Gateway",
+        "name": MAAS_GATEWAY_NAME,
+    }
+
+    with ResourceEditor(
+        patches={
+            request_policy: {"spec": {"targetRef": target_ref}},
+            token_policy: {"spec": {"targetRef": target_ref}},
+        }
+    ):
+        LOGGER.info(
+            f"MaaS policies targetRef ensured -> Gateway/{MAAS_GATEWAY_NAME}"
+        )
+        yield
+
+
+@contextmanager
+def ensure_maas_gateway_and_policies(
+    *,
+    admin_client,
+    hostname: str,
+) -> Generator[None, None, None]:
+    """
+    Aggregate context manager: ensure gateway + both policies exist for the session.
+    """
+    LOGGER.info("Starting MaaS bootstrap: gateway + policies")
+    with ExitStack() as stack:
+        stack.enter_context(ensure_maas_gateway_api(admin_client=admin_client, hostname=hostname))
+        stack.enter_context(ensure_maas_usage_policies(admin_client=admin_client))
+        yield
+    LOGGER.info("Finished MaaS bootstrap: gateway + policies")
+
+
+# def wait_for_data_science_cluster_ready(
+#     data_science_cluster: DataScienceCluster,
+#     timeout_seconds: int = 600,
+# ) -> None:
+#     """
+#     Wait until DataScienceCluster reports condition Ready=True.
+#     """
+#     data_science_cluster.wait_for_condition(
+#         condition="Ready",
+#         status="True",
+#         timeout=timeout_seconds,
+#     )

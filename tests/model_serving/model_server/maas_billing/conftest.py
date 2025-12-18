@@ -12,7 +12,12 @@ from ocp_resources.llm_inference_service import LLMInferenceService
 
 from utilities.llmd_utils import create_llmisvc
 from utilities.llmd_constants import ModelStorage, ContainerImages
-from utilities.constants import Timeout
+from utilities.constants import (
+    MAAS_GATEWAY_NAMESPACE,
+    MAAS_RATE_LIMIT_POLICY_NAME,
+    MAAS_TOKEN_RATE_LIMIT_POLICY_NAME,
+    Timeout,
+)
 
 from ocp_resources.infrastructure import Infrastructure
 from ocp_resources.oauth import OAuth
@@ -34,8 +39,8 @@ from tests.model_serving.model_server.maas_billing.utils import (
     get_maas_models_response,
     verify_chat_completions,
     maas_gateway_rate_limits_patched,
+    ensure_maas_gateway_and_policies,
 )
-
 
 LOGGER = get_logger(name=__name__)
 MODELS_INFO = OpenAIEnpoints.MODELS_INFO
@@ -43,6 +48,8 @@ CHAT_COMPLETIONS = OpenAIEnpoints.CHAT_COMPLETIONS
 
 MAAS_FREE_GROUP = "maas-free-users"
 MAAS_PREMIUM_GROUP = "maas-premium-users"
+DSC_NAME = "default"
+MAAS_DSC_COMPONENT_KEY = "modelsAsService"
 
 
 @pytest.fixture(scope="session")
@@ -75,7 +82,6 @@ def minted_token(request_session_http, base_url: str, current_client_token: str)
 def base_url(maas_scheme: str, maas_host: str) -> str:
     return f"{maas_scheme}://{maas_host}/maas-api"
 
-
 @pytest.fixture(scope="class")
 def model_url(
     maas_scheme: str,
@@ -83,9 +89,10 @@ def model_url(
     admin_client: DynamicClient,
     maas_inference_service_tinyllama: LLMInferenceService,
 ) -> str:
-    deployment = llmis_name(client=admin_client)
-    # deployment = maas_inference_service_tinyllama.name
-    return f"{maas_scheme}://{maas_host}/llm/{deployment}{CHAT_COMPLETIONS}"
+    deployment = maas_inference_service_tinyllama.name
+    url = f"{maas_scheme}://{maas_host}/llm/{deployment}{CHAT_COMPLETIONS}"
+    LOGGER.info("MaaS: constructed model_url=%s (deployment=%s)", url, deployment)
+    return url
 
 
 @pytest.fixture
@@ -525,6 +532,101 @@ def exercise_rate_limiter(
     return status_codes_list
 
 
+# @pytest.fixture(scope="class")
+# def maas_inference_service_tinyllama(
+#     admin_client: DynamicClient,
+#     unprivileged_model_namespace: Namespace,
+#     model_service_account: ServiceAccount,
+# ) -> Generator[LLMInferenceService, None, None]:
+#     """
+#     TinyLlama S3-backed LLMInferenceService wired through MaaS for tests.
+#     """
+#     with (
+#         create_llmisvc(
+#             client=admin_client,
+#             name="llm-s3-tinyllama",
+#             namespace=unprivileged_model_namespace.name,
+#             storage_uri=ModelStorage.TINYLLAMA_S3,
+#             container_image=ContainerImages.VLLM_CPU,
+#             container_resources={
+#                 "limits": {"cpu": "2", "memory": "12Gi"},
+#                 "requests": {"cpu": "1", "memory": "8Gi"},
+#             },
+#             service_account=model_service_account.name,
+#             wait=True,
+#             timeout=Timeout.TIMEOUT_15MIN,
+#         ) as llm_service,
+#         patch_llmisvc_with_maas_router(llm_service=llm_service),
+#     ):
+#         llmd_instance = llm_service.instance
+#         model_spec = llmd_instance.spec.model
+
+#         storage_uri = model_spec.uri
+#         assert storage_uri == ModelStorage.TINYLLAMA_S3, (
+#             f"Unexpected storage_uri on TinyLlama LLMInferenceService: {storage_uri}"
+#         )
+
+#         status = llmd_instance.status
+#         conditions = {condition.type: condition.status for condition in status.conditions}
+#         assert conditions.get("Ready") == "True", f"TinyLlama LLMInferenceService not Ready, conditions={conditions}"
+
+#         LOGGER.info(
+#             f"MaaS: TinyLlama S3 LLMInferenceService "
+#             f"{llm_service.namespace}/{llm_service.name} "
+#             f"is Ready with storage_uri={storage_uri}"
+#         )
+
+#         yield llm_service
+
+#         LOGGER.info(
+#             f"MaaS: TinyLlama S3 LLMInferenceService "
+#             f"{llm_service.namespace}/{llm_service.name} "
+#             f"will be deleted at teardown"
+#         )
+
+# @pytest.fixture(scope="class")
+# def maas_inference_service_tinyllama(
+#     admin_client: DynamicClient,
+#     unprivileged_model_namespace: Namespace,
+#     model_service_account: ServiceAccount,
+# ) -> Generator[LLMInferenceService, None, None]:
+#     """
+#     TinyLlama S3-backed LLMInferenceService wired through MaaS for tests.
+#     """
+#     with create_llmisvc(
+#         client=admin_client,
+#         name="llm-s3-tinyllama",
+#         namespace=unprivileged_model_namespace.name,
+#         storage_uri=ModelStorage.TINYLLAMA_S3,
+#         container_image=ContainerImages.VLLM_CPU,
+#         container_resources={
+#             "limits": {"cpu": "2", "memory": "12Gi"},
+#             "requests": {"cpu": "1", "memory": "8Gi"},
+#         },
+#         service_account=model_service_account.name,
+#         wait=False,  # 🔴 IMPORTANT CHANGE
+#         timeout=Timeout.TIMEOUT_15MIN,
+#     ) as llm_service:
+
+#         # ✅ Patch IMMEDIATELY
+#         with patch_llmisvc_with_maas_router(llm_service=llm_service):
+
+#             # Now wait for readiness AFTER patch
+#             llm_service.wait_for_condition(
+#                 condition="Ready",
+#                 status="True",
+#                 timeout=Timeout.TIMEOUT_15MIN,
+#             )
+
+#             # llm_service.refresh()
+
+#             LOGGER.info(
+#                 "MaaS: TinyLlama LLMI %s/%s Ready and patched",
+#                 llm_service.namespace,
+#                 llm_service.name,
+#             )
+
+#             yield llm_service
 @pytest.fixture(scope="class")
 def maas_inference_service_tinyllama(
     admin_client: DynamicClient,
@@ -534,49 +636,42 @@ def maas_inference_service_tinyllama(
     """
     TinyLlama S3-backed LLMInferenceService wired through MaaS for tests.
     """
-    with (
-        create_llmisvc(
-            client=admin_client,
-            name="llm-s3-tinyllama",
-            namespace=unprivileged_model_namespace.name,
-            storage_uri=ModelStorage.TINYLLAMA_S3,
-            container_image=ContainerImages.VLLM_CPU,
-            container_resources={
-                "limits": {"cpu": "2", "memory": "12Gi"},
-                "requests": {"cpu": "1", "memory": "8Gi"},
-            },
-            service_account=model_service_account.name,
-            wait=True,
-            timeout=Timeout.TIMEOUT_15MIN,
-        ) as llm_service,
-        patch_llmisvc_with_maas_router(llm_service=llm_service),
-    ):
-        llmd_instance = llm_service.instance
-        model_spec = llmd_instance.spec.model
+    with create_llmisvc(
+        client=admin_client,
+        name="llm-s3-tinyllama",
+        namespace=unprivileged_model_namespace.name,
+        storage_uri=ModelStorage.TINYLLAMA_S3,
+        container_image=ContainerImages.VLLM_CPU,
+        container_resources={
+            "limits": {"cpu": "2", "memory": "12Gi"},
+            "requests": {"cpu": "1", "memory": "8Gi"},
+        },
+        service_account=model_service_account.name,
+        wait=False,  
+        timeout=Timeout.TIMEOUT_15MIN,
+    ) as llm_service:
 
-        storage_uri = model_spec.uri
-        assert storage_uri == ModelStorage.TINYLLAMA_S3, (
-            f"Unexpected storage_uri on TinyLlama LLMInferenceService: {storage_uri}"
-        )
+        # Patch immediately so the controller creates HTTPRoute on MaaS gateway
+        with patch_llmisvc_with_maas_router(llm_service=llm_service):
 
-        status = llmd_instance.status
-        conditions = {condition.type: condition.status for condition in status.conditions}
-        assert conditions.get("Ready") == "True", f"TinyLlama LLMInferenceService not Ready, conditions={conditions}"
+            inst = llm_service.instance
+            storage_uri = inst.spec.model.uri
+            assert storage_uri == ModelStorage.TINYLLAMA_S3, (
+                f"Unexpected storage_uri on TinyLlama LLMI: {storage_uri}"
+            )
 
-        LOGGER.info(
-            f"MaaS: TinyLlama S3 LLMInferenceService "
-            f"{llm_service.namespace}/{llm_service.name} "
-            f"is Ready with storage_uri={storage_uri}"
-        )
+            llm_service.wait_for_condition(
+                condition="Ready",
+                status="True",
+                timeout=Timeout.TIMEOUT_15MIN,
+            )
 
-        yield llm_service
+            LOGGER.info(
+                f"MaaS: TinyLlama LLMI {llm_service.namespace}/{llm_service.name} "
+                f"Ready and patched (storage_uri={storage_uri})"
+            )
 
-        LOGGER.info(
-            f"MaaS: TinyLlama S3 LLMInferenceService "
-            f"{llm_service.namespace}/{llm_service.name} "
-            f"will be deleted at teardown"
-        )
-
+            yield llm_service
 
 @pytest.fixture(scope="class")
 def maas_scheme(admin_client: DynamicClient, unprivileged_model_namespace: Namespace) -> str:
@@ -585,6 +680,9 @@ def maas_scheme(admin_client: DynamicClient, unprivileged_model_namespace: Names
         namespace=unprivileged_model_namespace.name,
     )
 
+# @pytest.fixture(scope="class")
+# def maas_scheme() -> str:
+#     return "https"
 
 @pytest.fixture(scope="class")
 def maas_host(admin_client):
@@ -594,15 +692,68 @@ def maas_host(admin_client):
 @pytest.fixture(scope="class")
 def maas_gateway_rate_limits(
     admin_client: DynamicClient,
+    maas_gateway_and_policies,
 ) -> Generator[None, None, None]:
-    namespace = "openshift-ingress"
-    token_policy_name = "gateway-token-rate-limits"
-    request_policy_name = "gateway-rate-limits"
-
     with maas_gateway_rate_limits_patched(
         admin_client=admin_client,
-        namespace=namespace,
-        token_policy_name=token_policy_name,
-        request_policy_name=request_policy_name,
+        namespace=MAAS_GATEWAY_NAMESPACE,
+        token_policy_name=MAAS_TOKEN_RATE_LIMIT_POLICY_NAME,
+        request_policy_name=MAAS_RATE_LIMIT_POLICY_NAME,
     ):
         yield
+
+@pytest.fixture(scope="session")
+def maas_gateway_api_hostname(admin_client: DynamicClient) -> str:
+    return host_from_ingress_domain(client=admin_client)
+
+
+@pytest.fixture(scope="session")
+def maas_gateway_and_policies(
+    admin_client: DynamicClient,
+    maas_gateway_api_hostname: str,
+    # maas_controller_enabled,
+) -> Generator[None, None, None]:
+    """
+    Ensure MaaS Gateway + Kuadrant policies exist once per test session.
+    """
+    with ensure_maas_gateway_and_policies(
+        admin_client=admin_client,
+        hostname=maas_gateway_api_hostname,
+    ):
+        yield
+
+# @pytest.fixture(scope="session")
+# def maas_controller_enabled(admin_client):
+#     """
+#     Enable MaaS controller via DataScienceCluster component toggle.
+#     Fails fast if the MaaS DSC component key is not present.
+#     """
+#     data_science_cluster = DataScienceCluster(client=admin_client, name=DSC_NAME)
+#     data_science_cluster.get()
+
+#     components_section = (data_science_cluster.instance.get("spec") or {}).get("components") or {}
+#     if MAAS_DSC_COMPONENT_KEY not in components_section:
+#         raise RuntimeError(
+#             f"MaaS tests require DSC component '{MAAS_DSC_COMPONENT_KEY}', but it is missing. "
+#             f"Available DSC components: {sorted(list(components_section.keys()))}"
+#         )
+
+#     current_component_state = (
+#         (components_section.get(MAAS_DSC_COMPONENT_KEY) or {}).get("managementState")
+#     )
+#     if current_component_state == "Managed":
+#         wait_for_data_science_cluster_ready(data_science_cluster=data_science_cluster)
+#         yield
+#         return
+
+#     patch_body = {
+#         "spec": {
+#             "components": {
+#                 MAAS_DSC_COMPONENT_KEY: {"managementState": "Managed"},
+#             }
+#         }
+#     }
+
+#     with ResourceEditor(patches={data_science_cluster: patch_body}):
+#         wait_for_data_science_cluster_ready(data_science_cluster=data_science_cluster)
+#         yield
