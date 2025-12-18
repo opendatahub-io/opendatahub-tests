@@ -6,6 +6,8 @@ from simple_logger.logger import get_logger
 from tests.model_registry.model_catalog.constants import HF_MODELS
 from tests.model_registry.model_catalog.utils import (
     get_hf_catalog_str,
+)
+from tests.model_registry.model_catalog.huggingface.utils import (
     assert_huggingface_values_matches_model_catalog_api_values,
 )
 
