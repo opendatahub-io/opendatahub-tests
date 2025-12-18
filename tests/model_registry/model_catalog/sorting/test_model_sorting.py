@@ -164,16 +164,10 @@ class TestHuggingFaceModelsSorting:
             pytest.param(
                 "NAME",
                 "ASC",
-                marks=pytest.mark.xfail(
-                    reason="RHOAIENG-38056: Backend bug - NAME sorting not implemented, falls back to ID sorting"
-                ),
             ),
             pytest.param(
                 "NAME",
                 "DESC",
-                marks=pytest.mark.xfail(
-                    reason="RHOAIENG-38056: Backend bug - NAME sorting not implemented, falls back to ID sorting"
-                ),
             ),
             ("CREATE_TIME", "ASC"),
             ("CREATE_TIME", "DESC"),
