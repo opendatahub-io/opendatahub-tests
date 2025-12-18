@@ -1086,7 +1086,7 @@ def verify_labels_match(expected_labels: List[Dict[str, Any]], api_labels: List[
         assert found, f"Expected label not found in API response: {expected_label}"
 
 
-def get_hf_catalog_str(ids):
+def get_hf_catalog_str(ids: list[str]) -> str:
     """
     Generate a HuggingFace catalog configuration string in YAML format.
     Similar to get_catalog_str() but for HuggingFace catalogs.

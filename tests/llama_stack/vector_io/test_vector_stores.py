@@ -20,27 +20,39 @@ LOGGER = get_logger(name=__name__)
             {
                 "llama_stack_storage_size": "2Gi",
                 "vector_io_provider": "milvus",
+                "files_provider": "s3",
             },
             {"vector_io_provider": "milvus"},
-            id="vector_io_provider_milvus",
+            id="vector_io_provider_milvus+files_provider_s3",
         ),
         pytest.param(
             {"name": "test-llamastack-vector-stores", "randomize_name": True},
             {
                 "llama_stack_storage_size": "2Gi",
                 "vector_io_provider": "faiss",
+                "files_provider": "local",
             },
             {"vector_io_provider": "faiss"},
-            id="vector_io_provider_faiss",
+            id="vector_io_provider_faiss+files_provider_local",
         ),
         pytest.param(
             {"name": "test-llamastack-vector-stores", "randomize_name": True},
             {
                 "llama_stack_storage_size": "2Gi",
                 "vector_io_provider": "milvus-remote",
+                "files_provider": "s3",
             },
             {"vector_io_provider": "milvus-remote"},
-            id="vector_io_provider_milvus-remote",
+            id="vector_io_provider_milvus-remote+files_provider_s3",
+        ),
+        pytest.param(
+            {"name": "test-llamastack-vector-stores", "randomize_name": True},
+            {
+                "llama_stack_storage_size": "2Gi",
+                "vector_io_provider": "pgvector",
+            },
+            {"vector_io_provider": "pgvector"},
+            id="vector_io_provider_pgvector",
         ),
     ],
     indirect=True,
