@@ -12,12 +12,16 @@ class KServeDeploymentType:
 
 class ModelFormat:
     CAIKIT: str = "caikit"
+    LIGHTGBM: str = "lightgbm"
+    MLSERVER: str = "mlserver"
     ONNX: str = "onnx"
     OPENVINO: str = "openvino"
     OVMS: str = "ovms"
-    VLLM: str = "vllm"
-    TENSORFLOW: str = "tensorflow"
     PYTORCH: str = "pytorch"
+    SKLEARN: str = "sklearn"
+    TENSORFLOW: str = "tensorflow"
+    VLLM: str = "vllm"
+    XGBOOST: str = "xgboost"
 
 
 class ModelName:
@@ -76,8 +80,7 @@ class RuntimeTemplates:
     VLLM_ROCM: str = "vllm-rocm-runtime-template"
     VLLM_GAUDI: str = "vllm-gaudi-runtime-template"
     VLLM_SPYRE: str = "vllm-spyre-x86-runtime-template"
-    MLSERVER_GRPC: str = "mlserver-grpc-runtime-template"
-    MLSERVER_REST: str = "mlserver-rest-runtime-template"
+    MLSERVER: str = f"{ModelFormat.MLSERVER}-runtime-template"
     TRITON_REST: str = "triton-rest-runtime-template"
     TRITON_GRPC: str = "triton-grpc-runtime-template"
     GUARDRAILS_DETECTOR_HUGGINGFACE: str = "guardrails-detector-huggingface-serving-template"
@@ -92,6 +95,7 @@ class ModelInferenceRuntime:
     CAIKIT_STANDALONE_RUNTIME: str = f"{ModelFormat.CAIKIT}-standalone-runtime"
     VLLM_RUNTIME: str = f"{ModelFormat.VLLM}-runtime"
     TENSORFLOW_RUNTIME: str = f"{ModelFormat.TENSORFLOW}-runtime"
+    MLSERVER_RUNTIME: str = f"{ModelFormat.MLSERVER}-runtime"
 
 
 class Protocols:

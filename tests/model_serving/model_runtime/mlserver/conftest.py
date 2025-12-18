@@ -2,18 +2,17 @@
 Pytest fixtures for MLServer model serving runtime tests.
 
 This module provides fixtures for:
-- Setting up MLServer serving runtimes and templates
+- Setting up MLServer serving runtimes using pre-installed templates
 - Creating inference services and related Kubernetes resources
 - Managing S3 secrets and service accounts
 - Providing test utilities like snapshots and pod resources
 """
 
-from typing import cast, Any, Generator
+from typing import Any, Generator, cast
 import copy
 
 import pytest
 from syrupy.extensions.json import JSONSnapshotExtension
-from pytest_testconfig import config as py_config
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
@@ -21,49 +20,21 @@ from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
-from ocp_resources.template import Template
 from ocp_resources.service_account import ServiceAccount
 
 from tests.model_serving.model_runtime.mlserver.constant import (
     PREDICT_RESOURCES,
-    RUNTIME_NAME_MAP,
-    TEMPLATE_NAME_MAP,
 )
-
-from tests.model_serving.model_runtime.mlserver.utils import mlserver_runtime_template_dict
 
 from utilities.constants import (
     KServeDeploymentType,
     Labels,
-    Protocols,
+    ModelInferenceRuntime,
+    RuntimeTemplates,
 )
 from utilities.inference_utils import create_isvc
 from utilities.infra import get_pods_by_isvc_label
 from utilities.serving_runtime import ServingRuntimeFromTemplate
-
-from simple_logger.logger import get_logger
-
-
-LOGGER = get_logger(name=__name__)
-
-
-@pytest.fixture(scope="class")
-def mlserver_rest_serving_runtime_template(admin_client: DynamicClient) -> Generator[Template, None, None]:
-    """
-    Provides a REST serving runtime Template for MLServer within the test class scope.
-
-    Args:
-        admin_client (DynamicClient): Kubernetes dynamic client.
-
-    Yields:
-        Template: The loaded REST serving runtime Template.
-    """
-    with Template(
-        client=admin_client,
-        kind_dict=mlserver_runtime_template_dict(Protocols.REST),
-        namespace=py_config["applications_namespace"],
-    ) as tp:
-        yield tp
 
 
 @pytest.fixture(scope="class")
@@ -72,26 +43,24 @@ def mlserver_serving_runtime(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     mlserver_runtime_image: str,
-    protocol: str,
 ) -> Generator[ServingRuntime, None, None]:
     """
-    Provides a ServingRuntime resource for MLServer with the specified protocol and deployment type.
+    Provides a ServingRuntime resource for MLServer using the pre-installed template.
 
     Args:
         request (pytest.FixtureRequest): Pytest fixture request containing parameters.
         admin_client (DynamicClient): Kubernetes dynamic client.
         model_namespace (Namespace): Kubernetes namespace for model deployment.
         mlserver_runtime_image (str): The container image for the MLServer runtime.
-        protocol (str): The protocol to use (e.g., REST).
 
     Yields:
         ServingRuntime: An instance of the MLServer ServingRuntime configured as per parameters.
     """
     with ServingRuntimeFromTemplate(
         client=admin_client,
-        name=RUNTIME_NAME_MAP.get(protocol, f"mlserver-{protocol}-runtime"),
+        name=ModelInferenceRuntime.MLSERVER_RUNTIME,
         namespace=model_namespace.name,
-        template_name=TEMPLATE_NAME_MAP.get(protocol, f"mlserver-{protocol}-template"),
+        template_name=RuntimeTemplates.MLSERVER,
         deployment_type=request.param["deployment_type"],
         runtime_image=mlserver_runtime_image,
     ) as model_runtime:
@@ -106,7 +75,7 @@ def mlserver_inference_service(
     mlserver_serving_runtime: ServingRuntime,
     s3_models_storage_uri: str,
     mlserver_model_service_account: ServiceAccount,
-) -> Generator[InferenceService, Any, Any]:
+) -> Generator[InferenceService, None, None]:
     """
     Creates and yields a configured InferenceService instance for MLServer testing.
 
@@ -158,7 +127,9 @@ def mlserver_inference_service(
 
 
 @pytest.fixture(scope="class")
-def mlserver_model_service_account(admin_client: DynamicClient, kserve_s3_secret: Secret) -> ServiceAccount:
+def mlserver_model_service_account(
+    admin_client: DynamicClient, kserve_s3_secret: Secret
+) -> Generator[ServiceAccount, None, None]:
     """
     Creates and yields a ServiceAccount linked to the provided S3 secret for MLServer models.
 

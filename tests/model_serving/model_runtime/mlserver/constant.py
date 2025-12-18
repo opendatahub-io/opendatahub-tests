@@ -5,81 +5,21 @@ This module defines configuration values, resource specifications, deployment co
 and input queries used across MLServer runtime tests for different frameworks.
 """
 
-from typing import Any, Union, List, Dict
+from typing import Any, Union
 
-from utilities.constants import (
-    KServeDeploymentType,
-    Protocols,
-    RuntimeTemplates,
-)
+from utilities.constants import KServeDeploymentType, ModelFormat
 
-LOCAL_HOST_URL: str = "http://localhost"
 
-MLSERVER_REST_PORT: int = 8080
+class OutputType:
+    """Model output types for response validation."""
 
+    DETERMINISTIC: str = "deterministic"
+    NON_DETERMINISTIC: str = "non_deterministic"
+
+
+LOCALHOST_URL: str = "http://localhost"
 RAW_DEPLOYMENT_TYPE: str = "raw"
-
-LIGHTGBM_MODEL_FORMAT_NAME: str = "lightgbm"
-
-SKLEARN_MODEL_FORMAT_NAME: str = "sklearn"
-
-XGBOOST_MODEL_FORMAT_NAME: str = "xgboost"
-
-DETERMINISTIC_OUTPUT: str = "deterministic"
-
-NON_DETERMINISTIC_OUTPUT: str = "non_deterministic"
-
 MODEL_PATH_PREFIX: str = "mlserver/model_repository"
-
-REST_PROTOCOL_TYPE_DICT: dict[str, str] = {"protocol_type": Protocols.REST}
-
-
-MLSERVER_IMAGE: str = (
-    "docker.io/seldonio/mlserver@sha256:07890828601515d48c0fb73842aaf197cbcf245a5c855c789e890282b15ce390"
-)
-
-MLSERVER_RUNTIME_LABELS: Dict[str, str] = {
-    "opendatahub.io/dashboard": "true",
-}
-
-MLSERVER_RUNTIME_ANNOTATIONS: Dict[str, str] = {
-    "openshift.io/display-name": "Seldon MLServer",
-    "prometheus.kserve.io/port": "8080",
-    "prometheus.kserve.io/path": "/metrics",
-}
-
-MLSERVER_SUPPORTED_MODEL_FORMATS: List[Dict[str, Any]] = [
-    {"name": "sklearn", "version": "0", "autoSelect": True, "priority": 2},
-    {"name": "sklearn", "version": "1", "autoSelect": True, "priority": 2},
-    {"name": "xgboost", "version": "1", "autoSelect": True, "priority": 2},
-    {"name": "xgboost", "version": "2", "autoSelect": True, "priority": 2},
-    {"name": "lightgbm", "version": "3", "autoSelect": True, "priority": 2},
-    {"name": "lightgbm", "version": "4", "autoSelect": True, "priority": 2},
-]
-
-MLSERVER_CONTAINER_ENV: List[Dict[str, str]] = [
-    {"name": "MLSERVER_HTTP_PORT", "value": str(MLSERVER_REST_PORT)},
-    {"name": "MODELS_DIR", "value": "/mnt/models"},
-]
-
-MLSERVER_CONTAINER_SECURITY_CONTEXT: Dict[str, Any] = {
-    "allowPrivilegeEscalation": False,
-    "capabilities": {"drop": ["ALL"]},
-    "privileged": False,
-    "runAsNonRoot": True,
-}
-
-MLSERVER_PORTS_MAP = {
-    Protocols.REST: [{"containerPort": MLSERVER_REST_PORT, "protocol": "TCP"}],
-}
-
-TEMPLATE_NAME_MAP: dict[str, str] = {
-    Protocols.REST: RuntimeTemplates.MLSERVER_REST,
-}
-
-RUNTIME_NAME_MAP: dict[str, str] = {
-    Protocols.REST: "mlserver-rest-runtime",
-}
 
 PREDICT_RESOURCES: dict[str, Union[list[dict[str, Union[str, dict[str, str]]]], dict[str, dict[str, str]]]] = {
     "volumes": [
@@ -138,22 +78,22 @@ LIGHTGBM_REST_INPUT_QUERY: dict[str, Any] = {
 }
 
 MODEL_CONFIGS: dict[str, dict[str, Any]] = {
-    LIGHTGBM_MODEL_FORMAT_NAME: {
-        "model_name": "lightgbm",
+    ModelFormat.LIGHTGBM: {
+        "model_name": ModelFormat.LIGHTGBM,
         "model_version": "v0.1.0",
         "rest_query": LIGHTGBM_REST_INPUT_QUERY,
-        "output_type": DETERMINISTIC_OUTPUT,
+        "output_type": OutputType.DETERMINISTIC,
     },
-    SKLEARN_MODEL_FORMAT_NAME: {
-        "model_name": "sklearn",
+    ModelFormat.SKLEARN: {
+        "model_name": ModelFormat.SKLEARN,
         "model_version": "v1.0.0",
         "rest_query": SKLEARN_REST_INPUT_QUERY,
-        "output_type": DETERMINISTIC_OUTPUT,
+        "output_type": OutputType.DETERMINISTIC,
     },
-    XGBOOST_MODEL_FORMAT_NAME: {
-        "model_name": "xgboost",
+    ModelFormat.XGBOOST: {
+        "model_name": ModelFormat.XGBOOST,
         "model_version": "v1.0.0",
         "rest_query": XGBOOST_REST_INPUT_QUERY,
-        "output_type": DETERMINISTIC_OUTPUT,
+        "output_type": OutputType.DETERMINISTIC,
     },
 }
