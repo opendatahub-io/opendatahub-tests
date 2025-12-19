@@ -1129,15 +1129,6 @@ def get_included_model_str(models: list[str]) -> str:
     return included_models
 
 
-def get_excluded_model_str(models: list[str]) -> str:
-    excluded_models: str = ""
-    for model_name in models:
-        excluded_models += f"""
-    - {model_name}
-"""
-    return excluded_models
-
-
 def extract_custom_property_values(custom_properties: dict[str, Any]) -> dict[str, str]:
     """
     Extract string values from MetadataStringValue format for custom properties.
