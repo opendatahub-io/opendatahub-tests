@@ -161,14 +161,8 @@ class TestHuggingFaceModelsSorting:
         [
             ("ID", "ASC"),
             ("ID", "DESC"),
-            pytest.param(
-                "NAME",
-                "ASC",
-            ),
-            pytest.param(
-                "NAME",
-                "DESC",
-            ),
+            ("NAME", "ASC"),
+            ("NAME", "DESC"),
             ("CREATE_TIME", "ASC"),
             ("CREATE_TIME", "DESC"),
             ("LAST_UPDATE_TIME", "ASC"),
