@@ -19,7 +19,7 @@ pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session
             },
             ["microsoft/phi-2", "meta-llama/Llama-3.1-8B-Instruct"],
             ["RedHatAI", "ibm-granite"],
-            id="test_model_exclusion",
+            id="test_model_exclusion_wildcard_prefix",
             marks=pytest.mark.install,
         ),
         pytest.param(
@@ -28,7 +28,7 @@ pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session
             },
             ["ibm-granite/granite-4.0-micro", "ibm-granite/granite-4.0-micro-base"],
             ["ibm-granite/granite-4.0-h*"],
-            id="test_model_exclusion",
+            id="test_model_exclusion_wildcard_suffix",
             marks=pytest.mark.install,
         ),
         pytest.param(
@@ -39,7 +39,7 @@ pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session
             },
             ["meta-llama/Llama-3.1-8B-Instruct", "RedHatAI/phi-4-quantized.w8a8", "RedHatAI/Qwen2.5-7B-Instruct"],
             ["ibm-granite/granite-4.0-h-1b", "microsoft/phi-2"],
-            id="test_model_exclusion",
+            id="test_model_exclusion_specific_models",
             marks=(pytest.mark.install, pytest.mark.xfail(reason="RHOAIENG-42506: crashes the model catalog pod")),
         ),
     ],

@@ -34,7 +34,7 @@ LOGGER = get_logger(name=__name__)
             },
             EXPECTED_HF_CATALOG_VALUES,
             True,
-            id="test_HF_test_catalog",
+            id="test_HF_catalog_single_source",
             marks=(pytest.mark.install),
         ),
         pytest.param(
@@ -43,7 +43,7 @@ LOGGER = get_logger(name=__name__)
             },
             EXPECTED_MULTIPLE_HF_CATALOG_VALUES,
             True,
-            id="test_HF_test_catalog",
+            id="test_HF_catalog_multiple_sources",
             marks=(pytest.mark.install),
         ),
         pytest.param(
