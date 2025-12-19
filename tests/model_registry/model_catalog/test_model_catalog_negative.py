@@ -97,7 +97,7 @@ catalogs:
     - ibm-granite/*
 """,
                 "HuggingFace API returned status 401",
-                id="test_hf_source_no_include_model",
+                id="test_hf_source_unauthorized",
                 marks=pytest.mark.xfail(reason="RHOAIENG-42213 is causing this failure"),
             ),
         ],
