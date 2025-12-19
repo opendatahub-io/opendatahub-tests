@@ -27,9 +27,20 @@ from tests.llama_stack.constants import (
     LLS_OPENSHIFT_MINIMAL_VERSION,
     ModelInfo,
 )
-
+from ocp_resources.service import Service
 
 LOGGER = get_logger(name=__name__)
+
+POSTGRES_IMAGE = os.getenv(
+    "LLS_VECTOR_IO_POSTGRES_IMAGE",
+    (
+        "registry.redhat.io/rhel9/postgresql-15@sha256:"
+        "90ec347a35ab8a5d530c8d09f5347b13cc71df04f3b994bfa8b1a409b1171d59"  # postgres 15 # pragma: allowlist secret
+    ),
+)
+
+POSTGRESQL_USER = os.getenv("LLS_VECTOR_IO_POSTGRESQL_USER", "ps_user")
+POSTGRESQL_PASSWORD = os.getenv("LLS_VECTOR_IO_POSTGRESQL_PASSWORD", "ps_password")
 
 distribution_name = generate_random_name(prefix="llama-stack-distribution")
 
@@ -102,6 +113,8 @@ def enabled_llama_stack_operator(dsc_resource: DataScienceCluster) -> Generator[
 @pytest.fixture(scope="class")
 def llama_stack_server_config(
     request: FixtureRequest,
+    postgres_deployment: Deployment,
+    postgres_service: Service,
     vector_io_provider_deployment_config_factory: Callable[[str], list[Dict[str, str]]],
     files_provider_config_factory: Callable[[str], list[Dict[str, str]]],
 ) -> Dict[str, Any]:
@@ -250,6 +263,14 @@ def llama_stack_server_config(
 
         # KUBEFLOW_PIPELINES_TOKEN: Get from current client token
         env_vars.append({"name": "KUBEFLOW_PIPELINES_TOKEN", "value": str(current_client_token)})
+
+    # POSTGRESQL environment variables for sql_default and kvstore_default
+    env_vars.append({"name": "POSTGRES_HOST", "value": "vector-io-postgres-service"})
+    env_vars.append({"name": "POSTGRES_PORT", "value": "5432"})
+    env_vars.append({"name": "POSTGRES_USER", "value": POSTGRESQL_USER})
+    env_vars.append({"name": "POSTGRES_PASSWORD", "value": POSTGRESQL_PASSWORD})
+    env_vars.append({"name": "POSTGRES_DB", "value": "ps_db"})
+    env_vars.append({"name": "POSTGRES_TABLE_NAME", "value": "llamastack_kvstore"})
 
     # Depending on parameter files_provider, configure files provider and obtain required env_vars
     files_provider = params.get("files_provider") or "local"
@@ -681,3 +702,70 @@ def vector_store_with_example_docs(
         )
 
     yield vector_store
+
+
+@pytest.fixture(scope="class")
+def postgres_service(
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+    postgres_deployment: Deployment,
+) -> Generator[Service, Any, Any]:
+    """Create a service for the postgres deployment."""
+    with Service(
+        client=unprivileged_client,
+        namespace=unprivileged_model_namespace.name,
+        name="vector-io-postgres-service",
+        ports=[
+            {
+                "port": 5432,
+                "targetPort": 5432,
+            }
+        ],
+        selector={"app": "postgres"},
+        wait_for_resource=True,
+    ) as service:
+        yield service
+
+
+@pytest.fixture(scope="class")
+def postgres_deployment(
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+) -> Generator[Deployment, Any, Any]:
+    """Deploy a Postgres instance for vector I/O provider testing."""
+    with Deployment(
+        client=unprivileged_client,
+        namespace=unprivileged_model_namespace.name,
+        name="vector-io-postgres-deployment",
+        min_ready_seconds=5,
+        replicas=1,
+        selector={"matchLabels": {"app": "postgres"}},
+        strategy={"type": "Recreate"},
+        template=get_postgres_deployment_template(),
+        teardown=True,
+    ) as deployment:
+        deployment.wait_for_replicas(deployed=True, timeout=240)
+        yield deployment
+
+
+def get_postgres_deployment_template() -> Dict[str, Any]:
+    """Return a Kubernetes deployment for PostgreSQL"""
+    return {
+        "metadata": {"labels": {"app": "postgres"}},
+        "spec": {
+            "containers": [
+                {
+                    "name": "postgres",
+                    "image": POSTGRES_IMAGE,
+                    "ports": [{"containerPort": 5432}],
+                    "env": [
+                        {"name": "POSTGRESQL_DATABASE", "value": "ps_db"},
+                        {"name": "POSTGRESQL_USER", "value": POSTGRESQL_USER},
+                        {"name": "POSTGRESQL_PASSWORD", "value": POSTGRESQL_PASSWORD},
+                    ],
+                    "volumeMounts": [{"name": "postgresdata", "mountPath": "/var/lib/pgsql/data"}],
+                },
+            ],
+            "volumes": [{"name": "postgresdata", "emptyDir": {}}],
+        },
+    }
