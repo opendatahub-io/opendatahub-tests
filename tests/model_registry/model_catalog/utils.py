@@ -1,4 +1,5 @@
 from typing import Any, Tuple, List, Dict
+import json
 import yaml
 
 from kubernetes.dynamic import DynamicClient
@@ -1145,3 +1146,129 @@ def get_excluded_model_str(models: list[str]) -> str:
     - {model_name}
 """
     return excluded_models
+
+
+def extract_custom_property_values(custom_properties: dict[str, Any]) -> dict[str, str]:
+    """
+    Extract string values from MetadataStringValue format for custom properties.
+
+    Args:
+        custom_properties: Dictionary of custom properties from API response
+
+    Returns:
+        Dictionary of extracted string values for size, tensor_type, variant_group_id
+    """
+    extracted = {}
+    expected_keys = ["size", "tensor_type", "variant_group_id"]
+
+    for key in expected_keys:
+        if key in custom_properties:
+            prop_data = custom_properties[key]
+            if isinstance(prop_data, dict) and "string_value" in prop_data:
+                extracted[key] = prop_data["string_value"]
+            else:
+                LOGGER.warning(f"Unexpected format for custom property '{key}': {prop_data}")
+
+    LOGGER.info(f"Extracted {len(extracted)} custom properties: {list(extracted.keys())}")
+    return extracted
+
+
+def validate_custom_properties_structure(custom_properties: dict[str, Any]) -> bool:
+    """
+    Validate that custom properties follow the expected MetadataStringValue structure.
+
+    Args:
+        custom_properties: Dictionary of custom properties from API response
+
+    Returns:
+        True if all custom properties have valid structure, False otherwise
+    """
+    if not custom_properties:
+        LOGGER.info("No custom properties found - structure validation skipped")
+        return True
+
+    expected_keys = ["size", "tensor_type", "variant_group_id"]
+
+    for key in expected_keys:
+        if key in custom_properties:
+            prop_data = custom_properties[key]
+
+            if not isinstance(prop_data, dict):
+                LOGGER.error(f"Custom property '{key}' is not a dictionary: {prop_data}")
+                return False
+
+            if "metadataType" not in prop_data:
+                LOGGER.error(f"Custom property '{key}' missing 'metadataType' field")
+                return False
+
+            if prop_data.get("metadataType") != "MetadataStringValue":
+                LOGGER.error(f"Custom property '{key}' has unexpected metadataType: {prop_data.get('metadataType')}")
+                return False
+
+            if "string_value" not in prop_data:
+                LOGGER.error(f"Custom property '{key}' missing 'string_value' field")
+                return False
+
+            if not isinstance(prop_data.get("string_value"), str):
+                LOGGER.error(f"Custom property '{key}' string_value is not a string: {prop_data.get('string_value')}")
+                return False
+
+            LOGGER.info(f"Custom property '{key}' has valid structure: '{prop_data.get('string_value')}'")
+
+    LOGGER.info("All custom properties have valid structure")
+    return True
+
+
+def validate_custom_properties_match_metadata(api_custom_properties: dict[str, str], metadata: dict[str, Any]) -> bool:
+    """
+    Compare API custom properties with metadata.json values.
+
+    Args:
+        api_custom_properties: Extracted custom properties from API (string values)
+        metadata: Parsed metadata.json content
+
+    Returns:
+        True if all custom properties match metadata values, False otherwise
+    """
+    expected_keys = ["size", "tensor_type", "variant_group_id"]
+
+    for key in expected_keys:
+        api_value = api_custom_properties.get(key)
+        metadata_value = metadata.get(key)
+
+        if api_value != metadata_value:
+            LOGGER.error(f"Mismatch for custom property '{key}': API='{api_value}' vs metadata='{metadata_value}'")
+            return False
+
+        if api_value is not None:  # Only log if the property exists
+            LOGGER.info(f"Custom property '{key}' matches: '{api_value}'")
+
+    LOGGER.info("All custom properties match metadata.json values")
+    return True
+
+
+def get_metadata_from_catalog_pod(model_catalog_pod: Pod, model_name: str) -> dict[str, Any]:
+    """
+    Read and parse metadata.json for a model from the catalog pod.
+
+    Args:
+        model_catalog_pod: The catalog pod instance
+        model_name: Name of the model
+
+    Returns:
+        Parsed metadata.json content
+
+    Raises:
+        Exception: If metadata.json cannot be read or parsed
+    """
+    metadata_path = f"/shared-benchmark-data/{model_name}/metadata.json"
+    LOGGER.info(f"Reading metadata from: {metadata_path}")
+
+    try:
+        metadata_json = model_catalog_pod.execute(command=["cat", metadata_path], container=CATALOG_CONTAINER)
+        metadata = json.loads(metadata_json)
+        LOGGER.info(f"Successfully loaded metadata.json for model '{model_name}'")
+        return metadata
+    except Exception as e:
+        LOGGER.error(f"Failed to read metadata.json for model '{model_name}': {e}")
+        raise
