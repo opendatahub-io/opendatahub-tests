@@ -6,6 +6,7 @@ from tests.model_registry.model_catalog.utils import (
     fetch_all_artifacts_with_dynamic_paging,
     validate_model_artifacts_match_criteria_and,
     validate_model_artifacts_match_criteria_or,
+    validate_recommendations_subset,
 )
 from tests.model_registry.model_catalog.constants import (
     VALIDATED_CATALOG_ID,
@@ -204,3 +205,66 @@ class TestSearchArtifactsByFilterQuery:
                 )
             else:
                 pytest.fail(f"{logic_type} filter validation failed for model {model_name}")
+
+    @pytest.mark.parametrize(
+        "randomly_picked_model_from_catalog_api_by_source",
+        [
+            pytest.param(
+                {
+                    "catalog_id": VALIDATED_CATALOG_ID,
+                    "header_type": "registry",
+                    "model_name": random.choice(MODEL_NAMEs_ARTIFACT_SEARCH),
+                },
+                id="test_performance_artifacts_recommendations_parameter",
+            ),
+        ],
+        indirect=["randomly_picked_model_from_catalog_api_by_source"],
+    )
+    def test_performance_artifacts_recommendations_parameter(
+        self: Self,
+        enabled_model_catalog_config_map: ConfigMap,
+        model_catalog_rest_url: list[str],
+        model_registry_rest_headers: dict[str, str],
+        randomly_picked_model_from_catalog_api_by_source: tuple[dict, str, str],
+    ):
+        """
+        Test the recommendations query parameter for performance artifacts endpoint.
+
+        Validates that recommendations=true returns a filtered subset of performance
+        artifacts that are optimal based on cost and latency compared to the full set.
+        """
+        _, model_name, catalog_id = randomly_picked_model_from_catalog_api_by_source
+
+        LOGGER.info(f"Testing performance artifacts recommendations parameter for model: {model_name}")
+
+        # Get all performance artifacts (baseline)
+        full_results = fetch_all_artifacts_with_dynamic_paging(
+            url_with_pagesize=(
+                f"{model_catalog_rest_url[0]}sources/{catalog_id}/models/{model_name}/artifacts/performance?pageSize"
+            ),
+            headers=model_registry_rest_headers,
+            page_size=100,
+        )
+
+        # Get recommendations-filtered performance artifacts
+        recommendations_results = fetch_all_artifacts_with_dynamic_paging(
+            url_with_pagesize=(
+                f"{model_catalog_rest_url[0]}sources/{catalog_id}/models/{model_name}/artifacts/performance?"
+                f"recommendations=true&pageSize"
+            ),
+            headers=model_registry_rest_headers,
+            page_size=100,
+        )
+
+        if (full_results and not recommendations_results) or (len(recommendations_results) > len(full_results)):
+            pytest.fail(f"Recommendations parameter functionality failed for model {model_name}")
+
+        # Validate subset relationship
+        validation_passed = validate_recommendations_subset(
+            full_artifacts=full_results["items"],
+            recommendations_artifacts=recommendations_results["items"],
+            model_name=model_name,
+        )
+
+        assert validation_passed, f"Recommendations subset validation failed for model {model_name}"
+        LOGGER.info(f"Successfully validated recommendations parameter functionality for model {model_name}")
