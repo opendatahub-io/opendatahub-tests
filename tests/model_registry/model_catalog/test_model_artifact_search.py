@@ -252,7 +252,7 @@ class TestSearchArtifactsByFilterQuery:
             page_size=100,
         )
 
-        # Validate subset relationship using existing utility
+        # Validate subset relationship
         validation_passed = validate_recommendations_subset(
             full_artifacts=full_results["items"],
             recommendations_artifacts=recommendations_results["items"],
