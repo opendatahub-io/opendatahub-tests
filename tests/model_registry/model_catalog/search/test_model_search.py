@@ -11,8 +11,8 @@ from tests.model_registry.model_catalog.constants import (
     REDHAT_AI_CATALOG_NAME,
     REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
 )
-from tests.model_registry.model_catalog.utils import (
-    get_models_from_catalog_api,
+from tests.model_registry.model_catalog.utils import get_models_from_catalog_api
+from tests.model_registry.model_catalog.search.utils import (
     fetch_all_artifacts_with_dynamic_paging,
     validate_model_contains_search_term,
     validate_search_results_against_database,
