@@ -252,6 +252,9 @@ class TestSearchArtifactsByFilterQuery:
             page_size=100,
         )
 
+        if (full_results and not recommendations_results) or (len(recommendations_results) > len(full_results)):
+            pytest.fail(f"Recommendations parameter functionality failed for model {model_name}")
+
         # Validate subset relationship
         validation_passed = validate_recommendations_subset(
             full_artifacts=full_results["items"],

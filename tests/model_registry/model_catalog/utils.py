@@ -1293,22 +1293,6 @@ def validate_recommendations_subset(
     """
     LOGGER.info(f"Validating recommendations subset for model '{model_name}'")
 
-    # Basic validation: recommendations should not be empty if full results exist
-    if full_artifacts and not recommendations_artifacts:
-        LOGGER.warning(
-            f"Model '{model_name}': No recommendations returned despite having {len(full_artifacts)} total artifacts"
-        )
-        return False
-
-    # Recommendations should contain <= items compared to full results
-    if len(recommendations_artifacts) > len(full_artifacts):
-        error_msg = (
-            f"Model '{model_name}': Recommendations count ({len(recommendations_artifacts)}) "
-            f"exceeds full results count ({len(full_artifacts)})"
-        )
-        LOGGER.error(error_msg)
-        raise AssertionError(error_msg)
-
     # Convert artifacts to comparable format (using artifact ID for comparison)
     full_artifact_ids = {artifact.get("id") for artifact in full_artifacts if artifact.get("id")}
     recommendations_artifact_ids = {artifact.get("id") for artifact in recommendations_artifacts if artifact.get("id")}
@@ -1324,16 +1308,11 @@ def validate_recommendations_subset(
         raise AssertionError(error_msg)
 
     # Log success details
-    if recommendations_artifacts:
-        subset_percentage = (len(recommendations_artifacts) / len(full_artifacts)) * 100
-        LOGGER.info(
-            f"Model '{model_name}': Recommendations validation passed - "
-            f"{len(recommendations_artifacts)}/{len(full_artifacts)} artifacts "
-            f"({subset_percentage:.1f}% of total)"
-        )
-    else:
-        LOGGER.info(
-            f"Model '{model_name}': Empty recommendations validated against {len(full_artifacts)} total artifacts"
-        )
+    subset_percentage = (len(recommendations_artifacts) / len(full_artifacts)) * 100
+    LOGGER.info(
+        f"Model '{model_name}': Recommendations validation passed - "
+        f"{len(recommendations_artifacts)}/{len(full_artifacts)} artifacts "
+        f"({subset_percentage:.1f}% of total)"
+    )
 
     return True
