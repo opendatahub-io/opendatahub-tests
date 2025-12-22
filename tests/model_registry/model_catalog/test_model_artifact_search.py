@@ -210,7 +210,11 @@ class TestSearchArtifactsByFilterQuery:
         "randomly_picked_model_from_catalog_api_by_source",
         [
             pytest.param(
-                {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"},
+                {
+                    "catalog_id": VALIDATED_CATALOG_ID,
+                    "header_type": "registry",
+                    "model_name": random.choice(MODEL_NAMEs_ARTIFACT_SEARCH),
+                },
                 id="test_performance_artifacts_recommendations_parameter",
             ),
         ],
