@@ -2,7 +2,7 @@ import pytest
 from typing import Self, Any
 import random
 from ocp_resources.config_map import ConfigMap
-from tests.model_registry.model_catalog.utils import (
+from tests.model_registry.model_catalog.search.utils import (
     fetch_all_artifacts_with_dynamic_paging,
     validate_model_artifacts_match_criteria_and,
     validate_model_artifacts_match_criteria_or,
