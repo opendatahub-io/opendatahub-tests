@@ -466,3 +466,47 @@ def validate_model_artifacts_match_criteria_or(
 
     LOGGER.error(f"Model {model_name} failed all OR validations")
     return False
+
+
+def validate_recommendations_subset(
+    full_artifacts: list[dict[str, Any]], recommendations_artifacts: list[dict[str, Any]], model_name: str
+) -> bool:
+    """
+    Validate that recommendations artifacts are a proper subset of all artifacts.
+
+    Args:
+        full_artifacts: All performance artifacts (recommendations=false)
+        recommendations_artifacts: Filtered artifacts (recommendations=true)
+        model_name: Model name for logging
+
+    Returns:
+        bool: True if validation passes
+
+    Raises:
+        AssertionError: If validation fails with descriptive message
+    """
+    LOGGER.info(f"Validating recommendations subset for model '{model_name}'")
+
+    # Convert artifacts to comparable format (using artifact ID for comparison)
+    full_artifact_ids = {artifact.get("id") for artifact in full_artifacts if artifact.get("id")}
+    recommendations_artifact_ids = {artifact.get("id") for artifact in recommendations_artifacts if artifact.get("id")}
+
+    # Check subset relationship: all recommendation IDs should exist in full results
+    missing_in_full = recommendations_artifact_ids - full_artifact_ids
+    if missing_in_full:
+        error_msg = (
+            f"Model '{model_name}': Found {len(missing_in_full)} recommendation artifacts "
+            f"that don't exist in full results: {missing_in_full}"
+        )
+        LOGGER.error(error_msg)
+        raise AssertionError(error_msg)
+
+    # Log success details
+    subset_percentage = (len(recommendations_artifacts) / len(full_artifacts)) * 100
+    LOGGER.info(
+        f"Model '{model_name}': Recommendations validation passed - "
+        f"{len(recommendations_artifacts)}/{len(full_artifacts)} artifacts "
+        f"({subset_percentage:.1f}% of total)"
+    )
+
+    return True
