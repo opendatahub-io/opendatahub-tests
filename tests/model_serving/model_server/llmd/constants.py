@@ -1,10 +1,10 @@
 # Liveness probe for single-node configurations
 LLMD_LIVENESS_PROBE = {
     "httpGet": {"path": "/health", "port": 8000, "scheme": "HTTPS"},
-    "initialDelaySeconds": 120,
-    "periodSeconds": 30,
-    "timeoutSeconds": 30,
-    "failureThreshold": 5,
+    "initialDelaySeconds": 240,  # 4 minutes (more permissive for slow startups)
+    "periodSeconds": 60,  # Check every minute
+    "timeoutSeconds": 60,  # 60 seconds per check
+    "failureThreshold": 10,  # 10 failures before restart (~14 minutes total)
 }
 
 # Common parameters for vLLM and llm-d scheduler
@@ -20,13 +20,9 @@ ROUTER_SCHEDULER_CONFIG_ESTIMATED_PREFIX_CACHE = {
         {
             "type": "prefix-cache-scorer",
             "parameters": {
-                "indexerConfig": {
-                    "tokenProcessorConfig": {
-                        "blockSize": PREFIX_CACHE_BLOCK_SIZE,
-                        "hashAlgo": PREFIX_CACHE_HASH_ALGO,
-                        "hashSeed": PREFIX_CACHE_HASH_SEED,
-                    }
-                }
+                "blockSize": PREFIX_CACHE_BLOCK_SIZE,
+                "maxPrefixBlocksToMatch": 256,
+                "lruCapacityPerServer": 31250,
             },
         }
     ],
@@ -38,6 +34,51 @@ ROUTER_SCHEDULER_CONFIG_ESTIMATED_PREFIX_CACHE = {
                     "pluginRef": "prefix-cache-scorer",
                     "weight": 5.0,
                 }
+            ],
+        }
+    ],
+}
+
+# Scheduler configuration for single-node with precise prefix cache
+ROUTER_SCHEDULER_CONFIG_PRECISE_PREFIX_CACHE = {
+    "apiVersion": "inference.networking.x-k8s.io/v1alpha1",
+    "kind": "EndpointPickerConfig",
+    "plugins": [
+        {"type": "single-profile-handler"},
+        {
+            "type": "precise-prefix-cache-scorer",
+            "parameters": {
+                "kvEventsConfig": {
+                    "zmqEndpoint": "tcp://*:5557",
+                    "topicFilter": "kv@"
+                },
+                "indexerConfig": {
+                    "tokenProcessorConfig": {
+                        "blockSize": PREFIX_CACHE_BLOCK_SIZE,
+                        "hashSeed": PREFIX_CACHE_HASH_SEED,
+                    },
+                    "kvBlockIndexConfig": {
+                        "enableMetrics": True,
+                        "metricsLoggingInterval": 60000000000,  # Log metrics every 60 seconds (in nanoseconds)
+                    },
+                    "tokenizersPoolConfig": {
+                        "hf": {
+                            "tokenizersCacheDir": "/mnt/tokenizers",
+                        },
+                    },
+                },
+            },
+        },
+        {"type": "load-aware-scorer"},
+        {"type": "max-score-picker"},
+    ],
+    "schedulingProfiles": [
+        {
+            "name": "default",
+            "plugins": [
+                {"pluginRef": "precise-prefix-cache-scorer", "weight": 2.0},
+                {"pluginRef": "load-aware-scorer", "weight": 1.0},
+                {"pluginRef": "max-score-picker"},
             ],
         }
     ],
