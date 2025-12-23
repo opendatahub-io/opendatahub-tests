@@ -26,7 +26,7 @@ class ModelInfo(NamedTuple):
 
     model_id: str
     embedding_model: Model
-    embedding_dimension: int
+    embedding_dimension: float
 
 
 LLS_CORE_POD_FILTER: str = "app=llama-stack"
