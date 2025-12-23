@@ -6,7 +6,6 @@ from simple_logger.logger import get_logger
 from tests.model_registry.model_catalog.utils import (
     execute_model_catalog_post_command,
     build_catalog_preview_config,
-    get_catalog_preview_summary,
     validate_catalog_preview_counts,
     validate_catalog_preview_items,
 )
@@ -63,13 +62,12 @@ class TestCatalogPreviewExistingSource:
             files=files,
         )
 
-        # Get API response counts
-        api_counts = get_catalog_preview_summary(result=result)
-
         # Validate API counts against YAML content
+        summary = result.get("summary")
+        assert summary is not None, f"Missing 'summary' field in API response: {result}"
         yaml_models = default_model_catalog_yaml_content.get("models", [])
         validate_catalog_preview_counts(
-            api_counts=api_counts,
+            api_counts=summary,
             yaml_models=yaml_models,
             included_patterns=included_patterns,
             excluded_patterns=excluded_patterns,
@@ -112,13 +110,12 @@ class TestCatalogPreviewExistingSource:
             files=files,
         )
 
-        # Get API response counts
-        api_counts = get_catalog_preview_summary(result=result)
-
         # Validate API counts against YAML content (no filters = all included)
+        summary = result.get("summary")
+        assert summary is not None, f"Missing 'summary' field in API response: {result}"
         yaml_models = default_model_catalog_yaml_content.get("models", [])
         validate_catalog_preview_counts(
-            api_counts=api_counts,
+            api_counts=summary,
             yaml_models=yaml_models,
             included_patterns=None,
             excluded_patterns=None,
@@ -181,26 +178,23 @@ class TestCatalogPreviewExistingSource:
             files=files,
         )
 
-        # Get API response counts
-        api_counts = get_catalog_preview_summary(result=result)
-
         # Validate items match the filter status
         validate_catalog_preview_items(
             result=result, included_patterns=included_patterns, excluded_patterns=excluded_patterns
         )
 
         # Validate counts based on filter_status
+        summary = result.get("summary")
+        assert summary is not None, f"Missing 'summary' field in API response: {result}"
         items = result.get("items", [])
 
         if filter_status == "all":
-            assert len(items) == api_counts["totalModels"], (
-                f"Total items ({len(items)}) doesn't match totalModels count ({api_counts['totalModels']})"
+            assert len(items) == summary["totalModels"], (
+                f"Total items ({len(items)}) doesn't match totalModels count ({summary['totalModels']})"
             )
             LOGGER.info(f"filterStatus=all validation passed: {len(items)} total items")
         else:
-            expected_count = (
-                api_counts["includedModels"] if filter_status == "included" else api_counts["excludedModels"]
-            )
+            expected_count = summary["includedModels"] if filter_status == "included" else summary["excludedModels"]
             assert len(items) == expected_count, (
                 f"Number of items ({len(items)}) doesn't match {filter_status}Models count ({expected_count})"
             )
@@ -353,15 +347,14 @@ class TestCatalogPreviewUserProvidedData:
             files=files,
         )
 
-        # Get API response counts
-        api_counts = get_catalog_preview_summary(result=result)
-
         # Create expected model data for validation
         yaml_models = yaml.safe_load(catalog_data).get("models", [])
 
         # Validate API counts against provided YAML data
+        summary = result.get("summary")
+        assert summary is not None, f"Missing 'summary' field in API response: {result}"
         validate_catalog_preview_counts(
-            api_counts=api_counts,
+            api_counts=summary,
             yaml_models=yaml_models,
             included_patterns=included_patterns,
             excluded_patterns=excluded_patterns,

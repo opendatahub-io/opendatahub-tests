@@ -2,6 +2,7 @@ from typing import Any, Tuple, List, Dict
 import json
 import yaml
 import requests
+from fnmatch import fnmatch
 
 from kubernetes.dynamic import DynamicClient
 from simple_logger.logger import get_logger
@@ -876,35 +877,6 @@ def build_catalog_preview_config(
     return "\n".join(config_lines)
 
 
-def get_catalog_preview_summary(result: dict[str, Any]) -> dict[str, int]:
-    """
-    Extract and validate summary counts from catalog preview API response.
-
-    Args:
-        result: API response from preview endpoint
-
-    Returns:
-        dict: Dictionary with keys 'excludedModels', 'includedModels', 'totalModels'
-
-    Raises:
-        AssertionError: If required fields are missing
-    """
-    summary = result.get("summary", {})
-    LOGGER.info(f"Summary: {summary}")
-
-    excluded = summary.get("excludedModels")
-    included = summary.get("includedModels")
-    total = summary.get("totalModels")
-
-    assert all(value is not None for value in [excluded, included, total]), (
-        f"Missing required summary fields in response: {summary}"
-    )
-
-    LOGGER.info(f"API counts: included={included}, excluded={excluded}, total={total}")
-
-    return {"excludedModels": excluded, "includedModels": included, "totalModels": total}
-
-
 def validate_catalog_preview_counts(
     api_counts: dict[str, int],
     yaml_models: list[dict[str, Any]],
@@ -929,16 +901,23 @@ def validate_catalog_preview_counts(
         models=yaml_models, included_patterns=included_patterns, excluded_patterns=excluded_patterns
     )
 
-    # Validate API counts match expected counts from YAML
-    assert api_counts["totalModels"] == expected_counts["totalModels"], (
-        f"Total models mismatch: API={api_counts['totalModels']}, expected={expected_counts['totalModels']}"
-    )
-    assert api_counts["includedModels"] == expected_counts["includedModels"], (
-        f"Included models mismatch: API={api_counts['includedModels']}, expected={expected_counts['includedModels']}"
-    )
-    assert api_counts["excludedModels"] == expected_counts["excludedModels"], (
-        f"Excluded models mismatch: API={api_counts['excludedModels']}, expected={expected_counts['excludedModels']}"
-    )
+    # Validate API counts match expected counts from YAML - collect all errors
+    errors = []
+
+    if api_counts["totalModels"] != expected_counts["totalModels"]:
+        errors.append(f"Total mismatch: API={api_counts['totalModels']}, expected={expected_counts['totalModels']}")
+
+    if api_counts["includedModels"] != expected_counts["includedModels"]:
+        errors.append(
+            f"Included mismatch: API={api_counts['includedModels']}, expected={expected_counts['includedModels']}"
+        )
+
+    if api_counts["excludedModels"] != expected_counts["excludedModels"]:
+        errors.append(
+            f"Excluded mismatch: API={api_counts['excludedModels']}, expected={expected_counts['excludedModels']}"
+        )
+
+    assert not errors, "Validation failures:\n" + "\n".join(f"  - {err}" for err in errors)
 
     LOGGER.info(f"Preview validation passed - API counts match YAML content: {expected_counts}")
 
@@ -998,57 +977,15 @@ def _should_include_model(
         bool: True if model should be included
     """
     # Check if model matches any included pattern
-    matches_included = (
-        any(_matches_glob_pattern(name=model_name, pattern=pattern) for pattern in included_patterns)
-        if included_patterns
-        else True
-    )
+    matches_included = any(fnmatch(model_name, pattern) for pattern in included_patterns) if included_patterns else True
 
     # Check if model matches any excluded pattern
     matches_excluded = (
-        any(_matches_glob_pattern(name=model_name, pattern=pattern) for pattern in excluded_patterns)
-        if excluded_patterns
-        else False
+        any(fnmatch(model_name, pattern) for pattern in excluded_patterns) if excluded_patterns else False
     )
 
     # Model is included if it matches include pattern AND does not match exclude pattern
     return matches_included and not matches_excluded
-
-
-def _matches_glob_pattern(name: str, pattern: str) -> bool:
-    """
-    Check if name matches a single glob-like pattern.
-
-    Supported patterns:
-    - "prefix*" - matches names starting with prefix (e.g., "org/*", "org/model*")
-    - "*suffix" - matches names ending with suffix
-    - "*substring*" - matches names containing substring
-    - "exact" - exact string match
-
-    Args:
-        name: Model name to check
-        pattern: Glob pattern to match against
-
-    Returns:
-        bool: True if name matches the pattern
-    """
-    # Exact match (no wildcards)
-    if "*" not in pattern:
-        return name == pattern
-    # Contains match: "*substring*"
-    elif pattern.startswith("*") and pattern.endswith("*"):
-        return pattern[1:-1] in name
-    # Suffix match: "*suffix"
-    elif pattern.startswith("*"):
-        return name.endswith(pattern[1:])
-    # Prefix match: "org/*"
-    elif pattern.endswith("/*"):
-        return name.startswith(pattern[:-2] + "/")
-    # Prefix match: "prefix*"
-    elif pattern.endswith("*"):
-        return name.startswith(pattern[:-1])
-    else:
-        return False
 
 
 def filter_models_by_patterns(
