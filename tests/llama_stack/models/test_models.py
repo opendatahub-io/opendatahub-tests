@@ -1,7 +1,5 @@
 import pytest
 import os
-from typing import List
-
 from tests.llama_stack.constants import LlamaStackProviders
 from llama_stack_client import LlamaStackClient, NotFoundError
 from llama_stack_client.types import Model
@@ -26,7 +24,6 @@ class TestLlamaStackModels:
     - https://github.com/openai/openai-python/blob/main/api.md#models
     """
 
-    @pytest.mark.smoke
     def test_models_list(
         self,
         unprivileged_llama_stack_client: LlamaStackClient,
@@ -39,7 +36,7 @@ class TestLlamaStackModels:
         """
         models = unprivileged_llama_stack_client.models.list()
         assert models is not None, "No models returned from LlamaStackClient"
-        assert isinstance(models, List), "models.list() should return a list"
+        assert isinstance(models, list), "models.list() should return a list"
         assert len(models) > 0, "At least one model should be available"
 
         llm_model = next((model for model in models if model.api_model_type == "llm"), None)
@@ -56,11 +53,11 @@ class TestLlamaStackModels:
         assert "embedding_dimension" in embedding_model.metadata, "embedding_dimension not found in model metadata"
         embedding_dimension = embedding_model.metadata["embedding_dimension"]
         assert embedding_dimension is not None, "No embedding_dimension set in embedding model"
+        # API returns dimension as float (e.g., 768.0) though conceptually an integer
         assert isinstance(embedding_dimension, float), "embedding_dimension should be a float"
         assert embedding_dimension > 0, "embedding_dimension should be positive"
         assert embedding_dimension.is_integer(), "embedding_dimension should be a whole number"
 
-    @pytest.mark.smoke
     def test_models_list_structure(
         self,
         unprivileged_llama_stack_client: LlamaStackClient,
@@ -121,10 +118,8 @@ class TestLlamaStackModels:
         """
         nonexistent_model_id = "nonexistent-provider/nonexistent-model"
 
-        with pytest.raises(NotFoundError) as exc_info:
+        with pytest.raises(NotFoundError):
             unprivileged_llama_stack_client.models.retrieve(model_id=nonexistent_model_id)
-
-        assert exc_info.value is not None, "NotFoundError should be raised for non-existent model"
 
     def test_models_register(
         self,
@@ -135,7 +130,7 @@ class TestLlamaStackModels:
         Verifies that models.register() successfully registers a new model
         and it appears in the models list.
         """
-        inference_model = os.getenv("LLS_CORE_INFERENCE_MODEL", "")
+        inference_model = os.getenv("LLS_CORE_INFERENCE_MODEL")
         assert inference_model, "LLS_CORE_INFERENCE_MODEL environment variable must be set"
         test_model_id = f"{inference_model}-test-register"
 
@@ -147,13 +142,14 @@ class TestLlamaStackModels:
         assert response is not None, "Model registration should return a response"
 
         registered_model_id = f"{LlamaStackProviders.Inference.VLLM_INFERENCE.value}/{test_model_id}"
-        models = unprivileged_llama_stack_client.models.list()
-        registered_model_ids = [model.identifier for model in models]
-        assert registered_model_id in registered_model_ids, (
-            f"Registered model {registered_model_id} should appear in models list"
-        )
-
-        unprivileged_llama_stack_client.models.unregister(model_id=registered_model_id)
+        try:
+            models = unprivileged_llama_stack_client.models.list()
+            registered_model_ids = [model.identifier for model in models]
+            assert registered_model_id in registered_model_ids, (
+                f"Registered model {registered_model_id} should appear in models list"
+            )
+        finally:
+            unprivileged_llama_stack_client.models.unregister(model_id=registered_model_id)
 
     def test_models_register_retrieve_unregister(
         self,
@@ -164,9 +160,9 @@ class TestLlamaStackModels:
         Verifies the full workflow of registering a model, retrieving it,
         verifying its properties, and then unregistering it.
         """
-        inference_model = os.getenv("LLS_CORE_INFERENCE_MODEL", "")
+        inference_model = os.getenv("LLS_CORE_INFERENCE_MODEL")
         assert inference_model, "LLS_CORE_INFERENCE_MODEL environment variable must be set"
-        test_model_id = f"{inference_model}-2"
+        test_model_id = f"{inference_model}-test-lifecycle"
 
         response = unprivileged_llama_stack_client.models.register(
             model_id=test_model_id,
@@ -176,22 +172,23 @@ class TestLlamaStackModels:
         assert response is not None, "Model registration should return a response"
 
         registered_model_id = f"{LlamaStackProviders.Inference.VLLM_INFERENCE.value}/{test_model_id}"
-        registered_model = unprivileged_llama_stack_client.models.retrieve(model_id=registered_model_id)
-        assert registered_model is not None, f"LLM {registered_model_id} not found using models.retrieve"
-        assert isinstance(registered_model, Model), "Retrieved model should be a Model instance"
-        expected_id_suffix = f"/{test_model_id}"
-        assert registered_model.identifier.endswith(expected_id_suffix), (
-            f"Model identifier '{registered_model.identifier}' should end with '{expected_id_suffix}'"
-        )
-        assert registered_model.api_model_type == "llm", (
-            f"Registered model should have api_model_type 'llm', got '{registered_model.api_model_type}'"
-        )
-        assert registered_model.provider_id == LlamaStackProviders.Inference.VLLM_INFERENCE.value, (
-            f"Registered model provider_id should be '{LlamaStackProviders.Inference.VLLM_INFERENCE.value}', "
-            f"got '{registered_model.provider_id}'"
-        )
-
-        unprivileged_llama_stack_client.models.unregister(model_id=registered_model_id)
+        try:
+            registered_model = unprivileged_llama_stack_client.models.retrieve(model_id=registered_model_id)
+            assert registered_model is not None, f"LLM {registered_model_id} not found using models.retrieve"
+            assert isinstance(registered_model, Model), "Retrieved model should be a Model instance"
+            expected_id_suffix = f"/{test_model_id}"
+            assert registered_model.identifier.endswith(expected_id_suffix), (
+                f"Model identifier '{registered_model.identifier}' should end with '{expected_id_suffix}'"
+            )
+            assert registered_model.api_model_type == "llm", (
+                f"Registered model should have api_model_type 'llm', got '{registered_model.api_model_type}'"
+            )
+            assert registered_model.provider_id == LlamaStackProviders.Inference.VLLM_INFERENCE.value, (
+                f"Registered model provider_id should be '{LlamaStackProviders.Inference.VLLM_INFERENCE.value}', "
+                f"got '{registered_model.provider_id}'"
+            )
+        finally:
+            unprivileged_llama_stack_client.models.unregister(model_id=registered_model_id)
 
         with pytest.raises(NotFoundError):
             unprivileged_llama_stack_client.models.retrieve(model_id=registered_model_id)
