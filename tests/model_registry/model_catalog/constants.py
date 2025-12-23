@@ -36,6 +36,7 @@ DEFAULT_CATALOGS: dict[str, Any] = {
 REDHAT_AI_CATALOG_ID: str = "redhat_ai_models"
 DEFAULT_CATALOG_FILE: str = DEFAULT_CATALOGS[REDHAT_AI_CATALOG_ID]["properties"]["yamlCatalogPath"]
 VALIDATED_CATALOG_ID: str = "redhat_ai_validated_models"
+VALIDATED_CATALOG_FILE: str = DEFAULT_CATALOGS[VALIDATED_CATALOG_ID]["properties"]["yamlCatalogPath"]
 
 MODEL_ARTIFACT_TYPE: str = "model-artifact"
 METRICS_ARTIFACT_TYPE: str = "metrics-artifact"
