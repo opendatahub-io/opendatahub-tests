@@ -1,6 +1,8 @@
 from typing import Any, Tuple, List, Dict
 import json
 import yaml
+import requests
+from fnmatch import fnmatch
 
 from kubernetes.dynamic import DynamicClient
 from simple_logger.logger import get_logger
@@ -795,3 +797,207 @@ def get_metadata_from_catalog_pod(model_catalog_pod: Pod, model_name: str) -> di
     except Exception as e:
         LOGGER.error(f"Failed to read metadata.json for model '{model_name}': {e}")
         raise
+
+
+def execute_model_catalog_post_command(url: str, token: str, files: dict[str, tuple[str, str, str]]) -> dict[str, Any]:
+    """
+    Execute model catalog POST endpoint with multipart/form-data files.
+
+    Args:
+        url: API endpoint URL
+        token: Authorization bearer token
+        files: Dictionary mapping form field names to (filename, content, mime_type) tuples
+
+    Returns:
+        dict: Parsed JSON response
+
+    Raises:
+        HTTPError: If response status is not successful
+    """
+    headers = {"Authorization": f"Bearer {token}"}
+
+    LOGGER.info(f"Executing model catalog POST: {url}")
+    response = requests.post(url=url, headers=headers, files=files, verify=False, timeout=60)
+    response.raise_for_status()
+    return response.json()
+
+
+def build_catalog_preview_config(
+    yaml_catalog_path: str | None = None,
+    included_patterns: list[str] | None = None,
+    excluded_patterns: list[str] | None = None,
+) -> str:
+    """
+    Build catalog preview config YAML content.
+
+    Args:
+        yaml_catalog_path: Path to YAML catalog file on the pod (None when using catalogData parameter)
+        included_patterns: List of glob patterns for includedModels (None means no filter)
+        excluded_patterns: List of glob patterns for excludedModels (None means no filter)
+
+    Returns:
+        str: YAML config content for preview API
+    """
+    config_lines = ["type: yaml"]
+
+    # Only add yamlCatalogPath if provided (not needed when using catalogData)
+    if yaml_catalog_path:
+        config_lines.extend([
+            "properties:",
+            f"  yamlCatalogPath: {yaml_catalog_path}",
+        ])
+
+    if included_patterns:
+        config_lines.append("includedModels:")
+        config_lines.extend(f'  - "{pattern}"' for pattern in included_patterns)
+
+    if excluded_patterns:
+        config_lines.append("excludedModels:")
+        config_lines.extend(f'  - "{pattern}"' for pattern in excluded_patterns)
+
+    return "\n".join(config_lines)
+
+
+def validate_catalog_preview_counts(
+    api_counts: dict[str, int],
+    yaml_models: list[dict[str, Any]],
+    included_patterns: list[str] | None = None,
+    excluded_patterns: list[str] | None = None,
+) -> None:
+    """
+    Validate catalog preview API counts against expected YAML content.
+
+    Args:
+        api_counts: Dictionary with 'excludedModels', 'includedModels', 'totalModels'
+        yaml_models: List of models from YAML catalog
+        included_patterns: List of glob patterns for includedModels (None means include all)
+        excluded_patterns: List of glob patterns for excludedModels (None means exclude none)
+
+    Raises:
+        AssertionError: If validation fails
+    """
+    # Apply the same filters to YAML models and get expected counts
+    LOGGER.info(f"Found {len(yaml_models)} total models in YAML file")
+    expected_counts = filter_models_by_patterns(
+        models=yaml_models, included_patterns=included_patterns, excluded_patterns=excluded_patterns
+    )
+
+    # Validate API counts match expected counts from YAML - collect all errors
+    errors = []
+
+    if api_counts["totalModels"] != expected_counts["totalModels"]:
+        errors.append(f"Total mismatch: API={api_counts['totalModels']}, expected={expected_counts['totalModels']}")
+
+    if api_counts["includedModels"] != expected_counts["includedModels"]:
+        errors.append(
+            f"Included mismatch: API={api_counts['includedModels']}, expected={expected_counts['includedModels']}"
+        )
+
+    if api_counts["excludedModels"] != expected_counts["excludedModels"]:
+        errors.append(
+            f"Excluded mismatch: API={api_counts['excludedModels']}, expected={expected_counts['excludedModels']}"
+        )
+
+    assert not errors, "Validation failures:\n" + "\n".join(f"  - {err}" for err in errors)
+
+    LOGGER.info(f"Preview validation passed - API counts match YAML content: {expected_counts}")
+
+
+def validate_catalog_preview_items(
+    result: dict[str, Any],
+    included_patterns: list[str] | None = None,
+    excluded_patterns: list[str] | None = None,
+) -> None:
+    """
+    Validate that each item in the preview response has the correct 'included' property.
+
+    Args:
+        result: API response from preview endpoint
+        included_patterns: List of glob patterns for includedModels (None means include all)
+        excluded_patterns: List of glob patterns for excludedModels (None means exclude none)
+
+    Raises:
+        AssertionError: If any item has incorrect 'included' value
+    """
+    items = result.get("items", [])
+    LOGGER.info(f"Validating 'included' property for {len(items)} items")
+
+    errors = []
+    for item in items:
+        model_name = item.get("name", "")
+        item_included = item.get("included")
+
+        if item_included is None:
+            errors.append(f"Model '{model_name}': missing 'included' property")
+            continue
+
+        # Use shared logic to determine if model should be included
+        expected_included = _should_include_model(
+            model_name=model_name, included_patterns=included_patterns, excluded_patterns=excluded_patterns
+        )
+
+        if item_included != expected_included:
+            errors.append(f"Model '{model_name}': included={item_included}, expected={expected_included}")
+
+    assert not errors, f"Found {len(errors)} items with incorrect 'included' property:\n" + "\n".join(errors)
+    LOGGER.info(f"All {len(items)} items have correct 'included' property")
+
+
+def _should_include_model(
+    model_name: str, included_patterns: list[str] | None = None, excluded_patterns: list[str] | None = None
+) -> bool:
+    """
+    Determine if a model should be included based on include/exclude patterns.
+
+    Args:
+        model_name: Name of the model to check
+        included_patterns: List of glob patterns for includedModels (None means include all)
+        excluded_patterns: List of glob patterns for excludedModels (None means exclude none)
+
+    Returns:
+        bool: True if model should be included
+    """
+    # Check if model matches any included pattern
+    matches_included = any(fnmatch(model_name, pattern) for pattern in included_patterns) if included_patterns else True
+
+    # Check if model matches any excluded pattern
+    matches_excluded = (
+        any(fnmatch(model_name, pattern) for pattern in excluded_patterns) if excluded_patterns else False
+    )
+
+    # Model is included if it matches include pattern AND does not match exclude pattern
+    return matches_included and not matches_excluded
+
+
+def filter_models_by_patterns(
+    models: list[dict[str, Any]], included_patterns: list[str] | None = None, excluded_patterns: list[str] | None = None
+) -> dict[str, int]:
+    """
+    Filter models based on includedModels and excludedModels glob-like patterns.
+
+    Args:
+        models: List of model dictionaries with 'name' field
+        included_patterns: List of glob patterns for includedModels (None means include all)
+        excluded_patterns: List of glob patterns for excludedModels (None means exclude none)
+
+    Returns:
+        dict: Dictionary with keys 'includedModels', 'excludedModels', 'totalModels'
+    """
+    total_models = len(models)
+    included_count = 0
+
+    for model in models:
+        model_name = model.get("name", "")
+        if _should_include_model(
+            model_name=model_name, included_patterns=included_patterns, excluded_patterns=excluded_patterns
+        ):
+            included_count += 1
+
+    excluded_count = total_models - included_count
+
+    LOGGER.info(
+        f"Filtered {total_models} models: {included_count} included, {excluded_count} excluded "
+        f"(patterns: include={included_patterns}, exclude={excluded_patterns})"
+    )
+
+    return {"includedModels": included_count, "excludedModels": excluded_count, "totalModels": total_models}
