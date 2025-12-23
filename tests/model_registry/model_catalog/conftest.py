@@ -15,6 +15,7 @@ from tests.model_registry.model_catalog.constants import (
     DEFAULT_CATALOG_FILE,
     CATALOG_CONTAINER,
     REDHAT_AI_CATALOG_ID,
+    DEFAULT_CATALOGS,
 )
 from tests.model_registry.model_catalog.utils import get_models_from_catalog_api, get_catalog_url_and_headers
 from tests.model_registry.constants import (
@@ -257,9 +258,31 @@ def randomly_picked_model_from_catalog_api_by_source(
 
 
 @pytest.fixture(scope="class")
-def default_model_catalog_yaml_content(admin_client: DynamicClient, model_registry_namespace: str) -> dict[Any, Any]:
+def default_model_catalog_yaml_content(
+    request: pytest.FixtureRequest, admin_client: DynamicClient, model_registry_namespace: str
+) -> dict[Any, Any]:
+    """
+    Fetch and parse catalog YAML from the catalog pod.
+
+    Defaults to DEFAULT_CATALOG_FILE if not parameterized.
+    Use with @pytest.mark.parametrize indirect parameter to specify a different catalog:
+
+    Args:
+        request.param: Optional catalog ID, if not provided, uses DEFAULT_CATALOG_FILE.
+
+    Returns:
+        Parsed YAML content as dictionary
+    """
+    # If parameterized, get the catalog file path from the catalog ID
+    # Otherwise, use DEFAULT_CATALOG_FILE
+    catalog_id = getattr(request, "param", None)
+    if catalog_id:
+        catalog_file_path = DEFAULT_CATALOGS[catalog_id]["properties"]["yamlCatalogPath"]
+    else:
+        catalog_file_path = DEFAULT_CATALOG_FILE
+
     model_catalog_pod = get_model_catalog_pod(client=admin_client, model_registry_namespace=model_registry_namespace)[0]
-    return yaml.safe_load(model_catalog_pod.execute(command=["cat", DEFAULT_CATALOG_FILE], container=CATALOG_CONTAINER))
+    return yaml.safe_load(model_catalog_pod.execute(command=["cat", catalog_file_path], container=CATALOG_CONTAINER))
 
 
 @pytest.fixture(scope="class")
