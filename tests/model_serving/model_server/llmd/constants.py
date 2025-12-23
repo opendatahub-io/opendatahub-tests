@@ -48,10 +48,7 @@ ROUTER_SCHEDULER_CONFIG_PRECISE_PREFIX_CACHE = {
         {
             "type": "precise-prefix-cache-scorer",
             "parameters": {
-                "kvEventsConfig": {
-                    "zmqEndpoint": "tcp://*:5557",
-                    "topicFilter": "kv@"
-                },
+                "kvEventsConfig": {"zmqEndpoint": "tcp://*:5557", "topicFilter": "kv@"},
                 "indexerConfig": {
                     "tokenProcessorConfig": {
                         "blockSize": PREFIX_CACHE_BLOCK_SIZE,

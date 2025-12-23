@@ -491,8 +491,7 @@ def singlenode_estimated_prefix_cache(
             {
                 "name": "VLLM_ADDITIONAL_ARGS",
                 "value": (
-                    f"--prefix-caching-hash-algo {PREFIX_CACHE_HASH_ALGO} "
-                    f"--block-size {PREFIX_CACHE_BLOCK_SIZE}"
+                    f"--prefix-caching-hash-algo {PREFIX_CACHE_HASH_ALGO} --block-size {PREFIX_CACHE_BLOCK_SIZE}"
                 ),
             },
         ],
