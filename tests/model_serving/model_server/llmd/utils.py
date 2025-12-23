@@ -5,6 +5,7 @@ This module provides helper functions for LLMD test operations using ocp_resourc
 Follows the established model server utils pattern for consistency.
 """
 
+import json
 from typing import Any
 
 from kubernetes.dynamic import DynamicClient
@@ -21,6 +22,7 @@ from utilities.llmd_utils import verify_inference_response_llmd
 from utilities.manifests.tinyllama import TINYLLAMA_INFERENCE_CONFIG
 from utilities.monitoring import get_metrics_value
 
+from tests.model_serving.model_server.llmd.constants import PREFIX_CACHE_BLOCK_SIZE
 
 LOGGER = get_logger(name=__name__)
 
@@ -317,13 +319,13 @@ def send_prefix_cache_test_requests(
     return successful_requests
 
 
-def get_metrics_request_count_per_pod(
+def get_metrics_request_count_by_pod(
     prometheus: Prometheus,
     llmisvc: LLMInferenceService,
     pods: list[Pod],
 ) -> dict[str, float]:
     """
-    Get request count per pod from Prometheus metrics.
+    Get request count by pod from Prometheus metrics.
 
     Args:
         prometheus: Prometheus instance
@@ -342,6 +344,32 @@ def get_metrics_request_count_per_pod(
         pods_request_counts[pod.name] = count
 
     return pods_request_counts
+
+
+def get_prefix_cache_hits_total_by_pod(
+    prometheus: Prometheus,
+    llmisvc: LLMInferenceService,
+    pods: list[Pod],
+) -> dict[str, float]:
+    """
+    Get request count by pod from Prometheus metrics.
+
+    Args:
+        prometheus: Prometheus instance
+        llmisvc: The LLMInferenceService
+        pods: List of pods to query
+
+    Returns:
+        dict[str, float]: Mapping of pod name to prefix cache hits total
+    """
+    pods_prefix_cache_hits_total: dict[str, float] = {}
+
+    for pod in pods:
+        query = f'sum(kserve_vllm:prefix_cache_hits_total{{namespace="{llmisvc.namespace}",pod="{pod.name}"}})'
+        count = float(get_metrics_value(prometheus=prometheus, metrics_query=query) or 0)
+        pods_prefix_cache_hits_total[pod.name] = count
+
+    return pods_prefix_cache_hits_total
 
 
 def get_metrics_prefix_cache_hit_rate(
@@ -365,17 +393,50 @@ def get_metrics_prefix_cache_hit_rate(
     """
     query = (
         f"max("
-        f'rate(kserve_vllm:prefix_cache_hits_total{{namespace="{namespace}",pod=~"{service_name}-.*"}}[30m]) '
+        f'rate(kserve_vllm:prefix_cache_hits_total{{namespace="{namespace}",pod=~"{service_name}-.*"}}[5m]) '
         f"/ "
-        f'rate(kserve_vllm:prefix_cache_queries_total{{namespace="{namespace}",pod=~"{service_name}-.*"}}[30m])'
+        f'rate(kserve_vllm:prefix_cache_queries_total{{namespace="{namespace}",pod=~"{service_name}-.*"}}[5m])'
         f")"
     )
     result = get_metrics_value(prometheus=prometheus, metrics_query=query)
     return float(result or 0)
 
 
+def get_scheduler_decision_logs(
+    router_scheduler_pod: Pod,
+    lookback_seconds: int = 600,
+) -> list[dict]:
+    """
+    Retrieve scheduling decision logs from the router-scheduler pod.
+
+    Args:
+        router_scheduler_pod: The router-scheduler Pod object
+        lookback_seconds: How far back to look in logs (default: 600s = 10 minutes)
+
+    Returns:
+        list[dict]: List of parsed JSON log entries containing scheduler decisions
+    """
+    LOGGER.info(f"Retrieving logs from scheduler pod {router_scheduler_pod.name}")
+
+    # Get all logs from the scheduler pod
+    # Note: The router-scheduler container is the default/main container
+    raw_logs = router_scheduler_pod.log()
+
+    # Target decision message
+    target_decision_msg = "Selecting pods from candidates sorted by max score"
+
+    # Filtering logs
+    filtered_logs = "\n".join(line for line in raw_logs.splitlines() if target_decision_msg in line)
+
+    # Parsing as json
+    json_logs = [json.loads(line) for line in filtered_logs.splitlines()]
+
+    LOGGER.info(f"Retrieved {len(json_logs)} logs from router-scheduler pod")
+    return json_logs
+
+
 @retry(wait_timeout=90, sleep=30, exceptions_dict={AssertionError: []}, print_log=False)
-def verify_estimated_prefix_cache_metrics(
+def verify_estimated_prefix_cache(
     prometheus: Prometheus,
     llmisvc: LLMInferenceService,
     workload_pods: list[Pod],
@@ -385,7 +446,7 @@ def verify_estimated_prefix_cache_metrics(
     Verify Prometheus metrics for estimated prefix cache test.
 
     Validates:
-    - Request count per pod (cache affinity: all requests on one pod)
+    - Request count by pod (cache affinity: all requests on one pod)
     - Prefix cache hit rate
 
     Args:
@@ -397,9 +458,66 @@ def verify_estimated_prefix_cache_metrics(
     Raises:
         TimeoutError: If metrics don't appear with expected values within timeout
     """
-    LOGGER.info("Checking Prometheus metrics...")
+    LOGGER.info("Verifying Estimated Prefix Cache working as expected...")
 
-    pods_request_counts = get_metrics_request_count_per_pod(
+    # Checking request count by pod
+    pods_request_counts = get_metrics_request_count_by_pod(
+        prometheus=prometheus,
+        llmisvc=llmisvc,
+        pods=workload_pods,
+    )
+    LOGGER.info(f"Request count by pod: {pods_request_counts}")
+
+    # Assert that only one pod received requests (zero requests on the other pod)
+    assert set(pods_request_counts.values()) == {0, expected_requests}, (
+        f"Expected the values across all pods to be exactly {{0, {expected_requests}}}. "
+        f"Got: {pods_request_counts.values()}"
+    )
+
+    # Checking prefix cache hits
+    pods_prefix_cache_hits_total = get_prefix_cache_hits_total_by_pod(
+        prometheus=prometheus,
+        llmisvc=llmisvc,
+        pods=workload_pods,
+    )
+    LOGGER.info(f"Request prefix hit by pod: {pods_prefix_cache_hits_total}")
+    expected_cache_hits = (expected_requests - 1) * PREFIX_CACHE_BLOCK_SIZE
+    assert set(pods_prefix_cache_hits_total.values()) == {0, expected_cache_hits}, (
+        f"Expected the values across all pods to be exactly {{0, {expected_cache_hits}}}. "
+        f"Got: {pods_prefix_cache_hits_total.values()}"
+    )
+
+    return True
+
+
+@retry(wait_timeout=90, sleep=30, exceptions_dict={AssertionError: []}, print_log=False)
+def verify_precise_prefix_cache(
+    prometheus: Prometheus,
+    llmisvc: LLMInferenceService,
+    workload_pods: list[Pod],
+    router_scheduler_pod: Pod,
+    expected_requests: int,
+) -> None:
+    """
+    Checks metrics and logs to verify the precise prefix cache scenario.
+
+    Validates:
+    - Request count by pod (cache affinity: all requests on one pod)
+    - Prefix cache hit rate
+    - Scheduler Logs
+    Args:
+        prometheus: Prometheus instance
+        llmisvc: The LLMInferenceService
+        workload_pods: List of vLLM workload pods
+        expected_requests: Expected total request count to validate
+
+    Raises:
+        TimeoutError: If metrics don't appear with expected values within timeout
+    """
+    LOGGER.info("Checking Prometheus metrics for precise prefix cache...")
+
+    # Validate request routing (cache affinity)
+    pods_request_counts = get_metrics_request_count_by_pod(
         prometheus=prometheus,
         llmisvc=llmisvc,
         pods=workload_pods,
@@ -413,19 +531,32 @@ def verify_estimated_prefix_cache_metrics(
         f"Got: {pods_request_counts.values()}"
     )
 
-    # log active pod name
+    # Log active pod name
     active_pod = [name for name, count in pods_request_counts.items() if count == expected_requests][0]
     LOGGER.info(f"✓ Cache affinity: {expected_requests} requests on {active_pod}, 0 on other pods")
 
-    # Validate prefix cache hit rate
-    hit_rate = get_metrics_prefix_cache_hit_rate(
+    # Checking prefix cache hits
+    pods_prefix_cache_hits_total = get_prefix_cache_hits_total_by_pod(
         prometheus=prometheus,
-        namespace=llmisvc.namespace,
-        service_name=llmisvc.name,
+        llmisvc=llmisvc,
+        pods=workload_pods,
+    )
+    LOGGER.info(f"Request prefix hit by pod: {pods_prefix_cache_hits_total}")
+    expected_cache_hits = (expected_requests - 1) * PREFIX_CACHE_BLOCK_SIZE
+    assert set(pods_prefix_cache_hits_total.values()) == {0, expected_cache_hits}, (
+        f"Expected the values across all pods to be exactly {{0, {expected_cache_hits}}}. "
+        f"Got: {pods_prefix_cache_hits_total.values()}"
     )
 
-    # Assert that the hit rate (a value between 0.0 and 1.0) is greater than 0.
-    LOGGER.info(f"Prefix cache hit rate: {hit_rate:.4f}")
-    assert hit_rate > 0, f"Expected prefix cache hit rate to be greater than 0, but got {hit_rate}. "
+    # Verify the scheduler used max-score-picker logic at least as many times
+    # as the number of requests sent
+    decision_logs = get_scheduler_decision_logs(router_scheduler_pod=router_scheduler_pod)
+    assert len(decision_logs) >= expected_requests, (
+        f"Scheduler did not use max-score-picker logic enough times. "
+        f"Expected: >= {expected_requests}, Found: {len(decision_logs)}. "
+        f"Log sample: {decision_logs[:3] if decision_logs else 'No logs found'}"
+    )
+
+    LOGGER.info("✓ Max-score-picker logic confirmed in scheduler logs")
 
     return True
