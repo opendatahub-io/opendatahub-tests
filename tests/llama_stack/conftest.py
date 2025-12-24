@@ -42,6 +42,21 @@ POSTGRES_IMAGE = os.getenv(
 POSTGRESQL_USER = os.getenv("LLS_VECTOR_IO_POSTGRESQL_USER", "ps_user")
 POSTGRESQL_PASSWORD = os.getenv("LLS_VECTOR_IO_POSTGRESQL_PASSWORD", "ps_password")
 
+LLS_CORE_INFERENCE_MODEL = os.getenv("LLS_CORE_INFERENCE_MODEL", "")
+LLS_CORE_VLLM_URL = os.getenv("LLS_CORE_VLLM_URL", "")
+LLS_CORE_VLLM_API_TOKEN = os.getenv("LLS_CORE_VLLM_API_TOKEN", "")
+LLS_CORE_VLLM_MAX_TOKENS = os.getenv("LLS_CORE_VLLM_MAX_TOKENS", "16384")
+LLS_CORE_VLLM_TLS_VERIFY = os.getenv("LLS_CORE_VLLM_TLS_VERIFY", "true")
+
+LLS_CORE_EMBEDDING_MODEL = os.getenv("LLS_CORE_EMBEDDING_MODEL", "nomic-embed-text-v1-5")
+LLS_CORE_EMBEDDING_PROVIDER_MODEL_ID = os.getenv("LLS_CORE_EMBEDDING_PROVIDER_MODEL_ID", "nomic-embed-text-v1-5")
+LLS_CORE_VLLM_EMBEDDING_URL = os.getenv(
+    "LLS_CORE_VLLM_EMBEDDING_URL", "https://nomic-embed-text-v1-5.example.com:443/v1"
+)
+LLS_CORE_VLLM_EMBEDDING_API_TOKEN = os.getenv("LLS_CORE_VLLM_EMBEDDING_API_TOKEN", "fake")
+LLS_CORE_VLLM_EMBEDDING_MAX_TOKENS = os.getenv("LLS_CORE_VLLM_EMBEDDING_MAX_TOKENS", "8192")
+LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY = os.getenv("LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY", "true")
+
 distribution_name = generate_random_name(prefix="llama-stack-distribution")
 
 
@@ -113,8 +128,6 @@ def enabled_llama_stack_operator(dsc_resource: DataScienceCluster) -> Generator[
 @pytest.fixture(scope="class")
 def llama_stack_server_config(
     request: FixtureRequest,
-    postgres_deployment: Deployment,
-    postgres_service: Service,
     vector_io_provider_deployment_config_factory: Callable[[str], list[Dict[str, str]]],
     files_provider_config_factory: Callable[[str], list[Dict[str, str]]],
 ) -> Dict[str, Any]:
@@ -186,25 +199,23 @@ def llama_stack_server_config(
     if params.get("inference_model"):
         inference_model = str(params.get("inference_model"))
     else:
-        inference_model = os.getenv("LLS_CORE_INFERENCE_MODEL", "")
+        inference_model = LLS_CORE_INFERENCE_MODEL
     env_vars.append({"name": "INFERENCE_MODEL", "value": inference_model})
 
-    # VLLM_API_TOKEN
     if params.get("vllm_api_token"):
         vllm_api_token = str(params.get("vllm_api_token"))
     else:
-        vllm_api_token = os.getenv("LLS_CORE_VLLM_API_TOKEN", "")
+        vllm_api_token = LLS_CORE_VLLM_API_TOKEN
     env_vars.append({"name": "VLLM_API_TOKEN", "value": vllm_api_token})
 
-    # LLS_CORE_VLLM_URL
     if params.get("vllm_url_fixture"):
         vllm_url = str(request.getfixturevalue(argname=params.get("vllm_url_fixture")))
     else:
-        vllm_url = os.getenv("LLS_CORE_VLLM_URL", "")
+        vllm_url = LLS_CORE_VLLM_URL
     env_vars.append({"name": "VLLM_URL", "value": vllm_url})
 
-    # VLLM_TLS_VERIFY
-    env_vars.append({"name": "VLLM_TLS_VERIFY", "value": "false"})
+    env_vars.append({"name": "VLLM_TLS_VERIFY", "value": LLS_CORE_VLLM_TLS_VERIFY})
+    env_vars.append({"name": "VLLM_MAX_TOKENS", "value": LLS_CORE_VLLM_MAX_TOKENS})
 
     # FMS_ORCHESTRATOR_URL
     if params.get("fms_orchestrator_url_fixture"):
@@ -214,13 +225,25 @@ def llama_stack_server_config(
     env_vars.append({"name": "FMS_ORCHESTRATOR_URL", "value": fms_orchestrator_url})
 
     # EMBEDDING_MODEL
-    embedding_model = params.get("embedding_model")
-    if embedding_model:
-        env_vars.append({"name": "EMBEDDING_MODEL", "value": embedding_model})
+    embedding_provider = params.get("embedding_provider") or "vllm-embedding"
 
-    # Use inline::sentence-transformers embeddings provider
-    env_vars.append({"name": "ENABLE_SENTENCE_TRANSFORMERS", "value": "true"})
-    env_vars.append({"name": "EMBEDDING_PROVIDER", "value": "sentence-transformers"})
+    if embedding_provider == "vllm-embedding":
+        env_vars.append({"name": "EMBEDDING_MODEL", "value": LLS_CORE_EMBEDDING_MODEL})
+        env_vars.append({"name": "EMBEDDING_PROVIDER_MODEL_ID", "value": LLS_CORE_EMBEDDING_PROVIDER_MODEL_ID})
+        env_vars.append({"name": "VLLM_EMBEDDING_URL", "value": LLS_CORE_VLLM_EMBEDDING_URL})
+        env_vars.append({"name": "VLLM_EMBEDDING_API_TOKEN", "value": LLS_CORE_VLLM_EMBEDDING_API_TOKEN})
+        env_vars.append({"name": "VLLM_EMBEDDING_MAX_TOKENS", "value": LLS_CORE_VLLM_EMBEDDING_MAX_TOKENS})
+        env_vars.append({"name": "VLLM_EMBEDDING_TLS_VERIFY", "value": LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY})
+    elif embedding_provider == "sentence-transformers":
+        env_vars.append({"name": "ENABLE_SENTENCE_TRANSFORMERS", "value": "true"})
+        env_vars.append({"name": "EMBEDDING_PROVIDER", "value": "sentence-transformers"})
+    else:
+        raise ValueError(f"Unsupported embeddings provider: {embedding_provider}")
+
+    # TRUSTYAI_EMBEDDING_MODEL
+    trustyai_embedding_model = params.get("trustyai_embedding_model")
+    if trustyai_embedding_model:
+        env_vars.append({"name": "TRUSTYAI_EMBEDDING_MODEL", "value": trustyai_embedding_model})
 
     # Kubeflow-related environment variables
     if params.get("enable_ragas_remote"):
@@ -314,6 +337,8 @@ def unprivileged_llama_stack_distribution(
     ci_s3_bucket_region: str,
     aws_access_key_id: str,
     aws_secret_access_key: str,
+    unprivileged_postgres_deployment: Deployment,
+    unprivileged_postgres_service: Service,
 ) -> Generator[LlamaStackDistribution, None, None]:
     # Distribution name needs a random substring due to bug RHAIENG-999 / RHAIENG-1139
     distribution_name = generate_random_name(prefix="llama-stack-distribution")
@@ -359,6 +384,8 @@ def llama_stack_distribution(
     ci_s3_bucket_region: str,
     aws_access_key_id: str,
     aws_secret_access_key: str,
+    postgres_deployment: Deployment,
+    postgres_service: Service,
 ) -> Generator[LlamaStackDistribution, None, None]:
     # Distribution name needs a random substring due to bug RHAIENG-999 / RHAIENG-1139
     with create_llama_stack_distribution(
@@ -604,9 +631,13 @@ def llama_stack_models(unprivileged_llama_stack_client: LlamaStackClient) -> Mod
     """
     Returns model information from the LlamaStack client.
 
+    Selects the embedding model based on available providers with the following priority:
+    1. sentence-transformers provider (if present)
+    2. vllm-embedding provider (if present)
+
     Provides:
         - model_id: The identifier of the LLM model
-        - embedding_model: The embedding model object
+        - embedding_model: The embedding model object from the selected provider
         - embedding_dimension: The dimension of the embedding model
 
     Args:
@@ -614,12 +645,31 @@ def llama_stack_models(unprivileged_llama_stack_client: LlamaStackClient) -> Mod
 
     Returns:
         ModelInfo: NamedTuple containing model information
+
+    Raises:
+        ValueError: If no embedding provider (sentence-transformers or vllm-embedding) is found
+
     """
     models = unprivileged_llama_stack_client.models.list()
+
     model_id = next(m for m in models if m.api_model_type == "llm").identifier
 
-    embedding_model = next(m for m in models if m.api_model_type == "embedding")
-    embedding_dimension = embedding_model.metadata["embedding_dimension"]
+    # Ensure getting the right embedding model depending on the available providers
+    providers = unprivileged_llama_stack_client.providers.list()
+    provider_ids = [p.provider_id for p in providers]
+    if "sentence-transformers" in provider_ids:
+        target_provider_id = "sentence-transformers"
+    elif "vllm-embedding" in provider_ids:
+        target_provider_id = "vllm-embedding"
+    else:
+        raise ValueError("No embedding provider found")
+
+    embedding_model = next(m for m in models if m.api_model_type == "embedding" and m.provider_id == target_provider_id)
+    embedding_dimension = float(embedding_model.metadata["embedding_dimension"])
+
+    LOGGER.info(f"Detected model: {model_id}")
+    LOGGER.info(f"Detected embedding_model: {embedding_model.identifier}")
+    LOGGER.info(f"Detected embedding_dimension: {embedding_dimension}")
 
     return ModelInfo(model_id=model_id, embedding_model=embedding_model, embedding_dimension=embedding_dimension)
 
@@ -705,12 +755,12 @@ def vector_store_with_example_docs(
 
 
 @pytest.fixture(scope="class")
-def postgres_service(
+def unprivileged_postgres_service(
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
-    postgres_deployment: Deployment,
+    unprivileged_postgres_deployment: Deployment,
 ) -> Generator[Service, Any, Any]:
-    """Create a service for the postgres deployment."""
+    """Create a service for the unprivileged postgres deployment."""
     with Service(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
@@ -728,14 +778,58 @@ def postgres_service(
 
 
 @pytest.fixture(scope="class")
-def postgres_deployment(
+def unprivileged_postgres_deployment(
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
 ) -> Generator[Deployment, Any, Any]:
-    """Deploy a Postgres instance for vector I/O provider testing."""
+    """Deploy a Postgres instance for vector I/O provider testing with unprivileged client."""
     with Deployment(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
+        name="vector-io-postgres-deployment",
+        min_ready_seconds=5,
+        replicas=1,
+        selector={"matchLabels": {"app": "postgres"}},
+        strategy={"type": "Recreate"},
+        template=get_postgres_deployment_template(),
+        teardown=True,
+    ) as deployment:
+        deployment.wait_for_replicas(deployed=True, timeout=240)
+        yield deployment
+
+
+@pytest.fixture(scope="class")
+def postgres_service(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    postgres_deployment: Deployment,
+) -> Generator[Service, Any, Any]:
+    """Create a service for the postgres deployment."""
+    with Service(
+        client=admin_client,
+        namespace=model_namespace.name,
+        name="vector-io-postgres-service",
+        ports=[
+            {
+                "port": 5432,
+                "targetPort": 5432,
+            }
+        ],
+        selector={"app": "postgres"},
+        wait_for_resource=True,
+    ) as service:
+        yield service
+
+
+@pytest.fixture(scope="class")
+def postgres_deployment(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+) -> Generator[Deployment, Any, Any]:
+    """Deploy a Postgres instance for vector I/O provider testing."""
+    with Deployment(
+        client=admin_client,
+        namespace=model_namespace.name,
         name="vector-io-postgres-deployment",
         min_ready_seconds=5,
         replicas=1,
