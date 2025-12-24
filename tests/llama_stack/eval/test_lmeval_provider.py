@@ -19,6 +19,7 @@ TRUSTYAI_LMEVAL_CUSTOM = f"{LlamaStackProviders.Eval.TRUSTYAI_LMEVAL}::dk-bench"
             {
                 "vllm_url_fixture": "qwen_isvc_url",
                 "inference_model": QWEN_MODEL_NAME,
+                "embedding_provider": "sentence-transformers",
             },
         )
     ],
@@ -82,7 +83,11 @@ class TestLlamaStackLMEvalProvider:
             {"name": "test-llamastack-lmeval-custom"},
             MinIo.PodConfig.QWEN_HAP_BPIV2_MINIO_CONFIG,
             {"bucket": "llms"},
-            {"vllm_url_fixture": "qwen_isvc_url", "inference_model": QWEN_MODEL_NAME},
+            {
+                "vllm_url_fixture": "qwen_isvc_url",
+                "inference_model": QWEN_MODEL_NAME,
+                "embedding_provider": "sentence-transformers",
+            },
         )
     ],
     indirect=True,

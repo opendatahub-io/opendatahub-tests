@@ -128,8 +128,6 @@ def enabled_llama_stack_operator(dsc_resource: DataScienceCluster) -> Generator[
 @pytest.fixture(scope="class")
 def llama_stack_server_config(
     request: FixtureRequest,
-    postgres_deployment: Deployment,
-    postgres_service: Service,
     vector_io_provider_deployment_config_factory: Callable[[str], list[Dict[str, str]]],
     files_provider_config_factory: Callable[[str], list[Dict[str, str]]],
 ) -> Dict[str, Any]:
@@ -226,12 +224,6 @@ def llama_stack_server_config(
         fms_orchestrator_url = "http://localhost"
     env_vars.append({"name": "FMS_ORCHESTRATOR_URL", "value": fms_orchestrator_url})
 
-    # EMBEDDING_MODEL configuration
-    # TODO: Fix this TRUSTYAI_EMBEDDING_MODEL
-    embedding_model = params.get("embedding_model")
-    if embedding_model:
-        env_vars.append({"name": "EMBEDDING_MODEL", "value": embedding_model})
-
     # EMBEDDING_MODEL
     embedding_provider = params.get("embedding_provider") or "vllm-embedding"
 
@@ -247,6 +239,11 @@ def llama_stack_server_config(
         env_vars.append({"name": "EMBEDDING_PROVIDER", "value": "sentence-transformers"})
     else:
         raise ValueError(f"Unsupported embeddings provider: {embedding_provider}")
+
+    # TRUSTYAI_EMBEDDING_MODEL
+    trustyai_embedding_model = params.get("trustyai_embedding_model")
+    if trustyai_embedding_model:
+        env_vars.append({"name": "TRUSTYAI_EMBEDDING_MODEL", "value": trustyai_embedding_model})
 
     # Kubeflow-related environment variables
     if params.get("enable_ragas_remote"):
@@ -340,6 +337,8 @@ def unprivileged_llama_stack_distribution(
     ci_s3_bucket_region: str,
     aws_access_key_id: str,
     aws_secret_access_key: str,
+    unprivileged_postgres_deployment: Deployment,
+    unprivileged_postgres_service: Service,
 ) -> Generator[LlamaStackDistribution, None, None]:
     # Distribution name needs a random substring due to bug RHAIENG-999 / RHAIENG-1139
     distribution_name = generate_random_name(prefix="llama-stack-distribution")
@@ -385,6 +384,8 @@ def llama_stack_distribution(
     ci_s3_bucket_region: str,
     aws_access_key_id: str,
     aws_secret_access_key: str,
+    postgres_deployment: Deployment,
+    postgres_service: Service,
 ) -> Generator[LlamaStackDistribution, None, None]:
     # Distribution name needs a random substring due to bug RHAIENG-999 / RHAIENG-1139
     with create_llama_stack_distribution(
@@ -754,12 +755,12 @@ def vector_store_with_example_docs(
 
 
 @pytest.fixture(scope="class")
-def postgres_service(
+def unprivileged_postgres_service(
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
-    postgres_deployment: Deployment,
+    unprivileged_postgres_deployment: Deployment,
 ) -> Generator[Service, Any, Any]:
-    """Create a service for the postgres deployment."""
+    """Create a service for the unprivileged postgres deployment."""
     with Service(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
@@ -777,14 +778,58 @@ def postgres_service(
 
 
 @pytest.fixture(scope="class")
-def postgres_deployment(
+def unprivileged_postgres_deployment(
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
 ) -> Generator[Deployment, Any, Any]:
-    """Deploy a Postgres instance for vector I/O provider testing."""
+    """Deploy a Postgres instance for vector I/O provider testing with unprivileged client."""
     with Deployment(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
+        name="vector-io-postgres-deployment",
+        min_ready_seconds=5,
+        replicas=1,
+        selector={"matchLabels": {"app": "postgres"}},
+        strategy={"type": "Recreate"},
+        template=get_postgres_deployment_template(),
+        teardown=True,
+    ) as deployment:
+        deployment.wait_for_replicas(deployed=True, timeout=240)
+        yield deployment
+
+
+@pytest.fixture(scope="class")
+def postgres_service(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    postgres_deployment: Deployment,
+) -> Generator[Service, Any, Any]:
+    """Create a service for the postgres deployment."""
+    with Service(
+        client=admin_client,
+        namespace=model_namespace.name,
+        name="vector-io-postgres-service",
+        ports=[
+            {
+                "port": 5432,
+                "targetPort": 5432,
+            }
+        ],
+        selector={"app": "postgres"},
+        wait_for_resource=True,
+    ) as service:
+        yield service
+
+
+@pytest.fixture(scope="class")
+def postgres_deployment(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+) -> Generator[Deployment, Any, Any]:
+    """Deploy a Postgres instance for vector I/O provider testing."""
+    with Deployment(
+        client=admin_client,
+        namespace=model_namespace.name,
         name="vector-io-postgres-deployment",
         min_ready_seconds=5,
         replicas=1,
