@@ -380,7 +380,6 @@ def updated_catalog_config_map_scope_function(
     is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
 
 
-# Model catalog specific fixtures (moved from top-level conftest.py)
 @pytest.fixture(scope="class")
 def catalog_config_map(admin_client: DynamicClient, model_registry_namespace: str) -> ConfigMap:
     return ConfigMap(name=DEFAULT_CUSTOM_MODEL_CATALOG, client=admin_client, namespace=model_registry_namespace)

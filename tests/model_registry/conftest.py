@@ -1,5 +1,7 @@
+import time
+from contextlib import ExitStack
 import pytest
-from pytest import Config
+from pytest import Config, FixtureRequest
 from typing import Generator, Any
 
 from ocp_resources.infrastructure import Infrastructure
@@ -8,7 +10,10 @@ from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.namespace import Namespace
 from ocp_resources.data_science_cluster import DataScienceCluster
-
+from ocp_resources.config_map import ConfigMap
+from ocp_resources.service import Service
+from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
+from ocp_resources.deployment import Deployment
 
 from ocp_resources.resource import ResourceEditor
 
@@ -17,14 +22,23 @@ from kubernetes.dynamic import DynamicClient
 from pytest_testconfig import config as py_config
 
 from utilities.general import wait_for_oauth_openshift_deployment
+from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from tests.model_registry.utils import (
     get_byoidc_user_credentials,
+    get_model_registry_objects,
+    get_model_registry_metadata_resources,
+    wait_for_default_resource_cleanedup,
 )
 
 from utilities.general import generate_random_name, wait_for_pods_running
 
 from tests.model_registry.constants import (
     MR_OPERATOR_NAME,
+    MR_INSTANCE_BASE_NAME,
+    DB_BASE_RESOURCES_NAME,
+    DB_RESOURCE_NAME,
+    MR_INSTANCE_NAME,
+    KUBERBACPROXY_STR,
 )
 from utilities.constants import Labels
 from utilities.constants import DscComponents
@@ -261,3 +275,95 @@ def user_credentials_rbac(
             "idp_name": f"test-htpasswd-idp-{random_str}",
             "secret_name": f"test-htpasswd-secret-{random_str}",
         }
+
+
+@pytest.fixture(scope="class")
+def model_registry_instance(
+    request: pytest.FixtureRequest,
+    pytestconfig: Config,
+    admin_client: DynamicClient,
+    teardown_resources: bool,
+    model_registry_metadata_db_resources: dict[Any, Any],
+    model_registry_namespace: str,
+) -> Generator[list[Any], Any, Any]:
+    param = getattr(request, "param", {})
+    if pytestconfig.option.post_upgrade:
+        mr_instance = ModelRegistry(name=MR_INSTANCE_NAME, namespace=model_registry_namespace, ensure_exists=True)
+        yield [mr_instance]
+        mr_instance.delete(wait=True)
+    else:
+        db_name = param.get("db_name", "mysql")
+        mr_objects = get_model_registry_objects(
+            client=admin_client,
+            namespace=model_registry_namespace,
+            base_name=MR_INSTANCE_BASE_NAME,
+            num=param.get("num_resources", 1),
+            teardown_resources=teardown_resources,
+            params=param,
+            db_backend=db_name,
+        )
+        with ExitStack() as stack:
+            mr_instances = [stack.enter_context(mr_obj) for mr_obj in mr_objects]
+            for mr_instance in mr_instances:
+                mr_instance.wait_for_condition(condition="Available", status="True")
+                mr_instance.wait_for_condition(condition=KUBERBACPROXY_STR, status="True")
+                wait_for_pods_running(
+                    admin_client=admin_client, namespace_name=model_registry_namespace, number_of_consecutive_checks=6
+                )
+            # TODO remove when RHOAIENG-41728 is addressed
+            time.sleep(60.0)  # noqa: FCN001
+            yield mr_instances
+        if db_name == "default":
+            wait_for_default_resource_cleanedup(admin_client=admin_client, namespace_name=model_registry_namespace)
+
+
+@pytest.fixture(scope="class")
+def model_registry_metadata_db_resources(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    pytestconfig: Config,
+    teardown_resources: bool,
+    model_registry_namespace: str,
+) -> Generator[dict[Any, Any], None, None]:
+    num_resources = getattr(request, "param", {}).get("num_resources", 1)
+    db_backend = getattr(request, "param", {}).get("db_name", "mysql")
+
+    if pytestconfig.option.post_upgrade:
+        resources = {
+            Secret: [Secret(name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True)],
+            PersistentVolumeClaim: [
+                PersistentVolumeClaim(name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True)
+            ],
+            Service: [Service(name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True)],
+            ConfigMap: [ConfigMap(name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True)]
+            if db_backend == "mariadb"
+            else [],
+            Deployment: [Deployment(name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True)],
+        }
+        yield resources
+        for kind in [Deployment, ConfigMap, Service, PersistentVolumeClaim, Secret]:
+            for resource in resources[kind]:
+                resource.delete(wait=True)
+    else:
+        resources_instances = {}
+        if db_backend == "default":
+            yield resources_instances
+        else:
+            resources = get_model_registry_metadata_resources(
+                base_name=DB_BASE_RESOURCES_NAME,
+                namespace=model_registry_namespace,
+                num_resources=num_resources,
+                db_backend=db_backend,
+                teardown_resources=teardown_resources,
+                client=admin_client,
+            )
+            with ExitStack() as stack:
+                for kind_name in [Secret, PersistentVolumeClaim, Service, ConfigMap, Deployment]:
+                    if resources[kind_name]:
+                        LOGGER.info(f"Creating {num_resources} {kind_name} resources")
+                        resources_instances[kind_name] = [
+                            stack.enter_context(resource_obj) for resource_obj in resources[kind_name]
+                        ]
+                for deployment in resources_instances[Deployment]:
+                    deployment.wait_for_replicas(deployed=True)
+                yield resources_instances
