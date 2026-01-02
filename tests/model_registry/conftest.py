@@ -374,3 +374,32 @@ def model_registry_rest_headers(current_client_token: str) -> dict[str, str]:
     from tests.model_registry.utils import get_rest_headers
 
     return get_rest_headers(token=current_client_token)
+
+
+@pytest.fixture(scope="class")
+def sa_namespace(request: pytest.FixtureRequest, admin_client: DynamicClient) -> Generator[Namespace, None, None]:
+    """
+    Creates a namespace
+    """
+    import os
+    from tests.model_registry.utils import generate_namespace_name
+
+    test_file = os.path.relpath(request.fspath.strpath, start=os.path.dirname(__file__))
+    ns_name = generate_namespace_name(file_path=test_file)
+    LOGGER.info(f"Creating temporary namespace: {ns_name}")
+    with Namespace(client=admin_client, name=ns_name) as ns:
+        ns.wait_for_status(status=Namespace.Status.ACTIVE, timeout=120)
+        yield ns
+
+
+@pytest.fixture(scope="class")
+def service_account(admin_client: DynamicClient, sa_namespace: Namespace) -> Generator[Any, None, None]:
+    """
+    Creates a ServiceAccount.
+    """
+    from ocp_resources.service_account import ServiceAccount
+
+    sa_name = generate_random_name(prefix="mr-test-user")
+    LOGGER.info(f"Creating ServiceAccount: {sa_name} in namespace {sa_namespace.name}")
+    with ServiceAccount(client=admin_client, name=sa_name, namespace=sa_namespace.name, wait_for_resource=True) as sa:
+        yield sa

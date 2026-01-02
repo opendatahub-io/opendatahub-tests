@@ -1,4 +1,3 @@
-import os
 import subprocess
 
 import pytest
@@ -19,7 +18,6 @@ from simple_logger.logger import get_logger
 from kubernetes.dynamic import DynamicClient
 from model_registry.types import RegisteredModel
 
-from utilities.general import generate_random_name
 
 from tests.model_registry.constants import (
     MR_INSTANCE_NAME,
@@ -29,7 +27,6 @@ from utilities.constants import Protocols
 from tests.model_registry.utils import (
     get_endpoint_from_mr_service,
     get_mr_service_by_label,
-    generate_namespace_name,
 )
 from model_registry import ModelRegistry as ModelRegistryClient
 from utilities.general import wait_for_pods_by_labels
@@ -121,30 +118,6 @@ def model_registry_pod(admin_client: DynamicClient, model_registry_namespace: st
         label_selector=MODEL_REGISTRY_POD_FILTER,
         expected_num_pods=1,
     )[0]
-
-
-@pytest.fixture(scope="class")
-def sa_namespace(request: pytest.FixtureRequest, admin_client: DynamicClient) -> Generator[Namespace, None, None]:
-    """
-    Creates a namespace
-    """
-    test_file = os.path.relpath(request.fspath.strpath, start=os.path.dirname(__file__))
-    ns_name = generate_namespace_name(file_path=test_file)
-    LOGGER.info(f"Creating temporary namespace: {ns_name}")
-    with Namespace(client=admin_client, name=ns_name) as ns:
-        ns.wait_for_status(status=Namespace.Status.ACTIVE, timeout=120)
-        yield ns
-
-
-@pytest.fixture(scope="class")
-def service_account(admin_client: DynamicClient, sa_namespace: Namespace) -> Generator[ServiceAccount, None, None]:
-    """
-    Creates a ServiceAccount.
-    """
-    sa_name = generate_random_name(prefix="mr-test-user")
-    LOGGER.info(f"Creating ServiceAccount: {sa_name} in namespace {sa_namespace.name}")
-    with ServiceAccount(client=admin_client, name=sa_name, namespace=sa_namespace.name, wait_for_resource=True) as sa:
-        yield sa
 
 
 @pytest.fixture(scope="class")
