@@ -30,7 +30,6 @@ from tests.model_registry.utils import (
     get_endpoint_from_mr_service,
     get_mr_service_by_label,
     generate_namespace_name,
-    get_rest_headers,
 )
 from model_registry import ModelRegistry as ModelRegistryClient
 from utilities.general import wait_for_pods_by_labels
@@ -105,11 +104,6 @@ def registered_model(
 def model_registry_rest_url(model_registry_instance_rest_endpoint: list[str]) -> list[str]:
     # address and port need to be split in the client instantiation
     return [f"{Protocols.HTTPS}://{rest_url}" for rest_url in model_registry_instance_rest_endpoint]
-
-
-@pytest.fixture(scope="class")
-def model_registry_rest_headers(current_client_token: str) -> dict[str, str]:
-    return get_rest_headers(token=current_client_token)
 
 
 @pytest.fixture(scope="class")

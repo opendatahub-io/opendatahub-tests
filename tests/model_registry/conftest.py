@@ -367,3 +367,10 @@ def model_registry_metadata_db_resources(
                 for deployment in resources_instances[Deployment]:
                     deployment.wait_for_replicas(deployed=True)
                 yield resources_instances
+
+
+@pytest.fixture(scope="class")
+def model_registry_rest_headers(current_client_token: str) -> dict[str, str]:
+    from tests.model_registry.utils import get_rest_headers
+
+    return get_rest_headers(token=current_client_token)
