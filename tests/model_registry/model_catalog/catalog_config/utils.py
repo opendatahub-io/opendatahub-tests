@@ -24,7 +24,7 @@ def validate_model_catalog_resource(
 ) -> None:
     resource = list(kind.get(namespace=namespace, label_selector="component=model-catalog", dyn_client=admin_client))
     assert resource
-    LOGGER.info(f"Validating resource: {kind}: Found {len(resource)})")
+    LOGGER.info(f"Validating resource: {kind}: Found {len(resource)}")
     assert len(resource) == expected_resource_count, (
         f"Unexpected number of {kind} resources found: {[res.name for res in resource]}"
     )

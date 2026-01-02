@@ -9,6 +9,7 @@ from ocp_resources.pod import Pod
 from ocp_resources.config_map import ConfigMap
 from kubernetes.dynamic import DynamicClient
 from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
+from tests.model_registry.utils import execute_get_command, get_rest_headers
 
 LOGGER = get_logger(name=__name__)
 CATALOG_CONTAINER = "catalog"
@@ -620,7 +621,6 @@ def get_labels_from_api(model_catalog_rest_url: str, user_token: str) -> List[Di
     Returns:
         List of label dictionaries from API response
     """
-    from tests.model_registry.model_catalog.utils import execute_get_command, get_rest_headers
 
     url = f"{model_catalog_rest_url}labels"
     headers = get_rest_headers(token=user_token)
