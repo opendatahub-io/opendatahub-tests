@@ -3,7 +3,7 @@ from typing import Self
 import requests
 import yaml
 from simple_logger.logger import get_logger
-from tests.model_registry.model_catalog.utils import (
+from tests.model_registry.model_catalog.metadata.utils import (
     execute_model_catalog_post_command,
     build_catalog_preview_config,
     validate_catalog_preview_counts,

@@ -8,7 +8,7 @@ from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 
-from tests.model_registry.rest_api.constants import (
+from tests.model_registry.model_registry.rest_api.constants import (
     MODEL_REGISTER,
     MODEL_ARTIFACT,
     MODEL_VERSION,
@@ -23,7 +23,7 @@ from tests.model_registry.rest_api.constants import (
     REGISTERED_MODEL_DESCRIPTION,
 )
 from tests.model_registry.constants import MR_POSTGRES_DB_OBJECT
-from tests.model_registry.rest_api.utils import validate_resource_attributes
+from tests.model_registry.model_registry.rest_api.utils import validate_resource_attributes
 from simple_logger.logger import get_logger
 
 
