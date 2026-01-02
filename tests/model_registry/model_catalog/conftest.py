@@ -333,7 +333,12 @@ def models_from_filter_query(
 
 
 @pytest.fixture()
-def labels_configmap_patch(admin_client: DynamicClient, model_registry_namespace: str) -> dict[str, Any]:
+def labels_configmap_patch(
+    admin_client: DynamicClient,
+    model_registry_namespace: str,
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+) -> Generator[dict[str, Any], None, None]:
     # Get the editable ConfigMap
     sources_cm = ConfigMap(name=DEFAULT_CUSTOM_MODEL_CATALOG, client=admin_client, namespace=model_registry_namespace)
 
@@ -353,7 +358,10 @@ def labels_configmap_patch(admin_client: DynamicClient, model_registry_namespace
     patches = {"data": {"sources.yaml": yaml.dump(current_data, default_flow_style=False)}}
 
     with ResourceEditor(patches={sources_cm: patches}):
+        is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+        wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
         yield patches
+    is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
 
 
 @pytest.fixture()
