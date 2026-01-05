@@ -30,7 +30,8 @@ RAGAS_TEST_DATASET = [
             {
                 "vllm_url_fixture": "qwen_isvc_url",
                 "inference_model": QWEN_MODEL_NAME,
-                "embedding_model": "granite-embedding-125m",
+                "embedding_provider": "sentence-transformers",
+                "trustyai_embedding_model": "granite-embedding-125m-english",
             },
         )
     ],
@@ -105,7 +106,8 @@ class TestLlamaStackRagasInlineProvider:
             {
                 "vllm_url_fixture": "qwen_isvc_url",
                 "inference_model": QWEN_MODEL_NAME,
-                "embedding_model": "granite-embedding-125m",
+                "embedding_provider": "sentence-transformers",
+                "trustyai_embedding_model": "granite-embedding-125m-english",
                 "enable_ragas_remote": True,
             },
         )

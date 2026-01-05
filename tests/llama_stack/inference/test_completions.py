@@ -1,6 +1,5 @@
 import pytest
 from llama_stack_client import LlamaStackClient
-from llama_stack_client.types import CreateEmbeddingsResponse
 from tests.llama_stack.constants import ModelInfo
 
 
@@ -8,14 +7,14 @@ from tests.llama_stack.constants import ModelInfo
     "unprivileged_model_namespace",
     [
         pytest.param(
-            {"name": "test-llamastack-inference", "randomize_name": True},
+            {"name": "test-llamastack-infer-completions", "randomize_name": True},
         ),
     ],
     indirect=True,
 )
 @pytest.mark.llama_stack
-class TestLlamaStackInference:
-    """Test class for LlamaStack Inference API (chat_completion, completion and embeddings)
+class TestLlamaStackInferenceCompletions:
+    """Test class for LlamaStack Inference API for Chat Completions and Completions
 
     For more information about this API, see:
     - https://llamastack.github.io/docs/references/python_sdk_reference#inference
@@ -60,40 +59,3 @@ class TestLlamaStackInference:
         content = response.choices[0].text.lower()
         assert content is not None, "LLM response content is None"
         assert "barcelona" in content, "The LLM didn't provide the expected answer to the prompt"
-
-    @pytest.mark.smoke
-    def test_inference_embeddings(
-        self,
-        unprivileged_llama_stack_client: LlamaStackClient,
-        llama_stack_models: ModelInfo,
-    ) -> None:
-        """
-        Test embedding model functionality and vector generation.
-
-        Validates that the server can generate properly formatted embedding vectors
-        for text input with correct dimensions as specified in model metadata.
-        """
-
-        embeddings_response = unprivileged_llama_stack_client.embeddings.create(
-            model=llama_stack_models.embedding_model.identifier,
-            input="The food was delicious and the waiter...",
-            encoding_format="float",
-        )
-
-        assert isinstance(embeddings_response, CreateEmbeddingsResponse)
-        assert len(embeddings_response.data) == 1
-        assert isinstance(embeddings_response.data[0].embedding, list)
-        assert llama_stack_models.embedding_dimension == len(embeddings_response.data[0].embedding)
-        assert isinstance(embeddings_response.data[0].embedding[0], float)
-
-        input_list = ["Input text 1", "Input text 1", "Input text 1"]
-        embeddings_response = unprivileged_llama_stack_client.embeddings.create(
-            model=llama_stack_models.embedding_model.identifier, input=input_list, encoding_format="float"
-        )
-
-        assert isinstance(embeddings_response, CreateEmbeddingsResponse)
-        assert len(embeddings_response.data) == len(input_list)
-        for item in range(len(input_list)):
-            assert isinstance(embeddings_response.data[item].embedding, list)
-            assert llama_stack_models.embedding_dimension == len(embeddings_response.data[item].embedding)
-            assert isinstance(embeddings_response.data[item].embedding[0], float)

@@ -32,6 +32,7 @@ SECURE_SHIELD_ID: str = "secure_shield"
                 "vllm_url_fixture": "qwen_isvc_url",
                 "inference_model": QWEN_MODEL_NAME,
                 "fms_orchestrator_url_fixture": "guardrails_orchestrator_url",
+                "embedding_provider": "sentence-transformers",
             },
         )
     ],
