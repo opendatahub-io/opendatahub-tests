@@ -89,7 +89,7 @@ def teardown_lmeval_job_pod(admin_client, model_namespace) -> None:
     if pods := [
         pod
         for pod in Pod.get(
-            dyn_client=admin_client, namespace=model_namespace.name, label_selector="app.kubernetes.io/name=ta-lmes"
+            client=admin_client, namespace=model_namespace.name, label_selector="app.kubernetes.io/name=ta-lmes"
         )
     ]:
         for pod in pods:
@@ -198,7 +198,7 @@ def dspa_route(
     def _get_dspa_route() -> Route | None:
         routes = list(
             Route.get(
-                dyn_client=admin_client,
+                client=admin_client,
                 namespace=model_namespace.name,
                 name="ds-pipeline-dspa",
             )
