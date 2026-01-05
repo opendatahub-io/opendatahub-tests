@@ -113,7 +113,7 @@ def verify_llmd_no_failed_pods(
         """Get LLMD workload pods for this LLMInferenceService."""
         pods = []
         for pod in Pod.get(
-            dyn_client=client,
+            client=client,
             namespace=llm_service.namespace,
             label_selector=(
                 f"{Pod.ApiGroup.APP_KUBERNETES_IO}/part-of=llminferenceservice,"

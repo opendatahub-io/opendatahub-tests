@@ -103,7 +103,7 @@ class TestKueueInferenceServiceRaw:
             Deployment.get(
                 label_selector=",".join(deployment_labels),
                 namespace=kueue_raw_inference_service.namespace,
-                dyn_client=admin_client,
+                client=admin_client,
             )
         )
         assert len(deployments) == EXPECTED_DEPLOYMENTS, (
