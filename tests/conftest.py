@@ -357,7 +357,7 @@ def non_admin_user_password(
 
     if users_Secret := list(
         Secret.get(
-            dyn_client=admin_client,
+            client=admin_client,
             name=secret_name,
             namespace=secret_ns,
         )
@@ -635,7 +635,7 @@ def minio_data_connection(
 
 @pytest.fixture(scope="session")
 def nodes(admin_client: DynamicClient) -> Generator[list[Node], Any, Any]:
-    yield list(Node.get(dyn_client=admin_client))
+    yield list(Node.get(client=admin_client))
 
 
 @pytest.fixture(scope="session")

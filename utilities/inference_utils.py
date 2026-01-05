@@ -746,7 +746,7 @@ def create_isvc(
         if wait and not stop_resume:
             # Modelmesh 2nd server in the ns will fail to be Ready; isvc needs to be re-applied
             if deployment_mode == KServeDeploymentType.MODEL_MESH:
-                for isvc in InferenceService.get(dyn_client=client, namespace=namespace):
+                for isvc in InferenceService.get(client=client, namespace=namespace):
                     _runtime = get_inference_serving_runtime(isvc=isvc)
                     isvc_annotations = isvc.instance.metadata.annotations
                     if (

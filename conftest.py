@@ -513,7 +513,7 @@ def fail_if_missing_dependent_operators(admin_client: DynamicClient) -> None:
         for operator_name in dependent_operators.split(","):
             csvs = list(
                 ClusterServiceVersion.get(
-                    dyn_client=admin_client,
+                    client=admin_client,
                     namespace=py_config["applications_namespace"],
                 )
             )

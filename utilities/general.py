@@ -250,7 +250,7 @@ def wait_for_pods_by_labels(
     """
     pods = list(
         Pod.get(
-            dyn_client=admin_client,
+            client=admin_client,
             namespace=namespace,
             label_selector=label_selector,
         )
@@ -448,7 +448,7 @@ def wait_for_pods_running(
         wait_timeout=180,
         sleep=5,
         func=get_not_running_pods,
-        pods=list(Pod.get(dyn_client=admin_client, namespace=namespace_name)),
+        pods=list(Pod.get(client=admin_client, namespace=namespace_name)),
         exceptions_dict={NotFoundError: [], ResourceNotFoundError: []},
     )
     sample = None

@@ -12,7 +12,7 @@ LOGGER = get_logger(name=__name__)
 
 
 def get_cluster_service_version(client: DynamicClient, prefix: str, namespace: str) -> ClusterServiceVersion:
-    csvs = ClusterServiceVersion.get(dyn_client=client, namespace=namespace)
+    csvs = ClusterServiceVersion.get(client=client, namespace=namespace)
     LOGGER.info(f"Looking for {prefix} CSV in namespace {namespace}")
     matching_csvs = [csv for csv in csvs if csv.name.startswith(prefix)]
 
