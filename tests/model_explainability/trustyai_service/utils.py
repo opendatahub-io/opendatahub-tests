@@ -43,7 +43,7 @@ def wait_for_mariadb_pods(client: DynamicClient, mariadb: MariaDB, timeout: int 
         _pods = [
             _pod
             for _pod in Pod.get(
-                dyn_client=client,
+                client=client,
                 namespace=mariadb.namespace,
                 label_selector=f"app.kubernetes.io/instance={mariadb.name}",
             )
@@ -92,7 +92,7 @@ def validate_trustyai_service_db_conn_failure(
         UnexpectedFailureError: if the pod failure is different from the expected failure mode.
 
     """
-    pods = list(Pod.get(dyn_client=client, namespace=namespace.name, label_selector=label_selector))
+    pods = list(Pod.get(client=client, namespace=namespace.name, label_selector=label_selector))
     mariadb_conn_failure_regex = (
         r"^.+ERROR.+Could not connect to mariadb:.+ PKIX path validation failed: "
         r"java\.security\.cert\.CertPathValidatorException: signature check failed"
