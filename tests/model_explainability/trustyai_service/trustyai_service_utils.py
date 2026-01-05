@@ -363,7 +363,7 @@ def wait_for_isvc_deployment_registered_by_trustyai_service(
     def _get_pods() -> list[Pod]:
         return list(
             Pod.get(
-                dyn_client=client,
+                client=client,
                 namespace=isvc.namespace,
                 label_selector=pod_label_selector,
             )
