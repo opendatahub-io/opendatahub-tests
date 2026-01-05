@@ -422,7 +422,7 @@ def user_workload_monitoring_config_map(
         yield cm
 
     # UWM PVCs are not deleted once the configmap is deleted; forcefully deleting the PVCs to avoid having left-overs
-    for pvc in PersistentVolumeClaim.get(dyn_client=admin_client, namespace=uwm_namespace):
+    for pvc in PersistentVolumeClaim.get(client=admin_client, namespace=uwm_namespace):
         pvc.clean_up()
 
 
@@ -453,7 +453,7 @@ def _is_kueue_operator_installed(admin_client: DynamicClient) -> bool:
     try:
         csvs = list(
             ClusterServiceVersion.get(
-                dyn_client=admin_client,
+                client=admin_client,
                 namespace=py_config.get("applications_namespace", "openshift-operators"),
             )
         )

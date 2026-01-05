@@ -101,7 +101,7 @@ class TestKueueLLMDScaleUp:
             Deployment.get(
                 label_selector=",".join(selector_labels),
                 namespace=llmd_inference_service.namespace,
-                dyn_client=unprivileged_client,
+                client=unprivileged_client,
             )
         )
         assert len(deployments) == EXPECTED_DEPLOYMENTS, (

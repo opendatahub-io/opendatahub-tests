@@ -22,7 +22,7 @@ def verify_pod_containers_not_restarted(client: DynamicClient, component_name: s
     restarted_containers = {}
 
     for pod in Pod.get(
-        dyn_client=client,
+        client=client,
         namespace=py_config["applications_namespace"],
         label_selector=f"{Pod.ApiGroup.APP_KUBERNETES_IO}/part-of={component_name}",
     ):
