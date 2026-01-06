@@ -252,7 +252,7 @@ def wait_for_inference_deployment_replicas(
             exceptions_dict=DEFAULT_CLUSTER_RETRY_EXCEPTIONS,
             func=Deployment.get,
             label_selector=label_selector,
-            dyn_client=client,
+            client=client,
             namespace=ns,
         ):
             deployment_list = list(deployments)
@@ -535,7 +535,7 @@ def get_services_by_isvc_label(
     if svcs := [
         svc
         for svc in Service.get(
-            dyn_client=client,
+            client=client,
             namespace=isvc.namespace,
             label_selector=label_selector,
         )
@@ -562,7 +562,7 @@ def get_pods_by_ig_label(client: DynamicClient, ig: InferenceGraph) -> list[Pod]
     if pods := [
         pod
         for pod in Pod.get(
-            dyn_client=client,
+            client=client,
             namespace=ig.namespace,
             label_selector=label_selector,
         )
@@ -592,7 +592,7 @@ def get_pods_by_isvc_label(client: DynamicClient, isvc: InferenceService, runtim
     if pods := [
         pod
         for pod in Pod.get(
-            dyn_client=client,
+            client=client,
             namespace=isvc.namespace,
             label_selector=label_selector,
         )
@@ -687,7 +687,7 @@ def get_model_route(client: DynamicClient, isvc: InferenceService) -> Route:
     if routes := [
         route
         for route in Route.get(
-            dyn_client=client,
+            client=client,
             namespace=isvc.namespace,
             label_selector=f"inferenceservice-name={isvc.name}",
         )
@@ -869,7 +869,7 @@ def get_product_version(admin_client: DynamicClient) -> Version:
 
     """
     operator_version: str = ""
-    for csv in ClusterServiceVersion.get(dyn_client=admin_client, namespace=py_config["applications_namespace"]):
+    for csv in ClusterServiceVersion.get(client=admin_client, namespace=py_config["applications_namespace"]):
         if re.match("rhods|opendatahub", csv.name):
             operator_version = csv.instance.spec.version
             break
@@ -981,7 +981,7 @@ def wait_for_serverless_pods_deletion(resource: Project | Namespace, admin_clien
 
     """
     client = admin_client or get_client()
-    for pod in Pod.get(dyn_client=client, namespace=resource.name):
+    for pod in Pod.get(client=client, namespace=resource.name):
         try:
             if (
                 pod.exists
@@ -1020,7 +1020,7 @@ def wait_for_isvc_pods(client: DynamicClient, isvc: InferenceService, runtime_na
 
 
 def get_rhods_subscription() -> Subscription | None:
-    subscriptions = Subscription.get(dyn_client=get_client(), namespace=RHOAI_OPERATOR_NAMESPACE)
+    subscriptions = Subscription.get(client=get_client(), namespace=RHOAI_OPERATOR_NAMESPACE)
     if subscriptions:
         for subscription in subscriptions:
             LOGGER.info(f"Checking subscription {subscription.name}")
