@@ -158,7 +158,7 @@ class TestModelRegistryCreationRest:
             f"{k}={v}" for k, v in model_registry_default_postgres_deployment_match_label.items()
         ])
         LOGGER.info(label_selector)
-        pods = list(Pod.get(dyn_client=admin_client, namespace=model_registry_namespace, label_selector=label_selector))
+        pods = list(Pod.get(client=admin_client, namespace=model_registry_namespace, label_selector=label_selector))
         assert pods, (
             "No pods found for default postgres deployment with "
             f"label: {model_registry_default_postgres_deployment_match_label}"

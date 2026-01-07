@@ -396,7 +396,7 @@ def catalog_config_map(admin_client: DynamicClient, model_registry_namespace: st
 @pytest.fixture(scope="class")
 def model_catalog_routes(admin_client: DynamicClient, model_registry_namespace: str) -> list[Route]:
     return list(
-        Route.get(namespace=model_registry_namespace, label_selector="component=model-catalog", dyn_client=admin_client)
+        Route.get(namespace=model_registry_namespace, label_selector="component=model-catalog", client=admin_client)
     )
 
 

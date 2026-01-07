@@ -97,7 +97,7 @@ def get_pod_by_deployment_name(admin_client: DynamicClient, namespace: str, depl
     label_selector = ",".join([f"{k}={v}" for k, v in deployment_instance.spec.selector.matchLabels.items()])
     pods = list(
         Pod.get(
-            dyn_client=admin_client,
+            client=admin_client,
             namespace=namespace,
             label_selector=label_selector,
         )

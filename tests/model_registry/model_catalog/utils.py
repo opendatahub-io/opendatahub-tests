@@ -22,7 +22,7 @@ def get_catalog_url_and_headers(
     Get model catalog URL and authentication headers from route.
     """
     model_catalog_routes = list(
-        Route.get(namespace=model_registry_namespace, label_selector="component=model-catalog", dyn_client=admin_client)
+        Route.get(namespace=model_registry_namespace, label_selector="component=model-catalog", client=admin_client)
     )
     assert model_catalog_routes, f"Model catalog routes not found in namespace {model_registry_namespace}"
 
