@@ -90,7 +90,7 @@ def get_pod_by_deployment_name(admin_client: DynamicClient, namespace: str, depl
         AssertionError: If exactly one pod is not found
     """
     # First ensure the deployment exists
-    deployment = Deployment(name=deployment_name, namespace=namespace, ensure_exists=True)
+    deployment = Deployment(client=admin_client, name=deployment_name, namespace=namespace, ensure_exists=True)
     deployment_instance = deployment.instance
 
     # Get pods using the deployment's label selector

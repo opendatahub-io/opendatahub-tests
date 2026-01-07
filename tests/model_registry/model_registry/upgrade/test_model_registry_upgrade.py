@@ -109,7 +109,7 @@ class TestPostUpgradeModelRegistry:
         Steps:
             After upgrade check if the storedVersion for CRD contains v1beta1
         """
-        mr_crd = CustomResourceDefinition(name="modelregistries.modelregistry.opendatahub.io")
+        mr_crd = CustomResourceDefinition(client=admin_client, name="modelregistries.modelregistry.opendatahub.io")
         assert mr_crd.exists
         expected_stored_version = "v1beta1"
         stored_version = mr_crd.instance.status.storedVersions
