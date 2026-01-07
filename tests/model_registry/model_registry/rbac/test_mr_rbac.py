@@ -22,8 +22,8 @@ from ocp_resources.secret import Secret
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.service import Service
 from ocp_resources.deployment import Deployment
-from tests.model_registry.rbac.multiple_instance_utils import MR_MULTIPROJECT_TEST_SCENARIO_PARAMS
-from tests.model_registry.rbac.utils import (
+from tests.model_registry.model_registry.rbac.multiple_instance_utils import MR_MULTIPROJECT_TEST_SCENARIO_PARAMS
+from tests.model_registry.model_registry.rbac.utils import (
     build_mr_client_args,
     assert_positive_mr_registry,
     assert_forbidden_access,
@@ -35,7 +35,7 @@ from utilities.user_utils import UserTestSession
 from kubernetes.dynamic import DynamicClient
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from tests.model_registry.utils import get_mr_service_by_label, get_endpoint_from_mr_service, get_mr_user_token
-from tests.model_registry.rbac.utils import grant_mr_access, revoke_mr_access
+from tests.model_registry.model_registry.rbac.utils import grant_mr_access, revoke_mr_access
 from utilities.constants import Protocols
 
 

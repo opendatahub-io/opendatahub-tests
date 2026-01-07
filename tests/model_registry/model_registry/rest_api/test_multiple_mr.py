@@ -12,7 +12,7 @@ from tests.model_registry.constants import (
     DEFAULT_CUSTOM_MODEL_CATALOG,
     DEFAULT_MODEL_CATALOG_CM,
 )
-from tests.model_registry.rest_api.utils import (
+from tests.model_registry.model_registry.rest_api.utils import (
     validate_resource_attributes,
     get_register_model_data,
     register_model_rest_api,

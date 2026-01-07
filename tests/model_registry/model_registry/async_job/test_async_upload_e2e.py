@@ -5,10 +5,10 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.job import Job
 from model_registry.types import ArtifactState, RegisteredModelState
-from tests.model_registry.async_job.constants import (
+from tests.model_registry.model_registry.async_job.constants import (
     ASYNC_UPLOAD_JOB_NAME,
 )
-from tests.model_registry.async_job.utils import (
+from tests.model_registry.model_registry.async_job.utils import (
     get_latest_job_pod,
     pull_manifest_from_oci_registry,
 )
@@ -16,7 +16,7 @@ from tests.model_registry.constants import MODEL_DICT
 from utilities.constants import MinIo, OCIRegistry
 from model_registry import ModelRegistry as ModelRegistryClient
 from simple_logger.logger import get_logger
-from tests.model_registry.async_job.constants import MODEL_SYNC_CONFIG, REPO_NAME, TAG
+from tests.model_registry.model_registry.async_job.constants import MODEL_SYNC_CONFIG, REPO_NAME, TAG
 
 LOGGER = get_logger(name=__name__)
 

@@ -1,7 +1,7 @@
 import pytest
 import requests
 from typing import Self, Any
-from tests.model_registry.rest_api.utils import register_model_rest_api, validate_resource_attributes
+from tests.model_registry.model_registry.rest_api.utils import register_model_rest_api, validate_resource_attributes
 from tests.model_registry.utils import get_mr_service_by_label, get_endpoint_from_mr_service
 from kubernetes.dynamic import DynamicClient
 from utilities.constants import Protocols
