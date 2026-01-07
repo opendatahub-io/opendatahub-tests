@@ -31,4 +31,4 @@ def resource_pods(request: FixtureRequest, admin_client: DynamicClient) -> list[
     namespace = request.param.get("namespace")
     label_selector = request.param.get("label_selector")
     assert namespace
-    return list(Pod.get(namespace=namespace, label_selector=label_selector, dyn_client=admin_client))
+    return list(Pod.get(namespace=namespace, label_selector=label_selector, client=admin_client))

@@ -64,7 +64,7 @@ def get_mr_service_by_label(client: DynamicClient, namespace_name: str, mr_insta
     if svc := [
         svcs
         for svcs in Service.get(
-            dyn_client=client,
+            client=client,
             namespace=namespace_name,
             label_selector=f"app={mr_instance.name},component=model-registry",
         )
@@ -246,7 +246,7 @@ def wait_for_new_running_mr_pod(
     LOGGER.info("Waiting for pod to be replaced")
     pods = list(
         Pod.get(
-            dyn_client=admin_client,
+            client=admin_client,
             namespace=namespace,
             label_selector=MODEL_REGISTRY_POD_FILTER,
         )
@@ -663,7 +663,7 @@ def validate_mlmd_removal_in_model_registry_pod_log(
 def get_model_catalog_pod(
     client: DynamicClient, model_registry_namespace: str, label_selector: str = "app.kubernetes.io/name=model-catalog"
 ) -> list[Pod]:
-    return list(Pod.get(namespace=model_registry_namespace, label_selector=label_selector, dyn_client=client))
+    return list(Pod.get(namespace=model_registry_namespace, label_selector=label_selector, client=client))
 
 
 def get_rest_headers(token: str) -> dict[str, str]:

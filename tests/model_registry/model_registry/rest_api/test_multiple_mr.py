@@ -12,7 +12,7 @@ from tests.model_registry.constants import (
     DEFAULT_CUSTOM_MODEL_CATALOG,
     DEFAULT_MODEL_CATALOG_CM,
 )
-from tests.model_registry.rest_api.utils import (
+from tests.model_registry.model_registry.rest_api.utils import (
     validate_resource_attributes,
     get_register_model_data,
     register_model_rest_api,
@@ -59,7 +59,7 @@ class TestModelRegistryMultipleInstances:
         """
         config_map_names: list[str] = []
         expected_number_config_maps: int = 2
-        for config_map in list(ConfigMap.get(namespace=model_registry_namespace, dyn_client=admin_client)):
+        for config_map in list(ConfigMap.get(namespace=model_registry_namespace, client=admin_client)):
             if config_map.name.startswith(tuple([DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM])):
                 config_map_names.append(config_map.name)
         assert len(config_map_names) == expected_number_config_maps, (

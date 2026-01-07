@@ -9,6 +9,7 @@ from kubernetes.dynamic import DynamicClient
 
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.resource import ResourceEditor
+from ocp_resources.route import Route
 from ocp_resources.service_account import ServiceAccount
 from tests.model_registry.model_catalog.constants import (
     SAMPLE_MODEL_NAME3,
@@ -122,6 +123,7 @@ def updated_catalog_config_map(
             wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
             yield catalog_config_map
         is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+        wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
 
 @pytest.fixture(scope="class")
@@ -332,7 +334,12 @@ def models_from_filter_query(
 
 
 @pytest.fixture()
-def labels_configmap_patch(admin_client: DynamicClient, model_registry_namespace: str) -> dict[str, Any]:
+def labels_configmap_patch(
+    admin_client: DynamicClient,
+    model_registry_namespace: str,
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+) -> Generator[dict[str, Any], None, None]:
     # Get the editable ConfigMap
     sources_cm = ConfigMap(name=DEFAULT_CUSTOM_MODEL_CATALOG, client=admin_client, namespace=model_registry_namespace)
 
@@ -352,7 +359,10 @@ def labels_configmap_patch(admin_client: DynamicClient, model_registry_namespace
     patches = {"data": {"sources.yaml": yaml.dump(current_data, default_flow_style=False)}}
 
     with ResourceEditor(patches={sources_cm: patches}):
+        is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+        wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
         yield patches
+    is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
 
 
 @pytest.fixture()
@@ -377,3 +387,28 @@ def updated_catalog_config_map_scope_function(
         wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
         yield catalog_config_map
     is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+
+
+@pytest.fixture(scope="class")
+def catalog_config_map(admin_client: DynamicClient, model_registry_namespace: str) -> ConfigMap:
+    return ConfigMap(name=DEFAULT_CUSTOM_MODEL_CATALOG, client=admin_client, namespace=model_registry_namespace)
+
+
+@pytest.fixture(scope="class")
+def model_catalog_routes(admin_client: DynamicClient, model_registry_namespace: str) -> list[Route]:
+    return list(
+        Route.get(namespace=model_registry_namespace, label_selector="component=model-catalog", client=admin_client)
+    )
+
+
+@pytest.fixture(scope="class")
+def model_catalog_rest_url(model_registry_namespace: str, model_catalog_routes: list[Route]) -> list[str]:
+    assert model_catalog_routes, f"Model catalog routes does not exist in {model_registry_namespace}"
+    route_urls = [
+        f"https://{route.instance.spec.host}:443/api/model_catalog/v1alpha1/" for route in model_catalog_routes
+    ]
+    assert route_urls, (
+        "Model catalog routes information could not be found from "
+        f"routes:{[route.name for route in model_catalog_routes]}"
+    )
+    return route_urls

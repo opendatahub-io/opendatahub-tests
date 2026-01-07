@@ -16,7 +16,7 @@ def get_latest_job_pod(admin_client: DynamicClient, job: Job) -> Pod:
     """Get the latest (most recently created) Pod created by a Job"""
     pods = list(
         Pod.get(
-            dyn_client=admin_client,
+            client=admin_client,
             namespace=job.namespace,
             label_selector=f"job-name={job.name}",
         )
