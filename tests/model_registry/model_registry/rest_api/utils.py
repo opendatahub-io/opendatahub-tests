@@ -12,7 +12,7 @@ from tests.model_registry.exceptions import (
     ModelRegistryResourceNotCreated,
     ModelRegistryResourceNotUpdated,
 )
-from tests.model_registry.rest_api.constants import MODEL_REGISTRY_BASE_URI, MODEL_REGISTER_DATA
+from tests.model_registry.model_registry.rest_api.constants import MODEL_REGISTRY_BASE_URI, MODEL_REGISTER_DATA
 from pyhelper_utils.shell import run_command
 from utilities.exceptions import ResourceValueMismatch
 

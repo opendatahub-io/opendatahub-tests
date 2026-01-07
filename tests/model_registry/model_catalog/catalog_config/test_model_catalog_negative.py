@@ -6,7 +6,7 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.resource import ResourceEditor
 from tests.model_registry.constants import DEFAULT_MODEL_CATALOG_CM
 from tests.model_registry.model_catalog.constants import DEFAULT_CATALOGS
-from tests.model_registry.model_catalog.utils import validate_model_catalog_configmap_data
+from tests.model_registry.model_catalog.catalog_config.utils import validate_model_catalog_configmap_data
 from tests.model_registry.utils import execute_get_command
 
 LOGGER = get_logger(name=__name__)

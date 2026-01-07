@@ -2,11 +2,13 @@ import pytest
 from typing import Self
 from simple_logger.logger import get_logger
 from ocp_resources.config_map import ConfigMap
-from tests.model_registry.model_catalog.utils import (
+from tests.model_registry.model_catalog.metadata.utils import (
     validate_filter_options_structure,
+    compare_filter_options_with_database,
+)
+from tests.model_registry.model_catalog.utils import (
     execute_database_query,
     parse_psql_output,
-    compare_filter_options_with_database,
 )
 from tests.model_registry.model_catalog.db_constants import (
     FILTER_OPTIONS_DB_QUERY,
