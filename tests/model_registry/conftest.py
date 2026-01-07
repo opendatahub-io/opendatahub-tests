@@ -85,7 +85,7 @@ def updated_dsc_component_state_scope_session(
             resource_editor.update(backup_resources=True)
             wait_for_dsc_status_ready(dsc_resource=dsc_resource)
             # now delete the original namespace:
-            original_namespace = Namespace(name=original_namespace_name, wait_for_resource=True)
+            original_namespace = Namespace(client=admin_client, name=original_namespace_name, wait_for_resource=True)
             original_namespace.delete(wait=True)
             # Now enable it with the custom namespace
             with ResourceEditor(
@@ -102,7 +102,9 @@ def updated_dsc_component_state_scope_session(
                     }
                 }
             ):
-                namespace = Namespace(name=py_config["model_registry_namespace"], wait_for_resource=True)
+                namespace = Namespace(
+                    client=admin_client, name=py_config["model_registry_namespace"], wait_for_resource=True
+                )
                 namespace.wait_for_status(status=Namespace.Status.ACTIVE)
                 wait_for_pods_running(
                     admin_client=admin_client,
@@ -200,7 +202,7 @@ def api_server_url(admin_client: DynamicClient) -> str:
 
 @pytest.fixture(scope="module")
 def created_htpasswd_secret(
-    is_byoidc: bool, original_user: str, user_credentials_rbac: dict[str, str]
+    is_byoidc: bool, admin_client: DynamicClient, original_user: str, user_credentials_rbac: dict[str, str]
 ) -> Generator[UserTestSession | None, None, None]:
     """
     Session-scoped fixture that creates a test IDP user and cleans it up after all tests.
@@ -216,6 +218,7 @@ def created_htpasswd_secret(
         try:
             LOGGER.info(f"Creating secret {user_credentials_rbac['secret_name']} in openshift-config namespace")
             with Secret(
+                client=admin_client,
                 name=user_credentials_rbac["secret_name"],
                 namespace="openshift-config",
                 htpasswd=htpasswd_b64,
@@ -236,7 +239,7 @@ def updated_oauth_config(
         yield
     else:
         # Get current providers and add the new one
-        oauth = OAuth(name="cluster")
+        oauth = OAuth(client=admin_client, name="cluster")
         identity_providers = oauth.instance.spec.identityProviders
 
         new_idp = {
@@ -291,7 +294,9 @@ def model_registry_instance(
 ) -> Generator[list[Any], Any, Any]:
     param = getattr(request, "param", {})
     if pytestconfig.option.post_upgrade:
-        mr_instance = ModelRegistry(name=MR_INSTANCE_NAME, namespace=model_registry_namespace, ensure_exists=True)
+        mr_instance = ModelRegistry(
+            client=admin_client, name=MR_INSTANCE_NAME, namespace=model_registry_namespace, ensure_exists=True
+        )
         yield [mr_instance]
         mr_instance.delete(wait=True)
     else:
@@ -333,15 +338,33 @@ def model_registry_metadata_db_resources(
 
     if pytestconfig.option.post_upgrade:
         resources = {
-            Secret: [Secret(name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True)],
-            PersistentVolumeClaim: [
-                PersistentVolumeClaim(name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True)
+            Secret: [
+                Secret(
+                    client=admin_client, name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True
+                )
             ],
-            Service: [Service(name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True)],
-            ConfigMap: [ConfigMap(name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True)]
+            PersistentVolumeClaim: [
+                PersistentVolumeClaim(
+                    client=admin_client, name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True
+                )
+            ],
+            Service: [
+                Service(
+                    client=admin_client, name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True
+                )
+            ],
+            ConfigMap: [
+                ConfigMap(
+                    client=admin_client, name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True
+                )
+            ]
             if db_backend == "mariadb"
             else [],
-            Deployment: [Deployment(name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True)],
+            Deployment: [
+                Deployment(
+                    client=admin_client, name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True
+                )
+            ],
         }
         yield resources
         for kind in [Deployment, ConfigMap, Service, PersistentVolumeClaim, Secret]:

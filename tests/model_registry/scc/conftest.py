@@ -32,8 +32,8 @@ def skip_if_not_valid_check(request) -> None:
 
 
 @pytest.fixture(scope="class")
-def model_registry_scc_namespace(model_registry_namespace: str):
-    mr_annotations = Namespace(name=model_registry_namespace).instance.metadata.annotations
+def model_registry_scc_namespace(admin_client: DynamicClient, model_registry_namespace: str):
+    mr_annotations = Namespace(client=admin_client, name=model_registry_namespace).instance.metadata.annotations
     return {
         "seLinuxOptions": mr_annotations.get("openshift.io/sa.scc.mcs"),
         "uid-range": mr_annotations.get("openshift.io/sa.scc.uid-range"),
@@ -41,8 +41,11 @@ def model_registry_scc_namespace(model_registry_namespace: str):
 
 
 @pytest.fixture(scope="function")
-def deployment_model_registry_ns(request: FixtureRequest, model_registry_namespace: str) -> Deployment:
+def deployment_model_registry_ns(
+    request: FixtureRequest, admin_client: DynamicClient, model_registry_namespace: str
+) -> Deployment:
     return Deployment(
+        client=admin_client,
         name=request.param.get("deployment_name", MR_INSTANCE_NAME),
         namespace=model_registry_namespace,
         ensure_exists=True,
