@@ -3,6 +3,7 @@ from contextlib import ExitStack
 import pytest
 from pytest import Config, FixtureRequest
 from typing import Generator, Any
+import os
 
 from ocp_resources.infrastructure import Infrastructure
 from ocp_resources.oauth import OAuth
@@ -14,7 +15,7 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.service import Service
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.deployment import Deployment
-
+from ocp_resources.service_account import ServiceAccount
 from ocp_resources.resource import ResourceEditor
 
 from simple_logger.logger import get_logger
@@ -28,6 +29,8 @@ from tests.model_registry.utils import (
     get_model_registry_objects,
     get_model_registry_metadata_resources,
     wait_for_default_resource_cleanedup,
+    generate_namespace_name,
+    get_rest_headers,
 )
 
 from utilities.general import generate_random_name, wait_for_pods_running
@@ -371,8 +374,6 @@ def model_registry_metadata_db_resources(
 
 @pytest.fixture(scope="class")
 def model_registry_rest_headers(current_client_token: str) -> dict[str, str]:
-    from tests.model_registry.utils import get_rest_headers
-
     return get_rest_headers(token=current_client_token)
 
 
@@ -381,8 +382,6 @@ def sa_namespace(request: pytest.FixtureRequest, admin_client: DynamicClient) ->
     """
     Creates a namespace
     """
-    import os
-    from tests.model_registry.utils import generate_namespace_name
 
     test_file = os.path.relpath(request.fspath.strpath, start=os.path.dirname(__file__))
     ns_name = generate_namespace_name(file_path=test_file)
@@ -397,7 +396,6 @@ def service_account(admin_client: DynamicClient, sa_namespace: Namespace) -> Gen
     """
     Creates a ServiceAccount.
     """
-    from ocp_resources.service_account import ServiceAccount
 
     sa_name = generate_random_name(prefix="mr-test-user")
     LOGGER.info(f"Creating ServiceAccount: {sa_name} in namespace {sa_namespace.name}")
