@@ -114,7 +114,7 @@ def get_pods_by_isvc_generation(client: DynamicClient, isvc: InferenceService) -
 
     if pods := list(
         Pod.get(
-            dyn_client=client,
+            client=client,
             namespace=isvc.namespace,
             label_selector=f"isvc.generation={isvc_generation}",
         )

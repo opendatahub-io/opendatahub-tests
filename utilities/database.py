@@ -40,7 +40,8 @@ class Database:
     def get_test_start_time(self, test_name: str) -> int:
         with Session(bind=self.engine) as db_session:
             result_row = (
-                db_session.query(OpenDataHubTestTable)
+                db_session
+                .query(OpenDataHubTestTable)
                 .with_entities(OpenDataHubTestTable.start_time)
                 .filter_by(test_name=test_name)
                 .first()

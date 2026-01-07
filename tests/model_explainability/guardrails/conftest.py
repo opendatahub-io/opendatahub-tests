@@ -405,7 +405,7 @@ def wait_for_pods_by_label(
         return [
             pod
             for pod in Pod.get(
-                dyn_client=client,
+                client=client,
                 namespace=namespace,
                 label_selector=label_selector,
             )
@@ -543,7 +543,7 @@ def otelcol_metrics_endpoint(admin_client: DynamicClient, model_namespace: Names
 
     service = next(
         Service.get(
-            dyn_client=admin_client,
+            client=admin_client,
             namespace=model_namespace.name,
             label_selector="app.kubernetes.io/component=opentelemetry-collector",
         )

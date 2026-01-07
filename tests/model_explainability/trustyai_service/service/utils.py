@@ -14,7 +14,7 @@ from utilities.constants import Timeout, TRUSTYAI_SERVICE_NAME
 def wait_for_trustyai_db_migration_complete_log(client: DynamicClient, trustyai_service: TrustyAIService) -> bool:
     trustyai_pod = list(
         Pod.get(
-            dyn_client=client,
+            client=client,
             namespace=trustyai_service.namespace,
             label_selector=f"app.kubernetes.io/instance={trustyai_service.name}",
         )

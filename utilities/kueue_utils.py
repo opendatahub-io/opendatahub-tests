@@ -155,7 +155,7 @@ def check_gated_pods_and_running_pods(
         Pod.get(
             label_selector=",".join(labels),
             namespace=namespace,
-            dyn_client=admin_client,
+            client=admin_client,
         )
     )
     for pod in pods:

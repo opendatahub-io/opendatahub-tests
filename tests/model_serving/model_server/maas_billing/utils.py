@@ -40,7 +40,7 @@ def _first_ready_llmisvc(
     or None if none are Ready.
     """
     for service in LLMInferenceService.get(
-        dyn_client=client,
+        client=client,
         namespace=namespace,
         label_selector=label_selector,
     ):

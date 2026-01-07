@@ -59,7 +59,7 @@ def is_jira_open(jira_id: str, admin_client: DynamicClient) -> bool:
             raise ValueError(f"Jira {jira_id}: status is {jira_status} but does not have fix version(s)")
 
         operator_version: str = ""
-        for csv in ClusterServiceVersion.get(dyn_client=admin_client, namespace=py_config["applications_namespace"]):
+        for csv in ClusterServiceVersion.get(client=admin_client, namespace=py_config["applications_namespace"]):
             if re.match("rhods|opendatahub", csv.name):
                 operator_version = csv.instance.spec.version
                 break

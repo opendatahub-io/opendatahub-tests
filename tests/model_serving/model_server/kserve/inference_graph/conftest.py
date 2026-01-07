@@ -67,7 +67,7 @@ def kserve_raw_headless_service_config(
         logger.info(msg="Waiting for KServe controller to be ready and configuration to propagate...")
         kserve_deployments = list(
             Deployment.get(
-                dyn_client=admin_client,
+                client=admin_client,
                 namespace=py_config.get("applications_namespace", "redhat-ods-applications"),
                 label_selector="control-plane=kserve-controller-manager",
             )
