@@ -28,7 +28,7 @@ dev = [
 ]
 
 [project]
-requires-python = "==3.13.*"
+requires-python = "==3.14.*"
 name = "opendatahub-tests"
 version = "0.1.0"
 description = "Tests repository for Open Data Hub (ODH)"
@@ -70,7 +70,7 @@ dependencies = [
     "marshmallow==3.26.2,<4", # this version is needed for pytest-jira
     "pytest-html>=4.1.1",
     "fire",
-    "llama_stack_client>=0.3.0,<0.4",
+    "llama_stack_client>=0.4,<0.5",
     "pytest-xdist==3.8.0",
     "dictdiffer>=0.9.0",
     "pytest>=9.0.0",
