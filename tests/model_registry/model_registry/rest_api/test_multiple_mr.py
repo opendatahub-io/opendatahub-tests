@@ -42,11 +42,17 @@ LOGGER = get_logger(name=__name__)
 class TestModelRegistryMultipleInstances:
     @pytest.mark.smoke
     def test_validate_multiple_model_registry(
-        self: Self, model_registry_instance: list[ModelRegistry], model_registry_namespace: str
+        self: Self,
+        admin_client: DynamicClient,
+        model_registry_instance: list[ModelRegistry],
+        model_registry_namespace: str,
     ):
         for num in range(0, NUM_RESOURCES["num_resources"]):
             mr = ModelRegistry(
-                name=f"{MR_INSTANCE_BASE_NAME}{num}", namespace=model_registry_namespace, ensure_exists=True
+                client=admin_client,
+                name=f"{MR_INSTANCE_BASE_NAME}{num}",
+                namespace=model_registry_namespace,
+                ensure_exists=True,
             )
             LOGGER.info(f"{mr.name} found")
 
