@@ -113,7 +113,7 @@ def default_notebook(
     auth_annotations = request.param.get("auth_annotations", {})
 
     # Set the correct username
-    username = get_username(dyn_client=admin_client)
+    username = get_username(client=admin_client)
     assert username, "Failed to determine username from the cluster"
 
     # Set the image path based on the resolved notebook_image

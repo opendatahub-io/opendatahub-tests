@@ -119,6 +119,7 @@ def model_registry_db_deployment_negative_test(
     model_registry_db_service_for_negative_tests: Service,
 ) -> Generator[Deployment, Any, Any]:
     with Deployment(
+        client=admin_client,
         name=DB_RESOURCES_NAME_NEGATIVE,
         namespace=model_registry_namespace_for_negative_tests.name,
         annotations={
@@ -168,9 +169,9 @@ def model_registry_db_instance_pod(admin_client: DynamicClient) -> Generator[Pod
 
 
 @pytest.fixture()
-def delete_mr_deployment() -> None:
+def delete_mr_deployment(admin_client: DynamicClient) -> None:
     """Delete the model registry deployment"""
     mr_deployment = Deployment(
-        name=MR_INSTANCE_NAME, namespace=py_config["model_registry_namespace"], ensure_exists=True
+        client=admin_client, name=MR_INSTANCE_NAME, namespace=py_config["model_registry_namespace"], ensure_exists=True
     )
     mr_deployment.delete(wait=True)
