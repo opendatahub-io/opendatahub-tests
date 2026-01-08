@@ -14,9 +14,32 @@ LOGGER = get_logger(name=__name__)
 class TestSourcesEndpoint:
     """Test class for the model catalog sources endpoint."""
 
+    @pytest.mark.smoke
+    def test_available_source_status(
+        self,
+        enabled_model_catalog_config_map: ConfigMap,
+        model_catalog_rest_url: list[str],
+        model_registry_rest_headers: dict[str, str],
+    ):
+        """
+        RHOAIENG-41849: Test that the sources endpoint returns no error for available sources.
+        """
+        response = execute_get_command(url=f"{model_catalog_rest_url[0]}sources", headers=model_registry_rest_headers)
+        items = response.get("items", [])
+        assert items, "Sources not found"
+        for item in items:
+            validate_source_status(catalog=item, expected_status="available")
+            error_value = item["error"]
+            assert error_value is None or error_value == "", (
+                f"Source '{item.get('id')}' should not have error, got: {error_value}"
+            )
+
+            LOGGER.info(
+                f"Available catalog verified - ID: {item.get('id')}, Status: {item.get('status')}, Error: {error_value}"
+            )
+
     @pytest.mark.parametrize("disabled_catalog_source", ["redhat_ai_models"], indirect=True)
-    @pytest.mark.sanity
-    def test_sources_endpoint_status_and_error_fields(
+    def test_disabled_source_status(
         self,
         enabled_model_catalog_config_map: ConfigMap,
         disabled_catalog_source: str,
@@ -24,48 +47,62 @@ class TestSourcesEndpoint:
         model_registry_rest_headers: dict[str, str],
     ):
         """
-        RHOAIENG-41243: Sources endpoint should return both enabled and disabled sources.
-        RHOAIENG-41849: Sources should have status and error fields with correct values.
+        RHOAIENG-41849:
+        This test disables an existing catalog and verifies:
+        - status field is "disabled"
+        - error field is null or empty
         """
         catalog_id = disabled_catalog_source
 
         response = execute_get_command(url=f"{model_catalog_rest_url[0]}sources", headers=model_registry_rest_headers)
         items = response.get("items", [])
 
-        # Verify response contains multiple sources
-        assert items, "Expected sources to be returned"
-
-        # Split sources by status
-        enabled_sources = [item for item in items if item.get("status") == "available"]
-        disabled_sources = [item for item in items if item.get("status") == "disabled"]
-
-        # Verify we have both enabled and disabled sources
-        assert enabled_sources, "Expected at least one enabled source"
-        assert disabled_sources, "Expected at least one disabled source"
-        assert len(enabled_sources) + len(disabled_sources) == len(items), (
-            "All sources should have either 'available' or 'disabled' status"
-        )
-
-        # Validate all enabled sources have correct status and no error
-        for source in enabled_sources:
-            validate_source_status(catalog=source, expected_status="available")
-            error_value = source["error"]
-            assert error_value is None or error_value == "", (
-                f"Enabled source '{source.get('id')}' should not have error, got: {error_value}"
-            )
-
-        # Find and validate the specific disabled catalog from fixture
-        disabled_catalog = next((item for item in disabled_sources if item.get("id") == catalog_id), None)
+        # Find the disabled catalog
+        disabled_catalog = next((item for item in items if item.get("id") == catalog_id), None)
         assert disabled_catalog is not None, f"Disabled catalog '{catalog_id}' not found in sources"
 
-        # Validate status and error fields for disabled catalog
+        # Validate status and error fields
         validate_source_status(catalog=disabled_catalog, expected_status="disabled")
         error_value = disabled_catalog["error"]
         assert error_value is None or error_value == "", (
-            f"Disabled source '{disabled_catalog.get('id')}' should not have error, got: {error_value}"
+            f"Source '{disabled_catalog.get('id')}' should not have error, got: {error_value}"
         )
 
         LOGGER.info(
-            f"Sources endpoint validation complete - Total: {len(items)}, "
-            f"Enabled: {len(enabled_sources)}, Disabled: {len(disabled_sources)}"
+            "Disabled catalog verified - "
+            f"ID: {disabled_catalog.get('id')}, "
+            f"Status: {disabled_catalog.get('status')}, "
+            f"Error: {error_value}"
+        )
+
+    @pytest.mark.parametrize("disabled_catalog_source", ["redhat_ai_models"], indirect=True)
+    @pytest.mark.sanity
+    def test_sources_endpoint_returns_all_sources_regardless_of_enabled_field(
+        self,
+        enabled_model_catalog_config_map: ConfigMap,
+        disabled_catalog_source: str,
+        model_catalog_rest_url: list[str],
+        model_registry_rest_headers: dict[str, str],
+    ):
+        """
+        RHOAIENG-41633: Test that sources endpoint returns ALL sources regardless of enabled field value.
+        """
+        response = execute_get_command(url=f"{model_catalog_rest_url[0]}sources", headers=model_registry_rest_headers)
+        items = response.get("items", [])
+
+        assert len(items) > 1, "Expected multiple sources to be returned"
+
+        # Verify we have at least one enabled source
+        enabled_sources = [item for item in items if item.get("status") == "available"]
+        assert enabled_sources, "Expected at least one enabled source"
+
+        # Verify we have at least one disabled source
+        disabled_sources = [item for item in items if item.get("status") == "disabled"]
+        assert disabled_sources, "Expected at least one disabled source"
+
+        assert len(enabled_sources) + len(disabled_sources) == len(items), "Expected all sources to be returned"
+
+        LOGGER.info(
+            f"Sources endpoint returned {len(items)} total sources: "
+            f"{len(enabled_sources)} enabled, {len(disabled_sources)} disabled"
         )
