@@ -127,13 +127,13 @@ def dog_breed_inference_graph(
 
     try:
         name = request.param["name"]
-    except (AttributeError, KeyError):
+    except AttributeError, KeyError:
         name = "dog-breed-pipeline"
 
     try:
         if not request.param["external-route"]:
             labels[networking_label] = "cluster-local"
-    except (AttributeError, KeyError):
+    except AttributeError, KeyError:
         pass
 
     with InferenceGraph(
@@ -253,7 +253,7 @@ def bare_service_account(
     try:
         if request.param["name"]:
             name = request.param["name"]
-    except (AttributeError, KeyError):
+    except AttributeError, KeyError:
         name = "sa-" + token_hex(4)
 
     with ServiceAccount(

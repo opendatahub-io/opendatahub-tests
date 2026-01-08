@@ -991,7 +991,7 @@ def wait_for_serverless_pods_deletion(resource: Project | Namespace, admin_clien
                 LOGGER.info(f"Waiting for {KServeDeploymentType.SERVERLESS} pod {pod.name} to be deleted")
                 pod.wait_deleted(timeout=Timeout.TIMEOUT_1MIN)
 
-        except (ResourceNotFoundError, NotFoundError):
+        except ResourceNotFoundError, NotFoundError:
             LOGGER.info(f"Pod {pod.name} is deleted")
 
 
