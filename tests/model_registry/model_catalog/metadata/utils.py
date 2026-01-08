@@ -669,29 +669,3 @@ def validate_source_status(catalog: dict[str, Any], expected_status: str) -> Non
     assert catalog.get("status") == expected_status, (
         f"Source '{catalog.get('id')}' status should be '{expected_status}', got: {catalog.get('status')}"
     )
-
-
-def validate_source_error(catalog: dict[str, Any], expected_error_pattern: str | None = None) -> None:
-    """
-    Validate the error field of a catalog source.
-
-    Args:
-        catalog: The catalog source dictionary from API response
-        expected_error_pattern: If provided, check error contains this pattern.
-                              If None, check error is null or empty.
-
-    Raises:
-        AssertionError: If error field does not match expectations
-    """
-    error_value = catalog.get("error")
-
-    if expected_error_pattern is None:
-        # Check error is null or empty
-        assert error_value is None or error_value == "", (
-            f"Source '{catalog.get('id')}' should not have error, got: {error_value}"
-        )
-    else:
-        # Check error contains expected pattern
-        assert expected_error_pattern in error_value, (
-            f"Error message should mention '{expected_error_pattern}', got: {error_value}"
-        )

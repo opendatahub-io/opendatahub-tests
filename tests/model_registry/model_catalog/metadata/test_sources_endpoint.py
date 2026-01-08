@@ -4,7 +4,7 @@ from ocp_resources.config_map import ConfigMap
 from simple_logger.logger import get_logger
 
 from tests.model_registry.utils import execute_get_command
-from tests.model_registry.model_catalog.metadata.utils import validate_source_status, validate_source_error
+from tests.model_registry.model_catalog.metadata.utils import validate_source_status
 
 pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace")]
 
@@ -29,12 +29,13 @@ class TestSourcesEndpoint:
         assert items, "Sources not found"
         for item in items:
             validate_source_status(catalog=item, expected_status="available")
-            validate_source_error(catalog=item)
+            error_value = item["error"]
+            assert error_value is None or error_value == "", (
+                f"Source '{item.get('id')}' should not have error, got: {error_value}"
+            )
+
             LOGGER.info(
-                "Available catalog verified - "
-                f"ID: {item.get('id')}, "
-                f"Status: {item.get('status')}, "
-                f"Error: {item.get('error')}"
+                f"Available catalog verified - ID: {item.get('id')}, Status: {item.get('status')}, Error: {error_value}"
             )
 
     @pytest.mark.parametrize("disabled_catalog_source", ["redhat_ai_models"], indirect=True)
@@ -61,11 +62,14 @@ class TestSourcesEndpoint:
 
         # Validate status and error fields
         validate_source_status(catalog=disabled_catalog, expected_status="disabled")
-        validate_source_error(catalog=disabled_catalog)
+        error_value = disabled_catalog["error"]
+        assert error_value is None or error_value == "", (
+            f"Source '{disabled_catalog.get('id')}' should not have error, got: {error_value}"
+        )
 
         LOGGER.info(
             "Disabled catalog verified - "
             f"ID: {disabled_catalog.get('id')}, "
             f"Status: {disabled_catalog.get('status')}, "
-            f"Error: {disabled_catalog.get('error')}"
+            f"Error: {error_value}"
         )

@@ -49,3 +49,4 @@ def disabled_catalog_source(
         yield catalog_id
 
     is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+    wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
