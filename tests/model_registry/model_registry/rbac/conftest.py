@@ -139,13 +139,16 @@ def created_role_binding_user(
 # RESOURCE FIXTURES PARMETRIZED
 # =============================================================================
 @pytest.fixture(scope="class")
-def db_secret_parametrized(request: FixtureRequest, teardown_resources: bool) -> Generator[List[Secret], Any, Any]:
+def db_secret_parametrized(
+    request: FixtureRequest, admin_client: DynamicClient, teardown_resources: bool
+) -> Generator[List[Secret], Any, Any]:
     """Create DB Secret parametrized"""
     with ExitStack() as stack:
         secrets = [
             stack.enter_context(
                 Secret(
                     **param,
+                    client=admin_client,
                     teardown=teardown_resources,
                 )
             )
@@ -156,7 +159,7 @@ def db_secret_parametrized(request: FixtureRequest, teardown_resources: bool) ->
 
 @pytest.fixture(scope="class")
 def db_pvc_parametrized(
-    request: FixtureRequest, teardown_resources: bool
+    request: FixtureRequest, admin_client: DynamicClient, teardown_resources: bool
 ) -> Generator[List[PersistentVolumeClaim], Any, Any]:
     """Create DB PVC parametrized"""
     with ExitStack() as stack:
@@ -164,6 +167,7 @@ def db_pvc_parametrized(
             stack.enter_context(
                 PersistentVolumeClaim(
                     **param,
+                    client=admin_client,
                     teardown=teardown_resources,
                 )
             )
@@ -173,13 +177,16 @@ def db_pvc_parametrized(
 
 
 @pytest.fixture(scope="class")
-def db_service_parametrized(request: FixtureRequest, teardown_resources: bool) -> Generator[List[Service], Any, Any]:
+def db_service_parametrized(
+    request: FixtureRequest, admin_client: DynamicClient, teardown_resources: bool
+) -> Generator[List[Service], Any, Any]:
     """Create DB Service parametrized"""
     with ExitStack() as stack:
         services = [
             stack.enter_context(
                 Service(
                     **param,
+                    client=admin_client,
                     teardown=teardown_resources,
                 )
             )
@@ -190,7 +197,7 @@ def db_service_parametrized(request: FixtureRequest, teardown_resources: bool) -
 
 @pytest.fixture(scope="class")
 def db_deployment_parametrized(
-    request: FixtureRequest, teardown_resources: bool
+    request: FixtureRequest, admin_client: DynamicClient, teardown_resources: bool
 ) -> Generator[List[Deployment], Any, Any]:
     """Create DB Deployment parametrized"""
     with ExitStack() as stack:
@@ -198,6 +205,7 @@ def db_deployment_parametrized(
             stack.enter_context(
                 Deployment(
                     **param,
+                    client=admin_client,
                     teardown=teardown_resources,
                 )
             )
@@ -217,7 +225,7 @@ def model_registry_instance_parametrized(
     """Create Model Registry instance parametrized"""
     with ExitStack() as stack:
         model_registry_instances = []
-        mr_instances = [stack.enter_context(ModelRegistry(**param)) for param in request.param]
+        mr_instances = [stack.enter_context(ModelRegistry(**param, client=admin_client)) for param in request.param]
         for mr_instance in mr_instances:
             # Common parameters for both ModelRegistry classes
             mr_instance.wait_for_condition(condition="Available", status="True")
