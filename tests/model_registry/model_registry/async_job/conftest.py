@@ -6,7 +6,7 @@ from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.job import Job
 
-from tests.model_registry.async_job.constants import (
+from tests.model_registry.model_registry.async_job.constants import (
     ASYNC_JOB_ANNOTATIONS,
     ASYNC_JOB_LABELS,
     ASYNC_UPLOAD_JOB_NAME,
@@ -33,9 +33,9 @@ from model_registry import ModelRegistry as ModelRegistryClient
 from utilities.infra import create_ns
 from utilities.constants import OCIRegistry, MinIo, Protocols, Labels, ApiGroups
 from utilities.general import b64_encoded_string
-from tests.model_registry.async_job.utils import upload_test_model_to_minio_from_image
+from tests.model_registry.model_registry.async_job.utils import upload_test_model_to_minio_from_image
 from tests.model_registry.utils import get_mr_service_by_label, get_endpoint_from_mr_service
-from tests.model_registry.async_job.constants import REPO_NAME
+from tests.model_registry.model_registry.async_job.constants import REPO_NAME
 from utilities.general import get_s3_secret_dict
 
 

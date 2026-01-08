@@ -5,8 +5,8 @@ from kubernetes.dynamic import DynamicClient
 import pytest
 import copy
 
-from tests.model_registry.rest_api.constants import MODEL_REGISTRY_BASE_URI, MODEL_REGISTER_DATA
-from tests.model_registry.rest_api.utils import (
+from tests.model_registry.model_registry.rest_api.constants import MODEL_REGISTRY_BASE_URI, MODEL_REGISTER_DATA
+from tests.model_registry.model_registry.rest_api.utils import (
     register_model_rest_api,
     execute_model_registry_patch_command,
     get_mr_deployment,
@@ -37,7 +37,7 @@ from utilities.resources.model_registry_modelregistry_opendatahub_io import Mode
 from pytest_testconfig import config as py_config
 from utilities.exceptions import MissingParameter
 import tempfile
-from tests.model_registry.rest_api.utils import generate_ca_and_server_cert
+from tests.model_registry.model_registry.rest_api.utils import generate_ca_and_server_cert
 from utilities.certificates_utils import create_k8s_secret, create_ca_bundle_with_router_cert
 
 LOGGER = get_logger(name=__name__)

@@ -5,7 +5,7 @@ from kubernetes.dynamic import DynamicClient
 from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.constants import VALIDATED_CATALOG_ID
-from tests.model_registry.model_catalog.utils import (
+from tests.model_registry.model_catalog.metadata.utils import (
     extract_custom_property_values,
     validate_custom_properties_structure,
     validate_custom_properties_match_metadata,

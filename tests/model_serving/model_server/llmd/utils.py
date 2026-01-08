@@ -210,7 +210,7 @@ def get_llmd_workload_pods(
     """
     pods = []
     for pod in Pod.get(
-        dyn_client=client,
+        client=client,
         namespace=llmisvc.namespace,
         label_selector=(
             f"{Pod.ApiGroup.APP_KUBERNETES_IO}/part-of=llminferenceservice,"
@@ -238,7 +238,7 @@ def get_llmd_router_scheduler_pod(
         Router-scheduler Pod object or None if not found
     """
     for pod in Pod.get(
-        dyn_client=client,
+        client=client,
         namespace=llmisvc.namespace,
         label_selector=(
             f"{Pod.ApiGroup.APP_KUBERNETES_IO}/part-of=llminferenceservice,"

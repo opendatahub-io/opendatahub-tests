@@ -7,7 +7,7 @@ from simple_logger.logger import get_logger
 from utilities.infra import get_openshift_token
 from timeout_sampler import TimeoutSampler
 
-from tests.model_registry.model_catalog.utils import (
+from tests.model_registry.model_catalog.metadata.utils import (
     get_labels_from_configmaps,
     get_labels_from_api,
     verify_labels_match,

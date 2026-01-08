@@ -17,7 +17,7 @@ from ocp_resources.service import Service
 
 from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
 from tests.model_registry.model_catalog.constants import REDHAT_AI_CATALOG_ID, CATALOG_CONTAINER, DEFAULT_CATALOGS
-from tests.model_registry.model_catalog.utils import (
+from tests.model_registry.model_catalog.catalog_config.utils import (
     validate_model_catalog_enabled,
     validate_model_catalog_resource,
     get_validate_default_model_catalog_source,
