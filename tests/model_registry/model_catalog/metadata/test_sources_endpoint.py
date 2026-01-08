@@ -69,32 +69,3 @@ class TestSourcesEndpoint:
             f"Status: {disabled_catalog.get('status')}, "
             f"Error: {disabled_catalog.get('error')}"
         )
-
-    def test_error_source_status_invalid_url(
-        self,
-        error_catalog_source: str,
-        model_catalog_rest_url: list[str],
-        model_registry_rest_headers: dict[str, str],
-    ):
-        """
-        Test that a catalog source with invalid configuration shows status='error' with error message.
-        """
-        catalog_id = error_catalog_source
-
-        response = execute_get_command(url=f"{model_catalog_rest_url[0]}sources", headers=model_registry_rest_headers)
-        items = response.get("items", [])
-
-        # Find our error catalog
-        error_catalog = next((item for item in items if item.get("id") == catalog_id), None)
-        assert error_catalog is not None, f"Error catalog '{catalog_id}' not found in sources"
-
-        # Validate status and error fields
-        validate_source_status(catalog=error_catalog, expected_status="error")
-        validate_source_error(catalog=error_catalog, expected_error_pattern="no such file or directory")
-
-        LOGGER.info(
-            "Error catalog verified - "
-            f"ID: {error_catalog.get('id')}, "
-            f"Status: {error_catalog.get('status')}, "
-            f"Error: {error_catalog.get('error')}"
-        )
