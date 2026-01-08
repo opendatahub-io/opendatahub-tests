@@ -653,3 +653,19 @@ def verify_labels_match(expected_labels: List[Dict[str, Any]], api_labels: List[
                 break
 
         assert found, f"Expected label not found in API response: {expected_label}"
+
+
+def validate_source_status(catalog: dict[str, Any], expected_status: str) -> None:
+    """
+    Validate the status field of a catalog source.
+
+    Args:
+        catalog: The catalog source dictionary from API response
+        expected_status: The expected status value (e.g., "available", "disabled", "error")
+
+    Raises:
+        AssertionError: If status field does not match expected value
+    """
+    assert catalog.get("status") == expected_status, (
+        f"Source '{catalog.get('id')}' status should be '{expected_status}', got: {catalog.get('status')}"
+    )
