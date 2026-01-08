@@ -22,7 +22,7 @@ class TestSourcesEndpoint:
         model_registry_rest_headers: dict[str, str],
     ):
         """
-        Test that the sources endpoint no error for available sources.
+        Test that the sources endpoint returns no error for available sources.
         """
         response = execute_get_command(url=f"{model_catalog_rest_url[0]}sources", headers=model_registry_rest_headers)
         items = response.get("items", [])
