@@ -168,9 +168,11 @@ class TestModelRegistryCreationRest:
 
     def test_model_registry_validate_api_version(
         self: Self,
-        model_registry_instance,
+        admin_client: DynamicClient,
+        model_registry_instance: list[ModelRegistry],
     ):
         api_version = ModelRegistry(
+            client=admin_client,
             name=model_registry_instance[0].name,
             namespace=model_registry_instance[0].namespace,
             ensure_exists=True,
@@ -181,7 +183,7 @@ class TestModelRegistryCreationRest:
 
     def test_model_registry_validate_kuberbacproxy_enabled(
         self: Self,
-        model_registry_instance,
+        model_registry_instance: list[ModelRegistry],
     ):
         model_registry_instance_spec = model_registry_instance[0].instance.spec
         LOGGER.info(f"Validating that MR is using kubeRBAC proxy {model_registry_instance_spec}")

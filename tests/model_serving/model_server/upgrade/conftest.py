@@ -56,9 +56,9 @@ def s3_connection_fixture(
     namespace_fixture: Namespace,
     aws_access_key_id: str,
     aws_secret_access_key: str,
-    models_s3_bucket_name: str,
-    models_s3_bucket_region: str,
-    models_s3_bucket_endpoint: str,
+    ci_s3_bucket_name: str,
+    ci_s3_bucket_region: str,
+    ci_s3_bucket_endpoint: str,
     teardown_resources: bool,
 ) -> Generator[Secret, Any, Any]:
     secret_kwargs = {
@@ -78,9 +78,9 @@ def s3_connection_fixture(
             **secret_kwargs,
             aws_access_key=aws_access_key_id,
             aws_secret_access_key=aws_secret_access_key,
-            aws_s3_region=models_s3_bucket_region,
-            aws_s3_bucket=models_s3_bucket_name,
-            aws_s3_endpoint=models_s3_bucket_endpoint,
+            aws_s3_region=ci_s3_bucket_region,
+            aws_s3_bucket=ci_s3_bucket_name,
+            aws_s3_endpoint=ci_s3_bucket_endpoint,
             teardown=teardown_resources,
         ) as secret:
             yield secret

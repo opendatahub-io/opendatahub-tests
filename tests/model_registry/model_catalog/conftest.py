@@ -44,7 +44,7 @@ def enabled_model_catalog_config_map(
     admin_client: DynamicClient,
     model_registry_namespace: str,
     current_client_token: str,
-) -> ConfigMap:
+) -> Generator[ConfigMap, None, None]:
     """
     Enable all catalogs in the default model catalog configmap
     """
