@@ -20,13 +20,9 @@ ROUTER_SCHEDULER_CONFIG_ESTIMATED_PREFIX_CACHE = {
         {
             "type": "prefix-cache-scorer",
             "parameters": {
-                "indexerConfig": {
-                    "tokenProcessorConfig": {
-                        "blockSize": PREFIX_CACHE_BLOCK_SIZE,
-                        "hashAlgo": PREFIX_CACHE_HASH_ALGO,
-                        "hashSeed": PREFIX_CACHE_HASH_SEED,
-                    }
-                }
+                "blockSize": PREFIX_CACHE_BLOCK_SIZE,
+                "maxPrefixBlocksToMatch": 256,
+                "lruCapacityPerServer": 31250,
             },
         }
     ],
