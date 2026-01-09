@@ -18,8 +18,7 @@ SERVING_ARGUMENT: List[str] = [
     "--uvicorn-log-level=debug",
     "--dtype=float16",
     "--speculative_config",
-    '{ "model": "/mnt/models/granite-7b-instruct-accelerator", "num_speculative_tokens": 5 }',
-    "--use-v2-block-manager",
+    '{ "model": "/mnt/models/granite-7b-instruct-accelerator", "num_speculative_tokens": 5 }'
 ]
 
 MODEL_PATH: str = "speculative_decoding"
