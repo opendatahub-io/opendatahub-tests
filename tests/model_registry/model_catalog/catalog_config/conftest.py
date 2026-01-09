@@ -2,7 +2,6 @@ import pytest
 import yaml
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.resource import ResourceEditor
-from simple_logger.logger import get_logger
 from typing import Generator
 
 from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG
@@ -12,8 +11,6 @@ from tests.model_registry.utils import (
     is_model_catalog_ready,
     wait_for_model_catalog_api,
 )
-
-LOGGER = get_logger(name=__name__)
 
 
 @pytest.fixture()
@@ -36,8 +33,6 @@ def sparse_override_catalog_source(
     original_catalog = next((item for item in items if item.get("id") == catalog_id), None)
     assert original_catalog is not None, f"Original catalog '{catalog_id}' not found in sources"
 
-    LOGGER.info(f"Original catalog state before sparse override: {original_catalog}")
-
     # Create sparse override YAML with ONLY id, name, and labels
     # Deliberately NOT including some fields that should be inherited from the default ConfigMap
     sparse_catalog_yaml = yaml.dump(
@@ -52,8 +47,6 @@ def sparse_override_catalog_source(
         },
         default_flow_style=False,
     )
-
-    LOGGER.info(f"Sparse override YAML:\n{sparse_catalog_yaml}")
 
     # Write sparse override to custom ConfigMap
     sources_cm = ConfigMap(
