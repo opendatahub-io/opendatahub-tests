@@ -25,9 +25,6 @@ from tests.model_serving.model_server.llmd.utils import (
     verify_gateway_status,
     verify_llm_service_status,
 )
-from simple_logger.logger import get_logger
-
-LOGGER = get_logger(name=__name__)
 
 # Number of requests to send for prefix cache testing
 NUM_REQUESTS = 20
