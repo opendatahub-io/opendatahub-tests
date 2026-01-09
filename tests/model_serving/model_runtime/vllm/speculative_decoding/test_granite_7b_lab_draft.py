@@ -47,7 +47,9 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
     indirect=True,
 )
 class TestGraniteLabDraftModel:
-    @pytest.mark.xfail(reason="vLLM does not support MLPSpeculatorPreTrainedModel architecture for draft model speculative decoding")
+    @pytest.mark.xfail(
+        reason="vLLM does not support MLPSpeculatorPreTrainedModel architecture for draft model speculative decoding"
+    )
     def test_spec_draft_inference(
         self,
         vllm_inference_service: Generator[InferenceService, Any, Any],
@@ -97,7 +99,9 @@ class TestGraniteLabDraftModel:
     indirect=True,
 )
 class TestMultiGraniteLabDraftModel:
-    @pytest.mark.xfail(reason="vLLM does not support MLPSpeculatorPreTrainedModel architecture for draft model speculative decoding")
+    @pytest.mark.xfail(
+        reason="vLLM does not support MLPSpeculatorPreTrainedModel architecture for draft model speculative decoding"
+    )
     def test_multi_spec_draft_inference(
         self,
         vllm_inference_service: Generator[InferenceService, Any, Any],
