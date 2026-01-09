@@ -459,9 +459,11 @@ def singlenode_estimated_prefix_cache(
 ) -> Generator[LLMInferenceService, None, None]:
     """LLMInferenceService fixture for single-node estimated prefix cache test."""
 
+    llmisvc_name = "singlenode-estimated-prefix-cache"
+
     with create_llmisvc(
         client=admin_client,
-        name="singlenode-prefix-cache-test",
+        name=llmisvc_name,
         namespace=unprivileged_model_namespace.name,
         storage_uri=ModelStorage.TINYLLAMA_S3,
         model_name=ModelNames.TINYLLAMA,

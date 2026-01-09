@@ -36,7 +36,7 @@ pytestmark = [pytest.mark.llmd_gpu]
     "unprivileged_model_namespace, authenticated_llmisvc_token",
     [
         pytest.param(
-            {"name": "llmd-singlenode-prefix-cache-test"},
+            {"name": "llmd-test-singlenode-estimated-prefix-cache"},
             {
                 "service_account_fixture": "llmd_s3_service_account",
                 "llmisvc_fixture": "singlenode_estimated_prefix_cache",
