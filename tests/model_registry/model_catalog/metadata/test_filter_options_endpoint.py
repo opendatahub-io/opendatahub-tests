@@ -1,7 +1,6 @@
 import pytest
 from typing import Self
 from simple_logger.logger import get_logger
-from ocp_resources.config_map import ConfigMap
 from tests.model_registry.model_catalog.metadata.utils import (
     validate_filter_options_structure,
     compare_filter_options_with_database,
@@ -51,7 +50,6 @@ class TestFilterOptionsEndpoint:
     )
     def test_filter_options_endpoint_validation(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         model_catalog_rest_url: list[str],
         user_token_for_api_calls: str,
         test_idp_user: UserTestSession,
@@ -104,7 +102,6 @@ class TestFilterOptionsEndpoint:
     )
     def test_comprehensive_coverage_against_database(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         model_catalog_rest_url: list[str],
         user_token_for_api_calls: str,
         model_registry_namespace: str,
@@ -176,7 +173,6 @@ class TestFilterOptionsEndpoint:
     )
     def test_named_queries_in_filter_options(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         model_catalog_rest_url: list[str],
         user_token_for_api_calls: str,
         test_idp_user: UserTestSession,
