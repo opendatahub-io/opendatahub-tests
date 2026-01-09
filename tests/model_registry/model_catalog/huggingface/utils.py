@@ -1,10 +1,15 @@
 import ast
 from typing import Any
+from simple_logger.logger import get_logger
 
+from ocp_resources.pod import Pod
 from tests.model_registry.model_catalog.constants import HF_SOURCE_ID
-from tests.model_registry.model_catalog.utils import LOGGER
+from tests.model_registry.model_catalog.utils import get_models_from_catalog_api
 from tests.model_registry.utils import execute_get_command
 from huggingface_hub import HfApi
+from timeout_sampler import retry
+
+LOGGER = get_logger(name=__name__)
 
 
 def get_huggingface_model_params(model_name: str, huggingface_api: HfApi) -> dict[str, Any]:
@@ -95,3 +100,36 @@ def assert_huggingface_values_matches_model_catalog_api_values(
     if mismatch:
         LOGGER.error(f"mismatches are: {mismatch}")
         raise AssertionError("HF api call and model catalog hf models has value mismatch")
+
+
+@retry(wait_timeout=60, sleep=5)
+def wait_for_huggingface_retrival_match(
+    model_catalog_rest_url: list[str], model_registry_rest_headers: dict[str, str], expected_num_models_from_hf_api: int
+) -> bool | None:
+    """
+    Get some of the fields from HuggingFace API for validation against our model catalog data
+    """
+    # Get all models from the catalog API
+    response = get_models_from_catalog_api(
+        model_catalog_rest_url=model_catalog_rest_url,
+        model_registry_rest_headers=model_registry_rest_headers,
+        page_size=10000,
+    )
+    LOGGER.info(f"response: {response['size']}")
+    models_response = [model["name"] for model in response["items"]]
+    if response["size"] == expected_num_models_from_hf_api:
+        LOGGER.info("All models present in the catalog API.")
+        return True
+    LOGGER.warning(
+        f"Expected {expected_num_models_from_hf_api} "
+        "models to be present in response. "
+        f"Found {response['size']}. Models in "
+        f"response: {models_response}"
+    )
+
+
+def get_model_catalog_pod(namespace: str = "rhoai-model-registries") -> Pod:
+    """Get the PostgreSQL pod for model catalog database."""
+    catalog_pods = list(Pod.get(namespace=namespace, label_selector="app.kubernetes.io/name=model-catalog"))
+    assert catalog_pods, f"No model catalog pod found in namespace {namespace}"
+    return catalog_pods[0]
