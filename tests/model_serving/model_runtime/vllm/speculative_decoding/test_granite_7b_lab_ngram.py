@@ -18,7 +18,7 @@ SERVING_ARGUMENT: List[str] = [
     "--uvicorn-log-level=debug",
     "--dtype=float16",
     "--speculative_config",
-    '{"model": "ngram", "num_speculative_tokens": 5, "prompt_lookup_max": 4}'
+    '{"model": "ngram", "num_speculative_tokens": 5, "prompt_lookup_max": 4}',
 ]
 
 MODEL_PATH: str = "granite-7b-lab"
