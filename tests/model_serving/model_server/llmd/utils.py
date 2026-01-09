@@ -379,27 +379,29 @@ def get_prefix_cache_hits_by_pod(
 
 
 @retry(wait_timeout=90, sleep=30, exceptions_dict={AssertionError: []}, print_log=False)
-def verify_estimated_prefix_cache_metrics(
+def verify_estimated_prefix_cache(
     prometheus: Prometheus,
     llmisvc: LLMInferenceService,
     workload_pods: list[Pod],
     expected_requests: int,
 ) -> None:
     """
-    Verify Prometheus metrics for estimated prefix cache test.
+    Verify that the Estimated Prefix Cache is working correctly via metric assertions.
 
-    Validates:
-    - Request count per pod (cache affinity: all requests on one pod)
-    - Prefix cache hit rate
+    This function polls Prometheus to assess two key behaviors:
+    1. all traffic was routed to a single pod
+    2. the number of prefix cache hits matches
+
+    Retries for up to 90s to allow for metric scraping latency.
 
     Args:
-        prometheus: Prometheus instance
-        llmisvc: The LLMInferenceService
-        workload_pods: List of vLLM workload pods
-        expected_requests: Expected total request count to validate
+        prometheus: Prometheus client.
+        llmisvc: Target Inference Service.
+        workload_pods: List of serving pods.
+        expected_requests: Total expected request count.
 
     Raises:
-        TimeoutError: If metrics don't appear with expected values within timeout
+        AssertionError: If validation fails after the retry timeout.
     """
     LOGGER.info("Checking Estimated Prefix Cache logic...")
 

@@ -21,7 +21,7 @@ from tests.model_serving.model_server.llmd.utils import (
     get_llmd_router_scheduler_pod,
     get_llmd_workload_pods,
     send_prefix_cache_test_requests,
-    verify_estimated_prefix_cache_metrics,
+    verify_estimated_prefix_cache,
     verify_gateway_status,
     verify_llm_service_status,
 )
@@ -86,7 +86,7 @@ class TestSingleNodeEstimatedPrefixCache:
         )
 
         # Verify estimated prefix cache routing using Prometheus metrics
-        verify_estimated_prefix_cache_metrics(
+        verify_estimated_prefix_cache(
             prometheus=prometheus,
             llmisvc=singlenode_estimated_prefix_cache,
             workload_pods=workload_pods,
