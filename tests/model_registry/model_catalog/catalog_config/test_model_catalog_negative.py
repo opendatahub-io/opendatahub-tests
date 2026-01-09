@@ -156,6 +156,21 @@ catalogs:
                 "Hugging Face requires a specific organization",
                 id="test_hf_source_multiple_wildcards",
             ),
+            pytest.param(
+                """
+catalogs:
+  - name: HuggingFace Hub
+    id: error_catalog
+    type: hf
+    enabled: true
+    properties:
+      allowedOrganization: "abc-random"
+    includedModels:
+    - '*'
+""",
+                "failed to expand model patterns: no models found",
+                id="test_hf_source_non_existent_allowed_organization",
+            ),
         ],
         indirect=["updated_catalog_config_map_scope_function"],
     )
