@@ -317,31 +317,34 @@ def send_prefix_cache_test_requests(
     return successful_requests
 
 
-def get_metrics_request_count_per_pod(
+def get_successful_requests_by_pod(
     prometheus: Prometheus,
     llmisvc: LLMInferenceService,
     pods: list[Pod],
 ) -> dict[str, float]:
     """
-    Get request count per pod from Prometheus metrics.
+    Retrieves the total number of successful requests per pod.
+
+    This function queries the `kserve_vllm:request_success_total` counter metric
+    from Prometheus for the specified inference service.
 
     Args:
-        prometheus: Prometheus instance
-        llmisvc: The LLMInferenceService
-        pods: List of pods to query
+        prometheus: The Prometheus client instance.
+        llmisvc: The LLM Inference Service object to filter by.
+        pods: A list of pod names to include in the result.
 
     Returns:
-        dict[str, float]: Mapping of pod name to request count
-
+        dict[str, float]: A dictionary mapping pod names to their respective
+            total successful request counts.
     """
-    pods_request_counts: dict[str, float] = {}
+    success_counts: dict[str, float] = {}
 
     for pod in pods:
         query = f'sum(kserve_vllm:request_success_total{{namespace="{llmisvc.namespace}",pod="{pod.name}"}})'
         count = float(get_metrics_value(prometheus=prometheus, metrics_query=query) or 0)
-        pods_request_counts[pod.name] = count
+        success_counts[pod.name] = count
 
-    return pods_request_counts
+    return success_counts
 
 
 def get_metrics_prefix_cache_hit_rate(
@@ -397,20 +400,19 @@ def verify_estimated_prefix_cache_metrics(
     Raises:
         TimeoutError: If metrics don't appear with expected values within timeout
     """
-    LOGGER.info("Checking Prometheus metrics...")
+    LOGGER.info("Checking Estimated Prefix Cache logic...")
 
-    pods_request_counts = get_metrics_request_count_per_pod(
+    # 1. Verify all traffic is routed to a single pod
+    request_counts = get_successful_requests_by_pod(
         prometheus=prometheus,
         llmisvc=llmisvc,
         pods=workload_pods,
     )
+    LOGGER.info(f"Request count by pod: {request_counts}")
 
-    LOGGER.info(f"Request count by pod: {pods_request_counts}")
-
-    # Assert that only one pod received requests (zero requests on the other pod)
-    assert set(pods_request_counts.values()) == {0, expected_requests}, (
-        f"Expected the values across all pods to be exactly {{0, {expected_requests}}}. "
-        f"Got: {pods_request_counts.values()}"
+    assert set(request_counts.values()) == {0, expected_requests}, (
+        f"Traffic distribution mismatch. Expected all {expected_requests} requests on a single pod. "
+        f"Got: {request_counts.values()}"
     )
 
     # Validate prefix cache hit rate
