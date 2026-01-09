@@ -21,6 +21,7 @@ from utilities.llmd_utils import verify_inference_response_llmd
 from utilities.manifests.tinyllama import TINYLLAMA_INFERENCE_CONFIG
 from utilities.monitoring import get_metrics_value
 
+from tests.model_serving.model_server.llmd.constants import PREFIX_CACHE_BLOCK_SIZE
 
 LOGGER = get_logger(name=__name__)
 
@@ -347,34 +348,34 @@ def get_successful_requests_by_pod(
     return success_counts
 
 
-def get_metrics_prefix_cache_hit_rate(
+def get_prefix_cache_hits_by_pod(
     prometheus: Prometheus,
-    namespace: str,
-    service_name: str,
-) -> float:
+    llmisvc: LLMInferenceService,
+    pods: list[Pod],
+) -> dict[str, float]:
     """
-    Get prefix cache hit rate from Prometheus metrics.
+    Retrieves the total number of prefix cache hits per pod.
 
-    Returns the average cache hit rate for the KServe vLLM service
-    calculated over the last 30 minutes across all pods.
+    This function queries the `kserve_vllm:prefix_cache_hits_total` counter metric
+    from Prometheus for the specified inference service.
 
     Args:
-        prometheus: Prometheus instance
-        namespace: Namespace of the service
-        service_name: Service name for pod label matching
+        prometheus: The Prometheus client instance.
+        llmisvc: The LLM Inference Service object to filter by.
+        pods: A list of pod names to include in the result.
 
     Returns:
-        float: Cache hit rate as decimal between 0 and 1 (e.g., 0.82 = 82%)
+        dict[str, float]: A dictionary mapping pod names to their respective
+            total prefix cache hit counts.
     """
-    query = (
-        f"max("
-        f'rate(kserve_vllm:prefix_cache_hits_total{{namespace="{namespace}",pod=~"{service_name}-.*"}}[30m]) '
-        f"/ "
-        f'rate(kserve_vllm:prefix_cache_queries_total{{namespace="{namespace}",pod=~"{service_name}-.*"}}[30m])'
-        f")"
-    )
-    result = get_metrics_value(prometheus=prometheus, metrics_query=query)
-    return float(result or 0)
+    cache_hits: dict[str, float] = {}
+
+    for pod in pods:
+        query = f'sum(kserve_vllm:prefix_cache_hits_total{{namespace="{llmisvc.namespace}",pod="{pod.name}"}})'
+        count = float(get_metrics_value(prometheus=prometheus, metrics_query=query) or 0)
+        cache_hits[pod.name] = count
+
+    return cache_hits
 
 
 @retry(wait_timeout=90, sleep=30, exceptions_dict={AssertionError: []}, print_log=False)
@@ -415,15 +416,20 @@ def verify_estimated_prefix_cache_metrics(
         f"Got: {request_counts.values()}"
     )
 
-    # Validate prefix cache hit rate
-    hit_rate = get_metrics_prefix_cache_hit_rate(
+    # 2. Verify Prefix Cache Hits
+    # The first request warms the cache, subsequent requests should hit it.
+    cache_hit_counts = get_prefix_cache_hits_by_pod(
         prometheus=prometheus,
-        namespace=llmisvc.namespace,
-        service_name=llmisvc.name,
+        llmisvc=llmisvc,
+        pods=workload_pods,
     )
+    LOGGER.info(f"Prefix cache hits by pod: {cache_hit_counts}")
 
-    # Assert that the hit rate (a value between 0.0 and 1.0) is greater than 0.
-    LOGGER.info(f"Prefix cache hit rate: {hit_rate:.4f}")
-    assert hit_rate > 0, f"Expected prefix cache hit rate to be greater than 0, but got {hit_rate}. "
+    # Logic: (N-1) requests * Block Size
+    expected_hits = (expected_requests - 1) * PREFIX_CACHE_BLOCK_SIZE
+
+    assert set(cache_hit_counts.values()) == {0, expected_hits}, (
+        f"Cache hit mismatch. Expected exactly {expected_hits} hits on the active pod. Got: {cache_hit_counts.values()}"
+    )
 
     return True
