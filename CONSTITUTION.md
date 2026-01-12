@@ -76,7 +76,7 @@ Keep code close to where it is used.
 
 All code MUST consider security implications.
 
-- Never filter, log, or expose sensitive information (secrets, tokens, credentials)
+- Never log/expose secrets; redact/mask if printing is unavoidable
 - Avoid running destructive commands without explicit user confirmation
 - Use detect-secrets and gitleaks pre-commit hooks to prevent secret leakage
 - Test code MUST NOT introduce vulnerabilities into the tested systems

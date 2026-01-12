@@ -31,7 +31,7 @@ uv run pytest --setup-plan tests/model_serving/
 
 ## Project Structure
 
-```
+```text
 tests/                    # Test modules by component
 ├── conftest.py           # Shared fixtures (session/class scope)
 ├── fixtures/             # Extracted fixture modules
