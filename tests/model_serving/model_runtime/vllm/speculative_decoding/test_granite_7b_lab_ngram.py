@@ -19,7 +19,6 @@ SERVING_ARGUMENT: List[str] = [
     "--dtype=float16",
     "--speculative_config",
     '{"model": "ngram", "num_speculative_tokens": 5, "prompt_lookup_max": 4}',
-    "--use-v2-block-manager",
 ]
 
 MODEL_PATH: str = "granite-7b-lab"
