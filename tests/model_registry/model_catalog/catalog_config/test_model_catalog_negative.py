@@ -83,7 +83,7 @@ catalogs:
     type: hf
     enabled: true
 """,
-                "includedModels cannot be empty for HuggingFace catalog",
+                "includedModels cannot be empty for Hugging Face catalog",
                 id="test_hf_source_no_include_model",
             ),
             pytest.param(
@@ -94,11 +94,67 @@ catalogs:
     type: hf
     enabled: true
     includedModels:
-    - ibm-granite/*
+    - abc-random*
 """,
-                "HuggingFace API returned status 401",
-                id="test_hf_source_unauthorized",
-                marks=pytest.mark.xfail(reason="RHOAIENG-42213 is causing this failure"),
+                'failed to expand model patterns: wildcard pattern "abc-random*" is not supported - '
+                "Hugging Face requires a specific organization",
+                id="test_hf_source_invalid_organization",
+            ),
+            pytest.param(
+                """
+catalogs:
+  - name: HuggingFace Hub
+    id: error_catalog
+    type: hf
+    enabled: true
+    includedModels:
+    - '*'
+""",
+                'failed to expand model patterns: wildcard pattern "*" is not supported - '
+                "Hugging Face requires a specific organization",
+                id="test_hf_source_global_wildcard",
+            ),
+            pytest.param(
+                """
+catalogs:
+  - name: HuggingFace Hub
+    id: error_catalog
+    type: hf
+    enabled: true
+    includedModels:
+    - '*/*'
+""",
+                'failed to expand model patterns: wildcard pattern "*/*" is not supported - '
+                "Hugging Face requires a specific organization",
+                id="test_hf_source_global_org_wildcard",
+            ),
+            pytest.param(
+                """
+catalogs:
+  - name: HuggingFace Hub
+    id: error_catalog
+    type: hf
+    enabled: true
+    includedModels:
+    - 'RedHatAI/'
+""",
+                'failed to expand model patterns: wildcard pattern "RedHatAI/" is not supported - '
+                "Hugging Face requires a specific organization",
+                id="test_hf_source_empty_model_name",
+            ),
+            pytest.param(
+                """
+catalogs:
+  - name: HuggingFace Hub
+    id: error_catalog
+    type: hf
+    enabled: true
+    includedModels:
+    - '*RedHatAI*'
+""",
+                'failed to expand model patterns: wildcard pattern "*RedHatAI*" is not supported - '
+                "Hugging Face requires a specific organization",
+                id="test_hf_source_multiple_wildcards",
             ),
         ],
         indirect=["updated_catalog_config_map_scope_function"],
