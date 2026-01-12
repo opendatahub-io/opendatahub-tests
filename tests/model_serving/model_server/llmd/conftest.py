@@ -329,7 +329,6 @@ def llmd_inference_service_s3(
     request: FixtureRequest,
     admin_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
-    llmd_s3_secret: Secret,
     llmd_s3_service_account: ServiceAccount,
 ) -> Generator[LLMInferenceService, None, None]:
     """Create an LLMInferenceService that loads models from S3 storage."""
@@ -377,7 +376,6 @@ def llmd_inference_service_gpu(
     request: FixtureRequest,
     admin_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
-    llmd_s3_secret: Secret,
     llmd_s3_service_account: ServiceAccount,
 ) -> Generator[LLMInferenceService, None, None]:
     """Create an LLMInferenceService with GPU resources for accelerated inference."""
