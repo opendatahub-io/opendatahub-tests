@@ -1,7 +1,6 @@
 import pytest
 from typing import Self, Any
 import random
-from ocp_resources.config_map import ConfigMap
 from tests.model_registry.model_catalog.search.utils import (
     fetch_all_artifacts_with_dynamic_paging,
     validate_model_artifacts_match_criteria_and,
@@ -49,7 +48,6 @@ class TestSearchArtifactsByFilterQuery:
     )
     def test_search_artifacts_by_invalid_filter_query(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         randomly_picked_model_from_catalog_api_by_source: tuple[dict, str, str],
@@ -150,7 +148,6 @@ class TestSearchArtifactsByFilterQuery:
     )
     def test_filter_query_advanced_artifact_search(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         randomly_picked_model_from_catalog_api_by_source: tuple[dict, str, str],
@@ -222,7 +219,6 @@ class TestSearchArtifactsByFilterQuery:
     )
     def test_performance_artifacts_recommendations_parameter(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         randomly_picked_model_from_catalog_api_by_source: tuple[dict, str, str],
