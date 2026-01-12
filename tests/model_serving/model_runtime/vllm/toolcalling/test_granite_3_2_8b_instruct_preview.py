@@ -24,7 +24,7 @@ SERVING_ARGUMENT: list[str] = [
     "--model=/mnt/models",
     "--uvicorn-log-level=debug",
     "--dtype=float16",
-    "--chat-template=/app/data/template/tool_chat_template_granite.jinja",
+    "--chat-template=/opt/app-root/template/tool_chat_template_granite.jinja",
     "--enable-auto-tool-choice",
     "--tool-call-parser=granite",
 ]
