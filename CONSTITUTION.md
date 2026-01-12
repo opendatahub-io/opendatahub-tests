@@ -23,20 +23,18 @@ All changes MUST follow existing code patterns and architecture.
 - Use pre-commit hooks to enforce style (ruff, mypy, flake8)
 - Use absolute import paths; import specific functions rather than modules
 - Use descriptive names; meaningful names are better than short names
-- Add type annotations to all new code; mypy strict mode is enforced
+- Add type annotations to all new code; follow the rules defined in [pyproject.toml](./pyproject.toml)
 
 **Rationale**: Consistent patterns reduce the learning curve and prevent architectural drift.
 
-### III. Test Independence
+### III. Test Clarity and Dependencies
 
-Each test MUST verify a single aspect of the product and SHOULD be independent of other tests.
+Each test MUST verify a single aspect of the product and may be dependent on other tests.
 
 - Tests MUST have a clear purpose and be easy to understand
 - Tests MUST be properly documented with docstrings explaining what the test does
-- When test dependencies exist, use pytest-dependency plugin to declare them explicitly
+- When test dependencies exist, use pytest-dependency plugin to declare them explicitly, encourage use of dependency marker(s) when possible
 - Group related tests in classes only when they share fixtures; never group unrelated tests
-
-**Rationale**: Independent tests enable parallel execution, easier debugging, and selective test runs.
 
 ### IV. Fixture Discipline
 
@@ -50,7 +48,7 @@ Fixtures MUST do one thing only and follow proper scoping.
 
 **Rationale**: Single-responsibility fixtures are easier to debug, reuse, and compose.
 
-### V. Kubernetes API First
+### V. Interacting with Kubernetes Resources
 
 All cluster interactions MUST use openshift-python-wrapper or oc CLI.
 
@@ -143,13 +141,10 @@ This constitution supersedes all other practices when there is a conflict. All P
 1. Propose changes via PR to `CONSTITUTION.md`
 2. Changes require review by at least two maintainers
 3. Breaking changes (principle removal/redefinition) require team discussion
-4. All amendments MUST update version and date
 
 ### Versioning Policy
 
-- MAJOR: Backward-incompatible governance/principle removals or redefinitions
-- MINOR: New principle/section added or materially expanded guidance
-- PATCH: Clarifications, wording, typo fixes, non-semantic refinements
+No versioning policy is enforced.
 
 ### Compliance Review
 

@@ -38,9 +38,10 @@ tests/                    # Test modules by component
 ├── <component>/          # Component test directories
 │   ├── conftest.py       # Component-scoped fixtures
 │   └── test_*.py         # Test files
+|   └── utils.py          # Component-specific utility functions
 utilities/                # Shared utility functions
 ├── manifests/            # Runtime manifests and configs
-└── <topic>_utils.py      # Topic-specific utilities
+└── <topic>_utils.py      # Topic-specific utility functions
 ```
 
 ## Essential Patterns
