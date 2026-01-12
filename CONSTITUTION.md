@@ -96,7 +96,7 @@ All code MUST consider security implications.
 
 - All tests MUST apply relevant markers from pytest.ini
 - Use tier markers (smoke, sanity, tier1, tier2) to indicate test priority
-- Use component markers (model_serving, model_registry, llama_stack) for ownership
+- Use component markers (model_explainability, llama_stack, rag) for ownership
 - Use infrastructure markers (gpu, parallel, slow) for execution filtering
 
 ### Test Organization
