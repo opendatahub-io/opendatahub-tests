@@ -5,7 +5,6 @@ from ocp_resources.resource import ResourceEditor
 from typing import Generator
 
 from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG
-from tests.model_registry.model_catalog.constants import REDHAT_AI_CATALOG_ID
 from tests.model_registry.utils import (
     execute_get_command,
     is_model_catalog_ready,
@@ -15,6 +14,7 @@ from tests.model_registry.utils import (
 
 @pytest.fixture()
 def sparse_override_catalog_source(
+    request: pytest.FixtureRequest,
     admin_client,
     model_registry_namespace: str,
     model_catalog_rest_url: list[str],
@@ -22,10 +22,19 @@ def sparse_override_catalog_source(
 ) -> Generator[dict, None, None]:
     """
     Creates a sparse override for an existing default catalog source.
+
+    Requires parameterization via request.param dict containing:
+    - "id": catalog ID to override (required)
+    - "field_name": name of the field to override (required)
+    - "field_value": value for the field (required)
     """
-    catalog_id = REDHAT_AI_CATALOG_ID
-    custom_name = "Custom Override Name"
-    custom_labels = ["custom-label", "override-label"]
+    # Get fields from pytest param
+    param = getattr(request, "param", None)
+    assert param, "sparse_override_catalog_source requires request.param dict"
+
+    catalog_id = param["id"]
+    field_name = param["field_name"]
+    field_value = param["field_value"]
 
     # Capture CURRENT catalog state from API before applying sparse override
     response = execute_get_command(url=f"{model_catalog_rest_url[0]}sources", headers=model_registry_rest_headers)
@@ -33,18 +42,10 @@ def sparse_override_catalog_source(
     original_catalog = next((item for item in items if item.get("id") == catalog_id), None)
     assert original_catalog is not None, f"Original catalog '{catalog_id}' not found in sources"
 
-    # Create sparse override YAML with ONLY id, name, and labels
-    # Deliberately NOT including some fields that should be inherited from the default ConfigMap
+    # Create sparse override YAML with only id and the field to override
+    catalog_override = {"id": catalog_id, field_name: field_value}
     sparse_catalog_yaml = yaml.dump(
-        {
-            "catalogs": [
-                {
-                    "id": catalog_id,
-                    "name": custom_name,
-                    "labels": custom_labels,
-                }
-            ]
-        },
+        {"catalogs": [catalog_override]},
         default_flow_style=False,
     )
 
@@ -61,8 +62,8 @@ def sparse_override_catalog_source(
         wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
         yield {
             "catalog_id": catalog_id,
-            "custom_name": custom_name,
-            "custom_labels": custom_labels,
+            "field_name": field_name,
+            "field_value": field_value,
             "original_catalog": original_catalog,
         }
 
