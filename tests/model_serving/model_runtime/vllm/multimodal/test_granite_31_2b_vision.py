@@ -13,7 +13,7 @@ from tests.model_serving.model_runtime.vllm.constant import OPENAI_ENDPOINT_NAME
 LOGGER = get_logger(name=__name__)
 
 
-SERVING_ARGUMENT: List[str] = ["--model=/mnt/models", "--uvicorn-log-level=debug", "--limit-mm-per-prompt", "image=2"]
+SERVING_ARGUMENT: List[str] = ["--model=/mnt/models", "--uvicorn-log-level=debug", '--limit-mm-per-prompt={"image": 2}']
 
 MODEL_PATH: str = "ibm-granite/granite-vision-3.1-2b-preview"
 
