@@ -36,7 +36,7 @@ class TestSourcesEndpoint:
                 f"Available catalog verified - ID: {item.get('id')}, Status: {item.get('status')}, Error: {error_value}"
             )
 
-    @pytest.skip(
+    @pytest.mark.skip(
         reason="This test should be included in https://github.com/opendatahub-io/opendatahub-tests/pull/999/ \
         where we could disable a source catalog and verify it"
     )
@@ -76,7 +76,7 @@ class TestSourcesEndpoint:
             f"Error: {error_value}"
         )
 
-    @pytest.skip(
+    @pytest.mark.skip(
         reason="This test should be included in https://github.com/opendatahub-io/opendatahub-tests/pull/999/ \
         where we could disable a source catalog and verify it"
     )
