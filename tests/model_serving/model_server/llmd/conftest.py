@@ -558,7 +558,9 @@ def singlenode_precise_prefix_cache(
         "enable_kv_cache_events": True,
         "publisher": "zmq",
         "endpoint": f"tcp://{llmisvc_name}-epp-service:5557",
+        #llmd-test-singlenode-precise-prefix-cache.svc.cluster.local
         "topic": "kv@$(POD_IP)@$(MODEL_NAME)",
+        "buffer_steps": 1,
     }
 
     with create_llmisvc(
