@@ -449,22 +449,6 @@ def model_car_inference_service(
         yield isvc
 
 
-GPU_PREDICT_RESOURCES: dict[str, Any] = {
-    "volumes": [
-        {"name": "shared-memory", "emptyDir": {"medium": "Memory", "sizeLimit": "2Gi"}},
-        {"name": "tmp", "emptyDir": {}},
-    ],
-    "volume_mounts": [
-        {"name": "shared-memory", "mountPath": "/dev/shm"},
-        {"name": "tmp", "mountPath": "/tmp"},
-    ],
-    "resources": {
-        "requests": {"cpu": "1", "memory": "4Gi"},
-        "limits": {"cpu": "2", "memory": "8Gi"},
-    },
-}
-
-
 @pytest.fixture(scope="session")
 def skip_if_no_gpu_available(gpu_count_on_cluster: int) -> None:
     """Skip test if no GPUs are available on the cluster."""
@@ -481,13 +465,16 @@ def gpu_model_car_inference_service(
     gpu_count_on_cluster: int,
 ) -> Generator[InferenceService, Any, Any]:
     """Create a GPU-accelerated model car inference service."""
+    from copy import deepcopy
+    from tests.model_serving.model_runtime.openvino.constant import PREDICT_RESOURCES
+
     deployment_mode = request.param.get("deployment-mode", KServeDeploymentType.RAW_DEPLOYMENT)
     gpu_count = request.param.get("gpu-count", 1)
 
     if gpu_count_on_cluster < gpu_count:
         pytest.skip(f"Not enough GPUs available. Required: {gpu_count}, Available: {gpu_count_on_cluster}")
 
-    resources = GPU_PREDICT_RESOURCES["resources"].copy()
+    resources = deepcopy(PREDICT_RESOURCES["resources"])
     resources["requests"][Labels.Nvidia.NVIDIA_COM_GPU] = str(gpu_count)
     resources["limits"][Labels.Nvidia.NVIDIA_COM_GPU] = str(gpu_count)
 
@@ -502,8 +489,8 @@ def gpu_model_car_inference_service(
         external_route=request.param.get("external-route", True),
         wait_for_predictor_pods=False,
         resources=resources,
-        volumes=GPU_PREDICT_RESOURCES["volumes"],
-        volumes_mounts=GPU_PREDICT_RESOURCES["volume_mounts"],
+        volumes=deepcopy(PREDICT_RESOURCES["volumes"]),
+        volumes_mounts=deepcopy(PREDICT_RESOURCES["volume_mounts"]),
     ) as isvc:
         yield isvc
 
