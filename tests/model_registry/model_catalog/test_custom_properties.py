@@ -18,7 +18,6 @@ LOGGER = get_logger(name=__name__)
 pytestmark = [
     pytest.mark.usefixtures(
         "updated_dsc_component_state_scope_session",
-        "enabled_model_catalog_config_map",
         "model_registry_namespace",
     )
 ]

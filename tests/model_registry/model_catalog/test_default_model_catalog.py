@@ -35,7 +35,6 @@ pytestmark = [
         "model_registry_namespace",
         "original_user",
         "test_idp_user",
-        "enabled_model_catalog_config_map",
     )
 ]
 
@@ -47,7 +46,7 @@ class TestModelCatalogGeneral:
         [
             pytest.param(
                 {"configmap_name": DEFAULT_CUSTOM_MODEL_CATALOG},
-                2,
+                0,
                 False,
                 id="test_model_catalog_sources_configmap_install",
                 marks=pytest.mark.install,
@@ -168,7 +167,6 @@ class TestModelCatalogDefault:
     def test_model_catalog_default_catalog_sources(
         self,
         pytestconfig: pytest.Config,
-        enabled_model_catalog_config_map: ConfigMap,
         test_idp_user: UserTestSession,
         model_catalog_rest_url: list[str],
         user_token_for_api_calls: str,
@@ -204,7 +202,6 @@ class TestModelCatalogDefault:
 
     def test_model_default_catalog_get_models_by_source(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         model_catalog_rest_url: list[str],
         randomly_picked_model_from_catalog_api_by_source: tuple[dict[Any, Any], str, str],
     ):
@@ -217,7 +214,6 @@ class TestModelCatalogDefault:
 
     def test_model_default_catalog_get_model_by_name(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         model_catalog_rest_url: list[str],
         user_token_for_api_calls: str,
         randomly_picked_model_from_catalog_api_by_source: tuple[dict[Any, Any], str, str],
@@ -235,7 +231,6 @@ class TestModelCatalogDefault:
 
     def test_model_default_catalog_get_model_artifact(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         model_catalog_rest_url: list[str],
         user_token_for_api_calls: str,
         randomly_picked_model_from_catalog_api_by_source: tuple[dict[Any, Any], str, str],
@@ -261,7 +256,6 @@ class TestModelCatalogDefaultData:
 
     def test_model_default_catalog_number_of_models(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         default_catalog_api_response: dict[Any, Any],
         default_model_catalog_yaml_content: dict[Any, Any],
     ):
@@ -278,7 +272,6 @@ class TestModelCatalogDefaultData:
 
     def test_model_default_catalog_correspondence_of_model_name(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         default_catalog_api_response: dict[Any, Any],
         default_model_catalog_yaml_content: dict[Any, Any],
         catalog_openapi_schema: dict[Any, Any],
@@ -343,7 +336,6 @@ class TestModelCatalogDefaultData:
 
     def test_model_default_catalog_random_artifact(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         default_model_catalog_yaml_content: dict[Any, Any],
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],

@@ -1,7 +1,6 @@
 import pytest
 from typing import Self
 import random
-from ocp_resources.config_map import ConfigMap
 from simple_logger.logger import get_logger
 from tests.model_registry.model_catalog.sorting.utils import (
     get_artifacts_with_sorting,
@@ -74,7 +73,6 @@ class TestArtifactsSorting:
     )
     def test_artifacts_sorting_works_correctly(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         order_by: str,
         sort_order: str,
         model_catalog_rest_url: list[str],
@@ -191,7 +189,6 @@ class TestCustomPropertiesSorting:
     )
     def test_custom_properties_sorting_works_correctly(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         order_by: str,
         sort_order: str,
         model_catalog_rest_url: list[str],

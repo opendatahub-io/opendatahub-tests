@@ -31,7 +31,6 @@ class TestModelsSorting:
     )
     def test_models_sorting_works_correctly(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         order_by: str,
         sort_order: str,
         model_catalog_rest_url: list[str],
@@ -62,7 +61,6 @@ class TestAccuracySorting:
     )
     def test_accuracy_sorting_works_correctly(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         sort_order: str | None,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
@@ -107,7 +105,6 @@ class TestAccuracySorting:
     )
     def test_accuracy_sorting_works_correctly_with_filter(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         sort_order: str,
         filter_query: str,
         model_catalog_rest_url: list[str],
