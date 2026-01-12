@@ -76,6 +76,10 @@ class TestSourcesEndpoint:
             f"Error: {error_value}"
         )
 
+    @pytest.skip(
+        reason="This test should be included in https://github.com/opendatahub-io/opendatahub-tests/pull/999/ \
+        where we could disable a source catalog and verify it"
+    )
     @pytest.mark.parametrize("disabled_catalog_source", ["redhat_ai_models"], indirect=True)
     @pytest.mark.sanity
     def test_sources_endpoint_returns_all_sources_regardless_of_enabled_field(
