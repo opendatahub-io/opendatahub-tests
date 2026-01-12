@@ -89,12 +89,10 @@ def shared_llmd_gateway(
     gateway_namespace: str,
 ) -> Generator[Gateway, None, None]:
     """Shared LLMD gateway for all tests."""
-    gateway_class_name = "data-science-gateway-class"
-
     with create_llmd_gateway(
         client=admin_client,
         namespace=gateway_namespace,
-        gateway_class_name=gateway_class_name,
+        gateway_class_name=LLMDGateway.DEFAULT_CLASS,
         wait_for_condition=True,
         timeout=Timeout.TIMEOUT_5MIN,
         teardown=True,
