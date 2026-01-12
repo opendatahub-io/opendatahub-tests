@@ -474,7 +474,7 @@ def gpu_model_car_inference_service(
     if gpu_count_on_cluster < gpu_count:
         pytest.skip(f"Not enough GPUs available. Required: {gpu_count}, Available: {gpu_count_on_cluster}")
 
-    resources = deepcopy(PREDICT_RESOURCES["resources"])
+    resources = deepcopy(x=PREDICT_RESOURCES["resources"])
     resources["requests"][Labels.Nvidia.NVIDIA_COM_GPU] = str(gpu_count)
     resources["limits"][Labels.Nvidia.NVIDIA_COM_GPU] = str(gpu_count)
 
@@ -489,8 +489,8 @@ def gpu_model_car_inference_service(
         external_route=request.param.get("external-route", True),
         wait_for_predictor_pods=False,
         resources=resources,
-        volumes=deepcopy(PREDICT_RESOURCES["volumes"]),
-        volumes_mounts=deepcopy(PREDICT_RESOURCES["volume_mounts"]),
+        volumes=deepcopy(x=PREDICT_RESOURCES["volumes"]),
+        volumes_mounts=deepcopy(x=PREDICT_RESOURCES["volume_mounts"]),
     ) as isvc:
         yield isvc
 
