@@ -15,7 +15,7 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.route import Route
 from ocp_resources.service import Service
 
-from tests.model_registry.constants import DEFAULT_MODEL_CATALOG_CM
+from tests.model_registry.constants import DEFAULT_MODEL_CATALOG_CM, DEFAULT_CUSTOM_MODEL_CATALOG
 from tests.model_registry.model_catalog.constants import REDHAT_AI_CATALOG_ID, CATALOG_CONTAINER, DEFAULT_CATALOGS
 from tests.model_registry.model_catalog.catalog_config.utils import (
     validate_model_catalog_enabled,
@@ -44,6 +44,20 @@ class TestModelCatalogGeneral:
     @pytest.mark.parametrize(
         "model_catalog_config_map, expected_catalogs, validate_catalog",
         [
+            pytest.param(
+                {"configmap_name": DEFAULT_CUSTOM_MODEL_CATALOG},
+                0,
+                False,
+                id="test_model_catalog_sources_configmap_install",
+                marks=pytest.mark.install,
+            ),
+            pytest.param(
+                {"configmap_name": DEFAULT_CUSTOM_MODEL_CATALOG},
+                1,
+                False,
+                id="test_model_catalog_sources_configmap_upgrade",
+                marks=(pytest.mark.pre_upgrade, pytest.mark.post_upgrade),
+            ),
             pytest.param(
                 {"configmap_name": DEFAULT_MODEL_CATALOG_CM},
                 2,
