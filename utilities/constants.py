@@ -313,6 +313,7 @@ class ModelStorage:
     class HuggingFace:
         TINYLLAMA: str = "hf://TinyLlama/TinyLlama-1.1B-Chat-v1.0"
         OPT125M: str = "hf://facebook/opt-125m"
+        QWEN_7B_INSTRUCT: str = "hf://Qwen/Qwen2.5-7B-Instruct"
 
 
 class OCIRegistry:
