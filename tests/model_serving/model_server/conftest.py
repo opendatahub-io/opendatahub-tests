@@ -31,6 +31,7 @@ from simple_logger.logger import get_logger
 
 from utilities.constants import (
     KServeDeploymentType,
+    Labels,
     ModelFormat,
     RuntimeTemplates,
     StorageClassName,
@@ -444,6 +445,52 @@ def model_car_inference_service(
         deployment_mode=deployment_mode,
         external_route=request.param.get("external-route", True),
         wait_for_predictor_pods=False,
+    ) as isvc:
+        yield isvc
+
+
+@pytest.fixture(scope="session")
+def skip_if_no_gpu_available(gpu_count_on_cluster: int) -> None:
+    """Skip test if no GPUs are available on the cluster."""
+    if gpu_count_on_cluster < 1:
+        pytest.skip("No GPUs available on cluster, skipping GPU test")
+
+
+@pytest.fixture(scope="class")
+def gpu_model_car_inference_service(
+    request: FixtureRequest,
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+    serving_runtime_from_template: ServingRuntime,
+    gpu_count_on_cluster: int,
+) -> Generator[InferenceService, Any, Any]:
+    """Create a GPU-accelerated model car inference service."""
+    from copy import deepcopy
+    from tests.model_serving.model_runtime.openvino.constant import PREDICT_RESOURCES
+
+    deployment_mode = request.param.get("deployment-mode", KServeDeploymentType.RAW_DEPLOYMENT)
+    gpu_count = request.param.get("gpu-count", 1)
+
+    if gpu_count_on_cluster < gpu_count:
+        pytest.skip(f"Not enough GPUs available. Required: {gpu_count}, Available: {gpu_count_on_cluster}")
+
+    resources = deepcopy(x=PREDICT_RESOURCES["resources"])
+    resources["requests"][Labels.Nvidia.NVIDIA_COM_GPU] = str(gpu_count)
+    resources["limits"][Labels.Nvidia.NVIDIA_COM_GPU] = str(gpu_count)
+
+    with create_isvc(
+        client=unprivileged_client,
+        name=f"gpu-model-car-{deployment_mode.lower()}",
+        namespace=unprivileged_model_namespace.name,
+        runtime=serving_runtime_from_template.name,
+        storage_uri=request.param["storage-uri"],
+        model_format=serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
+        deployment_mode=deployment_mode,
+        external_route=request.param.get("external-route", True),
+        wait_for_predictor_pods=False,
+        resources=resources,
+        volumes=deepcopy(x=PREDICT_RESOURCES["volumes"]),
+        volumes_mounts=deepcopy(x=PREDICT_RESOURCES["volume_mounts"]),
     ) as isvc:
         yield isvc
 
