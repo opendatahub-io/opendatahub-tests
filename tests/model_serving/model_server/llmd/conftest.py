@@ -19,6 +19,7 @@ from tests.model_serving.model_server.llmd.constants import (
     PREFIX_CACHE_HASH_ALGO,
     PREFIX_CACHE_HASH_SEED,
     ROUTER_SCHEDULER_CONFIG_ESTIMATED_PREFIX_CACHE,
+    ROUTER_SCHEDULER_CONFIG_PRECISE_PREFIX_CACHE,
 )
 from utilities.constants import ResourceLimits, Timeout
 from utilities.infra import create_inference_token, s3_endpoint_secret
