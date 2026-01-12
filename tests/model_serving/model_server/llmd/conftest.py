@@ -23,15 +23,19 @@ from tests.model_serving.model_server.llmd.constants import (
 from utilities.constants import Timeout, ResourceLimits
 from utilities.infra import s3_endpoint_secret, create_inference_token
 from utilities.logger import RedactedString
-from utilities.llmd_utils import create_llmisvc
+from utilities.llmd_utils import create_llmisvc, create_llmd_gateway
 from utilities.llmd_constants import (
     ModelStorage,
     ContainerImages,
     ModelNames,
     LLMDDefaults,
+    LLMDGateway,
 )
 
 
+# *********************************
+# **         S3 fixtures         **
+# *********************************
 @pytest.fixture(scope="class")
 def llmd_s3_secret(
     admin_client: DynamicClient,
@@ -42,6 +46,7 @@ def llmd_s3_secret(
     models_s3_bucket_region: str,
     models_s3_bucket_endpoint: str,
 ) -> Generator[Secret, None, None]:
+    """Create a Kubernetes secret with S3 credentials for LLMD model storage."""
     with s3_endpoint_secret(
         client=admin_client,
         name="llmd-s3-secret",
@@ -59,6 +64,7 @@ def llmd_s3_secret(
 def llmd_s3_service_account(
     admin_client: DynamicClient, llmd_s3_secret: Secret
 ) -> Generator[ServiceAccount, None, None]:
+    """Create a service account linked to the S3 secret for LLMD pods."""
     with ServiceAccount(
         client=admin_client,
         namespace=llmd_s3_secret.namespace,
@@ -68,139 +74,41 @@ def llmd_s3_service_account(
         yield sa
 
 
-@pytest.fixture(scope="class")
-def llmd_inference_service_s3(
-    request: FixtureRequest,
+# *********************************
+# **      Gateway fixtures       **
+# *********************************
+@pytest.fixture(scope="session")
+def gateway_namespace() -> str:
+    """Return the namespace for LLMD gateway."""
+    return LLMDGateway.DEFAULT_NAMESPACE
+
+
+@pytest.fixture(scope="session")
+def shared_llmd_gateway(
     admin_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
-    llmd_s3_secret: Secret,
-    llmd_s3_service_account: ServiceAccount,
-) -> Generator[LLMInferenceService, None, None]:
-    if isinstance(request.param, str):
-        name_suffix = request.param
-        kwargs = {}
-    else:
-        name_suffix = request.param.get("name_suffix", "s3")
-        kwargs = {k: v for k, v in request.param.items() if k != "name_suffix"}
-
-    service_name = kwargs.get("name", f"llm-{name_suffix}")
-
-    container_resources = kwargs.get(
-        "container_resources",
-        {
-            "limits": {"cpu": "1", "memory": "10Gi"},
-            "requests": {"cpu": "100m", "memory": "8Gi"},
-        },
-    )
-
-    create_kwargs = {
-        "client": admin_client,
-        "name": service_name,
-        "namespace": unprivileged_model_namespace.name,
-        "storage_uri": kwargs.get("storage_uri", ModelStorage.TINYLLAMA_S3),
-        "container_image": kwargs.get("container_image", ContainerImages.VLLM_CPU),
-        "container_resources": container_resources,
-        "service_account": llmd_s3_service_account.name,
-        "wait": True,
-        "timeout": Timeout.TIMEOUT_15MIN,
-        **{
-            k: v
-            for k, v in kwargs.items()
-            if k not in ["name", "storage_uri", "container_image", "container_resources"]
-        },
-    }
-
-    with create_llmisvc(**create_kwargs) as llm_service:
-        yield llm_service
+    gateway_namespace: str,
+) -> Generator[Gateway, None, None]:
+    """Shared LLMD gateway for all tests."""
+    with create_llmd_gateway(
+        client=admin_client,
+        namespace=gateway_namespace,
+        gateway_class_name=LLMDGateway.DEFAULT_CLASS,
+        wait_for_condition=True,
+        timeout=Timeout.TIMEOUT_5MIN,
+        teardown=True,
+    ) as gateway:
+        yield gateway
 
 
 @pytest.fixture(scope="class")
-def llmd_inference_service_gpu(
-    request: FixtureRequest,
-    admin_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
-    llmd_s3_secret: Secret,
-    llmd_s3_service_account: ServiceAccount,
-) -> Generator[LLMInferenceService, None, None]:
-    if isinstance(request.param, str):
-        name_suffix = request.param
-        kwargs = {}
-    else:
-        name_suffix = request.param.get("name_suffix", "gpu-hf")
-        kwargs = {k: v for k, v in request.param.items() if k != "name_suffix"}
-
-    service_name = kwargs.get("name", f"llm-{name_suffix}")
-
-    if "llmd_gateway" in request.fixturenames:
-        request.getfixturevalue(argname="llmd_gateway")
-
-    if kwargs.get("enable_prefill_decode", False):
-        container_resources = kwargs.get(
-            "container_resources",
-            {
-                "limits": {"cpu": "4", "memory": "32Gi", "nvidia.com/gpu": "1"},
-                "requests": {"cpu": "2", "memory": "16Gi", "nvidia.com/gpu": "1"},
-            },
-        )
-    else:
-        container_resources = kwargs.get(
-            "container_resources",
-            {
-                "limits": {
-                    "cpu": ResourceLimits.GPU.CPU_LIMIT,
-                    "memory": ResourceLimits.GPU.MEMORY_LIMIT,
-                    "nvidia.com/gpu": ResourceLimits.GPU.LIMIT,
-                },
-                "requests": {
-                    "cpu": ResourceLimits.GPU.CPU_REQUEST,
-                    "memory": ResourceLimits.GPU.MEMORY_REQUEST,
-                    "nvidia.com/gpu": ResourceLimits.GPU.REQUEST,
-                },
-            },
-        )
-
-    liveness_probe = {
-        "httpGet": {"path": "/health", "port": 8000, "scheme": "HTTPS"},
-        "initialDelaySeconds": 120,
-        "periodSeconds": 30,
-        "timeoutSeconds": 30,
-        "failureThreshold": 5,
-    }
-
-    replicas = kwargs.get("replicas", LLMDDefaults.REPLICAS)
-    if kwargs.get("enable_prefill_decode", False):
-        replicas = kwargs.get("replicas", 3)
-
-    prefill_config = None
-    if kwargs.get("enable_prefill_decode", False):
-        prefill_config = {
-            "replicas": kwargs.get("prefill_replicas", 1),
-        }
-
-    create_kwargs = {
-        "client": admin_client,
-        "name": service_name,
-        "namespace": unprivileged_model_namespace.name,
-        "storage_uri": kwargs.get("storage_uri", ModelStorage.S3_QWEN),
-        "model_name": kwargs.get("model_name", ModelNames.QWEN),
-        "replicas": replicas,
-        "container_resources": container_resources,
-        "liveness_probe": liveness_probe,
-        "prefill_config": prefill_config,
-        "disable_scheduler": kwargs.get("disable_scheduler", False),
-        "enable_prefill_decode": kwargs.get("enable_prefill_decode", False),
-        "service_account": llmd_s3_service_account.name,
-        "wait": True,
-        "timeout": Timeout.TIMEOUT_15MIN,
-    }
-
-    if "container_image" in kwargs:
-        create_kwargs["container_image"] = kwargs["container_image"]
-
-    with create_llmisvc(**create_kwargs) as llm_service:
-        yield llm_service
+def llmd_gateway(shared_llmd_gateway: Gateway) -> Gateway:
+    """Class-scoped LLMD gateway fixture."""
+    return shared_llmd_gateway
 
 
+# *********************************
+# **        Auth fixtures        **
+# *********************************
 @pytest.fixture(scope="class")
 def llmisvc_auth_service_account(
     admin_client: DynamicClient,
@@ -297,6 +205,80 @@ def llmisvc_auth_token() -> Generator:
 
 
 @pytest.fixture(scope="class")
+def authenticated_llmisvc_token(
+    request: FixtureRequest,
+    llmisvc_auth_token,
+    llmisvc_auth_view_role,
+    llmisvc_auth_role_binding,
+) -> str:
+    """Create an authentication token for accessing a protected LLMInferenceService."""
+    service_account_fixture_name = request.param["service_account_fixture"]
+    llmisvc_fixture_name = request.param["llmisvc_fixture"]
+
+    # Get fixtures dynamically
+    service_account = request.getfixturevalue(argname=service_account_fixture_name)
+    llmisvc = request.getfixturevalue(argname=llmisvc_fixture_name)
+
+    # Create and return token
+    return llmisvc_auth_token(
+        service_account=service_account,
+        llmisvc=llmisvc,
+        view_role_factory=llmisvc_auth_view_role,
+        role_binding_factory=llmisvc_auth_role_binding,
+    )
+
+
+# ************************************
+# ** LLM Inference Service fixtures **
+# ************************************
+@pytest.fixture(scope="class")
+def llmd_inference_service(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+) -> Generator[LLMInferenceService, None, None]:
+    """Basic LLMInferenceService fixture for OCI storage with CPU runtime.
+
+    This is the most commonly used fixture for basic LLMD tests. It uses
+    OCI container registry for model storage and defaults to CPU resources.
+    """
+    if isinstance(request.param, str):
+        name_suffix = request.param
+        kwargs = {}
+    else:
+        name_suffix = request.param.get("name_suffix", "basic")
+        kwargs = {k: v for k, v in request.param.items() if k != "name_suffix"}
+
+    service_name = kwargs.get("name", f"llm-{name_suffix}")
+
+    if "llmd_gateway" in request.fixturenames:
+        request.getfixturevalue(argname="llmd_gateway")
+    container_resources = kwargs.get(
+        "container_resources",
+        {
+            "limits": {"cpu": "2", "memory": "16Gi"},
+            "requests": {"cpu": "500m", "memory": "12Gi"},
+        },
+    )
+
+    create_kwargs = {
+        "client": admin_client,
+        "name": service_name,
+        "namespace": unprivileged_model_namespace.name,
+        "storage_uri": kwargs.get("storage_uri", ModelStorage.TINYLLAMA_OCI),
+        "container_image": kwargs.get("container_image", ContainerImages.VLLM_CPU),
+        "container_resources": container_resources,
+        "liveness_probe": LLMD_LIVENESS_PROBE,
+        "wait": True,
+        "timeout": Timeout.TIMEOUT_15MIN,
+        **{k: v for k, v in kwargs.items() if k != "name"},
+    }
+
+    with create_llmisvc(**create_kwargs) as llm_service:
+        yield llm_service
+
+
+@pytest.fixture(scope="class")
 def llmisvc_auth(
     admin_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
@@ -329,6 +311,7 @@ def llmisvc_auth(
                 "storage_uri": storage_uri,
                 "container_image": container_image,
                 "container_resources": container_resources,
+                "liveness_probe": LLMD_LIVENESS_PROBE,
                 "service_account": service_account_name,
                 "wait": True,
                 "timeout": Timeout.TIMEOUT_15MIN,
@@ -342,6 +325,132 @@ def llmisvc_auth(
 
 
 @pytest.fixture(scope="class")
+def llmd_inference_service_s3(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+    llmd_s3_service_account: ServiceAccount,
+) -> Generator[LLMInferenceService, None, None]:
+    """Create an LLMInferenceService that loads models from S3 storage."""
+    if isinstance(request.param, str):
+        name_suffix = request.param
+        kwargs = {}
+    else:
+        name_suffix = request.param.get("name_suffix", "s3")
+        kwargs = {k: v for k, v in request.param.items() if k != "name_suffix"}
+
+    service_name = kwargs.get("name", f"llm-{name_suffix}")
+
+    container_resources = kwargs.get(
+        "container_resources",
+        {
+            "limits": {"cpu": "1", "memory": "10Gi"},
+            "requests": {"cpu": "100m", "memory": "8Gi"},
+        },
+    )
+
+    create_kwargs = {
+        "client": admin_client,
+        "name": service_name,
+        "namespace": unprivileged_model_namespace.name,
+        "storage_uri": kwargs.get("storage_uri", ModelStorage.TINYLLAMA_S3),
+        "container_image": kwargs.get("container_image", ContainerImages.VLLM_CPU),
+        "container_resources": container_resources,
+        "liveness_probe": LLMD_LIVENESS_PROBE,
+        "service_account": llmd_s3_service_account.name,
+        "wait": True,
+        "timeout": Timeout.TIMEOUT_15MIN,
+        **{
+            k: v
+            for k, v in kwargs.items()
+            if k not in ["name", "storage_uri", "container_image", "container_resources"]
+        },
+    }
+
+    with create_llmisvc(**create_kwargs) as llm_service:
+        yield llm_service
+
+
+@pytest.fixture(scope="class")
+def llmd_inference_service_gpu(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+    llmd_s3_service_account: ServiceAccount,
+) -> Generator[LLMInferenceService, None, None]:
+    """Create an LLMInferenceService with GPU resources for accelerated inference."""
+    if isinstance(request.param, str):
+        name_suffix = request.param
+        kwargs = {}
+    else:
+        name_suffix = request.param.get("name_suffix", "gpu-hf")
+        kwargs = {k: v for k, v in request.param.items() if k != "name_suffix"}
+
+    service_name = kwargs.get("name", f"llm-{name_suffix}")
+
+    if "llmd_gateway" in request.fixturenames:
+        request.getfixturevalue(argname="llmd_gateway")
+
+    if kwargs.get("enable_prefill_decode", False):
+        container_resources = kwargs.get(
+            "container_resources",
+            {
+                "limits": {"cpu": "4", "memory": "32Gi", "nvidia.com/gpu": "1"},
+                "requests": {"cpu": "2", "memory": "16Gi", "nvidia.com/gpu": "1"},
+            },
+        )
+    else:
+        container_resources = kwargs.get(
+            "container_resources",
+            {
+                "limits": {
+                    "cpu": ResourceLimits.GPU.CPU_LIMIT,
+                    "memory": ResourceLimits.GPU.MEMORY_LIMIT,
+                    "nvidia.com/gpu": ResourceLimits.GPU.LIMIT,
+                },
+                "requests": {
+                    "cpu": ResourceLimits.GPU.CPU_REQUEST,
+                    "memory": ResourceLimits.GPU.MEMORY_REQUEST,
+                    "nvidia.com/gpu": ResourceLimits.GPU.REQUEST,
+                },
+            },
+        )
+
+    replicas = kwargs.get("replicas", LLMDDefaults.REPLICAS)
+    if kwargs.get("enable_prefill_decode", False):
+        replicas = kwargs.get("replicas", 3)
+
+    prefill_config = None
+    if kwargs.get("enable_prefill_decode", False):
+        prefill_config = {
+            "replicas": kwargs.get("prefill_replicas", 1),
+        }
+
+    create_kwargs = {
+        "client": admin_client,
+        "name": service_name,
+        "namespace": unprivileged_model_namespace.name,
+        "storage_uri": kwargs.get("storage_uri", ModelStorage.S3_QWEN),
+        "model_name": kwargs.get("model_name", ModelNames.QWEN),
+        "replicas": replicas,
+        "container_resources": container_resources,
+        "liveness_probe": LLMD_LIVENESS_PROBE,
+        "prefill_config": prefill_config,
+        "disable_scheduler": kwargs.get("disable_scheduler", False),
+        "enable_prefill_decode": kwargs.get("enable_prefill_decode", False),
+        "service_account": llmd_s3_service_account.name,
+        "wait": True,
+        "timeout": Timeout.TIMEOUT_15MIN,
+    }
+
+    if "container_image" in kwargs:
+        create_kwargs["container_image"] = kwargs["container_image"]
+
+    with create_llmisvc(**create_kwargs) as llm_service:
+        yield llm_service
+
+
+@pytest.fixture(scope="class")
 def singlenode_estimated_prefix_cache(
     admin_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
@@ -351,9 +460,11 @@ def singlenode_estimated_prefix_cache(
 ) -> Generator[LLMInferenceService, None, None]:
     """LLMInferenceService fixture for single-node estimated prefix cache test."""
 
+    llmisvc_name = "singlenode-estimated-prefix-cache"
+
     with create_llmisvc(
         client=admin_client,
-        name="singlenode-prefix-cache-test",
+        name=llmisvc_name,
         namespace=unprivileged_model_namespace.name,
         storage_uri=ModelStorage.TINYLLAMA_S3,
         model_name=ModelNames.TINYLLAMA,
@@ -375,23 +486,15 @@ def singlenode_estimated_prefix_cache(
             },
         },
         container_env=[
+            {"name": "MODEL_NAME", "value": ModelNames.TINYLLAMA},
             {"name": "VLLM_LOGGING_LEVEL", "value": "DEBUG"},
+            {"name": "PYTHONHASHSEED", "value": str(PREFIX_CACHE_HASH_SEED)},
             {
                 "name": "VLLM_ADDITIONAL_ARGS",
                 "value": (
-                    f"--prefix-caching-hash-algo {PREFIX_CACHE_HASH_ALGO} --block-size {PREFIX_CACHE_BLOCK_SIZE} "
-                    '--kv_transfer_config \'{"kv_connector":"NixlConnector","kv_role":"kv_both"}\' '
-                    '--kv-events-config \'{"enable_kv_cache_events":true,"publisher":"zmq",'
-                    '"endpoint":"tcp://{{ ChildName .ObjectMeta.Name `-epp-service` }}:5557",'
-                    '"topic":"kv@${POD_IP}@${MODEL_NAME}"}\''
+                    f"--prefix-caching-hash-algo {PREFIX_CACHE_HASH_ALGO} --block-size {PREFIX_CACHE_BLOCK_SIZE}"
                 ),
             },
-            {
-                "name": "POD_IP",
-                "valueFrom": {"fieldRef": {"apiVersion": "v1", "fieldPath": "status.podIP"}},
-            },
-            {"name": "MODEL_NAME", "value": ModelNames.TINYLLAMA},
-            {"name": "PYTHONHASHSEED", "value": PREFIX_CACHE_HASH_SEED},
         ],
         liveness_probe=LLMD_LIVENESS_PROBE,
         service_account=llmd_s3_service_account.name,
@@ -399,17 +502,9 @@ def singlenode_estimated_prefix_cache(
         router_config={
             "scheduler": {
                 "template": {
-                    "volumes": [{"name": "tokenizers", "emptyDir": {}}],
                     "containers": [
                         {
                             "name": "main",
-                            "volumeMounts": [
-                                {
-                                    "name": "tokenizers",
-                                    "mountPath": "/mnt/tokenizers",
-                                    "readOnly": False,
-                                }
-                            ],
                             "args": [
                                 "--v=4",
                                 "--pool-name",
@@ -445,26 +540,3 @@ def singlenode_estimated_prefix_cache(
         timeout=Timeout.TIMEOUT_15MIN,
     ) as llm_service:
         yield llm_service
-
-
-@pytest.fixture(scope="class")
-def authenticated_llmisvc_token(
-    request: FixtureRequest,
-    llmisvc_auth_token,
-    llmisvc_auth_view_role,
-    llmisvc_auth_role_binding,
-) -> str:
-    service_account_fixture_name = request.param["service_account_fixture"]
-    llmisvc_fixture_name = request.param["llmisvc_fixture"]
-
-    # Get fixtures dynamically
-    service_account = request.getfixturevalue(argname=service_account_fixture_name)
-    llmisvc = request.getfixturevalue(argname=llmisvc_fixture_name)
-
-    # Create and return token
-    return llmisvc_auth_token(
-        service_account=service_account,
-        llmisvc=llmisvc,
-        view_role_factory=llmisvc_auth_view_role,
-        role_binding_factory=llmisvc_auth_role_binding,
-    )

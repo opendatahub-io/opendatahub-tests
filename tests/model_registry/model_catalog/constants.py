@@ -25,12 +25,14 @@ DEFAULT_CATALOGS: dict[str, Any] = {
         "type": "yaml",
         "properties": {"yamlCatalogPath": "/shared-data/models-catalog.yaml"},
         "labels": [REDHAT_AI_CATALOG_NAME],
+        "enabled": True,
     },
     "redhat_ai_validated_models": {
         "name": REDHAT_AI_VALIDATED_CATALOG_NAME,
         "type": "yaml",
         "properties": {"yamlCatalogPath": "/shared-data/validated-models-catalog.yaml"},
         "labels": [REDHAT_AI_VALIDATED_CATALOG_NAME],
+        "enabled": True,
     },
 }
 REDHAT_AI_CATALOG_ID: str = "redhat_ai_models"
