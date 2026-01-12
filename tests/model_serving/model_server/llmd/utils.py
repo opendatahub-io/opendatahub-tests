@@ -416,12 +416,20 @@ def verify_estimated_prefix_cache(
     )
     LOGGER.info(f"Request count by pod: {request_counts}")
 
-    assert set(request_counts.values()) == {0, expected_requests}, (
-        f"Traffic distribution mismatch. Expected all {expected_requests} requests on a single pod. "
-        f"Got: {request_counts.values()}"
+    # All requests must be routed to exactly one pod (prefix cache affinity).
+    # This assertion works regardless of the number of pods in the deployment.
+    pods_with_traffic = [pod for pod, count in request_counts.items() if count > 0]
+    assert len(pods_with_traffic) == 1, (
+        f"Expected all traffic to be routed to exactly 1 pod, but {len(pods_with_traffic)} pods received traffic. "
+        f"Distribution: {request_counts}"
     )
 
-    # 2. Verify Prefix Cache Hits
+    active_pod = pods_with_traffic[0]
+    assert request_counts[active_pod] == expected_requests, (
+        f"Expected {expected_requests} requests on the active pod '{active_pod}', but got {request_counts[active_pod]}"
+    )
+
+    # 2. Verify Prefix Cache Hits on the active pod
     # The first request warms the cache, subsequent requests should hit it.
     cache_hit_counts = get_prefix_cache_hits_by_pod(
         prometheus=prometheus,
@@ -433,8 +441,9 @@ def verify_estimated_prefix_cache(
     # Logic: (N-1) requests * Block Size
     expected_hits = (expected_requests - 1) * PREFIX_CACHE_BLOCK_SIZE
 
-    assert set(cache_hit_counts.values()) == {0, expected_hits}, (
-        f"Cache hit mismatch. Expected exactly {expected_hits} hits on the active pod. Got: {cache_hit_counts.values()}"
+    assert cache_hit_counts[active_pod] == expected_hits, (
+        f"Cache hit mismatch on active pod '{active_pod}'. "
+        f"Expected {expected_hits} hits, got {cache_hit_counts[active_pod]}"
     )
 
     return True
