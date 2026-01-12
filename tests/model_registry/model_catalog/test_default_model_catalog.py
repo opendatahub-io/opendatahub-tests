@@ -46,7 +46,7 @@ class TestModelCatalogGeneral:
         [
             pytest.param(
                 {"configmap_name": DEFAULT_CUSTOM_MODEL_CATALOG},
-                2,
+                0,
                 False,
                 id="test_model_catalog_sources_configmap_install",
                 marks=pytest.mark.install,
