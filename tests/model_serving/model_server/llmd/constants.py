@@ -38,3 +38,45 @@ ROUTER_SCHEDULER_CONFIG_ESTIMATED_PREFIX_CACHE = {
         }
     ],
 }
+
+# Scheduler configuration for single-node with precise prefix cache
+ROUTER_SCHEDULER_CONFIG_PRECISE_PREFIX_CACHE = {
+    "apiVersion": "inference.networking.x-k8s.io/v1alpha1",
+    "kind": "EndpointPickerConfig",
+    "plugins": [
+        {"type": "single-profile-handler"},
+        {
+            "type": "precise-prefix-cache-scorer",
+            "parameters": {
+                "kvEventsConfig": {"zmqEndpoint": "tcp://*:5557", "topicFilter": "kv"},
+                "indexerConfig": {
+                    "tokenProcessorConfig": {
+                        "blockSize": PREFIX_CACHE_BLOCK_SIZE,
+                        "hashSeed": PREFIX_CACHE_HASH_SEED,
+                    },
+                    "kvBlockIndexConfig": {
+                        "enableMetrics": True,
+                        "metricsLoggingInterval": 60000000000,  # Log metrics every 60 seconds (in nanoseconds)
+                    },
+                    "tokenizersPoolConfig": {
+                        "hf": {
+                            "tokenizersCacheDir": "/mnt/tokenizers",
+                        },
+                    },
+                },
+            },
+        },
+        {"type": "load-aware-scorer"},
+        {"type": "max-score-picker"},
+    ],
+    "schedulingProfiles": [
+        {
+            "name": "default",
+            "plugins": [
+                {"pluginRef": "precise-prefix-cache-scorer", "weight": 2.0},
+                {"pluginRef": "load-aware-scorer", "weight": 1.0},
+                {"pluginRef": "max-score-picker"},
+            ],
+        }
+    ],
+}
