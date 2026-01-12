@@ -384,7 +384,7 @@ def verify_estimated_prefix_cache(
     llmisvc: LLMInferenceService,
     workload_pods: list[Pod],
     expected_requests: int,
-) -> None:
+) -> bool:
     """
     Verify that the Estimated Prefix Cache is working correctly via metric assertions.
 
@@ -399,6 +399,9 @@ def verify_estimated_prefix_cache(
         llmisvc: Target Inference Service.
         workload_pods: List of serving pods.
         expected_requests: Total expected request count.
+
+    Returns:
+        bool: True if verification succeeds (required by @retry decorator).
 
     Raises:
         AssertionError: If validation fails after the retry timeout.
