@@ -3,6 +3,7 @@ from contextlib import ExitStack
 
 import pytest
 import yaml
+import json
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.gateway import Gateway
