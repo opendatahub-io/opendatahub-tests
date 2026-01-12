@@ -21,7 +21,7 @@ SERVING_ARGUMENT: list[str] = [
     "--model=/mnt/models",
     "--uvicorn-log-level=debug",
     "--dtype=float16",
-    "--chat-template=/app/data/template/tool_chat_template_llama3.1_json.jinja",
+    "--chat-template=/opt/app-root/template/tool_chat_template_llama3.1_json.jinja",
 ]
 
 MODEL_PATH: str = "Meta-Llama-3.1-8B"

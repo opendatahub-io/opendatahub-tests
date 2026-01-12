@@ -22,7 +22,7 @@ SERVING_ARGUMENT: list[str] = [
     "--model=/mnt/models",
     "--uvicorn-log-level=debug",
     "--dtype=float16",
-    "--chat-template=/app/data/template/template_chatglm.jinja",
+    "--chat-template=/opt/app-root/template/template_chatglm.jinja",
 ]
 
 MODEL_PATH: str = "Llama-2-13b-chat-hf"
