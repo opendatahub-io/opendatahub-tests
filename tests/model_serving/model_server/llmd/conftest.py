@@ -78,7 +78,7 @@ def llmd_s3_service_account(
 # **      Gateway fixtures       **
 # *********************************
 @pytest.fixture(scope="session")
-def gateway_namespace(admin_client: DynamicClient) -> str:
+def gateway_namespace() -> str:
     """Return the namespace for LLMD gateway."""
     return LLMDGateway.DEFAULT_NAMESPACE
 
