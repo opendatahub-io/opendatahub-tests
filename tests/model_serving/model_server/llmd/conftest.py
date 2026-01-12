@@ -46,6 +46,7 @@ def llmd_s3_secret(
     models_s3_bucket_region: str,
     models_s3_bucket_endpoint: str,
 ) -> Generator[Secret, None, None]:
+    """Create a Kubernetes secret with S3 credentials for LLMD model storage."""
     with s3_endpoint_secret(
         client=admin_client,
         name="llmd-s3-secret",
@@ -63,6 +64,7 @@ def llmd_s3_secret(
 def llmd_s3_service_account(
     admin_client: DynamicClient, llmd_s3_secret: Secret
 ) -> Generator[ServiceAccount, None, None]:
+    """Create a service account linked to the S3 secret for LLMD pods."""
     with ServiceAccount(
         client=admin_client,
         namespace=llmd_s3_secret.namespace,
@@ -211,6 +213,7 @@ def authenticated_llmisvc_token(
     llmisvc_auth_view_role,
     llmisvc_auth_role_binding,
 ) -> str:
+    """Create an authentication token for accessing a protected LLMInferenceService."""
     service_account_fixture_name = request.param["service_account_fixture"]
     llmisvc_fixture_name = request.param["llmisvc_fixture"]
 
@@ -331,6 +334,7 @@ def llmd_inference_service_s3(
     llmd_s3_secret: Secret,
     llmd_s3_service_account: ServiceAccount,
 ) -> Generator[LLMInferenceService, None, None]:
+    """Create an LLMInferenceService that loads models from S3 storage."""
     if isinstance(request.param, str):
         name_suffix = request.param
         kwargs = {}
@@ -378,6 +382,7 @@ def llmd_inference_service_gpu(
     llmd_s3_secret: Secret,
     llmd_s3_service_account: ServiceAccount,
 ) -> Generator[LLMInferenceService, None, None]:
+    """Create an LLMInferenceService with GPU resources for accelerated inference."""
     if isinstance(request.param, str):
         name_suffix = request.param
         kwargs = {}
