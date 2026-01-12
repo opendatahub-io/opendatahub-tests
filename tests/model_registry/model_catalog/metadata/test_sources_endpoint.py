@@ -36,6 +36,10 @@ class TestSourcesEndpoint:
                 f"Available catalog verified - ID: {item.get('id')}, Status: {item.get('status')}, Error: {error_value}"
             )
 
+    @pytest.skip(
+        reason="This test should be included in https://github.com/opendatahub-io/opendatahub-tests/pull/999/ \
+        where we could disable a source catalog and verify it"
+    )
     @pytest.mark.parametrize("disabled_catalog_source", ["redhat_ai_models"], indirect=True)
     def test_disabled_source_status(
         self,
