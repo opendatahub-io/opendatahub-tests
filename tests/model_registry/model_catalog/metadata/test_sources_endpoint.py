@@ -1,6 +1,5 @@
 import pytest
 
-from ocp_resources.config_map import ConfigMap
 from simple_logger.logger import get_logger
 
 from tests.model_registry.utils import execute_get_command
@@ -17,7 +16,6 @@ class TestSourcesEndpoint:
     @pytest.mark.smoke
     def test_available_source_status(
         self,
-        enabled_model_catalog_config_map: ConfigMap,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
     ):
@@ -38,10 +36,13 @@ class TestSourcesEndpoint:
                 f"Available catalog verified - ID: {item.get('id')}, Status: {item.get('status')}, Error: {error_value}"
             )
 
+    @pytest.mark.skip(
+        reason="This test should be included in https://github.com/opendatahub-io/opendatahub-tests/pull/999/ \
+        where we could disable a source catalog and verify it"
+    )
     @pytest.mark.parametrize("disabled_catalog_source", ["redhat_ai_models"], indirect=True)
     def test_disabled_source_status(
         self,
-        enabled_model_catalog_config_map: ConfigMap,
         disabled_catalog_source: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
@@ -75,11 +76,14 @@ class TestSourcesEndpoint:
             f"Error: {error_value}"
         )
 
+    @pytest.mark.skip(
+        reason="This test should be included in https://github.com/opendatahub-io/opendatahub-tests/pull/999/ \
+        where we could disable a source catalog and verify it"
+    )
     @pytest.mark.parametrize("disabled_catalog_source", ["redhat_ai_models"], indirect=True)
     @pytest.mark.sanity
     def test_sources_endpoint_returns_all_sources_regardless_of_enabled_field(
         self,
-        enabled_model_catalog_config_map: ConfigMap,
         disabled_catalog_source: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
