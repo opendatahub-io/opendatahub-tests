@@ -15,7 +15,6 @@ LOGGER = get_logger(name=__name__)
 
 pytestmark = [
     pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace"),
-    pytest.mark.skip,
 ]
 
 

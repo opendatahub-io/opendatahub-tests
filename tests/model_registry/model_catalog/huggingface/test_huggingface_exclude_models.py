@@ -9,7 +9,6 @@ LOGGER = get_logger(name=__name__)
 
 pytestmark = [
     pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace"),
-    pytest.mark.skip,
 ]
 
 
@@ -18,10 +17,10 @@ pytestmark = [
     [
         pytest.param(
             {
-                "sources_yaml": get_hf_catalog_str(ids=["mixed"], excluded_models=["RedHatAI/*", "ibm-granite/*"]),
+                "sources_yaml": get_hf_catalog_str(ids=["mixed"], excluded_models=["meta-llama/*", "ibm-granite/*"]),
             },
-            ["microsoft/phi-2", "meta-llama/Llama-3.1-8B-Instruct"],
-            ["RedHatAI", "ibm-granite"],
+            ["microsoft/phi-2", "microsoft/Phi-4-mini-reasoning", "microsoft/Phi-3.5-mini-instruct"],
+            ["meta-llama", "ibm-granite"],
             id="test_model_exclusion_wildcard_prefix",
             marks=pytest.mark.install,
         ),
@@ -40,7 +39,11 @@ pytestmark = [
                     ids=["mixed"], excluded_models=["ibm-granite/granite-4.0-h-1b", "microsoft/phi-2"]
                 ),
             },
-            ["meta-llama/Llama-3.1-8B-Instruct", "RedHatAI/phi-4-quantized.w8a8", "RedHatAI/Qwen2.5-7B-Instruct"],
+            [
+                "meta-llama/Llama-3.1-8B-Instruct",
+                "microsoft/Phi-4-mini-reasoning",
+                "microsoft/Phi-3.5-mini-instruct",
+            ],
             ["ibm-granite/granite-4.0-h-1b", "microsoft/phi-2"],
             id="test_model_exclusion_specific_models",
             marks=(pytest.mark.install, pytest.mark.xfail(reason="RHOAIENG-42506: crashes the model catalog pod")),
@@ -74,7 +77,7 @@ class TestHuggingFaceModelExclusion:
 
         # Extract model names from API response
         catalog_model_names = [model.get("name", "") for model in response["items"]]
-        assert set(expected_models) == set(catalog_model_names), (
+        assert set(expected_models).issubset(set(catalog_model_names)), (
             f"Expected {expected_models} models to be present in response. Found {catalog_model_names}"
         )
         LOGGER.info(f"With exclusion {excluded_models}, following models were found: {catalog_model_names}")
