@@ -102,7 +102,6 @@ All code MUST consider security implications.
 - Tests are organized by component in `tests/<component>/`
 - Each component has its own conftest.py for scoped fixtures
 - Utilities go in `utilities/` with topic-specific modules
-- Runtime manifests go in `utilities/manifests/`
 
 ## AI-Assisted Development Guidelines
 
