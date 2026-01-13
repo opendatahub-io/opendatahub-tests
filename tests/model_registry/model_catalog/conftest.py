@@ -394,6 +394,7 @@ def updated_catalog_config_map_scope_function(
         wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
         yield catalog_config_map
     is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+    wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
 
 @pytest.fixture(scope="class")

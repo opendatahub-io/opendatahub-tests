@@ -251,3 +251,22 @@ def get_excluded_model_str(models: list[str]) -> str:
     - {model_name}
 """
     return excluded_models
+
+
+def assert_source_error_state_message(
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+    expected_error_message: str,
+    source_id: str,
+):
+    results = execute_get_command(
+        url=f"{model_catalog_rest_url[0]}sources",
+        headers=model_registry_rest_headers,
+    )["items"]
+    # pick the relevant source first by id:
+    matched_source = [result for result in results if result["id"] == source_id]
+    assert matched_source, f"Matched expected source not found: {results}"
+    assert matched_source[0]["status"] == "error"
+    assert expected_error_message in matched_source[0]["error"], (
+        f"Expected error: {expected_error_message} not found in {matched_source[0]['error']}"
+    )
