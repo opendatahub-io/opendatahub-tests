@@ -3,6 +3,11 @@ from typing import Optional, Dict, Any, List, Generator
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.resource import NamespacedResource, Resource, MissingRequiredArgumentError
 from ocp_resources.pod import Pod
+from simple_logger.logger import get_logger
+from timeout_sampler import retry
+from utilities.constants import Timeout
+
+LOGGER = get_logger(name=__name__)
 
 
 class ResourceFlavor(Resource):
@@ -170,3 +175,14 @@ def check_gated_pods_and_running_pods(
             ):
                 gated_pods += 1
     return running_pods, gated_pods
+
+
+@retry(
+    wait_timeout=Timeout.TIMEOUT_4MIN,
+    sleep=5,
+)
+def wait_for_kueue_crds_available(client: DynamicClient) -> bool:
+    """Wait for Kueue CRDs to be fully available in the API server."""
+    list(ResourceFlavor.get(client=client))
+    LOGGER.info("Kueue CRDs are available")
+    return True
