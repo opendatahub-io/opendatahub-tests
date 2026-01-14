@@ -456,10 +456,12 @@ def ensure_kueue_unmanaged_in_dsc(
                 LOGGER.info(f"Updating Kueue from {kueue_management_state} to Unmanaged")
                 dsc_dict = {
                     "spec": {
-                        "components": {DscComponents.KUEUE: {"managementState": DscComponents.ManagementState.UNMANAGED}}
+                        "components": {
+                            DscComponents.KUEUE: {"managementState": DscComponents.ManagementState.UNMANAGED}
+                        }
                     }
                 }
-                stack.enter_context(ResourceEditor(patches={dsc_resource: dsc_dict}))
+                stack.enter_context(cm=ResourceEditor(patches={dsc_resource: dsc_dict}))
                 dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=300)
 
             # Wait for CRDs before yielding to tests
