@@ -2,7 +2,6 @@ import pytest
 from typing import Self
 from ocp_resources.config_map import ConfigMap
 from simple_logger.logger import get_logger
-from timeout_sampler import TimeoutExpiredError
 from tests.model_registry.model_catalog.constants import HF_MODELS
 from tests.model_registry.model_catalog.utils import (
     get_hf_catalog_str,
@@ -10,7 +9,7 @@ from tests.model_registry.model_catalog.utils import (
 from tests.model_registry.model_catalog.huggingface.utils import (
     assert_huggingface_values_matches_model_catalog_api_values,
     wait_for_huggingface_retrival_match,
-    get_model_catalog_pod,
+    wait_for_hugging_face_model_import,
 )
 
 LOGGER = get_logger(name=__name__)
@@ -70,9 +69,9 @@ catalogs:
     type: hf
     enabled: true
     includedModels:
-    - ibm-granite/*
+    - huggingface-course/*
 """,
-                {"org_name": "ibm-granite", "excluded_str": None},
+                {"org_name": "huggingface-course", "excluded_str": None},
                 id="test_hf_source_wildcard",
             ),
             pytest.param(
@@ -83,11 +82,11 @@ catalogs:
     type: hf
     enabled: true
     properties:
-      allowedOrganization: "ibm-granite"
+      allowedOrganization: "huggingface-course"
     includedModels:
     - '*'
 """,
-                {"org_name": "ibm-granite", "excluded_str": None},
+                {"org_name": "huggingface-course", "excluded_str": None},
                 id="test_hf_source_allowed_org",
             ),
             pytest.param(
@@ -98,13 +97,13 @@ catalogs:
     type: hf
     enabled: true
     properties:
-      allowedOrganization: "ibm-granite"
+      allowedOrganization: "huggingface-course"
     includedModels:
     - '*'
     excludedModels:
-    - '*-base'
+    - '*-accelerate'
 """,
-                {"org_name": "ibm-granite", "excluded_str": "-base"},
+                {"org_name": "huggingface-course", "excluded_str": "-accelerate"},
                 id="test_hf_source_allowed_org_exclude",
             ),
             pytest.param(
@@ -135,18 +134,12 @@ catalogs:
         Test that excluded models do not appear in the catalog API response
         """
         LOGGER.info("Testing HuggingFace model exclusion functionality")
-        try:
-            wait_for_huggingface_retrival_match(
-                model_registry_rest_headers=model_registry_rest_headers,
-                model_catalog_rest_url=model_catalog_rest_url,
-                expected_num_models_from_hf_api=expected_num_models_from_hf_api,
-            )
-        except TimeoutExpiredError:
-            LOGGER.warning("Checking pod log")
-            pod = get_model_catalog_pod()
-            log = pod.log(container="catalog")
-            if f"Listed {expected_num_models_from_hf_api} models from author" in log:
-                LOGGER.warning("Found relevant log entry")
-            else:
-                LOGGER.warning(f"No relevant log entry: {log}")
-                raise
+        wait_for_hugging_face_model_import(
+            hf_id="hf_id", expected_num_models_from_hf_api=expected_num_models_from_hf_api
+        )
+        wait_for_huggingface_retrival_match(
+            source_id="hf_id",
+            model_registry_rest_headers=model_registry_rest_headers,
+            model_catalog_rest_url=model_catalog_rest_url,
+            expected_num_models_from_hf_api=expected_num_models_from_hf_api,
+        )
