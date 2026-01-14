@@ -7,7 +7,7 @@ from ocp_resources.resource import ResourceEditor
 from tests.model_registry.constants import DEFAULT_MODEL_CATALOG_CM
 from tests.model_registry.model_catalog.constants import DEFAULT_CATALOGS
 from tests.model_registry.model_catalog.catalog_config.utils import validate_model_catalog_configmap_data
-from tests.model_registry.utils import execute_get_command
+from tests.model_registry.model_catalog.utils import assert_source_error_state_message
 
 LOGGER = get_logger(name=__name__)
 
@@ -75,49 +75,19 @@ catalogs:
                 "non-existent-catalog.yaml: no such file or directory",
                 id="test_source_error_invalid_path",
             ),
-            pytest.param(
-                """
-catalogs:
-  - name: HuggingFace Hub
-    id: error_catalog
-    type: hf
-    enabled: true
-""",
-                "includedModels cannot be empty for HuggingFace catalog",
-                id="test_hf_source_no_include_model",
-            ),
-            pytest.param(
-                """
-catalogs:
-  - name: HuggingFace Hub
-    id: error_catalog
-    type: hf
-    enabled: true
-    includedModels:
-    - ibm-granite/*
-""",
-                "HuggingFace API returned status 401",
-                id="test_hf_source_unauthorized",
-                marks=pytest.mark.xfail(reason="RHOAIENG-42213 is causing this failure"),
-            ),
         ],
         indirect=["updated_catalog_config_map_scope_function"],
     )
-    def test_source_error_state(
+    def test_default_source_error_state(
         self: Self,
         updated_catalog_config_map_scope_function: ConfigMap,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
-        expected_error_message,
+        expected_error_message: str,
     ):
-        results = execute_get_command(
-            url=f"{model_catalog_rest_url[0]}sources",
-            headers=model_registry_rest_headers,
-        )["items"]
-        # pick the relevant source first by id:
-        matched_source = [result for result in results if result["id"] == "error_catalog"]
-        assert matched_source, f"Matched expected source not found: {results}"
-        assert matched_source[0]["status"] == "error"
-        assert expected_error_message in matched_source[0]["error"], (
-            f"Expected error: {expected_error_message} not found in {matched_source[0]['error']}"
+        assert_source_error_state_message(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            expected_error_message=expected_error_message,
+            source_id="error_catalog",
         )
