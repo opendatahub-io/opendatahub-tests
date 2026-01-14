@@ -182,7 +182,14 @@ def check_gated_pods_and_running_pods(
     sleep=5,
 )
 def wait_for_kueue_crds_available(client: DynamicClient) -> bool:
-    """Wait for Kueue CRDs to be fully available in the API server."""
+    """Wait for Kueue CRDs to be fully available in the API server.
+
+    Raises:
+        TimeoutExpiredError: If CRDs are not available within the timeout period.
+
+    Returns:
+        True when CRDs are available.
+    """
     list(ResourceFlavor.get(client=client))
     LOGGER.info("Kueue CRDs are available")
     return True
