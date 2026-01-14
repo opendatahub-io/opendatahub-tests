@@ -12,6 +12,7 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest_testconfig import py_config
+from simple_logger.logger import get_logger
 
 from utilities.constants import (
     RuntimeTemplates,
@@ -19,9 +20,13 @@ from utilities.constants import (
     QWEN_MODEL_NAME,
     LLMdInferenceSimConfig,
 )
+from timeout_sampler import retry
+
 from utilities.inference_utils import create_isvc
-from utilities.infra import get_data_science_cluster
+from utilities.infra import get_data_science_cluster, wait_for_dsc_status_ready
 from utilities.serving_runtime import ServingRuntimeFromTemplate
+
+LOGGER = get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")
@@ -130,8 +135,8 @@ def llm_d_inference_sim_serving_runtime(
         containers=[
             {
                 "name": "kserve-container",
-                "image": "quay.io/trustyai_testing/llmd-inference-sim-dataset-builtin"
-                "@sha256:dfaa32cf0878a2fb522133e34369412c90e8ffbfa18b690b92602cf7c019fbbe",
+                "image": "quay.io/trustyai_testing/llm-d-inference-sim-dataset-builtin"
+                "@sha256:79e525cfd57a0d72b7e71d5f1e2dd398eca9315cfbd061d9d3e535b1ae736239",
                 "imagePullPolicy": "Always",
                 "args": ["--model", LLMdInferenceSimConfig.model_name, "--port", str(LLMdInferenceSimConfig.port)],
                 "ports": [{"containerPort": LLMdInferenceSimConfig.port, "protocol": "TCP"}],
@@ -165,6 +170,7 @@ def llm_d_inference_sim_isvc(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     llm_d_inference_sim_serving_runtime: ServingRuntime,
+    patched_dsc_kserve_headed: DataScienceCluster,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
@@ -199,7 +205,30 @@ def patched_dsc_kserve_headed(
     admin_client, kserve_controller_manager_deployment: Deployment
 ) -> Generator[DataScienceCluster, None, None]:
     """Configure KServe Services to work in Headed mode i.e. using the Service port instead of the Pod port"""
-    dsc = get_data_science_cluster(client=admin_client)
-    with ResourceEditor(patches={dsc: {"spec": {"components": {"kserve": {"rawDeploymentServiceConfig": "Headed"}}}}}):
+
+    def _kserve_last_transition_time(dsc_resource: DataScienceCluster) -> str:
+        return next(
+            filter(lambda condition: condition["type"] == "KserveReady", dsc_resource.instance.status["conditions"])
+        )["lastTransitionTime"]
+
+    @retry(wait_timeout=30, sleep=5)
+    def _wait_for_headed_entities_status_ready(kserve_last_transition_time: str, dsc_resource: DataScienceCluster):
+        if kserve_last_transition_time == _kserve_last_transition_time(dsc_resource):
+            return False
         kserve_controller_manager_deployment.wait_for_replicas()
+        wait_for_dsc_status_ready(dsc_resource=dsc_resource)
+        return True
+
+    dsc = get_data_science_cluster(client=admin_client)
+    if not dsc.instance.spec.components.kserve.rawDeploymentServiceConfig == "Headed":
+        kserve_pre_transition_time = _kserve_last_transition_time(dsc_resource=dsc)
+        with ResourceEditor(
+            patches={dsc: {"spec": {"components": {"kserve": {"rawDeploymentServiceConfig": "Headed"}}}}}
+        ):
+            _wait_for_headed_entities_status_ready(
+                kserve_last_transition_time=kserve_pre_transition_time, dsc_resource=dsc
+            )
+            yield dsc
+    else:
+        LOGGER.info("DSC already configured for Headed mode")
         yield dsc
