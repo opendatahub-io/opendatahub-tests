@@ -414,6 +414,42 @@ def sa_namespace(request: pytest.FixtureRequest, admin_client: DynamicClient) ->
         yield ns
 
 
+@pytest.fixture()
+def login_as_test_user(
+    is_byoidc: bool, api_server_url: str, original_user: str, test_idp_user
+) -> Generator[None, None, None]:
+    """
+    Fixture to log in as a test user and restore original user after test.
+
+    This fixture is used for RBAC tests to switch context to a non-admin test user.
+    Used by both model registry and model catalog RBAC tests.
+    """
+    if is_byoidc:
+        yield
+    else:
+        from utilities.user_utils import UserTestSession
+
+        if isinstance(test_idp_user, UserTestSession):
+            username = test_idp_user.username
+            password = test_idp_user.password
+        else:
+            username = test_idp_user
+            password = None
+
+        LOGGER.info(f"Logging in as {username}")
+        login_with_user_password(
+            api_address=api_server_url,
+            user=username,
+            password=password,
+        )
+        yield
+        LOGGER.info(f"Logging in as {original_user}")
+        login_with_user_password(
+            api_address=api_server_url,
+            user=original_user,
+        )
+
+
 @pytest.fixture(scope="class")
 def service_account(admin_client: DynamicClient, sa_namespace: Namespace) -> Generator[Any, None, None]:
     """
