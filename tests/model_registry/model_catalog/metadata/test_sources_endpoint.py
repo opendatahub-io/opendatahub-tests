@@ -1,8 +1,8 @@
 import pytest
 
-from ocp_resources.config_map import ConfigMap
 from simple_logger.logger import get_logger
 
+from tests.model_registry.model_catalog.constants import REDHAT_AI_CATALOG_ID
 from tests.model_registry.utils import execute_get_command
 from tests.model_registry.model_catalog.metadata.utils import validate_source_status
 
@@ -17,7 +17,6 @@ class TestSourcesEndpoint:
     @pytest.mark.smoke
     def test_available_source_status(
         self,
-        enabled_model_catalog_config_map: ConfigMap,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
     ):
@@ -38,11 +37,14 @@ class TestSourcesEndpoint:
                 f"Available catalog verified - ID: {item.get('id')}, Status: {item.get('status')}, Error: {error_value}"
             )
 
-    @pytest.mark.parametrize("disabled_catalog_source", ["redhat_ai_models"], indirect=True)
+    @pytest.mark.parametrize(
+        "sparse_override_catalog_source",
+        [{"id": REDHAT_AI_CATALOG_ID, "field_name": "enabled", "field_value": False}],
+        indirect=True,
+    )
     def test_disabled_source_status(
         self,
-        enabled_model_catalog_config_map: ConfigMap,
-        disabled_catalog_source: str,
+        sparse_override_catalog_source: dict,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
     ):
@@ -52,7 +54,7 @@ class TestSourcesEndpoint:
         - status field is "disabled"
         - error field is null or empty
         """
-        catalog_id = disabled_catalog_source
+        catalog_id = sparse_override_catalog_source["catalog_id"]
 
         response = execute_get_command(url=f"{model_catalog_rest_url[0]}sources", headers=model_registry_rest_headers)
         items = response.get("items", [])
@@ -75,12 +77,15 @@ class TestSourcesEndpoint:
             f"Error: {error_value}"
         )
 
-    @pytest.mark.parametrize("disabled_catalog_source", ["redhat_ai_models"], indirect=True)
+    @pytest.mark.parametrize(
+        "sparse_override_catalog_source",
+        [{"id": REDHAT_AI_CATALOG_ID, "field_name": "enabled", "field_value": False}],
+        indirect=True,
+    )
     @pytest.mark.sanity
     def test_sources_endpoint_returns_all_sources_regardless_of_enabled_field(
         self,
-        enabled_model_catalog_config_map: ConfigMap,
-        disabled_catalog_source: str,
+        sparse_override_catalog_source: dict,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
     ):

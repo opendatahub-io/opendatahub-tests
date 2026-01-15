@@ -1,33 +1,12 @@
 from typing import Any
 
-from kubernetes.dynamic import DynamicClient
 from simple_logger.logger import get_logger
-from timeout_sampler import retry
 
 from ocp_resources.pod import Pod
-from ocp_resources.route import Route
 from tests.model_registry.model_catalog.constants import HF_MODELS
-from tests.model_registry.utils import execute_get_command, get_rest_headers
+from tests.model_registry.utils import execute_get_command
 
 LOGGER = get_logger(name=__name__)
-
-
-@retry(wait_timeout=60, sleep=5, exceptions_dict={AssertionError: []})
-def get_catalog_url_and_headers(
-    admin_client: DynamicClient,
-    model_registry_namespace: str,
-    token: str,
-) -> tuple[str, dict[str, str]]:
-    """
-    Get model catalog URL and authentication headers from route.
-    """
-    model_catalog_routes = list(
-        Route.get(namespace=model_registry_namespace, label_selector="component=model-catalog", client=admin_client)
-    )
-    assert model_catalog_routes, f"Model catalog routes not found in namespace {model_registry_namespace}"
-
-    catalog_url = f"https://{model_catalog_routes[0].instance.spec.host}:443/api/model_catalog/v1alpha1/"
-    return catalog_url, get_rest_headers(token=token)
 
 
 def get_postgres_pod_in_namespace(namespace: str = "rhoai-model-registries") -> Pod:
@@ -272,3 +251,22 @@ def get_excluded_model_str(models: list[str]) -> str:
     - {model_name}
 """
     return excluded_models
+
+
+def assert_source_error_state_message(
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+    expected_error_message: str,
+    source_id: str,
+):
+    results = execute_get_command(
+        url=f"{model_catalog_rest_url[0]}sources",
+        headers=model_registry_rest_headers,
+    )["items"]
+    # pick the relevant source first by id:
+    matched_source = [result for result in results if result["id"] == source_id]
+    assert matched_source, f"Matched expected source not found: {results}"
+    assert matched_source[0]["status"] == "error"
+    assert expected_error_message in matched_source[0]["error"], (
+        f"Expected error: {expected_error_message} not found in {matched_source[0]['error']}"
+    )

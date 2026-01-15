@@ -1,6 +1,5 @@
 import pytest
 from typing import Self
-from ocp_resources.config_map import ConfigMap
 from simple_logger.logger import get_logger
 from tests.model_registry.model_catalog.sorting.utils import (
     get_sources_with_sorting,
@@ -26,7 +25,6 @@ class TestSourcesSorting:
     )
     def test_sources_sorting_works_correctly(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         order_by: str,
         sort_order: str,
         model_catalog_rest_url: list[str],
@@ -49,7 +47,6 @@ class TestSourcesSorting:
     @pytest.mark.parametrize("unsupported_field", ["CREATE_TIME", "LAST_UPDATE_TIME"])
     def test_sources_rejects_unsupported_fields(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         unsupported_field: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],

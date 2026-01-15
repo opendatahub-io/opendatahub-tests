@@ -1,10 +1,10 @@
 # Liveness probe for single-node configurations
 LLMD_LIVENESS_PROBE = {
     "httpGet": {"path": "/health", "port": 8000, "scheme": "HTTPS"},
-    "initialDelaySeconds": 120,
-    "periodSeconds": 30,
-    "timeoutSeconds": 30,
-    "failureThreshold": 5,
+    "initialDelaySeconds": 240,
+    "periodSeconds": 60,
+    "timeoutSeconds": 60,
+    "failureThreshold": 10,
 }
 
 # Common parameters for vLLM and llm-d scheduler
@@ -20,13 +20,9 @@ ROUTER_SCHEDULER_CONFIG_ESTIMATED_PREFIX_CACHE = {
         {
             "type": "prefix-cache-scorer",
             "parameters": {
-                "indexerConfig": {
-                    "tokenProcessorConfig": {
-                        "blockSize": PREFIX_CACHE_BLOCK_SIZE,
-                        "hashAlgo": PREFIX_CACHE_HASH_ALGO,
-                        "hashSeed": PREFIX_CACHE_HASH_SEED,
-                    }
-                }
+                "blockSize": PREFIX_CACHE_BLOCK_SIZE,
+                "maxPrefixBlocksToMatch": 256,
+                "lruCapacityPerServer": 31250,
             },
         }
     ],

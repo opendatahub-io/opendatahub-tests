@@ -13,7 +13,7 @@ LOGGER = get_logger(name=__name__)
 SERVING_ARGUMENT = [
     "--model=/mnt/models",
     "--uvicorn-log-level=debug",
-    "--chat-template=/app/data/template/tool_chat_template_mistral.jinja",
+    "--chat-template=/opt/app-root/template/tool_chat_template_mistral.jinja",
 ]
 
 MODEL_PATH = "TheBloke/OpenHermes-2.5-Mistral-7B-AWQ"

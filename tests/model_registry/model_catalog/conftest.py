@@ -18,10 +18,9 @@ from tests.model_registry.model_catalog.constants import (
     REDHAT_AI_CATALOG_ID,
     DEFAULT_CATALOGS,
 )
-from tests.model_registry.model_catalog.utils import get_models_from_catalog_api, get_catalog_url_and_headers
+from tests.model_registry.model_catalog.utils import get_models_from_catalog_api
 from tests.model_registry.constants import (
     CUSTOM_CATALOG_ID1,
-    DEFAULT_MODEL_CATALOG_CM,
     DEFAULT_CUSTOM_MODEL_CATALOG,
 )
 from tests.model_registry.utils import (
@@ -39,55 +38,63 @@ from utilities.infra import get_openshift_token, create_inference_token, login_w
 LOGGER = get_logger(name=__name__)
 
 
-@pytest.fixture(scope="session")
-def enabled_model_catalog_config_map(
-    admin_client: DynamicClient,
+@pytest.fixture()
+def sparse_override_catalog_source(
+    request: pytest.FixtureRequest,
+    admin_client,
     model_registry_namespace: str,
-    current_client_token: str,
-) -> Generator[ConfigMap, None, None]:
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+) -> Generator[dict, None, None]:
     """
-    Enable all catalogs in the default model catalog configmap
+    Creates a sparse override for an existing default catalog source.
+
+    Requires parameterization via request.param dict containing:
+    - "id": catalog ID to override (required)
+    - "field_name": name of the field to override (required)
+    - "field_value": value for the field (required)
     """
-    # Get operator-managed default sources ConfigMap
-    default_sources_cm = ConfigMap(
-        name=DEFAULT_MODEL_CATALOG_CM, client=admin_client, namespace=model_registry_namespace, ensure_exists=True
+    # Get fields from pytest param
+    param = getattr(request, "param", None)
+    assert param, "sparse_override_catalog_source requires request.param dict"
+
+    catalog_id = param["id"]
+    field_name = param["field_name"]
+    field_value = param["field_value"]
+
+    # Capture CURRENT catalog state from API before applying sparse override
+    response = execute_get_command(url=f"{model_catalog_rest_url[0]}sources", headers=model_registry_rest_headers)
+    items = response.get("items", [])
+    original_catalog = next((item for item in items if item.get("id") == catalog_id), None)
+    assert original_catalog is not None, f"Original catalog '{catalog_id}' not found in sources"
+
+    # Create sparse override YAML with only id and the field to override
+    catalog_override = {"id": catalog_id, field_name: field_value}
+    sparse_catalog_yaml = yaml.dump(
+        {"catalogs": [catalog_override]},
+        default_flow_style=False,
     )
 
-    # Get the sources.yaml content from default sources
-    default_sources_yaml = default_sources_cm.instance.data.get("sources.yaml", "")
-
-    # Parse the YAML and extract only catalogs, enabling each one
-    parsed_yaml = yaml.safe_load(default_sources_yaml)
-    if not parsed_yaml or "catalogs" not in parsed_yaml:
-        raise RuntimeError("No catalogs found in default sources ConfigMap")
-
-    for catalog in parsed_yaml["catalogs"]:
-        catalog["enabled"] = True
-    enabled_yaml_dict = {"catalogs": parsed_yaml["catalogs"]}
-    enabled_sources_yaml = yaml.dump(enabled_yaml_dict, default_flow_style=False, sort_keys=False)
-
-    LOGGER.info("Adding enabled catalogs to model-catalog-sources ConfigMap")
-
-    # Get user-managed sources ConfigMap
-    user_sources_cm = ConfigMap(
-        name=DEFAULT_CUSTOM_MODEL_CATALOG, client=admin_client, namespace=model_registry_namespace, ensure_exists=True
+    # Write sparse override to custom ConfigMap
+    sources_cm = ConfigMap(
+        name=DEFAULT_CUSTOM_MODEL_CATALOG,
+        client=admin_client,
+        namespace=model_registry_namespace,
     )
+    patches = {"data": {"sources.yaml": sparse_catalog_yaml}}
 
-    patches = {"data": {"sources.yaml": enabled_sources_yaml}}
-
-    with ResourceEditor(patches={user_sources_cm: patches}):
-        # Wait for the model catalog pod to be ready
+    with ResourceEditor(patches={sources_cm: patches}):
         is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+        wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
+        yield {
+            "catalog_id": catalog_id,
+            "field_name": field_name,
+            "field_value": field_value,
+            "original_catalog": original_catalog,
+        }
 
-        # Get the model catalog URL and headers and wait for the API to be fully ready
-        catalog_url, headers = get_catalog_url_and_headers(
-            admin_client=admin_client,
-            model_registry_namespace=model_registry_namespace,
-            token=current_client_token,
-        )
-        wait_for_model_catalog_api(url=catalog_url, headers=headers)
-
-        yield user_sources_cm
+    is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+    wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
 
 @pytest.fixture(scope="class")
@@ -387,6 +394,7 @@ def updated_catalog_config_map_scope_function(
         wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
         yield catalog_config_map
     is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+    wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
 
 @pytest.fixture(scope="class")

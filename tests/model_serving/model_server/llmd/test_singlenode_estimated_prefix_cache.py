@@ -21,13 +21,10 @@ from tests.model_serving.model_server.llmd.utils import (
     get_llmd_router_scheduler_pod,
     get_llmd_workload_pods,
     send_prefix_cache_test_requests,
-    verify_estimated_prefix_cache_metrics,
+    verify_estimated_prefix_cache,
     verify_gateway_status,
     verify_llm_service_status,
 )
-from simple_logger.logger import get_logger
-
-LOGGER = get_logger(name=__name__)
 
 # Number of requests to send for prefix cache testing
 NUM_REQUESTS = 20
@@ -39,7 +36,7 @@ pytestmark = [pytest.mark.llmd_gpu]
     "unprivileged_model_namespace, authenticated_llmisvc_token",
     [
         pytest.param(
-            {"name": "llmd-singlenode-prefix-cache-test"},
+            {"name": "llmd-test-singlenode-estimated-prefix-cache"},
             {
                 "service_account_fixture": "llmd_s3_service_account",
                 "llmisvc_fixture": "singlenode_estimated_prefix_cache",
@@ -86,7 +83,7 @@ class TestSingleNodeEstimatedPrefixCache:
         )
 
         # Verify estimated prefix cache routing using Prometheus metrics
-        verify_estimated_prefix_cache_metrics(
+        verify_estimated_prefix_cache(
             prometheus=prometheus,
             llmisvc=singlenode_estimated_prefix_cache,
             workload_pods=workload_pods,
