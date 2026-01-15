@@ -27,91 +27,76 @@ class TestCatalogRBAC:
     """Test suite for catalog ConfigMap RBAC"""
 
     @pytest.mark.smoke
-    @pytest.mark.parametrize(
-        "user_params,configmap_name",
-        [
-            pytest.param(
-                {},
-                DEFAULT_MODEL_CATALOG_CM,
-                id="admin_read_default_sources",
-                marks=(pytest.mark.pre_upgrade, pytest.mark.post_upgrade, pytest.mark.install),
-            ),
-            pytest.param(
-                {},
-                DEFAULT_CUSTOM_MODEL_CATALOG,
-                id="admin_read_custom_sources",
-                marks=(pytest.mark.pre_upgrade, pytest.mark.post_upgrade, pytest.mark.install),
-            ),
-            pytest.param(
-                {"user_type": "test"},
-                DEFAULT_MODEL_CATALOG_CM,
-                id="non_admin_denied_default_sources",
-            ),
-            pytest.param(
-                {"user_type": "test"},
-                DEFAULT_CUSTOM_MODEL_CATALOG,
-                id="non_admin_denied_custom_sources",
-            ),
-        ],
-    )
-    def test_catalog_configmap_rbac(
+    @pytest.mark.pre_upgrade
+    @pytest.mark.post_upgrade
+    @pytest.mark.install
+    @pytest.mark.parametrize("configmap_name", [DEFAULT_MODEL_CATALOG_CM, DEFAULT_CUSTOM_MODEL_CATALOG])
+    def test_admin_can_read_catalog_configmaps(
         self,
-        is_byoidc: bool,
         admin_client: DynamicClient,
         model_registry_namespace: str,
-        user_credentials_rbac: dict[str, str],
-        login_as_test_user: None,
-        user_params: dict,
         configmap_name: str,
     ):
         """
-        RHOAIENG-41850: Verify RBAC permissions for catalog ConfigMaps.
+        RHOAIENG-41850: Verify that admin users can read both catalog ConfigMaps.
 
-        Admin users should have:
+        Admins should have:
         - get/watch on model-catalog-default-sources (read-only)
         - get/watch/update/patch on model-catalog-sources (read/write)
-
-        Non-admin users should receive 403 Forbidden when accessing either ConfigMap.
 
         Note: Admin write access to model-catalog-sources is already tested by existing tests
         (test_custom_model_catalog.py, test_catalog_source_merge.py) which use admin_client
         to successfully update ConfigMaps via ResourceEditor.
         """
-        is_test_user = user_params.get("user_type") == "test"
-
-        # Select client based on user type
-        client = get_client() if is_test_user else admin_client
         catalog_cm = ConfigMap(
             name=configmap_name,
             namespace=model_registry_namespace,
-            client=client,
+            client=admin_client,
         )
 
-        if is_test_user:
-            if is_byoidc:
-                pytest.skip(reason="BYOIDC test users may have pre-configured group memberships")
-            # Non-admin user - should receive 403 Forbidden
-            with pytest.raises(ApiException) as exc_info:
-                _ = catalog_cm.instance  # Trigger the API call
+        assert catalog_cm.exists, f"ConfigMap '{configmap_name}' not found in namespace '{model_registry_namespace}'"
 
-            assert exc_info.value.status == 403, (
-                f"Expected HTTP 403 Forbidden for non-admin user accessing '{configmap_name}', "
-                f"but got {exc_info.value.status}: {exc_info.value.reason}"
+        data = catalog_cm.instance.data
+        assert data is not None, f"Admin should be able to read ConfigMap '{configmap_name}' data"
+
+        sources_yaml = data.get("sources.yaml")
+        assert sources_yaml is not None, f"ConfigMap '{configmap_name}' should contain 'sources.yaml' key"
+
+        LOGGER.info(f"Admin successfully read ConfigMap '{configmap_name}'")
+
+    @pytest.mark.smoke
+    @pytest.mark.parametrize("configmap_name", [DEFAULT_MODEL_CATALOG_CM, DEFAULT_CUSTOM_MODEL_CATALOG])
+    def test_non_admin_cannot_access_catalog_configmaps(
+        self,
+        is_byoidc: bool,
+        model_registry_namespace: str,
+        user_credentials_rbac: dict[str, str],
+        login_as_test_user: None,
+        configmap_name: str,
+    ):
+        """
+        RHOAIENG-41850: Verify that non-admin users cannot access catalog ConfigMaps,
+        receiving a 403 Forbidden error.
+        """
+        if is_byoidc:
+            pytest.skip(reason="BYOIDC test users may have pre-configured group memberships")
+
+        # get_client() uses the current kubeconfig context (set by login_as_test_user fixture)
+        user_client = get_client()
+
+        with pytest.raises(ApiException) as exc_info:
+            catalog_cm = ConfigMap(
+                name=configmap_name,
+                namespace=model_registry_namespace,
+                client=user_client,
             )
-            LOGGER.info(
-                f"Non-admin user '{user_credentials_rbac['username']}' correctly denied access "
-                f"to ConfigMap '{configmap_name}'"
-            )
-        else:
-            # Admin user - should be able to read
-            assert catalog_cm.exists, (
-                f"ConfigMap '{configmap_name}' not found in namespace '{model_registry_namespace}'"
-            )
+            _ = catalog_cm.instance  # Access the ConfigMap instance to trigger the API call
 
-            data = catalog_cm.instance.data
-            assert data is not None, f"Admin should be able to read ConfigMap '{configmap_name}' data"
-
-            sources_yaml = data.get("sources.yaml")
-            assert sources_yaml is not None, f"ConfigMap '{configmap_name}' should contain 'sources.yaml' key"
-
-            LOGGER.info(f"Admin successfully read ConfigMap '{configmap_name}'")
+        assert exc_info.value.status == 403, (
+            f"Expected HTTP 403 Forbidden for non-admin user accessing '{configmap_name}', "
+            f"but got {exc_info.value.status}: {exc_info.value.reason}"
+        )
+        LOGGER.info(
+            f"Non-admin user '{user_credentials_rbac['username']}' correctly denied access "
+            f"to ConfigMap '{configmap_name}'"
+        )
