@@ -1,9 +1,9 @@
-from typing import Any, Dict, Generator, List
+from typing import Any, Dict, Generator, List, Tuple
 import base64
 import requests
 from json import JSONDecodeError
 from urllib.parse import urlparse
-from contextlib import ExitStack, contextmanager
+from contextlib import contextmanager
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.group import Group
@@ -17,7 +17,9 @@ from ocp_resources.resource import ResourceEditor
 from utilities.resources.rate_limit_policy import RateLimitPolicy
 from utilities.resources.token_rate_limit_policy import TokenRateLimitPolicy
 from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
+from ocp_resources.endpoints import Endpoints
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.namespace import Namespace
 from utilities.constants import (
     MAAS_GATEWAY_NAME,
     MAAS_GATEWAY_NAMESPACE,
@@ -476,8 +478,6 @@ def ensure_maas_gateway_api(
     admin_client: DynamicClient,
     hostname: str,
 ) -> Generator[None, None, None]:
-    LOGGER.info(f"Ensuring MaaS Gateway is present: {MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_NAME} (hostname={hostname})")
-
     gateway = Gateway(
         client=admin_client,
         name=MAAS_GATEWAY_NAME,
@@ -496,15 +496,8 @@ def ensure_maas_gateway_api(
         teardown=True,
     )
 
-    if gateway.exists:
-        LOGGER.info(f"MaaS Gateway already exists: {MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_NAME}")
-        yield
-        return
-
-    LOGGER.info(f"Creating MaaS Gateway: {MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_NAME}")
+    LOGGER.info(f"Creating MaaS Gateway: {MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_NAME} (hostname={hostname})")
     with gateway:
-        assert gateway.exists, f"Gateway was not created: {MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_NAME}"
-        LOGGER.info(f"MaaS Gateway created successfully: {MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_NAME}")
         yield
 
 
@@ -539,60 +532,12 @@ def ensure_maas_usage_policies(*, admin_client: DynamicClient) -> Generator[None
     )
 
     LOGGER.info(
-        f"Ensuring MaaS usage policies exist in {MAAS_GATEWAY_NAMESPACE}: "
-        f"{MAAS_RATE_LIMIT_POLICY_NAME}, {MAAS_TOKEN_RATE_LIMIT_POLICY_NAME} "
-        f"(targetRef=Gateway/{MAAS_GATEWAY_NAME})"
+        f"Creating MaaS usage policies in {MAAS_GATEWAY_NAMESPACE}: "
+        f"{MAAS_RATE_LIMIT_POLICY_NAME}, {MAAS_TOKEN_RATE_LIMIT_POLICY_NAME}"
     )
 
-    with ExitStack() as stack:
-        if not request_policy.exists:
-            LOGGER.info(f"Creating RateLimitPolicy: {MAAS_GATEWAY_NAMESPACE}/{MAAS_RATE_LIMIT_POLICY_NAME}")
-            stack.enter_context(cm=request_policy)
-        else:
-            LOGGER.info(f"RateLimitPolicy already exists: {MAAS_GATEWAY_NAMESPACE}/{MAAS_RATE_LIMIT_POLICY_NAME}")
-
-        if not token_policy.exists:
-            LOGGER.info(f"Creating TokenRateLimitPolicy: {MAAS_GATEWAY_NAMESPACE}/{MAAS_TOKEN_RATE_LIMIT_POLICY_NAME}")
-            stack.enter_context(cm=token_policy)
-        else:
-            LOGGER.info(
-                f"TokenRateLimitPolicy already exists: {MAAS_GATEWAY_NAMESPACE}/{MAAS_TOKEN_RATE_LIMIT_POLICY_NAME}"
-            )
-
-        with ResourceEditor(
-            patches={
-                RateLimitPolicy(
-                    client=admin_client,
-                    name=MAAS_RATE_LIMIT_POLICY_NAME,
-                    namespace=MAAS_GATEWAY_NAMESPACE,
-                    ensure_exists=False,
-                ): {"spec": {"targetRef": target_ref}},
-                TokenRateLimitPolicy(
-                    client=admin_client,
-                    name=MAAS_TOKEN_RATE_LIMIT_POLICY_NAME,
-                    namespace=MAAS_GATEWAY_NAMESPACE,
-                    ensure_exists=False,
-                ): {"spec": {"targetRef": target_ref}},
-            }
-        ):
-            yield
-
-
-@contextmanager
-def ensure_maas_gateway_and_policies(
-    *,
-    admin_client,
-    hostname: str,
-) -> Generator[None, None, None]:
-    """
-    ensure gateway + both policies exist for the session.
-    """
-    LOGGER.info("Starting MaaS bootstrap: gateway + policies")
-    with ExitStack() as stack:
-        stack.enter_context(cm=ensure_maas_gateway_api(admin_client=admin_client, hostname=hostname))
-        stack.enter_context(cm=ensure_maas_usage_policies(admin_client=admin_client))
+    with request_policy, token_policy:
         yield
-    LOGGER.info("Finished MaaS bootstrap: gateway + policies")
 
 
 def _minimal_ratelimit_limits() -> Dict[str, Any]:
@@ -626,6 +571,9 @@ def detect_maas_control_plane_namespace(admin_client: DynamicClient) -> str:
     ]
 
     for ns in candidate_namespaces:
+        if not Namespace(client=admin_client, name=ns, ensure_exists=False).exists:
+            LOGGER.debug("Namespace %s does not exist; skipping", ns)
+            continue
         cm = ConfigMap(
             client=admin_client,
             name="tier-to-group-mapping",
@@ -636,11 +584,10 @@ def detect_maas_control_plane_namespace(admin_client: DynamicClient) -> str:
             LOGGER.info("MaaS control-plane namespace detected via ConfigMap: %s", ns)
             return ns
 
-    LOGGER.warning(
-        "tier-to-group-mapping ConfigMap not found in known namespaces; "
-        "defaulting to opendatahub (tiers annotation will be skipped if CM still missing)"
+    raise RuntimeError(
+        "Required ConfigMap 'tier-to-group-mapping' was not found in any expected namespace: "
+        f"{candidate_namespaces}. Tier-based logic is required, so failing."
     )
-    return "opendatahub"
 
 
 def get_tier_mapping_configmap(admin_client: DynamicClient, namespace: str) -> ConfigMap:
@@ -650,3 +597,31 @@ def get_tier_mapping_configmap(admin_client: DynamicClient, namespace: str) -> C
         namespace=namespace,
         ensure_exists=True,
     )
+
+
+def endpoints_have_ready_addresses(
+    admin_client: DynamicClient,
+    namespace: str,
+    name: str,
+) -> bool:
+    endpoints = Endpoints(
+        client=admin_client,
+        name=name,
+        namespace=namespace,
+        ensure_exists=True,
+    )
+    endpoints.get()
+    subsets = endpoints.instance.subsets or []
+    return any((subset.addresses or []) for subset in subsets)
+
+
+def gateway_probe_reaches_maas_api(
+    http_session: requests.Session,
+    probe_url: str,
+    request_timeout_seconds: int,
+) -> Tuple[bool, int, str]:
+    response = http_session.get(probe_url, timeout=request_timeout_seconds)
+    status_code = response.status_code
+    response_text = response.text
+    ok = status_code in (200, 401, 403)
+    return ok, status_code, response_text
