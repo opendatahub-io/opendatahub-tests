@@ -115,6 +115,20 @@ catalogs:
                 "failed to expand model patterns: no models found",
                 id="test_hf_source_non_existent_allowed_organization",
             ),
+            pytest.param(
+                """
+catalogs:
+    - name: HuggingFace Hub
+      id: error_catalog
+      type: hf
+      enabled: true
+      includedModels:
+      - 'microsoft/phi-3-abc-random'
+""",
+                "Failed to fetch some models, ensure models exist and are accessible with given credentials. "
+                "Failed models: [microsoft/phi-3-abc-random]",
+                id="test_hf_bad_model_name",
+            ),
         ],
         indirect=["updated_catalog_config_map_scope_function"],
     )
