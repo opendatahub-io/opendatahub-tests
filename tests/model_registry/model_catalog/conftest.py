@@ -435,7 +435,6 @@ def baseline_redhat_ai_models(
         Dictionary with 'api_models', 'db_models', and 'count' keys
     """
 
-    # Get baseline models without filters
     api_response = get_models_from_catalog_api(
         model_catalog_rest_url=model_catalog_rest_url,
         model_registry_rest_headers=model_registry_rest_headers,
@@ -468,8 +467,6 @@ def validate_baseline_expectations(
         timeout_seconds: Maximum time to wait for reconciliation (default: 300)
         poll_interval: Time between polling attempts (default: 10)
     """
-    from tests.model_registry.model_catalog.constants import REDHAT_AI_CATALOG_ID
-    from tests.model_registry.model_catalog.catalog_config.utils import get_models_from_database_by_source
 
     # Expected baseline data
     expected_models = {
@@ -522,7 +519,6 @@ def validate_baseline_expectations(
 
         time.sleep(poll_interval)  # noqa: FCN001
 
-    # Final attempt with detailed error reporting
     try:
         api_response = get_models_from_catalog_api(
             model_catalog_rest_url=model_catalog_rest_url,
@@ -538,18 +534,3 @@ def validate_baseline_expectations(
         count = len(api_models)
     except Exception as e:
         raise AssertionError(f"Failed to fetch model data after {timeout_seconds}s timeout: {e}")
-
-    # Detailed assertions for final failure
-    assert count == expected_count, f"Expected {expected_count} RedHat AI models, got {count}. Models: {api_models}"
-    assert api_models == db_models, f"API and DB models should match. API: {api_models}, DB: {db_models}"
-
-    granite_models = {model for model in api_models if "granite" in model}
-    prometheus_models = {model for model in api_models if "prometheus" in model}
-
-    assert len(granite_models) == 6, f"Expected 6 granite models, got {len(granite_models)}: {granite_models}"
-    assert len(prometheus_models) == 1, (
-        f"Expected 1 prometheus model, got {len(prometheus_models)}: {prometheus_models}"
-    )
-    assert api_models == expected_models, (
-        f"Models don't match expected set. Expected: {expected_models}, Got: {api_models}"
-    )

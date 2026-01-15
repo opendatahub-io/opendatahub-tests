@@ -66,12 +66,3 @@ EXPECTED_MULTIPLE_HF_CATALOG_VALUES: list[dict[str, str]] = [
     {"id": HF_SOURCE_ID, "model_name": HF_MODELS["mixed"][0]},
     {"id": "huggingface_granite", "model_name": HF_MODELS["granite"][0]},
 ]
-
-# Invalid patterns for testing model inclusion/exclusion validation
-INVALID_MODEL_PATTERNS = {
-    "malformed_regex": ["[unclosed", "**invalid**", "*["],
-    "empty_strings": ["", " ", "   "],
-    "special_chars": ["\n", "\t", "\r", "\0"],
-    "very_long": ["*" * 1000],  # Test length limits
-    "sql_injection": ["'; DROP TABLE models; --", "* OR 1=1"],
-}

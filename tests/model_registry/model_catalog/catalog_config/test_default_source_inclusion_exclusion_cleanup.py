@@ -18,7 +18,7 @@ from tests.model_registry.model_catalog.catalog_config.utils import (
     validate_cleanup_logging,
     filter_models_by_pattern,
 )
-from tests.model_registry.utils import is_model_catalog_ready, wait_for_model_catalog_api
+from tests.model_registry.utils import wait_for_model_catalog_api
 
 LOGGER = get_logger(name=__name__)
 
@@ -54,7 +54,6 @@ class TestModelInclusionFiltering:
         )
 
         with ResourceEditor(patches={patch_info["configmap"]: patch_info["patch"]}):
-            is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
             wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
             # Wait for the expected model set to appear
@@ -104,7 +103,6 @@ class TestModelInclusionFiltering:
         )
 
         with ResourceEditor(patches={patch_info["configmap"]: patch_info["patch"]}):
-            is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
             wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
             try:
@@ -149,7 +147,6 @@ class TestModelInclusionFiltering:
         )
 
         with ResourceEditor(patches={patch_info["configmap"]: patch_info["patch"]}):
-            is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
             wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
             try:
@@ -194,7 +191,6 @@ class TestModelInclusionFiltering:
         )
 
         with ResourceEditor(patches={patch_info["configmap"]: patch_info["patch"]}):
-            is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
             wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
             try:
@@ -244,7 +240,6 @@ class TestModelExclusionFiltering:
         )
 
         with ResourceEditor(patches={patch_info["configmap"]: patch_info["patch"]}):
-            is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
             wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
             try:
@@ -292,7 +287,6 @@ class TestModelExclusionFiltering:
         )
 
         with ResourceEditor(patches={patch_info["configmap"]: patch_info["patch"]}):
-            is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
             wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
             try:
@@ -340,7 +334,6 @@ class TestModelExclusionFiltering:
         )
 
         with ResourceEditor(patches={patch_info["configmap"]: patch_info["patch"]}):
-            is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
             wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
             try:
@@ -393,7 +386,6 @@ class TestCombinedIncludeExcludeFiltering:
         )
 
         with ResourceEditor(patches={patch_info["configmap"]: patch_info["patch"]}):
-            is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
             wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
             try:
@@ -444,7 +436,6 @@ class TestCombinedIncludeExcludeFiltering:
         )
 
         with ResourceEditor(patches={patch_info["configmap"]: patch_info["patch"]}):
-            is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
             wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
             try:
@@ -497,7 +488,6 @@ class TestModelCleanupLifecycle:
         )
 
         with ResourceEditor(patches={phase1_patch["configmap"]: phase1_patch["patch"]}):
-            is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
             wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
             # Verify granite models are present
@@ -535,7 +525,6 @@ class TestModelCleanupLifecycle:
 
             phase1_patch["configmap"].update(phase2_patch["patch"])
 
-            is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
             wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
             # Verify granite models are removed (cleanup behavior)
@@ -585,7 +574,6 @@ class TestModelCleanupLifecycle:
         )
 
         with ResourceEditor(patches={phase1_patch["configmap"]: phase1_patch["patch"]}):
-            is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
             wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
             phase1_api_models = get_api_models_by_source_label(
@@ -600,7 +588,6 @@ class TestModelCleanupLifecycle:
             LOGGER.info(f"Phase 1 SUCCESS: {len(phase1_api_models)} models after excluding granite")
 
         # Phase 2: Remove filters (should restore all models)
-        is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
         wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
         try:
@@ -650,7 +637,6 @@ class TestModelCleanupLifecycle:
         )
 
         with ResourceEditor(patches={patch_info["configmap"]: patch_info["patch"]}):
-            is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
             wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
             try:
@@ -674,7 +660,6 @@ class TestModelCleanupLifecycle:
 
             patch_info["configmap"].update(new_patch["patch"])
 
-            is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
             wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
             try:
@@ -700,7 +685,6 @@ class TestModelCleanupLifecycle:
 
             patch_info["configmap"].update(new_patch["patch"])
 
-            is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
             wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
             try:
@@ -747,7 +731,6 @@ class TestSourceLifecycleCleanup:
         )
 
         with ResourceEditor(patches={disable_patch["configmap"]: disable_patch["patch"]}):
-            is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
             wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
             # Wait for models to be removed
