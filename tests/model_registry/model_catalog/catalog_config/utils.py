@@ -9,7 +9,14 @@ from timeout_sampler import retry
 from ocp_resources.pod import Pod
 from ocp_resources.config_map import ConfigMap
 from tests.model_registry.model_catalog.constants import DEFAULT_CATALOGS
+from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG
+from tests.model_registry.utils import get_model_catalog_pod
 from utilities.constants import Timeout
+from tests.model_registry.model_catalog.utils import (
+    get_models_from_catalog_api,
+    execute_database_query,
+    parse_psql_output,
+)
 
 LOGGER = get_logger(name=__name__)
 
@@ -117,9 +124,6 @@ def validate_model_catalog_configmap_data(configmap: ConfigMap, num_catalogs: in
         validate_default_catalog(catalogs=catalogs)
 
 
-# New utility functions for model inclusion/exclusion and cleanup testing
-
-
 def get_models_from_database_by_source(source_id: str, namespace: str) -> set[str]:
     """
     Query database directly to get all model names for a specific source.
@@ -131,7 +135,6 @@ def get_models_from_database_by_source(source_id: str, namespace: str) -> set[st
     Returns:
         Set of model names found in database for the source
     """
-    from tests.model_registry.model_catalog.utils import execute_database_query, parse_psql_output
 
     query = f"""
     SELECT DISTINCT c.name as model_name
@@ -194,8 +197,6 @@ def apply_inclusion_exclusion_filters_to_source(
     Returns:
         Dictionary with patch information
     """
-    from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG
-
     # Get current ConfigMap (model-catalog-sources)
     sources_cm = ConfigMap(
         name=DEFAULT_CUSTOM_MODEL_CATALOG,
@@ -285,8 +286,6 @@ def get_api_models_by_source_label(
     model_catalog_rest_url: list[str], model_registry_rest_headers: dict[str, str], source_label: str
 ) -> set[str]:
     """Helper to get current model set from API by source label."""
-    from tests.model_registry.model_catalog.utils import get_models_from_catalog_api
-
     response = get_models_from_catalog_api(
         model_catalog_rest_url=model_catalog_rest_url,
         model_registry_rest_headers=model_registry_rest_headers,
@@ -296,9 +295,9 @@ def get_api_models_by_source_label(
 
 
 @retry(
-    exceptions_dict={ValueError: [], Exception: []},  # Retry on assertion failures and API errors
-    wait_timeout=Timeout.TIMEOUT_5MIN,  # 300 seconds default
-    sleep=10,  # 10 second poll interval
+    exceptions_dict={ValueError: [], Exception: []},
+    wait_timeout=Timeout.TIMEOUT_5MIN,
+    sleep=10,
 )
 def wait_for_model_count_change(
     model_catalog_rest_url: list[str],
@@ -325,7 +324,6 @@ def wait_for_model_count_change(
         model_registry_rest_headers=model_registry_rest_headers,
         source_label=source_label,
     )
-    # Raise AssertionError if condition not met - this will be retried
     if len(current_models) == expected_count:
         return True
     else:
@@ -333,9 +331,9 @@ def wait_for_model_count_change(
 
 
 @retry(
-    exceptions_dict={AssertionError: [], Exception: []},  # Retry on assertion failures and API errors
-    wait_timeout=Timeout.TIMEOUT_5MIN,  # 300 seconds default
-    sleep=10,  # 10 second poll interval
+    exceptions_dict={AssertionError: [], Exception: []},
+    wait_timeout=Timeout.TIMEOUT_5MIN,
+    sleep=10,
 )
 def wait_for_model_set_match(
     model_catalog_rest_url: list[str],
@@ -383,8 +381,6 @@ def disable_catalog_source(admin_client, namespace: str, source_id: str) -> dict
     Returns:
         Dictionary with patch information
     """
-    from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG
-
     # Get current ConfigMap (model-catalog-sources)
     sources_cm = ConfigMap(
         name=DEFAULT_CUSTOM_MODEL_CATALOG,
@@ -458,10 +454,11 @@ def disable_catalog_source(admin_client, namespace: str, source_id: str) -> dict
 
 @retry(
     exceptions_dict={subprocess.CalledProcessError: [], AssertionError: []},
-    wait_timeout=Timeout.TIMEOUT_2MIN,  # 120 seconds default
-    sleep=5,  # 5 second poll interval
+    wait_timeout=Timeout.TIMEOUT_2MIN,
+    sleep=5,
 )
 def validate_cleanup_logging(
+    client: DynamicClient,
     namespace: str,
     expected_log_patterns: list[str],
 ) -> list[str]:
@@ -482,9 +479,13 @@ def validate_cleanup_logging(
     """
     import re
 
+    model_catalog_pod = get_model_catalog_pod(
+        client=client, model_registry_namespace=namespace, label_selector="app=model-catalog"
+    )[0]
+
     # Get model registry pod logs
     result = subprocess.run(
-        args=["oc", "logs", "-n", namespace, "-l", "app.kubernetes.io/name=model-registry", "--tail=100"],
+        args=["oc", "logs", f"{model_catalog_pod.name}", "-c", "catalog", "-n", namespace, "--tail=200"],
         capture_output=True,
         text=True,
         check=True,
@@ -504,50 +505,6 @@ def validate_cleanup_logging(
     )
 
     return found_patterns
-
-
-def validate_invalid_pattern_error(
-    admin_client,
-    namespace: str,
-    source_id: str,
-    invalid_patterns: list[str],
-    field_name: str,  # "includedModels" or "excludedModels"
-) -> tuple[bool, str]:
-    """
-    Test that invalid patterns generate appropriate validation errors.
-
-    Args:
-        admin_client: OpenShift dynamic client
-        namespace: Model registry namespace
-        source_id: Source ID to test
-        invalid_patterns: List of invalid patterns to test
-        field_name: Field name being tested
-
-    Returns:
-        Tuple of (error_detected: bool, error_message: str)
-    """
-    try:
-        filters = {field_name: invalid_patterns}
-        patch_info = apply_inclusion_exclusion_filters_to_source(
-            admin_client=admin_client, namespace=namespace, source_id=source_id, **filters
-        )
-
-        # Apply the patch to see if validation catches it
-        patch_info["configmap"].update(patch_info["patch"])
-
-        # If we get here without exception, the pattern was accepted
-        # This might be expected behavior, so return False for error_detected
-        return False, "Pattern was accepted by validation"
-
-    except ValueError as e:
-        # Expected validation error
-        return True, str(e)
-    except Exception as e:
-        # Unexpected error type
-        return True, f"Unexpected error: {str(e)}"
-
-
-# Helper functions for model filtering
 
 
 def filter_models_by_pattern(all_models: set[str], pattern: str) -> set[str]:

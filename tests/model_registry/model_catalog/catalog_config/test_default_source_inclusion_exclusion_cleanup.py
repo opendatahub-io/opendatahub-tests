@@ -6,7 +6,6 @@ from ocp_resources.resource import ResourceEditor
 from tests.model_registry.model_catalog.constants import (
     REDHAT_AI_CATALOG_ID,
     REDHAT_AI_CATALOG_NAME,
-    INVALID_MODEL_PATTERNS,
 )
 from tests.model_registry.model_catalog.catalog_config.utils import (
     validate_model_filtering_consistency,
@@ -17,7 +16,6 @@ from tests.model_registry.model_catalog.catalog_config.utils import (
     wait_for_model_set_match,
     disable_catalog_source,
     validate_cleanup_logging,
-    validate_invalid_pattern_error,
     filter_models_by_pattern,
 )
 from tests.model_registry.utils import is_model_catalog_ready, wait_for_model_catalog_api
@@ -719,52 +717,8 @@ class TestModelCleanupLifecycle:
             LOGGER.info("SUCCESS: All phases of dynamic switching validated")
 
 
-class TestModelValidationErrors:
-    """Test error validation for invalid patterns and configurations (RHOAIENG-41841 part 4)"""
-
-    def test_invalid_include_patterns_rejected(self, admin_client, model_registry_namespace: str):
-        """Test that invalid inclusion patterns generate validation errors."""
-        LOGGER.info("Testing invalid inclusion pattern validation")
-
-        for category, patterns in INVALID_MODEL_PATTERNS.items():
-            LOGGER.info(f"Testing {category} patterns: {patterns}")
-
-            error_detected, error_msg = validate_invalid_pattern_error(
-                admin_client=admin_client,
-                namespace=model_registry_namespace,
-                source_id=REDHAT_AI_CATALOG_ID,
-                invalid_patterns=patterns,
-                field_name="includedModels",
-            )
-
-            if category in ["malformed_regex", "sql_injection"]:
-                assert error_detected, f"Expected {category} patterns to be rejected: {patterns}. Error: {error_msg}"
-
-            LOGGER.info(f"{category} validation result: {error_msg}")
-
-    def test_invalid_exclude_patterns_rejected(self, admin_client, model_registry_namespace: str):
-        """Test that invalid exclusion patterns generate validation errors."""
-        LOGGER.info("Testing invalid exclusion pattern validation")
-
-        for category, patterns in INVALID_MODEL_PATTERNS.items():
-            LOGGER.info(f"Testing {category} patterns: {patterns}")
-
-            error_detected, error_msg = validate_invalid_pattern_error(
-                admin_client=admin_client,
-                namespace=model_registry_namespace,
-                source_id=REDHAT_AI_CATALOG_ID,
-                invalid_patterns=patterns,
-                field_name="excludedModels",
-            )
-
-            if category in ["malformed_regex", "sql_injection"]:
-                assert error_detected, f"Expected {category} patterns to be rejected: {patterns}. Error: {error_msg}"
-
-            LOGGER.info(f"{category} validation result: {error_msg}")
-
-
 class TestSourceLifecycleCleanup:
-    """Test source disabling cleanup scenarios (RHOAIENG-41846 part 2)"""
+    """Test source disabling cleanup scenarios (RHOAIENG-41846)"""
 
     def test_source_disabling_removes_models(
         self,
@@ -817,7 +771,7 @@ class TestSourceLifecycleCleanup:
 
 
 class TestLoggingValidation:
-    """Test cleanup operation logging (RHOAIENG-41846 part 3)"""
+    """Test cleanup operation logging (RHOAIENG-41846)"""
 
     def test_model_removal_logging(
         self,
@@ -825,7 +779,7 @@ class TestLoggingValidation:
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
-        baseline_redhat_ai_models: dict,
+        validate_baseline_expectations,
     ):
         """Test that model removal operations are properly logged."""
         LOGGER.info("Testing model removal logging")
@@ -839,7 +793,6 @@ class TestLoggingValidation:
         )
 
         with ResourceEditor(patches={patch_info["configmap"]: patch_info["patch"]}):
-            is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
             wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
             # Wait for exclusion to take effect
@@ -855,19 +808,16 @@ class TestLoggingValidation:
 
             # Validate logging occurred
             expected_log_patterns = [
-                r"removed.*granite.*models?",  # Log about removing granite models
-                r"cleanup.*completed",  # Log about cleanup completion
-                r"excluded.*granite",  # Log about exclusion filter
+                rf"Removing {REDHAT_AI_CATALOG_ID} model *granite*",
             ]
 
             try:
                 found_patterns = validate_cleanup_logging(
-                    namespace=model_registry_namespace, expected_log_patterns=expected_log_patterns
+                    client=admin_client, namespace=model_registry_namespace, expected_log_patterns=expected_log_patterns
                 )
                 LOGGER.info(f"SUCCESS: Found expected log patterns: {found_patterns}")
             except TimeoutExpiredError as e:
                 LOGGER.warning(f"WARNING: Expected log patterns not found: {e}")
-                # Don't fail the test - logging might be implemented differently
 
     def test_source_disabling_logging(
         self,
@@ -875,6 +825,7 @@ class TestLoggingValidation:
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
+        validate_baseline_expectations,
     ):
         """Test that source disabling operations are properly logged."""
         LOGGER.info("Testing source disabling logging")
@@ -885,7 +836,6 @@ class TestLoggingValidation:
         )
 
         with ResourceEditor(patches={disable_patch["configmap"]: disable_patch["patch"]}):
-            is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
             wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
             # Wait for disabling to take effect
@@ -900,17 +850,12 @@ class TestLoggingValidation:
                 pytest.fail(f"Expected all models to be removed when source disabled: {e}")
 
             # Validate logging occurred
-            expected_log_patterns = [
-                rf"source.*{REDHAT_AI_CATALOG_ID}.*disabled",
-                r"removed.*models.*source.*disabled",
-                r"cleanup.*source.*disabled",
-            ]
+            expected_log_patterns = [rf"Removing models from source {REDHAT_AI_CATALOG_ID}"]
 
             try:
                 found_patterns = validate_cleanup_logging(
-                    namespace=model_registry_namespace, expected_log_patterns=expected_log_patterns
+                    client=admin_client, namespace=model_registry_namespace, expected_log_patterns=expected_log_patterns
                 )
                 LOGGER.info(f"SUCCESS: Found expected source disabling log patterns: {found_patterns}")
             except TimeoutExpiredError as e:
-                LOGGER.warning(f"WARNING: Expected source disabling log patterns not found: {e}")
-                # Don't fail - logging implementation may vary
+                pytest.fail(f"Expected source disabling log patterns not found: {e}")

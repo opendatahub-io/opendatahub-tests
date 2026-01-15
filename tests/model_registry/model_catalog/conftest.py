@@ -34,6 +34,7 @@ from tests.model_registry.utils import (
     get_mr_user_token,
 )
 from utilities.infra import get_openshift_token, create_inference_token, login_with_user_password
+from tests.model_registry.model_catalog.catalog_config.utils import get_models_from_database_by_source
 
 
 LOGGER = get_logger(name=__name__)
@@ -423,21 +424,16 @@ def model_catalog_rest_url(model_registry_namespace: str, model_catalog_routes: 
     return route_urls
 
 
-# New test fixtures for model inclusion/exclusion and cleanup testing
-
-
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def baseline_redhat_ai_models(
     model_catalog_rest_url: list[str], model_registry_rest_headers: dict[str, str], model_registry_namespace: str
 ) -> dict[str, set[str]]:
     """
-    Session-scoped fixture providing baseline model data for redhat_ai_models source.
+    fixture providing baseline model data for redhat_ai_models source.
 
     Returns:
         Dictionary with 'api_models', 'db_models', and 'count' keys
     """
-    from tests.model_registry.model_catalog.constants import REDHAT_AI_CATALOG_ID
-    from tests.model_registry.model_catalog.catalog_config.utils import get_models_from_database_by_source
 
     # Get baseline models without filters
     api_response = get_models_from_catalog_api(
@@ -452,7 +448,7 @@ def baseline_redhat_ai_models(
     return {"api_models": api_models, "db_models": db_models, "count": len(api_models)}
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def validate_baseline_expectations(
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
