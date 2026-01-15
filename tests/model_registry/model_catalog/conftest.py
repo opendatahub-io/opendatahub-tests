@@ -1,6 +1,7 @@
 import random
 from typing import Generator, Any
 import requests
+import time
 
 from simple_logger.logger import get_logger
 import yaml
@@ -420,3 +421,139 @@ def model_catalog_rest_url(model_registry_namespace: str, model_catalog_routes: 
         f"routes:{[route.name for route in model_catalog_routes]}"
     )
     return route_urls
+
+
+# New test fixtures for model inclusion/exclusion and cleanup testing
+
+
+@pytest.fixture(scope="class")
+def baseline_redhat_ai_models(
+    model_catalog_rest_url: list[str], model_registry_rest_headers: dict[str, str], model_registry_namespace: str
+) -> dict[str, set[str]]:
+    """
+    Session-scoped fixture providing baseline model data for redhat_ai_models source.
+
+    Returns:
+        Dictionary with 'api_models', 'db_models', and 'count' keys
+    """
+    from tests.model_registry.model_catalog.constants import REDHAT_AI_CATALOG_ID
+    from tests.model_registry.model_catalog.catalog_config.utils import get_models_from_database_by_source
+
+    # Get baseline models without filters
+    api_response = get_models_from_catalog_api(
+        model_catalog_rest_url=model_catalog_rest_url,
+        model_registry_rest_headers=model_registry_rest_headers,
+        source_label="Red Hat AI",
+    )
+    api_models = {model["name"] for model in api_response.get("items", [])}
+
+    db_models = get_models_from_database_by_source(source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace)
+
+    return {"api_models": api_models, "db_models": db_models, "count": len(api_models)}
+
+
+@pytest.fixture(scope="class")
+def validate_baseline_expectations(
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+    model_registry_namespace: str,
+    timeout_seconds: int = 300,
+    poll_interval: int = 10,
+) -> None:
+    """
+    Validate that our baseline assumptions about the model data are correct.
+    This fixture should be used by all test classes to ensure data consistency.
+    Uses polling to wait for eventual reconciliation of resources.
+
+    Args:
+        model_catalog_rest_url: URL for model catalog API
+        model_registry_rest_headers: Headers for API requests
+        model_registry_namespace: Namespace for model registry
+        timeout_seconds: Maximum time to wait for reconciliation (default: 300)
+        poll_interval: Time between polling attempts (default: 10)
+    """
+    from tests.model_registry.model_catalog.constants import REDHAT_AI_CATALOG_ID
+    from tests.model_registry.model_catalog.catalog_config.utils import get_models_from_database_by_source
+
+    # Expected baseline data
+    expected_models = {
+        "granite-3.1-8b-lab-v1",
+        "granite-7b-redhat-lab",
+        "granite-8b-code-base",
+        "granite-8b-code-instruct",
+        "granite-8b-lab-v1",
+        "granite-8b-starter-v1",
+        "prometheus-8x7b-v2-0",
+    }
+    expected_count = 7
+
+    start_time = time.time()
+    api_models = set()
+    db_models = set()
+
+    # Polling loop for eventual reconciliation
+    while (time.time() - start_time) < timeout_seconds:
+        try:
+            # Fetch current models from API
+            api_response = get_models_from_catalog_api(
+                model_catalog_rest_url=model_catalog_rest_url,
+                model_registry_rest_headers=model_registry_rest_headers,
+                source_label="Red Hat AI",
+            )
+            api_models = {model["name"] for model in api_response.get("items", [])}
+
+            # Fetch current models from database
+            db_models = get_models_from_database_by_source(
+                source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
+            )
+
+            count = len(api_models)
+
+            # Validate all expectations
+            if count == expected_count and api_models == db_models and api_models == expected_models:
+                # Additional category validation
+                granite_models = {model for model in api_models if "granite" in model}
+                prometheus_models = {model for model in api_models if "prometheus" in model}
+
+                if len(granite_models) == 6 and len(prometheus_models) == 1:
+                    LOGGER.info("Baseline model validation successful: 7 models (6 granite, 1 prometheus)")
+                    return  # Success - all expectations met
+
+        except Exception as e:
+            # Continue polling on any exception (transient errors)
+            LOGGER.debug(f"Baseline validation attempt failed: {e}")
+            pass
+
+        time.sleep(poll_interval)  # noqa: FCN001
+
+    # Final attempt with detailed error reporting
+    try:
+        api_response = get_models_from_catalog_api(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            source_label="Red Hat AI",
+        )
+        api_models = {model["name"] for model in api_response.get("items", [])}
+
+        db_models = get_models_from_database_by_source(
+            source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
+        )
+
+        count = len(api_models)
+    except Exception as e:
+        raise AssertionError(f"Failed to fetch model data after {timeout_seconds}s timeout: {e}")
+
+    # Detailed assertions for final failure
+    assert count == expected_count, f"Expected {expected_count} RedHat AI models, got {count}. Models: {api_models}"
+    assert api_models == db_models, f"API and DB models should match. API: {api_models}, DB: {db_models}"
+
+    granite_models = {model for model in api_models if "granite" in model}
+    prometheus_models = {model for model in api_models if "prometheus" in model}
+
+    assert len(granite_models) == 6, f"Expected 6 granite models, got {len(granite_models)}: {granite_models}"
+    assert len(prometheus_models) == 1, (
+        f"Expected 1 prometheus model, got {len(prometheus_models)}: {prometheus_models}"
+    )
+    assert api_models == expected_models, (
+        f"Models don't match expected set. Expected: {expected_models}, Got: {api_models}"
+    )
