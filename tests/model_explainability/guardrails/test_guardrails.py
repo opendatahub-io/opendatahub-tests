@@ -13,7 +13,6 @@ from tests.model_explainability.guardrails.constants import (
 )
 from tests.model_explainability.guardrails.utils import (
     create_detector_config,
-    check_guardrails_health_endpoint,
     verify_health_info_response,
     send_and_verify_unsuitable_input_detection,
     send_and_verify_unsuitable_output_detection,
@@ -137,21 +136,6 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
          query directly to the model without performing any detection.
     """
 
-    def test_guardrails_health_endpoint(
-        self,
-        current_client_token,
-        openshift_ca_bundle_file,
-        llm_d_inference_sim_isvc,
-        orchestrator_config,
-        guardrails_orchestrator_health_route,
-    ):
-        response = check_guardrails_health_endpoint(
-            host=guardrails_orchestrator_health_route.host,
-            token=current_client_token,
-            ca_bundle_file=openshift_ca_bundle_file,
-        )
-        assert "fms-guardrails-orchestr8" in response.text
-
     def test_guardrails_info_endpoint(
         self,
         current_client_token,
@@ -159,6 +143,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         llm_d_inference_sim_isvc,
         orchestrator_config,
         guardrails_orchestrator_health_route,
+        guardrails_healthcheck,
     ):
         verify_health_info_response(
             host=guardrails_orchestrator_health_route.host,
@@ -173,6 +158,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         llm_d_inference_sim_isvc,
         orchestrator_config,
         guardrails_orchestrator_gateway_route,
+        guardrails_healthcheck,
     ):
         send_and_verify_unsuitable_input_detection(
             url=f"https://{guardrails_orchestrator_gateway_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
@@ -189,6 +175,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         llm_d_inference_sim_isvc,
         orchestrator_config,
         guardrails_orchestrator_gateway_route,
+        guardrails_healthcheck,
     ):
         send_and_verify_unsuitable_output_detection(
             url=f"https://{guardrails_orchestrator_gateway_route.host}{PII_ENDPOINT}{OpenAIEnpoints.CHAT_COMPLETIONS}",
@@ -218,6 +205,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         guardrails_orchestrator_gateway_route,
         message,
         url_path,
+        guardrails_healthcheck,
     ):
         send_and_verify_negative_detection(
             url=f"https://{guardrails_orchestrator_gateway_route.host}{url_path}{OpenAIEnpoints.CHAT_COMPLETIONS}",
@@ -331,6 +319,7 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
         guardrails_orchestrator,
         otel_collector,
         tempo_stack,
+        guardrails_healthcheck,
     ):
         for prompt in [PROMPT_INJECTION_INPUT_DETECTION_PROMPT, HAP_INPUT_DETECTION_PROMPT]:
             send_and_verify_unsuitable_input_detection(
@@ -353,6 +342,7 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
         openshift_ca_bundle_file,
         otel_collector,
         tempo_stack,
+        guardrails_healthcheck,
     ):
         send_and_verify_negative_detection(
             url=f"https://{guardrails_orchestrator_route.host}/{CHAT_COMPLETIONS_DETECTION_ENDPOINT}",
@@ -373,6 +363,7 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
         hap_detector_route,
         otel_collector,
         tempo_stack,
+        guardrails_healthcheck,
     ):
         send_and_verify_standalone_detection(
             url=f"https://{guardrails_orchestrator_route.host}/{STANDALONE_DETECTION_ENDPOINT}",
@@ -393,6 +384,7 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
         otel_collector,
         tempo_stack,
         tempo_traces_service_portforward,
+        guardrails_healthcheck,
     ):
         """
         Ensure that OpenTelemetry traces from Guardrails Orchestrator are collected in Tempo.
@@ -437,29 +429,13 @@ class TestGuardrailsOrchestratorAutoConfig:
     These tests verify that the GuardrailsOrchestrator works as expected when configured through the AutoConfig feature.
     """
 
-    def test_guardrails_gateway_health_endpoint(
-        self,
-        current_client_token,
-        llm_d_inference_sim_isvc,
-        prompt_injection_detector_route,
-        hap_detector_route,
-        openshift_ca_bundle_file,
-        guardrails_orchestrator,
-        guardrails_orchestrator_health_route,
-    ):
-        response = check_guardrails_health_endpoint(
-            host=guardrails_orchestrator_health_route.host,
-            token=current_client_token,
-            ca_bundle_file=openshift_ca_bundle_file,
-        )
-        assert "fms-guardrails-orchestr8" in response.text
-
     def test_guardrails_gateway_info_endpoint(
         self,
         current_client_token,
         openshift_ca_bundle_file,
         llm_d_inference_sim_isvc,
         guardrails_orchestrator_health_route,
+        guardrails_healthcheck,
     ):
         verify_health_info_response(
             host=guardrails_orchestrator_health_route.host,
@@ -473,6 +449,7 @@ class TestGuardrailsOrchestratorAutoConfig:
         openshift_ca_bundle_file,
         llm_d_inference_sim_isvc,
         guardrails_orchestrator_route,
+        guardrails_healthcheck,
     ):
         for prompt in [HAP_INPUT_DETECTION_PROMPT, PROMPT_INJECTION_INPUT_DETECTION_PROMPT]:
             send_and_verify_unsuitable_input_detection(
@@ -490,6 +467,7 @@ class TestGuardrailsOrchestratorAutoConfig:
         llm_d_inference_sim_isvc,
         guardrails_orchestrator_route,
         openshift_ca_bundle_file,
+        guardrails_healthcheck,
     ):
         send_and_verify_negative_detection(
             url=f"https://{guardrails_orchestrator_route.host}/{CHAT_COMPLETIONS_DETECTION_ENDPOINT}",
@@ -526,29 +504,15 @@ class TestGuardrailsOrchestratorAutoConfigWithGateway:
     through the AutoConfig feature to use the gateway route.
     """
 
-    def test_guardrails_autoconfig_gateway_health_endpoint(
-        self,
-        current_client_token,
-        llm_d_inference_sim_isvc,
-        prompt_injection_detector_route,
-        hap_detector_route,
-        openshift_ca_bundle_file,
-        guardrails_orchestrator,
-        guardrails_orchestrator_health_route,
-    ):
-        response = check_guardrails_health_endpoint(
-            host=guardrails_orchestrator_health_route.host,
-            token=current_client_token,
-            ca_bundle_file=openshift_ca_bundle_file,
-        )
-        assert "fms-guardrails-orchestr8" in response.text
-
     def test_guardrails_autoconfig_gateway_info_endpoint(
         self,
         current_client_token,
         openshift_ca_bundle_file,
         llm_d_inference_sim_isvc,
+        hap_detector_isvc,
+        prompt_injection_detector_isvc,
         guardrails_orchestrator_health_route,
+        guardrails_healthcheck,
     ):
         verify_health_info_response(
             host=guardrails_orchestrator_health_route.host,
@@ -561,7 +525,10 @@ class TestGuardrailsOrchestratorAutoConfigWithGateway:
         current_client_token,
         openshift_ca_bundle_file,
         llm_d_inference_sim_isvc,
+        prompt_injection_detector_isvc,
+        hap_detector_isvc,
         guardrails_orchestrator_gateway_route,
+        guardrails_healthcheck,
     ):
         for prompt in [HAP_INPUT_DETECTION_PROMPT, PROMPT_INJECTION_INPUT_DETECTION_PROMPT]:
             send_and_verify_unsuitable_input_detection(
@@ -588,10 +555,13 @@ class TestGuardrailsOrchestratorAutoConfigWithGateway:
         self,
         current_client_token,
         llm_d_inference_sim_isvc,
+        prompt_injection_detector_isvc,
+        hap_detector_isvc,
         guardrails_orchestrator_gateway_route,
         openshift_ca_bundle_file,
         url_path,
         message,
+        guardrails_healthcheck,
     ):
         send_and_verify_negative_detection(
             url=f"https://{guardrails_orchestrator_gateway_route.host}{url_path}{OpenAIEnpoints.CHAT_COMPLETIONS}",
