@@ -11,7 +11,7 @@ def huggingface_api():
 
 
 @pytest.fixture()
-def expected_num_models_from_hf_api(request: pytest.FixtureRequest, huggingface_api: HfApi) -> int:
+def num_models_from_hf_api_with_matching_criteria(request: pytest.FixtureRequest, huggingface_api: HfApi) -> int:
     excluded_str = request.param.get("excluded_str")
     included_str = request.param.get("included_str")
     models = huggingface_api.list_models(author=request.param["org_name"], limit=10000)

@@ -11,6 +11,7 @@ from tests.model_registry.model_catalog.huggingface.utils import (
     wait_for_huggingface_retrival_match,
     wait_for_hugging_face_model_import,
 )
+from kubernetes.dynamic import DynamicClient
 
 LOGGER = get_logger(name=__name__)
 
@@ -59,7 +60,7 @@ class TestHuggingFaceModelValidation:
 
 class TestHFPatternMatching:
     @pytest.mark.parametrize(
-        "updated_catalog_config_map_scope_function, expected_num_models_from_hf_api",
+        "updated_catalog_config_map_scope_function, num_models_from_hf_api_with_matching_criteria",
         [
             pytest.param(
                 """
@@ -124,22 +125,27 @@ catalogs:
     )
     def test_hugging_face_models(
         self: Self,
+        admin_client: DynamicClient,
+        model_registry_namespace: str,
         updated_catalog_config_map_scope_function: ConfigMap,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         huggingface_api: bool,
-        expected_num_models_from_hf_api: int,
+        num_models_from_hf_api_with_matching_criteria: int,
     ):
         """
         Test that excluded models do not appear in the catalog API response
         """
         LOGGER.info("Testing HuggingFace model exclusion functionality")
         wait_for_hugging_face_model_import(
-            hf_id="hf_id", expected_num_models_from_hf_api=expected_num_models_from_hf_api
+            admin_client=admin_client,
+            model_registry_namespace=model_registry_namespace,
+            hf_id="hf_id",
+            expected_num_models_from_hf_api=num_models_from_hf_api_with_matching_criteria,
         )
         wait_for_huggingface_retrival_match(
             source_id="hf_id",
             model_registry_rest_headers=model_registry_rest_headers,
             model_catalog_rest_url=model_catalog_rest_url,
-            expected_num_models_from_hf_api=expected_num_models_from_hf_api,
+            expected_num_models_from_hf_api=num_models_from_hf_api_with_matching_criteria,
         )
