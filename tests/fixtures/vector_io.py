@@ -7,6 +7,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
 from ocp_resources.service import Service
+from ocp_resources.secret import Secret
 
 
 MILVUS_IMAGE = os.getenv(
@@ -29,6 +30,14 @@ PGVECTOR_IMAGE = os.getenv(
 
 PGVECTOR_USER = os.getenv("LLS_VECTOR_IO_PGVECTOR_USER", "vector_user")
 PGVECTOR_PASSWORD = os.getenv("LLS_VECTOR_IO_PGVECTOR_PASSWORD", "yourpassword")
+
+QDRANT_IMAGE = os.getenv(
+    "LLS_VECTOR_IO_QDRANT_IMAGE",
+    (
+        "docker.io/qdrant/qdrant@sha256:"
+        "26509b92c44ded1ad344e18a005383c20bb3fbf9dbf4d337265a230b2aa89e79"  # pragma: allowlist secret"
+    ),
+)
 
 
 @pytest.fixture(scope="class")
@@ -66,6 +75,10 @@ def vector_io_provider_deployment_config_factory(
           * PGVECTOR_USER: Database user
           * PGVECTOR_PASSWORD: Database password
           * PGVECTOR_DB: Database name
+        - "qdrant-remote":
+          * ENABLE_QDRANT: enable qdrant provider
+          * QDRANT_API_KEY: Qdrant API key
+          * QDRANT_URL: Qdrant service URL with protocol (e.g., "http://vector-io-qdrant-service:6333")
 
     Example:
         def test_with_milvus(vector_io_provider_deployment_config_factory):
@@ -98,6 +111,14 @@ def vector_io_provider_deployment_config_factory(
             env_vars.append({"name": "PGVECTOR_USER", "value": PGVECTOR_USER})
             env_vars.append({"name": "PGVECTOR_PASSWORD", "value": PGVECTOR_PASSWORD})
             env_vars.append({"name": "PGVECTOR_DB", "value": "pgvector"})
+        elif provider_name == "qdrant-remote":
+            request.getfixturevalue(argname="qdrant_service")
+            env_vars.append({"name": "ENABLE_QDRANT", "value": "true"})
+            env_vars.append({"name": "QDRANT_URL", "value": "http://vector-io-qdrant-service:6333"})
+            env_vars.append({
+                "name": "QDRANT_API_KEY",
+                "valueFrom": {"secretKeyRef": {"name": "qdrant-secret", "key": "api-key"}},
+            })
 
         return env_vars
 
@@ -348,5 +369,118 @@ def get_pgvector_deployment_template() -> Dict[str, Any]:
                 }
             ],
             "volumes": [{"name": "pgdata", "emptyDir": {}}],
+        },
+    }
+
+
+@pytest.fixture(scope="class")
+def qdrant_deployment(
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+    qdrant_secret: Secret,
+) -> Generator[Deployment, Any, Any]:
+    """Deploy a Qdrant instance for vector I/O provider testing."""
+    with Deployment(
+        client=unprivileged_client,
+        namespace=unprivileged_model_namespace.name,
+        name="vector-io-qdrant-deployment",
+        min_ready_seconds=5,
+        replicas=1,
+        selector={"matchLabels": {"app": "qdrant"}},
+        strategy={"type": "Recreate"},
+        template=get_qdrant_deployment_template(),
+        teardown=True,
+    ) as deployment:
+        deployment.wait_for_replicas(deployed=True, timeout=240)
+        yield deployment
+
+
+@pytest.fixture(scope="class")
+def qdrant_service(
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+    qdrant_deployment: Deployment,
+) -> Generator[Service, Any, Any]:
+    """Create a service for the Qdrant deployment."""
+    with Service(
+        client=unprivileged_client,
+        namespace=unprivileged_model_namespace.name,
+        name="vector-io-qdrant-service",
+        ports=[
+            {
+                "name": "http",
+                "port": 6333,
+                "targetPort": 6333,
+            },
+            {
+                "name": "grpc",
+                "port": 6334,
+                "targetPort": 6334,
+            },
+        ],
+        selector={"app": "qdrant"},
+        wait_for_resource=True,
+    ) as service:
+        yield service
+
+
+@pytest.fixture(scope="class")
+def qdrant_secret(
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+) -> Generator[Secret, Any, Any]:
+    """Return a Kubernetes Secret for Qdrant"""
+    with Secret(
+        client=unprivileged_client,
+        namespace=unprivileged_model_namespace.name,
+        name="qdrant-secret",
+        type="Opaque",
+        string_data={"api-key": "yourapikey"},
+    ) as secret:
+        yield secret
+
+
+def get_qdrant_deployment_template() -> Dict[str, Any]:
+    """Return a Kubernetes deployment for Qdrant"""
+    return {
+        "metadata": {"labels": {"app": "qdrant"}},
+        "spec": {
+            "securityContext": {"runAsNonRoot": True, "seccompProfile": {"type": "RuntimeDefault"}},
+            "containers": [
+                {
+                    "name": "qdrant",
+                    "image": QDRANT_IMAGE,
+                    "ports": [
+                        {
+                            "containerPort": 6333,
+                            "name": "http",
+                        },
+                        {
+                            "containerPort": 6334,
+                            "name": "grpc",
+                        },
+                    ],
+                    "env": [
+                        {
+                            "name": "QDRANT__SERVICE__API_KEY",
+                            "valueFrom": {
+                                "secretKeyRef": {
+                                    "name": "qdrant-secret",
+                                    "key": "api-key",
+                                },
+                            },
+                        },
+                    ],
+                    "volumeMounts": [
+                        {"name": "qdrant-storage", "mountPath": "/qdrant/storage"},
+                        {
+                            "name": "qdrant-storage",
+                            "mountPath": "/qdrant/snapshots",
+                            "subPath": "snapshots",
+                        },
+                    ],
+                },
+            ],
+            "volumes": [{"name": "qdrant-storage", "emptyDir": {}}],
         },
     }
