@@ -80,6 +80,7 @@ class RuntimeTemplates:
     VLLM_ROCM: str = "vllm-rocm-runtime-template"
     VLLM_GAUDI: str = "vllm-gaudi-runtime-template"
     VLLM_SPYRE: str = "vllm-spyre-x86-runtime-template"
+    VLLM_CPU_x86: str = "vllm-cpu-x86-runtime-template"
     MLSERVER: str = f"{ModelFormat.MLSERVER}-runtime-template"
     TRITON_REST: str = "triton-rest-runtime-template"
     TRITON_GRPC: str = "triton-grpc-runtime-template"
@@ -129,7 +130,8 @@ class AcceleratorType:
     AMD: str = "amd"
     GAUDI: str = "gaudi"
     SPYRE: str = "spyre"
-    SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI, SPYRE]
+    CPU: str = "cpu"
+    SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI, SPYRE, CPU]
 
 
 class ApiGroups:
