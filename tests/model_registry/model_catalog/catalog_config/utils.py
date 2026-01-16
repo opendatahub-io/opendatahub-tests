@@ -2,15 +2,21 @@ from typing import Any
 import subprocess
 import yaml
 
+import pytest
 from kubernetes.dynamic import DynamicClient
 from simple_logger.logger import get_logger
-from timeout_sampler import retry
+from timeout_sampler import retry, TimeoutExpiredError
 
 from ocp_resources.pod import Pod
 from ocp_resources.config_map import ConfigMap
-from tests.model_registry.model_catalog.constants import DEFAULT_CATALOGS
+from ocp_resources.resource import ResourceEditor
+from tests.model_registry.model_catalog.constants import (
+    DEFAULT_CATALOGS,
+    REDHAT_AI_CATALOG_ID,
+    REDHAT_AI_CATALOG_NAME,
+)
 from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG
-from tests.model_registry.utils import get_model_catalog_pod
+from tests.model_registry.utils import get_model_catalog_pod, wait_for_model_catalog_api
 from utilities.constants import Timeout
 from tests.model_registry.model_catalog.utils import (
     get_models_from_catalog_api,
@@ -502,3 +508,80 @@ def validate_cleanup_logging(
 def filter_models_by_pattern(all_models: set[str], pattern: str) -> set[str]:
     """Helper function to filter models by a given pattern."""
     return {model for model in all_models if pattern in model}
+
+
+def execute_inclusion_exclusion_filter_test(
+    filter_type: str,
+    pattern: str,
+    filter_value: str,
+    baseline_models: set[str],
+    admin_client: DynamicClient,
+    model_registry_namespace: str,
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+) -> None:
+    """
+    Common implementation for inclusion/exclusion filter tests.
+
+    Args:
+        filter_type: "inclusion" or "exclusion"
+        pattern: Pattern to match in model names (e.g. "granite", "prometheus")
+        filter_value: Filter value to apply (e.g. "*granite*", "*prometheus*")
+        baseline_models: Set of all available models from baseline
+        admin_client: Kubernetes dynamic client
+        model_registry_namespace: Model registry namespace
+        model_catalog_rest_url: Model catalog REST API URLs
+        model_registry_rest_headers: Headers for model registry requests
+    """
+    # Calculate expected models based on filter type
+    if filter_type == "inclusion":
+        expected_models = filter_models_by_pattern(all_models=baseline_models, pattern=pattern)
+        test_description = f"{pattern} model inclusion filter"
+    else:  # exclusion
+        pattern_models = filter_models_by_pattern(all_models=baseline_models, pattern=pattern)
+        expected_models = baseline_models - pattern_models
+        test_description = f"{pattern} model exclusion filter"
+
+    LOGGER.info(f"Testing {test_description}")
+
+    # Apply filter based on type
+    if filter_type == "inclusion":
+        patch_info = apply_inclusion_exclusion_filters_to_source(
+            admin_client=admin_client,
+            namespace=model_registry_namespace,
+            source_id=REDHAT_AI_CATALOG_ID,
+            included_models=[filter_value],
+        )
+    else:  # exclusion
+        patch_info = apply_inclusion_exclusion_filters_to_source(
+            admin_client=admin_client,
+            namespace=model_registry_namespace,
+            source_id=REDHAT_AI_CATALOG_ID,
+            excluded_models=[filter_value],
+        )
+
+    with ResourceEditor(patches={patch_info["configmap"]: patch_info["patch"]}):
+        wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
+
+        try:
+            api_models = wait_for_model_set_match(
+                model_catalog_rest_url=model_catalog_rest_url,
+                model_registry_rest_headers=model_registry_rest_headers,
+                source_label=REDHAT_AI_CATALOG_NAME,
+                expected_models=expected_models,
+            )
+        except TimeoutExpiredError as e:
+            pytest.fail(f"Timeout waiting for {pattern} models to appear. Expected: {expected_models}, {e}")
+
+        db_models = get_models_from_database_by_source(
+            source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
+        )
+
+        # Validate consistency
+        is_valid, error_msg = validate_model_filtering_consistency(api_models=api_models, db_models=db_models)
+        assert is_valid, error_msg
+
+        # Validate expected models match actual
+        assert api_models == expected_models, f"Expected {test_description}: {expected_models}, got {api_models}"
+
+        LOGGER.info(f"SUCCESS: {len(api_models)} {pattern} models {filter_type}")
