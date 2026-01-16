@@ -1,3 +1,4 @@
+from contextlib import ExitStack
 from typing import Any, Generator, Dict
 
 import pytest
@@ -23,6 +24,7 @@ from utilities.kueue_utils import (
     LocalQueue,
     ClusterQueue,
     ResourceFlavor,
+    wait_for_kueue_crds_available,
 )
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
@@ -418,6 +420,7 @@ def gpu_model_car_inference_service(
 
 # Kueue Fixtures
 def _is_kueue_operator_installed(admin_client: DynamicClient) -> bool:
+    """Check if the Kueue operator is installed and ready."""
     try:
         csvs = list(
             ClusterServiceVersion.get(
@@ -438,6 +441,7 @@ def _is_kueue_operator_installed(admin_client: DynamicClient) -> bool:
 def ensure_kueue_unmanaged_in_dsc(
     admin_client: DynamicClient, dsc_resource: DataScienceCluster
 ) -> Generator[None, Any, None]:
+    """Set DSC Kueue to Unmanaged and wait for CRDs to be available."""
     try:
         if not _is_kueue_operator_installed(admin_client):
             pytest.skip("Kueue operator is not installed, skipping Kueue tests")
@@ -445,28 +449,24 @@ def ensure_kueue_unmanaged_in_dsc(
         dsc_resource.get()
         kueue_management_state = dsc_resource.instance.spec.components[DscComponents.KUEUE].managementState
 
-        if kueue_management_state == DscComponents.ManagementState.UNMANAGED:
-            LOGGER.info("Kueue is already Unmanaged in DSC, proceeding with tests")
-            yield
-        else:
-            LOGGER.info(f"Kueue management state is {kueue_management_state}, updating to Unmanaged")
-            dsc_dict = {
-                "spec": {
-                    "components": {DscComponents.KUEUE: {"managementState": DscComponents.ManagementState.UNMANAGED}}
+        # ExitStack ensures cleanup runs on teardown or on error
+        with ExitStack() as stack:
+            # Patch DSC if needed; ResourceEditor restores original value when exiting the stack
+            if kueue_management_state != DscComponents.ManagementState.UNMANAGED:
+                LOGGER.info(f"Updating Kueue from {kueue_management_state} to Unmanaged")
+                dsc_dict = {
+                    "spec": {
+                        "components": {
+                            DscComponents.KUEUE: {"managementState": DscComponents.ManagementState.UNMANAGED}
+                        }
+                    }
                 }
-            }
-
-            with ResourceEditor(patches={dsc_resource: dsc_dict}):
-                LOGGER.info("Updated Kueue to Unmanaged, waiting for DSC to be ready")
+                stack.enter_context(cm=ResourceEditor(patches={dsc_resource: dsc_dict}))
                 dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=300)
-                LOGGER.info("DSC is ready, proceeding with tests")
-                yield
 
-            LOGGER.info(f"Restoring Kueue management state to {kueue_management_state}")
-            restore_dict = {"spec": {"components": {DscComponents.KUEUE: {"managementState": kueue_management_state}}}}
-            with ResourceEditor(patches={dsc_resource: restore_dict}):
-                dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=300)
-                LOGGER.info("Restored Kueue management state")
+            # Wait for CRDs before yielding to tests
+            wait_for_kueue_crds_available(client=admin_client)
+            yield
 
     except (AttributeError, KeyError) as e:
         pytest.skip(f"Kueue component not found in DSC: {e}")
