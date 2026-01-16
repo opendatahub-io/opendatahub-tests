@@ -1,4 +1,3 @@
-import time
 from contextlib import ExitStack
 import pytest
 from pytest import Config, FixtureRequest
@@ -318,8 +317,6 @@ def model_registry_instance(
                 wait_for_pods_running(
                     admin_client=admin_client, namespace_name=model_registry_namespace, number_of_consecutive_checks=6
                 )
-            # TODO remove when RHOAIENG-41728 is addressed
-            time.sleep(60.0)  # noqa: FCN001
             yield mr_instances
         if db_name == "default":
             wait_for_default_resource_cleanedup(admin_client=admin_client, namespace_name=model_registry_namespace)
@@ -412,6 +409,42 @@ def sa_namespace(request: pytest.FixtureRequest, admin_client: DynamicClient) ->
     with Namespace(client=admin_client, name=ns_name) as ns:
         ns.wait_for_status(status=Namespace.Status.ACTIVE, timeout=120)
         yield ns
+
+
+@pytest.fixture()
+def login_as_test_user(
+    is_byoidc: bool, api_server_url: str, original_user: str, test_idp_user
+) -> Generator[None, None, None]:
+    """
+    Fixture to log in as a test user and restore original user after test.
+
+    This fixture is used for RBAC tests to switch context to a non-admin test user.
+    Used by both model registry and model catalog RBAC tests.
+    """
+    if is_byoidc:
+        yield
+    else:
+        from utilities.user_utils import UserTestSession
+
+        if isinstance(test_idp_user, UserTestSession):
+            username = test_idp_user.username
+            password = test_idp_user.password
+        else:
+            username = test_idp_user
+            password = None
+
+        LOGGER.info(f"Logging in as {username}")
+        login_with_user_password(
+            api_address=api_server_url,
+            user=username,
+            password=password,
+        )
+        yield
+        LOGGER.info(f"Logging in as {original_user}")
+        login_with_user_password(
+            api_address=api_server_url,
+            user=original_user,
+        )
 
 
 @pytest.fixture(scope="class")

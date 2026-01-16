@@ -652,7 +652,7 @@ def llama_stack_models(unprivileged_llama_stack_client: LlamaStackClient) -> Mod
     """
     models = unprivileged_llama_stack_client.models.list()
 
-    model_id = next(m for m in models if m.api_model_type == "llm").identifier
+    model_id = next(m for m in models if m.custom_metadata["model_type"] == "llm").id
 
     # Ensure getting the right embedding model depending on the available providers
     providers = unprivileged_llama_stack_client.providers.list()
@@ -664,11 +664,15 @@ def llama_stack_models(unprivileged_llama_stack_client: LlamaStackClient) -> Mod
     else:
         raise ValueError("No embedding provider found")
 
-    embedding_model = next(m for m in models if m.api_model_type == "embedding" and m.provider_id == target_provider_id)
-    embedding_dimension = float(embedding_model.metadata["embedding_dimension"])
+    embedding_model = next(
+        m
+        for m in models
+        if m.custom_metadata["model_type"] == "embedding" and m.custom_metadata["provider_id"] == target_provider_id
+    )
+    embedding_dimension = int(embedding_model.custom_metadata["embedding_dimension"])
 
     LOGGER.info(f"Detected model: {model_id}")
-    LOGGER.info(f"Detected embedding_model: {embedding_model.identifier}")
+    LOGGER.info(f"Detected embedding_model: {embedding_model.id}")
     LOGGER.info(f"Detected embedding_dimension: {embedding_dimension}")
 
     return ModelInfo(model_id=model_id, embedding_model=embedding_model, embedding_dimension=embedding_dimension)
@@ -700,7 +704,7 @@ def vector_store(
     vector_store = unprivileged_llama_stack_client.vector_stores.create(
         name="test_vector_store",
         extra_body={
-            "embedding_model": llama_stack_models.embedding_model.identifier,
+            "embedding_model": llama_stack_models.embedding_model.id,
             "embedding_dimension": llama_stack_models.embedding_dimension,
             "provider_id": vector_io_provider,
         },
