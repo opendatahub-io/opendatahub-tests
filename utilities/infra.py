@@ -1133,8 +1133,8 @@ def get_os_system() -> str:
     return os_system
 
 
-def get_oc_console_cli_download_link() -> str:
-    oc_console_cli_download = ConsoleCLIDownload(name="oc-cli-downloads", ensure_exists=True)
+def get_oc_console_cli_download_link(admin_client: DynamicClient) -> str:
+    oc_console_cli_download = ConsoleCLIDownload(client=admin_client, name="oc-cli-downloads", ensure_exists=True)
     os_system = get_os_system()
     machine_platform = get_machine_platform()
     oc_links = oc_console_cli_download.instance.spec.links
@@ -1152,11 +1152,12 @@ def get_oc_console_cli_download_link() -> str:
     return all_links[0]
 
 
-def download_oc_console_cli(tmpdir: LocalPath) -> str:
+def download_oc_console_cli(admin_client: DynamicClient, tmpdir: LocalPath) -> str:
     """
     Download and extract the OpenShift CLI binary.
 
     Args:
+        admin_client (DynamicClient): admin client
         tmpdir (str): Directory to download and extract the binary to
 
     Returns:
@@ -1165,7 +1166,7 @@ def download_oc_console_cli(tmpdir: LocalPath) -> str:
     Raises:
         ValueError: If multiple files are found in the archive or if no download link is found
     """
-    oc_console_cli_download_link = get_oc_console_cli_download_link()
+    oc_console_cli_download_link = get_oc_console_cli_download_link(admin_client=admin_client)
     LOGGER.info(f"Downloading archive using: url={oc_console_cli_download_link}")
     urllib3.disable_warnings()  # TODO: remove when cert issue is addressed for managed clusters
     local_file_name = os.path.join(tmpdir, oc_console_cli_download_link.split("/")[-1])
