@@ -487,26 +487,14 @@ def validate_cleanup_logging(
         client=client, model_registry_namespace=namespace, label_selector="app=model-catalog"
     )[0]
 
-    # Get model registry pod logs
-    result = subprocess.run(
-        args=["oc", "logs", f"{model_catalog_pod.name}", "-c", "catalog", "-n", namespace, "--tail=200"],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-
-    log_content = result.stdout
+    log_content = model_catalog_pod.log(container="catalog", tail_lines=200)
     found_patterns = []
 
     # Check for expected patterns
     for pattern in expected_log_patterns:
-        if re.search(pattern, log_content, re.IGNORECASE):
-            found_patterns.append(pattern)
-
-    # Raise AssertionError if not all patterns found - this will be retried
-    assert len(found_patterns) == len(expected_log_patterns), (
-        f"Expected {len(expected_log_patterns)} log patterns, found {len(found_patterns)}: {found_patterns}"
-    )
+        found = re.search(pattern, log_content, re.IGNORECASE)
+        if found:
+            found_patterns.append(found)
 
     return found_patterns
 

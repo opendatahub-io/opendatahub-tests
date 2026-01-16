@@ -2,7 +2,7 @@ import pytest
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError
 from ocp_resources.resource import ResourceEditor
-
+from kubernetes.dynamic.client import DynamicClient
 from tests.model_registry.model_catalog.constants import (
     REDHAT_AI_CATALOG_ID,
     REDHAT_AI_CATALOG_NAME,
@@ -35,7 +35,7 @@ class TestModelInclusionFiltering:
     @pytest.mark.smoke
     def test_include_granite_models_only(
         self,
-        admin_client,
+        admin_client: DynamicClient,
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
@@ -84,7 +84,7 @@ class TestModelInclusionFiltering:
     @pytest.mark.sanity
     def test_include_prometheus_models_only(
         self,
-        admin_client,
+        admin_client: DynamicClient,
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
@@ -131,7 +131,7 @@ class TestModelInclusionFiltering:
     @pytest.mark.sanity
     def test_include_eight_b_models_only(
         self,
-        admin_client,
+        admin_client: DynamicClient,
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
@@ -176,7 +176,7 @@ class TestModelInclusionFiltering:
     @pytest.mark.sanity
     def test_include_code_models_only(
         self,
-        admin_client,
+        admin_client: DynamicClient,
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
@@ -225,7 +225,7 @@ class TestModelExclusionFiltering:
     @pytest.mark.smoke
     def test_exclude_granite_models(
         self,
-        admin_client,
+        admin_client: DynamicClient,
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
@@ -271,7 +271,7 @@ class TestModelExclusionFiltering:
     @pytest.mark.sanity
     def test_exclude_prometheus_models(
         self,
-        admin_client,
+        admin_client: DynamicClient,
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
@@ -321,7 +321,7 @@ class TestModelExclusionFiltering:
     @pytest.mark.sanity
     def test_exclude_lab_models(
         self,
-        admin_client,
+        admin_client: DynamicClient,
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
@@ -371,7 +371,7 @@ class TestCombinedIncludeExcludeFiltering:
     @pytest.mark.smoke
     def test_include_granite_exclude_lab_models(
         self,
-        admin_client,
+        admin_client: DynamicClient,
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
@@ -422,7 +422,7 @@ class TestCombinedIncludeExcludeFiltering:
     @pytest.mark.sanity
     def test_include_eight_b_exclude_code_models(
         self,
-        admin_client,
+        admin_client: DynamicClient,
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
@@ -475,7 +475,7 @@ class TestModelCleanupLifecycle:
     @pytest.mark.sanity
     def test_model_cleanup_on_exclusion_change(
         self,
-        admin_client,
+        admin_client: DynamicClient,
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
@@ -565,7 +565,7 @@ class TestModelCleanupLifecycle:
     @pytest.mark.sanity
     def test_model_restoration_after_filter_removal(
         self,
-        admin_client,
+        admin_client: DynamicClient,
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
@@ -625,7 +625,7 @@ class TestModelCleanupLifecycle:
     @pytest.mark.sanity
     def test_dynamic_model_switching_with_cleanup(
         self,
-        admin_client,
+        admin_client: DynamicClient,
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
@@ -719,7 +719,7 @@ class TestSourceLifecycleCleanup:
     @pytest.mark.smoke
     def test_source_disabling_removes_models(
         self,
-        admin_client,
+        admin_client: DynamicClient,
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
@@ -772,11 +772,10 @@ class TestLoggingValidation:
     @pytest.mark.sanity
     def test_model_removal_logging(
         self,
-        admin_client,
+        admin_client: DynamicClient,
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
-        baseline_model_state,
     ):
         """Test that model removal operations are properly logged."""
         LOGGER.info("Testing model removal logging")
@@ -805,7 +804,7 @@ class TestLoggingValidation:
 
             # Validate logging occurred
             expected_log_patterns = [
-                rf"Removing {REDHAT_AI_CATALOG_ID} model *granite*",
+                rf"Removing {REDHAT_AI_CATALOG_ID} model .*granite.*",
             ]
 
             try:
@@ -819,11 +818,10 @@ class TestLoggingValidation:
     @pytest.mark.sanity
     def test_source_disabling_logging(
         self,
-        admin_client,
+        admin_client: DynamicClient,
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
-        baseline_model_state,
     ):
         """Test that source disabling operations are properly logged."""
         LOGGER.info("Testing source disabling logging")

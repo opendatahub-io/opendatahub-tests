@@ -532,5 +532,16 @@ def baseline_model_state(
         )
 
         count = len(api_models)
+
+        if count == expected_count and api_models == db_models and api_models == expected_models:
+            # Additional category validation
+            granite_models = {model for model in api_models if "granite" in model}
+            prometheus_models = {model for model in api_models if "prometheus" in model}
+
+            if len(granite_models) == 6 and len(prometheus_models) == 1:
+                LOGGER.info("Baseline model validation successful: 7 models (6 granite, 1 prometheus)")
+                return
+        else:
+            pytest.fail(f"Baseline validation failed: {count} models found, expected {expected_count}")
     except Exception as e:
         raise AssertionError(f"Failed to fetch model data after {timeout_seconds}s timeout: {e}")
