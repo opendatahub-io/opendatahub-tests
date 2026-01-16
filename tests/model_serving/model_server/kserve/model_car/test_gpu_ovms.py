@@ -51,7 +51,6 @@ pytestmark = [
 class TestKserveGpuModelCar:
     """Test GPU accelerated OVMS model serving with OCI Model Car images."""
 
-    @pytest.mark.smoke
     def test_gpu_model_car_no_restarts(self, gpu_model_car_inference_service):
         """Verify that GPU model pod doesn't restart"""
         pod = get_pods_by_isvc_label(
@@ -63,7 +62,6 @@ class TestKserveGpuModelCar:
         ]
         assert not restarted_containers, f"Containers {restarted_containers} restarted"
 
-    @pytest.mark.smoke
     def test_gpu_model_car_using_rest(self, gpu_model_car_inference_service):
         """Verify GPU model query with token using REST"""
         verify_inference_response(
