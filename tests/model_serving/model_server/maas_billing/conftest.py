@@ -12,11 +12,12 @@ from ocp_resources.deployment import Deployment
 from timeout_sampler import TimeoutSampler
 from utilities.llmd_utils import create_llmisvc
 from utilities.llmd_constants import ModelStorage, ContainerImages
+from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
+from ocp_resources.data_science_cluster import DataScienceCluster
 from utilities.constants import (
     MAAS_GATEWAY_NAMESPACE,
     MAAS_RATE_LIMIT_POLICY_NAME,
     MAAS_TOKEN_RATE_LIMIT_POLICY_NAME,
-    Timeout,
 )
 
 from ocp_resources.infrastructure import Infrastructure
@@ -28,8 +29,7 @@ from utilities.infra import login_with_user_password, get_openshift_token
 from utilities.general import wait_for_oauth_openshift_deployment
 from ocp_resources.secret import Secret
 from tests.model_serving.model_server.maas_billing.utils import get_total_tokens
-from utilities.infra import get_data_science_cluster
-from utilities.constants import DscComponents
+from utilities.constants import DscComponents, MAAS_GATEWAY_NAME
 from utilities.resources.rate_limit_policy import RateLimitPolicy
 from utilities.resources.token_rate_limit_policy import TokenRateLimitPolicy
 from tests.model_serving.model_server.maas_billing.utils import (
@@ -44,10 +44,9 @@ from tests.model_serving.model_server.maas_billing.utils import (
     maas_gateway_rate_limits_patched,
     detect_maas_control_plane_namespace,
     get_tier_mapping_configmap,
-    ensure_maas_gateway_api,
-    ensure_maas_usage_policies,
     endpoints_have_ready_addresses,
     gateway_probe_reaches_maas_api,
+    maas_gateway_listeners,
 )
 
 LOGGER = get_logger(name=__name__)
@@ -577,7 +576,7 @@ def maas_inference_service_tinyllama(
         },
         service_account=model_service_account.name,
         wait=False,
-        timeout=Timeout.TIMEOUT_15MIN,
+        timeout=900,
     ) as llm_service:
         with patch_llmisvc_with_maas_router(
             llm_service=llm_service,
@@ -589,7 +588,7 @@ def maas_inference_service_tinyllama(
             llm_service.wait_for_condition(
                 condition="Ready",
                 status="True",
-                timeout=Timeout.TIMEOUT_15MIN,
+                timeout=900,
             )
 
             LOGGER.info(
@@ -637,47 +636,40 @@ def maas_gateway_api_hostname(admin_client: DynamicClient) -> str:
 
 @pytest.fixture(scope="session")
 def maas_gateway_and_policies(
-    admin_client: DynamicClient,
-    maas_gateway_api_hostname: str,
-) -> Generator[None, None, None]:
-    """
-    Ensure MaaS Gateway + Kuadrant policies exist once per test session.
-    """
-    with (
-        ensure_maas_gateway_api(
-            admin_client=admin_client,
-            hostname=maas_gateway_api_hostname,
-        ),
-        ensure_maas_usage_policies(
-            admin_client=admin_client,
-        ),
-    ):
-        yield
+    maas_gateway_api: None,
+    maas_usage_policies: None,
+) -> None:
+    yield
 
 
 @pytest.fixture(scope="session")
 def maas_controller_enabled_latest(
-    admin_client: DynamicClient,
+    dsc_resource: DataScienceCluster,
     maas_gateway_and_policies: None,
-):
-    dsc_resource = get_data_science_cluster(client=admin_client)
-    dsc_resource.get()
+) -> Generator[DataScienceCluster, None, None]:
+    original_components = dsc_resource.instance.spec.components or {}
+    kserve = original_components.get(DscComponents.KSERVE, {}) or {}
+    maas = kserve.get("modelsAsService", {}) or {}
 
-    original_components = dsc_resource.instance.spec.components
-
-    kserve = original_components[DscComponents.KSERVE]
-    maas = kserve["modelsAsService"]
-    if maas["managementState"] == "Managed":
-        dsc_resource.wait_for_condition(condition="ModelsAsServiceReady", status="True", timeout=Timeout.TIMEOUT_15MIN)
+    if maas.get("managementState") == DscComponents.ManagementState.MANAGED:
+        dsc_resource.wait_for_condition(
+            condition="ModelsAsServiceReady",
+            status="True",
+            timeout=300,
+        )
         yield dsc_resource
+        return
 
-    component_patch = {DscComponents.KSERVE: {"modelsAsService": {"managementState": "Managed"}}}
+    component_patch = {
+        DscComponents.KSERVE: {"modelsAsService": {"managementState": DscComponents.ManagementState.MANAGED}}
+    }
 
     with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
-        dsc_resource.wait_for_condition(condition="ModelsAsServiceReady", status="True", timeout=Timeout.TIMEOUT_15MIN)
-        dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=Timeout.TIMEOUT_15MIN)
+        dsc_resource.wait_for_condition(condition="ModelsAsServiceReady", status="True", timeout=900)
+        dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=600)
         yield dsc_resource
-        dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=Timeout.TIMEOUT_15MIN)
+
+    dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=600)
 
 
 @pytest.fixture(scope="session")
@@ -719,16 +711,17 @@ def maas_api_ready(
         client=admin_client,
         name="maas-api",
         namespace="opendatahub",
+        ensure_exists=True,
     )
     maas_api_deployment.wait_for_condition(
         condition="Available",
         status="True",
-        timeout=Timeout.TIMEOUT_10MIN,
+        timeout=600,
     )
 
     endpoints_ready = False
     for endpoints_ready_sample in TimeoutSampler(
-        wait_timeout=Timeout.TIMEOUT_5MIN,
+        wait_timeout=300,
         sleep=5,
         func=endpoints_have_ready_addresses,
         admin_client=admin_client,
@@ -748,7 +741,7 @@ def maas_api_ready(
     last_response_body: str | None = None
 
     for gateway_probe_sample in TimeoutSampler(
-        wait_timeout=Timeout.TIMEOUT_5MIN,
+        wait_timeout=300,
         sleep=5,
         func=gateway_probe_reaches_maas_api,
         http_session=request_session_http,
@@ -795,3 +788,83 @@ def maas_token_ratelimit_policy(
         namespace=MAAS_GATEWAY_NAMESPACE,
         ensure_exists=True,
     )
+
+
+@pytest.fixture(scope="session")
+def maas_gateway_api(
+    admin_client: DynamicClient,
+    maas_gateway_api_hostname: str,
+) -> Generator[None, None, None]:
+    """
+    Ensure MaaS Gateway exists once per test session.
+    """
+    gateway = Gateway(
+        client=admin_client,
+        name=MAAS_GATEWAY_NAME,
+        namespace=MAAS_GATEWAY_NAMESPACE,
+        gateway_class_name="openshift-default",
+        listeners=maas_gateway_listeners(hostname=maas_gateway_api_hostname),
+        annotations={"opendatahub.io/managed": "false"},
+        label={
+            "app.kubernetes.io/name": "maas",
+            "app.kubernetes.io/instance": MAAS_GATEWAY_NAME,
+            "app.kubernetes.io/component": "gateway",
+            "opendatahub.io/managed": "false",
+        },
+        ensure_exists=False,
+        wait_for_resource=True,
+        teardown=True,
+    )
+
+    with gateway:
+        yield
+
+
+@pytest.fixture(scope="session")
+def maas_usage_policies(
+    admin_client: DynamicClient,
+    maas_gateway_api: None,
+) -> Generator[None, None, None]:
+    """
+    Ensure MaaS Kuadrant policies exist once per test session.
+    """
+    target_ref = {
+        "group": "gateway.networking.k8s.io",
+        "kind": "Gateway",
+        "name": MAAS_GATEWAY_NAME,
+    }
+
+    request_policy = RateLimitPolicy(
+        client=admin_client,
+        name=MAAS_RATE_LIMIT_POLICY_NAME,
+        namespace=MAAS_GATEWAY_NAMESPACE,
+        target_ref=target_ref,
+        limits={
+            "bootstrap": {
+                "counters": [{"expression": "auth.identity.userid"}],
+                "rates": [{"limit": 1000, "window": "1m"}],
+            }
+        },
+        ensure_exists=False,
+        wait_for_resource=True,
+        teardown=True,
+    )
+
+    token_policy = TokenRateLimitPolicy(
+        client=admin_client,
+        name=MAAS_TOKEN_RATE_LIMIT_POLICY_NAME,
+        namespace=MAAS_GATEWAY_NAMESPACE,
+        target_ref=target_ref,
+        limits={
+            "bootstrap": {
+                "counters": [{"expression": "auth.identity.userid"}],
+                "rates": [{"limit": 1000000, "window": "1m"}],
+            }
+        },
+        ensure_exists=False,
+        wait_for_resource=True,
+        teardown=True,
+    )
+
+    with request_policy, token_policy:
+        yield

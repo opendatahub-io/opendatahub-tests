@@ -16,15 +16,14 @@ from utilities.plugins.constant import RestHeader, OpenAIEnpoints
 from ocp_resources.resource import ResourceEditor
 from utilities.resources.rate_limit_policy import RateLimitPolicy
 from utilities.resources.token_rate_limit_policy import TokenRateLimitPolicy
-from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
+
+# from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.endpoints import Endpoints
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.namespace import Namespace
 from utilities.constants import (
     MAAS_GATEWAY_NAME,
     MAAS_GATEWAY_NAMESPACE,
-    MAAS_RATE_LIMIT_POLICY_NAME,
-    MAAS_TOKEN_RATE_LIMIT_POLICY_NAME,
 )
 
 
@@ -472,92 +471,6 @@ def maas_gateway_listeners(hostname: str) -> List[Dict[str, Any]]:
     ]
 
 
-@contextmanager
-def ensure_maas_gateway_api(
-    *,
-    admin_client: DynamicClient,
-    hostname: str,
-) -> Generator[None, None, None]:
-    gateway = Gateway(
-        client=admin_client,
-        name=MAAS_GATEWAY_NAME,
-        namespace=MAAS_GATEWAY_NAMESPACE,
-        gateway_class_name="openshift-default",
-        listeners=maas_gateway_listeners(hostname=hostname),
-        annotations={"opendatahub.io/managed": "false"},
-        label={
-            "app.kubernetes.io/name": "maas",
-            "app.kubernetes.io/instance": MAAS_GATEWAY_NAME,
-            "app.kubernetes.io/component": "gateway",
-            "opendatahub.io/managed": "false",
-        },
-        ensure_exists=False,
-        wait_for_resource=True,
-        teardown=True,
-    )
-
-    LOGGER.info(f"Creating MaaS Gateway: {MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_NAME} (hostname={hostname})")
-    with gateway:
-        yield
-
-
-@contextmanager
-def ensure_maas_usage_policies(*, admin_client: DynamicClient) -> Generator[None, None, None]:
-    target_ref = {
-        "group": "gateway.networking.k8s.io",
-        "kind": "Gateway",
-        "name": MAAS_GATEWAY_NAME,
-    }
-
-    request_policy = RateLimitPolicy(
-        client=admin_client,
-        name=MAAS_RATE_LIMIT_POLICY_NAME,
-        namespace=MAAS_GATEWAY_NAMESPACE,
-        target_ref=target_ref,
-        limits=_minimal_ratelimit_limits(),
-        ensure_exists=False,
-        wait_for_resource=True,
-        teardown=True,
-    )
-
-    token_policy = TokenRateLimitPolicy(
-        client=admin_client,
-        name=MAAS_TOKEN_RATE_LIMIT_POLICY_NAME,
-        namespace=MAAS_GATEWAY_NAMESPACE,
-        target_ref=target_ref,
-        limits=_minimal_token_ratelimit_limits(),
-        ensure_exists=False,
-        wait_for_resource=True,
-        teardown=True,
-    )
-
-    LOGGER.info(
-        f"Creating MaaS usage policies in {MAAS_GATEWAY_NAMESPACE}: "
-        f"{MAAS_RATE_LIMIT_POLICY_NAME}, {MAAS_TOKEN_RATE_LIMIT_POLICY_NAME}"
-    )
-
-    with request_policy, token_policy:
-        yield
-
-
-def _minimal_ratelimit_limits() -> Dict[str, Any]:
-    return {
-        "bootstrap": {
-            "counters": [{"expression": "auth.identity.userid"}],
-            "rates": [{"limit": 1000, "window": "1m"}],
-        }
-    }
-
-
-def _minimal_token_ratelimit_limits() -> Dict[str, Any]:
-    return {
-        "bootstrap": {
-            "counters": [{"expression": "auth.identity.userid"}],
-            "rates": [{"limit": 1000000, "window": "1m"}],
-        }
-    }
-
-
 def detect_maas_control_plane_namespace(admin_client: DynamicClient) -> str:
     """
     Detect the namespace that contains MaaS configuration objects
@@ -610,9 +523,12 @@ def endpoints_have_ready_addresses(
         namespace=namespace,
         ensure_exists=True,
     )
-    endpoints.get()
-    subsets = endpoints.instance.subsets or []
-    return any((subset.addresses or []) for subset in subsets)
+
+    subsets = endpoints.instance.subsets
+    if not subsets:
+        return False
+
+    return any(subset.addresses for subset in subsets)
 
 
 def gateway_probe_reaches_maas_api(
