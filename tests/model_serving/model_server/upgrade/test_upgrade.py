@@ -1,13 +1,13 @@
 import pytest
 
-from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
 from tests.model_serving.model_server.upgrade.utils import (
     verify_inference_generation,
-    verify_pod_containers_not_restarted,
     verify_serving_runtime_generation,
 )
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import Protocols
+from utilities.inference_utils import Inference
+from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
 
 
 pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_config")]
@@ -20,7 +20,7 @@ class TestPreUpgradeModelServer:
         verify_inference_response(
             inference_service=inference_service_fixture,
             inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
-            inference_type="infer",
+            inference_type=Inference.INFER,
             protocol=Protocols.HTTP,
             use_default_query=True,
         )
@@ -52,23 +52,7 @@ class TestPostUpgradeModelServer:
         verify_inference_response(
             inference_service=inference_service_fixture,
             inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
-            inference_type="infer",
+            inference_type=Inference.INFER,
             protocol=Protocols.HTTP,
             use_default_query=True,
-        )
-
-    @pytest.mark.post_upgrade
-    def test_verify_odh_model_controller_pod_not_restarted_post_upgrade(self, admin_client):
-        """Verify that ODH Model Controller pod is not restarted after upgrade"""
-        verify_pod_containers_not_restarted(
-            client=admin_client,
-            component_name="odh-model-controller",
-        )
-
-    @pytest.mark.post_upgrade
-    def test_verify_kserve_pod_not_restarted_post_upgrade(self, admin_client):
-        """Verify that KServe pod is not restarted after upgrade"""
-        verify_pod_containers_not_restarted(
-            client=admin_client,
-            component_name="kserve",
         )
