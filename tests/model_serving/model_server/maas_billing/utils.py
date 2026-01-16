@@ -1,5 +1,4 @@
-from typing import Any, Dict, Generator, List
-
+from typing import Any, Dict, Generator, List, Tuple
 import base64
 import requests
 from json import JSONDecodeError
@@ -17,6 +16,16 @@ from utilities.plugins.constant import RestHeader, OpenAIEnpoints
 from ocp_resources.resource import ResourceEditor
 from utilities.resources.rate_limit_policy import RateLimitPolicy
 from utilities.resources.token_rate_limit_policy import TokenRateLimitPolicy
+
+# from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
+from ocp_resources.endpoints import Endpoints
+from ocp_resources.config_map import ConfigMap
+from ocp_resources.namespace import Namespace
+from utilities.constants import (
+    MAAS_GATEWAY_NAME,
+    MAAS_GATEWAY_NAMESPACE,
+)
+
 
 LOGGER = get_logger(name=__name__)
 MODELS_INFO = OpenAIEnpoints.MODELS_INFO
@@ -167,24 +176,11 @@ def get_maas_models_response(
 
 @contextmanager
 def patch_llmisvc_with_maas_router(
+    *,
     llm_service: LLMInferenceService,
 ) -> Generator[None, None, None]:
-    """
-    Temporarily patch an existing LLMInferenceService with MaaS router wiring
-    and annotations for the duration of the context.
-
-    This is used for TinyLlama so that the model is reachable via the
-    maas-default-gateway and participates in MaaS flows.
-    """
     router_spec = {
-        "gateway": {
-            "refs": [
-                {
-                    "name": "maas-default-gateway",
-                    "namespace": "openshift-ingress",
-                }
-            ]
-        },
+        "gateway": {"refs": [{"name": MAAS_GATEWAY_NAME, "namespace": MAAS_GATEWAY_NAMESPACE}]},
         "route": {},
     }
 
@@ -195,22 +191,10 @@ def patch_llmisvc_with_maas_router(
                 "security.opendatahub.io/enable-auth": "true",
             }
         },
-        "spec": {
-            "router": router_spec,
-        },
+        "spec": {"router": router_spec},
     }
 
-    LOGGER.info(
-        f"MaaS LLMD: patching LLMInferenceService "
-        f"{llm_service.namespace}/{llm_service.name} "
-        f"with MaaS router spec: {router_spec}"
-    )
-
     with ResourceEditor(patches={llm_service: patch_body}):
-        LOGGER.info(
-            f"MaaS LLMD: successfully patched LLMInferenceService "
-            f"{llm_service.namespace}/{llm_service.name} for MaaS routing"
-        )
         yield
 
 
@@ -462,3 +446,98 @@ def get_total_tokens(resp: Response, *, fail_if_missing: bool = False) -> int | 
             f"Token usage not found in header or JSON body; headers={dict(resp.headers)} body={resp.text[:500]}"
         )
     return None
+
+
+def maas_gateway_listeners(hostname: str) -> List[Dict[str, Any]]:
+    return [
+        {
+            "name": "http",
+            "hostname": hostname,
+            "port": 80,
+            "protocol": "HTTP",
+            "allowedRoutes": {"namespaces": {"from": "All"}},
+        },
+        {
+            "name": "https",
+            "hostname": hostname,
+            "port": 443,
+            "protocol": "HTTPS",
+            "allowedRoutes": {"namespaces": {"from": "All"}},
+            "tls": {
+                "mode": "Terminate",
+                "certificateRefs": [{"group": "", "kind": "Secret", "name": "data-science-gateway-service-tls"}],
+            },
+        },
+    ]
+
+
+def detect_maas_control_plane_namespace(admin_client: DynamicClient) -> str:
+    """
+    Detect the namespace that contains MaaS configuration objects
+
+    """
+    candidate_namespaces = [
+        "opendatahub",
+        "redhat-ods-applications",
+        "openshift-operators",
+        "kuadrant-system",
+    ]
+
+    for ns in candidate_namespaces:
+        if not Namespace(client=admin_client, name=ns, ensure_exists=False).exists:
+            LOGGER.debug("Namespace %s does not exist; skipping", ns)
+            continue
+        cm = ConfigMap(
+            client=admin_client,
+            name="tier-to-group-mapping",
+            namespace=ns,
+            ensure_exists=False,
+        )
+        if cm.exists:
+            LOGGER.info("MaaS control-plane namespace detected via ConfigMap: %s", ns)
+            return ns
+
+    raise RuntimeError(
+        "Required ConfigMap 'tier-to-group-mapping' was not found in any expected namespace: "
+        f"{candidate_namespaces}. Tier-based logic is required, so failing."
+    )
+
+
+def get_tier_mapping_configmap(admin_client: DynamicClient, namespace: str) -> ConfigMap:
+    return ConfigMap(
+        client=admin_client,
+        name="tier-to-group-mapping",
+        namespace=namespace,
+        ensure_exists=True,
+    )
+
+
+def endpoints_have_ready_addresses(
+    admin_client: DynamicClient,
+    namespace: str,
+    name: str,
+) -> bool:
+    endpoints = Endpoints(
+        client=admin_client,
+        name=name,
+        namespace=namespace,
+        ensure_exists=True,
+    )
+
+    subsets = endpoints.instance.subsets
+    if not subsets:
+        return False
+
+    return any(subset.addresses for subset in subsets)
+
+
+def gateway_probe_reaches_maas_api(
+    http_session: requests.Session,
+    probe_url: str,
+    request_timeout_seconds: int,
+) -> Tuple[bool, int, str]:
+    response = http_session.get(probe_url, timeout=request_timeout_seconds)
+    status_code = response.status_code
+    response_text = response.text
+    ok = status_code in (200, 401, 403)
+    return ok, status_code, response_text
