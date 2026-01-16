@@ -24,7 +24,7 @@ LOGGER = get_logger(name=__name__)
 
 pytestmark = [
     pytest.mark.usefixtures(
-        "updated_dsc_component_state_scope_session", "model_registry_namespace", "validate_baseline_expectations"
+        "updated_dsc_component_state_scope_session", "model_registry_namespace", "baseline_model_state"
     ),
 ]
 
@@ -32,6 +32,7 @@ pytestmark = [
 class TestModelInclusionFiltering:
     """Test inclusion filtering functionality (RHOAIENG-41841 part 1)"""
 
+    @pytest.mark.smoke
     def test_include_granite_models_only(
         self,
         admin_client,
@@ -80,6 +81,7 @@ class TestModelInclusionFiltering:
 
             LOGGER.info(f"SUCCESS: {len(api_models)} granite models included")
 
+    @pytest.mark.sanity
     def test_include_prometheus_models_only(
         self,
         admin_client,
@@ -126,6 +128,7 @@ class TestModelInclusionFiltering:
 
             LOGGER.info(f"SUCCESS: {len(api_models)} prometheus models included")
 
+    @pytest.mark.sanity
     def test_include_eight_b_models_only(
         self,
         admin_client,
@@ -170,6 +173,7 @@ class TestModelInclusionFiltering:
 
             LOGGER.info(f"SUCCESS: {len(api_models)} 8B models included")
 
+    @pytest.mark.sanity
     def test_include_code_models_only(
         self,
         admin_client,
@@ -218,6 +222,7 @@ class TestModelInclusionFiltering:
 class TestModelExclusionFiltering:
     """Test exclusion filtering functionality (RHOAIENG-41841 part 2)"""
 
+    @pytest.mark.smoke
     def test_exclude_granite_models(
         self,
         admin_client,
@@ -263,6 +268,7 @@ class TestModelExclusionFiltering:
 
             LOGGER.info(f"SUCCESS: {len(api_models)} models after excluding granite")
 
+    @pytest.mark.sanity
     def test_exclude_prometheus_models(
         self,
         admin_client,
@@ -312,6 +318,7 @@ class TestModelExclusionFiltering:
 
             LOGGER.info(f"SUCCESS: {len(api_models)} models after excluding prometheus")
 
+    @pytest.mark.sanity
     def test_exclude_lab_models(
         self,
         admin_client,
@@ -361,6 +368,7 @@ class TestModelExclusionFiltering:
 class TestCombinedIncludeExcludeFiltering:
     """Test combined include+exclude filtering (RHOAIENG-41841 part 3)"""
 
+    @pytest.mark.smoke
     def test_include_granite_exclude_lab_models(
         self,
         admin_client,
@@ -411,6 +419,7 @@ class TestCombinedIncludeExcludeFiltering:
 
             LOGGER.info(f"SUCCESS: {len(api_models)} granite models after excluding lab variants")
 
+    @pytest.mark.sanity
     def test_include_eight_b_exclude_code_models(
         self,
         admin_client,
@@ -463,6 +472,7 @@ class TestCombinedIncludeExcludeFiltering:
 class TestModelCleanupLifecycle:
     """Test automatic model cleanup during lifecycle changes (RHOAIENG-41846)"""
 
+    @pytest.mark.sanity
     def test_model_cleanup_on_exclusion_change(
         self,
         admin_client,
@@ -552,6 +562,7 @@ class TestModelCleanupLifecycle:
                 f"Phase 2 SUCCESS: Granite models cleaned up, {len(phase2_api_models)} prometheus models remain"
             )
 
+    @pytest.mark.sanity
     def test_model_restoration_after_filter_removal(
         self,
         admin_client,
@@ -611,6 +622,7 @@ class TestModelCleanupLifecycle:
 
         LOGGER.info(f"Phase 2 SUCCESS: Restored to baseline {len(restored_api_models)} models")
 
+    @pytest.mark.sanity
     def test_dynamic_model_switching_with_cleanup(
         self,
         admin_client,
@@ -704,6 +716,7 @@ class TestModelCleanupLifecycle:
 class TestSourceLifecycleCleanup:
     """Test source disabling cleanup scenarios (RHOAIENG-41846)"""
 
+    @pytest.mark.smoke
     def test_source_disabling_removes_models(
         self,
         admin_client,
@@ -756,13 +769,14 @@ class TestSourceLifecycleCleanup:
 class TestLoggingValidation:
     """Test cleanup operation logging (RHOAIENG-41846)"""
 
+    @pytest.mark.sanity
     def test_model_removal_logging(
         self,
         admin_client,
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
-        validate_baseline_expectations,
+        baseline_model_state,
     ):
         """Test that model removal operations are properly logged."""
         LOGGER.info("Testing model removal logging")
@@ -800,15 +814,16 @@ class TestLoggingValidation:
                 )
                 LOGGER.info(f"SUCCESS: Found expected log patterns: {found_patterns}")
             except TimeoutExpiredError as e:
-                LOGGER.warning(f"WARNING: Expected log patterns not found: {e}")
+                pytest.fail(f"Expected log patterns not found: {e}")
 
+    @pytest.mark.sanity
     def test_source_disabling_logging(
         self,
         admin_client,
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
-        validate_baseline_expectations,
+        baseline_model_state,
     ):
         """Test that source disabling operations are properly logged."""
         LOGGER.info("Testing source disabling logging")

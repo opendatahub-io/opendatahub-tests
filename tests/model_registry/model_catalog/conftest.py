@@ -448,7 +448,7 @@ def baseline_redhat_ai_models(
 
 
 @pytest.fixture(scope="function")
-def validate_baseline_expectations(
+def baseline_model_state(
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
     model_registry_namespace: str,

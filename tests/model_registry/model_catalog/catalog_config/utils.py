@@ -181,7 +181,11 @@ def validate_model_filtering_consistency(
 
 
 def apply_inclusion_exclusion_filters_to_source(
-    admin_client, namespace: str, source_id: str, included_models: list[str] = None, excluded_models: list[str] = None
+    admin_client: DynamicClient,
+    namespace: str,
+    source_id: str,
+    included_models: list[str] = None,
+    excluded_models: list[str] = None,
 ) -> dict:
     """
     Patch a catalog source with inclusion/exclusion filters.
@@ -304,7 +308,7 @@ def wait_for_model_count_change(
     model_registry_rest_headers: dict[str, str],
     source_label: str,
     expected_count: int,
-) -> None:
+) -> bool:
     """
     Wait for model count to reach expected value using @retry decorator.
 
