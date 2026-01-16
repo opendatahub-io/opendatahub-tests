@@ -130,8 +130,8 @@ class AcceleratorType:
     AMD: str = "amd"
     GAUDI: str = "gaudi"
     SPYRE: str = "spyre"
-    CPU: str = "cpu"
-    SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI, SPYRE, CPU]
+    CPU_x86: str = "cpu_x86"
+    SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI, SPYRE, CPU_x86]
 
 
 class ApiGroups:
