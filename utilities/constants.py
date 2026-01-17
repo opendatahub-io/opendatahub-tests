@@ -226,6 +226,9 @@ class Labels:
     class Spyre:
         SPYRE_COM_GPU: str = "ibm.com/spyre_pf"
 
+    class CPU_x86:
+        CPU_x86: str = "cpu"
+
     class Kueue:
         MANAGED: str = "kueue.openshift.io/managed"
         QUEUE_NAME: str = "kueue.x-k8s.io/queue-name"
