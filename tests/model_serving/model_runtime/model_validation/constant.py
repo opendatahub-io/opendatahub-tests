@@ -8,7 +8,7 @@ ACCELERATOR_IDENTIFIER: dict[str, str] = {
     AcceleratorType.AMD: "amd.com/gpu",
     AcceleratorType.GAUDI: "habana.ai/gaudi",
     AcceleratorType.SPYRE: Labels.Spyre.SPYRE_COM_GPU,
-    AcceleratorType.CPU_x86: Labels.CPU_x86.CPU_x86,
+    AcceleratorType.CPU_x86: Labels.CPU.CPU_x86,
 }
 
 TEMPLATE_MAP: dict[str, str] = {

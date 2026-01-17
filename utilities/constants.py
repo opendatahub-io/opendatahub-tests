@@ -226,7 +226,7 @@ class Labels:
     class Spyre:
         SPYRE_COM_GPU: str = "ibm.com/spyre_pf"
 
-    class CPU_x86:
+    class CPU:
         CPU_x86: str = "cpu"
 
     class Kueue:
