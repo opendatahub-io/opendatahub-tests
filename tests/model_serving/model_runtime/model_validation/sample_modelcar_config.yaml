@@ -1,7 +1,7 @@
 model-car:
-  - name: granite-3.1-8b-instruct
-    image: oci://registry.redhat.io/rhelai1/modelcar-granite-3-1-8b-instruct:1.5
-    model_output_type: text
+  - name: granite-vision-3-3-2b
+    image: oci://registry.stage.redhat.io/rhelai1/granite-vision-3-3-2b:1.5
+    model_output_type: image
     serving_arguments:
       args:
         - "--uvicorn-log-level=info"
@@ -9,6 +9,49 @@ model-car:
         - "--trust-remote-code"
         - "--distributed-executor-backend=mp"
       gpu_count: 1
+  # - name: granite-4-0-h-tiny
+  #   image: oci://registry.stage.redhat.io/rhai/modelcar-granite-4-0-h-tiny:3.0
+  #   model_output_type: text
+  #   serving_arguments:
+  #     args:
+  #       - "--uvicorn-log-level=info"
+  #       - "--max-model-len=2048"
+  #       - "--trust-remote-code"
+  #       - "--distributed-executor-backend=mp"
+  #     gpu_count: 1
+  
+  # - name: granite-4-0-h-small
+  #   image: oci://registry.stage.redhat.io/rhai/modelcar-granite-4-0-h-small:3.0
+  #   model_output_type: text
+  #   serving_arguments:
+  #     args:
+  #       - "--uvicorn-log-level=info"
+  #       - "--max-model-len=2048"
+  #       - "--trust-remote-code"
+  #       - "--distributed-executor-backend=mp"
+  #     gpu_count: 1
+
+  # - name: granite-embedding-english-r2
+  #   image: oci://registry.stage.redhat.io/rhai/modelcar-granite-embedding-english-r2:3.0
+  #   model_output_type: embedding
+  #   serving_arguments:
+  #     args:
+  #       - "--uvicorn-log-level=info"
+  #       - "--max-model-len=2048"
+  #       - "--trust-remote-code"
+  #       - "--distributed-executor-backend=mp"
+  #     gpu_count: 1
+
+  # - name: Llama-3.1-8B-Instruct
+  #   image: oci://registry.redhat.io/rhelai1/modelcar-llama-3-1-8b-instruct:1.5
+  #   model_output_type: text
+  #   serving_arguments:
+  #     args:
+  #       - "--uvicorn-log-level=info"
+  #       - "--max-model-len=2048"
+  #       - "--trust-remote-code"
+  #       - "--distributed-executor-backend=mp"
+  #     gpu_count: 1
 
 
 default:
