@@ -72,7 +72,9 @@ class RuntimeTemplates:
     TGIS_GRPC_SERVING: str = "tgis-grpc-serving-template"
     VLLM_CUDA: str = "vllm-cuda-runtime-template"
     VLLM_ROCM: str = "vllm-rocm-runtime-template"
-    VLLM_GAUDUI: str = "vllm-gaudi-runtime-template"
+    VLLM_GAUDI: str = "vllm-gaudi-runtime-template"
+    VLLM_SPYRE: str = "vllm-spyre-x86-runtime-template"
+    VLLM_CPU_x86: str = "vllm-cpu-x86-runtime-template"
     MLSERVER_GRPC: str = "mlserver-grpc-runtime-template"
     MLSERVER_REST: str = "mlserver-rest-runtime-template"
     TRITON_REST: str = "triton-rest-runtime-template"
@@ -121,7 +123,9 @@ class AcceleratorType:
     NVIDIA: str = "nvidia"
     AMD: str = "amd"
     GAUDI: str = "gaudi"
-    SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI]
+    SPYRE: str = "spyre"
+    CPU_x86: str = "cpu_x86"
+    SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI, SPYRE, CPU_x86]
 
 
 class ApiGroups:
@@ -211,6 +215,12 @@ class Labels:
 
     class ROCm:
         ROCM_GPU: str = "amd.com/gpu"
+
+    class Spyre:
+        SPYRE_COM_GPU: str = "ibm.com/spyre_pf"
+
+    class CPU:
+        CPU_x86: str = "cpu"
 
     class Kueue:
         MANAGED: str = "kueue.openshift.io/managed"
