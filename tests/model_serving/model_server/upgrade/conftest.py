@@ -635,19 +635,6 @@ def metrics_inference_service_fixture(
             yield isvc
 
 
-@pytest.fixture(scope="session")
-def metrics_config_map_fixture(
-    admin_client: DynamicClient,
-    metrics_inference_service_fixture: InferenceService,
-) -> ConfigMap:
-    """Metrics dashboard ConfigMap for upgrade tests."""
-    return ConfigMap(
-        client=admin_client,
-        name=f"{metrics_inference_service_fixture.name}-metrics-dashboard",
-        namespace=metrics_inference_service_fixture.namespace,
-    )
-
-
 # Private Endpoint Upgrade Fixtures
 @pytest.fixture(scope="session")
 def private_endpoint_namespace_fixture(

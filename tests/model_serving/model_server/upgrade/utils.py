@@ -1,42 +1,12 @@
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.inference_service import InferenceService
-from ocp_resources.pod import Pod
 from ocp_resources.prometheus import Prometheus
 from ocp_resources.route import Route
-from pytest_testconfig import config as py_config
 
 from utilities.constants import Annotations
 from utilities.exceptions import PodContainersRestartError, ResourceMismatchError
 from utilities.infra import get_inference_serving_runtime, get_pods_by_isvc_label
-
-
-def verify_pod_containers_not_restarted(client: DynamicClient, component_name: str) -> None:
-    """
-    Verify pod containers not restarted.
-
-    Args:
-        client (DynamicClient): DynamicClient instance
-        component_name (str): Name of the component
-
-    Raises:
-        AssertionError: If pod containers are restarted
-
-    """
-    restarted_containers = {}
-
-    for pod in Pod.get(
-        client=client,
-        namespace=py_config["applications_namespace"],
-        label_selector=f"{Pod.ApiGroup.APP_KUBERNETES_IO}/part-of={component_name}",
-    ):
-        if _restarted_containers := [
-            container.name for container in pod.instance.status.containerStatuses if container.restartCount > 0
-        ]:
-            restarted_containers[pod.name] = _restarted_containers
-
-    if restarted_containers:
-        raise PodContainersRestartError(f"Containers {restarted_containers} restarted")
 
 
 def verify_inference_generation(isvc: InferenceService, expected_generation: int) -> None:
@@ -321,28 +291,6 @@ def verify_no_external_route(client: DynamicClient, isvc: InferenceService) -> N
         raise AssertionError(
             f"External Route(s) found for private InferenceService {isvc.name}: {route_names}. "
             f"Private endpoints should not have external routes."
-        )
-
-
-def verify_external_route_annotation(isvc: InferenceService, expected_value: str = "false") -> None:
-    """
-    Verify the external route annotation value on InferenceService.
-
-    Args:
-        isvc: InferenceService instance
-        expected_value: Expected annotation value (default "false" for private endpoints)
-
-    Raises:
-        AssertionError: If annotation is missing or has unexpected value
-    """
-    annotations = isvc.instance.metadata.annotations or {}
-    annotation_key = "serving.kserve.io/enable-external-route"
-    actual_value = annotations.get(annotation_key)
-
-    if actual_value != expected_value:
-        raise AssertionError(
-            f"External route annotation mismatch for InferenceService {isvc.name}. "
-            f"Expected '{annotation_key}={expected_value}', got '{actual_value}'"
         )
 
 
