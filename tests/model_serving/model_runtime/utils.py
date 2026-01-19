@@ -35,6 +35,7 @@ def validate_audio_inference_output(model_info: Any, completion_responses: Itera
     assert isinstance(completion_responses, (list, tuple)), "Completion responses should be a list or tuple"
     assert len(completion_responses) > 0, "Completion responses should not be empty"
 
+
 def validate_embedding_inference_output(model_info: Any, embedding_responses: Iterable[Any]) -> None:
     assert model_info is not None, "Model info should not be None"
     assert isinstance(model_info, (list, tuple)), "Model info should be a list or tuple"
@@ -92,7 +93,7 @@ def run_raw_inference(
             return model_info, completion_responses  # type: ignore
         else:
             raise NotSupportedError(f"{endpoint} endpoint")
-        
+
 
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(min=1, max=6))
 def run_embedding_inference(
@@ -133,9 +134,7 @@ def run_embedding_inference(
                 embedding_responses = []
                 inference_client = OpenAIClient(host=f"http://localhost:{port}", model_name=model_name, streaming=True)
                 for query in embedding_query:
-                    embedding_response = inference_client.request_http(
-                        endpoint=OpenAIEnpoints.EMBEDDINGS, query=query
-                    )
+                    embedding_response = inference_client.request_http(endpoint=OpenAIEnpoints.EMBEDDINGS, query=query)
                     embedding_responses.append(embedding_response)
                 model_info = OpenAIClient.get_request_http(
                     host=f"http://localhost:{port}", endpoint=OpenAIEnpoints.MODELS_INFO
@@ -242,12 +241,9 @@ def validate_raw_openai_inference_request(
             port=port,
             endpoint=OPENAI_ENDPOINT_NAME,
             embedding_query=EMBEDDING_QUERY,
-            model_name=model_name
+            model_name=model_name,
         )
-        validate_embedding_inference_output(
-            model_info=model_info,
-            embedding_responses=embedding_responses
-        )
+        validate_embedding_inference_output(model_info=model_info, embedding_responses=embedding_responses)
 
     else:
         raise NotSupportedError(f"Model output type {model_output_type} is not supported for raw inference request.")

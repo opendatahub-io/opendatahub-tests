@@ -19,7 +19,7 @@ model-car:
   #       - "--trust-remote-code"
   #       - "--distributed-executor-backend=mp"
   #     gpu_count: 1
-  
+
   # - name: granite-4-0-h-small
   #   image: oci://registry.stage.redhat.io/rhai/modelcar-granite-4-0-h-small:3.0
   #   model_output_type: text
