@@ -24,6 +24,7 @@ from tests.model_registry.model_catalog.utils import (
     execute_database_query,
     parse_psql_output,
 )
+from tests.model_registry.model_catalog.db_constants import GET_MODELS_BY_SOURCE_ID_DB_QUERY
 
 LOGGER = get_logger(name=__name__)
 
@@ -143,20 +144,7 @@ def get_models_from_database_by_source(source_id: str, namespace: str) -> set[st
         Set of model names found in database for the source
     """
 
-    query = f"""
-    SELECT DISTINCT c.name as model_name
-    FROM "Context" c
-    WHERE c.type_id = (SELECT id FROM "Type" WHERE name = 'kf.CatalogModel')
-    AND EXISTS (
-        SELECT 1
-        FROM "ContextProperty" cp
-        WHERE cp.context_id = c.id
-        AND cp.name = 'source_id'
-        AND cp.string_value = '{source_id}'
-    )
-    ORDER BY model_name;
-    """
-
+    query = GET_MODELS_BY_SOURCE_ID_DB_QUERY.format(source_id=source_id)
     result = execute_database_query(query=query, namespace=namespace)
     parsed = parse_psql_output(psql_output=result)
     return set(parsed.get("values", []))
