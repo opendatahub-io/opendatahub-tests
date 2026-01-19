@@ -1,23 +1,66 @@
 import pytest
-from typing import Self
+from typing import Self, Generator
 from ocp_resources.config_map import ConfigMap
 from simple_logger.logger import get_logger
-from tests.model_registry.model_catalog.constants import HF_MODELS
+from tests.model_registry.model_catalog.constants import HF_MODELS, HF_SOURCE_ID
 from tests.model_registry.model_catalog.utils import (
     get_hf_catalog_str,
 )
+from tests.model_registry.utils import execute_get_command
 from tests.model_registry.model_catalog.huggingface.utils import (
     assert_huggingface_values_matches_model_catalog_api_values,
     wait_for_huggingface_retrival_match,
     wait_for_hugging_face_model_import,
+    wait_for_last_sync_update,
 )
 from kubernetes.dynamic import DynamicClient
 
 LOGGER = get_logger(name=__name__)
 
-pytestmark = [
-    pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace"),
-]
+
+class TestLastSyncedMetadataValidation:
+    """Test HuggingFace model last synced timestamp validation"""
+
+    @pytest.mark.parametrize(
+        "updated_catalog_config_map_scope_function, initial_last_synced_values, model_name",
+        [
+            pytest.param(
+                """
+catalogs:
+  - name: HuggingFace Hub
+    id: hf_id
+    type: hf
+    enabled: true
+    includedModels:
+    - microsoft/phi-2
+    properties:
+      syncInterval: '2m'
+""",
+                "microsoft/phi-2",
+                "microsoft/phi-2",
+                id="test_hf_last_synced_custom",
+            ),
+        ],
+        indirect=["updated_catalog_config_map_scope_function", "initial_last_synced_values"],
+    )
+    def test_huggingface_last_synced_custom(
+        self: Self,
+        updated_catalog_config_map_scope_function: Generator[ConfigMap, str, str],
+        initial_last_synced_values: str,
+        model_catalog_rest_url: list[str],
+        model_registry_rest_headers: dict[str, str],
+        model_name: str,
+    ):
+        """
+        Custom test for HuggingFace model last synced validation
+        """
+        # Get the model name from the parametrized test
+        wait_for_last_sync_update(
+            model_registry_rest_headers=model_registry_rest_headers,
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_name=model_name,
+            initial_last_synced_values=float(initial_last_synced_values),
+        )
 
 
 @pytest.mark.parametrize(
@@ -34,9 +77,59 @@ pytestmark = [
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("updated_catalog_config_map")
+@pytest.mark.usefixtures("epoch_time_before_config_map_update", "updated_catalog_config_map")
 class TestHuggingFaceModelValidation:
     """Test HuggingFace model values by comparing values between HF API calls and Model Catalog api call"""
+
+    def test_huggingface_model_metadata_last_synced(
+        self: Self,
+        epoch_time_before_config_map_update: float,
+        updated_catalog_config_map: tuple[ConfigMap, str, str],
+        model_catalog_rest_url: list[str],
+        model_registry_rest_headers: dict[str, str],
+        expected_catalog_values: dict[str, str],
+        huggingface_api: bool,
+    ):
+        """
+        Validate HuggingFace model last synced timestamp is properly updated
+        """
+        LOGGER.info(
+            f"Validating HuggingFace model last synced timestamps with {epoch_time_before_config_map_update} "
+            "epoch (milliseconds)"
+        )
+        error = {}
+        for model_name in expected_catalog_values:
+            url = f"{model_catalog_rest_url[0]}sources/{HF_SOURCE_ID}/models/{model_name}"
+            result = execute_get_command(
+                url=url,
+                headers=model_registry_rest_headers,
+            )
+
+            error_msg = ""
+            if result["name"] != model_name:
+                error_msg += f"Expected model name {model_name}, but got {result['name']}. "
+
+            # Extract last_synced timestamp
+            last_synced = result["customProperties"]["last_synced"]["string_value"]
+            LOGGER.info(f"Model {model_name} last synced at: {last_synced}")
+
+            # Validate that last_synced field exists and is not empty
+            if last_synced is None:
+                error_msg += f"last_synced field is None for model {model_name}. "
+            elif last_synced == "":
+                error_msg += f"last_synced field is empty for model {model_name}. "
+            else:
+                # Compare timestamps: current_epoch_time should be earlier than last_synced
+                if epoch_time_before_config_map_update > float(last_synced):
+                    error_msg += (
+                        f"Model {model_name} last_synced ({last_synced}) should be after "
+                        f"test start time ({epoch_time_before_config_map_update}). "
+                    )
+            if error_msg:
+                error[model_name] = error_msg
+        if error:
+            LOGGER.error(error)
+            pytest.fail("Last synced validation failed")
 
     def test_huggingface_model_metadata(
         self: Self,

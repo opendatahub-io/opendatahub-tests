@@ -140,3 +140,39 @@ def wait_for_hugging_face_model_import(
     else:
         LOGGER.warning(f"No relevant log entry found: {log}")
         return False
+
+
+@retry(wait_timeout=135, sleep=15)
+def wait_for_last_sync_update(
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+    model_name: str,
+    initial_last_synced_values: float,
+) -> bool:
+    """Wait for the last_synced value to be updated with exact 120-second difference"""
+    url = f"{model_catalog_rest_url[0]}sources/hf_id/models/{model_name}"
+    result = execute_get_command(
+        url=url,
+        headers=model_registry_rest_headers,
+    )
+
+    current_last_synced = float(result["customProperties"]["last_synced"]["string_value"])
+    if current_last_synced != initial_last_synced_values:
+        # Calculate difference in milliseconds and convert to seconds
+        difference_seconds = int((current_last_synced - initial_last_synced_values) / 1000)
+
+        LOGGER.info(
+            f"Model {model_name}: initial={initial_last_synced_values}, current={current_last_synced}, "
+            f"diff={difference_seconds}s"
+        )
+        expected_diff = 120
+        if difference_seconds == expected_diff:
+            LOGGER.info(f"Model {model_name} successfully synced with correct interval ({difference_seconds}s)")
+            return True
+        else:
+            LOGGER.error(
+                f"Model {model_name}: sync interval should be {expected_diff}s, "
+                f"but found {difference_seconds}s (difference: {abs(difference_seconds - expected_diff)}s). "
+                f"Initial: {initial_last_synced_values}, Current: {current_last_synced}"
+            )
+    return False

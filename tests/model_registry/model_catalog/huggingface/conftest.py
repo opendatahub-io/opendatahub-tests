@@ -1,6 +1,8 @@
 import pytest
+import time
 from huggingface_hub import HfApi
 from simple_logger.logger import get_logger
+from tests.model_registry.utils import execute_get_command
 
 LOGGER = get_logger(name=__name__)
 
@@ -34,3 +36,31 @@ def num_models_from_hf_api_with_matching_criteria(request: pytest.FixtureRequest
         else:
             model_list.append(model.id)
     return len(model_list)
+
+
+@pytest.fixture(scope="module")
+def epoch_time_before_config_map_update() -> float:
+    """
+    Return the current epoch time in milliseconds when the test class starts.
+    Useful for comparing against timestamps created during test execution.
+    """
+    return float(time.time() * 1000)
+
+
+@pytest.fixture(scope="function")
+def initial_last_synced_values(
+    request: pytest.FixtureRequest,
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+) -> str:
+    """
+    Collect initial last_synced values for a given model.
+    """
+    model_name = request.param
+    url = f"{model_catalog_rest_url[0]}sources/hf_id/models/{model_name}"
+    result = execute_get_command(
+        url=url,
+        headers=model_registry_rest_headers,
+    )
+
+    return result["customProperties"]["last_synced"]["string_value"]
