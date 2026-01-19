@@ -1,9 +1,9 @@
 import random
 from typing import Generator, Any
 import requests
-import time
 
 from simple_logger.logger import get_logger
+from timeout_sampler import retry, TimeoutExpiredError
 import yaml
 import pytest
 from kubernetes.dynamic import DynamicClient
@@ -427,7 +427,7 @@ def model_catalog_rest_url(model_registry_namespace: str, model_catalog_routes: 
 @pytest.fixture(scope="function")
 def baseline_redhat_ai_models(
     model_catalog_rest_url: list[str], model_registry_rest_headers: dict[str, str], model_registry_namespace: str
-) -> dict[str, set[str]]:
+) -> dict[str, set[str] | int]:
     """
     fixture providing baseline model data for redhat_ai_models source.
 
@@ -447,25 +447,71 @@ def baseline_redhat_ai_models(
     return {"api_models": api_models, "db_models": db_models, "count": len(api_models)}
 
 
+@retry(wait_timeout=300, sleep=10, exceptions_dict={Exception: []}, print_log=False)
+def _validate_baseline_models(
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+    model_registry_namespace: str,
+    expected_models: set[str],
+    expected_count: int,
+) -> None:
+    """
+    Validate that baseline model expectations are met.
+    Raises exception if validation fails (triggers retry).
+    Returns None if successful (stops retry).
+    """
+    # Fetch current models from API
+    api_response = get_models_from_catalog_api(
+        model_catalog_rest_url=model_catalog_rest_url,
+        model_registry_rest_headers=model_registry_rest_headers,
+        source_label="Red Hat AI",
+    )
+    api_models = {model["name"] for model in api_response.get("items", [])}
+
+    # Fetch current models from database
+    db_models = get_models_from_database_by_source(source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace)
+
+    count = len(api_models)
+
+    # Validate all expectations - raise on any failure
+    if count != expected_count:
+        raise AssertionError(f"Expected {expected_count} models, got {count}")
+
+    if api_models != db_models:
+        raise AssertionError(f"API models {api_models} don't match database models {db_models}")
+
+    if api_models != expected_models:
+        raise AssertionError(f"Models {api_models} don't match expected set {expected_models}")
+
+    # Additional category validation
+    granite_models = {model for model in api_models if "granite" in model}
+    prometheus_models = {model for model in api_models if "prometheus" in model}
+
+    if len(granite_models) != 6 or len(prometheus_models) != 1:
+        raise AssertionError(
+            f"""Expected 6 granite + 1 prometheus models, \
+            got {len(granite_models)} granite + {len(prometheus_models)} prometheus"""
+        )
+
+    LOGGER.info("Baseline model validation successful: 7 models (6 granite, 1 prometheus)")
+    return True
+
+
 @pytest.fixture(scope="function")
 def baseline_model_state(
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
     model_registry_namespace: str,
-    timeout_seconds: int = 300,
-    poll_interval: int = 10,
 ) -> None:
     """
     Validate that our baseline assumptions about the model data are correct.
     This fixture should be used by all test classes to ensure data consistency.
-    Uses polling to wait for eventual reconciliation of resources.
+    Uses @retry decorator for automatic polling (300s timeout, 10s interval) and eventual reconciliation.
 
     Args:
         model_catalog_rest_url: URL for model catalog API
         model_registry_rest_headers: Headers for API requests
         model_registry_namespace: Namespace for model registry
-        timeout_seconds: Maximum time to wait for reconciliation (default: 300)
-        poll_interval: Time between polling attempts (default: 10)
     """
 
     # Expected baseline data
@@ -480,68 +526,14 @@ def baseline_model_state(
     }
     expected_count = 7
 
-    start_time = time.time()
-    api_models = set()
-    db_models = set()
-
-    # Polling loop for eventual reconciliation
-    while (time.time() - start_time) < timeout_seconds:
-        try:
-            # Fetch current models from API
-            api_response = get_models_from_catalog_api(
-                model_catalog_rest_url=model_catalog_rest_url,
-                model_registry_rest_headers=model_registry_rest_headers,
-                source_label="Red Hat AI",
-            )
-            api_models = {model["name"] for model in api_response.get("items", [])}
-
-            # Fetch current models from database
-            db_models = get_models_from_database_by_source(
-                source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
-            )
-
-            count = len(api_models)
-
-            # Validate all expectations
-            if count == expected_count and api_models == db_models and api_models == expected_models:
-                # Additional category validation
-                granite_models = {model for model in api_models if "granite" in model}
-                prometheus_models = {model for model in api_models if "prometheus" in model}
-
-                if len(granite_models) == 6 and len(prometheus_models) == 1:
-                    LOGGER.info("Baseline model validation successful: 7 models (6 granite, 1 prometheus)")
-                    return  # Success - all expectations met
-
-        except Exception as e:
-            # Continue polling on any exception (transient errors)
-            LOGGER.debug(f"Baseline validation attempt failed: {e}")
-            pass
-
-        time.sleep(poll_interval)  # noqa: FCN001
-
+    # Use retry decorator for automatic polling and eventual reconciliation
     try:
-        api_response = get_models_from_catalog_api(
+        _validate_baseline_models(
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
-            source_label="Red Hat AI",
+            model_registry_namespace=model_registry_namespace,
+            expected_models=expected_models,
+            expected_count=expected_count,
         )
-        api_models = {model["name"] for model in api_response.get("items", [])}
-
-        db_models = get_models_from_database_by_source(
-            source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
-        )
-
-        count = len(api_models)
-
-        if count == expected_count and api_models == db_models and api_models == expected_models:
-            # Additional category validation
-            granite_models = {model for model in api_models if "granite" in model}
-            prometheus_models = {model for model in api_models if "prometheus" in model}
-
-            if len(granite_models) == 6 and len(prometheus_models) == 1:
-                LOGGER.info("Baseline model validation successful: 7 models (6 granite, 1 prometheus)")
-                return
-        else:
-            pytest.fail(f"Baseline validation failed: {count} models found, expected {expected_count}")
-    except Exception as e:
-        raise AssertionError(f"Failed to fetch model data after {timeout_seconds}s timeout: {e}")
+    except TimeoutExpiredError:
+        pytest.fail("Failed to fetch model data after 300s timeout")

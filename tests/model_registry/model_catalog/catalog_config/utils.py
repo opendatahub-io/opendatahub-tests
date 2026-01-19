@@ -1,6 +1,7 @@
 from typing import Any
 import subprocess
 import yaml
+import re
 
 import pytest
 from kubernetes.dynamic import DynamicClient
@@ -186,23 +187,26 @@ def validate_model_filtering_consistency(
     return True, "Validation passed"
 
 
-def apply_inclusion_exclusion_filters_to_source(
+def modify_catalog_source(
     admin_client: DynamicClient,
     namespace: str,
     source_id: str,
+    *,
+    enabled: bool = None,
     included_models: list[str] = None,
     excluded_models: list[str] = None,
-) -> dict:
+) -> dict[str, ConfigMap | dict[str, Any] | str]:
     """
-    Patch a catalog source with inclusion/exclusion filters.
+    Modify a catalog source with various configuration changes.
     First ensures the source exists by syncing from default sources if necessary.
 
     Args:
         admin_client: OpenShift dynamic client
         namespace: Model registry namespace
-        source_id: Source ID to patch
-        included_models: List of inclusion patterns
-        excluded_models: List of exclusion patterns
+        source_id: Source ID to modify
+        enabled: Set to False to disable the source, True to enable, None to leave unchanged
+        included_models: List of inclusion patterns (None = no change, [] = clear)
+        excluded_models: List of exclusion patterns (None = no change, [] = clear)
 
     Returns:
         Dictionary with patch information
@@ -262,22 +266,21 @@ def apply_inclusion_exclusion_filters_to_source(
                 target_source = source
                 break
 
-    # Apply filters
+    # Apply modifications
+    if enabled is not None:
+        target_source["enabled"] = enabled
+
     if included_models is not None:
         if len(included_models) == 0:
             target_source["includedModels"] = []
         else:
             target_source["includedModels"] = included_models
-    elif "includedModels" in target_source:
-        del target_source["includedModels"]
 
     if excluded_models is not None:
         if len(excluded_models) == 0:
             target_source["excludedModels"] = []
         else:
             target_source["excludedModels"] = excluded_models
-    elif "excludedModels" in target_source:
-        del target_source["excludedModels"]
 
     # Generate new YAML
     new_yaml = yaml.dump(sources_config, default_flow_style=False)
@@ -378,90 +381,6 @@ def wait_for_model_set_match(
     return current_models
 
 
-def disable_catalog_source(admin_client, namespace: str, source_id: str) -> dict:
-    """
-    Disable a catalog source by setting enabled: false.
-    First ensures the source exists by syncing from default sources if necessary.
-
-    Args:
-        admin_client: OpenShift dynamic client
-        namespace: Model registry namespace
-        source_id: Source ID to disable
-
-    Returns:
-        Dictionary with patch information
-    """
-    # Get current ConfigMap (model-catalog-sources)
-    sources_cm = ConfigMap(
-        name=DEFAULT_CUSTOM_MODEL_CATALOG,
-        client=admin_client,
-        namespace=namespace,
-    )
-
-    # Parse existing sources
-    current_yaml = sources_cm.instance.data.get("sources.yaml", "")
-    sources_config = yaml.safe_load(current_yaml) if current_yaml else {"catalogs": []}
-
-    # Find the target source
-    target_source = None
-    for source in sources_config.get("catalogs", []):
-        if source.get("id") == source_id:
-            target_source = source
-            break
-
-    # If source not found, sync from default sources ConfigMap
-    if not target_source:
-        LOGGER.info(f"Source {source_id} not found in {DEFAULT_CUSTOM_MODEL_CATALOG}. Syncing from default sources.")
-
-        # Get default sources ConfigMap (model-catalog-default-sources)
-        default_sources_cm = ConfigMap(
-            name="model-catalog-default-sources",
-            client=admin_client,
-            namespace=namespace,
-        )
-
-        # Parse default sources
-        default_yaml = default_sources_cm.instance.data.get("sources.yaml", "")
-        default_config = yaml.safe_load(default_yaml) if default_yaml else {"catalogs": []}
-
-        # Find source in default sources
-        default_target_source = None
-        for source in default_config.get("catalogs", []):
-            if source.get("id") == source_id:
-                default_target_source = source
-                break
-
-        if not default_target_source:
-            raise ValueError(f"Source {source_id} not found in either ConfigMap")
-
-        # Add all default catalogs to sources_config if not already present
-        existing_ids = {source.get("id") for source in sources_config.get("catalogs", [])}
-        for default_catalog in default_config.get("catalogs", []):
-            if default_catalog.get("id") not in existing_ids:
-                sources_config.setdefault("catalogs", []).append(default_catalog)
-
-        # Now find the target source in the updated config
-        for source in sources_config.get("catalogs", []):
-            if source.get("id") == source_id:
-                target_source = source
-                break
-
-    # Disable the source
-    target_source["enabled"] = False
-
-    # Generate new YAML
-    new_yaml = yaml.dump(sources_config, default_flow_style=False)
-
-    return {
-        "configmap": sources_cm,
-        "patch": {
-            "metadata": {"name": sources_cm.name, "namespace": sources_cm.namespace},
-            "data": {"sources.yaml": new_yaml},
-        },
-        "original_yaml": current_yaml,
-    }
-
-
 @retry(
     exceptions_dict={subprocess.CalledProcessError: [], AssertionError: []},
     wait_timeout=Timeout.TIMEOUT_2MIN,
@@ -471,7 +390,7 @@ def validate_cleanup_logging(
     client: DynamicClient,
     namespace: str,
     expected_log_patterns: list[str],
-) -> list[str]:
+) -> list[re.Match[str]]:
     """
     Validate that model cleanup operations are properly logged using @retry decorator.
 
@@ -487,8 +406,6 @@ def validate_cleanup_logging(
         subprocess.CalledProcessError: If oc command fails (retried automatically)
         AssertionError: If patterns not found (retried automatically)
     """
-    import re
-
     model_catalog_pod = get_model_catalog_pod(
         client=client, model_registry_namespace=namespace, label_selector="app=model-catalog"
     )[0]
@@ -546,14 +463,14 @@ def execute_inclusion_exclusion_filter_test(
 
     # Apply filter based on type
     if filter_type == "inclusion":
-        patch_info = apply_inclusion_exclusion_filters_to_source(
+        patch_info = modify_catalog_source(
             admin_client=admin_client,
             namespace=model_registry_namespace,
             source_id=REDHAT_AI_CATALOG_ID,
             included_models=[filter_value],
         )
     else:  # exclusion
-        patch_info = apply_inclusion_exclusion_filters_to_source(
+        patch_info = modify_catalog_source(
             admin_client=admin_client,
             namespace=model_registry_namespace,
             source_id=REDHAT_AI_CATALOG_ID,

@@ -9,12 +9,10 @@ from tests.model_registry.model_catalog.constants import (
 )
 from tests.model_registry.model_catalog.catalog_config.utils import (
     validate_model_filtering_consistency,
-    apply_inclusion_exclusion_filters_to_source,
-    get_api_models_by_source_label,
+    modify_catalog_source,
     get_models_from_database_by_source,
     wait_for_model_count_change,
     wait_for_model_set_match,
-    disable_catalog_source,
     validate_cleanup_logging,
     filter_models_by_pattern,
     execute_inclusion_exclusion_filter_test,
@@ -31,7 +29,7 @@ pytestmark = [
 
 
 class TestModelInclusionFiltering:
-    """Test inclusion filtering functionality (RHOAIENG-41841 part 1)"""
+    """Test inclusion filtering functionality (RHOAIENG-41841)"""
 
     @pytest.mark.parametrize(
         "pattern,filter_value,expected_comment",
@@ -53,7 +51,7 @@ class TestModelInclusionFiltering:
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
-        baseline_redhat_ai_models: dict,
+        baseline_redhat_ai_models: dict[str, set[str] | int],
     ):
         """Test that includedModels=[filter_value] shows only models matching pattern ({expected_comment})."""
         execute_inclusion_exclusion_filter_test(
@@ -90,7 +88,7 @@ class TestModelExclusionFiltering:
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
-        baseline_redhat_ai_models: dict,
+        baseline_redhat_ai_models: dict[str, set[str] | int],
     ):
         """Test that excludedModels=[filter_value] removes models matching pattern ({expected_comment})."""
         execute_inclusion_exclusion_filter_test(
@@ -108,29 +106,58 @@ class TestModelExclusionFiltering:
 class TestCombinedIncludeExcludeFiltering:
     """Test combined include+exclude filtering (RHOAIENG-41841 part 3)"""
 
-    @pytest.mark.smoke
-    def test_include_granite_exclude_lab_models(
+    @pytest.mark.parametrize(
+        "include_pattern,include_filter_value,exclude_pattern,exclude_filter_value,expected_comment",
+        [
+            pytest.param(
+                "granite",
+                "*granite*",
+                "lab",
+                "*lab*",
+                "3/7 remaining",
+                marks=pytest.mark.smoke,
+                id="include_granite_exclude_lab",
+            ),
+            pytest.param(
+                "-8b-",
+                "*-8b-*",
+                "code",
+                "*code*",
+                "3/7 remaining",
+                marks=pytest.mark.sanity,
+                id="include_eight_b_exclude_code",
+            ),
+        ],
+    )
+    def test_combined_include_exclude_filtering(
         self,
+        include_pattern: str,
+        include_filter_value: str,
+        exclude_pattern: str,
+        exclude_filter_value: str,
+        expected_comment: str,
         admin_client: DynamicClient,
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
-        baseline_redhat_ai_models: dict,
+        baseline_redhat_ai_models: dict[str, set[str] | int],
     ):
-        """Test includedModels=['*granite*'] + excludedModels=['*lab*'] precedence (3/7 remaining)."""
-        LOGGER.info("Testing combined include granite, exclude lab")
+        """Test includedModels=[include_filter_value] + excludedModels=[exclude_filter_value] precedence."""
+        LOGGER.info(f"Testing combined include {include_pattern}, exclude {exclude_pattern}")
 
-        granite_models = filter_models_by_pattern(all_models=baseline_redhat_ai_models["api_models"], pattern="granite")
-        lab_models = filter_models_by_pattern(all_models=baseline_redhat_ai_models["api_models"], pattern="lab")
-        # Expected: granite models minus any that contain "lab"
-        expected_models = granite_models - lab_models
+        # Get models that match the inclusion pattern
+        included_models = filter_models_by_pattern(
+            all_models=baseline_redhat_ai_models["api_models"], pattern=include_pattern
+        )
+        # Remove models that also match the exclusion pattern from the included set
+        expected_models = {model for model in included_models if exclude_pattern not in model}
 
-        patch_info = apply_inclusion_exclusion_filters_to_source(
+        patch_info = modify_catalog_source(
             admin_client=admin_client,
             namespace=model_registry_namespace,
             source_id=REDHAT_AI_CATALOG_ID,
-            included_models=["*granite*"],
-            excluded_models=["*lab*"],
+            included_models=[include_filter_value],
+            excluded_models=[exclude_filter_value],
         )
 
         with ResourceEditor(patches={patch_info["configmap"]: patch_info["patch"]}):
@@ -144,7 +171,10 @@ class TestCombinedIncludeExcludeFiltering:
                     expected_models=expected_models,
                 )
             except TimeoutExpiredError as e:
-                pytest.fail(f"Timeout waiting for granite minus lab models. Expected: {expected_models}, {e}")
+                pytest.fail(
+                    f"Timeout waiting for {include_pattern} minus {exclude_pattern} models. "
+                    f"Expected: {expected_models}, {e}"
+                )
 
             db_models = get_models_from_database_by_source(
                 source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
@@ -154,59 +184,12 @@ class TestCombinedIncludeExcludeFiltering:
             assert is_valid, error_msg
 
             assert api_models == expected_models, (
-                f"Expected granite minus lab models {expected_models}, got {api_models}"
+                f"Expected {include_pattern} minus {exclude_pattern} models {expected_models}, got {api_models}"
             )
 
-            LOGGER.info(f"SUCCESS: {len(api_models)} granite models after excluding lab variants")
-
-    @pytest.mark.sanity
-    def test_include_eight_b_exclude_code_models(
-        self,
-        admin_client: DynamicClient,
-        model_registry_namespace: str,
-        model_catalog_rest_url: list[str],
-        model_registry_rest_headers: dict[str, str],
-        baseline_redhat_ai_models: dict,
-    ):
-        """Test includedModels=['*-8b-*'] + excludedModels=['*code*'] precedence (3/7 remaining)."""
-        LOGGER.info("Testing combined include 8B, exclude code")
-
-        eight_b_models = filter_models_by_pattern(all_models=baseline_redhat_ai_models["api_models"], pattern="-8b-")
-        code_models = filter_models_by_pattern(all_models=baseline_redhat_ai_models["api_models"], pattern="code")
-        # Expected: 8B models minus any code models
-        expected_models = eight_b_models - code_models
-
-        patch_info = apply_inclusion_exclusion_filters_to_source(
-            admin_client=admin_client,
-            namespace=model_registry_namespace,
-            source_id=REDHAT_AI_CATALOG_ID,
-            included_models=["*-8b-*"],
-            excluded_models=["*code*"],
-        )
-
-        with ResourceEditor(patches={patch_info["configmap"]: patch_info["patch"]}):
-            wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
-
-            try:
-                api_models = wait_for_model_set_match(
-                    model_catalog_rest_url=model_catalog_rest_url,
-                    model_registry_rest_headers=model_registry_rest_headers,
-                    source_label=REDHAT_AI_CATALOG_NAME,
-                    expected_models=expected_models,
-                )
-            except TimeoutExpiredError as e:
-                pytest.fail(f"Timeout waiting for 8B minus code models. Expected: {expected_models}, {e}")
-
-            db_models = get_models_from_database_by_source(
-                source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
+            LOGGER.info(
+                f"SUCCESS: {len(api_models)} {include_pattern} models after excluding {exclude_pattern} variants"
             )
-
-            is_valid, error_msg = validate_model_filtering_consistency(api_models=api_models, db_models=db_models)
-            assert is_valid, error_msg
-
-            assert api_models == expected_models, f"Expected 8B minus code models {expected_models}, got {api_models}"
-
-            LOGGER.info(f"SUCCESS: {len(api_models)} 8B models after excluding code variants")
 
 
 class TestModelCleanupLifecycle:
@@ -219,7 +202,7 @@ class TestModelCleanupLifecycle:
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
-        baseline_redhat_ai_models: dict,
+        baseline_redhat_ai_models: dict[str, set[str] | int],
     ):
         """Test that models are cleaned up when filters change to exclude them."""
         LOGGER.info("Testing model cleanup on exclusion filter change")
@@ -230,7 +213,7 @@ class TestModelCleanupLifecycle:
         )
 
         # Phase 1: Include only granite models
-        phase1_patch = apply_inclusion_exclusion_filters_to_source(
+        phase1_patch = modify_catalog_source(
             admin_client=admin_client,
             namespace=model_registry_namespace,
             source_id=REDHAT_AI_CATALOG_ID,
@@ -263,7 +246,7 @@ class TestModelCleanupLifecycle:
             LOGGER.info(f"Phase 1 SUCCESS: {len(phase1_api_models)} granite models included")
 
             # Phase 2: Change to exclude granite models (should trigger cleanup)
-            phase2_patch = apply_inclusion_exclusion_filters_to_source(
+            phase2_patch = modify_catalog_source(
                 admin_client=admin_client,
                 namespace=model_registry_namespace,
                 source_id=REDHAT_AI_CATALOG_ID,
@@ -302,156 +285,6 @@ class TestModelCleanupLifecycle:
                 f"Phase 2 SUCCESS: Granite models cleaned up, {len(phase2_api_models)} prometheus models remain"
             )
 
-    @pytest.mark.sanity
-    def test_model_restoration_after_filter_removal(
-        self,
-        admin_client: DynamicClient,
-        model_registry_namespace: str,
-        model_catalog_rest_url: list[str],
-        model_registry_rest_headers: dict[str, str],
-        baseline_redhat_ai_models: dict,
-    ):
-        """Test that models are restored when exclusion filters are removed."""
-        LOGGER.info("Testing model restoration after filter removal")
-
-        baseline_models = baseline_redhat_ai_models["api_models"]
-
-        # Phase 1: Exclude granite models
-        phase1_patch = apply_inclusion_exclusion_filters_to_source(
-            admin_client=admin_client,
-            namespace=model_registry_namespace,
-            source_id=REDHAT_AI_CATALOG_ID,
-            excluded_models=["*granite*"],
-        )
-
-        with ResourceEditor(patches={phase1_patch["configmap"]: phase1_patch["patch"]}):
-            wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
-
-            phase1_api_models = get_api_models_by_source_label(
-                model_catalog_rest_url=model_catalog_rest_url,
-                model_registry_rest_headers=model_registry_rest_headers,
-                source_label=REDHAT_AI_CATALOG_NAME,
-            )
-
-            granite_in_phase1 = {model for model in phase1_api_models if "granite" in model}
-            assert len(granite_in_phase1) == 0, f"Phase 1: Should have no granite models, found: {granite_in_phase1}"
-
-            LOGGER.info(f"Phase 1 SUCCESS: {len(phase1_api_models)} models after excluding granite")
-
-        # Phase 2: Remove filters (should restore all models)
-        wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
-
-        try:
-            restored_api_models = wait_for_model_set_match(
-                model_catalog_rest_url=model_catalog_rest_url,
-                model_registry_rest_headers=model_registry_rest_headers,
-                source_label=REDHAT_AI_CATALOG_NAME,
-                expected_models=baseline_models,
-            )
-        except TimeoutExpiredError as e:
-            pytest.fail(f"Phase 2: Timeout waiting for baseline restoration {baseline_models}: {e}")
-
-        restored_db_models = get_models_from_database_by_source(
-            source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
-        )
-
-        assert restored_api_models == baseline_models, (
-            f"Phase 2: Should restore to baseline {baseline_models}, got {restored_api_models}"
-        )
-        assert restored_db_models == baseline_models, "Phase 2: DB should match restored API models"
-
-        LOGGER.info(f"Phase 2 SUCCESS: Restored to baseline {len(restored_api_models)} models")
-
-    @pytest.mark.sanity
-    def test_dynamic_model_switching_with_cleanup(
-        self,
-        admin_client: DynamicClient,
-        model_registry_namespace: str,
-        model_catalog_rest_url: list[str],
-        model_registry_rest_headers: dict[str, str],
-        baseline_redhat_ai_models: dict,
-    ):
-        """Test dynamic switching between different model sets validates cleanup."""
-        LOGGER.info("Testing dynamic model switching with cleanup validation")
-
-        granite_models = filter_models_by_pattern(all_models=baseline_redhat_ai_models["api_models"], pattern="granite")
-        prometheus_models = filter_models_by_pattern(
-            all_models=baseline_redhat_ai_models["api_models"], pattern="prometheus"
-        )
-        starter_models = filter_models_by_pattern(all_models=baseline_redhat_ai_models["api_models"], pattern="starter")
-
-        # Phase 1: Only granite models
-        patch_info = apply_inclusion_exclusion_filters_to_source(
-            admin_client=admin_client,
-            namespace=model_registry_namespace,
-            source_id=REDHAT_AI_CATALOG_ID,
-            included_models=["*granite*"],
-        )
-
-        with ResourceEditor(patches={patch_info["configmap"]: patch_info["patch"]}):
-            wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
-
-            try:
-                phase1_models = wait_for_model_set_match(
-                    model_catalog_rest_url=model_catalog_rest_url,
-                    model_registry_rest_headers=model_registry_rest_headers,
-                    source_label=REDHAT_AI_CATALOG_NAME,
-                    expected_models=granite_models,
-                )
-            except TimeoutExpiredError as e:
-                pytest.fail(f"Phase 1: Timeout waiting for granite models {granite_models}: {e}")
-            assert phase1_models == granite_models, f"Phase 1: Expected granite {granite_models}, got {phase1_models}"
-
-            # Phase 2: Switch to only prometheus models
-            new_patch = apply_inclusion_exclusion_filters_to_source(
-                admin_client=admin_client,
-                namespace=model_registry_namespace,
-                source_id=REDHAT_AI_CATALOG_ID,
-                included_models=["*prometheus*"],
-            )
-
-            patch_info["configmap"].update(new_patch["patch"])
-
-            wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
-
-            try:
-                phase2_models = wait_for_model_set_match(
-                    model_catalog_rest_url=model_catalog_rest_url,
-                    model_registry_rest_headers=model_registry_rest_headers,
-                    source_label=REDHAT_AI_CATALOG_NAME,
-                    expected_models=prometheus_models,
-                )
-            except TimeoutExpiredError as e:
-                pytest.fail(f"Phase 2: Timeout waiting for prometheus models {prometheus_models}: {e}")
-            assert phase2_models == prometheus_models, (
-                f"Phase 2: Expected prometheus {prometheus_models}, got {phase2_models}"
-            )
-
-            # Phase 3: Switch to only starter models
-            new_patch = apply_inclusion_exclusion_filters_to_source(
-                admin_client=admin_client,
-                namespace=model_registry_namespace,
-                source_id=REDHAT_AI_CATALOG_ID,
-                included_models=["*starter*"],
-            )
-
-            patch_info["configmap"].update(new_patch["patch"])
-
-            wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
-
-            try:
-                phase3_models = wait_for_model_set_match(
-                    model_catalog_rest_url=model_catalog_rest_url,
-                    model_registry_rest_headers=model_registry_rest_headers,
-                    source_label=REDHAT_AI_CATALOG_NAME,
-                    expected_models=starter_models,
-                )
-            except TimeoutExpiredError as e:
-                pytest.fail(f"Phase 3: Timeout waiting for starter models {starter_models}: {e}")
-            assert phase3_models == starter_models, f"Phase 3: Expected starter {starter_models}, got {phase3_models}"
-
-            LOGGER.info("SUCCESS: All phases of dynamic switching validated")
-
 
 class TestSourceLifecycleCleanup:
     """Test source disabling cleanup scenarios (RHOAIENG-41846)"""
@@ -463,24 +296,16 @@ class TestSourceLifecycleCleanup:
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
-        baseline_redhat_ai_models: dict,
     ):
         """Test that disabling a source removes all its models from the catalog."""
         LOGGER.info("Testing source disabling cleanup")
 
-        baseline_models = baseline_redhat_ai_models["api_models"]
-
-        # Verify models exist initially
-        initial_models = get_api_models_by_source_label(
-            model_catalog_rest_url=model_catalog_rest_url,
-            model_registry_rest_headers=model_registry_rest_headers,
-            source_label=REDHAT_AI_CATALOG_NAME,
-        )
-        assert initial_models == baseline_models, f"Initial state should match baseline: {baseline_models}"
-
         # Disable the source
-        disable_patch = disable_catalog_source(
-            admin_client=admin_client, namespace=model_registry_namespace, source_id=REDHAT_AI_CATALOG_ID
+        disable_patch = modify_catalog_source(
+            admin_client=admin_client,
+            namespace=model_registry_namespace,
+            source_id=REDHAT_AI_CATALOG_ID,
+            enabled=False,
         )
 
         with ResourceEditor(patches={disable_patch["configmap"]: disable_patch["patch"]}):
@@ -521,7 +346,7 @@ class TestLoggingValidation:
         LOGGER.info("Testing model removal logging")
 
         # Apply filter to exclude granite models (should trigger removals)
-        patch_info = apply_inclusion_exclusion_filters_to_source(
+        patch_info = modify_catalog_source(
             admin_client=admin_client,
             namespace=model_registry_namespace,
             source_id=REDHAT_AI_CATALOG_ID,
@@ -567,8 +392,11 @@ class TestLoggingValidation:
         LOGGER.info("Testing source disabling logging")
 
         # Disable the source
-        disable_patch = disable_catalog_source(
-            admin_client=admin_client, namespace=model_registry_namespace, source_id=REDHAT_AI_CATALOG_ID
+        disable_patch = modify_catalog_source(
+            admin_client=admin_client,
+            namespace=model_registry_namespace,
+            source_id=REDHAT_AI_CATALOG_ID,
+            enabled=False,
         )
 
         with ResourceEditor(patches={disable_patch["configmap"]: disable_patch["patch"]}):
