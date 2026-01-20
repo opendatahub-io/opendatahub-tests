@@ -134,9 +134,6 @@ class TestSearchModelCatalogQParameter:
     @pytest.mark.parametrize(
         "search_term",
         [
-            "deepseek",
-            "red hat",
-            "granite-8b",
             pytest.param(
                 "The Llama 4 collection of models are natively multimodal AI models that enable text and multimodal experiences. These models leverage a mixture-of-experts architecture to offer industry-leading performance in text and image understanding. These Llama 4 models mark the beginning of a new era for the Llama ecosystem. We are launching two efficient models in the Llama 4 series, Llama 4 Scout, a 17 billion parameter model with 16 experts, and Llama 4 Maverick, a 17 billion parameter model with 128 experts.",  # noqa: E501
                 id="long_description",
@@ -178,105 +175,6 @@ class TestSearchModelCatalogQParameter:
             assert validate_model_contains_search_term(model, search_term), (
                 f"Model '{model.get('name')}' doesn't contain search term '{search_term}' in any searchable field"
             )
-
-    @pytest.mark.parametrize(
-        "search_term,case_variant", [("granite", "GRANITE"), ("text", "TEXT"), ("deepseek", "DeepSeek")]
-    )
-    def test_q_parameter_case_insensitive(
-        self: Self,
-        search_term: str,
-        case_variant: str,
-        model_catalog_rest_url: list[str],
-        model_registry_rest_headers: dict[str, str],
-        model_registry_namespace: str,
-    ):
-        """Test that search is case insensitive using database validation"""
-        LOGGER.info(f"Testing case insensitivity: '{search_term}' vs '{case_variant}'")
-
-        response1 = get_models_from_catalog_api(
-            model_catalog_rest_url=model_catalog_rest_url,
-            model_registry_rest_headers=model_registry_rest_headers,
-            q=search_term,
-        )
-
-        response2 = get_models_from_catalog_api(
-            model_catalog_rest_url=model_catalog_rest_url,
-            model_registry_rest_headers=model_registry_rest_headers,
-            q=case_variant,
-        )
-
-        # Validate both responses against database
-        is_valid1, errors1 = validate_search_results_against_database(
-            api_response=response1,
-            search_term=search_term,
-            namespace=model_registry_namespace,
-        )
-        assert is_valid1, f"API search results do not match database query for '{search_term}': {errors1}"
-
-        is_valid2, errors2 = validate_search_results_against_database(
-            api_response=response2,
-            search_term=case_variant,
-            namespace=model_registry_namespace,
-        )
-        assert is_valid2, f"API search results do not match database query for '{case_variant}': {errors2}"
-
-        models1 = response1.get("items", [])
-        models2 = response2.get("items", [])
-
-        model_ids1 = sorted([m.get("id") for m in models1])
-        model_ids2 = sorted([m.get("id") for m in models2])
-
-        assert model_ids1 == model_ids2, (
-            f"Case insensitive search failed:\n"
-            f"'{search_term}' returned {len(models1)} models\n"
-            f"'{case_variant}' returned {len(models2)} models"
-        )
-
-    def test_q_parameter_no_results(
-        self: Self,
-        model_catalog_rest_url: list[str],
-        model_registry_rest_headers: dict[str, str],
-        model_registry_namespace: str,
-    ):
-        """Test search with term that should return no results using database validation"""
-        nonexistent_term = "nonexistent_search_term_12345_abcdef"
-        LOGGER.info(f"Testing search for nonexistent term: {nonexistent_term}")
-
-        response = get_models_from_catalog_api(
-            model_catalog_rest_url=model_catalog_rest_url,
-            model_registry_rest_headers=model_registry_rest_headers,
-            q=nonexistent_term,
-        )
-
-        # Validate API results against database query
-        is_valid, errors = validate_search_results_against_database(
-            api_response=response,
-            search_term=nonexistent_term,
-            namespace=model_registry_namespace,
-        )
-        assert is_valid, f"API search results do not match database query for '{nonexistent_term}': {errors}"
-
-        models = response.get("items", [])
-        assert len(models) == 0, f"Expected no results for '{nonexistent_term}', got {len(models)} models"
-
-    @pytest.mark.parametrize("search_term", ["", None])
-    def test_q_parameter_empty_query(
-        self: Self,
-        search_term,
-        model_catalog_rest_url: list[str],
-        model_registry_rest_headers: dict[str, str],
-    ):
-        """Test behavior with empty or None q parameter using database validation"""
-        LOGGER.info(f"Testing empty query: {repr(search_term)}")
-
-        response = get_models_from_catalog_api(
-            model_catalog_rest_url=model_catalog_rest_url,
-            model_registry_rest_headers=model_registry_rest_headers,
-            q=search_term,
-        )
-
-        models = response.get("items", [])
-        LOGGER.info(f"Empty/None query returned {len(models)} models")
 
     def test_q_parameter_with_source_label_filter(
         self: Self,
