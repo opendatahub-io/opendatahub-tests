@@ -21,6 +21,8 @@ MODEL_PATH: str = "ibm-granite/granite-vision-3.1-2b-preview"
 pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "valid_aws_config")
 
 
+@pytest.mark.vllm_nvidia_single_gpu
+@pytest.mark.vllm_amd_gpu
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [
@@ -72,6 +74,8 @@ class TestGraniteVisionModel:
         validate_inference_output(model_info, chat_responses, completion_responses, response_snapshot=response_snapshot)
 
 
+@pytest.mark.vllm_nvidia_multi_gpu
+@pytest.mark.vllm_amd_gpu
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [
