@@ -31,6 +31,8 @@ BASE_RAW_DEPLOYMENT_CONFIG["runtime_argument"] = SERVING_ARGUMENT
 pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "valid_aws_config")
 
 
+@pytest.mark.vllm_nvidia_single_gpu
+@pytest.mark.vllm_amd_gpu
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [
@@ -79,6 +81,8 @@ class TestLlama31InstructModel:
         )
 
 
+@pytest.mark.vllm_nvidia_multi_gpu
+@pytest.mark.vllm_amd_gpu
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [
