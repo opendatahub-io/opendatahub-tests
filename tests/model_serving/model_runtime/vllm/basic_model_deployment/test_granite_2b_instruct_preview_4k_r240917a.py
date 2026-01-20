@@ -11,6 +11,8 @@ serving_arument = ["--dtype=bfloat16", "--model=/mnt/models", "--max-model-len=2
 pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "valid_aws_config")
 
 
+@pytest.mark.vllm_nvidia_single_gpu
+@pytest.mark.vllm_amd_gpu
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [
@@ -46,6 +48,8 @@ class TestGranite2BModel:
         assert completion_responses == response_snapshot
 
 
+@pytest.mark.vllm_nvidia_multi_gpu
+@pytest.mark.vllm_amd_gpu
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [

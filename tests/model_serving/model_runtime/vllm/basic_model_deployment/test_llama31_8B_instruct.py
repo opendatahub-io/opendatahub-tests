@@ -21,7 +21,7 @@ SERVING_ARGUMENT: list[str] = [
     "--model=/mnt/models",
     "--uvicorn-log-level=debug",
     "--dtype=float16",
-    "--chat-template=/app/data/template/tool_chat_template_llama3.1_json.jinja",
+    "--chat-template=/opt/app-root/template/tool_chat_template_llama3.1_json.jinja",
 ]
 
 MODEL_PATH: str = "Meta-Llama-3.1-8B"
@@ -31,6 +31,8 @@ BASE_RAW_DEPLOYMENT_CONFIG["runtime_argument"] = SERVING_ARGUMENT
 pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "valid_aws_config")
 
 
+@pytest.mark.vllm_nvidia_single_gpu
+@pytest.mark.vllm_amd_gpu
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [
@@ -79,6 +81,8 @@ class TestLlama31InstructModel:
         )
 
 
+@pytest.mark.vllm_nvidia_multi_gpu
+@pytest.mark.vllm_amd_gpu
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [
