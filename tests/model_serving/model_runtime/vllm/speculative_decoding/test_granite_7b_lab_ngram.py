@@ -28,6 +28,8 @@ MODEL_PATH: str = "granite-7b-lab"
 pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "valid_aws_config")
 
 
+@pytest.mark.vllm_nvidia_single_gpu
+@pytest.mark.vllm_amd_gpu
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [
@@ -76,6 +78,11 @@ class TestGraniteLabNgramModel:
         )
 
 
+<<<<<<< HEAD
+=======
+@pytest.mark.vllm_nvidia_multi_gpu
+@pytest.mark.vllm_amd_gpu
+>>>>>>> af60150 (Added vllm-gpu markers for Nvidia and AMD GPU testcases (#1039))
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [
