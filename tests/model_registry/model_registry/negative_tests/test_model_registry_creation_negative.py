@@ -61,7 +61,6 @@ class TestModelRegistryCreationNegative:
                     Annotations.KubernetesIo.PART_OF: MR_OPERATOR_NAME,
                     Annotations.KubernetesIo.CREATED_BY: MR_OPERATOR_NAME,
                 },
-                grpc={},
                 rest={},
                 kube_rbac_proxy={},
                 mysql=my_sql_dict,
