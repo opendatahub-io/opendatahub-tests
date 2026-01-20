@@ -447,7 +447,7 @@ class ContainerImages:
     """Centralized container images for various runtimes and models."""
 
     class VLLM:
-        CPU: str = "quay.io/pierdipi/vllm-cpu:66196731a"
+        CPU: str = "quay.io/pierdipi/vllm-cpu@sha256:ce3a0c057394b2c332498f9742a17fd31b5cc2ef07db882d579fd157fe2c9a98"
 
     class MinIO:
         KSERVE: str = (
