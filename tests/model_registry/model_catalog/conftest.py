@@ -25,7 +25,7 @@ from tests.model_registry.constants import (
 )
 from tests.model_registry.utils import (
     get_rest_headers,
-    is_model_catalog_ready,
+    wait_for_model_catalog_pod_ready_after_deletion,
     get_model_catalog_pod,
     wait_for_model_catalog_api,
     execute_get_command,
@@ -84,7 +84,9 @@ def sparse_override_catalog_source(
     patches = {"data": {"sources.yaml": sparse_catalog_yaml}}
 
     with ResourceEditor(patches={sources_cm: patches}):
-        is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+        wait_for_model_catalog_pod_ready_after_deletion(
+            client=admin_client, model_registry_namespace=model_registry_namespace
+        )
         wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
         yield {
             "catalog_id": catalog_id,
@@ -93,7 +95,9 @@ def sparse_override_catalog_source(
             "original_catalog": original_catalog,
         }
 
-    is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+    wait_for_model_catalog_pod_ready_after_deletion(
+        client=admin_client, model_registry_namespace=model_registry_namespace
+    )
     wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
 
@@ -126,10 +130,14 @@ def updated_catalog_config_map(
                 patches["data"][key] = request.param["sample_yaml"][key]
 
         with ResourceEditor(patches={catalog_config_map: patches}):
-            is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+            wait_for_model_catalog_pod_ready_after_deletion(
+                client=admin_client, model_registry_namespace=model_registry_namespace
+            )
             wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
             yield catalog_config_map
-        is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+        wait_for_model_catalog_pod_ready_after_deletion(
+            client=admin_client, model_registry_namespace=model_registry_namespace
+        )
         wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
 
@@ -155,10 +163,14 @@ def update_configmap_data_add_model(
     patches = catalog_config_map.instance.to_dict()
     patches["data"][f"{CUSTOM_CATALOG_ID1.replace('_', '-')}.yaml"] += get_model_str(model=SAMPLE_MODEL_NAME3)
     with ResourceEditor(patches={catalog_config_map: patches}):
-        is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+        wait_for_model_catalog_pod_ready_after_deletion(
+            client=admin_client, model_registry_namespace=model_registry_namespace
+        )
         wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
         yield catalog_config_map
-    is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+    wait_for_model_catalog_pod_ready_after_deletion(
+        client=admin_client, model_registry_namespace=model_registry_namespace
+    )
 
 
 @pytest.fixture(scope="class")
@@ -366,10 +378,14 @@ def labels_configmap_patch(
     patches = {"data": {"sources.yaml": yaml.dump(current_data, default_flow_style=False)}}
 
     with ResourceEditor(patches={sources_cm: patches}):
-        is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+        wait_for_model_catalog_pod_ready_after_deletion(
+            client=admin_client, model_registry_namespace=model_registry_namespace
+        )
         wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
         yield patches
-    is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+    wait_for_model_catalog_pod_ready_after_deletion(
+        client=admin_client, model_registry_namespace=model_registry_namespace
+    )
 
 
 @pytest.fixture()
@@ -390,10 +406,14 @@ def updated_catalog_config_map_scope_function(
 ) -> Generator[ConfigMap, None, None]:
     patches = {"data": {"sources.yaml": request.param}}
     with ResourceEditor(patches={catalog_config_map: patches}):
-        is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+        wait_for_model_catalog_pod_ready_after_deletion(
+            client=admin_client, model_registry_namespace=model_registry_namespace
+        )
         wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
         yield catalog_config_map
-    is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+    wait_for_model_catalog_pod_ready_after_deletion(
+        client=admin_client, model_registry_namespace=model_registry_namespace
+    )
     wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
 
