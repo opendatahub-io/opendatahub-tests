@@ -40,6 +40,10 @@ from utilities.constants import (
 from utilities.constants import (
     ModelAndFormat,
 )
+from utilities.data_science_cluster_utils import (
+    get_dsc_ready_condition,
+    wait_for_dsc_reconciliation,
+)
 from utilities.inference_utils import create_isvc
 from utilities.infra import (
     s3_endpoint_secret,
@@ -446,14 +450,18 @@ def ensure_kueue_unmanaged_in_dsc(
         if not _is_kueue_operator_installed(admin_client):
             pytest.skip("Kueue operator is not installed, skipping Kueue tests")
 
+        # Check current Kueue state and get baseline timestamp (single API call)
         dsc_resource.get()
         kueue_management_state = dsc_resource.instance.spec.components[DscComponents.KUEUE].managementState
 
-        # ExitStack ensures cleanup runs on teardown or on error
         with ExitStack() as stack:
-            # Patch DSC if needed; ResourceEditor restores original value when exiting the stack
+            # Only patch if Kueue is not already Unmanaged
             if kueue_management_state != DscComponents.ManagementState.UNMANAGED:
-                LOGGER.info(f"Updating Kueue from {kueue_management_state} to Unmanaged")
+                LOGGER.info(f"Patching Kueue from {kueue_management_state} to Unmanaged")
+                # Read timestamp BEFORE applying patch (no refresh needed, already called dsc.get() above)
+                ready_condition = get_dsc_ready_condition(dsc=dsc_resource, refresh=False)
+                pre_patch_time = ready_condition.get("lastTransitionTime") if ready_condition else None
+
                 dsc_dict = {
                     "spec": {
                         "components": {
@@ -462,9 +470,13 @@ def ensure_kueue_unmanaged_in_dsc(
                     }
                 }
                 stack.enter_context(cm=ResourceEditor(patches={dsc_resource: dsc_dict}))
-                dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=300)
 
-            # Wait for CRDs before yielding to tests
+                # Wait for DSC to reconcile the patch
+                wait_for_dsc_reconciliation(dsc=dsc_resource, baseline_time=pre_patch_time)
+            else:
+                LOGGER.info("Kueue already Unmanaged, no patch needed")
+
+            # Always wait for Kueue CRDs and controller pods (regardless of patch)
             wait_for_kueue_crds_available(client=admin_client)
             yield
 
