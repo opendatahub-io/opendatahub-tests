@@ -109,7 +109,6 @@ class TestELYZAJapaneseModel:
         )
 
 
-
 @pytest.mark.vllm_nvidia_multi_gpu
 @pytest.mark.vllm_amd_gpu
 @pytest.mark.parametrize(
