@@ -31,19 +31,26 @@ PGVECTOR_IMAGE = os.getenv(
 PGVECTOR_USER = os.getenv("LLS_VECTOR_IO_PGVECTOR_USER", "vector_user")
 PGVECTOR_PASSWORD = os.getenv("LLS_VECTOR_IO_PGVECTOR_PASSWORD", "yourpassword")
 
+# qdrant v1 unprivileged latest
 QDRANT_IMAGE = os.getenv(
     "LLS_VECTOR_IO_QDRANT_IMAGE",
     (
         "docker.io/qdrant/qdrant@sha256:"
-        "26509b92c44ded1ad344e18a005383c20bb3fbf9dbf4d337265a230b2aa89e79"  # pragma: allowlist secret"
+        "9dfabc51ededc48158899a288a19a04de1ab54a11d8c512e1c40eebbd5e2bc92"  # pragma: allowlist secret
     ),
 )
+
+QDRANT_API_KEY = os.getenv("LLS_VECTOR_IO_QDRANT_API_KEY", "yourapikey")
+QDRANT_URL = os.getenv("LLS_VECTOR_IO_QDRANT_URL", "http://vector-io-qdrant-service:6333")
 
 
 @pytest.fixture(scope="class")
 def vector_io_provider_deployment_config_factory(
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+    vector_io_secret: Secret,
     request: FixtureRequest,
-) -> Callable[[str], list[Dict[str, str]]]:
+) -> Callable[[str], list[Dict[str, Any]]]:
     """
     Factory fixture for deploying vector I/O providers and returning their configuration.
 
@@ -85,9 +92,12 @@ def vector_io_provider_deployment_config_factory(
             env_vars = vector_io_provider_deployment_config_factory("milvus-remote")
             # env_vars contains MILVUS_ENDPOINT, MILVUS_TOKEN, etc.
     """
+    _ = unprivileged_client
+    _ = unprivileged_model_namespace
+    _ = vector_io_secret
 
-    def _factory(provider_name: str) -> list[Dict[str, str]]:
-        env_vars: list[dict[str, str]] = []
+    def _factory(provider_name: str) -> list[Dict[str, Any]]:
+        env_vars: list[dict[str, Any]] = []
 
         if provider_name is None or provider_name == "milvus":
             # Default case - no additional environment variables needed
@@ -95,7 +105,12 @@ def vector_io_provider_deployment_config_factory(
         elif provider_name == "milvus-remote":
             request.getfixturevalue(argname="milvus_service")
             env_vars.append({"name": "MILVUS_ENDPOINT", "value": "http://vector-io-milvus-service:19530"})
-            env_vars.append({"name": "MILVUS_TOKEN", "value": MILVUS_TOKEN})
+            env_vars.append(
+                {
+                    "name": "MILVUS_TOKEN",
+                    "valueFrom": {"secretKeyRef": {"name": "vector-io-secret", "key": "milvus-token"}},
+                },
+            )
             env_vars.append({"name": "MILVUS_CONSISTENCY_LEVEL", "value": "Bounded"})
         elif provider_name == "faiss":
             env_vars.append({"name": "ENABLE_FAISS", "value": "faiss"})
@@ -108,21 +123,52 @@ def vector_io_provider_deployment_config_factory(
             env_vars.append({"name": "ENABLE_PGVECTOR", "value": "true"})
             env_vars.append({"name": "PGVECTOR_HOST", "value": "vector-io-pgvector-service"})
             env_vars.append({"name": "PGVECTOR_PORT", "value": "5432"})
-            env_vars.append({"name": "PGVECTOR_USER", "value": PGVECTOR_USER})
-            env_vars.append({"name": "PGVECTOR_PASSWORD", "value": PGVECTOR_PASSWORD})
+            env_vars.append(
+                {
+                    "name": "PGVECTOR_USER",
+                    "valueFrom": {"secretKeyRef": {"name": "vector-io-secret", "key": "pgvector-user"}},
+                },
+            )
+            env_vars.append(
+                {
+                    "name": "PGVECTOR_PASSWORD",
+                    "valueFrom": {"secretKeyRef": {"name": "vector-io-secret", "key": "pgvector-password"}},
+                },
+            )
             env_vars.append({"name": "PGVECTOR_DB", "value": "pgvector"})
         elif provider_name == "qdrant-remote":
             request.getfixturevalue(argname="qdrant_service")
             env_vars.append({"name": "ENABLE_QDRANT", "value": "true"})
-            env_vars.append({"name": "QDRANT_URL", "value": "http://vector-io-qdrant-service:6333"})
+            env_vars.append({"name": "QDRANT_URL", "value": QDRANT_URL})
             env_vars.append({
                 "name": "QDRANT_API_KEY",
-                "valueFrom": {"secretKeyRef": {"name": "qdrant-secret", "key": "api-key"}},
+                "valueFrom": {"secretKeyRef": {"name": "vector-io-secret", "key": "qdrant-api-key"}},
             })
 
         return env_vars
 
     return _factory
+
+
+@pytest.fixture(scope="class")
+def vector_io_secret(
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+) -> Generator[Secret, Any, Any]:
+    """Create a secret for the vector I/O providers"""
+    with Secret(
+        client=unprivileged_client,
+        namespace=unprivileged_model_namespace.name,
+        name="vector-io-secret",
+        type="Opaque",
+        string_data={
+            "qdrant-api-key": QDRANT_API_KEY,
+            "pgvector-user": PGVECTOR_USER,
+            "pgvector-password": PGVECTOR_PASSWORD,
+            "milvus-token": MILVUS_TOKEN,
+        },
+    ) as secret:
+        yield secret
 
 
 @pytest.fixture(scope="class")
@@ -173,8 +219,13 @@ def remote_milvus_deployment(
     unprivileged_model_namespace: Namespace,
     etcd_deployment: Deployment,
     etcd_service: Service,
+    vector_io_secret: Secret,
 ) -> Generator[Deployment, Any, Any]:
     """Deploy a remote Milvus instance for vector I/O provider testing."""
+    _ = etcd_deployment
+    _ = etcd_service
+    _ = vector_io_secret
+
     with Deployment(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
@@ -197,6 +248,8 @@ def milvus_service(
     remote_milvus_deployment: Deployment,
 ) -> Generator[Service, Any, Any]:
     """Create a service for the remote Milvus deployment."""
+    _ = remote_milvus_deployment
+
     with Service(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
@@ -293,8 +346,11 @@ def get_etcd_deployment_template() -> Dict[str, Any]:
 def pgvector_deployment(
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
+    vector_io_secret: Secret,
 ) -> Generator[Deployment, Any, Any]:
     """Deploy a PGVector instance for vector I/O provider testing."""
+    _ = vector_io_secret
+
     with Deployment(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
@@ -317,6 +373,8 @@ def pgvector_service(
     pgvector_deployment: Deployment,
 ) -> Generator[Service, Any, Any]:
     """Create a service for the PGVector deployment."""
+    _ = pgvector_deployment
+
     with Service(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
@@ -346,8 +404,14 @@ def get_pgvector_deployment_template() -> Dict[str, Any]:
                     "ports": [{"containerPort": 5432}],
                     "env": [
                         {"name": "POSTGRES_DB", "value": "pgvector"},
-                        {"name": "POSTGRES_USER", "value": PGVECTOR_USER},
-                        {"name": "POSTGRES_PASSWORD", "value": PGVECTOR_PASSWORD},
+                        {
+                            "name": "POSTGRES_USER",
+                            "valueFrom": {"secretKeyRef": {"name": "vector-io-secret", "key": "pgvector-user"}},
+                        },
+                        {
+                            "name": "POSTGRES_PASSWORD",
+                            "valueFrom": {"secretKeyRef": {"name": "vector-io-secret", "key": "pgvector-password"}},
+                        },
                         {"name": "PGDATA", "value": "/var/lib/postgresql/data/pgdata"},
                     ],
                     "lifecycle": {
@@ -377,9 +441,11 @@ def get_pgvector_deployment_template() -> Dict[str, Any]:
 def qdrant_deployment(
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
-    qdrant_secret: Secret,
+    vector_io_secret: Secret,
 ) -> Generator[Deployment, Any, Any]:
     """Deploy a Qdrant instance for vector I/O provider testing."""
+    _ = vector_io_secret
+
     with Deployment(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
@@ -402,6 +468,8 @@ def qdrant_service(
     qdrant_deployment: Deployment,
 ) -> Generator[Service, Any, Any]:
     """Create a service for the Qdrant deployment."""
+    _ = qdrant_deployment
+
     with Service(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
@@ -424,28 +492,11 @@ def qdrant_service(
         yield service
 
 
-@pytest.fixture(scope="class")
-def qdrant_secret(
-    unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
-) -> Generator[Secret, Any, Any]:
-    """Return a Kubernetes Secret for Qdrant"""
-    with Secret(
-        client=unprivileged_client,
-        namespace=unprivileged_model_namespace.name,
-        name="qdrant-secret",
-        type="Opaque",
-        string_data={"api-key": "yourapikey"},
-    ) as secret:
-        yield secret
-
-
 def get_qdrant_deployment_template() -> Dict[str, Any]:
     """Return a Kubernetes deployment for Qdrant"""
     return {
         "metadata": {"labels": {"app": "qdrant"}},
         "spec": {
-            "securityContext": {"runAsNonRoot": True, "seccompProfile": {"type": "RuntimeDefault"}},
             "containers": [
                 {
                     "name": "qdrant",
@@ -465,8 +516,8 @@ def get_qdrant_deployment_template() -> Dict[str, Any]:
                             "name": "QDRANT__SERVICE__API_KEY",
                             "valueFrom": {
                                 "secretKeyRef": {
-                                    "name": "qdrant-secret",
-                                    "key": "api-key",
+                                    "name": "vector-io-secret",
+                                    "key": "qdrant-api-key",
                                 },
                             },
                         },
