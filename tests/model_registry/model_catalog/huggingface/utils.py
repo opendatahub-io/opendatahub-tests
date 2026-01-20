@@ -1,5 +1,6 @@
 import ast
 from typing import Any
+
 from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.constants import HF_SOURCE_ID
@@ -142,20 +143,35 @@ def wait_for_hugging_face_model_import(
         return False
 
 
+def get_huggingface_model_from_api(
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+    model_name: str,
+    source_id: str,
+) -> dict[str, Any]:
+    url = f"{model_catalog_rest_url[0]}sources/{source_id}/models/{model_name}"
+    return execute_get_command(
+        url=url,
+        headers=model_registry_rest_headers,
+    )
+
+
 @retry(wait_timeout=135, sleep=15)
 def wait_for_last_sync_update(
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
     model_name: str,
+    source_id: str,
     initial_last_synced_values: float,
 ) -> bool:
     """Wait for the last_synced value to be updated with exact 120-second difference"""
-    url = f"{model_catalog_rest_url[0]}sources/hf_id/models/{model_name}"
-    result = execute_get_command(
-        url=url,
-        headers=model_registry_rest_headers,
-    )
 
+    result = get_huggingface_model_from_api(
+        model_registry_rest_headers=model_registry_rest_headers,
+        model_catalog_rest_url=model_catalog_rest_url,
+        model_name=model_name,
+        source_id=source_id,
+    )
     current_last_synced = float(result["customProperties"]["last_synced"]["string_value"])
     if current_last_synced != initial_last_synced_values:
         # Calculate difference in milliseconds and convert to seconds

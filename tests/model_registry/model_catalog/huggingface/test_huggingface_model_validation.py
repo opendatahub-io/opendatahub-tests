@@ -6,12 +6,12 @@ from tests.model_registry.model_catalog.constants import HF_MODELS, HF_SOURCE_ID
 from tests.model_registry.model_catalog.utils import (
     get_hf_catalog_str,
 )
-from tests.model_registry.utils import execute_get_command
 from tests.model_registry.model_catalog.huggingface.utils import (
     assert_huggingface_values_matches_model_catalog_api_values,
     wait_for_huggingface_retrival_match,
     wait_for_hugging_face_model_import,
     wait_for_last_sync_update,
+    get_huggingface_model_from_api,
 )
 from huggingface_hub import HfApi
 from kubernetes.dynamic import DynamicClient
@@ -60,6 +60,7 @@ catalogs:
             model_registry_rest_headers=model_registry_rest_headers,
             model_catalog_rest_url=model_catalog_rest_url,
             model_name=model_name,
+            source_id="hf_id",
             initial_last_synced_values=float(initial_last_synced_values),
         )
 
@@ -85,7 +86,6 @@ class TestHuggingFaceModelValidation:
     def test_huggingface_model_metadata_last_synced(
         self: Self,
         epoch_time_before_config_map_update: float,
-        updated_catalog_config_map: tuple[ConfigMap, str, str],
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         expected_catalog_values: dict[str, str],
@@ -100,12 +100,12 @@ class TestHuggingFaceModelValidation:
         )
         error = {}
         for model_name in expected_catalog_values:
-            url = f"{model_catalog_rest_url[0]}sources/{HF_SOURCE_ID}/models/{model_name}"
-            result = execute_get_command(
-                url=url,
-                headers=model_registry_rest_headers,
+            result = get_huggingface_model_from_api(
+                model_catalog_rest_url=model_catalog_rest_url,
+                model_registry_rest_headers=model_registry_rest_headers,
+                model_name=model_name,
+                source_id=HF_SOURCE_ID,
             )
-
             error_msg = ""
             if result["name"] != model_name:
                 error_msg += f"Expected model name {model_name}, but got {result['name']}. "
@@ -115,17 +115,13 @@ class TestHuggingFaceModelValidation:
             LOGGER.info(f"Model {model_name} last synced at: {last_synced}")
 
             # Validate that last_synced field exists and is not empty
-            if last_synced is None:
-                error_msg += f"last_synced field is None for model {model_name}. "
-            elif last_synced == "":
-                error_msg += f"last_synced field is empty for model {model_name}. "
-            else:
-                # Compare timestamps: current_epoch_time should be earlier than last_synced
-                if epoch_time_before_config_map_update > float(last_synced):
-                    error_msg += (
-                        f"Model {model_name} last_synced ({last_synced}) should be after "
-                        f"test start time ({epoch_time_before_config_map_update}). "
-                    )
+            if not last_synced or last_synced == "":
+                error_msg += f"last_synced field is not present for model {model_name}. "
+            elif epoch_time_before_config_map_update > float(last_synced):
+                error_msg += (
+                    f"Model {model_name} last_synced ({last_synced}) should be after "
+                    f"test start time ({epoch_time_before_config_map_update}). "
+                )
             if error_msg:
                 error[model_name] = error_msg
         if error:

@@ -2,7 +2,8 @@ import pytest
 import time
 from huggingface_hub import HfApi
 from simple_logger.logger import get_logger
-from tests.model_registry.utils import execute_get_command
+
+from tests.model_registry.model_catalog.huggingface.utils import get_huggingface_model_from_api
 
 LOGGER = get_logger(name=__name__)
 
@@ -56,11 +57,11 @@ def initial_last_synced_values(
     """
     Collect initial last_synced values for a given model.
     """
-    model_name = request.param
-    url = f"{model_catalog_rest_url[0]}sources/hf_id/models/{model_name}"
-    result = execute_get_command(
-        url=url,
-        headers=model_registry_rest_headers,
+    result = get_huggingface_model_from_api(
+        model_registry_rest_headers=model_registry_rest_headers,
+        model_catalog_rest_url=model_catalog_rest_url,
+        model_name=request.param,
+        source_id="hf_id",
     )
 
     return result["customProperties"]["last_synced"]["string_value"]
