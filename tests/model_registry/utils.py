@@ -674,19 +674,25 @@ def get_rest_headers(token: str) -> dict[str, str]:
     }
 
 
-def is_model_catalog_ready(client: DynamicClient, model_registry_namespace: str, consecutive_try: int = 6):
-    model_catalog_pods = get_model_catalog_pod(
-        client=client, model_registry_namespace=model_registry_namespace, label_selector="app=model-catalog"
-    )
-    # We can wait for the pods to reflect updated catalog, however, deleting them ensures the updated config is
-    # applied immediately.
-    for pod in model_catalog_pods:
-        pod.delete()
-    # After the deletion, we need to wait for the pod to be spinned up and get to ready state.
-    assert wait_for_model_catalog_pod_created(client=client, model_registry_namespace=model_registry_namespace)
+def is_model_catalog_ready(
+    client: DynamicClient, model_registry_namespace: str, consecutive_try: int = 6, delete_pod: bool = True
+) -> bool:
+    if delete_pod:
+        model_catalog_pods = get_model_catalog_pod(
+            client=client,
+            model_registry_namespace=model_registry_namespace,
+        )
+        # We can wait for the pods to reflect updated catalog, however, deleting them ensures the updated config is
+        # applied immediately.
+        for pod in model_catalog_pods:
+            pod.delete()
+        # After the deletion, we need to wait for the pod to be spinned up and get to ready state.
+        assert wait_for_model_catalog_pod_created(client=client, model_registry_namespace=model_registry_namespace)
+
     wait_for_pods_running(
         admin_client=client, namespace_name=model_registry_namespace, number_of_consecutive_checks=consecutive_try
     )
+    return True
 
 
 @retry(wait_timeout=30, sleep=5, exceptions_dict={PodNotFound: []})
