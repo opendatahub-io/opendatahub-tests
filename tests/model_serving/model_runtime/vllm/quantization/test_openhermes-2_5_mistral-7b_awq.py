@@ -151,11 +151,8 @@ class TestOpenHermesAWQModel:
             pytest.skip("Model deployment is only for kserve raw")
 
 
-<<<<<<< HEAD
-=======
 @pytest.mark.vllm_nvidia_multi_gpu
 @pytest.mark.vllm_amd_gpu
->>>>>>> af60150 (Added vllm-gpu markers for Nvidia and AMD GPU testcases (#1039))
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [
