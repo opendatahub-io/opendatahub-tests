@@ -713,13 +713,13 @@ def openshift_version(admin_client: DynamicClient) -> Version:
 
 
 @pytest.fixture(scope="session")
-def oc_binary_path(bin_directory: LocalPath) -> str:
+def oc_binary_path(admin_client: DynamicClient, bin_directory: LocalPath) -> str:
     installed_oc_binary_path = os.getenv("OC_BINARY_PATH")
     if installed_oc_binary_path:
         LOGGER.warning(f"Using previously installed: {installed_oc_binary_path}")
         return installed_oc_binary_path
 
-    return download_oc_console_cli(tmpdir=bin_directory)
+    return download_oc_console_cli(admin_client=admin_client, tmpdir=bin_directory)
 
 
 @pytest.fixture(scope="session", autouse=True)
