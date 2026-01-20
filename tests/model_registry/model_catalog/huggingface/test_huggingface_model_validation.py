@@ -13,6 +13,7 @@ from tests.model_registry.model_catalog.huggingface.utils import (
     wait_for_hugging_face_model_import,
     wait_for_last_sync_update,
 )
+from huggingface_hub import HfApi
 from kubernetes.dynamic import DynamicClient
 
 LOGGER = get_logger(name=__name__)
@@ -45,7 +46,7 @@ catalogs:
     )
     def test_huggingface_last_synced_custom(
         self: Self,
-        updated_catalog_config_map_scope_function: Generator[ConfigMap, str, str],
+        updated_catalog_config_map_scope_function: Generator[ConfigMap, None, None],
         initial_last_synced_values: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
@@ -88,7 +89,7 @@ class TestHuggingFaceModelValidation:
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         expected_catalog_values: dict[str, str],
-        huggingface_api: bool,
+        huggingface_api: HfApi,
     ):
         """
         Validate HuggingFace model last synced timestamp is properly updated
@@ -220,7 +221,7 @@ catalogs:
         self: Self,
         admin_client: DynamicClient,
         model_registry_namespace: str,
-        updated_catalog_config_map_scope_function: ConfigMap,
+        updated_catalog_config_map_scope_function: Generator[ConfigMap, None, None],
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         huggingface_api: bool,
