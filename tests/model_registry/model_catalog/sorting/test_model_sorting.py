@@ -58,6 +58,7 @@ class TestAccuracySorting:
             "DESC",
         ],
     )
+    @pytest.mark.sanity
     def test_accuracy_sorting_works_correctly(
         self: Self,
         sort_order: str | None,

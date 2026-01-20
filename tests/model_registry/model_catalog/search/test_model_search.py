@@ -323,6 +323,7 @@ class TestSearchModelCatalogQParameter:
 
 
 class TestSearchModelsByFilterQuery:
+    @pytest.mark.sanity
     def test_search_models_by_filter_query(
         self: Self,
         model_catalog_rest_url: list[str],
