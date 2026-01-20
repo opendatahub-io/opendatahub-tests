@@ -78,6 +78,7 @@ class TestLlamaChatModel:
         )
 
 
+@pytest.mark.multigpu
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [
