@@ -72,6 +72,7 @@ class TestGraniteVisionModel:
         validate_inference_output(model_info, chat_responses, completion_responses, response_snapshot=response_snapshot)
 
 
+@pytest.mark.multigpu
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [
