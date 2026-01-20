@@ -687,7 +687,6 @@ def wait_for_model_catalog_pod_ready_after_deletion(
         pod.delete()
     # After the deletion, we need to wait for the pod to be spinned up and get to ready state.
     assert wait_for_model_catalog_pod_created(client=client, model_registry_namespace=model_registry_namespace)
-
     wait_for_pods_running(
         admin_client=client, namespace_name=model_registry_namespace, number_of_consecutive_checks=consecutive_try
     )
