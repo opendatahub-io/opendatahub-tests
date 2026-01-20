@@ -5,7 +5,6 @@ import yaml
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
-from ocp_resources.gateway import Gateway
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
@@ -14,7 +13,6 @@ from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.storage_class import StorageClass
-from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.cluster_service_version import ClusterServiceVersion
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
@@ -31,6 +29,7 @@ from simple_logger.logger import get_logger
 
 from utilities.constants import (
     KServeDeploymentType,
+    Labels,
     ModelFormat,
     RuntimeTemplates,
     StorageClassName,
@@ -39,91 +38,14 @@ from utilities.constants import (
 from utilities.constants import (
     ModelAndFormat,
 )
-from utilities.llmd_utils import create_llmd_gateway, create_llmisvc
 from utilities.inference_utils import create_isvc
-from utilities.llmd_constants import (
-    LLMDGateway,
-    ModelStorage,
-    ContainerImages,
-)
 from utilities.infra import (
     s3_endpoint_secret,
     update_configmap_data,
 )
-from utilities.constants import Timeout
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 LOGGER = get_logger(name=__name__)
-
-
-# LLMD Fixtures
-@pytest.fixture(scope="class")
-def llmd_inference_service(
-    request: FixtureRequest,
-    admin_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
-) -> Generator[LLMInferenceService, None, None]:
-    if isinstance(request.param, str):
-        name_suffix = request.param
-        kwargs = {}
-    else:
-        name_suffix = request.param.get("name_suffix", "basic")
-        kwargs = {k: v for k, v in request.param.items() if k != "name_suffix"}
-
-    service_name = kwargs.get("name", f"llm-{name_suffix}")
-
-    if "llmd_gateway" in request.fixturenames:
-        request.getfixturevalue(argname="llmd_gateway")
-    container_resources = kwargs.get(
-        "container_resources",
-        {
-            "limits": {"cpu": "2", "memory": "16Gi"},
-            "requests": {"cpu": "500m", "memory": "12Gi"},
-        },
-    )
-
-    create_kwargs = {
-        "client": admin_client,
-        "name": service_name,
-        "namespace": unprivileged_model_namespace.name,
-        "storage_uri": kwargs.get("storage_uri", ModelStorage.TINYLLAMA_OCI),
-        "container_image": kwargs.get("container_image", ContainerImages.VLLM_CPU),
-        "container_resources": container_resources,
-        "wait": True,
-        "timeout": Timeout.TIMEOUT_15MIN,
-        **{k: v for k, v in kwargs.items() if k != "name"},
-    }
-
-    with create_llmisvc(**create_kwargs) as llm_service:
-        yield llm_service
-
-
-@pytest.fixture(scope="session")
-def gateway_namespace(admin_client: DynamicClient) -> str:
-    return LLMDGateway.DEFAULT_NAMESPACE
-
-
-@pytest.fixture(scope="session")
-def shared_llmd_gateway(
-    admin_client: DynamicClient,
-    gateway_namespace: str,
-) -> Generator[Gateway, None, None]:
-    gateway_class_name = "data-science-gateway-class"
-
-    with create_llmd_gateway(
-        client=admin_client,
-        namespace=gateway_namespace,
-        gateway_class_name=gateway_class_name,
-        wait_for_condition=True,
-        timeout=Timeout.TIMEOUT_5MIN,
-        teardown=True,
-    ) as gateway:
-        yield gateway
-
-
-@pytest.fixture(scope="class")
-def llmd_gateway(shared_llmd_gateway: Gateway) -> Gateway:
-    return shared_llmd_gateway
 
 
 @pytest.fixture(scope="class")
@@ -444,6 +366,52 @@ def model_car_inference_service(
         deployment_mode=deployment_mode,
         external_route=request.param.get("external-route", True),
         wait_for_predictor_pods=False,
+    ) as isvc:
+        yield isvc
+
+
+@pytest.fixture(scope="session")
+def skip_if_no_gpu_available(gpu_count_on_cluster: int) -> None:
+    """Skip test if no GPUs are available on the cluster."""
+    if gpu_count_on_cluster < 1:
+        pytest.skip("No GPUs available on cluster, skipping GPU test")
+
+
+@pytest.fixture(scope="class")
+def gpu_model_car_inference_service(
+    request: FixtureRequest,
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+    serving_runtime_from_template: ServingRuntime,
+    gpu_count_on_cluster: int,
+) -> Generator[InferenceService, Any, Any]:
+    """Create a GPU-accelerated model car inference service."""
+    from copy import deepcopy
+    from tests.model_serving.model_runtime.openvino.constant import PREDICT_RESOURCES
+
+    deployment_mode = request.param.get("deployment-mode", KServeDeploymentType.RAW_DEPLOYMENT)
+    gpu_count = request.param.get("gpu-count", 1)
+
+    if gpu_count_on_cluster < gpu_count:
+        pytest.skip(f"Not enough GPUs available. Required: {gpu_count}, Available: {gpu_count_on_cluster}")
+
+    resources = deepcopy(x=PREDICT_RESOURCES["resources"])
+    resources["requests"][Labels.Nvidia.NVIDIA_COM_GPU] = str(gpu_count)
+    resources["limits"][Labels.Nvidia.NVIDIA_COM_GPU] = str(gpu_count)
+
+    with create_isvc(
+        client=unprivileged_client,
+        name=f"gpu-model-car-{deployment_mode.lower()}",
+        namespace=unprivileged_model_namespace.name,
+        runtime=serving_runtime_from_template.name,
+        storage_uri=request.param["storage-uri"],
+        model_format=serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
+        deployment_mode=deployment_mode,
+        external_route=request.param.get("external-route", True),
+        wait_for_predictor_pods=False,
+        resources=resources,
+        volumes=deepcopy(x=PREDICT_RESOURCES["volumes"]),
+        volumes_mounts=deepcopy(x=PREDICT_RESOURCES["volume_mounts"]),
     ) as isvc:
         yield isvc
 

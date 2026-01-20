@@ -13,7 +13,7 @@ LOGGER = get_logger(name=__name__)
 SERVING_ARGUMENT = [
     "--model=/mnt/models",
     "--uvicorn-log-level=debug",
-    "--chat-template=/app/data/template/tool_chat_template_mistral.jinja",
+    "--chat-template=/opt/app-root/template/tool_chat_template_mistral.jinja",
 ]
 
 MODEL_PATH = "TheBloke/OpenHermes-2.5-Mistral-7B-AWQ"
@@ -21,6 +21,8 @@ MODEL_PATH = "TheBloke/OpenHermes-2.5-Mistral-7B-AWQ"
 pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "valid_aws_config")
 
 
+@pytest.mark.vllm_nvidia_single_gpu
+@pytest.mark.vllm_amd_gpu
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [
@@ -92,6 +94,8 @@ class TestOpenHermesAWQModel:
             pytest.skip("Model deployment is only for kserve raw")
 
 
+@pytest.mark.vllm_nvidia_multi_gpu
+@pytest.mark.vllm_amd_gpu
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [

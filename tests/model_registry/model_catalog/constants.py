@@ -25,12 +25,14 @@ DEFAULT_CATALOGS: dict[str, Any] = {
         "type": "yaml",
         "properties": {"yamlCatalogPath": "/shared-data/models-catalog.yaml"},
         "labels": [REDHAT_AI_CATALOG_NAME],
+        "enabled": True,
     },
     "redhat_ai_validated_models": {
         "name": REDHAT_AI_VALIDATED_CATALOG_NAME,
         "type": "yaml",
         "properties": {"yamlCatalogPath": "/shared-data/validated-models-catalog.yaml"},
         "labels": [REDHAT_AI_VALIDATED_CATALOG_NAME],
+        "enabled": True,
     },
 }
 REDHAT_AI_CATALOG_ID: str = "redhat_ai_models"
@@ -47,9 +49,9 @@ HF_MODELS: dict[str, Any] = {
     "mixed": [
         "ibm-granite/granite-4.0-h-1b",
         "microsoft/phi-2",
+        "microsoft/Phi-4-mini-reasoning",
+        "microsoft/Phi-3.5-mini-instruct",
         "meta-llama/Llama-3.1-8B-Instruct",
-        "RedHatAI/phi-4-quantized.w8a8",
-        "RedHatAI/Qwen2.5-7B-Instruct",
     ],
     "granite": [
         "ibm-granite/granite-4.0-h-small",

@@ -28,6 +28,7 @@ from tests.llama_stack.constants import (
     ModelInfo,
 )
 from ocp_resources.service import Service
+from ocp_resources.secret import Secret
 
 LOGGER = get_logger(name=__name__)
 
@@ -41,6 +42,11 @@ POSTGRES_IMAGE = os.getenv(
 
 POSTGRESQL_USER = os.getenv("LLS_VECTOR_IO_POSTGRESQL_USER", "ps_user")
 POSTGRESQL_PASSWORD = os.getenv("LLS_VECTOR_IO_POSTGRESQL_PASSWORD", "ps_password")
+
+LLAMA_STACK_DISTRIBUTION_SECRET_DATA = {
+    "postgres-user": POSTGRESQL_USER,
+    "postgres-password": POSTGRESQL_PASSWORD,
+}
 
 LLS_CORE_INFERENCE_MODEL = os.getenv("LLS_CORE_INFERENCE_MODEL", "")
 LLS_CORE_VLLM_URL = os.getenv("LLS_CORE_VLLM_URL", "")
@@ -290,8 +296,18 @@ def llama_stack_server_config(
     # POSTGRESQL environment variables for sql_default and kvstore_default
     env_vars.append({"name": "POSTGRES_HOST", "value": "vector-io-postgres-service"})
     env_vars.append({"name": "POSTGRES_PORT", "value": "5432"})
-    env_vars.append({"name": "POSTGRES_USER", "value": POSTGRESQL_USER})
-    env_vars.append({"name": "POSTGRES_PASSWORD", "value": POSTGRESQL_PASSWORD})
+    env_vars.append(
+        {
+            "name": "POSTGRES_USER",
+            "valueFrom": {"secretKeyRef": {"name": "llamastack-distribution-secret", "key": "postgres-user"}},
+        },
+    )
+    env_vars.append(
+        {
+            "name": "POSTGRES_PASSWORD",
+            "valueFrom": {"secretKeyRef": {"name": "llamastack-distribution-secret", "key": "postgres-password"}},
+        },
+    )
     env_vars.append({"name": "POSTGRES_DB", "value": "ps_db"})
     env_vars.append({"name": "POSTGRES_TABLE_NAME", "value": "llamastack_kvstore"})
 
@@ -326,6 +342,36 @@ def llama_stack_server_config(
 
 
 @pytest.fixture(scope="class")
+def llama_stack_distribution_secret(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+) -> Generator[Secret, Any, Any]:
+    with Secret(
+        client=admin_client,
+        namespace=model_namespace.name,
+        name="llamastack-distribution-secret",
+        type="Opaque",
+        string_data=LLAMA_STACK_DISTRIBUTION_SECRET_DATA,
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
+def unprivileged_llama_stack_distribution_secret(
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+) -> Generator[Secret, Any, Any]:
+    with Secret(
+        client=unprivileged_client,
+        namespace=unprivileged_model_namespace.name,
+        name="llamastack-distribution-secret",
+        type="Opaque",
+        string_data=LLAMA_STACK_DISTRIBUTION_SECRET_DATA,
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
 def unprivileged_llama_stack_distribution(
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
@@ -337,6 +383,7 @@ def unprivileged_llama_stack_distribution(
     ci_s3_bucket_region: str,
     aws_access_key_id: str,
     aws_secret_access_key: str,
+    unprivileged_llama_stack_distribution_secret: Secret,
     unprivileged_postgres_deployment: Deployment,
     unprivileged_postgres_service: Service,
 ) -> Generator[LlamaStackDistribution, None, None]:
@@ -384,6 +431,7 @@ def llama_stack_distribution(
     ci_s3_bucket_region: str,
     aws_access_key_id: str,
     aws_secret_access_key: str,
+    llama_stack_distribution_secret: Secret,
     postgres_deployment: Deployment,
     postgres_service: Service,
 ) -> Generator[LlamaStackDistribution, None, None]:
@@ -652,7 +700,7 @@ def llama_stack_models(unprivileged_llama_stack_client: LlamaStackClient) -> Mod
     """
     models = unprivileged_llama_stack_client.models.list()
 
-    model_id = next(m for m in models if m.api_model_type == "llm").identifier
+    model_id = next(m for m in models if m.custom_metadata["model_type"] == "llm").id
 
     # Ensure getting the right embedding model depending on the available providers
     providers = unprivileged_llama_stack_client.providers.list()
@@ -664,11 +712,15 @@ def llama_stack_models(unprivileged_llama_stack_client: LlamaStackClient) -> Mod
     else:
         raise ValueError("No embedding provider found")
 
-    embedding_model = next(m for m in models if m.api_model_type == "embedding" and m.provider_id == target_provider_id)
-    embedding_dimension = float(embedding_model.metadata["embedding_dimension"])
+    embedding_model = next(
+        m
+        for m in models
+        if m.custom_metadata["model_type"] == "embedding" and m.custom_metadata["provider_id"] == target_provider_id
+    )
+    embedding_dimension = int(embedding_model.custom_metadata["embedding_dimension"])
 
     LOGGER.info(f"Detected model: {model_id}")
-    LOGGER.info(f"Detected embedding_model: {embedding_model.identifier}")
+    LOGGER.info(f"Detected embedding_model: {embedding_model.id}")
     LOGGER.info(f"Detected embedding_dimension: {embedding_dimension}")
 
     return ModelInfo(model_id=model_id, embedding_model=embedding_model, embedding_dimension=embedding_dimension)
@@ -700,7 +752,7 @@ def vector_store(
     vector_store = unprivileged_llama_stack_client.vector_stores.create(
         name="test_vector_store",
         extra_body={
-            "embedding_model": llama_stack_models.embedding_model.identifier,
+            "embedding_model": llama_stack_models.embedding_model.id,
             "embedding_dimension": llama_stack_models.embedding_dimension,
             "provider_id": vector_io_provider,
         },
@@ -854,8 +906,18 @@ def get_postgres_deployment_template() -> Dict[str, Any]:
                     "ports": [{"containerPort": 5432}],
                     "env": [
                         {"name": "POSTGRESQL_DATABASE", "value": "ps_db"},
-                        {"name": "POSTGRESQL_USER", "value": POSTGRESQL_USER},
-                        {"name": "POSTGRESQL_PASSWORD", "value": POSTGRESQL_PASSWORD},
+                        {
+                            "name": "POSTGRESQL_USER",
+                            "valueFrom": {
+                                "secretKeyRef": {"name": "llamastack-distribution-secret", "key": "postgres-user"}
+                            },
+                        },
+                        {
+                            "name": "POSTGRESQL_PASSWORD",
+                            "valueFrom": {
+                                "secretKeyRef": {"name": "llamastack-distribution-secret", "key": "postgres-password"}
+                            },
+                        },
                     ],
                     "volumeMounts": [{"name": "postgresdata", "mountPath": "/var/lib/pgsql/data"}],
                 },

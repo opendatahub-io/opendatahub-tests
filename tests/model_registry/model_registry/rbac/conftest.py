@@ -20,7 +20,6 @@ from kubernetes.dynamic import DynamicClient
 
 from tests.model_registry.model_registry.rbac.utils import create_role_binding
 from utilities.user_utils import UserTestSession
-from utilities.infra import login_with_user_password
 from tests.model_registry.model_registry.rbac.group_utils import create_group
 from tests.model_registry.constants import (
     MR_INSTANCE_NAME,
@@ -139,13 +138,16 @@ def created_role_binding_user(
 # RESOURCE FIXTURES PARMETRIZED
 # =============================================================================
 @pytest.fixture(scope="class")
-def db_secret_parametrized(request: FixtureRequest, teardown_resources: bool) -> Generator[List[Secret], Any, Any]:
+def db_secret_parametrized(
+    request: FixtureRequest, admin_client: DynamicClient, teardown_resources: bool
+) -> Generator[List[Secret], Any, Any]:
     """Create DB Secret parametrized"""
     with ExitStack() as stack:
         secrets = [
             stack.enter_context(
                 Secret(
                     **param,
+                    client=admin_client,
                     teardown=teardown_resources,
                 )
             )
@@ -156,7 +158,7 @@ def db_secret_parametrized(request: FixtureRequest, teardown_resources: bool) ->
 
 @pytest.fixture(scope="class")
 def db_pvc_parametrized(
-    request: FixtureRequest, teardown_resources: bool
+    request: FixtureRequest, admin_client: DynamicClient, teardown_resources: bool
 ) -> Generator[List[PersistentVolumeClaim], Any, Any]:
     """Create DB PVC parametrized"""
     with ExitStack() as stack:
@@ -164,6 +166,7 @@ def db_pvc_parametrized(
             stack.enter_context(
                 PersistentVolumeClaim(
                     **param,
+                    client=admin_client,
                     teardown=teardown_resources,
                 )
             )
@@ -173,13 +176,16 @@ def db_pvc_parametrized(
 
 
 @pytest.fixture(scope="class")
-def db_service_parametrized(request: FixtureRequest, teardown_resources: bool) -> Generator[List[Service], Any, Any]:
+def db_service_parametrized(
+    request: FixtureRequest, admin_client: DynamicClient, teardown_resources: bool
+) -> Generator[List[Service], Any, Any]:
     """Create DB Service parametrized"""
     with ExitStack() as stack:
         services = [
             stack.enter_context(
                 Service(
                     **param,
+                    client=admin_client,
                     teardown=teardown_resources,
                 )
             )
@@ -190,7 +196,7 @@ def db_service_parametrized(request: FixtureRequest, teardown_resources: bool) -
 
 @pytest.fixture(scope="class")
 def db_deployment_parametrized(
-    request: FixtureRequest, teardown_resources: bool
+    request: FixtureRequest, admin_client: DynamicClient, teardown_resources: bool
 ) -> Generator[List[Deployment], Any, Any]:
     """Create DB Deployment parametrized"""
     with ExitStack() as stack:
@@ -198,6 +204,7 @@ def db_deployment_parametrized(
             stack.enter_context(
                 Deployment(
                     **param,
+                    client=admin_client,
                     teardown=teardown_resources,
                 )
             )
@@ -217,7 +224,7 @@ def model_registry_instance_parametrized(
     """Create Model Registry instance parametrized"""
     with ExitStack() as stack:
         model_registry_instances = []
-        mr_instances = [stack.enter_context(ModelRegistry(**param)) for param in request.param]
+        mr_instances = [stack.enter_context(ModelRegistry(**param, client=admin_client)) for param in request.param]
         for mr_instance in mr_instances:
             # Common parameters for both ModelRegistry classes
             mr_instance.wait_for_condition(condition="Available", status="True")
@@ -228,27 +235,6 @@ def model_registry_instance_parametrized(
             f"Created {len(model_registry_instances)} MR instances: {[mr.name for mr in model_registry_instances]}"
         )
         yield model_registry_instances
-
-
-@pytest.fixture()
-def login_as_test_user(
-    is_byoidc: bool, api_server_url: str, original_user: str, test_idp_user: UserTestSession
-) -> Generator[None, None, None]:
-    if is_byoidc:
-        yield
-    else:
-        LOGGER.info(f"Logging in as {test_idp_user.username}")
-        login_with_user_password(
-            api_address=api_server_url,
-            user=test_idp_user.username,
-            password=test_idp_user.password,
-        )
-        yield
-        LOGGER.info(f"Logging in as {original_user}")
-        login_with_user_password(
-            api_address=api_server_url,
-            user=original_user,
-        )
 
 
 @pytest.fixture()

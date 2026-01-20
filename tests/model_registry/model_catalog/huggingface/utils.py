@@ -1,10 +1,14 @@
 import ast
 from typing import Any
+from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.constants import HF_SOURCE_ID
-from tests.model_registry.model_catalog.utils import LOGGER
-from tests.model_registry.utils import execute_get_command
+from tests.model_registry.utils import execute_get_command, get_model_catalog_pod
 from huggingface_hub import HfApi
+from timeout_sampler import retry
+from kubernetes.dynamic import DynamicClient
+
+LOGGER = get_logger(name=__name__)
 
 
 def get_huggingface_model_params(model_name: str, huggingface_api: HfApi) -> dict[str, Any]:
@@ -95,3 +99,44 @@ def assert_huggingface_values_matches_model_catalog_api_values(
     if mismatch:
         LOGGER.error(f"mismatches are: {mismatch}")
         raise AssertionError("HF api call and model catalog hf models has value mismatch")
+
+
+@retry(wait_timeout=60, sleep=5)
+def wait_for_huggingface_retrival_match(
+    source_id: str,
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+    expected_num_models_from_hf_api: int,
+) -> bool | None:
+    # Get all models from the catalog API for the given source
+    url = f"{model_catalog_rest_url[0]}models?source={source_id}&pageSize=1000"
+    response = execute_get_command(
+        url=url,
+        headers=model_registry_rest_headers,
+    )
+    LOGGER.info(f"response: {response['size']}")
+    models_response = [model["name"] for model in response["items"]]
+    if int(response["size"]) == expected_num_models_from_hf_api:
+        LOGGER.info("All models present in the catalog API.")
+        return True
+    LOGGER.warning(
+        f"Expected {expected_num_models_from_hf_api} "
+        "models to be present in response. "
+        f"Found {response['size']}. Models in "
+        f"response: {models_response}"
+    )
+
+
+@retry(wait_timeout=60, sleep=5)
+def wait_for_hugging_face_model_import(
+    admin_client: DynamicClient, model_registry_namespace: str, hf_id: str, expected_num_models_from_hf_api: int
+) -> bool:
+    LOGGER.info("Checking pod log for model import information")
+    pod = get_model_catalog_pod(client=admin_client, model_registry_namespace=model_registry_namespace)[0]
+    log = pod.log(container="catalog")
+    if f"{hf_id}: loaded {expected_num_models_from_hf_api} models" in log and f"{hf_id}: cleaned up 0 models" in log:
+        LOGGER.info(f"Found log entry confirming model(s) imported for id: {hf_id}")
+        return True
+    else:
+        LOGGER.warning(f"No relevant log entry found: {log}")
+        return False

@@ -3,6 +3,7 @@ from typing import Generator, Any
 import requests
 
 from simple_logger.logger import get_logger
+from timeout_sampler import retry, TimeoutExpiredError
 import yaml
 import pytest
 from kubernetes.dynamic import DynamicClient
@@ -18,10 +19,9 @@ from tests.model_registry.model_catalog.constants import (
     REDHAT_AI_CATALOG_ID,
     DEFAULT_CATALOGS,
 )
-from tests.model_registry.model_catalog.utils import get_models_from_catalog_api, get_catalog_url_and_headers
+from tests.model_registry.model_catalog.utils import get_models_from_catalog_api
 from tests.model_registry.constants import (
     CUSTOM_CATALOG_ID1,
-    DEFAULT_MODEL_CATALOG_CM,
     DEFAULT_CUSTOM_MODEL_CATALOG,
 )
 from tests.model_registry.utils import (
@@ -34,60 +34,69 @@ from tests.model_registry.utils import (
     get_mr_user_token,
 )
 from utilities.infra import get_openshift_token, create_inference_token, login_with_user_password
+from tests.model_registry.model_catalog.catalog_config.utils import get_models_from_database_by_source
 
 
 LOGGER = get_logger(name=__name__)
 
 
-@pytest.fixture(scope="session")
-def enabled_model_catalog_config_map(
-    admin_client: DynamicClient,
+@pytest.fixture()
+def sparse_override_catalog_source(
+    request: pytest.FixtureRequest,
+    admin_client,
     model_registry_namespace: str,
-    current_client_token: str,
-) -> ConfigMap:
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+) -> Generator[dict, None, None]:
     """
-    Enable all catalogs in the default model catalog configmap
+    Creates a sparse override for an existing default catalog source.
+
+    Requires parameterization via request.param dict containing:
+    - "id": catalog ID to override (required)
+    - "field_name": name of the field to override (required)
+    - "field_value": value for the field (required)
     """
-    # Get operator-managed default sources ConfigMap
-    default_sources_cm = ConfigMap(
-        name=DEFAULT_MODEL_CATALOG_CM, client=admin_client, namespace=model_registry_namespace, ensure_exists=True
+    # Get fields from pytest param
+    param = getattr(request, "param", None)
+    assert param, "sparse_override_catalog_source requires request.param dict"
+
+    catalog_id = param["id"]
+    field_name = param["field_name"]
+    field_value = param["field_value"]
+
+    # Capture CURRENT catalog state from API before applying sparse override
+    response = execute_get_command(url=f"{model_catalog_rest_url[0]}sources", headers=model_registry_rest_headers)
+    items = response.get("items", [])
+    original_catalog = next((item for item in items if item.get("id") == catalog_id), None)
+    assert original_catalog is not None, f"Original catalog '{catalog_id}' not found in sources"
+
+    # Create sparse override YAML with only id and the field to override
+    catalog_override = {"id": catalog_id, field_name: field_value}
+    sparse_catalog_yaml = yaml.dump(
+        {"catalogs": [catalog_override]},
+        default_flow_style=False,
     )
 
-    # Get the sources.yaml content from default sources
-    default_sources_yaml = default_sources_cm.instance.data.get("sources.yaml", "")
-
-    # Parse the YAML and extract only catalogs, enabling each one
-    parsed_yaml = yaml.safe_load(default_sources_yaml)
-    if not parsed_yaml or "catalogs" not in parsed_yaml:
-        raise RuntimeError("No catalogs found in default sources ConfigMap")
-
-    for catalog in parsed_yaml["catalogs"]:
-        catalog["enabled"] = True
-    enabled_yaml_dict = {"catalogs": parsed_yaml["catalogs"]}
-    enabled_sources_yaml = yaml.dump(enabled_yaml_dict, default_flow_style=False, sort_keys=False)
-
-    LOGGER.info("Adding enabled catalogs to model-catalog-sources ConfigMap")
-
-    # Get user-managed sources ConfigMap
-    user_sources_cm = ConfigMap(
-        name=DEFAULT_CUSTOM_MODEL_CATALOG, client=admin_client, namespace=model_registry_namespace, ensure_exists=True
+    # Write sparse override to custom ConfigMap
+    sources_cm = ConfigMap(
+        name=DEFAULT_CUSTOM_MODEL_CATALOG,
+        client=admin_client,
+        namespace=model_registry_namespace,
     )
+    patches = {"data": {"sources.yaml": sparse_catalog_yaml}}
 
-    patches = {"data": {"sources.yaml": enabled_sources_yaml}}
-
-    with ResourceEditor(patches={user_sources_cm: patches}):
-        # Wait for the model catalog pod to be ready
+    with ResourceEditor(patches={sources_cm: patches}):
         is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+        wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
+        yield {
+            "catalog_id": catalog_id,
+            "field_name": field_name,
+            "field_value": field_value,
+            "original_catalog": original_catalog,
+        }
 
-        # Get the model catalog URL and headers and wait for the API to be fully ready
-        catalog_url, headers = get_catalog_url_and_headers(
-            admin_client=admin_client,
-            model_registry_namespace=model_registry_namespace,
-            token=current_client_token,
-        )
-        wait_for_model_catalog_api(url=catalog_url, headers=headers)
-
-        yield user_sources_cm
+    is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+    wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
 
 @pytest.fixture(scope="class")
@@ -387,6 +396,7 @@ def updated_catalog_config_map_scope_function(
         wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
         yield catalog_config_map
     is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+    wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
 
 @pytest.fixture(scope="class")
@@ -412,3 +422,118 @@ def model_catalog_rest_url(model_registry_namespace: str, model_catalog_routes: 
         f"routes:{[route.name for route in model_catalog_routes]}"
     )
     return route_urls
+
+
+@pytest.fixture(scope="function")
+def baseline_redhat_ai_models(
+    model_catalog_rest_url: list[str], model_registry_rest_headers: dict[str, str], model_registry_namespace: str
+) -> dict[str, set[str] | int]:
+    """
+    fixture providing baseline model data for redhat_ai_models source.
+
+    Returns:
+        Dictionary with 'api_models', 'db_models', and 'count' keys
+    """
+
+    api_response = get_models_from_catalog_api(
+        model_catalog_rest_url=model_catalog_rest_url,
+        model_registry_rest_headers=model_registry_rest_headers,
+        source_label="Red Hat AI",
+    )
+    api_models = {model["name"] for model in api_response.get("items", [])}
+
+    db_models = get_models_from_database_by_source(source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace)
+
+    return {"api_models": api_models, "db_models": db_models, "count": len(api_models)}
+
+
+@retry(wait_timeout=300, sleep=10, exceptions_dict={Exception: []}, print_log=False)
+def _validate_baseline_models(
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+    model_registry_namespace: str,
+    expected_models: set[str],
+    expected_count: int,
+) -> None:
+    """
+    Validate that baseline model expectations are met.
+    Raises exception if validation fails (triggers retry).
+    Returns None if successful (stops retry).
+    """
+    # Fetch current models from API
+    api_response = get_models_from_catalog_api(
+        model_catalog_rest_url=model_catalog_rest_url,
+        model_registry_rest_headers=model_registry_rest_headers,
+        source_label="Red Hat AI",
+    )
+    api_models = {model["name"] for model in api_response.get("items", [])}
+
+    # Fetch current models from database
+    db_models = get_models_from_database_by_source(source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace)
+
+    count = len(api_models)
+
+    # Validate all expectations - raise on any failure
+    if count != expected_count:
+        raise AssertionError(f"Expected {expected_count} models, got {count}")
+
+    if api_models != db_models:
+        raise AssertionError(f"API models {api_models} don't match database models {db_models}")
+
+    if api_models != expected_models:
+        raise AssertionError(f"Models {api_models} don't match expected set {expected_models}")
+
+    # Additional category validation
+    granite_models = {model for model in api_models if "granite" in model}
+    prometheus_models = {model for model in api_models if "prometheus" in model}
+
+    if len(granite_models) != 6 or len(prometheus_models) != 1:
+        raise AssertionError(
+            f"""Expected 6 granite + 1 prometheus models, \
+            got {len(granite_models)} granite + {len(prometheus_models)} prometheus"""
+        )
+
+    LOGGER.info("Baseline model validation successful: 7 models (6 granite, 1 prometheus)")
+    return True
+
+
+@pytest.fixture(scope="function")
+def baseline_model_state(
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+    model_registry_namespace: str,
+) -> None:
+    """
+    Validate that our baseline assumptions about the model data are correct.
+    This fixture should be used by all test classes to ensure data consistency.
+    Uses @retry decorator for automatic polling (300s timeout, 10s interval) and eventual reconciliation.
+
+    Args:
+        model_catalog_rest_url: URL for model catalog API
+        model_registry_rest_headers: Headers for API requests
+        model_registry_namespace: Namespace for model registry
+    """
+
+    # Expected baseline data
+    expected_models = {
+        "granite-3.1-8b-lab-v1",
+        "granite-7b-redhat-lab",
+        "granite-8b-code-base",
+        "granite-8b-code-instruct",
+        "granite-8b-lab-v1",
+        "granite-8b-starter-v1",
+        "prometheus-8x7b-v2-0",
+    }
+    expected_count = 7
+
+    # Use retry decorator for automatic polling and eventual reconciliation
+    try:
+        _validate_baseline_models(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            model_registry_namespace=model_registry_namespace,
+            expected_models=expected_models,
+            expected_count=expected_count,
+        )
+    except TimeoutExpiredError:
+        pytest.fail("Failed to fetch model data after 300s timeout")

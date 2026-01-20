@@ -136,3 +136,7 @@ class MissingParameter(Exception):
 
 class ExceptionUserLogin(Exception):
     pass
+
+
+class UnexpectedValueError(Exception):
+    """Unexpected value found"""

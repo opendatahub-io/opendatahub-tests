@@ -27,7 +27,7 @@ GPU_LLMD_PARAMS = [
         {
             "name_suffix": "gpu-pd",
             "enable_prefill_decode": True,
-            "replicas": 2,
+            "replicas": 1,
             "prefill_replicas": 1,
             "storage_uri": ModelStorage.S3_QWEN,
             "model_name": ModelNames.QWEN,

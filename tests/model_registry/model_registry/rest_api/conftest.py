@@ -1,4 +1,3 @@
-import time
 from typing import Any, Generator
 import os
 from kubernetes.dynamic import DynamicClient
@@ -155,6 +154,7 @@ def deploy_secure_mysql_and_mr(
     if "sslRootCertificateConfigMap" in param:
         mysql["sslRootCertificateConfigMap"] = param["sslRootCertificateConfigMap"]
     with ModelRegistry(
+        client=admin_client,
         name=SECURE_MR_NAME,
         namespace=model_registry_namespace,
         label=get_mr_standard_labels(resource_name=SECURE_MR_NAME),
@@ -168,8 +168,6 @@ def deploy_secure_mysql_and_mr(
         wait_for_pods_running(
             admin_client=admin_client, namespace_name=model_registry_namespace, number_of_consecutive_checks=6
         )
-        # TODO remove when RHOAIENG-41728 is addressed
-        time.sleep(60.0)  # noqa: FCN001
         yield mr
 
 
@@ -361,12 +359,15 @@ def skip_if_not_default_db(request):
 
 @pytest.fixture()
 def model_registry_default_postgres_deployment_match_label(
-    model_registry_namespace: str, model_registry_instance: list[ModelRegistry]
+    model_registry_namespace: str, admin_client: DynamicClient, model_registry_instance: list[ModelRegistry]
 ) -> dict[str, str]:
     """
     Returns the matchLabels from the default postgres deployment for filtering pods.
     """
     deployment = Deployment(
-        namespace=model_registry_namespace, name=f"{model_registry_instance[0].name}-postgres", ensure_exists=True
+        client=admin_client,
+        namespace=model_registry_namespace,
+        name=f"{model_registry_instance[0].name}-postgres",
+        ensure_exists=True,
     )
     return deployment.instance.spec.selector.matchLabels
