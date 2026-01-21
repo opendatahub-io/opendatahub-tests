@@ -201,8 +201,6 @@ class OpenAIClient:
         elif OpenAIEnpoints.EMBEDDINGS in endpoint:
             data = {
                 "input": query["text"],
-                "encoding_format": 0.1,
-                "temperature": 0,
             }
         else:
             data = {"prompt": query["text"], "temperature": 0, "top_p": 0.9, "seed": 1037, "stream": streaming}
@@ -230,8 +228,8 @@ class OpenAIClient:
             LOGGER.info(message["choices"][0])
             return message["choices"][0]
         elif OpenAIEnpoints.EMBEDDINGS in endpoint:
-            LOGGER.info(message["choices"][0])
-            return message["choices"][0]
+            LOGGER.info(message["data"][0])
+            return message["data"][0]
         elif OpenAIEnpoints.AUDIO_TRANSCRIPTION in endpoint:
             LOGGER.info(message["text"])
             return message["text"]

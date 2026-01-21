@@ -674,9 +674,12 @@ def get_rest_headers(token: str) -> dict[str, str]:
     }
 
 
-def is_model_catalog_ready(client: DynamicClient, model_registry_namespace: str, consecutive_try: int = 6):
+def wait_for_model_catalog_pod_ready_after_deletion(
+    client: DynamicClient, model_registry_namespace: str, consecutive_try: int = 6
+) -> bool:
     model_catalog_pods = get_model_catalog_pod(
-        client=client, model_registry_namespace=model_registry_namespace, label_selector="app=model-catalog"
+        client=client,
+        model_registry_namespace=model_registry_namespace,
     )
     # We can wait for the pods to reflect updated catalog, however, deleting them ensures the updated config is
     # applied immediately.
@@ -687,6 +690,7 @@ def is_model_catalog_ready(client: DynamicClient, model_registry_namespace: str,
     wait_for_pods_running(
         admin_client=client, namespace_name=model_registry_namespace, number_of_consecutive_checks=consecutive_try
     )
+    return True
 
 
 @retry(wait_timeout=30, sleep=5, exceptions_dict={PodNotFound: []})

@@ -70,6 +70,19 @@ CHAT_QUERY: list[list[dict[str, str]]] = [
     ],
 ]
 
+EMBEDDING_QUERY: list[dict[str, str]] = [
+    {
+        "text": "What are the key benefits of renewable energy sources compared to fossil fuels?",
+    },
+    {"text": "Translate the following English sentence into Spanish, German, and Mandarin: 'Knowledge is power.'"},
+    {"text": "Write a poem about the beauty of the night sky and the mysteries it holds."},
+    {"text": "Explain the significance of the Great Wall of China in history and its impact on modern tourism."},
+    {"text": "Discuss the ethical implications of using artificial intelligence in healthcare decision-making."},
+    {
+        "text": "Summarize the main events of the Apollo 11 moon landing and its importance in space exploration history."  # noqa: E122, E501
+    },
+]
+
 PULL_SECRET_ACCESS_TYPE: str = '["Pull"]'
 PULL_SECRET_NAME: str = "oci-registry-pull-secret"
 SPYRE_INFERENCE_SERVICE_PORT: int = 8000
