@@ -2,7 +2,7 @@ IMAGE_BUILD_CMD = $(shell which podman 2>/dev/null || which docker)
 IMAGE_REGISTRY ?= "quay.io"
 REGISTRY_NAMESPACE ?= "opendatahub"
 IMAGE_NAME="opendatahub-tests"
-IMAGE_TAG ?= "latest"
+IMAGE_TAG ?= "3.3"
 
 FULL_OPERATOR_IMAGE ?= "$(IMAGE_REGISTRY)/$(REGISTRY_NAMESPACE)/$(IMAGE_NAME):$(IMAGE_TAG)"
 
