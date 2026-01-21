@@ -450,16 +450,15 @@ def ensure_kueue_unmanaged_in_dsc(
         if not _is_kueue_operator_installed(admin_client):
             pytest.skip("Kueue operator is not installed, skipping Kueue tests")
 
-        # Check current Kueue state and get baseline timestamp (single API call)
-        dsc_resource.get()
+        # Check current Kueue state
         kueue_management_state = dsc_resource.instance.spec.components[DscComponents.KUEUE].managementState
 
         with ExitStack() as stack:
             # Only patch if Kueue is not already Unmanaged
             if kueue_management_state != DscComponents.ManagementState.UNMANAGED:
                 LOGGER.info(f"Patching Kueue from {kueue_management_state} to Unmanaged")
-                # Read timestamp BEFORE applying patch (no refresh needed, already called dsc.get() above)
-                ready_condition = get_dsc_ready_condition(dsc=dsc_resource, refresh=False)
+                # Read timestamp BEFORE applying patch
+                ready_condition = get_dsc_ready_condition(dsc=dsc_resource)
                 pre_patch_time = ready_condition.get("lastTransitionTime") if ready_condition else None
 
                 dsc_dict = {

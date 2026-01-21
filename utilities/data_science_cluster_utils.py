@@ -55,18 +55,15 @@ def update_components_in_dsc(
         yield dsc
 
 
-def get_dsc_ready_condition(dsc: DataScienceCluster, refresh: bool = True) -> dict[str, Any] | None:
+def get_dsc_ready_condition(dsc: DataScienceCluster) -> dict[str, Any] | None:
     """Get DSC Ready condition.
 
     Args:
         dsc: DataScienceCluster resource
-        refresh: If True, refresh the resource from the cluster before reading (default: True)
 
     Returns:
         The Ready condition dict (with 'status', 'lastTransitionTime', etc.), or None if not found
     """
-    if refresh:
-        dsc.get()
     return next(
         (
             condition
