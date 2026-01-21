@@ -16,15 +16,14 @@ from tests.model_registry.model_catalog.catalog_config.utils import (
     validate_cleanup_logging,
     filter_models_by_pattern,
     execute_inclusion_exclusion_filter_test,
+    ensure_baseline_model_state,
 )
 from tests.model_registry.utils import wait_for_model_catalog_api
 
 LOGGER = get_logger(name=__name__)
 
 pytestmark = [
-    pytest.mark.usefixtures(
-        "updated_dsc_component_state_scope_session", "model_registry_namespace", "baseline_model_state"
-    ),
+    pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace"),
 ]
 
 
@@ -65,6 +64,13 @@ class TestModelInclusionFiltering:
             model_registry_rest_headers=model_registry_rest_headers,
         )
 
+        # Ensure baseline model state is restored for subsequent tests
+        ensure_baseline_model_state(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            model_registry_namespace=model_registry_namespace,
+        )
+
 
 class TestModelExclusionFiltering:
     """Test exclusion filtering functionality (RHOAIENG-41841 part 2)"""
@@ -100,6 +106,13 @@ class TestModelExclusionFiltering:
             model_registry_namespace=model_registry_namespace,
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
+        )
+
+        # Ensure baseline model state is restored for subsequent tests
+        ensure_baseline_model_state(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            model_registry_namespace=model_registry_namespace,
         )
 
 
@@ -190,6 +203,13 @@ class TestCombinedIncludeExcludeFiltering:
             LOGGER.info(
                 f"SUCCESS: {len(api_models)} {include_pattern} models after excluding {exclude_pattern} variants"
             )
+
+        # Ensure baseline model state is restored for subsequent tests
+        ensure_baseline_model_state(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            model_registry_namespace=model_registry_namespace,
+        )
 
 
 class TestModelCleanupLifecycle:
@@ -285,6 +305,13 @@ class TestModelCleanupLifecycle:
                 f"Phase 2 SUCCESS: Granite models cleaned up, {len(phase2_api_models)} prometheus models remain"
             )
 
+        # Ensure baseline model state is restored for subsequent tests
+        ensure_baseline_model_state(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            model_registry_namespace=model_registry_namespace,
+        )
+
 
 class TestSourceLifecycleCleanup:
     """Test source disabling cleanup scenarios (RHOAIENG-41846)"""
@@ -329,6 +356,13 @@ class TestSourceLifecycleCleanup:
             assert len(db_models) == 0, f"Database should be clean when source disabled, found: {db_models}"
 
             LOGGER.info("SUCCESS: Source disabling removed all models")
+
+        # Ensure baseline model state is restored for subsequent tests
+        ensure_baseline_model_state(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            model_registry_namespace=model_registry_namespace,
+        )
 
 
 class TestLoggingValidation:
@@ -380,6 +414,13 @@ class TestLoggingValidation:
             except TimeoutExpiredError as e:
                 pytest.fail(f"Expected log patterns not found: {e}")
 
+        # Ensure baseline model state is restored for subsequent tests
+        ensure_baseline_model_state(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            model_registry_namespace=model_registry_namespace,
+        )
+
     @pytest.mark.sanity
     def test_source_disabling_logging(
         self,
@@ -423,3 +464,10 @@ class TestLoggingValidation:
                 LOGGER.info(f"SUCCESS: Found expected source disabling log patterns: {found_patterns}")
             except TimeoutExpiredError as e:
                 pytest.fail(f"Expected source disabling log patterns not found: {e}")
+
+        # Ensure baseline model state is restored for subsequent tests
+        ensure_baseline_model_state(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            model_registry_namespace=model_registry_namespace,
+        )
