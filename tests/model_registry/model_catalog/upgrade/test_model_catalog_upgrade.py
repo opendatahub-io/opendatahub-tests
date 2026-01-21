@@ -8,7 +8,7 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.resource import ResourceEditor
 from tests.model_registry.constants import SAMPLE_MODEL_NAME1, CUSTOM_CATALOG_ID1
 from tests.model_registry.utils import (
-    is_model_catalog_ready,
+    wait_for_model_catalog_pod_ready_after_deletion,
     wait_for_model_catalog_api,
     get_catalog_str,
     get_sample_yaml_str,
@@ -40,7 +40,9 @@ def pre_upgrade_config_map_update(
             patches["data"][key] = request.param["sample_yaml"][key]
 
     ResourceEditor(patches={catalog_config_map: patches}).update()
-    is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+    wait_for_model_catalog_pod_ready_after_deletion(
+        client=admin_client, model_registry_namespace=model_registry_namespace
+    )
     wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
     return catalog_config_map
 
@@ -55,7 +57,9 @@ def post_upgrade_config_map_update(
     yield catalog_config_map
     # Only teardown is needed
     catalog_config_map.delete()
-    is_model_catalog_ready(client=admin_client, model_registry_namespace=model_registry_namespace)
+    wait_for_model_catalog_pod_ready_after_deletion(
+        client=admin_client, model_registry_namespace=model_registry_namespace
+    )
 
 
 @pytest.mark.parametrize(

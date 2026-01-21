@@ -78,7 +78,6 @@ model_registry_instance_params = [
         "name": f"{MR_INSTANCE_BASE_NAME}{index}",
         "namespace": ns_name,
         "label": get_mr_standard_labels(resource_name=f"{MR_INSTANCE_BASE_NAME}{index}"),
-        "grpc": {},
         "rest": {},
         "mysql": get_mysql_config(base_name=f"{DB_BASE_RESOURCES_NAME}{index}", namespace=ns_name, db_backend="mysql"),
         "wait_for_resource": True,
