@@ -9,7 +9,7 @@ Please follow the [Getting Started Guide](docs/GETTING_STARTED.md) on how to run
 
 
 ## Contribute to opendatahub-tests
-Please follow the [Contributing Guide](docs/CONTRIBUTING.md) and the [Developer guide](docs/DEVELOPER_GUIDE.md).
+Please follow the [Contributing Guide](docs/CONTRIBUTING.md) and the [Developer guide](docs/DEVELOPER_GUIDE.md)
 
 
 ## GitHub workflows
