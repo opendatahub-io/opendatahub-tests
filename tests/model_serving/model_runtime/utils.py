@@ -105,7 +105,7 @@ def run_embedding_inference(
     port: Optional[int] = Ports.REST_PORT,
     embedding_query: list[dict[str, str]] = EMBEDDING_QUERY,
 ) -> tuple[Any, list[Any]]:
-    LOGGER.info(pod_name)
+    LOGGER.info("Running embedding inference for model: %s on endpoint: %s", model_name, endpoint)
     if url is not None:
         LOGGER.info("Using provided URL for inference: %s", url)
         inference_client = OpenAIClient(host=url, model_name=model_name, streaming=True)
@@ -154,7 +154,7 @@ def run_audio_inference(
     isvc: Optional[InferenceService] = None,
     port: Optional[int] = Ports.REST_PORT,
 ) -> tuple[Any, list[Any]]:
-    LOGGER.info(pod_name)
+    LOGGER.info("Running audio inference for model: %s on endpoint: %s", model_name, endpoint)
     download_audio_file(audio_file_url=audio_file_url, destination_path=audio_file_path)
 
     if url is not None:
