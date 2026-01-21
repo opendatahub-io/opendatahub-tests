@@ -111,7 +111,6 @@ def run_embedding_inference(
         inference_client = OpenAIClient(host=url, model_name=model_name, streaming=True)
         embedding_responses = []
         for query in embedding_query:
-            print(f"Sending embedding request for query: {query}")
             embedding_response = inference_client.request_http(
                 endpoint=OpenAIEnpoints.EMBEDDINGS,
                 query=query,
