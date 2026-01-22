@@ -61,7 +61,7 @@ def wait_for_unique_llama_stack_pod(client: DynamicClient, namespace: str) -> Po
     namespace (multiple pods may indicate known bug RHAIENG-1819)."""
     pods = list(
         Pod.get(
-            dyn_client=client,
+            client=client,
             namespace=namespace,
             label_selector=LLS_CORE_POD_FILTER,
         )
