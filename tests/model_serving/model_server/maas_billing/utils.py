@@ -476,7 +476,6 @@ def detect_maas_control_plane_namespace(
 ) -> str:
     for ns in candidate_namespaces:
         if not Namespace(client=admin_client, name=ns, ensure_exists=False).exists:
-            LOGGER.debug("Namespace %s does not exist; skipping", ns)
             continue
 
         cm = ConfigMap(
@@ -486,7 +485,7 @@ def detect_maas_control_plane_namespace(
             ensure_exists=False,
         )
         if cm.exists:
-            LOGGER.info("MaaS control-plane namespace detected via ConfigMap in namespace: %s", ns)
+            LOGGER.info(f"MaaS control-plane namespace detected via ConfigMap in namespace: {ns}")
             return ns
 
     raise RuntimeError(

@@ -54,8 +54,6 @@ LOGGER = get_logger(name=__name__)
 MODELS_INFO = OpenAIEnpoints.MODELS_INFO
 CHAT_COMPLETIONS = OpenAIEnpoints.CHAT_COMPLETIONS
 
-# MAAS_FREE_GROUP = "maas-free-users"
-# MAAS_PREMIUM_GROUP = "maas-premium-users"
 MAAS_FREE_GROUP = "tier-free-users"
 MAAS_PREMIUM_GROUP = "tier-premium-users"
 DSC_NAME = "default"
@@ -599,18 +597,6 @@ def maas_inference_service_tinyllama(
                 f"Ready and patched (storage_uri={storage_uri})"
             )
 
-            # _debug_dump_model_registration(
-            #     admin_client=admin_client,
-            #     llm_ns=unprivileged_model_namespace.name,
-            # )
-            # DEBUG: pause here so you can run oc commands side-by-side
-            # if os.environ.get("MAAS_DEBUG_PAUSE") == "1":
-            #     LOGGER.warning(
-            #         "MAAS_DEBUG_PAUSE=1 -> Pausing 20 minutes after LLMI Ready+patched. "
-            #         "Run your oc/curl checks now, then stop the pause by Ctrl+C or wait."
-            #     )
-            #     time.sleep(3 * 60 * 60)
-
             yield llm_service
 
 
@@ -701,7 +687,6 @@ def maas_controller_enabled_latest(
 
 @pytest.fixture(scope="session")
 def maas_control_plane_namespace(admin_client: DynamicClient) -> str:
-    # Repo-global applications namespace (set in root conftest.py updated_global_config()).
     preferred = py_config.get("applications_namespace")
 
     candidates = [ns for ns in [preferred, "redhat-ods-applications", "opendatahub"] if ns]
@@ -725,9 +710,7 @@ def maas_tier_mapping_cm(
     )
 
     LOGGER.info(
-        "MaaS tier mapping ConfigMap detected: namespace=%s, name=%s",
-        maas_control_plane_namespace,
-        config_map.name,
+        f"MaaS tier mapping ConfigMap detected: namespace={maas_control_plane_namespace}, name={config_map.name}"
     )
 
     return config_map
