@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout the latest code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           token: ${{ secrets.RHODS_CI_BOT_PAT }}
           fetch-depth: 0 # otherwise, you will fail to push refs to dest repo
