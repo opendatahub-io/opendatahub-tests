@@ -3,6 +3,11 @@ from typing import Optional, Dict, Any, List, Generator
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.resource import NamespacedResource, Resource, MissingRequiredArgumentError
 from ocp_resources.pod import Pod
+from simple_logger.logger import get_logger
+from timeout_sampler import retry
+from utilities.constants import Timeout
+
+LOGGER = get_logger(name=__name__)
 
 
 class ResourceFlavor(Resource):
@@ -170,3 +175,46 @@ def check_gated_pods_and_running_pods(
             ):
                 gated_pods += 1
     return running_pods, gated_pods
+
+
+@retry(
+    wait_timeout=Timeout.TIMEOUT_4MIN,
+    sleep=5,
+)
+def wait_for_kueue_crds_available(client: DynamicClient) -> bool:
+    """Wait for Kueue CRDs and controller to be fully available.
+
+    This function waits for:
+    1. Kueue CRDs to be registered in the API server
+    2. kueue-controller-manager pods to be Ready (needed for webhooks/admission control)
+
+    Raises:
+        TimeoutExpiredError: If CRDs or controller are not available within the timeout period.
+
+    Returns:
+        True when CRDs are available and controller is ready.
+    """
+    # Check if CRDs are registered (raises exception if not, then will @retry)
+    list(ResourceFlavor.get(client=client))
+
+    # Check kueue-controller-manager pods exist and are ready
+    pods = list(
+        Pod.get(
+            label_selector="control-plane=controller-manager,app.kubernetes.io/name=kueue",
+            namespace="openshift-kueue-operator",
+            client=client,
+        )
+    )
+    all_pods_ready = pods and all(
+        any(
+            condition.type == Pod.Condition.READY and condition.status == Pod.Condition.Status.TRUE
+            for condition in pod.instance.status.conditions or []
+        )
+        for pod in pods
+    )
+    if not all_pods_ready:
+        LOGGER.info("Kueue controller pods not ready yet, retrying...")
+        return False
+
+    LOGGER.info(f"Kueue is ready: CRDs available and {len(pods)} controller pod(s) running")
+    return True

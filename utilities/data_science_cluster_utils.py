@@ -4,6 +4,7 @@ from typing import Any, Generator
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.resource import ResourceEditor
 from simple_logger.logger import get_logger
+from timeout_sampler import retry
 
 from utilities.constants import DscComponents
 
@@ -52,3 +53,61 @@ def update_components_in_dsc(
 
     else:
         yield dsc
+
+
+def get_dsc_ready_condition(dsc: DataScienceCluster) -> dict[str, Any] | None:
+    """Get DSC Ready condition.
+
+    Args:
+        dsc: DataScienceCluster resource
+
+    Returns:
+        The Ready condition dict (with 'status', 'lastTransitionTime', etc.), or None if not found
+    """
+    return next(
+        (
+            condition
+            for condition in dsc.instance.status.conditions or []
+            if condition.type == DataScienceCluster.Condition.READY
+        ),
+        None,
+    )
+
+
+@retry(wait_timeout=300, sleep=5)
+def wait_for_dsc_reconciliation(dsc: DataScienceCluster, baseline_time: str | None) -> bool:
+    """Wait for DSC to reconcile after a ResourceEditor patch.
+
+    This function prevents false positives where DSC reports Ready=True immediately
+    after a patch, before actual reconciliation begins. It waits for:
+    1. lastTransitionTime to change (reconciliation started)
+    2. Ready=True condition (reconciliation completed)
+
+    Args:
+        dsc: DataScienceCluster resource
+        baseline_time: The Ready condition lastTransitionTime before the patch, or None if not found
+
+    Returns:
+        True when DSC has reconciled and is Ready
+    """
+    ready_condition = get_dsc_ready_condition(dsc=dsc)
+    current_time = ready_condition.get("lastTransitionTime") if ready_condition else None
+    dsc_reconciling = current_time != baseline_time
+    dsc_ready = ready_condition and ready_condition.get("status") == DataScienceCluster.Condition.Status.TRUE
+
+    # Still waiting for reconciliation to start (timestamp unchanged)
+    if not dsc_reconciling:
+        LOGGER.info(f"Waiting for DSC reconciliation to start (baseline: {baseline_time or 'None'})...")
+        return False
+
+    # Timestamp changed but DSC is not Ready yet
+    if not dsc_ready:
+        LOGGER.info(f"DSC reconciliation in progress (timestamp: {current_time or 'None'}), waiting for Ready=True...")
+        return False
+
+    # DSC Reconciled: timestamp changed AND Ready=True
+    LOGGER.info(
+        f"DSC reconciliation complete: timestamp changed from {baseline_time or 'None'} "
+        f"to {current_time or 'None'} and Ready=True"
+    )
+    return True

@@ -79,7 +79,7 @@ jobs:
           echo "REVIEW_COMMENT_BODY=${{ needs.download_context_artifact.outputs.review_comment_body }}"  >> "$GITHUB_ENV"
           echo "GITHUB_USER_LOGIN=${{ needs.download_context_artifact.outputs.user_login }}"  >> "$GITHUB_ENV"
           echo "ACTION=${{ needs.download_context_artifact.outputs.action }}"  >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v5
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
