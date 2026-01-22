@@ -176,7 +176,6 @@ def get_maas_models_response(
 
 @contextmanager
 def patch_llmisvc_with_maas_router(
-    *,
     llm_service: LLMInferenceService,
 ) -> Generator[None, None, None]:
     router_spec = {
@@ -471,22 +470,15 @@ def maas_gateway_listeners(hostname: str) -> List[Dict[str, Any]]:
     ]
 
 
-def detect_maas_control_plane_namespace(admin_client: DynamicClient) -> str:
-    """
-    Detect the namespace that contains MaaS configuration objects
-
-    """
-    candidate_namespaces = [
-        "opendatahub",
-        "redhat-ods-applications",
-        "openshift-operators",
-        "kuadrant-system",
-    ]
-
+def detect_maas_control_plane_namespace(
+    admin_client: DynamicClient,
+    candidate_namespaces: list[str],
+) -> str:
     for ns in candidate_namespaces:
         if not Namespace(client=admin_client, name=ns, ensure_exists=False).exists:
             LOGGER.debug("Namespace %s does not exist; skipping", ns)
             continue
+
         cm = ConfigMap(
             client=admin_client,
             name="tier-to-group-mapping",
@@ -494,21 +486,12 @@ def detect_maas_control_plane_namespace(admin_client: DynamicClient) -> str:
             ensure_exists=False,
         )
         if cm.exists:
-            LOGGER.info("MaaS control-plane namespace detected via ConfigMap: %s", ns)
+            LOGGER.info("MaaS control-plane namespace detected via ConfigMap in namespace: %s", ns)
             return ns
 
     raise RuntimeError(
-        "Required ConfigMap 'tier-to-group-mapping' was not found in any expected namespace: "
-        f"{candidate_namespaces}. Tier-based logic is required, so failing."
-    )
-
-
-def get_tier_mapping_configmap(admin_client: DynamicClient, namespace: str) -> ConfigMap:
-    return ConfigMap(
-        client=admin_client,
-        name="tier-to-group-mapping",
-        namespace=namespace,
-        ensure_exists=True,
+        "Required ConfigMap 'tier-to-group-mapping' was not found in any expected namespace. "
+        f"Checked namespaces: {candidate_namespaces}"
     )
 
 
