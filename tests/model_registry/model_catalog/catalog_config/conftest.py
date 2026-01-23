@@ -1,5 +1,5 @@
 import pytest
-from typing import Generator, Any
+from typing import Generator
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.resource import ResourceEditor
