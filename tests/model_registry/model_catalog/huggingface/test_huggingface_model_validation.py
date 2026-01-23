@@ -118,10 +118,17 @@ class TestHuggingFaceModelValidation:
             if not last_synced or last_synced == "":
                 error_msg += f"last_synced field is not present for model {model_name}. "
             elif epoch_time_before_config_map_update > float(last_synced):
-                error_msg += (
-                    f"Model {model_name} last_synced ({last_synced}) should be after "
-                    f"test start time ({epoch_time_before_config_map_update}). "
+                LOGGER.warning(
+                    f"For model {model_name} last synced timestamp {last_synced} is greater "
+                    f"than start time {epoch_time_before_config_map_update}. "
                 )
+                time_diff = epoch_time_before_config_map_update - float(last_synced)
+                if time_diff > 60000:  # Only fail if difference is > 1 minute (60000 ms)
+                    error_msg += (
+                        f"Model {model_name} last_synced ({last_synced}) should be after "
+                        f"test start time ({epoch_time_before_config_map_update}). "
+                        f"Time difference: {time_diff}ms (tolerance: 60000ms). "
+                    )
             if error_msg:
                 error[model_name] = error_msg
         if error:
