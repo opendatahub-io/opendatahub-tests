@@ -30,25 +30,25 @@ class TestModelInclusionFiltering:
     """Test inclusion filtering functionality (RHOAIENG-41841)"""
 
     @pytest.mark.parametrize(
-        "redhat_ai_models_with_inclusion_filter",
+        "redhat_ai_models_with_filter",
         [
             pytest.param(
-                {"pattern": "granite", "filter_value": "*granite*"},
+                {"filter_type": "inclusion", "pattern": "granite", "filter_value": "*granite*"},
                 marks=pytest.mark.smoke,
                 id="test_include_granite_models_only",
             ),
             pytest.param(
-                {"pattern": "prometheus", "filter_value": "*prometheus*"},
+                {"filter_type": "inclusion", "pattern": "prometheus", "filter_value": "*prometheus*"},
                 marks=pytest.mark.sanity,
                 id="test_include_prometheus_models_only",
             ),
             pytest.param(
-                {"pattern": "-8b-", "filter_value": "*-8b-*"},
+                {"filter_type": "inclusion", "pattern": "-8b-", "filter_value": "*-8b-*"},
                 marks=pytest.mark.sanity,
                 id="test_include_eight_b_models_only",
             ),
             pytest.param(
-                {"pattern": "code", "filter_value": "*code*"},
+                {"filter_type": "inclusion", "pattern": "code", "filter_value": "*code*"},
                 marks=pytest.mark.sanity,
                 id="test_include_code_models_only",
             ),
@@ -60,11 +60,11 @@ class TestModelInclusionFiltering:
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
-        redhat_ai_models_with_inclusion_filter: set[str],
+        redhat_ai_models_with_filter: set[str],
     ):
         """Test that includedModels=[filter_value] shows only models matching pattern."""
         validate_filter_test_result(
-            expected_models=redhat_ai_models_with_inclusion_filter,
+            expected_models=redhat_ai_models_with_filter,
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
             model_registry_namespace=model_registry_namespace,
@@ -76,34 +76,36 @@ class TestModelExclusionFiltering:
     """Test exclusion filtering functionality (RHOAIENG-41841 part 2)"""
 
     @pytest.mark.parametrize(
-        "redhat_ai_models_with_exclusion_filter",
+        "redhat_ai_models_with_filter",
         [
             pytest.param(
-                {"pattern": "granite", "filter_value": "*granite*"},
+                {"filter_type": "exclusion", "pattern": "granite", "filter_value": "*granite*"},
                 marks=pytest.mark.smoke,
                 id="test_exclude_granite_models",
             ),
             pytest.param(
-                {"pattern": "prometheus", "filter_value": "*prometheus*"},
+                {"filter_type": "exclusion", "pattern": "prometheus", "filter_value": "*prometheus*"},
                 marks=pytest.mark.sanity,
                 id="test_exclude_prometheus_models",
             ),
             pytest.param(
-                {"pattern": "lab", "filter_value": "*lab*"}, marks=pytest.mark.sanity, id="test_exclude_lab_models"
+                {"filter_type": "exclusion", "pattern": "lab", "filter_value": "*lab*"},
+                marks=pytest.mark.sanity,
+                id="test_exclude_lab_models",
             ),
         ],
         indirect=True,
     )
     def test_exclude_models_by_pattern(
         self,
-        redhat_ai_models_with_exclusion_filter: set[str],
+        redhat_ai_models_with_filter: set[str],
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
     ):
         """Test that excludedModels=[filter_value] removes models matching pattern."""
         validate_filter_test_result(
-            expected_models=redhat_ai_models_with_exclusion_filter,
+            expected_models=redhat_ai_models_with_filter,
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
             model_registry_namespace=model_registry_namespace,
@@ -115,10 +117,11 @@ class TestCombinedIncludeExcludeFiltering:
     """Test combined include+exclude filtering (RHOAIENG-41841 part 3)"""
 
     @pytest.mark.parametrize(
-        "redhat_ai_models_with_combined_filter",
+        "redhat_ai_models_with_filter",
         [
             pytest.param(
                 {
+                    "filter_type": "combined",
                     "include_pattern": "granite",
                     "include_filter_value": "*granite*",
                     "exclude_pattern": "lab",
@@ -129,6 +132,7 @@ class TestCombinedIncludeExcludeFiltering:
             ),
             pytest.param(
                 {
+                    "filter_type": "combined",
                     "include_pattern": "-8b-",
                     "include_filter_value": "*-8b-*",
                     "exclude_pattern": "code",
@@ -142,14 +146,14 @@ class TestCombinedIncludeExcludeFiltering:
     )
     def test_combined_include_exclude_filtering(
         self,
-        redhat_ai_models_with_combined_filter: set[str],
+        redhat_ai_models_with_filter: set[str],
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
     ):
         """Test includedModels + excludedModels precedence."""
         validate_filter_test_result(
-            expected_models=redhat_ai_models_with_combined_filter,
+            expected_models=redhat_ai_models_with_filter,
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
             model_registry_namespace=model_registry_namespace,
@@ -306,10 +310,10 @@ class TestLoggingValidation:
     """Test cleanup operation logging (RHOAIENG-41846)"""
 
     @pytest.mark.parametrize(
-        "redhat_ai_models_with_exclusion_filter",
+        "redhat_ai_models_with_filter",
         [
             pytest.param(
-                {"pattern": "granite", "filter_value": "*granite*", "log_cleanup": True},
+                {"filter_type": "exclusion", "pattern": "granite", "filter_value": "*granite*", "log_cleanup": True},
                 marks=pytest.mark.sanity,
                 id="test_exclude_granite_models_for_logging",
             )
@@ -318,7 +322,7 @@ class TestLoggingValidation:
     )
     def test_model_removal_logging(
         self,
-        redhat_ai_models_with_exclusion_filter: set[str],
+        redhat_ai_models_with_filter: set[str],
         admin_client: DynamicClient,
         model_registry_namespace: str,
     ):

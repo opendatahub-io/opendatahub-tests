@@ -37,6 +37,7 @@ from tests.model_registry.utils import (
 from utilities.infra import get_openshift_token, create_inference_token, login_with_user_password
 from tests.model_registry.model_catalog.catalog_config.utils import get_models_from_database_by_source
 from kubernetes.dynamic.exceptions import NotFoundError
+from pytest_testconfig import config as py_config
 
 LOGGER = get_logger(name=__name__)
 
@@ -44,7 +45,6 @@ LOGGER = get_logger(name=__name__)
 @pytest.fixture(scope="session", autouse=True)
 def catalog_pod_model_counts(
     admin_client: DynamicClient,
-    model_registry_namespace: str,
     recreated_model_catalog_configmap: ConfigMap,
 ) -> dict[str, int]:
     """
@@ -59,8 +59,9 @@ def catalog_pod_model_counts(
         containing the extracted model counts
     """
     # Get the model catalog pod
-    catalog_pods = get_model_catalog_pod(client=admin_client, model_registry_namespace=model_registry_namespace)
-    assert len(catalog_pods) > 0, f"No model catalog pods found in namespace {model_registry_namespace}"
+    namespace_name = py_config["model_registry_namespace"]
+    catalog_pods = get_model_catalog_pod(client=admin_client, model_registry_namespace=namespace_name)
+    assert len(catalog_pods) > 0, f"No model catalog pods found in namespace {namespace_name}"
 
     catalog_pod = catalog_pods[0]  # Use the first pod if multiple exist
 
@@ -90,7 +91,6 @@ def catalog_pod_model_counts(
 @pytest.fixture(scope="session")
 def recreated_model_catalog_configmap(
     admin_client: DynamicClient,
-    model_registry_namespace: str,
 ) -> ConfigMap:
     """
     Session-scoped fixture that deletes the DEFAULT_CUSTOM_MODEL_CATALOG ConfigMap
@@ -99,10 +99,11 @@ def recreated_model_catalog_configmap(
     Returns:
         ConfigMap: The recreated ConfigMap instance
     """
+    namespace_name = py_config["model_registry_namespace"]
     # TODO: RHOAIENG-46741 would require changing this to look for configmaps based on label
     # Get the existing ConfigMap
     configmap = ConfigMap(
-        name=DEFAULT_CUSTOM_MODEL_CATALOG, client=admin_client, namespace=model_registry_namespace, ensure_exists=True
+        name=DEFAULT_CUSTOM_MODEL_CATALOG, client=admin_client, namespace=namespace_name, ensure_exists=True
     )
 
     LOGGER.info(f"Deleting ConfigMap {DEFAULT_CUSTOM_MODEL_CATALOG} to test recreation")
@@ -116,7 +117,7 @@ def recreated_model_catalog_configmap(
     recreated_configmap = ConfigMap(
         name=DEFAULT_CUSTOM_MODEL_CATALOG,
         client=admin_client,
-        namespace=model_registry_namespace,
+        namespace=namespace_name,
     )
 
     # Use TimeoutSampler to wait for recreation (2 minutes timeout)
@@ -130,9 +131,7 @@ def recreated_model_catalog_configmap(
             break
 
     LOGGER.info(f"ConfigMap {DEFAULT_CUSTOM_MODEL_CATALOG} recreated successfully")
-    wait_for_model_catalog_pod_ready_after_deletion(
-        client=admin_client, model_registry_namespace=model_registry_namespace
-    )
+    wait_for_model_catalog_pod_ready_after_deletion(client=admin_client, model_registry_namespace=namespace_name)
     return recreated_configmap
 
 
