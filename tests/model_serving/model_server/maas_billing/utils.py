@@ -109,22 +109,6 @@ def b64url_decode(encoded_str: str) -> bytes:
     return base64.urlsafe_b64decode(s=padded_bytes)
 
 
-def llmis_name(client, namespace: str = "llm", label_selector: str | None = None) -> str:
-    """
-    Return the name of the first Ready LLMInferenceService.
-    """
-
-    service = _first_ready_llmisvc(
-        client=client,
-        namespace=namespace,
-        label_selector=label_selector,
-    )
-    if not service:
-        raise RuntimeError("No Ready LLMInferenceService found")
-
-    return service.name
-
-
 @contextmanager
 def create_maas_group(
     admin_client: DynamicClient,
