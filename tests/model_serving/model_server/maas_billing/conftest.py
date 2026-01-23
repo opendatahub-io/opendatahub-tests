@@ -44,7 +44,6 @@ from tests.model_serving.model_server.maas_billing.utils import (
     get_maas_models_response,
     verify_chat_completions,
     maas_gateway_rate_limits_patched,
-    detect_maas_control_plane_namespace,
     endpoints_have_ready_addresses,
     gateway_probe_reaches_maas_api,
     maas_gateway_listeners,
@@ -76,8 +75,10 @@ def minted_token(
     current_client_token: str,
     maas_control_plane_namespace: str,
     maas_controller_enabled_latest: None,
-    maas_gateway_and_policies: None,
-    maas_api_ready: None,
+    maas_gateway_api: None,
+    maas_request_ratelimit_policy: None,
+    maas_token_ratelimit_policy: None,
+    maas_api_gateway_reachable: None,
 ) -> str:
     """Mint a MaaS token once per test class and reuse it."""
     resp, body = mint_token(
@@ -123,7 +124,9 @@ def maas_models(
     base_url: str,
     maas_headers: dict,
     maas_inference_service_tinyllama: LLMInferenceService,
-    maas_gateway_and_policies,
+    maas_gateway_api: None,
+    maas_request_ratelimit_policy: None,
+    maas_token_ratelimit_policy: None,
 ):
     resp = get_maas_models_response(
         session=request_session_http,
@@ -455,8 +458,8 @@ def maas_token_for_actor(
     ocp_token_for_actor: str,
     maas_control_plane_namespace: str,
     maas_controller_enabled_latest: None,
-    maas_gateway_and_policies: None,
-    maas_api_ready: None,
+    maas_gateway_api: None,
+    maas_api_gateway_reachable: None,
 ) -> str:
     """
     Mint a MaaS token once per actor (admin / free / premium) and reuse it
@@ -560,7 +563,9 @@ def maas_inference_service_tinyllama(
     unprivileged_model_namespace: Namespace,
     model_service_account: ServiceAccount,
     maas_control_plane_namespace: str,
-    maas_gateway_and_policies: None,
+    maas_gateway_api: None,
+    maas_request_ratelimit_policy: None,
+    maas_token_ratelimit_policy: None,
 ) -> Generator[LLMInferenceService, None, None]:
     """
     TinyLlama S3-backed LLMInferenceService wired through MaaS for tests.
@@ -616,10 +621,10 @@ def maas_host(admin_client):
 @pytest.fixture(scope="class")
 def maas_gateway_rate_limits(
     admin_client: DynamicClient,
-    maas_gateway_and_policies: None,
-    maas_tier_mapping_cm,
+    maas_gateway_api: None,
     maas_request_ratelimit_policy: None,
     maas_token_ratelimit_policy: None,
+    maas_tier_mapping_cm,
 ) -> Generator[None, None, None]:
     with maas_gateway_rate_limits_patched(
         admin_client=admin_client,
@@ -636,65 +641,52 @@ def maas_gateway_api_hostname(admin_client: DynamicClient) -> str:
 
 
 @pytest.fixture(scope="session")
-def maas_gateway_and_policies(
-    maas_gateway_api: None,
-    maas_usage_policies: None,
-) -> None:
-    yield
-
-
-@pytest.fixture(scope="session")
 def maas_controller_enabled_latest(
     dsc_resource: DataScienceCluster,
-    maas_gateway_and_policies: None,
+    maas_gateway_api: None,
+    # maas_usage_policies: None,
+    maas_request_ratelimit_policy: None,
+    maas_token_ratelimit_policy: None,
 ) -> Generator[DataScienceCluster, None, None]:
-    original_components = dsc_resource.instance.spec.components or {}
-    kserve = original_components.get(DscComponents.KSERVE, {}) or {}
-    maas = kserve.get("modelsAsService", {}) or {}
+    """
+    Ensure MaaS (KServe modelsAsService) is MANAGED for the session.
+    On fresh/CI clusters we always need to set this explicitly.
+    """
+    component_patch = {
+        DscComponents.KSERVE: {"modelsAsService": {"managementState": DscComponents.ManagementState.MANAGED}}
+    }
 
-    if maas.get("managementState") == DscComponents.ManagementState.MANAGED:
+    with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
         dsc_resource.wait_for_condition(
             condition="ModelsAsServiceReady",
             status="True",
-            timeout=300,
+            timeout=900,
         )
-        yield dsc_resource
-
-    else:
-        component_patch = {
-            DscComponents.KSERVE: {"modelsAsService": {"managementState": DscComponents.ManagementState.MANAGED}}
-        }
-
-        with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
-            dsc_resource.wait_for_condition(
-                condition="ModelsAsServiceReady",
-                status="True",
-                timeout=900,
-            )
-            dsc_resource.wait_for_condition(
-                condition="Ready",
-                status="True",
-                timeout=600,
-            )
-            yield dsc_resource
-
         dsc_resource.wait_for_condition(
             condition="Ready",
             status="True",
             timeout=600,
         )
+        yield dsc_resource
 
 
 @pytest.fixture(scope="session")
 def maas_control_plane_namespace(admin_client: DynamicClient) -> str:
-    preferred = py_config.get("applications_namespace")
+    """
+    MaaS control-plane namespace is defined by the global pytest config.
+    It is either 'redhat-ods-applications' or 'opendatahub', never both.
+    """
+    namespace = py_config["applications_namespace"]
 
-    candidates = [ns for ns in [preferred, "redhat-ods-applications", "opendatahub"] if ns]
-
-    return detect_maas_control_plane_namespace(
-        admin_client=admin_client,
-        candidate_namespaces=candidates,
+    ns = Namespace(
+        client=admin_client,
+        name=namespace,
+        ensure_exists=False,
     )
+
+    assert ns.exists, f"MaaS control-plane namespace '{namespace}' does not exist"
+
+    return namespace
 
 
 @pytest.fixture(scope="session")
@@ -740,8 +732,7 @@ def maas_api_endpoints_ready(
     maas_control_plane_namespace: str,
     maas_api_deployment_available: None,
 ) -> None:
-    endpoints_ready = False
-    for endpoints_ready_sample in TimeoutSampler(
+    for _ in TimeoutSampler(
         wait_timeout=300,
         sleep=5,
         func=endpoints_have_ready_addresses,
@@ -749,12 +740,7 @@ def maas_api_endpoints_ready(
         namespace=maas_control_plane_namespace,
         name="maas-api",
     ):
-        endpoints_ready = bool(endpoints_ready_sample)
-        if endpoints_ready:
-            break
-
-    if not endpoints_ready:
-        pytest.fail("MaaS API endpoints are not ready: no endpoint addresses after waiting")
+        return
 
 
 @pytest.fixture(scope="class")
@@ -765,10 +751,7 @@ def maas_api_gateway_reachable(
 ) -> None:
     probe_url = f"{base_url}/v1/models"
 
-    last_status_code: int | None = None
-    last_response_body: str | None = None
-
-    for gateway_probe_sample in TimeoutSampler(
+    for gateway_reachable, _status_code, _response_text in TimeoutSampler(
         wait_timeout=300,
         sleep=5,
         func=gateway_probe_reaches_maas_api,
@@ -776,25 +759,8 @@ def maas_api_gateway_reachable(
         probe_url=probe_url,
         request_timeout_seconds=30,
     ):
-        gateway_reachable, status_code, response_text = gateway_probe_sample
-        last_status_code = status_code
-        last_response_body = response_text
-
         if gateway_reachable:
             return
-
-    pytest.fail(
-        "MaaS API is not reachable via Gateway yet. "
-        f"Last status={last_status_code}, "
-        f"body={(last_response_body or '')[:200]}"
-    )
-
-
-@pytest.fixture(scope="class")
-def maas_api_ready(
-    maas_api_gateway_reachable: None,
-) -> None:
-    return
 
 
 @pytest.fixture(scope="session")
@@ -880,11 +846,3 @@ def maas_token_ratelimit_policy(
         teardown=True,
     ):
         yield
-
-
-@pytest.fixture(scope="session")
-def maas_usage_policies(
-    maas_request_ratelimit_policy: None,
-    maas_token_ratelimit_policy: None,
-) -> None:
-    return
