@@ -19,8 +19,6 @@ from utilities.resources.token_rate_limit_policy import TokenRateLimitPolicy
 
 # from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.endpoints import Endpoints
-from ocp_resources.config_map import ConfigMap
-from ocp_resources.namespace import Namespace
 from utilities.constants import (
     MAAS_GATEWAY_NAME,
     MAAS_GATEWAY_NAMESPACE,
@@ -468,30 +466,6 @@ def maas_gateway_listeners(hostname: str) -> List[Dict[str, Any]]:
             },
         },
     ]
-
-
-def detect_maas_control_plane_namespace(
-    admin_client: DynamicClient,
-    candidate_namespaces: list[str],
-) -> str:
-    for ns in candidate_namespaces:
-        if not Namespace(client=admin_client, name=ns, ensure_exists=False).exists:
-            continue
-
-        cm = ConfigMap(
-            client=admin_client,
-            name="tier-to-group-mapping",
-            namespace=ns,
-            ensure_exists=False,
-        )
-        if cm.exists:
-            LOGGER.info(f"MaaS control-plane namespace detected via ConfigMap in namespace: {ns}")
-            return ns
-
-    raise RuntimeError(
-        "Required ConfigMap 'tier-to-group-mapping' was not found in any expected namespace. "
-        f"Checked namespaces: {candidate_namespaces}"
-    )
 
 
 def endpoints_have_ready_addresses(

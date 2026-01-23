@@ -55,8 +55,6 @@ CHAT_COMPLETIONS = OpenAIEnpoints.CHAT_COMPLETIONS
 
 MAAS_FREE_GROUP = "tier-free-users"
 MAAS_PREMIUM_GROUP = "tier-premium-users"
-DSC_NAME = "default"
-MAAS_DSC_COMPONENT_KEY = "modelsAsService"
 
 
 @pytest.fixture(scope="session")
@@ -644,14 +642,14 @@ def maas_gateway_api_hostname(admin_client: DynamicClient) -> str:
 def maas_controller_enabled_latest(
     dsc_resource: DataScienceCluster,
     maas_gateway_api: None,
-    # maas_usage_policies: None,
     maas_request_ratelimit_policy: None,
     maas_token_ratelimit_policy: None,
 ) -> Generator[DataScienceCluster, None, None]:
     """
     Ensure MaaS (KServe modelsAsService) is MANAGED for the session.
-    On fresh/CI clusters we always need to set this explicitly.
+    Restore DSC to original state on teardown.
     """
+
     component_patch = {
         DscComponents.KSERVE: {"modelsAsService": {"managementState": DscComponents.ManagementState.MANAGED}}
     }
@@ -668,6 +666,8 @@ def maas_controller_enabled_latest(
             timeout=600,
         )
         yield dsc_resource
+
+    dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=600)
 
 
 @pytest.fixture(scope="session")
@@ -726,13 +726,31 @@ def maas_api_deployment_available(
     )
 
 
+# @pytest.fixture(scope="class")
+# def maas_api_endpoints_ready(
+#     admin_client: DynamicClient,
+#     maas_control_plane_namespace: str,
+#     maas_api_deployment_available: None,
+# ) -> None:
+#     for _ in TimeoutSampler(
+#         wait_timeout=300,
+#         sleep=5,
+#         func=endpoints_have_ready_addresses,
+#         admin_client=admin_client,
+#         namespace=maas_control_plane_namespace,
+#         name="maas-api",
+#     ):
+
+#         return
+
+
 @pytest.fixture(scope="class")
 def maas_api_endpoints_ready(
     admin_client: DynamicClient,
     maas_control_plane_namespace: str,
     maas_api_deployment_available: None,
 ) -> None:
-    for _ in TimeoutSampler(
+    for ready in TimeoutSampler(
         wait_timeout=300,
         sleep=5,
         func=endpoints_have_ready_addresses,
@@ -740,7 +758,8 @@ def maas_api_endpoints_ready(
         namespace=maas_control_plane_namespace,
         name="maas-api",
     ):
-        return
+        if ready:
+            return
 
 
 @pytest.fixture(scope="class")
