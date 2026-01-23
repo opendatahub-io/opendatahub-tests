@@ -71,7 +71,6 @@ def minted_token(
     request_session_http,
     base_url: str,
     current_client_token: str,
-    maas_control_plane_namespace: str,
     maas_controller_enabled_latest: None,
     maas_gateway_api: None,
     maas_request_ratelimit_policy: None,
@@ -454,7 +453,6 @@ def maas_token_for_actor(
     request_session_http: requests.Session,
     base_url: str,
     ocp_token_for_actor: str,
-    maas_control_plane_namespace: str,
     maas_controller_enabled_latest: None,
     maas_gateway_api: None,
     maas_api_gateway_reachable: None,
@@ -560,7 +558,6 @@ def maas_inference_service_tinyllama(
     admin_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     model_service_account: ServiceAccount,
-    maas_control_plane_namespace: str,
     maas_gateway_api: None,
     maas_request_ratelimit_policy: None,
     maas_token_ratelimit_policy: None,
@@ -670,53 +667,19 @@ def maas_controller_enabled_latest(
     dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=600)
 
 
-# @pytest.fixture(scope="session")
-# def maas_control_plane_namespace(admin_client: DynamicClient) -> str:
-#     """
-#     MaaS control-plane namespace is defined by the global pytest config.
-#     It is either 'redhat-ods-applications' or 'opendatahub', never both.
-#     """
-#     namespace = py_config["applications_namespace"]
-
-#     ns = Namespace(
-#         client=admin_client,
-#         name=namespace,
-#         ensure_exists=True,
-#     )
-
-#     return namespace
-
-
-@pytest.fixture(scope="session")
-def maas_control_plane_namespace(admin_client: DynamicClient) -> str:
-    """
-    MaaS control-plane namespace is defined by the global pytest config.
-    """
-    namespace = py_config["applications_namespace"]
-
-    Namespace(
-        client=admin_client,
-        name=namespace,
-        ensure_exists=True,
-    )
-
-    return namespace
-
-
 @pytest.fixture(scope="session")
 def maas_tier_mapping_cm(
     admin_client: DynamicClient,
-    maas_control_plane_namespace: str,
 ) -> ConfigMap:
     config_map = ConfigMap(
         client=admin_client,
         name="tier-to-group-mapping",
-        namespace=maas_control_plane_namespace,
+        namespace=py_config["applications_namespace"],
         ensure_exists=True,
     )
 
     LOGGER.info(
-        f"MaaS tier mapping ConfigMap detected: namespace={maas_control_plane_namespace}, name={config_map.name}"
+        f"MaaS tier mapping ConfigMap detected: namespace={py_config['applications_namespace']}, name={config_map.name}"
     )
 
     return config_map
@@ -725,12 +688,11 @@ def maas_tier_mapping_cm(
 @pytest.fixture(scope="class")
 def maas_api_deployment_available(
     admin_client: DynamicClient,
-    maas_control_plane_namespace: str,
 ) -> None:
     maas_api_deployment = Deployment(
         client=admin_client,
         name="maas-api",
-        namespace=maas_control_plane_namespace,
+        namespace=py_config["applications_namespace"],
         ensure_exists=True,
     )
     maas_api_deployment.wait_for_condition(
@@ -743,7 +705,6 @@ def maas_api_deployment_available(
 @pytest.fixture(scope="class")
 def maas_api_endpoints_ready(
     admin_client: DynamicClient,
-    maas_control_plane_namespace: str,
     maas_api_deployment_available: None,
 ) -> None:
     for ready in TimeoutSampler(
@@ -751,7 +712,7 @@ def maas_api_endpoints_ready(
         sleep=5,
         func=endpoints_have_ready_addresses,
         admin_client=admin_client,
-        namespace=maas_control_plane_namespace,
+        namespace=py_config["applications_namespace"],
         name="maas-api",
     ):
         if ready:
