@@ -175,7 +175,7 @@ def installed_tempo_operator(admin_client: DynamicClient, model_namespace: Names
         operator_namespace=operator_ns.name,
         timeout=Timeout.TIMEOUT_15MIN,
         install_plan_approval="Automatic",
-        starting_csv="tempo-operator.v0.18.0-2",
+        starting_csv="tempo-operator.v0.19.0-2",
     )
 
     deployment = Deployment(
@@ -199,7 +199,6 @@ def installed_tempo_operator(admin_client: DynamicClient, model_namespace: Names
 @pytest.fixture(scope="class")
 def tempo_stack(
     admin_client: DynamicClient,
-    installed_tempo_operator: None,
     model_namespace: Namespace,
     minio_secret_otel: Secret,
 ) -> Generator[Any, Any, None]:
@@ -257,13 +256,6 @@ def tempo_stack(
             timeout=Timeout.TIMEOUT_10MIN,
         )
 
-        label_selector = f"app.kubernetes.io/instance={tempo_name}"
-        wait_for_pods_by_label(
-            client=admin_client,
-            namespace=model_namespace.name,
-            label_selector=label_selector,
-        )
-
         yield tempo_cr
 
 
@@ -281,14 +273,14 @@ def installed_opentelemetry_operator(admin_client: DynamicClient) -> Generator[N
 
     install_operator(
         admin_client=admin_client,
-        target_namespaces=[operator_ns.name],
+        target_namespaces=None,
         name=package_name,
         channel="stable",
         source="redhat-operators",
         operator_namespace=operator_ns.name,
         timeout=Timeout.TIMEOUT_15MIN,
         install_plan_approval="Automatic",
-        starting_csv="opentelemetry-operator.v0.135.0-1",
+        starting_csv="opentelemetry-operator.v0.140.0-1",
     )
 
     deployment = Deployment(
@@ -312,8 +304,6 @@ def installed_opentelemetry_operator(admin_client: DynamicClient) -> Generator[N
 @pytest.fixture(scope="class")
 def otel_collector(
     admin_client: DynamicClient,
-    installed_opentelemetry_operator: None,
-    tempo_stack,
     model_namespace: Namespace,
     minio_service_otel,
 ) -> Generator[OpenTelemetryCollector, Any, Any]:

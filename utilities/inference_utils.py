@@ -15,7 +15,7 @@ from ocp_resources.resource import get_client
 from ocp_resources.service import Service
 from pyhelper_utils.shell import run_command
 from simple_logger.logger import get_logger
-from timeout_sampler import TimeoutWatch, retry
+from timeout_sampler import TimeoutWatch, retry, TimeoutSampler
 
 from utilities.exceptions import InferenceResponseError, InvalidStorageArgumentError
 from utilities.infra import (
@@ -760,7 +760,6 @@ def create_isvc(
                         )
                         inference_service.clean_up()
                         inference_service.deploy()
-
                         break
 
             inference_service.wait_for_condition(
@@ -768,6 +767,31 @@ def create_isvc(
                 status=inference_service.Condition.Status.TRUE,
                 timeout=timeout_watch.remaining_time(),
             )
+
+            # Wait for the Model Status to transition to 'Loaded'
+            # We use a sampler because modelStatus can take a few seconds to update after Ready
+
+            _initial_status = getattr(inference_service.instance.status, "modelStatus", None)
+            if _initial_status and getattr(_initial_status, "states", None):
+
+                def _is_model_loaded() -> bool:
+                    m_status = getattr(inference_service.instance.status, "modelStatus", None)
+                    if m_status and getattr(m_status, "states", None):
+                        return (
+                            m_status.states.activeModelState == "Loaded"
+                            and m_status.states.targetModelState == "Loaded"
+                            and getattr(m_status, "transitionStatus", None) == "UpToDate"
+                        )
+                    return False
+
+                samples = TimeoutSampler(
+                    wait_timeout=timeout_watch.remaining_time(),
+                    sleep=5,
+                    func=_is_model_loaded,
+                )
+                for sample in samples:
+                    if sample:
+                        break
 
             # After the InferenceService reports Ready, the backing model should be fully loaded and up to date,
             # when modelStatus is reported by the runtime.

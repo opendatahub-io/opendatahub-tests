@@ -7,6 +7,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from tests.model_serving.model_runtime.model_validation.constant import (
     COMPLETION_QUERY,
+    EMBEDDING_QUERY,
     OPENAI_ENDPOINT_NAME,
     AUDIO_FILE_URL,
     AUDIO_FILE_LOCAL_PATH,
@@ -33,6 +34,13 @@ def validate_audio_inference_output(model_info: Any, completion_responses: Itera
     assert isinstance(model_info, (list, tuple)), "Model info should be a list or tuple"
     assert isinstance(completion_responses, (list, tuple)), "Completion responses should be a list or tuple"
     assert len(completion_responses) > 0, "Completion responses should not be empty"
+
+
+def validate_embedding_inference_output(model_info: Any, embedding_responses: Iterable[Any]) -> None:
+    assert model_info is not None, "Model info should not be None"
+    assert isinstance(model_info, (list, tuple)), "Model info should be a list or tuple"
+    assert isinstance(embedding_responses, (list, tuple)), "Embedding responses should be a list or tuple"
+    assert len(embedding_responses) > 0, "Embedding responses should not be empty"
 
 
 def fetch_tgis_response(  # type: ignore
@@ -88,6 +96,54 @@ def run_raw_inference(
 
 
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(min=1, max=6))
+def run_embedding_inference(
+    endpoint: str,
+    model_name: str,
+    url: Optional[str] = None,
+    pod_name: Optional[str] = None,
+    isvc: Optional[InferenceService] = None,
+    port: Optional[int] = Ports.REST_PORT,
+    embedding_query: list[dict[str, str]] = EMBEDDING_QUERY,
+) -> tuple[Any, list[Any]]:
+    LOGGER.info("Running embedding inference for model: %s on endpoint: %s", model_name, endpoint)
+    if url is not None:
+        LOGGER.info("Using provided URL for inference: %s", url)
+        inference_client = OpenAIClient(host=url, model_name=model_name, streaming=True)
+        embedding_responses = []
+        for query in embedding_query:
+            embedding_response = inference_client.request_http(
+                endpoint=OpenAIEnpoints.EMBEDDINGS,
+                query=query,
+            )
+            embedding_responses.append(embedding_response)
+        model_info = OpenAIClient.get_request_http(host=url, endpoint=OpenAIEnpoints.MODELS_INFO)
+        return model_info, embedding_responses
+    else:
+        LOGGER.info("Using port forwarding for inference on pod: %s", pod_name)
+        if pod_name is None or isvc is None or port is None:
+            raise ValueError("pod_name, isvc, and port are required when url is not provided")
+
+        with portforward.forward(
+            pod_or_service=pod_name,
+            namespace=isvc.namespace,
+            from_port=port,
+            to_port=port,
+        ):
+            if endpoint == "openai":
+                embedding_responses = []
+                inference_client = OpenAIClient(host=f"http://localhost:{port}", model_name=model_name, streaming=True)
+                for query in embedding_query:
+                    embedding_response = inference_client.request_http(endpoint=OpenAIEnpoints.EMBEDDINGS, query=query)
+                    embedding_responses.append(embedding_response)
+                model_info = OpenAIClient.get_request_http(
+                    host=f"http://localhost:{port}", endpoint=OpenAIEnpoints.MODELS_INFO
+                )
+                return model_info, embedding_responses
+            else:
+                raise NotSupportedError(f"{endpoint} endpoint for embedding inference")
+
+
+@retry(stop=stop_after_attempt(5), wait=wait_exponential(min=1, max=6))
 def run_audio_inference(
     endpoint: str,
     model_name: str,
@@ -98,7 +154,7 @@ def run_audio_inference(
     isvc: Optional[InferenceService] = None,
     port: Optional[int] = Ports.REST_PORT,
 ) -> tuple[Any, list[Any]]:
-    LOGGER.info(pod_name)
+    LOGGER.info("Running audio inference for model: %s on endpoint: %s", model_name, endpoint)
     download_audio_file(audio_file_url=audio_file_url, destination_path=audio_file_path)
 
     if url is not None:
@@ -177,6 +233,16 @@ def validate_raw_openai_inference_request(
             completion_responses,
             response_snapshot=response_snapshot,
         )
+    elif model_output_type == "embedding":
+        model_info, embedding_responses = run_embedding_inference(
+            pod_name=pod_name,
+            isvc=isvc,
+            port=port,
+            endpoint=OPENAI_ENDPOINT_NAME,
+            embedding_query=EMBEDDING_QUERY,
+            model_name=model_name,
+        )
+        validate_embedding_inference_output(model_info=model_info, embedding_responses=embedding_responses)
 
     else:
         raise NotSupportedError(f"Model output type {model_output_type} is not supported for raw inference request.")
