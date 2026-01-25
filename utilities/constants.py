@@ -80,6 +80,7 @@ class RuntimeTemplates:
     VLLM_ROCM: str = "vllm-rocm-runtime-template"
     VLLM_GAUDI: str = "vllm-gaudi-runtime-template"
     VLLM_SPYRE: str = "vllm-spyre-x86-runtime-template"
+    VLLM_CPU_x86: str = "vllm-cpu-x86-runtime-template"
     MLSERVER: str = f"{ModelFormat.MLSERVER}-runtime-template"
     TRITON_REST: str = "triton-rest-runtime-template"
     TRITON_GRPC: str = "triton-grpc-runtime-template"
@@ -129,7 +130,8 @@ class AcceleratorType:
     AMD: str = "amd"
     GAUDI: str = "gaudi"
     SPYRE: str = "spyre"
-    SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI, SPYRE]
+    CPU_x86: str = "cpu_x86"
+    SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI, SPYRE, CPU_x86]
 
 
 class ApiGroups:
@@ -223,6 +225,9 @@ class Labels:
 
     class Spyre:
         SPYRE_COM_GPU: str = "ibm.com/spyre_pf"
+
+    class CPU:
+        CPU_x86: str = "cpu"
 
     class Kueue:
         MANAGED: str = "kueue.openshift.io/managed"
@@ -448,7 +453,7 @@ class ContainerImages:
     """Centralized container images for various runtimes and models."""
 
     class VLLM:
-        CPU: str = "quay.io/pierdipi/vllm-cpu@sha256:f084b3c272ede8a899d3b5051e8aed57752ff4e759842e48120ada68d47b446a"
+        CPU: str = "quay.io/pierdipi/vllm-cpu@sha256:ce3a0c057394b2c332498f9742a17fd31b5cc2ef07db882d579fd157fe2c9a98"
 
     class MinIO:
         KSERVE: str = (

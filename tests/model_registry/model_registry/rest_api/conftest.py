@@ -1,4 +1,3 @@
-import time
 from typing import Any, Generator
 import os
 from kubernetes.dynamic import DynamicClient
@@ -169,8 +168,6 @@ def deploy_secure_mysql_and_mr(
         wait_for_pods_running(
             admin_client=admin_client, namespace_name=model_registry_namespace, number_of_consecutive_checks=6
         )
-        # TODO remove when RHOAIENG-41728 is addressed
-        time.sleep(60.0)  # noqa: FCN001
         yield mr
 
 

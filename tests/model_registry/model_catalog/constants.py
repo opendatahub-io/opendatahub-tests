@@ -49,9 +49,9 @@ HF_MODELS: dict[str, Any] = {
     "mixed": [
         "ibm-granite/granite-4.0-h-1b",
         "microsoft/phi-2",
+        "microsoft/Phi-4-mini-reasoning",
+        "microsoft/Phi-3.5-mini-instruct",
         "meta-llama/Llama-3.1-8B-Instruct",
-        "RedHatAI/phi-4-quantized.w8a8",
-        "RedHatAI/Qwen2.5-7B-Instruct",
     ],
     "granite": [
         "ibm-granite/granite-4.0-h-small",

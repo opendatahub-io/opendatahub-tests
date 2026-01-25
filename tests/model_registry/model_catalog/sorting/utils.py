@@ -406,6 +406,106 @@ def _verify_models_with_accuracy_sorted(
     return True
 
 
+def get_minimum_artifact_property_value(
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+    source_id: str,
+    model_name: str,
+    property_field: str,
+    artifact_filter_query: str | None = None,
+    sort_order: str = "ASC",
+    recommendations: bool = False,
+) -> float | None:
+    """
+    Get the minimum value of an artifact property for a given model.
+
+    Args:
+        model_catalog_rest_url: REST URL for model catalog
+        model_registry_rest_headers: Headers for model registry REST API
+        source_id: Source ID for the model
+        model_name: Name of the model
+        property_field: Property field to get minimum value for
+        artifact_filter_query: Optional filter query for artifacts (without "artifacts." prefix)
+        sort_order: Sort order for the artifact property
+        recommendations: Whether to filter to only recommended artifacts
+
+    Returns:
+        Minimum property value, or None if no artifacts found
+    """
+    # Build the artifacts endpoint URL
+    base_url = f"{model_catalog_rest_url[0]}sources/{source_id}/models/{model_name}/artifacts/performance"
+
+    params = {
+        "orderBy": property_field,
+        "sortOrder": sort_order,
+        "pageSize": 1,
+    }
+
+    if artifact_filter_query:
+        params["filterQuery"] = artifact_filter_query
+
+    if recommendations:
+        params["recommendations"] = "true"
+
+    response = execute_get_command(url=base_url, headers=model_registry_rest_headers, params=params)
+
+    items = response.get("items", [])
+    if not items:
+        return None
+
+    # Extract the property value from the first (minimum) artifact
+    property_name, value_type = property_field.rsplit(".", 1)
+    custom_props = items[0].get("customProperties", {})
+
+    if property_name not in custom_props:
+        return None
+
+    prop = custom_props[property_name]
+    return prop.get(value_type) if isinstance(prop, dict) else None
+
+
+def get_model_latencies(
+    model_names: list[str],
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+    source_id: str,
+    property_field: str,
+    artifact_filter_query: str,
+    sort_order: str,
+    recommendations: bool,
+) -> list[float]:
+    """
+    Fetch minimum artifact property values for a list of models.
+
+    Args:
+        model_names: List of model names
+        model_catalog_rest_url: REST URL for model catalog
+        model_registry_rest_headers: Headers for model registry REST API
+        source_id: Source ID for the models
+        property_field: Property field to get minimum value for
+        artifact_filter_query: Filter query for artifacts (without "artifacts." prefix)
+        sort_order: Sort order for the artifact property
+        recommendations: Whether to filter to only recommended artifacts
+
+    Returns:
+        List of minimum property values for each model
+    """
+    latencies = []
+    for model_name in model_names:
+        latency = get_minimum_artifact_property_value(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            source_id=source_id,
+            model_name=model_name,
+            property_field=property_field,
+            artifact_filter_query=artifact_filter_query,
+            sort_order=sort_order,
+            recommendations=recommendations,
+        )
+        latencies.append(latency)
+    return latencies
+
+
 def assert_model_sorting(
     order_by: str,
     sort_order: str | None,

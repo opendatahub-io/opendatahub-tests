@@ -48,6 +48,7 @@ class TestFilterOptionsEndpoint:
         ],
         indirect=["user_token_for_api_calls"],
     )
+    @pytest.mark.sanity
     def test_filter_options_endpoint_validation(
         self: Self,
         model_catalog_rest_url: list[str],

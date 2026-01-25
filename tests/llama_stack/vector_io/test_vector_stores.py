@@ -54,6 +54,15 @@ LOGGER = get_logger(name=__name__)
             {"vector_io_provider": "pgvector"},
             id="vector_io_provider_pgvector",
         ),
+        pytest.param(
+            {"name": "test-llamastack-vector-stores", "randomize_name": True},
+            {
+                "llama_stack_storage_size": "2Gi",
+                "vector_io_provider": "qdrant-remote",
+            },
+            {"vector_io_provider": "qdrant-remote"},
+            id="vector_io_provider_qdrant-remote",
+        ),
     ],
     indirect=True,
 )

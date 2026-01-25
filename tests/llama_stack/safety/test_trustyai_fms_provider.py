@@ -1,6 +1,5 @@
 import pytest
 import yaml
-from llama_stack_client.types.chat.completion_create_params import MessageOpenAIUserMessageParam
 from simple_logger.logger import get_logger
 
 from tests.llama_stack.constants import LlamaStackProviders
@@ -88,10 +87,10 @@ class TestLlamaStackFMSGuardrailsProvider:
         run_shields_response = llama_stack_client.safety.run_shield(
             shield_id=SECURE_SHIELD_ID,
             messages=[
-                MessageOpenAIUserMessageParam(
-                    content="My email is johndoe@example.com",
-                    role="user",
-                )
+                {
+                    "content": "My email is johndoe@example.com",
+                    "role": "user",
+                }
             ],
             params={},
         )

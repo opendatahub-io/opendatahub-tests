@@ -225,3 +225,18 @@ AND EXISTS (
 )
 ORDER BY ap.double_value {sort_order};
 """
+
+# SQL query for getting models by source ID
+GET_MODELS_BY_SOURCE_ID_DB_QUERY = """
+SELECT DISTINCT c.name as model_name
+FROM "Context" c
+WHERE c.type_id = (SELECT id FROM "Type" WHERE name = 'kf.CatalogModel')
+AND EXISTS (
+    SELECT 1
+    FROM "ContextProperty" cp
+    WHERE cp.context_id = c.id
+    AND cp.name = 'source_id'
+    AND cp.string_value = '{source_id}'
+)
+ORDER BY model_name;
+"""

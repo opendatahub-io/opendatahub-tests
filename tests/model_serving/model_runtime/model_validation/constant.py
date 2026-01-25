@@ -8,6 +8,7 @@ ACCELERATOR_IDENTIFIER: dict[str, str] = {
     AcceleratorType.AMD: "amd.com/gpu",
     AcceleratorType.GAUDI: "habana.ai/gaudi",
     AcceleratorType.SPYRE: Labels.Spyre.SPYRE_COM_GPU,
+    AcceleratorType.CPU_x86: Labels.CPU.CPU_x86,
 }
 
 TEMPLATE_MAP: dict[str, str] = {
@@ -15,6 +16,7 @@ TEMPLATE_MAP: dict[str, str] = {
     AcceleratorType.AMD: RuntimeTemplates.VLLM_ROCM,
     AcceleratorType.GAUDI: RuntimeTemplates.VLLM_GAUDI,
     AcceleratorType.SPYRE: RuntimeTemplates.VLLM_SPYRE,
+    AcceleratorType.CPU_x86: RuntimeTemplates.VLLM_CPU_x86,
 }
 
 
@@ -66,6 +68,19 @@ CHAT_QUERY: list[list[dict[str, str]]] = [
             "clearly a bunch of no-talent hacks, and 2017 was a terrible year for games anyway.",
         },
     ],
+]
+
+EMBEDDING_QUERY: list[dict[str, str]] = [
+    {
+        "text": "What are the key benefits of renewable energy sources compared to fossil fuels?",
+    },
+    {"text": "Translate the following English sentence into Spanish, German, and Mandarin: 'Knowledge is power.'"},
+    {"text": "Write a poem about the beauty of the night sky and the mysteries it holds."},
+    {"text": "Explain the significance of the Great Wall of China in history and its impact on modern tourism."},
+    {"text": "Discuss the ethical implications of using artificial intelligence in healthcare decision-making."},
+    {
+        "text": "Summarize the main events of the Apollo 11 moon landing and its importance in space exploration history."  # noqa: E122, E501
+    },
 ]
 
 PULL_SECRET_ACCESS_TYPE: str = '["Pull"]'

@@ -50,7 +50,7 @@ class TestLlamaStackInferenceEmbeddings:
 
         # Embed single input text with encoding_format=float (the returned embedding item is a list of floats)
         embeddings_response = unprivileged_llama_stack_client.embeddings.create(
-            model=llama_stack_models.embedding_model.identifier,
+            model=llama_stack_models.embedding_model.id,
             input="The food was delicious and the waiter...",
             encoding_format="float",
         )
@@ -63,7 +63,7 @@ class TestLlamaStackInferenceEmbeddings:
         # Embed single input text with encoding_format=base64  (the returned embedding item is
         # a single base64-encoded string)
         embeddings_response = unprivileged_llama_stack_client.embeddings.create(
-            model=llama_stack_models.embedding_model.identifier,
+            model=llama_stack_models.embedding_model.id,
             input="The food was delicious and the waiter...",
             encoding_format="base64",
         )
@@ -74,7 +74,7 @@ class TestLlamaStackInferenceEmbeddings:
         # Embed multiple input sets with encoding_format=float (each returned embedding item is a list of floats)
         input_list = ["Input text 1", "Input text 1", "Input text 1"]
         embeddings_response = unprivileged_llama_stack_client.embeddings.create(
-            model=llama_stack_models.embedding_model.identifier, input=input_list, encoding_format="float"
+            model=llama_stack_models.embedding_model.id, input=input_list, encoding_format="float"
         )
         assert isinstance(embeddings_response, CreateEmbeddingsResponse)
         assert len(embeddings_response.data) == len(input_list)
@@ -86,7 +86,7 @@ class TestLlamaStackInferenceEmbeddings:
         # Embed multiple input sets with base64 encoding format (each returned embedding a single base64-encoded string)
         input_list = ["Input text 1", "Input text 1", "Input text 1"]
         embeddings_response = unprivileged_llama_stack_client.embeddings.create(
-            model=llama_stack_models.embedding_model.identifier, input=input_list, encoding_format="base64"
+            model=llama_stack_models.embedding_model.id, input=input_list, encoding_format="base64"
         )
         assert isinstance(embeddings_response, CreateEmbeddingsResponse)
         assert len(embeddings_response.data) == len(input_list)
