@@ -424,6 +424,12 @@ vLLM_CONFIG: dict[str, dict[str, Any]] = {
 
 RHOAI_OPERATOR_NAMESPACE = "redhat-ods-operator"
 OPENSHIFT_OPERATORS: str = "openshift-operators"
+
+MAAS_GATEWAY_NAME: str = "maas-default-gateway"
+MAAS_GATEWAY_NAMESPACE: str = "openshift-ingress"
+MAAS_RATE_LIMIT_POLICY_NAME: str = "gateway-rate-limits"
+MAAS_TOKEN_RATE_LIMIT_POLICY_NAME: str = "gateway-token-rate-limits"
+
 MARIADB: str = "mariadb"
 MODEL_REGISTRY_CUSTOM_NAMESPACE: str = "model-registry-custom-ns"
 THANOS_QUERIER_ADDRESS = "https://thanos-querier.openshift-monitoring.svc:9092"

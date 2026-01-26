@@ -1,4 +1,5 @@
 from typing import Any, Generator
+import threading
 
 import pytest
 from _pytest.fixtures import FixtureRequest
@@ -9,7 +10,10 @@ from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from simple_logger.logger import get_logger
-from tests.model_serving.model_runtime.vllm.utils import validate_supported_quantization_schema
+from tests.model_serving.model_runtime.vllm.utils import (
+    validate_supported_quantization_schema,
+    kserve_s3_endpoint_secret,
+)
 from tests.model_serving.model_runtime.vllm.constant import ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES, TEMPLATE_MAP
 from utilities.manifests.vllm import VLLM_INFERENCE_CONFIG
 
@@ -17,19 +21,52 @@ from utilities.constants import (
     KServeDeploymentType,
     RuntimeTemplates,
     Labels,
+    ModelAndFormat,
+    THANOS_QUERIER_ADDRESS,
 )
 from tests.model_serving.model_server.utils import (
     run_concurrent_load_for_keda_scaling,
 )
-from utilities.constants import (
-    ModelAndFormat,
-)
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
-from utilities.constants import THANOS_QUERIER_ADDRESS
-from syrupy.extensions.json import JSONSnapshotExtension
 
 LOGGER = get_logger(name=__name__)
+
+
+@pytest.fixture(scope="class")
+def keda_endpoint_s3_secret(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    aws_access_key_id: str,
+    aws_secret_access_key: str,
+    models_s3_bucket_region: str,
+    models_s3_bucket_endpoint: str,
+) -> Generator[Secret, None, None]:
+    """Create S3 endpoint secret for KEDA GPU tests using model_namespace."""
+    with kserve_s3_endpoint_secret(
+        admin_client=admin_client,
+        name="models-bucket-secret",
+        namespace=model_namespace.name,
+        aws_access_key=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
+        aws_s3_region=models_s3_bucket_region,
+        aws_s3_endpoint=models_s3_bucket_endpoint,
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
+def keda_model_service_account(
+    admin_client: DynamicClient, keda_endpoint_s3_secret: Secret
+) -> Generator[ServiceAccount, Any, Any]:
+    """Create service account for KEDA GPU tests using model_namespace."""
+    with ServiceAccount(
+        client=admin_client,
+        namespace=keda_endpoint_s3_secret.namespace,
+        name="models-bucket-sa",
+        secrets=[{"name": keda_endpoint_s3_secret.name}],
+    ) as sa:
+        yield sa
 
 
 def create_keda_auto_scaling_config(
@@ -102,7 +139,7 @@ def stressed_keda_vllm_inference_service(
     vllm_cuda_serving_runtime: ServingRuntime,
     supported_accelerator_type: str,
     s3_models_storage_uri: str,
-    model_service_account: ServiceAccount,
+    keda_model_service_account: ServiceAccount,
 ) -> Generator[InferenceService, Any, Any]:
     isvc_kwargs = {
         "client": admin_client,
@@ -111,7 +148,7 @@ def stressed_keda_vllm_inference_service(
         "runtime": vllm_cuda_serving_runtime.name,
         "storage_uri": s3_models_storage_uri,
         "model_format": vllm_cuda_serving_runtime.instance.spec.supportedModelFormats[0].name,
-        "model_service_account": model_service_account.name,
+        "model_service_account": keda_model_service_account.name,
         "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.RAW_DEPLOYMENT),
         "autoscaler_mode": "keda",
         "external_route": True,
@@ -153,11 +190,17 @@ def stressed_keda_vllm_inference_service(
 
     with create_isvc(**isvc_kwargs) as isvc:
         isvc.wait_for_condition(condition=isvc.Condition.READY, status="True")
-        run_concurrent_load_for_keda_scaling(
-            isvc=isvc,
-            inference_config=VLLM_INFERENCE_CONFIG,
-            response_snapshot=response_snapshot,
+        load_thread = threading.Thread(
+            target=run_concurrent_load_for_keda_scaling,
+            kwargs={
+                "isvc": isvc,
+                "inference_config": VLLM_INFERENCE_CONFIG,
+                "num_concurrent": 20,
+                "duration": 600,
+            },
+            daemon=True,
         )
+        load_thread.start()
         yield isvc
 
 
@@ -198,8 +241,3 @@ def stressed_ovms_keda_inference_service(
 def skip_if_no_supported_gpu_type(supported_accelerator_type: str) -> None:
     if not supported_accelerator_type:
         pytest.skip("Accelartor type is not provide,vLLM test can not be run on CPU")
-
-
-@pytest.fixture
-def response_snapshot(snapshot: Any) -> Any:
-    return snapshot.use_extension(extension_class=JSONSnapshotExtension)
