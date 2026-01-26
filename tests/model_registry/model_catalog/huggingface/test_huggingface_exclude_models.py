@@ -46,7 +46,7 @@ pytestmark = [
             ],
             ["ibm-granite/granite-4.0-h-1b", "microsoft/phi-2"],
             id="test_model_exclusion_specific_models",
-            marks=(pytest.mark.install, pytest.mark.xfail(reason="RHOAIENG-42506: crashes the model catalog pod")),
+            marks=pytest.mark.install,
         ),
     ],
     indirect=["updated_catalog_config_map"],
