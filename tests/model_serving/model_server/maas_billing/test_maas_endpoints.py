@@ -20,6 +20,7 @@ LOGGER = get_logger(name=__name__)
     indirect=True,
 )
 class TestMaasEndpoints:
+    @pytest.mark.sanity
     def test_model(
         self,
         maas_models: list,
@@ -31,6 +32,7 @@ class TestMaasEndpoints:
         first = maas_models[0]
         assert "id" in first, "model entry missing 'id'"
 
+    @pytest.mark.sanity
     def test_chat_completions(
         self,
         request_session_http: requests.Session,
