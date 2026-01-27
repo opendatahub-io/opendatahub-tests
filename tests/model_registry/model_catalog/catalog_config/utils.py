@@ -10,14 +10,13 @@ from timeout_sampler import retry, TimeoutExpiredError
 
 from ocp_resources.pod import Pod
 from ocp_resources.config_map import ConfigMap
-from ocp_resources.resource import ResourceEditor
 from tests.model_registry.model_catalog.constants import (
     DEFAULT_CATALOGS,
     REDHAT_AI_CATALOG_ID,
     REDHAT_AI_CATALOG_NAME,
 )
 from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG
-from tests.model_registry.utils import get_model_catalog_pod, wait_for_model_catalog_api
+from tests.model_registry.utils import get_model_catalog_pod
 from utilities.constants import Timeout
 from tests.model_registry.model_catalog.utils import (
     get_models_from_catalog_api,
@@ -173,6 +172,87 @@ def validate_model_filtering_consistency(
         )
 
     return True, "Validation passed"
+
+
+def validate_filter_test_result(
+    expected_models: set[str],
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+    model_registry_namespace: str,
+    filter_type: str = "filter",
+) -> None:
+    """
+    Utility function to validate filtering test results.
+
+    Performs common validation steps:
+    1. Wait for API models to match expected set
+    2. Get database models
+    3. Validate API/DB consistency
+    4. Assert expected models match actual
+    5. Log success message
+
+    Args:
+        expected_models: Set of expected model names after filtering
+        model_catalog_rest_url: Model catalog REST API URL
+        model_registry_rest_headers: Headers for API requests
+        model_registry_namespace: Kubernetes namespace
+        filter_type: Type of filter for logging (e.g., "inclusion", "exclusion")
+    """
+    # Wait for API models to match expected set
+    api_models = wait_for_model_set_match(
+        model_catalog_rest_url=model_catalog_rest_url,
+        model_registry_rest_headers=model_registry_rest_headers,
+        source_label=REDHAT_AI_CATALOG_NAME,
+        expected_models=expected_models,
+    )
+
+    # Get database models
+    db_models = get_models_from_database_by_source(source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace)
+
+    # Validate consistency between API and database
+    is_valid, error_msg = validate_model_filtering_consistency(api_models=api_models, db_models=db_models)
+    assert is_valid, error_msg
+
+    # Validate expected models match actual
+    assert api_models == expected_models, f"Expected models: {expected_models}, got {api_models}"
+
+    LOGGER.info(f"SUCCESS: {len(api_models)} models after {filter_type} filter")
+
+
+def validate_source_disabling_result(
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+    model_registry_namespace: str,
+) -> None:
+    """
+    Utility function to validate source disabling test results.
+
+    Performs validation steps:
+    1. Wait for all models to be removed (count = 0)
+    2. Verify database is cleaned
+    3. Log success message
+
+    Args:
+        model_catalog_rest_url: Model catalog REST API URL
+        model_registry_rest_headers: Headers for API requests
+        model_registry_namespace: Kubernetes namespace
+    """
+    # Wait for models to be removed
+    try:
+        wait_for_model_count_change(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            source_label=REDHAT_AI_CATALOG_NAME,
+            expected_count=0,
+        )
+    except TimeoutExpiredError as e:
+        pytest.fail(f"Expected all models to be removed when source is disabled: {e}")
+
+    # Verify database is also cleaned
+    db_models = get_models_from_database_by_source(source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace)
+    assert len(db_models) == 0, f"Database should be clean when source disabled, found: {db_models}"
+
+    LOGGER.info("SUCCESS: Source disabling removed all models")
 
 
 def modify_catalog_source(
@@ -397,7 +477,7 @@ def validate_cleanup_logging(
         client=client, model_registry_namespace=namespace, label_selector="app=model-catalog"
     )[0]
 
-    log_content = model_catalog_pod.log(container="catalog", tail_lines=200)
+    log_content = model_catalog_pod.log(container="catalog")
     found_patterns = []
 
     # Check for expected patterns
@@ -414,171 +494,28 @@ def filter_models_by_pattern(all_models: set[str], pattern: str) -> set[str]:
     return {model for model in all_models if pattern in model}
 
 
-def execute_inclusion_exclusion_filter_test(
-    filter_type: str,
-    pattern: str,
-    filter_value: str,
-    baseline_models: set[str],
-    admin_client: DynamicClient,
-    model_registry_namespace: str,
-    model_catalog_rest_url: list[str],
-    model_registry_rest_headers: dict[str, str],
-) -> None:
-    """
-    Common implementation for inclusion/exclusion filter tests.
-
-    Args:
-        filter_type: "inclusion" or "exclusion"
-        pattern: Pattern to match in model names (e.g. "granite", "prometheus")
-        filter_value: Filter value to apply (e.g. "*granite*", "*prometheus*")
-        baseline_models: Set of all available models from baseline
-        admin_client: Kubernetes dynamic client
-        model_registry_namespace: Model registry namespace
-        model_catalog_rest_url: Model catalog REST API URLs
-        model_registry_rest_headers: Headers for model registry requests
-    """
-    # Calculate expected models based on filter type
-    if filter_type == "inclusion":
-        expected_models = filter_models_by_pattern(all_models=baseline_models, pattern=pattern)
-        test_description = f"{pattern} model inclusion filter"
-    else:  # exclusion
-        pattern_models = filter_models_by_pattern(all_models=baseline_models, pattern=pattern)
-        expected_models = baseline_models - pattern_models
-        test_description = f"{pattern} model exclusion filter"
-
-    LOGGER.info(f"Testing {test_description}")
-
-    # Apply filter based on type
-    if filter_type == "inclusion":
-        patch_info = modify_catalog_source(
-            admin_client=admin_client,
-            namespace=model_registry_namespace,
-            source_id=REDHAT_AI_CATALOG_ID,
-            included_models=[filter_value],
-        )
-    else:  # exclusion
-        patch_info = modify_catalog_source(
-            admin_client=admin_client,
-            namespace=model_registry_namespace,
-            source_id=REDHAT_AI_CATALOG_ID,
-            excluded_models=[filter_value],
-        )
-
-    with ResourceEditor(patches={patch_info["configmap"]: patch_info["patch"]}):
-        wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
-
-        try:
-            api_models = wait_for_model_set_match(
-                model_catalog_rest_url=model_catalog_rest_url,
-                model_registry_rest_headers=model_registry_rest_headers,
-                source_label=REDHAT_AI_CATALOG_NAME,
-                expected_models=expected_models,
-            )
-        except TimeoutExpiredError as e:
-            pytest.fail(f"Timeout waiting for {pattern} models to appear. Expected: {expected_models}, {e}")
-
-        db_models = get_models_from_database_by_source(
-            source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
-        )
-
-        # Validate consistency
-        is_valid, error_msg = validate_model_filtering_consistency(api_models=api_models, db_models=db_models)
-        assert is_valid, error_msg
-
-        # Validate expected models match actual
-        assert api_models == expected_models, f"Expected {test_description}: {expected_models}, got {api_models}"
-
-        LOGGER.info(f"SUCCESS: {len(api_models)} {pattern} models {filter_type}")
-
-
 @retry(wait_timeout=300, sleep=10, exceptions_dict={Exception: []}, print_log=False)
-def _validate_baseline_models(
+def wait_for_catalog_source_restore(
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
-    model_registry_namespace: str,
-    expected_models: set[str],
     expected_count: int,
-) -> None:
+    source_label: str,
+) -> bool:
     """
-    Validate that baseline model expectations are met.
-    Raises exception if validation fails (triggers retry).
-    Returns None if successful (stops retry).
+    Waits for the source api to return a specified number of models as expected
     """
     # Fetch current models from API
     api_response = get_models_from_catalog_api(
         model_catalog_rest_url=model_catalog_rest_url,
         model_registry_rest_headers=model_registry_rest_headers,
         source_label="Red Hat AI",
+        page_size=1000,
     )
-    api_models = {model["name"] for model in api_response.get("items", [])}
-
-    # Fetch current models from database
-    db_models = get_models_from_database_by_source(source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace)
-
-    count = len(api_models)
-
+    model_count = api_response.get("size")
+    LOGGER.warning(f"Model count: {model_count}, expected {expected_count}")
     # Validate all expectations - raise on any failure
-    if count != expected_count:
-        raise AssertionError(f"Expected {expected_count} models, got {count}")
+    if model_count != expected_count:
+        raise AssertionError(f"Expected {expected_count} models, got {model_count}")
 
-    if api_models != db_models:
-        raise AssertionError(f"API models {api_models} don't match database models {db_models}")
-
-    if api_models != expected_models:
-        raise AssertionError(f"Models {api_models} don't match expected set {expected_models}")
-
-    # Additional category validation
-    granite_models = {model for model in api_models if "granite" in model}
-    prometheus_models = {model for model in api_models if "prometheus" in model}
-
-    if len(granite_models) != 6 or len(prometheus_models) != 1:
-        raise AssertionError(
-            f"""Expected 6 granite + 1 prometheus models, \
-            got {len(granite_models)} granite + {len(prometheus_models)} prometheus"""
-        )
-
-    LOGGER.info("Baseline model validation successful: 7 models (6 granite, 1 prometheus)")
+    LOGGER.info("Found expected number of models: %s for source: %s", expected_count, source_label)
     return True
-
-
-def ensure_baseline_model_state(
-    model_catalog_rest_url: list[str],
-    model_registry_rest_headers: dict[str, str],
-    model_registry_namespace: str,
-) -> None:
-    """
-    Utility function to ensure that our baseline assumptions about the model data are correct.
-    This should be called at the end of tests to ensure state consistency for subsequent tests.
-    Uses @retry decorator for automatic polling (300s timeout, 10s interval) and eventual reconciliation.
-
-    Args:
-        model_catalog_rest_url: URL for model catalog API
-        model_registry_rest_headers: Headers for API requests
-        model_registry_namespace: Namespace for model registry
-
-    Raises:
-        pytest.FailError: If baseline state cannot be achieved after timeout
-    """
-    # Expected baseline data
-    expected_models = {
-        "granite-3.1-8b-lab-v1",
-        "granite-7b-redhat-lab",
-        "granite-8b-code-base",
-        "granite-8b-code-instruct",
-        "granite-8b-lab-v1",
-        "granite-8b-starter-v1",
-        "prometheus-8x7b-v2-0",
-    }
-    expected_count = 7
-
-    # Use retry decorator for automatic polling and eventual reconciliation
-    try:
-        _validate_baseline_models(
-            model_catalog_rest_url=model_catalog_rest_url,
-            model_registry_rest_headers=model_registry_rest_headers,
-            model_registry_namespace=model_registry_namespace,
-            expected_models=expected_models,
-            expected_count=expected_count,
-        )
-    except TimeoutExpiredError:
-        pytest.fail("Failed to restore baseline model state after 300s timeout")

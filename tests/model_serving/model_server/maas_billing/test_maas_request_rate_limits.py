@@ -55,6 +55,7 @@ class TestMaasRequestRateLimits:
     def scenario(self):
         return SCENARIO_REQUEST_RATE
 
+    @pytest.mark.sanity
     def test_request_rate_limits(
         self,
         ocp_token_for_actor: str,
