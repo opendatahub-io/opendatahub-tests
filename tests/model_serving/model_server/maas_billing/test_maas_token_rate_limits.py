@@ -56,6 +56,7 @@ class TestMaasTokenRateLimits:
     def scenario(self):
         return SCENARIO_TOKEN_RATE
 
+    @pytest.mark.sanity
     def test_token_rate_limits(
         self,
         ocp_token_for_actor: str,

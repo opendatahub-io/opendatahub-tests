@@ -1,11 +1,13 @@
 import random
 from typing import Generator, Any
 import requests
+import re
 
 from simple_logger.logger import get_logger
 import yaml
 import pytest
 from kubernetes.dynamic import DynamicClient
+from timeout_sampler import TimeoutSampler
 
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.resource import ResourceEditor
@@ -34,9 +36,103 @@ from tests.model_registry.utils import (
 )
 from utilities.infra import get_openshift_token, create_inference_token, login_with_user_password
 from tests.model_registry.model_catalog.catalog_config.utils import get_models_from_database_by_source
-
+from kubernetes.dynamic.exceptions import NotFoundError
+from pytest_testconfig import config as py_config
 
 LOGGER = get_logger(name=__name__)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def catalog_pod_model_counts(
+    admin_client: DynamicClient,
+    recreated_model_catalog_configmap: ConfigMap,
+) -> dict[str, int]:
+    """
+    Session-scoped auto-use fixture that extracts model counts from catalog pod logs.
+
+    Scrapes logs for earliest occurrences of:
+    - "redhat_ai_validated_models: loaded x models"
+    - "redhat_ai_models: loaded y models"
+
+    Returns:
+        Dictionary with keys "redhat_ai_validated_models" and "redhat_ai_models"
+        containing the extracted model counts
+    """
+    # Get the model catalog pod
+    namespace_name = py_config["model_registry_namespace"]
+    catalog_pods = get_model_catalog_pod(client=admin_client, model_registry_namespace=namespace_name)
+    assert len(catalog_pods) > 0, f"No model catalog pods found in namespace {namespace_name}"
+
+    catalog_pod = catalog_pods[0]  # Use the first pod if multiple exist
+
+    # Get pod logs
+    logs = catalog_pod.log(container="catalog")
+
+    # Define regex patterns for extraction
+    patterns = {
+        "redhat_ai_validated_models": r"redhat_ai_validated_models: loaded (\d+) models",
+        "redhat_ai_models": r"redhat_ai_models: loaded (\d+) models",
+    }
+
+    # Extract counts
+    model_counts = {}
+    for key, pattern in patterns.items():
+        match = re.search(pattern, logs)
+        if match:
+            model_counts[key] = int(match.group(1))
+        else:
+            LOGGER.warning(f"Pattern '{pattern}' not found in catalog pod logs")
+            model_counts[key] = 0  # Default to 0 if not found
+
+    LOGGER.info(f"Extracted model counts from catalog pod logs: {model_counts}")
+    return model_counts
+
+
+@pytest.fixture(scope="session")
+def recreated_model_catalog_configmap(
+    admin_client: DynamicClient,
+) -> ConfigMap:
+    """
+    Session-scoped fixture that deletes the DEFAULT_CUSTOM_MODEL_CATALOG ConfigMap
+    and waits for it to be automatically recreated, and cleans up catalog pod, to start with a fresh log
+
+    Returns:
+        ConfigMap: The recreated ConfigMap instance
+    """
+    namespace_name = py_config["model_registry_namespace"]
+    # TODO: RHOAIENG-46741 would require changing this to look for configmaps based on label
+    # Get the existing ConfigMap
+    configmap = ConfigMap(
+        name=DEFAULT_CUSTOM_MODEL_CATALOG, client=admin_client, namespace=namespace_name, ensure_exists=True
+    )
+
+    LOGGER.info(f"Deleting ConfigMap {DEFAULT_CUSTOM_MODEL_CATALOG} to test recreation")
+
+    # Delete the ConfigMap
+    configmap.delete()
+
+    LOGGER.info(f"ConfigMap {DEFAULT_CUSTOM_MODEL_CATALOG} deleted, waiting for recreation")
+
+    # Wait for it to be recreated using TimeoutSampler
+    recreated_configmap = ConfigMap(
+        name=DEFAULT_CUSTOM_MODEL_CATALOG,
+        client=admin_client,
+        namespace=namespace_name,
+    )
+
+    # Use TimeoutSampler to wait for recreation (2 minutes timeout)
+    for sample in TimeoutSampler(
+        wait_timeout=120,  # 2 minutes
+        sleep=5,
+        func=lambda: recreated_configmap.exists,
+        exceptions_dict={NotFoundError: []},
+    ):
+        if sample:  # ConfigMap exists
+            break
+
+    LOGGER.info(f"ConfigMap {DEFAULT_CUSTOM_MODEL_CATALOG} recreated successfully")
+    wait_for_model_catalog_pod_ready_after_deletion(client=admin_client, model_registry_namespace=namespace_name)
+    return recreated_configmap
 
 
 @pytest.fixture()
