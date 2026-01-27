@@ -4,7 +4,6 @@ from timeout_sampler import TimeoutSampler
 
 from tests.model_serving.model_server.maas_billing.utils import (
     verify_chat_completions,
-    revoke_token,
 )
 
 LOGGER = get_logger(name=__name__)
@@ -20,26 +19,29 @@ ACTORS = [
     "maas_premium_group",
 )
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace",
+    "unprivileged_model_namespace, ocp_token_for_actor, actor_label",
     [
         pytest.param(
             {"name": "llm", "modelmesh-enabled": False},
-            id="maas-billing-namespace",
-        )
+            {"type": "free"},
+            "free",
+            id="maas-billing-namespace-free",
+        ),
+        pytest.param(
+            {"name": "llm", "modelmesh-enabled": False},
+            {"type": "premium"},
+            "premium",
+            id="maas-billing-namespace-premium",
+        ),
     ],
-    indirect=True,
-)
-@pytest.mark.parametrize(
-    "ocp_token_for_actor, actor_label",
-    ACTORS,
-    indirect=["ocp_token_for_actor"],
+    indirect=["unprivileged_model_namespace", "ocp_token_for_actor"],
     scope="class",
 )
 class TestMaasTokenRevokeFreePremium:
     """
     For FREE and PREMIUM actors:
-    - MaaS token works for /v1/models and /v1/chat/completions
-    - revoke succeeds (DELETE /v1/tokens revokes ALL tokens for that user)
+    - MaaS token works for /v1/models and /v1/chat/completions (precondition fixture)
+    - revoke succeeds (DELETE /v1/tokens revokes ALL tokens for that user) (action fixture)
     - token becomes invalid after revoke (401/403), allowing propagation time
     """
 
@@ -48,41 +50,15 @@ class TestMaasTokenRevokeFreePremium:
         request_session_http,
         base_url: str,
         model_url: str,
-        ocp_token_for_actor: str,
         actor_label: str,
-        maas_token_for_actor: str,
         maas_headers_for_actor: dict,
-        maas_models_response_for_actor,
+        ensure_working_maas_token_pre_revoke,
+        revoke_maas_tokens_for_actor,
     ) -> None:
 
-        models_list = maas_models_response_for_actor.json().get("data", [])
+        models_list = ensure_working_maas_token_pre_revoke
 
-        verify_chat_completions(
-            request_session_http=request_session_http,
-            model_url=model_url,
-            headers=maas_headers_for_actor,
-            models_list=models_list,
-            prompt_text="hi",
-            max_tokens=16,
-            request_timeout_seconds=60,
-            log_prefix=f"MaaS revoke pre-check [{actor_label}]",
-            expected_status_codes=(200,),
-        )
-
-        revoke_url = f"{base_url}/v1/tokens"
-        LOGGER.info(f"[{actor_label}] revoke request: DELETE {revoke_url}")
-
-        r_del = revoke_token(
-            base_url=base_url,
-            oc_user_token=ocp_token_for_actor,
-            http_session=request_session_http,
-        )
-
-        LOGGER.info(f"[{actor_label}] revoke response: status={r_del.status_code} body={(r_del.text or '')[:200]}")
-
-        assert r_del.status_code in (200, 202, 204), (
-            f"{actor_label}: revoke failed: {r_del.status_code} {(r_del.text or '')[:200]}"
-        )
+        _ = revoke_maas_tokens_for_actor
 
         last_status = None
         last_text = None
@@ -107,8 +83,8 @@ class TestMaasTokenRevokeFreePremium:
 
             if last_status in (401, 403):
                 LOGGER.info(f"{actor_label}: got expected {last_status} after revoke")
-                return
-
-        assert last_status in (401, 403), (
-            f"{actor_label}: expected 401/403 after revoke, got {last_status}. body={(last_text or '')[:200]}"
-        )
+                break
+        else:
+            pytest.fail(
+                f"{actor_label}: expected 401/403 after revoke, got {last_status}. body={(last_text or '')[:200]}"
+            )

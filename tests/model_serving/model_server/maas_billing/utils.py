@@ -490,11 +490,14 @@ def revoke_token(
 ) -> Response:
     """
     Revoke MaaS tokens for the user.
-
     """
     url = f"{base_url}/v1/tokens"
-    return http_session.delete(
+    resp = http_session.delete(
         url=url,
         headers=maas_auth_headers(token=oc_user_token),
         timeout=60,
     )
+
+    assert resp.status_code in (200, 202, 204), f"revoke failed: {resp.status_code} {(resp.text or '')[:200]}"
+
+    return resp

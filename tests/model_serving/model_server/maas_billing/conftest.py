@@ -47,6 +47,7 @@ from tests.model_serving.model_server.maas_billing.utils import (
     endpoints_have_ready_addresses,
     gateway_probe_reaches_maas_api,
     maas_gateway_listeners,
+    revoke_token,
 )
 
 LOGGER = get_logger(name=__name__)
@@ -822,3 +823,49 @@ def maas_token_ratelimit_policy(
         teardown=True,
     ):
         yield
+
+
+@pytest.fixture
+def ensure_working_maas_token_pre_revoke(
+    request_session_http,
+    model_url,
+    maas_headers_for_actor,
+    maas_models_response_for_actor,
+    actor_label,
+):
+    models_list = maas_models_response_for_actor.json().get("data", [])
+
+    verify_chat_completions(
+        request_session_http=request_session_http,
+        model_url=model_url,
+        headers=maas_headers_for_actor,
+        models_list=models_list,
+        prompt_text="hi",
+        max_tokens=16,
+        request_timeout_seconds=60,
+        log_prefix=f"MaaS revoke pre-check [{actor_label}]",
+        expected_status_codes=(200,),
+    )
+
+    return models_list
+
+
+@pytest.fixture
+def revoke_maas_tokens_for_actor(
+    request_session_http,
+    base_url: str,
+    ocp_token_for_actor: str,
+    actor_label: str,
+):
+    revoke_url = f"{base_url}/v1/tokens"
+    LOGGER.info(f"[{actor_label}] revoke request: DELETE {revoke_url}")
+
+    r_del = revoke_token(
+        base_url=base_url,
+        oc_user_token=ocp_token_for_actor,
+        http_session=request_session_http,
+    )
+
+    LOGGER.info(f"[{actor_label}] revoke response: status={r_del.status_code} body={(r_del.text or '')[:200]}")
+
+    return r_del
