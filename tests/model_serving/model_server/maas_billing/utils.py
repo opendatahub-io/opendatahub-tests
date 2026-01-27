@@ -481,3 +481,20 @@ def gateway_probe_reaches_maas_api(
     response_text = response.text
     ok = status_code in (200, 401, 403)
     return ok, status_code, response_text
+
+
+def revoke_token(
+    base_url: str,
+    oc_user_token: str,
+    http_session: requests.Session,
+) -> Response:
+    """
+    Revoke MaaS tokens for the user.
+
+    """
+    url = f"{base_url}/v1/tokens"
+    return http_session.delete(
+        url=url,
+        headers=maas_auth_headers(token=oc_user_token),
+        timeout=60,
+    )
