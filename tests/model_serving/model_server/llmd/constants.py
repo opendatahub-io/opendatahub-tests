@@ -8,6 +8,11 @@ LLMD_LIVENESS_PROBE = {
 }
 
 # Common parameters for vLLM and llm-d scheduler
+# IMPORTANT: The kserve_vllm:prefix_cache_hits_total metric counts TOKENS in complete blocks.
+# For a prompt with P tokens and block size B:
+#   - cacheable_tokens = floor(P / B) * B  (partial blocks don't count)
+#   - expected_hits = (N - 1) * cacheable_tokens  (N requests, first warms cache)
+# Example: 83 tokens, block_size=16 → floor(83/16) * 16 = 80 cacheable tokens
 PREFIX_CACHE_BLOCK_SIZE = 64
 PREFIX_CACHE_HASH_ALGO = "sha256_cbor"
 PREFIX_CACHE_HASH_SEED = "42"
