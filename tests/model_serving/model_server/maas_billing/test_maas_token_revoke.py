@@ -93,7 +93,7 @@ class TestMaasTokenRevokeFreePremium:
             func=verify_chat_completions,
             request_session_http=request_session_http,
             model_url=model_url,
-            headers=maas_headers_for_actor, 
+            headers=maas_headers_for_actor,
             models_list=models_list,
             prompt_text="hi",
             max_tokens=16,
@@ -110,6 +110,5 @@ class TestMaasTokenRevokeFreePremium:
                 return
 
         assert last_status in (401, 403), (
-            f"{actor_label}: expected 401/403 after revoke, got {last_status}. "
-            f"body={(last_text or '')[:200]}"
+            f"{actor_label}: expected 401/403 after revoke, got {last_status}. body={(last_text or '')[:200]}"
         )
