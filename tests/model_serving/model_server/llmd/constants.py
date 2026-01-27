@@ -9,7 +9,7 @@ LLMD_LIVENESS_PROBE = {
 
 # Common parameters for vLLM and llm-d scheduler
 PREFIX_CACHE_BLOCK_SIZE = 64
-PREFIX_CACHE_HASH_ALGO = "sha256"
+PREFIX_CACHE_HASH_ALGO = "sha256_cbor"
 PREFIX_CACHE_HASH_SEED = "42"
 
 # Scheduler configuration for single-node with estimated prefix cache

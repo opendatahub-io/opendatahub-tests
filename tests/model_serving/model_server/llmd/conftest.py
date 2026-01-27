@@ -552,15 +552,12 @@ def singlenode_precise_prefix_cache(
     """LLMInferenceService fixture for single-node precise prefix cache test."""
 
     llmisvc_name = "singlenode-precise-prefix-cache"
-    kv_transfer_config = {"kv_connector": "NixlConnector", "kv_role": "kv_both"}
     # We use $(POD_IP) and $(MODEL_NAME) for Kubernetes-native variable expansion
     kv_events_config = {
         "enable_kv_cache_events": True,
         "publisher": "zmq",
         "endpoint": f"tcp://{llmisvc_name}-epp-service:5557",
-        #llmd-test-singlenode-precise-prefix-cache.svc.cluster.local
         "topic": "kv@$(POD_IP)@$(MODEL_NAME)",
-        "buffer_steps": 1,
     }
 
     with create_llmisvc(
@@ -595,14 +592,15 @@ def singlenode_precise_prefix_cache(
             {"name": "MODEL_NAME", "value": "Qwen/Qwen2.5-7B-Instruct"},
             # Application Settings
             {"name": "VLLM_LOGGING_LEVEL", "value": "DEBUG"},
+            {"name": "CUDA_LAUNCH_BLOCKING", "value": "1"},
             {"name": "PYTHONHASHSEED", "value": str(PREFIX_CACHE_HASH_SEED)},
             # vLLM Args
             {
                 "name": "VLLM_ADDITIONAL_ARGS",
                 "value": (
                     f"--enable-prefix-caching "
+                    f"--prefix-caching-hash-algo {PREFIX_CACHE_HASH_ALGO} "
                     f"--block-size {PREFIX_CACHE_BLOCK_SIZE} "
-                    f"--kv_transfer_config '{json.dumps(kv_transfer_config)}' "
                     f"--kv-events-config '{json.dumps(kv_events_config)}'"
                 ),
             },
@@ -618,10 +616,10 @@ def singlenode_precise_prefix_cache(
                         {
                             "name": "main",
                             "ports": [
-                                {"name": "zmq-kv", "containerPort": 5557, "protocol": "TCP"},
-                                {"name": "grpc-rpc", "containerPort": 9002, "protocol": "TCP"},
+                                {"name": "grpc", "containerPort": 9002, "protocol": "TCP"},
                                 {"name": "grpc-health", "containerPort": 9003, "protocol": "TCP"},
                                 {"name": "metrics", "containerPort": 9090, "protocol": "TCP"},
+                                {"name": "zmq", "containerPort": 5557, "protocol": "TCP"},
                             ],
                             "env": [
                                 {"name": "HF_HOME", "value": "/mnt/tokenizers"},
