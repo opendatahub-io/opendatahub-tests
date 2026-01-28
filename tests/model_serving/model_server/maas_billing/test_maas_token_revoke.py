@@ -56,12 +56,7 @@ class TestMaasTokenRevokeFreePremium:
         revoke_maas_tokens_for_actor,
     ) -> None:
 
-        models_list = ensure_working_maas_token_pre_revoke
-
-        _ = revoke_maas_tokens_for_actor
-
         last_status = None
-        last_text = None
 
         for resp in TimeoutSampler(
             wait_timeout=60,
@@ -70,7 +65,7 @@ class TestMaasTokenRevokeFreePremium:
             request_session_http=request_session_http,
             model_url=model_url,
             headers=maas_headers_for_actor,
-            models_list=models_list,
+            models_list=ensure_working_maas_token_pre_revoke,
             prompt_text="hi",
             max_tokens=16,
             request_timeout_seconds=60,
@@ -78,13 +73,8 @@ class TestMaasTokenRevokeFreePremium:
             expected_status_codes=(200, 401, 403),
         ):
             last_status = resp.status_code
-            last_text = resp.text
             LOGGER.info(f"[{actor_label}] post-revoke status={last_status}")
 
             if last_status in (401, 403):
                 LOGGER.info(f"{actor_label}: got expected {last_status} after revoke")
                 break
-        else:
-            pytest.fail(
-                f"{actor_label}: expected 401/403 after revoke, got {last_status}. body={(last_text or '')[:200]}"
-            )

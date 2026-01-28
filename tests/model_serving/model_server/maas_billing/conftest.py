@@ -672,6 +672,9 @@ def maas_controller_enabled_latest(
 def maas_tier_mapping_cm(
     admin_client: DynamicClient,
 ) -> ConfigMap:
+
+    LOGGER.info(f"DEBUG py_config keys={list(py_config.keys())}")
+    LOGGER.info(f"DEBUG applications_namespace={py_config.get('applications_namespace')}")
     config_map = ConfigMap(
         client=admin_client,
         name="tier-to-group-mapping",
@@ -832,7 +835,7 @@ def ensure_working_maas_token_pre_revoke(
     maas_headers_for_actor,
     maas_models_response_for_actor,
     actor_label,
-):
+) -> List[Dict]:
     models_list = maas_models_response_for_actor.json().get("data", [])
 
     verify_chat_completions(
@@ -856,7 +859,7 @@ def revoke_maas_tokens_for_actor(
     base_url: str,
     ocp_token_for_actor: str,
     actor_label: str,
-):
+) -> None:
     revoke_url = f"{base_url}/v1/tokens"
     LOGGER.info(f"[{actor_label}] revoke request: DELETE {revoke_url}")
 
@@ -867,5 +870,3 @@ def revoke_maas_tokens_for_actor(
     )
 
     LOGGER.info(f"[{actor_label}] revoke response: status={r_del.status_code} body={(r_del.text or '')[:200]}")
-
-    return r_del
