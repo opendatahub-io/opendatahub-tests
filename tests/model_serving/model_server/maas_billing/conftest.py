@@ -673,8 +673,6 @@ def maas_tier_mapping_cm(
     admin_client: DynamicClient,
 ) -> ConfigMap:
 
-    LOGGER.info(f"DEBUG py_config keys={list(py_config.keys())}")
-    LOGGER.info(f"DEBUG applications_namespace={py_config.get('applications_namespace')}")
     config_map = ConfigMap(
         client=admin_client,
         name="tier-to-group-mapping",
@@ -835,7 +833,7 @@ def ensure_working_maas_token_pre_revoke(
     maas_headers_for_actor,
     maas_models_response_for_actor,
     actor_label,
-) -> List[Dict]:
+) -> List[dict]:
     models_list = maas_models_response_for_actor.json().get("data", [])
 
     verify_chat_completions(

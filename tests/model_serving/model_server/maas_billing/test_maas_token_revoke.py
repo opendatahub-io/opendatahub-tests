@@ -34,7 +34,6 @@ ACTORS = [
             id="maas-billing-namespace-premium",
         ),
     ],
-    indirect=["unprivileged_model_namespace", "ocp_token_for_actor"],
     scope="class",
 )
 class TestMaasTokenRevokeFreePremium:
