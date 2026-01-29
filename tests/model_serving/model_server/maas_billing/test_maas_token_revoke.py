@@ -34,7 +34,6 @@ ACTORS = [
             id="maas-billing-namespace-premium",
         ),
     ],
-    scope="class",
 )
 class TestMaasTokenRevokeFreePremium:
     """
