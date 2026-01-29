@@ -8,32 +8,23 @@ from tests.model_serving.model_server.maas_billing.utils import (
 
 LOGGER = get_logger(name=__name__)
 
-ACTORS = [
-    pytest.param({"type": "free"}, "free", id="free"),
-    pytest.param({"type": "premium"}, "premium", id="premium"),
-]
 
-
-@pytest.mark.usefixtures(
-    "maas_free_group",
-    "maas_premium_group",
-)
+@pytest.mark.usefixtures("maas_free_group", "maas_premium_group", "maas_unprivileged_model_namespace")
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, ocp_token_for_actor, actor_label",
+    "ocp_token_for_actor, actor_label",
     [
         pytest.param(
-            {"name": "llm", "modelmesh-enabled": False},
             {"type": "free"},
             "free",
             id="maas-billing-namespace-free",
         ),
         pytest.param(
-            {"name": "llm", "modelmesh-enabled": False},
             {"type": "premium"},
             "premium",
             id="maas-billing-namespace-premium",
         ),
     ],
+    indirect=["ocp_token_for_actor", "actor_label"],
 )
 class TestMaasTokenRevokeFreePremium:
     """

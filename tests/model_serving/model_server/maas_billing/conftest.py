@@ -1,4 +1,4 @@
-from typing import Generator, Dict, List
+from typing import Generator, Dict, List, Any
 import base64
 import pytest
 import requests
@@ -21,13 +21,14 @@ from utilities.constants import (
     MAAS_RATE_LIMIT_POLICY_NAME,
     MAAS_TOKEN_RATE_LIMIT_POLICY_NAME,
 )
+from pytest import FixtureRequest
 
 from ocp_resources.infrastructure import Infrastructure
 from ocp_resources.oauth import OAuth
 from ocp_resources.resource import ResourceEditor
 from utilities.general import generate_random_name
 from utilities.user_utils import UserTestSession, wait_for_user_creation, create_htpasswd_file
-from utilities.infra import login_with_user_password, get_openshift_token
+from utilities.infra import login_with_user_password, get_openshift_token, create_ns, s3_endpoint_secret
 from utilities.general import wait_for_oauth_openshift_deployment
 from ocp_resources.secret import Secret
 from tests.model_serving.model_server.maas_billing.utils import get_total_tokens
@@ -68,8 +69,54 @@ def request_session_http() -> Generator[requests.Session, None, None]:
 
 
 @pytest.fixture(scope="class")
+def maas_unprivileged_model_namespace(
+    unprivileged_client: DynamicClient, admin_client: DynamicClient
+) -> Generator[Namespace, Any, Any]:
+    with create_ns(name="llm", unprivileged_client=unprivileged_client, admin_client=admin_client) as ns:
+        yield ns
+
+
+@pytest.fixture(scope="class")
+def maas_models_endpoint_s3_secret(
+    unprivileged_client: DynamicClient,
+    maas_unprivileged_model_namespace: Namespace,
+    aws_access_key_id: str,
+    aws_secret_access_key: str,
+    models_s3_bucket_name: str,
+    models_s3_bucket_region: str,
+    models_s3_bucket_endpoint: str,
+) -> Generator[Secret, Any, Any]:
+    """MaaS-specific version of models_endpoint_s3_secret using maas_unprivileged_model_namespace."""
+    with s3_endpoint_secret(
+        client=unprivileged_client,
+        name="models-bucket-secret",
+        namespace=maas_unprivileged_model_namespace.name,
+        aws_access_key=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
+        aws_s3_region=models_s3_bucket_region,
+        aws_s3_bucket=models_s3_bucket_name,
+        aws_s3_endpoint=models_s3_bucket_endpoint,
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
+def maas_model_service_account(
+    unprivileged_client: DynamicClient, maas_models_endpoint_s3_secret: Secret
+) -> Generator[ServiceAccount, Any, Any]:
+    """MaaS-specific version of model_service_account using maas_models_endpoint_s3_secret."""
+    with ServiceAccount(
+        client=unprivileged_client,
+        namespace=maas_models_endpoint_s3_secret.namespace,
+        name="models-bucket-sa",
+        secrets=[{"name": maas_models_endpoint_s3_secret.name}],
+    ) as sa:
+        yield sa
+
+
+@pytest.fixture(scope="class")
 def minted_token(
-    request_session_http,
+    request_session_http: requests.Session,
     base_url: str,
     current_client_token: str,
     maas_controller_enabled_latest: None,
@@ -111,12 +158,12 @@ def model_url(
     return url
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def maas_headers(minted_token: str) -> dict:
     return build_maas_headers(token=minted_token)
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def maas_models(
     request_session_http: requests.Session,
     base_url: str,
@@ -511,6 +558,17 @@ def maas_models_for_actor(
 
 
 @pytest.fixture(scope="class")
+def actor_label(request: FixtureRequest) -> str:
+    """Class-scoped fixture that extracts actor_label from parametrization."""
+    return request.param
+
+
+@pytest.fixture(scope="class")
+def scenario(request: FixtureRequest) -> dict:
+    return request.param
+
+
+@pytest.fixture(scope="class")
 def exercise_rate_limiter(
     actor_label: str,
     scenario: dict,
@@ -557,8 +615,8 @@ def exercise_rate_limiter(
 @pytest.fixture(scope="class")
 def maas_inference_service_tinyllama(
     admin_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
-    model_service_account: ServiceAccount,
+    maas_unprivileged_model_namespace: Namespace,
+    maas_model_service_account: ServiceAccount,
     maas_gateway_api: None,
     maas_request_ratelimit_policy: None,
     maas_token_ratelimit_policy: None,
@@ -569,14 +627,14 @@ def maas_inference_service_tinyllama(
     with create_llmisvc(
         client=admin_client,
         name="llm-s3-tinyllama",
-        namespace=unprivileged_model_namespace.name,
+        namespace=maas_unprivileged_model_namespace.name,
         storage_uri=ModelStorage.TINYLLAMA_S3,
         container_image=ContainerImages.VLLM_CPU,
         container_resources={
             "limits": {"cpu": "2", "memory": "12Gi"},
             "requests": {"cpu": "1", "memory": "8Gi"},
         },
-        service_account=model_service_account.name,
+        service_account=maas_model_service_account.name,
         wait=False,
         timeout=900,
     ) as llm_service:
@@ -602,10 +660,10 @@ def maas_inference_service_tinyllama(
 
 
 @pytest.fixture(scope="class")
-def maas_scheme(admin_client: DynamicClient, unprivileged_model_namespace: Namespace) -> str:
+def maas_scheme(admin_client: DynamicClient, maas_unprivileged_model_namespace: Namespace) -> str:
     return detect_scheme_via_llmisvc(
         client=admin_client,
-        namespace=unprivileged_model_namespace.name,
+        namespace=maas_unprivileged_model_namespace.name,
     )
 
 
@@ -739,6 +797,9 @@ def maas_api_gateway_reachable(
     ):
         if gateway_reachable:
             return
+        LOGGER.warning(
+            f"MaaS gateway reachable: {gateway_reachable}, status_code: {_status_code}, response_text: {_response_text}"
+        )
 
 
 @pytest.fixture(scope="session")

@@ -479,6 +479,7 @@ def gateway_probe_reaches_maas_api(
     response = http_session.get(probe_url, timeout=request_timeout_seconds)
     status_code = response.status_code
     response_text = response.text
+    LOGGER.info(f"Received {status_code} response from {probe_url}, {response_text}")
     ok = status_code in (200, 401, 403)
     return ok, status_code, response_text
 
