@@ -5,10 +5,13 @@ from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from llama_stack_client import LlamaStackClient, APIConnectionError, InternalServerError
 from llama_stack_client.types.vector_store import VectorStore
-from ocp_resources.llama_stack_distribution import LlamaStackDistribution
+
+# from ocp_resources.llama_stack_distribution import LlamaStackDistribution
+from tests.llama_stack.llama_stack_distribution import LlamaStackDistribution
 from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
 from timeout_sampler import retry
+
 from utilities.exceptions import UnexpectedResourceCountError
 
 
@@ -39,11 +42,22 @@ def create_llama_stack_distribution(
     """
     Context manager to create and optionally delete a LLama Stack Distribution
     """
+
+    # Starting with RHOAI 3.3, pods in the 'openshift-ingress' namespace must be allowed
+    # to access the llama-stack-service. This is required for the llama_stack_test_route
+    # to function properly.
+    network: Dict[str, Any] = {
+        "allowedFrom": {
+            "namespaces": ["openshift-ingress"],
+        },
+    }
+
     with LlamaStackDistribution(
         client=client,
         name=name,
         namespace=namespace,
         replicas=replicas,
+        network=network,
         server=server,
         wait_for_resource=True,
         teardown=teardown,

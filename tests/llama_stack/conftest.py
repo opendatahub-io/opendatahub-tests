@@ -10,7 +10,9 @@ from llama_stack_client import LlamaStackClient
 from llama_stack_client.types.vector_store import VectorStore
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
-from ocp_resources.llama_stack_distribution import LlamaStackDistribution
+
+# from ocp_resources.llama_stack_distribution import LlamaStackDistribution
+from tests.llama_stack.llama_stack_distribution import LlamaStackDistribution
 from ocp_resources.namespace import Namespace
 from semver import Version
 from simple_logger.logger import get_logger
