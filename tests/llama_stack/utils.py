@@ -6,8 +6,7 @@ from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from llama_stack_client import LlamaStackClient, APIConnectionError, InternalServerError
 from llama_stack_client.types.vector_store import VectorStore
 
-# from ocp_resources.llama_stack_distribution import LlamaStackDistribution
-from tests.llama_stack.llama_stack_distribution import LlamaStackDistribution
+from utilities.resources.llama_stack_distribution import LlamaStackDistribution
 from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
 from timeout_sampler import retry
