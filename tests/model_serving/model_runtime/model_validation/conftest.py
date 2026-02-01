@@ -131,9 +131,9 @@ def kserve_registry_pull_secret(
     registry_pull_secret: list[str],
     registry_host: list[str],
 ) -> Generator[Secret, Any, Any]:
-    docker_config_json = json.dumps(
-        {"auths": {host: {"auth": auth} for host, auth in zip(registry_host, registry_pull_secret)}}
-        )
+    docker_config_json = json.dumps({
+        "auths": {host: {"auth": auth} for host, auth in zip(registry_host, registry_pull_secret)}
+    })
     with Secret(
         client=admin_client,
         name=PULL_SECRET_NAME,
