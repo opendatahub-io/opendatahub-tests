@@ -126,11 +126,13 @@ def pytest_addoption(parser: Parser) -> None:
     # OCI Registry options
     ociregistry_group.addoption(
         "--registry-pull-secret",
+        action="append",
         default=os.environ.get("OCI_REGISTRY_PULL_SECRET"),
         help="Registry pull secret to pull oci container images",
     )
     ociregistry_group.addoption(
         "--registry-host",
+        action="append",
         default=os.environ.get("REGISTRY_HOST"),
         help="Registry host to pull oci container images",
     )

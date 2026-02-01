@@ -128,10 +128,12 @@ def vllm_model_car_inference_service(
 def kserve_registry_pull_secret(
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    registry_pull_secret: str,
-    registry_host: str,
+    registry_pull_secret: list[str],
+    registry_host: list[str],
 ) -> Generator[Secret, Any, Any]:
-    docker_config_json = json.dumps({"auths": {registry_host: {"auth": registry_pull_secret}}})
+    docker_config_json = json.dumps(
+        {"auths": {host: {"auth": auth} for host, auth in zip(registry_host, registry_pull_secret)}}
+        )
     with Secret(
         client=admin_client,
         name=PULL_SECRET_NAME,
@@ -139,7 +141,7 @@ def kserve_registry_pull_secret(
         string_data={
             ".dockerconfigjson": docker_config_json,
             "ACCESS_TYPE": PULL_SECRET_ACCESS_TYPE,
-            "OCI_HOST": registry_host,
+            "OCI_HOST": ",".join(registry_host),
         },
         type="kubernetes.io/dockerconfigjson",
         wait_for_resource=True,
