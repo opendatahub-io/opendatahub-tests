@@ -160,8 +160,8 @@ def registry_pull_secret(pytestconfig: Config) -> list[str]:
             "Either pass with `--registry_pull_secret` or set `OCI_REGISTRY_PULL_SECRET` environment variable"
         )
     try:
-        for s in registry_pull_secret:
-            base64.b64decode(s=s, validate=True)
+        for secret in registry_pull_secret:
+            base64.b64decode(s=secret, validate=True)
         return registry_pull_secret
     except binascii.Error:
         raise ValueError("Registry pull secret is not a valid base64 encoded string")
