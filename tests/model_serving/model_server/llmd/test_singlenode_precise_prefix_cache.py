@@ -49,7 +49,7 @@ pytestmark = [pytest.mark.llmd_gpu]
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("valid_aws_config", "user_workload_monitoring_config_map")
+@pytest.mark.usefixtures("valid_aws_config")
 class TestSingleNodePrecisePrefixCache:
     """Test class for singlenode precise prefix cache routing."""
 
