@@ -14,7 +14,7 @@ LOGGER = get_logger(name=__name__)
 pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type")
 
 
-@pytest.mark.skip(reason="Model validation test disabled for Quality Gates Execution")
+@pytest.mark.model_validation
 class TestVLLMModelCarRaw:
     def test_oci_model_car_raw_openai_inference(
         self,

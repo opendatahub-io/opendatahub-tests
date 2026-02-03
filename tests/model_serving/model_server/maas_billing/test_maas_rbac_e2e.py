@@ -17,20 +17,7 @@ ACTORS = [
 ]
 
 
-@pytest.mark.parametrize(
-    "unprivileged_model_namespace",
-    [
-        pytest.param(
-            {
-                "name": "llm",
-                "modelmesh-enabled": False,
-            },
-            id="maas-billing-namespace",
-        ),
-    ],
-    indirect=True,
-)
-@pytest.mark.usefixtures("maas_free_group", "maas_premium_group")
+@pytest.mark.usefixtures("maas_free_group", "maas_premium_group", "maas_unprivileged_model_namespace")
 @pytest.mark.parametrize(
     "ocp_token_for_actor",
     ACTORS,

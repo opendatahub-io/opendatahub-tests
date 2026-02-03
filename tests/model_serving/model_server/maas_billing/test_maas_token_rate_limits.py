@@ -10,10 +10,6 @@ LOGGER = get_logger(name=__name__)
 TOKEN_RATE_MAX_REQUESTS = 8
 LARGE_MAX_TOKENS = 80
 
-ACTORS = [
-    pytest.param({"type": "free"}, "free", id="free"),
-    pytest.param({"type": "premium"}, "premium", id="premium"),
-]
 
 SCENARIO_TOKEN_RATE = {
     "id": "token-rate",
@@ -25,36 +21,25 @@ SCENARIO_TOKEN_RATE = {
 }
 
 
+@pytest.mark.parametrize(
+    "ocp_token_for_actor, actor_label, scenario",
+    [
+        pytest.param({"type": "free"}, "free", SCENARIO_TOKEN_RATE, id="free"),
+        pytest.param({"type": "premium"}, "premium", SCENARIO_TOKEN_RATE, id="premium"),
+    ],
+    indirect=["ocp_token_for_actor", "actor_label", "scenario"],
+)
 @pytest.mark.usefixtures(
     "maas_inference_service_tinyllama",
     "maas_free_group",
     "maas_premium_group",
     "maas_gateway_rate_limits",
-)
-@pytest.mark.parametrize(
-    "unprivileged_model_namespace",
-    [
-        pytest.param(
-            {"name": "llm", "modelmesh-enabled": False},
-            id="maas-billing-namespace",
-        )
-    ],
-    indirect=True,
-)
-@pytest.mark.parametrize(
-    "ocp_token_for_actor, actor_label",
-    ACTORS,
-    indirect=["ocp_token_for_actor"],
-    scope="class",
+    "maas_unprivileged_model_namespace",
 )
 class TestMaasTokenRateLimits:
     """
     MaaS Billing – token-rate limit tests against TinyLlama.
     """
-
-    @pytest.fixture(scope="class")
-    def scenario(self):
-        return SCENARIO_TOKEN_RATE
 
     @pytest.mark.sanity
     def test_token_rate_limits(

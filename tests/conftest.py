@@ -152,7 +152,7 @@ def aws_secret_access_key(pytestconfig: Config) -> str:
 
 
 @pytest.fixture(scope="session")
-def registry_pull_secret(pytestconfig: Config) -> str:
+def registry_pull_secret(pytestconfig: Config) -> list[str]:
     registry_pull_secret = pytestconfig.option.registry_pull_secret
     if not registry_pull_secret:
         raise ValueError(
@@ -160,14 +160,15 @@ def registry_pull_secret(pytestconfig: Config) -> str:
             "Either pass with `--registry_pull_secret` or set `OCI_REGISTRY_PULL_SECRET` environment variable"
         )
     try:
-        base64.b64decode(s=registry_pull_secret, validate=True)
+        for secret in registry_pull_secret:
+            base64.b64decode(s=secret, validate=True)
         return registry_pull_secret
     except binascii.Error:
         raise ValueError("Registry pull secret is not a valid base64 encoded string")
 
 
 @pytest.fixture(scope="session")
-def registry_host(pytestconfig: pytest.Config) -> str | None:
+def registry_host(pytestconfig: pytest.Config) -> list[str]:
     registry_host = pytestconfig.option.registry_host
     if not registry_host:
         raise ValueError(
