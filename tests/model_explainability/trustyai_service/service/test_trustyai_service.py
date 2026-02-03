@@ -19,7 +19,6 @@ from tests.model_explainability.trustyai_service.service.utils import (
     wait_for_trustyai_db_migration_complete_log,
     patch_trustyai_service_cr,
 )
-from utilities.constants import MinIo
 
 
 @pytest.mark.parametrize(
@@ -73,12 +72,10 @@ def test_validate_trustyai_service_image(
 
 
 @pytest.mark.parametrize(
-    "model_namespace, minio_pod, minio_data_connection, trustyai_service",
+    "model_namespace, trustyai_service",
     [
         pytest.param(
             {"name": "test-trustyai-db-migration"},
-            MinIo.PodConfig.MODEL_MESH_MINIO_CONFIG,
-            {"bucket": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
             {"storage": "pvc"},
         )
     ],
