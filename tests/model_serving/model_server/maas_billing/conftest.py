@@ -810,6 +810,15 @@ def maas_gateway_api(
     """
     Ensure MaaS Gateway exists once per test session.
     """
+    gw = Gateway(
+        client=admin_client,
+        name=MAAS_GATEWAY_NAME,
+        namespace=MAAS_GATEWAY_NAMESPACE,
+    )
+    if gw.exists:
+        yield
+        return
+
     with Gateway(
         client=admin_client,
         name=MAAS_GATEWAY_NAME,
