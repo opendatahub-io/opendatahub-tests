@@ -1,0 +1,22 @@
+{
+  "id": "onnx",
+  "model_name": "onnx",
+  "model_version": "v1.0.0",
+  "outputs": [
+    {
+      "data": [
+        -137.39060974121094
+      ],
+      "datatype": "FP32",
+      "name": "predict",
+      "parameters": {
+        "content_type": "np"
+      },
+      "shape": [
+        1,
+        1
+      ]
+    }
+  ],
+  "parameters": {}
+}

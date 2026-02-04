@@ -77,11 +77,29 @@ LIGHTGBM_REST_INPUT_QUERY: dict[str, Any] = {
     ],
 }
 
+ONNX_REST_INPUT_QUERY = {
+    "id": "onnx",
+    "inputs": [
+        {
+            "name": "input",
+            "shape": [1, 4],
+            "datatype": "FP32",
+            "data": [[-1.44964521969853, -0.6500239344068982, -0.08343796979036086, -1.496529255090079]],
+        }
+    ],
+}
+
 MODEL_CONFIGS: dict[str, dict[str, Any]] = {
     ModelFormat.LIGHTGBM: {
         "model_name": ModelFormat.LIGHTGBM,
         "model_version": "v0.1.0",
         "rest_query": LIGHTGBM_REST_INPUT_QUERY,
+        "output_type": OutputType.DETERMINISTIC,
+    },
+    ModelFormat.ONNX: {
+        "model_name": ModelFormat.ONNX,
+        "model_version": "v1.0.0",
+        "rest_query": ONNX_REST_INPUT_QUERY,
         "output_type": OutputType.DETERMINISTIC,
     },
     ModelFormat.SKLEARN: {
