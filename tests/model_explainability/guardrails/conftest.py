@@ -15,6 +15,7 @@ from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
+from ocp_resources.subscription import Subscription
 from ocp_resources.tempo_stack import TempoStack
 from ocp_utilities.operators import install_operator, uninstall_operator
 from timeout_sampler import TimeoutSampler
@@ -165,35 +166,39 @@ def installed_tempo_operator(admin_client: DynamicClient, model_namespace: Names
         operator_ns.create()
 
     package_name = "tempo-product"
+    tempo_operator_subscription = Subscription(client=admin_client, namespace=operator_ns.name, name=package_name)
 
-    install_operator(
-        admin_client=admin_client,
-        target_namespaces=None,
-        name=package_name,
-        channel="stable",
-        source="redhat-operators",
-        operator_namespace=operator_ns.name,
-        timeout=Timeout.TIMEOUT_15MIN,
-        install_plan_approval="Automatic",
-        starting_csv="tempo-operator.v0.19.0-2",
-    )
+    if not tempo_operator_subscription.exists:
+        install_operator(
+            admin_client=admin_client,
+            target_namespaces=None,
+            name=package_name,
+            channel="stable",
+            source="redhat-operators",
+            operator_namespace=operator_ns.name,
+            timeout=Timeout.TIMEOUT_15MIN,
+            install_plan_approval="Automatic",
+            starting_csv="tempo-operator.v0.19.0-2",
+        )
 
-    deployment = Deployment(
-        client=admin_client,
-        namespace=operator_ns.name,
-        name="tempo-operator-controller",
-        wait_for_resource=True,
-    )
-    deployment.wait_for_replicas()
+        deployment = Deployment(
+            client=admin_client,
+            namespace=operator_ns.name,
+            name="tempo-operator-controller",
+            wait_for_resource=True,
+        )
+        deployment.wait_for_replicas()
 
-    yield
+        yield
 
-    uninstall_operator(
-        admin_client=admin_client,
-        name=package_name,
-        operator_namespace=operator_ns.name,
-        clean_up_namespace=False,
-    )
+        uninstall_operator(
+            admin_client=admin_client,
+            name=package_name,
+            operator_namespace=operator_ns.name,
+            clean_up_namespace=False,
+        )
+    else:
+        yield
 
 
 @pytest.fixture(scope="class")
@@ -271,34 +276,39 @@ def installed_opentelemetry_operator(admin_client: DynamicClient) -> Generator[N
 
     package_name = "opentelemetry-product"
 
-    install_operator(
-        admin_client=admin_client,
-        target_namespaces=None,
-        name=package_name,
-        channel="stable",
-        source="redhat-operators",
-        operator_namespace=operator_ns.name,
-        timeout=Timeout.TIMEOUT_15MIN,
-        install_plan_approval="Automatic",
-        starting_csv="opentelemetry-operator.v0.140.0-1",
-    )
+    opentelemetry_subscription = Subscription(client=admin_client, namespace=operator_ns.name, name=package_name)
 
-    deployment = Deployment(
-        client=admin_client,
-        namespace=operator_ns.name,
-        name="opentelemetry-operator-controller-manager",
-        wait_for_resource=True,
-    )
-    deployment.wait_for_replicas()
+    if not opentelemetry_subscription.exists:
+        install_operator(
+            admin_client=admin_client,
+            target_namespaces=None,
+            name=package_name,
+            channel="stable",
+            source="redhat-operators",
+            operator_namespace=operator_ns.name,
+            timeout=Timeout.TIMEOUT_15MIN,
+            install_plan_approval="Automatic",
+            starting_csv="opentelemetry-operator.v0.140.0-1",
+        )
 
-    yield
+        deployment = Deployment(
+            client=admin_client,
+            namespace=operator_ns.name,
+            name="opentelemetry-operator-controller-manager",
+            wait_for_resource=True,
+        )
+        deployment.wait_for_replicas()
 
-    uninstall_operator(
-        admin_client=admin_client,
-        name=package_name,
-        operator_namespace=operator_ns.name,
-        clean_up_namespace=False,
-    )
+        yield
+
+        uninstall_operator(
+            admin_client=admin_client,
+            name=package_name,
+            operator_namespace=operator_ns.name,
+            clean_up_namespace=False,
+        )
+    else:
+        yield
 
 
 @pytest.fixture(scope="class")
