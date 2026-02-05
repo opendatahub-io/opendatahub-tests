@@ -43,6 +43,7 @@ class TestHuggingFaceModelDeployment:
         """
         Test HuggingFace model deployment API endpoints.
         Validates that the deployed model is accessible via the OpenVINO Model Server API.
+        TODO: When adequate coverage us added ib dashboard tests, this would be removed
         """
         model_endpoint = f"{huggingface_model_portforward}/{huggingface_inference_service.name}"
         LOGGER.info(f"Testing model endpoint: {model_endpoint}")
