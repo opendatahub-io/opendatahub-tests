@@ -45,6 +45,8 @@ METRICS_ARTIFACT_TYPE: str = "metrics-artifact"
 PERFORMANCE_DATA_DIR: str = "/shared-benchmark-data"
 HF_SOURCE_ID: str = "huggingface_mixed"
 HF_MODEL_NAME: str = "ibm-granite/granite-speech-3.2-8b"
+# TODO: get a service account to host these models
+HF_CUSTOM_MODE: str = "jonburdo/test2"
 HF_MODELS: dict[str, Any] = {
     "mixed": [
         "ibm-granite/granite-4.0-h-1b",
@@ -60,6 +62,7 @@ HF_MODELS: dict[str, Any] = {
         "ibm-granite/granite-4.0-micro-base",
         "ibm-granite/granite-4.0-h-micro",
     ],
+    "custom": [HF_CUSTOM_MODE],
 }
 EXPECTED_HF_CATALOG_VALUES: list[dict[str, str]] = [{"id": HF_SOURCE_ID, "model_name": HF_MODELS["mixed"][0]}]
 EXPECTED_MULTIPLE_HF_CATALOG_VALUES: list[dict[str, str]] = [
