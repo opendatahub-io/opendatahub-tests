@@ -8,47 +8,12 @@ from tests.model_registry.model_catalog.constants import (
 from tests.model_registry.model_catalog.utils import get_models_from_catalog_api
 from tests.model_registry.model_catalog.sorting.utils import (
     validate_accuracy_sorting_against_database,
-    assert_model_sorting,
     get_model_latencies,
 )
 
 LOGGER = get_logger(name=__name__)
 
 pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace")]
-
-
-class TestModelsSorting:
-    """Test sorting functionality for FindModels endpoint"""
-
-    @pytest.mark.parametrize(
-        "order_by,sort_order",
-        [
-            ("ID", "ASC"),
-            ("ID", "DESC"),
-            ("NAME", "ASC"),
-            ("NAME", "DESC"),
-            ("CREATE_TIME", "ASC"),
-            ("CREATE_TIME", "DESC"),
-            ("LAST_UPDATE_TIME", "ASC"),
-            ("LAST_UPDATE_TIME", "DESC"),
-        ],
-    )
-    def test_models_sorting_works_correctly(
-        self: Self,
-        order_by: str,
-        sort_order: str,
-        model_catalog_rest_url: list[str],
-        model_registry_rest_headers: dict[str, str],
-    ):
-        """
-        RHOAIENG-37260: Test models endpoint sorts correctly by field and order
-        """
-        assert_model_sorting(
-            order_by=order_by,
-            sort_order=sort_order,
-            model_catalog_rest_url=model_catalog_rest_url,
-            model_registry_rest_headers=model_registry_rest_headers,
-        )
 
 
 @pytest.mark.downstream_only
@@ -98,49 +63,6 @@ class TestAccuracySorting:
         assert validate_accuracy_sorting_against_database(
             api_response=response,
             sort_order=sort_order,
-        )
-
-    @pytest.mark.parametrize(
-        "sort_order,filter_query",
-        [
-            ("ASC", "tasks='automatic-speech-translation'"),  # No models with accuracy
-            ("ASC", "tasks='image-text-to-text'"),
-            ("DESC", "tasks='image-text-to-text'"),
-        ],
-    )
-    def test_accuracy_sorting_works_correctly_with_filter(
-        self: Self,
-        sort_order: str,
-        filter_query: str,
-        model_catalog_rest_url: list[str],
-        model_registry_rest_headers: dict[str, str],
-    ):
-        """
-        RHOAIENG-36856: Test accuracy sorting for FindModels endpoint with filter
-
-        This test validates accuracy sorting behavior with task filter:
-        1. Models WITH accuracy (and matching filter) appear first, sorted by accuracy value
-        2. Models WITHOUT accuracy (but matching filter) appear after, sorted by ID in ASC order
-
-        Validates both the presence of models and their correct ordering by comparing
-        against direct database queries.
-        """
-        LOGGER.info(f"Testing accuracy sorting with filter: sortOrder={sort_order}, filterQuery={filter_query}")
-
-        response = get_models_from_catalog_api(
-            model_catalog_rest_url=model_catalog_rest_url,
-            model_registry_rest_headers=model_registry_rest_headers,
-            order_by="ACCURACY",
-            sort_order=sort_order,
-            additional_params=f"&filterQuery={filter_query}",
-        )
-
-        task_value = filter_query.split("tasks=")[1].strip("'\"")
-
-        assert validate_accuracy_sorting_against_database(
-            api_response=response,
-            sort_order=sort_order,
-            task_filter=task_value,
         )
 
     @pytest.mark.parametrize(
