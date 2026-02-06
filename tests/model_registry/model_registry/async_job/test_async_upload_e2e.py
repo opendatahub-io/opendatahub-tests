@@ -10,10 +10,10 @@ from tests.model_registry.model_registry.async_job.constants import (
 )
 from tests.model_registry.model_registry.async_job.utils import (
     get_latest_job_pod,
-    pull_manifest_from_oci_registry,
 )
 from tests.model_registry.constants import MODEL_DICT
 from utilities.constants import MinIo, OCIRegistry
+from utilities.registry_utils import pull_manifest_from_oci_registry
 from model_registry import ModelRegistry as ModelRegistryClient
 from simple_logger.logger import get_logger
 from tests.model_registry.model_registry.async_job.constants import MODEL_SYNC_CONFIG, REPO_NAME, TAG
