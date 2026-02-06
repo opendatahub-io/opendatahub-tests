@@ -10,6 +10,13 @@ from tests.model_explainability.guardrails.constants import (
     PII_OUTPUT_DETECTION_PROMPT,
     PROMPT_INJECTION_INPUT_DETECTION_PROMPT,
     HAP_INPUT_DETECTION_PROMPT,
+    PII_ENDPOINT,
+    HARMLESS_PROMPT,
+    PROMPT_INJECTION_DETECTOR,
+    HAP_DETECTOR,
+    CHAT_COMPLETIONS_DETECTION_ENDPOINT,
+    STANDALONE_DETECTION_ENDPOINT,
+    AUTOCONFIG_GATEWAY_ENDPOINT,
 )
 from tests.model_explainability.guardrails.utils import (
     create_detector_config,
@@ -29,17 +36,6 @@ from utilities.constants import (
 from utilities.plugins.constant import OpenAIEnpoints
 
 LOGGER = get_logger(name=__name__)
-
-
-HARMLESS_PROMPT: str = "What is the opposite of up?"
-
-CHAT_COMPLETIONS_DETECTION_ENDPOINT: str = "api/v2/chat/completions-detection"
-PII_ENDPOINT: str = "/pii"
-AUTOCONFIG_GATEWAY_ENDPOINT: str = "/all"
-STANDALONE_DETECTION_ENDPOINT: str = "api/v2/text/detection/content"
-
-PROMPT_INJECTION_DETECTOR: str = "prompt-injection-detector"
-HAP_DETECTOR: str = "hap-detector"
 
 
 @pytest.mark.parametrize(
