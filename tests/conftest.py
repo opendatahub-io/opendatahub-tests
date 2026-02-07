@@ -656,7 +656,6 @@ def oc_binary_path(bin_directory: LocalPath) -> str:
 
 
 @pytest.fixture(scope="session", autouse=True)
-@pytest.mark.early(order=0)
 def autouse_fixtures(
     bin_directory_to_os_path: None,
     cluster_sanity_scope_session: None,
