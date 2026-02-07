@@ -6,19 +6,21 @@ from kubernetes.dynamic import DynamicClient
 from pytest import Config
 from model_registry import ModelRegistry as ModelRegistryClient
 from class_generator.parsers.explain_parser import ResourceNotFoundError
-from ocp_resources.deployment import Deployment
-from ocp_resources.pod import Pod
-from tests.model_registry.constants import MR_INSTANCE_BASE_NAME, KUBERBACPROXY_STR, MODEL_REGISTRY_POD_FILTER
+from tests.model_registry.constants import MR_INSTANCE_BASE_NAME, KUBERBACPROXY_STR
 from utilities.constants import Protocols
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from simple_logger.logger import get_logger
 from tests.model_registry.utils import (
-    wait_for_default_resource_cleanedup, get_mr_standard_labels, get_mr_service_by_label, get_endpoint_from_mr_service,
+    wait_for_default_resource_cleanedup,
+    get_mr_standard_labels,
+    get_mr_service_by_label,
+    get_endpoint_from_mr_service,
 )
-from utilities.general import wait_for_pods_running, wait_for_pods_by_labels
+from utilities.general import wait_for_pods_running
 
 LOGGER = get_logger(name=__name__)
 MR_DEFAULT_DB_NAME: str = f"{MR_INSTANCE_BASE_NAME}1"
+
 
 @pytest.fixture(scope="class")
 def model_registry_instance_default_db(
@@ -64,19 +66,23 @@ def model_registry_instance_default_db(
 
 
 @pytest.fixture(scope="class")
-def model_registry_default_db_instance_rest_endpoint(admin_client: DynamicClient,
-                                                     model_registry_instance_default_db: ModelRegistry) -> str:
+def model_registry_default_db_instance_rest_endpoint(
+    admin_client: DynamicClient, model_registry_instance_default_db: ModelRegistry
+) -> str:
     """
     Get the REST endpoint(s) for the model registry instance.
     """
     # get all the services:
-    mr_service = get_mr_service_by_label(client=admin_client,
-                                         namespace_name=model_registry_instance_default_db.namespace,
-                                         mr_instance=model_registry_instance_default_db)
+    mr_service = get_mr_service_by_label(
+        client=admin_client,
+        namespace_name=model_registry_instance_default_db.namespace,
+        mr_instance=model_registry_instance_default_db,
+    )
 
     if not mr_service:
         raise ResourceNotFoundError("No model registry services found")
     return get_endpoint_from_mr_service(svc=mr_service, protocol=Protocols.REST)
+
 
 @pytest.fixture(scope="class")
 def model_registry_client_default_db(
@@ -95,6 +101,7 @@ def model_registry_client_default_db(
     if not mr_client:
         raise ResourceNotFoundError("No model registry clients created")
     return mr_client
+
 
 @pytest.fixture(scope="class")
 def registered_model_default_db(
