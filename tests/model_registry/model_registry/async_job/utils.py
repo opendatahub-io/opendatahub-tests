@@ -1,4 +1,3 @@
-import requests
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.job import Job
 from ocp_resources.pod import Pod
@@ -31,18 +30,6 @@ def get_latest_job_pod(admin_client: DynamicClient, job: Job) -> Pod:
     latest_pod = sorted_pods[0]
     LOGGER.info(f"Found {len(pods)} pod(s) for job {job.name}, using latest: {latest_pod.name}")
     return latest_pod
-
-
-def pull_manifest_from_oci_registry(registry_url: str, repo: str, tag: str) -> dict:
-    """Pull a manifest from an OCI registry."""
-    response = requests.get(
-        f"{registry_url}/v2/{repo}/manifests/{tag}",
-        headers={"Accept": "application/vnd.oci.image.manifest.v1+json"},
-        timeout=10,
-    )
-    LOGGER.info(f"Manifest pull: {response.status_code}")
-    assert response.status_code == 200, f"Failed to pull manifest: {response.status_code}"
-    return response.json()
 
 
 def upload_test_model_to_minio_from_image(

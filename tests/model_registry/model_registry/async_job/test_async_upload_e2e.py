@@ -1,5 +1,6 @@
 from typing import Self
 import time
+import json
 
 import pytest
 from kubernetes.dynamic import DynamicClient
@@ -10,10 +11,10 @@ from tests.model_registry.model_registry.async_job.constants import (
 )
 from tests.model_registry.model_registry.async_job.utils import (
     get_latest_job_pod,
-    pull_manifest_from_oci_registry,
 )
 from tests.model_registry.constants import MODEL_DICT
 from utilities.constants import MinIo, OCIRegistry
+from utilities.registry_utils import pull_manifest_from_oci_registry
 from model_registry import ModelRegistry as ModelRegistryClient
 from simple_logger.logger import get_logger
 from tests.model_registry.model_registry.async_job.constants import MODEL_SYNC_CONFIG, REPO_NAME, TAG
@@ -77,7 +78,63 @@ class TestAsyncUploadE2E:
         job_pod = get_latest_job_pod(admin_client=admin_client, job=model_sync_async_job)
         assert job_pod.name.startswith(ASYNC_UPLOAD_JOB_NAME)
 
-    @pytest.mark.dependency(name="oci_registry_verification", depends=["job_creation_and_pod_spawning"])
+    @pytest.mark.dependency(name="termination_message_verification", depends=["job_creation_and_pod_spawning"])
+    def test_termination_message_contains_created_ids(
+        self: Self,
+        admin_client: DynamicClient,
+        model_sync_async_job: Job,
+        model_registry_client: list[ModelRegistryClient],
+    ) -> None:
+        """
+        RHOAIENG-47260: Verify that created IDs are exposed to termination message
+
+        The termination message should contain RegisteredModel, ModelVersion, and ModelArtifact IDs
+        that match the actual resources created in the model registry.
+        """
+        LOGGER.info("Verifying termination message contains created IDs")
+
+        # Get the job pod
+        job_pod = get_latest_job_pod(admin_client=admin_client, job=model_sync_async_job)
+
+        # Access container status and termination message
+        container_statuses = job_pod.instance.status.containerStatuses
+
+        # Get the main container's termination message
+        container = container_statuses[0]
+        assert container.state.terminated, "Container should be in terminated state"
+
+        termination_message = container.state.terminated.message
+        LOGGER.info(f"Termination message: {termination_message}")
+
+        assert termination_message, "Termination message should not be empty"
+
+        termination_data = json.loads(termination_message)
+        assert "RegisteredModel" in termination_data
+        assert "ModelVersion" in termination_data
+        assert "ModelArtifact" in termination_data
+
+        LOGGER.info(
+            f"IDs from termination message - "
+            f"RegisteredModel: {termination_data['RegisteredModel']}, "
+            f"ModelVersion: {termination_data['ModelVersion']}, "
+            f"ModelArtifact: {termination_data['ModelArtifact']}"
+        )
+
+        # Verify IDs match actual resources in model registry
+        client = model_registry_client[0]
+
+        model = client.get_registered_model(name=MODEL_NAME)
+        assert model.id == termination_data["RegisteredModel"]["id"]
+
+        model_version = client.get_model_version(name=MODEL_NAME, version=MODEL_DATA["model_version"])
+        assert model_version.id == termination_data["ModelVersion"]["id"]
+
+        model_artifact = client.get_model_artifact(name=MODEL_NAME, version=MODEL_DATA["model_version"])
+        assert model_artifact.id == termination_data["ModelArtifact"]["id"]
+
+        LOGGER.info("Successfully verified termination message IDs match actual resources")
+
+    @pytest.mark.dependency(name="oci_registry_verification", depends=["termination_message_verification"])
     def test_oci_registry_verification(
         self: Self,
         oci_registry_host: str,

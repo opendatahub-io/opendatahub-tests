@@ -402,6 +402,8 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
             if traces.get("data"):
                 return traces
 
+        check_traces()
+
 
 @pytest.mark.parametrize(
     "model_namespace, guardrails_orchestrator",
