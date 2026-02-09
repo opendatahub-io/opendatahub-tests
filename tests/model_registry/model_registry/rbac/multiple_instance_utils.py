@@ -12,7 +12,7 @@ from tests.model_registry.utils import (
     get_model_registry_db_label_dict,
     get_model_registry_deployment_template_dict,
     get_mr_standard_labels,
-    get_mysql_config,
+    get_external_db_config,
 )
 
 ns_name = py_config["model_registry_namespace"]
@@ -79,7 +79,9 @@ model_registry_instance_params = [
         "namespace": ns_name,
         "label": get_mr_standard_labels(resource_name=f"{MR_INSTANCE_BASE_NAME}{index}"),
         "rest": {},
-        "mysql": get_mysql_config(base_name=f"{DB_BASE_RESOURCES_NAME}{index}", namespace=ns_name, db_backend="mysql"),
+        "mysql": get_external_db_config(
+            base_name=f"{DB_BASE_RESOURCES_NAME}{index}", namespace=ns_name, db_backend="mysql"
+        ),
         "wait_for_resource": True,
         "kube_rbac_proxy": {},
     }

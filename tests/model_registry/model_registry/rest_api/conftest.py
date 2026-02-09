@@ -17,7 +17,7 @@ from tests.model_registry.utils import (
     apply_mysql_args_and_volume_mounts,
     add_mysql_certs_volumes_to_deployment,
     get_mr_standard_labels,
-    get_mysql_config,
+    get_external_db_config,
 )
 
 from tests.model_registry.constants import (
@@ -150,7 +150,7 @@ def deploy_secure_mysql_and_mr(
     Deploy a secure MySQL and Model Registry instance.
     """
     param = getattr(request, "param", {})
-    mysql = get_mysql_config(base_name=DB_RESOURCE_NAME, namespace=model_registry_namespace, db_backend="mysql")
+    mysql = get_external_db_config(base_name=DB_RESOURCE_NAME, namespace=model_registry_namespace, db_backend="mysql")
     if "sslRootCertificateConfigMap" in param:
         mysql["sslRootCertificateConfigMap"] = param["sslRootCertificateConfigMap"]
     with ModelRegistry(

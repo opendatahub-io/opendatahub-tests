@@ -62,6 +62,7 @@ MARIADB_MY_CNF = (
 PORT_MAP = {
     "mariadb": 3306,
     "mysql": 3306,
+    "postgres": 5432,
 }
 MODEL_REGISTRY_POD_FILTER: str = "component=model-registry"
 DEFAULT_CUSTOM_MODEL_CATALOG: str = "model-catalog-sources"

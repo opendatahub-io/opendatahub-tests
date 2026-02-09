@@ -39,6 +39,9 @@ ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
 MARIA_DB_IMAGE = (
     "registry.redhat.io/rhel9/mariadb-1011@sha256:092407d87f8017bb444a462fb3d38ad5070429e94df7cf6b91d82697f36d0fa9"
 )
+POSTGRES_DB_IMAGE = (
+    "registry.redhat.io/rhel9/postgresql-16@sha256:dc79eeb04f5ee2d396dc6c0d85ac7db45c0cb9cf1a8daba2b8226ae20aaab370"
+)
 LOGGER = get_logger(name=__name__)
 
 
@@ -82,6 +85,179 @@ def get_endpoint_from_mr_service(svc: Service, protocol: str) -> str:
         raise ProtocolNotSupportedError(protocol)
 
 
+def get_database_volumes(resource_name: str, db_backend: str) -> list[dict[str, Any]]:
+    """Get volumes for database container based on backend type."""
+    if db_backend == "postgres":
+        return [
+            {
+                "name": f"{resource_name}-postgres-data",
+                "persistentVolumeClaim": {"claimName": resource_name},
+            }
+        ]
+    elif db_backend == "mariadb":
+        return [
+            {
+                "name": f"{db_backend}-data",
+                "persistentVolumeClaim": {"claimName": resource_name},
+            },
+            {
+                "name": f"{db_backend}-config",
+                "configMap": {"name": resource_name},
+            },
+        ]
+    else:
+        # Default MySQL
+        return [
+            {
+                "name": f"{resource_name}-data",
+                "persistentVolumeClaim": {"claimName": resource_name},
+            }
+        ]
+
+
+def get_database_volume_mounts(resource_name: str, db_backend: str) -> list[dict[str, Any]]:
+    """Get volume mounts for database container based on backend type."""
+    if db_backend == "postgres":
+        return [
+            {
+                "mountPath": "/var/lib/postgresql/data",
+                "name": f"{resource_name}-postgres-data",
+            }
+        ]
+    elif db_backend == "mariadb":
+        return [
+            {"mountPath": "/var/lib/mysql", "name": f"{db_backend}-data"},
+            {
+                "mountPath": "/etc/mysql/conf.d",
+                "name": f"{db_backend}-config",
+            },
+        ]
+    else:
+        # Default MySQL
+        return [
+            {
+                "mountPath": "/var/lib/mysql",
+                "name": f"{resource_name}-data",
+            }
+        ]
+
+
+def get_database_image(db_backend: str) -> str:
+    """Get the correct container image for the database backend."""
+    if db_backend == "postgres":
+        return POSTGRES_DB_IMAGE
+    elif db_backend == "mariadb":
+        return MARIA_DB_IMAGE
+    else:
+        # Default MySQL
+        return MR_DB_IMAGE_DIGEST
+
+
+def get_database_health_probes(db_backend: str) -> dict[str, dict[str, Any]]:
+    """Get liveness and readiness probes for database container based on backend type."""
+    if db_backend == "postgres":
+        return {
+            "livenessProbe": {
+                "exec": {
+                    "command": [
+                        "bash",
+                        "-c",
+                        "/usr/bin/pg_isready -U $POSTGRESQL_USER -d $POSTGRESQL_DATABASE",
+                    ]
+                },
+                "initialDelaySeconds": 30,
+                "timeoutSeconds": 2,
+            },
+            "readinessProbe": {
+                "exec": {
+                    "command": [
+                        "bash",
+                        "-c",
+                        "psql -w -U $POSTGRESQL_USER -d $POSTGRESQL_DATABASE -c 'SELECT 1'",
+                    ]
+                },
+                "initialDelaySeconds": 10,
+                "timeoutSeconds": 5,
+            },
+        }
+    else:
+        # Default MySQL/MariaDB health probes
+        return {
+            "livenessProbe": {
+                "exec": {
+                    "command": [
+                        "/bin/bash",
+                        "-c",
+                        "mysqladmin -u${MYSQL_USER} -p${MYSQL_ROOT_PASSWORD} ping",
+                    ]
+                },
+                "initialDelaySeconds": 15,
+                "periodSeconds": 10,
+                "timeoutSeconds": 5,
+            },
+            "readinessProbe": {
+                "exec": {
+                    "command": [
+                        "/bin/bash",
+                        "-c",
+                        'mysql -D ${MYSQL_DATABASE} -u${MYSQL_USER} -p${MYSQL_ROOT_PASSWORD} -e "SELECT 1"',
+                    ]
+                },
+                "initialDelaySeconds": 10,
+                "timeoutSeconds": 5,
+            },
+        }
+
+
+def get_database_env_vars(secret_name: str, db_backend: str) -> list[dict[str, Any]]:
+    """Get environment variables for database container based on backend type."""
+    if db_backend == "postgres":
+        return [
+            {
+                "name": "POSTGRESQL_USER",
+                "valueFrom": {"secretKeyRef": {"key": "database-user", "name": secret_name}},
+            },
+            {
+                "name": "POSTGRESQL_PASSWORD",
+                "valueFrom": {"secretKeyRef": {"key": "database-password", "name": secret_name}},
+            },
+            {
+                "name": "POSTGRESQL_DATABASE",
+                "valueFrom": {"secretKeyRef": {"key": "database-name", "name": secret_name}},
+            },
+            {
+                "name": "PGDATA",
+                "value": "/var/lib/postgresql/data/pgdata",
+            },
+        ]
+    else:
+        # Default MySQL/MariaDB environment variables
+        env_vars = [
+            {
+                "name": "MYSQL_USER",
+                "valueFrom": {"secretKeyRef": {"key": "database-user", "name": secret_name}},
+            },
+            {
+                "name": "MYSQL_PASSWORD",
+                "valueFrom": {"secretKeyRef": {"key": "database-password", "name": secret_name}},
+            },
+            {
+                "name": "MYSQL_ROOT_PASSWORD",
+                "valueFrom": {"secretKeyRef": {"key": "database-password", "name": secret_name}},
+            },
+            {
+                "name": "MYSQL_DATABASE",
+                "valueFrom": {"secretKeyRef": {"key": "database-name", "name": secret_name}},
+            },
+        ]
+        if db_backend == "mariadb":
+            env_vars.append({
+                "name": "MARIADB_ROOT_PASSWORD",
+                "valueFrom": {"secretKeyRef": {"name": secret_name, "key": "database-password"}},
+            })
+        return env_vars
+
+
 def get_model_registry_deployment_template_dict(
     secret_name: str, resource_name: str, db_backend: str
 ) -> dict[str, Any]:
@@ -95,121 +271,33 @@ def get_model_registry_deployment_template_dict(
         "spec": {
             "containers": [
                 {
-                    "env": [
-                        {
-                            "name": "MYSQL_USER",
-                            "valueFrom": {
-                                "secretKeyRef": {
-                                    "key": "database-user",
-                                    "name": secret_name,
-                                }
-                            },
-                        },
-                        {
-                            "name": "MYSQL_PASSWORD",
-                            "valueFrom": {
-                                "secretKeyRef": {
-                                    "key": "database-password",
-                                    "name": secret_name,
-                                }
-                            },
-                        },
-                        {
-                            "name": "MYSQL_ROOT_PASSWORD",
-                            "valueFrom": {
-                                "secretKeyRef": {
-                                    "key": "database-password",
-                                    "name": secret_name,
-                                }
-                            },
-                        },
-                        {
-                            "name": "MYSQL_DATABASE",
-                            "valueFrom": {
-                                "secretKeyRef": {
-                                    "key": "database-name",
-                                    "name": secret_name,
-                                }
-                            },
-                        },
-                    ],
-                    "args": [
-                        "--datadir",
-                        "/var/lib/mysql/datadir",
-                    ],
-                    "image": MR_DB_IMAGE_DIGEST,
+                    "env": get_database_env_vars(secret_name=secret_name, db_backend=db_backend),
+                    "image": get_database_image(db_backend=db_backend),
                     "imagePullPolicy": "IfNotPresent",
-                    "livenessProbe": {
-                        "exec": {
-                            "command": [
-                                "/bin/bash",
-                                "-c",
-                                "mysqladmin -u${MYSQL_USER} -p${MYSQL_ROOT_PASSWORD} ping",
-                            ]
-                        },
-                        "initialDelaySeconds": 15,
-                        "periodSeconds": 10,
-                        "timeoutSeconds": 5,
-                    },
+                    **get_database_health_probes(db_backend=db_backend),
                     "name": db_backend,
-                    "ports": [{"containerPort": 3306, "protocol": "TCP"}],
-                    "readinessProbe": {
-                        "exec": {
-                            "command": [
-                                "/bin/bash",
-                                "-c",
-                                'mysql -D ${MYSQL_DATABASE} -u${MYSQL_USER} -p${MYSQL_ROOT_PASSWORD} -e "SELECT 1"',
-                            ]
-                        },
-                        "initialDelaySeconds": 10,
-                        "timeoutSeconds": 5,
-                    },
+                    "ports": [{"containerPort": 3306, "protocol": "TCP"}]
+                    if db_backend != "postgres"
+                    else [{"containerPort": 5432, "protocol": "TCP"}],
                     "securityContext": {"capabilities": {}, "privileged": False},
                     "terminationMessagePath": "/dev/termination-log",
-                    "volumeMounts": [
-                        {
-                            "mountPath": "/var/lib/mysql",
-                            "name": f"{resource_name}-data",
-                        }
-                    ],
+                    "volumeMounts": get_database_volume_mounts(resource_name=resource_name, db_backend=db_backend),
                 }
             ],
             "dnsPolicy": "ClusterFirst",
             "restartPolicy": "Always",
-            "volumes": [
-                {
-                    "name": f"{resource_name}-data",
-                    "persistentVolumeClaim": {"claimName": resource_name},
-                }
-            ],
+            "volumes": get_database_volumes(resource_name=resource_name, db_backend=db_backend),
         },
     }
+
+    # Add args only for MySQL backend
+    if db_backend == "mysql":
+        base_dict["spec"]["containers"][0]["args"] = ["--datadir", "/var/lib/mysql/datadir"]
+
     if db_backend == "mariadb":
         base_dict["metadata"]["labels"]["app"] = db_backend
         base_dict["metadata"]["labels"]["component"] = "database"
-        base_dict["spec"]["containers"][0]["image"] = MARIA_DB_IMAGE
-        base_dict["spec"]["containers"][0]["env"].append({
-            "name": "MARIADB_ROOT_PASSWORD",
-            "valueFrom": {"secretKeyRef": {"name": secret_name, "key": "database-password"}},
-        })
-        base_dict["spec"]["containers"][0]["volumeMounts"] = [
-            {"mountPath": "/var/lib/mysql", "name": f"{db_backend}-data"},
-            {
-                "mountPath": "/etc/mysql/conf.d",
-                "name": f"{db_backend}-config",
-            },
-        ]
-        del base_dict["spec"]["containers"][0]["args"]
-        base_dict["spec"]["volumes"] = [
-            {
-                "name": f"{db_backend}-data",
-                "persistentVolumeClaim": {"claimName": resource_name},
-            },
-            {
-                "name": f"{db_backend}-config",
-                "configMap": {"name": resource_name},
-            },
-        ]
+
     return base_dict
 
 
@@ -392,11 +480,13 @@ def get_mr_service_objects(
     client: DynamicClient,
     teardown_resources: bool,
     num: int,
+    db_backend: str = "mysql",
 ) -> list[Service]:
     services = []
-    annotation = {
-        "template.openshift.io/expose-uri": r"mysql://{.spec.clusterIP}:{.spec.ports[?(.name==\mysql\)].port}"
-    }
+    port = PORT_MAP[db_backend]
+    service_port_name = db_backend if db_backend == "postgres" else "mysql"
+    service_uri = rf"{service_port_name}://{{.spec.clusterIP}}:{{.spec.ports[?(.name==\{service_port_name}\)].port}}"
+    annotation = {"template.openshift.io/expose-uri": service_uri}
     for num_service in range(0, num):
         name = f"{base_name}{num_service}"
         services.append(
@@ -406,12 +496,12 @@ def get_mr_service_objects(
                 namespace=namespace,
                 ports=[
                     {
-                        "name": "mysql",
+                        "name": service_port_name,
                         "nodePort": 0,
-                        "port": 3306,
+                        "port": port,
                         "protocol": "TCP",
                         "appProtocol": "tcp",
-                        "targetPort": 3306,
+                        "targetPort": port,
                     }
                 ],
                 selector={
@@ -551,13 +641,17 @@ def get_model_registry_objects(
     model_registry_objects = []
     for num_mr in range(0, num):
         name = f"{base_name}{num_mr}"
-        mysql = None
-        if db_backend != "default":
-            mysql = get_mysql_config(
+        db_value = None
+
+        if db_backend == "default":
+            db_value = {"generateDeployment": True}
+        elif db_backend in ["postgres", "mariadb", "mysql"]:
+            db_value = get_external_db_config(
                 base_name=f"{DB_BASE_RESOURCES_NAME}{num_mr}", namespace=namespace, db_backend=db_backend
             )
             if "sslRootCertificateConfigMap" in params:
-                mysql["sslRootCertificateConfigMap"] = params["sslRootCertificateConfigMap"]
+                db_value["sslRootCertificateConfigMap"] = params["sslRootCertificateConfigMap"]
+
         model_registry_objects.append(
             ModelRegistry(
                 client=client,
@@ -566,8 +660,8 @@ def get_model_registry_objects(
                 label=get_mr_standard_labels(resource_name=name),
                 rest={},
                 kube_rbac_proxy={},
-                mysql=mysql if mysql else None,
-                postgres={"generateDeployment": True} if db_backend == "default" else None,
+                mysql=db_value if db_backend in ["mariadb", "mysql"] else None,
+                postgres=db_value if db_backend in ["postgres", "default"] else None,
                 wait_for_resource=True,
                 teardown=teardown_resources,
             )
@@ -604,6 +698,7 @@ def get_model_registry_metadata_resources(
             base_name=base_name,
             num=num_resources,
             teardown_resources=teardown_resources,
+            db_backend=db_backend,
         ),
         ConfigMap: get_mr_configmap_objects(
             client=client,
@@ -624,7 +719,7 @@ def get_model_registry_metadata_resources(
     }
 
 
-def get_mysql_config(base_name: str, namespace: str, db_backend: str) -> dict[str, Any]:
+def get_external_db_config(base_name: str, namespace: str, db_backend: str) -> dict[str, Any]:
     return {
         "host": f"{base_name}.{namespace}.svc.cluster.local",
         "database": MODEL_REGISTRY_DB_SECRET_STR_DATA["database-name"],
