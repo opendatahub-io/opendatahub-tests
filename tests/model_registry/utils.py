@@ -368,26 +368,29 @@ def add_db_certs_volumes_to_deployment(
     """
 
     volumes = list(spec["volumes"])
+
+    # Common volumes for both MySQL and PostgreSQL
+    volumes.extend([
+        {"name": ca_configmap_name, "configMap": {"name": ca_configmap_name}},
+        {"name": "db-server-cert", "secret": {"secretName": "db-server-cert"}},  # pragma: allowlist secret
+    ])
+
+    # Database-specific volumes
     if db_backend == "mysql":
-        volumes.extend([
-            {"name": ca_configmap_name, "configMap": {"name": ca_configmap_name}},
-            {"name": "db-server-cert", "secret": {"secretName": "db-server-cert"}},  # pragma: allowlist secret
-            {"name": "db-server-key", "secret": {"secretName": "db-server-key"}},  # pragma: allowlist secret
-        ])
+        volumes.append({"name": "db-server-key", "secret": {"secretName": "db-server-key"}})  # pragma: allowlist secret
     elif db_backend == "postgres":
         volumes.extend([
-            {"name": ca_configmap_name, "configMap": {"name": ca_configmap_name}},
             {"name": "db-ca", "secret": {"secretName": "db-ca"}},  # pragma: allowlist secret
-            {"name": "db-server-cert", "secret": {"secretName": "db-server-cert"}},  # pragma: allowlist secret
             {
                 "name": "db-server-key",
                 "secret": {"secretName": "db-server-key", "defaultMode": 0o600},  # pragma: allowlist secret
-            },  # pragma: allowlist secret
+            },
         ])
+
     return volumes
 
 
-def apply_mysql_args_and_volume_mounts(
+def apply_db_args_and_volume_mounts(
     db_container: dict[str, Any],
     ca_configmap_name: str,
     ca_mount_path: str,
@@ -435,27 +438,27 @@ def apply_mysql_args_and_volume_mounts(
             "-c",
             "ssl=on",
             "-c",
-            "ssl_cert_file=/etc/ssl-certs/tls.crt",
+            f"ssl_cert_file={ca_mount_path}/ssl-certs/tls.crt",
             "-c",
-            "ssl_key_file=/etc/ssl-keys/tls.key",
+            f"ssl_key_file={ca_mount_path}/ssl-keys/tls.key",
             "-c",
-            "ssl_ca_file=/etc/ssl-ca/ca.crt",
+            f"ssl_ca_file={ca_mount_path}/ssl-ca/ca.crt",
         ])
 
         volumes_mounts.extend([
             {
                 "name": "db-ca",
-                "mountPath": "/etc/ssl-ca",
+                "mountPath": f"{ca_mount_path}/ssl-ca",
                 "readOnly": True,
             },
             {
                 "name": "db-server-cert",
-                "mountPath": "/etc/ssl-certs",
+                "mountPath": f"{ca_mount_path}/ssl-certs",
                 "readOnly": True,
             },
             {
                 "name": "db-server-key",
-                "mountPath": "/etc/ssl-keys",
+                "mountPath": f"{ca_mount_path}/ssl-keys",
                 "readOnly": True,
             },
         ])

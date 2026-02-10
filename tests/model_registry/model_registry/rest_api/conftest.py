@@ -14,7 +14,7 @@ from utilities.general import generate_random_name, wait_for_pods_running
 from ocp_resources.deployment import Deployment
 from tests.model_registry.utils import (
     get_model_registry_deployment_template_dict,
-    apply_mysql_args_and_volume_mounts,
+    apply_db_args_and_volume_mounts,
     add_db_certs_volumes_to_deployment,
     get_mr_standard_labels,
     get_external_db_config,
@@ -281,14 +281,17 @@ def patch_external_deployment_with_ssl_ca(
         LOGGER.info("Invoking ca_configmap_for_test fixture")
         request.getfixturevalue(argname="ca_configmap_for_test")
     ca_configmap_name = request.param.get("ca_configmap_name", "db-ca-configmap")
-    ca_mount_path = request.param.get("ca_mount_path", "/etc/mysql/ssl")
+    if db_backend_under_test == "mysql":
+        ca_mount_path = request.param.get("ca_mount_path", "/etc/mysql/ssl")
+    else:
+        ca_mount_path = request.param.get("ca_mount_path", "/etc")
 
     deployment = model_registry_db_deployments[0].instance.to_dict()
     spec = deployment["spec"]["template"]["spec"]
     db_containers = [container for container in spec["containers"] if container["name"] == db_backend_under_test]
-    assert db_containers is not None, f"{db_backend_under_test} container not found"
+    assert db_containers, f"{db_backend_under_test} container not found"
 
-    db_container = apply_mysql_args_and_volume_mounts(
+    db_container = apply_db_args_and_volume_mounts(
         db_container=db_containers[0],
         ca_configmap_name=ca_configmap_name,
         ca_mount_path=ca_mount_path,
