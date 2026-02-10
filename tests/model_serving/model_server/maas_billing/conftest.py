@@ -809,25 +809,38 @@ def maas_gateway_api(
 ) -> Generator[None, None, None]:
     """
     Ensure MaaS Gateway exists once per test session.
+
     """
-    with Gateway(
+    gw = Gateway(
         client=admin_client,
         name=MAAS_GATEWAY_NAME,
         namespace=MAAS_GATEWAY_NAMESPACE,
-        gateway_class_name="openshift-default",
-        listeners=maas_gateway_listeners(hostname=maas_gateway_api_hostname),
-        annotations={"opendatahub.io/managed": "false"},
-        label={
-            "app.kubernetes.io/name": "maas",
-            "app.kubernetes.io/instance": MAAS_GATEWAY_NAME,
-            "app.kubernetes.io/component": "gateway",
-            "opendatahub.io/managed": "false",
-        },
-        ensure_exists=False,
-        wait_for_resource=True,
-        teardown=True,
-    ):
+    )
+
+    if gw.exists:
+        LOGGER.info(f"Reusing existing gateway {MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_NAME}")
+        gw.wait_for_condition(condition="Programmed", status="True", timeout=300)
         yield
+    else:
+        LOGGER.info(f"Creating gateway {MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_NAME}")
+        with Gateway(
+            client=admin_client,
+            name=MAAS_GATEWAY_NAME,
+            namespace=MAAS_GATEWAY_NAMESPACE,
+            gateway_class_name="openshift-default",
+            listeners=maas_gateway_listeners(hostname=maas_gateway_api_hostname),
+            annotations={"opendatahub.io/managed": "false"},
+            label={
+                "app.kubernetes.io/name": "maas",
+                "app.kubernetes.io/instance": MAAS_GATEWAY_NAME,
+                "app.kubernetes.io/component": "gateway",
+                "opendatahub.io/managed": "false",
+            },
+            ensure_exists=False,
+            wait_for_resource=True,
+            teardown=True,
+        ):
+            yield
 
 
 @pytest.fixture(scope="session")

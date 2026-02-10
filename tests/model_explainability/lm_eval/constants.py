@@ -116,3 +116,6 @@ ARC_EASY_DATASET_IMAGE: str = (
     "quay.io/trustyai_testing/lmeval-assets-arc-easy"
     "@sha256:1558997a838f2ac8ecd887b4f77485d810e5120b9f2700ecb71627e37c6d3a1b"
 )
+
+LMEVAL_OCI_REPO = "lmeval/offline-oci"
+LMEVAL_OCI_TAG = "v1"
