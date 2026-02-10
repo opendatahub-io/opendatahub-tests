@@ -40,7 +40,7 @@ MARIA_DB_IMAGE = (
     "registry.redhat.io/rhel9/mariadb-1011@sha256:092407d87f8017bb444a462fb3d38ad5070429e94df7cf6b91d82697f36d0fa9"
 )
 POSTGRES_DB_IMAGE = (
-    "postgres:16"
+    "public.ecr.aws/docker/library/postgres@sha256:6e9bbed548cc1ca776dd4685cfea9efe60d58df91186ec6bad7328fd03b388a5"
 )
 LOGGER = get_logger(name=__name__)
 
