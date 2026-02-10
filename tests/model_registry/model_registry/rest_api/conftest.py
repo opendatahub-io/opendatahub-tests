@@ -15,7 +15,7 @@ from ocp_resources.deployment import Deployment
 from tests.model_registry.utils import (
     get_model_registry_deployment_template_dict,
     apply_mysql_args_and_volume_mounts,
-    add_mysql_certs_volumes_to_deployment,
+    add_db_certs_volumes_to_deployment,
     get_mr_standard_labels,
     get_external_db_config,
 )
@@ -119,40 +119,78 @@ def patch_invalid_ca(
 
 
 @pytest.fixture(scope="class")
-def mysql_template_with_ca(model_registry_metadata_db_resources: dict[Any, Any]) -> dict[str, Any]:
+def db_backend_under_test(request: pytest.FixtureRequest) -> str:
     """
-    Patches the MySQL template with the CA file path and volume mount.
+    Fixture to provide the database backend type being tested.
+
+    Args:
+        request: The pytest request object containing test parameters
+
+    Returns:
+        str: The database backend type (e.g., "mysql", "postgres")
     """
-    mysql_template = get_model_registry_deployment_template_dict(
+    return request.param
+
+
+@pytest.fixture(scope="class")
+def external_db_template_with_ca(
+    model_registry_metadata_db_resources: dict[Any, Any], db_backend_under_test: str
+) -> dict[str, Any]:
+    """
+    Patches the external database template with the CA file path and volume mount.
+    """
+    db_deployment_template = get_model_registry_deployment_template_dict(
         secret_name=model_registry_metadata_db_resources[Secret][0].name,
         resource_name=DB_RESOURCE_NAME,
-        db_backend="mysql",
+        db_backend=db_backend_under_test,
     )
-    mysql_template["spec"]["containers"][0]["args"].append(f"--ssl-ca={CA_FILE_PATH}")
-    mysql_template["spec"]["containers"][0]["volumeMounts"].append({
+
+    if db_backend_under_test == "mysql":
+        db_deployment_template["spec"]["containers"][0]["args"].append(f"--ssl-ca={CA_FILE_PATH}")
+
+    elif db_backend_under_test == "postgres":
+        postgres_ssl_args = [
+            "postgres",
+            "-c",
+            "ssl=on",
+            "-c",
+            "ssl_cert_file=/etc/server-cert/tls.crt",
+            "-c",
+            "ssl_key_file=/etc/server-cert/tls.key",
+            "-c",
+            "ssl_ca_file=/etc/server-cert/ca.crt",
+        ]
+        db_deployment_template["spec"]["containers"][0].get("args", []).extend(postgres_ssl_args)
+    db_deployment_template["spec"]["containers"][0]["volumeMounts"].append({
         "mountPath": CA_MOUNT_PATH,
         "name": CA_CONFIGMAP_NAME,
         "readOnly": True,
     })
-    mysql_template["spec"]["volumes"].append({"name": CA_CONFIGMAP_NAME, "configMap": {"name": CA_CONFIGMAP_NAME}})
-    return mysql_template
+    db_deployment_template["spec"]["volumes"].append({
+        "name": CA_CONFIGMAP_NAME,
+        "configMap": {"name": CA_CONFIGMAP_NAME},
+    })
+    return db_deployment_template
 
 
 @pytest.fixture(scope="class")
-def deploy_secure_mysql_and_mr(
+def deploy_secure_db_mr(
     request: pytest.FixtureRequest,
     admin_client: DynamicClient,
     model_registry_namespace: str,
-    mysql_template_with_ca: dict[str, Any],
-    patch_mysql_deployment_with_ssl_ca: Deployment,
+    external_db_template_with_ca: dict[str, Any],
+    patch_external_deployment_with_ssl_ca: Deployment,
+    db_backend_under_test: str,
 ) -> Generator[ModelRegistry, None, None]:
     """
-    Deploy a secure MySQL and Model Registry instance.
+    Deploy a secure database and Model Registry instance.
     """
     param = getattr(request, "param", {})
-    mysql = get_external_db_config(base_name=DB_RESOURCE_NAME, namespace=model_registry_namespace, db_backend="mysql")
+    db_config = get_external_db_config(
+        base_name=DB_RESOURCE_NAME, namespace=model_registry_namespace, db_backend=db_backend_under_test
+    )
     if "sslRootCertificateConfigMap" in param:
-        mysql["sslRootCertificateConfigMap"] = param["sslRootCertificateConfigMap"]
+        db_config["sslRootCertificateConfigMap"] = param["sslRootCertificateConfigMap"]
     with ModelRegistry(
         client=admin_client,
         name=SECURE_MR_NAME,
@@ -160,7 +198,8 @@ def deploy_secure_mysql_and_mr(
         label=get_mr_standard_labels(resource_name=SECURE_MR_NAME),
         rest={},
         kube_rbac_proxy={},
-        mysql=mysql,
+        mysql=db_config if db_backend_under_test == "mysql" else None,
+        postgres=db_config if db_backend_under_test == "postgres" else None,
         wait_for_resource=True,
     ) as mr:
         mr.wait_for_condition(condition="Available", status="True")
@@ -197,7 +236,7 @@ def local_ca_bundle(request: pytest.FixtureRequest, admin_client: DynamicClient)
 def ca_configmap_for_test(
     admin_client: DynamicClient,
     model_registry_namespace: str,
-    mysql_ssl_artifact_paths: dict[str, Any],
+    external_db_ssl_artifact_paths: dict[str, Any],
 ) -> Generator[ConfigMap, None, None]:
     """
     Creates a test-specific ConfigMap for the CA bundle, using the generated CA cert.
@@ -205,17 +244,17 @@ def ca_configmap_for_test(
     Args:
         admin_client: The admin client to create the ConfigMap
         model_registry_namespace: The namespace of the model registry
-        mysql_ssl_artifact_paths: The artifacts and secrets for the MySQL SSL connection
+        external_db_ssl_artifact_paths: The artifacts and secrets for the external database SSL connection
 
     Returns:
         Generator[ConfigMap, None, None]: A generator that yields the ConfigMap instance.
     """
-    with open(mysql_ssl_artifact_paths["ca_crt"], "r") as f:
+    with open(external_db_ssl_artifact_paths["ca_crt"], "r") as f:
         ca_content = f.read()
     if not ca_content:
         LOGGER.info("CA content is empty")
         raise Exception("CA content is empty")
-    cm_name = "mysql-ca-configmap"
+    cm_name = "db-ca-configmap"
     with ConfigMap(
         client=admin_client,
         name=cm_name,
@@ -226,34 +265,40 @@ def ca_configmap_for_test(
 
 
 @pytest.fixture(scope="class")
-def patch_mysql_deployment_with_ssl_ca(
+def patch_external_deployment_with_ssl_ca(
     request: pytest.FixtureRequest,
     admin_client: DynamicClient,
     model_registry_namespace: str,
-    mysql_ssl_secrets: dict[str, Any],
+    external_db_ssl_secrets: dict[str, Any],
+    db_backend_under_test: str,
 ) -> Generator[Deployment, Any, Any]:
     """
-    Patch the MySQL deployment to use the test CA bundle (mysql-ca-configmap),
+    Patch the external database deployment to use the test CA bundle,
     and mount the server cert/key for SSL.
     """
     model_registry_db_deployments = get_mr_deployment(admin_client=admin_client, mr_namespace=model_registry_namespace)
     if request.param.get("ca_configmap_for_test"):
         LOGGER.info("Invoking ca_configmap_for_test fixture")
         request.getfixturevalue(argname="ca_configmap_for_test")
-    CA_CONFIGMAP_NAME = request.param.get("ca_configmap_name", "mysql-ca-configmap")
+    CA_CONFIGMAP_NAME = request.param.get("ca_configmap_name", "db-ca-configmap")
     CA_MOUNT_PATH = request.param.get("ca_mount_path", "/etc/mysql/ssl")
 
     deployment = model_registry_db_deployments[0].instance.to_dict()
     spec = deployment["spec"]["template"]["spec"]
-    my_sql_container = next(container for container in spec["containers"] if container["name"] == "mysql")
-    assert my_sql_container is not None, "Mysql container not found"
+    db_container = next(container for container in spec["containers"] if container["name"] == db_backend_under_test)
+    assert db_container is not None, f"{db_backend_under_test} container not found"
 
-    my_sql_container = apply_mysql_args_and_volume_mounts(
-        my_sql_container=my_sql_container, ca_configmap_name=CA_CONFIGMAP_NAME, ca_mount_path=CA_MOUNT_PATH
+    db_container = apply_mysql_args_and_volume_mounts(
+        db_container=db_container,
+        ca_configmap_name=CA_CONFIGMAP_NAME,
+        ca_mount_path=CA_MOUNT_PATH,
+        db_backend=db_backend_under_test,
     )
-    volumes = add_mysql_certs_volumes_to_deployment(spec=spec, ca_configmap_name=CA_CONFIGMAP_NAME)
+    volumes = add_db_certs_volumes_to_deployment(
+        spec=spec, ca_configmap_name=CA_CONFIGMAP_NAME, db_backend=db_backend_under_test
+    )
 
-    patch = {"spec": {"template": {"spec": {"volumes": volumes, "containers": [my_sql_container]}}}}
+    patch = {"spec": {"template": {"spec": {"volumes": volumes, "containers": [db_container]}}}}
     with ResourceEditor(patches={model_registry_db_deployments[0]: patch}):
         wait_for_pods_running(
             admin_client=admin_client, namespace_name=model_registry_namespace, number_of_consecutive_checks=3
@@ -263,59 +308,44 @@ def patch_mysql_deployment_with_ssl_ca(
 
 
 @pytest.fixture(scope="class")
-def mysql_ssl_artifact_paths() -> Generator[dict[str, str], None, None]:
+def external_db_ssl_artifact_paths() -> Generator[dict[str, str], None, None]:
     """
-    Generates MySQL SSL certificate and key files in a temporary directory
+    Generates external database SSL certificate and key files in a temporary directory
     and provides their paths.
 
-    Args:
-        admin_client: The admin client to create the ConfigMap
-        model_registry_namespace: The namespace of the model registry
-        mysql_ssl_artifacts_and_secrets: The artifacts and secrets for the MySQL SSL connection
-
-    Returns:
-        Generator[dict[str, str], None, None]: A generator that yields the CA certificate and key file paths.
     """
     with tempfile.TemporaryDirectory() as tmp_dir:
         yield generate_ca_and_server_cert(tmp_dir=tmp_dir)
 
 
 @pytest.fixture(scope="class")
-def mysql_ssl_secrets(
+def external_db_ssl_secrets(
     admin_client: DynamicClient,
     model_registry_namespace: str,
-    mysql_ssl_artifact_paths: dict[str, str],
+    external_db_ssl_artifact_paths: dict[str, str],
 ) -> Generator[dict[str, Secret], None, None]:
     """
-    Creates Kubernetes secrets for MySQL SSL artifacts.
-
-    Args:
-        admin_client: The admin client to create the ConfigMap
-        model_registry_namespace: The namespace of the model registry
-        mysql_ssl_artifacts_and_secrets: The artifacts and secrets for the MySQL SSL connection
-
-    Returns:
-        Generator[dict[str, str], None, None]: A generator that yields the CA certificate and key file paths.
+    Creates Kubernetes secrets for external database SSL artifacts.
     """
     ca_secret = create_k8s_secret(
         client=admin_client,
         namespace=model_registry_namespace,
-        name="mysql-ca",
-        file_path=mysql_ssl_artifact_paths["ca_crt"],
+        name="db-ca",
+        file_path=external_db_ssl_artifact_paths["ca_crt"],
         key_name="ca.crt",
     )
     server_cert_secret = create_k8s_secret(
         client=admin_client,
         namespace=model_registry_namespace,
-        name="mysql-server-cert",
-        file_path=mysql_ssl_artifact_paths["server_crt"],
+        name="db-server-cert",
+        file_path=external_db_ssl_artifact_paths["server_crt"],
         key_name="tls.crt",
     )
     server_key_secret = create_k8s_secret(
         client=admin_client,
         namespace=model_registry_namespace,
-        name="mysql-server-key",
-        file_path=mysql_ssl_artifact_paths["server_key"],
+        name="db-server-key",
+        file_path=external_db_ssl_artifact_paths["server_key"],
         key_name="tls.key",
     )
 

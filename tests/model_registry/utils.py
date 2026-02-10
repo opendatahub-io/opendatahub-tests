@@ -40,7 +40,7 @@ MARIA_DB_IMAGE = (
     "registry.redhat.io/rhel9/mariadb-1011@sha256:092407d87f8017bb444a462fb3d38ad5070429e94df7cf6b91d82697f36d0fa9"
 )
 POSTGRES_DB_IMAGE = (
-    "registry.redhat.io/rhel9/postgresql-16@sha256:dc79eeb04f5ee2d396dc6c0d85ac7db45c0cb9cf1a8daba2b8226ae20aaab370"
+    "postgres:16"
 )
 LOGGER = get_logger(name=__name__)
 
@@ -162,7 +162,7 @@ def get_database_health_probes(db_backend: str) -> dict[str, dict[str, Any]]:
                     "command": [
                         "bash",
                         "-c",
-                        "/usr/bin/pg_isready -U $POSTGRESQL_USER -d $POSTGRESQL_DATABASE",
+                        "/usr/bin/pg_isready -U $POSTGRES_USER -d $POSTGRES_DB",
                     ]
                 },
                 "initialDelaySeconds": 30,
@@ -173,7 +173,7 @@ def get_database_health_probes(db_backend: str) -> dict[str, dict[str, Any]]:
                     "command": [
                         "bash",
                         "-c",
-                        "psql -w -U $POSTGRESQL_USER -d $POSTGRESQL_DATABASE -c 'SELECT 1'",
+                        "psql -w -U $POSTGRES_USER -d $POSTGRES_DB -c 'SELECT 1'",
                     ]
                 },
                 "initialDelaySeconds": 10,
@@ -214,15 +214,15 @@ def get_database_env_vars(secret_name: str, db_backend: str) -> list[dict[str, A
     if db_backend == "postgres":
         return [
             {
-                "name": "POSTGRESQL_USER",
+                "name": "POSTGRES_USER",
                 "valueFrom": {"secretKeyRef": {"key": "database-user", "name": secret_name}},
             },
             {
-                "name": "POSTGRESQL_PASSWORD",
+                "name": "POSTGRES_PASSWORD",
                 "valueFrom": {"secretKeyRef": {"key": "database-password", "name": secret_name}},
             },
             {
-                "name": "POSTGRESQL_DATABASE",
+                "name": "POSTGRES_DB",
                 "valueFrom": {"secretKeyRef": {"key": "database-name", "name": secret_name}},
             },
             {
@@ -261,6 +261,7 @@ def get_database_env_vars(secret_name: str, db_backend: str) -> list[dict[str, A
 def get_model_registry_deployment_template_dict(
     secret_name: str, resource_name: str, db_backend: str
 ) -> dict[str, Any]:
+    health_probes = get_database_health_probes(db_backend=db_backend)
     base_dict = {
         "metadata": {
             "labels": {
@@ -274,7 +275,7 @@ def get_model_registry_deployment_template_dict(
                     "env": get_database_env_vars(secret_name=secret_name, db_backend=db_backend),
                     "image": get_database_image(db_backend=db_backend),
                     "imagePullPolicy": "IfNotPresent",
-                    **get_database_health_probes(db_backend=db_backend),
+                    **health_probes,
                     "name": db_backend,
                     "ports": [{"containerPort": 3306, "protocol": "TCP"}]
                     if db_backend != "postgres"
@@ -349,73 +350,119 @@ def generate_namespace_name(file_path: str) -> str:
     return (file_path.removesuffix(".py").replace("/", "-").replace("_", "-"))[-63:].split("-", 1)[-1]
 
 
-def add_mysql_certs_volumes_to_deployment(
+def add_db_certs_volumes_to_deployment(
     spec: dict[str, Any],
     ca_configmap_name: str,
+    db_backend: str,
 ) -> list[dict[str, Any]]:
     """
-    Adds the MySQL certs volumes to the deployment.
+    Adds the database certs volumes to the deployment.
 
     Args:
         spec: The spec of the deployment
         ca_configmap_name: The name of the CA configmap
+        db_backend: The database backend type (e.g., "mysql", "postgres")
 
     Returns:
-        The volumes with the MySQL certs volumes added
+        The volumes with the database certs volumes added
     """
 
     volumes = list(spec["volumes"])
-    volumes.extend([
-        {"name": ca_configmap_name, "configMap": {"name": ca_configmap_name}},
-        {"name": "mysql-server-cert", "secret": {"secretName": "mysql-server-cert"}},  # pragma: allowlist secret
-        {"name": "mysql-server-key", "secret": {"secretName": "mysql-server-key"}},  # pragma: allowlist secret
-    ])
-
+    if db_backend == "mysql":
+        volumes.extend([
+            {"name": ca_configmap_name, "configMap": {"name": ca_configmap_name}},
+            {"name": "db-server-cert", "secret": {"secretName": "db-server-cert"}},  # pragma: allowlist secret
+            {"name": "db-server-key", "secret": {"secretName": "db-server-key"}},  # pragma: allowlist secret
+        ])
+    elif db_backend == "postgres":
+        volumes.extend([
+            {"name": ca_configmap_name, "configMap": {"name": ca_configmap_name}},
+            {"name": "db-ca", "secret": {"secretName": "db-ca"}},  # pragma: allowlist secret
+            {"name": "db-server-cert", "secret": {"secretName": "db-server-cert"}},  # pragma: allowlist secret
+            {
+                "name": "db-server-key",
+                "secret": {"secretName": "db-server-key", "defaultMode": 0o600},  # pragma: allowlist secret
+            },  # pragma: allowlist secret
+        ])
     return volumes
 
 
 def apply_mysql_args_and_volume_mounts(
-    my_sql_container: dict[str, Any],
+    db_container: dict[str, Any],
     ca_configmap_name: str,
     ca_mount_path: str,
+    db_backend: str,
 ) -> dict[str, Any]:
     """
-    Applies the MySQL args and volume mounts to the MySQL container.
+    Applies the database args and volume mounts to the database container.
 
     Args:
-        my_sql_container: The MySQL container
+        db_container: The database container
         ca_configmap_name: The name of the CA configmap
         ca_mount_path: The mount path of the CA
+        db_backend: The database backend type (e.g., "mysql", "postgres")
 
     Returns:
-        The MySQL container with the MySQL args and volume mounts applied
+        The database container with the database args and volume mounts applied
     """
 
-    mysql_args = list(my_sql_container.get("args", []))
-    mysql_args.extend([
-        f"--ssl-ca={ca_mount_path}/ca/ca-bundle.crt",
-        f"--ssl-cert={ca_mount_path}/server_cert/tls.crt",
-        f"--ssl-key={ca_mount_path}/server_key/tls.key",
-    ])
+    db_args = list(db_container.get("args", []))
+    volumes_mounts = list(db_container.get("volumeMounts", []))
 
-    volumes_mounts = list(my_sql_container.get("volumeMounts", []))
-    volumes_mounts.extend([
-        {"name": ca_configmap_name, "mountPath": f"{ca_mount_path}/ca", "readOnly": True},
-        {
-            "name": "mysql-server-cert",
-            "mountPath": f"{ca_mount_path}/server_cert",
-            "readOnly": True,
-        },
-        {
-            "name": "mysql-server-key",
-            "mountPath": f"{ca_mount_path}/server_key",
-            "readOnly": True,
-        },
-    ])
+    if db_backend == "mysql":
+        db_args.extend([
+            f"--ssl-ca={ca_mount_path}/ca/ca-bundle.crt",
+            f"--ssl-cert={ca_mount_path}/server_cert/tls.crt",
+            f"--ssl-key={ca_mount_path}/server_key/tls.key",
+        ])
 
-    my_sql_container["args"] = mysql_args
-    my_sql_container["volumeMounts"] = volumes_mounts
-    return my_sql_container
+        volumes_mounts.extend([
+            {"name": ca_configmap_name, "mountPath": f"{ca_mount_path}/ca", "readOnly": True},
+            {
+                "name": "db-server-cert",
+                "mountPath": f"{ca_mount_path}/server_cert",
+                "readOnly": True,
+            },
+            {
+                "name": "db-server-key",
+                "mountPath": f"{ca_mount_path}/server_key",
+                "readOnly": True,
+            },
+        ])
+    elif db_backend == "postgres":
+        db_args.extend([
+            "postgres",
+            "-c",
+            "ssl=on",
+            "-c",
+            "ssl_cert_file=/etc/ssl-certs/tls.crt",
+            "-c",
+            "ssl_key_file=/etc/ssl-keys/tls.key",
+            "-c",
+            "ssl_ca_file=/etc/ssl-ca/ca.crt",
+        ])
+
+        volumes_mounts.extend([
+            {
+                "name": "db-ca",
+                "mountPath": "/etc/ssl-ca",
+                "readOnly": True,
+            },
+            {
+                "name": "db-server-cert",
+                "mountPath": "/etc/ssl-certs",
+                "readOnly": True,
+            },
+            {
+                "name": "db-server-key",
+                "mountPath": "/etc/ssl-keys",
+                "readOnly": True,
+            },
+        ])
+
+    db_container["args"] = db_args
+    db_container["volumeMounts"] = volumes_mounts
+    return db_container
 
 
 def get_and_validate_registered_model(
