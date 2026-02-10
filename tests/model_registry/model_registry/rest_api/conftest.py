@@ -280,22 +280,22 @@ def patch_external_deployment_with_ssl_ca(
     if request.param.get("ca_configmap_for_test"):
         LOGGER.info("Invoking ca_configmap_for_test fixture")
         request.getfixturevalue(argname="ca_configmap_for_test")
-    CA_CONFIGMAP_NAME = request.param.get("ca_configmap_name", "db-ca-configmap")
-    CA_MOUNT_PATH = request.param.get("ca_mount_path", "/etc/mysql/ssl")
+    ca_configmap_name = request.param.get("ca_configmap_name", "db-ca-configmap")
+    ca_mount_path = request.param.get("ca_mount_path", "/etc/mysql/ssl")
 
     deployment = model_registry_db_deployments[0].instance.to_dict()
     spec = deployment["spec"]["template"]["spec"]
-    db_container = next(container for container in spec["containers"] if container["name"] == db_backend_under_test)
-    assert db_container is not None, f"{db_backend_under_test} container not found"
+    db_containers = [container for container in spec["containers"] if container["name"] == db_backend_under_test]
+    assert db_containers is not None, f"{db_backend_under_test} container not found"
 
     db_container = apply_mysql_args_and_volume_mounts(
-        db_container=db_container,
-        ca_configmap_name=CA_CONFIGMAP_NAME,
-        ca_mount_path=CA_MOUNT_PATH,
+        db_container=db_containers[0],
+        ca_configmap_name=ca_configmap_name,
+        ca_mount_path=ca_mount_path,
         db_backend=db_backend_under_test,
     )
     volumes = add_db_certs_volumes_to_deployment(
-        spec=spec, ca_configmap_name=CA_CONFIGMAP_NAME, db_backend=db_backend_under_test
+        spec=spec, ca_configmap_name=ca_configmap_name, db_backend=db_backend_under_test
     )
 
     patch = {"spec": {"template": {"spec": {"volumes": volumes, "containers": [db_container]}}}}
