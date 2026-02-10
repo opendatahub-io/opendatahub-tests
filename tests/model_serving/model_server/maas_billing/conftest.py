@@ -819,7 +819,7 @@ def maas_gateway_api(
 
     if gw.exists:
         LOGGER.info(f"Reusing existing gateway {MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_NAME}")
-        gw.wait_for_condition(condition="Ready", status="True", timeout=300)
+        gw.wait_for_condition(condition="Programmed", status="True", timeout=300)
         yield
     else:
         LOGGER.info(f"Creating gateway {MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_NAME}")
