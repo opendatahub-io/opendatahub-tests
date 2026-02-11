@@ -13,15 +13,24 @@ from simple_logger.logger import get_logger
 LOGGER = get_logger(name=__name__)
 
 
+@pytest.mark.parametrize(
+    "db_backend_under_test,model_registry_metadata_db_resources",
+    [
+        pytest.param("mysql", {"db_name": "mysql"}),
+        pytest.param("postgres", {"db_name": "postgres"}),
+    ],
+    indirect=True,
+)
+@pytest.mark.usefixtures("db_backend_under_test", "model_registry_metadata_db_resources")
 class TestModelRegistryWithSecureDB:
     """
-    Test suite for validating Model Registry functionality with a secure MySQL database connection (SSL/TLS).
-    Includes tests for both invalid and valid CA certificate scenarios.
+    Test suite for validating Model Registry functionality with secure database connections (SSL/TLS).
+    Tests both MySQL and PostgreSQL backends with invalid and valid CA certificate scenarios.
     """
 
     # Implements RHOAIENG-26150
     @pytest.mark.parametrize(
-        "patch_mysql_deployment_with_ssl_ca,patch_invalid_ca,local_ca_bundle",
+        "patch_external_deployment_with_ssl_ca,patch_invalid_ca,local_ca_bundle",
         [
             (
                 {
@@ -36,9 +45,8 @@ class TestModelRegistryWithSecureDB:
         indirect=True,
     )
     @pytest.mark.usefixtures(
-        "model_registry_metadata_db_resources",
-        "deploy_secure_mysql_and_mr",
-        "patch_mysql_deployment_with_ssl_ca",
+        "deploy_secure_db_mr",
+        "patch_external_deployment_with_ssl_ca",
         "patch_invalid_ca",
     )
     def test_register_model_with_invalid_ca(
@@ -47,7 +55,7 @@ class TestModelRegistryWithSecureDB:
         model_registry_namespace: str,
         model_registry_rest_headers: dict[str, str],
         local_ca_bundle: str,
-        deploy_secure_mysql_and_mr: ModelRegistry,
+        deploy_secure_db_mr: ModelRegistry,
         model_data_for_test: dict[str, Any],
     ):
         """
@@ -55,7 +63,7 @@ class TestModelRegistryWithSecureDB:
         with an invalid CA certificate.
         """
         service = get_mr_service_by_label(
-            client=admin_client, namespace_name=model_registry_namespace, mr_instance=deploy_secure_mysql_and_mr
+            client=admin_client, namespace_name=model_registry_namespace, mr_instance=deploy_secure_db_mr
         )
         model_registry_rest_url = get_endpoint_from_mr_service(svc=service, protocol=Protocols.REST)
 
@@ -71,15 +79,15 @@ class TestModelRegistryWithSecureDB:
         )
 
     @pytest.mark.parametrize(
-        "patch_mysql_deployment_with_ssl_ca, deploy_secure_mysql_and_mr,local_ca_bundle",
+        "patch_external_deployment_with_ssl_ca, deploy_secure_db_mr,local_ca_bundle",
         [
             (
                 {
-                    "ca_configmap_name": "mysql-ca-configmap",
+                    "ca_configmap_name": "db-ca-configmap",
                     "ca_mount_path": "/etc/mysql/ssl",
                     "ca_configmap_for_test": True,
                 },
-                {"sslRootCertificateConfigMap": {"name": "mysql-ca-configmap", "key": "ca-bundle.crt"}},
+                {"sslRootCertificateConfigMap": {"name": "db-ca-configmap", "key": "ca-bundle.crt"}},
                 {"cert_name": "ca-bundle.crt"},
             ),
         ],
@@ -87,9 +95,9 @@ class TestModelRegistryWithSecureDB:
     )
     @pytest.mark.usefixtures(
         "model_registry_metadata_db_resources",
-        "deploy_secure_mysql_and_mr",
+        "deploy_secure_db_mr",
         "ca_configmap_for_test",
-        "patch_mysql_deployment_with_ssl_ca",
+        "patch_external_deployment_with_ssl_ca",
     )
     @pytest.mark.smoke
     def test_register_model_with_valid_ca(
@@ -98,11 +106,12 @@ class TestModelRegistryWithSecureDB:
         model_registry_namespace: str,
         model_registry_rest_headers: dict[str, str],
         local_ca_bundle: str,
-        deploy_secure_mysql_and_mr: ModelRegistry,
+        deploy_secure_db_mr: ModelRegistry,
         model_data_for_test: dict[str, Any],
+        db_backend_under_test: str,
     ):
         service = get_mr_service_by_label(
-            client=admin_client, namespace_name=model_registry_namespace, mr_instance=deploy_secure_mysql_and_mr
+            client=admin_client, namespace_name=model_registry_namespace, mr_instance=deploy_secure_db_mr
         )
         model_registry_rest_url = get_endpoint_from_mr_service(svc=service, protocol=Protocols.REST)
 
@@ -112,10 +121,10 @@ class TestModelRegistryWithSecureDB:
             data_dict=model_data_for_test,
             verify=local_ca_bundle,
         )
-        assert result["register_model"].get("id"), "Model registration failed with secure DB connection."
+        assert result["register_model"].get("id"), f"Model registration failed with secure DB {db_backend_under_test}."
         validate_resource_attributes(
             expected_params=model_data_for_test["register_model_data"],
             actual_resource_data=result["register_model"],
             resource_name="register_model",
         )
-        LOGGER.info(f"Model registered successfully with secure DB using {local_ca_bundle}")
+        LOGGER.info(f"Model registered successfully with secure DB {db_backend_under_test} using {local_ca_bundle}")
