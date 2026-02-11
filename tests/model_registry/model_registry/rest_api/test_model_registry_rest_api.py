@@ -41,16 +41,18 @@ CONNECTION_STRING: str = "/var/run/postgresql:5432 - accepting connections"
             marks=(pytest.mark.smoke),
         ),
         pytest.param(
+            {"db_name": "postgres"},
+            {"db_name": "postgres"},
+            MODEL_REGISTER_DATA,
+            marks=(pytest.mark.smoke),
+        ),
+        pytest.param(
             {"db_name": "mariadb"},
             {"db_name": "mariadb"},
             MODEL_REGISTER_DATA,
             marks=(pytest.mark.sanity),
         ),
-        pytest.param(
-            {"db_name": "default"},
-            {"db_name": "default"},
-            MODEL_REGISTER_DATA,
-        ),
+        pytest.param({"db_name": "default"}, {"db_name": "default"}, MODEL_REGISTER_DATA, marks=(pytest.mark.smoke)),
     ],
     indirect=True,
 )
