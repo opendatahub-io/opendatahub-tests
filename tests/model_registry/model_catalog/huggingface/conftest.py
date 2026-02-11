@@ -5,7 +5,9 @@ from huggingface_hub import HfApi
 from simple_logger.logger import get_logger
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
+from ocp_resources.config_map import ConfigMap
 from tests.model_registry.model_catalog.constants import HF_CUSTOM_MODE
+from tests.model_registry.model_catalog.utils import get_models_from_catalog_api
 
 from tests.model_registry.model_catalog.huggingface.utils import get_huggingface_model_from_api
 from utilities.infra import create_ns
@@ -105,6 +107,44 @@ def initial_last_synced_values(
     )
 
     return result["customProperties"]["last_synced"]["string_value"]
+
+
+@pytest.fixture(scope="class")
+def hf_source_filter(request: pytest.FixtureRequest) -> str:
+    """
+    Provide the HuggingFace source filter label for test classes.
+    Can be overridden via indirect parameterization.
+    """
+    return request.param.get("source_filter", "HuggingFace Source mixed")
+
+
+@pytest.fixture(scope="class")
+def all_models_unfiltered(
+    updated_catalog_config_map: ConfigMap,
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+    hf_source_filter: str,
+) -> dict:
+    """
+    Fetch all models once at class scope to avoid redundant API calls.
+    This cached result is shared across all parameterized test runs.
+
+    Args:
+        updated_catalog_config_map: The catalog ConfigMap (ensures catalog is updated)
+        model_catalog_rest_url: The catalog REST API URL
+        model_registry_rest_headers: Headers for API authentication
+        hf_source_filter: The source label filter
+
+    Returns:
+        dict: API response containing all models from the specified source
+    """
+    LOGGER.info(f"Fetching all models from source '{hf_source_filter}'")
+    return get_models_from_catalog_api(
+        model_catalog_rest_url=model_catalog_rest_url,
+        model_registry_rest_headers=model_registry_rest_headers,
+        source_label=hf_source_filter,
+        page_size=1000,  # Large page size to get all models
+    )
 
 
 @pytest.fixture(scope="class")
