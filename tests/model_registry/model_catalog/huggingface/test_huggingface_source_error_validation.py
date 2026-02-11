@@ -1,15 +1,3 @@
-"""
-Test for RHOAIENG-47934: When a source has error associated with pulling some of the models,
-other models associated with the same source are not fetched either.
-
-This test reproduces the scenario where a HuggingFace source contains a mix of:
-- Accessible public models
-- Inaccessible models (private/non-existent)
-
-Expected behavior: Only failed models should be inaccessible; other models should remain usable.
-Current bug: All models from the same source become unavailable when any model fails to fetch.
-"""
-
 import pytest
 import re
 from simple_logger.logger import get_logger
@@ -18,23 +6,26 @@ from typing import Self
 from ocp_resources.config_map import ConfigMap
 from tests.model_registry.model_catalog.utils import (
     assert_source_error_state_message,
-    get_models_from_catalog_api,
-    assert_accessible_models_via_catalog_api,
 )
+from tests.model_registry.model_catalog.huggingface.utils import assert_accessible_models_via_catalog_api
 from tests.model_registry.utils import execute_get_command
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
+
+
 LOGGER = get_logger(name=__name__)
-INACCESSIBLE_MODELS:list[str] = [
+INACCESSIBLE_MODELS: list[str] = [
     "jonburdo/private-test-model-1",
 ]
-ACCESSIBLE_MODELS:list[str] = ["jonburdo/public-test-model-1", "jonburdo/test2",
-                               "jonburdo/gated-test-model-1"]
+ACCESSIBLE_MODELS: list[str] = ["jonburdo/public-test-model-1", "jonburdo/test2", "jonburdo/gated-test-model-1"]
 SOURCE_ID: str = "mixed_models_catalog"
 
+
 @pytest.mark.parametrize(
-        "updated_catalog_config_map",
-        [
-            pytest.param( {"sources_yaml": f"""
+    "updated_catalog_config_map",
+    [
+        pytest.param(
+            {
+                "sources_yaml": f"""
 catalogs:
   - name: HuggingFace Mixed Models
     id: {SOURCE_ID}
@@ -45,15 +36,17 @@ catalogs:
       - "jonburdo/public-test-model-1"
       - "jonburdo/private-test-model-1"
       - "jonburdo/gated-test-model-1"
-"""},  id="test_mixed_accessible_and_inaccessible_models",
-            ),
-        ],
-        indirect=["updated_catalog_config_map"],
+"""
+            },
+            id="test_mixed_accessible_and_inaccessible_models",
+        ),
+    ],
+    indirect=["updated_catalog_config_map"],
 )
 @pytest.mark.usefixtures(
-        "updated_dsc_component_state_scope_session",
-        "model_registry_namespace",
-    )
+    "updated_dsc_component_state_scope_session",
+    "model_registry_namespace",
+)
 class TestHuggingFaceSourceErrorValidation:
     """Test cases for RHOAIENG-47934 - Partial model fetching errors should not affect other models."""
 
@@ -72,7 +65,10 @@ class TestHuggingFaceSourceErrorValidation:
         """
         # Construct expected error message with failed models
         failed_models_str = ", ".join(INACCESSIBLE_MODELS)
-        expected_error_message = f"Failed to fetch some models, ensure models exist and are accessible with given credentials. Failed models: [{failed_models_str}]"
+        expected_error_message = (
+            "Failed to fetch some models, ensure models exist and are accessible with "
+            f"given credentials. Failed models: [{failed_models_str}]"
+        )
 
         LOGGER.info(f"Testing source error state for failed models: {INACCESSIBLE_MODELS}")
 
@@ -82,11 +78,10 @@ class TestHuggingFaceSourceErrorValidation:
             expected_error_message=expected_error_message,
             source_id=SOURCE_ID,
         )
-        import pdb
-        pdb.set_trace()
 
-    @pytest.mark.xfail(reason="RHOAIENG-49162: API call using source_label does not find models, when "
-                              "source is in error state")
+    @pytest.mark.xfail(
+        reason="RHOAIENG-49162: API call using source_label does not find models, when source is in error state"
+    )
     def test_accessible_models_catalog_api_source_id(
         self: Self,
         updated_catalog_config_map: ConfigMap,
@@ -113,7 +108,7 @@ class TestHuggingFaceSourceErrorValidation:
         model_registry_rest_headers: dict[str, str],
     ):
         """
-        RHOAIENG-47934: Check that accessible models are visible through catalog API using source label.
+        RHOAIENG-47934: Check that accessible models are visible through catalog API.
 
         This test verifies that accessible models are still returned by the catalog API
         even when the source is in error state.
@@ -146,7 +141,6 @@ class TestHuggingFaceSourceErrorValidation:
                     url=f"{model_catalog_rest_url[0]}sources/{SOURCE_ID}/models/{model_name}",
                     headers=model_registry_rest_headers,
                 )
-            LOGGER.info(f"Value: {str(exc_info.value)}")
             match = re.search(error_pattern, str(exc_info.value))
             assert match.group(1) == model_name, f"Expected model '{model_name}' in error, got '{match.group(1)}'"
             assert match.group(2) == SOURCE_ID, f"Expected source '{SOURCE_ID}' in error, got '{match.group(2)}'"
