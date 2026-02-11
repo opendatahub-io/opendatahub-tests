@@ -115,11 +115,7 @@ def hf_source_filter(request: pytest.FixtureRequest) -> str:
     Provide the HuggingFace source filter label for test classes.
     Can be overridden via indirect parameterization.
     """
-    # Check if the request has a param (indirect parameterization)
-    if hasattr(request, "param"):
-        return request.param
-    # Default to "mixed" source
-    return "HuggingFace Source mixed"
+    return request.param.get("source_filter", "HuggingFace Source mixed")
 
 
 @pytest.fixture(scope="class")
@@ -142,7 +138,7 @@ def all_models_unfiltered(
     Returns:
         dict: API response containing all models from the specified source
     """
-    LOGGER.info(f"Fetching all models from catalog (unfiltered) - source: {hf_source_filter}")
+    LOGGER.info(f"Fetching all models from source '{hf_source_filter}'")
     return get_models_from_catalog_api(
         model_catalog_rest_url=model_catalog_rest_url,
         model_registry_rest_headers=model_registry_rest_headers,

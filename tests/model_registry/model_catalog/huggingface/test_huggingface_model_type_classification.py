@@ -48,7 +48,9 @@ PREDICTIVE_TASKS = {
             {
                 "sources_yaml": get_hf_catalog_str(ids=["mixed"]),
             },
-            "HuggingFace Source mixed",
+            {
+                "source_filter": "HuggingFace Source mixed",
+            },
             id="test_model_type_classification",
         ),
     ],
