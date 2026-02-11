@@ -543,7 +543,10 @@ def model_catalog_rest_url(model_registry_namespace: str, model_catalog_routes: 
 
 @pytest.fixture(scope="function")
 def baseline_redhat_ai_models(
-    model_catalog_rest_url: list[str], model_registry_rest_headers: dict[str, str], model_registry_namespace: str
+    admin_client: DynamicClient,
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+    model_registry_namespace: str,
 ) -> dict[str, set[str] | int]:
     """
     fixture providing baseline model data for redhat_ai_models source.
@@ -559,6 +562,8 @@ def baseline_redhat_ai_models(
     )
     api_models = {model["name"] for model in api_response.get("items", [])}
 
-    db_models = get_models_from_database_by_source(source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace)
+    db_models = get_models_from_database_by_source(
+        admin_client=admin_client, source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
+    )
 
     return {"api_models": api_models, "db_models": db_models, "count": len(api_models)}

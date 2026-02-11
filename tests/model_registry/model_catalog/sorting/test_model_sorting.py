@@ -10,6 +10,7 @@ from tests.model_registry.model_catalog.sorting.utils import (
     validate_accuracy_sorting_against_database,
     get_model_latencies,
 )
+from kubernetes.dynamic import DynamicClient
 
 LOGGER = get_logger(name=__name__)
 
@@ -31,6 +32,7 @@ class TestAccuracySorting:
     @pytest.mark.sanity
     def test_accuracy_sorting_works_correctly(
         self: Self,
+        admin_client: DynamicClient,
         sort_order: str | None,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
@@ -61,6 +63,7 @@ class TestAccuracySorting:
         )
 
         assert validate_accuracy_sorting_against_database(
+            admin_client=admin_client,
             api_response=response,
             sort_order=sort_order,
         )

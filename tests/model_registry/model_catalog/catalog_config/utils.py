@@ -131,7 +131,7 @@ def validate_model_catalog_configmap_data(configmap: ConfigMap, num_catalogs: in
         validate_default_catalog(catalogs=catalogs)
 
 
-def get_models_from_database_by_source(source_id: str, namespace: str) -> set[str]:
+def get_models_from_database_by_source(admin_client: DynamicClient, source_id: str, namespace: str) -> set[str]:
     """
     Query database directly to get all model names for a specific source.
 
@@ -144,7 +144,7 @@ def get_models_from_database_by_source(source_id: str, namespace: str) -> set[st
     """
 
     query = GET_MODELS_BY_SOURCE_ID_DB_QUERY.format(source_id=source_id)
-    result = execute_database_query(query=query, namespace=namespace)
+    result = execute_database_query(admin_client=admin_client, query=query, namespace=namespace)
     parsed = parse_psql_output(psql_output=result)
     return set(parsed.get("values", []))
 
@@ -175,6 +175,7 @@ def validate_model_filtering_consistency(
 
 
 def validate_filter_test_result(
+    admin_client: DynamicClient,
     expected_models: set[str],
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
@@ -192,6 +193,7 @@ def validate_filter_test_result(
     5. Log success message
 
     Args:
+        admin_client: DynamicClient to connect to OpenShift
         expected_models: Set of expected model names after filtering
         model_catalog_rest_url: Model catalog REST API URL
         model_registry_rest_headers: Headers for API requests
@@ -207,7 +209,9 @@ def validate_filter_test_result(
     )
 
     # Get database models
-    db_models = get_models_from_database_by_source(source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace)
+    db_models = get_models_from_database_by_source(
+        admin_client=admin_client, source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
+    )
 
     # Validate consistency between API and database
     is_valid, error_msg = validate_model_filtering_consistency(api_models=api_models, db_models=db_models)
@@ -220,6 +224,7 @@ def validate_filter_test_result(
 
 
 def validate_source_disabling_result(
+    admin_client: DynamicClient,
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
     model_registry_namespace: str,
@@ -249,7 +254,9 @@ def validate_source_disabling_result(
         pytest.fail(f"Expected all models to be removed when source is disabled: {e}")
 
     # Verify database is also cleaned
-    db_models = get_models_from_database_by_source(source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace)
+    db_models = get_models_from_database_by_source(
+        admin_client=admin_client, source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
+    )
     assert len(db_models) == 0, f"Database should be clean when source disabled, found: {db_models}"
 
     LOGGER.info("SUCCESS: Source disabling removed all models")

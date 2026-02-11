@@ -15,6 +15,7 @@ from tests.model_registry.model_catalog.db_constants import (
 )
 from tests.model_registry.utils import get_rest_headers, execute_get_command
 from utilities.user_utils import UserTestSession
+from kubernetes.dynamic import DynamicClient
 
 LOGGER = get_logger(name=__name__)
 
@@ -46,6 +47,7 @@ class TestFilterOptionsEndpoint:
     )
     def test_comprehensive_coverage_against_database(
         self: Self,
+        admin_client: DynamicClient,
         model_catalog_rest_url: list[str],
         user_token_for_api_calls: str,
         model_registry_namespace: str,
@@ -73,7 +75,9 @@ class TestFilterOptionsEndpoint:
 
         LOGGER.info(f"Executing database query in namespace: {model_registry_namespace}")
 
-        db_result = execute_database_query(query=FILTER_OPTIONS_DB_QUERY, namespace=model_registry_namespace)
+        db_result = execute_database_query(
+            admin_client=admin_client, query=FILTER_OPTIONS_DB_QUERY, namespace=model_registry_namespace
+        )
         parsed_result = parse_psql_output(psql_output=db_result)
 
         db_properties = parsed_result.get("properties", {})

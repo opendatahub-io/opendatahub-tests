@@ -11,6 +11,7 @@ from tests.model_registry.model_catalog.db_constants import (
     GET_MODELS_BY_ACCURACY_DB_QUERY,
     GET_MODELS_BY_ACCURACY_WITH_TASK_FILTER_DB_QUERY,
 )
+from kubernetes.dynamic import DynamicClient
 
 LOGGER = get_logger(name=__name__)
 
@@ -176,6 +177,7 @@ def verify_custom_properties_sorted(items: list[dict], property_field: str, sort
 
 
 def validate_accuracy_sorting_against_database(
+    admin_client: DynamicClient,
     api_response: dict[str, Any],
     sort_order: str | None,
     namespace: str = "rhoai-model-registries",
@@ -193,6 +195,7 @@ def validate_accuracy_sorting_against_database(
       2. Models WITHOUT accuracy appear after, sorted by model ID in ASC order
 
     Args:
+        admin_client: DynamicClient with admin credentials
         api_response: API response from models endpoint with accuracy sorting
         sort_order: Sort order used (ASC, DESC, or None for no specific order)
         namespace: OpenShift namespace for PostgreSQL pod
@@ -203,7 +206,7 @@ def validate_accuracy_sorting_against_database(
     """
     # Get models with accuracy from database
     models_with_accuracy = get_models_by_accuracy_from_database(
-        sort_order=sort_order or "ASC", namespace=namespace, task_filter=task_filter
+        admin_client=admin_client, sort_order=sort_order or "ASC", namespace=namespace, task_filter=task_filter
     )
     filter_info = f" with task filter '{task_filter}'" if task_filter else ""
     sort_info = f", ordered {sort_order}" if sort_order else " (no sort order)"
@@ -252,6 +255,7 @@ def validate_accuracy_sorting_against_database(
 
 
 def get_models_by_accuracy_from_database(
+    admin_client: DynamicClient,
     sort_order: str,
     namespace: str = "rhoai-model-registries",
     task_filter: str | None = None,
@@ -260,6 +264,7 @@ def get_models_by_accuracy_from_database(
     Query the database to get model names ordered by accuracy (overall_average).
 
     Args:
+        admin_client: Admin client to use
         sort_order: Sort order for accuracy values (ASC or DESC)
         namespace: OpenShift namespace containing the PostgreSQL pod
         task_filter: Optional task filter value (e.g., "automatic-speech-recognition")
@@ -277,7 +282,7 @@ def get_models_by_accuracy_from_database(
     LOGGER.debug(f"Accuracy query (SQL): {accuracy_query}")
 
     # Execute the database query
-    db_result = execute_database_query(query=accuracy_query, namespace=namespace)
+    db_result = execute_database_query(admin_client=admin_client, query=accuracy_query, namespace=namespace)
     parsed_result = parse_psql_output(psql_output=db_result)
 
     # The query returns context_name values in order

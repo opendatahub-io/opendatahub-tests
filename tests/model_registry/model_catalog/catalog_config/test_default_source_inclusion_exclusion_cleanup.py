@@ -57,6 +57,7 @@ class TestModelInclusionFiltering:
     )
     def test_include_models_by_pattern(
         self,
+        admin_client: DynamicClient,
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
@@ -64,6 +65,7 @@ class TestModelInclusionFiltering:
     ):
         """Test that includedModels=[filter_value] shows only models matching pattern."""
         validate_filter_test_result(
+            admin_client=admin_client,
             expected_models=redhat_ai_models_with_filter,
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
@@ -98,6 +100,7 @@ class TestModelExclusionFiltering:
     )
     def test_exclude_models_by_pattern(
         self,
+        admin_client: DynamicClient,
         redhat_ai_models_with_filter: set[str],
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
@@ -105,6 +108,7 @@ class TestModelExclusionFiltering:
     ):
         """Test that excludedModels=[filter_value] removes models matching pattern."""
         validate_filter_test_result(
+            admin_client=admin_client,
             expected_models=redhat_ai_models_with_filter,
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
@@ -146,6 +150,7 @@ class TestCombinedIncludeExcludeFiltering:
     )
     def test_combined_include_exclude_filtering(
         self,
+        admin_client: DynamicClient,
         redhat_ai_models_with_filter: set[str],
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
@@ -153,6 +158,7 @@ class TestCombinedIncludeExcludeFiltering:
     ):
         """Test includedModels + excludedModels precedence."""
         validate_filter_test_result(
+            admin_client=admin_client,
             expected_models=redhat_ai_models_with_filter,
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
@@ -206,7 +212,7 @@ class TestModelCleanupLifecycle:
                     pytest.fail(f"Phase 1: Timeout waiting for granite models {granite_models}: {e}")
 
                 phase1_db_models = get_models_from_database_by_source(
-                    source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
+                    admin_client=admin_client, source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
                 )
 
                 assert phase1_api_models == granite_models, (
@@ -243,7 +249,7 @@ class TestModelCleanupLifecycle:
                     pytest.fail(f"Phase 2: Timeout waiting for prometheus models {prometheus_models}: {e}")
 
                 phase2_db_models = get_models_from_database_by_source(
-                    source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
+                    admin_client=admin_client, source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
                 )
 
                 # Should only have prometheus models now
@@ -272,6 +278,7 @@ class TestSourceLifecycleCleanup:
     @pytest.mark.smoke
     def test_source_disabling_removes_models(
         self,
+        admin_client: DynamicClient,
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
@@ -280,6 +287,7 @@ class TestSourceLifecycleCleanup:
         LOGGER.info("Testing source disabling cleanup")
 
         validate_source_disabling_result(
+            admin_client=admin_client,
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
             model_registry_namespace=model_registry_namespace,
