@@ -42,6 +42,9 @@ from utilities.certificates_utils import create_k8s_secret, create_ca_bundle_wit
 LOGGER = get_logger(name=__name__)
 
 
+POSTGRES_FILE_PATH: str = "/etc/server-cert"
+
+
 @pytest.fixture(scope="class")
 def registered_model_rest_api(
     request: pytest.FixtureRequest,
@@ -129,7 +132,7 @@ def db_backend_under_test(request: pytest.FixtureRequest) -> str:
     Returns:
         str: The database backend type (e.g., "mysql", "postgres")
     """
-    return request.param
+    return request.get("param", "mysql")
 
 
 @pytest.fixture(scope="class")
@@ -154,11 +157,11 @@ def external_db_template_with_ca(
             "-c",
             "ssl=on",
             "-c",
-            "ssl_cert_file=/etc/server-cert/tls.crt",
+            f"ssl_cert_file={POSTGRES_FILE_PATH}/tls.crt",
             "-c",
-            "ssl_key_file=/etc/server-cert/tls.key",
+            f"ssl_key_file={POSTGRES_FILE_PATH}/tls.key",
             "-c",
-            "ssl_ca_file=/etc/server-cert/ca.crt",
+            f"ssl_ca_file={POSTGRES_FILE_PATH}/ca.crt",
         ]
         db_deployment_template["spec"]["containers"][0].get("args", []).extend(postgres_ssl_args)
     db_deployment_template["spec"]["containers"][0]["volumeMounts"].append({
@@ -283,7 +286,7 @@ def patch_external_deployment_with_ssl_ca(
     ca_configmap_name = request.param.get("ca_configmap_name", "db-ca-configmap")
     if db_backend_under_test == "mysql":
         ca_mount_path = request.param.get("ca_mount_path", "/etc/mysql/ssl")
-    else:
+    elif db_backend_under_test == "postgres":
         ca_mount_path = request.param.get("ca_mount_path", "/etc")
 
     deployment = model_registry_db_deployments[0].instance.to_dict()

@@ -106,7 +106,7 @@ def get_database_volumes(resource_name: str, db_backend: str) -> list[dict[str, 
             },
         ]
     else:
-        # Default MySQL
+        # MySQL
         return [
             {
                 "name": f"{resource_name}-data",
@@ -133,7 +133,7 @@ def get_database_volume_mounts(resource_name: str, db_backend: str) -> list[dict
             },
         ]
     else:
-        # Default MySQL
+        # MySQL
         return [
             {
                 "mountPath": "/var/lib/mysql",
@@ -149,7 +149,7 @@ def get_database_image(db_backend: str) -> str:
     elif db_backend == "mariadb":
         return MARIA_DB_IMAGE
     else:
-        # Default MySQL
+        # MySQL
         return MR_DB_IMAGE_DIGEST
 
 
@@ -181,7 +181,7 @@ def get_database_health_probes(db_backend: str) -> dict[str, dict[str, Any]]:
             },
         }
     else:
-        # Default MySQL/MariaDB health probes
+        # MySQL/MariaDB health probes
         return {
             "livenessProbe": {
                 "exec": {
@@ -231,7 +231,7 @@ def get_database_env_vars(secret_name: str, db_backend: str) -> list[dict[str, A
             },
         ]
     else:
-        # Default MySQL/MariaDB environment variables
+        # MySQL/MariaDB environment variables
         env_vars = [
             {
                 "name": "MYSQL_USER",
