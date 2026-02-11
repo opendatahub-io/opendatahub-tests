@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = "==3.13.*"
 resolution-markers = [
     "sys_platform == 'win32'",
@@ -1062,7 +1062,7 @@ wheels = [
 
 [[package]]
 name = "llama-stack-client"
-version = "0.4.2"
+version = "0.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -1081,9 +1081,9 @@ dependencies = [
     { name = "tqdm" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5d/b5/fdfef39a1dedc319b98782a3b2e047b9aae394ca59010fb25146aef5edca/llama_stack_client-0.4.2.tar.gz", hash = "sha256:1277bf563531d9bc476e305f2d2bead9900986d426a2e32c9adf4b6a464804c3", size = 352951, upload-time = "2026-01-16T14:17:19.688Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/af/a1/1bd9ed2b6982fb1edf0215be1a4569eb65c9354b86bfdcb5b1414b489162/llama_stack_client-0.5.0.tar.gz", hash = "sha256:e005ae9d975cda30b3b86261057f228d700107e263e12b796b920cd1fb9ba968", size = 368629, upload-time = "2026-02-05T17:23:06.688Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5f/af/e1c5065b06f98f832a9f74cb8e092e88fd0c10fdf670ab2aecd614548768/llama_stack_client-0.4.2-py3-none-any.whl", hash = "sha256:d6e1c73391bdc3494fe1fa9ce7575a4749d13d111718e458e874ece544988729", size = 375941, upload-time = "2026-01-16T14:17:18.458Z" },
+    { url = "https://files.pythonhosted.org/packages/2d/93/63b434955cdb80d54c69bdb51ecd1a12595451ce238667fdaa125fb7d1ec/llama_stack_client-0.5.0-py3-none-any.whl", hash = "sha256:5e7272c7fb58cd169985191c42af78dc6c4d212b7050949b063788bfb9e7ed36", size = 391950, upload-time = "2026-02-05T17:23:04.238Z" },
 ]
 
 [[package]]
@@ -1408,7 +1408,7 @@ requires-dist = [
     { name = "huggingface-hub", specifier = ">=1.2.3" },
     { name = "ipython", specifier = ">=8.18.1" },
     { name = "jira", specifier = ">=3.8.0" },
-    { name = "llama-stack-client", specifier = ">=0.4.0,<0.5" },
+    { name = "llama-stack-client", specifier = ">=0.5.0,<0.6" },
     { name = "marshmallow", specifier = "==3.26.2,<4" },
     { name = "model-registry", specifier = ">=0.2.13" },
     { name = "openshift-python-utilities", specifier = ">=5.0.71" },
