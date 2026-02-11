@@ -49,11 +49,20 @@ HF_MODEL_NAME: str = "ibm-granite/granite-speech-3.2-8b"
 HF_CUSTOM_MODE: str = "jonburdo/test2"
 HF_MODELS: dict[str, Any] = {
     "mixed": [
+        # Generative models (text-generation)
         "ibm-granite/granite-4.0-h-1b",
         "microsoft/phi-2",
         "microsoft/Phi-4-mini-reasoning",
         "microsoft/Phi-3.5-mini-instruct",
         "meta-llama/Llama-3.1-8B-Instruct",
+        # Predictive models (text-classification)
+        "distilbert/distilbert-base-uncased-finetuned-sst-2-english",
+        "cardiffnlp/twitter-roberta-base-sentiment-latest",
+        # Predictive models (image-classification)
+        "google/vit-base-patch16-224",
+        # Potential unknown models (base models or unusual tasks)
+        "sentence-transformers/all-MiniLM-L6-v2",  # sentence-similarity (not in lists)
+        "openai/clip-vit-base-patch32",  # zero-shot-image-classification (not in lists)
     ],
     "granite": [
         "ibm-granite/granite-4.0-h-small",
