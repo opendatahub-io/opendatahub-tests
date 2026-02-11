@@ -132,7 +132,7 @@ def db_backend_under_test(request: pytest.FixtureRequest) -> str:
     Returns:
         str: The database backend type (e.g., "mysql", "postgres")
     """
-    return request.get("param", "mysql")
+    return getattr(request, "param", "mysql")
 
 
 @pytest.fixture(scope="class")
