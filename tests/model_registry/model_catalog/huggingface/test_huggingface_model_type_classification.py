@@ -40,6 +40,8 @@ PREDICTIVE_TASKS = {
     "fill-mask",
 }
 
+pytestmark = [pytest.mark.skip_on_disconnected]
+
 
 @pytest.mark.parametrize(
     "updated_catalog_config_map, hf_source_filter",

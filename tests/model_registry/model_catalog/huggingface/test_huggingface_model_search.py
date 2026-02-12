@@ -8,6 +8,8 @@ from simple_logger.logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 
+pytestmark = [pytest.mark.skip_on_disconnected]
+
 
 @pytest.mark.parametrize(
     "updated_catalog_config_map, hf_model_name, source_filter",
