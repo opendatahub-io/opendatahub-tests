@@ -739,7 +739,7 @@ def autouse_fixtures(
 
 @pytest.fixture(scope="session")
 def installed_mariadb_operator(admin_client: DynamicClient) -> Generator[None, Any, Any]:
-    operator_ns = Namespace(name="openshift-operators", ensure_exists=True)
+    operator_ns = Namespace(client=admin_client, name="openshift-operators", ensure_exists=True)
     operator_name = "mariadb-operator"
 
     mariadb_operator_subscription = Subscription(client=admin_client, namespace=operator_ns.name, name=operator_name)
@@ -789,7 +789,7 @@ def mariadb_operator_cr(
         mariadb_operator_cr.wait_for_condition(
             condition="Deployed", status=mariadb_operator_cr.Condition.Status.TRUE, timeout=Timeout.TIMEOUT_10MIN
         )
-        wait_for_mariadb_operator_deployments(mariadb_operator=mariadb_operator_cr)
+        wait_for_mariadb_operator_deployments(mariadb_operator=mariadb_operator_cr, client=admin_client)
         yield mariadb_operator_cr
 
 

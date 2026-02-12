@@ -25,7 +25,7 @@ from utilities.general import wait_for_pods_by_labels, validate_container_images
 LOGGER = get_logger(name=__name__)
 
 
-def wait_for_mariadb_operator_deployments(mariadb_operator: MariadbOperator) -> None:
+def wait_for_mariadb_operator_deployments(mariadb_operator: MariadbOperator, client: DynamicClient) -> None:
     expected_deployment_names: list[str] = [
         "mariadb-operator",
         "mariadb-operator-cert-controller",
@@ -34,7 +34,7 @@ def wait_for_mariadb_operator_deployments(mariadb_operator: MariadbOperator) -> 
     ]
 
     for name in expected_deployment_names:
-        deployment = Deployment(name=name, namespace=mariadb_operator.namespace)
+        deployment = Deployment(client=client, name=name, namespace=mariadb_operator.namespace)
         deployment.wait_for_replicas()
 
 
