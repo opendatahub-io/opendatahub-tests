@@ -130,6 +130,7 @@ class TestModelRegistryCreationRest:
     def test_default_postgres_db_resource_exists(
         self: Self,
         skip_if_not_default_db: None,
+        admin_client: DynamicClient,
         kind: Any,
         resource_name: str,
         model_registry_instance: list[ModelRegistry],
@@ -139,7 +140,7 @@ class TestModelRegistryCreationRest:
         Check resources created for default postgres database
         """
         model_registry = model_registry_instance[0]
-        resource = kind(name=resource_name, namespace=model_registry_namespace)
+        resource = kind(client=admin_client, name=resource_name, namespace=model_registry_namespace)
         if not resource.exists:
             pytest.fail(f"Resource: {resource_name} is not created, in {model_registry_namespace}")
         owner_reference = resource.instance.metadata.ownerReferences
@@ -233,7 +234,6 @@ class TestModelRegistryCreationRest:
         """
         Update model artifacts and ensure the updated values are reflected on the artifact
         """
-
         validate_resource_attributes(
             expected_params=expected_param,
             actual_resource_data=updated_model_registry_resource,
