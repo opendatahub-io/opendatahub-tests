@@ -86,8 +86,11 @@ class TestModelRegistryRBAC:
         )
 
         try:
+            mr_client_success = None
             # Get the first successful result
-            mr_client_success = next(iter(sampler))
+            for mr_client_success in sampler:
+                if mr_client_success:
+                    break
             assert mr_client_success is not None, "Client initialization failed after granting permissions"
             LOGGER.info("Client instantiated successfully after granting permissions.")
         except Exception as e:

@@ -68,4 +68,5 @@ class TestLabelsEndpoint:
             verify_labels_match(expected_labels=expected_labels, api_labels=api_labels)
 
         sampler = TimeoutSampler(wait_timeout=60, sleep=5, func=_check_updated_labels)
-        next(iter(sampler))
+        for _ in sampler:
+            break

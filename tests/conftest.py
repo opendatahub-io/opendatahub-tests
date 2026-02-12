@@ -368,9 +368,10 @@ def non_admin_user_password(
         data = users_Secret[0].instance.data
         users = _decode_split_data(_data=data.users)
         passwords = _decode_split_data(_data=data.passwords)
-        first_user_index = next(index for index, user in enumerate(users) if "user" in user)
+        first_user_index = next((index for index, user in enumerate(users) if "user" in user), None)
 
-        return users[first_user_index], passwords[first_user_index]
+        if first_user_index is not None:
+            return users[first_user_index], passwords[first_user_index]
 
     LOGGER.error("user credentials secret not found")
     return None
@@ -779,7 +780,7 @@ def mariadb_operator_cr(
     )
     alm_examples: list[dict[str, Any]] = mariadb_csv.get_alm_examples()
     mariadb_operator_cr_dict: dict[str, Any] = next(
-        example for example in alm_examples if example["kind"] == "MariadbOperator"
+        (example for example in alm_examples if example["kind"] == "MariadbOperator"), None
     )
     if not mariadb_operator_cr_dict:
         raise ResourceNotFoundError(f"No MariadbOperator dict found in alm_examples for CSV {mariadb_csv.name}")
