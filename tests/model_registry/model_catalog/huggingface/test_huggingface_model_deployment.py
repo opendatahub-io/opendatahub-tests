@@ -10,6 +10,8 @@ from tests.model_registry.model_catalog.utils import get_hf_catalog_str
 
 LOGGER = get_logger(name=__name__)
 
+pytestmark = [pytest.mark.skip_on_disconnected]
+
 
 @pytest.mark.parametrize(
     "updated_catalog_config_map",
