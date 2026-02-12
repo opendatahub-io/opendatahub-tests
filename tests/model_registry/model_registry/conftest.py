@@ -88,7 +88,7 @@ def registered_model(
         name=request.param.get("model_name"),
         uri=request.param.get("model_uri"),
         version=request.param.get("model_version"),
-        description=request.param.get("model_description"),
+        version_description=request.param.get("model_description"),
         model_format_name=request.param.get("model_format"),
         model_format_version=request.param.get("model_format_version"),
         storage_key=request.param.get("model_storage_key"),
