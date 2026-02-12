@@ -19,6 +19,8 @@ INACCESSIBLE_MODELS: list[str] = [
 ACCESSIBLE_MODELS: list[str] = ["jonburdo/public-test-model-1", "jonburdo/test2", "jonburdo/gated-test-model-1"]
 SOURCE_ID: str = "mixed_models_catalog"
 
+pytestmark = [pytest.mark.skip_on_disconnected]
+
 
 @pytest.mark.parametrize(
     "updated_catalog_config_map",

@@ -33,6 +33,8 @@ from ocp_resources.secret import Secret
 
 LOGGER = get_logger(name=__name__)
 
+pytestmark = pytest.mark.skip_on_disconnected
+
 POSTGRES_IMAGE = os.getenv(
     "LLS_VECTOR_IO_POSTGRES_IMAGE",
     (
