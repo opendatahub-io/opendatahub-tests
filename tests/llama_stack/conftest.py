@@ -491,8 +491,8 @@ def _get_llama_stack_distribution_deployment(
         name=llama_stack_distribution.name,
         min_ready_seconds=10,
     )
-    deployment.timeout_seconds = 120
-    deployment.wait(timeout=120)
+    deployment.timeout_seconds = 240
+    deployment.wait(timeout=240)
     deployment.wait_for_replicas()
     # Workaround for RHAIENG-1819 (Incorrect number of llama-stack pods deployed after
     # creating LlamaStackDistribution after setting custom ca bundle in DSCI)

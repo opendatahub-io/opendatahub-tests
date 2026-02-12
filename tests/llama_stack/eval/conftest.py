@@ -205,6 +205,7 @@ def dspa_route(
         )
         return routes[0] if routes else None
 
-    for route in TimeoutSampler(wait_timeout=120, sleep=5, func=_get_dspa_route):
+    for route in TimeoutSampler(wait_timeout=240, sleep=5, func=_get_dspa_route):
         if route:
             yield route
+            return

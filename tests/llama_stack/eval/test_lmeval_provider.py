@@ -40,7 +40,7 @@ class TestLlamaStackLMEvalProvider:
             provider_id=LlamaStackProviders.Inference.VLLM_INFERENCE, model_type="llm", model_id=QWEN_MODEL_NAME
         )
 
-        llama_stack_client.benchmarks.register(
+        llama_stack_client.alpha.benchmarks.register(
             benchmark_id=TRUSTYAI_LMEVAL_ARCEASY,
             dataset_id=TRUSTYAI_LMEVAL_ARCEASY,
             scoring_functions=["string"],
@@ -48,7 +48,7 @@ class TestLlamaStackLMEvalProvider:
             provider_benchmark_id="string",
             metadata={"tokenized_requests": False, "tokenizer": "google/flan-t5-small"},
         )
-        benchmarks = llama_stack_client.benchmarks.list()
+        benchmarks = llama_stack_client.alpha.benchmarks.list()
 
         assert len(benchmarks) == 1
         assert benchmarks[0].identifier == TRUSTYAI_LMEVAL_ARCEASY
@@ -107,7 +107,7 @@ class TestLlamaStackLMEvalCustomBenchmark:
             provider_id=LlamaStackProviders.Inference.VLLM_INFERENCE, model_type="llm", model_id=QWEN_MODEL_NAME
         )
 
-        llama_stack_client.benchmarks.register(
+        llama_stack_client.alpha.benchmarks.register(
             benchmark_id=TRUSTYAI_LMEVAL_CUSTOM,
             dataset_id=TRUSTYAI_LMEVAL_CUSTOM,
             scoring_functions=["string"],
@@ -134,7 +134,7 @@ class TestLlamaStackLMEvalCustomBenchmark:
             },
         )
 
-        benchmarks = llama_stack_client.benchmarks.list()
+        benchmarks = llama_stack_client.alpha.benchmarks.list()
         assert len(benchmarks) == 1
         assert benchmarks[0].identifier == TRUSTYAI_LMEVAL_CUSTOM
         assert benchmarks[0].provider_id == LlamaStackProviders.Eval.TRUSTYAI_LMEVAL
