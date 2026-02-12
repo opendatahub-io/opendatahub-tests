@@ -1183,7 +1183,7 @@ def download_oc_console_cli(admin_client: DynamicClient, tmpdir: LocalPath) -> s
         extracted_filenames = zip_file.namelist()
     else:
         with tarfile.open(name=local_file_name, mode="r") as tar_file:
-            tar_file.extractall(path=tmpdir)
+            tar_file.extractall(path=tmpdir, filter="fully_trusted")
             extracted_filenames = tar_file.getnames()
     LOGGER.info(f"Downloaded file: {extracted_filenames}")
 
