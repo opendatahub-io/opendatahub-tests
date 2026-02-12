@@ -313,10 +313,10 @@ def maas_htpasswd_oauth_idp(
             ResourceEditor(patches={oauth_resource: {"spec": {"identityProviders": updated_idps}}}),
         ):
             LOGGER.info(f"MaaS RBAC: updating OAuth with MaaS htpasswd IDP '{maas_idp['name']}'")
-            wait_for_oauth_openshift_deployment()
+            wait_for_oauth_openshift_deployment(client=admin_client)
             LOGGER.info(f"MaaS RBAC: OAuth updated with MaaS IDP '{maas_idp['name']}'")
             yield
-        wait_for_oauth_openshift_deployment()
+        wait_for_oauth_openshift_deployment(client=admin_client)
         LOGGER.info(f"MaaS RBAC: OAuth identityProviders cleanup completed for IDP '{idp_name}'")
 
 
@@ -335,6 +335,7 @@ def maas_free_user_session(
     maas_api_server_url: str,
     is_byoidc: bool,
     maas_rbac_idp_env: dict[str, str],
+    admin_client: DynamicClient,
 ) -> Generator[UserTestSession, None, None]:
     if is_byoidc:
         pytest.skip("Working on OIDC support for tests that use htpasswd IDP for MaaS")
@@ -365,6 +366,7 @@ def maas_free_user_session(
                 password=password,
                 original_user=original_user,
                 api_server_url=maas_api_server_url,
+                client=admin_client,
             )
             LOGGER.info(f"MaaS RBAC: created FREE test IDP user session '{idp_session.username}'")
             yield idp_session
@@ -380,6 +382,7 @@ def maas_premium_user_session(
     maas_api_server_url: str,
     is_byoidc: bool,
     maas_rbac_idp_env: dict[str, str],
+    admin_client: DynamicClient,
 ) -> Generator[UserTestSession, None, None]:
     if is_byoidc:
         pytest.skip("Working on OIDC support for tests that use htpasswd IDP for MaaS")
@@ -410,6 +413,7 @@ def maas_premium_user_session(
                 password=password,
                 original_user=original_user,
                 api_server_url=maas_api_server_url,
+                client=admin_client,
             )
             LOGGER.info(f"MaaS RBAC: created PREMIUM test IDP user session '{idp_session.username}'")
             yield idp_session

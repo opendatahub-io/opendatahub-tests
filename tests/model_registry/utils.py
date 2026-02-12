@@ -999,11 +999,12 @@ def get_mr_user_token(admin_client: DynamicClient, user_credentials_rbac: dict[s
         raise e
 
 
-def get_byoidc_user_credentials(username: str = None) -> Dict[str, str]:
+def get_byoidc_user_credentials(client: DynamicClient, username: str = None) -> Dict[str, str]:
     """
     Get user credentials from byoidc-credentials secret.
 
     Args:
+        client: DynamicClient for accessing the cluster.
         username: Specific username to look up. If None, returns first user.
 
     Returns:
@@ -1013,7 +1014,7 @@ def get_byoidc_user_credentials(username: str = None) -> Dict[str, str]:
         ValueError: If username not found or no users/passwords in secret.
         AssertionError: If users or passwords lists are empty.
     """
-    credentials_secret = Secret(name="byoidc-credentials", namespace="oidc", ensure_exists=True)
+    credentials_secret = Secret(client=client, name="byoidc-credentials", namespace="oidc", ensure_exists=True)
     credential_data = credentials_secret.instance.data
     user_names = base64.b64decode(credential_data.users).decode().split(",")
     passwords = base64.b64decode(credential_data.passwords).decode().split(",")
