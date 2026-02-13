@@ -8,6 +8,7 @@ from tests.model_registry.model_catalog.utils import get_models_from_catalog_api
 LOGGER = get_logger(name=__name__)
 
 pytestmark = [
+    pytest.mark.skip_on_disconnected,
     pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace"),
 ]
 

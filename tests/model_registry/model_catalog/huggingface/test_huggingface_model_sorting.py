@@ -5,6 +5,8 @@ from ocp_resources.config_map import ConfigMap
 from tests.model_registry.model_catalog.sorting.utils import assert_model_sorting
 from tests.model_registry.model_catalog.utils import get_hf_catalog_str
 
+pytestmark = [pytest.mark.skip_on_disconnected]
+
 
 @pytest.mark.parametrize(
     "updated_catalog_config_map",
