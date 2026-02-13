@@ -3,9 +3,9 @@
 from typing import Self
 import json
 import pytest
-from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from simple_logger.logger import get_logger
+from tests.model_registry.model_registry.python_client.signing.utils import Securesign
 
 LOGGER = get_logger(name=__name__)
 
@@ -16,8 +16,7 @@ class TestSigningInfrastructure:
 
     def test_signing_environment_ready(
         self: Self,
-        admin_client: DynamicClient,
-        securesign_instance,
+        securesign_instance: Securesign,
         tas_connection_type: ConfigMap,
         oidc_issuer_url: str,
     ):
