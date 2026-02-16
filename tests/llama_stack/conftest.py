@@ -66,6 +66,8 @@ LLS_CORE_VLLM_EMBEDDING_API_TOKEN = os.getenv("LLS_CORE_VLLM_EMBEDDING_API_TOKEN
 LLS_CORE_VLLM_EMBEDDING_MAX_TOKENS = os.getenv("LLS_CORE_VLLM_EMBEDDING_MAX_TOKENS", "8192")
 LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY = os.getenv("LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY", "true")
 
+IBM_EARNINGS_DOC_URL = "https://www.ibm.com/downloads/documents/us-en/1550f7eea8c0ded6"
+
 distribution_name = generate_random_name(prefix="llama-stack-distribution")
 
 
@@ -776,35 +778,24 @@ def vector_store_with_example_docs(
     unprivileged_llama_stack_client: LlamaStackClient, vector_store: VectorStore
 ) -> Generator[VectorStore, None, None]:
     """
-    Creates a vector store with TorchTune documentation files uploaded.
+    Creates a vector store with the IBM fourth-quarter 2025 earnings report uploaded.
 
-    This fixture depends on the vector_store fixture and uploads the TorchTune
-    documentation files to the vector store for testing purposes. The files
-    are automatically cleaned up after the test completes.
+    This fixture depends on the vector_store fixture and uploads the IBM earnings
+    document to the vector store for testing vector, keyword, and hybrid search.
+    The file is automatically cleaned up after the test completes.
 
     Args:
         unprivileged_llama_stack_client: The configured LlamaStackClient
         vector_store: The vector store fixture to upload files to
 
     Yields:
-        Vector store object with uploaded TorchTune documentation files
+        Vector store object with uploaded IBM earnings report document
     """
-    # Download TorchTune documentation files
-    urls = [
-        "llama3.rst",
-        "chat.rst",
-        "lora_finetune.rst",
-        "qat_finetune.rst",
-        "memory_optimizations.rst",
-    ]
-
-    base_url = "https://raw.githubusercontent.com/pytorch/torchtune/refs/tags/v0.6.1/docs/source/tutorials/"
-
-    for file_name in urls:
-        url = f"{base_url}{file_name}"
-        vector_store_create_file_from_url(
-            url=url, llama_stack_client=unprivileged_llama_stack_client, vector_store=vector_store
-        )
+    vector_store_create_file_from_url(
+        url=IBM_EARNINGS_DOC_URL,
+        llama_stack_client=unprivileged_llama_stack_client,
+        vector_store=vector_store,
+    )
 
     yield vector_store
 
