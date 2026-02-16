@@ -1,7 +1,5 @@
 """Utility functions for Model Registry Python Client Signing Tests."""
 
-from kubernetes.dynamic import DynamicClient
-from ocp_resources.route import Route
 from tests.model_registry.model_registry.python_client.signing.constants import (
     SECURESIGN_ORGANIZATION_NAME,
     SECURESIGN_ORGANIZATION_EMAIL,
@@ -77,22 +75,3 @@ def create_connection_type_field(
         "properties": {"defaultValue": default_value},
         "required": required,
     }
-
-
-def get_cli_server_route_url(admin_client: DynamicClient, namespace: str) -> str:
-    """
-    Get the CLI server external route URL by finding route with cli-server service.
-
-    Args:
-        admin_client: Kubernetes dynamic client
-        namespace: Namespace where the CLI server route is located
-
-    Returns:
-        str: External route URL (https://...)
-    """
-    # Find route by service name (routes can have random suffixes)
-    for route in Route.get(client=admin_client, namespace=namespace):
-        if route.instance.spec.to.name == "cli-server":
-            return f"https://{route.instance.spec.host}"
-
-    raise ValueError(f"CLI server route not found in namespace '{namespace}'")

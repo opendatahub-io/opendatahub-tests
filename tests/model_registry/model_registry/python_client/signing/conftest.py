@@ -26,7 +26,6 @@ from tests.model_registry.model_registry.python_client.signing.utils import (
     get_organization_config,
     is_securesign_ready,
     get_tas_service_urls,
-    get_cli_server_route_url,
     create_connection_type_field,
 )
 
@@ -218,18 +217,16 @@ def securesign_instance(
 
 @pytest.fixture(scope="class")
 def tas_connection_type(
-    admin_client: DynamicClient, securesign_instance: Securesign, oidc_issuer_url: str
+    admin_client: DynamicClient, securesign_instance: Securesign
 ) -> Generator[ConfigMap, Any, None]:
     """Create ODH Connection Type ConfigMap for TAS (Trusted Artifact Signer).
 
     Provides TAS service endpoints for programmatic access to signing services.
     The ConfigMap includes URLs for all Sigstore components (Fulcio, Rekor, TSA, TUF)
-    plus the cosign CLI server route and OIDC issuer.
 
     Args:
         admin_client: Kubernetes dynamic client
         securesign_instance: Securesign instance fixture ensuring infrastructure is ready
-        oidc_issuer_url: OIDC issuer URL for keyless signing authentication
 
     Yields:
         ConfigMap: TAS Connection Type ConfigMap
@@ -240,9 +237,8 @@ def tas_connection_type(
     LOGGER.info("Retrieving TAS service URLs from Securesign instance...")
     securesign_data = securesign_instance.instance.to_dict()
 
-    # Extract service URLs from Securesign status and CLI server route
+    # Extract service URLs from Securesign status
     service_urls = get_tas_service_urls(securesign_instance=securesign_data)
-    service_urls["cli_server"] = get_cli_server_route_url(admin_client=admin_client, namespace=SECURESIGN_NAMESPACE)
 
     # Log and validate all URLs
     for service, url in service_urls.items():
