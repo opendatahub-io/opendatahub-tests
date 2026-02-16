@@ -9,22 +9,26 @@ from ocp_resources.subscription import Subscription
 from ocp_resources.namespace import Namespace
 from ocp_resources.deployment import Deployment
 from ocp_resources.config_map import ConfigMap
-from ocp_resources.route import Route
 from ocp_utilities.operators import install_operator, uninstall_operator
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler, TimeoutExpiredError
 from utilities.constants import Timeout, OPENSHIFT_OPERATORS
 from utilities.infra import get_openshift_token
+from utilities.resources.securesign import Securesign
 from tests.model_registry.model_registry.python_client.signing.constants import (
     SECURESIGN_NAMESPACE,
     SECURESIGN_NAME,
     SECURESIGN_API_VERSION,
-    SECURESIGN_ORGANIZATION_NAME,
-    SECURESIGN_ORGANIZATION_EMAIL,
     TAS_CONNECTION_TYPE_NAME,
 )
-from tests.model_registry.model_registry.python_client.signing.utils import Securesign  # noqa: TID252
+from tests.model_registry.model_registry.python_client.signing.utils import (
+    get_organization_config,
+    is_securesign_ready,
+    get_tas_service_urls,
+    get_cli_server_route_url,
+    create_connection_type_field,
+)
 
 LOGGER = get_logger(name=__name__)
 
@@ -45,7 +49,7 @@ def oidc_issuer_url(admin_client: DynamicClient, api_server_url: str) -> str:
     headers = {"Authorization": f"Bearer {token}"}
 
     LOGGER.info(f"Fetching OIDC configuration from {url}")
-    response = requests.get(url, headers=headers, verify=False, timeout=30)
+    response = requests.get(url=url, headers=headers, verify=False, timeout=30)
     response.raise_for_status()
 
     oidc_config = response.json()
@@ -72,7 +76,7 @@ def installed_tas_operator(admin_client: DynamicClient) -> Generator[None, Any, 
     Yields:
         None: Operator is ready for use
     """
-    distribution = py_config.get("distribution", "downstream")
+    distribution = py_config["distribution"]
     operator_ns = Namespace(name=OPENSHIFT_OPERATORS, ensure_exists=True)
     package_name = "rhtas-operator"
 
@@ -146,7 +150,7 @@ def securesign_instance(
     Namespace(name=SECURESIGN_NAMESPACE, ensure_exists=True)
 
     # Build Securesign CR spec
-    org_config = _get_organization_config()
+    org_config = get_organization_config()
     securesign_dict = {
         "apiVersion": SECURESIGN_API_VERSION,
         "kind": "Securesign",
@@ -199,7 +203,7 @@ def securesign_instance(
                 sleep=5,
                 func=lambda: securesign.instance.to_dict(),
             ):
-                if sample and _is_securesign_ready(sample):
+                if sample and is_securesign_ready(sample):
                     LOGGER.info(f"Securesign instance '{SECURESIGN_NAME}' is ready")
                     break
         except TimeoutExpiredError:
@@ -210,72 +214,6 @@ def securesign_instance(
 
     # Cleanup is handled automatically by the context manager
     LOGGER.info(f"Securesign instance '{SECURESIGN_NAME}' cleanup completed")
-
-
-def _get_tas_service_urls(securesign_instance: dict) -> dict[str, str]:
-    """Extract TAS service URLs from Securesign instance status.
-
-    Args:
-        securesign_instance: Securesign instance dictionary from Kubernetes API
-
-    Returns:
-        dict: Service URLs with keys 'fulcio', 'rekor', 'tsa', 'tuf'
-
-    Raises:
-        KeyError: If expected status fields are missing from Securesign instance
-    """
-    status = securesign_instance["status"]
-
-    return {
-        "fulcio": status["fulcio"]["url"],
-        "rekor": status["rekor"]["url"],
-        "tsa": status["tsa"]["url"],
-        "tuf": status["tuf"]["url"],
-    }
-
-
-def _create_connection_type_field(
-    name: str, description: str, env_var: str, default_value: str, required: bool = True
-) -> dict:
-    """Create a Connection Type field dictionary for ODH dashboard.
-
-    Args:
-        name: Display name of the field shown in UI
-        description: Help text describing the field's purpose
-        env_var: Environment variable name for programmatic access
-        default_value: Default value to populate (typically a service URL)
-        required: Whether the field must be filled
-
-    Returns:
-        dict: Field dictionary conforming to ODH Connection Type schema
-    """
-    return {
-        "type": "short-text",
-        "name": name,
-        "description": description,
-        "envVar": env_var,
-        "properties": {"defaultValue": default_value},
-        "required": required,
-    }
-
-
-def _get_cli_server_route_url(admin_client: DynamicClient, namespace: str) -> str:
-    """
-    Get the CLI server external route URL by finding route with cli-server service.
-
-    Args:
-        admin_client: Kubernetes dynamic client
-        namespace: Namespace where the CLI server route is located
-
-    Returns:
-        str: External route URL (https://...)
-    """
-    # Find route by service name (routes can have random suffixes)
-    for route in Route.get(client=admin_client, namespace=namespace):
-        if route.instance.spec.to.name == "cli-server":
-            return f"https://{route.instance.spec.host}"
-
-    raise ValueError(f"CLI server route not found in namespace '{namespace}'")
 
 
 @pytest.fixture(scope="class")
@@ -296,17 +234,15 @@ def tas_connection_type(
     Yields:
         ConfigMap: TAS Connection Type ConfigMap
     """
-    # Ensure applications namespace exists
     app_namespace = py_config["applications_namespace"]
-    Namespace(name=app_namespace, ensure_exists=True)
 
     # Get Securesign instance to extract service URLs from status
     LOGGER.info("Retrieving TAS service URLs from Securesign instance...")
     securesign_data = securesign_instance.instance.to_dict()
 
     # Extract service URLs from Securesign status and CLI server route
-    service_urls = _get_tas_service_urls(securesign_instance=securesign_data)
-    service_urls["cli_server"] = _get_cli_server_route_url(admin_client=admin_client, namespace=SECURESIGN_NAMESPACE)
+    service_urls = get_tas_service_urls(securesign_instance=securesign_data)
+    service_urls["cli_server"] = get_cli_server_route_url(admin_client=admin_client, namespace=SECURESIGN_NAMESPACE)
 
     # Log and validate all URLs
     for service, url in service_urls.items():
@@ -318,37 +254,23 @@ def tas_connection_type(
         (
             "Fulcio URL",
             "Certificate authority service URL for keyless signing",
-            "FULCIO_URL",
+            "SIGSTORE_FULCIO_URL",
             service_urls["fulcio"],
             True,
         ),
         (
             "Rekor URL",
             "Transparency log service URL for signature verification",
-            "REKOR_URL",
+            "SIGSTORE_REKOR_URL",
             service_urls["rekor"],
             True,
         ),
-        ("TSA URL", "Timestamp Authority service URL (RFC 3161)", "TSA_URL", service_urls["tsa"], False),
-        ("TUF URL", "Trust root distribution service URL", "TUF_URL", service_urls["tuf"], True),
-        (
-            "Cosign Binary Server URL",
-            "CLI server URL for downloading cosign binary",
-            "TAS_COSIGN_CLI_URL",
-            service_urls["cli_server"],
-            True,
-        ),
-        (
-            "OIDC Issuer",
-            "OIDC issuer URL for keyless signing authentication",
-            "OIDC_ISSUER_URL",
-            oidc_issuer_url,
-            False,
-        ),
+        ("TSA URL", "Timestamp Authority service URL (RFC 3161)", "SIGSTORE_TSA_URL", service_urls["tsa"], True),
+        ("TUF URL", "Trust root distribution service URL", "SIGSTORE_TUF_URL", service_urls["tuf"], True),
     ]
 
     # Build Connection Type fields
-    fields = [_create_connection_type_field(name, desc, env, url, req) for name, desc, env, url, req in field_specs]
+    fields = [create_connection_type_field(name, desc, env, url, req) for name, desc, env, url, req in field_specs]
 
     # Create ConfigMap for Connection Type
     configmap_data = {
@@ -380,27 +302,3 @@ def tas_connection_type(
         yield connection_type
 
     LOGGER.info(f"TAS Connection Type '{TAS_CONNECTION_TYPE_NAME}' deleted from namespace '{app_namespace}'")
-
-
-def _get_organization_config() -> dict[str, str]:
-    """Get organization configuration for certificates."""
-    return {
-        "organizationName": SECURESIGN_ORGANIZATION_NAME,
-        "organizationEmail": SECURESIGN_ORGANIZATION_EMAIL,
-    }
-
-
-def _is_securesign_ready(securesign_instance: dict) -> bool:
-    """Check if a Securesign instance is ready.
-
-    Args:
-        securesign_instance: Securesign instance dictionary from Kubernetes API
-
-    Returns:
-        bool: True if instance has Ready condition with status True
-    """
-    conditions = securesign_instance.get("status", {}).get("conditions", [])
-    ready = [
-        condition for condition in conditions if condition.get("type") == "Ready" and condition.get("status") == "True"
-    ]
-    return bool(ready)

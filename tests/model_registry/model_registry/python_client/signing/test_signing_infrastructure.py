@@ -5,7 +5,7 @@ import json
 import pytest
 from ocp_resources.config_map import ConfigMap
 from simple_logger.logger import get_logger
-from tests.model_registry.model_registry.python_client.signing.utils import Securesign
+from utilities.resources.securesign import Securesign
 
 LOGGER = get_logger(name=__name__)
 
@@ -66,7 +66,7 @@ class TestSigningInfrastructure:
             if default_value:
                 env_var_to_url[env_var] = default_value
 
-        required_env_vars = ["FULCIO_URL", "REKOR_URL", "TUF_URL", "TSA_URL", "TAS_COSIGN_CLI_URL", "OIDC_ISSUER_URL"]
+        required_env_vars = ["SIGSTORE_FULCIO_URL", "SIGSTORE_REKOR_URL", "SIGSTORE_TUF_URL", "SIGSTORE_TSA_URL"]
         for env_var in required_env_vars:
             assert env_var in env_var_to_url, f"Missing required environment variable: {env_var}"
             url = env_var_to_url[env_var]

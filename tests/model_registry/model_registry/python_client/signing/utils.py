@@ -1,68 +1,98 @@
-"""Securesign custom resource for Red Hat Trusted Artifact Signer (RHTAS/TAS)."""
+"""Utility functions for Model Registry Python Client Signing Tests."""
 
-from typing import Any
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.route import Route
+from tests.model_registry.model_registry.python_client.signing.constants import (
+    SECURESIGN_ORGANIZATION_NAME,
+    SECURESIGN_ORGANIZATION_EMAIL,
+)
 
-from ocp_resources.resource import NamespacedResource
+
+def get_organization_config() -> dict[str, str]:
+    """Get organization configuration for certificates."""
+    return {
+        "organizationName": SECURESIGN_ORGANIZATION_NAME,
+        "organizationEmail": SECURESIGN_ORGANIZATION_EMAIL,
+    }
 
 
-# Generated using https://github.com/RedHatQE/openshift-python-wrapper/blob/main/scripts/resource/README.md
-class Securesign(NamespacedResource):
-    """Securesign is the Schema for the securesigns API."""
+def is_securesign_ready(securesign_instance: dict) -> bool:
+    """Check if a Securesign instance is ready.
 
-    api_group: str = "rhtas.redhat.com"
+    Args:
+        securesign_instance: Securesign instance dictionary from Kubernetes API
 
-    def __init__(
-        self,
-        ctlog: dict[str, Any] | None = None,
-        fulcio: dict[str, Any] | None = None,
-        rekor: dict[str, Any] | None = None,
-        trillian: dict[str, Any] | None = None,
-        tsa: dict[str, Any] | None = None,
-        tuf: dict[str, Any] | None = None,
-        **kwargs: Any,
-    ) -> None:
-        """Initialize Securesign resource.
+    Returns:
+        bool: True if instance has Ready condition with status True
+    """
+    conditions = securesign_instance.get("status", {}).get("conditions", [])
+    ready = [
+        condition for condition in conditions if condition.get("type") == "Ready" and condition.get("status") == "True"
+    ]
+    return bool(ready)
 
-        Args:
-            ctlog: CTlogSpec defines the desired state of CTlog component
-            fulcio: FulcioSpec defines the desired state of Fulcio
-            rekor: RekorSpec defines the desired state of Rekor
-            trillian: TrillianSpec defines the desired state of Trillian
-            tsa: TimestampAuthoritySpec defines the desired state of TimestampAuthority
-            tuf: TufSpec defines the desired state of Tuf
-        """
-        super().__init__(**kwargs)
 
-        self.ctlog = ctlog
-        self.fulcio = fulcio
-        self.rekor = rekor
-        self.trillian = trillian
-        self.tsa = tsa
-        self.tuf = tuf
+def get_tas_service_urls(securesign_instance: dict) -> dict[str, str]:
+    """Extract TAS service URLs from Securesign instance status.
 
-    def to_dict(self) -> None:
-        super().to_dict()
+    Args:
+        securesign_instance: Securesign instance dictionary from Kubernetes API
 
-        if not self.kind_dict and not self.yaml_file:
-            self.res["spec"] = {}
-            _spec = self.res["spec"]
+    Returns:
+        dict: Service URLs with keys 'fulcio', 'rekor', 'tsa', 'tuf'
 
-            if self.ctlog is not None:
-                _spec["ctlog"] = self.ctlog
+    Raises:
+        KeyError: If expected status fields are missing from Securesign instance
+    """
+    status = securesign_instance["status"]
 
-            if self.fulcio is not None:
-                _spec["fulcio"] = self.fulcio
+    return {
+        "fulcio": status["fulcio"]["url"],
+        "rekor": status["rekor"]["url"],
+        "tsa": status["tsa"]["url"],
+        "tuf": status["tuf"]["url"],
+    }
 
-            if self.rekor is not None:
-                _spec["rekor"] = self.rekor
 
-            if self.trillian is not None:
-                _spec["trillian"] = self.trillian
+def create_connection_type_field(
+    name: str, description: str, env_var: str, default_value: str, required: bool = True
+) -> dict:
+    """Create a Connection Type field dictionary for ODH dashboard.
 
-            if self.tsa is not None:
-                _spec["tsa"] = self.tsa
+    Args:
+        name: Display name of the field shown in UI
+        description: Help text describing the field's purpose
+        env_var: Environment variable name for programmatic access
+        default_value: Default value to populate (typically a service URL)
+        required: Whether the field must be filled
 
-            if self.tuf is not None:
-                _spec["tuf"] = self.tuf
+    Returns:
+        dict: Field dictionary conforming to ODH Connection Type schema
+    """
+    return {
+        "type": "short-text",
+        "name": name,
+        "description": description,
+        "envVar": env_var,
+        "properties": {"defaultValue": default_value},
+        "required": required,
+    }
 
-    # End of generated code
+
+def get_cli_server_route_url(admin_client: DynamicClient, namespace: str) -> str:
+    """
+    Get the CLI server external route URL by finding route with cli-server service.
+
+    Args:
+        admin_client: Kubernetes dynamic client
+        namespace: Namespace where the CLI server route is located
+
+    Returns:
+        str: External route URL (https://...)
+    """
+    # Find route by service name (routes can have random suffixes)
+    for route in Route.get(client=admin_client, namespace=namespace):
+        if route.instance.spec.to.name == "cli-server":
+            return f"https://{route.instance.spec.host}"
+
+    raise ValueError(f"CLI server route not found in namespace '{namespace}'")
