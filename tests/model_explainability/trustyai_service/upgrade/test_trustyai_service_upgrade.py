@@ -12,24 +12,20 @@ from tests.model_explainability.trustyai_service.trustyai_service_utils import (
     TrustyAIServiceMetrics,
     verify_trustyai_service_metric_scheduling_request,
 )
-from utilities.constants import MinIo
 from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
 from timeout_sampler import retry
 
 
 @pytest.mark.parametrize(
-    "model_namespace, minio_pod, minio_data_connection, trustyai_service",
+    "model_namespace, trustyai_service",
     [
         pytest.param(
             {"name": "test-trustyaiservice-upgrade"},
-            MinIo.PodConfig.MODEL_MESH_MINIO_CONFIG,
-            {"bucket": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
             {"storage": "pvc"},
         )
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("minio_pod")
 class TestPreUpgradeTrustyAIService:
     @pytest.mark.pre_upgrade
     def test_trustyai_service_pre_upgrade_inference(
@@ -90,23 +86,19 @@ class TestPreUpgradeTrustyAIService:
 
 
 @pytest.mark.parametrize(
-    "model_namespace, minio_pod, minio_data_connection",
+    "model_namespace",
     [
         pytest.param(
             {"name": "test-trustyaiservice-upgrade"},
-            MinIo.PodConfig.MODEL_MESH_MINIO_CONFIG,
-            {"bucket": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
         )
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("minio_pod")
 class TestPostUpgradeTrustyAIService:
     @pytest.mark.post_upgrade
     def test_drift_metric_delete_pre_db_migration(
         self,
         admin_client,
-        minio_data_connection,
         current_client_token,
         trustyai_service,
     ):

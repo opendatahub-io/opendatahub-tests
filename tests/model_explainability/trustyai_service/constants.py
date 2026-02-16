@@ -41,7 +41,7 @@ KSERVE_MLSERVER_CONTAINERS: List[Dict[str, Any]] = [
     {
         "name": "kserve-container",
         "image": "quay.io/trustyai_testing/mlserver"
-        "@sha256:68a4cd74fff40a3c4f29caddbdbdc9e54888aba54bf3c5f78c8ffd577c3a1c89",
+        "@sha256:cc6498544ff6df39732aa209fd235217f821a88a8cb73ea02dda3a5815756705",
         "env": [
             {"name": "MLSERVER_MODEL_IMPLEMENTATION", "value": "{{.Labels.modelClass}}"},
             {"name": "MLSERVER_HTTP_PORT", "value": str(Ports.REST_PORT)},
