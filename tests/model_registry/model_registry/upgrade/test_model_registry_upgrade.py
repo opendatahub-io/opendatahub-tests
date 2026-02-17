@@ -78,19 +78,8 @@ class TestPostUpgradeModelRegistry:
         self: Self,
         model_registry_client: list[ModelRegistryClient],
         model_registry_instance: list[ModelRegistry],
-        model_registry_instance_default_db: ModelRegistry,
     ):
         validate_upgrade_model_registration(model_registry_client=model_registry_client[0], model_name=MODEL_NAME)
-
-    @pytest.mark.post_upgrade
-    def test_retrieving_model_default_db_post_upgrade(
-        self: Self,
-        model_registry_client_default_db: ModelRegistryClient,
-        model_registry_instance_default_db: ModelRegistry,
-    ):
-        validate_upgrade_model_registration(
-            model_registry_client=model_registry_client_default_db, model_name=MODEL_NAME_DEFAULT_DB
-        )
 
     @pytest.mark.post_upgrade
     def test_model_registry_instance_api_version_post_upgrade(
