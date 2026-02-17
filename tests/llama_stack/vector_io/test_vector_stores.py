@@ -155,6 +155,7 @@ class TestLlamaStackVectorStores:
                     vector_store_id=vector_store_with_example_docs.id,
                     query=query,
                     search_mode=search_mode,
+                    max_num_results=10,
                 )
 
                 assert search_response is not None, f"Search response is None for mode={search_mode!r} query={query!r}"
