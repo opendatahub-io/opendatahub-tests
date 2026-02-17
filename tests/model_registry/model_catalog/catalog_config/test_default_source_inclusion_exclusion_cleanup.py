@@ -34,7 +34,7 @@ class TestModelInclusionFiltering:
         [
             pytest.param(
                 {"filter_type": "inclusion", "pattern": "granite", "filter_value": "*granite*"},
-                marks=pytest.mark.smoke,
+                marks=pytest.mark.tier1,
                 id="test_include_granite_models_only",
             ),
             pytest.param(
@@ -82,7 +82,7 @@ class TestModelExclusionFiltering:
         [
             pytest.param(
                 {"filter_type": "exclusion", "pattern": "granite", "filter_value": "*granite*"},
-                marks=pytest.mark.smoke,
+                marks=pytest.mark.tier1,
                 id="test_exclude_granite_models",
             ),
             pytest.param(
@@ -131,7 +131,7 @@ class TestCombinedIncludeExcludeFiltering:
                     "exclude_pattern": "lab",
                     "exclude_filter_value": "*lab*",
                 },
-                marks=pytest.mark.smoke,
+                marks=pytest.mark.tier1,
                 id="include_granite_exclude_lab",
             ),
             pytest.param(
@@ -275,7 +275,7 @@ class TestModelCleanupLifecycle:
 class TestSourceLifecycleCleanup:
     """Test source disabling cleanup scenarios (RHOAIENG-41846)"""
 
-    @pytest.mark.smoke
+    @pytest.mark.tier1
     def test_source_disabling_removes_models(
         self,
         admin_client: DynamicClient,

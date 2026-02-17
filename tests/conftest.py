@@ -947,3 +947,62 @@ def oci_registry_route(admin_client: DynamicClient, oci_registry_service: Servic
 def oci_registry_host(oci_registry_route: Route) -> str:
     """Get the OCI registry host from the route"""
     return oci_registry_route.host
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """
+    Enforce test tier hierarchy by excluding tests with explicit higher-tier markers.
+
+    Test tier hierarchy (from lowest to highest):
+        smoke < sanity < tier1 < tier2
+
+    When running tests with a specific tier marker (e.g., -m smoke), this hook
+    automatically excludes tests that have explicit markers for higher tiers,
+    preventing marker inheritance issues from class-level parametrization.
+
+    Example:
+        - Running 'pytest -m smoke' excludes tests marked @pytest.mark.sanity/tier1/tier2
+        - Running 'pytest -m sanity' excludes tests marked @pytest.mark.tier1/tier2
+        - Running 'pytest -m tier1' excludes tests marked @pytest.mark.tier2
+    """
+    # Define tier hierarchy (order matters: lower tiers first)
+    tier_hierarchy = ["smoke", "sanity", "tier1", "tier2"]
+
+    # Get the marker expression from command line
+    markexpr = config.getoption("-m", "")  # noqa: FCN001
+    if not markexpr:
+        return
+
+    # Find which tier is being requested
+    requested_tier = None
+    for tier in tier_hierarchy:
+        if tier in markexpr:
+            requested_tier = tier
+            break
+
+    if not requested_tier:
+        return
+
+    # Get index of requested tier
+    requested_tier_idx = tier_hierarchy.index(requested_tier)
+
+    # Get all higher tiers that should be excluded
+    excluded_tiers = set(tier_hierarchy[requested_tier_idx + 1 :])  # noqa: E203
+
+    if not excluded_tiers:
+        return  # No higher tiers to exclude
+
+    # Skip tests that have explicit markers for higher tiers
+    skip_marker = pytest.mark.skip(
+        reason=f"Has explicit {'/'.join(excluded_tiers)} marker, excluded from {requested_tier}"
+    )
+
+    skipped_count = 0
+    for item in items:
+        marker_names = {mark.name for mark in item.iter_markers()}
+        if marker_names & excluded_tiers:  # If any excluded tier marker is present
+            item.add_marker(skip_marker)  # noqa: FCN001
+            skipped_count += 1
+
+    if skipped_count > 0:
+        print(f"\n[Tier Filter] Excluded {skipped_count} tests with {excluded_tiers} markers from {requested_tier} run")

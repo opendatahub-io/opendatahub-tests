@@ -99,7 +99,6 @@ class TestModelRegistryWithSecureDB:
         "ca_configmap_for_test",
         "patch_external_deployment_with_ssl_ca",
     )
-    @pytest.mark.smoke
     def test_register_model_with_valid_ca(
         self: Self,
         admin_client: DynamicClient,

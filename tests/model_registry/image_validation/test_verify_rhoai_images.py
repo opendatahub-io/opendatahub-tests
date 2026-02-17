@@ -18,7 +18,7 @@ from ocp_resources.pod import Pod
 from pytest_testconfig import config as py_config
 
 LOGGER = get_logger(name=__name__)
-pytestmark = [pytest.mark.downstream_only, pytest.mark.skip_must_gather, pytest.mark.smoke]
+pytestmark = [pytest.mark.downstream_only, pytest.mark.skip_must_gather]
 
 
 class TestAIHubResourcesImages:
@@ -35,7 +35,7 @@ class TestAIHubResourcesImages:
                     "namespace": py_config["applications_namespace"],
                     "label_selector": f"{Labels.OpenDataHubIo.NAME}={MR_OPERATOR_NAME}",
                 },
-                marks=pytest.mark.smoke,
+                marks=pytest.mark.sanity,
                 id="test_model_registry_operator_pods_images",
             ),
         ],
@@ -53,7 +53,7 @@ class TestAIHubResourcesImages:
 @pytest.mark.parametrize(
     "model_registry_metadata_db_resources, model_registry_instance, model_registry_instance_pods_by_label",
     [
-        pytest.param({}, {}, {"label_selectors": [f"app={MR_INSTANCE_NAME}"]}),
+        pytest.param({}, {}, {"label_selectors": [f"app={MR_INSTANCE_NAME}"]}, marks=pytest.mark.smoke),
         pytest.param(
             {"db_name": "default"},
             {"db_name": "default"},
@@ -63,6 +63,7 @@ class TestAIHubResourcesImages:
                     f"app.kubernetes.io/name={MR_POSTGRES_DEPLOYMENT_NAME_STR}",
                 ]
             },
+            marks=pytest.mark.tier1,
         ),
     ],
     indirect=True,

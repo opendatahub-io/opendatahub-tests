@@ -26,11 +26,16 @@ pytestmark = [
 class TestCatalogRBAC:
     """Test suite for catalog ConfigMap RBAC"""
 
-    @pytest.mark.smoke
     @pytest.mark.pre_upgrade
     @pytest.mark.post_upgrade
     @pytest.mark.install
-    @pytest.mark.parametrize("configmap_name", [DEFAULT_MODEL_CATALOG_CM, DEFAULT_CUSTOM_MODEL_CATALOG])
+    @pytest.mark.parametrize(
+        "configmap_name",
+        [
+            pytest.param(DEFAULT_MODEL_CATALOG_CM, marks=pytest.mark.smoke),
+            pytest.param(DEFAULT_CUSTOM_MODEL_CATALOG, marks=pytest.mark.sanity),
+        ],
+    )
     def test_admin_can_read_catalog_configmaps(
         self,
         admin_client: DynamicClient,
@@ -64,8 +69,13 @@ class TestCatalogRBAC:
 
         LOGGER.info(f"Admin successfully read ConfigMap '{configmap_name}'")
 
-    @pytest.mark.smoke
-    @pytest.mark.parametrize("configmap_name", [DEFAULT_MODEL_CATALOG_CM, DEFAULT_CUSTOM_MODEL_CATALOG])
+    @pytest.mark.parametrize(
+        "configmap_name",
+        [
+            pytest.param(DEFAULT_MODEL_CATALOG_CM, marks=pytest.mark.smoke),
+            pytest.param(DEFAULT_CUSTOM_MODEL_CATALOG, marks=pytest.mark.sanity),
+        ],
+    )
     def test_non_admin_cannot_access_catalog_configmaps(
         self,
         is_byoidc: bool,
