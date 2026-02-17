@@ -26,12 +26,12 @@ from tests.model_registry.utils import (
 LOGGER = get_logger(name=__name__)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="package")
 def recreated_model_catalog_configmap(
     admin_client: DynamicClient,
 ) -> ConfigMap:
     """
-    Session-scoped fixture that deletes the DEFAULT_CUSTOM_MODEL_CATALOG ConfigMap
+    Package-scoped fixture that deletes the DEFAULT_CUSTOM_MODEL_CATALOG ConfigMap
     and waits for it to be automatically recreated, and cleans up catalog pod, to start with a fresh log
 
     Returns:
@@ -73,13 +73,14 @@ def recreated_model_catalog_configmap(
     return recreated_configmap
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="package", autouse=True)
 def catalog_pod_model_counts(
     admin_client: DynamicClient,
     recreated_model_catalog_configmap: ConfigMap,
 ) -> dict[str, int]:
     """
-    Session-scoped auto-use fixture that extracts model counts from catalog pod logs.
+    Package-scoped auto-use fixture that extracts model counts from catalog pod logs.
+    Only applies to tests in catalog_config package.
 
     Scrapes logs for earliest occurrences of:
     - "redhat_ai_validated_models: loaded x models"
