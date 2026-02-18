@@ -188,7 +188,8 @@ class TestModelCatalogDefault:
             exceptions_dict={ResourceNotFoundError: []},
         )
 
-        result = next(iter(sampler))
+        for result in sampler:
+            break
         assert result
         items_to_validate = []
         if pytestconfig.option.pre_upgrade or pytestconfig.option.post_upgrade:

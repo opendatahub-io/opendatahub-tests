@@ -368,9 +368,10 @@ def non_admin_user_password(
         data = users_Secret[0].instance.data
         users = _decode_split_data(_data=data.users)
         passwords = _decode_split_data(_data=data.passwords)
-        first_user_index = next(index for index, user in enumerate(users) if "user" in user)
+        first_user_index = next((index for index, user in enumerate(users) if "user" in user), None)
 
-        return users[first_user_index], passwords[first_user_index]
+        if first_user_index is not None:
+            return users[first_user_index], passwords[first_user_index]
 
     LOGGER.error("user credentials secret not found")
     return None
@@ -739,7 +740,7 @@ def autouse_fixtures(
 
 @pytest.fixture(scope="session")
 def installed_mariadb_operator(admin_client: DynamicClient) -> Generator[None, Any, Any]:
-    operator_ns = Namespace(name="openshift-operators", ensure_exists=True)
+    operator_ns = Namespace(client=admin_client, name="openshift-operators", ensure_exists=True)
     operator_name = "mariadb-operator"
 
     mariadb_operator_subscription = Subscription(client=admin_client, namespace=operator_ns.name, name=operator_name)
@@ -779,7 +780,7 @@ def mariadb_operator_cr(
     )
     alm_examples: list[dict[str, Any]] = mariadb_csv.get_alm_examples()
     mariadb_operator_cr_dict: dict[str, Any] = next(
-        example for example in alm_examples if example["kind"] == "MariadbOperator"
+        (example for example in alm_examples if example["kind"] == "MariadbOperator"), None
     )
     if not mariadb_operator_cr_dict:
         raise ResourceNotFoundError(f"No MariadbOperator dict found in alm_examples for CSV {mariadb_csv.name}")
@@ -789,7 +790,7 @@ def mariadb_operator_cr(
         mariadb_operator_cr.wait_for_condition(
             condition="Deployed", status=mariadb_operator_cr.Condition.Status.TRUE, timeout=Timeout.TIMEOUT_10MIN
         )
-        wait_for_mariadb_operator_deployments(mariadb_operator=mariadb_operator_cr)
+        wait_for_mariadb_operator_deployments(mariadb_operator=mariadb_operator_cr, client=admin_client)
         yield mariadb_operator_cr
 
 

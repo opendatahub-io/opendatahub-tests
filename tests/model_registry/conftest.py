@@ -118,9 +118,9 @@ def updated_dsc_component_state_scope_session(
                 yield dsc_resource
         finally:
             resource_editor.restore()
-            Namespace(name=py_config["model_registry_namespace"]).delete(wait=True)
+            Namespace(client=admin_client, name=py_config["model_registry_namespace"]).delete(wait=True)
             # create the original namespace object again, so that we can wait for it to be created first
-            original_namespace = Namespace(name=original_namespace_name, wait_for_resource=True)
+            original_namespace = Namespace(client=admin_client, name=original_namespace_name, wait_for_resource=True)
             original_namespace.wait_for_status(status=Namespace.Status.ACTIVE)
             wait_for_pods_running(
                 admin_client=admin_client,
@@ -149,6 +149,7 @@ def test_idp_user(
     original_user: str,
     api_server_url: str,
     is_byoidc: bool,
+    admin_client: DynamicClient,
 ) -> Generator[UserTestSession | None, None, None]:
     """
     Session-scoped fixture that creates a test IDP user and cleans it up after all tests.
@@ -179,6 +180,7 @@ def test_idp_user(
                 password=user_credentials_rbac["password"],
                 original_user=original_user,
                 api_server_url=api_server_url,
+                client=admin_client,
             )
             LOGGER.info(f"Created session test IDP user: {idp_session.username}")
 
@@ -253,19 +255,20 @@ def updated_oauth_config(
         identity_providers_patch = ResourceEditor(patches={oauth: {"spec": {"identityProviders": updated_providers}}})
         identity_providers_patch.update(backup_resources=True)
         # Wait for OAuth server to be ready
-        wait_for_oauth_openshift_deployment()
+        wait_for_oauth_openshift_deployment(client=admin_client)
         LOGGER.info(f"Added IDP {user_credentials_rbac['idp_name']} to OAuth configuration")
         yield
         identity_providers_patch.restore()
-        wait_for_oauth_openshift_deployment()
+        wait_for_oauth_openshift_deployment(client=admin_client)
 
 
 @pytest.fixture(scope="module")
 def user_credentials_rbac(
     is_byoidc: bool,
+    admin_client: DynamicClient,
 ) -> dict[str, str]:
     if is_byoidc:
-        byoidc_creds = get_byoidc_user_credentials(username="mr-non-admin")
+        byoidc_creds = get_byoidc_user_credentials(client=admin_client, username="mr-non-admin")
         return {
             "username": byoidc_creds["username"],
             "password": byoidc_creds["password"],

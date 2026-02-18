@@ -34,8 +34,7 @@ class ModelRegistry(NamespacedResource):
             enable_database_upgrade (bool): Flag specifying database upgrade option. If set to true, it enables
               database migration during initialization (Optional parameter)
 
-            grpc (dict[str, Any]): Deprecated: Configuration for gRPC endpoint is deprecated and will be
-              removed in a future release
+            grpc (dict[str, Any]): Configuration for gRPC endpoint
 
             kube_rbac_proxy (dict[str, Any]): kube-rbac-proxy configuration options
 
