@@ -38,7 +38,7 @@ CONNECTION_STRING: str = "/var/run/postgresql:5432 - accepting connections"
             {},
             {},
             MODEL_REGISTER_DATA,
-            marks=(pytest.mark.smoke),
+            marks=(pytest.mark.sanity),
         ),
         pytest.param(
             {"db_name": "postgres"},
@@ -80,6 +80,7 @@ class TestModelRegistryCreationRest:
             pytest.param(
                 MODEL_REGISTER,
                 "register_model",
+                marks=pytest.mark.smoke,
                 id="test_validate_registered_model",
             ),
             pytest.param(

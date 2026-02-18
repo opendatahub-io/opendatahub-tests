@@ -72,7 +72,7 @@ class TestCatalogRBAC:
     @pytest.mark.parametrize(
         "configmap_name",
         [
-            pytest.param(DEFAULT_MODEL_CATALOG_CM, marks=pytest.mark.smoke),
+            pytest.param(DEFAULT_MODEL_CATALOG_CM, marks=pytest.mark.sanity),
             pytest.param(DEFAULT_CUSTOM_MODEL_CATALOG, marks=pytest.mark.sanity),
         ],
     )

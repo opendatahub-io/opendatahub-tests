@@ -27,7 +27,7 @@ class TestAIHubResourcesImages:
         [
             pytest.param(
                 {"namespace": py_config["model_registry_namespace"], "label_selector": "component=model-catalog"},
-                marks=pytest.mark.smoke,
+                marks=pytest.mark.sanity,
                 id="test_model_catalog_pods_images",
             ),
             pytest.param(
