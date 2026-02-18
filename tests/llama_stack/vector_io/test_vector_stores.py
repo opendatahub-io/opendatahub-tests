@@ -12,6 +12,31 @@ from tests.llama_stack.utils import (
 LOGGER = get_logger(name=__name__)
 
 
+IBM_EARNINGS_SEARCH_QUERIES_BY_MODE: dict[str, list[str]] = {
+    "vector": [
+        "How did IBM perform financially in the fourth quarter of 2025?",
+        "What were the main drivers of revenue growth?",
+        "What is the company outlook for 2026?",
+        "How did profit margins change year over year?",
+        "What did leadership say about generative AI and growth?",
+    ],
+    "keyword": [
+        "What was free cash flow in the fourth quarter?",
+        "What was Consulting revenue and segment profit margin?",
+        "What was Software revenue and constant currency growth?",
+        "What was diluted earnings per share for continuing operations?",
+        "What are full-year 2026 expectations for revenue and free cash flow?",
+    ],
+    "hybrid": [
+        "What was IBM free cash flow and what does the company expect for 2026?",
+        "What were segment results for Software and Infrastructure revenue?",
+        "What was GAAP gross profit margin and pre-tax income?",
+        "What did James Kavanaugh say about 2025 results and 2026 prospects?",
+        "What was Consulting revenue and segment profit margin?",
+    ],
+}
+
+
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, llama_stack_server_config, vector_store",
     [
@@ -113,37 +138,36 @@ class TestLlamaStackVectorStores:
         """
         Test vector_stores search functionality using the search endpoint.
 
-        Uses a vector store with pre-uploaded TorchTune documentation files and tests the search API
-        to retrieve relevant chunks based on query text. Validates that the search
-        returns relevant results with proper metadata and content.
+        Iterates over vector, keyword, and hybrid search modes using
+        IBM_EARNINGS_SEARCH_QUERIES_BY_MODE. Validates that each mode returns
+        relevant results with proper metadata and content.
         """
 
-        search_queries = [
-            "What is LoRA fine-tuning?",
-            "How does quantization work?",
-            "What are memory optimizations?",
-            "Tell me about DoRA",
-            "What is TorchTune?",
-        ]
+        provider_id = vector_store_with_example_docs.metadata.get("provider_id", "")
+        # FAISS does not support hybrid and keyword search modes see:
+        # https://github.com/llamastack/llama-stack/blob/main/src/llama_stack/providers/inline/vector_io/faiss/faiss.py#L180-L196
+        search_modes = ["vector"] if provider_id == "faiss" else list(IBM_EARNINGS_SEARCH_QUERIES_BY_MODE)
 
-        for query in search_queries:
-            # Use the vector store search endpoint
-            search_response = unprivileged_llama_stack_client.vector_stores.search(
-                vector_store_id=vector_store_with_example_docs.id, query=query
-            )
+        for search_mode in search_modes:
+            queries = IBM_EARNINGS_SEARCH_QUERIES_BY_MODE[search_mode]
+            for query in queries:
+                search_response = unprivileged_llama_stack_client.vector_stores.search(
+                    vector_store_id=vector_store_with_example_docs.id,
+                    query=query,
+                    search_mode=search_mode,
+                    max_num_results=10,
+                )
 
-            # Validate search response
-            assert search_response is not None, f"Search response is None for query: {query}"
-            assert hasattr(search_response, "data"), "Search response missing 'data' attribute"
-            assert isinstance(search_response.data, list), "Search response data should be a list"
+                assert search_response is not None, f"Search response is None for mode={search_mode!r} query={query!r}"
+                assert hasattr(search_response, "data"), "Search response missing 'data' attribute"
+                assert isinstance(search_response.data, list), "Search response data should be a list"
+                assert len(search_response.data) > 0, f"No search results for mode={search_mode!r} query={query!r}"
 
-            # Check that we got some results
-            assert len(search_response.data) > 0, f"No search results returned for query: {query}"
+                for result in search_response.data:
+                    assert hasattr(result, "content"), "Search result missing 'content' attribute"
+                    assert result.content is not None, "Search result content should not be None"
+                    assert len(result.content) > 0, "Search result content should not be empty"
 
-            # Validate each search result
-            for result in search_response.data:
-                assert hasattr(result, "content"), "Search result missing 'content' attribute"
-                assert result.content is not None, "Search result content should not be None"
-                assert len(result.content) > 0, "Search result content should not be empty"
+            LOGGER.info(f"Search mode {search_mode!r}: {len(queries)} queries returned results")
 
-        LOGGER.info(f"Successfully tested vector store search with {len(search_queries)} queries")
+        LOGGER.info(f"Successfully tested vector store search across modes: {search_modes}")

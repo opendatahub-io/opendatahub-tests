@@ -22,7 +22,9 @@ from tests.llama_stack.constants import (
     LLS_CORE_POD_FILTER,
 )
 
+import os
 import tempfile
+
 import requests
 
 
@@ -276,23 +278,30 @@ def vector_store_create_file_from_url(url: str, llama_stack_client: LlamaStackCl
         response = requests.get(url, timeout=60)
         response.raise_for_status()
 
-        # Save file locally first and pretend it's a txt file, not sure why this is needed
-        # but it works locally without it,
-        # though llama stack version is the newer one.
-        file_name = url.split("/")[-1]
-        local_file_name = file_name.replace(".rst", ".txt")
-        with tempfile.NamedTemporaryFile(mode="wb", suffix=f"_{local_file_name}") as temp_file:
+        content_type = (response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        path_part = url.split("/")[-1].split("?")[0]
+
+        if content_type == "application/pdf" or path_part.lower().endswith(".pdf"):
+            file_suffix = ".pdf"
+        elif path_part.lower().endswith(".rst"):
+            file_suffix = "_" + path_part.replace(".rst", ".txt")
+        else:
+            file_suffix = "_" + (path_part or "document.txt")
+
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=file_suffix, delete=False) as temp_file:
             temp_file.write(response.content)
             temp_file_path = temp_file.name
 
-            # Upload saved file to LlamaStack
+        try:
+            # Upload saved file to LlamaStack (filename extension used for parsing)
             with open(temp_file_path, "rb") as file_to_upload:
                 uploaded_file = llama_stack_client.files.create(file=file_to_upload, purpose="assistants")
 
             # Add file to vector store
             llama_stack_client.vector_stores.files.create(vector_store_id=vector_store.id, file_id=uploaded_file.id)
-
-        return True
+            return True
+        finally:
+            os.unlink(temp_file_path)
 
     except (requests.exceptions.RequestException, Exception) as e:
         LOGGER.warning(f"Failed to download and upload file {url}: {e}")
