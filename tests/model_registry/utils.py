@@ -261,7 +261,6 @@ def get_database_env_vars(secret_name: str, db_backend: str) -> list[dict[str, A
 def get_model_registry_deployment_template_dict(
     secret_name: str, resource_name: str, db_backend: str
 ) -> dict[str, Any]:
-    health_probes = get_database_health_probes(db_backend=db_backend)
     base_dict = {
         "metadata": {
             "labels": {
@@ -275,7 +274,7 @@ def get_model_registry_deployment_template_dict(
                     "env": get_database_env_vars(secret_name=secret_name, db_backend=db_backend),
                     "image": get_database_image(db_backend=db_backend),
                     "imagePullPolicy": "IfNotPresent",
-                    **health_probes,
+                    **get_database_health_probes(db_backend=db_backend),
                     "name": db_backend,
                     "ports": [{"containerPort": 3306, "protocol": "TCP"}]
                     if db_backend != "postgres"
