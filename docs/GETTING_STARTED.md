@@ -108,7 +108,7 @@ uv run pytest -k test_name
 
 ### Running component smoke
 ```bash
-uv run pytest tests/<component_name> -m smoke
+uv run pytest tests/<component_name> -m "smoke and not sanity and not tier1"
 ```
 
 ### LlamaStack Integration Tests
