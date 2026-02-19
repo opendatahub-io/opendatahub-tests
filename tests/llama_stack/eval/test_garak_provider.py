@@ -1,4 +1,3 @@
-import llama_stack_client
 import pytest
 
 from tests.llama_stack.constants import LlamaStackProviders
