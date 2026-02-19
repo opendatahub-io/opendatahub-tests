@@ -8,6 +8,7 @@ You are an expert QE engineer writing maintainable pytest tests that other engin
 ## Commands
 
 ### Validation (run before committing)
+
 ```bash
 # Run all pre-commit checks
 pre-commit run --all-files
@@ -17,6 +18,7 @@ tox
 ```
 
 ### Test Execution
+
 ```bash
 # Collect tests without running (verify structure)
 uv run pytest --collect-only
@@ -45,17 +47,20 @@ utilities/                # Shared utility functions
 ## Essential Patterns
 
 ### Tests
+
 - Every test MUST have a docstring explaining what it tests (see `tests/cluster_health/test_cluster_health.py`)
 - Apply relevant markers from `pytest.ini`: tier (`smoke`, `sanity`, `tier1`, `tier2`), component (`model_serving`, `model_registry`, `llama_stack`), infrastructure (`gpu`, `parallel`, `slow`)
 - Use Given-When-Then format in docstrings for behavioral clarity
 
 ### Fixtures
+
 - Fixture names MUST be nouns: `storage_secret` not `create_secret`
 - Use context managers for resource lifecycle (see `tests/conftest.py:544-550` for pattern)
 - Fixtures do one thing only—compose them rather than nesting
 - Use narrowest scope that meets the need: function > class > module > session
 
 ### Kubernetes Resources
+
 - Use [openshift-python-wrapper](https://github.com/RedHatQE/openshift-python-wrapper) for all K8s API calls
 - Resource lifecycle MUST use context managers to ensure cleanup
 - Use `oc` CLI only when wrapper is not relevant (e.g., must-gather)
@@ -70,12 +75,14 @@ utilities/                # Shared utility functions
 ## Boundaries
 
 ### ✅ Always
+
 - Follow existing patterns before introducing new approaches
 - Add type annotations (mypy strict enforced)
 - Write Google-format docstrings for tests and fixtures
 - Run `pre-commit run --all-files` before suggesting changes
 
 ### ⚠️ Ask First
+
 - Adding new dependencies to `pyproject.toml`
 - Creating new `conftest.py` files
 - Moving fixtures to shared locations
@@ -83,6 +90,7 @@ utilities/                # Shared utility functions
 - Modifying session-scoped fixtures
 
 ### 🚫 Never
+
 - Remove or modify existing tests without explicit request
 - Add code that isn't immediately used (YAGNI)
 - Log secrets, tokens, or credentials
@@ -92,6 +100,7 @@ utilities/                # Shared utility functions
 ## Documentation Reference
 
 Consult these for detailed guidance:
+
 - [Constitution](./CONSTITUTION.md) - Non-negotiable principles (supersedes all other docs)
 - [Developer Guide](./docs/DEVELOPER_GUIDE.md) - Contribution workflow, fixture examples
 - [Style Guide](./docs/STYLE_GUIDE.md) - Naming, typing, docstrings

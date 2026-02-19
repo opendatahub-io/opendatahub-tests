@@ -156,6 +156,7 @@ No versioning policy is enforced.
 ### Guidance Reference
 
 For development runtime guidance, consult:
+
 - [AGENTS.md](./AGENTS.md) for AI assistant instructions
 - [DEVELOPER_GUIDE.md](./docs/DEVELOPER_GUIDE.md) for contribution details
 - [STYLE_GUIDE.md](./docs/STYLE_GUIDE.md) for code style
