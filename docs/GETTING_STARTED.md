@@ -67,7 +67,6 @@ export ARCHIVE_MUST_GATHER="false"
 
 ### Basic run of all tests
 
-
 ```bash
 uv run pytest
 ```
@@ -130,13 +129,11 @@ To skip RHOAI/ODH-related tests (for example when running in upstream), pass `--
 
 To run tests with admin client only, pass `--tc=use_unprivileged_client:False` to pytest.
 
-
 ### jira integration
 
 To skip running tests which have open bugs, [pytest_jira](https://github.com/rhevm-qe-automation/pytest_jira) plugin is used.
 To run tests with jira integration, you need to set `PYTEST_JIRA_URL` and `PYTEST_JIRA_TOKEN` environment variables.
 To make a test with jira marker, add: `@pytest.mark.jira(jira_id="RHOAIENG-0000", run=False)` to the test.
-
 
 ### Running containerized tests
 

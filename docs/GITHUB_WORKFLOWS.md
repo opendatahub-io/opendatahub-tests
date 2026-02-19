@@ -28,7 +28,6 @@
 4. Make sure that the workflow is triggered only on relevant events.
 5. Set `ACTION` environment variable in the workflow and use it in the code to identify the relevant workflow.
 
-
 ## To be added
 
 - Block merging if not all defined checks pass. For example: a `verified` label was added and at least 2 approvals.

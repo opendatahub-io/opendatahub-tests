@@ -13,7 +13,6 @@ The project is structured as follows:
 - [py_config](../tests/global_config.py) contains tests-specific configuration which can be controlled from the command line.  
 Please refer to [pytest-testconfig](https://github.com/wojole/pytest-testconfig) for more information.
 
-
 ## Contribution
 
 To contribute code to the project:
@@ -47,7 +46,6 @@ To contribute code to the project:
 The project follows RHOAI [release lifecyle strategy](https://access.redhat.com/support/policy/updates/rhoai-sm/lifecycle).  
 If needed, once your PR is merged to `main`, cherry-pick your PR to the relevant branch(es).
 
-
 ## Python
 
 - Reduce duplicate code, before writing new function search for it, probably someone already wrote it or one that should serve your needs.
@@ -65,7 +63,6 @@ If needed, once your PR is merged to `main`, cherry-pick your PR to the relevant
 - Log enough to make you debug and understand the flow easy, but do not spam the log with unuseful info.  
 Error logs should be detailed with what failed, status and so on.
 
-
 ## Interacting with Kubernetes/OpenShift APIs
 
 The project utilizes [openshift-python-wrapper](https://github.com/RedHatQE/openshift-python-wrapper).
@@ -78,13 +75,11 @@ create a PR against wrapper. Calls to cluster resources from tests, utils and fi
 openshift-python-wrapper resource or oc command
 (when wrapper resource is not relevant. e.g. must-gather generation)
 
-
 ## Conftest
 
 - Top level [conftest.py](../conftest.py) contains pytest native fixtures.
 - General tests [conftest.py](../tests/conftest.py) contains fixtures that are used in multiple tests by multiple teams.
 - If needed, create new `conftest.py` files in the relevant directories.
-
 
 ## Fixtures
 
@@ -144,7 +139,6 @@ def storage_secret(request):
 secret = Secret(name=request.param["name"], model_dir=request.param["model-dir"])
 ```
 
-
 ## Tests
 
 - Pytest reports failures in fixtures as FAILED
@@ -157,7 +151,6 @@ Check [pytest.ini](../pytest.ini) for available markers; additional markers can 
 - Classes are good to group related tests together, for example when they share a fixture.  
 You should NOT group unrelated tests in one class (because it is misleading the reader).
 - All the tests should be properly documented. Every test (or test class), should have a docstring explaning what the test does so that anyone (engineers from other components, managers, PMs, or non-technical users) can have a basic understanding of what the code is trying to test without having to dive into the technical details of related functions or fixtures.
-
 
 ## Check the code
 
@@ -214,7 +207,7 @@ To add a new runtime, you need to:
         },
 ```
 
-3. See [caikit_standalone](../utilities/manifests/caikit_standalone.py) for an example
+1. See [caikit_standalone](../utilities/manifests/caikit_standalone.py) for an example
 
 ## AI Usage
 
