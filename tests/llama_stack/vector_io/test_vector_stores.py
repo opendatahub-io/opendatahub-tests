@@ -171,3 +171,82 @@ class TestLlamaStackVectorStores:
             LOGGER.info(f"Search mode {search_mode!r}: {len(queries)} queries returned results")
 
         LOGGER.info(f"Successfully tested vector store search across modes: {search_modes}")
+
+    @pytest.mark.smoke
+    def test_response_file_search_tool_invocation(
+        self,
+        unprivileged_llama_stack_client: LlamaStackClient,
+        llama_stack_models: ModelInfo,
+        vector_store_with_example_docs: VectorStore,
+    ) -> None:
+        """
+        Test that the file_search tool is invoked and returns results via the responses API.
+
+        Given: A vector store with pre-uploaded documentation files
+        When: A question requiring document knowledge is asked with the file_search tool
+        Then: The response contains a file_search_call output with status 'completed',
+              results with file_id and filename, and message annotations with file citations
+        """
+        response = unprivileged_llama_stack_client.responses.create(
+            input="How did IBM perform financially in the fourth quarter of 2025?",
+            model=llama_stack_models.model_id,
+            instructions="Always use the file_search tool to look up information before answering.",
+            stream=False,
+            tools=[
+                {
+                    "type": "file_search",
+                    "vector_store_ids": [vector_store_with_example_docs.id],
+                }
+            ],
+        )
+
+        # Verify file_search_call output exists (model invoked the file_search tool)
+        file_search_calls = [item for item in response.output if item.type == "file_search_call"]
+        assert file_search_calls, (
+            "Expected a file_search_call output item in the response, indicating the model "
+            f"invoked the file_search tool. Output types: {[item.type for item in response.output]}"
+        )
+
+        file_search_call = file_search_calls[0]
+        assert file_search_call.status == "completed", (
+            f"Expected file_search_call status 'completed', got '{file_search_call.status}'"
+        )
+
+        # Verify file_search returned results with file metadata
+        assert file_search_call.results, "file_search_call should contain search results"
+
+        for result in file_search_call.results:
+            assert result.file_id, "Search result must include a non-empty file_id"
+            assert result.filename, "Search result must include a non-empty filename"
+            assert result.text, "Search result must include non-empty text content"
+
+        LOGGER.info(
+            f"file_search_call returned {len(file_search_call.results)} result(s). "
+            f"Filenames: {[r.filename for r in file_search_call.results]}"
+        )
+
+        # Verify the message contains file_citation annotations
+        annotations = []
+        for item in response.output:
+            if item.type != "message" or not isinstance(item.content, list):
+                continue
+            for content_item in item.content:
+                if content_item.annotations:
+                    annotations.extend(content_item.annotations)
+
+        assert annotations, "Response message should contain file_citation annotations when file_search returns results"
+
+        for annotation in annotations:
+            assert annotation.type == "file_citation", (
+                f"Expected annotation type 'file_citation', got '{annotation.type}'"
+            )
+            assert annotation.file_id, "Annotation must include a non-empty file_id"
+            assert annotation.filename, "Annotation must include a non-empty filename"
+            assert annotation.index is not None, "Annotation must include an index"
+
+        LOGGER.info(
+            f"Found {len(annotations)} file_citation annotation(s). "
+            f"File IDs: {[a.file_id for a in annotations]}. "
+            f"Filenames: {[a.filename for a in annotations]}. "
+            f"Indexes: {[a.index for a in annotations]}. "
+        )
