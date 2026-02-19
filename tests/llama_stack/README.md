@@ -45,6 +45,7 @@ To add support for testing new LlamaStack API providers (e.g., a new vector_io p
 LlamaStack tests require setting the following environment variables (for example in a `.env` file at the root folder).
 
 > **Note:** Most of these environment variables are added as `env_vars` in the LlamaStackDistribution CR, as they are required to configure the Red Hat LlamaStack Distribution's [run.yaml](https://github.com/opendatahub-io/llama-stack-distribution/blob/main/distribution/run.yaml).
+
 ```bash
 OC_BINARY_PATH=/usr/local/sbin/oc                 # Optional
 LLS_CLIENT_VERIFY_SSL=false                       # Optional

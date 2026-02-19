@@ -15,4 +15,5 @@ If you open a pull request to fix the problem, an issue will ba automatically cr
 If a related issue doesn't exist, you can open a new issue using a relevant [issue form](https://github.com/opendatahub-io/opendatahub-tests/issues/new/choose).
 
 ## Pull requests
+
 Follow the guidelines in [Developer guide](DEVELOPER_GUIDE.md)

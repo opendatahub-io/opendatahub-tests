@@ -1,6 +1,7 @@
 # Project Structure
 
 The project is structured as follows:
+
 - [tests](../tests): Base directory for pytest tests
   - Each component has its own directory
   - Each feature has its own directory
@@ -13,10 +14,12 @@ The project is structured as follows:
 Please refer to [pytest-testconfig](https://github.com/wojole/pytest-testconfig) for more information.
 
 
-# Contribution
+## Contribution
+
 To contribute code to the project:
 
 ## Pull requests
+
 - Fork the project and work on your forked repository
 - Before submitting a new pull request:
   - Make sure you follow the [Style guide](STYLE_GUIDE.md)
@@ -40,11 +43,13 @@ To contribute code to the project:
   - All CI checks must pass.
 
 ## Branching strategy
+
 The project follows RHOAI [release lifecyle strategy](https://access.redhat.com/support/policy/updates/rhoai-sm/lifecycle).  
 If needed, once your PR is merged to `main`, cherry-pick your PR to the relevant branch(es).
 
 
 ## Python
+
 - Reduce duplicate code, before writing new function search for it, probably someone already wrote it or one that should serve your needs.
   - The project uses external packages that may already have a functionality that does what you need.
 - When using a variable more than once save it and reuse.
@@ -62,6 +67,7 @@ Error logs should be detailed with what failed, status and so on.
 
 
 ## Interacting with Kubernetes/OpenShift APIs
+
 The project utilizes [openshift-python-wrapper](https://github.com/RedHatQE/openshift-python-wrapper).
 Please refer to the [documentation](https://github.com/RedHatQE/openshift-python-wrapper/blob/main/README.md)  
 and the [examples](https://github.com/RedHatQE/openshift-python-wrapper/tree/main/examples) for more information.
@@ -74,12 +80,14 @@ openshift-python-wrapper resource or oc command
 
 
 ## Conftest
+
 - Top level [conftest.py](../conftest.py) contains pytest native fixtures.
 - General tests [conftest.py](../tests/conftest.py) contains fixtures that are used in multiple tests by multiple teams.
 - If needed, create new `conftest.py` files in the relevant directories.
 
 
 ## Fixtures
+
 - Ordering: Always call pytest native fixtures first, then session-scoped fixtures and then any other fixtures.
 - Fixtures should handle setup (and the teardown, if needed) needed for the test(s), including the creation of resources for example.
 - Fixtures should do one thing only.  
@@ -138,11 +146,12 @@ secret = Secret(name=request.param["name"], model_dir=request.param["model-dir"]
 
 
 ## Tests
+
 - Pytest reports failures in fixtures as FAILED
 - Each test should have a clear purpose and should be easy to understand.
 - Each test should verify a single aspect of the product.
 - Preferably, each test should be independent of other tests.
-- When there's a dependency between tests use pytest dependency plugin to mark the relevant hierarchy between tests (https://github.com/RKrahl/pytest-dependency)
+- When there's a dependency between tests use pytest dependency plugin to mark the relevant hierarchy between tests ([pytest-dependency](https://github.com/RKrahl/pytest-dependency))
 - When adding a new test, apply relevant marker(s) which may apply.  
 Check [pytest.ini](../pytest.ini) for available markers; additional markers can always be added when needed.
 - Classes are good to group related tests together, for example when they share a fixture.  
@@ -151,6 +160,7 @@ You should NOT group unrelated tests in one class (because it is misleading the 
 
 
 ## Check the code
+
 ### pre-commit
 
 When submitting a pull request, make sure to fill all the required, relevant fields for your PR.  
@@ -169,6 +179,7 @@ pre-commit run --all-files
 ```
 
 ### tox
+
 CI uses [tox](https://tox.readthedocs.io/en/latest/) and will run the code under tox.ini  
 
 Run tox:
@@ -178,9 +189,12 @@ tox
 ```
 
 ## Adding new runtime
-To add a new runtime, you need to:  
+
+To add a new runtime, you need to:
+
 1. Add a new file under [manifests](../utilities/manifests) directory.
 2. Add `<runtime>_INFERENCE_CONFIG` dict with:
+
 ```code
     "support_multi_default_queries": True|False,  # Optioanl, if set to True, `default_query_model` should contains a dict with corresponding inference_type
     "default_query_model": {
@@ -199,12 +213,16 @@ To add a new runtime, you need to:
             },
         },
 ```
+
 3. See [caikit_standalone](../utilities/manifests/caikit_standalone.py) for an example
 
 ## AI Usage
+
 If using AI tooling to assist you in the process of writing or reviewing code:
+
 1. Understand what you are doing --as a developer, you are ultimately responsible for the code. Always assume the code produced by the AI tools is unsafe and incorrect, and always double-check it.
 2. We support [AGENTS.md](../AGENTS.md), an [open format](https://agents.md/) for guiding coding agents. If you use any proprietary tool that does not support `AGENTS.md` (e.g. Claude Code, Qwen Code, Gemini Code), you can create a symlink:
+
 ```bash
 ln -s AGENTS.md CLAUDE.md
 ```
