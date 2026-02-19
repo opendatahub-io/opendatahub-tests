@@ -111,6 +111,7 @@ uv run pytest -k test_name
 ```
 
 ### Running component smoke
+
 ```bash
 uv run pytest tests/<component_name> -m "smoke and not sanity and not tier1"
 ```
@@ -121,7 +122,7 @@ For more information about LlamaStack integration tests, see [/tests/llama_stack
 
 ### Running on different distributions
 
-Bt default, RHOAI distribution is set.  
+By default, RHOAI distribution is set.  
 To run on ODH, pass `--tc=distribution:upstream` to pytest.
 
 ### Skip cluster sanity checks

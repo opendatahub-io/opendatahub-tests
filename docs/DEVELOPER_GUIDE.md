@@ -43,7 +43,7 @@ To contribute code to the project:
 
 ## Branching strategy
 
-The project follows RHOAI [release lifecyle strategy](https://access.redhat.com/support/policy/updates/rhoai-sm/lifecycle).  
+The project follows RHOAI [release lifecycle strategy](https://access.redhat.com/support/policy/updates/rhoai-sm/lifecycle).  
 If needed, once your PR is merged to `main`, cherry-pick your PR to the relevant branch(es).
 
 ## Python
@@ -150,7 +150,7 @@ secret = Secret(name=request.param["name"], model_dir=request.param["model-dir"]
 Check [pytest.ini](../pytest.ini) for available markers; additional markers can always be added when needed.
 - Classes are good to group related tests together, for example when they share a fixture.  
 You should NOT group unrelated tests in one class (because it is misleading the reader).
-- All the tests should be properly documented. Every test (or test class), should have a docstring explaning what the test does so that anyone (engineers from other components, managers, PMs, or non-technical users) can have a basic understanding of what the code is trying to test without having to dive into the technical details of related functions or fixtures.
+- All the tests should be properly documented. Every test (or test class), should have a docstring explaining what the test does so that anyone (engineers from other components, managers, PMs, or non-technical users) can have a basic understanding of what the code is trying to test without having to dive into the technical details of related functions or fixtures.
 
 ## Check the code
 
@@ -207,7 +207,7 @@ To add a new runtime, you need to:
         },
 ```
 
-1. See [caikit_standalone](../utilities/manifests/caikit_standalone.py) for an example
+3. See [caikit_standalone](../utilities/manifests/caikit_standalone.py) for an example
 
 ## AI Usage
 
