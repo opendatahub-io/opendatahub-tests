@@ -13,7 +13,7 @@ from utilities.general import wait_for_pods_running
 LOGGER = get_logger(name=__name__)
 
 
-@pytest.mark.cluster_health
+@pytest.mark.component_health
 class TestMrDefault:
     def test_mr_management_state(self, dsc_resource: DataScienceCluster):
         """Verify MODELREGISTRY managementState is MANAGED in DSC."""
@@ -41,7 +41,7 @@ class TestMrDefault:
         else:
             pytest.fail("MR ready condition not found in DSC")
 
-    @pytest.mark.cluster_health
+    @pytest.mark.component_health
     def test_mr_pods_health(self, admin_client: DynamicClient):
         namespace = py_config["model_registry_namespace"]
         LOGGER.info(f"Testing Pods in namespace {namespace} for cluster health")
