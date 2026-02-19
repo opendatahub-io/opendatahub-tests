@@ -1,6 +1,5 @@
 import ast
 from typing import Any
-import pytest
 
 from simple_logger.logger import get_logger
 
@@ -235,6 +234,4 @@ def assert_accessible_models_via_catalog_api(
 
     missing_models = [model for model in expected_accessible_models if model not in available_model_names]
 
-    if missing_models:
-        LOGGER.error(f"Missing accessible models from catalog API: {missing_models}")
-        pytest.fail(f"Missing accessible models from catalog API: {missing_models}")
+    assert not missing_models, f"Missing accessible models from catalog API: {missing_models}"

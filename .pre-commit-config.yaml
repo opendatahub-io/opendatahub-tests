@@ -68,6 +68,7 @@ repos:
       - id: conventional-precommit-linter
         stages: [ commit-msg ]
         args:
+          - --types=build,ci,chore,docs,feat,fix,perf,refactor,revert,style,test
           - --subject-min-length=10
           - --subject-max-length=80
 

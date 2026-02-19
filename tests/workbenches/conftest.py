@@ -16,6 +16,7 @@ from ocp_resources.pod import Pod
 from utilities.constants import Labels, Timeout
 from utilities import constants
 from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH
+from utilities.infra import get_product_version
 from utilities.infra import check_internal_image_registry_available
 from utilities.general import collect_pod_information
 
@@ -39,10 +40,16 @@ def users_persistent_volume_claim(
 
 
 @pytest.fixture(scope="function")
-def minimal_image() -> Generator[str, None, None]:
-    """Provides a full image name of a minimal workbench image"""
+def minimal_image(admin_client: DynamicClient) -> Generator[str, None, None]:
+    """Provides a full image name of a minimal workbench image."""
     image_name = "jupyter-minimal-notebook" if py_config.get("distribution") == "upstream" else "s2i-minimal-notebook"
-    yield f"{image_name}:{'2025.2'}"
+    image_tag = py_config.get("workbench_image_tag")
+
+    if not image_tag:
+        product_version = get_product_version(admin_client=admin_client)
+        image_tag = f"{product_version.major}.{product_version.minor}"
+
+    yield f"{image_name}:{image_tag}"
 
 
 @pytest.fixture(scope="function")

@@ -110,6 +110,11 @@ uv run pytest -o log_cli=false
 uv run pytest -k test_name
 ```
 
+### Running component smoke
+```bash
+uv run pytest tests/<component_name> -m "smoke and not sanity and not tier1"
+```
+
 ### LlamaStack Integration Tests
 
 For more information about LlamaStack integration tests, see [/tests/llama_stack/README.md](../tests/llama_stack/README.md).
