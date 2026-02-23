@@ -1,7 +1,8 @@
-import pytest
 from typing import Self
 
+import pytest
 from ocp_resources.config_map import ConfigMap
+
 from tests.model_registry.model_catalog.sorting.utils import assert_model_sorting
 from tests.model_registry.model_catalog.utils import get_hf_catalog_str
 

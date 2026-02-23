@@ -1,6 +1,6 @@
 from typing import Any
 
-from tests.model_registry.constants import SAMPLE_MODEL_NAME1, CUSTOM_CATALOG_ID1
+from tests.model_registry.constants import CUSTOM_CATALOG_ID1, SAMPLE_MODEL_NAME1
 
 CUSTOM_CATALOG_ID2: str = "sample_custom_catalog2"
 

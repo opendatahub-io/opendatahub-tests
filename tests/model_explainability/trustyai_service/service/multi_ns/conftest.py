@@ -1,54 +1,56 @@
 import copy
+from collections.abc import Generator
 from contextlib import ExitStack
-from typing import Generator, Any, List
+from typing import Any
+
 import pytest
+from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
+from ocp_resources.cluster_service_version import ClusterServiceVersion
+from ocp_resources.config_map import ConfigMap
+from ocp_resources.inference_service import InferenceService
+from ocp_resources.maria_db import MariaDB
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
-from ocp_resources.secret import Secret
-from ocp_resources.service import Service
-from ocp_resources.serving_runtime import ServingRuntime
-from ocp_resources.inference_service import InferenceService
-from ocp_resources.trustyai_service import TrustyAIService
-from ocp_resources.service_account import ServiceAccount
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
-from utilities.constants import OPENSHIFT_OPERATORS, MARIADB, TRUSTYAI_SERVICE_NAME
-from ocp_resources.maria_db import MariaDB
-from ocp_resources.config_map import ConfigMap
+from ocp_resources.secret import Secret
+from ocp_resources.service import Service
+from ocp_resources.service_account import ServiceAccount
+from ocp_resources.serving_runtime import ServingRuntime
+from ocp_resources.trustyai_service import TrustyAIService
+
 from tests.model_explainability.trustyai_service.constants import (
-    TAI_METRICS_CONFIG,
-    TAI_DATA_CONFIG,
-    TAI_PVC_STORAGE_CONFIG,
-    GAUSSIAN_CREDIT_MODEL_STORAGE_PATH,
+    GAUSSIAN_CREDIT_MODEL,
     GAUSSIAN_CREDIT_MODEL_RESOURCES,
+    GAUSSIAN_CREDIT_MODEL_STORAGE_PATH,
+    ISVC_GETTER,
     KSERVE_MLSERVER,
+    KSERVE_MLSERVER_ANNOTATIONS,
     KSERVE_MLSERVER_CONTAINERS,
     KSERVE_MLSERVER_SUPPORTED_MODEL_FORMATS,
-    KSERVE_MLSERVER_ANNOTATIONS,
-    XGBOOST,
-    ISVC_GETTER,
-    GAUSSIAN_CREDIT_MODEL,
+    TAI_DATA_CONFIG,
     TAI_DB_STORAGE_CONFIG,
+    TAI_METRICS_CONFIG,
+    TAI_PVC_STORAGE_CONFIG,
+    XGBOOST,
 )
 from tests.model_explainability.trustyai_service.trustyai_service_utils import (
     wait_for_isvc_deployment_registered_by_trustyai_service,
 )
 from tests.model_explainability.trustyai_service.utils import (
-    create_trustyai_service,
-    create_isvc_getter_service_account,
     create_isvc_getter_role,
     create_isvc_getter_role_binding,
+    create_isvc_getter_service_account,
     create_isvc_getter_token_secret,
+    create_trustyai_service,
     wait_for_mariadb_pods,
 )
-from utilities.constants import KServeDeploymentType
+from utilities.constants import MARIADB, OPENSHIFT_OPERATORS, TRUSTYAI_SERVICE_NAME, KServeDeploymentType
 from utilities.inference_utils import create_isvc
 from utilities.infra import create_inference_token, create_ns
 from utilities.minio import create_minio_data_connection_secret
 from utilities.operator_utils import get_cluster_service_version
-from ocp_resources.cluster_service_version import ClusterServiceVersion
-from kubernetes.dynamic.exceptions import ResourceNotFoundError
-from kubernetes.dynamic import DynamicClient
 
 DB_CREDENTIALS_SECRET_NAME: str = "db-credentials"
 DB_NAME: str = "trustyai_db"
@@ -57,7 +59,7 @@ DB_PASSWORD: str = "trustyai_password"
 
 
 @pytest.fixture(scope="class")
-def model_namespaces(request, admin_client) -> Generator[List[Namespace], Any, None]:
+def model_namespaces(request, admin_client) -> Generator[list[Namespace], Any]:
     with ExitStack() as stack:
         namespaces = [
             stack.enter_context(create_ns(admin_client=admin_client, name=param["name"])) for param in request.param
@@ -68,7 +70,7 @@ def model_namespaces(request, admin_client) -> Generator[List[Namespace], Any, N
 @pytest.fixture(scope="class")
 def minio_data_connection_multi_ns(
     request, admin_client, model_namespaces, minio_service
-) -> Generator[List[Secret], Any, None]:
+) -> Generator[list[Secret], Any]:
     with ExitStack() as stack:
         secrets = [
             stack.enter_context(
@@ -87,7 +89,7 @@ def minio_data_connection_multi_ns(
 @pytest.fixture(scope="class")
 def trustyai_service_with_pvc_storage_multi_ns(
     admin_client, model_namespaces, cluster_monitoring_config, user_workload_monitoring_config
-) -> Generator[List[TrustyAIService], Any, None]:
+) -> Generator[list[TrustyAIService], Any]:
     with ExitStack() as stack:
         services = [
             stack.enter_context(
@@ -109,8 +111,8 @@ def trustyai_service_with_pvc_storage_multi_ns(
 
 @pytest.fixture(scope="class")
 def kserve_logger_ca_bundle_multi_ns(
-    admin_client: DynamicClient, model_namespaces: List[Namespace]
-) -> Generator[List[ConfigMap], Any, None]:
+    admin_client: DynamicClient, model_namespaces: list[Namespace]
+) -> Generator[list[ConfigMap], Any]:
     """Create CA certificate ConfigMaps required for KServeRaw logger in each namespace."""
     with ExitStack() as stack:
         ca_bundles = [
@@ -130,7 +132,7 @@ def kserve_logger_ca_bundle_multi_ns(
 
 
 @pytest.fixture(scope="class")
-def mlserver_runtime_multi_ns(admin_client, model_namespaces) -> Generator[List[ServingRuntime], Any, None]:
+def mlserver_runtime_multi_ns(admin_client, model_namespaces) -> Generator[list[ServingRuntime], Any]:
     with ExitStack() as stack:
         runtimes = [
             stack.enter_context(
@@ -154,14 +156,14 @@ def mlserver_runtime_multi_ns(admin_client, model_namespaces) -> Generator[List[
 @pytest.fixture(scope="class")
 def gaussian_credit_model_multi_ns(
     admin_client: DynamicClient,
-    model_namespaces: List[Namespace],
+    model_namespaces: list[Namespace],
     minio_pod: Pod,
     minio_service: Service,
-    minio_data_connection_multi_ns: List[Secret],
-    mlserver_runtime_multi_ns: List[ServingRuntime],
+    minio_data_connection_multi_ns: list[Secret],
+    mlserver_runtime_multi_ns: list[ServingRuntime],
     kserve_raw_config: ConfigMap,
-    kserve_logger_ca_bundle_multi_ns: List[ConfigMap],
-) -> Generator[List[InferenceService], Any, None]:
+    kserve_logger_ca_bundle_multi_ns: list[ConfigMap],
+) -> Generator[list[InferenceService], Any]:
     with ExitStack() as stack:
         models = []
         for ns, secret, runtime in zip(model_namespaces, minio_data_connection_multi_ns, mlserver_runtime_multi_ns):
@@ -179,7 +181,7 @@ def gaussian_credit_model_multi_ns(
                 wait_for_predictor_pods=False,
                 resources=GAUSSIAN_CREDIT_MODEL_RESOURCES,
             )
-            isvc = stack.enter_context(isvc_context)  # noqa: FCN001
+            isvc = stack.enter_context(isvc_context)
 
             wait_for_isvc_deployment_registered_by_trustyai_service(
                 client=admin_client,
@@ -193,7 +195,7 @@ def gaussian_credit_model_multi_ns(
 
 
 @pytest.fixture(scope="class")
-def isvc_getter_service_account_multi_ns(admin_client, model_namespaces) -> Generator[List[ServiceAccount], None, None]:
+def isvc_getter_service_account_multi_ns(admin_client, model_namespaces) -> Generator[list[ServiceAccount]]:
     with ExitStack() as stack:
         sas = [
             stack.enter_context(create_isvc_getter_service_account(admin_client, ns, ISVC_GETTER))
@@ -203,7 +205,7 @@ def isvc_getter_service_account_multi_ns(admin_client, model_namespaces) -> Gene
 
 
 @pytest.fixture(scope="class")
-def isvc_getter_role_multi_ns(admin_client, model_namespaces) -> Generator[List[Role], None, None]:
+def isvc_getter_role_multi_ns(admin_client, model_namespaces) -> Generator[list[Role]]:
     with ExitStack() as stack:
         roles = [
             stack.enter_context(create_isvc_getter_role(admin_client, ns, f"isvc-getter-{ns.name}"))
@@ -218,7 +220,7 @@ def isvc_getter_role_binding_multi_ns(
     model_namespaces,
     isvc_getter_role_multi_ns,
     isvc_getter_service_account_multi_ns,
-) -> Generator[List[RoleBinding], None, None]:
+) -> Generator[list[RoleBinding]]:
     with ExitStack() as stack:
         bindings = [
             stack.enter_context(
@@ -241,7 +243,7 @@ def isvc_getter_token_secret_multi_ns(
     model_namespaces,
     isvc_getter_service_account_multi_ns,
     isvc_getter_role_binding_multi_ns,
-) -> Generator[List[Secret], None, None]:
+) -> Generator[list[Secret]]:
     with ExitStack() as stack:
         secrets = [
             stack.enter_context(
@@ -261,7 +263,7 @@ def isvc_getter_token_secret_multi_ns(
 def isvc_getter_token_multi_ns(
     isvc_getter_service_account_multi_ns,
     isvc_getter_token_secret_multi_ns,
-) -> List[str]:
+) -> list[str]:
     return [create_inference_token(model_service_account=sa) for sa in isvc_getter_service_account_multi_ns]
 
 
@@ -273,7 +275,7 @@ def trustyai_service_with_db_storage_multi_ns(
     user_workload_monitoring_config,
     mariadb_multi_ns,
     trustyai_db_ca_secret_multi_ns: None,
-) -> Generator[List[TrustyAIService], Any, None]:
+) -> Generator[list[TrustyAIService], Any]:
     with ExitStack() as stack:
         services = [
             stack.enter_context(
@@ -295,9 +297,9 @@ def trustyai_service_with_db_storage_multi_ns(
 @pytest.fixture(scope="class")
 def trustyai_db_ca_secret_multi_ns(
     admin_client,
-    model_namespaces: List[Namespace],
-    mariadb_multi_ns: List,
-) -> Generator[List[Secret], None, None]:
+    model_namespaces: list[Namespace],
+    mariadb_multi_ns: list,
+) -> Generator[list[Secret]]:
     """
     Creates one trustyai-db-ca secret per namespace, using the corresponding MariaDB CA cert.
     """
@@ -313,7 +315,7 @@ def trustyai_db_ca_secret_multi_ns(
             )
             ca_cert = mariadb_ca_secret.instance.data["ca.crt"]
 
-            secret = stack.enter_context(  # noqa: FCN001
+            secret = stack.enter_context(
                 Secret(
                     client=admin_client,
                     name=f"{TRUSTYAI_SERVICE_NAME}-db-ca",
@@ -327,15 +329,13 @@ def trustyai_db_ca_secret_multi_ns(
 
 
 @pytest.fixture(scope="class")
-def db_credentials_secret_multi_ns(
-    admin_client, model_namespaces: List[Namespace]
-) -> Generator[List[Secret], None, None]:
+def db_credentials_secret_multi_ns(admin_client, model_namespaces: list[Namespace]) -> Generator[list[Secret]]:
     """Creates DB credentials Secret in each model namespace."""
     with ExitStack() as stack:
         secrets = []
 
         for ns in model_namespaces:
-            secret = stack.enter_context(  # noqa: FCN001
+            secret = stack.enter_context(
                 Secret(
                     client=admin_client,
                     name=DB_CREDENTIALS_SECRET_NAME,
@@ -359,10 +359,10 @@ def db_credentials_secret_multi_ns(
 @pytest.fixture(scope="class")
 def mariadb_multi_ns(
     admin_client: DynamicClient,
-    model_namespaces: List[Namespace],
-    db_credentials_secret_multi_ns: List[Secret],
+    model_namespaces: list[Namespace],
+    db_credentials_secret_multi_ns: list[Secret],
     mariadb_operator_cr,
-) -> Generator[List[MariaDB], Any, Any]:
+) -> Generator[list[MariaDB], Any, Any]:
     mariadb_csv: ClusterServiceVersion = get_cluster_service_version(
         client=admin_client, prefix=MARIADB, namespace=OPENSHIFT_OPERATORS
     )
@@ -372,7 +372,7 @@ def mariadb_multi_ns(
     if not mariadb_dict_template:
         raise ResourceNotFoundError(f"No MariaDB dict found in alm_examples for CSV {mariadb_csv.name}")
 
-    mariadb_instances: List[MariaDB] = []
+    mariadb_instances: list[MariaDB] = []
 
     with ExitStack() as stack:
         for ns, secret in zip(model_namespaces, db_credentials_secret_multi_ns):
@@ -395,9 +395,7 @@ def mariadb_multi_ns(
             mariadb_dict["spec"]["rootPasswordSecretKeyRef"] = password_secret_key_ref
             mariadb_dict["spec"]["passwordSecretKeyRef"] = password_secret_key_ref
 
-            mariadb_instance = stack.enter_context(  # noqa: FCN001
-                MariaDB(kind_dict=mariadb_dict)
-            )
+            mariadb_instance = stack.enter_context(MariaDB(kind_dict=mariadb_dict))
             wait_for_mariadb_pods(client=admin_client, mariadb=mariadb_instance)
             mariadb_instances.append(mariadb_instance)
         yield mariadb_instances

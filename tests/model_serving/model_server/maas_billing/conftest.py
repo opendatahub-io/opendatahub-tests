@@ -1,55 +1,57 @@
-from typing import Generator, Dict, List, Any
 import base64
+from collections.abc import Generator
+from typing import Any
+
 import pytest
 import requests
-from simple_logger.logger import get_logger
-from utilities.plugins.constant import OpenAIEnpoints
-from ocp_resources.service_account import ServiceAccount
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.namespace import Namespace
-from ocp_resources.llm_inference_service import LLMInferenceService
-from ocp_resources.deployment import Deployment
-from timeout_sampler import TimeoutSampler
-from utilities.llmd_utils import create_llmisvc
-from utilities.llmd_constants import ModelStorage, ContainerImages
-from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.data_science_cluster import DataScienceCluster
+from ocp_resources.deployment import Deployment
+from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
+from ocp_resources.infrastructure import Infrastructure
+from ocp_resources.llm_inference_service import LLMInferenceService
+from ocp_resources.namespace import Namespace
+from ocp_resources.oauth import OAuth
+from ocp_resources.resource import ResourceEditor
+from ocp_resources.secret import Secret
+from ocp_resources.service_account import ServiceAccount
+from pytest import FixtureRequest
 from pytest_testconfig import config as py_config
+from simple_logger.logger import get_logger
+from timeout_sampler import TimeoutSampler
+
+from tests.model_serving.model_server.maas_billing.utils import (
+    build_maas_headers,
+    create_maas_group,
+    detect_scheme_via_llmisvc,
+    endpoints_have_ready_addresses,
+    gateway_probe_reaches_maas_api,
+    get_maas_models_response,
+    get_total_tokens,
+    host_from_ingress_domain,
+    maas_gateway_listeners,
+    maas_gateway_rate_limits_patched,
+    mint_token,
+    patch_llmisvc_with_maas_router,
+    revoke_token,
+    verify_chat_completions,
+)
 from utilities.constants import (
+    MAAS_GATEWAY_NAME,
     MAAS_GATEWAY_NAMESPACE,
     MAAS_RATE_LIMIT_POLICY_NAME,
     MAAS_TOKEN_RATE_LIMIT_POLICY_NAME,
+    DscComponents,
 )
-from pytest import FixtureRequest
-
-from ocp_resources.infrastructure import Infrastructure
-from ocp_resources.oauth import OAuth
-from ocp_resources.resource import ResourceEditor
-from utilities.general import generate_random_name
-from utilities.user_utils import UserTestSession, wait_for_user_creation, create_htpasswd_file
-from utilities.infra import login_with_user_password, get_openshift_token, create_ns, s3_endpoint_secret
-from utilities.general import wait_for_oauth_openshift_deployment
-from ocp_resources.secret import Secret
-from tests.model_serving.model_server.maas_billing.utils import get_total_tokens
-from utilities.constants import DscComponents, MAAS_GATEWAY_NAME
+from utilities.general import generate_random_name, wait_for_oauth_openshift_deployment
+from utilities.infra import create_ns, get_openshift_token, login_with_user_password, s3_endpoint_secret
+from utilities.llmd_constants import ContainerImages, ModelStorage
+from utilities.llmd_utils import create_llmisvc
+from utilities.plugins.constant import OpenAIEnpoints
 from utilities.resources.rate_limit_policy import RateLimitPolicy
 from utilities.resources.token_rate_limit_policy import TokenRateLimitPolicy
-from tests.model_serving.model_server.maas_billing.utils import (
-    detect_scheme_via_llmisvc,
-    host_from_ingress_domain,
-    mint_token,
-    patch_llmisvc_with_maas_router,
-    create_maas_group,
-    build_maas_headers,
-    get_maas_models_response,
-    verify_chat_completions,
-    maas_gateway_rate_limits_patched,
-    endpoints_have_ready_addresses,
-    gateway_probe_reaches_maas_api,
-    maas_gateway_listeners,
-    revoke_token,
-)
+from utilities.user_utils import UserTestSession, create_htpasswd_file, wait_for_user_creation
 
 LOGGER = get_logger(name=__name__)
 MODELS_INFO = OpenAIEnpoints.MODELS_INFO
@@ -60,7 +62,7 @@ MAAS_PREMIUM_GROUP = "tier-premium-users"
 
 
 @pytest.fixture(scope="session")
-def request_session_http() -> Generator[requests.Session, None, None]:
+def request_session_http() -> Generator[requests.Session]:
     session = requests.Session()
     session.headers.update({"User-Agent": "odh-maas-billing-tests/1"})
     session.verify = False
@@ -214,7 +216,7 @@ def maas_user_credentials_both() -> dict[str, str]:
 @pytest.fixture(scope="session")
 def maas_htpasswd_files(
     maas_user_credentials_both: dict[str, str],
-) -> Generator[tuple[str, str, str, str], None, None]:
+) -> Generator[tuple[str, str, str, str]]:
     """
     Create per-user htpasswd files for FREE and PREMIUM users and return
     their file paths + base64 contents.
@@ -336,7 +338,7 @@ def maas_free_user_session(
     is_byoidc: bool,
     maas_rbac_idp_env: dict[str, str],
     admin_client: DynamicClient,
-) -> Generator[UserTestSession, None, None]:
+) -> Generator[UserTestSession]:
     if is_byoidc:
         pytest.skip("Working on OIDC support for tests that use htpasswd IDP for MaaS")
     else:
@@ -383,7 +385,7 @@ def maas_premium_user_session(
     is_byoidc: bool,
     maas_rbac_idp_env: dict[str, str],
     admin_client: DynamicClient,
-) -> Generator[UserTestSession, None, None]:
+) -> Generator[UserTestSession]:
     if is_byoidc:
         pytest.skip("Working on OIDC support for tests that use htpasswd IDP for MaaS")
     else:
@@ -427,7 +429,7 @@ def maas_premium_user_session(
 def maas_free_group(
     admin_client: DynamicClient,
     maas_free_user_session: UserTestSession,
-) -> Generator[str, None, None]:
+) -> Generator[str]:
     """Create a FREE-tier MaaS group and add the FREE test user to it."""
     with create_maas_group(
         admin_client=admin_client,
@@ -442,7 +444,7 @@ def maas_free_group(
 def maas_premium_group(
     admin_client: DynamicClient,
     maas_premium_user_session: UserTestSession,
-) -> Generator[str, None, None]:
+) -> Generator[str]:
     """Create a PREMIUM-tier MaaS group and add the PREMIUM test user to it."""
     with create_maas_group(
         admin_client=admin_client,
@@ -461,7 +463,7 @@ def ocp_token_for_actor(
     admin_client: DynamicClient,
     maas_free_user_session: UserTestSession,
     maas_premium_user_session: UserTestSession,
-) -> Generator[str, None, None]:
+) -> Generator[str]:
     """
     Log in as the requested actor ('admin' / 'free' / 'premium')
     and yield the OpenShift token for that user.
@@ -554,7 +556,7 @@ def maas_models_response_for_actor(
 @pytest.fixture(scope="class")
 def maas_models_for_actor(
     maas_models_response_for_actor: requests.Response,
-) -> List[Dict]:
+) -> list[dict]:
 
     models_list = maas_models_response_for_actor.json().get("data", [])
     assert models_list, "no models returned from /v1/models"
@@ -578,9 +580,9 @@ def exercise_rate_limiter(
     scenario: dict,
     request_session_http: requests.Session,
     model_url: str,
-    maas_headers_for_actor: Dict[str, str],
-    maas_models_for_actor: List[Dict],
-) -> List[int]:
+    maas_headers_for_actor: dict[str, str],
+    maas_models_for_actor: list[dict],
+) -> list[int]:
 
     models_list = maas_models_for_actor
 
@@ -588,7 +590,7 @@ def exercise_rate_limiter(
     max_tokens = scenario["max_tokens"]
     log_prefix = scenario["log_prefix"]
 
-    status_codes_list: List[int] = []
+    status_codes_list: list[int] = []
 
     for attempt_index in range(max_requests):
         LOGGER.info(f"{log_prefix}[{actor_label}]: attempt {attempt_index + 1}/{max_requests}")
@@ -624,43 +626,45 @@ def maas_inference_service_tinyllama(
     maas_gateway_api: None,
     maas_request_ratelimit_policy: None,
     maas_token_ratelimit_policy: None,
-) -> Generator[LLMInferenceService, None, None]:
+) -> Generator[LLMInferenceService]:
     """
     TinyLlama S3-backed LLMInferenceService wired through MaaS for tests.
     """
-    with create_llmisvc(
-        client=admin_client,
-        name="llm-s3-tinyllama",
-        namespace=maas_unprivileged_model_namespace.name,
-        storage_uri=ModelStorage.TINYLLAMA_S3,
-        container_image=ContainerImages.VLLM_CPU,
-        container_resources={
-            "limits": {"cpu": "2", "memory": "12Gi"},
-            "requests": {"cpu": "1", "memory": "8Gi"},
-        },
-        service_account=maas_model_service_account.name,
-        wait=False,
-        timeout=900,
-    ) as llm_service:
-        with patch_llmisvc_with_maas_router(
+    with (
+        create_llmisvc(
+            client=admin_client,
+            name="llm-s3-tinyllama",
+            namespace=maas_unprivileged_model_namespace.name,
+            storage_uri=ModelStorage.TINYLLAMA_S3,
+            container_image=ContainerImages.VLLM_CPU,
+            container_resources={
+                "limits": {"cpu": "2", "memory": "12Gi"},
+                "requests": {"cpu": "1", "memory": "8Gi"},
+            },
+            service_account=maas_model_service_account.name,
+            wait=False,
+            timeout=900,
+        ) as llm_service,
+        patch_llmisvc_with_maas_router(
             llm_service=llm_service,
-        ):
-            inst = llm_service.instance
-            storage_uri = inst.spec.model.uri
-            assert storage_uri == ModelStorage.TINYLLAMA_S3, f"Unexpected storage_uri on TinyLlama LLMI: {storage_uri}"
+        ),
+    ):
+        inst = llm_service.instance
+        storage_uri = inst.spec.model.uri
+        assert storage_uri == ModelStorage.TINYLLAMA_S3, f"Unexpected storage_uri on TinyLlama LLMI: {storage_uri}"
 
-            llm_service.wait_for_condition(
-                condition="Ready",
-                status="True",
-                timeout=900,
-            )
+        llm_service.wait_for_condition(
+            condition="Ready",
+            status="True",
+            timeout=900,
+        )
 
-            LOGGER.info(
-                f"MaaS: TinyLlama LLMI {llm_service.namespace}/{llm_service.name} "
-                f"Ready and patched (storage_uri={storage_uri})"
-            )
+        LOGGER.info(
+            f"MaaS: TinyLlama LLMI {llm_service.namespace}/{llm_service.name} "
+            f"Ready and patched (storage_uri={storage_uri})"
+        )
 
-            yield llm_service
+        yield llm_service
 
 
 @pytest.fixture(scope="class")
@@ -683,7 +687,7 @@ def maas_gateway_rate_limits(
     maas_request_ratelimit_policy: None,
     maas_token_ratelimit_policy: None,
     maas_tier_mapping_cm,
-) -> Generator[None, None, None]:
+) -> Generator[None]:
     with maas_gateway_rate_limits_patched(
         admin_client=admin_client,
         namespace=MAAS_GATEWAY_NAMESPACE,
@@ -704,7 +708,7 @@ def maas_controller_enabled_latest(
     maas_gateway_api: None,
     maas_request_ratelimit_policy: None,
     maas_token_ratelimit_policy: None,
-) -> Generator[DataScienceCluster, None, None]:
+) -> Generator[DataScienceCluster]:
     """
     Ensure MaaS (KServe modelsAsService) is MANAGED for the session.
     Restore DSC to original state on teardown.
@@ -810,7 +814,7 @@ def maas_api_gateway_reachable(
 def maas_gateway_api(
     admin_client: DynamicClient,
     maas_gateway_api_hostname: str,
-) -> Generator[None, None, None]:
+) -> Generator[None]:
     """
     Ensure MaaS Gateway exists once per test session.
 
@@ -861,7 +865,7 @@ def maas_request_ratelimit_policy(
     admin_client: DynamicClient,
     maas_gateway_api: None,
     maas_gateway_target_ref: dict,
-) -> Generator[None, None, None]:
+) -> Generator[None]:
     with RateLimitPolicy(
         client=admin_client,
         name=MAAS_RATE_LIMIT_POLICY_NAME,
@@ -885,7 +889,7 @@ def maas_token_ratelimit_policy(
     admin_client: DynamicClient,
     maas_gateway_api: None,
     maas_gateway_target_ref: dict,
-) -> Generator[None, None, None]:
+) -> Generator[None]:
     with TokenRateLimitPolicy(
         client=admin_client,
         name=MAAS_TOKEN_RATE_LIMIT_POLICY_NAME,
@@ -911,7 +915,7 @@ def ensure_working_maas_token_pre_revoke(
     maas_headers_for_actor,
     maas_models_response_for_actor,
     actor_label,
-) -> List[dict]:
+) -> list[dict]:
     models_list = maas_models_response_for_actor.json().get("data", [])
 
     verify_chat_completions(

@@ -1,12 +1,13 @@
-from contextlib import contextmanager
-from typing import Generator, Any, Optional
 import re
+from collections.abc import Generator
+from contextlib import contextmanager
+from typing import Any
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
-from ocp_resources.mariadb_operator import MariadbOperator
 from ocp_resources.maria_db import MariaDB
+from ocp_resources.mariadb_operator import MariadbOperator
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.role import Role
@@ -15,12 +16,11 @@ from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.trustyai_service import TrustyAIService
 from simple_logger.logger import get_logger
-from timeout_sampler import TimeoutSampler
-from utilities.constants import Timeout, TRUSTYAI_SERVICE_NAME
-from timeout_sampler import retry
+from timeout_sampler import TimeoutSampler, retry
 
+from utilities.constants import TRUSTYAI_SERVICE_NAME, Timeout
 from utilities.exceptions import TooManyPodsError, UnexpectedFailureError
-from utilities.general import wait_for_pods_by_labels, validate_container_images
+from utilities.general import validate_container_images, wait_for_pods_by_labels
 
 LOGGER = get_logger(name=__name__)
 
@@ -70,7 +70,7 @@ def wait_for_mariadb_pods(client: DynamicClient, mariadb: MariaDB, timeout: int 
     exceptions_dict={TooManyPodsError: list(), UnexpectedFailureError: list()},
 )
 def validate_trustyai_service_db_conn_failure(
-    client: DynamicClient, namespace: Namespace, label_selector: Optional[str]
+    client: DynamicClient, namespace: Namespace, label_selector: str | None
 ) -> bool:
     """Validate if invalid DB Certificate leads to pod crash loop.
 
@@ -122,7 +122,7 @@ def create_trustyai_service(
     storage: dict[str, str],
     metrics: dict[str, str],
     name: str = TRUSTYAI_SERVICE_NAME,
-    data: Optional[dict[str, str]] = None,
+    data: dict[str, str] | None = None,
     wait_for_replicas: bool = True,
     teardown: bool = True,
 ) -> Generator[TrustyAIService, Any, Any]:

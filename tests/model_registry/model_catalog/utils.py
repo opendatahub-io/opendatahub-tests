@@ -1,11 +1,11 @@
 from typing import Any
 
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
 
-from ocp_resources.pod import Pod
 from tests.model_registry.model_catalog.constants import HF_MODELS
 from tests.model_registry.utils import execute_get_command
-from kubernetes.dynamic import DynamicClient
 
 LOGGER = get_logger(name=__name__)
 

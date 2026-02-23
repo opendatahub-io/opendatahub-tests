@@ -1,17 +1,18 @@
 from typing import Any
 
+from kubernetes.dynamic import DynamicClient
 from simple_logger.logger import get_logger
-from tests.model_registry.utils import execute_get_command
-from tests.model_registry.model_catalog.utils import (
-    execute_database_query,
-    parse_psql_output,
-    get_models_from_catalog_api,
-)
+
 from tests.model_registry.model_catalog.db_constants import (
     GET_MODELS_BY_ACCURACY_DB_QUERY,
     GET_MODELS_BY_ACCURACY_WITH_TASK_FILTER_DB_QUERY,
 )
-from kubernetes.dynamic import DynamicClient
+from tests.model_registry.model_catalog.utils import (
+    execute_database_query,
+    get_models_from_catalog_api,
+    parse_psql_output,
+)
+from tests.model_registry.utils import execute_get_command
 
 LOGGER = get_logger(name=__name__)
 

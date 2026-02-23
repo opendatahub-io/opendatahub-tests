@@ -1,26 +1,28 @@
+from typing import Any, Self
+
 import pytest
 from dictdiffer import diff
-from simple_logger.logger import get_logger
-from typing import Self, Any
-from tests.model_registry.model_catalog.constants import (
-    REDHAT_AI_CATALOG_ID,
-    VALIDATED_CATALOG_ID,
-    REDHAT_AI_CATALOG_NAME,
-    REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
-)
-from tests.model_registry.model_catalog.utils import get_models_from_catalog_api
-from tests.model_registry.model_catalog.search.utils import (
-    fetch_all_artifacts_with_dynamic_paging,
-    validate_model_contains_search_term,
-    validate_search_results_against_database,
-    validate_filter_query_results_against_database,
-    validate_performance_data_files_on_pod,
-    validate_model_artifacts_match_criteria_and,
-    validate_model_artifacts_match_criteria_or,
-)
-from tests.model_registry.utils import get_model_catalog_pod
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
+from simple_logger.logger import get_logger
+
+from tests.model_registry.model_catalog.constants import (
+    REDHAT_AI_CATALOG_ID,
+    REDHAT_AI_CATALOG_NAME,
+    REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
+    VALIDATED_CATALOG_ID,
+)
+from tests.model_registry.model_catalog.search.utils import (
+    fetch_all_artifacts_with_dynamic_paging,
+    validate_filter_query_results_against_database,
+    validate_model_artifacts_match_criteria_and,
+    validate_model_artifacts_match_criteria_or,
+    validate_model_contains_search_term,
+    validate_performance_data_files_on_pod,
+    validate_search_results_against_database,
+)
+from tests.model_registry.model_catalog.utils import get_models_from_catalog_api
+from tests.model_registry.utils import get_model_catalog_pod
 
 LOGGER = get_logger(name=__name__)
 pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace")]
@@ -135,7 +137,7 @@ class TestSearchModelCatalogQParameter:
         "search_term",
         [
             pytest.param(
-                "The Llama 4 collection of models are natively multimodal AI models that enable text and multimodal experiences. These models leverage a mixture-of-experts architecture to offer industry-leading performance in text and image understanding. These Llama 4 models mark the beginning of a new era for the Llama ecosystem. We are launching two efficient models in the Llama 4 series, Llama 4 Scout, a 17 billion parameter model with 16 experts, and Llama 4 Maverick, a 17 billion parameter model with 128 experts.",  # noqa: E501
+                "The Llama 4 collection of models are natively multimodal AI models that enable text and multimodal experiences. These models leverage a mixture-of-experts architecture to offer industry-leading performance in text and image understanding. These Llama 4 models mark the beginning of a new era for the Llama ecosystem. We are launching two efficient models in the Llama 4 series, Llama 4 Scout, a 17 billion parameter model with 16 experts, and Llama 4 Maverick, a 17 billion parameter model with 128 experts.",
                 id="long_description",
             ),
         ],

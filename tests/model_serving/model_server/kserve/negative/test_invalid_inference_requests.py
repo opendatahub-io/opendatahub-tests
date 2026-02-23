@@ -18,7 +18,6 @@ from tests.model_serving.model_server.kserve.negative.utils import (
 )
 from utilities.infra import get_pods_by_isvc_label
 
-
 pytestmark = pytest.mark.usefixtures("valid_aws_config")
 
 

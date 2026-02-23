@@ -1,10 +1,10 @@
 from kubernetes.dynamic import DynamicClient
-from timeout_sampler import TimeoutSampler
-
 from ocp_resources.deployment import Deployment
 from ocp_resources.maria_db import MariaDB
 from ocp_resources.mariadb_operator import MariadbOperator
 from ocp_resources.pod import Pod
+from timeout_sampler import TimeoutSampler
+
 from utilities.constants import Timeout
 
 

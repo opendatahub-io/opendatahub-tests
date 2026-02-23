@@ -1,23 +1,26 @@
-from typing import Self
-import time
 import json
+import time
+from typing import Self
 
 import pytest
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.job import Job
+from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import ArtifactState, RegisteredModelState
+from ocp_resources.job import Job
+from simple_logger.logger import get_logger
+
+from tests.model_registry.constants import MODEL_DICT
 from tests.model_registry.model_registry.async_job.constants import (
     ASYNC_UPLOAD_JOB_NAME,
+    MODEL_SYNC_CONFIG,
+    REPO_NAME,
+    TAG,
 )
 from tests.model_registry.model_registry.async_job.utils import (
     get_latest_job_pod,
 )
-from tests.model_registry.constants import MODEL_DICT
 from utilities.constants import MinIo, OCIRegistry
 from utilities.registry_utils import pull_manifest_from_oci_registry
-from model_registry import ModelRegistry as ModelRegistryClient
-from simple_logger.logger import get_logger
-from tests.model_registry.model_registry.async_job.constants import MODEL_SYNC_CONFIG, REPO_NAME, TAG
 
 LOGGER = get_logger(name=__name__)
 

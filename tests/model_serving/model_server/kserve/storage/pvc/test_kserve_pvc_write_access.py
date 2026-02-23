@@ -1,7 +1,7 @@
 import shlex
 
-from ocp_resources.pod import ExecOnPodError
 import pytest
+from ocp_resources.pod import ExecOnPodError
 
 from tests.model_serving.model_server.kserve.storage.constants import (
     INFERENCE_SERVICE_PARAMS,

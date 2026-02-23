@@ -6,16 +6,17 @@ meet the requirements:
 3. Images are listed in the CSV's relatedImages section
 """
 
-import pytest
-from typing import Self, Set
-from simple_logger.logger import get_logger
-from kubernetes.dynamic import DynamicClient
+from typing import Self
 
-from tests.model_registry.constants import MR_INSTANCE_NAME, MR_POSTGRES_DEPLOYMENT_NAME_STR, MR_OPERATOR_NAME
-from tests.model_registry.image_validation.utils import validate_images
-from utilities.constants import Labels
+import pytest
+from kubernetes.dynamic import DynamicClient
 from ocp_resources.pod import Pod
 from pytest_testconfig import config as py_config
+from simple_logger.logger import get_logger
+
+from tests.model_registry.constants import MR_INSTANCE_NAME, MR_OPERATOR_NAME, MR_POSTGRES_DEPLOYMENT_NAME_STR
+from tests.model_registry.image_validation.utils import validate_images
+from utilities.constants import Labels
 
 LOGGER = get_logger(name=__name__)
 pytestmark = [pytest.mark.downstream_only, pytest.mark.skip_must_gather, pytest.mark.smoke]
@@ -45,7 +46,7 @@ class TestAIHubResourcesImages:
         self: Self,
         admin_client: DynamicClient,
         resource_pods: list[Pod],
-        related_images_refs: Set[str],
+        related_images_refs: set[str],
     ):
         validate_images(pods_to_validate=resource_pods, related_images_refs=related_images_refs)
 
@@ -78,6 +79,6 @@ class TestModelRegistryImages:
         self: Self,
         admin_client: DynamicClient,
         model_registry_instance_pods_by_label: list[Pod],
-        related_images_refs: Set[str],
+        related_images_refs: set[str],
     ):
         validate_images(pods_to_validate=model_registry_instance_pods_by_label, related_images_refs=related_images_refs)

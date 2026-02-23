@@ -1,11 +1,12 @@
-from typing import Generator, Any
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 from kubernetes.dynamic import DynamicClient
-
 from ocp_resources.pod import Pod
-from utilities.general import wait_for_pods_by_labels
 from pytest import FixtureRequest
+
+from utilities.general import wait_for_pods_by_labels
 
 
 @pytest.fixture(scope="class")

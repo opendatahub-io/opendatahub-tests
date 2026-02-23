@@ -1,7 +1,8 @@
 import os
 import subprocess
 from base64 import b64encode
-from typing import Generator, Any
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 from kubernetes.dynamic import DynamicClient
@@ -57,7 +58,7 @@ def guardrails_orchestrator_ssl_cert_secret(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     guardrails_orchestrator_ssl_cert: str,  # ← Add dependency and use correct cert
-) -> Generator[Secret, Any, None]:
+) -> Generator[Secret, Any]:
     with open(guardrails_orchestrator_ssl_cert, "r") as f:
         cert_content = f.read()
 

@@ -3,16 +3,17 @@
 import json
 import re
 import shlex
+from collections.abc import Generator
 from contextlib import contextmanager
 from string import Template
-from typing import Any, Dict, Generator, Optional
+from typing import Any
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.gateway import Gateway
 from ocp_resources.llm_inference_service import LLMInferenceService
 from pyhelper_utils.shell import run_command
 from simple_logger.logger import get_logger
-from timeout_sampler import retry, TimeoutWatch
+from timeout_sampler import TimeoutWatch, retry
 
 from utilities.certificates_utils import get_ca_bundle
 from utilities.constants import HTTPRequest, Timeout
@@ -20,9 +21,9 @@ from utilities.exceptions import InferenceResponseError
 from utilities.infra import get_services_by_isvc_label
 from utilities.llmd_constants import (
     ContainerImages,
+    KServeGateway,
     LLMDGateway,
     LLMEndpoint,
-    KServeGateway,
 )
 
 LOGGER = get_logger(name=__name__)
@@ -34,12 +35,12 @@ def create_llmd_gateway(
     name: str = LLMDGateway.DEFAULT_NAME,
     namespace: str = LLMDGateway.DEFAULT_NAMESPACE,
     gateway_class_name: str = LLMDGateway.DEFAULT_CLASS,
-    listeners: Optional[list[Dict[str, Any]]] = None,
-    infrastructure: Optional[Dict[str, Any]] = None,
+    listeners: list[dict[str, Any]] | None = None,
+    infrastructure: dict[str, Any] | None = None,
     wait_for_condition: bool = True,
     timeout: int = 300,
     teardown: bool = True,
-) -> Generator[Gateway, None, None]:
+) -> Generator[Gateway]:
     """
     Context manager to create and manage a Gateway resource using ocp_resources.
 
@@ -113,7 +114,7 @@ def create_llmd_gateway(
         yield gateway
 
 
-def _get_llm_config_references(enable_prefill_decode: bool = False, disable_scheduler: bool = False) -> Dict[str, str]:
+def _get_llm_config_references(enable_prefill_decode: bool = False, disable_scheduler: bool = False) -> dict[str, str]:
     """
     Get LLMInferenceServiceConfig references based on configuration type.
 
@@ -151,31 +152,31 @@ def create_llmisvc(
     client: DynamicClient,
     name: str,
     namespace: str,
-    storage_uri: Optional[str] = None,
-    storage_key: Optional[str] = None,
-    storage_path: Optional[str] = None,
+    storage_uri: str | None = None,
+    storage_key: str | None = None,
+    storage_path: str | None = None,
     replicas: int = 1,
     wait: bool = True,
     enable_auth: bool = False,
-    router_config: Optional[Dict[str, Any]] = None,
-    container_image: Optional[str] = None,
-    container_resources: Optional[Dict[str, Any]] = None,
-    container_env: Optional[list[Dict[str, str]]] = None,
-    liveness_probe: Optional[Dict[str, Any]] = None,
-    readiness_probe: Optional[Dict[str, Any]] = None,
-    image_pull_secrets: Optional[list[str]] = None,
-    service_account: Optional[str] = None,
-    volumes: Optional[list[Dict[str, Any]]] = None,
-    volume_mounts: Optional[list[Dict[str, Any]]] = None,
-    annotations: Optional[Dict[str, str]] = None,
-    labels: Optional[Dict[str, str]] = None,
+    router_config: dict[str, Any] | None = None,
+    container_image: str | None = None,
+    container_resources: dict[str, Any] | None = None,
+    container_env: list[dict[str, str]] | None = None,
+    liveness_probe: dict[str, Any] | None = None,
+    readiness_probe: dict[str, Any] | None = None,
+    image_pull_secrets: list[str] | None = None,
+    service_account: str | None = None,
+    volumes: list[dict[str, Any]] | None = None,
+    volume_mounts: list[dict[str, Any]] | None = None,
+    annotations: dict[str, str] | None = None,
+    labels: dict[str, str] | None = None,
     timeout: int = Timeout.TIMEOUT_15MIN,
     teardown: bool = True,
-    model_name: Optional[str] = None,
-    prefill_config: Optional[Dict[str, Any]] = None,
+    model_name: str | None = None,
+    prefill_config: dict[str, Any] | None = None,
     disable_scheduler: bool = False,
     enable_prefill_decode: bool = False,
-) -> Generator[LLMInferenceService, Any, None]:
+) -> Generator[LLMInferenceService, Any]:
     """
     Create LLMInferenceService object following the pattern of create_isvc.
 
@@ -255,7 +256,7 @@ def create_llmisvc(
                 {"name": "VLLM_ADDITIONAL_ARGS", "value": "--ssl-ciphers ECDHE+AESGCM:DHE+AESGCM"},
                 {"name": "VLLM_CPU_KVCACHE_SPACE", "value": "4"},
             ])
-    template_config: Dict[str, Any] = {"configRef": config_refs["template_ref"]}
+    template_config: dict[str, Any] = {"configRef": config_refs["template_ref"]}
 
     if any([
         container_image,
@@ -266,7 +267,7 @@ def create_llmisvc(
         volumes,
         service_account,
     ]):
-        main_container: Dict[str, Any] = {"name": "main"}
+        main_container: dict[str, Any] = {"name": "main"}
 
         if container_image:
             main_container["image"] = container_image
@@ -399,16 +400,16 @@ def get_llm_inference_url(llm_service: LLMInferenceService) -> str:
 
 def verify_inference_response_llmd(
     llm_service: LLMInferenceService,
-    inference_config: Dict[str, Any],
+    inference_config: dict[str, Any],
     inference_type: str,
     protocol: str,
-    model_name: Optional[str] = None,
-    inference_input: Optional[Any] = None,
+    model_name: str | None = None,
+    inference_input: Any | None = None,
     use_default_query: bool = False,
-    expected_response_text: Optional[str] = None,
+    expected_response_text: str | None = None,
     insecure: bool = False,
-    token: Optional[str] = None,
-    authorized_user: Optional[bool] = None,
+    token: str | None = None,
+    authorized_user: bool | None = None,
 ) -> None:
     """
     Verify the LLM inference response following the pattern of verify_inference_response.
@@ -472,7 +473,7 @@ class LLMUserInference:
     def __init__(
         self,
         llm_service: LLMInferenceService,
-        inference_config: Dict[str, Any],
+        inference_config: dict[str, Any],
         inference_type: str,
         protocol: str,
     ) -> None:
@@ -482,7 +483,7 @@ class LLMUserInference:
         self.protocol = protocol
         self.runtime_config = self.get_runtime_config()
 
-    def get_runtime_config(self) -> Dict[str, Any]:
+    def get_runtime_config(self) -> dict[str, Any]:
         """Get runtime config from inference config based on inference type and protocol."""
         if inference_type_config := self.inference_config.get(self.inference_type):
             protocol = "http" if self.protocol.lower() in ["http", "https"] else self.protocol
@@ -494,7 +495,7 @@ class LLMUserInference:
             raise ValueError(f"Inference type {self.inference_type} not supported in config")
 
     @property
-    def inference_response_text_key_name(self) -> Optional[str]:
+    def inference_response_text_key_name(self) -> str | None:
         """Get inference response text key name from runtime config."""
         return self.runtime_config.get("response_fields_map", {}).get("response_output")
 
@@ -506,7 +507,7 @@ class LLMUserInference:
     def get_inference_body(
         self,
         model_name: str,
-        inference_input: Optional[Any] = None,
+        inference_input: Any | None = None,
         use_default_query: bool = False,
     ) -> str:
         """Get inference body for LLM request."""
@@ -553,10 +554,10 @@ class LLMUserInference:
     def generate_command(
         self,
         model_name: str,
-        inference_input: Optional[str] = None,
+        inference_input: str | None = None,
         use_default_query: bool = False,
         insecure: bool = False,
-        token: Optional[str] = None,
+        token: str | None = None,
     ) -> str:
         """Generate curl command string for LLM inference."""
         base_url = get_llm_inference_url(llm_service=self.llm_service)
@@ -597,10 +598,10 @@ class LLMUserInference:
     def run_inference(
         self,
         model_name: str,
-        inference_input: Optional[str] = None,
+        inference_input: str | None = None,
         use_default_query: bool = False,
         insecure: bool = False,
-        token: Optional[str] = None,
+        token: str | None = None,
     ) -> str:
         """Run inference command and return raw output."""
         cmd = self.generate_command(
@@ -619,11 +620,11 @@ class LLMUserInference:
     def run_inference_flow(
         self,
         model_name: str,
-        inference_input: Optional[str] = None,
+        inference_input: str | None = None,
         use_default_query: bool = False,
         insecure: bool = False,
-        token: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        token: str | None = None,
+    ) -> dict[str, Any]:
         """Run LLM inference using the same high-level flow as inference_utils."""
         out = self.run_inference(
             model_name=model_name,
@@ -635,7 +636,7 @@ class LLMUserInference:
         return {"output": out}
 
 
-def _validate_unauthorized_response(res: Dict[str, Any], token: Optional[str], inference: LLMUserInference) -> None:
+def _validate_unauthorized_response(res: dict[str, Any], token: str | None, inference: LLMUserInference) -> None:
     """Validate response for unauthorized users."""
     auth_header = "x-ext-auth-reason"
 
@@ -657,11 +658,11 @@ def _validate_unauthorized_response(res: Dict[str, Any], token: Optional[str], i
 
 
 def _validate_authorized_response(
-    res: Dict[str, Any],
+    res: dict[str, Any],
     inference: LLMUserInference,
-    inference_config: Dict[str, Any],
+    inference_config: dict[str, Any],
     inference_type: str,
-    expected_response_text: Optional[str],
+    expected_response_text: str | None,
     use_default_query: bool,
     model_name: str,
 ) -> None:

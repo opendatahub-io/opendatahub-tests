@@ -1,11 +1,10 @@
 import pytest
 
-from tests.model_serving.model_server.utils import verify_inference_response
 from tests.model_serving.model_server.kserve.raw_deployment.utils import assert_ingress_status_changed
+from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import ModelFormat, ModelVersion, Protocols, RunTimeConfigs
 from utilities.inference_utils import Inference
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
-
 
 pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_config")]
 

@@ -1,16 +1,17 @@
 import json
 import os
+import platform
 import re
 import shlex
 import stat
 import tarfile
 import zipfile
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from functools import cache
-from typing import Any, Generator, Optional, Set, Callable
+from typing import Any
 
 import kubernetes
-import platform
 import pytest
 import requests
 import urllib3
@@ -21,12 +22,11 @@ from kubernetes.dynamic.exceptions import (
     NotFoundError,
     ResourceNotFoundError,
 )
-
 from ocp_resources.authentication_config_openshift_io import Authentication
 from ocp_resources.catalog_source import CatalogSource
 from ocp_resources.cluster_service_version import ClusterServiceVersion
-from ocp_resources.config_map import ConfigMap
 from ocp_resources.config_imageregistry_operator_openshift_io import Config
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.console_cli_download import ConsoleCLIDownload
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
@@ -47,6 +47,8 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
+from ocp_resources.subscription import Subscription
+from ocp_resources.utils.constants import DEFAULT_CLUSTER_RETRY_EXCEPTIONS
 from ocp_utilities.exceptions import NodeNotReadyError, NodeUnschedulableError
 from ocp_utilities.infra import (
     assert_nodes_in_healthy_condition,
@@ -56,15 +58,11 @@ from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
 from semver import Version
 from simple_logger.logger import get_logger
-
-from ocp_resources.subscription import Subscription
-from utilities.constants import ApiGroups, Labels, Timeout, RHOAI_OPERATOR_NAMESPACE
-from utilities.constants import KServeDeploymentType
-from utilities.constants import Annotations
-from utilities.exceptions import ClusterLoginError, FailedPodsError, ResourceNotReadyError, UnexpectedResourceCountError
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, TimeoutWatch, retry
+
 import utilities.general
-from ocp_resources.utils.constants import DEFAULT_CLUSTER_RETRY_EXCEPTIONS
+from utilities.constants import RHOAI_OPERATOR_NAMESPACE, Annotations, ApiGroups, KServeDeploymentType, Labels, Timeout
+from utilities.exceptions import ClusterLoginError, FailedPodsError, ResourceNotReadyError, UnexpectedResourceCountError
 from utilities.general import generate_random_name
 
 LOGGER = get_logger(name=__name__)
@@ -365,7 +363,7 @@ def create_isvc_view_role(
     client: DynamicClient,
     isvc: InferenceService,
     name: str,
-    resource_names: Optional[list[str]] = None,
+    resource_names: list[str] | None = None,
     teardown: bool = True,
 ) -> Generator[Role, Any, Any]:
     """
@@ -408,7 +406,7 @@ def create_inference_graph_view_role(
     client: DynamicClient,
     namespace: str,
     name: str,
-    resource_names: Optional[list[str]] = None,
+    resource_names: list[str] | None = None,
     teardown: bool = True,
 ) -> Generator[Role, Any, Any]:
     """
@@ -823,7 +821,7 @@ def verify_no_failed_pods(
                 raise FailedPodsError(pods=failed_pods)
 
 
-def check_pod_status_in_time(pod: Pod, status: Set[str], duration: int = Timeout.TIMEOUT_2MIN, wait: int = 1) -> None:
+def check_pod_status_in_time(pod: Pod, status: set[str], duration: int = Timeout.TIMEOUT_2MIN, wait: int = 1) -> None:
     """
     Checks if a pod status is maintained for a given duration. If not, an AssertionError is raised.
 
@@ -1108,7 +1106,7 @@ def verify_cluster_sanity(
             wait_for_dsc_status_ready(dsc_resource=dsc_resource)
 
     except (ResourceNotReadyError, NodeUnschedulableError, NodeNotReadyError) as ex:
-        error_msg = f"Cluster sanity check failed: {str(ex)}"
+        error_msg = f"Cluster sanity check failed: {ex!s}"
         # return_code set to 99 to not collide with https://docs.pytest.org/en/stable/reference/exit-codes.html
         return_code = 99
 
@@ -1173,8 +1171,7 @@ def download_oc_console_cli(admin_client: DynamicClient, tmpdir: LocalPath) -> s
     with requests.get(oc_console_cli_download_link, verify=False, stream=True) as created_request:
         created_request.raise_for_status()
         with open(local_file_name, "wb") as file_downloaded:
-            for chunk in created_request.iter_content(chunk_size=8192):
-                file_downloaded.write(chunk)
+            file_downloaded.writelines(created_request.iter_content(chunk_size=8192))
     LOGGER.info("Extract the downloaded archive.")
     extracted_filenames = []
     if oc_console_cli_download_link.endswith(".zip"):

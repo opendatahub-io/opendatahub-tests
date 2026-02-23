@@ -1,4 +1,7 @@
-from typing import Any, Iterable, Optional
+import os
+import subprocess
+from collections.abc import Iterable
+from typing import Any
 
 import portforward
 from ocp_resources.inference_service import InferenceService
@@ -6,11 +9,11 @@ from simple_logger.logger import get_logger
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from tests.model_serving.model_runtime.model_validation.constant import (
+    AUDIO_FILE_LOCAL_PATH,
+    AUDIO_FILE_URL,
     COMPLETION_QUERY,
     EMBEDDING_QUERY,
     OPENAI_ENDPOINT_NAME,
-    AUDIO_FILE_URL,
-    AUDIO_FILE_LOCAL_PATH,
     SPYRE_INFERENCE_SERVICE_PORT,
 )
 from utilities.constants import Ports
@@ -18,8 +21,6 @@ from utilities.exceptions import NotSupportedError
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.plugins.openai_plugin import OpenAIClient
 from utilities.plugins.tgis_grpc_plugin import TGISGRPCPlugin
-import subprocess
-import os
 
 LOGGER = get_logger(name=__name__)
 
@@ -99,10 +100,10 @@ def run_raw_inference(
 def run_embedding_inference(
     endpoint: str,
     model_name: str,
-    url: Optional[str] = None,
-    pod_name: Optional[str] = None,
-    isvc: Optional[InferenceService] = None,
-    port: Optional[int] = Ports.REST_PORT,
+    url: str | None = None,
+    pod_name: str | None = None,
+    isvc: InferenceService | None = None,
+    port: int | None = Ports.REST_PORT,
     embedding_query: list[dict[str, str]] = EMBEDDING_QUERY,
 ) -> tuple[Any, list[Any]]:
     LOGGER.info("Running embedding inference for model: %s on endpoint: %s", model_name, endpoint)
@@ -149,10 +150,10 @@ def run_audio_inference(
     model_name: str,
     audio_file_path: str = AUDIO_FILE_LOCAL_PATH,
     audio_file_url: str = AUDIO_FILE_URL,
-    url: Optional[str] = None,
-    pod_name: Optional[str] = None,
-    isvc: Optional[InferenceService] = None,
-    port: Optional[int] = Ports.REST_PORT,
+    url: str | None = None,
+    pod_name: str | None = None,
+    isvc: InferenceService | None = None,
+    port: int | None = Ports.REST_PORT,
 ) -> tuple[Any, list[Any]]:
     LOGGER.info("Running audio inference for model: %s on endpoint: %s", model_name, endpoint)
     download_audio_file(audio_file_url=audio_file_url, destination_path=audio_file_path)

@@ -5,16 +5,16 @@ import pytest
 from ocp_resources.inference_service import InferenceService
 
 from tests.model_explainability.trustyai_service.trustyai_service_utils import (
-    send_inferences_and_verify_trustyai_service_registered,
-    verify_trustyai_service_name_mappings,
-    verify_trustyai_service_metric_request,
     TrustyAIServiceMetrics,
+    send_inferences_and_verify_trustyai_service_registered,
     verify_trustyai_service_metric_delete_request,
+    verify_trustyai_service_metric_request,
     verify_trustyai_service_metric_scheduling_request,
+    verify_trustyai_service_name_mappings,
 )
 from utilities.constants import MinIo
 from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
-from utilities.monitoring import validate_metrics_field, get_metric_label
+from utilities.monitoring import get_metric_label, validate_metrics_field
 
 BASE_DATA_PATH: str = "./tests/model_explainability/trustyai_service/fairness/model_data"
 IS_MALE_IDENTIFYING: str = "Is Male-Identifying?"

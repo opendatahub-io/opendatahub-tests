@@ -4,10 +4,11 @@ from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.dsc_initialization import DSCInitialization
 from ocp_resources.node import Node
 from ocp_utilities.infra import assert_nodes_in_healthy_condition, assert_nodes_schedulable
-from utilities.general import wait_for_pods_running
-from utilities.infra import wait_for_dsci_status_ready, wait_for_dsc_status_ready
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
+
+from utilities.general import wait_for_pods_running
+from utilities.infra import wait_for_dsc_status_ready, wait_for_dsci_status_ready
 
 LOGGER = get_logger(name=__name__)
 

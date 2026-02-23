@@ -1,29 +1,29 @@
-from typing import Any
-import subprocess
-import yaml
 import re
+import subprocess
+from typing import Any
 
 import pytest
+import yaml
 from kubernetes.dynamic import DynamicClient
-from simple_logger.logger import get_logger
-from timeout_sampler import retry, TimeoutExpiredError
-
-from ocp_resources.pod import Pod
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.pod import Pod
+from simple_logger.logger import get_logger
+from timeout_sampler import TimeoutExpiredError, retry
+
+from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG
 from tests.model_registry.model_catalog.constants import (
     DEFAULT_CATALOGS,
     REDHAT_AI_CATALOG_ID,
     REDHAT_AI_CATALOG_NAME,
 )
-from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG
-from tests.model_registry.utils import get_model_catalog_pod
-from utilities.constants import Timeout
+from tests.model_registry.model_catalog.db_constants import GET_MODELS_BY_SOURCE_ID_DB_QUERY
 from tests.model_registry.model_catalog.utils import (
-    get_models_from_catalog_api,
     execute_database_query,
+    get_models_from_catalog_api,
     parse_psql_output,
 )
-from tests.model_registry.model_catalog.db_constants import GET_MODELS_BY_SOURCE_ID_DB_QUERY
+from tests.model_registry.utils import get_model_catalog_pod
+from utilities.constants import Timeout
 
 LOGGER = get_logger(name=__name__)
 

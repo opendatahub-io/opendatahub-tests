@@ -1,11 +1,13 @@
 import copy
 from typing import Any
+
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.template import Template
-from utilities.constants import ApiGroups, PortNames, Protocols, vLLM_CONFIG
 from pytest_testconfig import config as py_config
+
+from utilities.constants import ApiGroups, PortNames, Protocols, vLLM_CONFIG
 
 
 class ServingRuntimeFromTemplate(ServingRuntime):

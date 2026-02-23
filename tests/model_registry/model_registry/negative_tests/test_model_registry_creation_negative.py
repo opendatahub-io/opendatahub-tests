@@ -1,21 +1,22 @@
-import pytest
 from typing import Self
-from simple_logger.logger import get_logger
+
+import pytest
+from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import ForbiddenError
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
-from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
-from pytest_testconfig import config as py_config
 from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
-from utilities.constants import Annotations
-from tests.model_registry.constants import (
-    MR_OPERATOR_NAME,
-    MR_INSTANCE_NAME,
-    DB_RESOURCE_NAME,
-)
-from kubernetes.dynamic.exceptions import ForbiddenError
-from kubernetes.dynamic import DynamicClient
+from pytest_testconfig import config as py_config
+from simple_logger.logger import get_logger
 
+from tests.model_registry.constants import (
+    DB_RESOURCE_NAME,
+    MR_INSTANCE_NAME,
+    MR_OPERATOR_NAME,
+)
+from utilities.constants import Annotations
+from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
 LOGGER = get_logger(name=__name__)
 

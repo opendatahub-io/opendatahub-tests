@@ -1,11 +1,13 @@
 import json
+from typing import Any
+
 import requests
 import urllib3
-from tenacity import retry, stop_after_attempt, wait_exponential
-from typing import Any, Optional
-from urllib3.exceptions import InsecureRequestWarning
-from utilities.plugins.constant import OpenAIEnpoints, RestHeader
 from simple_logger.logger import get_logger
+from tenacity import retry, stop_after_attempt, wait_exponential
+from urllib3.exceptions import InsecureRequestWarning
+
+from utilities.plugins.constant import OpenAIEnpoints, RestHeader
 
 urllib3.disable_warnings(category=InsecureRequestWarning)
 requests.packages
@@ -40,7 +42,7 @@ class OpenAIClient:
         self.request_func = self.streaming_request_http if streaming else self.request_http
 
     @retry(stop=stop_after_attempt(MAX_RETRIES), wait=wait_exponential(min=1, max=6))
-    def request_http(self, endpoint: str, query: dict[str, str], extra_param: Optional[dict[str, Any]] = None) -> Any:
+    def request_http(self, endpoint: str, query: dict[str, str], extra_param: dict[str, Any] | None = None) -> Any:
         """
         Sends a HTTP POST request to the specified endpoint and processes the response.
 
@@ -71,7 +73,7 @@ class OpenAIClient:
 
     @retry(stop=stop_after_attempt(MAX_RETRIES), wait=wait_exponential(min=1, max=6))
     def streaming_request_http(
-        self, endpoint: str, query: dict[str, Any], extra_param: Optional[dict[str, Any]] = None
+        self, endpoint: str, query: dict[str, Any], extra_param: dict[str, Any] | None = None
     ) -> str:
         """
         Sends a streaming HTTP POST request to the specified endpoint and processes the streamed response.
@@ -180,7 +182,7 @@ class OpenAIClient:
         self,
         endpoint: str,
         query: dict[str, Any],
-        extra_param: Optional[dict[str, Any]] = None,
+        extra_param: dict[str, Any] | None = None,
         streaming: bool = False,
     ) -> dict[str, Any]:
         """

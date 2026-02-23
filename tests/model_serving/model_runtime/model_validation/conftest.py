@@ -1,5 +1,6 @@
 import json
-from typing import Any, Generator, List
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 import yaml
@@ -10,28 +11,23 @@ from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
-from utilities.infra import get_pods_by_isvc_label
+from simple_logger.logger import get_logger
 
 from tests.model_serving.model_runtime.model_validation.constant import (
     ACCELERATOR_IDENTIFIER,
-    TEMPLATE_MAP,
+    BASE_RAW_DEPLOYMENT_CONFIG,
     PREDICT_RESOURCES,
     PULL_SECRET_ACCESS_TYPE,
-)
-from tests.model_serving.model_runtime.model_validation.constant import (
-    BASE_RAW_DEPLOYMENT_CONFIG,
-)
-from tests.model_serving.model_runtime.model_validation.constant import PULL_SECRET_NAME
-from tests.model_serving.model_runtime.model_validation.constant import (
+    PULL_SECRET_NAME,
+    TEMPLATE_MAP,
     TIMEOUT_20MIN,
 )
 from tests.model_serving.model_runtime.model_validation.utils import safe_k8s_name
 from tests.model_serving.model_runtime.vllm.utils import validate_supported_quantization_schema
 from utilities.constants import KServeDeploymentType, Labels, RuntimeTemplates
 from utilities.inference_utils import create_isvc
+from utilities.infra import get_pods_by_isvc_label
 from utilities.serving_runtime import ServingRuntimeFromTemplate
-
-from simple_logger.logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 
@@ -43,7 +39,7 @@ def model_car_serving_runtime(
     model_namespace: Namespace,
     supported_accelerator_type: str,
     vllm_runtime_image: str,
-) -> Generator[ServingRuntime, None, None]:
+) -> Generator[ServingRuntime]:
     accelerator_type = supported_accelerator_type.lower()
 
     template_name = TEMPLATE_MAP.get(accelerator_type, RuntimeTemplates.VLLM_CUDA)
@@ -195,7 +191,7 @@ def build_raw_params(
     return param, test_id
 
 
-def build_pytest_markers(deployment_type: str, execution_mode: str) -> List[Any]:
+def build_pytest_markers(deployment_type: str, execution_mode: str) -> list[Any]:
     """
     Build a list of pytest markers based on deployment type, execution mode.
 
@@ -206,7 +202,7 @@ def build_pytest_markers(deployment_type: str, execution_mode: str) -> List[Any]
     Returns:
         List[Any]: List of pytest.mark objects to attach to the test
     """
-    markers: List[pytest.MarkDecorator] = []
+    markers: list[pytest.MarkDecorator] = []
 
     if deployment_type == KServeDeploymentType.RAW_DEPLOYMENT:
         markers.append(pytest.mark.rawdeployment)

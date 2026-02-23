@@ -11,7 +11,7 @@ ASYNC_JOB_LABELS = {
 }
 
 ASYNC_JOB_ANNOTATIONS = {
-    "modelregistry.opendatahub.io/description": "Asynchronous job for uploading models to Model Registry and converting them to ModelCar format"  # noqa: E501
+    "modelregistry.opendatahub.io/description": "Asynchronous job for uploading models to Model Registry and converting them to ModelCar format"
 }
 
 # Model sync parameters (from sample YAML)

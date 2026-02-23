@@ -1,4 +1,5 @@
-from typing import Any, Union
+from typing import Any
+
 from utilities.constants import AcceleratorType, KServeDeploymentType, Labels, RuntimeTemplates
 
 OPENAI_ENDPOINT_NAME: str = "openai"
@@ -18,7 +19,7 @@ TEMPLATE_MAP: dict[str, str] = {
     AcceleratorType.GAUDI: RuntimeTemplates.VLLM_GAUDI,
 }
 
-PREDICT_RESOURCES: dict[str, Union[list[dict[str, Union[str, dict[str, str]]]], dict[str, dict[str, str]]]] = {
+PREDICT_RESOURCES: dict[str, list[dict[str, str | dict[str, str]]] | dict[str, dict[str, str]]] = {
     "volumes": [
         {"name": "shared-memory", "emptyDir": {"medium": "Memory", "sizeLimit": "16Gi"}},
         {"name": "tmp", "emptyDir": {}},
@@ -68,11 +69,11 @@ CHAT_QUERY: list[list[dict[str, str]]] = [
     ],
 ]
 
-IMAGE_URL_SCENERY: str = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"  # noqa: E501
+IMAGE_URL_SCENERY: str = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"
 IMAGE_URL_DUCK: str = (
     "https://upload.wikimedia.org/wikipedia/commons/d/da/2015_Kaczka_krzy%C5%BCowka_w_wodzie_%28samiec%29.jpg"
 )
-IMAGE_URL_LION: str = "https://upload.wikimedia.org/wikipedia/commons/7/77/002_The_lion_king_Snyggve_in_the_Serengeti_National_Park_Photo_by_Giles_Laurent.jpg"  # noqa: E501
+IMAGE_URL_LION: str = "https://upload.wikimedia.org/wikipedia/commons/7/77/002_The_lion_king_Snyggve_in_the_Serengeti_National_Park_Photo_by_Giles_Laurent.jpg"
 
 MULTI_IMAGE_QUERIES: list[list[dict[Any, Any]]] = [
     [
@@ -124,7 +125,7 @@ LIGHTSPEED_TOOL_QUERY: list[list[dict[Any, Any]]] = [
             "content": [
                 {
                     "type": "text",
-                    "text": "You are a helpful assistant with access to the following\nfunction calls. Your task is to produce a list of function calls\nnecessary to generate response to the user utterance. Use the following\nfunction calls as required.",  # noqa: E501
+                    "text": "You are a helpful assistant with access to the following\nfunction calls. Your task is to produce a list of function calls\nnecessary to generate response to the user utterance. Use the following\nfunction calls as required.",
                 }
             ],
         },
@@ -196,7 +197,7 @@ MATH_CHAT_QUERY: list[list[dict[str, str]]] = [
         },
         {
             "role": "user",
-            "content": "What is the sum of numbers between 1 and 123 using the formula n(n+1)/2? Explain it using chain-of-thought and solve with code",  # noqa: E501
+            "content": "What is the sum of numbers between 1 and 123 using the formula n(n+1)/2? Explain it using chain-of-thought and solve with code",
         },
     ],
 ]

@@ -1,20 +1,23 @@
+from collections.abc import Generator
+from typing import Self
+
 import pytest
-from typing import Self, Generator
+from huggingface_hub import HfApi
+from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from simple_logger.logger import get_logger
+
 from tests.model_registry.model_catalog.constants import HF_MODELS, HF_SOURCE_ID
+from tests.model_registry.model_catalog.huggingface.utils import (
+    assert_huggingface_values_matches_model_catalog_api_values,
+    get_huggingface_model_from_api,
+    wait_for_hugging_face_model_import,
+    wait_for_huggingface_retrival_match,
+    wait_for_last_sync_update,
+)
 from tests.model_registry.model_catalog.utils import (
     get_hf_catalog_str,
 )
-from tests.model_registry.model_catalog.huggingface.utils import (
-    assert_huggingface_values_matches_model_catalog_api_values,
-    wait_for_huggingface_retrival_match,
-    wait_for_hugging_face_model_import,
-    wait_for_last_sync_update,
-    get_huggingface_model_from_api,
-)
-from huggingface_hub import HfApi
-from kubernetes.dynamic import DynamicClient
 
 LOGGER = get_logger(name=__name__)
 
@@ -48,7 +51,7 @@ catalogs:
     )
     def test_huggingface_last_synced_custom(
         self: Self,
-        updated_catalog_config_map_scope_function: Generator[ConfigMap, None, None],
+        updated_catalog_config_map_scope_function: Generator[ConfigMap],
         initial_last_synced_values: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
@@ -219,7 +222,7 @@ catalogs:
         self: Self,
         admin_client: DynamicClient,
         model_registry_namespace: str,
-        updated_catalog_config_map_scope_function: Generator[ConfigMap, None, None],
+        updated_catalog_config_map_scope_function: Generator[ConfigMap],
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         huggingface_api: bool,

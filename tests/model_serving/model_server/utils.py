@@ -2,25 +2,23 @@ import json
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 from string import Template
-from typing import Any, Optional
+from typing import Any
+
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
-
 from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.utils.constants import DEFAULT_CLUSTER_RETRY_EXCEPTIONS
 from simple_logger.logger import get_logger
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler, TimeoutWatch
 
-from utilities.constants import KServeDeploymentType
+from tests.model_serving.model_server.kserve.keda.utils import get_isvc_keda_scaledobject
+from utilities.constants import KServeDeploymentType, Protocols, Timeout
 from utilities.exceptions import (
     InferenceResponseError,
 )
-from utilities.constants import Timeout
 from utilities.inference_utils import UserInference
 from utilities.infra import get_pods_by_isvc_label
-from tests.model_serving.model_server.kserve.keda.utils import get_isvc_keda_scaledobject
-from utilities.constants import Protocols
-from timeout_sampler import TimeoutWatch, TimeoutSampler, TimeoutExpiredError
 
 LOGGER = get_logger(name=__name__)
 
@@ -30,13 +28,13 @@ def verify_inference_response(
     inference_config: dict[str, Any],
     inference_type: str,
     protocol: str,
-    model_name: Optional[str] = None,
-    inference_input: Optional[Any] = None,
+    model_name: str | None = None,
+    inference_input: Any | None = None,
     use_default_query: bool = False,
-    expected_response_text: Optional[str] = None,
+    expected_response_text: str | None = None,
     insecure: bool = False,
-    token: Optional[str] = None,
-    authorized_user: Optional[bool] = None,
+    token: str | None = None,
+    authorized_user: bool | None = None,
 ) -> None:
     """
     Verify the inference response.
@@ -148,7 +146,7 @@ def verify_inference_response(
             elif inference_type == inference.INFER or use_regex:
                 formatted_res = json.dumps(res[inference.inference_response_text_key_name]).replace(" ", "")
                 if use_regex:
-                    assert re.search(expected_response_text, formatted_res), (  # type: ignore[arg-type]  # noqa: E501
+                    assert re.search(expected_response_text, formatted_res), (  # type: ignore[arg-type]
                         f"Expected: {expected_response_text} not found in: {formatted_res}"
                     )
 

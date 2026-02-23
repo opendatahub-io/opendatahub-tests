@@ -1,5 +1,6 @@
-from typing import Any, Generator
 import threading
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 from _pytest.fixtures import FixtureRequest
@@ -10,24 +11,24 @@ from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from simple_logger.logger import get_logger
-from tests.model_serving.model_runtime.vllm.utils import (
-    validate_supported_quantization_schema,
-    kserve_s3_endpoint_secret,
-)
-from tests.model_serving.model_runtime.vllm.constant import ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES, TEMPLATE_MAP
-from utilities.manifests.vllm import VLLM_INFERENCE_CONFIG
 
-from utilities.constants import (
-    KServeDeploymentType,
-    RuntimeTemplates,
-    Labels,
-    ModelAndFormat,
-    THANOS_QUERIER_ADDRESS,
+from tests.model_serving.model_runtime.vllm.constant import ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES, TEMPLATE_MAP
+from tests.model_serving.model_runtime.vllm.utils import (
+    kserve_s3_endpoint_secret,
+    validate_supported_quantization_schema,
 )
 from tests.model_serving.model_server.utils import (
     run_concurrent_load_for_keda_scaling,
 )
+from utilities.constants import (
+    THANOS_QUERIER_ADDRESS,
+    KServeDeploymentType,
+    Labels,
+    ModelAndFormat,
+    RuntimeTemplates,
+)
 from utilities.inference_utils import create_isvc
+from utilities.manifests.vllm import VLLM_INFERENCE_CONFIG
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 LOGGER = get_logger(name=__name__)
@@ -41,7 +42,7 @@ def keda_endpoint_s3_secret(
     aws_secret_access_key: str,
     models_s3_bucket_region: str,
     models_s3_bucket_endpoint: str,
-) -> Generator[Secret, None, None]:
+) -> Generator[Secret]:
     """Create S3 endpoint secret for KEDA GPU tests using model_namespace."""
     with kserve_s3_endpoint_secret(
         admin_client=admin_client,
@@ -117,7 +118,7 @@ def vllm_cuda_serving_runtime(
     model_namespace: Namespace,
     supported_accelerator_type: str,
     vllm_runtime_image: str,
-) -> Generator[ServingRuntime, None, None]:
+) -> Generator[ServingRuntime]:
     template_name = TEMPLATE_MAP.get(supported_accelerator_type.lower(), RuntimeTemplates.VLLM_CUDA)
     with ServingRuntimeFromTemplate(
         client=admin_client,

@@ -7,7 +7,7 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.trustyai_service import TrustyAIService
 from timeout_sampler import retry
 
-from utilities.constants import Timeout, TRUSTYAI_SERVICE_NAME
+from utilities.constants import TRUSTYAI_SERVICE_NAME, Timeout
 
 
 @retry(wait_timeout=Timeout.TIMEOUT_5MIN, sleep=5)

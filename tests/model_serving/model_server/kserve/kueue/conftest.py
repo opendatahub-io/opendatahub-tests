@@ -1,16 +1,17 @@
-from typing import Generator, Any
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
-from utilities.constants import ModelAndFormat, KServeDeploymentType
+from ocp_resources.inference_service import InferenceService
+from ocp_resources.namespace import Namespace
+from ocp_resources.secret import Secret
+from ocp_resources.serving_runtime import ServingRuntime
+
+from utilities.constants import KServeDeploymentType, ModelAndFormat, ModelFormat, RuntimeTemplates
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
-from ocp_resources.secret import Secret
-from ocp_resources.inference_service import InferenceService
-from ocp_resources.serving_runtime import ServingRuntime
-from ocp_resources.namespace import Namespace
-from utilities.constants import RuntimeTemplates, ModelFormat
 
 
 @pytest.fixture(scope="class")

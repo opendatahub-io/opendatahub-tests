@@ -2,15 +2,9 @@ import os
 import re
 import sys
 
-from github.PullRequest import PullRequest
-from github.Repository import Repository
-from github.MainClass import Github
-from github.GithubException import UnknownObjectException
-from github.Organization import Organization
-from github.Team import Team
-
 from constants import (
     ALL_LABELS_DICT,
+    APPROVED,
     CANCEL_ACTION,
     CHANGED_REQUESTED_BY_LABEL_PREFIX,
     COMMENTED_BY_LABEL_PREFIX,
@@ -22,8 +16,13 @@ from constants import (
     SUPPORTED_LABELS,
     VERIFIED_LABEL_STR,
     WELCOME_COMMENT,
-    APPROVED,
 )
+from github.GithubException import UnknownObjectException
+from github.MainClass import Github
+from github.Organization import Organization
+from github.PullRequest import PullRequest
+from github.Repository import Repository
+from github.Team import Team
 from simple_logger.logger import get_logger
 
 LOGGER = get_logger(name="pr_labeler")
@@ -249,14 +248,13 @@ class PrLabeler(PrBaseClass):
 
             return
 
-        elif self.event_name == "pull_request_review":
+        elif (
+            self.event_name == "pull_request_review"
+            or self.event_name == "workflow_run"
+            and self.event_action == "submitted"
+        ):
             self.pull_request_review_label_actions()
 
-            return
-
-        # We will only reach here if the PR was created from a fork
-        elif self.event_name == "workflow_run" and self.event_action == "submitted":
-            self.pull_request_review_label_actions()
             return
 
         LOGGER.warning("`add_remove_pr_label` called without a supported event")

@@ -1,13 +1,14 @@
-from typing import Any, List, Dict, Tuple
 import json
+from fnmatch import fnmatch
+from typing import Any
+
 import requests
 import yaml
-from fnmatch import fnmatch
-
-from simple_logger.logger import get_logger
-from ocp_resources.pod import Pod
-from ocp_resources.config_map import ConfigMap
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.config_map import ConfigMap
+from ocp_resources.pod import Pod
+from simple_logger.logger import get_logger
+
 from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
 from tests.model_registry.utils import execute_get_command, get_rest_headers
 
@@ -301,7 +302,7 @@ def get_metadata_from_catalog_pod(model_catalog_pod: Pod, model_name: str) -> di
 
 def compare_filter_options_with_database(
     api_filters: dict[str, Any], db_properties: dict[str, list[str]], excluded_fields: set[str]
-) -> Tuple[bool, List[str]]:
+) -> tuple[bool, list[str]]:
     """
     Compare API filter options response with database query results.
 
@@ -323,7 +324,7 @@ def compare_filter_options_with_database(
 
     LOGGER.info(f"Database returned {len(db_properties)} total properties")
     LOGGER.info(
-        f"After applying API filtering, expecting {len(expected_properties)} properties: {list(expected_properties.keys())}"  # noqa: E501
+        f"After applying API filtering, expecting {len(expected_properties)} properties: {list(expected_properties.keys())}"
     )
 
     # Check for missing/extra properties
@@ -412,7 +413,7 @@ def compare_filter_options_with_database(
     return is_valid, comparison_errors
 
 
-def get_labels_from_configmaps(admin_client: DynamicClient, namespace: str) -> List[Dict[str, Any]]:
+def get_labels_from_configmaps(admin_client: DynamicClient, namespace: str) -> list[dict[str, Any]]:
     """
     Get all labels from both model catalog ConfigMaps.
 
@@ -440,7 +441,7 @@ def get_labels_from_configmaps(admin_client: DynamicClient, namespace: str) -> L
     return labels
 
 
-def get_labels_from_api(model_catalog_rest_url: str, user_token: str) -> List[Dict[str, Any]]:
+def get_labels_from_api(model_catalog_rest_url: str, user_token: str) -> list[dict[str, Any]]:
     """
     Get labels from the API endpoint.
 
@@ -458,7 +459,7 @@ def get_labels_from_api(model_catalog_rest_url: str, user_token: str) -> List[Di
     return response["items"]
 
 
-def verify_labels_match(expected_labels: List[Dict[str, Any]], api_labels: List[Dict[str, Any]]) -> None:
+def verify_labels_match(expected_labels: list[dict[str, Any]], api_labels: list[dict[str, Any]]) -> None:
     """
     Verify that all expected labels are present in the API response.
 

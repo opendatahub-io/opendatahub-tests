@@ -4,7 +4,7 @@ import pytest
 
 from tests.llama_stack.constants import LlamaStackProviders
 from tests.llama_stack.eval.utils import wait_for_eval_job_completion
-from utilities.constants import MinIo, QWEN_MODEL_NAME
+from utilities.constants import QWEN_MODEL_NAME, MinIo
 
 RAGAS_DATASET_ID: str = "ragas_dataset"
 RAGAS_INLINE_BENCHMARK_ID = "ragas_benchmark_inline"

@@ -1,38 +1,35 @@
-from typing import Any, Generator
 import json
+from collections.abc import Generator
+from typing import Any
 
 import pytest
+import shortuuid
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
+from model_registry import ModelRegistry as ModelRegistryClient
+from model_registry.types import RegisteredModel
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.job import Job
+from ocp_resources.role_binding import RoleBinding
+from ocp_resources.secret import Secret
+from ocp_resources.service import Service
+from ocp_resources.service_account import ServiceAccount
+from pytest import FixtureRequest
+from pytest_testconfig import py_config
 
 from tests.model_registry.model_registry.async_job.constants import (
     ASYNC_JOB_ANNOTATIONS,
     ASYNC_JOB_LABELS,
     ASYNC_UPLOAD_JOB_NAME,
     MODEL_SYNC_CONFIG,
+    REPO_NAME,
     VOLUME_MOUNTS,
 )
-
-import shortuuid
-from pytest import FixtureRequest
-from pytest_testconfig import py_config
-
-from ocp_resources.role_binding import RoleBinding
-from ocp_resources.secret import Secret
-from ocp_resources.service import Service
-from ocp_resources.service_account import ServiceAccount
-from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
-from ocp_resources.config_map import ConfigMap
-from model_registry.types import RegisteredModel
-from model_registry import ModelRegistry as ModelRegistryClient
-
-from utilities.constants import OCIRegistry, MinIo, Protocols, Labels, ApiGroups
-from utilities.general import b64_encoded_string
 from tests.model_registry.model_registry.async_job.utils import upload_test_model_to_minio_from_image
-from tests.model_registry.utils import get_mr_service_by_label, get_endpoint_from_mr_service
-from tests.model_registry.model_registry.async_job.constants import REPO_NAME
-from utilities.general import get_s3_secret_dict
+from tests.model_registry.utils import get_endpoint_from_mr_service, get_mr_service_by_label
+from utilities.constants import ApiGroups, Labels, MinIo, OCIRegistry, Protocols
+from utilities.general import b64_encoded_string, get_s3_secret_dict
+from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
 
 @pytest.fixture(scope="class")
@@ -136,7 +133,7 @@ def async_upload_image(admin_client: DynamicClient) -> str:
 
     if not config_map.exists:
         raise ResourceNotFoundError(
-            f"ConfigMap 'model-registry-operator-parameters' not found in namespace '{py_config['applications_namespace']}'"  # noqa: E501
+            f"ConfigMap 'model-registry-operator-parameters' not found in namespace '{py_config['applications_namespace']}'"
         )
 
     try:
@@ -276,7 +273,7 @@ def create_test_data_in_minio_from_image(
 @pytest.fixture(scope="class")
 def registered_model_from_image(
     request: FixtureRequest, model_registry_client: list[ModelRegistryClient]
-) -> Generator[RegisteredModel, None, None]:
+) -> Generator[RegisteredModel]:
     """Create a registered model for testing with KSERVE_MINIO_IMAGE data"""
     yield model_registry_client[0].register_model(
         name=request.param.get("model_name"),

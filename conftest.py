@@ -1,43 +1,43 @@
+import datetime
 import logging
 import os
 import pathlib
 import shutil
-import datetime
 import traceback
+from typing import Any
 
 import pytest
 import shortuuid
-from _pytest.runner import CallInfo
+from _pytest.nodes import Node
 from _pytest.reports import TestReport
+from _pytest.runner import CallInfo
+from _pytest.terminal import TerminalReporter
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.cluster_service_version import ClusterServiceVersion
+from ocp_resources.resource import get_client
 from pytest import (
+    Collector,
+    CollectReport,
+    Config,
+    FixtureDef,
+    FixtureRequest,
+    Item,
     Parser,
     Session,
-    FixtureRequest,
-    FixtureDef,
-    Item,
-    Collector,
-    Config,
-    CollectReport,
 )
-from _pytest.nodes import Node
-from _pytest.terminal import TerminalReporter
-from typing import Optional, Any
 from pytest_testconfig import config as py_config
 
-from utilities.constants import KServeDeploymentType, MODEL_REGISTRY_CUSTOM_NAMESPACE
+from utilities.constants import MODEL_REGISTRY_CUSTOM_NAMESPACE, KServeDeploymentType
 from utilities.database import Database
+from utilities.infra import get_data_science_cluster, get_dsci_applications_namespace, get_operator_distribution
 from utilities.logger import separator, setup_logging
 from utilities.must_gather_collector import (
-    set_must_gather_collector_directory,
-    set_must_gather_collector_values,
-    get_must_gather_collector_dir,
     collect_rhoai_must_gather,
     get_base_dir,
+    get_must_gather_collector_dir,
+    set_must_gather_collector_directory,
+    set_must_gather_collector_values,
 )
-from kubernetes.dynamic import DynamicClient
-from utilities.infra import get_operator_distribution, get_dsci_applications_namespace, get_data_science_cluster
-from ocp_resources.resource import get_client
-from ocp_resources.cluster_service_version import ClusterServiceVersion
 
 LOGGER = logging.getLogger(name=__name__)
 BASIC_LOGGER = logging.getLogger(name="basic")
@@ -460,7 +460,7 @@ def pytest_sessionfinish(session: Session, exitstatus: int) -> None:
     LOGGER.info(f"Deleting pytest base dir {session.config.option.basetemp}")
     shutil.rmtree(path=session.config.option.basetemp, ignore_errors=True)
 
-    reporter: Optional[TerminalReporter] = session.config.pluginmanager.get_plugin("terminalreporter")
+    reporter: TerminalReporter | None = session.config.pluginmanager.get_plugin("terminalreporter")
     if reporter:
         reporter.summary_stats()
 

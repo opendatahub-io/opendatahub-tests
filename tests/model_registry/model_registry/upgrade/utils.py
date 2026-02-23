@@ -1,7 +1,8 @@
 import pytest
-from tests.model_registry.utils import get_and_validate_registered_model
 from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
+
+from tests.model_registry.utils import get_and_validate_registered_model
 
 
 def validate_upgrade_model_registration(

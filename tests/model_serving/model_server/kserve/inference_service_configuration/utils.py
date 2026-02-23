@@ -1,5 +1,6 @@
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any, Generator
+from typing import Any
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
@@ -17,7 +18,7 @@ LOGGER = get_logger(name=__name__)
 @contextmanager
 def update_inference_service(
     client: DynamicClient, isvc: InferenceService, isvc_updated_dict: dict[str, Any], wait_for_new_pods: bool = True
-) -> Generator[InferenceService, Any, None]:
+) -> Generator[InferenceService, Any]:
     """
     Update InferenceService object.
 

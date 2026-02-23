@@ -1,4 +1,5 @@
-from typing import Generator, Any
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 from _pytest.fixtures import FixtureRequest
@@ -11,7 +12,7 @@ from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 
-from utilities.constants import Labels, Annotations
+from utilities.constants import Annotations, Labels
 from utilities.guardrails import check_guardrails_health_endpoint
 
 GUARDRAILS_ORCHESTRATOR_NAME: str = "guardrails-orchestrator"

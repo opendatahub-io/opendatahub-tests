@@ -1,4 +1,5 @@
-from typing import Generator, Any
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 from kubernetes.dynamic import DynamicClient
@@ -13,15 +14,14 @@ from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest_testconfig import py_config
 from simple_logger.logger import get_logger
-
-from utilities.constants import (
-    RuntimeTemplates,
-    KServeDeploymentType,
-    QWEN_MODEL_NAME,
-    LLMdInferenceSimConfig,
-)
 from timeout_sampler import retry
 
+from utilities.constants import (
+    QWEN_MODEL_NAME,
+    KServeDeploymentType,
+    LLMdInferenceSimConfig,
+    RuntimeTemplates,
+)
 from utilities.inference_utils import create_isvc
 from utilities.infra import get_data_science_cluster, wait_for_dsc_status_ready
 from utilities.serving_runtime import ServingRuntimeFromTemplate
@@ -221,7 +221,7 @@ def kserve_controller_manager_deployment(admin_client: DynamicClient) -> Generat
 @pytest.fixture(scope="class")
 def patched_dsc_kserve_headed(
     admin_client, kserve_controller_manager_deployment: Deployment
-) -> Generator[DataScienceCluster, None, None]:
+) -> Generator[DataScienceCluster]:
     """Configure KServe Services to work in Headed mode i.e. using the Service port instead of the Pod port"""
 
     def _kserve_status(dsc_resource: DataScienceCluster) -> str:

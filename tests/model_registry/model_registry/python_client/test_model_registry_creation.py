@@ -1,19 +1,19 @@
+from typing import Any, Self
+
 import pytest
-from typing import Self, Any
-from simple_logger.logger import get_logger
-
-# ocp_resources imports
-from ocp_resources.pod import Pod
-
-from tests.model_registry.utils import (
-    execute_model_registry_get_command,
-    validate_no_grpc_container,
-    validate_mlmd_removal_in_model_registry_pod_log,
-)
-from tests.model_registry.constants import MODEL_NAME, MODEL_DICT
 from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
 
+# ocp_resources imports
+from ocp_resources.pod import Pod
+from simple_logger.logger import get_logger
+
+from tests.model_registry.constants import MODEL_DICT, MODEL_NAME
+from tests.model_registry.utils import (
+    execute_model_registry_get_command,
+    validate_mlmd_removal_in_model_registry_pod_log,
+    validate_no_grpc_container,
+)
 
 LOGGER = get_logger(name=__name__)
 

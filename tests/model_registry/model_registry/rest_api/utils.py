@@ -1,21 +1,20 @@
 import copy
-from typing import Any, Dict
-import requests
 import json
 import os
+from typing import Any
 
+import requests
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.deployment import Deployment
+from pyhelper_utils.shell import run_command
 from simple_logger.logger import get_logger
 
-from ocp_resources.deployment import Deployment
 from tests.model_registry.exceptions import (
     ModelRegistryResourceNotCreated,
     ModelRegistryResourceNotUpdated,
 )
-from tests.model_registry.model_registry.rest_api.constants import MODEL_REGISTRY_BASE_URI, MODEL_REGISTER_DATA
-from pyhelper_utils.shell import run_command
+from tests.model_registry.model_registry.rest_api.constants import MODEL_REGISTER_DATA, MODEL_REGISTRY_BASE_URI
 from utilities.exceptions import ResourceValueMismatch
-
 
 LOGGER = get_logger(name=__name__)
 
@@ -107,7 +106,7 @@ def validate_resource_attributes(
     errors: list[dict[str, list[Any]]]
     if errors := [
         {key: [f"Expected value: {expected_params[key]}, actual value: {actual_resource_data.get(key)}"]}
-        for key in expected_params.keys()
+        for key in expected_params
         if (not actual_resource_data.get(key) or actual_resource_data[key] != expected_params[key])
     ]:
         raise ResourceValueMismatch(f"Resource: {resource_name} has mismatched data: {errors}")
@@ -119,7 +118,7 @@ def generate_ca_and_server_cert(
     db_service_hostname: str = "db-model-registry.rhoai-model-registries.svc.cluster.local",
     ca_name: str = "Test CA",
     server_cn: str = "mysql-server",
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """
     Generates a CA and server certificate/key for the MySQL server.
 
@@ -255,7 +254,7 @@ def sign_db_server_cert_with_ca_with_openssl(
 
 def get_register_model_data(num_models: int) -> list[dict[str, Any]]:
     model_data = []
-    for num_model in range(0, num_models):
+    for num_model in range(num_models):
         copy_data = copy.deepcopy(MODEL_REGISTER_DATA)
         for key, value in copy_data.items():
             value["name"] = f"{value['name']}{num_model}"

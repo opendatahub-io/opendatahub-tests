@@ -5,9 +5,9 @@ Tests for Hugging Face model_type classification.
 from typing import Self
 
 import pytest
+from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.utils import get_hf_catalog_str, get_models_from_catalog_api
-from simple_logger.logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

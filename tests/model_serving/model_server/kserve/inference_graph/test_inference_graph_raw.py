@@ -1,8 +1,8 @@
 import pytest
 
 from tests.model_serving.model_server.utils import verify_inference_response
+from utilities.constants import KServeDeploymentType, ModelInferenceRuntime, Protocols
 from utilities.inference_utils import Inference
-from utilities.constants import ModelInferenceRuntime, Protocols, KServeDeploymentType
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 

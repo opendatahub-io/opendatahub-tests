@@ -1,11 +1,12 @@
-from typing import Generator, Any
+from collections.abc import Generator
+from contextlib import contextmanager
+from typing import Any
 
 import pytest
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
-from contextlib import contextmanager
 
 
 @pytest.fixture(scope="session")

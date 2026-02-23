@@ -1,17 +1,16 @@
-import pytest
 from typing import Any
+
+import pytest
 from kubernetes.dynamic import DynamicClient
 from simple_logger.logger import get_logger
-
-
-from utilities.infra import get_openshift_token
 from timeout_sampler import TimeoutSampler
 
 from tests.model_registry.model_catalog.metadata.utils import (
-    get_labels_from_configmaps,
     get_labels_from_api,
+    get_labels_from_configmaps,
     verify_labels_match,
 )
+from utilities.infra import get_openshift_token
 
 LOGGER = get_logger(name=__name__)
 

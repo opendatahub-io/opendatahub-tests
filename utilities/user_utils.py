@@ -1,7 +1,9 @@
+import base64
 import logging
 import shlex
 import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 
 import requests
 from kubernetes.dynamic import DynamicClient
@@ -10,9 +12,7 @@ from pyhelper_utils.shell import run_command
 from timeout_sampler import retry
 
 from utilities.exceptions import ExceptionUserLogin
-from utilities.infra import login_with_user_password, get_cluster_authentication
-import base64
-from pathlib import Path
+from utilities.infra import get_cluster_authentication, login_with_user_password
 
 LOGGER = logging.getLogger(__name__)
 SLEEP_TIME = 5
@@ -61,12 +61,10 @@ def create_htpasswd_file(username: str, password: str) -> tuple[Path, str]:
     """
     with tempfile.NamedTemporaryFile(mode="w+", delete=False) as temp_file:
         temp_path = Path(temp_file.name).resolve()  # Get absolute path
-        run_command(
-            command=shlex.split(f"htpasswd -c -b {str(temp_path.absolute())} {username} {password}"), check=True
-        )
+        run_command(command=shlex.split(f"htpasswd -c -b {temp_path.absolute()!s} {username} {password}"), check=True)
 
         # Read the htpasswd file content and encode it
-        temp_file.seek(0)  # noqa: FCN001 - TextIOWrapper.seek() doesn't accept keyword arguments
+        temp_file.seek(0)
         htpasswd_content = temp_file.read()
         htpasswd_b64 = base64.b64encode(htpasswd_content.encode()).decode()
 

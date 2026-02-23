@@ -1,26 +1,27 @@
 """Utility functions for model catalog search tests."""
 
 from typing import Any
-from simple_logger.logger import get_logger
+
+from kubernetes.dynamic import DynamicClient
 from ocp_resources.pod import Pod
+from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.constants import (
-    REDHAT_AI_CATALOG_NAME,
-    REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
-    REDHAT_AI_CATALOG_ID,
-    VALIDATED_CATALOG_ID,
     CATALOG_CONTAINER,
     PERFORMANCE_DATA_DIR,
+    REDHAT_AI_CATALOG_ID,
+    REDHAT_AI_CATALOG_NAME,
+    REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
+    VALIDATED_CATALOG_ID,
 )
 from tests.model_registry.model_catalog.db_constants import (
+    FILTER_MODELS_BY_LICENSE_AND_LANGUAGE_DB_QUERY,
+    FILTER_MODELS_BY_LICENSE_DB_QUERY,
     SEARCH_MODELS_DB_QUERY,
     SEARCH_MODELS_WITH_SOURCE_ID_DB_QUERY,
-    FILTER_MODELS_BY_LICENSE_DB_QUERY,
-    FILTER_MODELS_BY_LICENSE_AND_LANGUAGE_DB_QUERY,
 )
 from tests.model_registry.model_catalog.utils import execute_database_query, parse_psql_output
 from tests.model_registry.utils import execute_get_command
-from kubernetes.dynamic import DynamicClient
 
 LOGGER = get_logger(name=__name__)
 
@@ -86,7 +87,7 @@ def get_models_matching_search_from_database(
             catalog_id = VALIDATED_CATALOG_ID
         else:
             raise ValueError(
-                f"Unknown source_label: '{source_label}'. Supported labels: {REDHAT_AI_CATALOG_NAME}, {REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME}"  # noqa: E501
+                f"Unknown source_label: '{source_label}'. Supported labels: {REDHAT_AI_CATALOG_NAME}, {REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME}"
             )
 
         # Use the extended query with source_id filtering from db_constants

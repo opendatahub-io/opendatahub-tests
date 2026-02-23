@@ -1,13 +1,13 @@
-import pytest
 import re
-from simple_logger.logger import get_logger
 from typing import Self
 
+import pytest
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.config_map import ConfigMap
+from simple_logger.logger import get_logger
+
 from tests.model_registry.model_catalog.huggingface.utils import assert_accessible_models_via_catalog_api
 from tests.model_registry.utils import execute_get_command
-from kubernetes.dynamic.exceptions import ResourceNotFoundError
-
 
 LOGGER = get_logger(name=__name__)
 INACCESSIBLE_MODELS: list[str] = [

@@ -1,11 +1,12 @@
-import grpc
 import socket
 import ssl
 import sys
-from utilities.plugins.tgis_grpc import generation_pb2_grpc
-from typing import Any, Optional
+from typing import Any
+
+import grpc
 from simple_logger.logger import get_logger
 
+from utilities.plugins.tgis_grpc import generation_pb2_grpc
 
 LOGGER = get_logger(name=__name__)
 
@@ -39,7 +40,7 @@ class TGISGRPCPlugin:
             cert_der = ssock.getpeercert(binary_form=True)
         return ssl.DER_cert_to_PEM_cert(cert_der)
 
-    def _channel_credentials(self) -> Optional[grpc.ChannelCredentials]:
+    def _channel_credentials(self) -> grpc.ChannelCredentials | None:
         if self.use_tls:
             cert = self._get_server_certificate(port=443).encode()
             return grpc.ssl_channel_credentials(root_certificates=cert)
