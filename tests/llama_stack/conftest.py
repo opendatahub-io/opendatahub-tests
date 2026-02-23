@@ -336,7 +336,7 @@ def llama_stack_server_config(
             "name": "llama-stack",
             "port": 8321,
         },
-        "distribution": {"image": "quay.io/rh_ee_czaccari/llama-stack-distribution:02"},
+        "distribution": {"name": "rh-dev"},
     }
 
     if params.get("llama_stack_storage_size"):

@@ -188,7 +188,7 @@ class TestLlamaStackVectorStores:
               results with file_id and filename, and message annotations with file citations
         """
         response = unprivileged_llama_stack_client.responses.create(
-            input="How did IBM perform financially in the fourth quarter of 2025?",
+            input=IBM_EARNINGS_SEARCH_QUERIES_BY_MODE["vector"][0],
             model=llama_stack_models.model_id,
             instructions="Always use the file_search tool to look up information before answering.",
             stream=False,
