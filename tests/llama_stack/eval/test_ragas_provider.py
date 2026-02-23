@@ -53,7 +53,7 @@ class TestLlamaStackRagasInlineProvider:
                 "description": "Sample RAG evaluation dataset for Ragas demo",
                 "size": len(RAGAS_TEST_DATASET),
                 "format": "ragas",
-                "created_at": datetime.now().isoformat(),
+                "created_at": datetime.now().isoformat(),  # noqa: DTZ005
             },
         )
 
@@ -130,7 +130,7 @@ class TestLlamaStackRagasRemoteProvider:
                 "description": "Sample RAG evaluation dataset for Ragas demo",
                 "size": len(RAGAS_TEST_DATASET),
                 "format": "ragas",
-                "created_at": datetime.now().isoformat(),
+                "created_at": datetime.now().isoformat(),  # noqa: DTZ005
             },
         )
 

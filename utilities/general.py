@@ -511,5 +511,5 @@ def collect_pod_information(pod: Pod) -> None:
             file_path = os.path.join(base_dir_name, f"{pod.name}_{container}.log")
             with open(file_path, "w") as fd:
                 fd.write(pod.log(container=container))
-    except Exception:
+    except Exception:  # noqa: BLE001
         LOGGER.warning(f"For pod: {pod.name} information gathering failed.")

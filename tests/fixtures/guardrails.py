@@ -130,11 +130,15 @@ def guardrails_orchestrator_pod(
     model_namespace: Namespace,
     guardrails_orchestrator: GuardrailsOrchestrator,
 ) -> Pod:
-    return list(
-        Pod.get(
-            namespace=model_namespace.name, label_selector=f"app.kubernetes.io/instance={GUARDRAILS_ORCHESTRATOR_NAME}"
+    pods = Pod.get(
+        namespace=model_namespace.name, label_selector=f"app.kubernetes.io/instance={GUARDRAILS_ORCHESTRATOR_NAME}"
+    )
+    pod = next(iter(pods), None)
+    if pod is None:
+        raise RuntimeError(
+            f"No guardrails orchestrator pod found with label app.kubernetes.io/instance={GUARDRAILS_ORCHESTRATOR_NAME}"
         )
-    )[0]
+    return pod
 
 
 @pytest.fixture(scope="class")

@@ -181,7 +181,7 @@ def gaussian_credit_model_multi_ns(
                 wait_for_predictor_pods=False,
                 resources=GAUSSIAN_CREDIT_MODEL_RESOURCES,
             )
-            isvc = stack.enter_context(isvc_context)
+            isvc = stack.enter_context(cm=isvc_context)
 
             wait_for_isvc_deployment_registered_by_trustyai_service(
                 client=admin_client,
@@ -316,7 +316,7 @@ def trustyai_db_ca_secret_multi_ns(
             ca_cert = mariadb_ca_secret.instance.data["ca.crt"]
 
             secret = stack.enter_context(
-                Secret(
+                cm=Secret(
                     client=admin_client,
                     name=f"{TRUSTYAI_SERVICE_NAME}-db-ca",
                     namespace=ns.name,
@@ -336,7 +336,7 @@ def db_credentials_secret_multi_ns(admin_client, model_namespaces: list[Namespac
 
         for ns in model_namespaces:
             secret = stack.enter_context(
-                Secret(
+                cm=Secret(
                     client=admin_client,
                     name=DB_CREDENTIALS_SECRET_NAME,
                     namespace=ns.name,
@@ -395,7 +395,7 @@ def mariadb_multi_ns(
             mariadb_dict["spec"]["rootPasswordSecretKeyRef"] = password_secret_key_ref
             mariadb_dict["spec"]["passwordSecretKeyRef"] = password_secret_key_ref
 
-            mariadb_instance = stack.enter_context(MariaDB(kind_dict=mariadb_dict))
+            mariadb_instance = stack.enter_context(cm=MariaDB(kind_dict=mariadb_dict))
             wait_for_mariadb_pods(client=admin_client, mariadb=mariadb_instance)
             mariadb_instances.append(mariadb_instance)
         yield mariadb_instances

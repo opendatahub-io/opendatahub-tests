@@ -419,10 +419,10 @@ def unprivileged_llama_stack_distribution(
                         access_key_id=aws_access_key_id,
                         secret_access_key=aws_secret_access_key,
                     )
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     LOGGER.warning(f"Failed to clean up S3 files: {e}")
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             LOGGER.warning(f"Failed to clean up S3 files: {e}")
 
 
@@ -466,10 +466,10 @@ def llama_stack_distribution(
                         access_key_id=aws_access_key_id,
                         secret_access_key=aws_secret_access_key,
                     )
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     LOGGER.warning(f"Failed to clean up S3 files: {e}")
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             LOGGER.warning(f"Failed to clean up S3 files: {e}")
 
 
@@ -773,7 +773,7 @@ def vector_store(
     try:
         unprivileged_llama_stack_client.vector_stores.delete(vector_store_id=vector_store.id)
         LOGGER.info(f"Deleted vector store {vector_store.id}")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         LOGGER.warning(f"Failed to delete vector store {vector_store.id}: {e}")
 
 

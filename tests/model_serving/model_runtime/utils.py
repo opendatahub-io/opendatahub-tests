@@ -264,7 +264,7 @@ def download_audio_file(audio_file_url: str = AUDIO_FILE_URL, destination_path: 
         return
     cmd = ["curl", "-fSL", "-o", destination_path, audio_file_url]
     try:
-        subprocess.run(args=cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        subprocess.run(args=cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)  # noqa: UP022
         LOGGER.info("Audio file downloaded successfully to %s", destination_path)
     except subprocess.CalledProcessError as e:
         stderr = e.stderr.decode() if e.stderr else str(e)

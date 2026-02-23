@@ -257,7 +257,7 @@ def ca_configmap_for_test(
         ca_content = f.read()
     if not ca_content:
         LOGGER.info("CA content is empty")
-        raise Exception("CA content is empty")
+        raise MissingParameter("CA content is empty")
     cm_name = "db-ca-configmap"
     with ConfigMap(
         client=admin_client,

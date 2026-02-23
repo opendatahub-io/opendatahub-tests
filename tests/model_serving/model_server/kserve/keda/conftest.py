@@ -168,11 +168,7 @@ def stressed_keda_vllm_inference_service(
         isvc_kwargs["volumes"] = PREDICT_RESOURCES["volumes"]
         isvc_kwargs["volumes_mounts"] = PREDICT_RESOURCES["volume_mounts"]
     if arguments := request.param.get("runtime_argument"):
-        arguments = [
-            arg
-            for arg in arguments
-            if not (arg.startswith("--tensor-parallel-size") or arg.startswith("--quantization"))
-        ]
+        arguments = [arg for arg in arguments if not arg.startswith(("--tensor-parallel-size", "--quantization"))]
         arguments.append(f"--tensor-parallel-size={gpu_count}")
         if quantization := request.param.get("quantization"):
             validate_supported_quantization_schema(q_type=quantization)

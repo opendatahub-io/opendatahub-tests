@@ -103,14 +103,14 @@ def wait_for_llama_stack_client_ready(client: LlamaStackClient) -> bool:
             f"vector_stores:{len(vector_stores.data)} "
             f"files:{len(files.data)})"
         )
-        return True
+        return True  # noqa: TRY300
 
     except (APIConnectionError, InternalServerError) as error:
         LOGGER.debug(f"Llama Stack server not ready yet: {error}")
         LOGGER.debug(f"Base URL: {client.base_url}, Error type: {type(error)}, Error details: {error!s}")
         return False
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         LOGGER.warning(f"Unexpected error checking Llama Stack readiness: {e}")
         return False
 

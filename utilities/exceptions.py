@@ -35,7 +35,7 @@ class InvalidStorageArgumentError(Exception):
         self.storage_path = storage_path
 
     def __str__(self) -> str:
-        msg = f"""
+        return f"""
             You've passed the following parameters:
             "storage_uri": {self.storage_uri}
             "storage_key": {self.storage_key}
@@ -43,7 +43,6 @@ class InvalidStorageArgumentError(Exception):
             In order to create a valid ISVC you need to specify either a storage_uri value
             or both a storage key and a storage path.
         """
-        return msg
 
 
 class MetricValidationError(Exception):

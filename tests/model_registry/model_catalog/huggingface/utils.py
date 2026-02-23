@@ -57,11 +57,11 @@ def get_huggingface_nested_attributes(obj, attr_path) -> Any:
                 if not hasattr(current_obj, attr):
                     return None
                 current_obj = getattr(current_obj, attr)
-        return current_obj
+        return current_obj  # noqa: TRY300
     except AttributeError as e:
         LOGGER.error(f"AttributeError getting '{attr_path}': {e}")
         return None
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         LOGGER.error(f"Unexpected error getting '{attr_path}': {e}")
         return None
 

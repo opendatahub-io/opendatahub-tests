@@ -1,3 +1,4 @@
+# noqa: N999
 import pytest
 from simple_logger.logger import get_logger
 

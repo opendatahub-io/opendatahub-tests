@@ -109,26 +109,23 @@ def get_oidc_tokens(admin_client: DynamicClient, username: str, password: str) -
         "scope": "openid",
     }
 
-    try:
-        LOGGER.info(f"Requesting token for user {username} in byoidc environment")
-        response = requests.post(
-            url=url,
-            headers=headers,
-            data=data,
-            allow_redirects=True,
-            timeout=30,
-            verify=True,  # Set to False if you need to skip SSL verification
-        )
-        response.raise_for_status()
-        json_response = response.json()
+    LOGGER.info(f"Requesting token for user {username} in byoidc environment")
+    response = requests.post(
+        url=url,
+        headers=headers,
+        data=data,
+        allow_redirects=True,
+        timeout=30,
+        verify=True,  # Set to False if you need to skip SSL verification
+    )
+    response.raise_for_status()
+    json_response = response.json()
 
-        # Validate that we got an access token
-        if "id_token" not in json_response or "refresh_token" not in json_response:
-            LOGGER.error("Warning: No id_token or refresh_token in response")
-            raise AssertionError(f"No id_token or refresh_token in response: {json_response}")
-        return json_response["id_token"], json_response["refresh_token"]
-    except Exception as e:
-        raise e
+    # Validate that we got an access token
+    if "id_token" not in json_response or "refresh_token" not in json_response:
+        LOGGER.error("Warning: No id_token or refresh_token in response")
+        raise AssertionError(f"No id_token or refresh_token in response: {json_response}")
+    return json_response["id_token"], json_response["refresh_token"]
 
 
 def get_byoidc_issuer_url(admin_client: DynamicClient) -> str:

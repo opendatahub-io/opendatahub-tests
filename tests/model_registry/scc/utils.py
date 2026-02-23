@@ -129,7 +129,7 @@ def validate_deployment_scc(deployment: Deployment) -> None:
         if not container_security_context:
             LOGGER.info(f"No container security context exists for {container.name}")
         else:
-            if not all([True for key in ["runAsGroup", "runAsUser"] if not container_security_context.get(key)]):
+            if any(not container_security_context.get(key) for key in ["runAsGroup", "runAsUser"]):
                 error.append({container.name: container.securityContext})
 
     if error:

@@ -31,7 +31,7 @@ from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 @pytest.fixture(scope="session")
 def nvidia_gpu_nodes(nodes: list[Node]) -> list[Node]:
-    return [node for node in nodes if "nvidia.com/gpu.present" in node.labels.keys()]
+    return [node for node in nodes if "nvidia.com/gpu.present" in node.labels]
 
 
 @pytest.fixture(scope="session")

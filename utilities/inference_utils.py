@@ -81,7 +81,7 @@ class Inference:
             return KServeDeploymentType.SERVERLESS
 
         else:
-            raise ValueError(f"Unknown inference service type: {self.inference_service.name}")
+            raise TypeError(f"Unknown inference service type: {self.inference_service.name}")
 
     def get_inference_url(self) -> str:
         """
@@ -126,15 +126,11 @@ class Inference:
                 return labels and labels.get(Labels.Kserve.NETWORKING_KSERVE_IO) == Labels.Kserve.EXPOSED
 
         if self.deployment_mode == KServeDeploymentType.SERVERLESS:
-            if labels and labels.get(Labels.Kserve.NETWORKING_KNATIVE_IO) == "cluster-local":
-                return False
-            else:
-                return True
+            return not bool(labels and labels.get(Labels.Kserve.NETWORKING_KNATIVE_IO) == "cluster-local")
 
-        if self.deployment_mode == KServeDeploymentType.MODEL_MESH:
-            if self.runtime:
-                _annotations = self.runtime.instance.metadata.annotations
-                return _annotations and _annotations.get("enable-route") == "true"
+        if self.deployment_mode == KServeDeploymentType.MODEL_MESH and self.runtime:
+            _annotations = self.runtime.instance.metadata.annotations
+            return _annotations and _annotations.get("enable-route") == "true"
 
         return False
 
@@ -676,10 +672,9 @@ def create_isvc(
     if deployment_mode:
         _annotations = {Annotations.KserveIo.DEPLOYMENT_MODE: deployment_mode}
 
-    if enable_auth:
-        # model mesh auth is set in ServingRuntime
-        if deployment_mode == KServeDeploymentType.SERVERLESS or deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
-            _annotations[Annotations.KserveAuth.SECURITY] = "true"
+    # model mesh auth is set in ServingRuntime
+    if enable_auth and deployment_mode in {KServeDeploymentType.SERVERLESS, KServeDeploymentType.RAW_DEPLOYMENT}:
+        _annotations[Annotations.KserveAuth.SECURITY] = "true"
 
     # default to True if deployment_mode is Serverless (default behavior of Serverless) if was not provided by the user
     # model mesh external route is set in ServingRuntime

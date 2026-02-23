@@ -229,7 +229,7 @@ def pytest_collection_modifyitems(session: Session, config: Config, items: list[
         if not _upgrade_deployment_modes:
             return True
 
-        return any([keyword for keyword in _item.keywords if keyword in _upgrade_deployment_modes])
+        return any(keyword for keyword in _item.keywords if keyword in _upgrade_deployment_modes)
 
     pre_upgrade_tests: list[Item] = []
     post_upgrade_tests: list[Item] = []
@@ -310,7 +310,7 @@ def pytest_sessionstart(session: Session) -> None:
             value = log_cli_override.split("=", 1)[1].lower()
             enable_console_value = value not in ("false", "0", "no", "off")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         # If there's any issue with option detection, fall back to default behavior
         LOGGER.error(f"Error detecting log_cli option: {e}")
         enable_console_value = True
@@ -397,9 +397,9 @@ def pytest_runtest_setup(item: Item) -> None:
             db = item.config.option.must_gather_db
             db.insert_test_start_time(
                 test_name=f"{item.fspath}::{item.name}",
-                start_time=int(datetime.datetime.now().timestamp()),
+                start_time=int(datetime.datetime.now().timestamp()),  # noqa: DTZ005
             )
-        except Exception as db_exception:
+        except Exception as db_exception:  # noqa: BLE001
             LOGGER.error(f"Database error: {db_exception}. Must-gather collection may not be accurate")
 
     if KServeDeploymentType.RAW_DEPLOYMENT.lower() in item.keywords:
@@ -468,7 +468,7 @@ def pytest_sessionfinish(session: Session, exitstatus: int) -> None:
 def calculate_must_gather_timer(test_start_time: int) -> int:
     default_duration = 300
     if test_start_time > 0:
-        duration = int(datetime.datetime.now().timestamp()) - test_start_time
+        duration = int(datetime.datetime.now().timestamp()) - test_start_time  # noqa: DTZ005
         return duration if duration > 60 else default_duration
     else:
         LOGGER.warning(f"Could not get start time of test. Collecting must-gather for last {default_duration}s")
@@ -492,7 +492,7 @@ def pytest_exception_interact(node: Item | Collector, call: CallInfo[Any], repor
         try:
             db = node.config.option.must_gather_db
             test_start_time = db.get_test_start_time(test_name=test_name)
-        except Exception as db_exception:
+        except Exception as db_exception:  # noqa: BLE001
             test_start_time = 0
             LOGGER.warning(f"Error: {db_exception} in accessing database.")
 
@@ -503,7 +503,7 @@ def pytest_exception_interact(node: Item | Collector, call: CallInfo[Any], repor
                 target_dir=os.path.join(get_must_gather_collector_dir(), "pytest_exception_interact"),
             )
 
-        except Exception as current_exception:
+        except Exception as current_exception:  # noqa: BLE001
             LOGGER.warning(f"Failed to collect logs: {test_name}: {current_exception} {traceback.format_exc()}")
 
 

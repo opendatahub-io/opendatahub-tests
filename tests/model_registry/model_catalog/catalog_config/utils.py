@@ -266,9 +266,9 @@ def modify_catalog_source(
     admin_client: DynamicClient,
     namespace: str,
     source_id: str,
-    enabled: bool = None,
-    included_models: list[str] = None,
-    excluded_models: list[str] = None,
+    enabled: bool | None = None,
+    included_models: list[str] | None = None,
+    excluded_models: list[str] | None = None,
 ) -> dict[str, ConfigMap | dict[str, Any] | str]:
     """
     Modify a catalog source with various configuration changes.

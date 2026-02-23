@@ -62,11 +62,12 @@ class TestModelRegistryMultipleInstances:
         """
         Validate that when multiple MR exists on a cluster, only two model catalog configmaps are created
         """
-        config_map_names: list[str] = []
         expected_number_config_maps: int = 2
-        for config_map in list(ConfigMap.get(namespace=model_registry_namespace, client=admin_client)):
-            if config_map.name.startswith(tuple([DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM])):
-                config_map_names.append(config_map.name)
+        config_map_names = [
+            config_map.name
+            for config_map in list(ConfigMap.get(namespace=model_registry_namespace, client=admin_client))
+            if config_map.name.startswith((DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM))
+        ]
         assert len(config_map_names) == expected_number_config_maps, (
             f"Expected {expected_number_config_maps} model catalog sources, found: {config_map_names}"
         )

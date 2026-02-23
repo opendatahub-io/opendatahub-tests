@@ -71,11 +71,12 @@ class TestModelRegistryCreation:
         model_registry_namespace: str,
         model_registry_operator_pod: Pod,
     ):
-        namespace_env = []
-        for container in model_registry_operator_pod.instance.spec.containers:
-            for env in container.env:
-                if env.name == "REGISTRIES_NAMESPACE" and env.value == model_registry_namespace:
-                    namespace_env.append({container.name: env})
+        namespace_env = [
+            {container.name: env}
+            for container in model_registry_operator_pod.instance.spec.containers
+            for env in container.env
+            if env.name == "REGISTRIES_NAMESPACE" and env.value == model_registry_namespace
+        ]
         if not namespace_env:
             pytest.fail("Missing environment variable REGISTRIES_NAMESPACE")
 

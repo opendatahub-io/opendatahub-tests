@@ -1,6 +1,6 @@
 from utilities.constants import RHOAI_OPERATOR_NAMESPACE
 
-global config  # type:ignore[unused-ignore]
+global config  # type:ignore[unused-ignore]  # noqa: PLW0604
 
 dsc_name: str = "default-dsc"
 must_gather_base_dir: str = "must-gather-base-dir"

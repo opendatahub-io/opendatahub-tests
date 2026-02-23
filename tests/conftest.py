@@ -101,7 +101,7 @@ def current_client_token(admin_client: DynamicClient) -> str:
 def teardown_resources(pytestconfig: pytest.Config) -> bool:
     delete_resources = True
 
-    if pytestconfig.option.pre_upgrade:
+    if pytestconfig.option.pre_upgrade:  # noqa: SIM102
         if delete_resources := pytestconfig.option.delete_pre_upgrade_resources:
             LOGGER.warning("Upgrade resources will be deleted")
 
@@ -165,7 +165,7 @@ def registry_pull_secret(pytestconfig: Config) -> list[str]:
     try:
         for secret in registry_pull_secret:
             base64.b64decode(s=secret, validate=True)
-        return registry_pull_secret
+        return registry_pull_secret  # noqa: TRY300
     except binascii.Error:
         raise ValueError("Registry pull secret is not a valid base64 encoded string")
 
@@ -250,8 +250,8 @@ def modelcar_yaml_config(pytestconfig: pytest.Config) -> dict[str, Any] | None:
         try:
             modelcar_yaml = yaml.safe_load(file)
             if not isinstance(modelcar_yaml, dict):
-                raise ValueError("modelcar.yaml should contain a dictionary.")
-            return modelcar_yaml
+                raise ValueError("modelcar.yaml should contain a dictionary.")  # noqa: TRY004
+            return modelcar_yaml  # noqa: TRY300
         except yaml.YAMLError as e:
             raise ValueError(f"Error parsing modelcar.yaml: {e}") from e
 
@@ -339,7 +339,7 @@ def use_unprivileged_client(pytestconfig: pytest.Config) -> bool:
         return literal_eval(_use_unprivileged_client)
 
     else:
-        raise ValueError(
+        raise ValueError(  # noqa: TRY004
             "use_unprivileged_client is not defined.\n"
             "Either pass with `--use-unprivileged-client` or "
             "set in `use_unprivileged_client` in `tests/global_config.py`"
@@ -449,7 +449,9 @@ def unprivileged_client(
 
         # get the current context and modify the referenced user in place
         current_context_name = kubeconfig_content["current-context"]
-        current_context = [c for c in kubeconfig_content["contexts"] if c["name"] == current_context_name][0]
+        current_context = next((c for c in kubeconfig_content["contexts"] if c["name"] == current_context_name), None)
+        if current_context is None:
+            raise ValueError(f"Context '{current_context_name}' not found in kubeconfig")
         current_context["context"]["user"] = non_admin_user_password[0]
 
         unprivileged_client = get_client(
@@ -682,8 +684,7 @@ def prometheus(admin_client: DynamicClient) -> Prometheus:
 @pytest.fixture(scope="session")
 def related_images_refs(admin_client: DynamicClient) -> set[str]:
     related_images = get_csv_related_images(admin_client=admin_client)
-    related_images_refs = {img["image"] for img in related_images}
-    return related_images_refs
+    return {img["image"] for img in related_images}
 
 
 @pytest.fixture(scope="session")

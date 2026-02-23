@@ -436,7 +436,7 @@ def _is_kueue_operator_installed(admin_client: DynamicClient) -> bool:
             if csv.name.startswith("kueue") and csv.status == csv.Status.SUCCEEDED:
                 LOGGER.info(f"Found Kueue operator CSV: {csv.name}")
                 return True
-        return False
+        return False  # noqa: TRY300
     except ResourceNotFoundError:
         return False
 

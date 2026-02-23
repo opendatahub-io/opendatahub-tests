@@ -294,7 +294,7 @@ def get_metadata_from_catalog_pod(model_catalog_pod: Pod, model_name: str) -> di
         metadata_json = model_catalog_pod.execute(command=["cat", metadata_path], container=CATALOG_CONTAINER)
         metadata = json.loads(metadata_json)
         LOGGER.info(f"Successfully loaded metadata.json for model '{model_name}'")
-        return metadata
+        return metadata  # noqa: TRY300
     except Exception as e:
         LOGGER.error(f"Failed to read metadata.json for model '{model_name}': {e}")
         raise
@@ -324,7 +324,8 @@ def compare_filter_options_with_database(
 
     LOGGER.info(f"Database returned {len(db_properties)} total properties")
     LOGGER.info(
-        f"After applying API filtering, expecting {len(expected_properties)} properties: {list(expected_properties.keys())}"
+        f"After applying API filtering, expecting {len(expected_properties)}"
+        f" properties: {list(expected_properties.keys())}"
     )
 
     # Check for missing/extra properties

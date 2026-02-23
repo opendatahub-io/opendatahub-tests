@@ -40,7 +40,7 @@ def wait_for_mariadb_operator_deployments(mariadb_operator: MariadbOperator, cli
 
 def wait_for_mariadb_pods(client: DynamicClient, mariadb: MariaDB, timeout: int = Timeout.TIMEOUT_15MIN) -> None:
     def _get_mariadb_pods() -> list[Pod]:
-        _pods = [
+        return [
             _pod
             for _pod in Pod.get(
                 client=client,
@@ -48,7 +48,6 @@ def wait_for_mariadb_pods(client: DynamicClient, mariadb: MariaDB, timeout: int 
                 label_selector=f"app.kubernetes.io/instance={mariadb.name}",
             )
         ]
-        return _pods
 
     sampler = TimeoutSampler(wait_timeout=timeout, sleep=1, func=lambda: bool(_get_mariadb_pods()))
 
@@ -67,7 +66,7 @@ def wait_for_mariadb_pods(client: DynamicClient, mariadb: MariaDB, timeout: int 
 @retry(
     wait_timeout=Timeout.TIMEOUT_2MIN,
     sleep=5,
-    exceptions_dict={TooManyPodsError: list(), UnexpectedFailureError: list()},
+    exceptions_dict={TooManyPodsError: [], UnexpectedFailureError: []},
 )
 def validate_trustyai_service_db_conn_failure(
     client: DynamicClient, namespace: Namespace, label_selector: str | None
@@ -276,11 +275,11 @@ def validate_trustyai_service_images(
     Raises:
         AssertionError: If any of the related images references are not present or invalid.
     """
-    tai_image_refs = set(
-        v
-        for k, v in trustyai_operator_configmap.instance.data.items()
-        if k in ["kube-rbac-proxy", "trustyaiServiceImage"]
-    )
+    tai_image_refs = {
+        value
+        for key, value in trustyai_operator_configmap.instance.data.items()
+        if key in ["kube-rbac-proxy", "trustyaiServiceImage"]
+    }
     trustyai_service_pod = wait_for_pods_by_labels(
         admin_client=client, namespace=model_namespace.name, label_selector=label_selector, expected_num_pods=1
     )[0]

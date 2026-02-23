@@ -195,7 +195,7 @@ def get_models_from_catalog_api(
     return execute_get_command(url=base_url, headers=model_registry_rest_headers, params=params)
 
 
-def get_hf_catalog_str(ids: list[str], excluded_models: list[str] = None) -> str:
+def get_hf_catalog_str(ids: list[str], excluded_models: list[str] | None = None) -> str:
     """
     Generate a HuggingFace catalog configuration string in YAML format.
     Similar to get_catalog_str() but for HuggingFace catalogs.

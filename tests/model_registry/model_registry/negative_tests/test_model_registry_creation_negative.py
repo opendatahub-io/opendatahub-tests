@@ -48,7 +48,7 @@ class TestModelRegistryCreationNegative:
             "skipDBCreation": False,
             "username": model_registry_db_secret_negative_test.string_data["database-user"],
         }
-        with pytest.raises(
+        with pytest.raises(  # noqa: SIM117
             ForbiddenError,  # UnprocessibleEntityError
             match=f"namespace must be {py_config['model_registry_namespace']}",
         ):

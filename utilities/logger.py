@@ -14,7 +14,7 @@ class RedactedString(str):
     Used to redact the representation of a sensitive string.
     """
 
-    def __new__(cls, *, value: object) -> "RedactedString":
+    def __new__(cls, *, value: object) -> "RedactedString":  # noqa: PYI034
         return super().__new__(cls, value)
 
     def __repr__(self) -> str:

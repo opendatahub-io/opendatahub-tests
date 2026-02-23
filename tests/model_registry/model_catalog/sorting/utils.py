@@ -404,7 +404,7 @@ def _verify_models_with_accuracy_sorted(
             return False
     else:
         # Only validate presence, not order
-        actual_names = set([name for _, name in models])
+        actual_names = {name for _, name in models}
         expected_names = set(expected_models)
         if actual_names != expected_names:
             LOGGER.error("Models with accuracy do not match expected models from database")

@@ -308,7 +308,7 @@ def send_prefix_cache_test_requests(
                 authorized_user=True,
             )
             successful_requests += 1
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             LOGGER.error(f"Request {index + 1} failed: {e}")
             failed_requests += 1
 

@@ -55,7 +55,7 @@ class TestUnsupportedContentType:
         - Model pod remains healthy (Running, no restarts)
     """
 
-    VALID_INFERENCE_BODY: dict[str, Any] = {
+    VALID_INFERENCE_BODY: dict[str, Any] = {  # noqa: RUF012
         "inputs": [
             {
                 "name": "Input3",

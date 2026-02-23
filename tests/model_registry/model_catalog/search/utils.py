@@ -87,7 +87,8 @@ def get_models_matching_search_from_database(
             catalog_id = VALIDATED_CATALOG_ID
         else:
             raise ValueError(
-                f"Unknown source_label: '{source_label}'. Supported labels: {REDHAT_AI_CATALOG_NAME}, {REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME}"
+                f"Unknown source_label: '{source_label}'. "
+                f"Supported labels: {REDHAT_AI_CATALOG_NAME}, {REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME}"
             )
 
         # Use the extended query with source_id filtering from db_constants
@@ -166,7 +167,7 @@ def _compare_api_and_database_results(
 
     # Get actual results from API
     api_models = api_response.get("items", [])
-    actual_model_ids = set(model.get("id") for model in api_models if model.get("id"))
+    actual_model_ids = {model.get("id") for model in api_models if model.get("id")}
     LOGGER.info(f"API returned {len(actual_model_ids)} models for {description}")
 
     # Compare results

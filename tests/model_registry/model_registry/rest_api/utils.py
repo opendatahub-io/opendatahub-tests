@@ -256,7 +256,7 @@ def get_register_model_data(num_models: int) -> list[dict[str, Any]]:
     model_data = []
     for num_model in range(num_models):
         copy_data = copy.deepcopy(MODEL_REGISTER_DATA)
-        for key, value in copy_data.items():
+        for value in copy_data.values():
             value["name"] = f"{value['name']}{num_model}"
             value["description"] = f"{value['description']}{num_model}"
         model_data.append(copy_data)

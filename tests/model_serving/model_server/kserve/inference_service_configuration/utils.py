@@ -102,9 +102,12 @@ def wait_for_new_running_inference_pods(
             client=isvc.client,
             isvc=isvc,
         ):
-            if pods and len(pods) == expected_num_pods:
-                if all(pod.name not in oring_pods_names and pod.status == pod.Status.RUNNING for pod in pods):
-                    return
+            if (
+                pods
+                and len(pods) == expected_num_pods
+                and all(pod.name not in oring_pods_names and pod.status == pod.Status.RUNNING for pod in pods)
+            ):
+                return
 
     except TimeoutError:
         LOGGER.error(f"Timeout waiting for pods {oring_pods_names} to be replaced")

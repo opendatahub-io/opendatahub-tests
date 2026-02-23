@@ -1,3 +1,4 @@
+# noqa: N999
 from collections.abc import Generator
 from typing import Any
 

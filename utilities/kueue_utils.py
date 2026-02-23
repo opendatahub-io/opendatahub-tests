@@ -169,14 +169,11 @@ def check_gated_pods_and_running_pods(
     for pod in pods:
         if pod.instance.status.phase == "Running":
             running_pods += 1
-        elif pod.instance.status.phase == "Pending":
-            if all(
-                condition.type == "PodScheduled"
-                and condition.status == "False"
-                and condition.reason == "SchedulingGated"
-                for condition in pod.instance.status.conditions
-            ):
-                gated_pods += 1
+        elif pod.instance.status.phase == "Pending" and all(
+            condition.type == "PodScheduled" and condition.status == "False" and condition.reason == "SchedulingGated"
+            for condition in pod.instance.status.conditions
+        ):
+            gated_pods += 1
     return running_pods, gated_pods
 
 

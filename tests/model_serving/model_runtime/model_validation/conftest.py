@@ -102,11 +102,7 @@ def vllm_model_car_inference_service(
         isvc_kwargs["volumes_mounts"] = PREDICT_RESOURCES["volume_mounts"]
 
     if arguments := deployment_config.get("runtime_argument"):
-        arguments = [
-            arg
-            for arg in arguments
-            if not (arg.startswith("--tensor-parallel-size") or arg.startswith("--quantization"))
-        ]
+        arguments = [arg for arg in arguments if not arg.startswith(("--tensor-parallel-size", "--quantization"))]
         arguments.append(f"--tensor-parallel-size={gpu_count}")
         if quantization := request.param.get("quantization"):
             validate_supported_quantization_schema(q_type=quantization)
@@ -229,7 +225,7 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
     default_serving_config = yaml_config.get("default", {})
 
     if not isinstance(model_car_data, list):
-        raise ValueError("Invalid format for `model-car` in YAML. Expected a list of objects.")
+        raise TypeError("Invalid format for `model-car` in YAML. Expected a list of objects.")
 
     if not metafunc.cls:
         return

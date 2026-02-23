@@ -96,7 +96,7 @@ class TestModelRegistryRBAC:
             assert mr_client_success is not None, "Client initialization failed after granting permissions"
             LOGGER.info("Client instantiated successfully after granting permissions.")
         except Exception as e:
-            LOGGER.error(f"Failed to access Model Registry after granting permissions: {e}", exc_info=True)
+            LOGGER.error(f"Failed to access Model Registry after granting permissions: {e}")
             raise
 
         LOGGER.info("--- RBAC Test Completed Successfully ---")

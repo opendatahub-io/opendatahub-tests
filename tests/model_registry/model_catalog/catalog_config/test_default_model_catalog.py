@@ -192,9 +192,7 @@ class TestModelCatalogDefault:
         assert result
         items_to_validate = []
         if pytestconfig.option.pre_upgrade or pytestconfig.option.post_upgrade:
-            for catalog in result:
-                if catalog["id"] in DEFAULT_CATALOGS.keys():
-                    items_to_validate.append(catalog)
+            items_to_validate.extend([catalog for catalog in result if catalog["id"] in DEFAULT_CATALOGS])
             assert len(items_to_validate) + 1 == len(result)
         else:
             items_to_validate = result

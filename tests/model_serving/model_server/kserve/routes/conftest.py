@@ -49,7 +49,7 @@ def patched_s3_caikit_kserve_isvc_visibility_label(
                 sleep=1,
                 func=lambda: s3_models_inference_service.instance.status.url,
             ):
-                if sample:
+                if sample:  # noqa: SIM102
                     if visibility == Labels.Kserve.EXPOSED and isvc_orig_url == sample or sample != isvc_orig_url:
                         break
 

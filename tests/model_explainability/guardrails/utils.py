@@ -281,7 +281,7 @@ def send_chat_detections_request(
     ca_bundle_file: str,
     content: str,
     model: str,
-    detectors: dict[str, Any] = None,
+    detectors: dict[str, Any] | None = None,
 ) -> requests.Response:
     payload = get_chat_detections_payload(content=content, model=model, detectors=detectors)
     return _send_guardrails_orchestrator_post_request(
@@ -296,7 +296,7 @@ def send_and_verify_unsuitable_input_detection(
     ca_bundle_file: str,
     prompt: GuardrailsDetectionPrompt,
     model: str,
-    detectors: dict[str, Any] = None,
+    detectors: dict[str, Any] | None = None,
 ):
     """Send a prompt to the GuardrailsOrchestrator and verify that it triggers an unsuitable input detection"""
     response = send_chat_detections_request(
@@ -320,7 +320,7 @@ def send_and_verify_unsuitable_output_detection(
     ca_bundle_file: str,
     prompt: GuardrailsDetectionPrompt,
     model: str,
-    detectors: dict[str, Any] = None,
+    detectors: dict[str, Any] | None = None,
 ):
     """Send a prompt to the GuardrailsOrchestrator and verify that it triggers an unsuitable output detection"""
 
@@ -344,7 +344,7 @@ def send_and_verify_negative_detection(
     ca_bundle_file: str,
     content: str,
     model: str,
-    detectors: dict[str, Any] = None,
+    detectors: dict[str, Any] | None = None,
 ):
     """Send a prompt to the GuardrailsOrchestrator and verify that it doesn't trigger any detection"""
 

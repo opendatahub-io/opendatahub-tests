@@ -137,7 +137,12 @@ class TestSearchModelCatalogQParameter:
         "search_term",
         [
             pytest.param(
-                "The Llama 4 collection of models are natively multimodal AI models that enable text and multimodal experiences. These models leverage a mixture-of-experts architecture to offer industry-leading performance in text and image understanding. These Llama 4 models mark the beginning of a new era for the Llama ecosystem. We are launching two efficient models in the Llama 4 series, Llama 4 Scout, a 17 billion parameter model with 16 experts, and Llama 4 Maverick, a 17 billion parameter model with 128 experts.",
+                "The Llama 4 collection of models are natively multimodal AI models that enable text and multimodal "
+                "experiences. These models leverage a mixture-of-experts architecture to offer industry-leading "
+                "performance in text and image understanding. These Llama 4 models mark the beginning of a new era "
+                "for the Llama ecosystem. We are launching two efficient models in the Llama 4 series, Llama 4 "
+                "Scout, a 17 billion parameter model with 16 experts, and Llama 4 Maverick, a 17 billion parameter "
+                "model with 128 experts.",
                 id="long_description",
             ),
         ],
@@ -215,8 +220,8 @@ class TestSearchModelCatalogQParameter:
         )
 
         # Combined filter results should be a subset of search-only results
-        search_only_model_ids = set(m.get("id") for m in search_only_response.get("items", []))
-        combined_model_ids = set(m.get("id") for m in models)
+        search_only_model_ids = {m.get("id") for m in search_only_response.get("items", [])}
+        combined_model_ids = {m.get("id") for m in models}
 
         assert combined_model_ids.issubset(search_only_model_ids), (
             f"Combined filter results should be a subset of search-only results. "

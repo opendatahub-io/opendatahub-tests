@@ -10,7 +10,7 @@ from utilities.constants import Timeout
 
 def wait_for_mariadb_pods(client: DynamicClient, mariadb: MariaDB, timeout: int = Timeout.TIMEOUT_5MIN) -> None:
     def _get_mariadb_pods() -> list[Pod]:
-        _pods = [
+        return [
             _pod
             for _pod in Pod.get(
                 client=client,
@@ -18,7 +18,6 @@ def wait_for_mariadb_pods(client: DynamicClient, mariadb: MariaDB, timeout: int 
                 label_selector=f"app.kubernetes.io/instance={mariadb.name}",
             )
         ]
-        return _pods
 
     sampler = TimeoutSampler(wait_timeout=timeout, sleep=1, func=lambda: bool(_get_mariadb_pods()))
 

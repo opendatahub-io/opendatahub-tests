@@ -133,7 +133,8 @@ def async_upload_image(admin_client: DynamicClient) -> str:
 
     if not config_map.exists:
         raise ResourceNotFoundError(
-            f"ConfigMap 'model-registry-operator-parameters' not found in namespace '{py_config['applications_namespace']}'"
+            f"ConfigMap 'model-registry-operator-parameters' not found in"
+            f" namespace '{py_config['applications_namespace']}'"
         )
 
     try:

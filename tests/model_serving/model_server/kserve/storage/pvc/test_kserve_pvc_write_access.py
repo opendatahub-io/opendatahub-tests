@@ -84,7 +84,6 @@ class TestKservePVCWriteAccess:
         indirect=True,
     )
     def test_isvc_read_only_annotation_true(self, unprivileged_client, patched_read_only_isvc):
-        """ """
         new_pod = get_pods_by_isvc_label(
             client=unprivileged_client,
             isvc=patched_read_only_isvc,

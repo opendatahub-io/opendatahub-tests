@@ -10,7 +10,7 @@ from urllib3.exceptions import InsecureRequestWarning
 from utilities.plugins.constant import OpenAIEnpoints, RestHeader
 
 urllib3.disable_warnings(category=InsecureRequestWarning)
-requests.packages
+requests.packages  # noqa: B018
 LOGGER = get_logger(name=__name__)
 
 MAX_RETRIES = 5
@@ -136,7 +136,7 @@ class OpenAIClient:
             keys_to_remove = ["created", "id"]
             if data:
                 data = OpenAIClient._remove_keys(data, keys_to_remove)
-            return data
+            return data  # noqa: TRY300
         except (requests.exceptions.RequestException, json.JSONDecodeError):
             LOGGER.exception("Request error")
 

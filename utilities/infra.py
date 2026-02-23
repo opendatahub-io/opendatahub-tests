@@ -465,10 +465,7 @@ def login_with_user_password(api_address: str, user: str, password: str | None =
     if err and err.lower().startswith("error"):
         raise ClusterLoginError(user=user)
 
-    if re.search(r"Login successful|Logged into", out):
-        return True
-
-    return False
+    return bool(re.search(r"Login successful|Logged into", out))
 
 
 @cache
@@ -479,14 +476,13 @@ def is_self_managed_operator(client: DynamicClient) -> bool:
     if py_config["distribution"] == "upstream":
         return True
 
-    if CatalogSource(
-        client=client,
-        name="addon-managed-odh-catalog",
-        namespace=py_config["applications_namespace"],
-    ).exists:
-        return False
-
-    return True
+    return not bool(
+        CatalogSource(
+            client=client,
+            name="addon-managed-odh-catalog",
+            namespace=py_config["applications_namespace"],
+        ).exists
+    )
 
 
 @cache
@@ -503,10 +499,9 @@ def is_managed_cluster(client: DynamicClient) -> bool:
     platform_statuses = infra.instance.status.platformStatus
 
     for entry in platform_statuses.values():
-        if isinstance(entry, kubernetes.dynamic.resource.ResourceField):
-            if tags := entry.resourceTags:
-                LOGGER.info(f"Infrastructure {infra.name} resource tags: {tags}")
-                return any([tag["value"] == "true" for tag in tags if tag["key"] == "red-hat-managed"])
+        if isinstance(entry, kubernetes.dynamic.resource.ResourceField) and (tags := entry.resourceTags):
+            LOGGER.info(f"Infrastructure {infra.name} resource tags: {tags}")
+            return any(tag["value"] == "true" for tag in tags if tag["key"] == "red-hat-managed")
 
     return False
 
@@ -844,9 +839,8 @@ def check_pod_status_in_time(pod: Pod, status: set[str], duration: int = Timeout
 
     try:
         for sample in sampler:
-            if sample:
-                if sample.status.phase not in status:
-                    raise AssertionError(f"Pod status is not the expected: {pod.status}")
+            if sample and sample.status.phase not in status:
+                raise AssertionError(f"Pod status is not the expected: {pod.status}")
 
     except TimeoutExpiredError:
         LOGGER.info(f"Pod status is {pod.status} as expected")
@@ -1022,7 +1016,7 @@ def get_rhods_subscription() -> Subscription | None:
     if subscriptions:
         for subscription in subscriptions:
             LOGGER.info(f"Checking subscription {subscription.name}")
-            if subscription.name.startswith(tuple(["rhods-operator", "rhoai-operator"])):
+            if subscription.name.startswith(("rhods-operator", "rhoai-operator")):
                 return subscription
 
     LOGGER.warning("No RHOAI subscription found. Potentially ODH cluster")
@@ -1170,8 +1164,9 @@ def download_oc_console_cli(admin_client: DynamicClient, tmpdir: LocalPath) -> s
     local_file_name = os.path.join(tmpdir, oc_console_cli_download_link.split("/")[-1])
     with requests.get(oc_console_cli_download_link, verify=False, stream=True) as created_request:
         created_request.raise_for_status()
+        content_iterator = created_request.iter_content(chunk_size=8192)
         with open(local_file_name, "wb") as file_downloaded:
-            file_downloaded.writelines(created_request.iter_content(chunk_size=8192))
+            file_downloaded.writelines(content_iterator)
     LOGGER.info("Extract the downloaded archive.")
     extracted_filenames = []
     if oc_console_cli_download_link.endswith(".zip"):
@@ -1204,8 +1199,8 @@ def check_internal_image_registry_available(admin_client: DynamicClient) -> bool
         is_available = management_state == "managed"
 
         LOGGER.info(f"Image registry management state: {management_state}, available: {is_available}")
-        return is_available
-    except (ResourceNotFoundError, Exception) as e:
+        return is_available  # noqa: TRY300
+    except (ResourceNotFoundError, Exception) as e:  # noqa: BLE001
         LOGGER.warning(f"Failed to check image registry config: {e}")
         return False
 

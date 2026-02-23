@@ -25,6 +25,7 @@ def guardrails_orchestrator_ssl_cert(guardrails_orchestrator_route: Route):
             capture_output=True,
             text=True,
             timeout=30,
+            check=False,
         )
 
         if result.returncode != 0 and "CONNECTED" not in result.stdout:
@@ -47,9 +48,9 @@ def guardrails_orchestrator_ssl_cert(guardrails_orchestrator_route: Route):
         with open(filepath, "w") as f:
             f.write("\n".join(cert_lines))
 
-        return filepath
+        return filepath  # noqa: TRY300
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise RuntimeError(f"Could not get certificate from {hostname}: {e}")
 
 

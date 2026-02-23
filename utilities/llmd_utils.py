@@ -80,7 +80,7 @@ def create_llmd_gateway(
         if existing_gateway.exists:
             LOGGER.info(f"Cleaning up existing Gateway {name} in namespace {namespace}")
             existing_gateway.delete(wait=True, timeout=Timeout.TIMEOUT_2MIN)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         LOGGER.debug(f"No existing Gateway to clean up: {e}")
     gateway_body = {
         "apiVersion": f"{KServeGateway.API_GROUP}/v1",
@@ -391,7 +391,7 @@ def get_llm_inference_url(llm_service: LLMInferenceService) -> str:
             internal_url = f"http://{services[0].name}.{llm_service.namespace}.svc.cluster.local"
             LOGGER.debug(f"Using service discovery URL for {llm_service.name}: {internal_url}")
             return internal_url
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         LOGGER.warning(f"Could not get service for LLMInferenceService {llm_service.name}: {e}")
     fallback_url = f"http://{llm_service.name}.{llm_service.namespace}.svc.cluster.local"
     LOGGER.debug(f"Using fallback URL for {llm_service.name}: {fallback_url}")
@@ -588,7 +588,7 @@ class LLMUserInference:
                     cmd += f" --cacert {ca_bundle}"
                 else:
                     cmd += " --insecure"
-            except Exception:
+            except Exception:  # noqa: BLE001
                 cmd += " --insecure"
 
         cmd += f" --max-time {LLMEndpoint.DEFAULT_TIMEOUT} {endpoint_url}"

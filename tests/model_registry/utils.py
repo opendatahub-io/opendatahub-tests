@@ -336,9 +336,8 @@ def wait_for_new_running_mr_pod(
             label_selector=MODEL_REGISTRY_POD_FILTER,
         )
     )
-    if pods and len(pods) == 1:
-        if pods[0].name != orig_pod_name and pods[0].status == Pod.Status.RUNNING:
-            return pods[0]
+    if pods and len(pods) == 1 and pods[0].name != orig_pod_name and pods[0].status == Pod.Status.RUNNING:
+        return pods[0]
     raise TimeoutError(f"Timeout waiting for pod {orig_pod_name} to be replaced")
 
 
@@ -485,12 +484,11 @@ def get_and_validate_registered_model(
         expected_attrs = {
             "name": model_name,
         }
-    errors = [
+    return [
         f"Unexpected {attr} expected: {expected}, received {getattr(model, attr)}"
         for attr, expected in expected_attrs.items()
         if getattr(model, attr) != expected
     ]
-    return errors
 
 
 def execute_model_registry_get_command(url: str, headers: dict[str, str], json_output: bool = True) -> dict[Any, Any]:
@@ -793,9 +791,8 @@ def validate_mlmd_removal_in_model_registry_pod_log(
         container_name = container["name"]
         LOGGER.info(f"Checking {container_name}")
         log = pod_object.log(container=container_name)
-        if "rest" in container_name:
-            if embedmd_message not in log:
-                errors.append(f"Missing {embedmd_message} in {container_name} log")
+        if "rest" in container_name and embedmd_message not in log:
+            errors.append(f"Missing {embedmd_message} in {container_name} log")
         if "MLMD" in log:
             errors.append(f"MLMD reference found in {container_name} log")
     assert not errors, f"Log validation failed with error(s): {errors}"
@@ -973,29 +970,26 @@ def get_mr_user_token(admin_client: DynamicClient, user_credentials_rbac: dict[s
         "scope": "openid",
     }
 
-    try:
-        LOGGER.info(f"Requesting token for user {user_credentials_rbac['username']} in byoidc environment")
-        response = requests.post(
-            url=url,
-            headers=headers,
-            data=data,
-            allow_redirects=True,
-            timeout=30,
-            verify=True,  # Set to False if you need to skip SSL verification
-        )
-        response.raise_for_status()
-        json_response = response.json()
+    LOGGER.info(f"Requesting token for user {user_credentials_rbac['username']} in byoidc environment")
+    response = requests.post(
+        url=url,
+        headers=headers,
+        data=data,
+        allow_redirects=True,
+        timeout=30,
+        verify=True,  # Set to False if you need to skip SSL verification
+    )
+    response.raise_for_status()
+    json_response = response.json()
 
-        # Validate that we got an access token
-        if "id_token" not in json_response:
-            LOGGER.error("Warning: No id_token in response")
-            raise AssertionError(f"No id_token in response: {json_response}")
-        return json_response["id_token"]
-    except Exception as e:
-        raise e
+    # Validate that we got an access token
+    if "id_token" not in json_response:
+        LOGGER.error("Warning: No id_token in response")
+        raise AssertionError(f"No id_token in response: {json_response}")
+    return json_response["id_token"]
 
 
-def get_byoidc_user_credentials(client: DynamicClient, username: str = None) -> dict[str, str]:
+def get_byoidc_user_credentials(client: DynamicClient, username: str | None = None) -> dict[str, str]:
     """
     Get user credentials from byoidc-credentials secret.
 

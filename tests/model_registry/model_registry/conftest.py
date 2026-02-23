@@ -129,13 +129,13 @@ def sa_token(service_account: ServiceAccount) -> str:
     try:
         cmd = f"oc create token {sa_name} -n {namespace} --duration={DEFAULT_TOKEN_DURATION}"
         LOGGER.debug(f"Executing command: {cmd}")
-        res, out, err = run_command(command=shlex.split(cmd), verify_stderr=False, check=True, timeout=30)
+        _, out, _ = run_command(command=shlex.split(cmd), verify_stderr=False, check=True, timeout=30)
         token = out.strip()
         if not token:
             raise ValueError("Retrieved token is empty after successful command execution.")
 
         LOGGER.info(f"Successfully retrieved token for SA '{sa_name}'")
-        return token
+        return token  # noqa: TRY300
 
     except Exception as e:  # Catch all exceptions from the try block
         error_type = type(e).__name__
@@ -158,7 +158,7 @@ def sa_token(service_account: ServiceAccount) -> str:
             command_not_found = e.filename if hasattr(e, "filename") and e.filename else shlex.split(cmd)[0]
             log_message += f". Command '{command_not_found}' not found. Is it installed and in PATH?"
 
-        LOGGER.error(log_message, exc_info=True)  # exc_info=True adds stack trace to the log
+        LOGGER.error(log_message)
         raise
 
 

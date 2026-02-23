@@ -231,10 +231,10 @@ def patched_dsc_kserve_headed(
 
     @retry(wait_timeout=30, sleep=1)
     def _wait_for_kserve_upgrade(dsc_resource: DataScienceCluster):
-        return not _kserve_status(dsc_resource) == "True"
+        return _kserve_status(dsc_resource) != "True"
 
     dsc = get_data_science_cluster(client=admin_client)
-    if not dsc.instance.spec.components.kserve.rawDeploymentServiceConfig == "Headed":
+    if dsc.instance.spec.components.kserve.rawDeploymentServiceConfig != "Headed":
         with ResourceEditor(
             patches={dsc: {"spec": {"components": {"kserve": {"rawDeploymentServiceConfig": "Headed"}}}}}
         ):

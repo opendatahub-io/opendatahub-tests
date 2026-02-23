@@ -25,6 +25,14 @@ from utilities.operator_utils import get_cluster_service_version
 LOGGER = get_logger(name=__name__)
 
 
+class OpenVINOImageNotFoundError(Exception):
+    """Exception raised when OpenVINO image is not found in RHOAI CSV relatedImages."""
+
+
+class PredictorPodNotFoundError(Exception):
+    """Exception raised when predictor pods are not found for an InferenceService."""
+
+
 def get_openvino_image_from_rhoai_csv(admin_client: DynamicClient) -> str:
     """
     Get the OpenVINO model server image from the RHOAI ClusterServiceVersion.
@@ -49,7 +57,7 @@ def get_openvino_image_from_rhoai_csv(admin_client: DynamicClient) -> str:
             LOGGER.info(f"Found OpenVINO image from RHOAI CSV: {image_url}")
             return image_url
 
-    raise Exception("Could not find odh-openvino-model-server image in RHOAI CSV relatedImages")
+    raise OpenVINOImageNotFoundError("Could not find odh-openvino-model-server image in RHOAI CSV relatedImages")
 
 
 @pytest.fixture()
@@ -387,7 +395,9 @@ def huggingface_predictor_pod(
 
     predictor_pods = [pod for pod in pods if "predictor" in pod.name]
     if not predictor_pods:
-        raise Exception(f"No predictor pods found for InferenceService {huggingface_inference_service.name}")
+        raise PredictorPodNotFoundError(
+            f"No predictor pods found for InferenceService {huggingface_inference_service.name}"
+        )
 
     pod = predictor_pods[0]  # Use the first predictor pod
     LOGGER.info(f"Found predictor pod: {pod.name} in namespace: {namespace}")

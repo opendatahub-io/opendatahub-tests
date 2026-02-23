@@ -430,9 +430,11 @@ def verify_trustyai_service_response(
 
     # Validate required non-empty fields
     if required_fields:
-        for field in required_fields:
-            if field in response_data and response_data[field] == "":
-                errors.append(f"{field.capitalize()} is empty")
+        errors.extend([
+            f"{field.capitalize()} is empty"
+            for field in required_fields
+            if field in response_data and response_data[field] == ""
+        ])
 
     # Validate expected values
     if expected_values:

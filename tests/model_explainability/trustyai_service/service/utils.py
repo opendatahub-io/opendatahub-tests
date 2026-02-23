@@ -12,13 +12,16 @@ from utilities.constants import TRUSTYAI_SERVICE_NAME, Timeout
 
 @retry(wait_timeout=Timeout.TIMEOUT_5MIN, sleep=5)
 def wait_for_trustyai_db_migration_complete_log(client: DynamicClient, trustyai_service: TrustyAIService) -> bool:
-    trustyai_pod = list(
-        Pod.get(
-            client=client,
-            namespace=trustyai_service.namespace,
-            label_selector=f"app.kubernetes.io/instance={trustyai_service.name}",
-        )
-    )[0]
+    pods = Pod.get(
+        client=client,
+        namespace=trustyai_service.namespace,
+        label_selector=f"app.kubernetes.io/instance={trustyai_service.name}",
+    )
+    trustyai_pod = next(iter(pods), None)
+    if trustyai_pod is None:
+        raise RuntimeError(
+            f"No TrustyAI pod found for service {trustyai_service.name} in namespace {trustyai_service.namespace}"
+        )  # noqa: E501
     return bool(
         re.search(
             r".+INFO.+Migration complete, the PVC is now safe to remove\.",
