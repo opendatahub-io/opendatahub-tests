@@ -813,7 +813,7 @@ def gpu_count_on_cluster(nodes: list[Any]) -> int:
             if key in allowed_exact or any(key.startswith(p) for p in allowed_prefixes):
                 try:
                     total_gpus += int(val)
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     LOGGER.debug(f"Skipping non-integer allocatable for {key} on {node.name}: {val!r}")
                     continue
     return total_gpus

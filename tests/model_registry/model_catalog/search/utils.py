@@ -403,7 +403,7 @@ def _validate_single_criterion(
         else:
             LOGGER.warning(f"Unknown key_type: {key_type}")
             return False, f"{key_name}: unknown type {key_type}"
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return False, f"{key_name}: conversion error"
 
     # Perform comparison based on type

@@ -98,7 +98,7 @@ def mint_token(
     )
     try:
         body = resp.json()
-    except (JSONDecodeError, ValueError):
+    except JSONDecodeError, ValueError:
         body = {}
     return resp, body
 
@@ -399,7 +399,7 @@ def get_total_tokens(resp: Response, *, fail_if_missing: bool = False) -> int | 
     if header_val is not None:
         try:
             return int(header_val)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             if fail_if_missing:
                 raise AssertionError(
                     f"Token usage header is not parseable as int; headers={dict(resp.headers)} body={resp.text[:500]}"
