@@ -11,12 +11,18 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.mark.operator_health
-def test_data_science_cluster_initialization_healthy(dsci_resource: DSCInitialization):
+def test_data_science_cluster_initialization_healthy(dsci_resource: DSCInitialization) -> None:
+    """
+    Checks if a data science cluster initialization is healthy
+    """
     wait_for_dsci_status_ready(dsci_resource=dsci_resource)
 
 
 @pytest.mark.operator_health
-def test_data_science_cluster_healthy(dsc_resource: DataScienceCluster):
+def test_data_science_cluster_healthy(dsc_resource: DataScienceCluster) -> None:
+    """
+    Checks if a data science cluster is healthy
+    """
     wait_for_dsc_status_ready(dsc_resource=dsc_resource)
 
 
@@ -34,6 +40,9 @@ def test_data_science_cluster_healthy(dsc_resource: DataScienceCluster):
     ],
 )
 @pytest.mark.operator_health
-def test_pods_cluster_healthy(admin_client: DynamicClient, namespace_name: str):
+def test_pods_cluster_healthy(admin_client: DynamicClient, namespace_name: str) -> None:
+    """
+    Checks if pods in a given namespace are all healthy
+    """
     LOGGER.info(f"Testing Pods in namespace {namespace_name} for cluster health")
     wait_for_pods_running(admin_client=admin_client, namespace_name=namespace_name)

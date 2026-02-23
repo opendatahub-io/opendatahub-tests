@@ -7,6 +7,9 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.mark.cluster_health
-def test_cluster_node_healthy(nodes: list[Node]):
+def test_cluster_node_healthy(nodes: list[Node]) -> None:
+    """
+    Tests if the cluster nodes are healthy
+    """
     assert_nodes_in_healthy_condition(nodes=nodes, healthy_node_condition_type={"KubeletReady": "True"})
     assert_nodes_schedulable(nodes=nodes)
