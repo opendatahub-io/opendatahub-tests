@@ -6,20 +6,9 @@ from tests.model_serving.model_server.maas_billing.utils import verify_chat_comp
 LOGGER = get_logger(name=__name__)
 
 
-@pytest.mark.parametrize(
-    "unprivileged_model_namespace",
-    [
-        pytest.param(
-            {
-                "name": "llm",
-                "modelmesh-enabled": False,
-            },
-            id="maas-billing-namespace",
-        ),
-    ],
-    indirect=True,
-)
+@pytest.mark.usefixtures("maas_unprivileged_model_namespace", "maas_controller_enabled_latest")
 class TestMaasEndpoints:
+    @pytest.mark.sanity
     def test_model(
         self,
         maas_models: list,
@@ -31,6 +20,7 @@ class TestMaasEndpoints:
         first = maas_models[0]
         assert "id" in first, "model entry missing 'id'"
 
+    @pytest.mark.sanity
     def test_chat_completions(
         self,
         request_session_http: requests.Session,

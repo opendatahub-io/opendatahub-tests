@@ -1,5 +1,4 @@
-from typing import Any, Dict, Generator, List
-
+from typing import Any, Dict, Generator, List, Tuple
 import base64
 import requests
 from json import JSONDecodeError
@@ -17,6 +16,14 @@ from utilities.plugins.constant import RestHeader, OpenAIEnpoints
 from ocp_resources.resource import ResourceEditor
 from utilities.resources.rate_limit_policy import RateLimitPolicy
 from utilities.resources.token_rate_limit_policy import TokenRateLimitPolicy
+
+# from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
+from ocp_resources.endpoints import Endpoints
+from utilities.constants import (
+    MAAS_GATEWAY_NAME,
+    MAAS_GATEWAY_NAMESPACE,
+)
+
 
 LOGGER = get_logger(name=__name__)
 MODELS_INFO = OpenAIEnpoints.MODELS_INFO
@@ -61,14 +68,14 @@ def detect_scheme_via_llmisvc(client, namespace: str = "llm") -> str:
     """
     service = _first_ready_llmisvc(client=client, namespace=namespace)
     if not service:
-        return "http"
+        return "https"
 
     url = get_llm_inference_url(llm_service=service)
     scheme = (urlparse(url).scheme or "").lower()
     if scheme in ("http", "https"):
         return scheme
 
-    return "http"
+    return "https"
 
 
 def maas_auth_headers(token: str) -> Dict[str, str]:
@@ -100,22 +107,6 @@ def b64url_decode(encoded_str: str) -> bytes:
     padding = "=" * (-len(encoded_str) % 4)
     padded_bytes = (encoded_str + padding).encode(encoding="utf-8")
     return base64.urlsafe_b64decode(s=padded_bytes)
-
-
-def llmis_name(client, namespace: str = "llm", label_selector: str | None = None) -> str:
-    """
-    Return the name of the first Ready LLMInferenceService.
-    """
-
-    service = _first_ready_llmisvc(
-        client=client,
-        namespace=namespace,
-        label_selector=label_selector,
-    )
-    if not service:
-        raise RuntimeError("No Ready LLMInferenceService found")
-
-    return service.name
 
 
 @contextmanager
@@ -169,22 +160,8 @@ def get_maas_models_response(
 def patch_llmisvc_with_maas_router(
     llm_service: LLMInferenceService,
 ) -> Generator[None, None, None]:
-    """
-    Temporarily patch an existing LLMInferenceService with MaaS router wiring
-    and annotations for the duration of the context.
-
-    This is used for TinyLlama so that the model is reachable via the
-    maas-default-gateway and participates in MaaS flows.
-    """
     router_spec = {
-        "gateway": {
-            "refs": [
-                {
-                    "name": "maas-default-gateway",
-                    "namespace": "openshift-ingress",
-                }
-            ]
-        },
+        "gateway": {"refs": [{"name": MAAS_GATEWAY_NAME, "namespace": MAAS_GATEWAY_NAMESPACE}]},
         "route": {},
     }
 
@@ -195,22 +172,10 @@ def patch_llmisvc_with_maas_router(
                 "security.opendatahub.io/enable-auth": "true",
             }
         },
-        "spec": {
-            "router": router_spec,
-        },
+        "spec": {"router": router_spec},
     }
 
-    LOGGER.info(
-        f"MaaS LLMD: patching LLMInferenceService "
-        f"{llm_service.namespace}/{llm_service.name} "
-        f"with MaaS router spec: {router_spec}"
-    )
-
     with ResourceEditor(patches={llm_service: patch_body}):
-        LOGGER.info(
-            f"MaaS LLMD: successfully patched LLMInferenceService "
-            f"{llm_service.namespace}/{llm_service.name} for MaaS routing"
-        )
         yield
 
 
@@ -462,3 +427,78 @@ def get_total_tokens(resp: Response, *, fail_if_missing: bool = False) -> int | 
             f"Token usage not found in header or JSON body; headers={dict(resp.headers)} body={resp.text[:500]}"
         )
     return None
+
+
+def maas_gateway_listeners(hostname: str) -> List[Dict[str, Any]]:
+    return [
+        {
+            "name": "http",
+            "hostname": hostname,
+            "port": 80,
+            "protocol": "HTTP",
+            "allowedRoutes": {"namespaces": {"from": "All"}},
+        },
+        {
+            "name": "https",
+            "hostname": hostname,
+            "port": 443,
+            "protocol": "HTTPS",
+            "allowedRoutes": {"namespaces": {"from": "All"}},
+            "tls": {
+                "mode": "Terminate",
+                "certificateRefs": [{"group": "", "kind": "Secret", "name": "data-science-gateway-service-tls"}],
+            },
+        },
+    ]
+
+
+def endpoints_have_ready_addresses(
+    admin_client: DynamicClient,
+    namespace: str,
+    name: str,
+) -> bool:
+    endpoints = Endpoints(
+        client=admin_client,
+        name=name,
+        namespace=namespace,
+        ensure_exists=True,
+    )
+
+    subsets = endpoints.instance.subsets
+    if not subsets:
+        return False
+
+    return any(subset.addresses for subset in subsets)
+
+
+def gateway_probe_reaches_maas_api(
+    http_session: requests.Session,
+    probe_url: str,
+    request_timeout_seconds: int,
+) -> Tuple[bool, int, str]:
+    response = http_session.get(probe_url, timeout=request_timeout_seconds)
+    status_code = response.status_code
+    response_text = response.text
+    LOGGER.info(f"Received {status_code} response from {probe_url}, {response_text}")
+    ok = status_code in (200, 401, 403)
+    return ok, status_code, response_text
+
+
+def revoke_token(
+    base_url: str,
+    oc_user_token: str,
+    http_session: requests.Session,
+) -> Response:
+    """
+    Revoke MaaS tokens for the user.
+    """
+    url = f"{base_url}/v1/tokens"
+    resp = http_session.delete(
+        url=url,
+        headers=maas_auth_headers(token=oc_user_token),
+        timeout=60,
+    )
+
+    assert resp.status_code in (200, 202, 204), f"revoke failed: {resp.status_code} {(resp.text or '')[:200]}"
+
+    return resp

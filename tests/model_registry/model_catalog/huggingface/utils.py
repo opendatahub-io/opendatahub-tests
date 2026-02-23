@@ -4,6 +4,7 @@ from typing import Any
 from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.constants import HF_SOURCE_ID
+from tests.model_registry.model_catalog.utils import get_models_from_catalog_api
 from tests.model_registry.utils import execute_get_command, get_model_catalog_pod
 from huggingface_hub import HfApi
 from timeout_sampler import retry
@@ -192,3 +193,45 @@ def wait_for_last_sync_update(
                 f"Initial: {initial_last_synced_values}, Current: {current_last_synced}"
             )
     return False
+
+
+def assert_accessible_models_via_catalog_api(
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+    expected_accessible_models: list[str],
+    source_label: str | None = None,
+    page_size: int = 1000,
+):
+    """
+    Assert that expected accessible models are available through the catalog API.
+
+    Args:
+        model_catalog_rest_url: REST URL for model catalog
+        model_registry_rest_headers: Headers for model registry REST API
+        expected_accessible_models: List of model names that should be accessible
+        source_label: Optional source label to filter by (if None, searches all sources)
+        page_size: Number of results per page
+
+    Raises:
+        AssertionError: If not all expected models are found in the API response
+    """
+    LOGGER.info(f"Testing catalog API for accessible models: {expected_accessible_models}")
+    if source_label:
+        LOGGER.info(f"Filtering by source label: {source_label}")
+    else:
+        LOGGER.info("Searching across all sources (no source label filter)")
+
+    # Get models from catalog API with optional source filtering
+    models_response = get_models_from_catalog_api(
+        model_catalog_rest_url=model_catalog_rest_url,
+        model_registry_rest_headers=model_registry_rest_headers,
+        source_label=source_label,
+        page_size=page_size,
+    )
+
+    available_model_names = [model["name"] for model in models_response.get("items", [])]
+    LOGGER.info(f"Models available through catalog API: {available_model_names}")
+
+    missing_models = [model for model in expected_accessible_models if model not in available_model_names]
+
+    assert not missing_models, f"Missing accessible models from catalog API: {missing_models}"

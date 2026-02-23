@@ -198,7 +198,7 @@ def mariadb(
         client=admin_client, prefix=MARIADB, namespace=OPENSHIFT_OPERATORS
     )
     alm_examples: list[dict[str, Any]] = mariadb_csv.get_alm_examples()
-    mariadb_dict: dict[str, Any] = next(example for example in alm_examples if example["kind"] == "MariaDB")
+    mariadb_dict: dict[str, Any] = next((example for example in alm_examples if example["kind"] == "MariaDB"), None)
 
     if not mariadb_dict:
         raise ResourceNotFoundError(f"No MariaDB dict found in alm_examples for CSV {mariadb_csv.name}")

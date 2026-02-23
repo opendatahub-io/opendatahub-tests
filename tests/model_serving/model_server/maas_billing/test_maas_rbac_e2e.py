@@ -17,20 +17,7 @@ ACTORS = [
 ]
 
 
-@pytest.mark.parametrize(
-    "unprivileged_model_namespace",
-    [
-        pytest.param(
-            {
-                "name": "llm",
-                "modelmesh-enabled": False,
-            },
-            id="maas-billing-namespace",
-        ),
-    ],
-    indirect=True,
-)
-@pytest.mark.usefixtures("maas_free_group", "maas_premium_group")
+@pytest.mark.usefixtures("maas_free_group", "maas_premium_group", "maas_unprivileged_model_namespace")
 @pytest.mark.parametrize(
     "ocp_token_for_actor",
     ACTORS,
@@ -44,6 +31,7 @@ class TestMaasRBACE2E:
     - can call /v1/chat/completions
     """
 
+    @pytest.mark.sanity
     def test_mint_token_for_actors(
         self,
         ocp_token_for_actor,
@@ -51,6 +39,7 @@ class TestMaasRBACE2E:
     ) -> None:
         LOGGER.info(f"MaaS RBAC: using already minted MaaS token length={len(maas_token_for_actor)}")
 
+    @pytest.mark.sanity
     def test_models_visible_for_actors(
         self,
         model_url: str,
@@ -61,6 +50,7 @@ class TestMaasRBACE2E:
         models = response.json().get("data", [])
         assert isinstance(models, list) and models, "no models returned from /v1/models"
 
+    @pytest.mark.sanity
     def test_chat_completions_for_actors(
         self,
         request_session_http,

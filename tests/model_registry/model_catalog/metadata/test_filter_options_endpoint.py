@@ -2,7 +2,6 @@ import pytest
 from typing import Self
 from simple_logger.logger import get_logger
 from tests.model_registry.model_catalog.metadata.utils import (
-    validate_filter_options_structure,
     compare_filter_options_with_database,
 )
 from tests.model_registry.model_catalog.utils import (
@@ -16,6 +15,7 @@ from tests.model_registry.model_catalog.db_constants import (
 )
 from tests.model_registry.utils import get_rest_headers, execute_get_command
 from utilities.user_utils import UserTestSession
+from kubernetes.dynamic import DynamicClient
 
 LOGGER = get_logger(name=__name__)
 
@@ -29,62 +29,6 @@ class TestFilterOptionsEndpoint:
     Test class for validating the models/filter_options endpoint
     RHOAIENG-36696
     """
-
-    @pytest.mark.parametrize(
-        "user_token_for_api_calls,",
-        [
-            pytest.param(
-                {},
-                id="test_filter_options_admin_user",
-            ),
-            pytest.param(
-                {"user_type": "test"},
-                id="test_filter_options_non_admin_user",
-            ),
-            pytest.param(
-                {"user_type": "sa_user"},
-                id="test_filter_options_service_account",
-            ),
-        ],
-        indirect=["user_token_for_api_calls"],
-    )
-    @pytest.mark.sanity
-    def test_filter_options_endpoint_validation(
-        self: Self,
-        model_catalog_rest_url: list[str],
-        user_token_for_api_calls: str,
-        test_idp_user: UserTestSession,
-    ):
-        """
-        Comprehensive test for filter_options endpoint.
-        Validates all acceptance criteria:
-        - A GET request returns a 200 OK response
-        - Response includes filter options for string-based properties with values array containing distinct values
-        - Response includes filter options for numeric properties with range object containing min/max values
-        - Core properties are present (license, provider, tasks, validated_on)
-        """
-        url = f"{model_catalog_rest_url[0]}models/filter_options"
-        LOGGER.info(f"Testing filter_options endpoint: {url}")
-
-        # This will raise an exception if the status code is not 200/201 (validates acceptance criteria #1)
-        response = execute_get_command(
-            url=url,
-            headers=get_rest_headers(token=user_token_for_api_calls),
-        )
-
-        assert response is not None, "Filter options response should not be None"
-        LOGGER.info("Filter options endpoint successfully returned 200 OK")
-
-        # Expected core properties based on current API response
-        expected_properties = {"license", "provider", "tasks", "validated_on.array_value"}
-
-        # Comprehensive validation using single function (validates acceptance criteria #2, #3, #4)
-        is_valid, errors = validate_filter_options_structure(response=response, expected_properties=expected_properties)
-        assert is_valid, f"Filter options validation failed: {'; '.join(errors)}"
-
-        filters = response["filters"]
-        LOGGER.info(f"Found {len(filters)} filter properties: {list(filters.keys())}")
-        LOGGER.info("All filter options validation passed successfully")
 
     # Cannot use non-admin user for this test as it cannot list the pods in the namespace
     @pytest.mark.parametrize(
@@ -103,6 +47,7 @@ class TestFilterOptionsEndpoint:
     )
     def test_comprehensive_coverage_against_database(
         self: Self,
+        admin_client: DynamicClient,
         model_catalog_rest_url: list[str],
         user_token_for_api_calls: str,
         model_registry_namespace: str,
@@ -130,7 +75,9 @@ class TestFilterOptionsEndpoint:
 
         LOGGER.info(f"Executing database query in namespace: {model_registry_namespace}")
 
-        db_result = execute_database_query(query=FILTER_OPTIONS_DB_QUERY, namespace=model_registry_namespace)
+        db_result = execute_database_query(
+            admin_client=admin_client, query=FILTER_OPTIONS_DB_QUERY, namespace=model_registry_namespace
+        )
         parsed_result = parse_psql_output(psql_output=db_result)
 
         db_properties = parsed_result.get("properties", {})

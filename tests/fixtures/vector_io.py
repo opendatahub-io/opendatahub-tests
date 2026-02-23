@@ -46,9 +46,6 @@ QDRANT_URL = os.getenv("LLS_VECTOR_IO_QDRANT_URL", "http://vector-io-qdrant-serv
 
 @pytest.fixture(scope="class")
 def vector_io_provider_deployment_config_factory(
-    unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
-    vector_io_secret: Secret,
     request: FixtureRequest,
 ) -> Callable[[str], list[Dict[str, Any]]]:
     """
@@ -57,6 +54,10 @@ def vector_io_provider_deployment_config_factory(
     This fixture returns a factory function that can deploy different vector I/O providers
     (such as Milvus) in the cluster and return the necessary environment variables
     for configuring the LlamaStack server to use these providers.
+
+    Provider-specific dependencies (e.g., unprivileged_model_namespace, vector_io_secret)
+    are resolved lazily via request.getfixturevalue() only when a provider that requires
+    them is selected.
 
     Args:
         request: Pytest fixture request object for accessing other fixtures
@@ -92,9 +93,6 @@ def vector_io_provider_deployment_config_factory(
             env_vars = vector_io_provider_deployment_config_factory("milvus-remote")
             # env_vars contains MILVUS_ENDPOINT, MILVUS_TOKEN, etc.
     """
-    _ = unprivileged_client
-    _ = unprivileged_model_namespace
-    _ = vector_io_secret
 
     def _factory(provider_name: str) -> list[Dict[str, Any]]:
         env_vars: list[dict[str, Any]] = []

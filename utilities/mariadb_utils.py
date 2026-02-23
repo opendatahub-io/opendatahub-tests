@@ -34,7 +34,7 @@ def wait_for_mariadb_pods(client: DynamicClient, mariadb: MariaDB, timeout: int 
         )
 
 
-def wait_for_mariadb_operator_deployments(mariadb_operator: MariadbOperator) -> None:
+def wait_for_mariadb_operator_deployments(mariadb_operator: MariadbOperator, client: DynamicClient) -> None:
     expected_deployment_names: list[str] = [
         "mariadb-operator",
         "mariadb-operator-cert-controller",
@@ -43,5 +43,5 @@ def wait_for_mariadb_operator_deployments(mariadb_operator: MariadbOperator) -> 
     ]
 
     for name in expected_deployment_names:
-        deployment = Deployment(name=name, namespace=mariadb_operator.namespace)
+        deployment = Deployment(client=client, name=name, namespace=mariadb_operator.namespace)
         deployment.wait_for_replicas()

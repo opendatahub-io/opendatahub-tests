@@ -54,6 +54,7 @@ All cluster interactions MUST use openshift-python-wrapper or oc CLI.
 
 - Use [openshift-python-wrapper](https://github.com/RedHatQE/openshift-python-wrapper) for all K8s API calls
 - For missing resources, generate them using class_generator and contribute to wrapper
+- Resources pending addition or update in the wrapper may be temporarily saved in `utilities/resources`
 - Use oc CLI only when wrapper is not relevant (e.g., must-gather generation)
 - Resource lifecycle MUST be managed via context managers to ensure cleanup
 

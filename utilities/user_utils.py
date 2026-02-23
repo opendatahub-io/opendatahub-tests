@@ -29,6 +29,7 @@ class UserTestSession:
     password: str
     original_user: str
     api_server_url: str
+    client: DynamicClient
     is_byoidc: bool = False
 
     def __post_init__(self) -> None:
@@ -37,10 +38,12 @@ class UserTestSession:
             raise ValueError("All session fields must be non-empty")
         if not (self.api_server_url and self.original_user):
             raise ValueError("Original user information and api url must be set")
+        if self.client is None:
+            raise ValueError("Client must be provided")
 
     def cleanup(self) -> None:
         """Clean up the user context."""
-        user = User(name=self.username)
+        user = User(name=self.username, client=self.client)
         if user.exists:
             user.delete()
 

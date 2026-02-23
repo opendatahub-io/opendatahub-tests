@@ -471,8 +471,10 @@ def wait_for_pods_running(
     return None
 
 
-def wait_for_oauth_openshift_deployment() -> None:
-    deployment_obj = Deployment(name="oauth-openshift", namespace="openshift-authentication", ensure_exists=True)
+def wait_for_oauth_openshift_deployment(client: DynamicClient) -> None:
+    deployment_obj = Deployment(
+        client=client, name="oauth-openshift", namespace="openshift-authentication", ensure_exists=True
+    )
 
     _log = f"Wait for {deployment_obj.name} -> Type: Progressing -> Reason:"
 

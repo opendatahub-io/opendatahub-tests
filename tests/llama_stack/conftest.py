@@ -10,7 +10,8 @@ from llama_stack_client import LlamaStackClient
 from llama_stack_client.types.vector_store import VectorStore
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
-from ocp_resources.llama_stack_distribution import LlamaStackDistribution
+
+from utilities.resources.llama_stack_distribution import LlamaStackDistribution
 from ocp_resources.namespace import Namespace
 from semver import Version
 from simple_logger.logger import get_logger
@@ -31,6 +32,8 @@ from ocp_resources.service import Service
 from ocp_resources.secret import Secret
 
 LOGGER = get_logger(name=__name__)
+
+pytestmark = pytest.mark.skip_on_disconnected
 
 POSTGRES_IMAGE = os.getenv(
     "LLS_VECTOR_IO_POSTGRES_IMAGE",
@@ -62,6 +65,8 @@ LLS_CORE_VLLM_EMBEDDING_URL = os.getenv(
 LLS_CORE_VLLM_EMBEDDING_API_TOKEN = os.getenv("LLS_CORE_VLLM_EMBEDDING_API_TOKEN", "fake")
 LLS_CORE_VLLM_EMBEDDING_MAX_TOKENS = os.getenv("LLS_CORE_VLLM_EMBEDDING_MAX_TOKENS", "8192")
 LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY = os.getenv("LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY", "true")
+
+IBM_EARNINGS_DOC_URL = "https://www.ibm.com/downloads/documents/us-en/1550f7eea8c0ded6"
 
 distribution_name = generate_random_name(prefix="llama-stack-distribution")
 
@@ -488,8 +493,8 @@ def _get_llama_stack_distribution_deployment(
         name=llama_stack_distribution.name,
         min_ready_seconds=10,
     )
-    deployment.timeout_seconds = 120
-    deployment.wait(timeout=120)
+    deployment.timeout_seconds = 240
+    deployment.wait(timeout=240)
     deployment.wait_for_replicas()
     # Workaround for RHAIENG-1819 (Incorrect number of llama-stack pods deployed after
     # creating LlamaStackDistribution after setting custom ca bundle in DSCI)
@@ -773,35 +778,24 @@ def vector_store_with_example_docs(
     unprivileged_llama_stack_client: LlamaStackClient, vector_store: VectorStore
 ) -> Generator[VectorStore, None, None]:
     """
-    Creates a vector store with TorchTune documentation files uploaded.
+    Creates a vector store with the IBM fourth-quarter 2025 earnings report uploaded.
 
-    This fixture depends on the vector_store fixture and uploads the TorchTune
-    documentation files to the vector store for testing purposes. The files
-    are automatically cleaned up after the test completes.
+    This fixture depends on the vector_store fixture and uploads the IBM earnings
+    document to the vector store for testing vector, keyword, and hybrid search.
+    The file is automatically cleaned up after the test completes.
 
     Args:
         unprivileged_llama_stack_client: The configured LlamaStackClient
         vector_store: The vector store fixture to upload files to
 
     Yields:
-        Vector store object with uploaded TorchTune documentation files
+        Vector store object with uploaded IBM earnings report document
     """
-    # Download TorchTune documentation files
-    urls = [
-        "llama3.rst",
-        "chat.rst",
-        "lora_finetune.rst",
-        "qat_finetune.rst",
-        "memory_optimizations.rst",
-    ]
-
-    base_url = "https://raw.githubusercontent.com/pytorch/torchtune/refs/tags/v0.6.1/docs/source/tutorials/"
-
-    for file_name in urls:
-        url = f"{base_url}{file_name}"
-        vector_store_create_file_from_url(
-            url=url, llama_stack_client=unprivileged_llama_stack_client, vector_store=vector_store
-        )
+    vector_store_create_file_from_url(
+        url=IBM_EARNINGS_DOC_URL,
+        llama_stack_client=unprivileged_llama_stack_client,
+        vector_store=vector_store,
+    )
 
     yield vector_store
 

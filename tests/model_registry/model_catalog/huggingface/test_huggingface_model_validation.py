@@ -18,6 +18,8 @@ from kubernetes.dynamic import DynamicClient
 
 LOGGER = get_logger(name=__name__)
 
+pytestmark = [pytest.mark.skip_on_disconnected]
+
 
 class TestLastSyncedMetadataValidation:
     """Test HuggingFace model last synced timestamp validation"""

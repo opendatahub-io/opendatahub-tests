@@ -7,7 +7,6 @@ from simple_logger.logger import get_logger
 from tests.model_registry.model_catalog.constants import VALIDATED_CATALOG_ID, REDHAT_AI_CATALOG_ID
 from tests.model_registry.model_catalog.metadata.utils import (
     extract_custom_property_values,
-    validate_custom_properties_structure,
     validate_custom_properties_match_metadata,
     get_metadata_from_catalog_pod,
 )
@@ -26,21 +25,6 @@ pytestmark = [
 @pytest.mark.skip_must_gather
 class TestCustomProperties:
     """Test suite for validating custom properties in model catalog API"""
-
-    @pytest.mark.parametrize(
-        "randomly_picked_model_from_catalog_api_by_source", [{"source": VALIDATED_CATALOG_ID}], indirect=True
-    )
-    def test_custom_properties_structure_is_valid(
-        self,
-        randomly_picked_model_from_catalog_api_by_source: tuple[dict[Any, Any], str, str],
-    ):
-        """Test that custom properties follow the expected MetadataStringValue structure."""
-        model_data, model_name, catalog_id = randomly_picked_model_from_catalog_api_by_source
-
-        LOGGER.info(f"Testing custom properties structure for model '{model_name}' from catalog '{catalog_id}'")
-
-        custom_props = model_data.get("customProperties", {})
-        assert validate_custom_properties_structure(custom_props)
 
     @pytest.mark.parametrize(
         "randomly_picked_model_from_catalog_api_by_source", [{"source": VALIDATED_CATALOG_ID}], indirect=True

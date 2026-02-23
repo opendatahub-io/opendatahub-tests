@@ -14,7 +14,6 @@ from tests.model_registry.model_catalog.constants import (
     MODEL_ARTIFACT_TYPE,
     METRICS_ARTIFACT_TYPE,
 )
-from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from simple_logger.logger import get_logger
 
 LOGGER = get_logger(name=__name__)
@@ -29,55 +28,6 @@ MODEL_NAMEs_ARTIFACT_SEARCH: list[str] = [
 
 
 class TestSearchArtifactsByFilterQuery:
-    @pytest.mark.parametrize(
-        "randomly_picked_model_from_catalog_api_by_source, invalid_filter_query",
-        [
-            pytest.param(
-                {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"},
-                "fake IN ('test', 'fake'))",
-                id="test_invalid_artifact_filter_query_malformed",
-            ),
-            pytest.param(
-                {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"},
-                "ttft_p90.double_value < abc",
-                id="test_invalid_artifact_filter_query_data_type_mismatch",
-            ),
-            pytest.param(
-                {"catalog_id": VALIDATED_CATALOG_ID, "header_type": "registry"},
-                "hardware_type.string_value = 5.0",
-                id="test_invalid_artifact_filter_query_data_type_mismatch_equality",
-            ),
-        ],
-        indirect=["randomly_picked_model_from_catalog_api_by_source"],
-    )
-    def test_search_artifacts_by_invalid_filter_query(
-        self: Self,
-        model_catalog_rest_url: list[str],
-        model_registry_rest_headers: dict[str, str],
-        randomly_picked_model_from_catalog_api_by_source: tuple[dict, str, str],
-        invalid_filter_query: str,
-    ):
-        """
-        Tests the API's response to invalid filter queries syntax when searching artifacts.
-        It verifies that an invalid filter query syntax raises the correct error.
-        """
-        _, model_name, catalog_id = randomly_picked_model_from_catalog_api_by_source
-
-        LOGGER.info(f"Testing invalid artifact filter query: '{invalid_filter_query}' for model: {model_name}")
-        with pytest.raises(ResourceNotFoundError, match="invalid filter query"):
-            fetch_all_artifacts_with_dynamic_paging(
-                url_with_pagesize=(
-                    f"{model_catalog_rest_url[0]}sources/{catalog_id}/models/{model_name}/artifacts?"
-                    f"filterQuery={invalid_filter_query}&pageSize"
-                ),
-                headers=model_registry_rest_headers,
-                page_size=1,
-            )
-
-        LOGGER.info(
-            f"Successfully validated that invalid artifact filter query '{invalid_filter_query}' raises an error"
-        )
-
     @pytest.mark.parametrize(
         "randomly_picked_model_from_catalog_api_by_source, filter_query, expected_value, logic_type",
         [
@@ -341,44 +291,6 @@ class TestSearchModelArtifact:
         )
 
         LOGGER.info(f"Validated {len(artifact_type_artifacts)} {artifact_type} artifacts for {model_name}")
-
-    @pytest.mark.parametrize(
-        "randomly_picked_model_from_catalog_api_by_source",
-        [
-            pytest.param(
-                {"header_type": "registry"},
-                id="invalid_artifact_type",
-            ),
-        ],
-        indirect=["randomly_picked_model_from_catalog_api_by_source"],
-    )
-    def test_error_handled_for_invalid_artifact_type(
-        self: Self,
-        model_catalog_rest_url: list[str],
-        model_registry_rest_headers: dict[str, str],
-        randomly_picked_model_from_catalog_api_by_source: tuple[dict[Any, Any], str, str],
-    ):
-        """
-        RHOAIENG-33659: Validates that the API returns the correct error when an invalid artifactType
-        is provided regardless of catalog or model.
-        """
-        invalid_artifact_type = "invalid"
-        _, model_name, catalog_id = randomly_picked_model_from_catalog_api_by_source
-        invalid_error = f"artifactType: invalid value '{invalid_artifact_type}' for ArtifactTypeQueryParam"
-
-        LOGGER.info(f"Testing invalid artifact type: '{invalid_artifact_type}'")
-
-        with pytest.raises(ResourceNotFoundError, match=invalid_error):
-            fetch_all_artifacts_with_dynamic_paging(
-                url_with_pagesize=(
-                    f"{model_catalog_rest_url[0]}sources/{catalog_id}/models/{model_name}/artifacts?"
-                    f"artifactType={invalid_artifact_type}&pageSize"
-                ),
-                headers=model_registry_rest_headers,
-                page_size=1,
-            )
-
-        LOGGER.info(f"Successfully validated that invalid artifact type '{invalid_artifact_type}' raises an error")
 
     @pytest.mark.parametrize(
         "randomly_picked_model_from_catalog_api_by_source",

@@ -8,6 +8,7 @@ from tests.model_registry.model_catalog.utils import get_models_from_catalog_api
 LOGGER = get_logger(name=__name__)
 
 pytestmark = [
+    pytest.mark.skip_on_disconnected,
     pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace"),
 ]
 
@@ -46,7 +47,7 @@ pytestmark = [
             ],
             ["ibm-granite/granite-4.0-h-1b", "microsoft/phi-2"],
             id="test_model_exclusion_specific_models",
-            marks=(pytest.mark.install, pytest.mark.xfail(reason="RHOAIENG-42506: crashes the model catalog pod")),
+            marks=(pytest.mark.install),
         ),
     ],
     indirect=["updated_catalog_config_map"],
