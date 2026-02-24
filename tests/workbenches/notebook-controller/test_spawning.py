@@ -1,11 +1,9 @@
 import pytest
-
 from kubernetes.dynamic.client import DynamicClient
-
-from ocp_resources.pod import Pod
 from ocp_resources.namespace import Namespace
 from ocp_resources.notebook import Notebook
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
+from ocp_resources.pod import Pod
 
 
 class TestNotebook:

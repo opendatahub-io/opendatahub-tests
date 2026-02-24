@@ -1,34 +1,32 @@
+import shlex
 import subprocess
+from collections.abc import Generator
+from typing import Any
 
 import pytest
-import shlex
-from pyhelper_utils.shell import run_command
-from typing import Generator, Any, List, Dict
-
-from ocp_resources.pod import Pod
+from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
+from model_registry import ModelRegistry as ModelRegistryClient
+from model_registry.types import RegisteredModel
+from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
-from ocp_resources.service_account import ServiceAccount
+from ocp_resources.pod import Pod
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
-from ocp_resources.deployment import Deployment
-from kubernetes.dynamic.exceptions import ResourceNotFoundError
-
+from ocp_resources.service_account import ServiceAccount
+from pyhelper_utils.shell import run_command
 from pytest import FixtureRequest
 from simple_logger.logger import get_logger
-from kubernetes.dynamic import DynamicClient
-from model_registry.types import RegisteredModel
-
 
 from tests.model_registry.constants import (
-    MR_INSTANCE_NAME,
     MODEL_REGISTRY_POD_FILTER,
+    MR_INSTANCE_NAME,
 )
-from utilities.constants import Protocols
 from tests.model_registry.utils import (
     get_endpoint_from_mr_service,
     get_mr_service_by_label,
 )
-from model_registry import ModelRegistry as ModelRegistryClient
+from utilities.constants import Protocols
 from utilities.general import wait_for_pods_by_labels
 
 LOGGER = get_logger(name=__name__)
@@ -83,7 +81,7 @@ def model_registry_client(
 @pytest.fixture(scope="class")
 def registered_model(
     request: FixtureRequest, model_registry_client: list[ModelRegistryClient]
-) -> Generator[RegisteredModel, None, None]:
+) -> Generator[RegisteredModel]:
     yield model_registry_client[0].register_model(
         name=request.param.get("model_name"),
         uri=request.param.get("model_uri"),
@@ -131,19 +129,19 @@ def sa_token(service_account: ServiceAccount) -> str:
     try:
         cmd = f"oc create token {sa_name} -n {namespace} --duration={DEFAULT_TOKEN_DURATION}"
         LOGGER.debug(f"Executing command: {cmd}")
-        res, out, err = run_command(command=shlex.split(cmd), verify_stderr=False, check=True, timeout=30)
+        _, out, _ = run_command(command=shlex.split(cmd), verify_stderr=False, check=True, timeout=30)
         token = out.strip()
         if not token:
             raise ValueError("Retrieved token is empty after successful command execution.")
 
         LOGGER.info(f"Successfully retrieved token for SA '{sa_name}'")
-        return token
+        return token  # noqa: TRY300
 
     except Exception as e:  # Catch all exceptions from the try block
         error_type = type(e).__name__
         log_message = (
             f"Failed during token retrieval for SA '{sa_name}' in namespace '{namespace}'. "
-            f"Error Type: {error_type}, Message: {str(e)}"
+            f"Error Type: {error_type}, Message: {e!s}"
         )
         if isinstance(e, subprocess.CalledProcessError):
             # Add specific details for CalledProcessError
@@ -160,7 +158,7 @@ def sa_token(service_account: ServiceAccount) -> str:
             command_not_found = e.filename if hasattr(e, "filename") and e.filename else shlex.split(cmd)[0]
             log_message += f". Command '{command_not_found}' not found. Is it installed and in PATH?"
 
-        LOGGER.error(log_message, exc_info=True)  # exc_info=True adds stack trace to the log
+        LOGGER.error(log_message)
         raise
 
 
@@ -169,14 +167,14 @@ def mr_access_role(
     admin_client: DynamicClient,
     model_registry_namespace: str,
     sa_namespace: Namespace,
-) -> Generator[Role, None, None]:
+) -> Generator[Role]:
     """
     Creates the MR Access Role using direct constructor parameters and a context manager.
     """
     role_name = f"registry-user-{MR_INSTANCE_NAME}-{sa_namespace.name[:8]}"
     LOGGER.info(f"Defining Role: {role_name} in namespace {model_registry_namespace}")
 
-    role_rules: List[Dict[str, Any]] = [
+    role_rules: list[dict[str, Any]] = [
         {
             "apiGroups": [""],
             "resources": ["services"],
@@ -206,7 +204,7 @@ def mr_access_role_binding(
     model_registry_namespace: str,
     mr_access_role: Role,
     sa_namespace: Namespace,
-) -> Generator[RoleBinding, None, None]:
+) -> Generator[RoleBinding]:
     """
     Creates the MR Access RoleBinding using direct constructor parameters and a context manager.
     """

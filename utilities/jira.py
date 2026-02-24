@@ -50,10 +50,11 @@ def is_jira_open(jira_id: str, admin_client: DynamicClient) -> bool:
 
     else:
         # Check if the operator version in ClusterServiceVersion is greater than the jira fix version
-        jira_fix_versions: list[Version] = []
-        for fix_version in jira_fields.fixVersions:
-            if _fix_version := re.search(r"\d+\.\d+(?:\.\d+)?", fix_version.name):
-                jira_fix_versions.append(Version(_fix_version.group()))
+        jira_fix_versions: list[Version] = [
+            Version(_fix_version.group())
+            for fix_version in jira_fields.fixVersions
+            if (_fix_version := re.search(r"\d+\.\d+(?:\.\d+)?", fix_version.name))
+        ]
 
         if not jira_fix_versions:
             raise ValueError(f"Jira {jira_id}: status is {jira_status} but does not have fix version(s)")
@@ -68,7 +69,7 @@ def is_jira_open(jira_id: str, admin_client: DynamicClient) -> bool:
             raise MissingResourceError("Operator ClusterServiceVersion not found")
 
         csv_version = Version(version=operator_version)
-        if all([csv_version < fix_version for fix_version in jira_fix_versions]):
+        if all(csv_version < fix_version for fix_version in jira_fix_versions):
             LOGGER.info(
                 f"Bug is open: Jira {jira_id}: status is {jira_status}, "
                 f"fix versions {jira_fix_versions}, operator version is {operator_version}"

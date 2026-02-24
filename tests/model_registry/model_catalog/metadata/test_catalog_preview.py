@@ -1,15 +1,17 @@
-import pytest
 from typing import Self
+
+import pytest
 import requests
 import yaml
 from simple_logger.logger import get_logger
+
+from tests.model_registry.model_catalog.constants import VALIDATED_CATALOG_FILE, VALIDATED_CATALOG_ID
 from tests.model_registry.model_catalog.metadata.utils import (
-    execute_model_catalog_post_command,
     build_catalog_preview_config,
+    execute_model_catalog_post_command,
     validate_catalog_preview_counts,
     validate_catalog_preview_items,
 )
-from tests.model_registry.model_catalog.constants import VALIDATED_CATALOG_ID, VALIDATED_CATALOG_FILE
 
 LOGGER = get_logger(name=__name__)
 

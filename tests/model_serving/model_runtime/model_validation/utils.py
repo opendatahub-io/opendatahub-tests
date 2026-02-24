@@ -1,5 +1,6 @@
 import re
 from typing import Any
+
 from tests.model_serving.model_runtime.vllm.constant import VLLM_SUPPORTED_QUANTIZATION
 
 

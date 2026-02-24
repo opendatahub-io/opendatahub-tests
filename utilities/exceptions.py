@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
-
 from ocp_resources.service import Service
 
 
@@ -28,16 +26,16 @@ class InferenceResponseError(Exception):
 class InvalidStorageArgumentError(Exception):
     def __init__(
         self,
-        storage_uri: Optional[str],
-        storage_key: Optional[str],
-        storage_path: Optional[str],
+        storage_uri: str | None,
+        storage_key: str | None,
+        storage_path: str | None,
     ):
         self.storage_uri = storage_uri
         self.storage_key = storage_key
         self.storage_path = storage_path
 
     def __str__(self) -> str:
-        msg = f"""
+        return f"""
             You've passed the following parameters:
             "storage_uri": {self.storage_uri}
             "storage_key": {self.storage_key}
@@ -45,7 +43,6 @@ class InvalidStorageArgumentError(Exception):
             In order to create a valid ISVC you need to specify either a storage_uri value
             or both a storage key and a storage path.
         """
-        return msg
 
 
 class MetricValidationError(Exception):
@@ -99,8 +96,6 @@ class ClusterLoginError(Exception):
 class InvalidArgumentsError(Exception):
     """Raised when mutually exclusive or invalid argument combinations are passed."""
 
-    pass
-
 
 class ResourceNotReadyError(Exception):
     pass
@@ -125,13 +120,9 @@ class UnexpectedResourceCountError(Exception):
 class ResourceValueMismatch(Exception):
     """Resource value mismatch"""
 
-    pass
-
 
 class MissingParameter(Exception):
     """Raised required argument is not passed."""
-
-    pass
 
 
 class ExceptionUserLogin(Exception):

@@ -1,17 +1,20 @@
-from typing import Any, Dict, Generator, List
+import logging
+from collections.abc import Generator
+from typing import Any
+
 from kubernetes.dynamic import DynamicClient
+from model_registry import ModelRegistry as ModelRegistryClient
+from mr_openapi.exceptions import ForbiddenException
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
+
 from utilities.constants import Protocols
-import logging
-from model_registry import ModelRegistry as ModelRegistryClient
 from utilities.infra import get_openshift_token
-from mr_openapi.exceptions import ForbiddenException
 
 LOGGER = logging.getLogger(__name__)
 
 
-def build_mr_client_args(rest_endpoint: str, token: str, author: str = "rbac-test") -> Dict[str, Any]:
+def build_mr_client_args(rest_endpoint: str, token: str, author: str = "rbac-test") -> dict[str, Any]:
     """
     Builds arguments for ModelRegistryClient based on REST endpoint and token.
 
@@ -71,7 +74,7 @@ def create_role_binding(
     name: str,
     subjects_kind: str,
     subjects_name: str,
-) -> Generator[RoleBinding, None, None]:
+) -> Generator[RoleBinding]:
     with RoleBinding(
         client=admin_client,
         namespace=model_registry_namespace,
@@ -88,7 +91,7 @@ def grant_mr_access(
     admin_client: DynamicClient, user: str, mr_instance_name: str, model_registry_namespace: str
 ) -> tuple[Role, RoleBinding]:
     """Grant a user access to a Model Registry instance."""
-    role_rules: List[Dict[str, Any]] = [
+    role_rules: list[dict[str, Any]] = [
         {
             "apiGroups": [""],
             "resources": ["services"],

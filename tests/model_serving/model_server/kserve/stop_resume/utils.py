@@ -1,6 +1,7 @@
 """Utilities for stop/resume model testing."""
 
 import time
+
 from kubernetes.dynamic.client import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from timeout_sampler import TimeoutExpiredError
@@ -32,7 +33,7 @@ def consistently_verify_no_pods_exist(
             # Nested timeout samplers can cause false negatives if the internal sampler has
             # a timeout that is greater than the external sampler.
             # So we iterate and sleep here instead.
-            time.sleep(interval)  # noqa: FCN001
+            time.sleep(interval)
     except TimeoutExpiredError:
         return False
     return True

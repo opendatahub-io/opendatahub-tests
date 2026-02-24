@@ -1,7 +1,8 @@
 import pytest
 from simple_logger.logger import get_logger
-from utilities.constants import KServeDeploymentType, Ports
+
 from tests.model_serving.model_runtime.vllm.utils import run_raw_inference
+from utilities.constants import KServeDeploymentType, Ports
 
 LOGGER = get_logger(name=__name__)
 

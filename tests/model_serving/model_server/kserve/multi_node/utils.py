@@ -12,7 +12,6 @@ from tests.model_serving.model_server.kserve.multi_node.constants import HEAD_PO
 from utilities.constants import Timeout
 from utilities.infra import get_pods_by_isvc_label
 
-
 LOGGER = get_logger(name=__name__)
 
 
@@ -72,7 +71,7 @@ def verify_nvidia_gpu_status(pod: Pod) -> None:
 
 
 def delete_multi_node_pod_by_role(client: DynamicClient, isvc: InferenceService, role: str) -> None:
-    f"""
+    """
     Delete multi node pod by role
 
     Worker pods have {WORKER_POD_ROLE} str in their name, head pod does not have an identifier in the name.
@@ -89,10 +88,12 @@ def delete_multi_node_pod_by_role(client: DynamicClient, isvc: InferenceService,
     pods = get_pods_by_isvc_label(client=client, isvc=isvc)
 
     for pod in pods:
-        if role == WORKER_POD_ROLE and WORKER_POD_ROLE in pod.name:
-            pod.delete(wait=True)
-
-        elif role == HEAD_POD_ROLE and WORKER_POD_ROLE not in pod.name:
+        if (
+            role == WORKER_POD_ROLE
+            and WORKER_POD_ROLE in pod.name
+            or role == HEAD_POD_ROLE
+            and WORKER_POD_ROLE not in pod.name
+        ):
             pod.delete(wait=True)
 
 

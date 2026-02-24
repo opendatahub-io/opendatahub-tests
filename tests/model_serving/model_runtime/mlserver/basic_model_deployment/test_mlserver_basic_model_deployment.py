@@ -8,24 +8,21 @@ across REST protocol and raw deployment type.
 from typing import Any
 
 import pytest
-
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
-
-from utilities.constants import ModelFormat, Protocols
 
 from tests.model_serving.model_runtime.mlserver.constant import (
     MODEL_CONFIGS,
     RAW_DEPLOYMENT_TYPE,
 )
-
 from tests.model_serving.model_runtime.mlserver.utils import (
-    validate_inference_request,
-    get_model_storage_uri_dict,
-    get_model_namespace_dict,
     get_deployment_config_dict,
+    get_model_namespace_dict,
+    get_model_storage_uri_dict,
     get_test_case_id,
+    validate_inference_request,
 )
+from utilities.constants import ModelFormat, Protocols
 
 pytestmark = pytest.mark.usefixtures("valid_aws_config")
 

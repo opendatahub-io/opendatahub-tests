@@ -5,7 +5,7 @@ This module defines configuration values, resource specifications, deployment co
 and input queries used across MLServer runtime tests for different frameworks.
 """
 
-from typing import Any, Union
+from typing import Any
 
 from utilities.constants import KServeDeploymentType, ModelFormat
 
@@ -21,7 +21,7 @@ LOCALHOST_URL: str = "http://localhost"
 RAW_DEPLOYMENT_TYPE: str = "raw"
 MODEL_PATH_PREFIX: str = "mlserver/model_repository"
 
-PREDICT_RESOURCES: dict[str, Union[list[dict[str, Union[str, dict[str, str]]]], dict[str, dict[str, str]]]] = {
+PREDICT_RESOURCES: dict[str, list[dict[str, str | dict[str, str]]] | dict[str, dict[str, str]]] = {
     "volumes": [
         {"name": "shared-memory", "emptyDir": {"medium": "Memory", "sizeLimit": "2Gi"}},
         {"name": "tmp", "emptyDir": {}},

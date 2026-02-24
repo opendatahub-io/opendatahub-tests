@@ -1,4 +1,5 @@
 import pytest
+from timeout_sampler import TimeoutSampler
 
 from tests.model_serving.model_server.kserve.metrics.utils import validate_metrics_configuration
 from tests.model_serving.model_server.utils import (
@@ -12,7 +13,6 @@ from utilities.constants import (
     Protocols,
     RuntimeTemplates,
 )
-from timeout_sampler import TimeoutSampler
 from utilities.inference_utils import Inference
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 from utilities.monitoring import get_metrics_value, validate_metrics_field

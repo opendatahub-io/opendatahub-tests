@@ -1,21 +1,22 @@
 import pytest
+from kubernetes.dynamic.client import DynamicClient
+from ocp_resources.resource import ResourceEditor
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError
-from ocp_resources.resource import ResourceEditor
-from kubernetes.dynamic.client import DynamicClient
-from tests.model_registry.model_catalog.constants import (
-    REDHAT_AI_CATALOG_ID,
-    REDHAT_AI_CATALOG_NAME,
-)
+
 from tests.model_registry.model_catalog.catalog_config.utils import (
-    modify_catalog_source,
-    get_models_from_database_by_source,
-    wait_for_model_set_match,
-    validate_cleanup_logging,
     filter_models_by_pattern,
+    get_models_from_database_by_source,
+    modify_catalog_source,
+    validate_cleanup_logging,
     validate_filter_test_result,
     validate_source_disabling_result,
     wait_for_catalog_source_restore,
+    wait_for_model_set_match,
+)
+from tests.model_registry.model_catalog.constants import (
+    REDHAT_AI_CATALOG_ID,
+    REDHAT_AI_CATALOG_NAME,
 )
 from tests.model_registry.utils import wait_for_model_catalog_api
 

@@ -1,13 +1,11 @@
 import pytest
-from utilities.constants import DscComponents
-
+from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.namespace import Namespace
-
-from simple_logger.logger import get_logger
 from pytest_testconfig import config as py_config
-from kubernetes.dynamic import DynamicClient
+from simple_logger.logger import get_logger
 
+from utilities.constants import DscComponents
 from utilities.general import wait_for_pods_running
 
 LOGGER = get_logger(name=__name__)

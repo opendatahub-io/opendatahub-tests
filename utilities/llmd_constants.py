@@ -1,10 +1,14 @@
 """LLMD-specific constants that extend the shared constants."""
 
 from utilities.constants import (
-    ModelName,
     ContainerImages as SharedContainerImages,
-    ModelStorage as SharedModelStorage,
+)
+from utilities.constants import (
     Labels,
+    ModelName,
+)
+from utilities.constants import (
+    ModelStorage as SharedModelStorage,
 )
 
 

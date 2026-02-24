@@ -1,20 +1,20 @@
 import pytest
+from timeout_sampler import retry
 
-from tests.model_explainability.trustyai_service.service.utils import (
-    wait_for_trustyai_db_migration_complete_log,
-    patch_trustyai_service_cr,
-)
 from tests.model_explainability.trustyai_service.constants import DRIFT_BASE_DATA_PATH, TRUSTYAI_DB_MIGRATION_PATCH
+from tests.model_explainability.trustyai_service.service.utils import (
+    patch_trustyai_service_cr,
+    wait_for_trustyai_db_migration_complete_log,
+)
 from tests.model_explainability.trustyai_service.trustyai_service_utils import (
-    send_inferences_and_verify_trustyai_service_registered,
-    verify_upload_data_to_trustyai_service,
-    verify_trustyai_service_metric_delete_request,
     TrustyAIServiceMetrics,
+    send_inferences_and_verify_trustyai_service_registered,
+    verify_trustyai_service_metric_delete_request,
     verify_trustyai_service_metric_scheduling_request,
+    verify_upload_data_to_trustyai_service,
 )
 from utilities.constants import MinIo
 from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
-from timeout_sampler import retry
 
 
 @pytest.mark.parametrize(

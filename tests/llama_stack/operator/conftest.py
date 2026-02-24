@@ -1,8 +1,11 @@
-from typing import Generator, Any
+from collections.abc import Generator
+from typing import Any
+
 import pytest
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.pod import Pod
 from ocp_resources.namespace import Namespace
+from ocp_resources.pod import Pod
+
 from tests.llama_stack.constants import LLS_CORE_POD_FILTER
 from utilities.general import wait_for_pods_by_labels
 

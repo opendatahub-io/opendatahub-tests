@@ -1,6 +1,7 @@
 import pytest
-from simple_logger.logger import get_logger
 from llama_stack_client import LlamaStackClient
+from simple_logger.logger import get_logger
+
 from tests.llama_stack.constants import ModelInfo
 
 LOGGER = get_logger(name=__name__)

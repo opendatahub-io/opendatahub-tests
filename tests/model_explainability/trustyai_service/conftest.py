@@ -1,5 +1,6 @@
 import json
-from typing import Generator, Any
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 import yaml
@@ -13,6 +14,7 @@ from ocp_resources.maria_db import MariaDB
 from ocp_resources.mariadb_operator import MariadbOperator
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
+from ocp_resources.resource import ResourceEditor
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
@@ -23,44 +25,43 @@ from ocp_resources.trustyai_service import TrustyAIService
 from pytest_testconfig import py_config
 
 from tests.model_explainability.trustyai_service.constants import (
-    TAI_DATA_CONFIG,
-    TAI_METRICS_CONFIG,
-    TAI_PVC_STORAGE_CONFIG,
+    GAUSSIAN_CREDIT_MODEL,
+    GAUSSIAN_CREDIT_MODEL_RESOURCES,
+    GAUSSIAN_CREDIT_MODEL_STORAGE_PATH,
+    ISVC_GETTER,
     KSERVE_MLSERVER,
+    KSERVE_MLSERVER_ANNOTATIONS,
     KSERVE_MLSERVER_CONTAINERS,
     KSERVE_MLSERVER_SUPPORTED_MODEL_FORMATS,
-    KSERVE_MLSERVER_ANNOTATIONS,
-    GAUSSIAN_CREDIT_MODEL_RESOURCES,
-    XGBOOST,
+    TAI_DATA_CONFIG,
     TAI_DB_STORAGE_CONFIG,
-    ISVC_GETTER,
-    GAUSSIAN_CREDIT_MODEL_STORAGE_PATH,
-    GAUSSIAN_CREDIT_MODEL,
+    TAI_METRICS_CONFIG,
+    TAI_PVC_STORAGE_CONFIG,
+    XGBOOST,
 )
 from tests.model_explainability.trustyai_service.trustyai_service_utils import (
     wait_for_isvc_deployment_registered_by_trustyai_service,
 )
 from tests.model_explainability.trustyai_service.utils import (
-    create_trustyai_service,
-    wait_for_mariadb_pods,
     create_isvc_getter_role,
     create_isvc_getter_role_binding,
     create_isvc_getter_service_account,
     create_isvc_getter_token_secret,
+    create_trustyai_service,
+    wait_for_mariadb_pods,
 )
-from utilities.logger import RedactedString
-from utilities.operator_utils import get_cluster_service_version
 from utilities.constants import (
-    KServeDeploymentType,
-    Labels,
-    OPENSHIFT_OPERATORS,
     MARIADB,
+    OPENSHIFT_OPERATORS,
     TRUSTYAI_SERVICE_NAME,
     Annotations,
+    KServeDeploymentType,
+    Labels,
 )
 from utilities.inference_utils import create_isvc
-from ocp_resources.resource import ResourceEditor
 from utilities.infra import create_inference_token, get_kserve_storage_initialize_image, update_configmap_data
+from utilities.logger import RedactedString
+from utilities.operator_utils import get_cluster_service_version
 
 DB_CREDENTIALS_SECRET_NAME: str = "db-credentials"
 DB_NAME: str = "trustyai_db"
@@ -229,7 +230,7 @@ def mariadb(
 @pytest.fixture(scope="class")
 def trustyai_db_ca_secret(
     admin_client: DynamicClient, model_namespace: Namespace, mariadb: MariaDB
-) -> Generator[Secret, Any, None]:
+) -> Generator[Secret, Any]:
     mariadb_ca_secret = Secret(
         client=admin_client, name=f"{mariadb.name}-ca", namespace=model_namespace.name, ensure_exists=True
     )

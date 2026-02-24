@@ -1,4 +1,5 @@
-from typing import Generator, Any
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 from _pytest.fixtures import FixtureRequest
@@ -11,7 +12,7 @@ from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 
-from utilities.constants import Labels, Annotations
+from utilities.constants import Annotations, Labels
 from utilities.guardrails import check_guardrails_health_endpoint
 
 GUARDRAILS_ORCHESTRATOR_NAME: str = "guardrails-orchestrator"
@@ -129,11 +130,15 @@ def guardrails_orchestrator_pod(
     model_namespace: Namespace,
     guardrails_orchestrator: GuardrailsOrchestrator,
 ) -> Pod:
-    return list(
-        Pod.get(
-            namespace=model_namespace.name, label_selector=f"app.kubernetes.io/instance={GUARDRAILS_ORCHESTRATOR_NAME}"
+    pods = Pod.get(
+        namespace=model_namespace.name, label_selector=f"app.kubernetes.io/instance={GUARDRAILS_ORCHESTRATOR_NAME}"
+    )
+    pod = next(iter(pods), None)
+    if pod is None:
+        raise RuntimeError(
+            f"No guardrails orchestrator pod found with label app.kubernetes.io/instance={GUARDRAILS_ORCHESTRATOR_NAME}"
         )
-    )[0]
+    return pod
 
 
 @pytest.fixture(scope="class")

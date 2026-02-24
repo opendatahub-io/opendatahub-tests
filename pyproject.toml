@@ -5,6 +5,9 @@ fix = true
 output-format = "grouped"
 extend-exclude = ["utilities/manifests"]
 
+[tool.ruff.lint]
+external = ["E501"]
+
 [tool.ruff.format]
 exclude = [".git", ".venv", ".mypy_cache", ".tox", "__pycache__", "utilities/manifests"]
 

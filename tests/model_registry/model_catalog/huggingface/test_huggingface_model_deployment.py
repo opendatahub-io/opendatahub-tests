@@ -2,8 +2,8 @@ import pytest
 import requests
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
-from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.namespace import Namespace
+from ocp_resources.serving_runtime import ServingRuntime
 from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.utils import get_hf_catalog_str

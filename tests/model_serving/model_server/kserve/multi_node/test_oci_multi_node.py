@@ -2,8 +2,8 @@ import pytest
 from simple_logger.logger import get_logger
 
 from tests.model_serving.model_server.utils import verify_inference_response
-from utilities.manifests.vllm import VLLM_INFERENCE_CONFIG
 from utilities.constants import Protocols
+from utilities.manifests.vllm import VLLM_INFERENCE_CONFIG
 
 pytestmark = [
     pytest.mark.rawdeployment,

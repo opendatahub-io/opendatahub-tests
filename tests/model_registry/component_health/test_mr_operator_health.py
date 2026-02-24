@@ -1,7 +1,6 @@
-from simple_logger.logger import get_logger
-
 import pytest
 from ocp_utilities.monitoring import Prometheus
+from simple_logger.logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

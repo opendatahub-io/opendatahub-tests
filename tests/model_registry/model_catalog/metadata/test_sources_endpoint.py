@@ -1,5 +1,4 @@
 import pytest
-
 from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.constants import REDHAT_AI_CATALOG_ID

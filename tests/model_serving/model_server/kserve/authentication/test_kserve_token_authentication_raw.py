@@ -2,8 +2,7 @@ import pytest
 from ocp_resources.resource import ResourceEditor
 
 from tests.model_serving.model_server.utils import verify_inference_response
-from utilities.constants import Protocols
-from utilities.constants import Annotations
+from utilities.constants import Annotations, Protocols
 from utilities.inference_utils import Inference, UserInference
 from utilities.infra import check_pod_status_in_time, get_pods_by_isvc_label
 from utilities.jira import is_jira_open

@@ -6,30 +6,30 @@ from timeout_sampler import retry
 
 from tests.model_explainability.guardrails.constants import (
     AUTOCONFIG_DETECTOR_LABEL,
+    AUTOCONFIG_GATEWAY_ENDPOINT,
+    CHAT_COMPLETIONS_DETECTION_ENDPOINT,
+    HAP_DETECTOR,
+    HAP_INPUT_DETECTION_PROMPT,
+    HARMLESS_PROMPT,
+    PII_ENDPOINT,
     PII_INPUT_DETECTION_PROMPT,
     PII_OUTPUT_DETECTION_PROMPT,
-    PROMPT_INJECTION_INPUT_DETECTION_PROMPT,
-    HAP_INPUT_DETECTION_PROMPT,
-    PII_ENDPOINT,
-    HARMLESS_PROMPT,
     PROMPT_INJECTION_DETECTOR,
-    HAP_DETECTOR,
-    CHAT_COMPLETIONS_DETECTION_ENDPOINT,
+    PROMPT_INJECTION_INPUT_DETECTION_PROMPT,
     STANDALONE_DETECTION_ENDPOINT,
-    AUTOCONFIG_GATEWAY_ENDPOINT,
 )
 from tests.model_explainability.guardrails.utils import (
     create_detector_config,
-    verify_health_info_response,
-    send_and_verify_unsuitable_input_detection,
-    send_and_verify_unsuitable_output_detection,
     send_and_verify_negative_detection,
     send_and_verify_standalone_detection,
+    send_and_verify_unsuitable_input_detection,
+    send_and_verify_unsuitable_output_detection,
+    verify_health_info_response,
 )
 from tests.model_explainability.utils import validate_tai_component_images
 from utilities.constants import (
-    LLM_D_CHAT_GENERATION_CONFIG,
     BUILTIN_DETECTOR_CONFIG,
+    LLM_D_CHAT_GENERATION_CONFIG,
     LLMdInferenceSimConfig,
     Timeout,
 )

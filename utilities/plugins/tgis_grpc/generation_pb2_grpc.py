@@ -2,6 +2,7 @@
 """Client and server classes corresponding to protobuf-defined services."""
 
 import grpc
+
 from utilities.plugins.tgis_grpc import generation_pb2 as generation__pb2
 
 GRPC_GENERATED_VERSION = "1.68.1"
@@ -25,7 +26,7 @@ if _version_not_supported:
     )
 
 
-class GenerationServiceStub(object):
+class GenerationServiceStub:
     """Missing associated documentation comment in .proto file."""
 
     def __init__(self, channel):  # type: ignore
@@ -60,7 +61,7 @@ class GenerationServiceStub(object):
         )
 
 
-class GenerationServiceServicer(object):
+class GenerationServiceServicer:
     """Missing associated documentation comment in .proto file."""
 
     def Generate(self, request, context):  # type: ignore
@@ -117,7 +118,7 @@ def add_GenerationServiceServicer_to_server(servicer, server):  # type: ignore
 
 
 # This class is part of an EXPERIMENTAL API.
-class GenerationService(object):
+class GenerationService:
     """Missing associated documentation comment in .proto file."""
 
     @staticmethod

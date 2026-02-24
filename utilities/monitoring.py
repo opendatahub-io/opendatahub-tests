@@ -1,4 +1,5 @@
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from ocp_resources.prometheus import Prometheus
 from simple_logger.logger import get_logger

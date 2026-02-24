@@ -1,11 +1,13 @@
 import copy
 from typing import Any
+
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.template import Template
-from utilities.constants import ApiGroups, PortNames, Protocols, vLLM_CONFIG
 from pytest_testconfig import config as py_config
+
+from utilities.constants import ApiGroups, PortNames, Protocols, vLLM_CONFIG
 
 
 class ServingRuntimeFromTemplate(ServingRuntime):
@@ -181,7 +183,7 @@ class ServingRuntimeFromTemplate(ServingRuntime):
                 container["image"] = self.runtime_image
 
             # Support single entrypoint for TGIS and OpenAI
-            if self.support_tgis_open_ai_endpoints:
+            if self.support_tgis_open_ai_endpoints:  # noqa: SIM102
                 if "vllm" in self.template_name and self.runtime_image is not None and self.deployment_type is not None:
                     is_grpc = "grpc" in self.deployment_type.lower()
                     is_raw = "raw" in self.deployment_type.lower()

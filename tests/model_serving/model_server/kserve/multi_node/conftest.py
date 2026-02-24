@@ -1,4 +1,5 @@
-from typing import Any, Generator
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 from _pytest.fixtures import FixtureRequest
@@ -17,7 +18,7 @@ from timeout_sampler import TimeoutSampler
 from tests.model_serving.model_server.kserve.multi_node.utils import (
     delete_multi_node_pod_by_role,
 )
-from utilities.constants import KServeDeploymentType, Labels, Protocols, Timeout, ModelCarImage
+from utilities.constants import KServeDeploymentType, Labels, ModelCarImage, Protocols, Timeout
 from utilities.general import download_model_data
 from utilities.inference_utils import create_isvc
 from utilities.infra import (
@@ -30,7 +31,7 @@ from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 @pytest.fixture(scope="session")
 def nvidia_gpu_nodes(nodes: list[Node]) -> list[Node]:
-    return [node for node in nodes if "nvidia.com/gpu.present" in node.labels.keys()]
+    return [node for node in nodes if "nvidia.com/gpu.present" in node.labels]
 
 
 @pytest.fixture(scope="session")
@@ -233,7 +234,7 @@ def ray_tls_secret(unprivileged_client: DynamicClient, multi_node_inference_serv
 @pytest.fixture()
 def deleted_serving_runtime(
     multi_node_serving_runtime: ServingRuntime,
-) -> Generator[None, Any, None]:
+) -> Generator[None, Any]:
     multi_node_serving_runtime.clean_up()
 
     yield

@@ -1,30 +1,29 @@
-import pytest
 import random
+from typing import Any, Self
 
+import pytest
 import yaml
-from kubernetes.dynamic import DynamicClient
 from dictdiffer import diff
-from ocp_resources.deployment import Deployment
-from simple_logger.logger import get_logger
-from typing import Self, Any
-from timeout_sampler import TimeoutSampler
+from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
-
-from ocp_resources.pod import Pod
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.deployment import Deployment
+from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 from ocp_resources.service import Service
+from simple_logger.logger import get_logger
+from timeout_sampler import TimeoutSampler
 
-from tests.model_registry.constants import DEFAULT_MODEL_CATALOG_CM, DEFAULT_CUSTOM_MODEL_CATALOG
-from tests.model_registry.model_catalog.constants import REDHAT_AI_CATALOG_ID, CATALOG_CONTAINER, DEFAULT_CATALOGS
+from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
 from tests.model_registry.model_catalog.catalog_config.utils import (
+    extract_schema_fields,
+    get_validate_default_model_catalog_source,
+    validate_default_catalog,
     validate_model_catalog_enabled,
     validate_model_catalog_resource,
-    get_validate_default_model_catalog_source,
-    extract_schema_fields,
-    validate_default_catalog,
 )
-from tests.model_registry.utils import get_rest_headers, get_model_catalog_pod, execute_get_command
+from tests.model_registry.model_catalog.constants import CATALOG_CONTAINER, DEFAULT_CATALOGS, REDHAT_AI_CATALOG_ID
+from tests.model_registry.utils import execute_get_command, get_model_catalog_pod, get_rest_headers
 from utilities.user_utils import UserTestSession
 
 LOGGER = get_logger(name=__name__)
@@ -193,9 +192,7 @@ class TestModelCatalogDefault:
         assert result
         items_to_validate = []
         if pytestconfig.option.pre_upgrade or pytestconfig.option.post_upgrade:
-            for catalog in result:
-                if catalog["id"] in DEFAULT_CATALOGS.keys():
-                    items_to_validate.append(catalog)
+            items_to_validate.extend([catalog for catalog in result if catalog["id"] in DEFAULT_CATALOGS])
             assert len(items_to_validate) + 1 == len(result)
         else:
             items_to_validate = result

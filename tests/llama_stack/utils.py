@@ -1,32 +1,27 @@
+import os
+import tempfile
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
-from typing import Any, Callable, Dict, Generator, List, cast
+from typing import Any, cast
 
+import requests
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
-from llama_stack_client import LlamaStackClient, APIConnectionError, InternalServerError
+from llama_stack_client import APIConnectionError, InternalServerError, LlamaStackClient
 from llama_stack_client.types.vector_store import VectorStore
-
-from utilities.resources.llama_stack_distribution import LlamaStackDistribution
 from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
-from utilities.exceptions import UnexpectedResourceCountError
-
-
 from tests.llama_stack.constants import (
-    TORCHTUNE_TEST_EXPECTATIONS,
-    TurnExpectation,
-    ModelInfo,
-    ValidationResult,
     LLS_CORE_POD_FILTER,
+    TORCHTUNE_TEST_EXPECTATIONS,
+    ModelInfo,
+    TurnExpectation,
+    ValidationResult,
 )
-
-import os
-import tempfile
-
-import requests
-
+from utilities.exceptions import UnexpectedResourceCountError
+from utilities.resources.llama_stack_distribution import LlamaStackDistribution
 
 LOGGER = get_logger(name=__name__)
 
@@ -37,7 +32,7 @@ def create_llama_stack_distribution(
     name: str,
     namespace: str,
     replicas: int,
-    server: Dict[str, Any],
+    server: dict[str, Any],
     teardown: bool = True,
 ) -> Generator[LlamaStackDistribution, Any, Any]:
     """
@@ -47,7 +42,7 @@ def create_llama_stack_distribution(
     # Starting with RHOAI 3.3, pods in the 'openshift-ingress' namespace must be allowed
     # to access the llama-stack-service. This is required for the llama_stack_test_route
     # to function properly.
-    network: Dict[str, Any] = {
+    network: dict[str, Any] = {
         "allowedFrom": {
             "namespaces": ["openshift-ingress"],
         },
@@ -108,19 +103,19 @@ def wait_for_llama_stack_client_ready(client: LlamaStackClient) -> bool:
             f"vector_stores:{len(vector_stores.data)} "
             f"files:{len(files.data)})"
         )
-        return True
+        return True  # noqa: TRY300
 
     except (APIConnectionError, InternalServerError) as error:
         LOGGER.debug(f"Llama Stack server not ready yet: {error}")
-        LOGGER.debug(f"Base URL: {client.base_url}, Error type: {type(error)}, Error details: {str(error)}")
+        LOGGER.debug(f"Base URL: {client.base_url}, Error type: {type(error)}, Error details: {error!s}")
         return False
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         LOGGER.warning(f"Unexpected error checking Llama Stack readiness: {e}")
         return False
 
 
-def get_torchtune_test_expectations() -> List[TurnExpectation]:
+def get_torchtune_test_expectations() -> list[TurnExpectation]:
     """
     Helper function to get the test expectations for TorchTune documentation questions.
 
@@ -171,7 +166,7 @@ def create_response_function(
 
 def validate_api_responses(
     response_fn: Callable[..., str],
-    test_cases: List[TurnExpectation],
+    test_cases: list[TurnExpectation],
     min_keywords_required: int = 1,
 ) -> ValidationResult:
     """

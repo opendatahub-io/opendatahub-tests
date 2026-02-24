@@ -1,4 +1,5 @@
-from typing import Any, Generator
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 import yaml
@@ -33,7 +34,6 @@ from utilities.infra import (
 )
 from utilities.logger import RedactedString
 from utilities.serving_runtime import ServingRuntimeFromTemplate
-
 
 LOGGER = get_logger(name=__name__)
 
@@ -511,7 +511,7 @@ def model_car_inference_service_fixture(
 def upgrade_user_workload_monitoring_config_map(
     admin_client: DynamicClient,
     cluster_monitoring_config: ConfigMap,
-) -> Generator[ConfigMap, None, None]:
+) -> Generator[ConfigMap]:
     """
     Session-scoped user workload monitoring ConfigMap for upgrade tests.
 

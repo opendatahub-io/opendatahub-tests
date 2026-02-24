@@ -2,10 +2,11 @@ import os
 import shlex
 import shutil
 
-from pytest_testconfig import config as py_config
-from pytest import Item
 from pyhelper_utils.shell import run_command
+from pytest import Item
+from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
+
 from utilities.exceptions import InvalidArgumentsError
 from utilities.infra import get_rhods_operator_installed_csv
 

@@ -1,8 +1,8 @@
 """Utility functions for Model Registry Python Client Signing Tests."""
 
 from tests.model_registry.model_registry.python_client.signing.constants import (
-    SECURESIGN_ORGANIZATION_NAME,
     SECURESIGN_ORGANIZATION_EMAIL,
+    SECURESIGN_ORGANIZATION_NAME,
 )
 
 

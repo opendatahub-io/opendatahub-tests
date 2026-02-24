@@ -16,7 +16,6 @@ from utilities.constants import Protocols
 from utilities.inference_utils import Inference
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
-
 pytestmark = [
     pytest.mark.rawdeployment,
     pytest.mark.metrics,

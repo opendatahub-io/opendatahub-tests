@@ -1,8 +1,10 @@
-from typing import Generator, Any
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.resource import ResourceEditor
+
 from utilities.constants import Annotations
 
 
