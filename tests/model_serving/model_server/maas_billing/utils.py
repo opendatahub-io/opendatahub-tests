@@ -68,14 +68,14 @@ def detect_scheme_via_llmisvc(client, namespace: str = "llm") -> str:
     """
     service = _first_ready_llmisvc(client=client, namespace=namespace)
     if not service:
-        return "http"
+        return "https"
 
     url = get_llm_inference_url(llm_service=service)
     scheme = (urlparse(url).scheme or "").lower()
     if scheme in ("http", "https"):
         return scheme
 
-    return "http"
+    return "https"
 
 
 def maas_auth_headers(token: str) -> Dict[str, str]:
