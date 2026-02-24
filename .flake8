@@ -35,6 +35,7 @@ fcn_exclude_functions =
     group
     writelines
     temp_file
+    sleep
 
 enable-extensions =
     FCN,

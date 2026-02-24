@@ -50,7 +50,7 @@ COMPLETION_QUERY: list[dict[str, str]] = [
     {"text": "Explain the significance of the Great Wall of China in history and its impact on modern tourism."},
     {"text": "Discuss the ethical implications of using artificial intelligence in healthcare decision-making."},
     {
-        "text": "Summarize the main events of the Apollo 11 moon landing and its importance in space exploration history."  # noqa: 501
+        "text": "Summarize the main events of the Apollo 11 moon landing and its importance in space exploration history."  # noqa: E501
     },
 ]
 
@@ -79,7 +79,7 @@ EMBEDDING_QUERY: list[dict[str, str]] = [
     {"text": "Explain the significance of the Great Wall of China in history and its impact on modern tourism."},
     {"text": "Discuss the ethical implications of using artificial intelligence in healthcare decision-making."},
     {
-        "text": "Summarize the main events of the Apollo 11 moon landing and its importance in space exploration history."  # noqa: 501
+        "text": "Summarize the main events of the Apollo 11 moon landing and its importance in space exploration history."  # noqa: E501
     },
 ]
 

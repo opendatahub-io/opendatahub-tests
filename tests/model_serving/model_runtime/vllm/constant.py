@@ -69,11 +69,11 @@ CHAT_QUERY: list[list[dict[str, str]]] = [
     ],
 ]
 
-IMAGE_URL_SCENERY: str = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"  # noqa: 501
+IMAGE_URL_SCENERY: str = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"  # noqa: E501
 IMAGE_URL_DUCK: str = (
     "https://upload.wikimedia.org/wikipedia/commons/d/da/2015_Kaczka_krzy%C5%BCowka_w_wodzie_%28samiec%29.jpg"
 )
-IMAGE_URL_LION: str = "https://upload.wikimedia.org/wikipedia/commons/7/77/002_The_lion_king_Snyggve_in_the_Serengeti_National_Park_Photo_by_Giles_Laurent.jpg"  # noqa: 501
+IMAGE_URL_LION: str = "https://upload.wikimedia.org/wikipedia/commons/7/77/002_The_lion_king_Snyggve_in_the_Serengeti_National_Park_Photo_by_Giles_Laurent.jpg"  # noqa: E501
 
 MULTI_IMAGE_QUERIES: list[list[dict[Any, Any]]] = [
     [
@@ -125,7 +125,7 @@ LIGHTSPEED_TOOL_QUERY: list[list[dict[Any, Any]]] = [
             "content": [
                 {
                     "type": "text",
-                    "text": "You are a helpful assistant with access to the following\nfunction calls. Your task is to produce a list of function calls\nnecessary to generate response to the user utterance. Use the following\nfunction calls as required.",  # noqa: 501
+                    "text": "You are a helpful assistant with access to the following\nfunction calls. Your task is to produce a list of function calls\nnecessary to generate response to the user utterance. Use the following\nfunction calls as required.",  # noqa: E501
                 }
             ],
         },
@@ -197,7 +197,7 @@ MATH_CHAT_QUERY: list[list[dict[str, str]]] = [
         },
         {
             "role": "user",
-            "content": "What is the sum of numbers between 1 and 123 using the formula n(n+1)/2? Explain it using chain-of-thought and solve with code",  # noqa: 501
+            "content": "What is the sum of numbers between 1 and 123 using the formula n(n+1)/2? Explain it using chain-of-thought and solve with code",  # noqa: E501
         },
     ],
 ]
@@ -221,7 +221,7 @@ COMPLETION_QUERY_JAPANESE: list[dict[str, str]] = [
         "text": "小説に登場させる魔法使いのキャラクターを考えています。主人公の師となるようなキャラクターの案を背景を含めて考えてください。"
     },
     {
-        "text": "日本国内で観光に行きたいと思っています。東京、名古屋、大阪、京都、福岡の特徴を表にまとめてください。列名は「都道府県」「おすすめスポット」「おすすめグルメ」にしてください。"  # noqa: 501
+        "text": "日本国内で観光に行きたいと思っています。東京、名古屋、大阪、京都、福岡の特徴を表にまとめてください。列名は「都道府県」「おすすめスポット」「おすすめグルメ」にしてください。"  # noqa: E501
     },
 ]
 
@@ -240,7 +240,7 @@ CHAT_QUERY_JAPANESE: list[list[dict[str, str]]] = [
         },
         {
             "role": "user",
-            "content": "ルービックキューブをセンター試験の会場で、休憩時間に回そうと思っています。このような行動をしたときに周囲の人たちが感じるであろう感情について、3パターン程度述べてください。",  # noqa: 501
+            "content": "ルービックキューブをセンター試験の会場で、休憩時間に回そうと思っています。このような行動をしたときに周囲の人たちが感じるであろう感情について、3パターン程度述べてください。",  # noqa: E501
         },
     ],
 ]
