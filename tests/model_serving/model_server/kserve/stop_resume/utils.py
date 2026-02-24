@@ -33,7 +33,7 @@ def consistently_verify_no_pods_exist(
             # Nested timeout samplers can cause false negatives if the internal sampler has
             # a timeout that is greater than the external sampler.
             # So we iterate and sleep here instead.
-            time.sleep(seconds=interval)
+            time.sleep(interval)
     except TimeoutExpiredError:
         return False
     return True
