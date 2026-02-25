@@ -139,6 +139,7 @@ class ApiGroups:
     OPENDATAHUB_IO: str = "opendatahub.io"
     KSERVE: str = "serving.kserve.io"
     KUADRANT_IO: str = "kuadrant.io"
+    MAAS_IO: str = "maas.opendatahub.io"
 
 
 class Annotations:
