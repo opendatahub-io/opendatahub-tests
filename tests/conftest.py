@@ -48,6 +48,7 @@ from utilities.constants import (
     MinIo,
     OCIRegistry,
     Protocols,
+    RuntimeTemplates,
     Timeout,
 )
 from utilities.data_science_cluster_utils import update_components_in_dsc
@@ -65,6 +66,7 @@ from utilities.logger import RedactedString
 from utilities.mariadb_utils import wait_for_mariadb_operator_deployments
 from utilities.minio import create_minio_data_connection_secret
 from utilities.operator_utils import get_cluster_service_version, get_csv_related_images
+from utilities.serving_runtime import get_runtime_image_from_template
 from utilities.user_utils import get_byoidc_issuer_url, get_oidc_tokens
 
 LOGGER = get_logger(name=__name__)
@@ -329,20 +331,14 @@ def triton_runtime_image(pytestconfig: pytest.Config) -> str:
 
 
 @pytest.fixture(scope="session")
-def ovms_runtime_image(pytestconfig: pytest.Config) -> str:
+def ovms_runtime_image(pytestconfig: pytest.Config, admin_client: DynamicClient) -> str:
     """Return OVMS runtime image from --ovms-runtime-image or cluster template."""
-    from ocp_resources.resource import get_client
-
-    from utilities.constants import RuntimeTemplates
-    from utilities.serving_runtime import get_runtime_image_from_template
-
     runtime_image = pytestconfig.option.ovms_runtime_image
     if runtime_image:
         return runtime_image
-    client = get_client()
     namespace = py_config["applications_namespace"]
     return get_runtime_image_from_template(
-        client=client,
+        client=admin_client,
         template_name=RuntimeTemplates.OVMS_KSERVE,
         namespace=namespace,
     )

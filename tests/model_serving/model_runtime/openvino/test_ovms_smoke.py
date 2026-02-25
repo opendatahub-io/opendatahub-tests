@@ -12,7 +12,6 @@ How the Pod works:
 """
 
 import pytest
-from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 
 
@@ -30,7 +29,7 @@ class TestOVMSSmokeInOpenShift:
     with optional image override via --ovms-runtime-image.
     """
 
-    def test_ovms_smoke_runs_in_openshift(self, model_namespace: Namespace, ovms_smoke_pod: Pod) -> None:
+    def test_ovms_smoke_runs_in_openshift(self, ovms_smoke_pod: Pod) -> None:
         """
         OVMS smoke scripts run successfully inside an OpenShift Pod.
 
@@ -39,7 +38,6 @@ class TestOVMSSmokeInOpenShift:
         then the Pod completes with phase Succeeded and the test passes.
 
         Args:
-            model_namespace: The Kubernetes namespace for the test.
             ovms_smoke_pod: The completed Kubernetes Pod that ran the smoke scripts.
         """
         assert ovms_smoke_pod.instance.status.phase == "Succeeded", (

@@ -27,7 +27,7 @@ def get_runtime_image_from_template(
         str: Container image from the first container in the template
 
     Raises:
-        ResourceNotFoundError: If the template is not found or has no containers
+        ResourceNotFoundError: If the template is not found, has no objects, or has no containers
     """
     template = Template(
         client=client,
@@ -37,7 +37,10 @@ def get_runtime_image_from_template(
     if not template.exists:
         raise ResourceNotFoundError(f"{template_name} template not found in namespace {namespace}")
 
-    model_dict: dict[str, Any] = template.instance.objects[0].to_dict()
+    objects = template.instance.objects
+    if not objects:
+        raise ResourceNotFoundError(f"{template_name} template has no objects")
+    model_dict: dict[str, Any] = objects[0].to_dict()
     containers = model_dict.get("spec", {}).get("containers", [])
 
     if not containers:
