@@ -7,6 +7,7 @@ from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.service_account import ServiceAccount
 from pytest_testconfig import config as py_config
+from simple_logger.logger import get_logger
 
 from tests.model_serving.model_server.maas_billing.maas_subscription.utils import (
     patch_llmisvc_with_maas_router_and_tiers,
@@ -15,10 +16,12 @@ from tests.model_serving.model_server.maas_billing.utils import build_maas_heade
 from utilities.infra import create_inference_token, login_with_user_password
 from utilities.llmd_constants import ContainerImages, ModelStorage
 from utilities.llmd_utils import create_llmisvc
-from utilities.plugins.constant import OpenAIEnpoints
+from utilities.plugins.constant import OpenAIEnpoints, RestHeader
 from utilities.resources.maa_s_auth_policy import MaaSAuthPolicy
 from utilities.resources.maa_s_model import MaaSModel
 from utilities.resources.maa_s_subscription import MaaSSubscription
+
+LOGGER = get_logger(__name__)
 
 CHAT_COMPLETIONS = OpenAIEnpoints.CHAT_COMPLETIONS
 
@@ -240,6 +243,7 @@ def model_url_tinyllama_free(
 ) -> str:
     deployment_name = maas_inference_service_tinyllama_free.name
     url = f"{maas_scheme}://{maas_host}/llm/{deployment_name}{CHAT_COMPLETIONS}"
+    LOGGER.info("MaaS: constructed model_url=%s (deployment=%s)", url, deployment_name)
     return url
 
 
@@ -251,6 +255,7 @@ def model_url_tinyllama_premium(
 ) -> str:
     deployment_name = maas_inference_service_tinyllama_premium.name
     url = f"{maas_scheme}://{maas_host}/llm/{deployment_name}{CHAT_COMPLETIONS}"
+    LOGGER.info("MaaS: constructed model_url=%s (deployment=%s)", url, deployment_name)
     return url
 
 
