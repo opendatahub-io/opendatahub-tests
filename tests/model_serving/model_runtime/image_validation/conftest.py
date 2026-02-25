@@ -83,7 +83,7 @@ def _serving_runtime_and_isvc(
     runtime_name: str,
     isvc_name: str,
     template_name: str,
-) -> Generator[InferenceService]:
+) -> Generator[InferenceService, Any, Any]:
     """Create ServingRuntime from template and minimal InferenceService; yield ISVC."""
     with ServingRuntimeFromTemplate(
         client=admin_client,
@@ -135,6 +135,3 @@ def _wait_for_isvc_pods(
     ):
         if pods:
             return pods
-    raise TimeoutError(
-        f"No pods found for InferenceService {isvc.name} in namespace {isvc.namespace} within {timeout}s"
-    )
