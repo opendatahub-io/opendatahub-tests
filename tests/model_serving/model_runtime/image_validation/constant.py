@@ -1,13 +1,10 @@
 """Constants for serving runtime image validation tests."""
 
-from utilities.constants import RuntimeTemplates, Timeout
+from utilities.constants import RuntimeTemplates
 
 # Placeholder storage URI so the controller creates Deployment/Pod with runtime image.
 # No actual model or inference is required; pod phase does not need to be Ready.
 PLACEHOLDER_STORAGE_URI = "s3://dummy-bucket/dummy/"
-
-# Time to wait for at least one pod to be created for the InferenceService.
-POD_WAIT_TIMEOUT = Timeout.TIMEOUT_5MIN
 
 # Runtime configs: display name (for "name : passed") and template name.
 # For each we create ServingRuntime + InferenceService, wait for pod(s), validate, then teardown.
