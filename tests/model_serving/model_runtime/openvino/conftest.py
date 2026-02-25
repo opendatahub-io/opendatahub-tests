@@ -9,10 +9,10 @@ This module provides fixtures for:
 - OVMS smoke test Pod and ConfigMap for in-cluster script execution
 """
 
-from pathlib import Path
-from typing import cast, Any, Generator
 import copy
 from collections.abc import Generator
+from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from kubernetes.dynamic import DynamicClient
@@ -199,6 +199,7 @@ def openvino_pod_resource(
         raise ResourceNotFoundError(f"No pods found for InferenceService {openvino_inference_service.name}")
     return pods[0]
 
+
 def _load_ovms_smoke_scripts_data() -> dict[str, str]:
     """Load smoke script file contents for ConfigMap data."""
     data: dict[str, str] = {}
@@ -212,7 +213,7 @@ def _load_ovms_smoke_scripts_data() -> dict[str, str]:
 def ovms_smoke_scripts_configmap(
     admin_client: DynamicClient,
     model_namespace: Namespace,
-) -> Generator[ConfigMap, None, None]:
+) -> Generator[ConfigMap]:
     """
     ConfigMap containing OVMS smoke test scripts to run inside the container.
 
@@ -239,7 +240,7 @@ def ovms_smoke_pod(
     model_namespace: Namespace,
     ovms_runtime_image: str,
     ovms_smoke_scripts_configmap: ConfigMap,
-) -> Generator[Pod, None, None]:
+) -> Generator[Pod]:
     """
     Pod that runs OVMS smoke scripts inside OpenShift using the OVMS runtime image.
 
@@ -256,8 +257,7 @@ def ovms_smoke_pod(
         Pod: The completed Pod resource (phase Succeeded when both scripts exit 0).
     """
     run_cmd = (
-        f"python {OVMS_SMOKE_SCRIPTS_MOUNT_PATH}/ovms_smoketest.py && "
-        f"python {OVMS_SMOKE_SCRIPTS_MOUNT_PATH}/smoke.py"
+        f"python {OVMS_SMOKE_SCRIPTS_MOUNT_PATH}/ovms_smoketest.py && python {OVMS_SMOKE_SCRIPTS_MOUNT_PATH}/smoke.py"
     )
     # Use writable dirs under /tmp so non-root container can cache models and configs.
     # HF_HOME is the preferred cache for Hugging Face (TRANSFORMERS_CACHE is deprecated in v5).

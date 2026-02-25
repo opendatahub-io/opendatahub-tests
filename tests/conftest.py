@@ -327,10 +327,12 @@ def triton_runtime_image(pytestconfig: pytest.Config) -> str:
         return TRITON_IMAGE
     return runtime_image
 
+
 @pytest.fixture(scope="session")
 def ovms_runtime_image(pytestconfig: pytest.Config) -> str:
     """Return OVMS runtime image from --ovms-runtime-image or cluster template."""
     from ocp_resources.resource import get_client
+
     from utilities.constants import RuntimeTemplates
     from utilities.serving_runtime import get_runtime_image_from_template
 

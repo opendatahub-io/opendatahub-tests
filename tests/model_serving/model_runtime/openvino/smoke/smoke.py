@@ -1,6 +1,6 @@
 #!/bin/env python3
 
-from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 
 #
 # Explanation of What This Verifies:
@@ -18,7 +18,7 @@ model = AutoModelForCausalLM.from_pretrained(model_name)
 
 # Test tokenization explicitly
 test_text = "The transformers library on RHEL 9"
-encoded = tokenizer.encode(test_text, return_tensors='pt')
+encoded = tokenizer.encode(test_text, return_tensors="pt")
 decoded = tokenizer.decode(encoded[0])
 
 print("Original text:", test_text)
@@ -29,4 +29,4 @@ text_generator = pipeline("text-generation", model=model, tokenizer=tokenizer)
 generated_text = text_generator(test_text, max_length=30, num_return_sequences=1)
 
 print("\nGenerated text example:")
-print(generated_text[0]['generated_text'])
+print(generated_text[0]["generated_text"])
