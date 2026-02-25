@@ -1,4 +1,5 @@
-from typing import Generator, Any
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 from kubernetes.dynamic import DynamicClient
@@ -35,7 +36,7 @@ def dataset_pvc(admin_client, model_namespace) -> Generator[PersistentVolumeClai
 @pytest.fixture(scope="class")
 def dataset_upload(
     admin_client: DynamicClient, model_namespace: Namespace, dataset_pvc: PersistentVolumeClaim
-) -> Generator[dict[str, Any], None, None]:
+) -> Generator[dict[str, Any]]:
     """
     Copies dataset files from an image into the PVC at the location expected by LM-Eval
     """

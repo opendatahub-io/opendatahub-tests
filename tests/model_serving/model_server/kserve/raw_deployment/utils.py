@@ -1,6 +1,7 @@
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.inference_service import InferenceService
+
 from utilities.constants import Timeout
 from utilities.infra import get_model_route
 

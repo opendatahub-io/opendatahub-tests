@@ -8,24 +8,23 @@ This module provides fixtures for:
 - Providing test utilities like snapshots and pod resources
 """
 
-from typing import Any, Generator, cast
 import copy
+from collections.abc import Generator
+from typing import Any, cast
 
 import pytest
-from syrupy.extensions.json import JSONSnapshotExtension
-
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.namespace import Namespace
-from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.inference_service import InferenceService
+from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
+from ocp_resources.serving_runtime import ServingRuntime
+from syrupy.extensions.json import JSONSnapshotExtension
 
 from tests.model_serving.model_runtime.mlserver.constant import (
     PREDICT_RESOURCES,
 )
-
 from utilities.constants import (
     KServeDeploymentType,
     Labels,
@@ -43,7 +42,7 @@ def mlserver_serving_runtime(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     mlserver_runtime_image: str,
-) -> Generator[ServingRuntime, None, None]:
+) -> Generator[ServingRuntime]:
     """
     Provides a ServingRuntime resource for MLServer using the pre-installed template.
 
@@ -75,7 +74,7 @@ def mlserver_inference_service(
     mlserver_serving_runtime: ServingRuntime,
     s3_models_storage_uri: str,
     mlserver_model_service_account: ServiceAccount,
-) -> Generator[InferenceService, None, None]:
+) -> Generator[InferenceService]:
     """
     Creates and yields a configured InferenceService instance for MLServer testing.
 
@@ -127,9 +126,7 @@ def mlserver_inference_service(
 
 
 @pytest.fixture(scope="class")
-def mlserver_model_service_account(
-    admin_client: DynamicClient, kserve_s3_secret: Secret
-) -> Generator[ServiceAccount, None, None]:
+def mlserver_model_service_account(admin_client: DynamicClient, kserve_s3_secret: Secret) -> Generator[ServiceAccount]:
     """
     Creates and yields a ServiceAccount linked to the provided S3 secret for MLServer models.
 

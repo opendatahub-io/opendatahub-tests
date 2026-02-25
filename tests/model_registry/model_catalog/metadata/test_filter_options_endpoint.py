@@ -1,6 +1,14 @@
-import pytest
 from typing import Self
+
+import pytest
+from kubernetes.dynamic import DynamicClient
 from simple_logger.logger import get_logger
+
+from tests.model_registry.model_catalog.db_constants import (
+    API_COMPUTED_FILTER_FIELDS,
+    API_EXCLUDED_FILTER_FIELDS,
+    FILTER_OPTIONS_DB_QUERY,
+)
 from tests.model_registry.model_catalog.metadata.utils import (
     compare_filter_options_with_database,
 )
@@ -8,14 +16,8 @@ from tests.model_registry.model_catalog.utils import (
     execute_database_query,
     parse_psql_output,
 )
-from tests.model_registry.model_catalog.db_constants import (
-    FILTER_OPTIONS_DB_QUERY,
-    API_EXCLUDED_FILTER_FIELDS,
-    API_COMPUTED_FILTER_FIELDS,
-)
-from tests.model_registry.utils import get_rest_headers, execute_get_command
+from tests.model_registry.utils import execute_get_command, get_rest_headers
 from utilities.user_utils import UserTestSession
-from kubernetes.dynamic import DynamicClient
 
 LOGGER = get_logger(name=__name__)
 

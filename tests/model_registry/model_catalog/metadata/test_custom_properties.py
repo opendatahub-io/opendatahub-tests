@@ -1,16 +1,16 @@
-import pytest
 from typing import Any
 
+import pytest
 from kubernetes.dynamic import DynamicClient
 from simple_logger.logger import get_logger
 
-from tests.model_registry.model_catalog.constants import VALIDATED_CATALOG_ID, REDHAT_AI_CATALOG_ID
+from tests.model_registry.model_catalog.constants import REDHAT_AI_CATALOG_ID, VALIDATED_CATALOG_ID
 from tests.model_registry.model_catalog.metadata.utils import (
     extract_custom_property_values,
-    validate_custom_properties_match_metadata,
     get_metadata_from_catalog_pod,
+    validate_custom_properties_match_metadata,
 )
-from tests.model_registry.utils import get_model_catalog_pod, execute_get_command
+from tests.model_registry.utils import execute_get_command, get_model_catalog_pod
 
 LOGGER = get_logger(name=__name__)
 

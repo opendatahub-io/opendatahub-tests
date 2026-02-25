@@ -8,36 +8,37 @@ This suite tests various RBAC scenarios including:
 - Role and RoleBinding management
 """
 
+from collections.abc import Generator
+from typing import Self
+
 import pytest
-from typing import Self, Generator, List
-from simple_logger.logger import get_logger
-
+from kubernetes.dynamic import DynamicClient
 from model_registry import ModelRegistry as ModelRegistryClient
-from timeout_sampler import TimeoutSampler
-
+from mr_openapi.exceptions import ForbiddenException
 from ocp_resources.data_science_cluster import DataScienceCluster
+from ocp_resources.deployment import Deployment
 from ocp_resources.group import Group
+from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
-from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.service import Service
-from ocp_resources.deployment import Deployment
+from simple_logger.logger import get_logger
+from timeout_sampler import TimeoutSampler
+
+from tests.model_registry.constants import NUM_MR_INSTANCES
 from tests.model_registry.model_registry.rbac.multiple_instance_utils import MR_MULTIPROJECT_TEST_SCENARIO_PARAMS
 from tests.model_registry.model_registry.rbac.utils import (
-    build_mr_client_args,
-    assert_positive_mr_registry,
     assert_forbidden_access,
+    assert_positive_mr_registry,
+    build_mr_client_args,
+    grant_mr_access,
+    revoke_mr_access,
 )
-from tests.model_registry.constants import NUM_MR_INSTANCES
-from utilities.infra import get_openshift_token
-from mr_openapi.exceptions import ForbiddenException
-from utilities.user_utils import UserTestSession
-from kubernetes.dynamic import DynamicClient
-from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
-from tests.model_registry.utils import get_mr_service_by_label, get_endpoint_from_mr_service, get_mr_user_token
-from tests.model_registry.model_registry.rbac.utils import grant_mr_access, revoke_mr_access
+from tests.model_registry.utils import get_endpoint_from_mr_service, get_mr_service_by_label, get_mr_user_token
 from utilities.constants import Protocols
-
+from utilities.infra import get_openshift_token
+from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.user_utils import UserTestSession
 
 LOGGER = get_logger(name=__name__)
 pytestmark = [pytest.mark.usefixtures("original_user", "test_idp_user")]
@@ -84,7 +85,7 @@ class TestUserPermission:
         test_idp_user: UserTestSession,
         user_credentials_rbac: dict[str, str],
         model_registry_group_with_user: Group,
-        login_as_test_user: Generator[UserTestSession, None, None],
+        login_as_test_user: Generator[UserTestSession],
     ):
         """
         This test verifies that:
@@ -188,12 +189,12 @@ class TestUserMultiProjectPermission:
         admin_client: DynamicClient,
         updated_dsc_component_state_scope_session: DataScienceCluster,
         model_registry_namespace: str,
-        db_secret_parametrized: List[Secret],
-        db_pvc_parametrized: List[PersistentVolumeClaim],
-        db_service_parametrized: List[Service],
-        db_deployment_parametrized: List[Deployment],
+        db_secret_parametrized: list[Secret],
+        db_pvc_parametrized: list[PersistentVolumeClaim],
+        db_service_parametrized: list[Service],
+        db_deployment_parametrized: list[Deployment],
         user_credentials_rbac: dict[str, str],
-        model_registry_instance_parametrized: List[ModelRegistry],
+        model_registry_instance_parametrized: list[ModelRegistry],
         login_as_test_user: None,
     ):
         """

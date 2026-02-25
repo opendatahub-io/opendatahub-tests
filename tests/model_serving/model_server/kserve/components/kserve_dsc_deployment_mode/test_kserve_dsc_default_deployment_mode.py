@@ -35,7 +35,7 @@ INFERENCE_SERVICE_PARAMS = {
             {"name": "dsc-raw"},
             RUNTIME_PARAMS,
             {
-                **{"name": f"{ModelFormat.OPENVINO}-{KServeDeploymentType.RAW_DEPLOYMENT.lower()}"},
+                "name": f"{ModelFormat.OPENVINO}-{KServeDeploymentType.RAW_DEPLOYMENT.lower()}",
                 **INFERENCE_SERVICE_PARAMS,
             },
         )

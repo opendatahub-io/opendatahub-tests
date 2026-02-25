@@ -1,33 +1,36 @@
 """Fixtures for Model Registry Python Client Signing Tests."""
 
-from typing import Any, Generator
 import json
-import requests
+from collections.abc import Generator
+from typing import Any
+
 import pytest
+import requests
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.subscription import Subscription
-from ocp_resources.namespace import Namespace
-from ocp_resources.deployment import Deployment
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.deployment import Deployment
+from ocp_resources.namespace import Namespace
+from ocp_resources.subscription import Subscription
 from ocp_utilities.operators import install_operator, uninstall_operator
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
-from timeout_sampler import TimeoutSampler, TimeoutExpiredError
-from utilities.constants import Timeout, OPENSHIFT_OPERATORS
-from utilities.infra import get_openshift_token
-from utilities.resources.securesign import Securesign
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
+
 from tests.model_registry.model_registry.python_client.signing.constants import (
-    SECURESIGN_NAMESPACE,
-    SECURESIGN_NAME,
     SECURESIGN_API_VERSION,
+    SECURESIGN_NAME,
+    SECURESIGN_NAMESPACE,
     TAS_CONNECTION_TYPE_NAME,
 )
 from tests.model_registry.model_registry.python_client.signing.utils import (
-    get_organization_config,
-    is_securesign_ready,
-    get_tas_service_urls,
     create_connection_type_field,
+    get_organization_config,
+    get_tas_service_urls,
+    is_securesign_ready,
 )
+from utilities.constants import OPENSHIFT_OPERATORS, Timeout
+from utilities.infra import get_openshift_token
+from utilities.resources.securesign import Securesign
 
 LOGGER = get_logger(name=__name__)
 
@@ -61,7 +64,7 @@ def oidc_issuer_url(admin_client: DynamicClient, api_server_url: str) -> str:
 
 
 @pytest.fixture(scope="class")
-def installed_tas_operator(admin_client: DynamicClient) -> Generator[None, Any, None]:
+def installed_tas_operator(admin_client: DynamicClient) -> Generator[None, Any]:
     """Install Red Hat Trusted Artifact Signer (RHTAS/TAS) operator if not already installed.
 
     This fixture checks if TAS operator subscription exists in openshift-operators
@@ -124,7 +127,7 @@ def installed_tas_operator(admin_client: DynamicClient) -> Generator[None, Any, 
 @pytest.fixture(scope="class")
 def securesign_instance(
     admin_client: DynamicClient, installed_tas_operator: None, oidc_issuer_url: str
-) -> Generator[Securesign, Any, None]:
+) -> Generator[Securesign, Any]:
     """Create a Securesign instance with all Sigstore components in the trusted-artifact-signer namespace
 
     with the following components enabled:
@@ -216,9 +219,7 @@ def securesign_instance(
 
 
 @pytest.fixture(scope="class")
-def tas_connection_type(
-    admin_client: DynamicClient, securesign_instance: Securesign
-) -> Generator[ConfigMap, Any, None]:
+def tas_connection_type(admin_client: DynamicClient, securesign_instance: Securesign) -> Generator[ConfigMap, Any]:
     """Create ODH Connection Type ConfigMap for TAS (Trusted Artifact Signer).
 
     Provides TAS service endpoints for programmatic access to signing services.

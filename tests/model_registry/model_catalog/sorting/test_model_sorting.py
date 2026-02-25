@@ -1,16 +1,18 @@
-import pytest
 from typing import Self
+
+import pytest
+from kubernetes.dynamic import DynamicClient
 from simple_logger.logger import get_logger
+
 from tests.model_registry.model_catalog.constants import (
     REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
     VALIDATED_CATALOG_ID,
 )
-from tests.model_registry.model_catalog.utils import get_models_from_catalog_api
 from tests.model_registry.model_catalog.sorting.utils import (
-    validate_accuracy_sorting_against_database,
     get_model_latencies,
+    validate_accuracy_sorting_against_database,
 )
-from kubernetes.dynamic import DynamicClient
+from tests.model_registry.model_catalog.utils import get_models_from_catalog_api
 
 LOGGER = get_logger(name=__name__)
 

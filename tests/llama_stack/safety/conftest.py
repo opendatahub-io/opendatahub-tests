@@ -1,7 +1,8 @@
 import os
 import subprocess
 from base64 import b64encode
-from typing import Generator, Any
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 from kubernetes.dynamic import DynamicClient
@@ -24,6 +25,7 @@ def guardrails_orchestrator_ssl_cert(guardrails_orchestrator_route: Route):
             capture_output=True,
             text=True,
             timeout=30,
+            check=False,
         )
 
         if result.returncode != 0 and "CONNECTED" not in result.stdout:
@@ -46,9 +48,9 @@ def guardrails_orchestrator_ssl_cert(guardrails_orchestrator_route: Route):
         with open(filepath, "w") as f:
             f.write("\n".join(cert_lines))
 
-        return filepath
+        return filepath  # noqa: TRY300
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise RuntimeError(f"Could not get certificate from {hostname}: {e}")
 
 
@@ -57,7 +59,7 @@ def guardrails_orchestrator_ssl_cert_secret(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     guardrails_orchestrator_ssl_cert: str,  # ← Add dependency and use correct cert
-) -> Generator[Secret, Any, None]:
+) -> Generator[Secret, Any]:
     with open(guardrails_orchestrator_ssl_cert, "r") as f:
         cert_content = f.read()
 

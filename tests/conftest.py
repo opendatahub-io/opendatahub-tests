@@ -1,70 +1,71 @@
 import base64
 import binascii
+import json
 import os
 import shutil
 from ast import literal_eval
-from typing import Any, Callable, Generator
+from collections.abc import Callable, Generator
+from typing import Any
+
 import pytest
-from ocp_resources.route import Route
-from semver import Version
 import shortuuid
 import yaml
 from _pytest._py.path import LocalPath
 from _pytest.legacypath import TempdirFactory
 from _pytest.tmpdir import TempPathFactory
+from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
-
+from ocp_resources.authentication_config_openshift_io import Authentication
 from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.cluster_version import ClusterVersion
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.dsc_initialization import DSCInitialization
 from ocp_resources.mariadb_operator import MariadbOperator
+from ocp_resources.namespace import Namespace
 from ocp_resources.node import Node
 from ocp_resources.pod import Pod
+from ocp_resources.resource import get_client
+from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.subscription import Subscription
 from ocp_utilities.monitoring import Prometheus
+from ocp_utilities.operators import install_operator, uninstall_operator
 from pyhelper_utils.shell import run_command
-from pytest import FixtureRequest, Config
-from kubernetes.dynamic import DynamicClient
-from ocp_resources.data_science_cluster import DataScienceCluster
-from ocp_resources.namespace import Namespace
-from ocp_resources.resource import get_client
+from pytest import Config, FixtureRequest
 from pytest_testconfig import config as py_config
+from semver import Version
 from simple_logger.logger import get_logger
-import json
 
-from ocp_utilities.operators import uninstall_operator, install_operator
 from utilities.certificates_utils import create_ca_bundle_file
-from utilities.data_science_cluster_utils import update_components_in_dsc
-from utilities.exceptions import ClusterLoginError
-from utilities.infra import (
-    verify_cluster_sanity,
-    create_ns,
-    login_with_user_password,
-    get_openshift_token,
-    download_oc_console_cli,
-    get_cluster_authentication,
-)
 from utilities.constants import (
+    OPENSHIFT_OPERATORS,
     AcceleratorType,
     DscComponents,
     Labels,
     MinIo,
+    OCIRegistry,
     Protocols,
     Timeout,
-    OPENSHIFT_OPERATORS,
-    OCIRegistry,
 )
-from utilities.infra import update_configmap_data
+from utilities.data_science_cluster_utils import update_components_in_dsc
+from utilities.exceptions import ClusterLoginError
+from utilities.infra import (
+    create_ns,
+    download_oc_console_cli,
+    get_cluster_authentication,
+    get_openshift_token,
+    login_with_user_password,
+    update_configmap_data,
+    verify_cluster_sanity,
+)
 from utilities.logger import RedactedString
 from utilities.mariadb_utils import wait_for_mariadb_operator_deployments
 from utilities.minio import create_minio_data_connection_secret
-from utilities.operator_utils import get_csv_related_images, get_cluster_service_version
-from ocp_resources.authentication_config_openshift_io import Authentication
-from utilities.user_utils import get_oidc_tokens, get_byoidc_issuer_url
+from utilities.operator_utils import get_cluster_service_version, get_csv_related_images
+from utilities.user_utils import get_byoidc_issuer_url, get_oidc_tokens
 
 LOGGER = get_logger(name=__name__)
 
@@ -83,7 +84,7 @@ def admin_client() -> DynamicClient:
 
 
 @pytest.fixture(scope="session")
-def tests_tmp_dir(request: FixtureRequest, tmp_path_factory: TempPathFactory) -> Generator[None, None, None]:
+def tests_tmp_dir(request: FixtureRequest, tmp_path_factory: TempPathFactory) -> Generator[None]:
     base_path = os.path.join(request.config.option.basetemp, "tests")
     tests_tmp_path = tmp_path_factory.mktemp(basename=base_path)
     py_config["tmp_base_dir"] = str(tests_tmp_path)
@@ -100,7 +101,7 @@ def current_client_token(admin_client: DynamicClient) -> str:
 def teardown_resources(pytestconfig: pytest.Config) -> bool:
     delete_resources = True
 
-    if pytestconfig.option.pre_upgrade:
+    if pytestconfig.option.pre_upgrade:  # noqa: SIM102
         if delete_resources := pytestconfig.option.delete_pre_upgrade_resources:
             LOGGER.warning("Upgrade resources will be deleted")
 
@@ -164,7 +165,7 @@ def registry_pull_secret(pytestconfig: Config) -> list[str]:
     try:
         for secret in registry_pull_secret:
             base64.b64decode(s=secret, validate=True)
-        return registry_pull_secret
+        return registry_pull_secret  # noqa: TRY300
     except binascii.Error:
         raise ValueError("Registry pull secret is not a valid base64 encoded string")
 
@@ -249,8 +250,8 @@ def modelcar_yaml_config(pytestconfig: pytest.Config) -> dict[str, Any] | None:
         try:
             modelcar_yaml = yaml.safe_load(file)
             if not isinstance(modelcar_yaml, dict):
-                raise ValueError("modelcar.yaml should contain a dictionary.")
-            return modelcar_yaml
+                raise ValueError("modelcar.yaml should contain a dictionary.")  # noqa: TRY004
+            return modelcar_yaml  # noqa: TRY300
         except yaml.YAMLError as e:
             raise ValueError(f"Error parsing modelcar.yaml: {e}") from e
 
@@ -356,7 +357,7 @@ def use_unprivileged_client(pytestconfig: pytest.Config) -> bool:
         return literal_eval(_use_unprivileged_client)
 
     else:
-        raise ValueError(
+        raise ValueError(  # noqa: TRY004
             "use_unprivileged_client is not defined.\n"
             "Either pass with `--use-unprivileged-client` or "
             "set in `use_unprivileged_client` in `tests/global_config.py`"
@@ -466,7 +467,9 @@ def unprivileged_client(
 
         # get the current context and modify the referenced user in place
         current_context_name = kubeconfig_content["current-context"]
-        current_context = [c for c in kubeconfig_content["contexts"] if c["name"] == current_context_name][0]
+        current_context = next((c for c in kubeconfig_content["contexts"] if c["name"] == current_context_name), None)
+        if current_context is None:
+            raise ValueError(f"Context '{current_context_name}' not found in kubeconfig")
         current_context["context"]["user"] = non_admin_user_password[0]
 
         unprivileged_client = get_client(
@@ -699,8 +702,7 @@ def prometheus(admin_client: DynamicClient) -> Prometheus:
 @pytest.fixture(scope="session")
 def related_images_refs(admin_client: DynamicClient) -> set[str]:
     related_images = get_csv_related_images(admin_client=admin_client)
-    related_images_refs = {img["image"] for img in related_images}
-    return related_images_refs
+    return {img["image"] for img in related_images}
 
 
 @pytest.fixture(scope="session")

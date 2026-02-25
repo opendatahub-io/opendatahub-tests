@@ -1,19 +1,22 @@
+from collections.abc import Generator
+from typing import Any
+
 import pytest
-from simple_logger.logger import get_logger
-from typing import List, Any, Generator
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
-from utilities.constants import KServeDeploymentType, Ports
+from simple_logger.logger import get_logger
+
+from tests.model_serving.model_runtime.vllm.constant import OPENAI_ENDPOINT_NAME, TGIS_ENDPOINT_NAME
 from tests.model_serving.model_runtime.vllm.utils import (
     run_raw_inference,
     validate_inference_output,
 )
-from tests.model_serving.model_runtime.vllm.constant import OPENAI_ENDPOINT_NAME, TGIS_ENDPOINT_NAME
+from utilities.constants import KServeDeploymentType, Ports
 
 LOGGER = get_logger(name=__name__)
 
 TIMEOUT_20MIN: str = 20 * 60
-SERVING_ARGUMENT: List[str] = [
+SERVING_ARGUMENT: list[str] = [
     "--model=/mnt/models/granite-7b-instruct",
     "--uvicorn-log-level=debug",
     "--dtype=float16",

@@ -1,34 +1,32 @@
+from collections.abc import Generator
+from typing import Any
+
 import pytest
-from typing import Generator, Any
-
 from _pytest.config import Config
-from pytest_testconfig import config as py_config
-
+from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_cluster import DataScienceCluster
+from ocp_resources.deployment import Deployment
+from ocp_resources.namespace import Namespace
+from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
-from ocp_resources.namespace import Namespace
 from ocp_resources.service import Service
-from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
-from ocp_resources.deployment import Deployment
-
-from kubernetes.dynamic import DynamicClient
-
+from pytest_testconfig import config as py_config
 
 from tests.model_registry.constants import (
-    MODEL_REGISTRY_DB_SECRET_STR_DATA,
-    MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
     DB_RESOURCE_NAME,
+    MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
+    MODEL_REGISTRY_DB_SECRET_STR_DATA,
     MR_INSTANCE_NAME,
 )
-from tests.model_registry.utils import get_model_registry_deployment_template_dict, get_model_registry_db_label_dict
+from tests.model_registry.model_registry.negative_tests.utils import (
+    create_mysql_credentials_file,
+    execute_mysql_command,
+)
+from tests.model_registry.utils import get_model_registry_db_label_dict, get_model_registry_deployment_template_dict
 from utilities.constants import MODEL_REGISTRY_CUSTOM_NAMESPACE
 from utilities.general import wait_for_pods_by_labels
 from utilities.infra import create_ns
-from tests.model_registry.model_registry.negative_tests.utils import (
-    execute_mysql_command,
-    create_mysql_credentials_file,
-)
 
 DB_RESOURCES_NAME_NEGATIVE = "db-model-registry-negative"
 

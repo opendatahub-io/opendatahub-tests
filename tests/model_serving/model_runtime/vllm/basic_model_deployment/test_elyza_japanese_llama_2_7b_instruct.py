@@ -1,18 +1,21 @@
+from collections.abc import Generator
+from typing import Any
+
 import pytest
-from simple_logger.logger import get_logger
-from typing import Any, Generator
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
-from utilities.constants import KServeDeploymentType
+from simple_logger.logger import get_logger
+
+from tests.model_serving.model_runtime.vllm.constant import (
+    BASE_RAW_DEPLOYMENT_CONFIG,
+    CHAT_QUERY_JAPANESE,
+    COMPLETION_QUERY_JAPANESE,
+)
 from tests.model_serving.model_runtime.vllm.utils import (
     validate_raw_openai_inference_request,
     validate_raw_tgis_inference_request,
 )
-from tests.model_serving.model_runtime.vllm.constant import (
-    COMPLETION_QUERY_JAPANESE,
-    CHAT_QUERY_JAPANESE,
-    BASE_RAW_DEPLOYMENT_CONFIG,
-)
+from utilities.constants import KServeDeploymentType
 
 LOGGER = get_logger(name=__name__)
 

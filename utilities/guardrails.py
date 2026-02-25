@@ -1,11 +1,10 @@
-import requests
 import http
-from typing import Dict
 
+import requests
 from timeout_sampler import retry
 
 
-def get_auth_headers(token: str) -> Dict[str, str]:
+def get_auth_headers(token: str) -> dict[str, str]:
     return {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
 
 

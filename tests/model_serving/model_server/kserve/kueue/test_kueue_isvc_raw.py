@@ -6,7 +6,8 @@ This test imports the reusable test logic from utilities.kueue_utils.
 import pytest
 from ocp_resources.deployment import Deployment
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
-from utilities.constants import RunTimeConfigs, KServeDeploymentType, ModelVersion, Labels
+
+from utilities.constants import KServeDeploymentType, Labels, ModelVersion, RunTimeConfigs
 from utilities.general import create_isvc_label_selector_str
 from utilities.kueue_utils import check_gated_pods_and_running_pods
 

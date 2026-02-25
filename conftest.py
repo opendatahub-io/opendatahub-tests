@@ -1,43 +1,43 @@
+import datetime
 import logging
 import os
 import pathlib
 import shutil
-import datetime
 import traceback
+from typing import Any
 
 import pytest
 import shortuuid
-from _pytest.runner import CallInfo
+from _pytest.nodes import Node
 from _pytest.reports import TestReport
+from _pytest.runner import CallInfo
+from _pytest.terminal import TerminalReporter
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.cluster_service_version import ClusterServiceVersion
+from ocp_resources.resource import get_client
 from pytest import (
+    Collector,
+    CollectReport,
+    Config,
+    FixtureDef,
+    FixtureRequest,
+    Item,
     Parser,
     Session,
-    FixtureRequest,
-    FixtureDef,
-    Item,
-    Collector,
-    Config,
-    CollectReport,
 )
-from _pytest.nodes import Node
-from _pytest.terminal import TerminalReporter
-from typing import Optional, Any
 from pytest_testconfig import config as py_config
 
-from utilities.constants import KServeDeploymentType, MODEL_REGISTRY_CUSTOM_NAMESPACE
+from utilities.constants import MODEL_REGISTRY_CUSTOM_NAMESPACE, KServeDeploymentType
 from utilities.database import Database
+from utilities.infra import get_data_science_cluster, get_dsci_applications_namespace, get_operator_distribution
 from utilities.logger import separator, setup_logging
 from utilities.must_gather_collector import (
-    set_must_gather_collector_directory,
-    set_must_gather_collector_values,
-    get_must_gather_collector_dir,
     collect_rhoai_must_gather,
     get_base_dir,
+    get_must_gather_collector_dir,
+    set_must_gather_collector_directory,
+    set_must_gather_collector_values,
 )
-from kubernetes.dynamic import DynamicClient
-from utilities.infra import get_operator_distribution, get_dsci_applications_namespace, get_data_science_cluster
-from ocp_resources.resource import get_client
-from ocp_resources.cluster_service_version import ClusterServiceVersion
 
 LOGGER = logging.getLogger(name=__name__)
 BASIC_LOGGER = logging.getLogger(name="basic")
@@ -234,7 +234,7 @@ def pytest_collection_modifyitems(session: Session, config: Config, items: list[
         if not _upgrade_deployment_modes:
             return True
 
-        return any([keyword for keyword in _item.keywords if keyword in _upgrade_deployment_modes])
+        return any(keyword for keyword in _item.keywords if keyword in _upgrade_deployment_modes)
 
     pre_upgrade_tests: list[Item] = []
     post_upgrade_tests: list[Item] = []
@@ -315,7 +315,7 @@ def pytest_sessionstart(session: Session) -> None:
             value = log_cli_override.split("=", 1)[1].lower()
             enable_console_value = value not in ("false", "0", "no", "off")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         # If there's any issue with option detection, fall back to default behavior
         LOGGER.error(f"Error detecting log_cli option: {e}")
         enable_console_value = True
@@ -402,9 +402,9 @@ def pytest_runtest_setup(item: Item) -> None:
             db = item.config.option.must_gather_db
             db.insert_test_start_time(
                 test_name=f"{item.fspath}::{item.name}",
-                start_time=int(datetime.datetime.now().timestamp()),
+                start_time=int(datetime.datetime.now().timestamp()),  # noqa: DTZ005
             )
-        except Exception as db_exception:
+        except Exception as db_exception:  # noqa: BLE001
             LOGGER.error(f"Database error: {db_exception}. Must-gather collection may not be accurate")
 
     if KServeDeploymentType.RAW_DEPLOYMENT.lower() in item.keywords:
@@ -465,7 +465,7 @@ def pytest_sessionfinish(session: Session, exitstatus: int) -> None:
     LOGGER.info(f"Deleting pytest base dir {session.config.option.basetemp}")
     shutil.rmtree(path=session.config.option.basetemp, ignore_errors=True)
 
-    reporter: Optional[TerminalReporter] = session.config.pluginmanager.get_plugin("terminalreporter")
+    reporter: TerminalReporter | None = session.config.pluginmanager.get_plugin("terminalreporter")
     if reporter:
         reporter.summary_stats()
 
@@ -473,7 +473,7 @@ def pytest_sessionfinish(session: Session, exitstatus: int) -> None:
 def calculate_must_gather_timer(test_start_time: int) -> int:
     default_duration = 300
     if test_start_time > 0:
-        duration = int(datetime.datetime.now().timestamp()) - test_start_time
+        duration = int(datetime.datetime.now().timestamp()) - test_start_time  # noqa: DTZ005
         return duration if duration > 60 else default_duration
     else:
         LOGGER.warning(f"Could not get start time of test. Collecting must-gather for last {default_duration}s")
@@ -497,7 +497,7 @@ def pytest_exception_interact(node: Item | Collector, call: CallInfo[Any], repor
         try:
             db = node.config.option.must_gather_db
             test_start_time = db.get_test_start_time(test_name=test_name)
-        except Exception as db_exception:
+        except Exception as db_exception:  # noqa: BLE001
             test_start_time = 0
             LOGGER.warning(f"Error: {db_exception} in accessing database.")
 
@@ -508,7 +508,7 @@ def pytest_exception_interact(node: Item | Collector, call: CallInfo[Any], repor
                 target_dir=os.path.join(get_must_gather_collector_dir(), "pytest_exception_interact"),
             )
 
-        except Exception as current_exception:
+        except Exception as current_exception:  # noqa: BLE001
             LOGGER.warning(f"Failed to collect logs: {test_name}: {current_exception} {traceback.format_exc()}")
 
 

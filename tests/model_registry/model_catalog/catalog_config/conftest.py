@@ -1,22 +1,22 @@
-import pytest
 import re
-from typing import Generator
-from simple_logger.logger import get_logger
+from collections.abc import Generator
 
+import pytest
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import NotFoundError
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.resource import ResourceEditor
 from pytest_testconfig import config as py_config
+from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG
-from tests.model_registry.model_catalog.constants import REDHAT_AI_CATALOG_ID, REDHAT_AI_CATALOG_NAME
 from tests.model_registry.model_catalog.catalog_config.utils import (
     filter_models_by_pattern,
     modify_catalog_source,
     wait_for_catalog_source_restore,
 )
+from tests.model_registry.model_catalog.constants import REDHAT_AI_CATALOG_ID, REDHAT_AI_CATALOG_NAME
 from tests.model_registry.utils import (
     get_model_catalog_pod,
     wait_for_model_catalog_api,
@@ -129,7 +129,7 @@ def redhat_ai_models_with_filter(
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
     catalog_pod_model_counts: dict[str, int],
-) -> Generator[set[str], None, None]:
+) -> Generator[set[str]]:
     """
     Unified fixture for applying filters to redhat_ai catalog and yielding expected models.
 
@@ -199,7 +199,7 @@ def disabled_redhat_ai_source(
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
     catalog_pod_model_counts: dict[str, int],
-) -> Generator[None, None, None]:
+) -> Generator[None]:
     """
     Fixture that disables the redhat_ai catalog source and yields control.
 

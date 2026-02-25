@@ -1,13 +1,14 @@
-import pytest
 from typing import Self
-from simple_logger.logger import get_logger
-from pytest_testconfig import config as py_config
 
-from ocp_resources.pod import Pod
-from tests.model_registry.constants import MR_INSTANCE_NAME
+import pytest
 from kubernetes.dynamic.client import DynamicClient
-from utilities.general import wait_for_container_status
+from ocp_resources.pod import Pod
+from pytest_testconfig import config as py_config
+from simple_logger.logger import get_logger
+
+from tests.model_registry.constants import MR_INSTANCE_NAME
 from tests.model_registry.utils import wait_for_new_running_mr_pod
+from utilities.general import wait_for_container_status
 
 LOGGER = get_logger(name=__name__)
 

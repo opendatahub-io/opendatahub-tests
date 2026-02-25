@@ -1,5 +1,6 @@
 import json
-from typing import Any, Generator
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 from kubernetes.dynamic import DynamicClient
@@ -17,11 +18,11 @@ from pytest import Config, FixtureRequest
 from tests.model_explainability.lm_eval.constants import (
     ARC_EASY_DATASET_IMAGE,
     FLAN_T5_IMAGE,
-    LMEVAL_OCI_TAG,
     LMEVAL_OCI_REPO,
+    LMEVAL_OCI_TAG,
 )
 from tests.model_explainability.lm_eval.utils import get_lmevaljob_pod
-from utilities.constants import Labels, MinIo, Protocols, Timeout, ApiGroups
+from utilities.constants import ApiGroups, Labels, MinIo, Protocols, Timeout
 from utilities.exceptions import MissingParameter
 from utilities.general import b64_encoded_string
 
@@ -37,7 +38,7 @@ def lmevaljob_hf(
     model_namespace: Namespace,
     patched_dsc_lmeval_allow_all: DataScienceCluster,
     lmeval_hf_access_token: Secret,
-) -> Generator[LMEvalJob, None, None]:
+) -> Generator[LMEvalJob]:
     with LMEvalJob(
         client=admin_client,
         name=LMEVALJOB_NAME,
@@ -217,7 +218,7 @@ def lmevaljob_vllm_emulator(
             {"name": "model", "value": "emulatedModel"},
             {
                 "name": "base_url",
-                "value": f"http://{vllm_emulator_service.name}:{str(VLLM_EMULATOR_PORT)}/v1/completions",
+                "value": f"http://{vllm_emulator_service.name}:{VLLM_EMULATOR_PORT!s}/v1/completions",
             },
             {"name": "num_concurrent", "value": "1"},
             {"name": "max_retries", "value": "3"},

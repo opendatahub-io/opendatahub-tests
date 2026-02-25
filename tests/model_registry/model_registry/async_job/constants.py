@@ -9,10 +9,8 @@ ASYNC_JOB_LABELS = {
     "component": "model-registry-job",
     "modelregistry.opendatahub.io/job-type": "async-upload",
 }
-
-ASYNC_JOB_ANNOTATIONS = {
-    "modelregistry.opendatahub.io/description": "Asynchronous job for uploading models to Model Registry and converting them to ModelCar format"  # noqa: E501
-}
+ASYNC_STR: str = "Asynchronous job for uploading models to Model Registry and converting them to ModelCar format"
+ASYNC_JOB_ANNOTATIONS = {"modelregistry.opendatahub.io/description": ASYNC_STR}
 
 # Model sync parameters (from sample YAML)
 MODEL_SYNC_CONFIG = {

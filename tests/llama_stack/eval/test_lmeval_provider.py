@@ -2,8 +2,7 @@ import pytest
 
 from tests.llama_stack.constants import LlamaStackProviders
 from tests.llama_stack.eval.utils import wait_for_eval_job_completion
-from utilities.constants import MinIo, QWEN_MODEL_NAME
-
+from utilities.constants import QWEN_MODEL_NAME, MinIo
 
 TRUSTYAI_LMEVAL_ARCEASY = f"{LlamaStackProviders.Eval.TRUSTYAI_LMEVAL}::arc_easy"
 TRUSTYAI_LMEVAL_CUSTOM = f"{LlamaStackProviders.Eval.TRUSTYAI_LMEVAL}::dk-bench"

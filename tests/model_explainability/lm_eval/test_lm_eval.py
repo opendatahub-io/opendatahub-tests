@@ -1,29 +1,26 @@
 import pytest
-from typing import List
-
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
+from simple_logger.logger import get_logger
 
-from tests.model_explainability.lm_eval.constants import LMEVAL_OCI_REPO, LMEVAL_OCI_TAG
 from tests.model_explainability.lm_eval.constants import (
-    LLMAAJ_TASK_DATA,
-    CUSTOM_UNITXT_TASK_DATA,
     ARC_EASY_DATASET_IMAGE,
+    CUSTOM_UNITXT_TASK_DATA,
+    LLMAAJ_TASK_DATA,
+    LMEVAL_OCI_REPO,
+    LMEVAL_OCI_TAG,
 )
-from tests.model_explainability.utils import validate_tai_component_images
-
 from tests.model_explainability.lm_eval.utils import get_lmeval_tasks, validate_lmeval_job_pod_and_logs
+from tests.model_explainability.utils import validate_tai_component_images
 from utilities.constants import OCIRegistry
 from utilities.registry_utils import pull_manifest_from_oci_registry
 
-from simple_logger.logger import get_logger
-
 LMEVALJOB_COMPLETE_STATE: str = "Complete"
 
-TIER1_LMEVAL_TASKS: List[str] = get_lmeval_tasks(min_downloads=10000)
+TIER1_LMEVAL_TASKS: list[str] = get_lmeval_tasks(min_downloads=10000)
 
-TIER2_LMEVAL_TASKS: List[str] = list(
+TIER2_LMEVAL_TASKS: list[str] = list(
     set(get_lmeval_tasks(min_downloads=0.70, max_downloads=10000)) - set(TIER1_LMEVAL_TASKS)
 )
 

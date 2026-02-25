@@ -1,4 +1,5 @@
 import shlex
+
 import pytest
 from ocp_utilities.monitoring import Prometheus
 from pyhelper_utils.shell import run_command

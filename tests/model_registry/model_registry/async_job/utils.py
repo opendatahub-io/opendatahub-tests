@@ -2,10 +2,10 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.job import Job
 from ocp_resources.pod import Pod
 from ocp_resources.service import Service
-from utilities.constants import MinIo
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError
 
+from utilities.constants import MinIo
 from utilities.general import collect_pod_information
 
 LOGGER = get_logger(name=__name__)
@@ -49,7 +49,7 @@ def upload_test_model_to_minio_from_image(
         object_key: S3 object key path
         model_image: Container image containing the model
     """
-
+    mc_url = f"http://{minio_service.name}.{minio_service.namespace}.svc.cluster.local:{MinIo.Metadata.DEFAULT_PORT} "
     with Pod(
         client=admin_client,
         name="test-model-uploader-from-image",
@@ -86,7 +86,7 @@ def upload_test_model_to_minio_from_image(
                     f"echo 'Model file details:' && ls -la /upload-data/model.onnx && "
                     f"echo 'Model file content preview:' && head -c 100 /upload-data/model.onnx && echo && "
                     f"export MC_CONFIG_DIR=/upload-data/.mc && "
-                    f"mc alias set testminio http://{minio_service.name}.{minio_service.namespace}.svc.cluster.local:{MinIo.Metadata.DEFAULT_PORT} "  # noqa: E501
+                    f"mc alias set testminio {mc_url}"
                     f"{MinIo.Credentials.ACCESS_KEY_VALUE} {MinIo.Credentials.SECRET_KEY_VALUE} && "
                     f"mc mb --ignore-existing testminio/{MinIo.Buckets.MODELMESH_EXAMPLE_MODELS} && "
                     f"mc cp /upload-data/model.onnx testminio/{MinIo.Buckets.MODELMESH_EXAMPLE_MODELS}/{object_key} && "
@@ -115,7 +115,7 @@ def upload_test_model_to_minio_from_image(
         try:
             upload_logs = upload_pod.log()
             LOGGER.info(f"Upload logs: {upload_logs}")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             LOGGER.warning(f"Could not retrieve upload logs: {e}")
 
         LOGGER.info(

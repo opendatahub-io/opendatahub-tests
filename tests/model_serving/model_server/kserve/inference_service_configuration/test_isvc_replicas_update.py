@@ -16,7 +16,6 @@ from utilities.inference_utils import Inference
 from utilities.infra import get_pods_by_isvc_label
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
-
 LOGGER = get_logger(name=__name__)
 
 pytestmark = [pytest.mark.sanity, pytest.mark.usefixtures("valid_aws_config")]

@@ -1,13 +1,15 @@
 import json
 import re
 import shlex
+from collections.abc import Generator
 from contextlib import contextmanager
 from http import HTTPStatus
 from json import JSONDecodeError
 from string import Template
-from typing import Any, Optional, Generator
+from typing import Any
 from urllib.parse import urlparse
 
+import portforward
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
@@ -15,29 +17,28 @@ from ocp_resources.resource import get_client
 from ocp_resources.service import Service
 from pyhelper_utils.shell import run_command
 from simple_logger.logger import get_logger
-from timeout_sampler import TimeoutWatch, retry, TimeoutSampler
+from timeout_sampler import TimeoutSampler, TimeoutWatch, retry
 
-from utilities.exceptions import InferenceResponseError, InvalidStorageArgumentError
-from utilities.infra import (
-    get_inference_serving_runtime,
-    get_model_route,
-    get_pods_by_isvc_label,
-    get_services_by_isvc_label,
-    wait_for_inference_deployment_replicas,
-    verify_no_failed_pods,
-    get_pods_by_ig_label,
-)
 from utilities.certificates_utils import get_ca_bundle
 from utilities.constants import (
+    Annotations,
+    HTTPRequest,
     KServeDeploymentType,
     Labels,
     ModelName,
     Protocols,
-    HTTPRequest,
-    Annotations,
     Timeout,
 )
-import portforward
+from utilities.exceptions import InferenceResponseError, InvalidStorageArgumentError
+from utilities.infra import (
+    get_inference_serving_runtime,
+    get_model_route,
+    get_pods_by_ig_label,
+    get_pods_by_isvc_label,
+    get_services_by_isvc_label,
+    verify_no_failed_pods,
+    wait_for_inference_deployment_replicas,
+)
 
 LOGGER = get_logger(name=__name__)
 
@@ -80,7 +81,7 @@ class Inference:
             return KServeDeploymentType.SERVERLESS
 
         else:
-            raise ValueError(f"Unknown inference service type: {self.inference_service.name}")
+            raise TypeError(f"Unknown inference service type: {self.inference_service.name}")
 
     def get_inference_url(self) -> str:
         """
@@ -125,15 +126,11 @@ class Inference:
                 return labels and labels.get(Labels.Kserve.NETWORKING_KSERVE_IO) == Labels.Kserve.EXPOSED
 
         if self.deployment_mode == KServeDeploymentType.SERVERLESS:
-            if labels and labels.get(Labels.Kserve.NETWORKING_KNATIVE_IO) == "cluster-local":
-                return False
-            else:
-                return True
+            return not bool(labels and labels.get(Labels.Kserve.NETWORKING_KNATIVE_IO) == "cluster-local")
 
-        if self.deployment_mode == KServeDeploymentType.MODEL_MESH:
-            if self.runtime:
-                _annotations = self.runtime.instance.metadata.annotations
-                return _annotations and _annotations.get("enable-route") == "true"
+        if self.deployment_mode == KServeDeploymentType.MODEL_MESH and self.runtime:
+            _annotations = self.runtime.instance.metadata.annotations
+            return _annotations and _annotations.get("enable-route") == "true"
 
         return False
 
@@ -187,7 +184,7 @@ class UserInference(Inference):
             )
 
     @property
-    def inference_response_text_key_name(self) -> Optional[str]:
+    def inference_response_text_key_name(self) -> str | None:
         """
         Get inference response text key name from runtime config
 
@@ -211,7 +208,7 @@ class UserInference(Inference):
     def get_inference_body(
         self,
         model_name: str,
-        inference_input: Optional[Any] = None,
+        inference_input: Any | None = None,
         use_default_query: bool = False,
     ) -> str:
         """
@@ -278,10 +275,10 @@ class UserInference(Inference):
     def generate_command(
         self,
         model_name: str,
-        inference_input: Optional[Any] = None,
+        inference_input: Any | None = None,
         use_default_query: bool = False,
         insecure: bool = False,
-        token: Optional[str] = None,
+        token: str | None = None,
     ) -> str:
         """
         Generate command to run inference
@@ -347,10 +344,10 @@ class UserInference(Inference):
     def run_inference_flow(
         self,
         model_name: str,
-        inference_input: Optional[str] = None,
+        inference_input: str | None = None,
         use_default_query: bool = False,
         insecure: bool = False,
-        token: Optional[str] = None,
+        token: str | None = None,
     ) -> dict[str, Any]:
         """
         Run inference full flow - generate command and run it
@@ -407,10 +404,10 @@ class UserInference(Inference):
     def run_inference(
         self,
         model_name: str,
-        inference_input: Optional[str] = None,
+        inference_input: str | None = None,
         use_default_query: bool = False,
         insecure: bool = False,
-        token: Optional[str] = None,
+        token: str | None = None,
     ) -> str:
         """
         Run inference command
@@ -532,10 +529,7 @@ class UserInference(Inference):
                 self.deployment_mode == KServeDeploymentType.MODEL_MESH
                 and port.protocol.lower() == svc_protocol.lower()
                 and port.name == self.protocol
-            ):
-                return svc_port
-
-            elif (
+            ) or (
                 self.deployment_mode
                 in (
                     KServeDeploymentType.RAW_DEPLOYMENT,
@@ -678,12 +672,9 @@ def create_isvc(
     if deployment_mode:
         _annotations = {Annotations.KserveIo.DEPLOYMENT_MODE: deployment_mode}
 
-    if enable_auth:
-        # model mesh auth is set in ServingRuntime
-        if deployment_mode == KServeDeploymentType.SERVERLESS:
-            _annotations[Annotations.KserveAuth.SECURITY] = "true"
-        elif deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
-            _annotations[Annotations.KserveAuth.SECURITY] = "true"
+    # model mesh auth is set in ServingRuntime
+    if enable_auth and deployment_mode in {KServeDeploymentType.SERVERLESS, KServeDeploymentType.RAW_DEPLOYMENT}:
+        _annotations[Annotations.KserveAuth.SECURITY] = "true"
 
     # default to True if deployment_mode is Serverless (default behavior of Serverless) if was not provided by the user
     # model mesh external route is set in ServingRuntime
@@ -812,9 +803,9 @@ def create_isvc(
 
 
 def _check_storage_arguments(
-    storage_uri: Optional[str],
-    storage_key: Optional[str],
-    storage_path: Optional[str],
+    storage_uri: str | None,
+    storage_key: str | None,
+    storage_path: str | None,
 ) -> None:
     """
     Check if storage_uri, storage_key and storage_path are valid.
