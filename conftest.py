@@ -122,6 +122,11 @@ def pytest_addoption(parser: Parser) -> None:
         default=os.environ.get("TRITON_RUNTIME_IMAGE"),
         help="Specify the runtime image to use for the tests",
     )
+    runtime_group.addoption(
+        "--ovms-runtime-image",
+        default=os.environ.get("OVMS_RUNTIME_IMAGE"),
+        help="Specify the OVMS runtime image to use for the tests",
+    )
 
     # OCI Registry options
     ociregistry_group.addoption(

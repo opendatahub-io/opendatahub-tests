@@ -326,6 +326,24 @@ def triton_runtime_image(pytestconfig: pytest.Config) -> str:
         return TRITON_IMAGE
     return runtime_image
 
+@pytest.fixture(scope="session")
+def ovms_runtime_image(pytestconfig: pytest.Config) -> str:
+    """Return OVMS runtime image from --ovms-runtime-image or cluster template."""
+    from ocp_resources.resource import get_client
+    from utilities.constants import RuntimeTemplates
+    from utilities.serving_runtime import get_runtime_image_from_template
+
+    runtime_image = pytestconfig.option.ovms_runtime_image
+    if runtime_image:
+        return runtime_image
+    client = get_client()
+    namespace = py_config["applications_namespace"]
+    return get_runtime_image_from_template(
+        client=client,
+        template_name=RuntimeTemplates.OVMS_KSERVE,
+        namespace=namespace,
+    )
+
 
 @pytest.fixture(scope="session")
 def use_unprivileged_client(pytestconfig: pytest.Config) -> bool:
