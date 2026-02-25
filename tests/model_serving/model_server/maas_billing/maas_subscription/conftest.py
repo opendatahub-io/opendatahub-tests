@@ -1,32 +1,26 @@
-from typing import Any, Generator
+from collections.abc import Generator
+from typing import Any
 
 import pytest
-from kubernetes.dynamic import DynamicClient
-from utilities.plugins.constant import RestHeader
-from ocp_resources.llm_inference_service import LLMInferenceService
-
-from utilities.resources.maa_s_auth_policy import MaaSAuthPolicy
-from utilities.resources.maa_s_model import MaaSModel
-from utilities.resources.maa_s_subscription import MaaSSubscription
-from pytest_testconfig import config as py_config
-from utilities.plugins.constant import OpenAIEnpoints
-
-from ocp_resources.service_account import ServiceAccount
-from utilities.infra import create_inference_token
-from utilities.logger import RedactedString
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.service_account import ServiceAccount
-from utilities.infra import login_with_user_password
-
-from utilities.llmd_utils import create_llmisvc
-from utilities.llmd_constants import ModelStorage, ContainerImages
+from pytest_testconfig import config as py_config
 
 from tests.model_serving.model_server.maas_billing.maas_subscription.utils import (
     patch_llmisvc_with_maas_router_and_tiers,
 )
+from utilities.infra import create_inference_token, login_with_user_password
+from utilities.llmd_constants import ContainerImages, ModelStorage
+from utilities.llmd_utils import create_llmisvc
+from utilities.plugins.constant import OpenAIEnpoints, RestHeader
+from utilities.resources.maa_s_auth_policy import MaaSAuthPolicy
+from utilities.resources.maa_s_model import MaaSModel
+from utilities.resources.maa_s_subscription import MaaSSubscription
+
 CHAT_COMPLETIONS = OpenAIEnpoints.CHAT_COMPLETIONS
+
 
 @pytest.fixture(scope="class")
 def maas_inference_service_tinyllama_free(
@@ -35,23 +29,25 @@ def maas_inference_service_tinyllama_free(
     maas_model_service_account: ServiceAccount,
     maas_gateway_api: None,
 ) -> Generator[LLMInferenceService, Any, Any]:
-    with create_llmisvc(
-        client=admin_client,
-        name="llm-s3-tinyllama-free",
-        namespace=maas_unprivileged_model_namespace.name,
-        storage_uri=ModelStorage.TINYLLAMA_S3,
-        container_image=ContainerImages.VLLM_CPU,
-        container_resources={
-            "limits": {"cpu": "2", "memory": "12Gi"},
-            "requests": {"cpu": "1", "memory": "8Gi"},
-        },
-        service_account=maas_model_service_account.name,
-        wait=False,
-        timeout=900,
-    ) as llm_service:
-        with patch_llmisvc_with_maas_router_and_tiers(llm_service=llm_service, tiers=[]):
-            llm_service.wait_for_condition(condition="Ready", status="True", timeout=900)
-            yield llm_service
+    with (
+        create_llmisvc(
+            client=admin_client,
+            name="llm-s3-tinyllama-free",
+            namespace=maas_unprivileged_model_namespace.name,
+            storage_uri=ModelStorage.TINYLLAMA_S3,
+            container_image=ContainerImages.VLLM_CPU,
+            container_resources={
+                "limits": {"cpu": "2", "memory": "12Gi"},
+                "requests": {"cpu": "1", "memory": "8Gi"},
+            },
+            service_account=maas_model_service_account.name,
+            wait=False,
+            timeout=900,
+        ) as llm_service,
+        patch_llmisvc_with_maas_router_and_tiers(llm_service=llm_service, tiers=[]),
+    ):
+        llm_service.wait_for_condition(condition="Ready", status="True", timeout=900)
+        yield llm_service
 
 
 @pytest.fixture(scope="class")
@@ -61,29 +57,32 @@ def maas_inference_service_tinyllama_premium(
     maas_model_service_account: ServiceAccount,
     maas_gateway_api: None,
 ) -> Generator[LLMInferenceService, Any, Any]:
-    with create_llmisvc(
-        client=admin_client,
-        name="llm-s3-tinyllama-premium",
-        namespace=maas_unprivileged_model_namespace.name,
-        storage_uri=ModelStorage.TINYLLAMA_S3,
-        container_image=ContainerImages.VLLM_CPU,
-        container_resources={
-            "limits": {"cpu": "2", "memory": "12Gi"},
-            "requests": {"cpu": "1", "memory": "8Gi"},
-        },
-        service_account=maas_model_service_account.name,
-        wait=False,
-        timeout=900,
-    ) as llm_service:
-        with patch_llmisvc_with_maas_router_and_tiers(llm_service=llm_service, tiers=["premium"]):
-            llm_service.wait_for_condition(condition="Ready", status="True", timeout=900)
-            yield llm_service
+    with (
+        create_llmisvc(
+            client=admin_client,
+            name="llm-s3-tinyllama-premium",
+            namespace=maas_unprivileged_model_namespace.name,
+            storage_uri=ModelStorage.TINYLLAMA_S3,
+            container_image=ContainerImages.VLLM_CPU,
+            container_resources={
+                "limits": {"cpu": "2", "memory": "12Gi"},
+                "requests": {"cpu": "1", "memory": "8Gi"},
+            },
+            service_account=maas_model_service_account.name,
+            wait=False,
+            timeout=900,
+        ) as llm_service,
+        patch_llmisvc_with_maas_router_and_tiers(llm_service=llm_service, tiers=["premium"]),
+    ):
+        llm_service.wait_for_condition(condition="Ready", status="True", timeout=900)
+        yield llm_service
+
 
 @pytest.fixture(scope="class")
 def maas_model_tinyllama_free(
     admin_client: DynamicClient,
     maas_inference_service_tinyllama_free: LLMInferenceService,
-) -> Generator[MaaSModel, None, None]:
+) -> Generator[MaaSModel]:
     applications_namespace = py_config["applications_namespace"]
 
     with MaaSModel(
@@ -107,7 +106,7 @@ def maas_model_tinyllama_free(
 def maas_model_tinyllama_premium(
     admin_client: DynamicClient,
     maas_inference_service_tinyllama_premium: LLMInferenceService,
-) -> Generator[MaaSModel, None, None]:
+) -> Generator[MaaSModel]:
     applications_namespace = py_config["applications_namespace"]
 
     with MaaSModel(
@@ -126,12 +125,13 @@ def maas_model_tinyllama_premium(
     ) as m:
         yield m
 
+
 @pytest.fixture(scope="class")
 def maas_auth_policy_tinyllama_free(
     admin_client: DynamicClient,
     maas_free_group: str,
     maas_model_tinyllama_free: MaaSModel,
-) -> Generator[MaaSAuthPolicy, None, None]:
+) -> Generator[MaaSAuthPolicy]:
     applications_namespace = py_config["applications_namespace"]
 
     with MaaSAuthPolicy(
@@ -156,7 +156,7 @@ def maas_auth_policy_tinyllama_premium(
     admin_client: DynamicClient,
     maas_premium_group: str,
     maas_model_tinyllama_premium: MaaSModel,
-) -> Generator[MaaSAuthPolicy, None, None]:
+) -> Generator[MaaSAuthPolicy]:
     applications_namespace = py_config["applications_namespace"]
 
     with MaaSAuthPolicy(
@@ -178,7 +178,7 @@ def maas_subscription_tinyllama_free(
     admin_client: DynamicClient,
     maas_free_group: str,
     maas_model_tinyllama_free: MaaSModel,
-) -> Generator[MaaSSubscription, None, None]:
+) -> Generator[MaaSSubscription]:
     applications_namespace = py_config["applications_namespace"]
 
     with MaaSSubscription(
@@ -207,7 +207,7 @@ def maas_subscription_tinyllama_premium(
     admin_client: DynamicClient,
     maas_premium_group: str,
     maas_model_tinyllama_premium: MaaSModel,
-) -> Generator[MaaSSubscription, None, None]:
+) -> Generator[MaaSSubscription]:
     applications_namespace = py_config["applications_namespace"]
 
     with MaaSSubscription(
@@ -230,6 +230,7 @@ def maas_subscription_tinyllama_premium(
     ) as maas_subscription_premium:
         yield maas_subscription_premium
 
+
 @pytest.fixture(scope="class")
 def model_url_tinyllama_free(
     maas_scheme: str,
@@ -251,12 +252,13 @@ def model_url_tinyllama_premium(
     url = f"{maas_scheme}://{maas_host}/llm/{deployment_name}{CHAT_COMPLETIONS}"
     return url
 
+
 @pytest.fixture(scope="class")
 def maas_wrong_group_service_account_token(
     maas_api_server_url: str,
     original_user: str,
     admin_client: DynamicClient,
-) -> Generator[str, None, None]:
+) -> Generator[str]:
     applications_namespace = py_config["applications_namespace"]
 
     with ServiceAccount(
@@ -272,6 +274,7 @@ def maas_wrong_group_service_account_token(
 
         raw_token = create_inference_token(model_service_account=sa)
         yield raw_token
+
 
 @pytest.fixture(scope="class")
 def maas_headers_for_wrong_group_sa(maas_wrong_group_service_account_token: str) -> dict:

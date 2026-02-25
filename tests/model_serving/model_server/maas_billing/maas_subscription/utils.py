@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Generator, Sequence
 from contextlib import contextmanager
-from typing import Generator, Sequence
+from urllib.parse import urlparse
 
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.resource import ResourceEditor
-from urllib.parse import urlparse
-
 
 from utilities.constants import (
     MAAS_GATEWAY_NAME,
@@ -20,7 +19,7 @@ def patch_llmisvc_with_maas_router_and_tiers(
     llm_service: LLMInferenceService,
     tiers: Sequence[str],
     enable_auth: bool = True,
-) -> Generator[None, None, None]:
+) -> Generator[None]:
     """
     Patch an LLMInferenceService to use MaaS router (gateway refs + route {})
     and set MaaS tier annotation.
@@ -38,7 +37,7 @@ def patch_llmisvc_with_maas_router_and_tiers(
         "route": {},
     }
 
-    tiers_val = list(tiers)  
+    tiers_val = list(tiers)
     patch_body = {
         "metadata": {
             "annotations": {
@@ -52,10 +51,11 @@ def patch_llmisvc_with_maas_router_and_tiers(
     with ResourceEditor(patches={llm_service: patch_body}):
         yield
 
+
 def model_id_from_chat_completions_url(model_url: str) -> str:
     path = urlparse(model_url).path.strip("/")
     parts = path.split("/")
-    
+
     if len(parts) >= 2 and parts[0] == "llm":
         model_id = parts[1]
         if model_id:

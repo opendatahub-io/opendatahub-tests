@@ -3,9 +3,9 @@ from __future__ import annotations
 import pytest
 import requests
 from simple_logger.logger import get_logger
-from utilities.plugins.constant import RestHeader
 
 from tests.model_serving.model_server.maas_billing.maas_subscription.utils import chat_payload_for_url
+from utilities.plugins.constant import RestHeader
 
 LOGGER = get_logger(name=__name__)
 
@@ -23,7 +23,6 @@ LOGGER = get_logger(name=__name__)
     "maas_subscription_tinyllama_premium",
 )
 class TestMaaSAuthPolicyEnforcementTinyLlama:
-
     @pytest.mark.sanity
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
     def test_authorized_user_gets_200(
@@ -36,9 +35,7 @@ class TestMaaSAuthPolicyEnforcementTinyLlama:
         payload = chat_payload_for_url(model_url_tinyllama_free)
 
         r = request_session_http.post(model_url_tinyllama_free, headers=headers, json=payload, timeout=60)
-        LOGGER.info(
-            f"test_authorized_user_gets_200 -> POST {model_url_tinyllama_free} returned {r.status_code}"
-        )
+        LOGGER.info(f"test_authorized_user_gets_200 -> POST {model_url_tinyllama_free} returned {r.status_code}")
         assert r.status_code == 200, f"Expected 200, got {r.status_code}: {r.text[:200]}"
 
     @pytest.mark.sanity
@@ -50,9 +47,7 @@ class TestMaaSAuthPolicyEnforcementTinyLlama:
         payload = chat_payload_for_url(model_url_tinyllama_free)
 
         r = request_session_http.post(model_url_tinyllama_free, headers=RestHeader.HEADERS, json=payload, timeout=60)
-        LOGGER.info(
-            f"test_no_auth_header_gets_401 -> POST {model_url_tinyllama_free} returned {r.status_code}"
-        )
+        LOGGER.info(f"test_no_auth_header_gets_401 -> POST {model_url_tinyllama_free} returned {r.status_code}")
         assert r.status_code == 401, f"Expected 401, got {r.status_code}: {r.text[:200]}"
 
     @pytest.mark.sanity
@@ -65,9 +60,7 @@ class TestMaaSAuthPolicyEnforcementTinyLlama:
         payload = chat_payload_for_url(model_url_tinyllama_free)
 
         r = request_session_http.post(model_url_tinyllama_free, headers=headers, json=payload, timeout=60)
-        LOGGER.info(
-            f"test_invalid_token_gets_401 -> POST {model_url_tinyllama_free} returned {r.status_code}"
-        )
+        LOGGER.info(f"test_invalid_token_gets_401 -> POST {model_url_tinyllama_free} returned {r.status_code}")
         assert r.status_code == 401, f"Expected 401, got {r.status_code}: {r.text[:200]}"
 
     @pytest.mark.sanity
