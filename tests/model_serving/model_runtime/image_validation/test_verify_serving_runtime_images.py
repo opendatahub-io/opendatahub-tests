@@ -15,8 +15,8 @@ import pytest
 from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
 
-from tests.model_registry.image_validation.utils import validate_images
 from tests.model_serving.model_runtime.image_validation.constant import RUNTIME_CONFIGS
+from utilities.general import validate_container_images
 
 LOGGER = get_logger(name=__name__)
 
@@ -43,8 +43,16 @@ class TestServingRuntimeImagesPerTemplate:
         For the parametrized runtime: create SR+ISVC from template, validate pod images, report name : passed.
         """
         pods, runtime_name = serving_runtime_pods_for_runtime
-        validate_images(
-            pods_to_validate=pods,
-            related_images_refs=related_images_refs,
-        )
+        validation_errors = []
+        for pod in pods:
+            LOGGER.info(f"Validating {pod.name} in {pod.namespace}")
+            validation_errors.extend(
+                validate_container_images(
+                    pod=pod,
+                    valid_image_refs=related_images_refs,
+                )
+            )
+
+        if validation_errors:
+            pytest.fail("\n".join(validation_errors))
         LOGGER.info(f"{runtime_name} : passed")
