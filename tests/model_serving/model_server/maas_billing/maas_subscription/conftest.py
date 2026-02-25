@@ -1,5 +1,4 @@
-from collections.abc import Generator
-from typing import Any
+from typing import Any, Generator
 
 import pytest
 from kubernetes.dynamic import DynamicClient
@@ -8,9 +7,6 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.service_account import ServiceAccount
 from pytest_testconfig import config as py_config
 
-from tests.model_serving.model_server.maas_billing.maas_subscription.utils import (
-    patch_llmisvc_with_maas_router_and_tiers,
-)
 from utilities.infra import create_inference_token, login_with_user_password
 from utilities.llmd_constants import ContainerImages, ModelStorage
 from utilities.llmd_utils import create_llmisvc
@@ -18,6 +14,11 @@ from utilities.plugins.constant import OpenAIEnpoints, RestHeader
 from utilities.resources.maa_s_auth_policy import MaaSAuthPolicy
 from utilities.resources.maa_s_model import MaaSModel
 from utilities.resources.maa_s_subscription import MaaSSubscription
+
+from tests.model_serving.model_server.maas_billing.utils import build_maas_headers
+from tests.model_serving.model_server.maas_billing.maas_subscription.utils import (
+    patch_llmisvc_with_maas_router_and_tiers,
+)
 
 CHAT_COMPLETIONS = OpenAIEnpoints.CHAT_COMPLETIONS
 
@@ -76,6 +77,7 @@ def maas_inference_service_tinyllama_premium(
     ):
         llm_service.wait_for_condition(condition="Ready", status="True", timeout=900)
         yield llm_service
+
 
 
 @pytest.fixture(scope="class")
@@ -278,7 +280,4 @@ def maas_wrong_group_service_account_token(
 
 @pytest.fixture(scope="class")
 def maas_headers_for_wrong_group_sa(maas_wrong_group_service_account_token: str) -> dict:
-    return {
-        "Authorization": f"Bearer {maas_wrong_group_service_account_token}",
-        **RestHeader.HEADERS,
-    }
+    return build_maas_headers(token=maas_wrong_group_service_account_token)
