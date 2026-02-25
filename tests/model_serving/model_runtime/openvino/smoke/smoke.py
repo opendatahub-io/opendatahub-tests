@@ -17,7 +17,7 @@ model = AutoModelForCausalLM.from_pretrained(pretrained_model_name_or_path=model
 # Test tokenization explicitly
 test_text = "The transformers library on RHEL 9"
 
-encoded = tokenizer.encode(text=test_text, return_tensors='pt')
+encoded = tokenizer.encode(text=test_text, return_tensors="pt")
 decoded = tokenizer.decode(token_ids=encoded[0])
 
 
