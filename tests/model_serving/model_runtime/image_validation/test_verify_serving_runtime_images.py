@@ -9,15 +9,14 @@ then validate the pod's container images against the cluster CSV (relatedImages)
 No hardcoded image SHAs—validation uses whatever CSV is installed (e.g. rhods-operator.3.3.0).
 """
 
-from typing import Self, Set
+from typing import Self
 
 import pytest
+from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
 
-from ocp_resources.pod import Pod
-
-from tests.model_serving.model_runtime.image_validation.conftest import RUNTIME_CONFIGS
 from tests.model_registry.image_validation.utils import validate_images
+from tests.model_serving.model_runtime.image_validation.constant import RUNTIME_CONFIGS
 
 LOGGER = get_logger(name=__name__)
 
@@ -38,7 +37,7 @@ class TestServingRuntimeImagesPerTemplate:
     def test_verify_serving_runtime_pod_images_from_template(
         self: Self,
         serving_runtime_pods_for_runtime: tuple[list[Pod], str],
-        related_images_refs: Set[str],
+        related_images_refs: set[str],
     ) -> None:
         """
         For the parametrized runtime: create SR+ISVC from template, validate pod images, report name : passed.

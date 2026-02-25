@@ -18,29 +18,14 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from timeout_sampler import TimeoutSampler
 
-from utilities.constants import KServeDeploymentType, RuntimeTemplates, Timeout
+from tests.model_serving.model_runtime.image_validation.constant import (
+    PLACEHOLDER_STORAGE_URI,
+    POD_WAIT_TIMEOUT,
+)
+from utilities.constants import KServeDeploymentType, Timeout
 from utilities.inference_utils import create_isvc
 from utilities.infra import create_ns, get_pods_by_isvc_label
 from utilities.serving_runtime import ServingRuntimeFromTemplate
-
-# Placeholder storage URI so the controller creates Deployment/Pod with runtime image.
-# No actual model or inference is required; pod phase does not need to be Ready.
-PLACEHOLDER_STORAGE_URI = "s3://dummy-bucket/dummy/"
-
-# Time to wait for at least one pod to be created for the InferenceService.
-POD_WAIT_TIMEOUT = Timeout.TIMEOUT_5MIN
-
-# Runtime configs: display name (for "name : passed") and template name.
-# For each we create ServingRuntime + InferenceService, wait for pod(s), validate, then teardown.
-RUNTIME_CONFIGS = [
-    {"name": "odh_openvino_model_server_image", "template": RuntimeTemplates.OVMS_KSERVE},
-    {"name": "odh_vllm_cpu_image", "template": RuntimeTemplates.VLLM_CPU_x86},
-    {"name": "odh_vllm_gaudi_image", "template": RuntimeTemplates.VLLM_GAUDI},
-    {"name": "odh_mlserver_image", "template": RuntimeTemplates.MLSERVER},
-    {"name": "rhaiis_vllm_cuda_image", "template": RuntimeTemplates.VLLM_CUDA},
-    {"name": "rhaiis_vllm_rocm_image", "template": RuntimeTemplates.VLLM_ROCM},
-    {"name": "rhaiis_vllm_spyre_image", "template": RuntimeTemplates.VLLM_SPYRE},
-]
 
 
 @pytest.fixture(scope="class")
