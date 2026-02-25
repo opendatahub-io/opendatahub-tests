@@ -757,6 +757,16 @@ def verify_no_failed_pods(
     """
     wait_for_isvc_pods(client=client, isvc=isvc, runtime_name=runtime_name)
 
+    container_wait_base_errors = ["InvalidImageName"]
+    container_terminated_base_errors = [Resource.Status.ERROR]
+
+    # For Model Mesh, if image pulling takes longer, pod may be in CrashLoopBackOff state but recover with retries.
+    if (
+        deployment_mode := isvc.instance.metadata.annotations.get("serving.kserve.io/deploymentMode")
+    ) and deployment_mode != KServeDeploymentType.MODEL_MESH:
+        container_wait_base_errors.append(Resource.Status.CRASH_LOOPBACK_OFF)
+        container_terminated_base_errors.append(Resource.Status.CRASH_LOOPBACK_OFF)
+
     LOGGER.info("Verifying no failed pods")
     for pods in TimeoutSampler(
         wait_timeout=timeout,
@@ -766,54 +776,48 @@ def verify_no_failed_pods(
         isvc=isvc,
         runtime_name=runtime_name,
     ):
-        ready_pods = 0
+        if not pods:
+            continue
+
         failed_pods: dict[str, Any] = {}
 
-        container_wait_base_errors = ["InvalidImageName"]
-        container_terminated_base_errors = [Resource.Status.ERROR]
+        for pod in pods:
+            pod_status = pod.instance.status
 
-        # For Model Mesh, if image pulling takes longer, pod may be in CrashLoopBackOff state but recover with retries.
-        if (
-            deployment_mode := isvc.instance.metadata.annotations.get("serving.kserve.io/deploymentMode")
-        ) and deployment_mode != KServeDeploymentType.MODEL_MESH:
-            container_wait_base_errors.append(Resource.Status.CRASH_LOOPBACK_OFF)
-            container_terminated_base_errors.append(Resource.Status.CRASH_LOOPBACK_OFF)
+            all_container_statuses = list(pod_status.get("initContainerStatuses", []) or []) + list(
+                pod_status.get("containerStatuses", []) or []
+            )
 
-        if pods:
-            for pod in pods:
-                for condition in pod.instance.status.conditions:
-                    if condition.type == pod.Status.READY and condition.status == pod.Condition.Status.TRUE:
-                        ready_pods += 1
+            for container_status in all_container_statuses:
+                is_waiting_error = (
+                    wait_state := container_status.state.waiting
+                ) and wait_state.reason in container_wait_base_errors
 
-            if ready_pods == len(pods):
-                return
+                is_terminated_error = (
+                    terminate_state := container_status.state.terminated
+                ) and terminate_state.reason in container_terminated_base_errors
 
-            for pod in pods:
-                pod_status = pod.instance.status
-
-                if pod_status.containerStatuses:
-                    for container_status in pod_status.get("containerStatuses", []) + pod_status.get(
-                        "initContainerStatuses", []
-                    ):
-                        is_waiting_pull_back_off = (
-                            wait_state := container_status.state.waiting
-                        ) and wait_state.reason in container_wait_base_errors
-
-                        is_terminated_error = (
-                            terminate_state := container_status.state.terminated
-                        ) and terminate_state.reason in container_terminated_base_errors
-
-                        if is_waiting_pull_back_off or is_terminated_error:
-                            failed_pods[pod.name] = pod_status
-
-                elif pod_status.phase in (
-                    pod.Status.CRASH_LOOPBACK_OFF,
-                    pod.Status.FAILED,
-                ):
+                if is_waiting_error or is_terminated_error:
                     failed_pods[pod.name] = pod_status
+                    break
 
-            if failed_pods:
-                raise FailedPodsError(pods=failed_pods)
+            if pod_status.phase in (pod.Status.CRASH_LOOPBACK_OFF, pod.Status.FAILED):
+                failed_pods[pod.name] = pod_status
+
+        if failed_pods:
+            raise FailedPodsError(pods=failed_pods)
+
+        ready_pods = sum(
+            1
+            for pod in pods
+            if any(
+                c.type == pod.Status.READY and c.status == pod.Condition.Status.TRUE
+                for c in (pod.instance.status.conditions or [])
+            )
+        )
+
+        if ready_pods == len(pods):
+            return
 
 
 def check_pod_status_in_time(pod: Pod, status: set[str], duration: int = Timeout.TIMEOUT_2MIN, wait: int = 1) -> None:

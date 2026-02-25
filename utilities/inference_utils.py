@@ -475,6 +475,12 @@ class UserInference(Inference):
                     f"Got {HTTPStatus.SERVICE_UNAVAILABLE} error."
                 )
 
+            if re.search(rf"http/1\.\d\s+{HTTPStatus.INTERNAL_SERVER_ERROR.value}\b", out.lower()):
+                raise InferenceResponseError(
+                    f"Inference service at {self.get_inference_url()} returned "
+                    f"{HTTPStatus.INTERNAL_SERVER_ERROR} error."
+                )
+
         else:
             sanitized_cmd = re.sub(r"('Authorization: Bearer ).*?(')", r"\1***REDACTED***2", cmd)
             raise ValueError(f"Inference failed with error: {err}\nOutput: {out}\nCommand: {sanitized_cmd}")
