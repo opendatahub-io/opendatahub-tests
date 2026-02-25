@@ -146,7 +146,10 @@ class TestLlamaStackVectorStores:
         provider_id = vector_store_with_example_docs.metadata.get("provider_id", "")
         # FAISS does not support hybrid and keyword search modes see:
         # https://github.com/llamastack/llama-stack/blob/main/src/llama_stack/providers/inline/vector_io/faiss/faiss.py#L180-L196
-        search_modes = ["vector"] if provider_id == "faiss" else list(IBM_EARNINGS_SEARCH_QUERIES_BY_MODE)
+        # QDRANT-REMOTE does not support vector search mode
+        search_modes = (
+            ["vector"] if provider_id in ["faiss", "qdrant-remote"] else list(IBM_EARNINGS_SEARCH_QUERIES_BY_MODE)
+        )
 
         for search_mode in search_modes:
             queries = IBM_EARNINGS_SEARCH_QUERIES_BY_MODE[search_mode]
