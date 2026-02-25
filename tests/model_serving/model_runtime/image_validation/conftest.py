@@ -117,6 +117,7 @@ def _wait_for_isvc_pods(
     timeout: int,
 ) -> list[Pod]:
     """Wait until at least one pod exists for the InferenceService; return list of pods."""
+
     def _get_pods() -> list[Pod] | None:
         try:
             return get_pods_by_isvc_label(
