@@ -7,8 +7,8 @@ from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
 from tests.model_registry.model_catalog.constants import HF_SOURCE_ID
-from tests.model_registry.model_catalog.utils import get_models_from_catalog_api
-from tests.model_registry.utils import execute_get_command, get_model_catalog_pod
+from tests.model_registry.model_catalog.utils import execute_get_command, get_models_from_catalog_api
+from tests.model_registry.utils import get_model_catalog_pod
 
 LOGGER = get_logger(name=__name__)
 
