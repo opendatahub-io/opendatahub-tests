@@ -9,6 +9,10 @@ How the Pod works:
   - If both scripts exit 0, the Pod phase becomes Succeeded.
   - If either script fails (non-zero exit or exception), the Pod fails and the test fails.
   - The test asserts Pod phase Succeeded; logs available via oc logs for debugging.
+
+Note:
+  This test requires internet access to download models from Hugging Face (e.g., "gpt2").
+  It will fail in disconnected/air-gapped environments where external model downloads are not available.
 """
 
 import pytest
@@ -36,6 +40,10 @@ class TestOVMSSmokeInOpenShift:
         Given the OVMS runtime image (from --ovms-runtime-image or template),
         when the smoke Pod runs ovms_smoketest.py and smoke.py in the container,
         then the Pod completes with phase Succeeded and the test passes.
+
+        Note:
+            This test requires internet access to download models from Hugging Face.
+            It will fail in disconnected/air-gapped environments.
 
         Args:
             ovms_smoke_pod: The completed Kubernetes Pod that ran the smoke scripts.
