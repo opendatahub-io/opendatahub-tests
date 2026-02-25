@@ -3,6 +3,7 @@ from typing import Any
 
 import pytest
 from _pytest.fixtures import FixtureRequest
+from kubernetes.client.rest import ApiException
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
@@ -13,10 +14,13 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest_testconfig import config as py_config
+from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
+from tests.model_serving.model_server.kserve.multi_node.constants import WORKER_POD_ROLE
 from tests.model_serving.model_server.kserve.multi_node.utils import (
     delete_multi_node_pod_by_role,
+    get_pods_by_isvc_generation,
 )
 from utilities.constants import KServeDeploymentType, Labels, ModelCarImage, Protocols, Timeout
 from utilities.general import download_model_data
@@ -27,6 +31,8 @@ from utilities.infra import (
     wait_for_inference_deployment_replicas,
 )
 from utilities.serving_runtime import ServingRuntimeFromTemplate
+
+LOGGER = get_logger(name=__name__)
 
 
 @pytest.fixture(scope="session")
@@ -98,7 +104,7 @@ def multi_node_inference_service(
         storage_uri=f"pvc://{model_pvc.name}/{models_bucket_downloaded_model_data}",
         model_format=multi_node_serving_runtime.instance.spec.supportedModelFormats[0].name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-        autoscaler_mode="external",
+        autoscaler_mode="none",
         multi_node_worker_spec={},
         wait_for_predictor_pods=False,
     ) as isvc:
@@ -137,7 +143,6 @@ def multi_node_oci_inference_service(
         ]
     }
 
-    # NOTE: In KServe v0.15, the autoscaler_mode needs to be updated to "none".
     with create_isvc(
         client=unprivileged_client,
         name=request.param["name"],
@@ -146,7 +151,7 @@ def multi_node_oci_inference_service(
         storage_uri=ModelCarImage.GRANITE_8B_CODE_INSTRUCT,
         model_format=multi_node_serving_runtime.instance.spec.supportedModelFormats[0].name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-        autoscaler_mode="external",
+        autoscaler_mode="none",
         resources=resources,
         multi_node_worker_spec=worker_resources,
         wait_for_predictor_pods=False,
@@ -199,6 +204,7 @@ def patched_multi_node_isvc_external_route(
 @pytest.fixture(scope="function")
 def patched_multi_node_spec(
     request: FixtureRequest,
+    unprivileged_client: DynamicClient,
     multi_node_inference_service: InferenceService,
 ) -> Generator[InferenceService, Any, Any]:
     with ResourceEditor(
@@ -210,6 +216,15 @@ def patched_multi_node_spec(
             }
         }
     ):
+        for sample in TimeoutSampler(
+            wait_timeout=Timeout.TIMEOUT_10MIN,
+            sleep=10,
+            func=get_pods_by_isvc_generation,
+            client=unprivileged_client,
+            isvc=multi_node_inference_service,
+        ):
+            if sample:
+                break
         yield multi_node_inference_service
 
 
@@ -259,3 +274,87 @@ def deleted_multi_node_pod(
         isvc=multi_node_inference_service,
         timeout=Timeout.TIMEOUT_10MIN,
     )
+
+    wait_for_inference_deployment_replicas(
+        client=unprivileged_client,
+        isvc=multi_node_inference_service,
+        expected_num_deployments=2,
+    )
+
+    _warmup_inference_and_wait_for_recovery(
+        client=unprivileged_client,
+        isvc=multi_node_inference_service,
+    )
+
+
+def _warmup_inference_and_wait_for_recovery(
+    client: DynamicClient,
+    isvc: InferenceService,
+) -> None:
+    """Probe the head pod with a real inference request until it succeeds.
+
+    After a pod deletion+recovery cycle, the vLLM EngineCore may be in a corrupted
+    state that only crashes on the first real inference request. The /v1/models
+    endpoint returns 200 even when the engine is broken, so we must use
+    /v1/completions to exercise the distributed engine path. The liveness probe
+    then restarts the head pod, which takes several minutes. This function retries
+    until the completions endpoint responds with 200.
+    """
+    probe_cmd = [
+        "curl",
+        "-s",
+        "--max-time",
+        "15",
+        "-o",
+        "/dev/null",
+        "-w",
+        "%{http_code}",
+        "-H",
+        "Content-type:application/json",
+        "-d",
+        f'{{"model":"{isvc.name}","prompt":"test","max_tokens":1}}',
+        "http://localhost:8080/v1/completions",
+    ]
+
+    for sample in TimeoutSampler(
+        wait_timeout=Timeout.TIMEOUT_10MIN,
+        sleep=30,
+        func=_probe_inference_health,
+        client=client,
+        isvc=isvc,
+        cmd=probe_cmd,
+    ):
+        if sample:
+            return
+
+
+def _probe_inference_health(
+    client: DynamicClient,
+    isvc: InferenceService,
+    cmd: list[str],
+) -> bool:
+    """Return True if the head pod's completions endpoint returns 200.
+
+    Re-fetches pods each call to handle pod replacement during restarts.
+    """
+    for pod in get_pods_by_isvc_label(client=client, isvc=isvc):
+        if WORKER_POD_ROLE in pod.name:
+            continue
+
+        for condition in pod.instance.status.conditions or []:
+            if condition.type == "Ready" and condition.status != "True":
+                LOGGER.info(f"Head pod {pod.name} not Ready yet")
+                return False
+
+        try:
+            result = pod.execute(command=cmd)
+        except (ApiException, OSError) as exc:
+            LOGGER.warning(f"Inference probe on {pod.name} failed: {exc}")
+            return False
+        else:
+            status = result.strip()
+            LOGGER.info(f"Inference probe on {pod.name}: HTTP {status}")
+            return status == "200"
+
+    LOGGER.warning("No head pod found")
+    return False
