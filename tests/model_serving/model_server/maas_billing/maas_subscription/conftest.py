@@ -16,7 +16,7 @@ from tests.model_serving.model_server.maas_billing.utils import build_maas_heade
 from utilities.infra import create_inference_token, login_with_user_password
 from utilities.llmd_constants import ContainerImages, ModelStorage
 from utilities.llmd_utils import create_llmisvc
-from utilities.plugins.constant import OpenAIEnpoints, RestHeader
+from utilities.plugins.constant import OpenAIEnpoints
 from utilities.resources.maa_s_auth_policy import MaaSAuthPolicy
 from utilities.resources.maa_s_model import MaaSModel
 from utilities.resources.maa_s_subscription import MaaSSubscription
