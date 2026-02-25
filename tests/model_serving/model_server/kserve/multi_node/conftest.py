@@ -3,6 +3,7 @@ from typing import Any
 
 import pytest
 from _pytest.fixtures import FixtureRequest
+from kubernetes.client.rest import ApiException
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
@@ -22,8 +23,6 @@ from tests.model_serving.model_server.kserve.multi_node.utils import (
     get_pods_by_isvc_generation,
 )
 from utilities.constants import KServeDeploymentType, Labels, ModelCarImage, Protocols, Timeout
-
-LOGGER = get_logger(name=__name__)
 from utilities.general import download_model_data
 from utilities.inference_utils import create_isvc
 from utilities.infra import (
@@ -32,6 +31,8 @@ from utilities.infra import (
     wait_for_inference_deployment_replicas,
 )
 from utilities.serving_runtime import ServingRuntimeFromTemplate
+
+LOGGER = get_logger(name=__name__)
 
 
 @pytest.fixture(scope="session")
@@ -300,10 +301,18 @@ def _warmup_inference_and_wait_for_recovery(
     until the completions endpoint responds with 200.
     """
     probe_cmd = [
-        "curl", "-s", "--max-time", "15",
-        "-o", "/dev/null", "-w", "%{http_code}",
-        "-H", "Content-type:application/json",
-        "-d", f'{{"model":"{isvc.name}","prompt":"test","max_tokens":1}}',
+        "curl",
+        "-s",
+        "--max-time",
+        "15",
+        "-o",
+        "/dev/null",
+        "-w",
+        "%{http_code}",
+        "-H",
+        "Content-type:application/json",
+        "-d",
+        f'{{"model":"{isvc.name}","prompt":"test","max_tokens":1}}',
         "http://localhost:8080/v1/completions",
     ]
 
@@ -339,12 +348,13 @@ def _probe_inference_health(
 
         try:
             result = pod.execute(command=cmd)
+        except (ApiException, OSError) as exc:
+            LOGGER.warning(f"Inference probe on {pod.name} failed: {exc}")
+            return False
+        else:
             status = result.strip()
             LOGGER.info(f"Inference probe on {pod.name}: HTTP {status}")
             return status == "200"
-        except Exception as exc:
-            LOGGER.warning(f"Inference probe on {pod.name} failed: {exc}")
-            return False
 
     LOGGER.warning("No head pod found")
     return False
