@@ -24,15 +24,17 @@ from tests.model_registry.model_catalog.constants import (
     REDHAT_AI_CATALOG_ID,
     SAMPLE_MODEL_NAME3,
 )
-from tests.model_registry.model_catalog.utils import get_models_from_catalog_api
-from tests.model_registry.utils import (
+from tests.model_registry.model_catalog.utils import (
     execute_get_command,
-    get_model_catalog_pod,
     get_model_str,
-    get_mr_user_token,
-    get_rest_headers,
+    get_models_from_catalog_api,
     wait_for_model_catalog_api,
     wait_for_model_catalog_pod_ready_after_deletion,
+)
+from tests.model_registry.utils import (
+    get_model_catalog_pod,
+    get_mr_user_token,
+    get_rest_headers,
 )
 from utilities.infra import create_inference_token, get_openshift_token, login_with_user_password
 

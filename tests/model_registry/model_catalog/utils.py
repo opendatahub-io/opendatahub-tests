@@ -1,11 +1,18 @@
+import json
+import time
 from typing import Any
 
+import requests
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
+from timeout_sampler import retry
 
 from tests.model_registry.model_catalog.constants import HF_MODELS
-from tests.model_registry.utils import execute_get_command
+from tests.model_registry.utils import get_model_catalog_pod
+from utilities.constants import PodNotFound
+from utilities.general import wait_for_pods_running
 
 LOGGER = get_logger(name=__name__)
 
@@ -275,3 +282,122 @@ def assert_source_error_state_message(
     assert expected_error_message in matched_source[0]["error"], (
         f"Expected error: {expected_error_message} not found in {matched_source[0]['error']}"
     )
+
+
+class TransientUnauthorizedError(Exception):
+    """Exception for transient 401 Unauthorized errors that should be retried."""
+
+
+def execute_get_call(
+    url: str, headers: dict[str, str], verify: bool | str = False, params: dict[str, Any] | None = None
+) -> requests.Response:
+    LOGGER.info(f"Executing get call: {url}")
+    if params:
+        LOGGER.info(f"params: {params}")
+    resp = requests.get(url=url, headers=headers, verify=verify, timeout=60, params=params)
+    LOGGER.info(f"Encoded url from requests library: {resp.url}")
+    if resp.status_code not in [200, 201]:
+        # Raise custom exception for 401 errors that can be retried (OAuth/kube-rbac-proxy initialization)
+        if resp.status_code == 401:
+            raise TransientUnauthorizedError(f"Get call failed for resource: {url}, 401: {resp.text}")
+        # Raise regular exception for other errors (400, 403, 404, etc.) that should fail immediately
+        raise ResourceNotFoundError(f"Get call failed for resource: {url}, {resp.status_code}: {resp.text}")
+    return resp
+
+
+def execute_get_command(
+    url: str, headers: dict[str, str], verify: bool | str = False, params: dict[str, Any] | None = None
+) -> dict[Any, Any]:
+    resp = execute_get_call(url=url, headers=headers, verify=verify, params=params)
+    try:
+        return json.loads(resp.text)
+    except json.JSONDecodeError:
+        LOGGER.error(f"Unable to parse {resp.text}")
+        raise
+
+
+@retry(wait_timeout=90, sleep=5, exceptions_dict={ResourceNotFoundError: [], TransientUnauthorizedError: []})
+def wait_for_model_catalog_api(url: str, headers: dict[str, str], verify: bool | str = False) -> requests.Response:
+    """
+    Wait for model catalog API to be ready and fully initialized checks both /sources and /models endpoints
+    to ensure OAuth/kube-rbac-proxy is fully initialized.
+    """
+    LOGGER.info(f"Waiting for model catalog API at {url}sources")
+    execute_get_call(url=f"{url}sources", headers=headers, verify=verify)
+    LOGGER.info(f"Verifying model catalog API readiness at {url}models")
+
+    return execute_get_call(url=f"{url}models", headers=headers, verify=verify)
+
+
+def get_model_str(model: str) -> str:
+    current_time = int(time.time() * 1000)
+    return f"""
+- name: {model}
+  description: test description.
+  readme: |-
+    # test read me information {model}
+  provider: Mistral AI
+  logo: temp placeholder logo
+  license: apache-2.0
+  licenseLink: https://www.apache.org/licenses/LICENSE-2.0.txt
+  libraryName: transformers
+  artifacts:
+    - uri: https://huggingface.co/{model}/resolve/main/consolidated.safetensors
+  createTimeSinceEpoch: \"{current_time - 10000!s}\"
+  lastUpdateTimeSinceEpoch: \"{current_time!s}\"
+"""
+
+
+def get_sample_yaml_str(models: list[str]) -> str:
+    model_str: str = ""
+    for model in models:
+        model_str += f"""
+{get_model_str(model=model)}
+"""
+    return f"""source: Hugging Face
+models:
+{model_str}
+"""
+
+
+def get_catalog_str(ids: list[str]) -> str:
+    catalog_str: str = ""
+    for index, id in enumerate(ids):
+        catalog_str += f"""
+- name: Sample Catalog {index}
+  id: {id}
+  type: yaml
+  enabled: true
+  properties:
+    yamlCatalogPath: {id.replace("_", "-")}.yaml
+"""
+    return f"""catalogs:
+{catalog_str}
+"""
+
+
+def wait_for_model_catalog_pod_ready_after_deletion(
+    client: DynamicClient, model_registry_namespace: str, consecutive_try: int = 6
+) -> bool:
+    model_catalog_pods = get_model_catalog_pod(
+        client=client,
+        model_registry_namespace=model_registry_namespace,
+    )
+    # We can wait for the pods to reflect updated catalog, however, deleting them ensures the updated config is
+    # applied immediately.
+    for pod in model_catalog_pods:
+        pod.delete()
+    # After the deletion, we need to wait for the pod to be spinned up and get to ready state.
+    assert wait_for_model_catalog_pod_created(client=client, model_registry_namespace=model_registry_namespace)
+    wait_for_pods_running(
+        admin_client=client, namespace_name=model_registry_namespace, number_of_consecutive_checks=consecutive_try
+    )
+    return True
+
+
+@retry(wait_timeout=30, sleep=5, exceptions_dict={PodNotFound: []})
+def wait_for_model_catalog_pod_created(client: DynamicClient, model_registry_namespace: str) -> bool:
+    pods = get_model_catalog_pod(client=client, model_registry_namespace=model_registry_namespace)
+    if pods:
+        return True
+    raise PodNotFound("Model catalog pod not found")

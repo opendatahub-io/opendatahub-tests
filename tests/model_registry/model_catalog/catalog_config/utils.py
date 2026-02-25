@@ -19,6 +19,7 @@ from tests.model_registry.model_catalog.constants import (
 from tests.model_registry.model_catalog.db_constants import GET_MODELS_BY_SOURCE_ID_DB_QUERY
 from tests.model_registry.model_catalog.utils import (
     execute_database_query,
+    execute_get_command,
     get_models_from_catalog_api,
     parse_psql_output,
 )
@@ -526,3 +527,17 @@ def wait_for_catalog_source_restore(
 
     LOGGER.info("Found expected number of models: %s for source: %s", expected_count, source_label)
     return True
+
+
+def validate_model_catalog_sources(
+    model_catalog_sources_url: str, rest_headers: dict[str, str], expected_catalog_values: dict[str, str]
+) -> None:
+    results = execute_get_command(
+        url=model_catalog_sources_url,
+        headers=rest_headers,
+    )["items"]
+    LOGGER.info(f"Model catalog sources: {results}")
+    ids_from_query = [result_entry["id"] for result_entry in results]
+    ids_expected = [expected_entry["id"] for expected_entry in expected_catalog_values]
+    LOGGER.info(f"IDs expected: {ids_expected}, IDs found: {ids_from_query}")
+    assert set(ids_expected).issubset(set(ids_from_query)), f"Expected: {expected_catalog_values}. Actual: {results}"

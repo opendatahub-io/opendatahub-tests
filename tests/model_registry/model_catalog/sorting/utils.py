@@ -9,10 +9,10 @@ from tests.model_registry.model_catalog.db_constants import (
 )
 from tests.model_registry.model_catalog.utils import (
     execute_database_query,
+    execute_get_command,
     get_models_from_catalog_api,
     parse_psql_output,
 )
-from tests.model_registry.utils import execute_get_command
 
 LOGGER = get_logger(name=__name__)
 

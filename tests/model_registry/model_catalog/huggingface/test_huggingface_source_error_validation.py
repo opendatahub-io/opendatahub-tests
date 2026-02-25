@@ -7,7 +7,7 @@ from ocp_resources.config_map import ConfigMap
 from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.huggingface.utils import assert_accessible_models_via_catalog_api
-from tests.model_registry.utils import execute_get_command
+from tests.model_registry.model_catalog.utils import execute_get_command
 
 LOGGER = get_logger(name=__name__)
 INACCESSIBLE_MODELS: list[str] = [
