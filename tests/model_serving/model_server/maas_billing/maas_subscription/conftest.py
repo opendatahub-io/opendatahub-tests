@@ -21,7 +21,7 @@ from utilities.resources.maa_s_auth_policy import MaaSAuthPolicy
 from utilities.resources.maa_s_model import MaaSModel
 from utilities.resources.maa_s_subscription import MaaSSubscription
 
-LOGGER = get_logger(__name__)
+LOGGER = get_logger(name=__name__)
 
 CHAT_COMPLETIONS = OpenAIEnpoints.CHAT_COMPLETIONS
 
