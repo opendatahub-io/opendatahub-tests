@@ -1,9 +1,9 @@
+import json
 from collections.abc import Generator
 from contextlib import ExitStack
 
 import pytest
 import yaml
-import json
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.gateway import Gateway
@@ -548,7 +548,7 @@ def singlenode_precise_prefix_cache(
     unprivileged_model_namespace: Namespace,
     llmd_s3_service_account: ServiceAccount,
     llmd_gateway: Gateway,
-) -> Generator[LLMInferenceService, None, None]:
+) -> Generator[LLMInferenceService]:
     """LLMInferenceService fixture for single-node precise prefix cache test."""
 
     llmisvc_name = "singlenode-precise-prefix-cache"

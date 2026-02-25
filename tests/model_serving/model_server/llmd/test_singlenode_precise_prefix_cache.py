@@ -25,9 +25,9 @@ from tests.model_serving.model_server.llmd.utils import (
     get_llmd_router_scheduler_pod,
     get_llmd_workload_pods,
     send_prefix_cache_test_requests,
-    verify_precise_prefix_cache,
     verify_gateway_status,
     verify_llm_service_status,
+    verify_precise_prefix_cache,
 )
 
 # Number of requests to send for prefix cache testing
@@ -91,7 +91,9 @@ class TestSingleNodePrecisePrefixCache:
         workload_pods = get_llmd_workload_pods(client=unprivileged_client, llmisvc=singlenode_precise_prefix_cache)
         assert len(workload_pods) == 2, f"Expected 2 workload pods, found {len(workload_pods)}"
 
-        import pdb; pdb.set_trace()
+        import pdb
+
+        pdb.set_trace()
         # send_prefix_cache_test_requests(llmisvc=singlenode_precise_prefix_cache,token=authenticated_llmisvc_token,num_requests=3)
 
         # Send N identical requests to test prefix cache
