@@ -20,16 +20,29 @@ jobs:
 
     steps:
       - name: save the pr information
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          REVIEW_BODY: ${{ github.event.review.body }}
+          USER_LOGIN: ${{ github.event.sender.login }}
         run: |
-            printf '{
-              "pr_num": "${{ github.event.pull_request.number || github.event.issue.number }}",
-              "event_action": "${{ github.event.action }}",
-              "review_state": "${{ github.event.review.state }}",
-              "event_name": "${{ github.event_name }}",
-              "comment_body": "${{ github.event.comment.body }}",
-              "review_comment_body": "${{ github.event.review.body }}",
-              "user_login": "${{ github.event.sender.login }}",
-              "action": "add-remove-labels"
+          jq -n \
+            --arg pr_num "${{ github.event.pull_request.number || github.event.issue.number }}" \
+            --arg event_action "${{ github.event.action }}" \
+            --arg review_state "${{ github.event.review.state }}" \
+            --arg event_name "${{ github.event_name }}" \
+            --arg comment_body "$COMMENT_BODY" \
+            --arg review_comment_body "$REVIEW_BODY" \
+            --arg user_login "$USER_LOGIN" \
+            --arg action "add-remove-labels" \
+            '{
+              pr_num: $pr_num,
+              event_action: $event_action,
+              review_state: $review_state,
+              event_name: $event_name,
+              comment_body: $comment_body,
+              review_comment_body: $review_comment_body,
+              user_login: $user_login,
+              action: $action
             }' >> context.json
       - uses: actions/upload-artifact@v6
         with:

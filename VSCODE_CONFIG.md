@@ -13,7 +13,7 @@ to `"mypy-type-checker.args" = ["--config-file=pyproject.toml"]`.
 If you use Visual Studio Code and want to debug your test execution with its "Run and Debug" feature, you'll want to use
 a `launch.json` file similar to this one:
 
-```
+```json
 {
     // Use IntelliSense to learn about possible attributes.
     // Hover to view descriptions of existing attributes.
