@@ -37,7 +37,7 @@ LOGGER = get_logger(name=__name__)
 
 @pytest.fixture(scope="session")
 def nvidia_gpu_nodes(nodes: list[Node]) -> list[Node]:
-    return [node for node in nodes if "nvidia.com/gpu.present" in node.labels]
+    return [node for node in nodes if "nvidia.com/gpu.present" in node.labels.keys()]  # noqa: SIM118
 
 
 @pytest.fixture(scope="session")
