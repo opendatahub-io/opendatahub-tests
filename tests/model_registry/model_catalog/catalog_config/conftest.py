@@ -17,11 +17,11 @@ from tests.model_registry.model_catalog.catalog_config.utils import (
     wait_for_catalog_source_restore,
 )
 from tests.model_registry.model_catalog.constants import REDHAT_AI_CATALOG_ID, REDHAT_AI_CATALOG_NAME
-from tests.model_registry.utils import (
-    get_model_catalog_pod,
+from tests.model_registry.model_catalog.utils import (
     wait_for_model_catalog_api,
     wait_for_model_catalog_pod_ready_after_deletion,
 )
+from tests.model_registry.utils import get_model_catalog_pod
 
 LOGGER = get_logger(name=__name__)
 

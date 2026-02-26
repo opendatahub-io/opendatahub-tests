@@ -20,8 +20,7 @@ from tests.model_registry.model_catalog.db_constants import (
     SEARCH_MODELS_DB_QUERY,
     SEARCH_MODELS_WITH_SOURCE_ID_DB_QUERY,
 )
-from tests.model_registry.model_catalog.utils import execute_database_query, parse_psql_output
-from tests.model_registry.utils import execute_get_command
+from tests.model_registry.model_catalog.utils import execute_database_query, execute_get_command, parse_psql_output
 
 LOGGER = get_logger(name=__name__)
 

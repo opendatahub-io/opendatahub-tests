@@ -18,7 +18,7 @@ from tests.model_registry.model_catalog.constants import (
     REDHAT_AI_CATALOG_ID,
     REDHAT_AI_CATALOG_NAME,
 )
-from tests.model_registry.utils import wait_for_model_catalog_api
+from tests.model_registry.model_catalog.utils import wait_for_model_catalog_api
 
 LOGGER = get_logger(name=__name__)
 
