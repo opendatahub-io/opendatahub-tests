@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Generator, Sequence
 from contextlib import contextmanager
-from urllib.parse import urlparse
+from typing import Generator, Sequence
 
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.resource import ResourceEditor
+from urllib.parse import urlparse
+from utilities.constants import ApiGroups
+
 
 from utilities.constants import (
     MAAS_GATEWAY_NAME,
@@ -19,18 +21,17 @@ def patch_llmisvc_with_maas_router_and_tiers(
     llm_service: LLMInferenceService,
     tiers: Sequence[str],
     enable_auth: bool = True,
-) -> Generator[None]:
+) -> Generator[None, None, None]:
     """
     Patch an LLMInferenceService to use MaaS router (gateway refs + route {})
     and set MaaS tier annotation.
 
     This is intended for MaaS subscription tests where you want distinct
-    tiered models (e.g. free vs premium), without changing the existing
-    patch_llmisvc_with_maas_router() behavior used elsewhere.
+    tiered models (e.g. free vs premium)
 
     Examples:
-      - tiers=[]              -> open model (same as simulator)
-      - tiers=["premium"]     -> premium-only (same as simulator-premium)
+      - tiers=[]              -> open model
+      - tiers=["premium"]     -> premium-only
     """
     router_spec = {
         "gateway": {"refs": [{"name": MAAS_GATEWAY_NAME, "namespace": MAAS_GATEWAY_NAMESPACE}]},
@@ -41,7 +42,7 @@ def patch_llmisvc_with_maas_router_and_tiers(
     patch_body = {
         "metadata": {
             "annotations": {
-                "alpha.maas.opendatahub.io/tiers": json.dumps(tiers_val),
+                f"alpha.{ApiGroups.MAAS_IO}/tiers": json.dumps(tiers_val),
                 "security.opendatahub.io/enable-auth": "true" if enable_auth else "false",
             }
         },
