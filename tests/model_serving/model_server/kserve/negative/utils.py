@@ -1,6 +1,5 @@
 """Utility functions for negative inference tests."""
 
-import json
 import shlex
 from typing import Any
 
@@ -9,16 +8,10 @@ from ocp_resources.inference_service import InferenceService
 from pyhelper_utils.shell import run_command
 
 from utilities.infra import get_pods_by_isvc_label
+from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 VALID_OVMS_INFERENCE_BODY: dict[str, Any] = {
-    "inputs": [
-        {
-            "name": "Input3",
-            "shape": [1, 1, 28, 28],
-            "datatype": "FP32",
-            "data": [0.0] * 784,
-        }
-    ]
+    "inputs": ONNX_INFERENCE_CONFIG["default_query_model"]["infer"]["query_input"]
 }
 
 
@@ -60,70 +53,24 @@ def assert_pods_healthy(
             )
 
 
-def _get_isvc_base_url(inference_service: InferenceService) -> str:
-    url = inference_service.instance.status.url
-    if not url:
-        raise ValueError(f"InferenceService '{inference_service.name}' has no URL; is it Ready?")
-    return url
-
-
-def _parse_curl_output(output: str) -> tuple[int, str]:
-    lines = output.strip().split("\n")
-    try:
-        status_code = int(lines[-1])
-    except ValueError as exc:
-        raise ValueError(f"Could not parse HTTP status code from curl output: {output!r}") from exc
-    return status_code, "\n".join(lines[:-1])
-
-
-def send_inference_request_with_content_type(
+def send_inference_request(
     inference_service: InferenceService,
-    content_type: str,
-    body: dict[str, Any],
-) -> tuple[int, str]:
-    """Send an inference request with a specific Content-Type header.
-
-    Args:
-        inference_service: The InferenceService to send the request to.
-        content_type: The Content-Type header value to use.
-        body: The request body to send.
-
-    Returns:
-        A tuple of (status_code, response_body).
-
-    Raises:
-        ValueError: If the InferenceService has no URL or curl output is malformed.
-    """
-    base_url = _get_isvc_base_url(inference_service=inference_service)
-    endpoint = f"{base_url}/v2/models/{inference_service.name}/infer"
-
-    cmd = (
-        f"curl -s -w '\\n%{{http_code}}' "
-        f"-X POST {endpoint} "
-        f"-H 'Content-Type: {content_type}' "
-        f"-d '{json.dumps(body)}' "
-        f"--insecure"
-    )
-
-    _, out, _ = run_command(command=shlex.split(cmd), verify_stderr=False, check=False)
-    return _parse_curl_output(output=out)
-
-
-def send_raw_inference_request(
-    inference_service: InferenceService,
-    raw_body: str,
+    body: str,
     model_name: str | None = None,
+    content_type: str = "application/json",
 ) -> tuple[int, str]:
-    """Send an inference request with a raw string body.
+    """Send an inference request and return HTTP status code and response body.
 
-    Useful for testing malformed JSON, missing fields, or wrong data types
-    where a dict body would be auto-serialized correctly.
+    Unlike UserInference, this function does not retry or raise on error
+    status codes, making it suitable for negative testing where error
+    responses are the expected outcome.
 
     Args:
         inference_service: The InferenceService to send the request to.
-        raw_body: The raw string payload to send (can be invalid JSON).
+        body: The raw string payload (can be invalid JSON for negative testing).
         model_name: Override the model name in the URL path.
             Defaults to the InferenceService name.
+        content_type: The Content-Type header value. Defaults to "application/json".
 
     Returns:
         A tuple of (status_code, response_body).
@@ -131,17 +78,26 @@ def send_raw_inference_request(
     Raises:
         ValueError: If the InferenceService has no URL or curl output is malformed.
     """
-    base_url = _get_isvc_base_url(inference_service=inference_service)
+    base_url = inference_service.instance.status.url
+    if not base_url:
+        raise ValueError(f"InferenceService '{inference_service.name}' has no URL; is it Ready?")
+
     target_model = model_name or inference_service.name
     endpoint = f"{base_url}/v2/models/{target_model}/infer"
 
     cmd = (
         f"curl -s -w '\\n%{{http_code}}' "
         f"-X POST {endpoint} "
-        f"-H 'Content-Type: application/json' "
-        f"--data-raw {shlex.quote(raw_body)} "
+        f"-H 'Content-Type: {content_type}' "
+        f"--data-raw {shlex.quote(body)} "
         f"--insecure"
     )
 
     _, out, _ = run_command(command=shlex.split(cmd), verify_stderr=False, check=False)
-    return _parse_curl_output(output=out)
+
+    lines = out.strip().split("\n")
+    try:
+        status_code = int(lines[-1])
+    except ValueError as exc:
+        raise ValueError(f"Could not parse HTTP status code from curl output: {out!r}") from exc
+    return status_code, "\n".join(lines[:-1])

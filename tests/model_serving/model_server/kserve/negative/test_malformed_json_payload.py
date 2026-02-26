@@ -12,7 +12,7 @@ from ocp_resources.inference_service import InferenceService
 
 from tests.model_serving.model_server.kserve.negative.utils import (
     assert_pods_healthy,
-    send_raw_inference_request,
+    send_inference_request,
 )
 
 pytestmark = pytest.mark.usefixtures("valid_aws_config")
@@ -66,9 +66,9 @@ class TestMalformedJsonPayload:
         When sending a POST request with a malformed JSON body
         Then the response should have HTTP status code 400 or 412
         """
-        status_code, response_body = send_raw_inference_request(
+        status_code, response_body = send_inference_request(
             inference_service=negative_test_ovms_isvc,
-            raw_body=malformed_body,
+            body=malformed_body,
         )
 
         assert status_code in MALFORMED_JSON_EXPECTED_CODES, (
@@ -87,9 +87,9 @@ class TestMalformedJsonPayload:
         When sending requests with malformed JSON payloads
         Then the same pods should still be running without additional restarts
         """
-        send_raw_inference_request(
+        send_inference_request(
             inference_service=negative_test_ovms_isvc,
-            raw_body=MISSING_BRACE_BODY,
+            body=MISSING_BRACE_BODY,
         )
         assert_pods_healthy(
             admin_client=admin_client,

@@ -14,7 +14,7 @@ from ocp_resources.inference_service import InferenceService
 from tests.model_serving.model_server.kserve.negative.utils import (
     VALID_OVMS_INFERENCE_BODY,
     assert_pods_healthy,
-    send_raw_inference_request,
+    send_inference_request,
 )
 
 pytestmark = pytest.mark.usefixtures("valid_aws_config")
@@ -52,9 +52,9 @@ class TestInvalidModelName:
         When sending a POST request targeting a non-existent model name
         Then the response should have HTTP status code 404 (Not Found)
         """
-        status_code, response_body = send_raw_inference_request(
+        status_code, response_body = send_inference_request(
             inference_service=negative_test_ovms_isvc,
-            raw_body=VALID_BODY_RAW,
+            body=VALID_BODY_RAW,
             model_name="nonexistent-model",
         )
 
@@ -74,9 +74,9 @@ class TestInvalidModelName:
         When sending a request targeting a non-existent model name
         Then the existing service pods should remain running without restarts
         """
-        send_raw_inference_request(
+        send_inference_request(
             inference_service=negative_test_ovms_isvc,
-            raw_body=VALID_BODY_RAW,
+            body=VALID_BODY_RAW,
             model_name="nonexistent-model",
         )
         assert_pods_healthy(

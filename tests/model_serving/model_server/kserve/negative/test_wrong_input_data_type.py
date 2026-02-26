@@ -15,7 +15,7 @@ from ocp_resources.inference_service import InferenceService
 from tests.model_serving.model_server.kserve.negative.utils import (
     VALID_OVMS_INFERENCE_BODY,
     assert_pods_healthy,
-    send_raw_inference_request,
+    send_inference_request,
 )
 
 pytestmark = pytest.mark.usefixtures("valid_aws_config")
@@ -70,9 +70,9 @@ class TestWrongInputDataType:
         When sending a POST request with mismatched input tensor data types
         Then the response should have HTTP status code 400 or 422
         """
-        status_code, response_body = send_raw_inference_request(
+        status_code, response_body = send_inference_request(
             inference_service=negative_test_ovms_isvc,
-            raw_body=invalid_input_body,
+            body=invalid_input_body,
         )
 
         assert status_code in (HTTPStatus.BAD_REQUEST, HTTPStatus.UNPROCESSABLE_ENTITY), (
@@ -91,9 +91,9 @@ class TestWrongInputDataType:
         When sending requests with wrong input tensor data types
         Then the same pods should still be running without additional restarts
         """
-        send_raw_inference_request(
+        send_inference_request(
             inference_service=negative_test_ovms_isvc,
-            raw_body=STRING_VALUES_AS_FP32_BODY,
+            body=STRING_VALUES_AS_FP32_BODY,
         )
         assert_pods_healthy(
             admin_client=admin_client,

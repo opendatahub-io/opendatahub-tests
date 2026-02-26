@@ -13,7 +13,7 @@ from ocp_resources.inference_service import InferenceService
 
 from tests.model_serving.model_server.kserve.negative.utils import (
     assert_pods_healthy,
-    send_raw_inference_request,
+    send_inference_request,
 )
 
 pytestmark = pytest.mark.usefixtures("valid_aws_config")
@@ -59,9 +59,9 @@ class TestMissingRequiredFields:
         When sending a POST request with missing required fields
         Then the response should have HTTP status code 400 (Bad Request)
         """
-        status_code, response_body = send_raw_inference_request(
+        status_code, response_body = send_inference_request(
             inference_service=negative_test_ovms_isvc,
-            raw_body=incomplete_body,
+            body=incomplete_body,
         )
 
         assert status_code == HTTPStatus.BAD_REQUEST, (
@@ -80,9 +80,9 @@ class TestMissingRequiredFields:
         When sending requests with missing required fields
         Then the same pods should still be running without additional restarts
         """
-        send_raw_inference_request(
+        send_inference_request(
             inference_service=negative_test_ovms_isvc,
-            raw_body="{}",
+            body="{}",
         )
         assert_pods_healthy(
             admin_client=admin_client,
