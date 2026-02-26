@@ -1,18 +1,17 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Generator, Sequence
 from contextlib import contextmanager
-from typing import Generator, Sequence
+from urllib.parse import urlparse
 
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.resource import ResourceEditor
-from urllib.parse import urlparse
-from utilities.constants import ApiGroups
-
 
 from utilities.constants import (
     MAAS_GATEWAY_NAME,
     MAAS_GATEWAY_NAMESPACE,
+    ApiGroups,
 )
 
 
@@ -21,7 +20,7 @@ def patch_llmisvc_with_maas_router_and_tiers(
     llm_service: LLMInferenceService,
     tiers: Sequence[str],
     enable_auth: bool = True,
-) -> Generator[None, None, None]:
+) -> Generator[None]:
     """
     Patch an LLMInferenceService to use MaaS router (gateway refs + route {})
     and set MaaS tier annotation.
