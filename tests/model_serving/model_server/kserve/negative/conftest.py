@@ -3,7 +3,6 @@ from typing import Any
 from urllib.parse import urlparse
 
 import pytest
-from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
@@ -15,16 +14,54 @@ from utilities.constants import (
     RuntimeTemplates,
 )
 from utilities.inference_utils import create_isvc
-from utilities.infra import get_pods_by_isvc_label
+from utilities.infra import create_ns, get_pods_by_isvc_label, s3_endpoint_secret
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="package")
+def unprivileged_model_namespace(
+    admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
+) -> Generator[Namespace, Any, Any]:
+    """Create a shared namespace for all negative tests."""
+    with create_ns(
+        admin_client=admin_client,
+        unprivileged_client=unprivileged_client,
+        name="negative-test-kserve",
+    ) as ns:
+        yield ns
+
+
+@pytest.fixture(scope="package")
+def ci_endpoint_s3_secret(
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+    aws_access_key_id: str,
+    aws_secret_access_key: str,
+    ci_s3_bucket_name: str,
+    ci_s3_bucket_region: str,
+    ci_s3_bucket_endpoint: str,
+) -> Generator[Secret, Any, Any]:
+    """Create S3 secret shared across all negative tests."""
+    with s3_endpoint_secret(
+        client=unprivileged_client,
+        name="ci-bucket-secret",
+        namespace=unprivileged_model_namespace.name,
+        aws_access_key=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
+        aws_s3_region=ci_s3_bucket_region,
+        aws_s3_bucket=ci_s3_bucket_name,
+        aws_s3_endpoint=ci_s3_bucket_endpoint,
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="package")
 def ovms_serving_runtime(
     admin_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
-    """Create OVMS serving runtime for negative tests."""
+    """Create OVMS serving runtime shared across all negative tests."""
     with ServingRuntimeFromTemplate(
         client=admin_client,
         name="negative-test-ovms-runtime",
@@ -37,17 +74,16 @@ def ovms_serving_runtime(
         yield runtime
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="package")
 def negative_test_ovms_isvc(
-    request: FixtureRequest,
     admin_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     ovms_serving_runtime: ServingRuntime,
     ci_s3_bucket_name: str,
     ci_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
-    """Create InferenceService with OVMS runtime for negative tests."""
-    storage_uri = f"s3://{ci_s3_bucket_name}/{request.param['model-dir']}/"
+    """Create InferenceService with OVMS runtime shared across all negative tests."""
+    storage_uri = f"s3://{ci_s3_bucket_name}/test-dir/"
     supported_formats = ovms_serving_runtime.instance.spec.supportedModelFormats
     if not supported_formats:
         raise ValueError(f"ServingRuntime '{ovms_serving_runtime.name}' has no supportedModelFormats")
