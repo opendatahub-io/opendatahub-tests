@@ -62,6 +62,7 @@ class TestSearchModelCatalog:
         assert no_filtered_models_size == both_filtered_models_size
         assert redhat_ai_filter_moldels_size + redhat_ai_validated_filter_models_size == both_filtered_models_size
 
+    @pytest.mark.tier3
     def test_search_model_catalog_invalid_source_label(
         self: Self,
         model_catalog_rest_url: list[str],
@@ -230,7 +231,7 @@ class TestSearchModelCatalogQParameter:
 
 
 class TestSearchModelsByFilterQuery:
-    @pytest.mark.sanity
+    @pytest.mark.tier1
     def test_search_models_by_filter_query(
         self: Self,
         admin_client: DynamicClient,
@@ -278,6 +279,7 @@ class TestSearchModelsByFilterQuery:
 
         LOGGER.info("All models match the filter query and database validation passed")
 
+    @pytest.mark.tier3
     def test_search_models_by_invalid_filter_query(
         self: Self,
         admin_client: DynamicClient,

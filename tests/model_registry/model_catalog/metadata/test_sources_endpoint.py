@@ -17,7 +17,7 @@ class TestSourcesEndpoint:
         [{"id": REDHAT_AI_CATALOG_ID, "field_name": "enabled", "field_value": False}],
         indirect=True,
     )
-    @pytest.mark.sanity
+    @pytest.mark.tier1
     def test_sources_endpoint_returns_all_sources_regardless_of_enabled_field(
         self,
         sparse_override_catalog_source: dict,

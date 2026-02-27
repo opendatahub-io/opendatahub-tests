@@ -17,7 +17,7 @@ LOGGER = get_logger(name=__name__)
     "updated_dsc_component_state_scope_session", "model_registry_metadata_db_resources", "model_registry_instance"
 )
 class TestDBMigration:
-    @pytest.mark.sanity
+    @pytest.mark.tier3
     def test_db_migration_negative(
         self: Self,
         admin_client: DynamicClient,

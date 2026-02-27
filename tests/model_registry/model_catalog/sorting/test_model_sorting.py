@@ -31,7 +31,7 @@ class TestAccuracySorting:
             "DESC",
         ],
     )
-    @pytest.mark.sanity
+    @pytest.mark.tier1
     def test_accuracy_sorting_works_correctly(
         self: Self,
         admin_client: DynamicClient,
@@ -74,7 +74,7 @@ class TestAccuracySorting:
         "use_case",
         [
             "code_fixing",
-            pytest.param("chatbot", marks=pytest.mark.sanity),  # Dashboard default use case
+            pytest.param("chatbot", marks=pytest.mark.tier1),  # Dashboard default use case
             "long_rag",
             "rag",
         ],

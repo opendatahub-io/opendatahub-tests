@@ -17,6 +17,7 @@ pytestmark = [
 ]
 
 
+@pytest.mark.tier3
 class TestHuggingFaceNegative:
     @pytest.mark.parametrize(
         "updated_catalog_config_map_scope_function, expected_error_message",

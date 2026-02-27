@@ -41,7 +41,7 @@ class TestLabelsEndpoint:
         # Verify they match
         verify_labels_match(expected_labels=expected_labels, api_labels=api_labels)
 
-    @pytest.mark.sanity
+    @pytest.mark.tier1
     def test_labels_endpoint_configmap_updates(
         self,
         admin_client: DynamicClient,

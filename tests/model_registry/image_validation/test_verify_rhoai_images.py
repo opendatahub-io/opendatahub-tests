@@ -28,7 +28,7 @@ class TestAIHubResourcesImages:
         [
             pytest.param(
                 {"namespace": py_config["model_registry_namespace"], "label_selector": "component=model-catalog"},
-                marks=pytest.mark.sanity,
+                marks=pytest.mark.tier1,
                 id="test_model_catalog_pods_images",
             ),
             pytest.param(
@@ -36,7 +36,7 @@ class TestAIHubResourcesImages:
                     "namespace": py_config["applications_namespace"],
                     "label_selector": f"{Labels.OpenDataHubIo.NAME}={MR_OPERATOR_NAME}",
                 },
-                marks=pytest.mark.sanity,
+                marks=pytest.mark.tier1,
                 id="test_model_registry_operator_pods_images",
             ),
         ],
@@ -64,7 +64,7 @@ class TestAIHubResourcesImages:
                     f"app.kubernetes.io/name={MR_POSTGRES_DEPLOYMENT_NAME_STR}",
                 ]
             },
-            marks=pytest.mark.tier1,
+            marks=pytest.mark.tier2,
         ),
     ],
     indirect=True,

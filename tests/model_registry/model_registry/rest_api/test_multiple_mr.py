@@ -54,7 +54,7 @@ class TestModelRegistryMultipleInstances:
             )
             LOGGER.info(f"{mr.name} found")
 
-    @pytest.mark.sanity
+    @pytest.mark.tier1
     def test_validate_one_model_catalog_configmap(
         self: Self, admin_client: DynamicClient, model_registry_namespace: str
     ):
@@ -84,7 +84,7 @@ class TestModelRegistryMultipleInstances:
             f"Expected {expected_number_pods} model catalog pods, found: {[pod.name for pod in catalog_pods]}"
         )
 
-    @pytest.mark.sanity
+    @pytest.mark.tier1
     def test_validate_register_models_multiple_registries(
         self: Self, model_registry_rest_url: list[str], model_registry_rest_headers: dict[str, str]
     ):
