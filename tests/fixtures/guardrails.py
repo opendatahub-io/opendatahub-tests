@@ -12,6 +12,7 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 
 from utilities.constants import Labels, Annotations
+from utilities.guardrails import check_guardrails_health_endpoint
 
 GUARDRAILS_ORCHESTRATOR_NAME: str = "guardrails-orchestrator"
 
@@ -158,6 +159,17 @@ def guardrails_orchestrator_health_route(
         }
     ):
         yield guardrails_orchestrator_health_route
+
+
+@pytest.fixture
+def guardrails_healthcheck(
+    current_client_token, openshift_ca_bundle_file, guardrails_orchestrator_health_route: Route
+) -> None:
+    check_guardrails_health_endpoint(
+        token=current_client_token,
+        host=guardrails_orchestrator_health_route.host,
+        ca_bundle_file=openshift_ca_bundle_file,
+    )
 
 
 @pytest.fixture(scope="class")

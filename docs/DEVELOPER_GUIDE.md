@@ -10,6 +10,7 @@ The project is structured as follows:
     - [constants](../utilities/constants.py): Constants used in the project
 - [docs](../docs): Documentation
 - [py_config](../tests/global_config.py) contains tests-specific configuration which can be controlled from the command line.  
+
 Please refer to [pytest-testconfig](https://github.com/wojole/pytest-testconfig) for more information.
 
 

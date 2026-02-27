@@ -1,6 +1,5 @@
 import pytest
 from dictdiffer import diff
-from ocp_resources.config_map import ConfigMap
 from simple_logger.logger import get_logger
 from typing import Self, Any
 from tests.model_registry.model_catalog.constants import (
@@ -33,7 +32,6 @@ class TestSearchModelCatalog:
     @pytest.mark.smoke
     def test_search_model_catalog_source_label(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
     ):
@@ -66,7 +64,6 @@ class TestSearchModelCatalog:
 
     def test_search_model_catalog_invalid_source_label(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
     ):
@@ -109,7 +106,6 @@ class TestSearchModelCatalog:
     )
     def test_search_model_catalog_match(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         randomly_picked_model_from_catalog_api_by_source: tuple[dict[Any, Any], str, str],
@@ -153,7 +149,6 @@ class TestSearchModelArtifact:
     )
     def test_validate_model_artifacts_by_artifact_type(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         randomly_picked_model_from_catalog_api_by_source: tuple[dict[Any, Any], str, str],
@@ -219,7 +214,6 @@ class TestSearchModelArtifact:
     )
     def test_error_handled_for_invalid_artifact_type(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         randomly_picked_model_from_catalog_api_by_source: tuple[dict[Any, Any], str, str],
@@ -258,7 +252,6 @@ class TestSearchModelArtifact:
     )
     def test_multiple_artifact_type_filtering(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         randomly_picked_model_from_catalog_api_by_source: tuple[dict[Any, Any], str, str],
@@ -310,7 +303,6 @@ class TestSearchModelCatalogQParameter:
     )
     def test_q_parameter_basic_search(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         search_term: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
@@ -350,7 +342,6 @@ class TestSearchModelCatalogQParameter:
     )
     def test_q_parameter_case_insensitive(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         search_term: str,
         case_variant: str,
         model_catalog_rest_url: list[str],
@@ -401,7 +392,6 @@ class TestSearchModelCatalogQParameter:
 
     def test_q_parameter_no_results(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         model_registry_namespace: str,
@@ -431,7 +421,6 @@ class TestSearchModelCatalogQParameter:
     def test_q_parameter_empty_query(
         self: Self,
         search_term,
-        enabled_model_catalog_config_map: ConfigMap,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
     ):
@@ -449,7 +438,6 @@ class TestSearchModelCatalogQParameter:
 
     def test_q_parameter_with_source_label_filter(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
     ):
@@ -495,7 +483,6 @@ class TestSearchModelCatalogQParameter:
 class TestSearchModelsByFilterQuery:
     def test_search_models_by_filter_query(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         model_registry_namespace: str,
@@ -541,7 +528,6 @@ class TestSearchModelsByFilterQuery:
 
     def test_search_models_by_invalid_filter_query(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         model_registry_namespace: str,
@@ -581,7 +567,6 @@ class TestSearchModelsByFilterQuery:
     @pytest.mark.downstream_only
     def test_presence_performance_data_on_pod(
         self: Self,
-        enabled_model_catalog_config_map: ConfigMap,
         admin_client: DynamicClient,
         model_registry_namespace: str,
     ):

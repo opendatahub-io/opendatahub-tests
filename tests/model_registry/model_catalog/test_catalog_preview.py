@@ -22,7 +22,6 @@ class TestCatalogPreviewExistingSource:
 
     @pytest.mark.parametrize("default_model_catalog_yaml_content", [VALIDATED_CATALOG_ID], indirect=True)
     @pytest.mark.usefixtures(
-        "enabled_model_catalog_config_map",
         "model_registry_namespace",
     )
     def test_catalog_preview_included_and_excluded_models_filters(
@@ -82,7 +81,6 @@ class TestCatalogPreviewExistingSource:
 
     @pytest.mark.parametrize("default_model_catalog_yaml_content", [VALIDATED_CATALOG_ID], indirect=True)
     @pytest.mark.usefixtures(
-        "enabled_model_catalog_config_map",
         "model_registry_namespace",
     )
     def test_catalog_preview_no_filters(
@@ -130,7 +128,6 @@ class TestCatalogPreviewExistingSource:
 
     @pytest.mark.parametrize("default_model_catalog_yaml_content", [VALIDATED_CATALOG_ID], indirect=True)
     @pytest.mark.usefixtures(
-        "enabled_model_catalog_config_map",
         "model_registry_namespace",
     )
     @pytest.mark.parametrize(
@@ -241,7 +238,6 @@ properties:
         ],
     )
     @pytest.mark.usefixtures(
-        "enabled_model_catalog_config_map",
         "model_registry_namespace",
     )
     def test_catalog_preview_invalid_config(
@@ -295,7 +291,6 @@ class TestCatalogPreviewUserProvidedData:
     """
 
     @pytest.mark.usefixtures(
-        "enabled_model_catalog_config_map",
         "model_registry_namespace",
     )
     def test_catalog_preview_with_custom_catalog_data(

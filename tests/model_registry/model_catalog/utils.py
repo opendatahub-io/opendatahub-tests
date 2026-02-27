@@ -6,34 +6,14 @@ from fnmatch import fnmatch
 
 from kubernetes.dynamic import DynamicClient
 from simple_logger.logger import get_logger
-from timeout_sampler import retry
 
 from ocp_resources.pod import Pod
 from ocp_resources.config_map import ConfigMap
-from ocp_resources.route import Route
 from tests.model_registry.model_catalog.constants import DEFAULT_CATALOGS, HF_MODELS, CATALOG_CONTAINER
 from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
 from tests.model_registry.utils import execute_get_command, get_rest_headers
 
 LOGGER = get_logger(name=__name__)
-
-
-@retry(wait_timeout=60, sleep=5, exceptions_dict={AssertionError: []})
-def get_catalog_url_and_headers(
-    admin_client: DynamicClient,
-    model_registry_namespace: str,
-    token: str,
-) -> tuple[str, dict[str, str]]:
-    """
-    Get model catalog URL and authentication headers from route.
-    """
-    model_catalog_routes = list(
-        Route.get(namespace=model_registry_namespace, label_selector="component=model-catalog", dyn_client=admin_client)
-    )
-    assert model_catalog_routes, f"Model catalog routes not found in namespace {model_registry_namespace}"
-
-    catalog_url = f"https://{model_catalog_routes[0].instance.spec.host}:443/api/model_catalog/v1alpha1/"
-    return catalog_url, get_rest_headers(token=token)
 
 
 def validate_model_catalog_enabled(pod: Pod) -> bool:

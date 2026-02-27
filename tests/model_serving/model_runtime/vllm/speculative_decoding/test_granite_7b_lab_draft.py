@@ -19,7 +19,6 @@ SERVING_ARGUMENT: List[str] = [
     "--dtype=float16",
     "--speculative_config",
     '{ "model": "/mnt/models/granite-7b-instruct-accelerator", "num_speculative_tokens": 5 }',
-    "--use-v2-block-manager",
 ]
 
 MODEL_PATH: str = "speculative_decoding"
@@ -28,6 +27,8 @@ MODEL_PATH: str = "speculative_decoding"
 pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "valid_aws_config")
 
 
+@pytest.mark.vllm_nvidia_single_gpu
+@pytest.mark.vllm_amd_gpu
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [
@@ -48,6 +49,9 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
     indirect=True,
 )
 class TestGraniteLabDraftModel:
+    @pytest.mark.xfail(
+        reason="vLLM does not support MLPSpeculatorPreTrainedModel architecture for draft model speculative decoding"
+    )
     def test_spec_draft_inference(
         self,
         vllm_inference_service: Generator[InferenceService, Any, Any],
@@ -77,6 +81,8 @@ class TestGraniteLabDraftModel:
         )
 
 
+@pytest.mark.vllm_nvidia_multi_gpu
+@pytest.mark.vllm_amd_gpu
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [
@@ -97,6 +103,9 @@ class TestGraniteLabDraftModel:
     indirect=True,
 )
 class TestMultiGraniteLabDraftModel:
+    @pytest.mark.xfail(
+        reason="vLLM does not support MLPSpeculatorPreTrainedModel architecture for draft model speculative decoding"
+    )
     def test_multi_spec_draft_inference(
         self,
         vllm_inference_service: Generator[InferenceService, Any, Any],

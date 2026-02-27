@@ -19,6 +19,7 @@ from utilities.constants import HTTPRequest, Timeout
 from utilities.exceptions import InferenceResponseError
 from utilities.infra import get_services_by_isvc_label
 from utilities.llmd_constants import (
+    ContainerImages,
     LLMDGateway,
     LLMEndpoint,
     KServeGateway,
@@ -248,6 +249,12 @@ def create_llmisvc(
 
     if container_env is None:
         container_env = [{"name": "VLLM_LOGGING_LEVEL", "value": "DEBUG"}]
+        # Add FIPS-compatible env vars for vLLM CPU image
+        if container_image == ContainerImages.VLLM_CPU:
+            container_env.extend([
+                {"name": "VLLM_ADDITIONAL_ARGS", "value": "--ssl-ciphers ECDHE+AESGCM:DHE+AESGCM"},
+                {"name": "VLLM_CPU_KVCACHE_SPACE", "value": "4"},
+            ])
     template_config: Dict[str, Any] = {"configRef": config_refs["template_ref"]}
 
     if any([
