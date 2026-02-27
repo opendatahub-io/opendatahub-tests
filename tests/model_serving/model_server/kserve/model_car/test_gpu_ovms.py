@@ -16,8 +16,8 @@ from utilities.constants import (
     Protocols,
     RuntimeTemplates,
 )
-from utilities.infra import get_pods_by_isvc_label
 from utilities.inference_utils import Inference
+from utilities.infra import get_pods_by_isvc_label
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 pytestmark = [

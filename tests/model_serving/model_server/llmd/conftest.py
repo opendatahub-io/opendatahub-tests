@@ -1,5 +1,5 @@
+from collections.abc import Generator
 from contextlib import ExitStack
-from typing import Generator
 
 import pytest
 import yaml
@@ -20,17 +20,17 @@ from tests.model_serving.model_server.llmd.constants import (
     PREFIX_CACHE_HASH_SEED,
     ROUTER_SCHEDULER_CONFIG_ESTIMATED_PREFIX_CACHE,
 )
-from utilities.constants import Timeout, ResourceLimits
-from utilities.infra import s3_endpoint_secret, create_inference_token
-from utilities.logger import RedactedString
-from utilities.llmd_utils import create_llmisvc, create_llmd_gateway
+from utilities.constants import ResourceLimits, Timeout
+from utilities.infra import create_inference_token, s3_endpoint_secret
 from utilities.llmd_constants import (
-    ModelStorage,
     ContainerImages,
-    ModelNames,
     LLMDDefaults,
     LLMDGateway,
+    ModelNames,
+    ModelStorage,
 )
+from utilities.llmd_utils import create_llmd_gateway, create_llmisvc
+from utilities.logger import RedactedString
 
 
 # *********************************
@@ -45,7 +45,7 @@ def llmd_s3_secret(
     models_s3_bucket_name: str,
     models_s3_bucket_region: str,
     models_s3_bucket_endpoint: str,
-) -> Generator[Secret, None, None]:
+) -> Generator[Secret]:
     """Create a Kubernetes secret with S3 credentials for LLMD model storage."""
     with s3_endpoint_secret(
         client=admin_client,
@@ -61,9 +61,7 @@ def llmd_s3_secret(
 
 
 @pytest.fixture(scope="class")
-def llmd_s3_service_account(
-    admin_client: DynamicClient, llmd_s3_secret: Secret
-) -> Generator[ServiceAccount, None, None]:
+def llmd_s3_service_account(admin_client: DynamicClient, llmd_s3_secret: Secret) -> Generator[ServiceAccount]:
     """Create a service account linked to the S3 secret for LLMD pods."""
     with ServiceAccount(
         client=admin_client,
@@ -87,7 +85,7 @@ def gateway_namespace() -> str:
 def shared_llmd_gateway(
     admin_client: DynamicClient,
     gateway_namespace: str,
-) -> Generator[Gateway, None, None]:
+) -> Generator[Gateway]:
     """Shared LLMD gateway for all tests."""
     with create_llmd_gateway(
         client=admin_client,
@@ -236,7 +234,7 @@ def llmd_inference_service(
     request: FixtureRequest,
     admin_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
-) -> Generator[LLMInferenceService, None, None]:
+) -> Generator[LLMInferenceService]:
     """Basic LLMInferenceService fixture for OCI storage with CPU runtime.
 
     This is the most commonly used fixture for basic LLMD tests. It uses
@@ -330,7 +328,7 @@ def llmd_inference_service_s3(
     admin_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     llmd_s3_service_account: ServiceAccount,
-) -> Generator[LLMInferenceService, None, None]:
+) -> Generator[LLMInferenceService]:
     """Create an LLMInferenceService that loads models from S3 storage."""
     if isinstance(request.param, str):
         name_suffix = request.param
@@ -377,7 +375,7 @@ def llmd_inference_service_gpu(
     admin_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     llmd_s3_service_account: ServiceAccount,
-) -> Generator[LLMInferenceService, None, None]:
+) -> Generator[LLMInferenceService]:
     """Create an LLMInferenceService with GPU resources for accelerated inference."""
     if isinstance(request.param, str):
         name_suffix = request.param
@@ -457,7 +455,7 @@ def singlenode_estimated_prefix_cache(
     llmd_s3_secret: Secret,
     llmd_s3_service_account: ServiceAccount,
     llmd_gateway: Gateway,
-) -> Generator[LLMInferenceService, None, None]:
+) -> Generator[LLMInferenceService]:
     """LLMInferenceService fixture for single-node estimated prefix cache test."""
 
     llmisvc_name = "singlenode-estimated-prefix-cache"

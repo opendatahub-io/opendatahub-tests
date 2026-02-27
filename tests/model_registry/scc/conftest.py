@@ -1,14 +1,13 @@
 import pytest
 from _pytest.fixtures import FixtureRequest
-
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
-from ocp_resources.deployment import Deployment
-from tests.model_registry.scc.utils import get_pod_by_deployment_name
-from tests.model_registry.constants import MR_INSTANCE_NAME, MR_POSTGRES_DEPLOYMENT_NAME_STR
-
-from kubernetes.dynamic import DynamicClient
 from simple_logger.logger import get_logger
+
+from tests.model_registry.constants import MR_INSTANCE_NAME, MR_POSTGRES_DEPLOYMENT_NAME_STR
+from tests.model_registry.scc.utils import get_pod_by_deployment_name
 
 LOGGER = get_logger(name=__name__)
 

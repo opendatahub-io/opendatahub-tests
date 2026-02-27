@@ -3,8 +3,7 @@ import yaml
 from simple_logger.logger import get_logger
 
 from tests.llama_stack.constants import LlamaStackProviders
-
-from utilities.constants import MinIo, CHAT_GENERATION_CONFIG, BUILTIN_DETECTOR_CONFIG, QWEN_MODEL_NAME
+from utilities.constants import BUILTIN_DETECTOR_CONFIG, CHAT_GENERATION_CONFIG, QWEN_MODEL_NAME, MinIo
 
 LOGGER = get_logger(name=__name__)
 SECURE_SHIELD_ID: str = "secure_shield"

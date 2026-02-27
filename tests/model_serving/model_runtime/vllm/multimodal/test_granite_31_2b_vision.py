@@ -1,19 +1,22 @@
+from collections.abc import Generator
+from typing import Any
+
 import pytest
-from simple_logger.logger import get_logger
-from typing import List, Any, Generator
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
-from utilities.constants import KServeDeploymentType, Ports
+from simple_logger.logger import get_logger
+
+from tests.model_serving.model_runtime.vllm.constant import MULTI_IMAGE_QUERIES, OPENAI_ENDPOINT_NAME, THREE_IMAGE_QUERY
 from tests.model_serving.model_runtime.vllm.utils import (
     run_raw_inference,
     validate_inference_output,
 )
-from tests.model_serving.model_runtime.vllm.constant import OPENAI_ENDPOINT_NAME, MULTI_IMAGE_QUERIES, THREE_IMAGE_QUERY
+from utilities.constants import KServeDeploymentType, Ports
 
 LOGGER = get_logger(name=__name__)
 
 
-SERVING_ARGUMENT: List[str] = ["--model=/mnt/models", "--uvicorn-log-level=debug", '--limit-mm-per-prompt={"image": 2}']
+SERVING_ARGUMENT: list[str] = ["--model=/mnt/models", "--uvicorn-log-level=debug", '--limit-mm-per-prompt={"image": 2}']
 
 MODEL_PATH: str = "ibm-granite/granite-vision-3.1-2b-preview"
 

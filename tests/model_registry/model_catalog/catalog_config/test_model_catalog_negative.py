@@ -1,12 +1,13 @@
-import pytest
-from simple_logger.logger import get_logger
 from typing import Self
 
+import pytest
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.resource import ResourceEditor
+from simple_logger.logger import get_logger
+
 from tests.model_registry.constants import DEFAULT_MODEL_CATALOG_CM
-from tests.model_registry.model_catalog.constants import DEFAULT_CATALOGS
 from tests.model_registry.model_catalog.catalog_config.utils import validate_model_catalog_configmap_data
+from tests.model_registry.model_catalog.constants import DEFAULT_CATALOGS
 from tests.model_registry.model_catalog.utils import assert_source_error_state_message
 
 LOGGER = get_logger(name=__name__)

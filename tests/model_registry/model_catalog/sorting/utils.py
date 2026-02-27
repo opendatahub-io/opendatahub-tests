@@ -1,17 +1,18 @@
 from typing import Any
 
+from kubernetes.dynamic import DynamicClient
 from simple_logger.logger import get_logger
-from tests.model_registry.utils import execute_get_command
-from tests.model_registry.model_catalog.utils import (
-    execute_database_query,
-    parse_psql_output,
-    get_models_from_catalog_api,
-)
+
 from tests.model_registry.model_catalog.db_constants import (
     GET_MODELS_BY_ACCURACY_DB_QUERY,
     GET_MODELS_BY_ACCURACY_WITH_TASK_FILTER_DB_QUERY,
 )
-from kubernetes.dynamic import DynamicClient
+from tests.model_registry.model_catalog.utils import (
+    execute_database_query,
+    execute_get_command,
+    get_models_from_catalog_api,
+    parse_psql_output,
+)
 
 LOGGER = get_logger(name=__name__)
 
@@ -403,7 +404,7 @@ def _verify_models_with_accuracy_sorted(
             return False
     else:
         # Only validate presence, not order
-        actual_names = set([name for _, name in models])
+        actual_names = {name for _, name in models}
         expected_names = set(expected_models)
         if actual_names != expected_names:
             LOGGER.error("Models with accuracy do not match expected models from database")

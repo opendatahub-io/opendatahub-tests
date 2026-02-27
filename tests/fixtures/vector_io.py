@@ -1,14 +1,15 @@
-from typing import Generator, Any, Callable, Dict
-import pytest
 import os
 import secrets
+from collections.abc import Callable, Generator
+from typing import Any
+
+import pytest
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
-from ocp_resources.service import Service
 from ocp_resources.secret import Secret
-
+from ocp_resources.service import Service
 
 MILVUS_IMAGE = os.getenv(
     "LLS_VECTOR_IO_MILVUS_IMAGE",
@@ -47,7 +48,7 @@ QDRANT_URL = os.getenv("LLS_VECTOR_IO_QDRANT_URL", "http://vector-io-qdrant-serv
 @pytest.fixture(scope="class")
 def vector_io_provider_deployment_config_factory(
     request: FixtureRequest,
-) -> Callable[[str], list[Dict[str, Any]]]:
+) -> Callable[[str], list[dict[str, Any]]]:
     """
     Factory fixture for deploying vector I/O providers and returning their configuration.
 
@@ -94,7 +95,7 @@ def vector_io_provider_deployment_config_factory(
             # env_vars contains MILVUS_ENDPOINT, MILVUS_TOKEN, etc.
     """
 
-    def _factory(provider_name: str) -> list[Dict[str, Any]]:
+    def _factory(provider_name: str) -> list[dict[str, Any]]:
         env_vars: list[dict[str, Any]] = []
 
         if provider_name is None or provider_name == "milvus":
@@ -265,7 +266,7 @@ def milvus_service(
         yield service
 
 
-def get_milvus_deployment_template() -> Dict[str, Any]:
+def get_milvus_deployment_template() -> dict[str, Any]:
     """Return the Kubernetes deployment template for Milvus standalone."""
     return {
         "metadata": {"labels": {"app": "milvus-standalone"}},
@@ -300,7 +301,7 @@ def get_milvus_deployment_template() -> Dict[str, Any]:
     }
 
 
-def get_etcd_deployment_template() -> Dict[str, Any]:
+def get_etcd_deployment_template() -> dict[str, Any]:
     """Return the Kubernetes deployment template for etcd."""
     return {
         "metadata": {"labels": {"app": "etcd"}},
@@ -390,7 +391,7 @@ def pgvector_service(
         yield service
 
 
-def get_pgvector_deployment_template() -> Dict[str, Any]:
+def get_pgvector_deployment_template() -> dict[str, Any]:
     """Return a Kubernetes deployment for PGVector"""
     return {
         "metadata": {"labels": {"app": "pgvector"}},
@@ -490,7 +491,7 @@ def qdrant_service(
         yield service
 
 
-def get_qdrant_deployment_template() -> Dict[str, Any]:
+def get_qdrant_deployment_template() -> dict[str, Any]:
     """Return a Kubernetes deployment for Qdrant"""
     return {
         "metadata": {"labels": {"app": "qdrant"}},

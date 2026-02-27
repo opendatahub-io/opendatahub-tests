@@ -1,8 +1,8 @@
 import pytest
 
 from tests.model_serving.model_server.llmd.utils import (
-    verify_llm_service_status,
     verify_gateway_status,
+    verify_llm_service_status,
 )
 from utilities.constants import Protocols
 from utilities.llmd_utils import verify_inference_response_llmd

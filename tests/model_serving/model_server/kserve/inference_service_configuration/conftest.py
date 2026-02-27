@@ -1,23 +1,23 @@
-from typing import Any, Generator
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
-from ocp_resources.pod import Pod
 from ocp_resources.namespace import Namespace
+from ocp_resources.pod import Pod
 from ocp_resources.serving_runtime import ServingRuntime
-from utilities.inference_utils import create_isvc
-from utilities.constants import KServeDeploymentType
-
 
 from tests.model_serving.model_server.kserve.inference_service_configuration.constants import (
     ISVC_ENV_VARS,
-    UPDATED_PULL_SECRET,
     ORIGINAL_PULL_SECRET,
+    UPDATED_PULL_SECRET,
 )
 from tests.model_serving.model_server.kserve.inference_service_configuration.utils import (
     update_inference_service,
 )
+from utilities.constants import KServeDeploymentType
+from utilities.inference_utils import create_isvc
 from utilities.infra import get_pods_by_isvc_label
 
 

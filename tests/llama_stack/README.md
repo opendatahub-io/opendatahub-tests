@@ -30,13 +30,11 @@ def test_vector_stores_functionality():
 
 To add support for testing new LlamaStack API providers (e.g., a new vector_io provider), create deployment fixtures in the appropriate `/tests/fixtures/` file, update the corresponding provider factory function to return the required environment variables, and add the new provider as a test parameter in the relevant test files. For example, to add a new vector_io provider, add deployment fixtures in `/tests/fixtures/vector_io.py`, update the `vector_io_provider_deployment_config_factory` function, and add a new `pytest.param` entry in `/tests/llama_stack/vector_io/test_vector_stores.py`.
 
-
 ### Available Team Markers  (to be expanded)
 
 - `@pytest.mark.llama_stack` - LlamaStack Core team tests
 - `@pytest.mark.model_explainability` - AI Safety team tests
 - `@pytest.mark.rag` - RAG team tests
-
 
 ## Running Tests
 
@@ -45,6 +43,7 @@ To add support for testing new LlamaStack API providers (e.g., a new vector_io p
 LlamaStack tests require setting the following environment variables (for example in a `.env` file at the root folder).
 
 > **Note:** Most of these environment variables are added as `env_vars` in the LlamaStackDistribution CR, as they are required to configure the Red Hat LlamaStack Distribution's [run.yaml](https://github.com/opendatahub-io/llama-stack-distribution/blob/main/distribution/run.yaml).
+
 ```bash
 OC_BINARY_PATH=/usr/local/sbin/oc                 # Optional
 LLS_CLIENT_VERIFY_SSL=false                       # Optional
@@ -86,7 +85,6 @@ LLS_FILES_S3_AUTO_CREATE_BUCKET=true             # Optional
 
 ### Run All Llama Stack Tests
 
-
 To run all tests in the `/tests/llama_stack` directory:
 
 ```bash
@@ -108,7 +106,6 @@ To run tests for a specific API (e.g., vector_io):
 ```bash
 pytest tests/llama_stack/vector_io
 ```
-
 
 ### Run Tests with Additional Markers
 

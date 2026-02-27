@@ -1,29 +1,30 @@
-from typing import Any
-import subprocess
-import yaml
 import re
+import subprocess
+from typing import Any
 
 import pytest
+import yaml
 from kubernetes.dynamic import DynamicClient
-from simple_logger.logger import get_logger
-from timeout_sampler import retry, TimeoutExpiredError
-
-from ocp_resources.pod import Pod
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.pod import Pod
+from simple_logger.logger import get_logger
+from timeout_sampler import TimeoutExpiredError, retry
+
+from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG
 from tests.model_registry.model_catalog.constants import (
     DEFAULT_CATALOGS,
     REDHAT_AI_CATALOG_ID,
     REDHAT_AI_CATALOG_NAME,
 )
-from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG
-from tests.model_registry.utils import get_model_catalog_pod
-from utilities.constants import Timeout
+from tests.model_registry.model_catalog.db_constants import GET_MODELS_BY_SOURCE_ID_DB_QUERY
 from tests.model_registry.model_catalog.utils import (
-    get_models_from_catalog_api,
     execute_database_query,
+    execute_get_command,
+    get_models_from_catalog_api,
     parse_psql_output,
 )
-from tests.model_registry.model_catalog.db_constants import GET_MODELS_BY_SOURCE_ID_DB_QUERY
+from tests.model_registry.utils import get_model_catalog_pod
+from utilities.constants import Timeout
 
 LOGGER = get_logger(name=__name__)
 
@@ -266,9 +267,9 @@ def modify_catalog_source(
     admin_client: DynamicClient,
     namespace: str,
     source_id: str,
-    enabled: bool = None,
-    included_models: list[str] = None,
-    excluded_models: list[str] = None,
+    enabled: bool | None = None,
+    included_models: list[str] | None = None,
+    excluded_models: list[str] | None = None,
 ) -> dict[str, ConfigMap | dict[str, Any] | str]:
     """
     Modify a catalog source with various configuration changes.
@@ -526,3 +527,17 @@ def wait_for_catalog_source_restore(
 
     LOGGER.info("Found expected number of models: %s for source: %s", expected_count, source_label)
     return True
+
+
+def validate_model_catalog_sources(
+    model_catalog_sources_url: str, rest_headers: dict[str, str], expected_catalog_values: dict[str, str]
+) -> None:
+    results = execute_get_command(
+        url=model_catalog_sources_url,
+        headers=rest_headers,
+    )["items"]
+    LOGGER.info(f"Model catalog sources: {results}")
+    ids_from_query = [result_entry["id"] for result_entry in results]
+    ids_expected = [expected_entry["id"] for expected_entry in expected_catalog_values]
+    LOGGER.info(f"IDs expected: {ids_expected}, IDs found: {ids_from_query}")
+    assert set(ids_expected).issubset(set(ids_from_query)), f"Expected: {expected_catalog_values}. Actual: {results}"

@@ -1,30 +1,27 @@
+import os
+import tempfile
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
-from typing import Any, Callable, Dict, Generator, List, cast
+from typing import Any, cast
 
+import requests
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
-from llama_stack_client import LlamaStackClient, APIConnectionError, InternalServerError
+from llama_stack_client import APIConnectionError, InternalServerError, LlamaStackClient
 from llama_stack_client.types.vector_store import VectorStore
-
-from utilities.resources.llama_stack_distribution import LlamaStackDistribution
 from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
-from utilities.exceptions import UnexpectedResourceCountError
-
-
 from tests.llama_stack.constants import (
-    TORCHTUNE_TEST_EXPECTATIONS,
-    TurnExpectation,
-    ModelInfo,
-    ValidationResult,
     LLS_CORE_POD_FILTER,
+    TORCHTUNE_TEST_EXPECTATIONS,
+    ModelInfo,
+    TurnExpectation,
+    ValidationResult,
 )
-
-import tempfile
-import requests
-
+from utilities.exceptions import UnexpectedResourceCountError
+from utilities.resources.llama_stack_distribution import LlamaStackDistribution
 
 LOGGER = get_logger(name=__name__)
 
@@ -35,7 +32,7 @@ def create_llama_stack_distribution(
     name: str,
     namespace: str,
     replicas: int,
-    server: Dict[str, Any],
+    server: dict[str, Any],
     teardown: bool = True,
 ) -> Generator[LlamaStackDistribution, Any, Any]:
     """
@@ -45,7 +42,7 @@ def create_llama_stack_distribution(
     # Starting with RHOAI 3.3, pods in the 'openshift-ingress' namespace must be allowed
     # to access the llama-stack-service. This is required for the llama_stack_test_route
     # to function properly.
-    network: Dict[str, Any] = {
+    network: dict[str, Any] = {
         "allowedFrom": {
             "namespaces": ["openshift-ingress"],
         },
@@ -106,19 +103,19 @@ def wait_for_llama_stack_client_ready(client: LlamaStackClient) -> bool:
             f"vector_stores:{len(vector_stores.data)} "
             f"files:{len(files.data)})"
         )
-        return True
+        return True  # noqa: TRY300
 
     except (APIConnectionError, InternalServerError) as error:
         LOGGER.debug(f"Llama Stack server not ready yet: {error}")
-        LOGGER.debug(f"Base URL: {client.base_url}, Error type: {type(error)}, Error details: {str(error)}")
+        LOGGER.debug(f"Base URL: {client.base_url}, Error type: {type(error)}, Error details: {error!s}")
         return False
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         LOGGER.warning(f"Unexpected error checking Llama Stack readiness: {e}")
         return False
 
 
-def get_torchtune_test_expectations() -> List[TurnExpectation]:
+def get_torchtune_test_expectations() -> list[TurnExpectation]:
     """
     Helper function to get the test expectations for TorchTune documentation questions.
 
@@ -169,7 +166,7 @@ def create_response_function(
 
 def validate_api_responses(
     response_fn: Callable[..., str],
-    test_cases: List[TurnExpectation],
+    test_cases: list[TurnExpectation],
     min_keywords_required: int = 1,
 ) -> ValidationResult:
     """
@@ -276,23 +273,30 @@ def vector_store_create_file_from_url(url: str, llama_stack_client: LlamaStackCl
         response = requests.get(url, timeout=60)
         response.raise_for_status()
 
-        # Save file locally first and pretend it's a txt file, not sure why this is needed
-        # but it works locally without it,
-        # though llama stack version is the newer one.
-        file_name = url.split("/")[-1]
-        local_file_name = file_name.replace(".rst", ".txt")
-        with tempfile.NamedTemporaryFile(mode="wb", suffix=f"_{local_file_name}") as temp_file:
+        content_type = (response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        path_part = url.split("/")[-1].split("?")[0]
+
+        if content_type == "application/pdf" or path_part.lower().endswith(".pdf"):
+            file_suffix = ".pdf"
+        elif path_part.lower().endswith(".rst"):
+            file_suffix = "_" + path_part.replace(".rst", ".txt")
+        else:
+            file_suffix = "_" + (path_part or "document.txt")
+
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=file_suffix, delete=False) as temp_file:
             temp_file.write(response.content)
             temp_file_path = temp_file.name
 
-            # Upload saved file to LlamaStack
+        try:
+            # Upload saved file to LlamaStack (filename extension used for parsing)
             with open(temp_file_path, "rb") as file_to_upload:
                 uploaded_file = llama_stack_client.files.create(file=file_to_upload, purpose="assistants")
 
             # Add file to vector store
             llama_stack_client.vector_stores.files.create(vector_store_id=vector_store.id, file_id=uploaded_file.id)
-
-        return True
+            return True
+        finally:
+            os.unlink(temp_file_path)
 
     except (requests.exceptions.RequestException, Exception) as e:
         LOGGER.warning(f"Failed to download and upload file {url}: {e}")

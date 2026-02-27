@@ -1,30 +1,28 @@
+from collections.abc import Generator
 from contextlib import ExitStack
+from typing import Any
 
 import pytest
-from typing import Generator, List, Any
-
 from _pytest.fixtures import FixtureRequest
-from simple_logger.logger import get_logger
-
+from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
-from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from ocp_resources.group import Group
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
+from ocp_resources.resource import ResourceEditor
+from ocp_resources.role import Role
+from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
-from ocp_resources.role_binding import RoleBinding
-from ocp_resources.role import Role
-from ocp_resources.group import Group
+from simple_logger.logger import get_logger
 
-from ocp_resources.resource import ResourceEditor
-from kubernetes.dynamic import DynamicClient
-
-from tests.model_registry.model_registry.rbac.utils import create_role_binding
-from utilities.user_utils import UserTestSession
-from tests.model_registry.model_registry.rbac.group_utils import create_group
 from tests.model_registry.constants import (
-    MR_INSTANCE_NAME,
     KUBERBACPROXY_STR,
+    MR_INSTANCE_NAME,
 )
+from tests.model_registry.model_registry.rbac.group_utils import create_group
+from tests.model_registry.model_registry.rbac.utils import create_role_binding
+from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.user_utils import UserTestSession
 
 LOGGER = get_logger(name=__name__)
 
@@ -33,7 +31,7 @@ LOGGER = get_logger(name=__name__)
 def add_user_to_group(
     admin_client: DynamicClient,
     test_idp_user: UserTestSession,
-) -> Generator[str, None, None]:
+) -> Generator[str]:
     """
     Fixture to create a group and add a test user to it.
     Uses create_group context manager to ensure proper cleanup.
@@ -59,7 +57,7 @@ def model_registry_group_with_user(
     is_byoidc: bool,
     admin_client: DynamicClient,
     test_idp_user: UserTestSession,
-) -> Generator[Group, None, None]:
+) -> Generator[Group]:
     """
     Fixture to manage a test user in a specified group.
     Adds the user to the group before the test, then removes them after.
@@ -102,7 +100,7 @@ def created_role_binding_group(
     mr_access_role: Role,
     test_idp_user: UserTestSession,
     add_user_to_group: str,
-) -> Generator[RoleBinding, None, None]:
+) -> Generator[RoleBinding]:
     yield from create_role_binding(
         admin_client=admin_client,
         model_registry_namespace=model_registry_namespace,
@@ -120,7 +118,7 @@ def created_role_binding_user(
     model_registry_namespace: str,
     mr_access_role: Role,
     user_credentials_rbac: dict[str, str],
-) -> Generator[RoleBinding, None, None]:
+) -> Generator[RoleBinding]:
     # Determine the username to use without mutating the shared fixture
     username = "mr-non-admin" if is_byoidc else user_credentials_rbac["username"]
     LOGGER.info(f"Using user {username}")
@@ -140,7 +138,7 @@ def created_role_binding_user(
 @pytest.fixture(scope="class")
 def db_secret_parametrized(
     request: FixtureRequest, admin_client: DynamicClient, teardown_resources: bool
-) -> Generator[List[Secret], Any, Any]:
+) -> Generator[list[Secret], Any, Any]:
     """Create DB Secret parametrized"""
     with ExitStack() as stack:
         secrets = [
@@ -159,7 +157,7 @@ def db_secret_parametrized(
 @pytest.fixture(scope="class")
 def db_pvc_parametrized(
     request: FixtureRequest, admin_client: DynamicClient, teardown_resources: bool
-) -> Generator[List[PersistentVolumeClaim], Any, Any]:
+) -> Generator[list[PersistentVolumeClaim], Any, Any]:
     """Create DB PVC parametrized"""
     with ExitStack() as stack:
         pvc = [
@@ -178,7 +176,7 @@ def db_pvc_parametrized(
 @pytest.fixture(scope="class")
 def db_service_parametrized(
     request: FixtureRequest, admin_client: DynamicClient, teardown_resources: bool
-) -> Generator[List[Service], Any, Any]:
+) -> Generator[list[Service], Any, Any]:
     """Create DB Service parametrized"""
     with ExitStack() as stack:
         services = [
@@ -197,7 +195,7 @@ def db_service_parametrized(
 @pytest.fixture(scope="class")
 def db_deployment_parametrized(
     request: FixtureRequest, admin_client: DynamicClient, teardown_resources: bool
-) -> Generator[List[Deployment], Any, Any]:
+) -> Generator[list[Deployment], Any, Any]:
     """Create DB Deployment parametrized"""
     with ExitStack() as stack:
         deployments = [
@@ -220,7 +218,7 @@ def db_deployment_parametrized(
 @pytest.fixture(scope="class")
 def model_registry_instance_parametrized(
     request: FixtureRequest, admin_client: DynamicClient, teardown_resources: bool
-) -> Generator[List[ModelRegistry], Any, Any]:
+) -> Generator[list[ModelRegistry], Any, Any]:
     """Create Model Registry instance parametrized"""
     with ExitStack() as stack:
         model_registry_instances = []

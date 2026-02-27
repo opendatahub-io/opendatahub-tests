@@ -1,4 +1,5 @@
-from typing import Any, Generator
+from collections.abc import Generator
+from typing import Any
 from urllib.parse import urlparse
 
 import pytest
@@ -7,29 +8,29 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.resource import ResourceEditor
-from ocp_resources.role_binding import RoleBinding
 from ocp_resources.role import Role
+from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 
-from utilities.inference_utils import create_isvc
-from utilities.infra import (
-    create_isvc_view_role,
-    get_pods_by_isvc_label,
-    create_inference_token,
-)
 from utilities.constants import (
+    Annotations,
     KServeDeploymentType,
     ModelFormat,
     ModelName,
     Protocols,
     RuntimeTemplates,
 )
+from utilities.inference_utils import create_isvc
+from utilities.infra import (
+    create_inference_token,
+    create_isvc_view_role,
+    get_pods_by_isvc_label,
+)
 from utilities.jira import is_jira_open
 from utilities.logger import RedactedString
 from utilities.serving_runtime import ServingRuntimeFromTemplate
-from utilities.constants import Annotations
 
 
 # HTTP/REST model serving

@@ -1,11 +1,10 @@
 from typing import Any
-from simple_logger.logger import get_logger
 
-from ocp_resources.pod import Pod
-from ocp_resources.deployment import Deployment
-from ocp_resources.resource import NamespacedResource
 from kubernetes.dynamic import DynamicClient
-
+from ocp_resources.deployment import Deployment
+from ocp_resources.pod import Pod
+from ocp_resources.resource import NamespacedResource
+from simple_logger.logger import get_logger
 
 KEYS_TO_VALIDATE = ["runAsGroup", "runAsUser", "allowPrivilegeEscalation", "capabilities"]
 
@@ -130,7 +129,7 @@ def validate_deployment_scc(deployment: Deployment) -> None:
         if not container_security_context:
             LOGGER.info(f"No container security context exists for {container.name}")
         else:
-            if not all([True for key in ["runAsGroup", "runAsUser"] if not container_security_context.get(key)]):
+            if not all(True for key in ["runAsGroup", "runAsUser"] if not container_security_context.get(key)):
                 error.append({container.name: container.securityContext})
 
     if error:

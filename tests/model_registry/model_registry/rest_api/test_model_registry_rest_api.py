@@ -1,31 +1,31 @@
-from typing import Self, Any
+from typing import Any, Self
+
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
-from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
+from simple_logger.logger import get_logger
 
+from tests.model_registry.constants import MR_POSTGRES_DB_OBJECT
 from tests.model_registry.model_registry.rest_api.constants import (
-    MODEL_REGISTER,
+    CUSTOM_PROPERTY,
     MODEL_ARTIFACT,
-    MODEL_VERSION,
-    MODEL_REGISTER_DATA,
     MODEL_ARTIFACT_DESCRIPTION,
     MODEL_FORMAT_NAME,
     MODEL_FORMAT_VERSION,
+    MODEL_REGISTER,
+    MODEL_REGISTER_DATA,
+    MODEL_VERSION,
     MODEL_VERSION_DESCRIPTION,
+    REGISTERED_MODEL_DESCRIPTION,
     STATE_ARCHIVED,
     STATE_LIVE,
-    CUSTOM_PROPERTY,
-    REGISTERED_MODEL_DESCRIPTION,
 )
-from tests.model_registry.constants import MR_POSTGRES_DB_OBJECT
 from tests.model_registry.model_registry.rest_api.utils import validate_resource_attributes
-from simple_logger.logger import get_logger
-
+from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
 LOGGER = get_logger(name=__name__)
 CONNECTION_STRING: str = "/var/run/postgresql:5432 - accepting connections"

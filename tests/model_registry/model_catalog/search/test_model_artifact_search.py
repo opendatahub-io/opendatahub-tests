@@ -1,20 +1,21 @@
-import pytest
-from typing import Self, Any
 import random
-from dictdiffer import diff
+from typing import Any, Self
 
+import pytest
+from dictdiffer import diff
+from simple_logger.logger import get_logger
+
+from tests.model_registry.model_catalog.constants import (
+    METRICS_ARTIFACT_TYPE,
+    MODEL_ARTIFACT_TYPE,
+    VALIDATED_CATALOG_ID,
+)
 from tests.model_registry.model_catalog.search.utils import (
     fetch_all_artifacts_with_dynamic_paging,
     validate_model_artifacts_match_criteria_and,
     validate_model_artifacts_match_criteria_or,
     validate_recommendations_subset,
 )
-from tests.model_registry.model_catalog.constants import (
-    VALIDATED_CATALOG_ID,
-    MODEL_ARTIFACT_TYPE,
-    METRICS_ARTIFACT_TYPE,
-)
-from simple_logger.logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace")]

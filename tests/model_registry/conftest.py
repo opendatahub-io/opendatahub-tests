@@ -1,52 +1,52 @@
-from contextlib import ExitStack
-import pytest
-from pytest import Config, FixtureRequest
-from typing import Generator, Any
 import os
+from collections.abc import Generator
+from contextlib import ExitStack
+from typing import Any
 
-from ocp_resources.infrastructure import Infrastructure
-from ocp_resources.oauth import OAuth
-from ocp_resources.pod import Pod
-from ocp_resources.secret import Secret
-from ocp_resources.namespace import Namespace
-from ocp_resources.data_science_cluster import DataScienceCluster
-from ocp_resources.config_map import ConfigMap
-from ocp_resources.service import Service
-from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
-from ocp_resources.deployment import Deployment
-from ocp_resources.service_account import ServiceAccount
-from ocp_resources.resource import ResourceEditor
-
-from simple_logger.logger import get_logger
+import pytest
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.config_map import ConfigMap
+from ocp_resources.data_science_cluster import DataScienceCluster
+from ocp_resources.deployment import Deployment
+from ocp_resources.infrastructure import Infrastructure
+from ocp_resources.namespace import Namespace
+from ocp_resources.oauth import OAuth
+from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
+from ocp_resources.pod import Pod
+from ocp_resources.resource import ResourceEditor
+from ocp_resources.secret import Secret
+from ocp_resources.service import Service
+from ocp_resources.service_account import ServiceAccount
+from pytest import Config, FixtureRequest
 from pytest_testconfig import config as py_config
-
-from utilities.general import wait_for_oauth_openshift_deployment
-from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
-from tests.model_registry.utils import (
-    get_byoidc_user_credentials,
-    get_model_registry_objects,
-    get_model_registry_metadata_resources,
-    wait_for_default_resource_cleanedup,
-    generate_namespace_name,
-    get_rest_headers,
-)
-
-from utilities.general import generate_random_name, wait_for_pods_running
+from simple_logger.logger import get_logger
 
 from tests.model_registry.constants import (
-    MR_OPERATOR_NAME,
-    MR_INSTANCE_BASE_NAME,
     DB_BASE_RESOURCES_NAME,
     DB_RESOURCE_NAME,
-    MR_INSTANCE_NAME,
     KUBERBACPROXY_STR,
+    MR_INSTANCE_BASE_NAME,
+    MR_INSTANCE_NAME,
+    MR_OPERATOR_NAME,
 )
-from utilities.constants import Labels
-from utilities.constants import DscComponents
-from utilities.general import wait_for_pods_by_labels
-from utilities.infra import get_data_science_cluster, wait_for_dsc_status_ready, login_with_user_password
-from utilities.user_utils import UserTestSession, wait_for_user_creation, create_htpasswd_file
+from tests.model_registry.utils import (
+    generate_namespace_name,
+    get_byoidc_user_credentials,
+    get_model_registry_metadata_resources,
+    get_model_registry_objects,
+    get_rest_headers,
+    wait_for_default_resource_cleanedup,
+)
+from utilities.constants import DscComponents, Labels
+from utilities.general import (
+    generate_random_name,
+    wait_for_oauth_openshift_deployment,
+    wait_for_pods_by_labels,
+    wait_for_pods_running,
+)
+from utilities.infra import get_data_science_cluster, login_with_user_password, wait_for_dsc_status_ready
+from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.user_utils import UserTestSession, create_htpasswd_file, wait_for_user_creation
 
 DEFAULT_TOKEN_DURATION = "10m"
 LOGGER = get_logger(name=__name__)
@@ -150,7 +150,7 @@ def test_idp_user(
     api_server_url: str,
     is_byoidc: bool,
     admin_client: DynamicClient,
-) -> Generator[UserTestSession | None, None, None]:
+) -> Generator[UserTestSession | None]:
     """
     Session-scoped fixture that creates a test IDP user and cleans it up after all tests.
     Returns a UserTestSession object that contains all necessary credentials and contexts.
@@ -204,7 +204,7 @@ def api_server_url(admin_client: DynamicClient) -> str:
 @pytest.fixture(scope="module")
 def created_htpasswd_secret(
     is_byoidc: bool, admin_client: DynamicClient, original_user: str, user_credentials_rbac: dict[str, str]
-) -> Generator[UserTestSession | None, None, None]:
+) -> Generator[UserTestSession | None]:
     """
     Session-scoped fixture that creates a test IDP user and cleans it up after all tests.
     Returns a UserTestSession object that contains all necessary credentials and contexts.
@@ -235,7 +235,7 @@ def created_htpasswd_secret(
 @pytest.fixture(scope="module")
 def updated_oauth_config(
     is_byoidc: bool, admin_client: DynamicClient, original_user: str, user_credentials_rbac: dict[str, str]
-) -> Generator[Any, None, None]:
+) -> Generator[Any]:
     if is_byoidc:
         yield
     else:
@@ -332,7 +332,7 @@ def model_registry_metadata_db_resources(
     pytestconfig: Config,
     teardown_resources: bool,
     model_registry_namespace: str,
-) -> Generator[dict[Any, Any], None, None]:
+) -> Generator[dict[Any, Any]]:
     num_resources = getattr(request, "param", {}).get("num_resources", 1)
     db_backend = getattr(request, "param", {}).get("db_name", "mysql")
 
@@ -401,7 +401,7 @@ def model_registry_rest_headers(current_client_token: str) -> dict[str, str]:
 
 
 @pytest.fixture(scope="class")
-def sa_namespace(request: pytest.FixtureRequest, admin_client: DynamicClient) -> Generator[Namespace, None, None]:
+def sa_namespace(request: pytest.FixtureRequest, admin_client: DynamicClient) -> Generator[Namespace]:
     """
     Creates a namespace
     """
@@ -415,9 +415,7 @@ def sa_namespace(request: pytest.FixtureRequest, admin_client: DynamicClient) ->
 
 
 @pytest.fixture()
-def login_as_test_user(
-    is_byoidc: bool, api_server_url: str, original_user: str, test_idp_user
-) -> Generator[None, None, None]:
+def login_as_test_user(is_byoidc: bool, api_server_url: str, original_user: str, test_idp_user) -> Generator[None]:
     """
     Fixture to log in as a test user and restore original user after test.
 
@@ -451,7 +449,7 @@ def login_as_test_user(
 
 
 @pytest.fixture(scope="class")
-def service_account(admin_client: DynamicClient, sa_namespace: Namespace) -> Generator[Any, None, None]:
+def service_account(admin_client: DynamicClient, sa_namespace: Namespace) -> Generator[Any]:
     """
     Creates a ServiceAccount.
     """

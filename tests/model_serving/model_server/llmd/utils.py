@@ -15,13 +15,12 @@ from ocp_resources.prometheus import Prometheus
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler, retry
 
+from tests.model_serving.model_server.llmd.constants import PREFIX_CACHE_BLOCK_SIZE
 from utilities.constants import Protocols
 from utilities.exceptions import PodContainersRestartError
 from utilities.llmd_utils import verify_inference_response_llmd
 from utilities.manifests.tinyllama import TINYLLAMA_INFERENCE_CONFIG
 from utilities.monitoring import get_metrics_value
-
-from tests.model_serving.model_server.llmd.constants import PREFIX_CACHE_BLOCK_SIZE
 
 LOGGER = get_logger(name=__name__)
 
@@ -102,8 +101,9 @@ def verify_llmd_no_failed_pods(
         FailedPodsError: If any pods are in failed state
         TimeoutError: If pods don't become ready within timeout
     """
-    from utilities.exceptions import FailedPodsError
     from ocp_resources.resource import Resource
+
+    from utilities.exceptions import FailedPodsError
 
     LOGGER.info(f"Comprehensive health check for LLMInferenceService {llm_service.name}")
 
@@ -308,7 +308,7 @@ def send_prefix_cache_test_requests(
                 authorized_user=True,
             )
             successful_requests += 1
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             LOGGER.error(f"Request {index + 1} failed: {e}")
             failed_requests += 1
 

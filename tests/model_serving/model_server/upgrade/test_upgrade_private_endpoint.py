@@ -13,7 +13,6 @@ from utilities.constants import Protocols
 from utilities.inference_utils import Inference
 from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
 
-
 pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_config")]
 
 

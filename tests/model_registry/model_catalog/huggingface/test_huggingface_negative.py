@@ -1,8 +1,9 @@
-import pytest
-from simple_logger.logger import get_logger
 from typing import Self
 
+import pytest
 from ocp_resources.config_map import ConfigMap
+from simple_logger.logger import get_logger
+
 from tests.model_registry.model_catalog.utils import assert_source_error_state_message
 
 LOGGER = get_logger(name=__name__)

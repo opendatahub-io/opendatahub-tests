@@ -1,4 +1,5 @@
-from typing import Generator, Any
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 from kubernetes.dynamic import DynamicClient
@@ -8,16 +9,14 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
 from ocp_resources.trustyai_service import TrustyAIService
 
-
 from tests.model_explainability.trustyai_service.constants import (
-    TAI_METRICS_CONFIG,
     TAI_DB_STORAGE_CONFIG,
+    TAI_METRICS_CONFIG,
 )
-from utilities.constants import TRUSTYAI_SERVICE_NAME
 from tests.model_explainability.trustyai_service.utils import (
     create_trustyai_service,
 )
-
+from utilities.constants import TRUSTYAI_SERVICE_NAME
 
 INVALID_TLS_CERTIFICATE: str = "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJnRENDQVNlZ0F3SUJBZ0lRRGtTcXVuUWRzRmZwdi8zSm\
 5TS2ZoVEFLQmdncWhrak9QUVFEQWpBVk1STXcKRVFZRFZRUURFd3B0WVhKcFlXUmlMV05oTUI0WERUSTFNRFF4TkRFME1EUXhOMW9YRFRJNE1EUXhNekUx\
@@ -37,7 +36,7 @@ def trustyai_service_with_invalid_db_cert(
     user_workload_monitoring_config: ConfigMap,
     mariadb: MariaDB,
     trustyai_invalid_db_ca_secret: None,
-) -> Generator[TrustyAIService, None, None]:
+) -> Generator[TrustyAIService]:
     """Create a TrustyAIService deployment with an invalid database certificate set as secret.
 
     Yields:
@@ -56,7 +55,7 @@ def trustyai_service_with_invalid_db_cert(
 @pytest.fixture(scope="class")
 def trustyai_invalid_db_ca_secret(
     admin_client: DynamicClient, model_namespace: Namespace, mariadb: MariaDB
-) -> Generator[Secret, Any, None]:
+) -> Generator[Secret, Any]:
     with Secret(
         client=admin_client,
         name=f"{TRUSTYAI_SERVICE_NAME}-db-ca",

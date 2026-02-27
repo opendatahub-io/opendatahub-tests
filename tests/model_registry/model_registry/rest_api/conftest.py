@@ -1,43 +1,44 @@
-from typing import Any, Generator
-import os
-from kubernetes.dynamic import DynamicClient
-import pytest
 import copy
+import os
+import tempfile
+from collections.abc import Generator
+from typing import Any
 
-from tests.model_registry.model_registry.rest_api.constants import MODEL_REGISTRY_BASE_URI, MODEL_REGISTER_DATA
-from tests.model_registry.model_registry.rest_api.utils import (
-    register_model_rest_api,
-    execute_model_registry_patch_command,
-    get_mr_deployment,
-)
-from utilities.general import generate_random_name, wait_for_pods_running
+import pytest
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
-from tests.model_registry.utils import (
-    get_model_registry_deployment_template_dict,
-    apply_db_args_and_volume_mounts,
-    add_db_certs_volumes_to_deployment,
-    get_mr_standard_labels,
-    get_external_db_config,
-)
-
-from tests.model_registry.constants import (
-    DB_RESOURCE_NAME,
-    CA_MOUNT_PATH,
-    CA_FILE_PATH,
-    CA_CONFIGMAP_NAME,
-    SECURE_MR_NAME,
-    KUBERBACPROXY_STR,
-)
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
-from ocp_resources.config_map import ConfigMap
-from simple_logger.logger import get_logger
-from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from pytest_testconfig import config as py_config
+from simple_logger.logger import get_logger
+
+from tests.model_registry.constants import (
+    CA_CONFIGMAP_NAME,
+    CA_FILE_PATH,
+    CA_MOUNT_PATH,
+    DB_RESOURCE_NAME,
+    KUBERBACPROXY_STR,
+    SECURE_MR_NAME,
+)
+from tests.model_registry.model_registry.rest_api.constants import MODEL_REGISTER_DATA, MODEL_REGISTRY_BASE_URI
+from tests.model_registry.model_registry.rest_api.utils import (
+    execute_model_registry_patch_command,
+    generate_ca_and_server_cert,
+    get_mr_deployment,
+    register_model_rest_api,
+)
+from tests.model_registry.utils import (
+    add_db_certs_volumes_to_deployment,
+    apply_db_args_and_volume_mounts,
+    get_external_db_config,
+    get_model_registry_deployment_template_dict,
+    get_mr_standard_labels,
+)
+from utilities.certificates_utils import create_ca_bundle_with_router_cert, create_k8s_secret
 from utilities.exceptions import MissingParameter
-import tempfile
-from tests.model_registry.model_registry.rest_api.utils import generate_ca_and_server_cert
-from utilities.certificates_utils import create_k8s_secret, create_ca_bundle_with_router_cert
+from utilities.general import generate_random_name, wait_for_pods_running
+from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
 LOGGER = get_logger(name=__name__)
 
@@ -184,7 +185,7 @@ def deploy_secure_db_mr(
     external_db_template_with_ca: dict[str, Any],
     patch_external_deployment_with_ssl_ca: Deployment,
     db_backend_under_test: str,
-) -> Generator[ModelRegistry, None, None]:
+) -> Generator[ModelRegistry]:
     """
     Deploy a secure database and Model Registry instance.
     """
@@ -240,7 +241,7 @@ def ca_configmap_for_test(
     admin_client: DynamicClient,
     model_registry_namespace: str,
     external_db_ssl_artifact_paths: dict[str, Any],
-) -> Generator[ConfigMap, None, None]:
+) -> Generator[ConfigMap]:
     """
     Creates a test-specific ConfigMap for the CA bundle, using the generated CA cert.
 
@@ -256,7 +257,7 @@ def ca_configmap_for_test(
         ca_content = f.read()
     if not ca_content:
         LOGGER.info("CA content is empty")
-        raise Exception("CA content is empty")
+        raise MissingParameter("CA content is empty")
     cm_name = "db-ca-configmap"
     with ConfigMap(
         client=admin_client,
@@ -314,7 +315,7 @@ def patch_external_deployment_with_ssl_ca(
 
 
 @pytest.fixture(scope="class")
-def external_db_ssl_artifact_paths() -> Generator[dict[str, str], None, None]:
+def external_db_ssl_artifact_paths() -> Generator[dict[str, str]]:
     """
     Generates external database SSL certificate and key files in a temporary directory
     and provides their paths.
@@ -329,7 +330,7 @@ def external_db_ssl_secrets(
     admin_client: DynamicClient,
     model_registry_namespace: str,
     external_db_ssl_artifact_paths: dict[str, str],
-) -> Generator[dict[str, Secret], None, None]:
+) -> Generator[dict[str, Secret]]:
     """
     Creates Kubernetes secrets for external database SSL artifacts.
     """
@@ -369,7 +370,7 @@ def external_db_ssl_secrets(
 
 
 @pytest.fixture(scope="function")
-def model_data_for_test() -> Generator[dict[str, Any], None, None]:
+def model_data_for_test() -> Generator[dict[str, Any]]:
     """
     Generates a model data for the test.
 

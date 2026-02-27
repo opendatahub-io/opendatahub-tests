@@ -1,11 +1,12 @@
 import shlex
-from typing import Any, Generator
-from urllib.parse import urlparse
+from collections.abc import Generator
 from contextlib import contextmanager
+from typing import Any
+from urllib.parse import urlparse
 
-from ocp_resources.pod import Pod
 from kubernetes.dynamic.client import DynamicClient
 from ocp_resources.inference_service import InferenceService
+from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
 
 from utilities.constants import Protocols

@@ -1,8 +1,8 @@
-from typing import Generator, Any, Dict, Callable
 import os
+from collections.abc import Callable, Generator
+from typing import Any
+
 import httpx
-from ocp_resources.route import Route
-from ocp_resources.resource import ResourceEditor
 import pytest
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
@@ -10,26 +10,28 @@ from llama_stack_client import LlamaStackClient
 from llama_stack_client.types.vector_store import VectorStore
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
-
-from utilities.resources.llama_stack_distribution import LlamaStackDistribution
 from ocp_resources.namespace import Namespace
+from ocp_resources.resource import ResourceEditor
+from ocp_resources.route import Route
+from ocp_resources.secret import Secret
+from ocp_resources.service import Service
 from semver import Version
 from simple_logger.logger import get_logger
-from utilities.general import generate_random_name
-from tests.llama_stack.utils import (
-    create_llama_stack_distribution,
-    wait_for_llama_stack_client_ready,
-    vector_store_create_file_from_url,
-    wait_for_unique_llama_stack_pod,
-)
-from utilities.constants import DscComponents, Annotations
-from utilities.data_science_cluster_utils import update_components_in_dsc
+
 from tests.llama_stack.constants import (
     LLS_OPENSHIFT_MINIMAL_VERSION,
     ModelInfo,
 )
-from ocp_resources.service import Service
-from ocp_resources.secret import Secret
+from tests.llama_stack.utils import (
+    create_llama_stack_distribution,
+    vector_store_create_file_from_url,
+    wait_for_llama_stack_client_ready,
+    wait_for_unique_llama_stack_pod,
+)
+from utilities.constants import Annotations, DscComponents
+from utilities.data_science_cluster_utils import update_components_in_dsc
+from utilities.general import generate_random_name
+from utilities.resources.llama_stack_distribution import LlamaStackDistribution
 
 LOGGER = get_logger(name=__name__)
 
@@ -65,6 +67,8 @@ LLS_CORE_VLLM_EMBEDDING_URL = os.getenv(
 LLS_CORE_VLLM_EMBEDDING_API_TOKEN = os.getenv("LLS_CORE_VLLM_EMBEDDING_API_TOKEN", "fake")
 LLS_CORE_VLLM_EMBEDDING_MAX_TOKENS = os.getenv("LLS_CORE_VLLM_EMBEDDING_MAX_TOKENS", "8192")
 LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY = os.getenv("LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY", "true")
+
+IBM_EARNINGS_DOC_URL = "https://www.ibm.com/downloads/documents/us-en/1550f7eea8c0ded6"
 
 distribution_name = generate_random_name(prefix="llama-stack-distribution")
 
@@ -137,9 +141,9 @@ def enabled_llama_stack_operator(dsc_resource: DataScienceCluster) -> Generator[
 @pytest.fixture(scope="class")
 def llama_stack_server_config(
     request: FixtureRequest,
-    vector_io_provider_deployment_config_factory: Callable[[str], list[Dict[str, str]]],
-    files_provider_config_factory: Callable[[str], list[Dict[str, str]]],
-) -> Dict[str, Any]:
+    vector_io_provider_deployment_config_factory: Callable[[str], list[dict[str, str]]],
+    files_provider_config_factory: Callable[[str], list[dict[str, str]]],
+) -> dict[str, Any]:
     """
     Generate server configuration for LlamaStack distribution deployment and deploy vector I/O provider resources.
 
@@ -324,7 +328,7 @@ def llama_stack_server_config(
     env_vars_vector_io = vector_io_provider_deployment_config_factory(provider_name=vector_io_provider)
     env_vars.extend(env_vars_vector_io)
 
-    server_config: Dict[str, Any] = {
+    server_config: dict[str, Any] = {
         "containerSpec": {
             "resources": {
                 "requests": {"cpu": "1", "memory": "3Gi"},
@@ -380,7 +384,7 @@ def unprivileged_llama_stack_distribution(
     unprivileged_model_namespace: Namespace,
     enabled_llama_stack_operator: DataScienceCluster,
     request: FixtureRequest,
-    llama_stack_server_config: Dict[str, Any],
+    llama_stack_server_config: dict[str, Any],
     ci_s3_bucket_name: str,
     ci_s3_bucket_endpoint: str,
     ci_s3_bucket_region: str,
@@ -389,7 +393,7 @@ def unprivileged_llama_stack_distribution(
     unprivileged_llama_stack_distribution_secret: Secret,
     unprivileged_postgres_deployment: Deployment,
     unprivileged_postgres_service: Service,
-) -> Generator[LlamaStackDistribution, None, None]:
+) -> Generator[LlamaStackDistribution]:
     # Distribution name needs a random substring due to bug RHAIENG-999 / RHAIENG-1139
     distribution_name = generate_random_name(prefix="llama-stack-distribution")
     with create_llama_stack_distribution(
@@ -415,10 +419,10 @@ def unprivileged_llama_stack_distribution(
                         access_key_id=aws_access_key_id,
                         secret_access_key=aws_secret_access_key,
                     )
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     LOGGER.warning(f"Failed to clean up S3 files: {e}")
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             LOGGER.warning(f"Failed to clean up S3 files: {e}")
 
 
@@ -428,7 +432,7 @@ def llama_stack_distribution(
     model_namespace: Namespace,
     enabled_llama_stack_operator: DataScienceCluster,
     request: FixtureRequest,
-    llama_stack_server_config: Dict[str, Any],
+    llama_stack_server_config: dict[str, Any],
     ci_s3_bucket_name: str,
     ci_s3_bucket_endpoint: str,
     ci_s3_bucket_region: str,
@@ -437,7 +441,7 @@ def llama_stack_distribution(
     llama_stack_distribution_secret: Secret,
     postgres_deployment: Deployment,
     postgres_service: Service,
-) -> Generator[LlamaStackDistribution, None, None]:
+) -> Generator[LlamaStackDistribution]:
     # Distribution name needs a random substring due to bug RHAIENG-999 / RHAIENG-1139
     with create_llama_stack_distribution(
         client=admin_client,
@@ -462,10 +466,10 @@ def llama_stack_distribution(
                         access_key_id=aws_access_key_id,
                         secret_access_key=aws_secret_access_key,
                     )
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     LOGGER.warning(f"Failed to clean up S3 files: {e}")
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             LOGGER.warning(f"Failed to clean up S3 files: {e}")
 
 
@@ -571,14 +575,15 @@ def _create_llama_stack_test_route(
         Generator[Route, Any, Any]: Route resource with TLS edge termination
     """
     route_name = generate_random_name(prefix="llama-stack", length=12)
-    with Route(
-        client=client,
-        namespace=namespace.name,
-        name=route_name,
-        service=f"{deployment.name}-service",
-        wait_for_resource=True,
-    ) as route:
-        with ResourceEditor(
+    with (
+        Route(
+            client=client,
+            namespace=namespace.name,
+            name=route_name,
+            service=f"{deployment.name}-service",
+            wait_for_resource=True,
+        ) as route,
+        ResourceEditor(
             patches={
                 route: {
                     "spec": {
@@ -592,9 +597,10 @@ def _create_llama_stack_test_route(
                     },
                 }
             }
-        ):
-            route.wait(timeout=60)
-            yield route
+        ),
+    ):
+        route.wait(timeout=60)
+        yield route
 
 
 @pytest.fixture(scope="class")
@@ -734,7 +740,7 @@ def vector_store(
     unprivileged_llama_stack_client: LlamaStackClient,
     llama_stack_models: ModelInfo,
     request: FixtureRequest,
-) -> Generator[VectorStore, None, None]:
+) -> Generator[VectorStore]:
     """
     Creates a vector store for testing and automatically cleans it up.
 
@@ -767,44 +773,33 @@ def vector_store(
     try:
         unprivileged_llama_stack_client.vector_stores.delete(vector_store_id=vector_store.id)
         LOGGER.info(f"Deleted vector store {vector_store.id}")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         LOGGER.warning(f"Failed to delete vector store {vector_store.id}: {e}")
 
 
 @pytest.fixture(scope="class")
 def vector_store_with_example_docs(
     unprivileged_llama_stack_client: LlamaStackClient, vector_store: VectorStore
-) -> Generator[VectorStore, None, None]:
+) -> Generator[VectorStore]:
     """
-    Creates a vector store with TorchTune documentation files uploaded.
+    Creates a vector store with the IBM fourth-quarter 2025 earnings report uploaded.
 
-    This fixture depends on the vector_store fixture and uploads the TorchTune
-    documentation files to the vector store for testing purposes. The files
-    are automatically cleaned up after the test completes.
+    This fixture depends on the vector_store fixture and uploads the IBM earnings
+    document to the vector store for testing vector, keyword, and hybrid search.
+    The file is automatically cleaned up after the test completes.
 
     Args:
         unprivileged_llama_stack_client: The configured LlamaStackClient
         vector_store: The vector store fixture to upload files to
 
     Yields:
-        Vector store object with uploaded TorchTune documentation files
+        Vector store object with uploaded IBM earnings report document
     """
-    # Download TorchTune documentation files
-    urls = [
-        "llama3.rst",
-        "chat.rst",
-        "lora_finetune.rst",
-        "qat_finetune.rst",
-        "memory_optimizations.rst",
-    ]
-
-    base_url = "https://raw.githubusercontent.com/pytorch/torchtune/refs/tags/v0.6.1/docs/source/tutorials/"
-
-    for file_name in urls:
-        url = f"{base_url}{file_name}"
-        vector_store_create_file_from_url(
-            url=url, llama_stack_client=unprivileged_llama_stack_client, vector_store=vector_store
-        )
+    vector_store_create_file_from_url(
+        url=IBM_EARNINGS_DOC_URL,
+        llama_stack_client=unprivileged_llama_stack_client,
+        vector_store=vector_store,
+    )
 
     yield vector_store
 
@@ -897,7 +892,7 @@ def postgres_deployment(
         yield deployment
 
 
-def get_postgres_deployment_template() -> Dict[str, Any]:
+def get_postgres_deployment_template() -> dict[str, Any]:
     """Return a Kubernetes deployment for PostgreSQL"""
     return {
         "metadata": {"labels": {"app": "postgres"}},

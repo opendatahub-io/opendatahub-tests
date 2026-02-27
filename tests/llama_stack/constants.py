@@ -1,9 +1,10 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, NamedTuple, TypedDict
+from typing import NamedTuple, TypedDict
+
+import semver
 from llama_stack_client.types import Model
 from semver import VersionInfo
-import semver
 
 
 class LlamaStackProviders:
@@ -35,16 +36,16 @@ LLS_OPENSHIFT_MINIMAL_VERSION: VersionInfo = semver.VersionInfo.parse("4.17.0")
 
 class TurnExpectation(TypedDict):
     question: str
-    expected_keywords: List[str]
+    expected_keywords: list[str]
     description: str
 
 
 class TurnResult(TypedDict):
     question: str
     description: str
-    expected_keywords: List[str]
-    found_keywords: List[str]
-    missing_keywords: List[str]
+    expected_keywords: list[str]
+    found_keywords: list[str]
+    missing_keywords: list[str]
     response_content: str
     response_length: int
     event_count: int
@@ -63,7 +64,7 @@ class ValidationSummary(TypedDict):
 
 class ValidationResult(TypedDict):
     success: bool
-    results: List[TurnResult]
+    results: list[TurnResult]
     summary: ValidationSummary
 
 
@@ -72,11 +73,11 @@ class TorchTuneTestExpectation:
     """Test expectation for TorchTune documentation questions."""
 
     question: str
-    expected_keywords: List[str]
+    expected_keywords: list[str]
     description: str
 
 
-TORCHTUNE_TEST_EXPECTATIONS: List[TorchTuneTestExpectation] = [
+TORCHTUNE_TEST_EXPECTATIONS: list[TorchTuneTestExpectation] = [
     TorchTuneTestExpectation(
         question="what is torchtune",
         expected_keywords=["torchtune", "pytorch", "fine-tuning", "training", "model"],

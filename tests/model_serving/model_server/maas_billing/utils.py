@@ -1,29 +1,30 @@
-from typing import Any, Dict, Generator, List, Tuple
 import base64
-import requests
-from json import JSONDecodeError
-from urllib.parse import urlparse
+from collections.abc import Generator
 from contextlib import contextmanager
+from json import JSONDecodeError
+from typing import Any
+from urllib.parse import urlparse
 
+import requests
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.group import Group
-from ocp_resources.ingress_config_openshift_io import Ingress as IngressConfig
-from ocp_resources.llm_inference_service import LLMInferenceService
-from requests import Response
-from simple_logger.logger import get_logger
-from utilities.llmd_utils import get_llm_inference_url
-from utilities.plugins.constant import RestHeader, OpenAIEnpoints
-from ocp_resources.resource import ResourceEditor
-from utilities.resources.rate_limit_policy import RateLimitPolicy
-from utilities.resources.token_rate_limit_policy import TokenRateLimitPolicy
 
 # from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.endpoints import Endpoints
+from ocp_resources.group import Group
+from ocp_resources.ingress_config_openshift_io import Ingress as IngressConfig
+from ocp_resources.llm_inference_service import LLMInferenceService
+from ocp_resources.resource import ResourceEditor
+from requests import Response
+from simple_logger.logger import get_logger
+
 from utilities.constants import (
     MAAS_GATEWAY_NAME,
     MAAS_GATEWAY_NAMESPACE,
 )
-
+from utilities.llmd_utils import get_llm_inference_url
+from utilities.plugins.constant import OpenAIEnpoints, RestHeader
+from utilities.resources.rate_limit_policy import RateLimitPolicy
+from utilities.resources.token_rate_limit_policy import TokenRateLimitPolicy
 
 LOGGER = get_logger(name=__name__)
 MODELS_INFO = OpenAIEnpoints.MODELS_INFO
@@ -68,17 +69,17 @@ def detect_scheme_via_llmisvc(client, namespace: str = "llm") -> str:
     """
     service = _first_ready_llmisvc(client=client, namespace=namespace)
     if not service:
-        return "http"
+        return "https"
 
     url = get_llm_inference_url(llm_service=service)
     scheme = (urlparse(url).scheme or "").lower()
     if scheme in ("http", "https"):
         return scheme
 
-    return "http"
+    return "https"
 
 
-def maas_auth_headers(token: str) -> Dict[str, str]:
+def maas_auth_headers(token: str) -> dict[str, str]:
     """Authorization header only (used for /v1/tokens with OCP user token)."""
     return {"Authorization": f"Bearer {token}"}
 
@@ -114,7 +115,7 @@ def create_maas_group(
     admin_client: DynamicClient,
     group_name: str,
     users: list[str] | None = None,
-) -> Generator[Group, None, None]:
+) -> Generator[Group]:
     """
     Create an OpenShift Group with optional users and delete it on exit.
     """
@@ -159,7 +160,7 @@ def get_maas_models_response(
 @contextmanager
 def patch_llmisvc_with_maas_router(
     llm_service: LLMInferenceService,
-) -> Generator[None, None, None]:
+) -> Generator[None]:
     router_spec = {
         "gateway": {"refs": [{"name": MAAS_GATEWAY_NAME, "namespace": MAAS_GATEWAY_NAMESPACE}]},
         "route": {},
@@ -253,7 +254,7 @@ def verify_chat_completions(
 def assert_mixed_200_and_429(
     *,
     actor_label: str,
-    status_codes_list: List[int],
+    status_codes_list: list[int],
     context: str,
     require_429: bool = True,
 ) -> None:
@@ -286,7 +287,7 @@ def assert_mixed_200_and_429(
         )
 
 
-def maas_token_ratelimitpolicy_spec() -> Dict[str, Any]:
+def maas_token_ratelimitpolicy_spec() -> dict[str, Any]:
     """
     Deterministic TokenRateLimitPolicy limits for MaaS tests.
 
@@ -312,7 +313,7 @@ def maas_token_ratelimitpolicy_spec() -> Dict[str, Any]:
     }
 
 
-def maas_ratelimitpolicy_spec() -> Dict[str, Any]:
+def maas_ratelimitpolicy_spec() -> dict[str, Any]:
     """
     Deterministic RateLimitPolicy limits for MaaS tests.
 
@@ -345,7 +346,7 @@ def maas_gateway_rate_limits_patched(
     namespace: str,
     token_policy_name: str,
     request_policy_name: str,
-) -> Generator[None, None, None]:
+) -> Generator[None]:
     """
     Temporarily patch ONLY `spec.limits` of the Kuadrant TokenRateLimitPolicy and
     RateLimitPolicy for MaaS tests, and restore the original state afterwards.
@@ -429,7 +430,7 @@ def get_total_tokens(resp: Response, *, fail_if_missing: bool = False) -> int | 
     return None
 
 
-def maas_gateway_listeners(hostname: str) -> List[Dict[str, Any]]:
+def maas_gateway_listeners(hostname: str) -> list[dict[str, Any]]:
     return [
         {
             "name": "http",
@@ -475,7 +476,7 @@ def gateway_probe_reaches_maas_api(
     http_session: requests.Session,
     probe_url: str,
     request_timeout_seconds: int,
-) -> Tuple[bool, int, str]:
+) -> tuple[bool, int, str]:
     response = http_session.get(probe_url, timeout=request_timeout_seconds)
     status_code = response.status_code
     response_text = response.text

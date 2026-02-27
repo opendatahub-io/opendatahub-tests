@@ -1,22 +1,24 @@
+from collections.abc import Generator
+from typing import Any
+
 import pytest
-from typing import Any, Generator
-from pytest import FixtureRequest
-from model_registry.types import RegisteredModel
-from kubernetes.dynamic import DynamicClient
-from pytest import Config
-from model_registry import ModelRegistry as ModelRegistryClient
 from class_generator.parsers.explain_parser import ResourceNotFoundError
-from tests.model_registry.constants import MR_INSTANCE_BASE_NAME, KUBERBACPROXY_STR
-from utilities.constants import Protocols
-from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from kubernetes.dynamic import DynamicClient
+from model_registry import ModelRegistry as ModelRegistryClient
+from model_registry.types import RegisteredModel
+from pytest import Config, FixtureRequest
 from simple_logger.logger import get_logger
+
+from tests.model_registry.constants import KUBERBACPROXY_STR, MR_INSTANCE_BASE_NAME
 from tests.model_registry.utils import (
-    wait_for_default_resource_cleanedup,
-    get_mr_standard_labels,
-    get_mr_service_by_label,
     get_endpoint_from_mr_service,
+    get_mr_service_by_label,
+    get_mr_standard_labels,
+    wait_for_default_resource_cleanedup,
 )
+from utilities.constants import Protocols
 from utilities.general import wait_for_pods_running
+from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
 LOGGER = get_logger(name=__name__)
 MR_DEFAULT_DB_NAME: str = f"{MR_INSTANCE_BASE_NAME}1"
@@ -29,7 +31,7 @@ def model_registry_instance_default_db(
     teardown_resources: bool,
     model_registry_metadata_db_resources: dict[Any, Any],
     model_registry_namespace: str,
-) -> Generator[ModelRegistry, None, None]:
+) -> Generator[ModelRegistry]:
     """
     Create model registry instance specifically with default postgres database.
     """
@@ -106,7 +108,7 @@ def model_registry_client_default_db(
 @pytest.fixture(scope="class")
 def registered_model_default_db(
     request: FixtureRequest, model_registry_client_default_db: ModelRegistryClient
-) -> Generator[RegisteredModel, None, None]:
+) -> Generator[RegisteredModel]:
     yield model_registry_client_default_db.register_model(
         name=request.param.get("model_name"),
         uri=request.param.get("model_uri"),

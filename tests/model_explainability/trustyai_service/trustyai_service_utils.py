@@ -14,7 +14,7 @@ from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from utilities.certificates_utils import create_ca_bundle_file
-from utilities.constants import Protocols, Timeout, TRUSTYAI_SERVICE_NAME
+from utilities.constants import TRUSTYAI_SERVICE_NAME, Protocols, Timeout
 from utilities.exceptions import MetricValidationError
 from utilities.general import create_isvc_label_selector_str
 from utilities.inference_utils import Inference, UserInference
@@ -24,8 +24,6 @@ LOGGER = get_logger(name=__name__)
 
 class NoMetricsFoundError(ValueError):
     """Raised when no metrics are available for the requested operation."""
-
-    pass
 
 
 class TrustyAIServiceMetrics:
@@ -264,7 +262,7 @@ def get_num_observations_from_trustyai_service(
 
         raise KeyError("Observations data not found in model metadata")
     except Exception as e:
-        LOGGER.error(f"Failed to parse response: {str(e)}")
+        LOGGER.error(f"Failed to parse response: {e!s}")
         raise
 
 
@@ -432,9 +430,11 @@ def verify_trustyai_service_response(
 
     # Validate required non-empty fields
     if required_fields:
-        for field in required_fields:
-            if field in response_data and response_data[field] == "":
-                errors.append(f"{field.capitalize()} is empty")
+        errors.extend([
+            f"{field.capitalize()} is empty"
+            for field in required_fields
+            if field in response_data and response_data[field] == ""
+        ])
 
     # Validate expected values
     if expected_values:

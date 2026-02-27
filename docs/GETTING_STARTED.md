@@ -1,4 +1,5 @@
 # Getting started
+
 ## Installation
 
 Install [uv](https://github.com/astral-sh/uv)
@@ -63,8 +64,8 @@ export ARCHIVE_MUST_GATHER="false"
 - Useful in air-gapped environments or when internet access is limited
 
 ## Running the tests
-### Basic run of all tests
 
+### Basic run of all tests
 
 ```bash
 uv run pytest
@@ -81,6 +82,7 @@ uv run pytest --help
 CLI arguments can be passed to pytest by setting them in [pytest.ini](../pytest.ini).  
 You can either use the default pytest.ini file and pass CLI arguments or create a custom one.  
 For example, add the below under the `addopts` section:
+
 ```code
     --ci-s3-bucket-name=name
     --ci-s3-bucket-endpoint=endpoint-path
@@ -95,6 +97,7 @@ uv run pytest -c custom-pytest.ini
 ```
 
 ### Turning off console logging
+
 By default, pytest will output logging reports in the console. You can disable this behavior with `-o log_cli=false`
 
 ```bash
@@ -102,33 +105,44 @@ uv run pytest -o log_cli=false
 ```
 
 ### Running specific tests
+
 ```bash
 uv run pytest -k test_name
 ```
 
+### Running component smoke
+
+```bash
+uv run pytest tests/<component_name> -m "smoke and not sanity and not tier1"
+```
+
 ### LlamaStack Integration Tests
+
 For more information about LlamaStack integration tests, see [/tests/llama_stack/README.md](../tests/llama_stack/README.md).
 
 ### Running on different distributions
-Bt default, RHOAI distribution is set.  
+
+By default, RHOAI distribution is set.  
 To run on ODH, pass `--tc=distribution:upstream` to pytest.
 
 ### Skip cluster sanity checks
+
 By default, cluster sanity checks are run to make cluster ready for tests.
 To skip cluster sanity checks, pass `--cluster-sanity-skip-check` to skip all tests.
 To skip RHOAI/ODH-related tests (for example when running in upstream), pass `--cluster-sanity-skip-rhoai-check`.
 
 ### Running tests with admin client instead of unprivileged client
+
 To run tests with admin client only, pass `--tc=use_unprivileged_client:False` to pytest.
 
-
 ### jira integration
+
 To skip running tests which have open bugs, [pytest_jira](https://github.com/rhevm-qe-automation/pytest_jira) plugin is used.
 To run tests with jira integration, you need to set `PYTEST_JIRA_URL` and `PYTEST_JIRA_TOKEN` environment variables.
 To make a test with jira marker, add: `@pytest.mark.jira(jira_id="RHOAIENG-0000", run=False)` to the test.
 
-
 ### Running containerized tests
+
 Save kubeconfig file to a local directory, for example: `$HOME/kubeconfig`
 To run tests in containerized environment:
 

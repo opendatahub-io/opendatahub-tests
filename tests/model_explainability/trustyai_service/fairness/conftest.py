@@ -1,4 +1,5 @@
-from typing import Any, Generator
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 from kubernetes.dynamic import DynamicClient
@@ -13,7 +14,7 @@ from ocp_resources.serving_runtime import ServingRuntime
 from tests.model_explainability.trustyai_service.trustyai_service_utils import (
     wait_for_isvc_deployment_registered_by_trustyai_service,
 )
-from utilities.constants import MinIo, ModelFormat, KServeDeploymentType, RuntimeTemplates
+from utilities.constants import KServeDeploymentType, MinIo, ModelFormat, RuntimeTemplates
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 

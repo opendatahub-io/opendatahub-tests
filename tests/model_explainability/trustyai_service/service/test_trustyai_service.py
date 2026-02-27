@@ -6,18 +6,18 @@ from tests.model_explainability.trustyai_service.constants import (
     DRIFT_BASE_DATA_PATH,
     TRUSTYAI_DB_MIGRATION_PATCH,
 )
+from tests.model_explainability.trustyai_service.service.utils import (
+    patch_trustyai_service_cr,
+    wait_for_trustyai_db_migration_complete_log,
+)
 from tests.model_explainability.trustyai_service.trustyai_service_utils import (
-    verify_upload_data_to_trustyai_service,
     TrustyAIServiceMetrics,
     verify_trustyai_service_metric_scheduling_request,
+    verify_upload_data_to_trustyai_service,
 )
 from tests.model_explainability.trustyai_service.utils import (
     validate_trustyai_service_db_conn_failure,
     validate_trustyai_service_images,
-)
-from tests.model_explainability.trustyai_service.service.utils import (
-    wait_for_trustyai_db_migration_complete_log,
-    patch_trustyai_service_cr,
 )
 from utilities.constants import MinIo
 

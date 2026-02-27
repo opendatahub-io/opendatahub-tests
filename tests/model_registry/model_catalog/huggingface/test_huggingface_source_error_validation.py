@@ -1,16 +1,13 @@
-import pytest
 import re
-from simple_logger.logger import get_logger
 from typing import Self
 
-from ocp_resources.config_map import ConfigMap
-from tests.model_registry.model_catalog.utils import (
-    assert_source_error_state_message,
-)
-from tests.model_registry.model_catalog.huggingface.utils import assert_accessible_models_via_catalog_api
-from tests.model_registry.utils import execute_get_command
+import pytest
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
+from ocp_resources.config_map import ConfigMap
+from simple_logger.logger import get_logger
 
+from tests.model_registry.model_catalog.huggingface.utils import assert_accessible_models_via_catalog_api
+from tests.model_registry.model_catalog.utils import execute_get_command
 
 LOGGER = get_logger(name=__name__)
 INACCESSIBLE_MODELS: list[str] = [
@@ -38,6 +35,8 @@ catalogs:
       - "jonburdo/public-test-model-1"
       - "jonburdo/private-test-model-1"
       - "jonburdo/gated-test-model-1"
+    labels:
+      - {SOURCE_ID}
 """
             },
             id="test_mixed_accessible_and_inaccessible_models",
@@ -52,7 +51,7 @@ catalogs:
 class TestHuggingFaceSourceErrorValidation:
     """Test cases for RHOAIENG-47934 - Partial model fetching errors should not affect other models."""
 
-    def test_source_error_state_and_message(
+    def test_source_state_and_message(
         self: Self,
         updated_catalog_config_map: ConfigMap,
         model_catalog_rest_url: list[str],
@@ -65,25 +64,24 @@ class TestHuggingFaceSourceErrorValidation:
         1. The source is in error state due to private model fetch failure
         2. The error message contains the specific failed models
         """
+        LOGGER.info(f"Testing source state for source with failed models: {INACCESSIBLE_MODELS}")
         # Construct expected error message with failed models
-        failed_models_str = ", ".join(INACCESSIBLE_MODELS)
         expected_error_message = (
             "Failed to fetch some models, ensure models exist and are accessible with "
-            f"given credentials. Failed models: [{failed_models_str}]"
+            f"given credentials. Failed models: [{', '.join(INACCESSIBLE_MODELS)}]"
+        )
+        results = execute_get_command(
+            url=f"{model_catalog_rest_url[0]}sources",
+            headers=model_registry_rest_headers,
+        )["items"]
+        # pick the relevant source first by id:
+        matched_source = [result for result in results if result["id"] == SOURCE_ID]
+        assert matched_source, f"Matched expected source not found: {results}"
+        assert matched_source[0]["status"] == "partially-available"
+        assert expected_error_message in matched_source[0]["error"], (
+            f"Expected error: {expected_error_message} not found in {matched_source[0]['error']}"
         )
 
-        LOGGER.info(f"Testing source error state for failed models: {INACCESSIBLE_MODELS}")
-
-        assert_source_error_state_message(
-            model_catalog_rest_url=model_catalog_rest_url,
-            model_registry_rest_headers=model_registry_rest_headers,
-            expected_error_message=expected_error_message,
-            source_id=SOURCE_ID,
-        )
-
-    @pytest.mark.xfail(
-        reason="RHOAIENG-49162: API call using source_label does not find models, when source is in error state"
-    )
     def test_accessible_models_catalog_api_source_id(
         self: Self,
         updated_catalog_config_map: ConfigMap,

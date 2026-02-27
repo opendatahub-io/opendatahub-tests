@@ -1,16 +1,16 @@
 import pytest
-from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 from ocp_resources.deployment import Deployment
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.model_server.llmd.utils import (
     verify_gateway_status,
     verify_llm_service_status,
 )
+from utilities.constants import Labels, Protocols
+from utilities.exceptions import UnexpectedResourceCountError
 from utilities.kueue_utils import check_gated_pods_and_running_pods
 from utilities.llmd_utils import verify_inference_response_llmd
 from utilities.manifests.tinyllama import TINYLLAMA_INFERENCE_CONFIG
-from utilities.constants import Protocols, Labels
-from utilities.exceptions import UnexpectedResourceCountError
 
 pytestmark = [
     pytest.mark.rawdeployment,
