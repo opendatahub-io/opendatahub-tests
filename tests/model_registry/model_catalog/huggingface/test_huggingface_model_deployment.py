@@ -33,7 +33,7 @@ class TestHuggingFaceModelDeployment:
     Tests the complete deployment workflow from ServingRuntime to InferenceService.
     """
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_huggingface_model_deployment_end_to_end(
         self,
         admin_client: DynamicClient,

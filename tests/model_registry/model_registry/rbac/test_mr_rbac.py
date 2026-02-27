@@ -181,7 +181,7 @@ class TestUserMultiProjectPermission:
         MR_MULTIPROJECT_TEST_SCENARIO_PARAMS,
         indirect=True,
     )
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_user_permission_multi_project_parametrized(
         self: Self,
         is_byoidc: bool,

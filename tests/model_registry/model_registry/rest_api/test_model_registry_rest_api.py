@@ -44,7 +44,7 @@ CONNECTION_STRING: str = "/var/run/postgresql:5432 - accepting connections"
             {"db_name": "postgres"},
             {"db_name": "postgres"},
             MODEL_REGISTER_DATA,
-            marks=(pytest.mark.tier1),
+            marks=(pytest.mark.tier2),
         ),
         pytest.param(
             {"db_name": "default"},

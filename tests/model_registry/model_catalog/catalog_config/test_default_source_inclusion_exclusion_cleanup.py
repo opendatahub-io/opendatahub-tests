@@ -40,7 +40,7 @@ class TestModelInclusionFiltering:
             ),
             pytest.param(
                 {"filter_type": "inclusion", "pattern": "prometheus", "filter_value": "*prometheus*"},
-                marks=pytest.mark.tier1,
+                marks=pytest.mark.tier2,
                 id="test_include_prometheus_models_only",
             ),
             pytest.param(
@@ -143,7 +143,7 @@ class TestCombinedIncludeExcludeFiltering:
                     "exclude_pattern": "code",
                     "exclude_filter_value": "*code*",
                 },
-                marks=pytest.mark.tier1,
+                marks=pytest.mark.tier2,
                 id="include_eight_b_exclude_code",
             ),
         ],
@@ -171,7 +171,7 @@ class TestCombinedIncludeExcludeFiltering:
 class TestModelCleanupLifecycle:
     """Test automatic model cleanup during lifecycle changes (RHOAIENG-41846)"""
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_model_cleanup_on_exclusion_change(
         self,
         admin_client: DynamicClient,
