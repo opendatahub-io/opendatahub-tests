@@ -2,8 +2,8 @@ import logging
 import os
 
 from sqlalchemy import Integer, String, create_engine
-from sqlalchemy.orm import Mapped, Session, mapped_column
-from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
+
 from utilities.must_gather_collector import get_base_dir
 
 LOGGER = logging.getLogger(__name__)

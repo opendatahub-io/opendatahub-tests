@@ -1,13 +1,15 @@
 # AI Disclaimer: Google Gemini 2.5 pro has been used to generate a majority of this code, with human review and editing.
-import pytest
 from typing import Any, Self
-from simple_logger.logger import get_logger
+
+import pytest
 from model_registry import ModelRegistry as ModelRegistryClient
-from tests.model_registry.model_registry.rbac.utils import build_mr_client_args
-from utilities.infra import create_inference_token
 from mr_openapi.exceptions import ForbiddenException, UnauthorizedException
 from ocp_resources.service_account import ServiceAccount
+from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler, retry
+
+from tests.model_registry.model_registry.rbac.utils import build_mr_client_args
+from utilities.infra import create_inference_token
 
 LOGGER = get_logger(name=__name__)
 
@@ -94,7 +96,7 @@ class TestModelRegistryRBAC:
             assert mr_client_success is not None, "Client initialization failed after granting permissions"
             LOGGER.info("Client instantiated successfully after granting permissions.")
         except Exception as e:
-            LOGGER.error(f"Failed to access Model Registry after granting permissions: {e}", exc_info=True)
+            LOGGER.error(f"Failed to access Model Registry after granting permissions: {e}")
             raise
 
         LOGGER.info("--- RBAC Test Completed Successfully ---")

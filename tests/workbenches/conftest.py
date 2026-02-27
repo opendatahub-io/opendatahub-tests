@@ -1,24 +1,19 @@
-from typing import Generator
+from collections.abc import Generator
 
 import pytest
-from pytest_testconfig import config as py_config
-
-from simple_logger.logger import get_logger
-from tests.workbenches.utils import get_username
-
 from kubernetes.dynamic import DynamicClient
-
 from ocp_resources.namespace import Namespace
-from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.notebook import Notebook
+from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
+from pytest_testconfig import config as py_config
+from simple_logger.logger import get_logger
 
-from utilities.constants import Labels, Timeout
+from tests.workbenches.utils import get_username
 from utilities import constants
-from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH
-from utilities.infra import get_product_version
-from utilities.infra import check_internal_image_registry_available
+from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH, Labels, Timeout
 from utilities.general import collect_pod_information
+from utilities.infra import check_internal_image_registry_available, get_product_version
 
 LOGGER = get_logger(name=__name__)
 
@@ -26,7 +21,7 @@ LOGGER = get_logger(name=__name__)
 @pytest.fixture(scope="function")
 def users_persistent_volume_claim(
     request: pytest.FixtureRequest, unprivileged_model_namespace: Namespace, unprivileged_client: DynamicClient
-) -> Generator[PersistentVolumeClaim, None, None]:
+) -> Generator[PersistentVolumeClaim]:
     with PersistentVolumeClaim(
         client=unprivileged_client,
         name=request.param["name"],
@@ -40,7 +35,7 @@ def users_persistent_volume_claim(
 
 
 @pytest.fixture(scope="function")
-def minimal_image(admin_client: DynamicClient) -> Generator[str, None, None]:
+def minimal_image(admin_client: DynamicClient) -> Generator[str]:
     """Provides a full image name of a minimal workbench image."""
     image_name = "jupyter-minimal-notebook" if py_config.get("distribution") == "upstream" else "s2i-minimal-notebook"
     image_tag = py_config.get("workbench_image_tag")
@@ -111,7 +106,7 @@ def default_notebook(
     request: pytest.FixtureRequest,
     admin_client: DynamicClient,
     notebook_image: str,
-) -> Generator[Notebook, None, None]:
+) -> Generator[Notebook]:
     """Returns a new Notebook CR for a given namespace, name, and image"""
     namespace = request.param["namespace"]
     name = request.param["name"]

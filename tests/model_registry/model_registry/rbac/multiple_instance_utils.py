@@ -2,22 +2,22 @@ import pytest
 from pytest_testconfig import config as py_config
 
 from tests.model_registry.constants import (
-    MODEL_REGISTRY_DB_SECRET_STR_DATA,
     DB_BASE_RESOURCES_NAME,
-    NUM_MR_INSTANCES,
     MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
+    MODEL_REGISTRY_DB_SECRET_STR_DATA,
     MR_INSTANCE_BASE_NAME,
+    NUM_MR_INSTANCES,
 )
 from tests.model_registry.utils import (
+    get_external_db_config,
     get_model_registry_db_label_dict,
     get_model_registry_deployment_template_dict,
     get_mr_standard_labels,
-    get_external_db_config,
 )
 
 ns_name = py_config["model_registry_namespace"]
 
-resource_names = [f"{DB_BASE_RESOURCES_NAME}{index}" for index in range(0, NUM_MR_INSTANCES)]
+resource_names = [f"{DB_BASE_RESOURCES_NAME}{index}" for index in range(NUM_MR_INSTANCES)]
 
 db_secret_params = [
     {
@@ -85,7 +85,7 @@ model_registry_instance_params = [
         "wait_for_resource": True,
         "kube_rbac_proxy": {},
     }
-    for index in range(0, NUM_MR_INSTANCES)
+    for index in range(NUM_MR_INSTANCES)
 ]
 
 # Add this complete set of parameters as a pytest.param tuple to the list.

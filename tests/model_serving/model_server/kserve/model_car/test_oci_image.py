@@ -1,9 +1,9 @@
 import pytest
 
 from tests.model_serving.model_server.utils import verify_inference_response
-from utilities.infra import get_pods_by_isvc_label
-from utilities.constants import ModelCarImage, ModelFormat, ModelName, Protocols, RuntimeTemplates, KServeDeploymentType
+from utilities.constants import KServeDeploymentType, ModelCarImage, ModelFormat, ModelName, Protocols, RuntimeTemplates
 from utilities.inference_utils import Inference
+from utilities.infra import get_pods_by_isvc_label
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 

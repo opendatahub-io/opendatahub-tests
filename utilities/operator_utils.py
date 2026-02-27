@@ -1,12 +1,10 @@
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError, ResourceNotUniqueError
+from ocp_resources.cluster_service_version import ClusterServiceVersion
+from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 
-from ocp_resources.cluster_service_version import ClusterServiceVersion
 from utilities.infra import get_product_version
-from pytest_testconfig import config as py_config
-
-from typing import List, Dict
 
 LOGGER = get_logger(name=__name__)
 
@@ -29,7 +27,7 @@ def get_cluster_service_version(client: DynamicClient, prefix: str, namespace: s
     return matching_csvs[0]
 
 
-def get_csv_related_images(admin_client: DynamicClient, csv_name: str | None = None) -> List[Dict[str, str]]:
+def get_csv_related_images(admin_client: DynamicClient, csv_name: str | None = None) -> list[dict[str, str]]:
     """Get relatedImages from the CSV.
 
     Args:

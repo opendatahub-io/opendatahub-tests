@@ -1,6 +1,6 @@
-from typing import Union, Any
-from utilities.constants import AcceleratorType, Labels, RuntimeTemplates
-from utilities.constants import KServeDeploymentType
+from typing import Any
+
+from utilities.constants import AcceleratorType, KServeDeploymentType, Labels, RuntimeTemplates
 
 # Configurations
 ACCELERATOR_IDENTIFIER: dict[str, str] = {
@@ -20,7 +20,7 @@ TEMPLATE_MAP: dict[str, str] = {
 }
 
 
-PREDICT_RESOURCES: dict[str, Union[list[dict[str, Union[str, dict[str, str]]]], dict[str, dict[str, str]]]] = {
+PREDICT_RESOURCES: dict[str, list[dict[str, str | dict[str, str]]] | dict[str, dict[str, str]]] = {
     "volumes": [
         {"name": "shared-memory", "emptyDir": {"medium": "Memory", "sizeLimit": "16Gi"}},
         {"name": "tmp", "emptyDir": {}},
@@ -50,7 +50,7 @@ COMPLETION_QUERY: list[dict[str, str]] = [
     {"text": "Explain the significance of the Great Wall of China in history and its impact on modern tourism."},
     {"text": "Discuss the ethical implications of using artificial intelligence in healthcare decision-making."},
     {
-        "text": "Summarize the main events of the Apollo 11 moon landing and its importance in space exploration history."  # noqa: E122, E501
+        "text": "Summarize the main events of the Apollo 11 moon landing and its importance in space exploration history."  # noqa: E501
     },
 ]
 
@@ -79,7 +79,7 @@ EMBEDDING_QUERY: list[dict[str, str]] = [
     {"text": "Explain the significance of the Great Wall of China in history and its impact on modern tourism."},
     {"text": "Discuss the ethical implications of using artificial intelligence in healthcare decision-making."},
     {
-        "text": "Summarize the main events of the Apollo 11 moon landing and its importance in space exploration history."  # noqa: E122, E501
+        "text": "Summarize the main events of the Apollo 11 moon landing and its importance in space exploration history."  # noqa: E501
     },
 ]
 

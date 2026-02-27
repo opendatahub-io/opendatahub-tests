@@ -8,20 +8,20 @@ This module provides functions for:
 - Validating responses against snapshots
 """
 
-from typing import Any, Dict
-
-import os
 import json
+import os
+from typing import Any
+
 import portforward
 import requests
 from ocp_resources.inference_service import InferenceService
 
 from tests.model_serving.model_runtime.openvino.constant import (
-    OPENVINO_REST_PORT,
+    BASE_RAW_DEPLOYMENT_CONFIG,
     LOCAL_HOST_URL,
     MODEL_PATH_PREFIX,
+    OPENVINO_REST_PORT,
     RAW_DEPLOYMENT_TYPE,
-    BASE_RAW_DEPLOYMENT_CONFIG,
 )
 from utilities.constants import KServeDeploymentType
 
@@ -198,7 +198,7 @@ def get_test_case_id(model_format_name: str, deployment_type: str, protocol_type
     return f"{model_format_name.strip()}-{deployment_type.strip()}-{protocol_type.strip()}-deployment"
 
 
-def get_input_query(model_format_config: Dict[str, Any], protocol: str) -> Dict[str, Any]:
+def get_input_query(model_format_config: dict[str, Any], protocol: str) -> dict[str, Any]:
     """
     Get the input query for the given protocol from the model config.
 

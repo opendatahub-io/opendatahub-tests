@@ -8,4 +8,4 @@ class OpenAIEnpoints:
 
 
 class RestHeader:
-    HEADERS: dict[str, str] = {"Content-Type": "application/json"}
+    HEADERS: dict[str, str] = {"Content-Type": "application/json"}  # noqa: RUF012

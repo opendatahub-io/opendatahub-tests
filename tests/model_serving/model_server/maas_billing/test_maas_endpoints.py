@@ -1,6 +1,7 @@
-from simple_logger.logger import get_logger
-import requests
 import pytest
+import requests
+from simple_logger.logger import get_logger
+
 from tests.model_serving.model_server.maas_billing.utils import verify_chat_completions
 
 LOGGER = get_logger(name=__name__)

@@ -1,38 +1,35 @@
 import base64
 import json
-import time
-from typing import Any, List, Dict
+from typing import Any
 
 import requests
 from kubernetes.dynamic import DynamicClient
-
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
+from model_registry import ModelRegistry as ModelRegistryClient
+from model_registry.types import RegisteredModel
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
-from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
-from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from simple_logger.logger import get_logger
 from timeout_sampler import retry
+
 from tests.model_registry.constants import (
-    MR_DB_IMAGE_DIGEST,
-    MODEL_REGISTRY_DB_SECRET_STR_DATA,
-    MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
     DB_BASE_RESOURCES_NAME,
     MARIADB_MY_CNF,
-    PORT_MAP,
+    MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
+    MODEL_REGISTRY_DB_SECRET_STR_DATA,
     MODEL_REGISTRY_POD_FILTER,
+    MR_DB_IMAGE_DIGEST,
     MR_POSTGRES_DB_OBJECT,
+    PORT_MAP,
 )
 from tests.model_registry.exceptions import ModelRegistryResourceNotFoundError
+from utilities.constants import Annotations, Protocols, Timeout
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
-from utilities.constants import Protocols, Annotations, Timeout, PodNotFound
-from model_registry import ModelRegistry as ModelRegistryClient
-from model_registry.types import RegisteredModel
-
-from utilities.general import wait_for_pods_running
+from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from utilities.user_utils import get_byoidc_issuer_url
 
 ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
@@ -43,12 +40,6 @@ POSTGRES_DB_IMAGE = (
     "public.ecr.aws/docker/library/postgres@sha256:6e9bbed548cc1ca776dd4685cfea9efe60d58df91186ec6bad7328fd03b388a5"
 )
 LOGGER = get_logger(name=__name__)
-
-
-class TransientUnauthorizedError(Exception):
-    """Exception for transient 401 Unauthorized errors that should be retried."""
-
-    pass
 
 
 def get_mr_service_by_label(client: DynamicClient, namespace_name: str, mr_instance: ModelRegistry) -> Service:
@@ -339,9 +330,8 @@ def wait_for_new_running_mr_pod(
             label_selector=MODEL_REGISTRY_POD_FILTER,
         )
     )
-    if pods and len(pods) == 1:
-        if pods[0].name != orig_pod_name and pods[0].status == Pod.Status.RUNNING:
-            return pods[0]
+    if pods and len(pods) == 1 and pods[0].name != orig_pod_name and pods[0].status == Pod.Status.RUNNING:
+        return pods[0]
     raise TimeoutError(f"Timeout waiting for pod {orig_pod_name} to be replaced")
 
 
@@ -471,7 +461,7 @@ def get_and_validate_registered_model(
     model_registry_client: ModelRegistryClient,
     model_name: str,
     registered_model: RegisteredModel = None,
-) -> List[str]:
+) -> list[str]:
     """
     Get and validate a registered model.
     """
@@ -488,12 +478,11 @@ def get_and_validate_registered_model(
         expected_attrs = {
             "name": model_name,
         }
-    errors = [
+    return [
         f"Unexpected {attr} expected: {expected}, received {getattr(model, attr)}"
         for attr, expected in expected_attrs.items()
         if getattr(model, attr) != expected
     ]
-    return errors
 
 
 def execute_model_registry_get_command(url: str, headers: dict[str, str], json_output: bool = True) -> dict[Any, Any]:
@@ -536,7 +525,7 @@ def get_mr_service_objects(
     service_port_name = db_backend if db_backend == "postgres" else "mysql"
     service_uri = rf"{service_port_name}://{{.spec.clusterIP}}:{{.spec.ports[?(.name==\{service_port_name}\)].port}}"
     annotation = {"template.openshift.io/expose-uri": service_uri}
-    for num_service in range(0, num):
+    for num_service in range(num):
         name = f"{base_name}{num_service}"
         services.append(
             Service(
@@ -574,7 +563,7 @@ def get_mr_configmap_objects(
 ) -> list[Service]:
     config_maps = []
     if db_backend == "mariadb":
-        for num_config_map in range(0, num):
+        for num_config_map in range(num):
             name = f"{base_name}{num_config_map}"
             config_maps.append(
                 ConfigMap(
@@ -593,7 +582,7 @@ def get_mr_pvc_objects(
     base_name: str, namespace: str, client: DynamicClient, teardown_resources: bool, num: int
 ) -> list[PersistentVolumeClaim]:
     pvcs = []
-    for num_pvc in range(0, num):
+    for num_pvc in range(num):
         name = f"{base_name}{num_pvc}"
         pvcs.append(
             PersistentVolumeClaim(
@@ -613,7 +602,7 @@ def get_mr_secret_objects(
     base_name: str, namespace: str, client: DynamicClient, teardown_resources: bool, num: int
 ) -> list[Secret]:
     secrets = []
-    for num_secret in range(0, num):
+    for num_secret in range(num):
         name = f"{base_name}{num_secret}"
         secrets.append(
             Secret(
@@ -639,7 +628,7 @@ def get_mr_deployment_objects(
 ) -> list[Deployment]:
     deployments = []
 
-    for num_deployment in range(0, num):
+    for num_deployment in range(num):
         name = f"{base_name}{num_deployment}"
         selectors = {"matchLabels": {"name": name}}
         if db_backend == "mariadb":
@@ -688,7 +677,7 @@ def get_model_registry_objects(
     db_backend: str,
 ) -> list[Any]:
     model_registry_objects = []
-    for num_mr in range(0, num):
+    for num_mr in range(num):
         name = f"{base_name}{num_mr}"
         db_value = None
 
@@ -796,9 +785,8 @@ def validate_mlmd_removal_in_model_registry_pod_log(
         container_name = container["name"]
         LOGGER.info(f"Checking {container_name}")
         log = pod_object.log(container=container_name)
-        if "rest" in container_name:
-            if embedmd_message not in log:
-                errors.append(f"Missing {embedmd_message} in {container_name} log")
+        if "rest" in container_name and embedmd_message not in log:
+            errors.append(f"Missing {embedmd_message} in {container_name} log")
         if "MLMD" in log:
             errors.append(f"MLMD reference found in {container_name} log")
     assert not errors, f"Log validation failed with error(s): {errors}"
@@ -816,135 +804,6 @@ def get_rest_headers(token: str) -> dict[str, str]:
         "accept": "application/json",
         "Content-Type": "application/json",
     }
-
-
-def wait_for_model_catalog_pod_ready_after_deletion(
-    client: DynamicClient, model_registry_namespace: str, consecutive_try: int = 6
-) -> bool:
-    model_catalog_pods = get_model_catalog_pod(
-        client=client,
-        model_registry_namespace=model_registry_namespace,
-    )
-    # We can wait for the pods to reflect updated catalog, however, deleting them ensures the updated config is
-    # applied immediately.
-    for pod in model_catalog_pods:
-        pod.delete()
-    # After the deletion, we need to wait for the pod to be spinned up and get to ready state.
-    assert wait_for_model_catalog_pod_created(client=client, model_registry_namespace=model_registry_namespace)
-    wait_for_pods_running(
-        admin_client=client, namespace_name=model_registry_namespace, number_of_consecutive_checks=consecutive_try
-    )
-    return True
-
-
-@retry(wait_timeout=30, sleep=5, exceptions_dict={PodNotFound: []})
-def wait_for_model_catalog_pod_created(client: DynamicClient, model_registry_namespace: str) -> bool:
-    pods = get_model_catalog_pod(client=client, model_registry_namespace=model_registry_namespace)
-    if pods:
-        return True
-    raise PodNotFound("Model catalog pod not found")
-
-
-def execute_get_call(
-    url: str, headers: dict[str, str], verify: bool | str = False, params: dict[str, Any] | None = None
-) -> requests.Response:
-    LOGGER.info(f"Executing get call: {url}")
-    if params:
-        LOGGER.info(f"params: {params}")
-    resp = requests.get(url=url, headers=headers, verify=verify, timeout=60, params=params)
-    LOGGER.info(f"Encoded url from requests library: {resp.url}")
-    if resp.status_code not in [200, 201]:
-        # Raise custom exception for 401 errors that can be retried (OAuth/kube-rbac-proxy initialization)
-        if resp.status_code == 401:
-            raise TransientUnauthorizedError(f"Get call failed for resource: {url}, 401: {resp.text}")
-        # Raise regular exception for other errors (400, 403, 404, etc.) that should fail immediately
-        raise ResourceNotFoundError(f"Get call failed for resource: {url}, {resp.status_code}: {resp.text}")
-    return resp
-
-
-@retry(wait_timeout=90, sleep=5, exceptions_dict={ResourceNotFoundError: [], TransientUnauthorizedError: []})
-def wait_for_model_catalog_api(url: str, headers: dict[str, str], verify: bool | str = False) -> requests.Response:
-    """
-    Wait for model catalog API to be ready and fully initialized checks both /sources and /models endpoints
-    to ensure OAuth/kube-rbac-proxy is fully initialized.
-    """
-    LOGGER.info(f"Waiting for model catalog API at {url}sources")
-    execute_get_call(url=f"{url}sources", headers=headers, verify=verify)
-    LOGGER.info(f"Verifying model catalog API readiness at {url}models")
-
-    return execute_get_call(url=f"{url}models", headers=headers, verify=verify)
-
-
-def execute_get_command(
-    url: str, headers: dict[str, str], verify: bool | str = False, params: dict[str, Any] | None = None
-) -> dict[Any, Any]:
-    resp = execute_get_call(url=url, headers=headers, verify=verify, params=params)
-    try:
-        return json.loads(resp.text)
-    except json.JSONDecodeError:
-        LOGGER.error(f"Unable to parse {resp.text}")
-        raise
-
-
-def get_sample_yaml_str(models: list[str]) -> str:
-    model_str: str = ""
-    for model in models:
-        model_str += f"""
-{get_model_str(model=model)}
-"""
-    return f"""source: Hugging Face
-models:
-{model_str}
-"""
-
-
-def validate_model_catalog_sources(
-    model_catalog_sources_url: str, rest_headers: dict[str, str], expected_catalog_values: dict[str, str]
-) -> None:
-    results = execute_get_command(
-        url=model_catalog_sources_url,
-        headers=rest_headers,
-    )["items"]
-    LOGGER.info(f"Model catalog sources: {results}")
-    ids_from_query = [result_entry["id"] for result_entry in results]
-    ids_expected = [expected_entry["id"] for expected_entry in expected_catalog_values]
-    LOGGER.info(f"IDs expected: {ids_expected}, IDs found: {ids_from_query}")
-    assert set(ids_expected).issubset(set(ids_from_query)), f"Expected: {expected_catalog_values}. Actual: {results}"
-
-
-def get_catalog_str(ids: list[str]) -> str:
-    catalog_str: str = ""
-    for index, id in enumerate(ids):
-        catalog_str += f"""
-- name: Sample Catalog {index}
-  id: {id}
-  type: yaml
-  enabled: true
-  properties:
-    yamlCatalogPath: {id.replace("_", "-")}.yaml
-"""
-    return f"""catalogs:
-{catalog_str}
-"""
-
-
-def get_model_str(model: str) -> str:
-    current_time = int(time.time() * 1000)
-    return f"""
-- name: {model}
-  description: test description.
-  readme: |-
-    # test read me information {model}
-  provider: Mistral AI
-  logo: temp placeholder logo
-  license: apache-2.0
-  licenseLink: https://www.apache.org/licenses/LICENSE-2.0.txt
-  libraryName: transformers
-  artifacts:
-    - uri: https://huggingface.co/{model}/resolve/main/consolidated.safetensors
-  createTimeSinceEpoch: \"{str(current_time - 10000)}\"
-  lastUpdateTimeSinceEpoch: \"{str(current_time)}\"
-"""
 
 
 class ResourceNotDeleted(Exception):
@@ -976,29 +835,26 @@ def get_mr_user_token(admin_client: DynamicClient, user_credentials_rbac: dict[s
         "scope": "openid",
     }
 
-    try:
-        LOGGER.info(f"Requesting token for user {user_credentials_rbac['username']} in byoidc environment")
-        response = requests.post(
-            url=url,
-            headers=headers,
-            data=data,
-            allow_redirects=True,
-            timeout=30,
-            verify=True,  # Set to False if you need to skip SSL verification
-        )
-        response.raise_for_status()
-        json_response = response.json()
+    LOGGER.info(f"Requesting token for user {user_credentials_rbac['username']} in byoidc environment")
+    response = requests.post(
+        url=url,
+        headers=headers,
+        data=data,
+        allow_redirects=True,
+        timeout=30,
+        verify=True,  # Set to False if you need to skip SSL verification
+    )
+    response.raise_for_status()
+    json_response = response.json()
 
-        # Validate that we got an access token
-        if "id_token" not in json_response:
-            LOGGER.error("Warning: No id_token in response")
-            raise AssertionError(f"No id_token in response: {json_response}")
-        return json_response["id_token"]
-    except Exception as e:
-        raise e
+    # Validate that we got an access token
+    if "id_token" not in json_response:
+        LOGGER.error("Warning: No id_token in response")
+        raise AssertionError(f"No id_token in response: {json_response}")
+    return json_response["id_token"]
 
 
-def get_byoidc_user_credentials(client: DynamicClient, username: str = None) -> Dict[str, str]:
+def get_byoidc_user_credentials(client: DynamicClient, username: str | None = None) -> dict[str, str]:
     """
     Get user credentials from byoidc-credentials secret.
 

@@ -1,10 +1,9 @@
+from collections.abc import Generator
+
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
-
-from typing import Generator
-
 from ocp_resources.resource import ResourceEditor
 from pytest_testconfig import py_config
 
@@ -25,7 +24,7 @@ def trustyai_operator_deployment(admin_client: DynamicClient) -> Deployment:
 @pytest.fixture(scope="class")
 def patched_dsc_lmeval_allow_all(
     admin_client, trustyai_operator_deployment: Deployment
-) -> Generator[DataScienceCluster, None, None]:
+) -> Generator[DataScienceCluster]:
     """Enable LMEval PermitOnline and PermitCodeExecution flags in the Datascience cluster."""
     dsc = get_data_science_cluster(client=admin_client)
     with ResourceEditor(

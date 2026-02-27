@@ -1,4 +1,5 @@
-from typing import Any, Generator
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 from kubernetes.dynamic import DynamicClient
@@ -14,11 +15,10 @@ from simple_logger.logger import get_logger
 from tests.model_serving.model_runtime.vllm.constant import ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES, TEMPLATE_MAP
 from tests.model_serving.model_runtime.vllm.utils import (
     kserve_s3_endpoint_secret,
-    validate_supported_quantization_schema,
     skip_if_not_deployment_mode,
+    validate_supported_quantization_schema,
 )
-from utilities.constants import KServeDeploymentType
-from utilities.constants import Labels, RuntimeTemplates
+from utilities.constants import KServeDeploymentType, Labels, RuntimeTemplates
 from utilities.inference_utils import create_isvc
 from utilities.infra import get_pods_by_isvc_label
 from utilities.serving_runtime import ServingRuntimeFromTemplate
@@ -33,7 +33,7 @@ def serving_runtime(
     model_namespace: Namespace,
     supported_accelerator_type: str,
     vllm_runtime_image: str,
-) -> Generator[ServingRuntime, None, None]:
+) -> Generator[ServingRuntime]:
     accelerator_type = supported_accelerator_type.lower()
     template_name = TEMPLATE_MAP.get(accelerator_type, RuntimeTemplates.VLLM_CUDA)
     with ServingRuntimeFromTemplate(
@@ -82,11 +82,7 @@ def vllm_inference_service(
         isvc_kwargs["volumes"] = PREDICT_RESOURCES["volumes"]
         isvc_kwargs["volumes_mounts"] = PREDICT_RESOURCES["volume_mounts"]
     if arguments := request.param.get("runtime_argument"):
-        arguments = [
-            arg
-            for arg in arguments
-            if not (arg.startswith("--tensor-parallel-size") or arg.startswith("--quantization"))
-        ]
+        arguments = [arg for arg in arguments if not arg.startswith(("--tensor-parallel-size", "--quantization"))]
         arguments.append(f"--tensor-parallel-size={gpu_count}")
         if quantization := request.param.get("quantization"):
             validate_supported_quantization_schema(q_type=quantization)
@@ -119,7 +115,7 @@ def kserve_endpoint_s3_secret(
     aws_secret_access_key: str,
     models_s3_bucket_region: str,
     models_s3_bucket_endpoint: str,
-) -> Generator[Secret, None, None]:
+) -> Generator[Secret]:
     with kserve_s3_endpoint_secret(
         admin_client=admin_client,
         name="models-bucket-secret",

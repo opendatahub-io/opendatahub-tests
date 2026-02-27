@@ -3,12 +3,11 @@ Test suite for verifying RBAC permissions for Model Catalog ConfigMaps.
 """
 
 import pytest
-from simple_logger.logger import get_logger
-
-from kubernetes.dynamic import DynamicClient
 from kubernetes.client.rest import ApiException
+from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.resource import get_client
+from simple_logger.logger import get_logger
 
 from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
 

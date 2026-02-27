@@ -1,6 +1,8 @@
-from typing import Self, Set
-from ocp_resources.pod import Pod
+from typing import Self
+
 import pytest
+from ocp_resources.pod import Pod
+
 from utilities.general import validate_container_images
 
 
@@ -29,7 +31,7 @@ class TestLlamaStackDistribution:
     def test_llamastackdistribution_verify_images(
         self: Self,
         llama_stack_distribution_pods: Pod,
-        related_images_refs: Set[str],
+        related_images_refs: set[str],
     ) -> None:
         """
         Verify that LlamaStackDistribution container images meet the requirements:

@@ -18,7 +18,6 @@ from tests.model_serving.model_server.kserve.negative.utils import (
 )
 from utilities.infra import get_pods_by_isvc_label
 
-
 pytestmark = pytest.mark.usefixtures("valid_aws_config")
 
 
@@ -56,7 +55,7 @@ class TestUnsupportedContentType:
         - Model pod remains healthy (Running, no restarts)
     """
 
-    VALID_INFERENCE_BODY: dict[str, Any] = {
+    VALID_INFERENCE_BODY: dict[str, Any] = {  # noqa: RUF012
         "inputs": [
             {
                 "name": "Input3",

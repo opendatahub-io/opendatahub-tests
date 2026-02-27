@@ -18,8 +18,8 @@ from tests.model_serving.model_runtime.mlserver.constant import (
     BASE_RAW_DEPLOYMENT_CONFIG,
     LOCALHOST_URL,
     MODEL_PATH_PREFIX,
-    OutputType,
     RAW_DEPLOYMENT_TYPE,
+    OutputType,
 )
 from utilities.constants import KServeDeploymentType, Ports, Protocols
 

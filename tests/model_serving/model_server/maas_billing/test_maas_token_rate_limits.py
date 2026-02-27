@@ -1,6 +1,6 @@
-from typing import List
 import pytest
 from simple_logger.logger import get_logger
+
 from tests.model_serving.model_server.maas_billing.utils import (
     assert_mixed_200_and_429,
 )
@@ -47,7 +47,7 @@ class TestMaasTokenRateLimits:
         ocp_token_for_actor: str,
         actor_label: str,
         scenario: dict,
-        exercise_rate_limiter: List[int],
+        exercise_rate_limiter: list[int],
     ) -> None:
 
         _ = ocp_token_for_actor

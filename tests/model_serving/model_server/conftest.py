@@ -1,11 +1,15 @@
+from collections.abc import Generator
 from contextlib import ExitStack
-from typing import Any, Generator, Dict
+from typing import Any
 
 import pytest
 import yaml
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
+from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
@@ -14,31 +18,17 @@ from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.storage_class import StorageClass
-from ocp_resources.data_science_cluster import DataScienceCluster
-from ocp_resources.cluster_service_version import ClusterServiceVersion
-from kubernetes.dynamic.exceptions import ResourceNotFoundError
-from utilities.kueue_utils import (
-    create_local_queue,
-    create_cluster_queue,
-    create_resource_flavor,
-    LocalQueue,
-    ClusterQueue,
-    ResourceFlavor,
-    wait_for_kueue_crds_available,
-)
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 
 from utilities.constants import (
+    DscComponents,
     KServeDeploymentType,
     Labels,
+    ModelAndFormat,
     ModelFormat,
     RuntimeTemplates,
     StorageClassName,
-    DscComponents,
-)
-from utilities.constants import (
-    ModelAndFormat,
 )
 from utilities.data_science_cluster_utils import (
     get_dsc_ready_condition,
@@ -48,6 +38,15 @@ from utilities.inference_utils import create_isvc
 from utilities.infra import (
     s3_endpoint_secret,
     update_configmap_data,
+)
+from utilities.kueue_utils import (
+    ClusterQueue,
+    LocalQueue,
+    ResourceFlavor,
+    create_cluster_queue,
+    create_local_queue,
+    create_resource_flavor,
+    wait_for_kueue_crds_available,
 )
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -328,7 +327,7 @@ def ovms_raw_inference_service(
 @pytest.fixture(scope="class")
 def user_workload_monitoring_config_map(
     admin_client: DynamicClient, cluster_monitoring_config: ConfigMap
-) -> Generator[ConfigMap, None, None]:
+) -> Generator[ConfigMap]:
     uwm_namespace = "openshift-user-workload-monitoring"
 
     data = {
@@ -393,6 +392,7 @@ def gpu_model_car_inference_service(
 ) -> Generator[InferenceService, Any, Any]:
     """Create a GPU-accelerated model car inference service."""
     from copy import deepcopy
+
     from tests.model_serving.model_runtime.openvino.constant import PREDICT_RESOURCES
 
     deployment_mode = request.param.get("deployment-mode", KServeDeploymentType.RAW_DEPLOYMENT)
@@ -436,7 +436,7 @@ def _is_kueue_operator_installed(admin_client: DynamicClient) -> bool:
             if csv.name.startswith("kueue") and csv.status == csv.Status.SUCCEEDED:
                 LOGGER.info(f"Found Kueue operator CSV: {csv.name}")
                 return True
-        return False
+        return False  # noqa: TRY300
     except ResourceNotFoundError:
         return False
 
@@ -444,7 +444,7 @@ def _is_kueue_operator_installed(admin_client: DynamicClient) -> bool:
 @pytest.fixture(scope="session")
 def ensure_kueue_unmanaged_in_dsc(
     admin_client: DynamicClient, dsc_resource: DataScienceCluster
-) -> Generator[None, Any, None]:
+) -> Generator[None, Any]:
     """Set DSC Kueue to Unmanaged and wait for CRDs to be available."""
     try:
         if not _is_kueue_operator_installed(admin_client):
@@ -487,7 +487,7 @@ def kueue_resource_groups(
     flavor_name: str,
     cpu_quota: int,
     memory_quota: str,
-) -> list[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     return [
         {
             "coveredResources": ["cpu", "memory"],
@@ -509,7 +509,7 @@ def kueue_cluster_queue_from_template(
     request: FixtureRequest,
     admin_client: DynamicClient,
     ensure_kueue_unmanaged_in_dsc,
-) -> Generator[ClusterQueue, Any, None]:
+) -> Generator[ClusterQueue, Any]:
     if request.param.get("name") is None:
         raise ValueError("name is required")
     with create_cluster_queue(
@@ -528,7 +528,7 @@ def kueue_resource_flavor_from_template(
     request: FixtureRequest,
     admin_client: DynamicClient,
     ensure_kueue_unmanaged_in_dsc,
-) -> Generator[ResourceFlavor, Any, None]:
+) -> Generator[ResourceFlavor, Any]:
     if request.param.get("name") is None:
         raise ValueError("name is required")
     with create_resource_flavor(
@@ -544,7 +544,7 @@ def kueue_local_queue_from_template(
     unprivileged_model_namespace: Namespace,
     admin_client: DynamicClient,
     ensure_kueue_unmanaged_in_dsc,
-) -> Generator[LocalQueue, Any, None]:
+) -> Generator[LocalQueue, Any]:
     if request.param.get("name") is None:
         raise ValueError("name is required")
     if request.param.get("cluster_queue") is None:

@@ -1,4 +1,5 @@
-from typing import Any, Generator
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 from _pytest.fixtures import FixtureRequest
@@ -48,11 +49,8 @@ def patched_s3_caikit_kserve_isvc_visibility_label(
                 sleep=1,
                 func=lambda: s3_models_inference_service.instance.status.url,
             ):
-                if sample:
-                    if visibility == Labels.Kserve.EXPOSED and isvc_orig_url == sample:
-                        break
-
-                    elif sample != isvc_orig_url:
+                if sample:  # noqa: SIM102
+                    if visibility == Labels.Kserve.EXPOSED and isvc_orig_url == sample or sample != isvc_orig_url:
                         break
 
             yield s3_models_inference_service

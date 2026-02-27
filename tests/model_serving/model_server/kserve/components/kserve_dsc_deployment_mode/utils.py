@@ -1,5 +1,6 @@
 import json
-from typing import Any, Generator
+from collections.abc import Generator
+from typing import Any
 
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.data_science_cluster import DataScienceCluster

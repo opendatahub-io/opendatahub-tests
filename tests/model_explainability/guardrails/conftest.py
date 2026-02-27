@@ -1,4 +1,5 @@
-from typing import Generator, Any, List
+from collections.abc import Generator
+from typing import Any
 
 import portforward
 import pytest
@@ -29,10 +30,10 @@ from tests.model_explainability.guardrails.constants import (
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import (
     KServeDeploymentType,
-    Timeout,
     RuntimeTemplates,
+    Timeout,
 )
-from utilities.inference_utils import create_isvc, LOGGER
+from utilities.inference_utils import LOGGER, create_isvc
 from utilities.operator_utils import get_cluster_service_version
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -155,7 +156,7 @@ def hap_detector_route(
 
 
 @pytest.fixture(scope="class")
-def installed_tempo_operator(admin_client: DynamicClient, model_namespace: Namespace) -> Generator[None, Any, None]:
+def installed_tempo_operator(admin_client: DynamicClient, model_namespace: Namespace) -> Generator[None, Any]:
     """
     Installs the Tempo operator and waits for its deployment.
     """
@@ -206,7 +207,7 @@ def tempo_stack(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     minio_secret_otel: Secret,
-) -> Generator[Any, Any, None]:
+) -> Generator[Any, Any]:
     """
     Create a TempoStack CR in the test namespace, configured to use MinIO backend.
     """
@@ -265,7 +266,7 @@ def tempo_stack(
 
 
 @pytest.fixture(scope="class")
-def installed_opentelemetry_operator(admin_client: DynamicClient) -> Generator[None, Any, None]:
+def installed_opentelemetry_operator(admin_client: DynamicClient) -> Generator[None, Any]:
     """
     Installs the Red Hat OpenTelemetry Operator and waits for its deployment.
     """
@@ -401,7 +402,7 @@ def wait_for_pods_by_label(
         timeout: Maximum wait time in seconds
     """
 
-    def _get_pods() -> List[Pod]:
+    def _get_pods() -> list[Pod]:
         return [
             pod
             for pod in Pod.get(

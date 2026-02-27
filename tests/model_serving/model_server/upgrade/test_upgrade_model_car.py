@@ -12,7 +12,6 @@ from utilities.constants import ModelCarImage, Protocols
 from utilities.inference_utils import Inference
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
-
 pytestmark = pytest.mark.rawdeployment
 
 

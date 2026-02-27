@@ -1,10 +1,13 @@
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Optional, Dict, Any, List, Generator
+from typing import Any
+
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.resource import NamespacedResource, Resource, MissingRequiredArgumentError
 from ocp_resources.pod import Pod
+from ocp_resources.resource import MissingRequiredArgumentError, NamespacedResource, Resource
 from simple_logger.logger import get_logger
 from timeout_sampler import retry
+
 from utilities.constants import Timeout
 
 LOGGER = get_logger(name=__name__)
@@ -61,8 +64,8 @@ class ClusterQueue(Resource):
 
     def __init__(
         self,
-        namespace_selector: Dict[str, Any] | None = None,
-        resource_groups: List[Dict[str, Any]] | None = None,
+        namespace_selector: dict[str, Any] | None = None,
+        resource_groups: list[dict[str, Any]] | None = None,
         **kwargs: Any,
     ):
         """
@@ -134,8 +137,8 @@ def create_local_queue(
 def create_cluster_queue(
     client: DynamicClient,
     name: str,
-    resource_groups: List[Dict[str, Any]],
-    namespace_selector: Optional[Dict[str, Any]] = None,
+    resource_groups: list[dict[str, Any]],
+    namespace_selector: dict[str, Any] | None = None,
     teardown: bool = True,
 ) -> Generator[ClusterQueue, Any, Any]:
     """
@@ -166,14 +169,11 @@ def check_gated_pods_and_running_pods(
     for pod in pods:
         if pod.instance.status.phase == "Running":
             running_pods += 1
-        elif pod.instance.status.phase == "Pending":
-            if all(
-                condition.type == "PodScheduled"
-                and condition.status == "False"
-                and condition.reason == "SchedulingGated"
-                for condition in pod.instance.status.conditions
-            ):
-                gated_pods += 1
+        elif pod.instance.status.phase == "Pending" and all(
+            condition.type == "PodScheduled" and condition.status == "False" and condition.reason == "SchedulingGated"
+            for condition in pod.instance.status.conditions
+        ):
+            gated_pods += 1
     return running_pods, gated_pods
 
 

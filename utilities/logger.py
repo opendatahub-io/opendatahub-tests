@@ -1,8 +1,8 @@
 import logging
+import multiprocessing
 import shutil
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
-import multiprocessing
-from typing import Optional, Any
+from typing import Any
 
 from simple_logger.logger import DuplicateFilter, WrapperLogFormatter
 
@@ -14,7 +14,7 @@ class RedactedString(str):
     Used to redact the representation of a sensitive string.
     """
 
-    def __new__(cls, *, value: object) -> "RedactedString":
+    def __new__(cls, *, value: object) -> "RedactedString":  # noqa: PYI034
         return super().__new__(cls, value)
 
     def __repr__(self) -> str:
@@ -123,7 +123,7 @@ def setup_logging(
     return log_listener
 
 
-def separator(symbol_: str, val: Optional[str] = None) -> str:
+def separator(symbol_: str, val: str | None = None) -> str:
     terminal_width = shutil.get_terminal_size(fallback=(120, 40))[0]
     if not val:
         return f"{symbol_ * terminal_width}"

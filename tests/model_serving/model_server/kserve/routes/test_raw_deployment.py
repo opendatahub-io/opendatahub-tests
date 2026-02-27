@@ -6,10 +6,10 @@ from utilities.constants import (
     KServeDeploymentType,
     Labels,
     ModelFormat,
+    ModelInferenceRuntime,
     ModelStoragePath,
     OpenshiftRouteTimeout,
     Protocols,
-    ModelInferenceRuntime,
     RuntimeTemplates,
 )
 from utilities.exceptions import (

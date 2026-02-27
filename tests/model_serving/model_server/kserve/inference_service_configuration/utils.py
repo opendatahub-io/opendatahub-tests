@@ -1,5 +1,6 @@
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any, Generator
+from typing import Any
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
@@ -17,7 +18,7 @@ LOGGER = get_logger(name=__name__)
 @contextmanager
 def update_inference_service(
     client: DynamicClient, isvc: InferenceService, isvc_updated_dict: dict[str, Any], wait_for_new_pods: bool = True
-) -> Generator[InferenceService, Any, None]:
+) -> Generator[InferenceService, Any]:
     """
     Update InferenceService object.
 
@@ -101,9 +102,12 @@ def wait_for_new_running_inference_pods(
             client=isvc.client,
             isvc=isvc,
         ):
-            if pods and len(pods) == expected_num_pods:
-                if all(pod.name not in oring_pods_names and pod.status == pod.Status.RUNNING for pod in pods):
-                    return
+            if (
+                pods
+                and len(pods) == expected_num_pods
+                and all(pod.name not in oring_pods_names and pod.status == pod.Status.RUNNING for pod in pods)
+            ):
+                return
 
     except TimeoutError:
         LOGGER.error(f"Timeout waiting for pods {oring_pods_names} to be replaced")

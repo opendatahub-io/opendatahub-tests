@@ -5,16 +5,14 @@ from dataclasses import dataclass
 from time import time
 
 import pytest
-
-from ocp_resources.pod import Pod
-from ocp_resources.pod import ExecOnPodError
 from ocp_resources.namespace import Namespace
 from ocp_resources.notebook import Notebook
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
+from ocp_resources.pod import ExecOnPodError, Pod
+from simple_logger.logger import get_logger
 
 from utilities.constants import Timeout
 from utilities.general import collect_pod_information
-from simple_logger.logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 
@@ -282,10 +280,10 @@ class TestCustomImageValidation:
     )
     def test_custom_image_package_verification(
         self,
-        unprivileged_model_namespace: Namespace,  # noqa: ARG002
-        users_persistent_volume_claim: PersistentVolumeClaim,  # noqa: ARG002
+        unprivileged_model_namespace: Namespace,
+        users_persistent_volume_claim: PersistentVolumeClaim,
         default_notebook: Notebook,
-        notebook_image: str,  # noqa: ARG002
+        notebook_image: str,
         notebook_pod: Pod,
         packages_to_verify: list[str],
     ):

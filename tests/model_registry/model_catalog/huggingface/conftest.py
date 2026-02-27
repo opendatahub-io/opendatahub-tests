@@ -1,26 +1,36 @@
-import pytest
+import base64
 import time
-from typing import Any, Generator
-from huggingface_hub import HfApi
-from simple_logger.logger import get_logger
-from kubernetes.dynamic import DynamicClient
-from ocp_resources.inference_service import InferenceService
-from ocp_resources.config_map import ConfigMap
-from tests.model_registry.model_catalog.constants import HF_CUSTOM_MODE
-from tests.model_registry.model_catalog.utils import get_models_from_catalog_api
+from collections.abc import Generator
+from typing import Any
 
+import portforward
+import pytest
+from huggingface_hub import HfApi
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.config_map import ConfigMap
+from ocp_resources.inference_service import InferenceService
+from ocp_resources.namespace import Namespace
+from ocp_resources.pod import Pod
+from ocp_resources.secret import Secret
+from ocp_resources.serving_runtime import ServingRuntime
+from pytest_testconfig import py_config
+from simple_logger.logger import get_logger
+
+from tests.model_registry.model_catalog.constants import HF_CUSTOM_MODE
 from tests.model_registry.model_catalog.huggingface.utils import get_huggingface_model_from_api
+from tests.model_registry.model_catalog.utils import get_models_from_catalog_api
 from utilities.infra import create_ns
 from utilities.operator_utils import get_cluster_service_version
-from ocp_resources.serving_runtime import ServingRuntime
-from ocp_resources.namespace import Namespace
-from ocp_resources.secret import Secret
-from ocp_resources.pod import Pod
-from pytest_testconfig import py_config
-import base64
-import portforward
 
 LOGGER = get_logger(name=__name__)
+
+
+class OpenVINOImageNotFoundError(Exception):
+    """Exception raised when OpenVINO image is not found in RHOAI CSV relatedImages."""
+
+
+class PredictorPodNotFoundError(Exception):
+    """Exception raised when predictor pods are not found for an InferenceService."""
 
 
 def get_openvino_image_from_rhoai_csv(admin_client: DynamicClient) -> str:
@@ -47,7 +57,7 @@ def get_openvino_image_from_rhoai_csv(admin_client: DynamicClient) -> str:
             LOGGER.info(f"Found OpenVINO image from RHOAI CSV: {image_url}")
             return image_url
 
-    raise Exception("Could not find odh-openvino-model-server image in RHOAI CSV relatedImages")
+    raise OpenVINOImageNotFoundError("Could not find odh-openvino-model-server image in RHOAI CSV relatedImages")
 
 
 @pytest.fixture()
@@ -385,7 +395,9 @@ def huggingface_predictor_pod(
 
     predictor_pods = [pod for pod in pods if "predictor" in pod.name]
     if not predictor_pods:
-        raise Exception(f"No predictor pods found for InferenceService {huggingface_inference_service.name}")
+        raise PredictorPodNotFoundError(
+            f"No predictor pods found for InferenceService {huggingface_inference_service.name}"
+        )
 
     pod = predictor_pods[0]  # Use the first predictor pod
     LOGGER.info(f"Found predictor pod: {pod.name} in namespace: {namespace}")
@@ -397,7 +409,7 @@ def huggingface_model_portforward(
     hugging_face_deployment_ns: Namespace,
     huggingface_inference_service: InferenceService,
     huggingface_predictor_pod: Pod,
-) -> Generator[str, Any, None]:
+) -> Generator[str, Any]:
     """
     Port-forwards the HuggingFace OpenVINO model server pod to access the model API locally.
     Equivalent CLI:

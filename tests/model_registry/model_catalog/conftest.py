@@ -1,39 +1,42 @@
 import random
-from typing import Generator, Any
-import requests
+from collections.abc import Generator
+from typing import Any
 
-from simple_logger.logger import get_logger
-import yaml
 import pytest
+import requests
+import yaml
 from kubernetes.dynamic import DynamicClient
-
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 from ocp_resources.service_account import ServiceAccount
-from tests.model_registry.model_catalog.constants import (
-    SAMPLE_MODEL_NAME3,
-    DEFAULT_CATALOG_FILE,
-    CATALOG_CONTAINER,
-    REDHAT_AI_CATALOG_ID,
-    DEFAULT_CATALOGS,
-)
-from tests.model_registry.model_catalog.utils import get_models_from_catalog_api
+from simple_logger.logger import get_logger
+
 from tests.model_registry.constants import (
     CUSTOM_CATALOG_ID1,
     DEFAULT_CUSTOM_MODEL_CATALOG,
 )
-from tests.model_registry.utils import (
-    get_rest_headers,
-    wait_for_model_catalog_pod_ready_after_deletion,
-    get_model_catalog_pod,
-    wait_for_model_catalog_api,
+from tests.model_registry.model_catalog.catalog_config.utils import get_models_from_database_by_source
+from tests.model_registry.model_catalog.constants import (
+    CATALOG_CONTAINER,
+    DEFAULT_CATALOG_FILE,
+    DEFAULT_CATALOGS,
+    REDHAT_AI_CATALOG_ID,
+    SAMPLE_MODEL_NAME3,
+)
+from tests.model_registry.model_catalog.utils import (
     execute_get_command,
     get_model_str,
-    get_mr_user_token,
+    get_models_from_catalog_api,
+    wait_for_model_catalog_api,
+    wait_for_model_catalog_pod_ready_after_deletion,
 )
-from utilities.infra import get_openshift_token, create_inference_token, login_with_user_password
-from tests.model_registry.model_catalog.catalog_config.utils import get_models_from_database_by_source
+from tests.model_registry.utils import (
+    get_model_catalog_pod,
+    get_mr_user_token,
+    get_rest_headers,
+)
+from utilities.infra import create_inference_token, get_openshift_token, login_with_user_password
 
 LOGGER = get_logger(name=__name__)
 
@@ -45,7 +48,7 @@ def sparse_override_catalog_source(
     model_registry_namespace: str,
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
-) -> Generator[dict, None, None]:
+) -> Generator[dict]:
     """
     Creates a sparse override for an existing default catalog source.
 
@@ -120,7 +123,7 @@ def updated_catalog_config_map(
     admin_client: DynamicClient,
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
-) -> Generator[ConfigMap, None, None]:
+) -> Generator[ConfigMap]:
     if pytestconfig.option.post_upgrade or pytestconfig.option.pre_upgrade:
         yield catalog_config_map
     else:
@@ -159,7 +162,7 @@ def update_configmap_data_add_model(
     admin_client: DynamicClient,
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
-) -> Generator[ConfigMap, None, None]:
+) -> Generator[ConfigMap]:
     patches = catalog_config_map.instance.to_dict()
     patches["data"][f"{CUSTOM_CATALOG_ID1.replace('_', '-')}.yaml"] += get_model_str(model=SAMPLE_MODEL_NAME3)
     with ResourceEditor(patches={catalog_config_map: patches}):
@@ -184,7 +187,7 @@ def user_token_for_api_calls(
     user_credentials_rbac: dict[str, str],
     service_account: ServiceAccount,
     model_catalog_rest_url: list[str],
-) -> Generator[str, None, None]:
+) -> Generator[str]:
     param = getattr(request, "param", {})
     user = param.get("user_type", "admin")
     LOGGER.info("User used: %s", user)
@@ -359,7 +362,7 @@ def labels_configmap_patch(
     model_registry_namespace: str,
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
-) -> Generator[dict[str, Any], None, None]:
+) -> Generator[dict[str, Any]]:
     # Get the editable ConfigMap
     sources_cm = ConfigMap(name=DEFAULT_CUSTOM_MODEL_CATALOG, client=admin_client, namespace=model_registry_namespace)
 
@@ -405,7 +408,7 @@ def updated_catalog_config_map_scope_function(
     admin_client: DynamicClient,
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
-) -> Generator[ConfigMap, None, None]:
+) -> Generator[ConfigMap]:
     patches = {"data": {"sources.yaml": request.param}}
     with ResourceEditor(patches={catalog_config_map: patches}):
         wait_for_model_catalog_pod_ready_after_deletion(

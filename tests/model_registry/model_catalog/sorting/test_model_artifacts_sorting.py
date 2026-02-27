@@ -1,13 +1,15 @@
-import pytest
-from typing import Self
 import random
+from typing import Self
+
+import pytest
 from simple_logger.logger import get_logger
+
+from tests.model_registry.model_catalog.constants import VALIDATED_CATALOG_ID
 from tests.model_registry.model_catalog.sorting.utils import (
     get_artifacts_with_sorting,
     validate_items_sorted_correctly,
     verify_custom_properties_sorted,
 )
-from tests.model_registry.model_catalog.constants import VALIDATED_CATALOG_ID
 
 LOGGER = get_logger(name=__name__)
 

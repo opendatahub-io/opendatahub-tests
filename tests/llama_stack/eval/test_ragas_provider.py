@@ -4,7 +4,7 @@ import pytest
 
 from tests.llama_stack.constants import LlamaStackProviders
 from tests.llama_stack.eval.utils import wait_for_eval_job_completion
-from utilities.constants import MinIo, QWEN_MODEL_NAME
+from utilities.constants import QWEN_MODEL_NAME, MinIo
 
 RAGAS_DATASET_ID: str = "ragas_dataset"
 RAGAS_INLINE_BENCHMARK_ID = "ragas_benchmark_inline"
@@ -53,7 +53,7 @@ class TestLlamaStackRagasInlineProvider:
                 "description": "Sample RAG evaluation dataset for Ragas demo",
                 "size": len(RAGAS_TEST_DATASET),
                 "format": "ragas",
-                "created_at": datetime.now().isoformat(),
+                "created_at": datetime.now().isoformat(),  # noqa: DTZ005
             },
         )
 
@@ -130,7 +130,7 @@ class TestLlamaStackRagasRemoteProvider:
                 "description": "Sample RAG evaluation dataset for Ragas demo",
                 "size": len(RAGAS_TEST_DATASET),
                 "format": "ragas",
-                "created_at": datetime.now().isoformat(),
+                "created_at": datetime.now().isoformat(),  # noqa: DTZ005
             },
         )
 

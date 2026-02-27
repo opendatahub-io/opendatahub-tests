@@ -1,11 +1,13 @@
+# noqa: N999
 import pytest
 from simple_logger.logger import get_logger
-from utilities.constants import KServeDeploymentType, Ports
+
+from tests.model_serving.model_runtime.vllm.constant import VLLM_SUPPORTED_QUANTIZATION
 from tests.model_serving.model_runtime.vllm.utils import (
     run_raw_inference,
     validate_inference_output,
 )
-from tests.model_serving.model_runtime.vllm.constant import VLLM_SUPPORTED_QUANTIZATION
+from utilities.constants import KServeDeploymentType, Ports
 
 LOGGER = get_logger(name=__name__)
 
