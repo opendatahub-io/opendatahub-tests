@@ -5,6 +5,7 @@ from typing import Any
 
 from ocp_resources.exceptions import MissingRequiredArgumentError
 from ocp_resources.resource import NamespacedResource
+
 from utilities.constants import ApiGroups
 
 
@@ -12,8 +13,9 @@ class MaaSAuthPolicy(NamespacedResource):
     """
     MaaSAuthPolicy is the Schema for the maasauthpolicies API
     """
-  
+
     api_group: str = ApiGroups.MAAS_IO
+
     def __init__(
         self,
         metering_metadata: dict[str, Any] | None = None,

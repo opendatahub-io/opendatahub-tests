@@ -5,7 +5,9 @@ from typing import Any
 
 from ocp_resources.exceptions import MissingRequiredArgumentError
 from ocp_resources.resource import NamespacedResource
+
 from utilities.constants import ApiGroups
+
 
 class MaaSSubscription(NamespacedResource):
     """
