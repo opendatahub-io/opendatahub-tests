@@ -97,13 +97,11 @@ def maas_model_tinyllama_free(
             "name": maas_inference_service_tinyllama_free.name,
             "namespace": maas_inference_service_tinyllama_free.namespace,
             "kind": "LLMInferenceService",
-            "apiGroup": "serving.kserve.io",
-            "group": "serving.kserve.io",
         },
         teardown=True,
         wait_for_resource=True,
-    ) as m:
-        yield m
+    ) as maas_model:
+        yield maas_model
 
 
 @pytest.fixture(scope="class")
@@ -121,13 +119,11 @@ def maas_model_tinyllama_premium(
             "name": maas_inference_service_tinyllama_premium.name,
             "namespace": maas_inference_service_tinyllama_premium.namespace,
             "kind": "LLMInferenceService",
-            "apiGroup": "serving.kserve.io",
-            "group": "serving.kserve.io",
         },
         teardown=True,
         wait_for_resource=True,
-    ) as m:
-        yield m
+    ) as maas_model:
+        yield maas_model
 
 
 @pytest.fixture(scope="class")
