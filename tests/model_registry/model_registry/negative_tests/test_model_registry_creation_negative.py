@@ -29,7 +29,7 @@ LOGGER = get_logger(name=__name__)
 )
 @pytest.mark.custom_namespace
 class TestModelRegistryCreationNegative:
-    @pytest.mark.sanity
+    @pytest.mark.tier3
     def test_registering_model_negative(
         self: Self,
         admin_client: DynamicClient,

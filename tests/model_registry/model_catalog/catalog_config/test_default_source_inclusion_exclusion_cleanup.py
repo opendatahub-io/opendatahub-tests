@@ -35,22 +35,22 @@ class TestModelInclusionFiltering:
         [
             pytest.param(
                 {"filter_type": "inclusion", "pattern": "granite", "filter_value": "*granite*"},
-                marks=pytest.mark.smoke,
+                marks=pytest.mark.tier2,
                 id="test_include_granite_models_only",
             ),
             pytest.param(
                 {"filter_type": "inclusion", "pattern": "prometheus", "filter_value": "*prometheus*"},
-                marks=pytest.mark.sanity,
+                marks=pytest.mark.tier2,
                 id="test_include_prometheus_models_only",
             ),
             pytest.param(
                 {"filter_type": "inclusion", "pattern": "-8b-", "filter_value": "*-8b-*"},
-                marks=pytest.mark.sanity,
+                marks=pytest.mark.tier2,
                 id="test_include_eight_b_models_only",
             ),
             pytest.param(
                 {"filter_type": "inclusion", "pattern": "code", "filter_value": "*code*"},
-                marks=pytest.mark.sanity,
+                marks=pytest.mark.tier2,
                 id="test_include_code_models_only",
             ),
         ],
@@ -83,17 +83,17 @@ class TestModelExclusionFiltering:
         [
             pytest.param(
                 {"filter_type": "exclusion", "pattern": "granite", "filter_value": "*granite*"},
-                marks=pytest.mark.smoke,
+                marks=pytest.mark.tier2,
                 id="test_exclude_granite_models",
             ),
             pytest.param(
                 {"filter_type": "exclusion", "pattern": "prometheus", "filter_value": "*prometheus*"},
-                marks=pytest.mark.sanity,
+                marks=pytest.mark.tier1,
                 id="test_exclude_prometheus_models",
             ),
             pytest.param(
                 {"filter_type": "exclusion", "pattern": "lab", "filter_value": "*lab*"},
-                marks=pytest.mark.sanity,
+                marks=pytest.mark.tier2,
                 id="test_exclude_lab_models",
             ),
         ],
@@ -132,7 +132,7 @@ class TestCombinedIncludeExcludeFiltering:
                     "exclude_pattern": "lab",
                     "exclude_filter_value": "*lab*",
                 },
-                marks=pytest.mark.smoke,
+                marks=pytest.mark.tier2,
                 id="include_granite_exclude_lab",
             ),
             pytest.param(
@@ -143,7 +143,7 @@ class TestCombinedIncludeExcludeFiltering:
                     "exclude_pattern": "code",
                     "exclude_filter_value": "*code*",
                 },
-                marks=pytest.mark.sanity,
+                marks=pytest.mark.tier2,
                 id="include_eight_b_exclude_code",
             ),
         ],
@@ -171,7 +171,7 @@ class TestCombinedIncludeExcludeFiltering:
 class TestModelCleanupLifecycle:
     """Test automatic model cleanup during lifecycle changes (RHOAIENG-41846)"""
 
-    @pytest.mark.sanity
+    @pytest.mark.tier2
     def test_model_cleanup_on_exclusion_change(
         self,
         admin_client: DynamicClient,
@@ -276,7 +276,7 @@ class TestModelCleanupLifecycle:
 class TestSourceLifecycleCleanup:
     """Test source disabling cleanup scenarios (RHOAIENG-41846)"""
 
-    @pytest.mark.smoke
+    @pytest.mark.tier2
     def test_source_disabling_removes_models(
         self,
         admin_client: DynamicClient,
@@ -294,7 +294,7 @@ class TestSourceLifecycleCleanup:
             model_registry_namespace=model_registry_namespace,
         )
 
-    @pytest.mark.sanity
+    @pytest.mark.tier2
     def test_source_disabling_logging(
         self,
         admin_client: DynamicClient,
@@ -323,7 +323,7 @@ class TestLoggingValidation:
         [
             pytest.param(
                 {"filter_type": "exclusion", "pattern": "granite", "filter_value": "*granite*", "log_cleanup": True},
-                marks=pytest.mark.sanity,
+                marks=pytest.mark.tier2,
                 id="test_exclude_granite_models_for_logging",
             )
         ],

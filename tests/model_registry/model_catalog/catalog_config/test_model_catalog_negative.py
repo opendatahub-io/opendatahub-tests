@@ -21,6 +21,7 @@ pytestmark = [
 
 
 @pytest.mark.skip_must_gather
+@pytest.mark.tier3
 class TestDefaultCatalogNegative:
     """Negative tests for default catalog configuration"""
 
