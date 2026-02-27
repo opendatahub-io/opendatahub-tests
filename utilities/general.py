@@ -176,6 +176,7 @@ def create_isvc_label_selector_str(isvc: InferenceService, resource_type: str, r
     if deployment_mode in (
         KServeDeploymentType.SERVERLESS,
         KServeDeploymentType.RAW_DEPLOYMENT,
+        KServeDeploymentType.STANDARD,
     ):
         return f"{isvc.ApiGroup.SERVING_KSERVE_IO}/inferenceservice={isvc.name}"
 

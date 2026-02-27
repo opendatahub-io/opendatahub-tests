@@ -8,6 +8,8 @@ class KServeDeploymentType:
     SERVERLESS: str = "Serverless"
     RAW_DEPLOYMENT: str = "RawDeployment"
     MODEL_MESH: str = "ModelMesh"
+    STANDARD: str = "Standard"  # New name of RawDeployment
+    KNATIVE: str = "Knative"  # New name of Serverless
 
 
 class ModelFormat:
@@ -294,6 +296,12 @@ class ModelCarImage:
         "oci://quay.io/mwaykole/test@sha256:cb7d25c43e52c755e85f5b59199346f30e03b7112ef38b74ed4597aec8748743"
     )
     GRANITE_8B_CODE_INSTRUCT: str = "oci://registry.redhat.io/rhelai1/modelcar-granite-8b-code-instruct:1.4"
+
+    # MLServer model car images - update URIs when images are available
+    MLSERVER_SKLEARN: str = "oci://quay.io/jooholee/mlserver-sklearn@sha256:e0b0b1d17ae852bccccce35df7b0126d24f04626bb7fa41e9f19039d6b285340"
+    MLSERVER_XGBOOST: str = "oci://quay.io/jooholee/mlserver-xgboost@sha256:de50a0cd9c36fe300b3bffe25875daef886da9b0d0f8b5776a3b5395860ec785"
+    MLSERVER_LIGHTGBM: str = "oci://quay.io/jooholee/mlserver-lightgbm@sha256:ce80860b4427348f580f95f9826b1fdfb105e4240eacf69fb143883f4aa667f4" 
+    MLSERVER_ONNX: str = ""  # TODO: Add OCI URI when image ready
 
 
 class ModelStorage:
