@@ -1,0 +1,88 @@
+"""
+Test Single-Node Precise Prefix Caching.
+
+This test verifies that the LLM-D router correctly routes inference requests
+based on precise KV cache tracking, maximizing prefix cache hits using the
+cache_tracking mode.
+
+Test configuration:
+- LLMInferenceService with 2 replicas and router enabled
+- Authentication enabled
+- Precise prefix cache mode with KV block index tracking
+- HuggingFace model storage (Qwen 7B)
+- Verify router pod and vLLM pods are running
+- Send multiple requests with shared prefixes and size greater than PREFIX_CACHE_BLOCK_SIZE
+- Validate prefix cache metrics
+"""
+
+import pytest
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.llm_inference_service import LLMInferenceService
+from ocp_resources.prometheus import Prometheus
+
+from tests.model_serving.model_server.llmd_v2.llmd_configs import PrecisePrefixCacheConfig
+from tests.model_serving.model_server.llmd_v2.utils import (
+    assert_prefix_cache_routing,
+    assert_scheduler_routing,
+    get_llmd_router_scheduler_pod,
+    get_llmd_workload_pods,
+    ns_from_file,
+    send_prefix_cache_requests,
+    wait_for_llmisvc,
+)
+
+NUM_REQUESTS = 20
+PREFIX_CACHE_PROMPT = (
+    "Explain in detail the fundamental principles of quantum mechanics including "
+    "wave-particle duality, superposition, and entanglement in simple terms. "
+    "Additionally, describe how these quantum phenomena differ from classical physics "
+    "and why they are important for understanding the nature of reality at the atomic scale."
+)
+
+NAMESPACE = ns_from_file(__file__)
+
+pytestmark = [pytest.mark.tier2, pytest.mark.llmd_gpu]
+
+
+@pytest.mark.parametrize(
+    "unprivileged_model_namespace, llmisvc",
+    [({"name": NAMESPACE}, PrecisePrefixCacheConfig)],
+    indirect=True,
+)
+@pytest.mark.usefixtures("valid_aws_config")
+class TestSingleNodePrecisePrefixCache:
+    """Test class for singlenode precise prefix cache routing."""
+
+    def test_singlenode_precise_prefix_cache(
+        self,
+        unprivileged_client: DynamicClient,
+        llmisvc: LLMInferenceService,
+        llmisvc_token: str,
+        gpu_count_on_cluster: int,
+        prometheus: Prometheus,
+    ):
+        """Test single-node precise prefix cache routing with KV block index tracking."""
+        if gpu_count_on_cluster < 2:
+            pytest.skip(f"Test requires at least 2 GPUs (found {gpu_count_on_cluster})")
+
+        wait_for_llmisvc(llmisvc)
+
+        router_pod = get_llmd_router_scheduler_pod(client=unprivileged_client, llmisvc=llmisvc)
+        assert router_pod is not None, "Router-scheduler pod should exist"
+        assert router_pod.instance.status.phase == "Running", "Router-scheduler pod should be running"
+
+        workload_pods = get_llmd_workload_pods(client=unprivileged_client, llmisvc=llmisvc)
+        assert len(workload_pods) == 2, f"Expected 2 workload pods, found {len(workload_pods)}"
+
+        successful = send_prefix_cache_requests(
+            llmisvc=llmisvc, prompt=PREFIX_CACHE_PROMPT, token=llmisvc_token, count=NUM_REQUESTS
+        )
+
+        assert_prefix_cache_routing(
+            prometheus=prometheus,
+            llmisvc=llmisvc,
+            pods=workload_pods,
+            expected_requests=successful,
+            block_size=PrecisePrefixCacheConfig.block_size,
+        )
+        assert_scheduler_routing(router_pod=router_pod, min_decisions=successful)
