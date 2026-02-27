@@ -38,7 +38,7 @@ class TestModelRegistrySecurityContextValidation:
         ],
         indirect=["deployment_model_registry_ns"],
     )
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_model_registry_deployment_security_context_validation(
         self: Self,
         skip_if_not_valid_check: None,
@@ -57,7 +57,7 @@ class TestModelRegistrySecurityContextValidation:
         ],
         indirect=["pod_model_registry_ns"],
     )
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_model_registry_pod_security_context_validation(
         self: Self,
         skip_if_not_valid_check: None,

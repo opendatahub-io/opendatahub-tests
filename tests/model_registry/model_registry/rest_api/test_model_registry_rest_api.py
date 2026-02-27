@@ -107,7 +107,7 @@ class TestModelRegistryCreationRest:
             resource_name=data_key,
         )
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     @pytest.mark.parametrize(
         "kind, resource_name",
         [
@@ -156,7 +156,7 @@ class TestModelRegistryCreationRest:
         for field in ["controller", "blockOwnerDeletion"]:
             assert owner_reference[0][field] is True
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_default_postgres_db_pod_log(
         self: Self,
         skip_if_not_default_db: None,

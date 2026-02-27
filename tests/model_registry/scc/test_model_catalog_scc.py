@@ -28,7 +28,7 @@ class TestModelCatalogSecurityContextValidation:
         ],
         indirect=["deployment_model_registry_ns"],
     )
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_model_catalog_deployment_security_context_validation(
         self: Self,
         deployment_model_registry_ns: Deployment,
@@ -46,7 +46,7 @@ class TestModelCatalogSecurityContextValidation:
         ],
         indirect=["pod_model_registry_ns"],
     )
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_model_catalog_pod_security_context_validation(
         self: Self,
         pod_model_registry_ns: Pod,

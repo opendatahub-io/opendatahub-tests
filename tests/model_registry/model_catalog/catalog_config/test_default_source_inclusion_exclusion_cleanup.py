@@ -45,12 +45,12 @@ class TestModelInclusionFiltering:
             ),
             pytest.param(
                 {"filter_type": "inclusion", "pattern": "-8b-", "filter_value": "*-8b-*"},
-                marks=pytest.mark.tier1,
+                marks=pytest.mark.tier2,
                 id="test_include_eight_b_models_only",
             ),
             pytest.param(
                 {"filter_type": "inclusion", "pattern": "code", "filter_value": "*code*"},
-                marks=pytest.mark.tier1,
+                marks=pytest.mark.tier2,
                 id="test_include_code_models_only",
             ),
         ],
@@ -93,7 +93,7 @@ class TestModelExclusionFiltering:
             ),
             pytest.param(
                 {"filter_type": "exclusion", "pattern": "lab", "filter_value": "*lab*"},
-                marks=pytest.mark.tier1,
+                marks=pytest.mark.tier2,
                 id="test_exclude_lab_models",
             ),
         ],
@@ -294,7 +294,7 @@ class TestSourceLifecycleCleanup:
             model_registry_namespace=model_registry_namespace,
         )
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_source_disabling_logging(
         self,
         admin_client: DynamicClient,
@@ -323,7 +323,7 @@ class TestLoggingValidation:
         [
             pytest.param(
                 {"filter_type": "exclusion", "pattern": "granite", "filter_value": "*granite*", "log_cleanup": True},
-                marks=pytest.mark.tier1,
+                marks=pytest.mark.tier2,
                 id="test_exclude_granite_models_for_logging",
             )
         ],
