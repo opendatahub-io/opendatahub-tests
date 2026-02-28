@@ -259,45 +259,50 @@ def llama_stack_server_config(
         env_vars.append({"name": "TRUSTYAI_EMBEDDING_MODEL", "value": trustyai_embedding_model})
 
     # Kubeflow-related environment variables
-    if params.get("enable_ragas_remote"):
-        # Get fixtures only when Ragas Remote/Kubeflow is enabled
+    enable_ragas_remote = params.get("enable_ragas_remote", False)
+    enable_garak_remote = params.get("enable_garak_remote", False)
+    enable_kubeflow_eval = enable_ragas_remote or enable_garak_remote
+
+    if enable_kubeflow_eval:
+        # Get fixtures only when Kubeflow is enabled
         model_namespace = request.getfixturevalue(argname="model_namespace")
         current_client_token = request.getfixturevalue(argname="current_client_token")
         dspa_route = request.getfixturevalue(argname="dspa_route")
         dspa_s3_secret = request.getfixturevalue(argname="dspa_s3_secret")
 
-        # KUBEFLOW_LLAMA_STACK_URL: Build from LlamaStackDistribution service
+        # New Garak-specific flag
+        env_vars.append({"name": "ENABLE_KUBEFLOW_GARAK", "value": str(enable_garak_remote).lower()})
+
+        # KUBEFLOW_LLAMA_STACK_URL: Use internal service endpoint for KFP to callback to
+        distribution_name = params.get("distribution_name", "rh-dev")
         env_vars.append({
             "name": "KUBEFLOW_LLAMA_STACK_URL",
             "value": f"http://{distribution_name}-service.{model_namespace.name}.svc.cluster.local:8321",
         })
 
-        # KUBEFLOW_PIPELINES_ENDPOINT: Get from DSPA route
+        # KUBEFLOW_PIPELINES_ENDPOINT: Injected from DSPA
         env_vars.append({"name": "KUBEFLOW_PIPELINES_ENDPOINT", "value": f"https://{dspa_route.instance.spec.host}"})
-
-        # KUBEFLOW_NAMESPACE: Use model namespace
         env_vars.append({"name": "KUBEFLOW_NAMESPACE", "value": model_namespace.name})
 
-        # KUBEFLOW_BASE_IMAGE
-        env_vars.append({
-            "name": "KUBEFLOW_BASE_IMAGE",
-            "value": params.get(
-                "kubeflow_base_image",
-                "quay.io/diegosquayorg/my-ragas-provider-image"
-                "@sha256:3749096c47f7536d6be2a7932e691abebacd578bafbe65bad2f7db475e2b93fb",
-            ),
-        })
+        # KUBEFLOW_BASE_IMAGE: Select based on provider
+        default_garak_image = "quay.io/trustyai/garak-remote-provider:latest"
+        default_ragas_image = "quay.io/diegosquayorg/my-ragas-provider-image@sha256:3749096c47f7536d6be2a7932e691abebacd578bafbe65bad2f7db475e2b93fb"
 
-        # KUBEFLOW_RESULTS_S3_PREFIX: Build from MinIO bucket
+        selected_image = params.get("kubeflow_base_image")
+        if not selected_image:
+            selected_image = default_garak_image if enable_garak_remote else default_ragas_image
+
+        env_vars.append({"name": "KUBEFLOW_BASE_IMAGE", "value": selected_image})
+
+        # KUBEFLOW_RESULTS_S3_PREFIX: Separate results by provider type
+        s3_subfolder = "garak-results" if enable_garak_remote else "ragas-results"
         env_vars.append({
             "name": "KUBEFLOW_RESULTS_S3_PREFIX",
-            "value": params.get("kubeflow_results_s3_prefix", "s3://llms/ragas-results"),
+            "value": params.get("kubeflow_results_s3_prefix", f"s3://llms/{s3_subfolder}"),
         })
 
-        # KUBEFLOW_S3_CREDENTIALS_SECRET_NAME: Use DSPA secret name
+        # Auth and Storage (Shared)
         env_vars.append({"name": "KUBEFLOW_S3_CREDENTIALS_SECRET_NAME", "value": dspa_s3_secret.name})
-
-        # KUBEFLOW_PIPELINES_TOKEN: Get from current client token
         env_vars.append({"name": "KUBEFLOW_PIPELINES_TOKEN", "value": str(current_client_token)})
 
     # POSTGRESQL environment variables for sql_default and kvstore_default
