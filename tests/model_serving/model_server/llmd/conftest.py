@@ -1,3 +1,4 @@
+import json
 from collections.abc import Generator
 from contextlib import ExitStack
 
@@ -19,6 +20,7 @@ from tests.model_serving.model_server.llmd.constants import (
     PREFIX_CACHE_HASH_ALGO,
     PREFIX_CACHE_HASH_SEED,
     ROUTER_SCHEDULER_CONFIG_ESTIMATED_PREFIX_CACHE,
+    ROUTER_SCHEDULER_CONFIG_PRECISE_PREFIX_CACHE,
 )
 from utilities.constants import ResourceLimits, Timeout
 from utilities.infra import create_inference_token, s3_endpoint_secret
@@ -524,6 +526,133 @@ def singlenode_estimated_prefix_cache(
                                 "/var/run/kserve/tls",
                                 "--config-text",
                                 yaml.dump(ROUTER_SCHEDULER_CONFIG_ESTIMATED_PREFIX_CACHE),
+                            ],
+                        }
+                    ],
+                }
+            },
+            "route": {},
+            "gateway": {},
+        },
+        disable_scheduler=False,
+        enable_prefill_decode=False,
+        wait=True,
+        timeout=Timeout.TIMEOUT_15MIN,
+    ) as llm_service:
+        yield llm_service
+
+
+@pytest.fixture(scope="class")
+def singlenode_precise_prefix_cache(
+    admin_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+    llmd_s3_service_account: ServiceAccount,
+    llmd_gateway: Gateway,
+) -> Generator[LLMInferenceService]:
+    """LLMInferenceService fixture for single-node precise prefix cache test."""
+
+    llmisvc_name = "singlenode-precise-prefix-cache"
+    # We use $(POD_IP) and $(MODEL_NAME) for Kubernetes-native variable expansion
+    kv_events_config = {
+        "enable_kv_cache_events": True,
+        "publisher": "zmq",
+        "endpoint": f"tcp://{llmisvc_name}-epp-service:5557",
+        "topic": "kv@$(POD_IP)@$(MODEL_NAME)",
+    }
+
+    with create_llmisvc(
+        client=admin_client,
+        name=llmisvc_name,
+        namespace=unprivileged_model_namespace.name,
+        storage_uri=ModelStorage.HF_QWEN_7B_INSTRUCT,
+        model_name="Qwen/Qwen2.5-7B-Instruct",
+        replicas=2,
+        annotations={
+            "prometheus.io/port": "8000",
+            "prometheus.io/path": "/metrics",
+        },
+        container_resources={
+            "limits": {
+                "cpu": ResourceLimits.GPU.CPU_LIMIT,
+                "memory": ResourceLimits.GPU.MEMORY_LIMIT,
+                "nvidia.com/gpu": ResourceLimits.GPU.LIMIT,
+            },
+            "requests": {
+                "cpu": ResourceLimits.GPU.CPU_REQUEST,
+                "memory": ResourceLimits.GPU.MEMORY_REQUEST,
+                "nvidia.com/gpu": ResourceLimits.GPU.REQUEST,
+            },
+        },
+        container_env=[
+            # Define dependencies FIRST so they can be expanded later
+            {
+                "name": "POD_IP",
+                "valueFrom": {"fieldRef": {"apiVersion": "v1", "fieldPath": "status.podIP"}},
+            },
+            {"name": "MODEL_NAME", "value": "Qwen/Qwen2.5-7B-Instruct"},
+            # Application Settings
+            {"name": "VLLM_LOGGING_LEVEL", "value": "DEBUG"},
+            {"name": "CUDA_LAUNCH_BLOCKING", "value": "1"},
+            {"name": "PYTHONHASHSEED", "value": str(PREFIX_CACHE_HASH_SEED)},
+            # vLLM Args
+            {
+                "name": "VLLM_ADDITIONAL_ARGS",
+                "value": (
+                    f"--enable-prefix-caching "
+                    f"--prefix-caching-hash-algo {PREFIX_CACHE_HASH_ALGO} "
+                    f"--block-size {PREFIX_CACHE_BLOCK_SIZE} "
+                    f"--kv-events-config '{json.dumps(kv_events_config)}'"
+                ),
+            },
+        ],
+        liveness_probe=LLMD_LIVENESS_PROBE,
+        service_account=llmd_s3_service_account.name,
+        enable_auth=True,
+        router_config={
+            "scheduler": {
+                "template": {
+                    "volumes": [{"name": "tokenizers", "emptyDir": {}}],
+                    "containers": [
+                        {
+                            "name": "main",
+                            "ports": [
+                                {"name": "grpc", "containerPort": 9002, "protocol": "TCP"},
+                                {"name": "grpc-health", "containerPort": 9003, "protocol": "TCP"},
+                                {"name": "metrics", "containerPort": 9090, "protocol": "TCP"},
+                                {"name": "zmq", "containerPort": 5557, "protocol": "TCP"},
+                            ],
+                            "env": [
+                                {"name": "HF_HOME", "value": "/mnt/tokenizers"},
+                            ],
+                            "volumeMounts": [
+                                {
+                                    "name": "tokenizers",
+                                    "mountPath": "/mnt/tokenizers",
+                                    "readOnly": False,
+                                }
+                            ],
+                            "args": [
+                                "--v=4",
+                                "--zap-encoder",
+                                "json",
+                                "--pool-name",
+                                "{{ ChildName .ObjectMeta.Name `-inference-pool` }}",
+                                "--pool-namespace",
+                                "{{ .ObjectMeta.Namespace }}",
+                                "--pool-group",
+                                "inference.networking.x-k8s.io",
+                                "--grpc-port",
+                                "9002",
+                                "--grpc-health-port",
+                                "9003",
+                                "--secure-serving",
+                                "--model-server-metrics-scheme",
+                                "https",
+                                "--model-server-metrics-https-insecure-skip-verify",
+                                "--cert-path",
+                                "/var/run/kserve/tls",
+                                "--config-text",
+                                yaml.dump(ROUTER_SCHEDULER_CONFIG_PRECISE_PREFIX_CACHE),
                             ],
                         }
                     ],

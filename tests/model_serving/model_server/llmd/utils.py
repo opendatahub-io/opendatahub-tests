@@ -5,6 +5,7 @@ This module provides helper functions for LLMD test operations using ocp_resourc
 Follows the established model server utils pattern for consistency.
 """
 
+import json
 from typing import Any
 
 from kubernetes.dynamic import DynamicClient
@@ -445,5 +446,123 @@ def verify_estimated_prefix_cache(
         f"Cache hit mismatch on active pod '{active_pod}'. "
         f"Expected {expected_hits} hits, got {cache_hit_counts[active_pod]}"
     )
+
+    return True
+
+
+def get_scheduler_decision_logs(
+    router_scheduler_pod: Pod,
+    lookback_seconds: int = 600,
+) -> list[dict]:
+    """
+    Retrieve scheduling decision logs from the router-scheduler pod.
+
+    Args:
+        router_scheduler_pod: The router-scheduler Pod object
+        lookback_seconds: How far back to look in logs (default: 600s = 10 minutes)
+
+    Returns:
+        list[dict]: List of parsed JSON log entries containing scheduler decisions
+    """
+    LOGGER.info(f"Retrieving logs from scheduler pod {router_scheduler_pod.name}")
+
+    # Get all logs from the scheduler pod
+    # Note: The router-scheduler container is the default/main container
+    raw_logs = router_scheduler_pod.log()
+
+    # Target decision message
+    target_decision_msg = "Selecting pods from candidates sorted by max score"
+
+    # Filtering logs
+    filtered_logs = "\n".join(line for line in raw_logs.splitlines() if target_decision_msg in line)
+
+    # Parsing as json
+    json_logs = [json.loads(line) for line in filtered_logs.splitlines()]
+
+    LOGGER.info(f"Retrieved {len(json_logs)} logs from router-scheduler pod")
+    return json_logs
+
+
+@retry(wait_timeout=90, sleep=30, exceptions_dict={AssertionError: []}, print_log=False)
+def verify_precise_prefix_cache(
+    prometheus: Prometheus,
+    llmisvc: LLMInferenceService,
+    workload_pods: list[Pod],
+    router_scheduler_pod: Pod,
+    expected_requests: int,
+) -> bool:
+    """
+    Verify that the Precise Prefix Cache is working correctly via metric assertions.
+
+    This function polls Prometheus to assess these behaviors:
+    1. all traffic was routed to a single pod
+    2. the number of prefix cache hits matches
+    3. the scheduler used max-score-picker logic.
+
+    Retries for up to 90s to allow for metric scraping latency.
+
+    Args:
+        prometheus: Prometheus client.
+        llmisvc: Target Inference Service.
+        workload_pods: List of serving pods.
+        router_scheduler_pod: The router-scheduler Pod object.
+        expected_requests: Total expected request count.
+
+    Returns:
+        bool: True if verification succeeds (required by @retry decorator).
+
+    Raises:
+        AssertionError: If validation fails after the retry timeout.
+    """
+    LOGGER.info("Checking Precise Prefix Cache logic...")
+
+    # 1. Verify all traffic is routed to a single pod
+    request_counts = get_successful_requests_by_pod(
+        prometheus=prometheus,
+        llmisvc=llmisvc,
+        pods=workload_pods,
+    )
+    LOGGER.info(f"Request count by pod: {request_counts}")
+
+    # All requests must be routed to exactly one pod (prefix cache affinity).
+    # This assertion works regardless of the number of pods in the deployment.
+    pods_with_traffic = [pod for pod, count in request_counts.items() if count > 0]
+    assert len(pods_with_traffic) == 1, (
+        f"Expected all traffic to be routed to exactly 1 pod, but {len(pods_with_traffic)} pods received traffic. "
+        f"Distribution: {request_counts}"
+    )
+
+    active_pod = pods_with_traffic[0]
+    assert request_counts[active_pod] == expected_requests, (
+        f"Expected {expected_requests} requests on the active pod '{active_pod}', but got {request_counts[active_pod]}"
+    )
+
+    # 2. Verify Prefix Cache Hits on the active pod
+    # The first request warms the cache, subsequent requests should hit it.
+    cache_hit_counts = get_prefix_cache_hits_by_pod(
+        prometheus=prometheus,
+        llmisvc=llmisvc,
+        pods=workload_pods,
+    )
+    LOGGER.info(f"Prefix cache hits by pod: {cache_hit_counts}")
+
+    # Logic: (N-1) requests * Block Size
+    expected_hits = (expected_requests - 1) * PREFIX_CACHE_BLOCK_SIZE
+
+    assert cache_hit_counts[active_pod] == expected_hits, (
+        f"Cache hit mismatch on active pod '{active_pod}'. "
+        f"Expected {expected_hits} hits, got {cache_hit_counts[active_pod]}"
+    )
+
+    # 3. Verify the scheduler used max-score-picker logic at least as many times
+    # as the number of requests sent
+    decision_logs = get_scheduler_decision_logs(router_scheduler_pod=router_scheduler_pod)
+    assert len(decision_logs) >= expected_requests, (
+        f"Scheduler did not use max-score-picker logic enough times. "
+        f"Expected: >= {expected_requests}, Found: {len(decision_logs)}. "
+        f"Log sample: {decision_logs[:3] if decision_logs else 'No logs found'}"
+    )
+
+    LOGGER.info("✓ Max-score-picker logic confirmed in scheduler logs")
 
     return True
