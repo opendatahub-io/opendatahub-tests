@@ -15,8 +15,7 @@ from tests.model_registry.model_catalog.constants import (
     VALIDATED_CATALOG_ID,
 )
 from tests.model_registry.model_catalog.db_constants import (
-    FILTER_MODELS_BY_LICENSE_AND_LANGUAGE_DB_QUERY,
-    FILTER_MODELS_BY_LICENSE_DB_QUERY,
+    FILTER_MODELS_BY_ARTIFACT_PROPERTY_DB_QUERY,
     SEARCH_MODELS_DB_QUERY,
     SEARCH_MODELS_WITH_SOURCE_ID_DB_QUERY,
 )
@@ -104,48 +103,6 @@ def get_models_matching_search_from_database(
     return parsed_result.get("values", [])
 
 
-def get_models_matching_filter_query_from_database(
-    admin_client: DynamicClient,
-    licenses: str,
-    language_pattern_1: str | None = None,
-    language_pattern_2: str | None = None,
-    namespace: str = "rhoai-model-registries",
-) -> list[str]:
-    """
-    Query the database directly to find model IDs that match the filter criteria.
-
-    Uses either FILTER_MODELS_BY_LICENSE_DB_QUERY or FILTER_MODELS_BY_LICENSE_AND_LANGUAGE_DB_QUERY
-    from db_constants to replicate the exact backend filter query logic.
-
-    Args:
-        admin_client: DynamicClient to connect to database
-        licenses: License values in SQL IN clause format (e.g., "'gemma','modified-mit'")
-        language_pattern_1: First language pattern for ILIKE (e.g., '%it%'). Optional.
-        language_pattern_2: Second language pattern for ILIKE (e.g., '%de%'). Optional.
-        namespace: OpenShift namespace containing the PostgreSQL pod
-
-    Returns:
-        List of model IDs that match the filter criteria
-    """
-    # Select the appropriate query template based on whether language filters are provided
-    if language_pattern_1 and language_pattern_2:
-        filter_query_sql = FILTER_MODELS_BY_LICENSE_AND_LANGUAGE_DB_QUERY.format(
-            licenses=licenses,
-            language_pattern_1=language_pattern_1,
-            language_pattern_2=language_pattern_2,
-        )
-    else:
-        filter_query_sql = FILTER_MODELS_BY_LICENSE_DB_QUERY.format(licenses=licenses)
-
-    LOGGER.debug(f"Filter query (SQL): {filter_query_sql}")
-
-    # Execute the database query
-    db_result = execute_database_query(admin_client=admin_client, query=filter_query_sql, namespace=namespace)
-    parsed_result = parse_psql_output(psql_output=db_result)
-
-    return parsed_result.get("values", [])
-
-
 def _compare_api_and_database_results(
     api_response: dict[str, Any],
     expected_model_ids: set[str],
@@ -223,56 +180,90 @@ def validate_search_results_against_database(
     )
 
 
-def validate_filter_query_results_against_database(
+def get_models_matching_artifact_filter_from_database(
     admin_client: DynamicClient,
-    api_response: dict[str, Any],
-    licenses: str,
-    language_pattern_1: str | None = None,
-    language_pattern_2: str | None = None,
+    property_name: str,
+    operator: str,
+    value: float,
+    namespace: str = "rhoai-model-registries",
+) -> list[str]:
+    """
+    Query the database directly to find model names that have artifacts matching a property condition.
+
+    Uses FILTER_MODELS_BY_ARTIFACT_PROPERTY_DB_QUERY to replicate the API's artifacts.* filterQuery logic.
+
+    Args:
+        admin_client: DynamicClient to connect to database
+        property_name: Artifact property name (e.g., 'requests_per_second')
+        operator: SQL comparison operator (e.g., '>', '<', '=')
+        value: Numeric value to compare against
+        namespace: OpenShift namespace containing the PostgreSQL pod
+
+    Returns:
+        List of model names that have at least one artifact matching the condition
+    """
+    filter_query_sql = FILTER_MODELS_BY_ARTIFACT_PROPERTY_DB_QUERY.format(
+        property_name=property_name,
+        operator=operator,
+        value=value,
+    )
+    LOGGER.debug(f"Artifact filter query (SQL): {filter_query_sql}")
+
+    db_result = execute_database_query(admin_client=admin_client, query=filter_query_sql, namespace=namespace)
+    parsed_result = parse_psql_output(psql_output=db_result)
+
+    return parsed_result.get("values", [])
+
+
+def validate_artifact_filter_results_against_database(
+    admin_client: DynamicClient,
+    api_model_names: list[str],
+    property_name: str,
+    operator: str,
+    value: float,
     namespace: str = "rhoai-model-registries",
 ) -> tuple[bool, list[str]]:
     """
-    Validate API filter query results against database query results.
-
-    Supports validation of filter queries with:
-    - License filter only: license IN (...)
-    - License and language filters: license IN (...) AND (language ILIKE ... OR language ILIKE ...)
+    Validate API artifact filterQuery results against database query results.
 
     Args:
         admin_client: Admin client to use
-        api_response: API response from filter query
-        licenses: License values in SQL IN clause format (e.g., "'gemma','modified-mit'")
-        language_pattern_1: First language pattern for ILIKE (e.g., '%it%'). Optional.
-        language_pattern_2: Second language pattern for ILIKE (e.g., '%de%'). Optional.
+        api_model_names: Model names returned by the API filterQuery
+        property_name: Artifact property name (e.g., 'requests_per_second')
+        operator: SQL comparison operator (e.g., '>', '<', '=')
+        value: Numeric value used in the filter
         namespace: OpenShift namespace for PostgreSQL pod
 
     Returns:
         Tuple of (is_valid, list_of_error_messages)
     """
-    # Get expected results from database
-    expected_model_ids = set(
-        get_models_matching_filter_query_from_database(
+    db_model_names = set(
+        get_models_matching_artifact_filter_from_database(
             admin_client=admin_client,
-            licenses=licenses,
-            language_pattern_1=language_pattern_1,
-            language_pattern_2=language_pattern_2,
+            property_name=property_name,
+            operator=operator,
+            value=value,
             namespace=namespace,
         )
     )
+    api_names = set(api_model_names)
 
-    # Build filter description based on whether language patterns are provided
-    if language_pattern_1 and language_pattern_2:
-        filter_desc = f"licenses IN ({licenses}) AND (language ILIKE '{language_pattern_1}' \
-            OR language ILIKE '{language_pattern_2}')"
-    else:
-        filter_desc = f"licenses IN ({licenses})"
+    filter_desc = f"artifacts.{property_name} {operator} {value}"
+    LOGGER.info(f"Database query found {len(db_model_names)} models for filter: {filter_desc}")
 
-    LOGGER.info(f"Database query found {len(expected_model_ids)} models for filter: {filter_desc}")
+    errors = []
+    missing = db_model_names - api_names
+    if missing:
+        errors.append(f"API missing {len(missing)} models found in database: {sorted(missing)}")
 
-    # Compare with API results
-    return _compare_api_and_database_results(
-        api_response=api_response, expected_model_ids=expected_model_ids, description=filter_desc
-    )
+    extra = api_names - db_model_names
+    if extra:
+        errors.append(f"API returned {len(extra)} extra models not found in database: {sorted(extra)}")
+
+    if not errors:
+        LOGGER.info(f"Perfect match: API and database both found {len(db_model_names)} models for {filter_desc}")
+
+    return len(errors) == 0, errors
 
 
 def fetch_all_artifacts_with_dynamic_paging(

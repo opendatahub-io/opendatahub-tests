@@ -121,59 +121,6 @@ AND EXISTS (
 ORDER BY model_id;
 """
 
-# SQL query for filterQuery parameter database validation with license filter only
-# Replicates the database query used by the filterQuery parameter functionality
-# for the specific pattern: license IN (...)
-# Note: Uses {licenses} placeholder
-FILTER_MODELS_BY_LICENSE_DB_QUERY = """
-SELECT DISTINCT c.id as model_id
-FROM "Context" c
-WHERE c.type_id = (SELECT id FROM "Type" WHERE name = 'kf.CatalogModel')
-AND EXISTS (
-    SELECT 1
-    FROM "ContextProperty" cp
-    WHERE cp.context_id = c.id
-    AND cp.name = 'license'
-    AND cp.string_value IN ({licenses})
-)
-ORDER BY model_id;
-"""
-
-# SQL query for filterQuery parameter database validation with license and language filters
-# Replicates the database query used by the filterQuery parameter functionality
-# for the specific pattern: license IN (...) AND (language ILIKE ... OR language ILIKE ...)
-# Note: Uses {licenses}, {language_pattern_1}, {language_pattern_2} placeholders
-FILTER_MODELS_BY_LICENSE_AND_LANGUAGE_DB_QUERY = """
-SELECT DISTINCT c.id as model_id
-FROM "Context" c
-WHERE c.type_id = (SELECT id FROM "Type" WHERE name = 'kf.CatalogModel')
-AND EXISTS (
-    SELECT 1
-    FROM "ContextProperty" cp
-    WHERE cp.context_id = c.id
-    AND cp.name = 'license'
-    AND cp.string_value IN ({licenses})
-)
-AND (
-    EXISTS (
-        SELECT 1
-        FROM "ContextProperty" cp
-        WHERE cp.context_id = c.id
-        AND cp.name = 'language'
-        AND LOWER(cp.string_value) LIKE LOWER('{language_pattern_1}')
-    )
-    OR
-    EXISTS (
-        SELECT 1
-        FROM "ContextProperty" cp
-        WHERE cp.context_id = c.id
-        AND cp.name = 'language'
-        AND LOWER(cp.string_value) LIKE LOWER('{language_pattern_2}')
-    )
-)
-ORDER BY model_id;
-"""
-
 # Fields that are explicitly filtered out by the filter_options endpoint API
 # From db_catalog.go in kubeflow/model-registry GetFilterOptions method
 # Updated with PR #1875 to include metricsType and model_id exclusions
@@ -238,5 +185,22 @@ AND EXISTS (
     AND cp.name = 'source_id'
     AND cp.string_value = '{source_id}'
 )
+ORDER BY model_name;
+"""
+
+# SQL query for artifact property filterQuery database validation
+# Finds models that have at least one artifact matching a numeric property condition.
+# Replicates the API's artifacts.* filterQuery logic by joining through
+# Attribution -> Artifact -> ArtifactProperty.
+# Note: Uses {property_name}, {operator}, {value} placeholders
+FILTER_MODELS_BY_ARTIFACT_PROPERTY_DB_QUERY = """
+SELECT DISTINCT c.name as model_name
+FROM "Context" c
+JOIN "Attribution" attr ON attr.context_id = c.id
+JOIN "Artifact" a ON a.id = attr.artifact_id
+JOIN "ArtifactProperty" ap ON ap.artifact_id = a.id
+WHERE c.type_id = (SELECT id FROM "Type" WHERE name = 'kf.CatalogModel')
+AND ap.name = '{property_name}'
+AND ap.double_value {operator} {value}
 ORDER BY model_name;
 """

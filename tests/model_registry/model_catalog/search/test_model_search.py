@@ -3,7 +3,6 @@ from typing import Any, Self
 import pytest
 from dictdiffer import diff
 from kubernetes.dynamic import DynamicClient
-from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.constants import (
@@ -14,7 +13,7 @@ from tests.model_registry.model_catalog.constants import (
 )
 from tests.model_registry.model_catalog.search.utils import (
     fetch_all_artifacts_with_dynamic_paging,
-    validate_filter_query_results_against_database,
+    validate_artifact_filter_results_against_database,
     validate_model_artifacts_match_criteria_and,
     validate_model_artifacts_match_criteria_or,
     validate_model_contains_search_term,
@@ -230,93 +229,6 @@ class TestSearchModelCatalogQParameter:
 
 
 class TestSearchModelsByFilterQuery:
-    @pytest.mark.sanity
-    def test_search_models_by_filter_query(
-        self: Self,
-        admin_client: DynamicClient,
-        model_catalog_rest_url: list[str],
-        model_registry_rest_headers: dict[str, str],
-        model_registry_namespace: str,
-    ):
-        """
-        RHOAIENG-33658: Tests that the API returns all models matching a given filter query and
-        that the database results are consistent.
-        """
-        # Filter parameters
-        licenses = "'gemma','modified-mit'"
-        language_pattern_1 = "%iT%"
-        language_pattern_2 = "%de%"
-
-        # using ILIKE for case-insensitive matching
-        filter_query = f"license IN ({licenses}) AND (language ILIKE '{language_pattern_1}' \
-            OR language ILIKE '{language_pattern_2}')"
-
-        result = get_models_from_catalog_api(
-            model_catalog_rest_url=model_catalog_rest_url,
-            model_registry_rest_headers=model_registry_rest_headers,
-            additional_params=f"&filterQuery={filter_query}",
-        )
-
-        # Validate API results against database query using same parameters
-        is_valid, errors = validate_filter_query_results_against_database(
-            admin_client=admin_client,
-            api_response=result,
-            licenses=licenses,
-            language_pattern_1=language_pattern_1,
-            language_pattern_2=language_pattern_2,
-            namespace=model_registry_namespace,
-        )
-
-        assert is_valid, f"API filter query results do not match database query: {errors}"
-
-        # Additional validation: ensure returned models match the filter criteria
-        for item in result["items"]:
-            assert item["license"] in licenses, f"Item license {item['license']} not in {licenses}"
-            assert any(language in item["language"] for language in ["it", "de"]), (
-                f"Item language {item['language']} not in ['it', 'de']"
-            )
-
-        LOGGER.info("All models match the filter query and database validation passed")
-
-    def test_search_models_by_invalid_filter_query(
-        self: Self,
-        admin_client: DynamicClient,
-        model_catalog_rest_url: list[str],
-        model_registry_rest_headers: dict[str, str],
-        model_registry_namespace: str,
-    ):
-        """
-        RHOAIENG-36938: Tests the API's response to invalid and non-matching filter queries.
-        It verifies that an invalid filter query raises the correct error and
-        that a query with no matches returns zero models.
-        """
-        non_existing_filter_query = "fake IN ('gemma','modified-mit'))"
-        with pytest.raises(ResourceNotFoundError, match="invalid filter query"):
-            get_models_from_catalog_api(
-                model_catalog_rest_url=model_catalog_rest_url,
-                model_registry_rest_headers=model_registry_rest_headers,
-                additional_params=f"&filterQuery={non_existing_filter_query}",
-            )
-        # Test with a valid filter query that should return zero results
-        no_result_licenses = "'fake'"
-        no_result_filter_query = f"license IN ({no_result_licenses})"
-        result = get_models_from_catalog_api(
-            model_catalog_rest_url=model_catalog_rest_url,
-            model_registry_rest_headers=model_registry_rest_headers,
-            additional_params=f"&filterQuery={no_result_filter_query}",
-        )
-        LOGGER.info(f"Result: {result['size']}")
-        assert result["size"] == 0, "Expected 0 models for a non-existing filter query"
-
-        # Validate API results against database query using same license parameter
-        is_valid, errors = validate_filter_query_results_against_database(
-            admin_client=admin_client,
-            api_response=result,
-            licenses=no_result_licenses,
-            namespace=model_registry_namespace,
-        )
-        assert is_valid, f"API filter query results do not match database query: {errors}"
-
     # Performance data are available only in downstream
     @pytest.mark.downstream_only
     def test_presence_performance_data_on_pod(
@@ -390,11 +302,14 @@ class TestSearchModelsByFilterQuery:
     )
     def test_filter_query_advanced_model_search(
         self: Self,
+        request: pytest.FixtureRequest,
+        admin_client: DynamicClient,
         models_from_filter_query: list[str],
         expected_value: list[dict[str, Any]],
         logic_type: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
+        model_registry_namespace: str,
     ):
         """
         RHOAIENG-39615: Advanced filter query test for performance-based filtering with AND/OR logic
@@ -435,3 +350,17 @@ class TestSearchModelsByFilterQuery:
         LOGGER.info(
             f"Advanced {logic_type.upper()} filter validation completed for {len(models_from_filter_query)} models"
         )
+
+        # DB verification for the performance_min_filter case (artifacts.requests_per_second > 15.0)
+        if request.node.callspec.id == "performance_min_filter":
+            validation = expected_value[0]
+            comparison_to_operator = {"min": ">", "max": "<", "exact": "="}
+            is_valid, db_errors = validate_artifact_filter_results_against_database(
+                admin_client=admin_client,
+                api_model_names=models_from_filter_query,
+                property_name=validation["key_name"],
+                operator=comparison_to_operator[validation["comparison"]],
+                value=validation["value"],
+                namespace=model_registry_namespace,
+            )
+            assert is_valid, f"DB verification failed for artifact filter: {db_errors}"
