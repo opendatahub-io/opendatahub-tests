@@ -1,4 +1,4 @@
-FROM fedora:42
+FROM fedora:43
 
 ARG USER=odh
 ARG HOME=/home/$USER
@@ -11,9 +11,9 @@ ENV UV_NO_CACHE=1
 ENV BIN_DIR="$HOME_DIR/.local/bin"
 ENV PATH="$PATH:$BIN_DIR"
 
-# Install Python 3.14 and other dependencies using dnf
+# Install system dependencies using dnf
 RUN dnf update -y \
-    && dnf install -y python3.14 python3.14-pip ssh gnupg curl gpg wget vim httpd-tools rsync openssl openssl-devel\
+    && dnf install -y python3 python3-pip ssh gnupg curl gpg wget vim httpd-tools rsync openssl openssl-devel\
     && dnf clean all \
     && rm -rf /var/cache/dnf
 
