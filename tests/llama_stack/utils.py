@@ -128,13 +128,18 @@ def create_response_function(
     """
     Helper function to create a response function for testing with vector store integration.
 
+    The returned callable uses the file_search tool with the given vector store and
+    asserts that the response includes a completed file_search_call with results
+    (file_id, filename, text) before returning the response text.
+
     Args:
         llama_stack_client: The LlamaStack client instance
         llama_stack_models: The model configuration
         vector_store: The vector store instance
 
     Returns:
-        A callable function that takes a question and returns a response
+        A callable that takes a keyword-only question (str) and returns the
+        response text (str). Asserts on file_search tool invocation and result structure.
     """
 
     def _response_fn(*, question: str) -> str:
@@ -149,6 +154,27 @@ def create_response_function(
                 }
             ],
         )
+
+        # Verify file_search_call output exists (model invoked the file_search tool)
+        file_search_calls = [item for item in response.output if item.type == "file_search_call"]
+        assert file_search_calls, (
+            "Expected a file_search_call output item in the response, indicating the model "
+            f"invoked the file_search tool. Output types: {[item.type for item in response.output]}"
+        )
+
+        file_search_call = file_search_calls[0]
+        assert file_search_call.status == "completed", (
+            f"Expected file_search_call status 'completed', got '{file_search_call.status}'"
+        )
+
+        # Verify file_search returned results with file metadata
+        assert file_search_call.results, "file_search_call should contain search results"
+
+        for result in file_search_call.results:
+            assert result.file_id, "Search result must include a non-empty file_id"
+            assert result.filename, "Search result must include a non-empty filename"
+            assert result.text, "Search result must include non-empty text content"
+
         return response.output_text
 
     return _response_fn
