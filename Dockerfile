@@ -3,7 +3,7 @@ FROM fedora:42
 ARG USER=odh
 ARG HOME=/home/$USER
 ARG TESTS_DIR=$HOME/opendatahub-tests/
-ENV UV_PYTHON=python3.13
+ENV UV_PYTHON=python3.14
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_NO_SYNC=1
 ENV UV_NO_CACHE=1
@@ -11,9 +11,9 @@ ENV UV_NO_CACHE=1
 ENV BIN_DIR="$HOME_DIR/.local/bin"
 ENV PATH="$PATH:$BIN_DIR"
 
-# Install Python 3.13 and other dependencies using dnf
+# Install Python 3.14 and other dependencies using dnf
 RUN dnf update -y \
-    && dnf install -y python3.13 python3.13-pip ssh gnupg curl gpg wget vim httpd-tools rsync openssl openssl-devel\
+    && dnf install -y python3.14 python3.14-pip ssh gnupg curl gpg wget vim httpd-tools rsync openssl openssl-devel\
     && dnf clean all \
     && rm -rf /var/cache/dnf
 
