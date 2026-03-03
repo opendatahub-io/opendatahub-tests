@@ -2,16 +2,11 @@ from __future__ import annotations
 
 import pytest
 import requests
-from kubernetes.dynamic import DynamicClient
-from ocp_resources.service_account import ServiceAccount
-from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from tests.model_serving.model_server.maas_billing.maas_subscription.utils import chat_payload_for_url
 from tests.model_serving.model_server.maas_billing.utils import build_maas_headers
-from utilities.infra import create_inference_token, login_with_user_password
-from utilities.resources.maa_s_auth_policy import MaaSAuthPolicy
 
 LOGGER = get_logger(name=__name__)
 
@@ -98,10 +93,8 @@ class TestSubscriptionEnforcementTinyLlama:
         )
         LOGGER.info(f"test_invalid_subscription_header_gets_429 -> {resp.status_code}")
 
-        assert resp.status_code in (429, 403), (
-            f"Expected 429 or 403, got {resp.status_code}: {resp.text[:200]}"
-        )
-        
+        assert resp.status_code in (429, 403), f"Expected 429 or 403, got {resp.status_code}: {resp.text[:200]}"
+
     @pytest.mark.sanity
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "premium"}], indirect=True)
     def test_auth_pass_no_subscription_gets_429(
