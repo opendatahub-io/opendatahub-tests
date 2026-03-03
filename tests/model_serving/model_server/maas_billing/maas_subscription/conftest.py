@@ -174,6 +174,28 @@ def maas_auth_policy_tinyllama_premium(
 
 
 @pytest.fixture(scope="class")
+def maas_auth_policy_no_subscription(
+    admin_client: DynamicClient,
+    maas_model_tinyllama_premium: MaaSModel,
+) -> Generator[MaaSAuthPolicy]:
+    applications_namespace = py_config["applications_namespace"]
+
+    with MaaSAuthPolicy(
+        client=admin_client,
+        name="e2e-test-nosub-auth",
+        namespace=applications_namespace,
+        model_refs=[maas_model_tinyllama_premium.name],
+        subjects={
+            "groups": [{"name": f"system:serviceaccounts:{applications_namespace}"}],
+        },
+        teardown=True,
+        wait_for_resource=True,
+    ) as no_sub_auth:
+        no_sub_auth.wait_for_condition(condition="Ready", status="True", timeout=300)
+        yield no_sub_auth
+
+
+@pytest.fixture(scope="class")
 def maas_subscription_tinyllama_free(
     admin_client: DynamicClient,
     maas_free_group: str,
@@ -186,19 +208,19 @@ def maas_subscription_tinyllama_free(
         name="tinyllama-free-subscription",
         namespace=applications_namespace,
         owner={
-            "kind": "Group",
-            "name": maas_free_group,
+            "groups": [{"name": maas_free_group}],
         },
         model_refs=[
             {
                 "name": maas_model_tinyllama_free.name,
-                "tokensPerMinute": 100,
+                "tokenRateLimits": [{"limit": 100, "window": "1m"}],
             }
         ],
         priority=0,
         teardown=True,
         wait_for_resource=True,
     ) as maas_subscription_free:
+        maas_subscription_free.wait_for_condition(condition="Ready", status="True", timeout=300)
         yield maas_subscription_free
 
 
@@ -215,19 +237,19 @@ def maas_subscription_tinyllama_premium(
         name="tinyllama-premium-subscription",
         namespace=applications_namespace,
         owner={
-            "kind": "Group",
-            "name": maas_premium_group,
+            "groups": [{"name": maas_premium_group}],
         },
         model_refs=[
             {
                 "name": maas_model_tinyllama_premium.name,
-                "tokensPerMinute": 1000,
+                "tokenRateLimits": [{"limit": 1000, "window": "1m"}],
             }
         ],
         priority=0,
         teardown=True,
         wait_for_resource=True,
     ) as maas_subscription_premium:
+        maas_subscription_premium.wait_for_condition(condition="Ready", status="True", timeout=300)
         yield maas_subscription_premium
 
 
