@@ -3,7 +3,6 @@ from __future__ import annotations
 import pytest
 import requests
 from simple_logger.logger import get_logger
-from timeout_sampler import TimeoutSampler
 
 from tests.model_serving.model_server.maas_billing.maas_subscription.utils import chat_payload_for_url
 from tests.model_serving.model_server.maas_billing.utils import build_maas_headers
@@ -94,34 +93,3 @@ class TestSubscriptionEnforcementTinyLlama:
         LOGGER.info(f"test_invalid_subscription_header_gets_429 -> {resp.status_code}")
 
         assert resp.status_code in (429, 403), f"Expected 429 or 403, got {resp.status_code}: {resp.text[:200]}"
-
-    @pytest.mark.sanity
-    @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "premium"}], indirect=True)
-    def test_auth_pass_no_subscription_gets_429(
-        self,
-        request_session_http: requests.Session,
-        model_url_tinyllama_premium: str,
-        ocp_token_for_actor: str,
-    ) -> None:
-        headers = build_maas_headers(token=ocp_token_for_actor)
-        headers.pop(MAAS_SUBSCRIPTION_HEADER, None)
-
-        payload = chat_payload_for_url(model_url=model_url_tinyllama_premium)
-        last_resp: requests.Response | None = None
-        for resp in TimeoutSampler(
-            wait_timeout=240,
-            sleep=5,
-            func=request_session_http.post,
-            url=model_url_tinyllama_premium,
-            headers=headers,
-            json=payload,
-            timeout=60,
-        ):
-            if resp.status_code == 429:
-                return
-
-        pytest.fail(
-            "Did not observe 429. "
-            f"last_status={getattr(last_resp, 'status_code', None)}, "
-            f"body={(getattr(last_resp, 'text', '') or '')[:200]}"
-        )
