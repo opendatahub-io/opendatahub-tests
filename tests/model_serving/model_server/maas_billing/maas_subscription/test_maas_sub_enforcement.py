@@ -90,6 +90,5 @@ class TestSubscriptionEnforcementTinyLlama:
             json=chat_payload_for_url(model_url=model_url_tinyllama_premium),
             timeout=60,
         )
-        LOGGER.info(f"test_invalid_subscription_header_gets_429 -> {resp.status_code}")
 
         assert resp.status_code in (429, 403), f"Expected 429 or 403, got {resp.status_code}: {resp.text[:200]}"
