@@ -32,29 +32,41 @@ from utilities.infra import get_pods_by_isvc_label
     [
         pytest.param(
             get_model_namespace_dict(model_format_name=ModelFormat.SKLEARN, modelcar=True),
-            {**get_model_storage_uri_dict(model_format_name=ModelFormat.SKLEARN, modelcar=True), **get_deployment_config_dict(model_format_name=ModelFormat.SKLEARN)},
+            {
+                **get_model_storage_uri_dict(model_format_name=ModelFormat.SKLEARN, modelcar=True),
+                **get_deployment_config_dict(model_format_name=ModelFormat.SKLEARN),
+            },
             get_deployment_config_dict(model_format_name=ModelFormat.SKLEARN),
             id=get_test_case_id(model_format_name=ModelFormat.SKLEARN, modelcar=True),
         ),
         pytest.param(
             get_model_namespace_dict(model_format_name=ModelFormat.XGBOOST, modelcar=True),
-            {**get_model_storage_uri_dict(model_format_name=ModelFormat.XGBOOST, modelcar=True), **get_deployment_config_dict(model_format_name=ModelFormat.XGBOOST)},
+            {
+                **get_model_storage_uri_dict(model_format_name=ModelFormat.XGBOOST, modelcar=True),
+                **get_deployment_config_dict(model_format_name=ModelFormat.XGBOOST),
+            },
             get_deployment_config_dict(model_format_name=ModelFormat.XGBOOST),
             id=get_test_case_id(model_format_name=ModelFormat.XGBOOST, modelcar=True),
         ),
         pytest.param(
             get_model_namespace_dict(model_format_name=ModelFormat.LIGHTGBM, modelcar=True),
-            {**get_model_storage_uri_dict(model_format_name=ModelFormat.LIGHTGBM, modelcar=True), **get_deployment_config_dict(model_format_name=ModelFormat.LIGHTGBM)},
+            {
+                **get_model_storage_uri_dict(model_format_name=ModelFormat.LIGHTGBM, modelcar=True),
+                **get_deployment_config_dict(model_format_name=ModelFormat.LIGHTGBM),
+            },
             get_deployment_config_dict(model_format_name=ModelFormat.LIGHTGBM),
             id=get_test_case_id(model_format_name=ModelFormat.LIGHTGBM, modelcar=True),
         ),
         pytest.param(
             {"name": f"{ModelFormat.LIGHTGBM}-model-car-text-type"},
-            {**get_model_storage_uri_dict(
-                model_format_name=ModelFormat.LIGHTGBM,
-                modelcar=True,
-                env_variables=[{"name": "MLSERVER_MODEL_URI", "value": "/mnt/models/model.txt"}],
-            ), **get_deployment_config_dict(model_format_name=ModelFormat.LIGHTGBM)},
+            {
+                **get_model_storage_uri_dict(
+                    model_format_name=ModelFormat.LIGHTGBM,
+                    modelcar=True,
+                    env_variables=[{"name": "MLSERVER_MODEL_URI", "value": "/mnt/models/model.txt"}],
+                ),
+                **get_deployment_config_dict(model_format_name=ModelFormat.LIGHTGBM),
+            },
             get_deployment_config_dict(model_format_name=ModelFormat.LIGHTGBM),
             id=get_test_case_id(model_format_name=ModelFormat.LIGHTGBM, modelcar=True) + "_text_type",
         ),

@@ -78,10 +78,7 @@ def run_mlserver_inference(
 
     supported_modes = (KServeDeploymentType.RAW_DEPLOYMENT, KServeDeploymentType.STANDARD)
     if deployment_mode not in supported_modes:
-        raise ValueError(
-            f"Unsupported deployment mode: {deployment_mode}. "
-            f"Supported modes: {supported_modes}"
-        )
+        raise ValueError(f"Unsupported deployment mode: {deployment_mode}. Supported modes: {supported_modes}")
 
     port = Ports.REST_PORT
     with portforward.forward(pod_or_service=pod_name, namespace=isvc.namespace, from_port=port, to_port=port):
