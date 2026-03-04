@@ -77,15 +77,14 @@ class TestMaaSController:
         LOGGER.info(f"Testing Pods in namespace {applications_namespace} for MaaS Controller health")
         wait_for_pods_running(admin_client=admin_client, namespace_name=applications_namespace)
 
-
     @pytest.mark.parametrize(
-    "resource_fixture, kind_label",
-    [
-        ("maas_model_tinyllama_free", "MaaSModel"),
-        ("maas_auth_policy_tinyllama_free", "MaaSAuthPolicy"),
-        ("maas_subscription_tinyllama_free", "MaaSSubscription"),
-    ],
-)
+        "resource_fixture, kind_label",
+        [
+            ("maas_model_tinyllama_free", "MaaSModel"),
+            ("maas_auth_policy_tinyllama_free", "MaaSAuthPolicy"),
+            ("maas_subscription_tinyllama_free", "MaaSSubscription"),
+        ],
+    )
     def test_maas_subscription_stack_ready_for_free_model(
         self,
         request: pytest.FixtureRequest,
@@ -96,5 +95,3 @@ class TestMaaSController:
         resource = request.getfixturevalue(fixture_name=resource_fixture)
         LOGGER.info(f"Checking {kind_label} {resource.name} is Ready")
         resource.wait_for_condition(condition="Ready", status="True", timeout=300)
-
-  
