@@ -11,7 +11,6 @@ from utilities.general import wait_for_pods_running
 LOGGER = get_logger(name=__name__)
 
 
-
 @pytest.mark.smoke
 @pytest.mark.usefixtures("maas_controller_enabled_latest")
 class TestMaaSApiComponentHealth:
@@ -64,4 +63,4 @@ class TestMaaSApiComponentHealth:
         applications_namespace = py_config["applications_namespace"]
         LOGGER.info(f"Checking maas-api pods in namespace {applications_namespace}")
 
-        wait_for_pods_running(admin_client=admin_client,namespace_name=applications_namespace)      
+        wait_for_pods_running(admin_client=admin_client, namespace_name=applications_namespace)

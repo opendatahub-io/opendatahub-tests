@@ -82,7 +82,7 @@ class TestMaaSController:
     ) -> None:
         """
         Verify the MaaS subscription flow objects are created and Ready.
-        """     
+        """
         LOGGER.info(f"Checking MaaSModel {maas_model_tinyllama_free.name} is Ready")
         maas_model_tinyllama_free.wait_for_condition(condition="Ready", status="True", timeout=300)
 
