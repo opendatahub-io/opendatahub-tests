@@ -186,19 +186,19 @@ def maas_subscription_tinyllama_free(
         name="tinyllama-free-subscription",
         namespace=applications_namespace,
         owner={
-            "kind": "Group",
-            "name": maas_free_group,
+            "groups": [{"name": maas_free_group}],
         },
         model_refs=[
             {
                 "name": maas_model_tinyllama_free.name,
-                "tokensPerMinute": 100,
+                "tokenRateLimits": [{"limit": 100, "window": "1m"}],
             }
         ],
         priority=0,
         teardown=True,
         wait_for_resource=True,
     ) as maas_subscription_free:
+        maas_subscription_free.wait_for_condition(condition="Ready", status="True", timeout=300)
         yield maas_subscription_free
 
 
@@ -215,19 +215,19 @@ def maas_subscription_tinyllama_premium(
         name="tinyllama-premium-subscription",
         namespace=applications_namespace,
         owner={
-            "kind": "Group",
-            "name": maas_premium_group,
+            "groups": [{"name": maas_premium_group}],
         },
         model_refs=[
             {
                 "name": maas_model_tinyllama_premium.name,
-                "tokensPerMinute": 1000,
+                "tokenRateLimits": [{"limit": 1000, "window": "1m"}],
             }
         ],
         priority=0,
         teardown=True,
         wait_for_resource=True,
     ) as maas_subscription_premium:
+        maas_subscription_premium.wait_for_condition(condition="Ready", status="True", timeout=300)
         yield maas_subscription_premium
 
 
