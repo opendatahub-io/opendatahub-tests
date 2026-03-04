@@ -12,7 +12,7 @@ from utilities.general import wait_for_pods_running
 LOGGER = get_logger(name=__name__)
 
 
-@pytest.mark.smoke
+@pytest.mark.component_health
 @pytest.mark.usefixtures("maas_controller_enabled_latest")
 class TestMaaSController:
     def test_maas_condition_in_dsc(
@@ -37,14 +37,17 @@ class TestMaaSController:
             f"maasauthpolicies.{ApiGroups.MAAS_IO}",
             f"maassubscriptions.{ApiGroups.MAAS_IO}",
         )
-
+        missing_crds = []
         for crd_name in expected_crd_names:
             crd_resource = CustomResourceDefinition(
                 client=admin_client,
                 name=crd_name,
                 ensure_exists=True,
             )
-            assert crd_resource.exists, f"Expected CRD to exist: {crd_name}"
+            if not crd_resource.exists:
+                missing_crds.append(crd_name)
+
+        assert not missing_crds, f"Missing expected CRDs: {', '.join(missing_crds)}"
 
     def test_maas_controller_deployment_available(
         self,
@@ -62,7 +65,7 @@ class TestMaaSController:
         controller_deployment.wait_for_condition(
             condition="Available",
             status="True",
-            timeout=600,
+            timeout=120,
         )
 
     def test_maas_controller_pods_health(
@@ -74,20 +77,24 @@ class TestMaaSController:
         LOGGER.info(f"Testing Pods in namespace {applications_namespace} for MaaS Controller health")
         wait_for_pods_running(admin_client=admin_client, namespace_name=applications_namespace)
 
+
+    @pytest.mark.parametrize(
+    "resource_fixture, kind_label",
+    [
+        ("maas_model_tinyllama_free", "MaaSModel"),
+        ("maas_auth_policy_tinyllama_free", "MaaSAuthPolicy"),
+        ("maas_subscription_tinyllama_free", "MaaSSubscription"),
+    ],
+)
     def test_maas_subscription_stack_ready_for_free_model(
         self,
-        maas_model_tinyllama_free,
-        maas_auth_policy_tinyllama_free,
-        maas_subscription_tinyllama_free,
+        request: pytest.FixtureRequest,
+        resource_fixture: str,
+        kind_label: str,
     ) -> None:
-        """
-        Verify the MaaS subscription flow objects are created and Ready.
-        """
-        LOGGER.info(f"Checking MaaSModel {maas_model_tinyllama_free.name} is Ready")
-        maas_model_tinyllama_free.wait_for_condition(condition="Ready", status="True", timeout=300)
+        """Verify the MaaS subscription flow objects are created and Ready."""
+        resource = request.getfixturevalue(fixture_name=resource_fixture)
+        LOGGER.info(f"Checking {kind_label} {resource.name} is Ready")
+        resource.wait_for_condition(condition="Ready", status="True", timeout=300)
 
-        LOGGER.info(f"Checking MaaSAuthPolicy {maas_auth_policy_tinyllama_free.name} is Ready")
-        maas_auth_policy_tinyllama_free.wait_for_condition(condition="Ready", status="True", timeout=300)
-
-        LOGGER.info(f"Checking MaaSSubscription {maas_subscription_tinyllama_free.name} is Ready")
-        maas_subscription_tinyllama_free.wait_for_condition(condition="Ready", status="True", timeout=300)
+  

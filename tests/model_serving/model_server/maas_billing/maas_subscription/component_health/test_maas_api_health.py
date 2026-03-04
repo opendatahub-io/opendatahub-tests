@@ -11,7 +11,12 @@ from utilities.general import wait_for_pods_running
 LOGGER = get_logger(name=__name__)
 
 
+<<<<<<< HEAD
 @pytest.mark.smoke
+=======
+
+@pytest.mark.component_health
+>>>>>>> 10b2c8e (test(maas): address review comments)
 @pytest.mark.usefixtures("maas_controller_enabled_latest")
 class TestMaaSApiComponentHealth:
     def test_maas_management_state(
@@ -52,7 +57,7 @@ class TestMaaSApiComponentHealth:
         maas_api_deployment.wait_for_condition(
             condition="Available",
             status="True",
-            timeout=600,
+            timeout=120,
         )
 
     def test_maas_api_pods_health(
