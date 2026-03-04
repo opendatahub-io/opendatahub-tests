@@ -105,6 +105,7 @@ def notebook_image(
 def default_notebook(
     request: pytest.FixtureRequest,
     admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
     notebook_image: str,
 ) -> Generator[Notebook]:
     """Returns a new Notebook CR for a given namespace, name, and image"""
@@ -216,7 +217,7 @@ def default_notebook(
         },
     }
 
-    with Notebook(kind_dict=notebook) as nb:
+    with Notebook(client=unprivileged_client, kind_dict=notebook) as nb:
         yield nb
 
 
