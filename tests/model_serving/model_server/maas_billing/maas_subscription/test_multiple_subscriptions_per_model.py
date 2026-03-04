@@ -73,7 +73,8 @@ class TestMultipleSubscriptionsPerModel:
             explicit_headers[MAAS_SUBSCRIPTION_HEADER] = maas_subscription_tinyllama_free.name
 
             LOGGER.info(
-                f"Polling for 200 with explicit subscription selection: subscription={maas_subscription_tinyllama_free.name}"
+                "Polling for 200 with explicit subscription selection: "
+                f"subscription={maas_subscription_tinyllama_free.name}"
             )
 
             response = poll_expected_status(
