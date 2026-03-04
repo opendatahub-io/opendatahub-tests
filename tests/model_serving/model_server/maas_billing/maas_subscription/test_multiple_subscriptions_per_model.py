@@ -3,7 +3,6 @@ from __future__ import annotations
 import pytest
 import requests
 from kubernetes.dynamic import DynamicClient
-from kubernetes.dynamic.exceptions import NotFoundError
 from ocp_resources.service_account import ServiceAccount
 from simple_logger.logger import get_logger
 
