@@ -1,4 +1,3 @@
-import json
 import time
 from typing import Any
 
@@ -10,9 +9,11 @@ from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
 from tests.model_registry.model_catalog.constants import HF_MODELS
-from tests.model_registry.utils import get_model_catalog_pod
-from utilities.constants import PodNotFound
-from utilities.general import wait_for_pods_running
+from tests.model_registry.utils import (
+    TransientUnauthorizedError,
+    execute_get_call,
+    execute_get_command,
+)
 
 LOGGER = get_logger(name=__name__)
 
@@ -284,38 +285,6 @@ def assert_source_error_state_message(
     )
 
 
-class TransientUnauthorizedError(Exception):
-    """Exception for transient 401 Unauthorized errors that should be retried."""
-
-
-def execute_get_call(
-    url: str, headers: dict[str, str], verify: bool | str = False, params: dict[str, Any] | None = None
-) -> requests.Response:
-    LOGGER.info(f"Executing get call: {url}")
-    if params:
-        LOGGER.info(f"params: {params}")
-    resp = requests.get(url=url, headers=headers, verify=verify, timeout=60, params=params)
-    LOGGER.info(f"Encoded url from requests library: {resp.url}")
-    if resp.status_code not in [200, 201]:
-        # Raise custom exception for 401 errors that can be retried (OAuth/kube-rbac-proxy initialization)
-        if resp.status_code == 401:
-            raise TransientUnauthorizedError(f"Get call failed for resource: {url}, 401: {resp.text}")
-        # Raise regular exception for other errors (400, 403, 404, etc.) that should fail immediately
-        raise ResourceNotFoundError(f"Get call failed for resource: {url}, {resp.status_code}: {resp.text}")
-    return resp
-
-
-def execute_get_command(
-    url: str, headers: dict[str, str], verify: bool | str = False, params: dict[str, Any] | None = None
-) -> dict[Any, Any]:
-    resp = execute_get_call(url=url, headers=headers, verify=verify, params=params)
-    try:
-        return json.loads(resp.text)
-    except json.JSONDecodeError:
-        LOGGER.error(f"Unable to parse {resp.text}")
-        raise
-
-
 @retry(wait_timeout=90, sleep=5, exceptions_dict={ResourceNotFoundError: [], TransientUnauthorizedError: []})
 def wait_for_model_catalog_api(url: str, headers: dict[str, str], verify: bool | str = False) -> requests.Response:
     """
@@ -374,30 +343,3 @@ def get_catalog_str(ids: list[str]) -> str:
     return f"""catalogs:
 {catalog_str}
 """
-
-
-def wait_for_model_catalog_pod_ready_after_deletion(
-    client: DynamicClient, model_registry_namespace: str, consecutive_try: int = 6
-) -> bool:
-    model_catalog_pods = get_model_catalog_pod(
-        client=client,
-        model_registry_namespace=model_registry_namespace,
-    )
-    # We can wait for the pods to reflect updated catalog, however, deleting them ensures the updated config is
-    # applied immediately.
-    for pod in model_catalog_pods:
-        pod.delete()
-    # After the deletion, we need to wait for the pod to be spinned up and get to ready state.
-    assert wait_for_model_catalog_pod_created(client=client, model_registry_namespace=model_registry_namespace)
-    wait_for_pods_running(
-        admin_client=client, namespace_name=model_registry_namespace, number_of_consecutive_checks=consecutive_try
-    )
-    return True
-
-
-@retry(wait_timeout=30, sleep=5, exceptions_dict={PodNotFound: []})
-def wait_for_model_catalog_pod_created(client: DynamicClient, model_registry_namespace: str) -> bool:
-    pods = get_model_catalog_pod(client=client, model_registry_namespace=model_registry_namespace)
-    if pods:
-        return True
-    raise PodNotFound("Model catalog pod not found")
