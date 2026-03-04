@@ -11,9 +11,8 @@ from simple_logger.logger import get_logger
 from utilities.constants import (
     ISTIO_CA_BUNDLE_FILENAME,
     OPENSHIFT_CA_BUNDLE_FILENAME,
-    KServeDeploymentType,
 )
-from utilities.infra import is_managed_cluster, is_self_managed_operator
+from utilities.infra import is_managed_cluster
 
 LOGGER = get_logger(name=__name__)
 
@@ -65,42 +64,24 @@ def create_ca_bundle_file(client: DynamicClient, ca_type: str) -> str:
 
 
 @cache
-def get_ca_bundle(client: DynamicClient, deployment_mode: str) -> str:
+def get_ca_bundle(client: DynamicClient) -> str:
     """
-    Get the ca bundle for the given deployment mode.
+    Get the CA bundle for TLS verification.
 
-    If running on managed cluster and deployment in serverless or raw deployment, return empty string.
-    If running on self-managed operator and deployment is model mesh, return ca bundle.
+    On managed clusters, no CA bundle is needed (returns empty string).
+    On self-managed clusters, creates a CA bundle file from the knative-serving-cert secret.
 
     Args:
         client (DynamicClient): DynamicClient object
-        deployment_mode (str): The deployment mode. Can be "serverless", "model-mesh" or "raw-deployment"
 
     Returns:
-        str: The path to the ca bundle file. If cert is not created, return empty string
-
-    Raises:
-            ValueError: If deployment_mode is not "serverless", "model-mesh" or "raw-deployment"
-
+        str: The path to the ca bundle file, or empty string if not needed or not found.
     """
-    if deployment_mode in (
-        KServeDeploymentType.SERVERLESS,
-        KServeDeploymentType.RAW_DEPLOYMENT,
-    ):
-        if is_managed_cluster(client):
-            LOGGER.info("Running on managed cluster, not using ca bundle")
-            return ""
-        else:
-            return create_ca_bundle_file(client=client, ca_type="knative")
-
-    elif deployment_mode == KServeDeploymentType.MODEL_MESH:
-        if is_self_managed_operator(client=client):
-            return create_ca_bundle_file(client=client, ca_type="openshift")
-
+    if is_managed_cluster(client):
+        LOGGER.info("Running on managed cluster, not using ca bundle")
         return ""
 
-    else:
-        raise ValueError(f"Unknown deployment mode: {deployment_mode}")
+    return create_ca_bundle_file(client=client, ca_type="knative")
 
 
 def create_k8s_secret(
