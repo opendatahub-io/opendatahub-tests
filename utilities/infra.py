@@ -467,7 +467,6 @@ def login_with_user_password(api_address: str, user: str, password: str | None =
     return bool(re.search(r"Login successful|Logged into", out))
 
 
-
 @cache
 def is_managed_cluster(client: DynamicClient) -> bool:
     """
