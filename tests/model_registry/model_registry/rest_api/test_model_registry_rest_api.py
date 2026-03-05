@@ -363,7 +363,7 @@ class TestModelRegistryDeployment:
     Tests the complete deployment workflow from registered model to InferenceService.
     """
 
-    @pytest.mark.sanity
+    @pytest.mark.tier2
     def test_registered_model_deployment(
         self,
         admin_client: DynamicClient,
@@ -390,10 +390,6 @@ class TestModelRegistryDeployment:
         model_response = requests.get(model_endpoint, timeout=10)
         LOGGER.info(f"Model endpoint status: {model_response.status_code}")
 
-        if model_response.status_code == 200:
-            LOGGER.info(f"Registered model '{model_name}' details: {model_response.json()}")
-            LOGGER.info("Model deployed successfully and is accessible via API")
-
-        else:
-            LOGGER.error(f"Model endpoint returned {model_response.status_code}: {model_response.text}")
-            pytest.fail("Registered model may not be accessible via API yet")
+        assert model_response.status_code == 200, (
+            f"Model endpoint returned status code:{model_response.status_code}: response text{model_response.text}"
+        )
