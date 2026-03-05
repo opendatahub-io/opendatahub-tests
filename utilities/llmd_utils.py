@@ -583,7 +583,7 @@ class LLMUserInference:
                 from ocp_resources.resource import get_client
 
                 client = get_client()
-                ca_bundle = get_ca_bundle(client=client, deployment_mode="raw")
+                ca_bundle = get_ca_bundle(client=client)
                 if ca_bundle:
                     cmd += f" --cacert {ca_bundle}"
                 else:
