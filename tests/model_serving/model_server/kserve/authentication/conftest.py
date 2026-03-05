@@ -13,6 +13,7 @@ from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
+from simple_logger.logger import get_logger
 
 from utilities.constants import (
     Annotations,
@@ -31,6 +32,8 @@ from utilities.infra import (
 from utilities.jira import is_jira_open
 from utilities.logger import RedactedString
 from utilities.serving_runtime import ServingRuntimeFromTemplate
+
+LOGGER = get_logger(name=__name__)
 
 
 # HTTP/REST model serving
@@ -92,7 +95,8 @@ def patched_remove_raw_authentication_isvc(
             }
         }
     ):
-        if is_jira_open(jira_id="RHOAIENG-19275", admin_client=admin_client):
+        if is_jira_open(jira_id="RHOAIENG-52129", admin_client=admin_client):
+            LOGGER.info("RHOAIENG-52129 is open; waiting for predictor pod rollout after auth toggle")
             predictor_pod.wait_deleted()
 
         yield http_s3_ovms_raw_inference_service
