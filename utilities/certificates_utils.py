@@ -17,50 +17,30 @@ from utilities.infra import is_managed_cluster
 LOGGER = get_logger(name=__name__)
 
 
-def create_ca_bundle_file(client: DynamicClient, ca_type: str) -> str:
+def create_ca_bundle_file(client: DynamicClient) -> str:
     """
     Creates a ca bundle file from a secret
 
     Args:
         client (DynamicClient): DynamicClient object
-        ca_type (str): The type of ca bundle to create. Can be "knative" or "openshift"
-
     Returns:
         str: The path to the ca bundle file. If cert is not created, return empty string
-
-    Raises:
-        ValueError: If ca_type is not "knative" or "openshift"
-
     """
-    if ca_type == "knative":
-        certs_secret = Secret(
-            client=client,
-            name="knative-serving-cert",
-            namespace="istio-system",
-        )
-        filename = ISTIO_CA_BUNDLE_FILENAME
+    
+    certs_secret = Secret(
+        client=client,
+        name="router-certs-default",
+        namespace="openshift-ingress",
+    )
+    
+    filename = OPENSHIFT_CA_BUNDLE_FILENAME
+    bundle = base64.b64decode(certs_secret.instance.data["tls.crt"]).decode()
+    filepath = os.path.join(py_config["tmp_base_dir"], filename)
+    
+    with open(filepath, "w") as fd:
+        fd.write(bundle)
 
-    elif ca_type == "openshift":
-        certs_secret = Secret(
-            client=client,
-            name="router-certs-default",
-            namespace="openshift-ingress",
-        )
-        filename = OPENSHIFT_CA_BUNDLE_FILENAME
-
-    else:
-        raise ValueError("Invalid ca_type")
-
-    if certs_secret.exists:
-        bundle = base64.b64decode(certs_secret.instance.data["tls.crt"]).decode()
-        filepath = os.path.join(py_config["tmp_base_dir"], filename)
-        with open(filepath, "w") as fd:
-            fd.write(bundle)
-
-        return filepath
-
-    LOGGER.warning(f"Could not find {certs_secret.name} secret")
-    return ""
+    return filepath
 
 
 @cache
@@ -69,7 +49,7 @@ def get_ca_bundle(client: DynamicClient) -> str:
     Get the CA bundle for TLS verification.
 
     On managed clusters, no CA bundle is needed (returns empty string).
-    On self-managed clusters, creates a CA bundle file from the knative-serving-cert secret.
+    On self-managed clusters, creates a CA bundle file.
 
     Args:
         client (DynamicClient): DynamicClient object
@@ -81,7 +61,7 @@ def get_ca_bundle(client: DynamicClient) -> str:
         LOGGER.info("Running on managed cluster, not using ca bundle")
         return ""
 
-    return create_ca_bundle_file(client=client, ca_type="knative")
+    return create_ca_bundle_file(client=client)
 
 
 def create_k8s_secret(
