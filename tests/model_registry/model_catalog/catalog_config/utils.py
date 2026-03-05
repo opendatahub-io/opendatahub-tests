@@ -19,11 +19,10 @@ from tests.model_registry.model_catalog.constants import (
 from tests.model_registry.model_catalog.db_constants import GET_MODELS_BY_SOURCE_ID_DB_QUERY
 from tests.model_registry.model_catalog.utils import (
     execute_database_query,
-    execute_get_command,
     get_models_from_catalog_api,
     parse_psql_output,
 )
-from tests.model_registry.utils import get_model_catalog_pod
+from tests.model_registry.utils import execute_get_command, get_model_catalog_pod
 from utilities.constants import Timeout
 
 LOGGER = get_logger(name=__name__)

@@ -25,16 +25,16 @@ from tests.model_registry.model_catalog.constants import (
     SAMPLE_MODEL_NAME3,
 )
 from tests.model_registry.model_catalog.utils import (
-    execute_get_command,
     get_model_str,
     get_models_from_catalog_api,
     wait_for_model_catalog_api,
-    wait_for_model_catalog_pod_ready_after_deletion,
 )
 from tests.model_registry.utils import (
+    execute_get_command,
     get_model_catalog_pod,
     get_mr_user_token,
     get_rest_headers,
+    wait_for_model_catalog_pod_ready_after_deletion,
 )
 from utilities.infra import create_inference_token, get_openshift_token, login_with_user_password
 
@@ -425,13 +425,6 @@ def updated_catalog_config_map_scope_function(
 @pytest.fixture(scope="class")
 def catalog_config_map(admin_client: DynamicClient, model_registry_namespace: str) -> ConfigMap:
     return ConfigMap(name=DEFAULT_CUSTOM_MODEL_CATALOG, client=admin_client, namespace=model_registry_namespace)
-
-
-@pytest.fixture(scope="class")
-def model_catalog_routes(admin_client: DynamicClient, model_registry_namespace: str) -> list[Route]:
-    return list(
-        Route.get(namespace=model_registry_namespace, label_selector="component=model-catalog", client=admin_client)
-    )
 
 
 @pytest.fixture(scope="class")

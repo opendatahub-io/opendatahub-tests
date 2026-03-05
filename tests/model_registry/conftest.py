@@ -14,6 +14,7 @@ from ocp_resources.oauth import OAuth
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
+from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
@@ -458,3 +459,10 @@ def service_account(admin_client: DynamicClient, sa_namespace: Namespace) -> Gen
     LOGGER.info(f"Creating ServiceAccount: {sa_name} in namespace {sa_namespace.name}")
     with ServiceAccount(client=admin_client, name=sa_name, namespace=sa_namespace.name, wait_for_resource=True) as sa:
         yield sa
+
+
+@pytest.fixture(scope="class")
+def model_catalog_routes(admin_client: DynamicClient, model_registry_namespace: str) -> list[Route]:
+    return list(
+        Route.get(namespace=model_registry_namespace, label_selector="component=model-catalog", client=admin_client)
+    )
