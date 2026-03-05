@@ -13,10 +13,10 @@ from typing import Self
 
 import pytest
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 
 from tests.model_serving.model_runtime.image_validation.constant import RUNTIME_CONFIGS
 from utilities.general import validate_container_images
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

@@ -15,13 +15,13 @@ from ocp_resources.ingress_config_openshift_io import Ingress as IngressConfig
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.resource import ResourceEditor
 from requests import Response
-from simple_logger.logger import get_logger
 
 from utilities.constants import (
     MAAS_GATEWAY_NAME,
     MAAS_GATEWAY_NAMESPACE,
 )
 from utilities.llmd_utils import get_llm_inference_url
+from utilities.opendatahub_logger import get_logger
 from utilities.plugins.constant import OpenAIEnpoints, RestHeader
 from utilities.resources.rate_limit_policy import RateLimitPolicy
 from utilities.resources.token_rate_limit_policy import TokenRateLimitPolicy

@@ -3,10 +3,10 @@ from typing import Any
 
 import requests
 import urllib3
-from simple_logger.logger import get_logger
 from tenacity import retry, stop_after_attempt, wait_exponential
 from urllib3.exceptions import InsecureRequestWarning
 
+from utilities.opendatahub_logger import get_logger
 from utilities.plugins.constant import OpenAIEnpoints, RestHeader
 
 urllib3.disable_warnings(category=InsecureRequestWarning)

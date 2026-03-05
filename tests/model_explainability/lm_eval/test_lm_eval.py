@@ -2,7 +2,6 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 
 from tests.model_explainability.lm_eval.constants import (
     ARC_EASY_DATASET_IMAGE,
@@ -14,6 +13,7 @@ from tests.model_explainability.lm_eval.constants import (
 from tests.model_explainability.lm_eval.utils import get_lmeval_tasks, validate_lmeval_job_pod_and_logs
 from tests.model_explainability.utils import validate_tai_component_images
 from utilities.constants import OCIRegistry
+from utilities.opendatahub_logger import get_logger
 from utilities.registry_utils import pull_manifest_from_oci_registry
 
 LMEVALJOB_COMPLETE_STATE: str = "Complete"

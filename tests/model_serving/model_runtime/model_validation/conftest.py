@@ -11,7 +11,6 @@ from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
-from simple_logger.logger import get_logger
 
 from tests.model_serving.model_runtime.model_validation.constant import (
     ACCELERATOR_IDENTIFIER,
@@ -27,6 +26,7 @@ from tests.model_serving.model_runtime.vllm.utils import validate_supported_quan
 from utilities.constants import KServeDeploymentType, Labels, RuntimeTemplates
 from utilities.inference_utils import create_isvc
 from utilities.infra import get_pods_by_isvc_label
+from utilities.opendatahub_logger import get_logger
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 LOGGER = get_logger(name=__name__)

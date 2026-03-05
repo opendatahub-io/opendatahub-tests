@@ -2,7 +2,6 @@ import random
 from typing import Self
 
 import pytest
-from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.constants import VALIDATED_CATALOG_ID
 from tests.model_registry.model_catalog.sorting.utils import (
@@ -10,6 +9,7 @@ from tests.model_registry.model_catalog.sorting.utils import (
     validate_items_sorted_correctly,
     verify_custom_properties_sorted,
 )
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

@@ -12,7 +12,6 @@ from ocp_resources.gateway import Gateway
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.pod import Pod
 from ocp_resources.prometheus import Prometheus
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler, retry
 
 from tests.model_serving.model_server.llmd.constants import PREFIX_CACHE_BLOCK_SIZE
@@ -21,6 +20,7 @@ from utilities.exceptions import PodContainersRestartError
 from utilities.llmd_utils import verify_inference_response_llmd
 from utilities.manifests.tinyllama import TINYLLAMA_INFERENCE_CONFIG
 from utilities.monitoring import get_metrics_value
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

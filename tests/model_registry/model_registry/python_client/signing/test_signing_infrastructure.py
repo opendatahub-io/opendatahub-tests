@@ -5,8 +5,8 @@ from typing import Self
 
 import pytest
 from ocp_resources.config_map import ConfigMap
-from simple_logger.logger import get_logger
 
+from utilities.opendatahub_logger import get_logger
 from utilities.resources.securesign import Securesign
 
 LOGGER = get_logger(name=__name__)

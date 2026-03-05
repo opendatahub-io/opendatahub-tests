@@ -12,7 +12,6 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.gateway import Gateway
 from ocp_resources.llm_inference_service import LLMInferenceService
 from pyhelper_utils.shell import run_command
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutWatch, retry
 
 from utilities.certificates_utils import get_ca_bundle
@@ -25,6 +24,7 @@ from utilities.llmd_constants import (
     LLMDGateway,
     LLMEndpoint,
 )
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

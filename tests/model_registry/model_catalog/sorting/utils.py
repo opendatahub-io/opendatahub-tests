@@ -1,7 +1,6 @@
 from typing import Any
 
 from kubernetes.dynamic import DynamicClient
-from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.db_constants import (
     GET_MODELS_BY_ACCURACY_DB_QUERY,
@@ -13,6 +12,7 @@ from tests.model_registry.model_catalog.utils import (
     get_models_from_catalog_api,
     parse_psql_output,
 )
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

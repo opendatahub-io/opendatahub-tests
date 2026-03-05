@@ -1,9 +1,9 @@
 import pytest
-from simple_logger.logger import get_logger
 
 from tests.model_serving.model_server.maas_billing.utils import (
     assert_mixed_200_and_429,
 )
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

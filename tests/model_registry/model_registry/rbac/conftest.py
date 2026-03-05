@@ -13,7 +13,6 @@ from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
-from simple_logger.logger import get_logger
 
 from tests.model_registry.constants import (
     KUBERBACPROXY_STR,
@@ -21,6 +20,7 @@ from tests.model_registry.constants import (
 )
 from tests.model_registry.model_registry.rbac.group_utils import create_group
 from tests.model_registry.model_registry.rbac.utils import create_role_binding
+from utilities.opendatahub_logger import get_logger
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from utilities.user_utils import UserTestSession
 

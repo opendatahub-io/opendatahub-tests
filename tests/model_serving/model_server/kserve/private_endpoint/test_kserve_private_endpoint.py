@@ -3,10 +3,10 @@ from typing import Self
 import pytest
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 
 from tests.model_serving.model_server.kserve.private_endpoint.utils import curl_from_pod
 from utilities.constants import CurlOutput, ModelEndpoint, Protocols, RuntimeTemplates
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

@@ -8,7 +8,8 @@ from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.exceptions import MissingResourceError
 from packaging.version import Version
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
+
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

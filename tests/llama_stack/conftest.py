@@ -16,7 +16,6 @@ from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from semver import Version
-from simple_logger.logger import get_logger
 
 from tests.llama_stack.constants import (
     LLS_OPENSHIFT_MINIMAL_VERSION,
@@ -31,6 +30,7 @@ from tests.llama_stack.utils import (
 from utilities.constants import Annotations, DscComponents
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.general import generate_random_name
+from utilities.opendatahub_logger import get_logger
 from utilities.resources.llama_stack_distribution import LlamaStackDistribution
 
 LOGGER = get_logger(name=__name__)

@@ -4,7 +4,8 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.pod import Pod
 from ocp_resources.resource import NamespacedResource
-from simple_logger.logger import get_logger
+
+from utilities.opendatahub_logger import get_logger
 
 KEYS_TO_VALIDATE = ["runAsGroup", "runAsUser", "allowPrivilegeEscalation", "capabilities"]
 

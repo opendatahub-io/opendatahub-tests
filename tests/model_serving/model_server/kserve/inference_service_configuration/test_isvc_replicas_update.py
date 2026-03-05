@@ -1,5 +1,4 @@
 import pytest
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from tests.model_serving.model_server.kserve.inference_service_configuration.constants import (
@@ -15,6 +14,7 @@ from utilities.constants import (
 from utilities.inference_utils import Inference
 from utilities.infra import get_pods_by_isvc_label
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

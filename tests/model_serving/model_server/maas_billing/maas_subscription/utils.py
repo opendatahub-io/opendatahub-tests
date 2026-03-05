@@ -12,7 +12,6 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.resource import ResourceEditor
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from utilities.constants import (
@@ -20,6 +19,7 @@ from utilities.constants import (
     MAAS_GATEWAY_NAMESPACE,
     ApiGroups,
 )
+from utilities.opendatahub_logger import get_logger
 from utilities.resources.maa_s_subscription import MaaSSubscription
 
 LOGGER = get_logger(name=__name__)

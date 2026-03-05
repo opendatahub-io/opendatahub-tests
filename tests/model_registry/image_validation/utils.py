@@ -1,8 +1,8 @@
 import pytest
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 
 from utilities.general import validate_container_images
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

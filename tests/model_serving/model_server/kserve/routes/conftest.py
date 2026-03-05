@@ -6,10 +6,10 @@ from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.resource import ResourceEditor
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from utilities.constants import Labels
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

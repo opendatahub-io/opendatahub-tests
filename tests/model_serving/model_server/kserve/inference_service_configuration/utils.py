@@ -6,11 +6,11 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from utilities.constants import Timeout
 from utilities.infra import get_pods_by_isvc_label
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

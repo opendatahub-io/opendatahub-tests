@@ -6,7 +6,6 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.secret import Secret
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
 
 from utilities.constants import (
     ISTIO_CA_BUNDLE_FILENAME,
@@ -14,6 +13,7 @@ from utilities.constants import (
     KServeDeploymentType,
 )
 from utilities.infra import is_managed_cluster, is_self_managed_operator
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

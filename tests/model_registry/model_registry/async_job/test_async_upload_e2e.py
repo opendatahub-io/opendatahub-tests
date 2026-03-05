@@ -7,7 +7,6 @@ from kubernetes.dynamic import DynamicClient
 from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import ArtifactState, RegisteredModelState
 from ocp_resources.job import Job
-from simple_logger.logger import get_logger
 
 from tests.model_registry.constants import MODEL_DICT
 from tests.model_registry.model_registry.async_job.constants import (
@@ -20,6 +19,7 @@ from tests.model_registry.model_registry.async_job.utils import (
     get_latest_job_pod,
 )
 from utilities.constants import MinIo, OCIRegistry
+from utilities.opendatahub_logger import get_logger
 from utilities.registry_utils import pull_manifest_from_oci_registry
 
 LOGGER = get_logger(name=__name__)

@@ -196,8 +196,9 @@ def verify_metrics_retained(
     Raises:
         AssertionError: If metrics are not retained or below threshold
     """
-    from simple_logger.logger import get_logger
     from timeout_sampler import TimeoutExpiredError, TimeoutSampler
+
+    from utilities.opendatahub_logger import get_logger
 
     logger = get_logger(name=__name__)
 

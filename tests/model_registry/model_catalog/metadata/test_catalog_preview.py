@@ -3,7 +3,6 @@ from typing import Self
 import pytest
 import requests
 import yaml
-from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.constants import VALIDATED_CATALOG_FILE, VALIDATED_CATALOG_ID
 from tests.model_registry.model_catalog.metadata.utils import (
@@ -12,6 +11,7 @@ from tests.model_registry.model_catalog.metadata.utils import (
     validate_catalog_preview_counts,
     validate_catalog_preview_items,
 )
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

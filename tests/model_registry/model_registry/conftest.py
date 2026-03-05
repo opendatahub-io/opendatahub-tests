@@ -16,7 +16,6 @@ from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service_account import ServiceAccount
 from pyhelper_utils.shell import run_command
 from pytest import FixtureRequest
-from simple_logger.logger import get_logger
 
 from tests.model_registry.constants import (
     MODEL_REGISTRY_POD_FILTER,
@@ -28,6 +27,7 @@ from tests.model_registry.utils import (
 )
 from utilities.constants import Protocols
 from utilities.general import wait_for_pods_by_labels
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 DEFAULT_TOKEN_DURATION = "10m"

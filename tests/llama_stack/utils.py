@@ -10,7 +10,6 @@ from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from llama_stack_client import APIConnectionError, InternalServerError, LlamaStackClient
 from llama_stack_client.types.vector_store import VectorStore
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
 from tests.llama_stack.constants import (
@@ -21,6 +20,7 @@ from tests.llama_stack.constants import (
     ValidationResult,
 )
 from utilities.exceptions import UnexpectedResourceCountError
+from utilities.opendatahub_logger import get_logger
 from utilities.resources.llama_stack_distribution import LlamaStackDistribution
 
 LOGGER = get_logger(name=__name__)

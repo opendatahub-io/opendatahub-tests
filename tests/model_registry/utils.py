@@ -13,7 +13,6 @@ from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
-from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
 from tests.model_registry.constants import (
@@ -29,6 +28,7 @@ from tests.model_registry.constants import (
 from tests.model_registry.exceptions import ModelRegistryResourceNotFoundError
 from utilities.constants import Annotations, Protocols, Timeout
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
+from utilities.opendatahub_logger import get_logger
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from utilities.user_utils import get_byoidc_issuer_url
 

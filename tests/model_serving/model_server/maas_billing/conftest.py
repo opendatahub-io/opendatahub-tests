@@ -18,7 +18,6 @@ from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from pytest import FixtureRequest
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from tests.model_serving.model_server.maas_billing.utils import (
@@ -48,6 +47,7 @@ from utilities.general import generate_random_name, wait_for_oauth_openshift_dep
 from utilities.infra import create_ns, get_openshift_token, login_with_user_password, s3_endpoint_secret
 from utilities.llmd_constants import ContainerImages, ModelStorage
 from utilities.llmd_utils import create_llmisvc
+from utilities.opendatahub_logger import get_logger
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.resources.rate_limit_policy import RateLimitPolicy
 from utilities.resources.token_rate_limit_policy import TokenRateLimitPolicy

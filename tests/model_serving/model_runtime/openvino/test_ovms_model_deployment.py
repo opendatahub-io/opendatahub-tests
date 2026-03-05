@@ -10,7 +10,6 @@ from typing import Any
 import pytest
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 
 from tests.model_serving.model_runtime.openvino.constant import (
     MODEL_CONFIGS,
@@ -26,6 +25,7 @@ from tests.model_serving.model_runtime.openvino.utils import (
     validate_inference_request,
 )
 from utilities.constants import ModelFormat, Protocols
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

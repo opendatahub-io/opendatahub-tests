@@ -19,7 +19,6 @@ from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from pytest import Config, FixtureRequest
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
 
 from tests.model_registry.constants import (
     DB_BASE_RESOURCES_NAME,
@@ -45,6 +44,7 @@ from utilities.general import (
     wait_for_pods_running,
 )
 from utilities.infra import get_data_science_cluster, login_with_user_password, wait_for_dsc_status_ready
+from utilities.opendatahub_logger import get_logger
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from utilities.user_utils import UserTestSession, create_htpasswd_file, wait_for_user_creation
 

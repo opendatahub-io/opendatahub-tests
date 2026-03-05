@@ -7,10 +7,10 @@ from urllib.parse import urlparse
 from kubernetes.dynamic.client import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 
 from utilities.constants import Protocols
 from utilities.exceptions import ProtocolNotSupportedError
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

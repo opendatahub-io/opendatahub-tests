@@ -4,7 +4,6 @@ from typing import Any
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.constants import (
     CATALOG_CONTAINER,
@@ -21,6 +20,7 @@ from tests.model_registry.model_catalog.db_constants import (
     SEARCH_MODELS_WITH_SOURCE_ID_DB_QUERY,
 )
 from tests.model_registry.model_catalog.utils import execute_database_query, execute_get_command, parse_psql_output
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

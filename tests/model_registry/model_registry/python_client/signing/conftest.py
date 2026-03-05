@@ -13,7 +13,6 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.subscription import Subscription
 from ocp_utilities.operators import install_operator, uninstall_operator
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_registry.model_registry.python_client.signing.constants import (
@@ -30,6 +29,7 @@ from tests.model_registry.model_registry.python_client.signing.utils import (
 )
 from utilities.constants import OPENSHIFT_OPERATORS, Timeout
 from utilities.infra import get_openshift_token
+from utilities.opendatahub_logger import get_logger
 from utilities.resources.securesign import Securesign
 
 LOGGER = get_logger(name=__name__)

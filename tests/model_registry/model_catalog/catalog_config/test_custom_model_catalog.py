@@ -3,7 +3,6 @@ from typing import Self
 import pytest
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.config_map import ConfigMap
-from simple_logger.logger import get_logger
 
 from tests.model_registry.constants import CUSTOM_CATALOG_ID1, SAMPLE_MODEL_NAME1
 from tests.model_registry.model_catalog.catalog_config.utils import validate_model_catalog_sources
@@ -22,6 +21,7 @@ from tests.model_registry.model_catalog.utils import (
     get_hf_catalog_str,
     get_sample_yaml_str,
 )
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

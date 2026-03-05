@@ -9,7 +9,6 @@ from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.utils.constants import DEFAULT_CLUSTER_RETRY_EXCEPTIONS
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, TimeoutWatch
 
 from tests.model_serving.model_server.kserve.keda.utils import get_isvc_keda_scaledobject
@@ -19,6 +18,7 @@ from utilities.exceptions import (
 )
 from utilities.inference_utils import UserInference
 from utilities.infra import get_pods_by_isvc_label
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 
