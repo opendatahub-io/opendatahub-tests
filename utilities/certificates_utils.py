@@ -23,7 +23,10 @@ def create_ca_bundle_file(client: DynamicClient) -> str:
     Args:
         client (DynamicClient): DynamicClient object
     Returns:
-        str: The path to the ca bundle file. If cert is not created, return empty string
+        str: The path to the ca bundle file.
+
+    Raises:
+        AttributeError: If the router-certs-default secret does not exist in the cluster.
     """
 
     certs_secret = Secret(
