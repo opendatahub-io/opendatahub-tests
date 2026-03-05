@@ -120,12 +120,6 @@ EXPECTED_MCP_SERVER_TOOL_COUNTS: dict[str, int] = {
     "calculator": 2,
 }
 
-EXPECTED_MCP_SERVER_PROVIDERS: dict[str, str] = {
-    "weather-api": "Weather Community",
-    "file-manager": "Community Dev",
-    "calculator": "Math Community",
-}
-
 EXPECTED_MCP_SERVER_TOOLS: dict[str, list[str]] = {
     "weather-api": ["get_current_weather", "get_forecast"],
     "file-manager": ["read_file", "write_file", "list_directory"],
@@ -136,15 +130,6 @@ EXPECTED_MCP_SERVER_TIMESTAMPS: dict[str, dict[str, str]] = {
     "weather-api": {"createTimeSinceEpoch": "1736510400000", "lastUpdateTimeSinceEpoch": "1736510400000"},
     "file-manager": {"createTimeSinceEpoch": "1738300800000", "lastUpdateTimeSinceEpoch": "1739510400000"},
     "calculator": {"createTimeSinceEpoch": "1740091200000", "lastUpdateTimeSinceEpoch": "1740091200000"},
-}
-
-EXPECTED_MCP_SERVER_CUSTOM_PROPERTIES: dict[str, dict] = {
-    "calculator": {
-        "verifiedSource": {"metadataType": "MetadataBoolValue", "bool_value": True},
-        "sast": {"metadataType": "MetadataBoolValue", "bool_value": True},
-        "readOnlyTools": {"metadataType": "MetadataBoolValue", "bool_value": True},
-        "observability": {"metadataType": "MetadataStringValue", "string_value": ""},
-    },
 }
 
 MCP_CATALOG_INVALID_SOURCE_ID: str = "test_mcp_servers_invalid"

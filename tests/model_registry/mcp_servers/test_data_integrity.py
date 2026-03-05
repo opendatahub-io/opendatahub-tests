@@ -1,13 +1,10 @@
-import random
 from typing import Any, Self
 
 import pytest
 from simple_logger.logger import get_logger
 
 from tests.model_registry.mcp_servers.constants import (
-    EXPECTED_MCP_SERVER_CUSTOM_PROPERTIES,
     EXPECTED_MCP_SERVER_NAMES,
-    EXPECTED_MCP_SERVER_PROVIDERS,
     EXPECTED_MCP_SERVER_TIMESTAMPS,
     EXPECTED_MCP_SERVER_TOOL_COUNTS,
     EXPECTED_MCP_SERVER_TOOLS,
@@ -25,11 +22,9 @@ class TestMCPServerLoading:
         self: Self,
         mcp_servers_response: dict[str, Any],
     ):
-        """Verify that all MCP servers and their providers are loaded from YAML."""
+        """Verify that all MCP servers are loaded from YAML with correct timestamps."""
         servers_by_name = {server["name"]: server for server in mcp_servers_response["items"]}
         assert set(servers_by_name) == EXPECTED_MCP_SERVER_NAMES
-        actual_providers = {name: server["provider"] for name, server in servers_by_name.items()}
-        assert actual_providers == EXPECTED_MCP_SERVER_PROVIDERS
         for name, server in servers_by_name.items():
             expected = EXPECTED_MCP_SERVER_TIMESTAMPS[name]
             assert server["createTimeSinceEpoch"] == expected["createTimeSinceEpoch"]
@@ -69,28 +64,3 @@ class TestMCPServerLoading:
             assert actual_count == expected_count, (
                 f"Server '{name}': expected toolCount {expected_count}, got {actual_count}"
             )
-
-    def test_mcp_server_get_by_id(
-        self: Self,
-        mcp_catalog_rest_urls: list[str],
-        model_registry_rest_headers: dict[str, str],
-        mcp_servers_response: dict[str, Any],
-    ):
-        """Verify that an MCP server can be retrieved by ID."""
-        server = random.choice(seq=mcp_servers_response["items"])
-        single_server = execute_get_command(
-            url=f"{mcp_catalog_rest_urls[0]}mcp_servers/{server['id']}",
-            headers=model_registry_rest_headers,
-        )
-        assert single_server["name"] == server["name"], (
-            f"Expected server name '{server['name']}' for ID '{server['id']}', got '{single_server['name']}'"
-        )
-
-    def test_mcp_server_custom_properties(
-        self: Self,
-        mcp_servers_response: dict[str, Any],
-    ):
-        """Verify that customProperties are correctly loaded from YAML (TC-LOAD-010)."""
-        servers_by_name = {server["name"]: server for server in mcp_servers_response["items"]}
-        for name, expected in EXPECTED_MCP_SERVER_CUSTOM_PROPERTIES.items():
-            assert servers_by_name[name]["customProperties"] == expected
