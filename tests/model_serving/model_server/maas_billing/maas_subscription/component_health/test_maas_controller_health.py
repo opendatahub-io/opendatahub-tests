@@ -92,6 +92,6 @@ class TestMaaSController:
         kind_label: str,
     ) -> None:
         """Verify the MaaS subscription flow objects are created and Ready."""
-        resource = request.getfixturevalue(fixture_name=resource_fixture)
+        resource = request.getfixturevalue(argname=resource_fixture)
         LOGGER.info(f"Checking {kind_label} {resource.name} is Ready")
         resource.wait_for_condition(condition="Ready", status="True", timeout=300)
