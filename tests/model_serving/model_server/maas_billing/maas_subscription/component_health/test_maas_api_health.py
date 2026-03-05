@@ -10,6 +10,7 @@ from utilities.general import wait_for_pods_running
 
 LOGGER = get_logger(name=__name__)
 
+
 @pytest.mark.component_health
 @pytest.mark.usefixtures("maas_controller_enabled_latest")
 class TestMaaSApiComponentHealth:
