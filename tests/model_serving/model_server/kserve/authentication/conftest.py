@@ -28,7 +28,6 @@ from utilities.infra import (
     create_isvc_view_role,
     get_pods_by_isvc_label,
 )
-from utilities.jira import is_jira_open
 from utilities.logger import RedactedString
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -74,7 +73,6 @@ def http_raw_inference_token(model_service_account: ServiceAccount, http_raw_rol
 
 @pytest.fixture()
 def patched_remove_raw_authentication_isvc(
-    admin_client: DynamicClient,
     unprivileged_client: DynamicClient,
     http_s3_ovms_raw_inference_service: InferenceService,
 ) -> Generator[InferenceService, Any, Any]:
@@ -92,8 +90,7 @@ def patched_remove_raw_authentication_isvc(
             }
         }
     ):
-        if is_jira_open(jira_id="RHOAIENG-19275", admin_client=admin_client):
-            predictor_pod.wait_deleted()
+        predictor_pod.wait_deleted()
 
         yield http_s3_ovms_raw_inference_service
 

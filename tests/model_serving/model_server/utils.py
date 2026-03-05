@@ -92,6 +92,9 @@ def verify_inference_response(
         ):
             assert "x-forbidden-reason: Access to the InferenceGraph is not allowed" in res["output"]
 
+        elif "403 Forbidden" in res["output"]:
+            assert re.search(r"Forbidden \(user=.*verb=get.*resource=inferenceservices", res["output"])
+
         else:
             raise ValueError(f"Auth header {auth_header} not found in response. Response: {res['output']}")
 
