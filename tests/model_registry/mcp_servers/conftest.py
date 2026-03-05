@@ -23,6 +23,7 @@ from tests.model_registry.mcp_servers.constants import (
 from tests.model_registry.utils import (
     TransientUnauthorizedError,
     execute_get_call,
+    execute_get_command,
     wait_for_model_catalog_pod_ready_after_deletion,
 )
 
@@ -30,7 +31,7 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")
-def mcp_catalog_rest_url(model_registry_namespace: str, model_catalog_routes: list[Route]) -> list[str]:
+def mcp_catalog_rest_urls(model_registry_namespace: str, model_catalog_routes: list[Route]) -> list[str]:
     """Build MCP catalog REST URL from existing model catalog routes."""
     assert model_catalog_routes, f"Model catalog routes do not exist in {model_registry_namespace}"
     return [f"https://{route.instance.spec.host}:443{MCP_CATALOG_API_PATH}" for route in model_catalog_routes]
@@ -52,10 +53,22 @@ def wait_for_mcp_catalog_api(url: str, headers: dict[str, str]) -> requests.Resp
 
 
 @pytest.fixture(scope="class")
+def mcp_servers_response(
+    mcp_catalog_rest_urls: list[str],
+    model_registry_rest_headers: dict[str, str],
+) -> dict:
+    """Class-scoped fixture that fetches the MCP servers list once per test class."""
+    return execute_get_command(
+        url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
+        headers=model_registry_rest_headers,
+    )
+
+
+@pytest.fixture(scope="class")
 def mcp_servers_configmap_patch(
     admin_client: DynamicClient,
     model_registry_namespace: str,
-    mcp_catalog_rest_url: list[str],
+    mcp_catalog_rest_urls: list[str],
     model_registry_rest_headers: dict[str, str],
 ) -> Generator[None]:
     """
@@ -87,7 +100,7 @@ def mcp_servers_configmap_patch(
         wait_for_model_catalog_pod_ready_after_deletion(
             client=admin_client, model_registry_namespace=model_registry_namespace
         )
-        wait_for_mcp_catalog_api(url=mcp_catalog_rest_url[0], headers=model_registry_rest_headers)
+        wait_for_mcp_catalog_api(url=mcp_catalog_rest_urls[0], headers=model_registry_rest_headers)
         yield
 
     wait_for_model_catalog_pod_ready_after_deletion(
@@ -99,7 +112,7 @@ def mcp_servers_configmap_patch(
 def mcp_multi_source_configmap_patch(
     admin_client: DynamicClient,
     model_registry_namespace: str,
-    mcp_catalog_rest_url: list[str],
+    mcp_catalog_rest_urls: list[str],
     model_registry_rest_headers: dict[str, str],
 ) -> Generator[None]:
     """
@@ -129,7 +142,7 @@ def mcp_multi_source_configmap_patch(
         wait_for_model_catalog_pod_ready_after_deletion(
             client=admin_client, model_registry_namespace=model_registry_namespace
         )
-        wait_for_mcp_catalog_api(url=mcp_catalog_rest_url[0], headers=model_registry_rest_headers)
+        wait_for_mcp_catalog_api(url=mcp_catalog_rest_urls[0], headers=model_registry_rest_headers)
         yield
 
     wait_for_model_catalog_pod_ready_after_deletion(
@@ -142,7 +155,7 @@ def mcp_invalid_yaml_configmap_patch(
     request: pytest.FixtureRequest,
     admin_client: DynamicClient,
     model_registry_namespace: str,
-    mcp_catalog_rest_url: list[str],
+    mcp_catalog_rest_urls: list[str],
     model_registry_rest_headers: dict[str, str],
 ) -> Generator[None]:
     """
@@ -172,7 +185,7 @@ def mcp_invalid_yaml_configmap_patch(
         wait_for_model_catalog_pod_ready_after_deletion(
             client=admin_client, model_registry_namespace=model_registry_namespace
         )
-        wait_for_mcp_catalog_api(url=mcp_catalog_rest_url[0], headers=model_registry_rest_headers)
+        wait_for_mcp_catalog_api(url=mcp_catalog_rest_urls[0], headers=model_registry_rest_headers)
         yield
 
     wait_for_model_catalog_pod_ready_after_deletion(

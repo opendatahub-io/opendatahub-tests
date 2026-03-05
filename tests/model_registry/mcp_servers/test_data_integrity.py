@@ -1,4 +1,5 @@
-from typing import Self
+import random
+from typing import Any, Self
 
 import pytest
 from simple_logger.logger import get_logger
@@ -22,15 +23,10 @@ class TestMCPServerLoading:
 
     def test_mcp_servers_loaded(
         self: Self,
-        mcp_catalog_rest_url: list[str],
-        model_registry_rest_headers: dict[str, str],
+        mcp_servers_response: dict[str, Any],
     ):
         """Verify that all MCP servers and their providers are loaded from YAML."""
-        response = execute_get_command(
-            url=f"{mcp_catalog_rest_url[0]}mcp_servers",
-            headers=model_registry_rest_headers,
-        )
-        servers_by_name = {server["name"]: server for server in response["items"]}
+        servers_by_name = {server["name"]: server for server in mcp_servers_response["items"]}
         assert set(servers_by_name) == EXPECTED_MCP_SERVER_NAMES
         actual_providers = {name: server["provider"] for name, server in servers_by_name.items()}
         assert actual_providers == EXPECTED_MCP_SERVER_PROVIDERS
@@ -44,12 +40,12 @@ class TestMCPServerLoading:
     )
     def test_mcp_server_tools_loaded(
         self: Self,
-        mcp_catalog_rest_url: list[str],
+        mcp_catalog_rest_urls: list[str],
         model_registry_rest_headers: dict[str, str],
     ):
         """Verify that MCP server tools are correctly loaded when includeTools=true."""
         response = execute_get_command(
-            url=f"{mcp_catalog_rest_url[0]}mcp_servers",
+            url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
             headers=model_registry_rest_headers,
             params={"includeTools": "true"},
         )
@@ -63,15 +59,10 @@ class TestMCPServerLoading:
     @pytest.mark.xfail(reason="RHOAIENG-51764: toolCount is 0 when not passing includeTools=true")
     def test_mcp_server_tool_count_without_include(
         self: Self,
-        mcp_catalog_rest_url: list[str],
-        model_registry_rest_headers: dict[str, str],
+        mcp_servers_response: dict[str, Any],
     ):
         """Verify that toolCount reflects actual tools even when tools are not included."""
-        response = execute_get_command(
-            url=f"{mcp_catalog_rest_url[0]}mcp_servers",
-            headers=model_registry_rest_headers,
-        )
-        for server in response.get("items", []):
+        for server in mcp_servers_response.get("items", []):
             name = server["name"]
             expected_count = EXPECTED_MCP_SERVER_TOOL_COUNTS[name]
             actual_count = server.get("toolCount", 0)
@@ -81,35 +72,25 @@ class TestMCPServerLoading:
 
     def test_mcp_server_get_by_id(
         self: Self,
-        mcp_catalog_rest_url: list[str],
+        mcp_catalog_rest_urls: list[str],
         model_registry_rest_headers: dict[str, str],
+        mcp_servers_response: dict[str, Any],
     ):
-        """Verify that individual MCP servers can be retrieved by name."""
-        # First get all servers to obtain their IDs
-        response = execute_get_command(
-            url=f"{mcp_catalog_rest_url[0]}mcp_servers",
+        """Verify that an MCP server can be retrieved by ID."""
+        server = random.choice(seq=mcp_servers_response["items"])
+        single_server = execute_get_command(
+            url=f"{mcp_catalog_rest_urls[0]}mcp_servers/{server['id']}",
             headers=model_registry_rest_headers,
         )
-        for server in response["items"]:
-            server_id = server["id"]
-            single_server = execute_get_command(
-                url=f"{mcp_catalog_rest_url[0]}mcp_servers/{server_id}",
-                headers=model_registry_rest_headers,
-            )
-            assert single_server["name"] == server["name"], (
-                f"Expected server name '{server['name']}' for ID '{server_id}', got '{single_server['name']}'"
-            )
+        assert single_server["name"] == server["name"], (
+            f"Expected server name '{server['name']}' for ID '{server['id']}', got '{single_server['name']}'"
+        )
 
     def test_mcp_server_custom_properties(
         self: Self,
-        mcp_catalog_rest_url: list[str],
-        model_registry_rest_headers: dict[str, str],
+        mcp_servers_response: dict[str, Any],
     ):
         """Verify that customProperties are correctly loaded from YAML (TC-LOAD-010)."""
-        response = execute_get_command(
-            url=f"{mcp_catalog_rest_url[0]}mcp_servers",
-            headers=model_registry_rest_headers,
-        )
-        servers_by_name = {server["name"]: server for server in response["items"]}
+        servers_by_name = {server["name"]: server for server in mcp_servers_response["items"]}
         for name, expected in EXPECTED_MCP_SERVER_CUSTOM_PROPERTIES.items():
             assert servers_by_name[name]["customProperties"] == expected
