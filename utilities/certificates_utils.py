@@ -9,7 +9,6 @@ from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 
 from utilities.constants import (
-    ISTIO_CA_BUNDLE_FILENAME,
     OPENSHIFT_CA_BUNDLE_FILENAME,
 )
 from utilities.infra import is_managed_cluster
@@ -26,17 +25,17 @@ def create_ca_bundle_file(client: DynamicClient) -> str:
     Returns:
         str: The path to the ca bundle file. If cert is not created, return empty string
     """
-    
+
     certs_secret = Secret(
         client=client,
         name="router-certs-default",
         namespace="openshift-ingress",
     )
-    
+
     filename = OPENSHIFT_CA_BUNDLE_FILENAME
     bundle = base64.b64decode(certs_secret.instance.data["tls.crt"]).decode()
     filepath = os.path.join(py_config["tmp_base_dir"], filename)
-    
+
     with open(filepath, "w") as fd:
         fd.write(bundle)
 
