@@ -10,16 +10,7 @@ from utilities.general import wait_for_pods_running
 
 LOGGER = get_logger(name=__name__)
 
-
-<<<<<<< HEAD
-<<<<<<< HEAD
-@pytest.mark.smoke
-=======
-
-=======
->>>>>>> 8801e4e (test(maas): fix flake8 issues)
 @pytest.mark.component_health
->>>>>>> 10b2c8e (test(maas): address review comments)
 @pytest.mark.usefixtures("maas_controller_enabled_latest")
 class TestMaaSApiComponentHealth:
     def test_maas_management_state(
