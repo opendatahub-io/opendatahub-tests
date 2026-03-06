@@ -39,7 +39,10 @@ def _collect_llmisvc_diagnostics(llmisvc: LLMInferenceService) -> str:
     conditions = llmisvc.instance.status.get("conditions", [])
     if conditions:
         lines.append("  Conditions:")
-        lines.extend(f"    {condition['type']}: {condition['status']} — {condition.get('message', '')}" for condition in conditions)
+        lines.extend(
+            f"    {condition['type']}: {condition['status']} — {condition.get('message', '')}"
+            for condition in conditions
+        )
     else:
         lines.append("  No conditions reported.")
 
@@ -66,13 +69,20 @@ def _collect_llmisvc_diagnostics(llmisvc: LLMInferenceService) -> str:
     try:
         _, stdout, _ = run_command(
             command=[
-                "oc", "get", "events", "-n", llmisvc.namespace,
-                "--field-selector", f"involvedObject.name={llmisvc.name}",
+                "oc",
+                "get",
+                "events",
+                "-n",
+                llmisvc.namespace,
+                "--field-selector",
+                f"involvedObject.name={llmisvc.name}",
                 "--sort-by=.lastTimestamp",
-                "-o", "custom-columns=TYPE:.type,REASON:.reason,MESSAGE:.message",
+                "-o",
+                "custom-columns=TYPE:.type,REASON:.reason,MESSAGE:.message",
                 "--no-headers",
             ],
-            verify_stderr=False, check=False,
+            verify_stderr=False,
+            check=False,
         )
         if stdout.strip():
             lines.append("  Recent events:")
@@ -155,12 +165,20 @@ def _curl_post(
 ) -> tuple[int, str]:
     """POST to URL via curl. Returns (status_code, response_body)."""
     cmd = [
-        "curl", "-s", "-w", "\n%{http_code}",
-        "-X", "POST",
-        "-H", "Content-Type: application/json",
-        "-H", "Accept: application/json",
-        "-d", body,
-        "--max-time", str(timeout),
+        "curl",
+        "-s",
+        "-w",
+        "\n%{http_code}",
+        "-X",
+        "POST",
+        "-H",
+        "Content-Type: application/json",
+        "-H",
+        "Accept: application/json",
+        "-d",
+        body,
+        "--max-time",
+        str(timeout),
     ]
     if token:
         cmd.extend(["-H", f"Authorization: Bearer {token}"])
@@ -172,9 +190,7 @@ def _curl_post(
 
     _log_curl_command(url=url, body=body, token=bool(token), ca_cert=ca_cert)
 
-    _, stdout, stderr = run_command(
-        command=cmd, verify_stderr=False, check=False, hide_log_command=True
-    )
+    _, stdout, stderr = run_command(command=cmd, verify_stderr=False, check=False, hide_log_command=True)
     if not stdout.strip():
         raise ConnectionError(f"curl failed with no output: {stderr}")
 
@@ -206,10 +222,7 @@ def send_chat_completions(
 
     border = "=" * 60
     LOGGER.info(
-        f"\n{border}\n  Sending inference request: {llmisvc.name}"
-        f"\n  URL: {url}"
-        f"\n  Model: {model_name}"
-        f"\n{border}"
+        f"\n{border}\n  Sending inference request: {llmisvc.name}\n  URL: {url}\n  Model: {model_name}\n{border}"
     )
     status_code, response_body = _curl_post(url, body, token=token, ca_cert=ca_cert)
     LOGGER.info(f"Inference response — status={status_code}\n{response_body}")
@@ -258,7 +271,6 @@ def _check_pod_failure(pod: Pod) -> str | None:
     if phase in (pod.Status.CRASH_LOOPBACK_OFF, pod.Status.FAILED):
         return phase
     return None
-
 
 
 def assert_no_restarts(pods: list[Pod]) -> None:
@@ -361,7 +373,6 @@ def get_llmd_router_scheduler_pod(
     return None
 
 
-
 def query_metric_by_pod(
     prometheus: Prometheus,
     metric_name: str,
@@ -389,9 +400,7 @@ def assert_prefix_cache_routing(
     LOGGER.info(f"Request count by pod: {requests}")
 
     pods_with_traffic = [p for p, count in requests.items() if count > 0]
-    assert len(pods_with_traffic) == 1, (
-        f"Expected traffic on exactly 1 pod, got {len(pods_with_traffic)}: {requests}"
-    )
+    assert len(pods_with_traffic) == 1, f"Expected traffic on exactly 1 pod, got {len(pods_with_traffic)}: {requests}"
 
     active_pod = pods_with_traffic[0]
     assert requests[active_pod] == expected_requests, (
@@ -412,9 +421,7 @@ def assert_prefix_cache_routing(
 def assert_scheduler_routing(router_pod: Pod, min_decisions: int) -> bool:
     """Assert scheduler made enough routing decisions. Retries for log propagation."""
     logs = get_scheduler_decision_logs(router_scheduler_pod=router_pod)
-    assert len(logs) >= min_decisions, (
-        f"Expected >= {min_decisions} scheduler decisions, got {len(logs)}"
-    )
+    assert len(logs) >= min_decisions, f"Expected >= {min_decisions} scheduler decisions, got {len(logs)}"
     return True
 
 
@@ -430,17 +437,13 @@ def send_prefix_cache_requests(
     successful = 0
     for i in range(count):
         try:
-            status, _ = send_chat_completions(
-                llmisvc, prompt=prompt, token=token, insecure=False
-            )
+            status, _ = send_chat_completions(llmisvc, prompt=prompt, token=token, insecure=False)
             if status == 200:
                 successful += 1
         except Exception as e:  # noqa: BLE001
             LOGGER.error(f"Request {i + 1}/{count} failed: {e}")
     LOGGER.info(f"{successful}/{count} requests succeeded")
-    assert successful >= count * min_ratio, (
-        f"Too many failures: {successful}/{count} (need {min_ratio * 100}%)"
-    )
+    assert successful >= count * min_ratio, f"Too many failures: {successful}/{count} (need {min_ratio * 100}%)"
     return successful
 
 
@@ -475,5 +478,3 @@ def get_scheduler_decision_logs(
 
     LOGGER.info(f"Retrieved {len(json_logs)} logs from router-scheduler pod")
     return json_logs
-
-

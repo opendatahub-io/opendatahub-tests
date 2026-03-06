@@ -109,7 +109,10 @@ class CpuConfig(LLMISvcConfig):
         # --max-model-len 128
         # --enforce-eager
         return super().container_env() + [
-            {"name": "VLLM_ADDITIONAL_ARGS", "value": "--max-num-seqs 20 --max-model-len 128 --enforce-eager --ssl-ciphers ECDHE+AESGCM:DHE+AESGCM"},
+            {
+                "name": "VLLM_ADDITIONAL_ARGS",
+                "value": "--max-num-seqs 20 --max-model-len 128 --enforce-eager --ssl-ciphers ECDHE+AESGCM:DHE+AESGCM",
+            },
             {"name": "VLLM_CPU_KVCACHE_SPACE", "value": "4"},
         ]
 
@@ -138,4 +141,3 @@ class GpuConfig(LLMISvcConfig):
                 "nvidia.com/gpu": ResourceLimits.GPU.REQUEST,
             },
         }
-

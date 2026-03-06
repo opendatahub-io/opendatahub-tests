@@ -31,9 +31,7 @@ class TestLLMISVCAuth:
         expected = "rome"
 
         for entry in llmisvc_with_auth:
-            status, body = send_chat_completions(
-                entry["service"], prompt=prompt, token=entry["token"], insecure=False
-            )
+            status, body = send_chat_completions(entry["service"], prompt=prompt, token=entry["token"], insecure=False)
             assert status == 200, f"Authorized request failed with {status}: {body}"
             completion = parse_completion_text(body)
             assert expected in completion.lower(), f"Expected '{expected}' in response, got: {completion}"

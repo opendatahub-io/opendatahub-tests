@@ -105,9 +105,7 @@ class PrecisePrefixCacheConfig(QwenHfConfig):
                 {"name": "zmq", "containerPort": 5557, "protocol": "TCP"},
             ],
             "env": [{"name": "HF_HOME", "value": "/mnt/tokenizers"}],
-            "volumeMounts": [
-                {"name": "tokenizers", "mountPath": "/mnt/tokenizers", "readOnly": False}
-            ],
+            "volumeMounts": [{"name": "tokenizers", "mountPath": "/mnt/tokenizers", "readOnly": False}],
             "args": [
                 "--v=4",
                 "--pool-name",
