@@ -176,8 +176,8 @@ class TestEvalHubProviders:
         evalhub_ca_bundle_file: str,
         evalhub_route: Route,
     ) -> None:
-        """Verify that requesting a non-existent provider ID returns an HTTP error."""
-        with pytest.raises(requests.exceptions.HTTPError):
+        """Verify that requesting a non-existent provider ID returns 404."""
+        with pytest.raises(requests.exceptions.HTTPError) as excinfo:
             get_evalhub_provider(
                 host=evalhub_route.host,
                 token=evalhub_scoped_token,
@@ -185,6 +185,7 @@ class TestEvalHubProviders:
                 provider_id="nonexistent-provider-id",
                 tenant=model_namespace.name,
             )
+        assert excinfo.value.response.status_code == 404
 
 
 @pytest.mark.parametrize(
