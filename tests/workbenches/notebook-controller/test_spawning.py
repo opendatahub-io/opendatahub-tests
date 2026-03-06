@@ -22,7 +22,7 @@ class TestNotebook:
                     "namespace": "test-odh-notebook",
                     "name": "test-odh-notebook",
                 },
-                {"timeout": Timeout.TIMEOUT_5MIN},
+                {"timeout": Timeout.TIMEOUT_2MIN},
             )
         ],
         indirect=True,
@@ -59,7 +59,7 @@ class TestNotebook:
                         "notebooks.opendatahub.io/auth-sidecar-memory-limit": "256Mi",
                     },
                 },
-                {"timeout": Timeout.TIMEOUT_5MIN},
+                {"timeout": Timeout.TIMEOUT_2MIN},
             )
         ],
         indirect=True,
