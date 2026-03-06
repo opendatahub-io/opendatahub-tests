@@ -35,7 +35,7 @@ class TestMultipleSubscriptionsPerModel:
     Validates behavior when multiple subscriptions exist for the same model.
     """
 
-    @pytest.mark.sanity
+    @pytest.mark.smoke
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
     def test_user_in_one_of_two_subscriptions_can_access_model(
         self,
@@ -44,8 +44,8 @@ class TestMultipleSubscriptionsPerModel:
         maas_free_group: str,
         maas_model_tinyllama_free,
         model_url_tinyllama_free: str,
-        ocp_token_for_actor: str,
         maas_subscription_tinyllama_free,
+        maas_headers_for_actor_api_key: dict[str, str],
     ) -> None:
         """
         Create a second subscription for a different group the user is NOT in.
@@ -66,7 +66,7 @@ class TestMultipleSubscriptionsPerModel:
         ) as extra_subscription:
             extra_subscription.wait_for_condition(condition="Ready", status="True", timeout=300)
 
-            headers = build_maas_headers(token=ocp_token_for_actor)
+            headers = dict(maas_headers_for_actor_api_key)
             payload = chat_payload_for_url(model_url=model_url_tinyllama_free)
 
             explicit_headers = dict(headers)
@@ -90,7 +90,7 @@ class TestMultipleSubscriptionsPerModel:
                 f"{(response.text or '')[:200]}"
             )
 
-    @pytest.mark.sanity
+    @pytest.mark.smoke
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
     def test_high_priority_subscription_allows_access_when_explicitly_selected(
         self,
@@ -99,8 +99,9 @@ class TestMultipleSubscriptionsPerModel:
         maas_free_group: str,
         maas_model_tinyllama_free,
         model_url_tinyllama_free: str,
-        ocp_token_for_actor: str,
+        # ocp_token_for_actor: str,
         maas_subscription_tinyllama_free,
+        maas_headers_for_actor_api_key: dict[str, str],
     ) -> None:
         """
         Create a second (higher priority) subscription for the same group + model.
@@ -122,7 +123,7 @@ class TestMultipleSubscriptionsPerModel:
         ) as high_tier_subscription:
             high_tier_subscription.wait_for_condition(condition="Ready", status="True", timeout=300)
 
-            headers = build_maas_headers(token=ocp_token_for_actor)
+            headers = dict(maas_headers_for_actor_api_key)
             payload = chat_payload_for_url(model_url=model_url_tinyllama_free)
 
             explicit_headers = dict(headers)
@@ -141,7 +142,7 @@ class TestMultipleSubscriptionsPerModel:
                 f"got {response.status_code}: {(response.text or '')[:200]}"
             )
 
-    @pytest.mark.sanity
+    @pytest.mark.smoke
     def test_service_account_cannot_use_subscription_it_does_not_belong_to(
         self,
         request_session_http: requests.Session,
