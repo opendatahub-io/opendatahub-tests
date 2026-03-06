@@ -2,6 +2,7 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+import requests
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.namespace import Namespace
@@ -10,9 +11,11 @@ from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 
 from tests.model_serving.model_server.maas_billing.maas_subscription.utils import (
+    create_api_key,
     patch_llmisvc_with_maas_router_and_tiers,
 )
 from tests.model_serving.model_server.maas_billing.utils import build_maas_headers
+from utilities.general import generate_random_name
 from utilities.infra import create_inference_token, login_with_user_password
 from utilities.llmd_constants import ContainerImages, ModelStorage
 from utilities.llmd_utils import create_llmisvc
@@ -253,6 +256,51 @@ def model_url_tinyllama_premium(
     url = f"{maas_scheme}://{maas_host}/llm/{deployment_name}{CHAT_COMPLETIONS}"
     LOGGER.info("MaaS: constructed model_url=%s (deployment=%s)", url, deployment_name)
     return url
+
+
+@pytest.fixture(scope="class")
+def maas_api_key_for_actor(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_token_for_actor: str,
+    maas_controller_enabled_latest: None,
+    maas_gateway_api: None,
+    maas_api_gateway_reachable: None,
+) -> str:
+    """
+    Create an API key for the current actor (admin/free/premium).
+
+    Flow:
+    - Use OpenShift token (ocp_token_for_actor) to create an API key via MaaS API.
+    - Use the plaintext API key for gateway inference: Authorization: Bearer <sk-...>.
+    """
+    api_key_name = f"odh-sub-tests-{generate_random_name()}"
+
+    response, body = create_api_key(
+        base_url=base_url,
+        ocp_user_token=ocp_token_for_actor,
+        request_session_http=request_session_http,
+        api_key_name=api_key_name,
+        request_timeout_seconds=60,
+    )
+
+    LOGGER.info(f"MaaS subscription: create api-key name={api_key_name} status={response.status_code}")
+
+    assert response.status_code in (200, 201), f"api-key create failed: status={response.status_code}"
+
+    api_key = body.get("key", "")
+    assert isinstance(api_key, str) and api_key.startswith("sk-"), "No plaintext api key returned in MaaS API response"
+
+    LOGGER.info(f"MaaS subscription: api-key created successfully name={api_key_name}")
+    return api_key
+
+
+@pytest.fixture(scope="class")
+def maas_headers_for_actor_api_key(maas_api_key_for_actor: str) -> dict[str, str]:
+    """
+    Headers for gateway inference using API key (new implementation).
+    """
+    return build_maas_headers(token=maas_api_key_for_actor)
 
 
 @pytest.fixture(scope="class")

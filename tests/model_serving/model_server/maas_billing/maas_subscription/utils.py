@@ -12,6 +12,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.resource import ResourceEditor
 from pytest_testconfig import config as py_config
+from requests import Response
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
@@ -168,3 +169,48 @@ def create_maas_subscription(
         teardown=teardown,
         wait_for_resource=wait_for_resource,
     )
+
+
+def maas_auth_headers_for_ocp_token(ocp_user_token: str) -> dict[str, str]:
+    """
+    Authorization header for MaaS API calls using an OpenShift user token.
+    (Used for API key creation.)
+    """
+    return {"Authorization": f"Bearer {ocp_user_token}"}
+
+
+def create_api_key(
+    *,
+    base_url: str,
+    ocp_user_token: str,
+    request_session_http: requests.Session,
+    api_key_name: str,
+    request_timeout_seconds: int = 60,
+) -> tuple[Response, dict[str, Any]]:
+    """
+    Create an API key via MaaS API and return (response, parsed_body).
+
+    Uses ocp_user_token for auth against maas-api.
+    Expects plaintext key in body["key"] (sk-...).
+    """
+    api_keys_url = f"{base_url}/v1/api-keys"
+
+    response = request_session_http.post(
+        url=api_keys_url,
+        headers={
+            **maas_auth_headers_for_ocp_token(ocp_user_token=ocp_user_token),
+            "Content-Type": "application/json",
+        },
+        json={"name": api_key_name},
+        timeout=request_timeout_seconds,
+    )
+
+    LOGGER.info(f"create_api_key: url={api_keys_url} status={response.status_code} body={response.text}")
+
+    try:
+        parsed_body: dict[str, Any] = json.loads(response.text)
+    except json.JSONDecodeError:
+        LOGGER.error(f"Unable to parse API key response: {response.text}")
+        parsed_body = {}
+
+    return response, parsed_body
