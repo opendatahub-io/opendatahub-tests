@@ -151,6 +151,9 @@ class TestEvalHubProviders:
             ca_bundle_file=evalhub_ca_bundle_file,
             tenant=model_namespace.name,
         )
+        assert providers.get("items") and len(providers["items"]) > 0, (
+            "No providers registered; cannot test single-provider retrieval"
+        )
         first_provider_id = providers["items"][0]["resource"]["id"]
 
         data = get_evalhub_provider(
