@@ -98,9 +98,7 @@ class TestKserveTokenAuthenticationRawForRest:
         indirect=True,
     )
     @pytest.mark.dependency(name="test_cross_model_authentication_raw")
-    def test_cross_model_authentication_raw(
-        self, http_s3_ovms_raw_inference_service_2, http_raw_inference_token
-    ):
+    def test_cross_model_authentication_raw(self, http_s3_ovms_raw_inference_service_2, http_raw_inference_token):
         """Verify model with another model token"""
         verify_inference_response(
             inference_service=http_s3_ovms_raw_inference_service_2,
