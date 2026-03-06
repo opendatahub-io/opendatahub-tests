@@ -59,7 +59,7 @@ class TrustyAIServiceClient:
         self.service_route = Route(
             client=client, namespace=service.namespace, name=TRUSTYAI_SERVICE_NAME, ensure_exists=True
         )
-        self.cert_path = create_ca_bundle_file(client=client, ca_type="openshift")
+        self.cert_path = create_ca_bundle_file(client=client)
 
     def _get_metric_base_url(self, metric_name: str) -> str:
         """Gets base URL for a given metric type (fairness or drift).
