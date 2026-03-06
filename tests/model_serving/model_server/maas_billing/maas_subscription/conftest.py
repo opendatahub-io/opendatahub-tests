@@ -1,7 +1,3 @@
-# temporary
-from collections.abc import Generator
-from typing import Any
-
 import pytest
 import requests
 from kubernetes.dynamic import DynamicClient
