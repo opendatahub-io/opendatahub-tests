@@ -28,6 +28,7 @@ def _get_router_cert_secret_name(client: DynamicClient) -> str:
         client=client,
         name="default",
         namespace="openshift-ingress-operator",
+        ensure_exists=True,
     )
     default_cert = ingress_controller.instance.spec.get("defaultCertificate", {})
     secret_name = default_cert.get("name", "router-certs-default")

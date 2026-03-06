@@ -1,3 +1,4 @@
+import shlex
 from collections.abc import Generator
 from typing import Any
 
@@ -5,9 +6,13 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
+from ocp_resources.role_binding import RoleBinding
 from ocp_resources.route import Route
+from ocp_resources.service_account import ServiceAccount
+from pyhelper_utils.shell import run_command
 from simple_logger.logger import get_logger
 
+from tests.model_explainability.evalhub.constants import EVALHUB_PROVIDERS_ACCESS_CLUSTER_ROLE
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import Timeout
 from utilities.resources.evalhub import EvalHub
@@ -67,3 +72,74 @@ def evalhub_ca_bundle_file(
 ) -> str:
     """Create a CA bundle file for verifying the EvalHub route TLS certificate."""
     return create_ca_bundle_file(client=admin_client)
+
+
+@pytest.fixture(scope="class")
+def evalhub_scoped_sa(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    evalhub_deployment: Deployment,
+) -> Generator[ServiceAccount, Any, Any]:
+    """ServiceAccount with providers access in the test namespace."""
+    with ServiceAccount(
+        client=admin_client,
+        name="evalhub-test-user",
+        namespace=model_namespace.name,
+    ) as sa:
+        yield sa
+
+
+@pytest.fixture(scope="class")
+def evalhub_providers_role_binding(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    evalhub_scoped_sa: ServiceAccount,
+) -> Generator[RoleBinding, Any, Any]:
+    """RoleBinding granting the scoped SA providers access via the ClusterRole."""
+    with RoleBinding(
+        client=admin_client,
+        name="evalhub-test-providers-access",
+        namespace=model_namespace.name,
+        role_ref_kind="ClusterRole",
+        role_ref_name=EVALHUB_PROVIDERS_ACCESS_CLUSTER_ROLE,
+        subjects_kind="ServiceAccount",
+        subjects_name=evalhub_scoped_sa.name,
+    ) as rb:
+        yield rb
+
+
+@pytest.fixture(scope="class")
+def evalhub_scoped_token(
+    evalhub_scoped_sa: ServiceAccount,
+    model_namespace: Namespace,
+) -> str:
+    """Short-lived token for the scoped ServiceAccount."""
+    return run_command(
+        shlex.split(f"oc create token -n {model_namespace.name} {evalhub_scoped_sa.name} --duration=30m")
+    )[1].strip()
+
+
+@pytest.fixture(scope="class")
+def evalhub_unauthorised_sa(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    evalhub_deployment: Deployment,
+) -> Generator[ServiceAccount, Any, Any]:
+    """ServiceAccount without any EvalHub RBAC in the test namespace."""
+    with ServiceAccount(
+        client=admin_client,
+        name="evalhub-no-access-user",
+        namespace=model_namespace.name,
+    ) as sa:
+        yield sa
+
+
+@pytest.fixture(scope="class")
+def evalhub_unauthorised_token(
+    evalhub_unauthorised_sa: ServiceAccount,
+    model_namespace: Namespace,
+) -> str:
+    """Short-lived token for the unauthorised ServiceAccount."""
+    return run_command(
+        shlex.split(f"oc create token -n {model_namespace.name} {evalhub_unauthorised_sa.name} --duration=30m")
+    )[1].strip()

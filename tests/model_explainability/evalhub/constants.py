@@ -12,3 +12,6 @@ EVALHUB_API_GROUP: str = "trustyai.opendatahub.io"
 EVALHUB_API_VERSION: str = "v1alpha1"
 EVALHUB_KIND: str = "EvalHub"
 EVALHUB_PLURAL: str = "evalhubs"
+
+# RBAC ClusterRole names (must match operator config/rbac/evalhub/ YAML files)
+EVALHUB_PROVIDERS_ACCESS_CLUSTER_ROLE: str = "trustyai-service-operator-evalhub-providers-access"
