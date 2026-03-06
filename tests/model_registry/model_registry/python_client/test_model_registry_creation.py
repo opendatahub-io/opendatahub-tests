@@ -65,7 +65,7 @@ class TestModelRegistryCreation:
         if errors:
             pytest.fail("errors found in model registry response validation:\n{}".format("\n".join(errors)))
 
-    @pytest.mark.sanity
+    @pytest.mark.tier1
     def test_model_registry_operator_env(
         self,
         model_registry_namespace: str,
@@ -80,7 +80,7 @@ class TestModelRegistryCreation:
         if not namespace_env:
             pytest.fail("Missing environment variable REGISTRIES_NAMESPACE")
 
-    @pytest.mark.sanity
+    @pytest.mark.tier1
     def test_model_registry_grpc_container_removal(self, model_registry_deployment_containers: list[dict[str, Any]]):
         """
         RHOAIENG-26239: Test to ensure removal of grpc container from model registry deployment
@@ -91,7 +91,7 @@ class TestModelRegistryCreation:
         """
         validate_no_grpc_container(deployment_containers=model_registry_deployment_containers)
 
-    @pytest.mark.sanity
+    @pytest.mark.tier1
     def test_model_registry_pod_log_mlmd_removal(
         self, model_registry_deployment_containers: list[dict[str, Any]], model_registry_pod: Pod
     ):
@@ -117,7 +117,7 @@ class TestModelRegistryCreation:
             ),
         ],
     )
-    @pytest.mark.sanity
+    @pytest.mark.tier1
     def test_model_registry_endpoint_response(
         self, model_registry_rest_url: list[str], model_registry_rest_headers: dict[str, str], endpoint: str
     ):
