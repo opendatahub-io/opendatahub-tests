@@ -3,9 +3,8 @@ from ocp_resources.resource import ResourceEditor
 
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import Annotations, Protocols
-from utilities.inference_utils import Inference, UserInference
+from utilities.inference_utils import Inference
 from utilities.infra import check_pod_status_in_time, get_pods_by_isvc_label
-from utilities.jira import is_jira_open
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 pytestmark = pytest.mark.usefixtures("valid_aws_config")
@@ -50,7 +49,6 @@ class TestKserveTokenAuthenticationRawForRest:
         )
 
     @pytest.mark.sanity
-    @pytest.mark.jira("RHOAIENG-19275", run=False)
     def test_raw_disable_enable_authentication_no_pod_rollout(self, http_s3_ovms_raw_inference_service):
         """Verify no pod rollout when disabling and enabling authentication"""
         pod = get_pods_by_isvc_label(
@@ -100,38 +98,14 @@ class TestKserveTokenAuthenticationRawForRest:
         indirect=True,
     )
     @pytest.mark.dependency(name="test_cross_model_authentication_raw")
-    def test_cross_model_authentication_raw(
-        self, http_s3_ovms_raw_inference_service_2, http_raw_inference_token, admin_client
-    ):
+    def test_cross_model_authentication_raw(self, http_s3_ovms_raw_inference_service_2, http_raw_inference_token):
         """Verify model with another model token"""
-        if is_jira_open(jira_id="RHOAIENG-19645", admin_client=admin_client):
-            inference = UserInference(
-                inference_service=http_s3_ovms_raw_inference_service_2,
-                inference_config=ONNX_INFERENCE_CONFIG,
-                inference_type=Inference.INFER,
-                protocol=Protocols.HTTPS,
-            )
-
-            res = inference.run_inference_flow(
-                model_name=http_s3_ovms_raw_inference_service_2.name,
-                use_default_query=True,
-                token=http_raw_inference_token,
-                insecure=False,
-            )
-            output = res.get("output", res)
-            if isinstance(output, dict):
-                output = str(output)
-            status_line = output.splitlines()[0]
-            # Updated: Now expecting 403 Forbidden for cross-model authentication
-            # (token from service 1 cannot access service 2)
-            assert "403 Forbidden" in status_line, f"Expected '403 Forbidden' in status line, got: {status_line}"
-        else:
-            verify_inference_response(
-                inference_service=http_s3_ovms_raw_inference_service_2,
-                inference_config=ONNX_INFERENCE_CONFIG,
-                inference_type=Inference.INFER,
-                protocol=Protocols.HTTPS,
-                use_default_query=True,
-                token=http_raw_inference_token,
-                authorized_user=False,
-            )
+        verify_inference_response(
+            inference_service=http_s3_ovms_raw_inference_service_2,
+            inference_config=ONNX_INFERENCE_CONFIG,
+            inference_type=Inference.INFER,
+            protocol=Protocols.HTTPS,
+            use_default_query=True,
+            token=http_raw_inference_token,
+            authorized_user=False,
+        )
