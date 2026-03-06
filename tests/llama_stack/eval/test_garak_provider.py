@@ -1,9 +1,8 @@
-import llama_stack_client
 import pytest
 
 from tests.llama_stack.constants import LlamaStackProviders
 from tests.llama_stack.eval.utils import wait_for_eval_job_completion
-from utilities.constants import MinIo, QWEN_MODEL_NAME
+from utilities.constants import QWEN_MODEL_NAME, MinIo
 
 GARAK_REMOTE_BENCHMARK_ID = "trustyai_garak::prompt_injection"
 
