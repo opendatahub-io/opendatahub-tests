@@ -1,3 +1,6 @@
+from collections.abc import Generator
+from typing import Any
+
 import pytest
 import requests
 from kubernetes.dynamic import DynamicClient
@@ -281,21 +284,14 @@ def maas_api_key_for_actor(
         request_timeout_seconds=60,
     )
 
-    LOGGER.info(
-        f"MaaS subscription: create api-key name={api_key_name} "
-        f"status={response.status_code} body={(response.text or '')[:200]}"
-    )
+    LOGGER.info(f"MaaS subscription: create api-key name={api_key_name} status={response.status_code}")
 
-    assert response.status_code in (200, 201), (
-        f"api-key create failed: status={response.status_code} body={(response.text or '')[:200]}"
-    )
+    assert response.status_code in (200, 201), f"api-key create failed: status={response.status_code}"
 
     api_key = body.get("key", "")
-    assert isinstance(api_key, str) and api_key.startswith("sk-"), (
-        f"No plaintext api key returned in body['key']; body={body}"
-    )
+    assert isinstance(api_key, str) and api_key.startswith("sk-"), "No plaintext api key returned in MaaS API response"
 
-    LOGGER.info(f"MaaS subscription: created api-key name={api_key_name} key_prefix={api_key[:8]}")
+    LOGGER.info(f"MaaS subscription: api-key created successfully name={api_key_name}")
     return api_key
 
 
