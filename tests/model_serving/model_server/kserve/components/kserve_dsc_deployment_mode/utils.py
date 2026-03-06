@@ -25,9 +25,7 @@ def wait_for_default_deployment_mode_in_cm(config_map: ConfigMap, deployment_mod
         TimeoutExpiredError: If default deployment mode value is not set in configmap
 
     """
-    LOGGER.info(
-        f"Wait for {{request_default_deployment_mode}} deployment mode to be set in {config_map.name} configmap"
-    )
+    LOGGER.info(f"Wait for {deployment_mode} deployment mode to be set in {config_map.name} configmap")
     for sample in TimeoutSampler(
         wait_timeout=Timeout.TIMEOUT_5MIN,
         sleep=5,
