@@ -4,6 +4,7 @@ from functools import cache
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.ingress_controller import IngressController
 from ocp_resources.secret import Secret
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
@@ -16,9 +17,30 @@ from utilities.infra import is_managed_cluster
 LOGGER = get_logger(name=__name__)
 
 
+def _get_router_cert_secret_name(client: DynamicClient) -> str:
+    """
+    Get the router certificate secret name from the default IngressController.
+
+    If a custom certificate is configured via spec.defaultCertificate, returns that
+    secret name. Otherwise falls back to "router-certs-default".
+    """
+    ingress_controller = IngressController(
+        client=client,
+        name="default",
+        namespace="openshift-ingress-operator",
+    )
+    default_cert = ingress_controller.instance.spec.get("defaultCertificate", {})
+    secret_name = default_cert.get("name", "router-certs-default")
+    LOGGER.info(f"Using router certificate secret: {secret_name}")
+    return secret_name
+
+
 def create_ca_bundle_file(client: DynamicClient) -> str:
     """
-    Creates a ca bundle file from a secret
+    Creates a ca bundle file from the router certificate secret.
+
+    Queries the default IngressController to determine the correct secret name,
+    supporting both default and custom ingress certificates.
 
     Args:
         client (DynamicClient): DynamicClient object
@@ -26,12 +48,13 @@ def create_ca_bundle_file(client: DynamicClient) -> str:
         str: The path to the ca bundle file.
 
     Raises:
-        AttributeError: If the router-certs-default secret does not exist in the cluster.
+        NotFoundError: If the router certificate secret does not exist in the cluster.
     """
+    secret_name = _get_router_cert_secret_name(client=client)
 
     certs_secret = Secret(
         client=client,
-        name="router-certs-default",
+        name=secret_name,
         namespace="openshift-ingress",
     )
 
