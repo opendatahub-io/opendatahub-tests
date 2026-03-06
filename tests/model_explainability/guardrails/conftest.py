@@ -107,7 +107,7 @@ def prompt_injection_detector_route(
 def openshift_ca_bundle_file(
     admin_client: DynamicClient,
 ) -> str:
-    return create_ca_bundle_file(client=admin_client, ca_type="openshift")
+    return create_ca_bundle_file(client=admin_client)
 
 
 @pytest.fixture(scope="class")

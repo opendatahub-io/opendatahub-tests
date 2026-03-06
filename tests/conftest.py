@@ -690,9 +690,7 @@ def prometheus(admin_client: DynamicClient) -> Prometheus:
     return Prometheus(
         client=admin_client,
         resource_name="thanos-querier",
-        verify_ssl=create_ca_bundle_file(
-            client=admin_client, ca_type="openshift"
-        ),  # TODO: Verify SSL with appropriate certs
+        verify_ssl=create_ca_bundle_file(client=admin_client),  # TODO: Verify SSL with appropriate certs
         bearer_token=get_openshift_token(),
     )
 
