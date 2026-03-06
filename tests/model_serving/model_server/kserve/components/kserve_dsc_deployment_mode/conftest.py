@@ -15,7 +15,7 @@ from pytest_testconfig import config as py_config
 from tests.model_serving.model_server.kserve.components.kserve_dsc_deployment_mode.utils import (
     patch_dsc_default_deployment_mode,
 )
-from utilities.constants import ModelAndFormat
+from utilities.constants import Labels, ModelAndFormat
 from utilities.inference_utils import create_isvc
 
 
@@ -58,6 +58,7 @@ def ovms_inference_service(
         storage_key=ci_endpoint_s3_secret.name,
         model_format=ModelAndFormat.OPENVINO_IR,
         model_version=request.param["model-version"],
+        labels={Labels.Kserve.NETWORKING_KSERVE_IO: Labels.Kserve.EXPOSED},
         wait_for_predictor_pods=False,
     ) as isvc:
         yield isvc
