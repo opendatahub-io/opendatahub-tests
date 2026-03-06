@@ -106,15 +106,9 @@ class TestEvalHubProviders:
         for provider in data["items"]:
             provider_name = provider.get("name", "unknown")
             for benchmark in provider.get("benchmarks", []):
-                assert "id" in benchmark, (
-                    f"Benchmark in provider '{provider_name}' missing 'id'"
-                )
-                assert "name" in benchmark, (
-                    f"Benchmark in provider '{provider_name}' missing 'name'"
-                )
-                assert "category" in benchmark, (
-                    f"Benchmark in provider '{provider_name}' missing 'category'"
-                )
+                assert "id" in benchmark, f"Benchmark in provider '{provider_name}' missing 'id'"
+                assert "name" in benchmark, f"Benchmark in provider '{provider_name}' missing 'name'"
+                assert "category" in benchmark, f"Benchmark in provider '{provider_name}' missing 'category'"
 
     def test_lm_evaluation_harness_provider_exists(
         self,
@@ -137,9 +131,7 @@ class TestEvalHubProviders:
             f"Expected 'lm_evaluation_harness' in providers, got: {provider_ids}"
         )
 
-        lmeval_provider = next(
-            p for p in data["items"] if p["resource"]["id"] == "lm_evaluation_harness"
-        )
+        lmeval_provider = next(p for p in data["items"] if p["resource"]["id"] == "lm_evaluation_harness")
         assert len(lmeval_provider["benchmarks"]) > 0, (
             "lm_evaluation_harness provider should have at least one benchmark"
         )
