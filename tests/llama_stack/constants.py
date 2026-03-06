@@ -20,6 +20,7 @@ class LlamaStackProviders:
         TRUSTYAI_LMEVAL = "trustyai_lmeval"
         TRUSTYAI_RAGAS_INLINE = "trustyai_ragas_inline"
         TRUSTYAI_RAGAS_REMOTE = "trustyai_ragas_remote"
+        TRUSTYAI_GARAK_REMOTE = "trustyai_garak_remote"
 
 
 class ModelInfo(NamedTuple):
