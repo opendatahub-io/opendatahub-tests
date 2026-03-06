@@ -18,8 +18,8 @@ from utilities.llmd_constants import ContainerImages, ModelStorage
 from utilities.llmd_utils import create_llmisvc
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.resources.maa_s_auth_policy import MaaSAuthPolicy
-from utilities.resources.maa_s_model import MaaSModel
 from utilities.resources.maa_s_subscription import MaaSSubscription
+from utilities.resources.maas_model_ref import MaaSModelRef
 
 LOGGER = get_logger(name=__name__)
 
@@ -86,10 +86,10 @@ def maas_inference_service_tinyllama_premium(
 def maas_model_tinyllama_free(
     admin_client: DynamicClient,
     maas_inference_service_tinyllama_free: LLMInferenceService,
-) -> Generator[MaaSModel]:
+) -> Generator[MaaSModelRef]:
     applications_namespace = py_config["applications_namespace"]
 
-    with MaaSModel(
+    with MaaSModelRef(
         client=admin_client,
         name=maas_inference_service_tinyllama_free.name,
         namespace=applications_namespace,
@@ -108,10 +108,10 @@ def maas_model_tinyllama_free(
 def maas_model_tinyllama_premium(
     admin_client: DynamicClient,
     maas_inference_service_tinyllama_premium: LLMInferenceService,
-) -> Generator[MaaSModel]:
+) -> Generator[MaaSModelRef]:
     applications_namespace = py_config["applications_namespace"]
 
-    with MaaSModel(
+    with MaaSModelRef(
         client=admin_client,
         name=maas_inference_service_tinyllama_premium.name,
         namespace=applications_namespace,
@@ -130,7 +130,7 @@ def maas_model_tinyllama_premium(
 def maas_auth_policy_tinyllama_free(
     admin_client: DynamicClient,
     maas_free_group: str,
-    maas_model_tinyllama_free: MaaSModel,
+    maas_model_tinyllama_free: MaaSModelRef,
 ) -> Generator[MaaSAuthPolicy]:
     applications_namespace = py_config["applications_namespace"]
 
@@ -155,7 +155,7 @@ def maas_auth_policy_tinyllama_free(
 def maas_auth_policy_tinyllama_premium(
     admin_client: DynamicClient,
     maas_premium_group: str,
-    maas_model_tinyllama_premium: MaaSModel,
+    maas_model_tinyllama_premium: MaaSModelRef,
 ) -> Generator[MaaSAuthPolicy]:
     applications_namespace = py_config["applications_namespace"]
 
@@ -177,7 +177,7 @@ def maas_auth_policy_tinyllama_premium(
 def maas_subscription_tinyllama_free(
     admin_client: DynamicClient,
     maas_free_group: str,
-    maas_model_tinyllama_free: MaaSModel,
+    maas_model_tinyllama_free: MaaSModelRef,
 ) -> Generator[MaaSSubscription]:
     applications_namespace = py_config["applications_namespace"]
 
@@ -206,7 +206,7 @@ def maas_subscription_tinyllama_free(
 def maas_subscription_tinyllama_premium(
     admin_client: DynamicClient,
     maas_premium_group: str,
-    maas_model_tinyllama_premium: MaaSModel,
+    maas_model_tinyllama_premium: MaaSModelRef,
 ) -> Generator[MaaSSubscription]:
     applications_namespace = py_config["applications_namespace"]
 

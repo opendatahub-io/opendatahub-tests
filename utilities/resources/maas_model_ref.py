@@ -6,15 +6,13 @@ from typing import Any
 from ocp_resources.exceptions import MissingRequiredArgumentError
 from ocp_resources.resource import NamespacedResource
 
-from utilities.constants import ApiGroups
 
-
-class MaaSModel(NamespacedResource):
+class MaaSModelRef(NamespacedResource):
     """
-    MaaSModel is the Schema for the maasmodels API
+    MaaSModelRef is the Schema for the maasmodelrefs API
     """
 
-    api_group: str = ApiGroups.MAAS_IO
+    api_group: str = NamespacedResource.ApiGroup.MAAS_OPENDATAHUB_IO
 
     def __init__(
         self,
