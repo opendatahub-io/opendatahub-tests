@@ -116,7 +116,7 @@ def evalhub_scoped_token(
 ) -> str:
     """Short-lived token for the scoped ServiceAccount."""
     return run_command(
-        shlex.split(f"oc create token -n {model_namespace.name} {evalhub_scoped_sa.name} --duration=30m")
+        command=shlex.split(f"oc create token -n {model_namespace.name} {evalhub_scoped_sa.name} --duration=30m")
     )[1].strip()
 
 
@@ -159,5 +159,5 @@ def evalhub_unauthorised_token(
 ) -> str:
     """Short-lived token for the unauthorised ServiceAccount."""
     return run_command(
-        shlex.split(f"oc create token -n {model_namespace.name} {evalhub_unauthorised_sa.name} --duration=30m")
+        command=shlex.split(f"oc create token -n {model_namespace.name} {evalhub_unauthorised_sa.name} --duration=30m")
     )[1].strip()
