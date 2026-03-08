@@ -74,7 +74,8 @@ class TestEvalHubProviders:
         )
 
         lmeval_provider = next(
-            provider for provider in evalhub_providers_response["items"]
+            provider
+            for provider in evalhub_providers_response["items"]
             if provider["resource"]["id"] == "lm_evaluation_harness"
         )
         assert len(lmeval_provider["benchmarks"]) > 0, (
