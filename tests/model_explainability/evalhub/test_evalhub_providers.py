@@ -164,13 +164,15 @@ class TestEvalHubProvidersUnauthorised:
         evalhub_unauthorised_token: str,
         evalhub_ca_bundle_file: str,
         evalhub_route: Route,
+        evalhub_providers_response: dict,
     ) -> None:
         """Verify that a user without providers ClusterRole binding cannot get a provider."""
+        provider_id = evalhub_providers_response["items"][0]["resource"]["id"]
         with pytest.raises(requests.exceptions.HTTPError, match="403"):
             get_evalhub_provider(
                 host=evalhub_route.host,
                 token=evalhub_unauthorised_token,
                 ca_bundle_file=evalhub_ca_bundle_file,
-                provider_id="lm_evaluation_harness",
+                provider_id=provider_id,
                 tenant=model_namespace.name,
             )
