@@ -4,10 +4,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.route import Route
 
-from tests.model_explainability.evalhub.utils import (
-    get_evalhub_provider,
-    list_evalhub_providers,
-)
+from tests.model_explainability.evalhub.utils import get_evalhub_provider, list_evalhub_providers
 
 
 @pytest.mark.parametrize(
@@ -26,61 +23,28 @@ class TestEvalHubProviders:
 
     def test_list_providers_returns_paginated_response(
         self,
-        model_namespace: Namespace,
-        evalhub_scoped_token: str,
-        evalhub_providers_role_binding: RoleBinding,
-        evalhub_ca_bundle_file: str,
-        evalhub_route: Route,
+        evalhub_providers_response: dict,
     ) -> None:
         """Verify that a scoped user with providers access can list providers."""
-        data = list_evalhub_providers(
-            host=evalhub_route.host,
-            token=evalhub_scoped_token,
-            ca_bundle_file=evalhub_ca_bundle_file,
-            tenant=model_namespace.name,
-        )
-
-        assert "items" in data, "Response missing 'items' field"
-        assert isinstance(data["items"], list), "'items' must be a list"
-        assert "total_count" in data, "Response missing 'total_count' field"
-        assert "limit" in data, "Response missing 'limit' field"
+        assert "items" in evalhub_providers_response, "Response missing 'items' field"
+        assert isinstance(evalhub_providers_response["items"], list), "'items' must be a list"
+        assert "total_count" in evalhub_providers_response, "Response missing 'total_count' field"
+        assert "limit" in evalhub_providers_response, "Response missing 'limit' field"
 
     def test_list_providers_has_registered_providers(
         self,
-        model_namespace: Namespace,
-        evalhub_scoped_token: str,
-        evalhub_providers_role_binding: RoleBinding,
-        evalhub_ca_bundle_file: str,
-        evalhub_route: Route,
+        evalhub_providers_response: dict,
     ) -> None:
         """Verify that at least one provider is registered."""
-        data = list_evalhub_providers(
-            host=evalhub_route.host,
-            token=evalhub_scoped_token,
-            ca_bundle_file=evalhub_ca_bundle_file,
-            tenant=model_namespace.name,
-        )
-
-        assert data["total_count"] > 0, "Expected at least one registered provider"
-        assert len(data["items"]) > 0, "Expected at least one provider in items"
+        assert evalhub_providers_response["total_count"] > 0, "Expected at least one registered provider"
+        assert len(evalhub_providers_response["items"]) > 0, "Expected at least one provider in items"
 
     def test_provider_has_required_fields(
         self,
-        model_namespace: Namespace,
-        evalhub_scoped_token: str,
-        evalhub_providers_role_binding: RoleBinding,
-        evalhub_ca_bundle_file: str,
-        evalhub_route: Route,
+        evalhub_providers_response: dict,
     ) -> None:
         """Verify that each provider contains the expected resource metadata and config fields."""
-        data = list_evalhub_providers(
-            host=evalhub_route.host,
-            token=evalhub_scoped_token,
-            ca_bundle_file=evalhub_ca_bundle_file,
-            tenant=model_namespace.name,
-        )
-
-        for provider in data["items"]:
+        for provider in evalhub_providers_response["items"]:
             assert "resource" in provider, f"Provider missing 'resource': {provider}"
             assert "id" in provider["resource"], f"Provider resource missing 'id': {provider}"
             assert provider["resource"]["id"], "Provider ID must not be empty"
@@ -89,21 +53,10 @@ class TestEvalHubProviders:
 
     def test_provider_benchmarks_have_required_fields(
         self,
-        model_namespace: Namespace,
-        evalhub_scoped_token: str,
-        evalhub_providers_role_binding: RoleBinding,
-        evalhub_ca_bundle_file: str,
-        evalhub_route: Route,
+        evalhub_providers_response: dict,
     ) -> None:
         """Verify that benchmarks within each provider have id, name, and category."""
-        data = list_evalhub_providers(
-            host=evalhub_route.host,
-            token=evalhub_scoped_token,
-            ca_bundle_file=evalhub_ca_bundle_file,
-            tenant=model_namespace.name,
-        )
-
-        for provider in data["items"]:
+        for provider in evalhub_providers_response["items"]:
             provider_name = provider.get("name", "unknown")
             for benchmark in provider.get("benchmarks", []):
                 assert "id" in benchmark, f"Benchmark in provider '{provider_name}' missing 'id'"
@@ -112,49 +65,35 @@ class TestEvalHubProviders:
 
     def test_lm_evaluation_harness_provider_exists(
         self,
-        model_namespace: Namespace,
-        evalhub_scoped_token: str,
-        evalhub_providers_role_binding: RoleBinding,
-        evalhub_ca_bundle_file: str,
-        evalhub_route: Route,
+        evalhub_providers_response: dict,
     ) -> None:
         """Verify that the lm_evaluation_harness provider is registered and has benchmarks."""
-        data = list_evalhub_providers(
-            host=evalhub_route.host,
-            token=evalhub_scoped_token,
-            ca_bundle_file=evalhub_ca_bundle_file,
-            tenant=model_namespace.name,
-        )
-
-        provider_ids = [provider["resource"]["id"] for provider in data["items"]]
+        provider_ids = [provider["resource"]["id"] for provider in evalhub_providers_response["items"]]
         assert "lm_evaluation_harness" in provider_ids, (
             f"Expected 'lm_evaluation_harness' in providers, got: {provider_ids}"
         )
 
-        lmeval_provider = next(provider for provider in data["items"] if provider["resource"]["id"] == "lm_evaluation_harness")
+        lmeval_provider = next(
+            provider for provider in evalhub_providers_response["items"]
+            if provider["resource"]["id"] == "lm_evaluation_harness"
+        )
         assert len(lmeval_provider["benchmarks"]) > 0, (
             "lm_evaluation_harness provider should have at least one benchmark"
         )
 
     def test_get_single_provider(
         self,
-        model_namespace: Namespace,
+        evalhub_providers_response: dict,
         evalhub_scoped_token: str,
-        evalhub_providers_role_binding: RoleBinding,
         evalhub_ca_bundle_file: str,
         evalhub_route: Route,
+        model_namespace: Namespace,
     ) -> None:
         """Verify that a single provider can be retrieved by ID."""
-        providers = list_evalhub_providers(
-            host=evalhub_route.host,
-            token=evalhub_scoped_token,
-            ca_bundle_file=evalhub_ca_bundle_file,
-            tenant=model_namespace.name,
-        )
-        assert providers.get("items") and len(providers["items"]) > 0, (
+        assert evalhub_providers_response.get("items") and len(evalhub_providers_response["items"]) > 0, (
             "No providers registered; cannot test single-provider retrieval"
         )
-        first_provider_id = providers["items"][0]["resource"]["id"]
+        first_provider_id = evalhub_providers_response["items"][0]["resource"]["id"]
 
         data = get_evalhub_provider(
             host=evalhub_route.host,

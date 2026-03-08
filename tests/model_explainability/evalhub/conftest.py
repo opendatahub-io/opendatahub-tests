@@ -13,6 +13,7 @@ from pyhelper_utils.shell import run_command
 from simple_logger.logger import get_logger
 
 from tests.model_explainability.evalhub.constants import EVALHUB_PROVIDERS_ACCESS_CLUSTER_ROLE
+from tests.model_explainability.evalhub.utils import list_evalhub_providers
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import Timeout
 from utilities.resources.evalhub import EvalHub
@@ -117,6 +118,23 @@ def evalhub_scoped_token(
     return run_command(
         shlex.split(f"oc create token -n {model_namespace.name} {evalhub_scoped_sa.name} --duration=30m")
     )[1].strip()
+
+
+@pytest.fixture(scope="class")
+def evalhub_providers_response(
+    model_namespace: Namespace,
+    evalhub_scoped_token: str,
+    evalhub_providers_role_binding: RoleBinding,
+    evalhub_ca_bundle_file: str,
+    evalhub_route: Route,
+) -> dict:
+    """Fetch the providers list once per test class."""
+    return list_evalhub_providers(
+        host=evalhub_route.host,
+        token=evalhub_scoped_token,
+        ca_bundle_file=evalhub_ca_bundle_file,
+        tenant=model_namespace.name,
+    )
 
 
 @pytest.fixture(scope="class")
