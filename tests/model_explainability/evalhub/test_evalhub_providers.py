@@ -21,7 +21,7 @@ from tests.model_explainability.evalhub.utils import get_evalhub_provider, list_
 class TestEvalHubProviders:
     """Tests for the EvalHub providers API using a scoped non-admin ServiceAccount."""
 
-    def test_list_providers_returns_paginated_response(
+    def test_scoped_user_can_list_providers(
         self,
         evalhub_providers_response: dict,
     ) -> None:
