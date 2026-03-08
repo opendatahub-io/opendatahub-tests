@@ -45,9 +45,11 @@ def create_llama_stack_distribution(
     # Starting with RHOAI 3.3, pods in the 'openshift-ingress' namespace must be allowed
     # to access the llama-stack-service. This is required for the llama_stack_test_route
     # to function properly.
+    # The deployment namespace is also allowed so that in-cluster clients (e.g. KFP
+    # pipeline pods) can reach the LlamaStack service.
     network: Dict[str, Any] = {
         "allowedFrom": {
-            "namespaces": ["openshift-ingress"],
+            "namespaces": ["openshift-ingress", namespace],
         },
     }
 

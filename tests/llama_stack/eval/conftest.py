@@ -1,19 +1,48 @@
+import os
+import subprocess
+from base64 import b64encode
 from typing import Generator, Any
 
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_pipelines_application import DataSciencePipelinesApplication
+from ocp_resources.deployment import Deployment
+from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
+from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
+from pytest_testconfig import py_config
 from timeout_sampler import TimeoutSampler
 
 from tests.llama_stack.eval.constants import DK_CUSTOM_DATASET_IMAGE
 from tests.llama_stack.eval.utils import wait_for_dspa_pods
 from utilities.constants import MinIo
+
+
+@pytest.fixture(scope="class")
+def qwen_isvc_service_url(admin_client: DynamicClient, qwen_isvc: InferenceService) -> str:
+    """URL for the Qwen ISVC using the actual Kubernetes service port.
+
+    Reads the predictor service port from the cluster instead of hardcoding
+    a container port. Works correctly regardless of KServe headed/headless mode.
+    """
+    svc_name = f"{qwen_isvc.name}-predictor"
+    svc_list = list(
+        Service.get(
+            client=admin_client,
+            namespace=qwen_isvc.namespace,
+            name=svc_name,
+        )
+    )
+    if not svc_list:
+        raise RuntimeError(f"Service {svc_name} not found in namespace {qwen_isvc.namespace}")
+    svc = svc_list[0]
+    port = svc.instance.spec.ports[0].port
+    return f"http://{svc_name}.{qwen_isvc.namespace}.svc.cluster.local:{port}/v1"
 
 
 @pytest.fixture(scope="class")
@@ -209,3 +238,123 @@ def dspa_route(
         if route:
             yield route
             return
+
+
+@pytest.fixture(scope="class")
+def guardrails_orchestrator_service_url(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    guardrails_orchestrator: Any,
+) -> str:
+    """In-cluster HTTP URL for the guardrails orchestrator service.
+
+    Uses the Kubernetes service directly (HTTP) instead of the OpenShift route
+    (HTTPS), avoiding TLS certificate chain issues for pod-to-pod communication.
+    The operator creates the Service asynchronously, so we poll until it appears.
+    """
+    orch_name = guardrails_orchestrator.name
+    ns = model_namespace.name
+
+    _HTTP_PORTS = (8033, 8034, 80, 443)
+
+    def _find_orchestrator_service() -> tuple[Service, int] | None:
+        for svc in Service.get(client=admin_client, namespace=ns):
+            svc_name = svc.name
+            if svc_name == orch_name or svc_name.startswith(f"{orch_name}-"):
+                for p in svc.instance.spec.ports:
+                    if p.port in _HTTP_PORTS:
+                        return svc, p.port
+        return None
+
+    for result in TimeoutSampler(wait_timeout=120, sleep=5, func=_find_orchestrator_service):
+        if result is not None:
+            svc, http_port = result
+            return f"http://{svc.name}.{ns}.svc.cluster.local:{http_port}"
+
+    raise RuntimeError(f"No orchestrator service found for {orch_name} in {ns}")
+
+
+@pytest.fixture(scope="class")
+def guardrails_orchestrator_ssl_cert(guardrails_orchestrator_route: Route) -> str:
+    """Extract the TLS certificate from the guardrails orchestrator route."""
+    hostname = guardrails_orchestrator_route.host
+
+    result = subprocess.run(
+        args=["openssl", "s_client", "-showcerts", "-connect", f"{hostname}:443"],
+        input="",
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    if result.returncode != 0 and "CONNECTED" not in result.stdout:
+        raise RuntimeError(f"Failed to connect to {hostname}: {result.stderr}")
+
+    cert_lines = []
+    in_cert = False
+    for line in result.stdout.splitlines():
+        if "-----BEGIN CERTIFICATE-----" in line:
+            in_cert = True
+        if in_cert:
+            cert_lines.append(line)
+        if "-----END CERTIFICATE-----" in line:
+            in_cert = False
+
+    if not cert_lines:
+        raise RuntimeError(f"No certificate found in response from {hostname}")
+
+    filepath = os.path.join(py_config["tmp_base_dir"], "gorch_cert.crt")
+    with open(filepath, "w") as f:
+        f.write("\n".join(cert_lines))
+
+    return filepath
+
+
+@pytest.fixture(scope="class")
+def guardrails_orchestrator_ssl_cert_secret(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    guardrails_orchestrator_ssl_cert: str,
+) -> Generator[Secret, Any, None]:
+    """Create a secret containing the guardrails orchestrator TLS certificate."""
+    with open(guardrails_orchestrator_ssl_cert, "r") as f:
+        cert_content = f.read()
+
+    with Secret(
+        client=admin_client,
+        name="orch-certificate",
+        namespace=model_namespace.name,
+        data_dict={"orch-certificate.crt": b64encode(cert_content.encode("utf-8")).decode("utf-8")},
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
+def patched_llamastack_deployment_tls_certs(
+    llama_stack_distribution: Any, guardrails_orchestrator_ssl_cert_secret: Secret
+) -> Generator[Deployment, Any, None]:
+    """Patch the LlamaStack deployment to mount the orchestrator TLS certificate."""
+    lls_deployment = Deployment(
+        name=llama_stack_distribution.name,
+        namespace=llama_stack_distribution.namespace,
+        ensure_exists=True,
+    )
+
+    current_spec = lls_deployment.instance.spec.template.spec.to_dict()
+
+    current_spec["volumes"].append({
+        "name": "router-ca",
+        "secret": {"secretName": "orch-certificate"},  # pragma: allowlist secret
+    })
+
+    for container in current_spec["containers"]:
+        if container["name"] == "llama-stack":
+            container["volumeMounts"].append({"name": "router-ca", "mountPath": "/etc/llama/certs", "readOnly": True})
+            break
+
+    with ResourceEditor(patches={lls_deployment: {"spec": {"template": {"spec": current_spec}}}}) as _:
+        initial_replicas = lls_deployment.replicas
+        lls_deployment.scale_replicas(replica_count=0)
+        lls_deployment.scale_replicas(replica_count=initial_replicas)
+        lls_deployment.wait_for_replicas()
+        yield lls_deployment

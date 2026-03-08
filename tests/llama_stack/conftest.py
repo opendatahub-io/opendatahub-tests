@@ -269,11 +269,12 @@ def llama_stack_server_config(
         # New Garak-specific flag
         env_vars.append({"name": "ENABLE_KUBEFLOW_GARAK", "value": str(enable_garak_remote).lower()})
 
-        # KUBEFLOW_LLAMA_STACK_URL: Use internal service endpoint for KFP to callback to
-        distribution_name = params.get("distribution_name", "rh-dev")
+        # KUBEFLOW_LLAMA_STACK_URL: Use internal service endpoint for KFP to callback to.
+        # Pre-generate the CR name so the URL matches the service the operator will create.
+        cr_name = generate_random_name(prefix="llama-stack-distribution")
         env_vars.append({
             "name": "KUBEFLOW_LLAMA_STACK_URL",
-            "value": f"http://{distribution_name}-service.{model_namespace.name}.svc.cluster.local:8321",
+            "value": f"http://{cr_name}-service.{model_namespace.name}.svc.cluster.local:8321",
         })
 
         # KUBEFLOW_PIPELINES_ENDPOINT: Injected from DSPA
@@ -281,14 +282,20 @@ def llama_stack_server_config(
         env_vars.append({"name": "KUBEFLOW_NAMESPACE", "value": model_namespace.name})
 
         # KUBEFLOW_BASE_IMAGE: Select based on provider
-        default_garak_image = "quay.io/trustyai/garak-remote-provider:latest"
+        # Garak uses KUBEFLOW_GARAK_BASE_IMAGE; Ragas uses KUBEFLOW_BASE_IMAGE
+        # quay.io/rhoai/odh-trustyai-garak-lls-provider-dsp-rhel9@sha256:75eb795e9e459c0f6951ee1fc3ee325ae593d6aab32eee203723d28880c7ca31
+        default_garak_image = "quay.io/opendatahub/odh-trustyai-garak-lls-provider-dsp@sha256:a3b65a9fdb6996fdaac45286b17522806cdf5af133275806fef5f93265103fc9"
         default_ragas_image = "quay.io/diegosquayorg/my-ragas-provider-image@sha256:3749096c47f7536d6be2a7932e691abebacd578bafbe65bad2f7db475e2b93fb"
 
         selected_image = params.get("kubeflow_base_image")
-        if not selected_image:
-            selected_image = default_garak_image if enable_garak_remote else default_ragas_image
-
-        env_vars.append({"name": "KUBEFLOW_BASE_IMAGE", "value": selected_image})
+        if enable_garak_remote:
+            if not selected_image:
+                selected_image = default_garak_image
+            env_vars.append({"name": "KUBEFLOW_GARAK_BASE_IMAGE", "value": selected_image})
+        else:
+            if not selected_image:
+                selected_image = default_ragas_image
+            env_vars.append({"name": "KUBEFLOW_BASE_IMAGE", "value": selected_image})
 
         # KUBEFLOW_RESULTS_S3_PREFIX: Separate results by provider type
         s3_subfolder = "garak-results" if enable_garak_remote else "ragas-results"
@@ -339,12 +346,19 @@ def llama_stack_server_config(
             "name": "llama-stack",
             "port": 8321,
         },
-        "distribution": {"name": "rh-dev"},
+        "distribution": (
+            {"image": params["distribution_image"]}
+            if params.get("distribution_image")
+            else {"name": params.get("distribution_name", "rh-dev")}
+        ),
     }
 
     if params.get("llama_stack_storage_size"):
         storage_size = params.get("llama_stack_storage_size")
         server_config["storage"] = {"size": storage_size}
+
+    if enable_garak_remote or params.get("enable_kubeflow_ragas"):
+        server_config["_cr_name"] = cr_name
 
     return server_config
 
@@ -396,7 +410,9 @@ def unprivileged_llama_stack_distribution(
     unprivileged_postgres_service: Service,
 ) -> Generator[LlamaStackDistribution, None, None]:
     # Distribution name needs a random substring due to bug RHAIENG-999 / RHAIENG-1139
-    distribution_name = generate_random_name(prefix="llama-stack-distribution")
+    distribution_name = llama_stack_server_config.pop("_cr_name", None) or generate_random_name(
+        prefix="llama-stack-distribution"
+    )
     with create_llama_stack_distribution(
         client=unprivileged_client,
         name=distribution_name,
@@ -443,8 +459,12 @@ def llama_stack_distribution(
     postgres_deployment: Deployment,
     postgres_service: Service,
 ) -> Generator[LlamaStackDistribution, None, None]:
-    # Distribution name needs a random substring due to bug RHAIENG-999 / RHAIENG-1139
-    distribution_name = generate_random_name(prefix="llama-stack-distribution")
+    # Distribution name needs a random substring due to bug RHAIENG-999 / RHAIENG-1139.
+    # When KFP is enabled, the CR name is pre-generated in llama_stack_server_config
+    # so KUBEFLOW_LLAMA_STACK_URL matches the service the operator will create.
+    distribution_name = llama_stack_server_config.pop("_cr_name", None) or generate_random_name(
+        prefix="llama-stack-distribution"
+    )
     with create_llama_stack_distribution(
         client=admin_client,
         name=distribution_name,
