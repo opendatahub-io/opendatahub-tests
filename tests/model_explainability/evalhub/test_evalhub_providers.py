@@ -131,7 +131,9 @@ class TestEvalHubProviders:
             f"Expected 'lm_evaluation_harness' in providers, got: {provider_ids}"
         )
 
-        lmeval_provider = next(provider for provider in data["items"] if provider["resource"]["id"] == "lm_evaluation_harness")
+        lmeval_provider = next(
+            provider for provider in data["items"] if provider["resource"]["id"] == "lm_evaluation_harness"
+        )
         assert len(lmeval_provider["benchmarks"]) > 0, (
             "lm_evaluation_harness provider should have at least one benchmark"
         )
