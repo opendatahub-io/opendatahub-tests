@@ -126,12 +126,12 @@ class TestEvalHubProviders:
             tenant=model_namespace.name,
         )
 
-        provider_ids = [p["resource"]["id"] for p in data["items"]]
+        provider_ids = [provider["resource"]["id"] for provider in data["items"]]
         assert "lm_evaluation_harness" in provider_ids, (
             f"Expected 'lm_evaluation_harness' in providers, got: {provider_ids}"
         )
 
-        lmeval_provider = next(p for p in data["items"] if p["resource"]["id"] == "lm_evaluation_harness")
+        lmeval_provider = next(provider for provider in data["items"] if provider["resource"]["id"] == "lm_evaluation_harness")
         assert len(lmeval_provider["benchmarks"]) > 0, (
             "lm_evaluation_harness provider should have at least one benchmark"
         )
