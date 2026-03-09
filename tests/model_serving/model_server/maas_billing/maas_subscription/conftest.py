@@ -5,6 +5,7 @@ import pytest
 import requests
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.llm_inference_service import LLMInferenceService
+from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.namespace import Namespace
 from ocp_resources.service_account import ServiceAccount
 from pytest_testconfig import config as py_config
@@ -22,11 +23,11 @@ from utilities.llmd_utils import create_llmisvc
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.resources.maa_s_auth_policy import MaaSAuthPolicy
 from utilities.resources.maa_s_subscription import MaaSSubscription
-from ocp_resources.maas_model_ref import MaaSModelRef
 
 LOGGER = get_logger(name=__name__)
 
 CHAT_COMPLETIONS = OpenAIEnpoints.CHAT_COMPLETIONS
+
 
 @pytest.fixture(scope="class")
 def maas_inference_service_tinyllama_free(
