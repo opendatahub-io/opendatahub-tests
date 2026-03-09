@@ -49,6 +49,7 @@ class TestKserveTokenAuthenticationRawForRest:
         )
 
     @pytest.mark.sanity
+    @pytest.mark.jira("RHOAIENG-52129", run=False)
     def test_raw_disable_enable_authentication_no_pod_rollout(self, http_s3_ovms_raw_inference_service):
         """Verify no pod rollout when disabling and enabling authentication"""
         pod = get_pods_by_isvc_label(
