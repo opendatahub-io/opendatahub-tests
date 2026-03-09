@@ -283,8 +283,9 @@ def llama_stack_server_config(
 
         # KUBEFLOW_BASE_IMAGE: Select based on provider
         # Garak uses KUBEFLOW_GARAK_BASE_IMAGE; Ragas uses KUBEFLOW_BASE_IMAGE
-        # quay.io/rhoai/odh-trustyai-garak-lls-provider-dsp-rhel9@sha256:75eb795e9e459c0f6951ee1fc3ee325ae593d6aab32eee203723d28880c7ca31
-        default_garak_image = "quay.io/opendatahub/odh-trustyai-garak-lls-provider-dsp@sha256:a3b65a9fdb6996fdaac45286b17522806cdf5af133275806fef5f93265103fc9"
+        # quay.io/rhoai/odh-trustyai-garak-lls-provider-dsp-rhel9@sha256:75eb795e9e459c0f6951ee1fc3ee325ae593d6aab32eee203723d28880c7ca31 (3.4-ea.1 sha)
+        # quay.io/opendatahub/odh-trustyai-garak-lls-provider-dsp@sha256:a3b65a9fdb6996fdaac45286b17522806cdf5af133275806fef5f93265103fc9
+        default_garak_image = "quay.io/rhoai/odh-trustyai-garak-lls-provider-dsp-rhel9:rhoai-3.4-ea.1"
         default_ragas_image = "quay.io/diegosquayorg/my-ragas-provider-image@sha256:3749096c47f7536d6be2a7932e691abebacd578bafbe65bad2f7db475e2b93fb"
 
         selected_image = params.get("kubeflow_base_image")
