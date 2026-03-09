@@ -197,11 +197,17 @@ def create_api_key(
     )
 
     LOGGER.info(f"create_api_key: url={api_keys_url} status={response.status_code}")
+    if response.status_code not in (200, 201):
+        raise AssertionError(f"api-key create failed: status={response.status_code}")
 
     try:
         parsed_body: dict[str, Any] = json.loads(response.text)
     except json.JSONDecodeError as error:
         LOGGER.error(f"Unable to parse API key response from {api_keys_url}; status={response.status_code}")
         raise AssertionError("API key creation returned non-JSON response") from error
+    
+    api_key = parsed_body.get("key", "")
+    if not isinstance(api_key, str) or not api_key.startswith("sk-"):
+        raise AssertionError("No plaintext api key returned in MaaS API response")
 
     return response, parsed_body

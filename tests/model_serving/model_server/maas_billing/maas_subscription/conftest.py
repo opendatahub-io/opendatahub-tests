@@ -4,6 +4,7 @@ from typing import Any
 import pytest
 import requests
 from kubernetes.dynamic import DynamicClient
+
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.service_account import ServiceAccount
@@ -27,7 +28,6 @@ from utilities.resources.maa_s_subscription import MaaSSubscription
 LOGGER = get_logger(name=__name__)
 
 CHAT_COMPLETIONS = OpenAIEnpoints.CHAT_COMPLETIONS
-
 
 @pytest.fixture(scope="class")
 def maas_inference_service_tinyllama_free(
@@ -257,8 +257,7 @@ def model_url_tinyllama_premium(
     LOGGER.info("MaaS: constructed model_url=%s (deployment=%s)", url, deployment_name)
     return url
 
-
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="class")  
 def maas_api_key_for_actor(
     request_session_http: requests.Session,
     base_url: str,
@@ -276,7 +275,7 @@ def maas_api_key_for_actor(
     """
     api_key_name = f"odh-sub-tests-{generate_random_name()}"
 
-    response, body = create_api_key(
+    _, body = create_api_key(
         base_url=base_url,
         ocp_user_token=ocp_token_for_actor,
         request_session_http=request_session_http,
@@ -284,16 +283,7 @@ def maas_api_key_for_actor(
         request_timeout_seconds=60,
     )
 
-    LOGGER.info(f"MaaS subscription: create api-key name={api_key_name} status={response.status_code}")
-
-    assert response.status_code in (200, 201), f"api-key create failed: status={response.status_code}"
-
-    api_key = body.get("key", "")
-    assert isinstance(api_key, str) and api_key.startswith("sk-"), "No plaintext api key returned in MaaS API response"
-
-    LOGGER.info(f"MaaS subscription: api-key created successfully name={api_key_name}")
-    return api_key
-
+    return body["key"]
 
 @pytest.fixture(scope="class")
 def maas_headers_for_actor_api_key(maas_api_key_for_actor: str) -> dict[str, str]:
