@@ -46,6 +46,7 @@ class TestSourcesSorting:
 
         assert validate_items_sorted_correctly(response["items"], order_by, sort_order)
 
+    @pytest.mark.tier3
     @pytest.mark.parametrize("unsupported_field", ["CREATE_TIME", "LAST_UPDATE_TIME"])
     def test_sources_rejects_unsupported_fields(
         self: Self,

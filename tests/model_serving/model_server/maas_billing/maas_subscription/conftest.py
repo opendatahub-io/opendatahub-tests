@@ -2,23 +2,26 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+import requests
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.llm_inference_service import LLMInferenceService
+from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.namespace import Namespace
 from ocp_resources.service_account import ServiceAccount
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 
 from tests.model_serving.model_server.maas_billing.maas_subscription.utils import (
+    create_api_key,
     patch_llmisvc_with_maas_router_and_tiers,
 )
 from tests.model_serving.model_server.maas_billing.utils import build_maas_headers
+from utilities.general import generate_random_name
 from utilities.infra import create_inference_token, login_with_user_password
 from utilities.llmd_constants import ContainerImages, ModelStorage
 from utilities.llmd_utils import create_llmisvc
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.resources.maa_s_auth_policy import MaaSAuthPolicy
-from utilities.resources.maa_s_model import MaaSModel
 from utilities.resources.maa_s_subscription import MaaSSubscription
 
 LOGGER = get_logger(name=__name__)
@@ -86,10 +89,10 @@ def maas_inference_service_tinyllama_premium(
 def maas_model_tinyllama_free(
     admin_client: DynamicClient,
     maas_inference_service_tinyllama_free: LLMInferenceService,
-) -> Generator[MaaSModel]:
+) -> Generator[MaaSModelRef]:
     applications_namespace = py_config["applications_namespace"]
 
-    with MaaSModel(
+    with MaaSModelRef(
         client=admin_client,
         name=maas_inference_service_tinyllama_free.name,
         namespace=applications_namespace,
@@ -108,10 +111,10 @@ def maas_model_tinyllama_free(
 def maas_model_tinyllama_premium(
     admin_client: DynamicClient,
     maas_inference_service_tinyllama_premium: LLMInferenceService,
-) -> Generator[MaaSModel]:
+) -> Generator[MaaSModelRef]:
     applications_namespace = py_config["applications_namespace"]
 
-    with MaaSModel(
+    with MaaSModelRef(
         client=admin_client,
         name=maas_inference_service_tinyllama_premium.name,
         namespace=applications_namespace,
@@ -130,7 +133,7 @@ def maas_model_tinyllama_premium(
 def maas_auth_policy_tinyllama_free(
     admin_client: DynamicClient,
     maas_free_group: str,
-    maas_model_tinyllama_free: MaaSModel,
+    maas_model_tinyllama_free: MaaSModelRef,
 ) -> Generator[MaaSAuthPolicy]:
     applications_namespace = py_config["applications_namespace"]
 
@@ -155,7 +158,7 @@ def maas_auth_policy_tinyllama_free(
 def maas_auth_policy_tinyllama_premium(
     admin_client: DynamicClient,
     maas_premium_group: str,
-    maas_model_tinyllama_premium: MaaSModel,
+    maas_model_tinyllama_premium: MaaSModelRef,
 ) -> Generator[MaaSAuthPolicy]:
     applications_namespace = py_config["applications_namespace"]
 
@@ -177,7 +180,7 @@ def maas_auth_policy_tinyllama_premium(
 def maas_subscription_tinyllama_free(
     admin_client: DynamicClient,
     maas_free_group: str,
-    maas_model_tinyllama_free: MaaSModel,
+    maas_model_tinyllama_free: MaaSModelRef,
 ) -> Generator[MaaSSubscription]:
     applications_namespace = py_config["applications_namespace"]
 
@@ -186,19 +189,19 @@ def maas_subscription_tinyllama_free(
         name="tinyllama-free-subscription",
         namespace=applications_namespace,
         owner={
-            "kind": "Group",
-            "name": maas_free_group,
+            "groups": [{"name": maas_free_group}],
         },
         model_refs=[
             {
                 "name": maas_model_tinyllama_free.name,
-                "tokensPerMinute": 100,
+                "tokenRateLimits": [{"limit": 100, "window": "1m"}],
             }
         ],
         priority=0,
         teardown=True,
         wait_for_resource=True,
     ) as maas_subscription_free:
+        maas_subscription_free.wait_for_condition(condition="Ready", status="True", timeout=300)
         yield maas_subscription_free
 
 
@@ -206,7 +209,7 @@ def maas_subscription_tinyllama_free(
 def maas_subscription_tinyllama_premium(
     admin_client: DynamicClient,
     maas_premium_group: str,
-    maas_model_tinyllama_premium: MaaSModel,
+    maas_model_tinyllama_premium: MaaSModelRef,
 ) -> Generator[MaaSSubscription]:
     applications_namespace = py_config["applications_namespace"]
 
@@ -215,19 +218,19 @@ def maas_subscription_tinyllama_premium(
         name="tinyllama-premium-subscription",
         namespace=applications_namespace,
         owner={
-            "kind": "Group",
-            "name": maas_premium_group,
+            "groups": [{"name": maas_premium_group}],
         },
         model_refs=[
             {
                 "name": maas_model_tinyllama_premium.name,
-                "tokensPerMinute": 1000,
+                "tokenRateLimits": [{"limit": 1000, "window": "1m"}],
             }
         ],
         priority=0,
         teardown=True,
         wait_for_resource=True,
     ) as maas_subscription_premium:
+        maas_subscription_premium.wait_for_condition(condition="Ready", status="True", timeout=300)
         yield maas_subscription_premium
 
 
@@ -253,6 +256,43 @@ def model_url_tinyllama_premium(
     url = f"{maas_scheme}://{maas_host}/llm/{deployment_name}{CHAT_COMPLETIONS}"
     LOGGER.info("MaaS: constructed model_url=%s (deployment=%s)", url, deployment_name)
     return url
+
+
+@pytest.fixture(scope="class")
+def maas_api_key_for_actor(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_token_for_actor: str,
+    maas_controller_enabled_latest: None,
+    maas_gateway_api: None,
+    maas_api_gateway_reachable: None,
+) -> str:
+    """
+    Create an API key for the current actor (admin/free/premium).
+
+    Flow:
+    - Use OpenShift token (ocp_token_for_actor) to create an API key via MaaS API.
+    - Use the plaintext API key for gateway inference: Authorization: Bearer <sk-...>.
+    """
+    api_key_name = f"odh-sub-tests-{generate_random_name()}"
+
+    _, body = create_api_key(
+        base_url=base_url,
+        ocp_user_token=ocp_token_for_actor,
+        request_session_http=request_session_http,
+        api_key_name=api_key_name,
+        request_timeout_seconds=60,
+    )
+
+    return body["key"]
+
+
+@pytest.fixture(scope="class")
+def maas_headers_for_actor_api_key(maas_api_key_for_actor: str) -> dict[str, str]:
+    """
+    Headers for gateway inference using API key (new implementation).
+    """
+    return build_maas_headers(token=maas_api_key_for_actor)
 
 
 @pytest.fixture(scope="class")
