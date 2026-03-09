@@ -27,7 +27,7 @@ class TestModelRegistryRBAC:
     Tests both standard and OAuth proxy configurations.
     """
 
-    @pytest.mark.sanity
+    @pytest.mark.tier1
     @pytest.mark.usefixtures("sa_namespace", "service_account")
     def test_service_account_access_denied(
         self: Self,
@@ -57,7 +57,7 @@ class TestModelRegistryRBAC:
         assert http_error.status == 403, f"Expected HTTP 403 Forbidden, but got {http_error.status}"
         LOGGER.info("Successfully received expected HTTP 403 status code.")
 
-    @pytest.mark.smoke
+    @pytest.mark.tier1
     @pytest.mark.usefixtures("sa_namespace", "service_account", "mr_access_role", "mr_access_role_binding")
     def test_service_account_access_granted(
         self: Self,
