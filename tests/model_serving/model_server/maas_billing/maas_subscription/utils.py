@@ -200,8 +200,8 @@ def create_api_key(
 
     try:
         parsed_body: dict[str, Any] = json.loads(response.text)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as error:
         LOGGER.error(f"Unable to parse API key response from {api_keys_url}; status={response.status_code}")
-        parsed_body = {}
+        raise AssertionError("API key creation returned non-JSON response") from error
 
     return response, parsed_body
