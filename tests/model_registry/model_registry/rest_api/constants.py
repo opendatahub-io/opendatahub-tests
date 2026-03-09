@@ -25,7 +25,7 @@ MODEL_VERSION: dict[str, Any] = {
 MODEL_ARTIFACT: dict[str, Any] = {
     "name": "model-artifact-rest-api",
     "description": "Model artifact created via rest call",
-    "uri": "https://huggingface.co/openai-community/gpt2/resolve/main/onnx/decoder_model.onnx",
+    "uri": "hf://jonburdo/test2",
     "state": "UNKNOWN",
     "modelFormatName": ModelFormat.ONNX,
     "modelFormatVersion": "v1",

@@ -1,12 +1,16 @@
 from typing import Any, Self
 
 import pytest
+import requests
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
+from ocp_resources.inference_service import InferenceService
+from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
+from ocp_resources.serving_runtime import ServingRuntime
 from simple_logger.logger import get_logger
 
 from tests.model_registry.constants import MR_POSTGRES_DB_OBJECT
@@ -340,4 +344,64 @@ class TestModelRegistryCreationRest:
             expected_params=expected_param,
             actual_resource_data=updated_model_registry_resource,
             resource_name="registered model",
+        )
+
+
+@pytest.mark.parametrize(
+    "model_registry_metadata_db_resources, model_registry_instance, registered_model_rest_api",
+    [
+        pytest.param(
+            {"db_name": "postgres"},
+            {"db_name": "postgres"},
+            MODEL_REGISTER_DATA,
+        ),
+    ],
+    indirect=True,
+)
+@pytest.mark.usefixtures(
+    "updated_dsc_component_state_scope_session",
+    "model_registry_namespace",
+    "model_registry_metadata_db_resources",
+    "model_registry_instance",
+    "registered_model_rest_api",
+    "model_registry_deployment_ns",
+    "model_registry_connection_secret",
+    "model_registry_serving_runtime",
+    "model_registry_inference_service",
+)
+class TestModelRegistryDeployment:
+    """
+    Test class for Model Registry deployment functionality.
+    Tests the complete deployment workflow from registered model to InferenceService.
+    """
+
+    @pytest.mark.tier2
+    def test_registered_model_deployment(
+        self,
+        admin_client: DynamicClient,
+        model_registry_deployment_ns: Namespace,
+        model_registry_serving_runtime: ServingRuntime,
+        model_registry_inference_service: InferenceService,
+        model_registry_model_portforward: str,
+        registered_model_rest_api: dict[str, Any],
+    ) -> None:
+        """
+        Test deployment of a model registered in Model Registry end-to-end.
+        Validates that a model registered in the registry can be deployed and accessed
+        via inference endpoints, similar to HuggingFace model deployment.
+        """
+        register_model_data = registered_model_rest_api.get("register_model", {})
+        model_name = register_model_data.get("name", "unknown")
+
+        LOGGER.info(f"Testing deployment of registered model: {model_name}")
+
+        # Test model endpoint accessibility
+        model_endpoint = f"{model_registry_model_portforward}/{model_registry_inference_service.name}"
+        LOGGER.info(f"Testing registered model endpoint: {model_endpoint}")
+
+        model_response = requests.get(model_endpoint, timeout=10)
+        LOGGER.info(f"Model endpoint status: {model_response.status_code}")
+
+        assert model_response.status_code == 200, (
+            f"Model endpoint returned status code:{model_response.status_code}: response text{model_response.text}"
         )

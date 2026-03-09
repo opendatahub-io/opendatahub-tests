@@ -327,7 +327,7 @@ class UserInference(Inference):
         else:
             # admin client is needed to check if cluster is managed
             _client = get_client()
-            if ca := get_ca_bundle(client=_client, deployment_mode=self.deployment_mode):
+            if ca := get_ca_bundle(client=_client):
                 cmd += f" --cacert {ca} "
 
             else:

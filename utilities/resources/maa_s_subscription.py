@@ -6,13 +6,15 @@ from typing import Any
 from ocp_resources.exceptions import MissingRequiredArgumentError
 from ocp_resources.resource import NamespacedResource
 
+from utilities.constants import ApiGroups
+
 
 class MaaSSubscription(NamespacedResource):
     """
     MaaSSubscription is the Schema for the maassubscriptions API
     """
 
-    api_group: str = "maas.opendatahub.io"
+    api_group: str = ApiGroups.MAAS_IO
 
     def __init__(
         self,

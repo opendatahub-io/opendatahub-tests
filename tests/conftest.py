@@ -676,6 +676,12 @@ def cluster_sanity_scope_session(
     dsc_resource: DataScienceCluster,
     junitxml_plugin: Callable[[str, object], None],
 ) -> None:
+    # Skip cluster sanity check when running tests that have cluster_health or operator_health markers
+    selected_markers = {mark.name for item in request.session.items for mark in item.iter_markers()}
+    if {"cluster_health", "operator_health"} & selected_markers:
+        LOGGER.info("Skipping cluster sanity check because selected tests include cluster/operator health")
+        return
+
     verify_cluster_sanity(
         request=request,
         nodes=nodes,
@@ -690,9 +696,7 @@ def prometheus(admin_client: DynamicClient) -> Prometheus:
     return Prometheus(
         client=admin_client,
         resource_name="thanos-querier",
-        verify_ssl=create_ca_bundle_file(
-            client=admin_client, ca_type="openshift"
-        ),  # TODO: Verify SSL with appropriate certs
+        verify_ssl=create_ca_bundle_file(client=admin_client),  # TODO: Verify SSL with appropriate certs
         bearer_token=get_openshift_token(),
     )
 
