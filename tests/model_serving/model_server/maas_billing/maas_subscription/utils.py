@@ -12,6 +12,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.resource import ResourceEditor
 from pytest_testconfig import config as py_config
+from requests import Response
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
@@ -168,3 +169,45 @@ def create_maas_subscription(
         teardown=teardown,
         wait_for_resource=wait_for_resource,
     )
+
+
+def create_api_key(
+    base_url: str,
+    ocp_user_token: str,
+    request_session_http: requests.Session,
+    api_key_name: str,
+    request_timeout_seconds: int = 60,
+) -> tuple[Response, dict[str, Any]]:
+    """
+    Create an API key via MaaS API and return (response, parsed_body).
+
+    Uses ocp_user_token for auth against maas-api.
+    Expects plaintext key in body["key"] (sk-...).
+    """
+    api_keys_url = f"{base_url}/v1/api-keys"
+
+    response = request_session_http.post(
+        url=api_keys_url,
+        headers={
+            "Authorization": f"Bearer {ocp_user_token}",
+            "Content-Type": "application/json",
+        },
+        json={"name": api_key_name},
+        timeout=request_timeout_seconds,
+    )
+
+    LOGGER.info(f"create_api_key: url={api_keys_url} status={response.status_code}")
+    if response.status_code not in (200, 201):
+        raise AssertionError(f"api-key create failed: status={response.status_code}")
+
+    try:
+        parsed_body: dict[str, Any] = json.loads(response.text)
+    except json.JSONDecodeError as error:
+        LOGGER.error(f"Unable to parse API key response from {api_keys_url}; status={response.status_code}")
+        raise AssertionError("API key creation returned non-JSON response") from error
+
+    api_key = parsed_body.get("key", "")
+    if not isinstance(api_key, str) or not api_key.startswith("sk-"):
+        raise AssertionError("No plaintext api key returned in MaaS API response")
+
+    return response, parsed_body
