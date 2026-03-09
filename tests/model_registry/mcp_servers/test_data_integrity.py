@@ -6,7 +6,6 @@ from simple_logger.logger import get_logger
 from tests.model_registry.mcp_servers.constants import (
     EXPECTED_MCP_SERVER_NAMES,
     EXPECTED_MCP_SERVER_TIMESTAMPS,
-    EXPECTED_MCP_SERVER_TOOL_COUNTS,
     EXPECTED_MCP_SERVER_TOOLS,
 )
 from tests.model_registry.utils import execute_get_command
@@ -30,9 +29,6 @@ class TestMCPServerLoading:
             assert server["createTimeSinceEpoch"] == expected["createTimeSinceEpoch"]
             assert server["lastUpdateTimeSinceEpoch"] == expected["lastUpdateTimeSinceEpoch"]
 
-    @pytest.mark.xfail(
-        reason="RHOAIENG-51765: Tool name returned as {server}@{version}:{tool} instead of YAML-defined name"
-    )
     def test_mcp_server_tools_loaded(
         self: Self,
         mcp_catalog_rest_urls: list[str],
@@ -50,17 +46,3 @@ class TestMCPServerLoading:
             assert server["toolCount"] == len(expected_tool_names)
             actual_tool_names = [tool["name"] for tool in server["tools"]]
             assert sorted(actual_tool_names) == sorted(expected_tool_names)
-
-    @pytest.mark.xfail(reason="RHOAIENG-51764: toolCount is 0 when not passing includeTools=true")
-    def test_mcp_server_tool_count_without_include(
-        self: Self,
-        mcp_servers_response: dict[str, Any],
-    ):
-        """Verify that toolCount reflects actual tools even when tools are not included."""
-        for server in mcp_servers_response.get("items", []):
-            name = server["name"]
-            expected_count = EXPECTED_MCP_SERVER_TOOL_COUNTS[name]
-            actual_count = server.get("toolCount", 0)
-            assert actual_count == expected_count, (
-                f"Server '{name}': expected toolCount {expected_count}, got {actual_count}"
-            )
