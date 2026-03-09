@@ -200,6 +200,7 @@ class TestCatalogPreviewExistingSource:
             LOGGER.info(f"filterStatus={filter_status} validation passed: {len(items)} items")
 
 
+@pytest.mark.tier3
 class TestCatalogPreviewErrorHandling:
     """
     Test class for validating the catalog preview API error handling
