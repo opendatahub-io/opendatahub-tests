@@ -196,12 +196,12 @@ def create_api_key(
         timeout=request_timeout_seconds,
     )
 
-    LOGGER.info(f"create_api_key: url={api_keys_url} status={response.status_code} body={response.text}")
+    LOGGER.info(f"create_api_key: url={api_keys_url} status={response.status_code}")
 
     try:
         parsed_body: dict[str, Any] = json.loads(response.text)
     except json.JSONDecodeError:
-        LOGGER.error(f"Unable to parse API key response: {response.text}")
+        LOGGER.error(f"Unable to parse API key response from {api_keys_url}; status={response.status_code}")
         parsed_body = {}
 
     return response, parsed_body
