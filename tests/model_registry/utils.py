@@ -959,3 +959,18 @@ def wait_for_model_catalog_pod_created(client: DynamicClient, model_registry_nam
     if pods:
         return True
     raise PodNotFound("Model catalog pod not found")
+
+
+@retry(
+    wait_timeout=90,
+    sleep=5,
+    exceptions_dict={ResourceNotFoundError: [], TransientUnauthorizedError: []},
+)
+def wait_for_mcp_catalog_api(url: str, headers: dict[str, str]) -> requests.Response:
+    """Wait for MCP catalog API to be ready and returning MCP server data."""
+    LOGGER.info(f"Waiting for MCP catalog API at {url}mcp_servers")
+    response = execute_get_call(url=f"{url}mcp_servers", headers=headers)
+    data = response.json()
+    if not data.get("items"):
+        raise ResourceNotFoundError("MCP catalog API returned empty items, catalog data not yet loaded")
+    return response

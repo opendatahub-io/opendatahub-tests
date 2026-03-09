@@ -4,6 +4,7 @@ from contextlib import ExitStack
 from typing import Any
 
 import pytest
+import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.data_science_cluster import DataScienceCluster
@@ -25,10 +26,16 @@ from simple_logger.logger import get_logger
 from tests.model_registry.constants import (
     DB_BASE_RESOURCES_NAME,
     DB_RESOURCE_NAME,
+    DEFAULT_CUSTOM_MODEL_CATALOG,
     KUBERBACPROXY_STR,
     MR_INSTANCE_BASE_NAME,
     MR_INSTANCE_NAME,
     MR_OPERATOR_NAME,
+)
+from tests.model_registry.mcp_servers.constants import (
+    MCP_CATALOG_API_PATH,
+    MCP_CATALOG_SOURCE,
+    MCP_SERVERS_YAML,
 )
 from tests.model_registry.utils import (
     generate_namespace_name,
@@ -37,6 +44,8 @@ from tests.model_registry.utils import (
     get_model_registry_objects,
     get_rest_headers,
     wait_for_default_resource_cleanedup,
+    wait_for_mcp_catalog_api,
+    wait_for_model_catalog_pod_ready_after_deletion,
 )
 from utilities.constants import DscComponents, Labels
 from utilities.general import (
@@ -465,4 +474,55 @@ def service_account(admin_client: DynamicClient, sa_namespace: Namespace) -> Gen
 def model_catalog_routes(admin_client: DynamicClient, model_registry_namespace: str) -> list[Route]:
     return list(
         Route.get(namespace=model_registry_namespace, label_selector="component=model-catalog", client=admin_client)
+    )
+
+
+@pytest.fixture(scope="class")
+def mcp_catalog_rest_urls(model_registry_namespace: str, model_catalog_routes: list[Route]) -> list[str]:
+    """Build MCP catalog REST URL from existing model catalog routes."""
+    assert model_catalog_routes, f"Model catalog routes do not exist in {model_registry_namespace}"
+    return [f"https://{route.instance.spec.host}:443{MCP_CATALOG_API_PATH}" for route in model_catalog_routes]
+
+
+@pytest.fixture(scope="class")
+def mcp_servers_configmap_patch(
+    admin_client: DynamicClient,
+    model_registry_namespace: str,
+    mcp_catalog_rest_urls: list[str],
+    model_registry_rest_headers: dict[str, str],
+) -> Generator[None]:
+    """
+    Class-scoped fixture that patches the model-catalog-sources ConfigMap
+
+    Sets two keys in the ConfigMap data:
+    - sources.yaml: catalog source definition pointing to the MCP servers YAML
+    - mcp-servers.yaml: the actual MCP server definitions
+    """
+    catalog_config_map = ConfigMap(
+        name=DEFAULT_CUSTOM_MODEL_CATALOG,
+        client=admin_client,
+        namespace=model_registry_namespace,
+    )
+
+    current_data = yaml.safe_load(catalog_config_map.instance.data.get("sources.yaml", "{}") or "{}")
+    if "mcp_catalogs" not in current_data:
+        current_data["mcp_catalogs"] = []
+    current_data["mcp_catalogs"].append(MCP_CATALOG_SOURCE)
+
+    patches = {
+        "data": {
+            "sources.yaml": yaml.dump(current_data, default_flow_style=False),
+            "mcp-servers.yaml": MCP_SERVERS_YAML,
+        }
+    }
+
+    with ResourceEditor(patches={catalog_config_map: patches}):
+        wait_for_model_catalog_pod_ready_after_deletion(
+            client=admin_client, model_registry_namespace=model_registry_namespace
+        )
+        wait_for_mcp_catalog_api(url=mcp_catalog_rest_urls[0], headers=model_registry_rest_headers)
+        yield
+
+    wait_for_model_catalog_pod_ready_after_deletion(
+        client=admin_client, model_registry_namespace=model_registry_namespace
     )
