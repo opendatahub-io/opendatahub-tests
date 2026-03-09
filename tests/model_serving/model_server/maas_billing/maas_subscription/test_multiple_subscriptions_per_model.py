@@ -66,10 +66,8 @@ class TestMultipleSubscriptionsPerModel:
         ) as extra_subscription:
             extra_subscription.wait_for_condition(condition="Ready", status="True", timeout=300)
 
-            headers = dict(maas_headers_for_actor_api_key)
             payload = chat_payload_for_url(model_url=model_url_tinyllama_free)
-
-            explicit_headers = dict(headers)
+            explicit_headers = dict(maas_headers_for_actor_api_key)
             explicit_headers[MAAS_SUBSCRIPTION_HEADER] = maas_subscription_tinyllama_free.name
 
             LOGGER.info(
@@ -99,7 +97,6 @@ class TestMultipleSubscriptionsPerModel:
         maas_free_group: str,
         maas_model_tinyllama_free,
         model_url_tinyllama_free: str,
-        # ocp_token_for_actor: str,
         maas_subscription_tinyllama_free,
         maas_headers_for_actor_api_key: dict[str, str],
     ) -> None:
@@ -123,10 +120,9 @@ class TestMultipleSubscriptionsPerModel:
         ) as high_tier_subscription:
             high_tier_subscription.wait_for_condition(condition="Ready", status="True", timeout=300)
 
-            headers = dict(maas_headers_for_actor_api_key)
             payload = chat_payload_for_url(model_url=model_url_tinyllama_free)
 
-            explicit_headers = dict(headers)
+            explicit_headers = dict(maas_headers_for_actor_api_key)
             explicit_headers[MAAS_SUBSCRIPTION_HEADER] = high_tier_subscription.name
 
             response = poll_expected_status(

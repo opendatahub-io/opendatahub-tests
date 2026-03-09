@@ -171,16 +171,7 @@ def create_maas_subscription(
     )
 
 
-def maas_auth_headers_for_ocp_token(ocp_user_token: str) -> dict[str, str]:
-    """
-    Authorization header for MaaS API calls using an OpenShift user token.
-    (Used for API key creation.)
-    """
-    return {"Authorization": f"Bearer {ocp_user_token}"}
-
-
 def create_api_key(
-    *,
     base_url: str,
     ocp_user_token: str,
     request_session_http: requests.Session,
@@ -198,7 +189,7 @@ def create_api_key(
     response = request_session_http.post(
         url=api_keys_url,
         headers={
-            **maas_auth_headers_for_ocp_token(ocp_user_token=ocp_user_token),
+            "Authorization": f"Bearer {ocp_user_token}",
             "Content-Type": "application/json",
         },
         json={"name": api_key_name},
