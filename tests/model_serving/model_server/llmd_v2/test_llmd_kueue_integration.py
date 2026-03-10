@@ -74,10 +74,7 @@ class KueueTestConfig(TinyLlamaOciConfig):
     indirect=True,
 )
 class TestKueueLLMDScaleUp:
-    """
-    Test Kueue admission control for a single LLMInferenceService that scales up
-    to exceed the available resource quota.
-    """
+    """Deploy TinyLlama on CPU under a Kueue quota, scale to 2 replicas, and verify Kueue gates the excess replica."""
 
     def _get_deployment_status_replicas(self, deployment: Deployment) -> int:
         deployment.get()
@@ -92,9 +89,14 @@ class TestKueueLLMDScaleUp:
         kueue_local_queue_from_template,
         llmisvc: LLMInferenceService,
     ):
-        """
-        Verify that Kueue admits the first replica of an LLMInferenceService and
-        gates the second replica when the service is scaled up beyond the queue's quota.
+        """Test steps:
+
+        1. Find the workload deployment and assert exactly 1 exists with 1 replica.
+        2. Scale the LLMInferenceService to 2 replicas.
+        3. Wait for the deployment to reach 2 desired replicas.
+        4. Assert Kueue admits 1 pod and gates the other.
+        5. Send a chat completion request to /v1/chat/completions.
+        6. Assert the response status is 200 and the completion text contains the expected answer.
         """
         selector_labels = [f"app.kubernetes.io/name={llmisvc.name}", "kserve.io/component=workload"]
         deployments = list(

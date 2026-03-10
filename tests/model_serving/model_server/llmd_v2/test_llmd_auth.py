@@ -1,5 +1,3 @@
-"""Authentication tests for LLMInferenceService."""
-
 import pytest
 
 from tests.model_serving.model_server.llmd_v2.utils import (
@@ -19,10 +17,15 @@ NAMESPACE = ns_from_file(__file__)
     indirect=True,
 )
 class TestLLMISVCAuth:
-    """Authentication testing for LLMD."""
+    """Deploy TinyLlama on CPU with authentication enabled and verify access control on chat completions."""
 
     def test_llmisvc_authorized(self, llmisvc_auth_pair):
-        """Test that authorized users can access their own LLMInferenceServices."""
+        """Test steps:
+
+        1. Send a chat completion request to each service using its owner's token.
+        2. Assert both responses return status 200.
+        3. Assert both completion texts contain the expected answer.
+        """
         entry_a, entry_b = llmisvc_auth_pair
 
         prompt = "What is the capital of Italy?"
@@ -35,7 +38,13 @@ class TestLLMISVCAuth:
             assert expected in completion.lower(), f"Expected '{expected}' in response, got: {completion}"
 
     def test_llmisvc_unauthorized(self, llmisvc_auth_pair):
-        """Test that unauthorized access to LLMInferenceServices is properly blocked."""
+        """Test steps:
+
+        1. Send a chat completion request to user A's service using user B's token.
+        2. Assert the response status is 401 or 403.
+        3. Send a chat completion request to user A's service with no token.
+        4. Assert the response status is 401 or 403.
+        """
         entry_a, entry_b = llmisvc_auth_pair
 
         # User B's token cannot access user A's service

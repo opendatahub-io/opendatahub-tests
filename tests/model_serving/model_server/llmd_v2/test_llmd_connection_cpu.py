@@ -1,5 +1,3 @@
-"""CPU connection tests for LLMInferenceService (S3 + HuggingFace)."""
-
 import pytest
 from ocp_resources.llm_inference_service import LLMInferenceService
 
@@ -25,9 +23,15 @@ NAMESPACE = ns_from_file(__file__)
 )
 @pytest.mark.usefixtures("valid_aws_config")
 class TestLlmdConnectionCpu:
-    """Verify CPU inference with S3 and HuggingFace storage backends."""
+    """Deploy TinyLlama on CPU via S3 and HuggingFace and verify chat completions."""
 
     def test_llmd_connection_cpu(self, llmisvc: LLMInferenceService):
+        """Test steps:
+
+        1. Send a chat completion request to /v1/chat/completions.
+        2. Assert the response status is 200.
+        3. Assert the completion text contains the expected answer.
+        """
         prompt = "What is the capital of Italy?"
         expected = "rome"
 

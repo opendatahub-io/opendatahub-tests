@@ -1,5 +1,3 @@
-"""Smoke test for LLMD — OCI CPU inference with TinyLlama."""
-
 import pytest
 from ocp_resources.llm_inference_service import LLMInferenceService
 
@@ -21,13 +19,18 @@ NAMESPACE = ns_from_file(__file__)
     indirect=True,
 )
 class TestLLMDSmoke:
-    """Smoke test: OCI CPU inference with TinyLlama via the config-driven fixture."""
+    """Smoke test: deploy TinyLlama on CPU via OCI and verify chat completions."""
 
     def test_llmd_smoke(
         self,
         llmisvc: LLMInferenceService,
     ):
-        """Verify basic LLMD inference works end-to-end."""
+        """Test steps:
+
+        1. Send a chat completion request to /v1/chat/completions.
+        2. Assert the response status is 200.
+        3. Assert the completion text contains the expected answer.
+        """
         prompt = "What is the capital of Italy?"
         expected = "rome"
 

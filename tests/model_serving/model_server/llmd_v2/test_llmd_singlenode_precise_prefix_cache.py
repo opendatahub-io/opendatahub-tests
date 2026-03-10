@@ -1,20 +1,3 @@
-"""
-Test Single-Node Precise Prefix Caching.
-
-This test verifies that the LLM-D router correctly routes inference requests
-based on precise KV cache tracking, maximizing prefix cache hits using the
-cache_tracking mode.
-
-Test configuration:
-- LLMInferenceService with 2 replicas and router enabled
-- Authentication enabled
-- Precise prefix cache mode with KV block index tracking
-- HuggingFace model storage (Qwen 7B)
-- Verify router pod and vLLM pods are running
-- Send multiple requests with shared prefixes and size greater than PREFIX_CACHE_BLOCK_SIZE
-- Validate prefix cache metrics
-"""
-
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.llm_inference_service import LLMInferenceService
@@ -50,7 +33,7 @@ pytestmark = [pytest.mark.tier2, pytest.mark.gpu]
 )
 @pytest.mark.usefixtures("valid_aws_config")
 class TestSingleNodePrecisePrefixCache:
-    """Test class for singlenode precise prefix cache routing."""
+    """Deploy Qwen on GPU with 2 replicas and precise prefix cache routing, then verify cache hits via Prometheus metrics."""
 
     def test_singlenode_precise_prefix_cache(
         self,
@@ -60,7 +43,15 @@ class TestSingleNodePrecisePrefixCache:
         gpu_count_on_cluster: int,
         prometheus: Prometheus,
     ):
-        """Test single-node precise prefix cache routing with KV block index tracking."""
+        """Test steps:
+
+        1. Skip if fewer than 2 GPU nodes are available on the cluster.
+        2. Assert the router-scheduler pod exists and is Running.
+        3. Assert exactly 2 workload pods are found.
+        4. Send 20 chat completion requests with a shared long prompt.
+        5. Query Prometheus and assert all traffic was routed to a single pod with correct prefix cache hit counts.
+        6. Assert the scheduler made at least the expected number of routing decisions.
+        """
         if gpu_count_on_cluster < 2:
             pytest.skip(f"Test requires at least 2 GPUs (found {gpu_count_on_cluster})")
 

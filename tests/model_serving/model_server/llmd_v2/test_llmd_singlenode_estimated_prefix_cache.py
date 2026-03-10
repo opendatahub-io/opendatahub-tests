@@ -1,16 +1,3 @@
-"""
-Test Single-Node Estimated Prefix Caching.
-
-This test verifies that the LLM-D router correctly routes inference requests
-based on cache state, maximizing prefix cache hits.
-
-Test configuration:
-- LLMInferenceService with 2 replicas and router enabled
-- Authentication enabled
-- Verify router pod and vLLM pods are running
-- Send multiple requests with shared prefixes and size greater than PREFIX_CACHE_BLOCK_SIZE
-"""
-
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.llm_inference_service import LLMInferenceService
@@ -45,7 +32,7 @@ pytestmark = [pytest.mark.tier2, pytest.mark.gpu]
 )
 @pytest.mark.usefixtures("valid_aws_config")
 class TestSingleNodeEstimatedPrefixCache:
-    """Test class for singlenode estimated prefix cache routing."""
+    """Deploy Qwen on GPU with 2 replicas and estimated prefix cache routing, then verify cache hits via Prometheus metrics."""
 
     def test_singlenode_estimated_prefix_cache(
         self,
@@ -55,7 +42,14 @@ class TestSingleNodeEstimatedPrefixCache:
         gpu_count_on_cluster: int,
         prometheus: Prometheus,
     ):
-        """Test single-node estimated prefix cache routing."""
+        """Test steps:
+
+        1. Skip if fewer than 2 GPU nodes are available on the cluster.
+        2. Assert the router-scheduler pod exists and is Running.
+        3. Assert exactly 2 workload pods are found.
+        4. Send 20 chat completion requests with a shared long prompt.
+        5. Query Prometheus and assert all traffic was routed to a single pod with correct prefix cache hit counts.
+        """
         if gpu_count_on_cluster < 2:
             pytest.skip(f"Test requires at least 2 GPUs (found {gpu_count_on_cluster})")
 
