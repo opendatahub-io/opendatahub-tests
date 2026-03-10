@@ -14,7 +14,6 @@ from ocp_resources.subscription import Subscription
 from ocp_utilities.operators import install_operator, uninstall_operator
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
-from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_registry.model_registry.python_client.signing.constants import (
     SECURESIGN_API_VERSION,
@@ -26,7 +25,6 @@ from tests.model_registry.model_registry.python_client.signing.utils import (
     create_connection_type_field,
     get_organization_config,
     get_tas_service_urls,
-    is_securesign_ready,
 )
 from utilities.constants import OPENSHIFT_OPERATORS, Timeout
 from utilities.infra import get_openshift_token
@@ -119,6 +117,10 @@ def installed_tas_operator(admin_client: DynamicClient) -> Generator[None, Any]:
             operator_namespace=operator_ns.name,
             clean_up_namespace=False,
         )
+        # Ensure namespace exists for Securesign
+        ns = Namespace(name=SECURESIGN_NAMESPACE)
+        if ns.exists:
+            ns.delete(wait=True)
     else:
         LOGGER.info(f"TAS operator already installed in {OPENSHIFT_OPERATORS}. Using existing installation.")
         yield
@@ -149,7 +151,8 @@ def securesign_instance(
         Resource: Securesign resource instance
     """
     # Ensure namespace exists for Securesign
-    Namespace(name=SECURESIGN_NAMESPACE, ensure_exists=True)
+    ns = Namespace(name=SECURESIGN_NAMESPACE)
+    ns.wait_for_status(status=Namespace.Status.ACTIVE)
 
     # Build Securesign CR spec
     org_config = get_organization_config()
@@ -197,21 +200,7 @@ def securesign_instance(
     # Create Securesign instance using custom Securesign class
     with Securesign(kind_dict=securesign_dict, client=admin_client) as securesign:
         LOGGER.info(f"Securesign instance '{SECURESIGN_NAME}' created in namespace '{SECURESIGN_NAMESPACE}'")
-
-        # Wait for the Securesign instance to become ready
-        try:
-            for sample in TimeoutSampler(
-                wait_timeout=Timeout.TIMEOUT_5MIN,
-                sleep=5,
-                func=lambda: securesign.instance.to_dict(),
-            ):
-                if sample and is_securesign_ready(sample):
-                    LOGGER.info(f"Securesign instance '{SECURESIGN_NAME}' is ready")
-                    break
-        except TimeoutExpiredError:
-            LOGGER.error(f"Timeout waiting for Securesign instance '{SECURESIGN_NAME}' to become ready")
-            raise
-
+        securesign.wait_for_condition(condition="Ready", status="True")
         yield securesign
 
     # Cleanup is handled automatically by the context manager

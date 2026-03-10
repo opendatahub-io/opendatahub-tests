@@ -2,7 +2,7 @@ minimum_pre_commit_version: 3.3.0
 default_install_hook_types: [pre-commit, commit-msg]
 
 default_language_version:
-  python: python3.13
+  python: python3.14
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -36,7 +36,7 @@ repos:
         exclude: .*/__snapshots__/.*|.*-input\.json$|^semgrep\.yaml$
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.4
+    rev: v0.15.5
     hooks:
       - id: ruff
       - id: ruff-format
