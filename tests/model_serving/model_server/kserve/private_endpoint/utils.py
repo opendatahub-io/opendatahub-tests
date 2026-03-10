@@ -20,43 +20,47 @@ def curl_from_pod(
     pod: Pod,
     endpoint: str,
     protocol: str = Protocols.HTTP,
+    port: int | None = None,
 ) -> str:
     """
-    Curl from pod
+    Curl from pod and return HTTP status code.
 
     Args:
         isvc (InferenceService): InferenceService object
         pod (Pod): Pod object
-        endpoint (str): endpoint
-        protocol (str): protocol
+        endpoint (str): endpoint path
+        protocol (str): protocol (http or https)
+        port (int | None): override the port in the ISVC URL
 
     Returns:
-        str: curl command output
+        str: HTTP status code as string (e.g. "200")
 
     """
     if protocol not in (Protocols.HTTPS, Protocols.HTTP):
         raise ProtocolNotSupportedError(protocol)
-    host = isvc.instance.status.address.url
-    if protocol == "http":
-        parsed = urlparse(url=host)
-        host = parsed._replace(scheme="http").geturl()
-    return pod.execute(command=shlex.split(f"curl -k {host}/{endpoint}"), ignore_rc=True)
+
+    parsed = urlparse(url=isvc.instance.status.address.url)
+    parsed = parsed._replace(scheme=protocol)
+    if port:
+        parsed = parsed._replace(netloc=f"{parsed.hostname}:{port}")
+
+    url = f"{parsed.geturl()}/{endpoint}"
+    cmd = shlex.split(f"curl -s -o /dev/null -w '%{{http_code}}' -k {url}")
+    return pod.execute(command=cmd, ignore_rc=True)
 
 
 @contextmanager
-def create_sidecar_pod(
+def create_curl_pod(
     client: DynamicClient,
     namespace: str,
-    use_istio: bool,
     pod_name: str,
 ) -> Generator[Pod, Any, Any]:
     """
-    Create a sidecar pod
+    Create a lightweight pod for running curl commands.
 
     Args:
         client (DynamicClient): DynamicClient object
         namespace (str): namespace name
-        use_istio (bool): use istio
         pod_name (str): pod name
 
     Returns:
@@ -77,11 +81,6 @@ def create_sidecar_pod(
         }
     ]
 
-    pod_kwargs = {"client": client, "name": pod_name, "namespace": namespace, "containers": containers}
-
-    if use_istio:
-        pod_kwargs.update({"annotations": {"sidecar.istio.io/inject": "true"}})
-
-    with Pod(**pod_kwargs) as pod:
+    with Pod(client=client, name=pod_name, namespace=namespace, containers=containers) as pod:
         pod.wait_for_condition(condition="Ready", status="True")
         yield pod
