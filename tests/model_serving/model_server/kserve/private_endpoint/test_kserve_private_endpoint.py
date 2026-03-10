@@ -32,7 +32,16 @@ pytestmark = [pytest.mark.usefixtures("valid_aws_config")]
     indirect=True,
 )
 class TestKserveInternalEndpoint:
-    """Tests the internal endpoint of a KServe RawDeployment predictor using OVMS with S3 storage."""
+    """
+    Tests the internal endpoint of a KServe RawDeployment predictor using OVMS with S3 storage.
+
+    Steps:
+        1. Deploy OVMS ServingRuntime and InferenceService with S3 storage in RawDeployment mode.
+        2. Verify the model state reaches "Loaded".
+        3. Verify the internal endpoint URL is set correctly.
+        4. Curl v2/health/ready from a pod in the same namespace — expect HTTP 200.
+        5. Curl v2/health/ready from a pod in a different namespace — expect HTTP 200.
+    """
 
     def test_deploy_model_state_loaded(self: Self, endpoint_isvc: InferenceService) -> None:
         """Verifies that the predictor gets to state Loaded."""
