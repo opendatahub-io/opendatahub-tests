@@ -142,12 +142,12 @@ def send_chat_completions(
 ) -> tuple[int, str]:
     """Send a chat completion request. Returns (status_code, response_body)."""
     url = _get_inference_url(llmisvc) + "/v1/chat/completions"
-    model_name = _get_model_name(llmisvc)
-    body = _build_chat_body(model_name, prompt)
+    model_name = _get_model_name(llmisvc=llmisvc)
+    body = _build_chat_body(model_name=model_name, prompt=prompt)
     ca_cert = None if insecure else _resolve_ca_cert(llmisvc.client)
 
     LOGGER.info(f"Sending inference request to {llmisvc.name} — URL: {url}, Model: {model_name}")
-    status_code, response_body = _curl_post(url, body, token=token, ca_cert=ca_cert)
+    status_code, response_body = _curl_post(url=url, body=body, token=token, ca_cert=ca_cert)
     LOGGER.info(f"Inference response — status={status_code}\n{response_body}")
     return status_code, response_body
 
@@ -238,7 +238,12 @@ def assert_prefix_cache_routing(
     block_size: int = 64,
 ) -> bool:
     """Assert all traffic routed to 1 pod with correct cache hits. Retries for metric delay."""
-    requests = query_metric_by_pod(prometheus, "kserve_vllm:request_success_total", llmisvc, pods)
+    requests = query_metric_by_pod(
+        prometheus=prometheus,
+        metric_name="kserve_vllm:request_success_total",
+        llmisvc=llmisvc,
+        pods=pods,
+    )
     LOGGER.info(f"Request count by pod: {requests}")
 
     pods_with_traffic = [p for p, count in requests.items() if count > 0]
@@ -249,7 +254,12 @@ def assert_prefix_cache_routing(
         f"Expected {expected_requests} requests on '{active_pod}', got {requests[active_pod]}"
     )
 
-    hits = query_metric_by_pod(prometheus, "kserve_vllm:prefix_cache_hits_total", llmisvc, pods)
+    hits = query_metric_by_pod(
+        prometheus=prometheus,
+        metric_name="kserve_vllm:prefix_cache_hits_total",
+        llmisvc=llmisvc,
+        pods=pods,
+    )
     LOGGER.info(f"Prefix cache hits by pod: {hits}")
 
     expected_hits = (expected_requests - 1) * block_size
@@ -279,7 +289,7 @@ def send_prefix_cache_requests(
     successful = 0
     for i in range(count):
         try:
-            status, _ = send_chat_completions(llmisvc, prompt=prompt, token=token, insecure=False)
+            status, _ = send_chat_completions(llmisvc=llmisvc, prompt=prompt, token=token, insecure=False)
             if status == 200:
                 successful += 1
         except Exception as e:  # noqa: BLE001

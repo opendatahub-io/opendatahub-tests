@@ -7,11 +7,11 @@ from .config_prefill_decode import PrefillDecodeConfig
 __all__ = [
     "EstimatedPrefixCacheConfig",
     "LLMISvcConfig",
-    "TinyLlamaHfConfig",
     "PrecisePrefixCacheConfig",
     "PrefillDecodeConfig",
     "QwenHfConfig",
     "QwenS3Config",
+    "TinyLlamaHfConfig",
     "TinyLlamaOciConfig",
     "TinyLlamaS3Config",
 ]

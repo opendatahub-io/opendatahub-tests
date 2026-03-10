@@ -3,8 +3,8 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.prometheus import Prometheus
 
-from tests.model_serving.model_server.llmd_v2.llmd_configs import PrecisePrefixCacheConfig
-from tests.model_serving.model_server.llmd_v2.utils import (
+from tests.model_serving.model_server.llmd.llmd_configs import PrecisePrefixCacheConfig
+from tests.model_serving.model_server.llmd.utils import (
     assert_prefix_cache_routing,
     assert_scheduler_routing,
     get_llmd_router_scheduler_pod,
@@ -21,7 +21,7 @@ PREFIX_CACHE_PROMPT = (
     "and why they are important for understanding the nature of reality at the atomic scale."
 )
 
-NAMESPACE = ns_from_file(__file__)
+NAMESPACE = ns_from_file(file=__file__)
 
 pytestmark = [pytest.mark.tier2, pytest.mark.gpu]
 
@@ -33,7 +33,9 @@ pytestmark = [pytest.mark.tier2, pytest.mark.gpu]
 )
 @pytest.mark.usefixtures("valid_aws_config")
 class TestSingleNodePrecisePrefixCache:
-    """Deploy Qwen on GPU with 2 replicas and precise prefix cache routing, then verify cache hits via Prometheus metrics."""
+    """Deploy Qwen on GPU with 2 replicas and precise prefix cache routing,
+    then verify cache hits via Prometheus metrics.
+    """
 
     def test_singlenode_precise_prefix_cache(
         self,

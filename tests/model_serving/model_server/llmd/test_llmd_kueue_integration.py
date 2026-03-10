@@ -3,8 +3,8 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.llm_inference_service import LLMInferenceService
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
-from tests.model_serving.model_server.llmd_v2.llmd_configs import TinyLlamaOciConfig
-from tests.model_serving.model_server.llmd_v2.utils import (
+from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaOciConfig
+from tests.model_serving.model_server.llmd.utils import (
     ns_from_file,
     parse_completion_text,
     send_chat_completions,
@@ -15,7 +15,7 @@ from utilities.kueue_utils import check_gated_pods_and_running_pods
 
 pytestmark = [pytest.mark.tier2, pytest.mark.cpu]
 
-NAMESPACE = ns_from_file(__file__)
+NAMESPACE = ns_from_file(file=__file__)
 
 # --- Test Configuration ---
 LOCAL_QUEUE_NAME = "llmd-local-queue-raw"
@@ -157,5 +157,5 @@ class TestKueueLLMDScaleUp:
 
         status, body = send_chat_completions(llmisvc=llmisvc, prompt=prompt)
         assert status == 200, f"Expected 200 after scale-up, got {status}: {body}"
-        completion = parse_completion_text(body)
+        completion = parse_completion_text(response_body=body)
         assert expected in completion.lower(), f"Expected '{expected}' in response, got: {completion}"
