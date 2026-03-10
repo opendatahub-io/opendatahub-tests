@@ -83,6 +83,16 @@ def s3_service_account(
 
 
 # ===========================================
+#  GPU guards
+# ===========================================
+@pytest.fixture(scope="session")
+def skip_if_less_than_2_gpus(gpu_count_on_cluster: int) -> None:
+    """Skip test if fewer than 2 GPUs are available on the cluster."""
+    if gpu_count_on_cluster < 2:
+        pytest.skip(f"Test requires at least 2 GPUs (found {gpu_count_on_cluster})")
+
+
+# ===========================================
 #  LLMInferenceService creation
 # ===========================================
 @pytest.fixture(scope="class")

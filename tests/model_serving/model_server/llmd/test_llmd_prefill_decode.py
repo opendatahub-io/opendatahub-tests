@@ -18,25 +18,20 @@ NAMESPACE = ns_from_file(file=__file__)
     [({"name": NAMESPACE}, PrefillDecodeConfig)],
     indirect=True,
 )
-@pytest.mark.usefixtures("valid_aws_config")
+@pytest.mark.usefixtures("valid_aws_config", "skip_if_no_gpu_available")
 class TestLlmdPrefillDecode:
     """Deploy Qwen on GPU with prefill-decode disaggregation and verify chat completions."""
 
     def test_llmd_prefill_decode(
         self,
         llmisvc: LLMInferenceService,
-        gpu_count_on_cluster: int,
     ):
         """Test steps:
 
-        1. Skip if no GPU nodes are available on the cluster.
-        2. Send a chat completion request to /v1/chat/completions.
-        3. Assert the response status is 200.
-        4. Assert the completion text contains the expected answer.
+        1. Send a chat completion request to /v1/chat/completions.
+        2. Assert the response status is 200.
+        3. Assert the completion text contains the expected answer.
         """
-        if gpu_count_on_cluster < 1:
-            pytest.skip("No GPUs available on cluster, skipping GPU test")
-
         prompt = "What is the capital of Italy?"
         expected = "rome"
 
