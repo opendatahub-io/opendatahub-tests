@@ -18,6 +18,7 @@ class LLMISvcConfig:
     container_image = None
     template_config_ref = "kserve-config-llm-template"
     enable_auth = False
+    wait_timeout = 180
 
     @classmethod
     def container_resources(cls):
@@ -130,6 +131,7 @@ class GpuConfig(LLMISvcConfig):
     """GPU inference base. Sets GPU resource limits."""
 
     enable_auth = False
+    wait_timeout = 480
 
     @classmethod
     def container_resources(cls):

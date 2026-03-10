@@ -286,5 +286,5 @@ def _create_llmisvc_from_config(
         svc_kwargs["prefill"] = prefill
 
     with LLMInferenceService(**svc_kwargs) as llm_service:
-        wait_for_llmisvc(llmisvc=llm_service)
+        wait_for_llmisvc(llmisvc=llm_service, timeout=config_cls.wait_timeout)
         yield llm_service
