@@ -10,7 +10,7 @@ from tests.model_serving.model_server.llmd_v2.utils import (
     send_chat_completions,
 )
 
-pytestmark = [pytest.mark.smoke]
+pytestmark = [pytest.mark.smoke, pytest.mark.cpu]
 
 NAMESPACE = ns_from_file(__file__)
 

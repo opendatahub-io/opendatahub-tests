@@ -13,7 +13,7 @@ from utilities.constants import Labels
 from utilities.exceptions import UnexpectedResourceCountError
 from utilities.kueue_utils import check_gated_pods_and_running_pods
 
-pytestmark = [pytest.mark.tier2, pytest.mark.llmd_cpu, pytest.mark.kueue]
+pytestmark = [pytest.mark.tier2, pytest.mark.cpu]
 
 NAMESPACE = ns_from_file(__file__)
 
