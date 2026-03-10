@@ -14,22 +14,6 @@ def get_organization_config() -> dict[str, str]:
     }
 
 
-def is_securesign_ready(securesign_instance: dict) -> bool:
-    """Check if a Securesign instance is ready.
-
-    Args:
-        securesign_instance: Securesign instance dictionary from Kubernetes API
-
-    Returns:
-        bool: True if instance has Ready condition with status True
-    """
-    conditions = securesign_instance.get("status", {}).get("conditions", [])
-    ready = [
-        condition for condition in conditions if condition.get("type") == "Ready" and condition.get("status") == "True"
-    ]
-    return bool(ready)
-
-
 def get_tas_service_urls(securesign_instance: dict) -> dict[str, str]:
     """Extract TAS service URLs from Securesign instance status.
 
