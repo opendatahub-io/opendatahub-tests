@@ -120,7 +120,7 @@ def installed_tas_operator(admin_client: DynamicClient) -> Generator[None, Any]:
         # Ensure namespace exists for Securesign
         ns = Namespace(name=SECURESIGN_NAMESPACE)
         if ns.exists:
-            ns.delete()
+            ns.delete(wait=True)
     else:
         LOGGER.info(f"TAS operator already installed in {OPENSHIFT_OPERATORS}. Using existing installation.")
         yield
