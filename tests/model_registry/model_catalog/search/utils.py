@@ -330,7 +330,8 @@ def validate_performance_data_files_on_pod(model_catalog_pod: Pod) -> dict[str, 
 
     for provider in providers.splitlines():
         required_files = ["metadata.json", "performance.ndjson", "evaluations.ndjson"]
-        if provider == "manifest.json":
+        # skip the files manifest.json and variant-groups.ndjson
+        if provider in ["manifest.json", "variant-groups.ndjson"]:
             continue
         LOGGER.info(f"Checking provider: {provider}")
         # Only for RedHatAI model we expect performance.ndjson file, based on edge case definition
