@@ -28,7 +28,7 @@ def ns_from_file(file: str) -> str:
 
     Example: __file__ of test_llmd_smoke.py → "llmd-smoke"
     """
-    return Path(file).stem.removeprefix("test_").replace("_", "-")
+    return Path(file).stem.removeprefix("test_").replace("_", "-")[:63]
 
 
 def wait_for_llmisvc(llmisvc: LLMInferenceService, timeout: int = Timeout.TIMEOUT_5MIN) -> None:
