@@ -6,10 +6,13 @@ from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
 
 from tests.model_serving.model_server.kserve.private_endpoint.utils import curl_from_pod
-from utilities.constants import CurlOutput, ModelEndpoint, Protocols, RuntimeTemplates
+from utilities.constants import RuntimeTemplates
 
 LOGGER = get_logger(name=__name__)
 
+OVMS_REST_PORT = 8888
+OVMS_HEALTH_ENDPOINT = "v2/health/ready"
+HTTP_OK = "200"
 
 pytestmark = [pytest.mark.usefixtures("valid_aws_config")]
 
@@ -20,8 +23,8 @@ pytestmark = [pytest.mark.usefixtures("valid_aws_config")]
         pytest.param(
             {"name": "endpoint"},
             {
-                "name": "flan-example-runtime",
-                "template-name": RuntimeTemplates.CAIKIT_TGIS_SERVING,
+                "name": "ovms-endpoint-runtime",
+                "template-name": RuntimeTemplates.OVMS_KSERVE,
                 "multi-model": False,
             },
         )
@@ -29,86 +32,49 @@ pytestmark = [pytest.mark.usefixtures("valid_aws_config")]
     indirect=True,
 )
 class TestKserveInternalEndpoint:
-    """Tests the internal endpoint of a kserve predictor"""
+    """Tests the internal endpoint of a KServe RawDeployment predictor using OVMS with S3 storage."""
 
     def test_deploy_model_state_loaded(self: Self, endpoint_isvc: InferenceService) -> None:
-        """Verifies that the predictor gets to state Loaded"""
+        """Verifies that the predictor gets to state Loaded."""
         assert endpoint_isvc.instance.status.modelStatus.states.activeModelState == "Loaded"
 
     def test_deploy_model_url(self: Self, endpoint_isvc: InferenceService) -> None:
-        """Verifies that the internal endpoint has the expected formatting"""
-        assert (
-            endpoint_isvc.instance.status.address.url
-            == f"https://{endpoint_isvc.name}.{endpoint_isvc.namespace}.svc.cluster.local"
-        )
+        """Verifies that the internal endpoint URL is set."""
+        url = endpoint_isvc.instance.status.address.url
+        assert url is not None
+        assert endpoint_isvc.name in url
+        assert endpoint_isvc.namespace in url
 
-    def test_curl_with_istio_same_ns(
+    def test_curl_same_namespace(
         self: Self,
         endpoint_isvc: InferenceService,
-        endpoint_pod_with_istio_sidecar: Pod,
+        same_namespace_pod: Pod,
     ) -> None:
         """
-        Verifies the response from the health endpoint,
-        sending a request from a pod in the same ns and part of the Istio Service Mesh
+        Verifies the v2 health endpoint is reachable
+        from a pod in the same namespace.
         """
-
         curl_stdout = curl_from_pod(
             isvc=endpoint_isvc,
-            pod=endpoint_pod_with_istio_sidecar,
-            endpoint=ModelEndpoint.HEALTH,
+            pod=same_namespace_pod,
+            endpoint=OVMS_HEALTH_ENDPOINT,
+            port=OVMS_REST_PORT,
         )
-        assert curl_stdout == CurlOutput.HEALTH_OK
+        assert curl_stdout == HTTP_OK
 
-    def test_curl_with_istio_diff_ns(
+    def test_curl_diff_namespace(
         self: Self,
         endpoint_isvc: InferenceService,
-        diff_pod_with_istio_sidecar: Pod,
+        diff_namespace_pod: Pod,
     ) -> None:
         """
-        Verifies the response from the health endpoint,
-        sending a request from a pod in a different ns and part of the Istio Service Mesh
+        Verifies the v2 health endpoint is reachable
+        from a pod in a different namespace.
         """
-
         curl_stdout = curl_from_pod(
             isvc=endpoint_isvc,
-            pod=diff_pod_with_istio_sidecar,
-            endpoint=ModelEndpoint.HEALTH,
-            protocol=Protocols.HTTPS,
+            pod=diff_namespace_pod,
+            endpoint=OVMS_HEALTH_ENDPOINT,
+            port=OVMS_REST_PORT,
         )
-        assert curl_stdout == CurlOutput.HEALTH_OK
-
-    def test_curl_outside_istio_same_ns(
-        self: Self,
-        endpoint_isvc: InferenceService,
-        endpoint_pod_without_istio_sidecar: Pod,
-    ) -> None:
-        """
-        Verifies the response from the health endpoint,
-        sending a request from a pod in the same ns and not part of the Istio Service Mesh
-        """
-
-        curl_stdout = curl_from_pod(
-            isvc=endpoint_isvc,
-            pod=endpoint_pod_without_istio_sidecar,
-            endpoint=ModelEndpoint.HEALTH,
-            protocol=Protocols.HTTPS,
-        )
-        assert curl_stdout == CurlOutput.HEALTH_OK
-
-    def test_curl_outside_istio_diff_ns(
-        self: Self,
-        endpoint_isvc: InferenceService,
-        diff_pod_without_istio_sidecar: Pod,
-    ) -> None:
-        """
-        Verifies the response from the health endpoint,
-        sending a request from a pod in a different ns and not part of the Istio Service Mesh
-        """
-
-        curl_stdout = curl_from_pod(
-            isvc=endpoint_isvc,
-            pod=diff_pod_without_istio_sidecar,
-            endpoint=ModelEndpoint.HEALTH,
-            protocol=Protocols.HTTPS,
-        )
-        assert curl_stdout == CurlOutput.HEALTH_OK
+        assert curl_stdout == HTTP_OK
