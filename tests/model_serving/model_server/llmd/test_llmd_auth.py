@@ -6,7 +6,7 @@ from tests.model_serving.model_server.llmd.utils import (
     send_chat_completions,
 )
 
-pytestmark = [pytest.mark.tier1, pytest.mark.cpu]
+pytestmark = [pytest.mark.tier1]
 
 NAMESPACE = ns_from_file(file=__file__)
 
