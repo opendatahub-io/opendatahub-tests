@@ -154,8 +154,11 @@ def send_chat_completions(
 
 def parse_completion_text(response_body: str) -> str:
     """Extract completion text from a chat completion response."""
-    data = json.loads(response_body)
-    return data["choices"][0]["message"]["content"]
+    try:
+        data = json.loads(response_body)
+        return data["choices"][0]["message"]["content"]
+    except (json.JSONDecodeError, KeyError, IndexError, TypeError) as e:
+        raise ValueError(f"Failed to parse completion response: {e}\nBody: {response_body[:500]}") from e
 
 
 def get_llmd_workload_pods(
@@ -292,8 +295,8 @@ def send_prefix_cache_requests(
             status, _ = send_chat_completions(llmisvc=llmisvc, prompt=prompt, token=token, insecure=False)
             if status == 200:
                 successful += 1
-        except Exception as e:  # noqa: BLE001
-            LOGGER.error(f"Request {i + 1}/{count} failed: {e}")
+        except Exception:
+            LOGGER.exception(f"Request {i + 1}/{count} failed")
     LOGGER.info(f"{successful}/{count} requests succeeded")
     assert successful >= count * min_ratio, f"Too many failures: {successful}/{count} (need {min_ratio * 100}%)"
     return successful

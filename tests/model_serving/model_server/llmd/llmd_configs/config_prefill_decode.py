@@ -10,13 +10,6 @@ class PrefillDecodeConfig(QwenS3Config):
     name = "llmisvc-prefill-decode-gpu"
 
     @classmethod
-    def container_resources(cls):
-        return {
-            "limits": {"cpu": "4", "memory": "32Gi", "nvidia.com/gpu": "1"},
-            "requests": {"cpu": "2", "memory": "16Gi", "nvidia.com/gpu": "1"},
-        }
-
-    @classmethod
     def prefill_config(cls):
         return {
             "replicas": 1,

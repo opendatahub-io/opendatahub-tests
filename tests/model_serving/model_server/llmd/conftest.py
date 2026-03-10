@@ -159,7 +159,7 @@ def llmisvc_auth_pair(
 
 
 # ===========================================
-#  Auth — SA + RBAC + token
+#  Auth — SA + RBAC + token 
 # ===========================================
 @pytest.fixture(scope="class")
 def llmisvc_token(
