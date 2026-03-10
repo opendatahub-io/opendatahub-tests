@@ -3,7 +3,7 @@
 import pytest
 from ocp_resources.llm_inference_service import LLMInferenceService
 
-from tests.model_serving.model_server.llmd_v2.llmd_configs import Opt125mHfConfig, TinyLlamaS3Config
+from tests.model_serving.model_server.llmd_v2.llmd_configs import TinyLlamaHfConfig, TinyLlamaS3Config
 from tests.model_serving.model_server.llmd_v2.utils import (
     ns_from_file,
     parse_completion_text,
@@ -19,7 +19,7 @@ NAMESPACE = ns_from_file(__file__)
     "unprivileged_model_namespace, llmisvc",
     [
         pytest.param({"name": NAMESPACE}, TinyLlamaS3Config, id="s3"),
-        pytest.param({"name": NAMESPACE}, Opt125mHfConfig, id="hf"),
+        pytest.param({"name": NAMESPACE}, TinyLlamaHfConfig, id="hf"),
     ],
     indirect=True,
 )

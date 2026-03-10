@@ -21,12 +21,12 @@ class TinyLlamaS3Config(CpuConfig):
     storage_uri = ModelStorage.TINYLLAMA_S3
 
 
-class Opt125mHfConfig(CpuConfig):
-    """OPT-125M via HuggingFace, CPU inference."""
+class TinyLlamaHfConfig(CpuConfig):
+    """TinyLlama via HuggingFace, CPU inference."""
 
     enable_auth = False
-    name = "llmisvc-opt125m-oci-cpu"
-    storage_uri = ModelStorage.HF_OPT125M
+    name = "llmisvc-tinyllama-hf-cpu"
+    storage_uri = ModelStorage.HF_TINYLLAMA
 
 
 class QwenS3Config(GpuConfig):
