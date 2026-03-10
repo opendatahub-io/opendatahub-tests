@@ -554,13 +554,27 @@ def cluster_monitoring_config(
 
 @pytest.fixture(scope="class")
 def unprivileged_model_namespace(
-    request: FixtureRequest, admin_client: DynamicClient, unprivileged_client: DynamicClient
+    request: FixtureRequest,
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
+    teardown_resources: bool,
 ) -> Generator[Namespace, Any, Any]:
     if request.param.get("modelmesh-enabled"):
         request.getfixturevalue(argname="enabled_modelmesh_in_dsc")
 
-    with create_ns(admin_client=admin_client, unprivileged_client=unprivileged_client, pytest_request=request) as ns:
+    ns = Namespace(client=admin_client, name=request.param["name"])
+    if pytestconfig.option.post_upgrade:
         yield ns
+        ns.clean_up()
+    else:
+        with create_ns(
+            admin_client=admin_client,
+            unprivileged_client=unprivileged_client,
+            pytest_request=request,
+            teardown=teardown_resources,
+        ) as ns:
+            yield ns
 
 
 # MinIo
