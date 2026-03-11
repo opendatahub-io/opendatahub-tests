@@ -24,7 +24,7 @@ from utilities.constants import ModelName, ModelStorage, RuntimeTemplates
     indirect=True,
 )
 class TestISVCPullSecretUpdate:
-    @pytest.mark.smoke
+    @pytest.mark.tier1
     def test_initial_pull_secret_set(self, model_car_raw_inference_service_with_pull_secret):
         """Ensure initial pull secret is correctly set in the pod"""
         verify_pull_secret(

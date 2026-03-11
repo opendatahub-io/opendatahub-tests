@@ -33,7 +33,7 @@ class TestMaaSController:
     ) -> None:
         """Verify MaaS controller CRDs exist (no CustomResourceDefinition.get usage)."""
         expected_crd_names = (
-            f"maasmodels.{ApiGroups.MAAS_IO}",
+            f"maasmodelrefs.{ApiGroups.MAAS_IO}",
             f"maasauthpolicies.{ApiGroups.MAAS_IO}",
             f"maassubscriptions.{ApiGroups.MAAS_IO}",
         )
@@ -80,7 +80,7 @@ class TestMaaSController:
     @pytest.mark.parametrize(
         "resource_fixture, kind_label",
         [
-            ("maas_model_tinyllama_free", "MaaSModel"),
+            ("maas_model_tinyllama_free", "MaaSModelRef"),
             ("maas_auth_policy_tinyllama_free", "MaaSAuthPolicy"),
             ("maas_subscription_tinyllama_free", "MaaSSubscription"),
         ],

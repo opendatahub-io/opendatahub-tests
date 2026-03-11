@@ -18,7 +18,7 @@ from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 LOGGER = get_logger(name=__name__)
 
-pytestmark = [pytest.mark.sanity, pytest.mark.usefixtures("valid_aws_config")]
+pytestmark = [pytest.mark.tier1, pytest.mark.usefixtures("valid_aws_config")]
 
 
 @pytest.mark.rawdeployment

@@ -1,1 +1,1 @@
-"""LLMD (LLM Deployment) test module for OpenDataHub and OpenShift AI."""
+"""llm-d test module for OpenDataHub and OpenShift AI."""

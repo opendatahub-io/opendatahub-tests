@@ -34,7 +34,7 @@ from utilities.monitoring import validate_metrics_field
     ],
     indirect=True,
 )
-@pytest.mark.sanity
+@pytest.mark.tier1
 @pytest.mark.rawdeployment
 class TestRawUnprivilegedUserMetrics:
     @pytest.mark.metrics
