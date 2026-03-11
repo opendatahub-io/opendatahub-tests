@@ -11,12 +11,12 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")
-def model_catalog_postgres_secret(admin_client: DynamicClient) -> Secret:
+def model_catalog_postgres_secret(admin_client: DynamicClient, model_registry_namespace: str) -> Secret:
     """Get the model-catalog-postgres secret from model registry namespace"""
     return Secret(
         client=admin_client,
         name="model-catalog-postgres",
-        namespace=py_config["model_registry_namespace"],
+        namespace=model_registry_namespace,
         ensure_exists=True,
     )
 

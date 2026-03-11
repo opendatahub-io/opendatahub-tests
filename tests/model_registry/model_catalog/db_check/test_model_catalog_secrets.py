@@ -12,11 +12,9 @@ LOGGER = get_logger(name=__name__)
 
 def test_model_catalog_postgres_secret_exists(model_catalog_postgres_secret_values):
     """Test that model-catalog-postgres secret exists and is accessible"""
-    secret_values = model_catalog_postgres_secret_values
-    assert secret_values, "model-catalog-postgres secret should exist and be accessible"
-
-    # Log the keys (not values) for debugging
-    LOGGER.info(f"Secret contains keys: {list(secret_values.keys())}")
+    assert model_catalog_postgres_secret_values, (
+        f"model-catalog-postgres secret should exist and be accessible: {model_catalog_postgres_secret_values}"
+    )
 
 
 @pytest.mark.dependency(name="test_model_catalog_postgres_password_recreation")

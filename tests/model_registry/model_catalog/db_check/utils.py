@@ -26,5 +26,4 @@ def extract_secret_values(secret: Secret) -> dict[str, str]:
                 LOGGER.warning(f"Failed to decode secret key '{key}': {e}")
                 secret_values[key] = encoded_value  # Keep encoded if decode fails
 
-    LOGGER.info(f"Captured secret with keys: {list(secret_values.keys())}")
     return secret_values
