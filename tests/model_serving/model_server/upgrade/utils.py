@@ -402,6 +402,4 @@ def verify_gateway_accepted(gateway: Gateway) -> None:
     conditions = gateway.instance.status.get("conditions", [])
     accepted = any(c.get("type") == "Accepted" and c.get("status") == "True" for c in conditions)
     if not accepted:
-        raise AssertionError(
-            f"Gateway {gateway.name} is not Accepted. Conditions: {conditions}"
-        )
+        raise AssertionError(f"Gateway {gateway.name} is not Accepted. Conditions: {conditions}")

@@ -5,8 +5,8 @@ import pytest
 import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
-from ocp_resources.inference_service import InferenceService
 from ocp_resources.gateway import Gateway
+from ocp_resources.inference_service import InferenceService
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.role import Role
@@ -25,8 +25,8 @@ from utilities.constants import (
     ModelVersion,
     Protocols,
     RuntimeTemplates,
+    Timeout,
 )
-from utilities.constants import Timeout
 from utilities.inference_utils import create_isvc
 from utilities.infra import (
     create_inference_token,
