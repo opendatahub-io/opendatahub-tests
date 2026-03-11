@@ -1,26 +1,23 @@
 import pytest
 from ocp_resources.deployment import Deployment
+from ocp_resources.llm_inference_service import LLMInferenceService
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
+from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaOciConfig
 from tests.model_serving.model_server.llmd.utils import (
-    verify_gateway_status,
-    verify_llm_service_status,
+    ns_from_file,
+    parse_completion_text,
+    send_chat_completions,
 )
-from utilities.constants import Labels, Protocols
+from utilities.constants import Labels
 from utilities.exceptions import UnexpectedResourceCountError
 from utilities.kueue_utils import check_gated_pods_and_running_pods
-from utilities.llmd_utils import verify_inference_response_llmd
-from utilities.manifests.tinyllama import TINYLLAMA_INFERENCE_CONFIG
 
-pytestmark = [
-    pytest.mark.rawdeployment,
-    pytest.mark.llmd_cpu,
-    pytest.mark.kueue,
-    pytest.mark.smoke,
-]
+pytestmark = [pytest.mark.tier2]
+
+NAMESPACE = ns_from_file(file=__file__)
 
 # --- Test Configuration ---
-NAMESPACE_NAME = "test-kueue-llmd-raw"
 LOCAL_QUEUE_NAME = "llmd-local-queue-raw"
 CLUSTER_QUEUE_NAME = "llmd-cluster-queue-raw"
 RESOURCE_FLAVOR_NAME = "llmd-flavor-raw"
@@ -28,10 +25,6 @@ RESOURCE_FLAVOR_NAME = "llmd-flavor-raw"
 # Set a quota sufficient for only ONE model to run
 CPU_QUOTA = "3"
 MEMORY_QUOTA = "20Gi"
-LLMISVC_RESOURCES = {
-    "requests": {"cpu": "2", "memory": "6Gi"},
-    "limits": {"cpu": CPU_QUOTA, "memory": MEMORY_QUOTA},
-}
 
 # INITIAL_REPLICAS needs to be 1 or you need to change the test to check for the number of
 # available replicas
@@ -44,18 +37,30 @@ EXPECTED_RUNNING_PODS = 1
 EXPECTED_GATED_PODS = 1
 
 
+class KueueTestConfig(TinyLlamaOciConfig):
+    """Kueue admission control test — TinyLlama via OCI, CPU inference."""
+
+    name = "llmd-kueue-scaleup-test"
+
+    @classmethod
+    def container_resources(cls):
+        return {
+            "requests": {"cpu": "2", "memory": "6Gi"},
+            "limits": {"cpu": "3", "memory": "20Gi"},
+        }
+
+    @classmethod
+    def labels(cls):
+        return {Labels.Kueue.QUEUE_NAME: "llmd-local-queue-raw"}
+
+
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, llmd_inference_service, "
+    "unprivileged_model_namespace, llmisvc, "
     "kueue_cluster_queue_from_template, kueue_resource_flavor_from_template, kueue_local_queue_from_template",
     [
         (
-            {"name": NAMESPACE_NAME, "add-kueue-label": True},
-            {
-                "name": "llmd-kueue-scaleup-test",
-                "replicas": INITIAL_REPLICAS,
-                "labels": {Labels.Kueue.QUEUE_NAME: LOCAL_QUEUE_NAME},
-                "container_resources": LLMISVC_RESOURCES,
-            },
+            {"name": NAMESPACE, "add-kueue-label": True},
+            KueueTestConfig,
             {
                 "name": CLUSTER_QUEUE_NAME,
                 "resource_flavor_name": RESOURCE_FLAVOR_NAME,
@@ -69,10 +74,7 @@ EXPECTED_GATED_PODS = 1
     indirect=True,
 )
 class TestKueueLLMDScaleUp:
-    """
-    Test Kueue admission control for a single LLMInferenceService that scales up
-    to exceed the available resource quota.
-    """
+    """Deploy TinyLlama on CPU under a Kueue quota, scale to 2 replicas, and verify Kueue gates the excess replica."""
 
     def _get_deployment_status_replicas(self, deployment: Deployment) -> int:
         deployment.get()
@@ -81,26 +83,26 @@ class TestKueueLLMDScaleUp:
     def test_kueue_llmd_scaleup(
         self,
         unprivileged_client,
+        unprivileged_model_namespace,
         kueue_resource_flavor_from_template,
         kueue_cluster_queue_from_template,
         kueue_local_queue_from_template,
-        llmd_inference_service,
-        llmd_gateway,
+        llmisvc: LLMInferenceService,
     ):
-        """
-        Verify that Kueue admits the first replica of an LLMInferenceService and
-        gates the second replica when the service is scaled up beyond the queue's quota.
-        """
-        # The llmd_inference_service is created with 1 replica at first to ensure the LLMISVC is ready
-        # Wait for the service and its single pod to become ready.
-        assert verify_gateway_status(llmd_gateway), "Gateway should be ready"
-        assert verify_llm_service_status(llmd_inference_service), "LLMInferenceService should be ready"
+        """Test steps:
 
-        selector_labels = [f"app.kubernetes.io/name={llmd_inference_service.name}", "kserve.io/component=workload"]
+        1. Find the workload deployment and assert exactly 1 exists with 1 replica.
+        2. Scale the LLMInferenceService to 2 replicas.
+        3. Wait for the deployment to reach 2 desired replicas.
+        4. Assert Kueue admits 1 pod and gates the other.
+        5. Send a chat completion request to /v1/chat/completions.
+        6. Assert the response status is 200 and the completion text contains the expected answer.
+        """
+        selector_labels = [f"app.kubernetes.io/name={llmisvc.name}", "kserve.io/component=workload"]
         deployments = list(
             Deployment.get(
                 label_selector=",".join(selector_labels),
-                namespace=llmd_inference_service.namespace,
+                namespace=llmisvc.namespace,
                 client=unprivileged_client,
             )
         )
@@ -114,9 +116,9 @@ class TestKueueLLMDScaleUp:
         assert replicas == INITIAL_REPLICAS, f"Deployment should have {INITIAL_REPLICAS} replica, got {replicas}"
 
         # Update the LLMInferenceService to request 2 replicas, which exceeds the quota.
-        isvc_to_update = llmd_inference_service.instance.to_dict()
+        isvc_to_update = llmisvc.instance.to_dict()
         isvc_to_update["spec"]["replicas"] = EXPECTED_UPDATED_REPLICAS
-        llmd_inference_service.update(isvc_to_update)
+        llmisvc.update(isvc_to_update)
 
         # Check the deployment until it has 2 replicas, which means it's been updated
         try:
@@ -138,9 +140,7 @@ class TestKueueLLMDScaleUp:
             for running_pods, gated_pods in TimeoutSampler(
                 wait_timeout=120,
                 sleep=5,
-                func=lambda: check_gated_pods_and_running_pods(
-                    selector_labels, llmd_inference_service.namespace, unprivileged_client
-                ),
+                func=lambda: check_gated_pods_and_running_pods(selector_labels, llmisvc.namespace, unprivileged_client),
             ):
                 if running_pods == EXPECTED_RUNNING_PODS and gated_pods == EXPECTED_GATED_PODS:
                     break
@@ -152,12 +152,10 @@ class TestKueueLLMDScaleUp:
             ) from None
 
         # Verify that inference still works on the single running pod
-        verify_inference_response_llmd(
-            llm_service=llmd_inference_service,
-            inference_config=TINYLLAMA_INFERENCE_CONFIG,
-            inference_type="chat_completions",
-            protocol=Protocols.HTTP,
-            use_default_query=True,
-            insecure=True,
-            model_name=llmd_inference_service.name,
-        )
+        prompt = "What is the capital of Italy?"
+        expected = "rome"
+
+        status, body = send_chat_completions(llmisvc=llmisvc, prompt=prompt)
+        assert status == 200, f"Expected 200 after scale-up, got {status}: {body}"
+        completion = parse_completion_text(response_body=body)
+        assert expected in completion.lower(), f"Expected '{expected}' in response, got: {completion}"

@@ -85,7 +85,6 @@ def chat_payload_for_url(model_url: str, *, prompt: str = "Hello", max_tokens: i
 
 
 def poll_expected_status(
-    *,
     request_session_http: requests.Session,
     model_url: str,
     headers: dict[str, str],

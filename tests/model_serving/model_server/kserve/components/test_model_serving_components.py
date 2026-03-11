@@ -35,7 +35,7 @@ def component_deployment(
     raise MissingResourceResError(name=deployment.name)
 
 
-@pytest.mark.smoke
+@pytest.mark.tier1
 @pytest.mark.ocp_interop
 @pytest.mark.parametrize(
     "component_deployment",
