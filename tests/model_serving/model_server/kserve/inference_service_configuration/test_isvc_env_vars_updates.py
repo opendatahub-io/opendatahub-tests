@@ -9,7 +9,7 @@ from tests.model_serving.model_server.kserve.inference_service_configuration.uti
 )
 from utilities.constants import KServeDeploymentType, RunTimeConfigs
 
-pytestmark = [pytest.mark.sanity, pytest.mark.usefixtures("valid_aws_config")]
+pytestmark = [pytest.mark.tier1, pytest.mark.usefixtures("valid_aws_config")]
 
 
 ISVC_ENV_VARS_CONFIG = {

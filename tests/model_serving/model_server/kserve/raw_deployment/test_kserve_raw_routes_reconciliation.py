@@ -23,7 +23,7 @@ pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_conf
 class TestONNXRawRouteReconciliation:
     """Test suite for  Validating reconciliation"""
 
-    @pytest.mark.smoke
+    @pytest.mark.tier1
     def test_raw_onnx_rout_reconciliation(self, ovms_raw_inference_service):
         """
         Verify that the KServe Raw ONNX model can be queried using REST

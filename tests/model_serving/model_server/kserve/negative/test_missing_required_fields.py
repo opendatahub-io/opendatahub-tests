@@ -19,7 +19,7 @@ from tests.model_serving.model_server.kserve.negative.utils import (
 pytestmark = pytest.mark.usefixtures("valid_aws_config")
 
 
-@pytest.mark.tier1
+@pytest.mark.tier2
 @pytest.mark.rawdeployment
 class TestMissingRequiredFields:
     """Test class for verifying error handling when required fields are missing.
