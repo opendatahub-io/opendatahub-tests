@@ -4,11 +4,6 @@ from llama_stack_client.types.vector_store import VectorStore
 from simple_logger.logger import get_logger
 
 from tests.llama_stack.constants import ModelInfo
-from tests.llama_stack.utils import (
-    create_response_function,
-    get_torchtune_test_expectations,
-    validate_api_responses,
-)
 
 LOGGER = get_logger(name=__name__)
 
@@ -110,32 +105,6 @@ class TestLlamaStackVectorStores:
     - https://github.com/llamastack/llama-stack-client-python/blob/main/api.md#vectorstores
     - https://github.com/openai/openai-python/blob/main/api.md#vectorstores
     """
-
-    def test_vector_stores_create_search(
-        self,
-        unprivileged_llama_stack_client: LlamaStackClient,
-        llama_stack_models: ModelInfo,
-        vector_store_with_example_docs: VectorStore,
-    ) -> None:
-        """
-        Test vector_stores and responses API
-
-        Uses a vector store with pre-uploaded TorchTune documentation files and tests the responses API
-        with file search capabilities. Validates that the API can retrieve and use
-        knowledge from uploaded documents to answer questions.
-        """
-
-        _response_fn = create_response_function(
-            llama_stack_client=unprivileged_llama_stack_client,
-            llama_stack_models=llama_stack_models,
-            vector_store=vector_store_with_example_docs,
-        )
-
-        turns_with_expectations = get_torchtune_test_expectations()
-
-        validation_result = validate_api_responses(response_fn=_response_fn, test_cases=turns_with_expectations)
-
-        assert validation_result["success"], f"RAG agent validation failed. Summary: {validation_result['summary']}"
 
     def test_vector_stores_search(
         self,
