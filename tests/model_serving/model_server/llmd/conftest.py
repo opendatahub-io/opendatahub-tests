@@ -247,6 +247,7 @@ def _create_llmisvc_from_config(
     namespace: str,
     client: DynamicClient,
     service_account: str | None = None,
+    teardown: bool = True,
 ) -> Generator[LLMInferenceService, Any]:
     """Create an LLMInferenceService from a config class."""
     LOGGER.info(f"\n{config_cls.describe(namespace=namespace)}")
@@ -283,7 +284,7 @@ def _create_llmisvc_from_config(
         "namespace": namespace,
         "annotations": config_cls.annotations(),
         "label": config_cls.labels(),
-        "teardown": True,
+        "teardown": teardown,
         "model": model,
         "replicas": config_cls.replicas,
         "router": config_cls.router_config(),
