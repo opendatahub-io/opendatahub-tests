@@ -14,6 +14,7 @@ from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 
 from tests.model_serving.model_server.maas_billing.maas_subscription.utils import (
+    MAAS_SUBSCRIPTION_NAMESPACE,
     create_api_key,
     patch_llmisvc_with_maas_router_and_tiers,
 )
@@ -336,7 +337,7 @@ def maas_headers_for_wrong_group_sa(maas_wrong_group_service_account_token: str)
 @pytest.fixture(scope="session")
 def maas_subscription_namespace(unprivileged_client, admin_client):
     with create_ns(
-        name="models-as-a-service",
+        name=MAAS_SUBSCRIPTION_NAMESPACE,
         unprivileged_client=unprivileged_client,
         admin_client=admin_client,
     ) as ns:
