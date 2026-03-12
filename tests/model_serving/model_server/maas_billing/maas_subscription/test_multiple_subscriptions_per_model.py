@@ -3,6 +3,9 @@ from __future__ import annotations
 import pytest
 import requests
 from kubernetes.dynamic import DynamicClient
+
+# from utilities.resources.maa_s_auth_policy import MaaSAuthPolicy
+from ocp_resources.maas_auth_policy import MaaSAuthPolicy
 from ocp_resources.service_account import ServiceAccount
 from simple_logger.logger import get_logger
 
@@ -13,7 +16,6 @@ from tests.model_serving.model_server.maas_billing.maas_subscription.utils impor
 )
 from tests.model_serving.model_server.maas_billing.utils import build_maas_headers
 from utilities.infra import create_inference_token, login_with_user_password
-from utilities.resources.maa_s_auth_policy import MaaSAuthPolicy
 
 LOGGER = get_logger(name=__name__)
 
@@ -24,7 +26,6 @@ MAAS_SUBSCRIPTION_HEADER = "x-maas-subscription"
     "maas_unprivileged_model_namespace",
     "maas_controller_enabled_latest",
     "maas_gateway_api",
-    "maas_api_gateway_reachable",
     "maas_inference_service_tinyllama_free",
     "maas_model_tinyllama_free",
     "maas_auth_policy_tinyllama_free",
@@ -46,6 +47,7 @@ class TestMultipleSubscriptionsPerModel:
         model_url_tinyllama_free: str,
         maas_subscription_tinyllama_free,
         maas_headers_for_actor_api_key: dict[str, str],
+        maas_subscription_namespace,
     ) -> None:
         """
         Create a second subscription for a different group the user is NOT in.
@@ -55,9 +57,11 @@ class TestMultipleSubscriptionsPerModel:
 
         with create_maas_subscription(
             admin_client=admin_client,
+            subscription_namespace=maas_subscription_namespace.name,
             subscription_name="extra-subscription",
             owner_group_name="nonexistent-group-xyz",
             model_name=maas_model_tinyllama_free.name,
+            model_namespace=maas_model_tinyllama_free.namespace,
             tokens_per_minute=999,
             window="1m",
             priority=0,
@@ -99,6 +103,7 @@ class TestMultipleSubscriptionsPerModel:
         model_url_tinyllama_free: str,
         maas_subscription_tinyllama_free,
         maas_headers_for_actor_api_key: dict[str, str],
+        maas_subscription_namespace,
     ) -> None:
         """
         Create a second (higher priority) subscription for the same group + model.
@@ -109,9 +114,11 @@ class TestMultipleSubscriptionsPerModel:
 
         with create_maas_subscription(
             admin_client=admin_client,
+            subscription_namespace=maas_subscription_namespace.name,
             subscription_name="high-tier-subscription",
             owner_group_name=maas_free_group,
             model_name=maas_model_tinyllama_free.name,
+            model_namespace=maas_model_tinyllama_free.namespace,
             tokens_per_minute=9999,
             window="1m",
             priority=10,
@@ -149,6 +156,7 @@ class TestMultipleSubscriptionsPerModel:
         maas_model_tinyllama_free,
         model_url_tinyllama_free: str,
         maas_unprivileged_model_namespace,
+        maas_subscription_namespace,
     ) -> None:
         """
         A service account explicitly selecting a subscription it does not belong to
@@ -166,17 +174,24 @@ class TestMultipleSubscriptionsPerModel:
             MaaSAuthPolicy(
                 client=admin_client,
                 name="service-account-access-policy",
-                namespace=applications_namespace,
-                model_refs=[maas_model_tinyllama_free.name],
+                namespace=maas_subscription_namespace.name,
+                model_refs=[
+                    {
+                        "name": maas_model_tinyllama_free.name,
+                        "namespace": maas_model_tinyllama_free.namespace,
+                    }
+                ],
                 subjects={"groups": [{"name": f"system:serviceaccounts:{applications_namespace}"}]},
                 teardown=True,
                 wait_for_resource=True,
             ) as service_account_auth_policy,
             create_maas_subscription(
                 admin_client=admin_client,
+                subscription_namespace=maas_subscription_namespace.name,
                 subscription_name="premium-subscription",
                 owner_group_name=maas_premium_group,
                 model_name=maas_model_tinyllama_free.name,
+                model_namespace=maas_model_tinyllama_free.namespace,
                 tokens_per_minute=500,
                 window="1m",
                 priority=0,
