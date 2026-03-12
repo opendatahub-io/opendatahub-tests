@@ -6,17 +6,18 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
+from ocp_resources.resource import ResourceEditor
 from ocp_resources.serving_runtime import ServingRuntime
 
-from tests.model_serving.model_server.kserve.inference_service_configuration.constants import (
+from tests.model_serving.model_server.kserve.inference_service_lifecycle.constants import (
     ISVC_ENV_VARS,
     ORIGINAL_PULL_SECRET,
     UPDATED_PULL_SECRET,
 )
-from tests.model_serving.model_server.kserve.inference_service_configuration.utils import (
+from tests.model_serving.model_server.kserve.inference_service_lifecycle.utils import (
     update_inference_service,
 )
-from utilities.constants import KServeDeploymentType
+from utilities.constants import Annotations, KServeDeploymentType
 from utilities.inference_utils import create_isvc
 from utilities.infra import get_pods_by_isvc_label
 
@@ -127,3 +128,20 @@ def updated_isvc_remove_pull_secret(
         },
     ):
         yield model_car_raw_inference_service_with_pull_secret
+
+
+@pytest.fixture(scope="function")
+def patched_raw_inference_service_stop_annotation(
+    request: pytest.FixtureRequest,
+    ovms_raw_inference_service: InferenceService,
+) -> Generator[InferenceService, Any, Any]:
+    with ResourceEditor(
+        patches={
+            ovms_raw_inference_service: {
+                "metadata": {
+                    "annotations": {Annotations.KserveIo.FORCE_STOP_RUNTIME: request.param.get("stop", "false")}
+                },
+            }
+        }
+    ):
+        yield ovms_raw_inference_service
