@@ -3,6 +3,7 @@ from typing import Self
 import pytest
 from simple_logger.logger import get_logger
 
+from tests.model_registry.mcp_servers.constants import CALCULATOR_PROVIDER, CALCULATOR_SERVER_NAME
 from tests.model_registry.utils import execute_get_command
 
 LOGGER = get_logger(name=__name__)
@@ -12,38 +13,41 @@ LOGGER = get_logger(name=__name__)
 class TestMCPServerFiltering:
     """RHOAIENG-51584: Tests for MCP server filterQuery functionality."""
 
-    def test_filter_by_provider(
+    @pytest.mark.parametrize(
+        "filter_query, expected_count, expected_name, field_check",
+        [
+            pytest.param(
+                f"provider='{CALCULATOR_PROVIDER}'",
+                1,
+                CALCULATOR_SERVER_NAME,
+                ("provider", CALCULATOR_PROVIDER),
+                id="by_provider",
+            ),
+            pytest.param("tags='math'", 1, CALCULATOR_SERVER_NAME, None, id="by_tags"),
+        ],
+    )
+    def test_filter_by_field(
         self: Self,
         mcp_catalog_rest_urls: list[str],
         model_registry_rest_headers: dict[str, str],
+        filter_query: str,
+        expected_count: int,
+        expected_name: str,
+        field_check: tuple[str, str] | None,
     ):
-        """TC-API-003: Test filtering MCP servers by provider field."""
-        target_provider = "Math Community"
+        """TC-API-003, TC-API-005: Test filtering MCP servers by provider and tags."""
         response = execute_get_command(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
             headers=model_registry_rest_headers,
-            params={"filterQuery": f"provider='{target_provider}'"},
+            params={"filterQuery": filter_query},
         )
         items = response.get("items", [])
-        assert len(items) == 1, f"Expected 1 server from '{target_provider}', got {len(items)}"
-        assert items[0]["name"] == "calculator"
-        assert items[0]["provider"] == target_provider
-
-    def test_filter_by_tags(
-        self: Self,
-        mcp_catalog_rest_urls: list[str],
-        model_registry_rest_headers: dict[str, str],
-    ):
-        """TC-API-005: Test filtering MCP servers by tags."""
-        target_tag = "math"
-        response = execute_get_command(
-            url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
-            headers=model_registry_rest_headers,
-            params={"filterQuery": f"tags='{target_tag}'"},
+        assert len(items) == expected_count, (
+            f"Expected {expected_count} server(s) for '{filter_query}', got {len(items)}"
         )
-        items = response.get("items", [])
-        assert len(items) == 1, f"Expected 1 server with tag '{target_tag}', got {len(items)}"
-        assert items[0]["name"] == "calculator"
+        assert items[0]["name"] == expected_name
+        if field_check:
+            assert items[0][field_check[0]] == field_check[1]
 
     def test_filter_options(
         self: Self,
@@ -96,4 +100,4 @@ class TestMCPServerFiltering:
         assert len(second_page_items) == 1, f"Expected 1 item on second page, got {len(second_page_items)}"
 
         collected_names = {first_page_items[0]["name"], second_page_items[0]["name"]}
-        assert collected_names == {"weather-api", "calculator"}
+        assert collected_names == {"weather-api", CALCULATOR_SERVER_NAME}
