@@ -10,7 +10,7 @@ from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 pytestmark = pytest.mark.usefixtures("valid_aws_config")
 
 
-@pytest.mark.sanity
+@pytest.mark.smoke
 @pytest.mark.rawdeployment
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, http_s3_ovms_raw_inference_service",
@@ -48,7 +48,7 @@ class TestKserveTokenAuthenticationRawForRest:
             use_default_query=True,
         )
 
-    @pytest.mark.sanity
+    @pytest.mark.smoke
     @pytest.mark.jira("RHOAIENG-52129", run=False)
     def test_raw_disable_enable_authentication_no_pod_rollout(self, http_s3_ovms_raw_inference_service):
         """Verify no pod rollout when disabling and enabling authentication"""

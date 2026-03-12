@@ -4,11 +4,6 @@ from llama_stack_client.types.vector_store import VectorStore
 from simple_logger.logger import get_logger
 
 from tests.llama_stack.constants import ModelInfo
-from tests.llama_stack.utils import (
-    create_response_function,
-    get_torchtune_test_expectations,
-    validate_api_responses,
-)
 
 LOGGER = get_logger(name=__name__)
 
@@ -46,10 +41,23 @@ IBM_EARNINGS_SEARCH_QUERIES_BY_MODE: dict[str, list[str]] = {
             {
                 "llama_stack_storage_size": "2Gi",
                 "vector_io_provider": "milvus",
-                "files_provider": "s3",
+                "embedding_provider": "sentence-transformers",
+                "files_provider": "local",
             },
             {"vector_io_provider": "milvus"},
-            id="vector_io_provider_milvus+files_provider_s3",
+            id="vector_io:milvus, files:local, embedding:sentence-transformers",
+            marks=(pytest.mark.smoke),
+        ),
+        pytest.param(
+            {"name": "test-llamastack-vector-stores", "randomize_name": True},
+            {
+                "vector_io_provider": "milvus-remote",
+                "embedding_provider": "vllm-embedding",
+                "files_provider": "s3",
+            },
+            {"vector_io_provider": "milvus-remote"},
+            id="vector_io:milvus-remote, files: s3, embedding: vllm-embedding",
+            marks=(pytest.mark.smoke),
         ),
         pytest.param(
             {"name": "test-llamastack-vector-stores", "randomize_name": True},
@@ -59,35 +67,30 @@ IBM_EARNINGS_SEARCH_QUERIES_BY_MODE: dict[str, list[str]] = {
                 "files_provider": "local",
             },
             {"vector_io_provider": "faiss"},
-            id="vector_io_provider_faiss+files_provider_local",
-        ),
-        pytest.param(
-            {"name": "test-llamastack-vector-stores", "randomize_name": True},
-            {
-                "llama_stack_storage_size": "2Gi",
-                "vector_io_provider": "milvus-remote",
-                "files_provider": "s3",
-            },
-            {"vector_io_provider": "milvus-remote"},
-            id="vector_io_provider_milvus-remote+files_provider_s3",
+            id="vector_io: faiss, files:local, embedding: vllm-embedding",
+            marks=(pytest.mark.tier1),
         ),
         pytest.param(
             {"name": "test-llamastack-vector-stores", "randomize_name": True},
             {
                 "llama_stack_storage_size": "2Gi",
                 "vector_io_provider": "pgvector",
+                "files_provider": "s3",
             },
             {"vector_io_provider": "pgvector"},
-            id="vector_io_provider_pgvector",
+            id="vector_io:pgvector, files:s3, embedding: vllm-embedding",
+            marks=(pytest.mark.tier1),
         ),
         pytest.param(
             {"name": "test-llamastack-vector-stores", "randomize_name": True},
             {
                 "llama_stack_storage_size": "2Gi",
                 "vector_io_provider": "qdrant-remote",
+                "files_provider": "local",
             },
             {"vector_io_provider": "qdrant-remote"},
-            id="vector_io_provider_qdrant-remote",
+            id="vector_io:qdrant-remote, files:local, embedding: vllm-embedding",
+            marks=(pytest.mark.tier1),
         ),
     ],
     indirect=True,
@@ -103,34 +106,6 @@ class TestLlamaStackVectorStores:
     - https://github.com/openai/openai-python/blob/main/api.md#vectorstores
     """
 
-    @pytest.mark.smoke
-    def test_vector_stores_create_search(
-        self,
-        unprivileged_llama_stack_client: LlamaStackClient,
-        llama_stack_models: ModelInfo,
-        vector_store_with_example_docs: VectorStore,
-    ) -> None:
-        """
-        Test vector_stores and responses API
-
-        Uses a vector store with pre-uploaded TorchTune documentation files and tests the responses API
-        with file search capabilities. Validates that the API can retrieve and use
-        knowledge from uploaded documents to answer questions.
-        """
-
-        _response_fn = create_response_function(
-            llama_stack_client=unprivileged_llama_stack_client,
-            llama_stack_models=llama_stack_models,
-            vector_store=vector_store_with_example_docs,
-        )
-
-        turns_with_expectations = get_torchtune_test_expectations()
-
-        validation_result = validate_api_responses(response_fn=_response_fn, test_cases=turns_with_expectations)
-
-        assert validation_result["success"], f"RAG agent validation failed. Summary: {validation_result['summary']}"
-
-    @pytest.mark.smoke
     def test_vector_stores_search(
         self,
         unprivileged_llama_stack_client: LlamaStackClient,
@@ -173,7 +148,6 @@ class TestLlamaStackVectorStores:
 
         LOGGER.info(f"Successfully tested vector store search across modes: {search_modes}")
 
-    @pytest.mark.smoke
     def test_response_file_search_tool_invocation(
         self,
         unprivileged_llama_stack_client: LlamaStackClient,

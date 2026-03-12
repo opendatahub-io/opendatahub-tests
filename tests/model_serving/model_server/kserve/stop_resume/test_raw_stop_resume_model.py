@@ -15,7 +15,7 @@ pytestmark = [pytest.mark.usefixtures("valid_aws_config")]
 
 
 @pytest.mark.rawdeployment
-@pytest.mark.smoke
+@pytest.mark.tier1
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_raw_inference_service",
     [
@@ -68,7 +68,7 @@ class TestStopRaw:
 
 
 @pytest.mark.rawdeployment
-@pytest.mark.smoke
+@pytest.mark.tier1
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_raw_inference_service",
     [
