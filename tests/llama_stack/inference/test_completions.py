@@ -25,7 +25,7 @@ class TestLlamaStackInferenceCompletions:
     - https://github.com/openai/openai-python/blob/main/api.md#completions-1
     """
 
-    @pytest.mark.smoke
+    @pytest.mark.tier1
     def test_inference_chat_completion(
         self,
         unprivileged_llama_stack_client: LlamaStackClient,
@@ -47,7 +47,7 @@ class TestLlamaStackInferenceCompletions:
         assert content is not None, "LLM response content is None"
         assert "ACK" in content, "The LLM didn't provide the expected answer to the prompt"
 
-    @pytest.mark.smoke
+    @pytest.mark.tier1
     def test_inference_completion(
         self,
         unprivileged_llama_stack_client: LlamaStackClient,
