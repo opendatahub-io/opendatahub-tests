@@ -13,8 +13,8 @@
 # Test directory specific rules
 tests/model_explainability/                    @sheltoncyril @kpunwatk
 tests/model_registry/                          @dbasunag @lugi0 @fege
-tests/model_serving/                           @mwaykole @Raghul-M @brettmthompson @threcc @edwardquarm @SB159
-tests/model_serving/model_runtime/             @Raghul-M @brettmthompson @edwardquarm
+tests/model_serving/                           @mwaykole @Raghul-M @brettmthompson @threcc @rpancham @SB159
+tests/model_serving/model_runtime/             @Raghul-M @brettmthompson @rpancham
 tests/model_serving/model_server/              @threcc @mwaykole
 tests/model_serving/model_server/maas_billing/ @SB159
 tests/rag/                                     @jgarciao @jiripetrlik
