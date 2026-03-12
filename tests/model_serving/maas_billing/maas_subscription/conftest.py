@@ -1,24 +1,36 @@
 from collections.abc import Generator
+from contextlib import ExitStack
 from typing import Any
 
 import pytest
 import requests
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.data_science_cluster import DataScienceCluster
+from ocp_resources.deployment import Deployment
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.maas_auth_policy import MaaSAuthPolicy
 from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.namespace import Namespace
+from ocp_resources.resource import ResourceEditor
+from ocp_resources.secret import Secret
+from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 
 from tests.model_serving.maas_billing.maas_subscription.utils import (
+    MAAS_DB_NAMESPACE,
     MAAS_SUBSCRIPTION_NAMESPACE,
     create_api_key,
+    get_maas_postgres_resources,
     patch_llmisvc_with_maas_router_and_tiers,
+    wait_for_postgres_connection_log,
+    wait_for_postgres_deployment_ready,
 )
+
 from tests.model_serving.maas_billing.utils import build_maas_headers
+from utilities.constants import DscComponents
 from utilities.general import generate_random_name
 from utilities.infra import create_inference_token, create_ns, login_with_user_password
 from utilities.llmd_constants import ContainerImages, ModelStorage
@@ -28,6 +40,35 @@ from utilities.plugins.constant import OpenAIEnpoints
 LOGGER = get_logger(name=__name__)
 
 CHAT_COMPLETIONS = OpenAIEnpoints.CHAT_COMPLETIONS
+
+
+@pytest.fixture(scope="session")
+def maas_subscription_controller_enabled_latest(
+    dsc_resource: DataScienceCluster,
+    maas_postgres_prereqs: None,
+    maas_gateway_api: None,
+) -> Generator[DataScienceCluster, Any, Any]:
+    """
+    ensures postgres prerequisites exist before MaaS is switched to Managed.
+    """
+    component_patch = {
+        DscComponents.KSERVE: {"modelsAsService": {"managementState": DscComponents.ManagementState.MANAGED}}
+    }
+
+    with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
+        dsc_resource.wait_for_condition(
+            condition="ModelsAsServiceReady",
+            status="True",
+            timeout=900,
+        )
+        dsc_resource.wait_for_condition(
+            condition="Ready",
+            status="True",
+            timeout=600,
+        )
+        yield dsc_resource
+
+    dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=600)
 
 
 @pytest.fixture(scope="class")
@@ -253,7 +294,7 @@ def model_url_tinyllama_free(
 ) -> str:
     deployment_name = maas_inference_service_tinyllama_free.name
     url = f"{maas_scheme}://{maas_host}/llm/{deployment_name}{CHAT_COMPLETIONS}"
-    LOGGER.info("MaaS: constructed model_url=%s (deployment=%s)", url, deployment_name)
+    LOGGER.info(f"MaaS: constructed model_url={url} (deployment={deployment_name})")
     return url
 
 
@@ -265,8 +306,54 @@ def model_url_tinyllama_premium(
 ) -> str:
     deployment_name = maas_inference_service_tinyllama_premium.name
     url = f"{maas_scheme}://{maas_host}/llm/{deployment_name}{CHAT_COMPLETIONS}"
-    LOGGER.info("MaaS: constructed model_url=%s (deployment=%s)", url, deployment_name)
+    LOGGER.info(f"MaaS: constructed model_url={url} (deployment={deployment_name})")
     return url
+
+
+@pytest.fixture(scope="session")
+def maas_postgres_prereqs(
+    admin_client: DynamicClient,
+) -> Generator[dict[Any, Any], Any, Any]:
+    """
+    Prepare PostgreSQL resources required by maas-api before MaaS API key tests run.
+    """
+    resources = get_maas_postgres_resources(
+        client=admin_client,
+        namespace=MAAS_DB_NAMESPACE,
+        teardown_resources=False,
+        postgres_user="maas",
+        postgres_password="maas",  # pragma: allowlist secret
+        postgres_db="maas",
+    )
+
+    resources_instances: dict[Any, Any] = {}
+
+    with ExitStack() as stack:
+        for kind_name in [Secret, Service, Deployment]:
+            resources_instances[kind_name] = []
+
+            for resource_obj in resources[kind_name]:
+                if resource_obj.exists:
+                    LOGGER.info(f"Reusing existing {resource_obj.kind} {resource_obj.namespace}/{resource_obj.name}")
+                    resources_instances[kind_name].append(resource_obj)
+                else:
+                    resources_instances[kind_name].append(stack.enter_context(resource_obj))
+
+        for deployment in resources_instances[Deployment]:
+            deployment.wait_for_condition(condition="Available", status="True", timeout=180)
+
+        wait_for_postgres_deployment_ready(
+            admin_client=admin_client,
+            namespace=MAAS_DB_NAMESPACE,
+            timeout=180,
+        )
+        wait_for_postgres_connection_log(
+            admin_client=admin_client,
+            namespace=MAAS_DB_NAMESPACE,
+            timeout=180,
+        )
+
+        yield resources_instances
 
 
 @pytest.fixture(scope="class")
@@ -274,7 +361,7 @@ def maas_api_key_for_actor(
     request_session_http: requests.Session,
     base_url: str,
     ocp_token_for_actor: str,
-    maas_controller_enabled_latest: None,
+    maas_subscription_controller_enabled_latest: None,
     maas_gateway_api: None,
     maas_api_gateway_reachable: None,
 ) -> str:
