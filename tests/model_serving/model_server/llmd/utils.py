@@ -41,6 +41,28 @@ def wait_for_llmisvc(llmisvc: LLMInferenceService, timeout: int = Timeout.TIMEOU
     LOGGER.info(f"LLMInferenceService {llmisvc.name} is Ready in namespace {llmisvc.namespace}")
 
 
+def wait_for_llmisvc_pods_ready(
+    client: DynamicClient,
+    llmisvc: LLMInferenceService,
+    timeout: int = 30,
+) -> None:
+    """Wait for all LLMISVC pods (workload + router-scheduler) to be Ready."""
+    pods = list(
+        Pod.get(
+            client=client,
+            namespace=llmisvc.namespace,
+            label_selector=(
+                f"{Pod.ApiGroup.APP_KUBERNETES_IO}/part-of=llminferenceservice,"
+                f"{Pod.ApiGroup.APP_KUBERNETES_IO}/name={llmisvc.name}"
+            ),
+        )
+    )
+    LOGGER.info(f"Waiting for {len(pods)} pod(s) to be Ready for {llmisvc.name}")
+    for pod in pods:
+        pod.wait_for_condition(condition="Ready", status="True", timeout=timeout)
+        LOGGER.info(f"Pod {pod.name} is Ready")
+
+
 def _get_inference_url(llmisvc: LLMInferenceService) -> str:
     """Extract inference URL from LLMISVC status."""
     status = llmisvc.instance.status
