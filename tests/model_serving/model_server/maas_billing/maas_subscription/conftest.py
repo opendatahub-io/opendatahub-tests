@@ -5,24 +5,25 @@ import pytest
 import requests
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.llm_inference_service import LLMInferenceService
+from ocp_resources.maas_auth_policy import MaaSAuthPolicy
 from ocp_resources.maas_model_ref import MaaSModelRef
+from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.namespace import Namespace
 from ocp_resources.service_account import ServiceAccount
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 
 from tests.model_serving.model_server.maas_billing.maas_subscription.utils import (
+    MAAS_SUBSCRIPTION_NAMESPACE,
     create_api_key,
     patch_llmisvc_with_maas_router_and_tiers,
 )
 from tests.model_serving.model_server.maas_billing.utils import build_maas_headers
 from utilities.general import generate_random_name
-from utilities.infra import create_inference_token, login_with_user_password
+from utilities.infra import create_inference_token, create_ns, login_with_user_password
 from utilities.llmd_constants import ContainerImages, ModelStorage
 from utilities.llmd_utils import create_llmisvc
 from utilities.plugins.constant import OpenAIEnpoints
-from utilities.resources.maa_s_auth_policy import MaaSAuthPolicy
-from utilities.resources.maa_s_subscription import MaaSSubscription
 
 LOGGER = get_logger(name=__name__)
 
@@ -90,12 +91,11 @@ def maas_model_tinyllama_free(
     admin_client: DynamicClient,
     maas_inference_service_tinyllama_free: LLMInferenceService,
 ) -> Generator[MaaSModelRef]:
-    applications_namespace = py_config["applications_namespace"]
 
     with MaaSModelRef(
         client=admin_client,
         name=maas_inference_service_tinyllama_free.name,
-        namespace=applications_namespace,
+        namespace=maas_inference_service_tinyllama_free.namespace,
         model_ref={
             "name": maas_inference_service_tinyllama_free.name,
             "namespace": maas_inference_service_tinyllama_free.namespace,
@@ -112,12 +112,11 @@ def maas_model_tinyllama_premium(
     admin_client: DynamicClient,
     maas_inference_service_tinyllama_premium: LLMInferenceService,
 ) -> Generator[MaaSModelRef]:
-    applications_namespace = py_config["applications_namespace"]
 
     with MaaSModelRef(
         client=admin_client,
         name=maas_inference_service_tinyllama_premium.name,
-        namespace=applications_namespace,
+        namespace=maas_inference_service_tinyllama_premium.namespace,
         model_ref={
             "name": maas_inference_service_tinyllama_premium.name,
             "namespace": maas_inference_service_tinyllama_premium.namespace,
@@ -134,14 +133,19 @@ def maas_auth_policy_tinyllama_free(
     admin_client: DynamicClient,
     maas_free_group: str,
     maas_model_tinyllama_free: MaaSModelRef,
+    maas_subscription_namespace: Namespace,
 ) -> Generator[MaaSAuthPolicy]:
-    applications_namespace = py_config["applications_namespace"]
 
     with MaaSAuthPolicy(
         client=admin_client,
         name="tinyllama-free-access",
-        namespace=applications_namespace,
-        model_refs=[maas_model_tinyllama_free.name],
+        namespace=maas_subscription_namespace.name,
+        model_refs=[
+            {
+                "name": maas_model_tinyllama_free.name,
+                "namespace": maas_model_tinyllama_free.namespace,
+            }
+        ],
         subjects={
             "groups": [
                 {"name": "system:authenticated"},
@@ -159,14 +163,19 @@ def maas_auth_policy_tinyllama_premium(
     admin_client: DynamicClient,
     maas_premium_group: str,
     maas_model_tinyllama_premium: MaaSModelRef,
+    maas_subscription_namespace: Namespace,
 ) -> Generator[MaaSAuthPolicy]:
-    applications_namespace = py_config["applications_namespace"]
 
     with MaaSAuthPolicy(
         client=admin_client,
         name="tinyllama-premium-access",
-        namespace=applications_namespace,
-        model_refs=[maas_model_tinyllama_premium.name],
+        namespace=maas_subscription_namespace.name,
+        model_refs=[
+            {
+                "name": maas_model_tinyllama_premium.name,
+                "namespace": maas_model_tinyllama_premium.namespace,
+            }
+        ],
         subjects={
             "groups": [{"name": maas_premium_group}],
         },
@@ -181,19 +190,20 @@ def maas_subscription_tinyllama_free(
     admin_client: DynamicClient,
     maas_free_group: str,
     maas_model_tinyllama_free: MaaSModelRef,
+    maas_subscription_namespace: Namespace,
 ) -> Generator[MaaSSubscription]:
-    applications_namespace = py_config["applications_namespace"]
 
     with MaaSSubscription(
         client=admin_client,
         name="tinyllama-free-subscription",
-        namespace=applications_namespace,
+        namespace=maas_subscription_namespace.name,
         owner={
             "groups": [{"name": maas_free_group}],
         },
         model_refs=[
             {
                 "name": maas_model_tinyllama_free.name,
+                "namespace": maas_model_tinyllama_free.namespace,
                 "tokenRateLimits": [{"limit": 100, "window": "1m"}],
             }
         ],
@@ -210,19 +220,20 @@ def maas_subscription_tinyllama_premium(
     admin_client: DynamicClient,
     maas_premium_group: str,
     maas_model_tinyllama_premium: MaaSModelRef,
+    maas_subscription_namespace: Namespace,
 ) -> Generator[MaaSSubscription]:
-    applications_namespace = py_config["applications_namespace"]
 
     with MaaSSubscription(
         client=admin_client,
         name="tinyllama-premium-subscription",
-        namespace=applications_namespace,
+        namespace=maas_subscription_namespace.name,
         owner={
             "groups": [{"name": maas_premium_group}],
         },
         model_refs=[
             {
                 "name": maas_model_tinyllama_premium.name,
+                "namespace": maas_model_tinyllama_premium.namespace,
                 "tokenRateLimits": [{"limit": 1000, "window": "1m"}],
             }
         ],
@@ -321,3 +332,13 @@ def maas_wrong_group_service_account_token(
 @pytest.fixture(scope="class")
 def maas_headers_for_wrong_group_sa(maas_wrong_group_service_account_token: str) -> dict:
     return build_maas_headers(token=maas_wrong_group_service_account_token)
+
+
+@pytest.fixture(scope="session")
+def maas_subscription_namespace(unprivileged_client, admin_client):
+    with create_ns(
+        name=MAAS_SUBSCRIPTION_NAMESPACE,
+        unprivileged_client=unprivileged_client,
+        admin_client=admin_client,
+    ) as ns:
+        yield ns

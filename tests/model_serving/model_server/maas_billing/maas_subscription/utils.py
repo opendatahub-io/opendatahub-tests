@@ -10,8 +10,8 @@ import pytest
 import requests
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.llm_inference_service import LLMInferenceService
+from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.resource import ResourceEditor
-from pytest_testconfig import config as py_config
 from requests import Response
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
@@ -21,9 +21,9 @@ from utilities.constants import (
     MAAS_GATEWAY_NAMESPACE,
     ApiGroups,
 )
-from utilities.resources.maa_s_subscription import MaaSSubscription
 
 LOGGER = get_logger(name=__name__)
+MAAS_SUBSCRIPTION_NAMESPACE = "models-as-a-service"
 
 
 @contextmanager
@@ -138,29 +138,30 @@ def poll_expected_status(
 
 
 def create_maas_subscription(
-    *,
     admin_client: DynamicClient,
+    subscription_namespace: str,
     subscription_name: str,
     owner_group_name: str,
     model_name: str,
+    model_namespace: str,
     tokens_per_minute: int,
     window: str = "1m",
     priority: int = 0,
     teardown: bool = True,
     wait_for_resource: bool = True,
 ) -> MaaSSubscription:
-    applications_namespace = py_config["applications_namespace"]
 
     return MaaSSubscription(
         client=admin_client,
         name=subscription_name,
-        namespace=applications_namespace,
+        namespace=subscription_namespace,
         owner={
             "groups": [{"name": owner_group_name}],
         },
         model_refs=[
             {
                 "name": model_name,
+                "namespace": model_namespace,
                 "tokenRateLimits": [{"limit": tokens_per_minute, "window": window}],
             }
         ],
