@@ -14,7 +14,6 @@ from ocp_resources.maas_auth_policy import MaaSAuthPolicy
 from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.namespace import Namespace
-from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
@@ -371,33 +370,6 @@ def maas_postgres_prereqs(
             namespace=MAAS_DB_NAMESPACE,
             timeout=180,
         )
-
-        maas_api_deployment = Deployment(
-            client=admin_client,
-            name="maas-api",
-            namespace=MAAS_DB_NAMESPACE,
-        )
-
-        if maas_api_deployment.exists:
-            LOGGER.info("maas-api already exists; restarting pod(s) so new maas-db-config is reloaded")
-
-            maas_api_pods = list(
-                Pod.get(
-                    client=admin_client,
-                    namespace=MAAS_DB_NAMESPACE,
-                    label_selector="app.kubernetes.io/name=maas-api",
-                )
-            )
-
-            for pod in maas_api_pods:
-                LOGGER.info(f"Deleting maas-api pod {pod.name} to force reload of DB config")
-                pod.delete(wait=True)
-
-            maas_api_deployment.wait_for_condition(
-                condition="Available",
-                status="True",
-                timeout=300,
-            )
 
         yield resources_instances
 
