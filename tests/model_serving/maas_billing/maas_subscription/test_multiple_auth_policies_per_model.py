@@ -183,7 +183,7 @@ class TestMultipleAuthPoliciesPerModel:
                     }
                 ],
                 subjects={"groups": [{"name": "system:authenticated"}]},
-                teardown=True,
+                teardown=False,
                 wait_for_resource=True,
             ) as extra_auth_policy,
             create_maas_subscription(
