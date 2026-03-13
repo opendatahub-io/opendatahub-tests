@@ -57,7 +57,7 @@ class TestMultipleAuthPoliciesPerModel:
         3) Add a matching subscription for system:authenticated.
         4) FREE actor explicitly selects that subscription -> allowed (200).
         """
-        
+
         baseline_headers = dict(maas_headers_for_actor_api_key)
         baseline_headers[MAAS_SUBSCRIPTION_HEADER] = maas_subscription_tinyllama_premium.name
         baseline_payload = chat_payload_for_url(model_url=model_url_tinyllama_premium)
@@ -73,7 +73,7 @@ class TestMultipleAuthPoliciesPerModel:
             f"Expected baseline 403 for FREE actor on premium model, got {baseline_resp.status_code}: "
             f"{(baseline_resp.text or '')[:200]}"
         )
-      
+
         suffix = generate_random_name()
         extra_auth_policy_name = f"e2e-premium-system-auth-{suffix}"
         system_auth_sub_name = f"e2e-premium-system-auth-sub-{suffix}"
@@ -165,7 +165,6 @@ class TestMultipleAuthPoliciesPerModel:
             f"Expected baseline 403 for FREE actor on premium model, got {baseline_resp.status_code}: "
             f"{(baseline_resp.text or '')[:200]}"
         )
-
 
         suffix = generate_random_name()
         extra_auth_policy_name = f"e2e-premium-extra-auth-{suffix}"
