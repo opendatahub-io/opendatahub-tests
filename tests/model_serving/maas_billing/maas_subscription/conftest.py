@@ -31,7 +31,6 @@ from tests.model_serving.maas_billing.maas_subscription.utils import (
     wait_for_postgres_connection_log,
     wait_for_postgres_deployment_ready,
 )
-
 from tests.model_serving.maas_billing.utils import build_maas_headers
 from utilities.constants import DscComponents
 from utilities.general import generate_random_name
