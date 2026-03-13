@@ -43,7 +43,7 @@ pytestmark = pytest.mark.usefixtures(
                 **BASE_RAW_DEPLOYMENT_CONFIG,
             },
             id="dali-raw-rest-deployment",
-            marks=[pytest.mark.tier1,pytest.mark.gpu],
+            marks=[pytest.mark.tier1, pytest.mark.gpu],
         ),
         pytest.param(
             {"protocol_type": Protocols.GRPC},
@@ -55,7 +55,7 @@ pytestmark = pytest.mark.usefixtures(
                 **BASE_RAW_DEPLOYMENT_CONFIG,
             },
             id="dali-raw-grpc-deployment",
-            marks=[pytest.mark.tier1,pytest.mark.gpu],
+            marks=[pytest.mark.tier1, pytest.mark.gpu],
         ),
     ],
     indirect=True,
