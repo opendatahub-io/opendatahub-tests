@@ -43,7 +43,7 @@ def wait_for_dspa_pods(admin_client: DynamicClient, namespace: str, dspa_name: s
     label_selector = f"dspa={dspa_name}"
 
     def _all_dspa_pods_running() -> bool:
-        pods = list(Pod.get(dyn_client=admin_client, namespace=namespace, label_selector=label_selector))
+        pods = list(Pod.get(client=admin_client, namespace=namespace, label_selector=label_selector))
         if not pods:
             return False
         return all(pod.instance.status.phase == Pod.Status.RUNNING for pod in pods)

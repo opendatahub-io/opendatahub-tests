@@ -1,13 +1,15 @@
 import json
 import re
 import shlex
+from collections.abc import Generator
 from contextlib import contextmanager
 from http import HTTPStatus
 from json import JSONDecodeError
 from string import Template
-from typing import Any, Optional, Generator
+from typing import Any
 from urllib.parse import urlparse
 
+import portforward
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
@@ -15,29 +17,28 @@ from ocp_resources.resource import get_client
 from ocp_resources.service import Service
 from pyhelper_utils.shell import run_command
 from simple_logger.logger import get_logger
-from timeout_sampler import TimeoutWatch, retry
+from timeout_sampler import TimeoutSampler, TimeoutWatch, retry
 
-from utilities.exceptions import InferenceResponseError, InvalidStorageArgumentError
-from utilities.infra import (
-    get_inference_serving_runtime,
-    get_model_route,
-    get_pods_by_isvc_label,
-    get_services_by_isvc_label,
-    wait_for_inference_deployment_replicas,
-    verify_no_failed_pods,
-    get_pods_by_ig_label,
-)
 from utilities.certificates_utils import get_ca_bundle
 from utilities.constants import (
+    Annotations,
+    HTTPRequest,
     KServeDeploymentType,
     Labels,
     ModelName,
     Protocols,
-    HTTPRequest,
-    Annotations,
     Timeout,
 )
-import portforward
+from utilities.exceptions import InferenceResponseError, InvalidStorageArgumentError
+from utilities.infra import (
+    get_inference_serving_runtime,
+    get_model_route,
+    get_pods_by_ig_label,
+    get_pods_by_isvc_label,
+    get_services_by_isvc_label,
+    verify_no_failed_pods,
+    wait_for_inference_deployment_replicas,
+)
 
 LOGGER = get_logger(name=__name__)
 
@@ -80,7 +81,7 @@ class Inference:
             return KServeDeploymentType.SERVERLESS
 
         else:
-            raise ValueError(f"Unknown inference service type: {self.inference_service.name}")
+            raise TypeError(f"Unknown inference service type: {self.inference_service.name}")
 
     def get_inference_url(self) -> str:
         """
@@ -125,15 +126,11 @@ class Inference:
                 return labels and labels.get(Labels.Kserve.NETWORKING_KSERVE_IO) == Labels.Kserve.EXPOSED
 
         if self.deployment_mode == KServeDeploymentType.SERVERLESS:
-            if labels and labels.get(Labels.Kserve.NETWORKING_KNATIVE_IO) == "cluster-local":
-                return False
-            else:
-                return True
+            return not bool(labels and labels.get(Labels.Kserve.NETWORKING_KNATIVE_IO) == "cluster-local")
 
-        if self.deployment_mode == KServeDeploymentType.MODEL_MESH:
-            if self.runtime:
-                _annotations = self.runtime.instance.metadata.annotations
-                return _annotations and _annotations.get("enable-route") == "true"
+        if self.deployment_mode == KServeDeploymentType.MODEL_MESH and self.runtime:
+            _annotations = self.runtime.instance.metadata.annotations
+            return _annotations and _annotations.get("enable-route") == "true"
 
         return False
 
@@ -187,7 +184,7 @@ class UserInference(Inference):
             )
 
     @property
-    def inference_response_text_key_name(self) -> Optional[str]:
+    def inference_response_text_key_name(self) -> str | None:
         """
         Get inference response text key name from runtime config
 
@@ -211,7 +208,7 @@ class UserInference(Inference):
     def get_inference_body(
         self,
         model_name: str,
-        inference_input: Optional[Any] = None,
+        inference_input: Any | None = None,
         use_default_query: bool = False,
     ) -> str:
         """
@@ -278,10 +275,10 @@ class UserInference(Inference):
     def generate_command(
         self,
         model_name: str,
-        inference_input: Optional[Any] = None,
+        inference_input: Any | None = None,
         use_default_query: bool = False,
         insecure: bool = False,
-        token: Optional[str] = None,
+        token: str | None = None,
     ) -> str:
         """
         Generate command to run inference
@@ -330,7 +327,7 @@ class UserInference(Inference):
         else:
             # admin client is needed to check if cluster is managed
             _client = get_client()
-            if ca := get_ca_bundle(client=_client, deployment_mode=self.deployment_mode):
+            if ca := get_ca_bundle(client=_client):
                 cmd += f" --cacert {ca} "
 
             else:
@@ -347,10 +344,10 @@ class UserInference(Inference):
     def run_inference_flow(
         self,
         model_name: str,
-        inference_input: Optional[str] = None,
+        inference_input: str | None = None,
         use_default_query: bool = False,
         insecure: bool = False,
-        token: Optional[str] = None,
+        token: str | None = None,
     ) -> dict[str, Any]:
         """
         Run inference full flow - generate command and run it
@@ -407,10 +404,10 @@ class UserInference(Inference):
     def run_inference(
         self,
         model_name: str,
-        inference_input: Optional[str] = None,
+        inference_input: str | None = None,
         use_default_query: bool = False,
         insecure: bool = False,
-        token: Optional[str] = None,
+        token: str | None = None,
     ) -> str:
         """
         Run inference command
@@ -478,6 +475,12 @@ class UserInference(Inference):
                     f"Got {HTTPStatus.SERVICE_UNAVAILABLE} error."
                 )
 
+            if re.search(rf"http/1\.\d\s+{HTTPStatus.INTERNAL_SERVER_ERROR.value}\b", out.lower()):
+                raise InferenceResponseError(
+                    f"Inference service at {self.get_inference_url()} returned "
+                    f"{HTTPStatus.INTERNAL_SERVER_ERROR} error."
+                )
+
         else:
             sanitized_cmd = re.sub(r"('Authorization: Bearer ).*?(')", r"\1***REDACTED***2", cmd)
             raise ValueError(f"Inference failed with error: {err}\nOutput: {out}\nCommand: {sanitized_cmd}")
@@ -532,10 +535,7 @@ class UserInference(Inference):
                 self.deployment_mode == KServeDeploymentType.MODEL_MESH
                 and port.protocol.lower() == svc_protocol.lower()
                 and port.name == self.protocol
-            ):
-                return svc_port
-
-            elif (
+            ) or (
                 self.deployment_mode
                 in (
                     KServeDeploymentType.RAW_DEPLOYMENT,
@@ -678,12 +678,9 @@ def create_isvc(
     if deployment_mode:
         _annotations = {Annotations.KserveIo.DEPLOYMENT_MODE: deployment_mode}
 
-    if enable_auth:
-        # model mesh auth is set in ServingRuntime
-        if deployment_mode == KServeDeploymentType.SERVERLESS:
-            _annotations[Annotations.KserveAuth.SECURITY] = "true"
-        elif deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
-            _annotations[Annotations.KserveAuth.SECURITY] = "true"
+    # model mesh auth is set in ServingRuntime
+    if enable_auth and deployment_mode in {KServeDeploymentType.SERVERLESS, KServeDeploymentType.RAW_DEPLOYMENT}:
+        _annotations[Annotations.KserveAuth.SECURITY] = "true"
 
     # default to True if deployment_mode is Serverless (default behavior of Serverless) if was not provided by the user
     # model mesh external route is set in ServingRuntime
@@ -746,7 +743,7 @@ def create_isvc(
         if wait and not stop_resume:
             # Modelmesh 2nd server in the ns will fail to be Ready; isvc needs to be re-applied
             if deployment_mode == KServeDeploymentType.MODEL_MESH:
-                for isvc in InferenceService.get(dyn_client=client, namespace=namespace):
+                for isvc in InferenceService.get(client=client, namespace=namespace):
                     _runtime = get_inference_serving_runtime(isvc=isvc)
                     isvc_annotations = isvc.instance.metadata.annotations
                     if (
@@ -760,7 +757,6 @@ def create_isvc(
                         )
                         inference_service.clean_up()
                         inference_service.deploy()
-
                         break
 
             inference_service.wait_for_condition(
@@ -768,6 +764,31 @@ def create_isvc(
                 status=inference_service.Condition.Status.TRUE,
                 timeout=timeout_watch.remaining_time(),
             )
+
+            # Wait for the Model Status to transition to 'Loaded'
+            # We use a sampler because modelStatus can take a few seconds to update after Ready
+
+            _initial_status = getattr(inference_service.instance.status, "modelStatus", None)
+            if _initial_status and getattr(_initial_status, "states", None):
+
+                def _is_model_loaded() -> bool:
+                    m_status = getattr(inference_service.instance.status, "modelStatus", None)
+                    if m_status and getattr(m_status, "states", None):
+                        return (
+                            m_status.states.activeModelState == "Loaded"
+                            and m_status.states.targetModelState == "Loaded"
+                            and getattr(m_status, "transitionStatus", None) == "UpToDate"
+                        )
+                    return False
+
+                samples = TimeoutSampler(
+                    wait_timeout=timeout_watch.remaining_time(),
+                    sleep=5,
+                    func=_is_model_loaded,
+                )
+                for sample in samples:
+                    if sample:
+                        break
 
             # After the InferenceService reports Ready, the backing model should be fully loaded and up to date,
             # when modelStatus is reported by the runtime.
@@ -788,9 +809,9 @@ def create_isvc(
 
 
 def _check_storage_arguments(
-    storage_uri: Optional[str],
-    storage_key: Optional[str],
-    storage_path: Optional[str],
+    storage_uri: str | None,
+    storage_key: str | None,
+    storage_path: str | None,
 ) -> None:
     """
     Check if storage_uri, storage_key and storage_path are valid.

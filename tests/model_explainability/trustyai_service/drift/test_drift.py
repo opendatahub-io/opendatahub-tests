@@ -4,16 +4,16 @@ import pytest
 
 from tests.model_explainability.trustyai_service.constants import DRIFT_BASE_DATA_PATH
 from tests.model_explainability.trustyai_service.trustyai_service_utils import (
-    send_inferences_and_verify_trustyai_service_registered,
-    verify_upload_data_to_trustyai_service,
-    verify_trustyai_service_metric_request,
     TrustyAIServiceMetrics,
-    verify_trustyai_service_metric_scheduling_request,
+    send_inferences_and_verify_trustyai_service_registered,
     verify_trustyai_service_metric_delete_request,
+    verify_trustyai_service_metric_request,
+    verify_trustyai_service_metric_scheduling_request,
+    verify_upload_data_to_trustyai_service,
 )
 from utilities.constants import MinIo
 from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
-from utilities.monitoring import validate_metrics_field, get_metric_label
+from utilities.monitoring import get_metric_label, validate_metrics_field
 
 DRIFT_METRICS = [
     TrustyAIServiceMetrics.Drift.MEANSHIFT,

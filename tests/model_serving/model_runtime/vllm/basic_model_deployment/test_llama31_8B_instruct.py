@@ -1,18 +1,22 @@
+# noqa: N999
+from collections.abc import Generator
+from typing import Any
+
 import pytest
-from simple_logger.logger import get_logger
-from typing import Any, Generator
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
-from utilities.constants import KServeDeploymentType
+from simple_logger.logger import get_logger
+
+from tests.model_serving.model_runtime.vllm.constant import (
+    BASE_RAW_DEPLOYMENT_CONFIG,
+    CHAT_QUERY,
+    COMPLETION_QUERY,
+)
 from tests.model_serving.model_runtime.vllm.utils import (
     validate_raw_openai_inference_request,
     validate_raw_tgis_inference_request,
 )
-from tests.model_serving.model_runtime.vllm.constant import (
-    COMPLETION_QUERY,
-    CHAT_QUERY,
-    BASE_RAW_DEPLOYMENT_CONFIG,
-)
+from utilities.constants import KServeDeploymentType
 
 LOGGER = get_logger(name=__name__)
 
@@ -21,7 +25,7 @@ SERVING_ARGUMENT: list[str] = [
     "--model=/mnt/models",
     "--uvicorn-log-level=debug",
     "--dtype=float16",
-    "--chat-template=/app/data/template/tool_chat_template_llama3.1_json.jinja",
+    "--chat-template=/opt/app-root/template/tool_chat_template_llama3.1_json.jinja",
 ]
 
 MODEL_PATH: str = "Meta-Llama-3.1-8B"
@@ -31,6 +35,8 @@ BASE_RAW_DEPLOYMENT_CONFIG["runtime_argument"] = SERVING_ARGUMENT
 pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "valid_aws_config")
 
 
+@pytest.mark.vllm_nvidia_single_gpu
+@pytest.mark.vllm_amd_gpu
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [
@@ -79,6 +85,8 @@ class TestLlama31InstructModel:
         )
 
 
+@pytest.mark.vllm_nvidia_multi_gpu
+@pytest.mark.vllm_amd_gpu
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [

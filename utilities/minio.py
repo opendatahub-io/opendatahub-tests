@@ -1,5 +1,6 @@
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any, Generator
+from typing import Any
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.secret import Secret
@@ -32,7 +33,7 @@ def create_minio_data_connection_secret(
         aws_access_key=MinIo.Credentials.ACCESS_KEY_VALUE,
         aws_secret_access_key=MinIo.Credentials.SECRET_KEY_VALUE,  # pragma: allowlist secret
         aws_s3_bucket=aws_s3_bucket,
-        aws_s3_endpoint=f"{Protocols.HTTP}://{minio_service.instance.spec.clusterIP}:{str(MinIo.Metadata.DEFAULT_PORT)}",  # noqa: E501
+        aws_s3_endpoint=f"{Protocols.HTTP}://{minio_service.instance.spec.clusterIP}:{MinIo.Metadata.DEFAULT_PORT!s}",
         aws_s3_region="us-south",
     )
     with Secret(

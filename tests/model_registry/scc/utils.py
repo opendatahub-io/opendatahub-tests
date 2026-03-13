@@ -1,11 +1,10 @@
 from typing import Any
-from simple_logger.logger import get_logger
 
-from ocp_resources.pod import Pod
-from ocp_resources.deployment import Deployment
-from ocp_resources.resource import NamespacedResource
 from kubernetes.dynamic import DynamicClient
-
+from ocp_resources.deployment import Deployment
+from ocp_resources.pod import Pod
+from ocp_resources.resource import NamespacedResource
+from simple_logger.logger import get_logger
 
 KEYS_TO_VALIDATE = ["runAsGroup", "runAsUser", "allowPrivilegeEscalation", "capabilities"]
 
@@ -90,14 +89,14 @@ def get_pod_by_deployment_name(admin_client: DynamicClient, namespace: str, depl
         AssertionError: If exactly one pod is not found
     """
     # First ensure the deployment exists
-    deployment = Deployment(name=deployment_name, namespace=namespace, ensure_exists=True)
+    deployment = Deployment(client=admin_client, name=deployment_name, namespace=namespace, ensure_exists=True)
     deployment_instance = deployment.instance
 
     # Get pods using the deployment's label selector
     label_selector = ",".join([f"{k}={v}" for k, v in deployment_instance.spec.selector.matchLabels.items()])
     pods = list(
         Pod.get(
-            dyn_client=admin_client,
+            client=admin_client,
             namespace=namespace,
             label_selector=label_selector,
         )
@@ -130,7 +129,7 @@ def validate_deployment_scc(deployment: Deployment) -> None:
         if not container_security_context:
             LOGGER.info(f"No container security context exists for {container.name}")
         else:
-            if not all([True for key in ["runAsGroup", "runAsUser"] if not container_security_context.get(key)]):
+            if not all(True for key in ["runAsGroup", "runAsUser"] if not container_security_context.get(key)):
                 error.append({container.name: container.securityContext})
 
     if error:

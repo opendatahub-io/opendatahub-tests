@@ -1,0 +1,13 @@
+{
+  "default": true,
+  "MD003": { "style": "atx" },
+  "MD004": false,
+  "MD007": false,
+  "MD010": {"code_blocks": false},
+  "MD013": false,
+  "MD026": {"punctuation": ".,;!。，；：！"},
+  "MD029": false,
+  "MD051": false,
+  "no-hard-tabs": false,
+  "whitespace": false
+}

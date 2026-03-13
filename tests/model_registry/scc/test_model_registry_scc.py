@@ -1,15 +1,15 @@
-import pytest
 from typing import Self
 
+import pytest
+from ocp_resources.deployment import Deployment
+from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
 
-from ocp_resources.pod import Pod
-from ocp_resources.deployment import Deployment
+from tests.model_registry.constants import MR_INSTANCE_NAME, MR_POSTGRES_DEPLOYMENT_NAME_STR
 from tests.model_registry.scc.utils import (
     validate_deployment_scc,
     validate_pod_scc,
 )
-from tests.model_registry.constants import MR_INSTANCE_NAME, MR_POSTGRES_DEPLOYMENT_NAME_STR
 
 LOGGER = get_logger(name=__name__)
 
@@ -38,7 +38,7 @@ class TestModelRegistrySecurityContextValidation:
         ],
         indirect=["deployment_model_registry_ns"],
     )
-    @pytest.mark.sanity
+    @pytest.mark.tier2
     def test_model_registry_deployment_security_context_validation(
         self: Self,
         skip_if_not_valid_check: None,
@@ -57,7 +57,7 @@ class TestModelRegistrySecurityContextValidation:
         ],
         indirect=["pod_model_registry_ns"],
     )
-    @pytest.mark.sanity
+    @pytest.mark.tier2
     def test_model_registry_pod_security_context_validation(
         self: Self,
         skip_if_not_valid_check: None,

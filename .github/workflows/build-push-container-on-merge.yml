@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
       - name: Set env TAG
         run: |
           if [ ${{ github.event.pull_request.base.ref }} == "main" ]; then

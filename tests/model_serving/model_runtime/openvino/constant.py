@@ -5,14 +5,13 @@ This module defines configuration values, resource specifications, deployment co
 and input queries used across OpenVINO runtime tests for different frameworks.
 """
 
-from typing import Any, Union
-
 from pathlib import Path
+from typing import Any
 
 from utilities.constants import (
     KServeDeploymentType,
-    Protocols,
     ModelFormat,
+    Protocols,
 )
 
 MODEL_PATH_PREFIX: str = "openvino/model_repository"
@@ -25,7 +24,7 @@ RAW_DEPLOYMENT_TYPE: str = "raw"
 
 REST_PROTOCOL_TYPE_DICT: dict[str, str] = {"protocol_type": Protocols.REST}
 
-PREDICT_RESOURCES: dict[str, Union[list[dict[str, Union[str, dict[str, str]]]], dict[str, dict[str, str]]]] = {
+PREDICT_RESOURCES: dict[str, list[dict[str, str | dict[str, str]]] | dict[str, dict[str, str]]] = {
     "volumes": [
         {"name": "shared-memory", "emptyDir": {"medium": "Memory", "sizeLimit": "2Gi"}},
         {"name": "tmp", "emptyDir": {}},

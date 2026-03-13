@@ -1,4 +1,5 @@
-from typing import Any, Generator
+from collections.abc import Generator
+from typing import Any
 from urllib.parse import urlparse
 
 import pytest
@@ -7,29 +8,32 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.resource import ResourceEditor
-from ocp_resources.role_binding import RoleBinding
 from ocp_resources.role import Role
+from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
+from simple_logger.logger import get_logger
 
-from utilities.inference_utils import create_isvc
-from utilities.infra import (
-    create_isvc_view_role,
-    get_pods_by_isvc_label,
-    create_inference_token,
-)
 from utilities.constants import (
+    Annotations,
     KServeDeploymentType,
     ModelFormat,
     ModelName,
     Protocols,
     RuntimeTemplates,
 )
+from utilities.inference_utils import create_isvc
+from utilities.infra import (
+    create_inference_token,
+    create_isvc_view_role,
+    get_pods_by_isvc_label,
+)
 from utilities.jira import is_jira_open
 from utilities.logger import RedactedString
 from utilities.serving_runtime import ServingRuntimeFromTemplate
-from utilities.constants import Annotations
+
+LOGGER = get_logger(name=__name__)
 
 
 # HTTP/REST model serving
@@ -91,7 +95,8 @@ def patched_remove_raw_authentication_isvc(
             }
         }
     ):
-        if is_jira_open(jira_id="RHOAIENG-19275", admin_client=admin_client):
+        if is_jira_open(jira_id="RHOAIENG-52129", admin_client=admin_client):
+            LOGGER.info("RHOAIENG-52129 is open; waiting for predictor pod rollout after auth toggle")
             predictor_pod.wait_deleted()
 
         yield http_s3_ovms_raw_inference_service

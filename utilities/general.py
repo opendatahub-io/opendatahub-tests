@@ -1,23 +1,22 @@
 import base64
-import re
-from typing import List, Tuple, Any
-import uuid
 import os
+import re
+import uuid
+from typing import Any
 
 from kubernetes.dynamic import DynamicClient
-from kubernetes.dynamic.exceptions import ResourceNotFoundError, NotFoundError
+from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
+from ocp_resources.deployment import Deployment
 from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
+from ocp_resources.resource import Resource
 from simple_logger.logger import get_logger
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 
 import utilities.infra
-from utilities.constants import Annotations, KServeDeploymentType, MODELMESH_SERVING
-from utilities.exceptions import UnexpectedResourceCountError, ResourceValueMismatch
-from ocp_resources.resource import Resource
-from timeout_sampler import retry
-from timeout_sampler import TimeoutExpiredError, TimeoutSampler
-from ocp_resources.deployment import Deployment
+from utilities.constants import MODELMESH_SERVING, Annotations, KServeDeploymentType
+from utilities.exceptions import ResourceValueMismatch, UnexpectedResourceCountError
 
 # Constants for image validation
 SHA256_DIGEST_PATTERN = r"@sha256:[a-f0-9]{64}$"
@@ -190,7 +189,7 @@ def create_isvc_label_selector_str(isvc: InferenceService, resource_type: str, r
         raise ValueError(f"Unknown deployment mode {deployment_mode}")
 
 
-def get_pod_images(pod: Pod) -> List[str]:
+def get_pod_images(pod: Pod) -> list[str]:
     """Get all container images from a pod.
 
     Args:
@@ -205,7 +204,7 @@ def get_pod_images(pod: Pod) -> List[str]:
     return containers
 
 
-def validate_image_format(image: str) -> Tuple[bool, str]:
+def validate_image_format(image: str) -> tuple[bool, str]:
     """Validate image format according to requirements.
 
     Args:
@@ -250,7 +249,7 @@ def wait_for_pods_by_labels(
     """
     pods = list(
         Pod.get(
-            dyn_client=admin_client,
+            client=admin_client,
             namespace=namespace,
             label_selector=label_selector,
         )
@@ -448,7 +447,7 @@ def wait_for_pods_running(
         wait_timeout=180,
         sleep=5,
         func=get_not_running_pods,
-        pods=list(Pod.get(dyn_client=admin_client, namespace=namespace_name)),
+        pods=list(Pod.get(client=admin_client, namespace=namespace_name)),
         exceptions_dict={NotFoundError: [], ResourceNotFoundError: []},
     )
     sample = None
@@ -471,8 +470,10 @@ def wait_for_pods_running(
     return None
 
 
-def wait_for_oauth_openshift_deployment() -> None:
-    deployment_obj = Deployment(name="oauth-openshift", namespace="openshift-authentication", ensure_exists=True)
+def wait_for_oauth_openshift_deployment(client: DynamicClient) -> None:
+    deployment_obj = Deployment(
+        client=client, name="oauth-openshift", namespace="openshift-authentication", ensure_exists=True
+    )
 
     _log = f"Wait for {deployment_obj.name} -> Type: Progressing -> Reason:"
 
@@ -509,6 +510,6 @@ def collect_pod_information(pod: Pod) -> None:
         for container in containers:
             file_path = os.path.join(base_dir_name, f"{pod.name}_{container}.log")
             with open(file_path, "w") as fd:
-                fd.write(pod.log(**{"container": container}))
-    except Exception:
+                fd.write(pod.log(container=container))
+    except Exception:  # noqa: BLE001
         LOGGER.warning(f"For pod: {pod.name} information gathering failed.")

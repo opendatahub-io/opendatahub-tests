@@ -18,15 +18,15 @@ import portforward
 import requests
 from ocp_resources.inference_service import InferenceService
 
-from tests.model_serving.model_runtime.triton.constant import ACCELERATOR_IDENTIFIER, TEMPLATE_MAP
 from tests.model_serving.model_runtime.triton.constant import (
+    ACCELERATOR_IDENTIFIER,
     LOCAL_HOST_URL,
     PROTO_FILE_PATH,
-    TRITON_REST_PORT,
+    TEMPLATE_MAP,
     TRITON_GRPC_PORT,
+    TRITON_REST_PORT,
 )
-from utilities.constants import KServeDeploymentType, Protocols
-from utilities.constants import Labels, RuntimeTemplates
+from utilities.constants import KServeDeploymentType, Labels, Protocols, RuntimeTemplates
 
 
 def send_rest_request(url: str, input_data: dict[str, Any]) -> Any:

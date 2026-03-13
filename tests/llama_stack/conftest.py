@@ -1,8 +1,8 @@
-from typing import Generator, Any, Dict, Callable
 import os
+from collections.abc import Callable, Generator
+from typing import Any
+
 import httpx
-from ocp_resources.route import Route
-from ocp_resources.resource import ResourceEditor
 import pytest
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
@@ -10,28 +10,120 @@ from llama_stack_client import LlamaStackClient
 from llama_stack_client.types.vector_store import VectorStore
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
-from ocp_resources.llama_stack_distribution import LlamaStackDistribution
 from ocp_resources.namespace import Namespace
+from ocp_resources.resource import ResourceEditor
+from ocp_resources.route import Route
+from ocp_resources.secret import Secret
+from ocp_resources.service import Service
 from semver import Version
 from simple_logger.logger import get_logger
-from utilities.general import generate_random_name
-from tests.llama_stack.utils import (
-    create_llama_stack_distribution,
-    wait_for_llama_stack_client_ready,
-    vector_store_create_file_from_url,
-    wait_for_unique_llama_stack_pod,
-)
-from utilities.constants import DscComponents, Annotations
-from utilities.data_science_cluster_utils import update_components_in_dsc
+
 from tests.llama_stack.constants import (
     LLS_OPENSHIFT_MINIMAL_VERSION,
     ModelInfo,
 )
-
+from tests.llama_stack.utils import (
+    create_llama_stack_distribution,
+    vector_store_create_file_from_url,
+    wait_for_llama_stack_client_ready,
+    wait_for_unique_llama_stack_pod,
+)
+from utilities.constants import Annotations, DscComponents
+from utilities.data_science_cluster_utils import update_components_in_dsc
+from utilities.general import generate_random_name
+from utilities.resources.llama_stack_distribution import LlamaStackDistribution
 
 LOGGER = get_logger(name=__name__)
 
+pytestmark = pytest.mark.skip_on_disconnected
+
+POSTGRES_IMAGE = os.getenv(
+    "LLS_VECTOR_IO_POSTGRES_IMAGE",
+    (
+        "registry.redhat.io/rhel9/postgresql-15@sha256:"
+        "90ec347a35ab8a5d530c8d09f5347b13cc71df04f3b994bfa8b1a409b1171d59"  # postgres 15 # pragma: allowlist secret
+    ),
+)
+
+POSTGRESQL_USER = os.getenv("LLS_VECTOR_IO_POSTGRESQL_USER", "ps_user")
+POSTGRESQL_PASSWORD = os.getenv("LLS_VECTOR_IO_POSTGRESQL_PASSWORD", "ps_password")
+
+LLAMA_STACK_DISTRIBUTION_SECRET_DATA = {
+    "postgres-user": POSTGRESQL_USER,
+    "postgres-password": POSTGRESQL_PASSWORD,
+}
+
+LLS_CORE_INFERENCE_MODEL = os.getenv("LLS_CORE_INFERENCE_MODEL", "")
+LLS_CORE_VLLM_URL = os.getenv("LLS_CORE_VLLM_URL", "")
+LLS_CORE_VLLM_API_TOKEN = os.getenv("LLS_CORE_VLLM_API_TOKEN", "")
+LLS_CORE_VLLM_MAX_TOKENS = os.getenv("LLS_CORE_VLLM_MAX_TOKENS", "16384")
+LLS_CORE_VLLM_TLS_VERIFY = os.getenv("LLS_CORE_VLLM_TLS_VERIFY", "true")
+
+LLS_CORE_EMBEDDING_MODEL = os.getenv("LLS_CORE_EMBEDDING_MODEL", "nomic-embed-text-v1-5")
+LLS_CORE_EMBEDDING_PROVIDER_MODEL_ID = os.getenv("LLS_CORE_EMBEDDING_PROVIDER_MODEL_ID", "nomic-embed-text-v1-5")
+LLS_CORE_VLLM_EMBEDDING_URL = os.getenv(
+    "LLS_CORE_VLLM_EMBEDDING_URL", "https://nomic-embed-text-v1-5.example.com:443/v1"
+)
+LLS_CORE_VLLM_EMBEDDING_API_TOKEN = os.getenv("LLS_CORE_VLLM_EMBEDDING_API_TOKEN", "fake")
+LLS_CORE_VLLM_EMBEDDING_MAX_TOKENS = os.getenv("LLS_CORE_VLLM_EMBEDDING_MAX_TOKENS", "8192")
+LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY = os.getenv("LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY", "true")
+
+IBM_EARNINGS_DOC_URL = "https://www.ibm.com/downloads/documents/us-en/1550f7eea8c0ded6"
+
 distribution_name = generate_random_name(prefix="llama-stack-distribution")
+
+
+def _cleanup_s3_files(
+    bucket_name: str,
+    endpoint_url: str,
+    region: str,
+    access_key_id: str,
+    secret_access_key: str,
+) -> None:
+    """
+    Clean up files from S3 bucket that were uploaded during tests.
+
+    Args:
+        bucket_name: S3 bucket name
+        endpoint_url: S3 endpoint URL
+        region: S3 region
+        access_key_id: AWS access key ID
+        secret_access_key: AWS secret access key
+    """
+
+    try:
+        import boto3
+        from botocore.exceptions import ClientError
+
+        s3_client = boto3.client(
+            service_name="s3",
+            endpoint_url=endpoint_url,
+            aws_access_key_id=access_key_id,
+            aws_secret_access_key=secret_access_key,
+            region_name=region,
+        )
+
+        response = s3_client.list_objects_v2(Bucket=bucket_name)
+
+        if "Contents" not in response:
+            LOGGER.info("No files found to clean up from S3")
+            return
+
+        # We only want to delete files that start with "file-"
+        for obj in response["Contents"]:
+            key = obj["Key"]
+            if key.startswith("file-"):
+                s3_client.delete_object(Bucket=bucket_name, Key=key)
+                LOGGER.debug(f"Deleted file from S3: {key}")
+
+        response = s3_client.list_objects_v2(Bucket=bucket_name)
+
+        if "Contents" not in response:
+            LOGGER.info("No files found to clean up from S3")
+            return
+
+    except ClientError as e:
+        LOGGER.warning(f"Failed to clean up S3 files: {e}")
 
 
 @pytest.fixture(scope="class")
@@ -49,8 +141,9 @@ def enabled_llama_stack_operator(dsc_resource: DataScienceCluster) -> Generator[
 @pytest.fixture(scope="class")
 def llama_stack_server_config(
     request: FixtureRequest,
-    vector_io_provider_deployment_config_factory: Callable[[str], list[Dict[str, str]]],
-) -> Dict[str, Any]:
+    vector_io_provider_deployment_config_factory: Callable[[str], list[dict[str, str]]],
+    files_provider_config_factory: Callable[[str], list[dict[str, str]]],
+) -> dict[str, Any]:
     """
     Generate server configuration for LlamaStack distribution deployment and deploy vector I/O provider resources.
 
@@ -63,6 +156,8 @@ def llama_stack_server_config(
     Args:
         request: Pytest fixture request object containing test parameters
         vector_io_provider_deployment_config_factory: Factory function to deploy vector I/O providers
+            and return their configuration environment variables
+        files_provider_config_factory: Factory function to configure files storage providers
             and return their configuration environment variables
 
     Returns:
@@ -78,6 +173,8 @@ def llama_stack_server_config(
         - VLLM_URL: URL for VLLM service endpoint
         - VLLM_TLS_VERIFY: TLS verification setting (defaults to "false")
         - FMS_ORCHESTRATOR_URL: FMS orchestrator service URL
+        - ENABLE_SENTENCE_TRANSFORMERS: Enable sentence-transformers embeddings (set to "true")
+        - EMBEDDING_PROVIDER: Embeddings provider to use (set to "sentence-transformers")
         - Vector I/O provider specific variables (deployed via factory):
           * For "milvus": MILVUS_DB_PATH
           * For "milvus-remote": MILVUS_ENDPOINT, MILVUS_TOKEN, MILVUS_CONSISTENCY_LEVEL
@@ -115,25 +212,23 @@ def llama_stack_server_config(
     if params.get("inference_model"):
         inference_model = str(params.get("inference_model"))
     else:
-        inference_model = os.getenv("LLS_CORE_INFERENCE_MODEL", "")
+        inference_model = LLS_CORE_INFERENCE_MODEL
     env_vars.append({"name": "INFERENCE_MODEL", "value": inference_model})
 
-    # VLLM_API_TOKEN
     if params.get("vllm_api_token"):
         vllm_api_token = str(params.get("vllm_api_token"))
     else:
-        vllm_api_token = os.getenv("LLS_CORE_VLLM_API_TOKEN", "")
+        vllm_api_token = LLS_CORE_VLLM_API_TOKEN
     env_vars.append({"name": "VLLM_API_TOKEN", "value": vllm_api_token})
 
-    # LLS_CORE_VLLM_URL
     if params.get("vllm_url_fixture"):
         vllm_url = str(request.getfixturevalue(argname=params.get("vllm_url_fixture")))
     else:
-        vllm_url = os.getenv("LLS_CORE_VLLM_URL", "")
+        vllm_url = LLS_CORE_VLLM_URL
     env_vars.append({"name": "VLLM_URL", "value": vllm_url})
 
-    # VLLM_TLS_VERIFY
-    env_vars.append({"name": "VLLM_TLS_VERIFY", "value": "false"})
+    env_vars.append({"name": "VLLM_TLS_VERIFY", "value": LLS_CORE_VLLM_TLS_VERIFY})
+    env_vars.append({"name": "VLLM_MAX_TOKENS", "value": LLS_CORE_VLLM_MAX_TOKENS})
 
     # FMS_ORCHESTRATOR_URL
     if params.get("fms_orchestrator_url_fixture"):
@@ -143,9 +238,25 @@ def llama_stack_server_config(
     env_vars.append({"name": "FMS_ORCHESTRATOR_URL", "value": fms_orchestrator_url})
 
     # EMBEDDING_MODEL
-    embedding_model = params.get("embedding_model")
-    if embedding_model:
-        env_vars.append({"name": "EMBEDDING_MODEL", "value": embedding_model})
+    embedding_provider = params.get("embedding_provider") or "vllm-embedding"
+
+    if embedding_provider == "vllm-embedding":
+        env_vars.append({"name": "EMBEDDING_MODEL", "value": LLS_CORE_EMBEDDING_MODEL})
+        env_vars.append({"name": "EMBEDDING_PROVIDER_MODEL_ID", "value": LLS_CORE_EMBEDDING_PROVIDER_MODEL_ID})
+        env_vars.append({"name": "VLLM_EMBEDDING_URL", "value": LLS_CORE_VLLM_EMBEDDING_URL})
+        env_vars.append({"name": "VLLM_EMBEDDING_API_TOKEN", "value": LLS_CORE_VLLM_EMBEDDING_API_TOKEN})
+        env_vars.append({"name": "VLLM_EMBEDDING_MAX_TOKENS", "value": LLS_CORE_VLLM_EMBEDDING_MAX_TOKENS})
+        env_vars.append({"name": "VLLM_EMBEDDING_TLS_VERIFY", "value": LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY})
+    elif embedding_provider == "sentence-transformers":
+        env_vars.append({"name": "ENABLE_SENTENCE_TRANSFORMERS", "value": "true"})
+        env_vars.append({"name": "EMBEDDING_PROVIDER", "value": "sentence-transformers"})
+    else:
+        raise ValueError(f"Unsupported embeddings provider: {embedding_provider}")
+
+    # TRUSTYAI_EMBEDDING_MODEL
+    trustyai_embedding_model = params.get("trustyai_embedding_model")
+    if trustyai_embedding_model:
+        env_vars.append({"name": "TRUSTYAI_EMBEDDING_MODEL", "value": trustyai_embedding_model})
 
     # Kubeflow-related environment variables
     if params.get("enable_ragas_remote"):
@@ -189,12 +300,35 @@ def llama_stack_server_config(
         # KUBEFLOW_PIPELINES_TOKEN: Get from current client token
         env_vars.append({"name": "KUBEFLOW_PIPELINES_TOKEN", "value": str(current_client_token)})
 
+    # POSTGRESQL environment variables for sql_default and kvstore_default
+    env_vars.append({"name": "POSTGRES_HOST", "value": "vector-io-postgres-service"})
+    env_vars.append({"name": "POSTGRES_PORT", "value": "5432"})
+    env_vars.append(
+        {
+            "name": "POSTGRES_USER",
+            "valueFrom": {"secretKeyRef": {"name": "llamastack-distribution-secret", "key": "postgres-user"}},
+        },
+    )
+    env_vars.append(
+        {
+            "name": "POSTGRES_PASSWORD",
+            "valueFrom": {"secretKeyRef": {"name": "llamastack-distribution-secret", "key": "postgres-password"}},
+        },
+    )
+    env_vars.append({"name": "POSTGRES_DB", "value": "ps_db"})
+    env_vars.append({"name": "POSTGRES_TABLE_NAME", "value": "llamastack_kvstore"})
+
+    # Depending on parameter files_provider, configure files provider and obtain required env_vars
+    files_provider = params.get("files_provider") or "local"
+    env_vars_files = files_provider_config_factory(provider_name=files_provider)
+    env_vars.extend(env_vars_files)
+
     # Depending on parameter vector_io_provider, deploy vector_io provider and obtain required env_vars
     vector_io_provider = params.get("vector_io_provider") or "milvus"
     env_vars_vector_io = vector_io_provider_deployment_config_factory(provider_name=vector_io_provider)
     env_vars.extend(env_vars_vector_io)
 
-    server_config: Dict[str, Any] = {
+    server_config: dict[str, Any] = {
         "containerSpec": {
             "resources": {
                 "requests": {"cpu": "1", "memory": "3Gi"},
@@ -215,12 +349,51 @@ def llama_stack_server_config(
 
 
 @pytest.fixture(scope="class")
+def llama_stack_distribution_secret(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+) -> Generator[Secret, Any, Any]:
+    with Secret(
+        client=admin_client,
+        namespace=model_namespace.name,
+        name="llamastack-distribution-secret",
+        type="Opaque",
+        string_data=LLAMA_STACK_DISTRIBUTION_SECRET_DATA,
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
+def unprivileged_llama_stack_distribution_secret(
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+) -> Generator[Secret, Any, Any]:
+    with Secret(
+        client=unprivileged_client,
+        namespace=unprivileged_model_namespace.name,
+        name="llamastack-distribution-secret",
+        type="Opaque",
+        string_data=LLAMA_STACK_DISTRIBUTION_SECRET_DATA,
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
 def unprivileged_llama_stack_distribution(
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     enabled_llama_stack_operator: DataScienceCluster,
-    llama_stack_server_config: Dict[str, Any],
-) -> Generator[LlamaStackDistribution, None, None]:
+    request: FixtureRequest,
+    llama_stack_server_config: dict[str, Any],
+    ci_s3_bucket_name: str,
+    ci_s3_bucket_endpoint: str,
+    ci_s3_bucket_region: str,
+    aws_access_key_id: str,
+    aws_secret_access_key: str,
+    unprivileged_llama_stack_distribution_secret: Secret,
+    unprivileged_postgres_deployment: Deployment,
+    unprivileged_postgres_service: Service,
+) -> Generator[LlamaStackDistribution]:
     # Distribution name needs a random substring due to bug RHAIENG-999 / RHAIENG-1139
     distribution_name = generate_random_name(prefix="llama-stack-distribution")
     with create_llama_stack_distribution(
@@ -233,14 +406,42 @@ def unprivileged_llama_stack_distribution(
         lls_dist.wait_for_status(status=LlamaStackDistribution.Status.READY, timeout=600)
         yield lls_dist
 
+        try:
+            env_vars = llama_stack_server_config.get("containerSpec", {}).get("env", [])
+            enable_s3 = any(env.get("name") == "ENABLE_S3" and env.get("value") == "s3" for env in env_vars)
+
+            if enable_s3:
+                try:
+                    _cleanup_s3_files(
+                        bucket_name=ci_s3_bucket_name,
+                        endpoint_url=ci_s3_bucket_endpoint,
+                        region=ci_s3_bucket_region,
+                        access_key_id=aws_access_key_id,
+                        secret_access_key=aws_secret_access_key,
+                    )
+                except Exception as e:  # noqa: BLE001
+                    LOGGER.warning(f"Failed to clean up S3 files: {e}")
+
+        except Exception as e:  # noqa: BLE001
+            LOGGER.warning(f"Failed to clean up S3 files: {e}")
+
 
 @pytest.fixture(scope="class")
 def llama_stack_distribution(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     enabled_llama_stack_operator: DataScienceCluster,
-    llama_stack_server_config: Dict[str, Any],
-) -> Generator[LlamaStackDistribution, None, None]:
+    request: FixtureRequest,
+    llama_stack_server_config: dict[str, Any],
+    ci_s3_bucket_name: str,
+    ci_s3_bucket_endpoint: str,
+    ci_s3_bucket_region: str,
+    aws_access_key_id: str,
+    aws_secret_access_key: str,
+    llama_stack_distribution_secret: Secret,
+    postgres_deployment: Deployment,
+    postgres_service: Service,
+) -> Generator[LlamaStackDistribution]:
     # Distribution name needs a random substring due to bug RHAIENG-999 / RHAIENG-1139
     with create_llama_stack_distribution(
         client=admin_client,
@@ -251,6 +452,25 @@ def llama_stack_distribution(
     ) as lls_dist:
         lls_dist.wait_for_status(status=LlamaStackDistribution.Status.READY, timeout=600)
         yield lls_dist
+
+        try:
+            env_vars = llama_stack_server_config.get("containerSpec", {}).get("env", [])
+            enable_s3 = any(env.get("name") == "ENABLE_S3" and env.get("value") == "s3" for env in env_vars)
+
+            if enable_s3:
+                try:
+                    _cleanup_s3_files(
+                        bucket_name=ci_s3_bucket_name,
+                        endpoint_url=ci_s3_bucket_endpoint,
+                        region=ci_s3_bucket_region,
+                        access_key_id=aws_access_key_id,
+                        secret_access_key=aws_secret_access_key,
+                    )
+                except Exception as e:  # noqa: BLE001
+                    LOGGER.warning(f"Failed to clean up S3 files: {e}")
+
+        except Exception as e:  # noqa: BLE001
+            LOGGER.warning(f"Failed to clean up S3 files: {e}")
 
 
 def _get_llama_stack_distribution_deployment(
@@ -275,8 +495,8 @@ def _get_llama_stack_distribution_deployment(
         name=llama_stack_distribution.name,
         min_ready_seconds=10,
     )
-    deployment.timeout_seconds = 120
-    deployment.wait(timeout=120)
+    deployment.timeout_seconds = 240
+    deployment.wait(timeout=240)
     deployment.wait_for_replicas()
     # Workaround for RHAIENG-1819 (Incorrect number of llama-stack pods deployed after
     # creating LlamaStackDistribution after setting custom ca bundle in DSCI)
@@ -355,14 +575,15 @@ def _create_llama_stack_test_route(
         Generator[Route, Any, Any]: Route resource with TLS edge termination
     """
     route_name = generate_random_name(prefix="llama-stack", length=12)
-    with Route(
-        client=client,
-        namespace=namespace.name,
-        name=route_name,
-        service=f"{deployment.name}-service",
-        wait_for_resource=True,
-    ) as route:
-        with ResourceEditor(
+    with (
+        Route(
+            client=client,
+            namespace=namespace.name,
+            name=route_name,
+            service=f"{deployment.name}-service",
+            wait_for_resource=True,
+        ) as route,
+        ResourceEditor(
             patches={
                 route: {
                     "spec": {
@@ -376,9 +597,10 @@ def _create_llama_stack_test_route(
                     },
                 }
             }
-        ):
-            route.wait(timeout=60)
-            yield route
+        ),
+    ):
+        route.wait(timeout=60)
+        yield route
 
 
 @pytest.fixture(scope="class")
@@ -466,9 +688,13 @@ def llama_stack_models(unprivileged_llama_stack_client: LlamaStackClient) -> Mod
     """
     Returns model information from the LlamaStack client.
 
+    Selects the embedding model based on available providers with the following priority:
+    1. sentence-transformers provider (if present)
+    2. vllm-embedding provider (if present)
+
     Provides:
         - model_id: The identifier of the LLM model
-        - embedding_model: The embedding model object
+        - embedding_model: The embedding model object from the selected provider
         - embedding_dimension: The dimension of the embedding model
 
     Args:
@@ -476,12 +702,35 @@ def llama_stack_models(unprivileged_llama_stack_client: LlamaStackClient) -> Mod
 
     Returns:
         ModelInfo: NamedTuple containing model information
+
+    Raises:
+        ValueError: If no embedding provider (sentence-transformers or vllm-embedding) is found
+
     """
     models = unprivileged_llama_stack_client.models.list()
-    model_id = next(m for m in models if m.api_model_type == "llm").identifier
 
-    embedding_model = next(m for m in models if m.api_model_type == "embedding")
-    embedding_dimension = embedding_model.metadata["embedding_dimension"]
+    model_id = next(m for m in models if m.custom_metadata["model_type"] == "llm").id
+
+    # Ensure getting the right embedding model depending on the available providers
+    providers = unprivileged_llama_stack_client.providers.list()
+    provider_ids = [p.provider_id for p in providers]
+    if "sentence-transformers" in provider_ids:
+        target_provider_id = "sentence-transformers"
+    elif "vllm-embedding" in provider_ids:
+        target_provider_id = "vllm-embedding"
+    else:
+        raise ValueError("No embedding provider found")
+
+    embedding_model = next(
+        m
+        for m in models
+        if m.custom_metadata["model_type"] == "embedding" and m.custom_metadata["provider_id"] == target_provider_id
+    )
+    embedding_dimension = int(embedding_model.custom_metadata["embedding_dimension"])
+
+    LOGGER.info(f"Detected model: {model_id}")
+    LOGGER.info(f"Detected embedding_model: {embedding_model.id}")
+    LOGGER.info(f"Detected embedding_dimension: {embedding_dimension}")
 
     return ModelInfo(model_id=model_id, embedding_model=embedding_model, embedding_dimension=embedding_dimension)
 
@@ -491,7 +740,7 @@ def vector_store(
     unprivileged_llama_stack_client: LlamaStackClient,
     llama_stack_models: ModelInfo,
     request: FixtureRequest,
-) -> Generator[VectorStore, None, None]:
+) -> Generator[VectorStore]:
     """
     Creates a vector store for testing and automatically cleans it up.
 
@@ -512,7 +761,7 @@ def vector_store(
     vector_store = unprivileged_llama_stack_client.vector_stores.create(
         name="test_vector_store",
         extra_body={
-            "embedding_model": llama_stack_models.embedding_model.identifier,
+            "embedding_model": llama_stack_models.embedding_model.id,
             "embedding_dimension": llama_stack_models.embedding_dimension,
             "provider_id": vector_io_provider,
         },
@@ -524,43 +773,153 @@ def vector_store(
     try:
         unprivileged_llama_stack_client.vector_stores.delete(vector_store_id=vector_store.id)
         LOGGER.info(f"Deleted vector store {vector_store.id}")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         LOGGER.warning(f"Failed to delete vector store {vector_store.id}: {e}")
 
 
 @pytest.fixture(scope="class")
 def vector_store_with_example_docs(
     unprivileged_llama_stack_client: LlamaStackClient, vector_store: VectorStore
-) -> Generator[VectorStore, None, None]:
+) -> Generator[VectorStore]:
     """
-    Creates a vector store with TorchTune documentation files uploaded.
+    Creates a vector store with the IBM fourth-quarter 2025 earnings report uploaded.
 
-    This fixture depends on the vector_store fixture and uploads the TorchTune
-    documentation files to the vector store for testing purposes. The files
-    are automatically cleaned up after the test completes.
+    This fixture depends on the vector_store fixture and uploads the IBM earnings
+    document to the vector store for testing vector, keyword, and hybrid search.
+    The file is automatically cleaned up after the test completes.
 
     Args:
         unprivileged_llama_stack_client: The configured LlamaStackClient
         vector_store: The vector store fixture to upload files to
 
     Yields:
-        Vector store object with uploaded TorchTune documentation files
+        Vector store object with uploaded IBM earnings report document
     """
-    # Download TorchTune documentation files
-    urls = [
-        "llama3.rst",
-        "chat.rst",
-        "lora_finetune.rst",
-        "qat_finetune.rst",
-        "memory_optimizations.rst",
-    ]
-
-    base_url = "https://raw.githubusercontent.com/pytorch/torchtune/refs/tags/v0.6.1/docs/source/tutorials/"
-
-    for file_name in urls:
-        url = f"{base_url}{file_name}"
-        vector_store_create_file_from_url(
-            url=url, llama_stack_client=unprivileged_llama_stack_client, vector_store=vector_store
-        )
+    vector_store_create_file_from_url(
+        url=IBM_EARNINGS_DOC_URL,
+        llama_stack_client=unprivileged_llama_stack_client,
+        vector_store=vector_store,
+    )
 
     yield vector_store
+
+
+@pytest.fixture(scope="class")
+def unprivileged_postgres_service(
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+    unprivileged_postgres_deployment: Deployment,
+) -> Generator[Service, Any, Any]:
+    """Create a service for the unprivileged postgres deployment."""
+    with Service(
+        client=unprivileged_client,
+        namespace=unprivileged_model_namespace.name,
+        name="vector-io-postgres-service",
+        ports=[
+            {
+                "port": 5432,
+                "targetPort": 5432,
+            }
+        ],
+        selector={"app": "postgres"},
+        wait_for_resource=True,
+    ) as service:
+        yield service
+
+
+@pytest.fixture(scope="class")
+def unprivileged_postgres_deployment(
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+) -> Generator[Deployment, Any, Any]:
+    """Deploy a Postgres instance for vector I/O provider testing with unprivileged client."""
+    with Deployment(
+        client=unprivileged_client,
+        namespace=unprivileged_model_namespace.name,
+        name="vector-io-postgres-deployment",
+        min_ready_seconds=5,
+        replicas=1,
+        selector={"matchLabels": {"app": "postgres"}},
+        strategy={"type": "Recreate"},
+        template=get_postgres_deployment_template(),
+        teardown=True,
+    ) as deployment:
+        deployment.wait_for_replicas(deployed=True, timeout=240)
+        yield deployment
+
+
+@pytest.fixture(scope="class")
+def postgres_service(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    postgres_deployment: Deployment,
+) -> Generator[Service, Any, Any]:
+    """Create a service for the postgres deployment."""
+    with Service(
+        client=admin_client,
+        namespace=model_namespace.name,
+        name="vector-io-postgres-service",
+        ports=[
+            {
+                "port": 5432,
+                "targetPort": 5432,
+            }
+        ],
+        selector={"app": "postgres"},
+        wait_for_resource=True,
+    ) as service:
+        yield service
+
+
+@pytest.fixture(scope="class")
+def postgres_deployment(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+) -> Generator[Deployment, Any, Any]:
+    """Deploy a Postgres instance for vector I/O provider testing."""
+    with Deployment(
+        client=admin_client,
+        namespace=model_namespace.name,
+        name="vector-io-postgres-deployment",
+        min_ready_seconds=5,
+        replicas=1,
+        selector={"matchLabels": {"app": "postgres"}},
+        strategy={"type": "Recreate"},
+        template=get_postgres_deployment_template(),
+        teardown=True,
+    ) as deployment:
+        deployment.wait_for_replicas(deployed=True, timeout=240)
+        yield deployment
+
+
+def get_postgres_deployment_template() -> dict[str, Any]:
+    """Return a Kubernetes deployment for PostgreSQL"""
+    return {
+        "metadata": {"labels": {"app": "postgres"}},
+        "spec": {
+            "containers": [
+                {
+                    "name": "postgres",
+                    "image": POSTGRES_IMAGE,
+                    "ports": [{"containerPort": 5432}],
+                    "env": [
+                        {"name": "POSTGRESQL_DATABASE", "value": "ps_db"},
+                        {
+                            "name": "POSTGRESQL_USER",
+                            "valueFrom": {
+                                "secretKeyRef": {"name": "llamastack-distribution-secret", "key": "postgres-user"}
+                            },
+                        },
+                        {
+                            "name": "POSTGRESQL_PASSWORD",
+                            "valueFrom": {
+                                "secretKeyRef": {"name": "llamastack-distribution-secret", "key": "postgres-password"}
+                            },
+                        },
+                    ],
+                    "volumeMounts": [{"name": "postgresdata", "mountPath": "/var/lib/pgsql/data"}],
+                },
+            ],
+            "volumes": [{"name": "postgresdata", "emptyDir": {}}],
+        },
+    }

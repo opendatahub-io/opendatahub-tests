@@ -1,12 +1,14 @@
 from typing import Any
+
 import pytest
-from simple_logger.logger import get_logger
 from ocp_resources.inference_service import InferenceService
+from ocp_resources.pod import Pod
+from simple_logger.logger import get_logger
+
+from tests.model_serving.model_runtime.model_validation.constant import COMPLETION_QUERY
 from tests.model_serving.model_runtime.utils import (
     validate_raw_openai_inference_request,
 )
-from tests.model_serving.model_runtime.model_validation.constant import COMPLETION_QUERY
-from ocp_resources.pod import Pod
 
 LOGGER = get_logger(name=__name__)
 
@@ -14,6 +16,7 @@ LOGGER = get_logger(name=__name__)
 pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type")
 
 
+@pytest.mark.model_validation
 class TestVLLMModelCarRaw:
     def test_oci_model_car_raw_openai_inference(
         self,

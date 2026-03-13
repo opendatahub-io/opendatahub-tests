@@ -1,4 +1,5 @@
-from typing import Generator, Any
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 from kubernetes.dynamic import DynamicClient
@@ -35,7 +36,7 @@ def dataset_pvc(admin_client, model_namespace) -> Generator[PersistentVolumeClai
 @pytest.fixture(scope="class")
 def dataset_upload(
     admin_client: DynamicClient, model_namespace: Namespace, dataset_pvc: PersistentVolumeClaim
-) -> Generator[dict[str, Any], None, None]:
+) -> Generator[dict[str, Any]]:
     """
     Copies dataset files from an image into the PVC at the location expected by LM-Eval
     """
@@ -89,7 +90,7 @@ def teardown_lmeval_job_pod(admin_client, model_namespace) -> None:
     if pods := [
         pod
         for pod in Pod.get(
-            dyn_client=admin_client, namespace=model_namespace.name, label_selector="app.kubernetes.io/name=ta-lmes"
+            client=admin_client, namespace=model_namespace.name, label_selector="app.kubernetes.io/name=ta-lmes"
         )
     ]:
         for pod in pods:
@@ -198,13 +199,14 @@ def dspa_route(
     def _get_dspa_route() -> Route | None:
         routes = list(
             Route.get(
-                dyn_client=admin_client,
+                client=admin_client,
                 namespace=model_namespace.name,
                 name="ds-pipeline-dspa",
             )
         )
         return routes[0] if routes else None
 
-    for route in TimeoutSampler(wait_timeout=120, sleep=5, func=_get_dspa_route):
+    for route in TimeoutSampler(wait_timeout=240, sleep=5, func=_get_dspa_route):
         if route:
             yield route
+            return

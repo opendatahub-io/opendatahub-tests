@@ -1,5 +1,4 @@
 import shlex
-from utilities.constants import Containers, KServeDeploymentType, StorageClassName
 
 import pytest
 
@@ -7,6 +6,7 @@ from tests.model_serving.model_server.kserve.storage.constants import (
     INFERENCE_SERVICE_PARAMS,
     KSERVE_OVMS_SERVING_RUNTIME_PARAMS,
 )
+from utilities.constants import Containers, KServeDeploymentType, StorageClassName
 
 POD_LS_SPLIT_COMMAND: list[str] = shlex.split("ls /mnt/models")
 

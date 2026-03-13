@@ -1,44 +1,44 @@
 import base64
 import json
-import time
-from typing import Any, List, Dict
+from typing import Any
 
 import requests
 from kubernetes.dynamic import DynamicClient
-
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
+from model_registry import ModelRegistry as ModelRegistryClient
+from model_registry.types import RegisteredModel
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
-from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
-from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from simple_logger.logger import get_logger
 from timeout_sampler import retry
+
 from tests.model_registry.constants import (
-    MR_DB_IMAGE_DIGEST,
-    MODEL_REGISTRY_DB_SECRET_STR_DATA,
-    MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
     DB_BASE_RESOURCES_NAME,
-    OAUTH_PROXY_CONFIG_DICT,
     MARIADB_MY_CNF,
-    PORT_MAP,
+    MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
+    MODEL_REGISTRY_DB_SECRET_STR_DATA,
     MODEL_REGISTRY_POD_FILTER,
+    MR_DB_IMAGE_DIGEST,
     MR_POSTGRES_DB_OBJECT,
+    PORT_MAP,
 )
 from tests.model_registry.exceptions import ModelRegistryResourceNotFoundError
+from utilities.constants import Annotations, PodNotFound, Protocols, Timeout
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
-from utilities.constants import Protocols, Annotations, Timeout, PodNotFound
-from model_registry import ModelRegistry as ModelRegistryClient
-from model_registry.types import RegisteredModel
-
 from utilities.general import wait_for_pods_running
+from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from utilities.user_utils import get_byoidc_issuer_url
 
 ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
 MARIA_DB_IMAGE = (
     "registry.redhat.io/rhel9/mariadb-1011@sha256:092407d87f8017bb444a462fb3d38ad5070429e94df7cf6b91d82697f36d0fa9"
+)
+POSTGRES_DB_IMAGE = (
+    "public.ecr.aws/docker/library/postgres@sha256:6e9bbed548cc1ca776dd4685cfea9efe60d58df91186ec6bad7328fd03b388a5"
 )
 LOGGER = get_logger(name=__name__)
 
@@ -59,7 +59,7 @@ def get_mr_service_by_label(client: DynamicClient, namespace_name: str, mr_insta
     if svc := [
         svcs
         for svcs in Service.get(
-            dyn_client=client,
+            client=client,
             namespace=namespace_name,
             label_selector=f"app={mr_instance.name},component=model-registry",
         )
@@ -77,6 +77,179 @@ def get_endpoint_from_mr_service(svc: Service, protocol: str) -> str:
         raise ProtocolNotSupportedError(protocol)
 
 
+def get_database_volumes(resource_name: str, db_backend: str) -> list[dict[str, Any]]:
+    """Get volumes for database container based on backend type."""
+    if db_backend == "postgres":
+        return [
+            {
+                "name": f"{resource_name}-postgres-data",
+                "persistentVolumeClaim": {"claimName": resource_name},
+            }
+        ]
+    elif db_backend == "mariadb":
+        return [
+            {
+                "name": f"{db_backend}-data",
+                "persistentVolumeClaim": {"claimName": resource_name},
+            },
+            {
+                "name": f"{db_backend}-config",
+                "configMap": {"name": resource_name},
+            },
+        ]
+    else:
+        # MySQL
+        return [
+            {
+                "name": f"{resource_name}-data",
+                "persistentVolumeClaim": {"claimName": resource_name},
+            }
+        ]
+
+
+def get_database_volume_mounts(resource_name: str, db_backend: str) -> list[dict[str, Any]]:
+    """Get volume mounts for database container based on backend type."""
+    if db_backend == "postgres":
+        return [
+            {
+                "mountPath": "/var/lib/postgresql/data",
+                "name": f"{resource_name}-postgres-data",
+            }
+        ]
+    elif db_backend == "mariadb":
+        return [
+            {"mountPath": "/var/lib/mysql", "name": f"{db_backend}-data"},
+            {
+                "mountPath": "/etc/mysql/conf.d",
+                "name": f"{db_backend}-config",
+            },
+        ]
+    else:
+        # MySQL
+        return [
+            {
+                "mountPath": "/var/lib/mysql",
+                "name": f"{resource_name}-data",
+            }
+        ]
+
+
+def get_database_image(db_backend: str) -> str:
+    """Get the correct container image for the database backend."""
+    if db_backend == "postgres":
+        return POSTGRES_DB_IMAGE
+    elif db_backend == "mariadb":
+        return MARIA_DB_IMAGE
+    else:
+        # MySQL
+        return MR_DB_IMAGE_DIGEST
+
+
+def get_database_health_probes(db_backend: str) -> dict[str, dict[str, Any]]:
+    """Get liveness and readiness probes for database container based on backend type."""
+    if db_backend == "postgres":
+        return {
+            "livenessProbe": {
+                "exec": {
+                    "command": [
+                        "bash",
+                        "-c",
+                        "/usr/bin/pg_isready -U $POSTGRES_USER -d $POSTGRES_DB",
+                    ]
+                },
+                "initialDelaySeconds": 30,
+                "timeoutSeconds": 2,
+            },
+            "readinessProbe": {
+                "exec": {
+                    "command": [
+                        "bash",
+                        "-c",
+                        "psql -w -U $POSTGRES_USER -d $POSTGRES_DB -c 'SELECT 1'",
+                    ]
+                },
+                "initialDelaySeconds": 10,
+                "timeoutSeconds": 5,
+            },
+        }
+    else:
+        # MySQL/MariaDB health probes
+        return {
+            "livenessProbe": {
+                "exec": {
+                    "command": [
+                        "/bin/bash",
+                        "-c",
+                        "mysqladmin -u${MYSQL_USER} -p${MYSQL_ROOT_PASSWORD} ping",
+                    ]
+                },
+                "initialDelaySeconds": 15,
+                "periodSeconds": 10,
+                "timeoutSeconds": 5,
+            },
+            "readinessProbe": {
+                "exec": {
+                    "command": [
+                        "/bin/bash",
+                        "-c",
+                        'mysql -D ${MYSQL_DATABASE} -u${MYSQL_USER} -p${MYSQL_ROOT_PASSWORD} -e "SELECT 1"',
+                    ]
+                },
+                "initialDelaySeconds": 10,
+                "timeoutSeconds": 5,
+            },
+        }
+
+
+def get_database_env_vars(secret_name: str, db_backend: str) -> list[dict[str, Any]]:
+    """Get environment variables for database container based on backend type."""
+    if db_backend == "postgres":
+        return [
+            {
+                "name": "POSTGRES_USER",
+                "valueFrom": {"secretKeyRef": {"key": "database-user", "name": secret_name}},
+            },
+            {
+                "name": "POSTGRES_PASSWORD",
+                "valueFrom": {"secretKeyRef": {"key": "database-password", "name": secret_name}},
+            },
+            {
+                "name": "POSTGRES_DB",
+                "valueFrom": {"secretKeyRef": {"key": "database-name", "name": secret_name}},
+            },
+            {
+                "name": "PGDATA",
+                "value": "/var/lib/postgresql/data/pgdata",
+            },
+        ]
+    else:
+        # MySQL/MariaDB environment variables
+        env_vars = [
+            {
+                "name": "MYSQL_USER",
+                "valueFrom": {"secretKeyRef": {"key": "database-user", "name": secret_name}},
+            },
+            {
+                "name": "MYSQL_PASSWORD",
+                "valueFrom": {"secretKeyRef": {"key": "database-password", "name": secret_name}},
+            },
+            {
+                "name": "MYSQL_ROOT_PASSWORD",
+                "valueFrom": {"secretKeyRef": {"key": "database-password", "name": secret_name}},
+            },
+            {
+                "name": "MYSQL_DATABASE",
+                "valueFrom": {"secretKeyRef": {"key": "database-name", "name": secret_name}},
+            },
+        ]
+        if db_backend == "mariadb":
+            env_vars.append({
+                "name": "MARIADB_ROOT_PASSWORD",
+                "valueFrom": {"secretKeyRef": {"name": secret_name, "key": "database-password"}},
+            })
+        return env_vars
+
+
 def get_model_registry_deployment_template_dict(
     secret_name: str, resource_name: str, db_backend: str
 ) -> dict[str, Any]:
@@ -90,121 +263,33 @@ def get_model_registry_deployment_template_dict(
         "spec": {
             "containers": [
                 {
-                    "env": [
-                        {
-                            "name": "MYSQL_USER",
-                            "valueFrom": {
-                                "secretKeyRef": {
-                                    "key": "database-user",
-                                    "name": secret_name,
-                                }
-                            },
-                        },
-                        {
-                            "name": "MYSQL_PASSWORD",
-                            "valueFrom": {
-                                "secretKeyRef": {
-                                    "key": "database-password",
-                                    "name": secret_name,
-                                }
-                            },
-                        },
-                        {
-                            "name": "MYSQL_ROOT_PASSWORD",
-                            "valueFrom": {
-                                "secretKeyRef": {
-                                    "key": "database-password",
-                                    "name": secret_name,
-                                }
-                            },
-                        },
-                        {
-                            "name": "MYSQL_DATABASE",
-                            "valueFrom": {
-                                "secretKeyRef": {
-                                    "key": "database-name",
-                                    "name": secret_name,
-                                }
-                            },
-                        },
-                    ],
-                    "args": [
-                        "--datadir",
-                        "/var/lib/mysql/datadir",
-                    ],
-                    "image": MR_DB_IMAGE_DIGEST,
+                    "env": get_database_env_vars(secret_name=secret_name, db_backend=db_backend),
+                    "image": get_database_image(db_backend=db_backend),
                     "imagePullPolicy": "IfNotPresent",
-                    "livenessProbe": {
-                        "exec": {
-                            "command": [
-                                "/bin/bash",
-                                "-c",
-                                "mysqladmin -u${MYSQL_USER} -p${MYSQL_ROOT_PASSWORD} ping",
-                            ]
-                        },
-                        "initialDelaySeconds": 15,
-                        "periodSeconds": 10,
-                        "timeoutSeconds": 5,
-                    },
+                    **get_database_health_probes(db_backend=db_backend),
                     "name": db_backend,
-                    "ports": [{"containerPort": 3306, "protocol": "TCP"}],
-                    "readinessProbe": {
-                        "exec": {
-                            "command": [
-                                "/bin/bash",
-                                "-c",
-                                'mysql -D ${MYSQL_DATABASE} -u${MYSQL_USER} -p${MYSQL_ROOT_PASSWORD} -e "SELECT 1"',
-                            ]
-                        },
-                        "initialDelaySeconds": 10,
-                        "timeoutSeconds": 5,
-                    },
+                    "ports": [{"containerPort": 3306, "protocol": "TCP"}]
+                    if db_backend != "postgres"
+                    else [{"containerPort": 5432, "protocol": "TCP"}],
                     "securityContext": {"capabilities": {}, "privileged": False},
                     "terminationMessagePath": "/dev/termination-log",
-                    "volumeMounts": [
-                        {
-                            "mountPath": "/var/lib/mysql",
-                            "name": f"{resource_name}-data",
-                        }
-                    ],
+                    "volumeMounts": get_database_volume_mounts(resource_name=resource_name, db_backend=db_backend),
                 }
             ],
             "dnsPolicy": "ClusterFirst",
             "restartPolicy": "Always",
-            "volumes": [
-                {
-                    "name": f"{resource_name}-data",
-                    "persistentVolumeClaim": {"claimName": resource_name},
-                }
-            ],
+            "volumes": get_database_volumes(resource_name=resource_name, db_backend=db_backend),
         },
     }
+
+    # Add args only for MySQL backend
+    if db_backend == "mysql":
+        base_dict["spec"]["containers"][0]["args"] = ["--datadir", "/var/lib/mysql/datadir"]
+
     if db_backend == "mariadb":
         base_dict["metadata"]["labels"]["app"] = db_backend
         base_dict["metadata"]["labels"]["component"] = "database"
-        base_dict["spec"]["containers"][0]["image"] = MARIA_DB_IMAGE
-        base_dict["spec"]["containers"][0]["env"].append({
-            "name": "MARIADB_ROOT_PASSWORD",
-            "valueFrom": {"secretKeyRef": {"name": secret_name, "key": "database-password"}},
-        })
-        base_dict["spec"]["containers"][0]["volumeMounts"] = [
-            {"mountPath": "/var/lib/mysql", "name": f"{db_backend}-data"},
-            {
-                "mountPath": "/etc/mysql/conf.d",
-                "name": f"{db_backend}-config",
-            },
-        ]
-        del base_dict["spec"]["containers"][0]["args"]
-        base_dict["spec"]["volumes"] = [
-            {
-                "name": f"{db_backend}-data",
-                "persistentVolumeClaim": {"claimName": resource_name},
-            },
-            {
-                "name": f"{db_backend}-config",
-                "configMap": {"name": resource_name},
-            },
-        ]
+
     return base_dict
 
 
@@ -241,14 +326,13 @@ def wait_for_new_running_mr_pod(
     LOGGER.info("Waiting for pod to be replaced")
     pods = list(
         Pod.get(
-            dyn_client=admin_client,
+            client=admin_client,
             namespace=namespace,
             label_selector=MODEL_REGISTRY_POD_FILTER,
         )
     )
-    if pods and len(pods) == 1:
-        if pods[0].name != orig_pod_name and pods[0].status == Pod.Status.RUNNING:
-            return pods[0]
+    if pods and len(pods) == 1 and pods[0].name != orig_pod_name and pods[0].status == Pod.Status.RUNNING:
+        return pods[0]
     raise TimeoutError(f"Timeout waiting for pod {orig_pod_name} to be replaced")
 
 
@@ -256,80 +340,129 @@ def generate_namespace_name(file_path: str) -> str:
     return (file_path.removesuffix(".py").replace("/", "-").replace("_", "-"))[-63:].split("-", 1)[-1]
 
 
-def add_mysql_certs_volumes_to_deployment(
+def add_db_certs_volumes_to_deployment(
     spec: dict[str, Any],
     ca_configmap_name: str,
+    db_backend: str,
 ) -> list[dict[str, Any]]:
     """
-    Adds the MySQL certs volumes to the deployment.
+    Adds the database certs volumes to the deployment.
 
     Args:
         spec: The spec of the deployment
         ca_configmap_name: The name of the CA configmap
+        db_backend: The database backend type (e.g., "mysql", "postgres")
 
     Returns:
-        The volumes with the MySQL certs volumes added
+        The volumes with the database certs volumes added
     """
 
     volumes = list(spec["volumes"])
+
+    # Common volumes for both MySQL and PostgreSQL
     volumes.extend([
         {"name": ca_configmap_name, "configMap": {"name": ca_configmap_name}},
-        {"name": "mysql-server-cert", "secret": {"secretName": "mysql-server-cert"}},  # pragma: allowlist secret
-        {"name": "mysql-server-key", "secret": {"secretName": "mysql-server-key"}},  # pragma: allowlist secret
+        {"name": "db-server-cert", "secret": {"secretName": "db-server-cert"}},  # pragma: allowlist secret
     ])
+
+    # Database-specific volumes
+    if db_backend == "mysql":
+        volumes.append({"name": "db-server-key", "secret": {"secretName": "db-server-key"}})  # pragma: allowlist secret
+    elif db_backend == "postgres":
+        volumes.extend([
+            {"name": "db-ca", "secret": {"secretName": "db-ca"}},  # pragma: allowlist secret
+            {
+                "name": "db-server-key",
+                "secret": {"secretName": "db-server-key", "defaultMode": 0o600},  # pragma: allowlist secret
+            },
+        ])
 
     return volumes
 
 
-def apply_mysql_args_and_volume_mounts(
-    my_sql_container: dict[str, Any],
+def apply_db_args_and_volume_mounts(
+    db_container: dict[str, Any],
     ca_configmap_name: str,
     ca_mount_path: str,
+    db_backend: str,
 ) -> dict[str, Any]:
     """
-    Applies the MySQL args and volume mounts to the MySQL container.
+    Applies the database args and volume mounts to the database container.
 
     Args:
-        my_sql_container: The MySQL container
+        db_container: The database container
         ca_configmap_name: The name of the CA configmap
         ca_mount_path: The mount path of the CA
+        db_backend: The database backend type (e.g., "mysql", "postgres")
 
     Returns:
-        The MySQL container with the MySQL args and volume mounts applied
+        The database container with the database args and volume mounts applied
     """
 
-    mysql_args = list(my_sql_container.get("args", []))
-    mysql_args.extend([
-        f"--ssl-ca={ca_mount_path}/ca/ca-bundle.crt",
-        f"--ssl-cert={ca_mount_path}/server_cert/tls.crt",
-        f"--ssl-key={ca_mount_path}/server_key/tls.key",
-    ])
+    db_args = list(db_container.get("args", []))
+    volumes_mounts = list(db_container.get("volumeMounts", []))
 
-    volumes_mounts = list(my_sql_container.get("volumeMounts", []))
-    volumes_mounts.extend([
-        {"name": ca_configmap_name, "mountPath": f"{ca_mount_path}/ca", "readOnly": True},
-        {
-            "name": "mysql-server-cert",
-            "mountPath": f"{ca_mount_path}/server_cert",
-            "readOnly": True,
-        },
-        {
-            "name": "mysql-server-key",
-            "mountPath": f"{ca_mount_path}/server_key",
-            "readOnly": True,
-        },
-    ])
+    if db_backend == "mysql":
+        db_args.extend([
+            f"--ssl-ca={ca_mount_path}/ca/ca-bundle.crt",
+            f"--ssl-cert={ca_mount_path}/server_cert/tls.crt",
+            f"--ssl-key={ca_mount_path}/server_key/tls.key",
+        ])
 
-    my_sql_container["args"] = mysql_args
-    my_sql_container["volumeMounts"] = volumes_mounts
-    return my_sql_container
+        volumes_mounts.extend([
+            {"name": ca_configmap_name, "mountPath": f"{ca_mount_path}/ca", "readOnly": True},
+            {
+                "name": "db-server-cert",
+                "mountPath": f"{ca_mount_path}/server_cert",
+                "readOnly": True,
+            },
+            {
+                "name": "db-server-key",
+                "mountPath": f"{ca_mount_path}/server_key",
+                "readOnly": True,
+            },
+        ])
+    elif db_backend == "postgres":
+        db_args.extend([
+            "postgres",
+            "-c",
+            "ssl=on",
+            "-c",
+            f"ssl_cert_file={ca_mount_path}/ssl-certs/tls.crt",
+            "-c",
+            f"ssl_key_file={ca_mount_path}/ssl-keys/tls.key",
+            "-c",
+            f"ssl_ca_file={ca_mount_path}/ssl-ca/ca.crt",
+        ])
+
+        volumes_mounts.extend([
+            {
+                "name": "db-ca",
+                "mountPath": f"{ca_mount_path}/ssl-ca",
+                "readOnly": True,
+            },
+            {
+                "name": "db-server-cert",
+                "mountPath": f"{ca_mount_path}/ssl-certs",
+                "readOnly": True,
+            },
+            {
+                "name": "db-server-key",
+                "mountPath": f"{ca_mount_path}/ssl-keys",
+                "readOnly": True,
+            },
+        ])
+
+    db_container["args"] = db_args
+    db_container["volumeMounts"] = volumes_mounts
+    return db_container
 
 
 def get_and_validate_registered_model(
     model_registry_client: ModelRegistryClient,
     model_name: str,
     registered_model: RegisteredModel = None,
-) -> List[str]:
+) -> list[str]:
     """
     Get and validate a registered model.
     """
@@ -346,12 +479,11 @@ def get_and_validate_registered_model(
         expected_attrs = {
             "name": model_name,
         }
-    errors = [
+    return [
         f"Unexpected {attr} expected: {expected}, received {getattr(model, attr)}"
         for attr, expected in expected_attrs.items()
         if getattr(model, attr) != expected
     ]
-    return errors
 
 
 def execute_model_registry_get_command(url: str, headers: dict[str, str], json_output: bool = True) -> dict[Any, Any]:
@@ -387,12 +519,14 @@ def get_mr_service_objects(
     client: DynamicClient,
     teardown_resources: bool,
     num: int,
+    db_backend: str = "mysql",
 ) -> list[Service]:
     services = []
-    annotation = {
-        "template.openshift.io/expose-uri": r"mysql://{.spec.clusterIP}:{.spec.ports[?(.name==\mysql\)].port}"
-    }
-    for num_service in range(0, num):
+    port = PORT_MAP[db_backend]
+    service_port_name = db_backend if db_backend == "postgres" else "mysql"
+    service_uri = rf"{service_port_name}://{{.spec.clusterIP}}:{{.spec.ports[?(.name==\{service_port_name}\)].port}}"
+    annotation = {"template.openshift.io/expose-uri": service_uri}
+    for num_service in range(num):
         name = f"{base_name}{num_service}"
         services.append(
             Service(
@@ -401,12 +535,12 @@ def get_mr_service_objects(
                 namespace=namespace,
                 ports=[
                     {
-                        "name": "mysql",
+                        "name": service_port_name,
                         "nodePort": 0,
-                        "port": 3306,
+                        "port": port,
                         "protocol": "TCP",
                         "appProtocol": "tcp",
-                        "targetPort": 3306,
+                        "targetPort": port,
                     }
                 ],
                 selector={
@@ -430,7 +564,7 @@ def get_mr_configmap_objects(
 ) -> list[Service]:
     config_maps = []
     if db_backend == "mariadb":
-        for num_config_map in range(0, num):
+        for num_config_map in range(num):
             name = f"{base_name}{num_config_map}"
             config_maps.append(
                 ConfigMap(
@@ -449,7 +583,7 @@ def get_mr_pvc_objects(
     base_name: str, namespace: str, client: DynamicClient, teardown_resources: bool, num: int
 ) -> list[PersistentVolumeClaim]:
     pvcs = []
-    for num_pvc in range(0, num):
+    for num_pvc in range(num):
         name = f"{base_name}{num_pvc}"
         pvcs.append(
             PersistentVolumeClaim(
@@ -469,7 +603,7 @@ def get_mr_secret_objects(
     base_name: str, namespace: str, client: DynamicClient, teardown_resources: bool, num: int
 ) -> list[Secret]:
     secrets = []
-    for num_secret in range(0, num):
+    for num_secret in range(num):
         name = f"{base_name}{num_secret}"
         secrets.append(
             Secret(
@@ -495,7 +629,7 @@ def get_mr_deployment_objects(
 ) -> list[Deployment]:
     deployments = []
 
-    for num_deployment in range(0, num):
+    for num_deployment in range(num):
         name = f"{base_name}{num_deployment}"
         selectors = {"matchLabels": {"name": name}}
         if db_backend == "mariadb":
@@ -544,26 +678,29 @@ def get_model_registry_objects(
     db_backend: str,
 ) -> list[Any]:
     model_registry_objects = []
-    for num_mr in range(0, num):
+    for num_mr in range(num):
         name = f"{base_name}{num_mr}"
-        mysql = None
-        if db_backend != "default":
-            mysql = get_mysql_config(
+        db_value = None
+
+        if db_backend == "default":
+            db_value = {"generateDeployment": True}
+        elif db_backend in ["postgres", "mariadb", "mysql"]:
+            db_value = get_external_db_config(
                 base_name=f"{DB_BASE_RESOURCES_NAME}{num_mr}", namespace=namespace, db_backend=db_backend
             )
             if "sslRootCertificateConfigMap" in params:
-                mysql["sslRootCertificateConfigMap"] = params["sslRootCertificateConfigMap"]
+                db_value["sslRootCertificateConfigMap"] = params["sslRootCertificateConfigMap"]
+
         model_registry_objects.append(
             ModelRegistry(
                 client=client,
                 name=name,
                 namespace=namespace,
                 label=get_mr_standard_labels(resource_name=name),
-                grpc={},
                 rest={},
-                oauth_proxy=OAUTH_PROXY_CONFIG_DICT,
-                mysql=mysql if mysql else None,
-                postgres={"generateDeployment": True} if db_backend == "default" else None,
+                kube_rbac_proxy={},
+                mysql=db_value if db_backend in ["mariadb", "mysql"] else None,
+                postgres=db_value if db_backend in ["postgres", "default"] else None,
                 wait_for_resource=True,
                 teardown=teardown_resources,
             )
@@ -600,6 +737,7 @@ def get_model_registry_metadata_resources(
             base_name=base_name,
             num=num_resources,
             teardown_resources=teardown_resources,
+            db_backend=db_backend,
         ),
         ConfigMap: get_mr_configmap_objects(
             client=client,
@@ -620,7 +758,7 @@ def get_model_registry_metadata_resources(
     }
 
 
-def get_mysql_config(base_name: str, namespace: str, db_backend: str) -> dict[str, Any]:
+def get_external_db_config(base_name: str, namespace: str, db_backend: str) -> dict[str, Any]:
     return {
         "host": f"{base_name}.{namespace}.svc.cluster.local",
         "database": MODEL_REGISTRY_DB_SECRET_STR_DATA["database-name"],
@@ -648,9 +786,8 @@ def validate_mlmd_removal_in_model_registry_pod_log(
         container_name = container["name"]
         LOGGER.info(f"Checking {container_name}")
         log = pod_object.log(container=container_name)
-        if "rest" in container_name:
-            if embedmd_message not in log:
-                errors.append(f"Missing {embedmd_message} in {container_name} log")
+        if "rest" in container_name and embedmd_message not in log:
+            errors.append(f"Missing {embedmd_message} in {container_name} log")
         if "MLMD" in log:
             errors.append(f"MLMD reference found in {container_name} log")
     assert not errors, f"Log validation failed with error(s): {errors}"
@@ -659,7 +796,7 @@ def validate_mlmd_removal_in_model_registry_pod_log(
 def get_model_catalog_pod(
     client: DynamicClient, model_registry_namespace: str, label_selector: str = "app.kubernetes.io/name=model-catalog"
 ) -> list[Pod]:
-    return list(Pod.get(namespace=model_registry_namespace, label_selector=label_selector, dyn_client=client))
+    return list(Pod.get(namespace=model_registry_namespace, label_selector=label_selector, client=client))
 
 
 def get_rest_headers(token: str) -> dict[str, str]:
@@ -668,120 +805,6 @@ def get_rest_headers(token: str) -> dict[str, str]:
         "accept": "application/json",
         "Content-Type": "application/json",
     }
-
-
-def is_model_catalog_ready(client: DynamicClient, model_registry_namespace: str, consecutive_try: int = 6):
-    model_catalog_pods = get_model_catalog_pod(
-        client=client, model_registry_namespace=model_registry_namespace, label_selector="app=model-catalog"
-    )
-    # We can wait for the pods to reflect updated catalog, however, deleting them ensures the updated config is
-    # applied immediately.
-    for pod in model_catalog_pods:
-        pod.delete()
-    # After the deletion, we need to wait for the pod to be spinned up and get to ready state.
-    assert wait_for_model_catalog_pod_created(client=client, model_registry_namespace=model_registry_namespace)
-    wait_for_pods_running(
-        admin_client=client, namespace_name=model_registry_namespace, number_of_consecutive_checks=consecutive_try
-    )
-
-
-@retry(wait_timeout=30, sleep=5, exceptions_dict={PodNotFound: []})
-def wait_for_model_catalog_pod_created(client: DynamicClient, model_registry_namespace: str) -> bool:
-    pods = get_model_catalog_pod(client=client, model_registry_namespace=model_registry_namespace)
-    if pods:
-        return True
-    raise PodNotFound("Model catalog pod not found")
-
-
-def execute_get_call(
-    url: str, headers: dict[str, str], verify: bool | str = False, params: dict[str, Any] | None = None
-) -> requests.Response:
-    LOGGER.info(f"Executing get call: {url}")
-    if params:
-        LOGGER.info(f"params: {params}")
-    resp = requests.get(url=url, headers=headers, verify=verify, timeout=60, params=params)
-    LOGGER.info(f"Encoded url from requests library: {resp.url}")
-    if resp.status_code not in [200, 201]:
-        raise ResourceNotFoundError(f"Get call failed for resource: {url}, {resp.status_code}: {resp.text}")
-    return resp
-
-
-@retry(wait_timeout=60, sleep=5, exceptions_dict={ResourceNotFoundError: []})
-def wait_for_model_catalog_api(url: str, headers: dict[str, str], verify: bool | str = False) -> requests.Response:
-    return execute_get_call(url=f"{url}sources", headers=headers, verify=verify)
-
-
-def execute_get_command(
-    url: str, headers: dict[str, str], verify: bool | str = False, params: dict[str, Any] | None = None
-) -> dict[Any, Any]:
-    resp = execute_get_call(url=url, headers=headers, verify=verify, params=params)
-    try:
-        return json.loads(resp.text)
-    except json.JSONDecodeError:
-        LOGGER.error(f"Unable to parse {resp.text}")
-        raise
-
-
-def get_sample_yaml_str(models: list[str]) -> str:
-    model_str: str = ""
-    for model in models:
-        model_str += f"""
-{get_model_str(model=model)}
-"""
-    return f"""source: Hugging Face
-models:
-{model_str}
-"""
-
-
-def validate_model_catalog_sources(
-    model_catalog_sources_url: str, rest_headers: dict[str, str], expected_catalog_values: dict[str, str]
-) -> None:
-    results = execute_get_command(
-        url=model_catalog_sources_url,
-        headers=rest_headers,
-    )["items"]
-    LOGGER.info(results)
-    # this is for the default catalog:
-    assert len(results) == len(expected_catalog_values) + 2
-    ids_from_query = [result_entry["id"] for result_entry in results]
-    ids_expected = [expected_entry["id"] for expected_entry in expected_catalog_values]
-    assert set(ids_expected).issubset(set(ids_from_query)), f"Expected: {expected_catalog_values}. Actual: {results}"
-
-
-def get_catalog_str(ids: list[str]) -> str:
-    catalog_str: str = ""
-    for index, id in enumerate(ids):
-        catalog_str += f"""
-- name: Sample Catalog {index}
-  id: {id}
-  type: yaml
-  enabled: true
-  properties:
-    yamlCatalogPath: {id.replace("_", "-")}.yaml
-"""
-    return f"""catalogs:
-{catalog_str}
-"""
-
-
-def get_model_str(model: str) -> str:
-    current_time = int(time.time() * 1000)
-    return f"""
-- name: {model}
-  description: test description.
-  readme: |-
-    # test read me information {model}
-  provider: Mistral AI
-  logo: temp placeholder logo
-  license: apache-2.0
-  licenseLink: https://www.apache.org/licenses/LICENSE-2.0.txt
-  libraryName: transformers
-  artifacts:
-    - uri: https://huggingface.co/{model}/resolve/main/consolidated.safetensors
-  createTimeSinceEpoch: \"{str(current_time - 10000)}\"
-  lastUpdateTimeSinceEpoch: \"{str(current_time)}\"
-"""
 
 
 class ResourceNotDeleted(Exception):
@@ -813,33 +836,31 @@ def get_mr_user_token(admin_client: DynamicClient, user_credentials_rbac: dict[s
         "scope": "openid",
     }
 
-    try:
-        LOGGER.info(f"Requesting token for user {user_credentials_rbac['username']} in byoidc environment")
-        response = requests.post(
-            url=url,
-            headers=headers,
-            data=data,
-            allow_redirects=True,
-            timeout=30,
-            verify=True,  # Set to False if you need to skip SSL verification
-        )
-        response.raise_for_status()
-        json_response = response.json()
+    LOGGER.info(f"Requesting token for user {user_credentials_rbac['username']} in byoidc environment")
+    response = requests.post(
+        url=url,
+        headers=headers,
+        data=data,
+        allow_redirects=True,
+        timeout=30,
+        verify=True,  # Set to False if you need to skip SSL verification
+    )
+    response.raise_for_status()
+    json_response = response.json()
 
-        # Validate that we got an access token
-        if "id_token" not in json_response:
-            LOGGER.error("Warning: No id_token in response")
-            raise AssertionError(f"No id_token in response: {json_response}")
-        return json_response["id_token"]
-    except Exception as e:
-        raise e
+    # Validate that we got an access token
+    if "id_token" not in json_response:
+        LOGGER.error("Warning: No id_token in response")
+        raise AssertionError(f"No id_token in response: {json_response}")
+    return json_response["id_token"]
 
 
-def get_byoidc_user_credentials(username: str = None) -> Dict[str, str]:
+def get_byoidc_user_credentials(client: DynamicClient, username: str | None = None) -> dict[str, str]:
     """
     Get user credentials from byoidc-credentials secret.
 
     Args:
+        client: DynamicClient for accessing the cluster.
         username: Specific username to look up. If None, returns first user.
 
     Returns:
@@ -849,7 +870,7 @@ def get_byoidc_user_credentials(username: str = None) -> Dict[str, str]:
         ValueError: If username not found or no users/passwords in secret.
         AssertionError: If users or passwords lists are empty.
     """
-    credentials_secret = Secret(name="byoidc-credentials", namespace="oidc", ensure_exists=True)
+    credentials_secret = Secret(client=client, name="byoidc-credentials", namespace="oidc", ensure_exists=True)
     credential_data = credentials_secret.instance.data
     user_names = base64.b64decode(credential_data.users).decode().split(",")
     passwords = base64.b64decode(credential_data.passwords).decode().split(",")
@@ -879,3 +900,77 @@ def get_byoidc_user_credentials(username: str = None) -> Dict[str, str]:
         "username": selected_username,
         "password": selected_password,
     }
+
+
+class TransientUnauthorizedError(Exception):
+    """Exception for transient 401 Unauthorized errors that should be retried."""
+
+
+def execute_get_call(
+    url: str, headers: dict[str, str], verify: bool | str = False, params: dict[str, Any] | None = None
+) -> requests.Response:
+    LOGGER.info(f"Executing get call: {url}")
+    if params:
+        LOGGER.info(f"params: {params}")
+    resp = requests.get(url=url, headers=headers, verify=verify, timeout=60, params=params)
+    LOGGER.info(f"Encoded url from requests library: {resp.url}")
+    if resp.status_code not in [200, 201]:
+        # Raise custom exception for 401 errors that can be retried (OAuth/kube-rbac-proxy initialization)
+        if resp.status_code == 401:
+            raise TransientUnauthorizedError(f"Get call failed for resource: {url}, 401: {resp.text}")
+        # Raise regular exception for other errors (400, 403, 404, etc.) that should fail immediately
+        raise ResourceNotFoundError(f"Get call failed for resource: {url}, {resp.status_code}: {resp.text}")
+    return resp
+
+
+def execute_get_command(
+    url: str, headers: dict[str, str], verify: bool | str = False, params: dict[str, Any] | None = None
+) -> dict[Any, Any]:
+    resp = execute_get_call(url=url, headers=headers, verify=verify, params=params)
+    try:
+        return json.loads(resp.text)
+    except json.JSONDecodeError:
+        LOGGER.error(f"Unable to parse {resp.text}")
+        raise
+
+
+def wait_for_model_catalog_pod_ready_after_deletion(
+    client: DynamicClient, model_registry_namespace: str, consecutive_try: int = 6
+) -> bool:
+    model_catalog_pods = get_model_catalog_pod(
+        client=client,
+        model_registry_namespace=model_registry_namespace,
+    )
+    # We can wait for the pods to reflect updated catalog, however, deleting them ensures the updated config is
+    # applied immediately.
+    for pod in model_catalog_pods:
+        pod.delete()
+    # After the deletion, we need to wait for the pod to be spinned up and get to ready state.
+    assert wait_for_model_catalog_pod_created(client=client, model_registry_namespace=model_registry_namespace)
+    wait_for_pods_running(
+        admin_client=client, namespace_name=model_registry_namespace, number_of_consecutive_checks=consecutive_try
+    )
+    return True
+
+
+@retry(wait_timeout=30, sleep=5, exceptions_dict={PodNotFound: []})
+def wait_for_model_catalog_pod_created(client: DynamicClient, model_registry_namespace: str) -> bool:
+    pods = get_model_catalog_pod(client=client, model_registry_namespace=model_registry_namespace)
+    if pods:
+        return True
+    raise PodNotFound("Model catalog pod not found")
+
+
+@retry(
+    wait_timeout=90,
+    sleep=5,
+    exceptions_dict={ResourceNotFoundError: [], TransientUnauthorizedError: []},
+)
+def wait_for_mcp_catalog_api(url: str, headers: dict[str, str]) -> requests.Response:
+    """Wait for MCP catalog API to be ready and returning MCP server data."""
+    LOGGER.info(f"Waiting for MCP catalog API at {url}mcp_servers")
+    response = execute_get_call(url=f"{url}mcp_servers", headers=headers)
+    data = response.json()
+    if not data.get("items"):
+        raise ResourceNotFoundError("MCP catalog API returned empty items, catalog data not yet loaded")
+    return response

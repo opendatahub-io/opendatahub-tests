@@ -8,7 +8,6 @@ The folder structure is based on the upstream Llama Stack integration tests, ava
 
 ### Current Test Suites
 
-- **`agents/`** - Agent functionality tests
 - **`eval/`** - Evaluation provider tests (LM Eval)
 - **`inference/`** - Inference functionality tests
 - **`models/`** - Model management and catalog tests
@@ -31,32 +30,60 @@ def test_vector_stores_functionality():
 
 To add support for testing new LlamaStack API providers (e.g., a new vector_io provider), create deployment fixtures in the appropriate `/tests/fixtures/` file, update the corresponding provider factory function to return the required environment variables, and add the new provider as a test parameter in the relevant test files. For example, to add a new vector_io provider, add deployment fixtures in `/tests/fixtures/vector_io.py`, update the `vector_io_provider_deployment_config_factory` function, and add a new `pytest.param` entry in `/tests/llama_stack/vector_io/test_vector_stores.py`.
 
-
 ### Available Team Markers  (to be expanded)
 
 - `@pytest.mark.llama_stack` - LlamaStack Core team tests
 - `@pytest.mark.model_explainability` - AI Safety team tests
 - `@pytest.mark.rag` - RAG team tests
 
-
 ## Running Tests
 
 ### Required environment variables
 
-LlamaStack tests require setting the following environment variables (for example in a .env file at the root folder):
+LlamaStack tests require setting the following environment variables (for example in a `.env` file at the root folder).
+
+> **Note:** Most of these environment variables are added as `env_vars` in the LlamaStackDistribution CR, as they are required to configure the Red Hat LlamaStack Distribution's [run.yaml](https://github.com/opendatahub-io/llama-stack-distribution/blob/main/distribution/run.yaml).
+
 ```bash
 OC_BINARY_PATH=/usr/local/sbin/oc                 # Optional
 LLS_CLIENT_VERIFY_SSL=false                       # Optional
+
+# Core Inference Configuration
 LLS_CORE_VLLM_URL=<LLAMA-3.2-3b-ENDPOINT>/v1  (ends with /v1)
 LLS_CORE_INFERENCE_MODEL=<LLAMA-3.2-3b-MODEL_NAME>
 LLS_CORE_VLLM_API_TOKEN=<LLAMA-3.2-3b-TOKEN>
+LLS_CORE_VLLM_MAX_TOKENS=16384                   # Optional
+LLS_CORE_VLLM_TLS_VERIFY=true                    # Optional
+
+# Core Embedding Configuration
+LLS_CORE_EMBEDDING_MODEL=nomic-embed-text-v1-5    # Optional
+LLS_CORE_EMBEDDING_PROVIDER_MODEL_ID=nomic-embed-text-v1-5  # Optional
+LLS_CORE_VLLM_EMBEDDING_URL=<EMBEDDING-ENDPOINT>/v1  # Optional
+LLS_CORE_VLLM_EMBEDDING_API_TOKEN=<EMBEDDING-TOKEN>  # Optional
+LLS_CORE_VLLM_EMBEDDING_MAX_TOKENS=8192          # Optional
+LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY=true          # Optional
+
+# Vector I/O Configuration
 LLS_VECTOR_IO_MILVUS_IMAGE=<CUSTOM-MILVUS-IMAGE>  # Optional
 LLS_VECTOR_IO_MILVUS_TOKEN=<CUSTOM-MILVUS-TOKEN>  # Optional
 LLS_VECTOR_IO_ETCD_IMAGE=<CUSTOM-ETCD-IMAGE>      # Optional
+LLS_VECTOR_IO_PGVECTOR_IMAGE=<CUSTOM-PGVECTOR-IMAGE> # Optional
+LLS_VECTOR_IO_PGVECTOR_USER=<CUSTOM-PGVECTOR-USER> # Optional
+LLS_VECTOR_IO_PGVECTOR_PASSWORD=<CUSTOM-PGVECTOR-PASSWORD> # Optional
+LLS_VECTOR_IO_QDRANT_IMAGE=<CUSTOM-QDRANT-IMAGE> # Optional
+LLS_VECTOR_IO_QDRANT_API_KEY=<CUSTOM-QDRANT-API-KEY> # Optional
+LLS_VECTOR_IO_QDRANT_URL=<QDRANT_URL_WITH_PROTOCOL> # Optional
+
+# Red Hat Llama Stack Distribution requires PostgreSQL (replacing SQLite)
+LLS_VECTOR_IO_POSTGRES_IMAGE=<CUSTOM-POSTGRES-IMAGE> # Optional
+LLS_VECTOR_IO_POSTGRESQL_USER=ps_user            # Optional
+LLS_VECTOR_IO_POSTGRESQL_PASSWORD=ps_password    # Optional
+
+# Files Provider Configuration
+LLS_FILES_S3_AUTO_CREATE_BUCKET=true             # Optional
 ```
 
 ### Run All Llama Stack Tests
-
 
 To run all tests in the `/tests/llama_stack` directory:
 
@@ -79,7 +106,6 @@ To run tests for a specific API (e.g., vector_io):
 ```bash
 pytest tests/llama_stack/vector_io
 ```
-
 
 ### Run Tests with Additional Markers
 

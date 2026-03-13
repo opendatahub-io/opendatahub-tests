@@ -1,16 +1,15 @@
 import pytest
 import yaml
-from llama_stack_client.types.chat.completion_create_params import MessageOpenAIUserMessageParam
 from simple_logger.logger import get_logger
 
 from tests.llama_stack.constants import LlamaStackProviders
-
-from utilities.constants import MinIo, CHAT_GENERATION_CONFIG, BUILTIN_DETECTOR_CONFIG, QWEN_MODEL_NAME
+from utilities.constants import BUILTIN_DETECTOR_CONFIG, CHAT_GENERATION_CONFIG, QWEN_MODEL_NAME, MinIo
 
 LOGGER = get_logger(name=__name__)
 SECURE_SHIELD_ID: str = "secure_shield"
 
 
+@pytest.mark.tier1
 @pytest.mark.parametrize(
     "model_namespace, minio_pod, minio_data_connection, "
     "orchestrator_config, guardrails_orchestrator, llama_stack_server_config",
@@ -32,6 +31,7 @@ SECURE_SHIELD_ID: str = "secure_shield"
                 "vllm_url_fixture": "qwen_isvc_url",
                 "inference_model": QWEN_MODEL_NAME,
                 "fms_orchestrator_url_fixture": "guardrails_orchestrator_url",
+                "embedding_provider": "sentence-transformers",
             },
         )
     ],
@@ -87,10 +87,10 @@ class TestLlamaStackFMSGuardrailsProvider:
         run_shields_response = llama_stack_client.safety.run_shield(
             shield_id=SECURE_SHIELD_ID,
             messages=[
-                MessageOpenAIUserMessageParam(
-                    content="My email is johndoe@example.com",
-                    role="user",
-                )
+                {
+                    "content": "My email is johndoe@example.com",
+                    "role": "user",
+                }
             ],
             params={},
         )

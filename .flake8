@@ -33,6 +33,9 @@ fcn_exclude_functions =
     add_to_assignees,
     validate_inference_output,  # TODO: function should be fixed to get rid of this
     group
+    writelines
+    temp_file
+    sleep
 
 enable-extensions =
     FCN,

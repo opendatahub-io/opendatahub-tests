@@ -1,24 +1,27 @@
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Generator, Any
+from typing import Any
+
+import portforward
+import pytest
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.secret import Secret
 from ocp_resources.inference_service import InferenceService
+from ocp_resources.secret import Secret
 from simple_logger.logger import get_logger
-from tests.model_serving.model_runtime.vllm.constant import CHAT_QUERY, COMPLETION_QUERY
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from tests.model_serving.model_runtime.vllm.constant import (
+    CHAT_QUERY,
+    COMPLETION_QUERY,
+    OPENAI_ENDPOINT_NAME,
+    TGIS_ENDPOINT_NAME,
+    VLLM_SUPPORTED_QUANTIZATION,
+)
 from utilities.constants import Ports
 from utilities.exceptions import NotSupportedError
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.plugins.openai_plugin import OpenAIClient
 from utilities.plugins.tgis_grpc_plugin import TGISGRPCPlugin
-from tests.model_serving.model_runtime.vllm.constant import VLLM_SUPPORTED_QUANTIZATION
-from tests.model_serving.model_runtime.vllm.constant import (
-    OPENAI_ENDPOINT_NAME,
-    TGIS_ENDPOINT_NAME,
-)
-import portforward
-import pytest
 
 LOGGER = get_logger(name=__name__)
 

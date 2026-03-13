@@ -1,332 +1,300 @@
-from contextlib import ExitStack
-from typing import Generator
+import logging
+from collections import namedtuple
+from collections.abc import Generator
+from contextlib import ExitStack, contextmanager
+from typing import Any
 
 import pytest
+import yaml
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.config_map import ConfigMap
+from ocp_resources.gateway import Gateway
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
-from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
+from simple_logger.logger import get_logger
 
-from utilities.constants import Timeout, ResourceLimits
-from utilities.infra import s3_endpoint_secret, create_inference_token
+from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaOciConfig
+from tests.model_serving.model_server.llmd.utils import wait_for_llmisvc, wait_for_llmisvc_pods_ready
+from utilities.constants import Timeout
+from utilities.infra import create_inference_token, s3_endpoint_secret, update_configmap_data
+from utilities.llmd_constants import LLMDGateway
+from utilities.llmd_utils import create_llmd_gateway
 from utilities.logger import RedactedString
-from utilities.llmd_utils import create_llmisvc
-from utilities.llmd_constants import (
-    ModelStorage,
-    ContainerImages,
-    ModelNames,
-    LLMDDefaults,
-)
+
+LOGGER = get_logger(name=__name__)
+logging.getLogger("timeout_sampler").setLevel(logging.WARNING)
+
+AuthEntry = namedtuple(typename="AuthEntry", field_names=["service", "token"])
 
 
-@pytest.fixture(scope="class")
-def llmd_s3_secret(
-    admin_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
-    aws_access_key_id: str,
-    aws_secret_access_key: str,
-    models_s3_bucket_name: str,
-    models_s3_bucket_region: str,
-    models_s3_bucket_endpoint: str,
-) -> Generator[Secret, None, None]:
-    with s3_endpoint_secret(
+# ===========================================
+#  Gateway
+# ===========================================
+@pytest.fixture(scope="session", autouse=True)
+def shared_llmd_gateway(admin_client: DynamicClient) -> Generator[Gateway]:
+    """Shared LLMD gateway for all tests."""
+    with create_llmd_gateway(
         client=admin_client,
-        name="llmd-s3-secret",
-        namespace=unprivileged_model_namespace.name,
-        aws_access_key=aws_access_key_id,
-        aws_secret_access_key=aws_secret_access_key,
-        aws_s3_region=models_s3_bucket_region,
-        aws_s3_bucket=models_s3_bucket_name,
-        aws_s3_endpoint=models_s3_bucket_endpoint,
-    ) as secret:
-        yield secret
+        namespace=LLMDGateway.DEFAULT_NAMESPACE,
+        gateway_class_name=LLMDGateway.DEFAULT_CLASS,
+        wait_for_condition=True,
+        timeout=Timeout.TIMEOUT_1MIN,
+        teardown=True,
+    ) as gateway:
+        yield gateway
 
 
+# ===========================================
+#  Storage — S3 secret + service account
+# ===========================================
 @pytest.fixture(scope="class")
-def llmd_s3_service_account(
-    admin_client: DynamicClient, llmd_s3_secret: Secret
-) -> Generator[ServiceAccount, None, None]:
-    with ServiceAccount(
-        client=admin_client,
-        namespace=llmd_s3_secret.namespace,
-        name="llmd-s3-service-account",
-        secrets=[{"name": llmd_s3_secret.name}],
-    ) as sa:
-        yield sa
-
-
-@pytest.fixture(scope="class")
-def llmd_inference_service_s3(
+def s3_service_account(
     request: FixtureRequest,
     admin_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
-    llmd_s3_secret: Secret,
-    llmd_s3_service_account: ServiceAccount,
-) -> Generator[LLMInferenceService, None, None]:
-    if isinstance(request.param, str):
-        name_suffix = request.param
-        kwargs = {}
-    else:
-        name_suffix = request.param.get("name_suffix", "s3")
-        kwargs = {k: v for k, v in request.param.items() if k != "name_suffix"}
-
-    service_name = kwargs.get("name", f"llm-{name_suffix}")
-
-    container_resources = kwargs.get(
-        "container_resources",
-        {
-            "limits": {"cpu": "1", "memory": "10Gi"},
-            "requests": {"cpu": "100m", "memory": "8Gi"},
-        },
-    )
-
-    create_kwargs = {
-        "client": admin_client,
-        "name": service_name,
-        "namespace": unprivileged_model_namespace.name,
-        "storage_uri": kwargs.get("storage_uri", ModelStorage.TINYLLAMA_S3),
-        "container_image": kwargs.get("container_image", ContainerImages.VLLM_CPU),
-        "container_resources": container_resources,
-        "service_account": llmd_s3_service_account.name,
-        "wait": True,
-        "timeout": Timeout.TIMEOUT_15MIN,
-        **{
-            k: v
-            for k, v in kwargs.items()
-            if k not in ["name", "storage_uri", "container_image", "container_resources"]
-        },
-    }
-
-    with create_llmisvc(**create_kwargs) as llm_service:
-        yield llm_service
+) -> Generator[str]:
+    """Create S3 secret + service account. Resolved automatically for S3 configs."""
+    with ExitStack() as stack:
+        secret = stack.enter_context(
+            cm=s3_endpoint_secret(
+                client=admin_client,
+                name="llmd-s3-secret",
+                namespace=unprivileged_model_namespace.name,
+                aws_access_key=request.getfixturevalue(argname="aws_access_key_id"),
+                aws_secret_access_key=request.getfixturevalue(argname="aws_secret_access_key"),
+                aws_s3_region=request.getfixturevalue(argname="models_s3_bucket_region"),
+                aws_s3_bucket=request.getfixturevalue(argname="models_s3_bucket_name"),
+                aws_s3_endpoint=request.getfixturevalue(argname="models_s3_bucket_endpoint"),
+            )
+        )
+        sa = stack.enter_context(
+            cm=ServiceAccount(
+                client=admin_client,
+                namespace=unprivileged_model_namespace.name,
+                name="llmd-s3-service-account",
+                secrets=[{"name": secret.name}],
+            )
+        )
+        yield sa.name
 
 
+# ===========================================
+#  GPU guards
+# ===========================================
+@pytest.fixture(scope="session")
+def skip_if_less_than_2_gpus(gpu_count_on_cluster: int) -> None:
+    """Skip test if fewer than 2 GPUs are available on the cluster."""
+    if gpu_count_on_cluster < 2:
+        pytest.skip(f"Test requires at least 2 GPUs (found {gpu_count_on_cluster})")
+
+
+# ===========================================
+#  LLMInferenceService creation
+# ===========================================
 @pytest.fixture(scope="class")
-def llmd_inference_service_gpu(
+def llmisvc(
     request: FixtureRequest,
     admin_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
-    llmd_s3_secret: Secret,
-    llmd_s3_service_account: ServiceAccount,
-) -> Generator[LLMInferenceService, None, None]:
-    if isinstance(request.param, str):
-        name_suffix = request.param
-        kwargs = {}
-    else:
-        name_suffix = request.param.get("name_suffix", "gpu-hf")
-        kwargs = {k: v for k, v in request.param.items() if k != "name_suffix"}
+) -> Generator[LLMInferenceService]:
+    """LLMInferenceService fixture driven by a config class.
 
-    service_name = kwargs.get("name", f"llm-{name_suffix}")
+    Usage:
+        NAMESPACE = ns_from_file(__file__)
 
-    if "llmd_gateway" in request.fixturenames:
-        request.getfixturevalue(argname="llmd_gateway")
-
-    if kwargs.get("enable_prefill_decode", False):
-        container_resources = kwargs.get(
-            "container_resources",
-            {
-                "limits": {"cpu": "4", "memory": "32Gi", "nvidia.com/gpu": "1"},
-                "requests": {"cpu": "2", "memory": "16Gi", "nvidia.com/gpu": "1"},
-            },
+        @pytest.mark.parametrize(
+            "unprivileged_model_namespace, llmisvc",
+            [({"name": NAMESPACE}, SomeConfig)],
+            indirect=True,
         )
-    else:
-        container_resources = kwargs.get(
-            "container_resources",
-            {
-                "limits": {
-                    "cpu": ResourceLimits.GPU.CPU_LIMIT,
-                    "memory": ResourceLimits.GPU.MEMORY_LIMIT,
-                    "nvidia.com/gpu": ResourceLimits.GPU.LIMIT,
-                },
-                "requests": {
-                    "cpu": ResourceLimits.GPU.CPU_REQUEST,
-                    "memory": ResourceLimits.GPU.MEMORY_REQUEST,
-                    "nvidia.com/gpu": ResourceLimits.GPU.REQUEST,
-                },
-            },
-        )
+    """
+    config_cls = request.param
+    namespace = unprivileged_model_namespace.name
 
-    liveness_probe = {
-        "httpGet": {"path": "/health", "port": 8000, "scheme": "HTTPS"},
-        "initialDelaySeconds": 120,
-        "periodSeconds": 30,
-        "timeoutSeconds": 30,
-        "failureThreshold": 5,
-    }
+    service_account = None
+    if config_cls.storage_uri.startswith("s3://"):
+        service_account = request.getfixturevalue(argname="s3_service_account")
 
-    replicas = kwargs.get("replicas", LLMDDefaults.REPLICAS)
-    if kwargs.get("enable_prefill_decode", False):
-        replicas = kwargs.get("replicas", 3)
-
-    prefill_config = None
-    if kwargs.get("enable_prefill_decode", False):
-        prefill_config = {
-            "replicas": kwargs.get("prefill_replicas", 1),
-        }
-
-    create_kwargs = {
-        "client": admin_client,
-        "name": service_name,
-        "namespace": unprivileged_model_namespace.name,
-        "storage_uri": kwargs.get("storage_uri", ModelStorage.S3_QWEN),
-        "model_name": kwargs.get("model_name", ModelNames.QWEN),
-        "replicas": replicas,
-        "container_resources": container_resources,
-        "liveness_probe": liveness_probe,
-        "prefill_config": prefill_config,
-        "disable_scheduler": kwargs.get("disable_scheduler", False),
-        "enable_prefill_decode": kwargs.get("enable_prefill_decode", False),
-        "service_account": llmd_s3_service_account.name,
-        "wait": True,
-        "timeout": Timeout.TIMEOUT_15MIN,
-    }
-
-    if "container_image" in kwargs:
-        create_kwargs["container_image"] = kwargs["container_image"]
-
-    with create_llmisvc(**create_kwargs) as llm_service:
-        yield llm_service
+    with _create_llmisvc_from_config(
+        config_cls=config_cls, namespace=namespace, client=admin_client, service_account=service_account
+    ) as svc:
+        yield svc
 
 
 @pytest.fixture(scope="class")
-def llmisvc_auth_service_account(
+def llmisvc_auth_pair(
     admin_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
-) -> Generator:
-    """Factory fixture to create service accounts for authentication testing."""
+) -> Generator[tuple[AuthEntry, AuthEntry]]:
+    """Two auth-enabled LLMISVCs with independent tokens for cross-auth testing."""
+    namespace = unprivileged_model_namespace.name
     with ExitStack() as stack:
-
-        def _create_service_account(name: str) -> ServiceAccount:
-            """Create a single service account."""
-            return stack.enter_context(
-                cm=ServiceAccount(
+        entries = []
+        for i in range(2):
+            cfg = TinyLlamaOciConfig.with_overrides(
+                name=f"llmisvc-auth-{i}",
+                enable_auth=True,
+            )
+            svc = stack.enter_context(
+                cm=_create_llmisvc_from_config(
+                    config_cls=cfg,
+                    namespace=namespace,
                     client=admin_client,
-                    namespace=unprivileged_model_namespace.name,
-                    name=name,
                 )
             )
-
-        yield _create_service_account
-
-
-@pytest.fixture(scope="class")
-def llmisvc_auth_view_role(
-    admin_client: DynamicClient,
-) -> Generator:
-    """Factory fixture to create view roles for LLMInferenceServices."""
-    with ExitStack() as stack:
-
-        def _create_view_role(llm_service: LLMInferenceService) -> Role:
-            """Create a single view role for a given LLMInferenceService."""
-            return stack.enter_context(
-                cm=Role(
+            token = stack.enter_context(
+                cm=_create_auth_resources(
                     client=admin_client,
-                    name=f"{llm_service.name}-view",
-                    namespace=llm_service.namespace,
-                    rules=[
-                        {
-                            "apiGroups": [llm_service.api_group],
-                            "resources": ["llminferenceservices"],
-                            "verbs": ["get"],
-                            "resourceNames": [llm_service.name],
-                        },
-                    ],
+                    namespace=namespace,
+                    svc=svc,
+                    sa_name=f"auth-sa-{i}",
                 )
             )
+            entries.append(AuthEntry(service=svc, token=token))
+        yield tuple(entries)
 
-        yield _create_view_role
 
-
+# ===========================================
+#  Auth — SA + RBAC + token
+# ===========================================
 @pytest.fixture(scope="class")
-def llmisvc_auth_role_binding(
+def llmisvc_token(
     admin_client: DynamicClient,
-) -> Generator:
-    """Factory fixture to create role bindings."""
-    with ExitStack() as stack:
-
-        def _create_role_binding(
-            service_account: ServiceAccount,
-            role: Role,
-        ) -> RoleBinding:
-            """Create a single role binding."""
-            return stack.enter_context(
-                cm=RoleBinding(
-                    client=admin_client,
-                    namespace=service_account.namespace,
-                    name=f"{service_account.name}-view",
-                    role_ref_name=role.name,
-                    role_ref_kind=role.kind,
-                    subjects_kind="ServiceAccount",
-                    subjects_name=service_account.name,
-                )
-            )
-
-        yield _create_role_binding
+    llmisvc: LLMInferenceService,
+) -> Generator[str]:
+    """Create a dedicated SA with RBAC and return an auth token for the llmisvc."""
+    with _create_auth_resources(
+        client=admin_client,
+        namespace=llmisvc.namespace,
+        svc=llmisvc,
+        sa_name=f"{llmisvc.name}-auth-sa",
+    ) as token:
+        yield token
 
 
-@pytest.fixture(scope="class")
-def llmisvc_auth_token() -> Generator:
-    """Factory fixture to create inference tokens with all required RBAC resources."""
-
-    def _create_token(
-        service_account: ServiceAccount,
-        llmisvc: LLMInferenceService,
-        view_role_factory,
-        role_binding_factory,
-    ) -> str:
-        """Create role, role binding, and return an inference token for an existing service account."""
-        # Create role and role binding (these factories manage their own cleanup via ExitStack)
-        role = view_role_factory(llm_service=llmisvc)
-        role_binding_factory(service_account=service_account, role=role)
-        return RedactedString(value=create_inference_token(model_service_account=service_account))
-
-    yield _create_token
-
-
-@pytest.fixture(scope="class")
-def llmisvc_auth(
-    admin_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
-    llmisvc_auth_service_account,
-) -> Generator:
-    """Factory fixture to create LLMInferenceService instances for authentication testing."""
-    with ExitStack() as stack:
-
-        def _create_llmd_auth_service(
-            service_name: str,
-            service_account_name: str,
-            storage_uri: str = ModelStorage.TINYLLAMA_OCI,
-            container_image: str = ContainerImages.VLLM_CPU,
-            container_resources: dict | None = None,
-        ) -> tuple[LLMInferenceService, ServiceAccount]:
-            """Create a single LLMInferenceService instance with its service account."""
-            if container_resources is None:
-                container_resources = {
-                    "limits": {"cpu": "1", "memory": "10Gi"},
-                    "requests": {"cpu": "100m", "memory": "8Gi"},
-                }
-
-            # Create the service account first
-            sa = llmisvc_auth_service_account(name=service_account_name)
-
-            create_kwargs = {
-                "client": admin_client,
-                "name": service_name,
-                "namespace": unprivileged_model_namespace.name,
-                "storage_uri": storage_uri,
-                "container_image": container_image,
-                "container_resources": container_resources,
-                "service_account": service_account_name,
-                "wait": True,
-                "timeout": Timeout.TIMEOUT_15MIN,
-                "enable_auth": True,
+# ===========================================
+#  Monitoring
+# ===========================================
+@pytest.fixture(scope="session", autouse=True)
+def llmd_user_workload_monitoring_config_map(
+    admin_client: DynamicClient, cluster_monitoring_config: ConfigMap
+) -> Generator[ConfigMap]:
+    """Ephemeral user workload monitoring for LLMD tests."""
+    data = {
+        "config.yaml": yaml.dump({
+            "prometheus": {
+                "logLevel": "debug",
+                "retention": "15d",
             }
+        })
+    }
 
-            llm_service = stack.enter_context(cm=create_llmisvc(**create_kwargs))
-            return (llm_service, sa)
+    with update_configmap_data(
+        client=admin_client,
+        name="user-workload-monitoring-config",
+        namespace="openshift-user-workload-monitoring",
+        data=data,
+    ) as cm:
+        yield cm
 
-        yield _create_llmd_auth_service
+
+# ===========================================
+#  Helpers (not fixtures)
+# ===========================================
+@contextmanager
+def _create_auth_resources(
+    client: DynamicClient,
+    namespace: str,
+    svc: LLMInferenceService,
+    sa_name: str,
+) -> Generator[RedactedString, Any]:
+    """Create SA + Role + RoleBinding and yield an auth token."""
+    with (
+        ServiceAccount(client=client, namespace=namespace, name=sa_name) as sa,
+        Role(
+            client=client,
+            name=f"{svc.name}-view",
+            namespace=namespace,
+            rules=[
+                {
+                    "apiGroups": [svc.api_group],
+                    "resources": ["llminferenceservices"],
+                    "verbs": ["get"],
+                    "resourceNames": [svc.name],
+                }
+            ],
+        ) as role,
+        RoleBinding(
+            client=client,
+            namespace=namespace,
+            name=f"{sa_name}-view",
+            role_ref_name=role.name,
+            role_ref_kind=role.kind,
+            subjects_kind="ServiceAccount",
+            subjects_name=sa_name,
+        ),
+    ):
+        yield RedactedString(value=create_inference_token(model_service_account=sa))
+
+
+@contextmanager
+def _create_llmisvc_from_config(
+    config_cls: type,
+    namespace: str,
+    client: DynamicClient,
+    service_account: str | None = None,
+) -> Generator[LLMInferenceService, Any]:
+    """Create an LLMInferenceService from a config class."""
+    LOGGER.info(f"\n{config_cls.describe(namespace=namespace)}")
+
+    model: dict[str, Any] = {"uri": config_cls.storage_uri}
+    if config_cls.model_name:
+        model["name"] = config_cls.model_name
+
+    main_container: dict[str, Any] = {"name": "main"}
+    main_container.update({
+        k: v
+        for k, v in {
+            "image": config_cls.container_image,
+            "resources": config_cls.container_resources(),
+            "env": config_cls.container_env(),
+            "livenessProbe": config_cls.liveness_probe(),
+            "readinessProbe": config_cls.readiness_probe(),
+        }.items()
+        if v
+    })
+
+    template: dict[str, Any] = {
+        "configRef": config_cls.template_config_ref,
+        "containers": [main_container],
+    }
+    if service_account:
+        template["serviceAccountName"] = service_account
+
+    prefill = config_cls.prefill_config()
+
+    svc_kwargs: dict[str, Any] = {
+        "client": client,
+        "name": config_cls.name,
+        "namespace": namespace,
+        "annotations": config_cls.annotations(),
+        "label": config_cls.labels(),
+        "teardown": True,
+        "model": model,
+        "replicas": config_cls.replicas,
+        "router": config_cls.router_config(),
+        "template": template,
+    }
+    if prefill is not None:
+        if service_account and "template" in prefill:
+            prefill["template"]["serviceAccountName"] = service_account
+        svc_kwargs["prefill"] = prefill
+
+    with LLMInferenceService(**svc_kwargs) as llm_service:
+        wait_for_llmisvc(llmisvc=llm_service, timeout=config_cls.wait_timeout)
+        wait_for_llmisvc_pods_ready(client=client, llmisvc=llm_service)
+        yield llm_service

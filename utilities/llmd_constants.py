@@ -1,10 +1,14 @@
 """LLMD-specific constants that extend the shared constants."""
 
 from utilities.constants import (
-    ModelName,
     ContainerImages as SharedContainerImages,
-    ModelStorage as SharedModelStorage,
+)
+from utilities.constants import (
     Labels,
+    ModelName,
+)
+from utilities.constants import (
+    ModelStorage as SharedModelStorage,
 )
 
 
@@ -35,6 +39,7 @@ class ModelStorage:
     S3_QWEN: str = SharedModelStorage.S3.QWEN_7B_INSTRUCT
     HF_TINYLLAMA: str = SharedModelStorage.HuggingFace.TINYLLAMA
     HF_OPT125M: str = SharedModelStorage.HuggingFace.OPT125M
+    HF_QWEN_7B_INSTRUCT: str = SharedModelStorage.HuggingFace.QWEN_7B_INSTRUCT
 
 
 class ContainerImages:

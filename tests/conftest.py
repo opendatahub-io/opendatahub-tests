@@ -1,68 +1,73 @@
 import base64
 import binascii
+import json
 import os
 import shutil
 from ast import literal_eval
-from typing import Any, Callable, Generator
+from collections.abc import Callable, Generator
+from typing import Any
+
 import pytest
-from semver import Version
 import shortuuid
 import yaml
 from _pytest._py.path import LocalPath
 from _pytest.legacypath import TempdirFactory
 from _pytest.tmpdir import TempPathFactory
+from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
-
+from ocp_resources.authentication_config_openshift_io import Authentication
 from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.cluster_version import ClusterVersion
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.dsc_initialization import DSCInitialization
 from ocp_resources.mariadb_operator import MariadbOperator
+from ocp_resources.namespace import Namespace
 from ocp_resources.node import Node
 from ocp_resources.pod import Pod
+from ocp_resources.resource import get_client
+from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.subscription import Subscription
 from ocp_utilities.monitoring import Prometheus
+from ocp_utilities.operators import install_operator, uninstall_operator
 from pyhelper_utils.shell import run_command
-from pytest import FixtureRequest, Config
-from kubernetes.dynamic import DynamicClient
-from ocp_resources.data_science_cluster import DataScienceCluster
-from ocp_resources.namespace import Namespace
-from ocp_resources.resource import get_client
+from pytest import Config, FixtureRequest
 from pytest_testconfig import config as py_config
+from semver import Version
 from simple_logger.logger import get_logger
-import json
 
-from ocp_utilities.operators import uninstall_operator, install_operator
 from utilities.certificates_utils import create_ca_bundle_file
-from utilities.data_science_cluster_utils import update_components_in_dsc
-from utilities.exceptions import ClusterLoginError
-from utilities.infra import (
-    verify_cluster_sanity,
-    create_ns,
-    login_with_user_password,
-    get_openshift_token,
-    download_oc_console_cli,
-    get_cluster_authentication,
-)
 from utilities.constants import (
+    OPENSHIFT_OPERATORS,
     AcceleratorType,
     DscComponents,
     Labels,
     MinIo,
+    OCIRegistry,
     Protocols,
+    RuntimeTemplates,
     Timeout,
-    OPENSHIFT_OPERATORS,
 )
-from utilities.infra import update_configmap_data
+from utilities.data_science_cluster_utils import update_components_in_dsc
+from utilities.exceptions import ClusterLoginError
+from utilities.infra import (
+    create_ns,
+    download_oc_console_cli,
+    get_cluster_authentication,
+    get_openshift_token,
+    login_with_user_password,
+    update_configmap_data,
+    verify_cluster_sanity,
+)
 from utilities.logger import RedactedString
 from utilities.mariadb_utils import wait_for_mariadb_operator_deployments
 from utilities.minio import create_minio_data_connection_secret
-from utilities.operator_utils import get_csv_related_images, get_cluster_service_version
-from ocp_resources.authentication_config_openshift_io import Authentication
-from utilities.user_utils import get_oidc_tokens, get_byoidc_issuer_url
+from utilities.operator_utils import get_cluster_service_version, get_csv_related_images
+from utilities.serving_runtime import get_runtime_image_from_template
+from utilities.user_utils import get_byoidc_issuer_url, get_oidc_tokens
 
 LOGGER = get_logger(name=__name__)
 
@@ -71,6 +76,7 @@ pytest_plugins = [
     "tests.fixtures.guardrails",
     "tests.fixtures.trustyai",
     "tests.fixtures.vector_io",
+    "tests.fixtures.files",
 ]
 
 
@@ -80,7 +86,7 @@ def admin_client() -> DynamicClient:
 
 
 @pytest.fixture(scope="session")
-def tests_tmp_dir(request: FixtureRequest, tmp_path_factory: TempPathFactory) -> Generator[None, None, None]:
+def tests_tmp_dir(request: FixtureRequest, tmp_path_factory: TempPathFactory) -> Generator[None]:
     base_path = os.path.join(request.config.option.basetemp, "tests")
     tests_tmp_path = tmp_path_factory.mktemp(basename=base_path)
     py_config["tmp_base_dir"] = str(tests_tmp_path)
@@ -97,7 +103,7 @@ def current_client_token(admin_client: DynamicClient) -> str:
 def teardown_resources(pytestconfig: pytest.Config) -> bool:
     delete_resources = True
 
-    if pytestconfig.option.pre_upgrade:
+    if pytestconfig.option.pre_upgrade:  # noqa: SIM102
         if delete_resources := pytestconfig.option.delete_pre_upgrade_resources:
             LOGGER.warning("Upgrade resources will be deleted")
 
@@ -151,7 +157,7 @@ def aws_secret_access_key(pytestconfig: Config) -> str:
 
 
 @pytest.fixture(scope="session")
-def registry_pull_secret(pytestconfig: Config) -> str:
+def registry_pull_secret(pytestconfig: Config) -> list[str]:
     registry_pull_secret = pytestconfig.option.registry_pull_secret
     if not registry_pull_secret:
         raise ValueError(
@@ -159,14 +165,15 @@ def registry_pull_secret(pytestconfig: Config) -> str:
             "Either pass with `--registry_pull_secret` or set `OCI_REGISTRY_PULL_SECRET` environment variable"
         )
     try:
-        base64.b64decode(s=registry_pull_secret, validate=True)
-        return registry_pull_secret
+        for secret in registry_pull_secret:
+            base64.b64decode(s=secret, validate=True)
+        return registry_pull_secret  # noqa: TRY300
     except binascii.Error:
         raise ValueError("Registry pull secret is not a valid base64 encoded string")
 
 
 @pytest.fixture(scope="session")
-def registry_host(pytestconfig: pytest.Config) -> str | None:
+def registry_host(pytestconfig: pytest.Config) -> list[str]:
     registry_host = pytestconfig.option.registry_host
     if not registry_host:
         raise ValueError(
@@ -245,8 +252,8 @@ def modelcar_yaml_config(pytestconfig: pytest.Config) -> dict[str, Any] | None:
         try:
             modelcar_yaml = yaml.safe_load(file)
             if not isinstance(modelcar_yaml, dict):
-                raise ValueError("modelcar.yaml should contain a dictionary.")
-            return modelcar_yaml
+                raise ValueError("modelcar.yaml should contain a dictionary.")  # noqa: TRY004
+            return modelcar_yaml  # noqa: TRY300
         except yaml.YAMLError as e:
             raise ValueError(f"Error parsing modelcar.yaml: {e}") from e
 
@@ -324,6 +331,20 @@ def triton_runtime_image(pytestconfig: pytest.Config) -> str:
 
 
 @pytest.fixture(scope="session")
+def ovms_runtime_image(pytestconfig: pytest.Config, admin_client: DynamicClient) -> str:
+    """Return OVMS runtime image from --ovms-runtime-image or cluster template."""
+    runtime_image = pytestconfig.option.ovms_runtime_image
+    if runtime_image:
+        return runtime_image
+    namespace = py_config["applications_namespace"]
+    return get_runtime_image_from_template(
+        client=admin_client,
+        template_name=RuntimeTemplates.OVMS_KSERVE,
+        namespace=namespace,
+    )
+
+
+@pytest.fixture(scope="session")
 def use_unprivileged_client(pytestconfig: pytest.Config) -> bool:
     _use_unprivileged_client = py_config.get("use_unprivileged_client")
 
@@ -334,7 +355,7 @@ def use_unprivileged_client(pytestconfig: pytest.Config) -> bool:
         return literal_eval(_use_unprivileged_client)
 
     else:
-        raise ValueError(
+        raise ValueError(  # noqa: TRY004
             "use_unprivileged_client is not defined.\n"
             "Either pass with `--use-unprivileged-client` or "
             "set in `use_unprivileged_client` in `tests/global_config.py`"
@@ -356,7 +377,7 @@ def non_admin_user_password(
 
     if users_Secret := list(
         Secret.get(
-            dyn_client=admin_client,
+            client=admin_client,
             name=secret_name,
             namespace=secret_ns,
         )
@@ -364,9 +385,10 @@ def non_admin_user_password(
         data = users_Secret[0].instance.data
         users = _decode_split_data(_data=data.users)
         passwords = _decode_split_data(_data=data.passwords)
-        first_user_index = next(index for index, user in enumerate(users) if "user" in user)
+        first_user_index = next((index for index, user in enumerate(users) if "user" in user), None)
 
-        return users[first_user_index], passwords[first_user_index]
+        if first_user_index is not None:
+            return users[first_user_index], passwords[first_user_index]
 
     LOGGER.error("user credentials secret not found")
     return None
@@ -443,7 +465,9 @@ def unprivileged_client(
 
         # get the current context and modify the referenced user in place
         current_context_name = kubeconfig_content["current-context"]
-        current_context = [c for c in kubeconfig_content["contexts"] if c["name"] == current_context_name][0]
+        current_context = next((c for c in kubeconfig_content["contexts"] if c["name"] == current_context_name), None)
+        if current_context is None:
+            raise ValueError(f"Context '{current_context_name}' not found in kubeconfig")
         current_context["context"]["user"] = non_admin_user_password[0]
 
         unprivileged_client = get_client(
@@ -634,7 +658,7 @@ def minio_data_connection(
 
 @pytest.fixture(scope="session")
 def nodes(admin_client: DynamicClient) -> Generator[list[Node], Any, Any]:
-    yield list(Node.get(dyn_client=admin_client))
+    yield list(Node.get(client=admin_client))
 
 
 @pytest.fixture(scope="session")
@@ -652,6 +676,12 @@ def cluster_sanity_scope_session(
     dsc_resource: DataScienceCluster,
     junitxml_plugin: Callable[[str, object], None],
 ) -> None:
+    # Skip cluster sanity check when running tests that have cluster_health or operator_health markers
+    selected_markers = {mark.name for item in request.session.items for mark in item.iter_markers()}
+    if {"cluster_health", "operator_health"} & selected_markers:
+        LOGGER.info("Skipping cluster sanity check because selected tests include cluster/operator health")
+        return
+
     verify_cluster_sanity(
         request=request,
         nodes=nodes,
@@ -666,9 +696,7 @@ def prometheus(admin_client: DynamicClient) -> Prometheus:
     return Prometheus(
         client=admin_client,
         resource_name="thanos-querier",
-        verify_ssl=create_ca_bundle_file(
-            client=admin_client, ca_type="openshift"
-        ),  # TODO: Verify SSL with appropriate certs
+        verify_ssl=create_ca_bundle_file(client=admin_client),  # TODO: Verify SSL with appropriate certs
         bearer_token=get_openshift_token(),
     )
 
@@ -676,8 +704,7 @@ def prometheus(admin_client: DynamicClient) -> Prometheus:
 @pytest.fixture(scope="session")
 def related_images_refs(admin_client: DynamicClient) -> set[str]:
     related_images = get_csv_related_images(admin_client=admin_client)
-    related_images_refs = {img["image"] for img in related_images}
-    return related_images_refs
+    return {img["image"] for img in related_images}
 
 
 @pytest.fixture(scope="session")
@@ -712,13 +739,13 @@ def openshift_version(admin_client: DynamicClient) -> Version:
 
 
 @pytest.fixture(scope="session")
-def oc_binary_path(bin_directory: LocalPath) -> str:
+def oc_binary_path(admin_client: DynamicClient, bin_directory: LocalPath) -> str:
     installed_oc_binary_path = os.getenv("OC_BINARY_PATH")
     if installed_oc_binary_path:
         LOGGER.warning(f"Using previously installed: {installed_oc_binary_path}")
         return installed_oc_binary_path
 
-    return download_oc_console_cli(tmpdir=bin_directory)
+    return download_oc_console_cli(admin_client=admin_client, tmpdir=bin_directory)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -735,7 +762,7 @@ def autouse_fixtures(
 
 @pytest.fixture(scope="session")
 def installed_mariadb_operator(admin_client: DynamicClient) -> Generator[None, Any, Any]:
-    operator_ns = Namespace(name="openshift-operators", ensure_exists=True)
+    operator_ns = Namespace(client=admin_client, name="openshift-operators", ensure_exists=True)
     operator_name = "mariadb-operator"
 
     mariadb_operator_subscription = Subscription(client=admin_client, namespace=operator_ns.name, name=operator_name)
@@ -775,7 +802,7 @@ def mariadb_operator_cr(
     )
     alm_examples: list[dict[str, Any]] = mariadb_csv.get_alm_examples()
     mariadb_operator_cr_dict: dict[str, Any] = next(
-        example for example in alm_examples if example["kind"] == "MariadbOperator"
+        (example for example in alm_examples if example["kind"] == "MariadbOperator"), None
     )
     if not mariadb_operator_cr_dict:
         raise ResourceNotFoundError(f"No MariadbOperator dict found in alm_examples for CSV {mariadb_csv.name}")
@@ -785,7 +812,7 @@ def mariadb_operator_cr(
         mariadb_operator_cr.wait_for_condition(
             condition="Deployed", status=mariadb_operator_cr.Condition.Status.TRUE, timeout=Timeout.TIMEOUT_10MIN
         )
-        wait_for_mariadb_operator_deployments(mariadb_operator=mariadb_operator_cr)
+        wait_for_mariadb_operator_deployments(mariadb_operator=mariadb_operator_cr, client=admin_client)
         yield mariadb_operator_cr
 
 
@@ -808,7 +835,7 @@ def gpu_count_on_cluster(nodes: list[Any]) -> int:
             if key in allowed_exact or any(key.startswith(p) for p in allowed_prefixes):
                 try:
                     total_gpus += int(val)
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     LOGGER.debug(f"Skipping non-integer allocatable for {key} on {node.name}: {val!r}")
                     continue
     return total_gpus
@@ -819,3 +846,126 @@ def original_user() -> str:
     current_user = run_command(command=["oc", "whoami"])[1].strip()
     LOGGER.info(f"Original user: {current_user}")
     return current_user
+
+
+# OCI Registry
+@pytest.fixture(scope="class")
+def oci_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
+    with create_ns(
+        name=f"{OCIRegistry.Metadata.NAME}-{shortuuid.uuid().lower()}",
+        admin_client=admin_client,
+    ) as ns:
+        yield ns
+
+
+@pytest.fixture(scope="class")
+def oci_registry_pod_with_minio(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    oci_namespace: Namespace,
+    minio_service: Service,
+) -> Generator[Pod, Any, Any]:
+    pod_labels = {Labels.Openshift.APP: OCIRegistry.Metadata.NAME}
+
+    if labels := request.param.get("labels"):
+        pod_labels.update(labels)
+
+    minio_fqdn = f"{minio_service.name}.{minio_service.namespace}.svc.cluster.local"
+    minio_endpoint = f"{minio_fqdn}:{MinIo.Metadata.DEFAULT_PORT}"
+
+    with Pod(
+        client=admin_client,
+        name=OCIRegistry.Metadata.NAME,
+        namespace=oci_namespace.name,
+        containers=[
+            {
+                "args": request.param.get("args"),
+                "env": [
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_NAME", "value": OCIRegistry.Storage.STORAGE_DRIVER},
+                    {
+                        "name": "ZOT_STORAGE_STORAGEDRIVER_ROOTDIRECTORY",
+                        "value": OCIRegistry.Storage.STORAGE_DRIVER_ROOT_DIRECTORY,
+                    },
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_BUCKET", "value": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_REGION", "value": OCIRegistry.Storage.STORAGE_DRIVER_REGION},
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_REGIONENDPOINT", "value": f"http://{minio_endpoint}"},
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_ACCESSKEY", "value": MinIo.Credentials.ACCESS_KEY_VALUE},
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_SECRETKEY", "value": MinIo.Credentials.SECRET_KEY_VALUE},
+                    {
+                        "name": "ZOT_STORAGE_STORAGEDRIVER_SECURE",
+                        "value": OCIRegistry.Storage.STORAGE_STORAGEDRIVER_SECURE,
+                    },
+                    {
+                        "name": "ZOT_STORAGE_STORAGEDRIVER_FORCEPATHSTYLE",
+                        "value": OCIRegistry.Storage.STORAGE_STORAGEDRIVER_FORCEPATHSTYLE,
+                    },
+                    {"name": "ZOT_HTTP_ADDRESS", "value": OCIRegistry.Metadata.DEFAULT_HTTP_ADDRESS},
+                    {"name": "ZOT_HTTP_PORT", "value": str(OCIRegistry.Metadata.DEFAULT_PORT)},
+                    {"name": "ZOT_LOG_LEVEL", "value": "info"},
+                ],
+                "image": request.param.get("image", OCIRegistry.PodConfig.REGISTRY_IMAGE),
+                "name": OCIRegistry.Metadata.NAME,
+                "securityContext": {
+                    "allowPrivilegeEscalation": False,
+                    "capabilities": {"drop": ["ALL"]},
+                    "runAsNonRoot": True,
+                    "seccompProfile": {"type": "RuntimeDefault"},
+                },
+                "volumeMounts": [
+                    {
+                        "name": "zot-data",
+                        "mountPath": "/var/lib/registry",
+                    }
+                ],
+            }
+        ],
+        volumes=[
+            {
+                "name": "zot-data",
+                "emptyDir": {},
+            }
+        ],
+        label=pod_labels,
+        annotations=request.param.get("annotations"),
+    ) as oci_pod:
+        oci_pod.wait_for_condition(condition="Ready", status="True")
+        yield oci_pod
+
+
+@pytest.fixture(scope="class")
+def oci_registry_service(admin_client: DynamicClient, oci_namespace: Namespace) -> Generator[Service, Any, Any]:
+    with Service(
+        client=admin_client,
+        name=OCIRegistry.Metadata.NAME,
+        namespace=oci_namespace.name,
+        ports=[
+            {
+                "name": f"{OCIRegistry.Metadata.NAME}-port",
+                "port": OCIRegistry.Metadata.DEFAULT_PORT,
+                "protocol": Protocols.TCP,
+                "targetPort": OCIRegistry.Metadata.DEFAULT_PORT,
+            }
+        ],
+        selector={
+            Labels.Openshift.APP: OCIRegistry.Metadata.NAME,
+        },
+        session_affinity="ClientIP",
+    ) as oci_service:
+        yield oci_service
+
+
+@pytest.fixture(scope="class")
+def oci_registry_route(admin_client: DynamicClient, oci_registry_service: Service) -> Generator[Route, Any, Any]:
+    with Route(
+        client=admin_client,
+        name=OCIRegistry.Metadata.NAME,
+        namespace=oci_registry_service.namespace,
+        service=oci_registry_service.name,
+    ) as oci_route:
+        yield oci_route
+
+
+@pytest.fixture(scope="class")
+def oci_registry_host(oci_registry_route: Route) -> str:
+    """Get the OCI registry host from the route"""
+    return oci_registry_route.host

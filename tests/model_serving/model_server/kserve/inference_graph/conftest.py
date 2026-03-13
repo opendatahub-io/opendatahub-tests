@@ -1,7 +1,8 @@
 import logging
 import time
+from collections.abc import Generator
 from secrets import token_hex
-from typing import Generator, Any
+from typing import Any
 
 import pytest
 from _pytest.fixtures import FixtureRequest
@@ -18,11 +19,11 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest_testconfig import config as py_config
 
-from utilities.constants import ModelFormat, KServeDeploymentType, ModelStoragePath, Annotations, Labels
+from utilities.constants import Annotations, KServeDeploymentType, Labels, ModelFormat, ModelStoragePath
 from utilities.inference_utils import create_isvc
 from utilities.infra import (
-    create_inference_token,
     create_inference_graph_view_role,
+    create_inference_token,
     get_services_by_isvc_label,
 )
 
@@ -67,7 +68,7 @@ def kserve_raw_headless_service_config(
         logger.info(msg="Waiting for KServe controller to be ready and configuration to propagate...")
         kserve_deployments = list(
             Deployment.get(
-                dyn_client=admin_client,
+                client=admin_client,
                 namespace=py_config.get("applications_namespace", "redhat-ods-applications"),
                 label_selector="control-plane=kserve-controller-manager",
             )
@@ -79,7 +80,7 @@ def kserve_raw_headless_service_config(
         else:
             logger.warning(msg="No KServe controller deployment found")
         logger.info(msg="Waiting for KServe controller to process configuration change...")
-        time.sleep(secs=60)
+        time.sleep(60)
 
         yield dsc_resource
 
@@ -127,13 +128,13 @@ def dog_breed_inference_graph(
 
     try:
         name = request.param["name"]
-    except (AttributeError, KeyError):
+    except AttributeError, KeyError:
         name = "dog-breed-pipeline"
 
     try:
         if not request.param["external-route"]:
             labels[networking_label] = "cluster-local"
-    except (AttributeError, KeyError):
+    except AttributeError, KeyError:
         pass
 
     with InferenceGraph(
@@ -226,13 +227,14 @@ def service_account_with_access(
     dog_breed_inference_graph: InferenceGraph,
     bare_service_account: ServiceAccount,
 ) -> Generator[ServiceAccount, Any, Any]:
-    with create_inference_graph_view_role(
-        client=admin_client,
-        name=f"{dog_breed_inference_graph.name}-view",
-        namespace=unprivileged_model_namespace.name,
-        resource_names=[dog_breed_inference_graph.name],
-    ) as role:
-        with RoleBinding(
+    with (
+        create_inference_graph_view_role(
+            client=admin_client,
+            name=f"{dog_breed_inference_graph.name}-view",
+            namespace=unprivileged_model_namespace.name,
+            resource_names=[dog_breed_inference_graph.name],
+        ) as role,
+        RoleBinding(
             client=admin_client,
             namespace=unprivileged_model_namespace.name,
             name=f"{bare_service_account.name}-view",
@@ -240,8 +242,9 @@ def service_account_with_access(
             role_ref_kind=role.kind,
             subjects_kind=bare_service_account.kind,
             subjects_name=bare_service_account.name,
-        ):
-            yield bare_service_account
+        ),
+    ):
+        yield bare_service_account
 
 
 @pytest.fixture
@@ -253,7 +256,7 @@ def bare_service_account(
     try:
         if request.param["name"]:
             name = request.param["name"]
-    except (AttributeError, KeyError):
+    except AttributeError, KeyError:
         name = "sa-" + token_hex(4)
 
     with ServiceAccount(

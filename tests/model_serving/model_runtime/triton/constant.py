@@ -1,11 +1,11 @@
 import os
-from typing import Any, Union
+from typing import Any
 
 from utilities.constants import (
     KServeDeploymentType,
+    Labels,
     Protocols,
     RuntimeTemplates,
-    Labels,
     Timeout,
 )
 
@@ -50,7 +50,7 @@ RUNTIME_MAP: dict[str, str] = {
     Protocols.GRPC: "triton-grpc-runtime",
 }
 
-PREDICT_RESOURCES: dict[str, Union[list[dict[str, Union[str, dict[str, str]]]], dict[str, dict[str, str]]]] = {
+PREDICT_RESOURCES: dict[str, list[dict[str, str | dict[str, str]]] | dict[str, dict[str, str]]] = {
     "volumes": [
         {"name": "shared-memory", "emptyDir": {"medium": "Memory", "sizeLimit": "16Gi"}},
         {"name": "tmp", "emptyDir": {}},

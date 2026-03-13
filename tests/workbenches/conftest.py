@@ -1,31 +1,96 @@
-from typing import Generator
+from collections.abc import Generator
+from typing import Any
 
 import pytest
-from pytest_testconfig import config as py_config
-
-from simple_logger.logger import get_logger
-from tests.workbenches.utils import get_username
-
 from kubernetes.dynamic import DynamicClient
-
 from ocp_resources.namespace import Namespace
-from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.notebook import Notebook
+from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
+from pytest_testconfig import config as py_config
+from simple_logger.logger import get_logger
+from timeout_sampler import TimeoutExpiredError
 
-from utilities.constants import Labels, Timeout
+from tests.workbenches.utils import get_username
 from utilities import constants
-from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH
-from utilities.infra import check_internal_image_registry_available
+from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH, Labels, Timeout
 from utilities.general import collect_pod_information
+from utilities.infra import check_internal_image_registry_available, get_product_version
 
 LOGGER = get_logger(name=__name__)
+
+
+def _read_obj_field(obj: Any, field_name: str, default: Any = None) -> Any:
+    """Safely read attribute/key from k8s dynamic objects."""
+    if isinstance(obj, dict):
+        return obj.get(field_name, default)
+    return getattr(obj, field_name, default)
+
+
+def _format_container_status(container_status: Any, status_prefix: str) -> str:
+    """Build one-line diagnostic summary for a container status."""
+    name = _read_obj_field(obj=container_status, field_name="name", default="<unknown>")
+    ready = _read_obj_field(obj=container_status, field_name="ready", default=False)
+    restart_count = _read_obj_field(obj=container_status, field_name="restartCount", default=0)
+    state = _read_obj_field(obj=container_status, field_name="state", default={})
+
+    state_description = "unknown"
+    details: list[str] = []
+    for state_name in ("waiting", "terminated", "running"):
+        state_value = _read_obj_field(obj=state, field_name=state_name, default=None)
+        if not state_value:
+            continue
+
+        reason = _read_obj_field(obj=state_value, field_name="reason", default=None)
+        message = _read_obj_field(obj=state_value, field_name="message", default=None)
+        state_description = state_name if not reason else f"{state_name}({reason})"
+        if message:
+            details.append(f"message={message}")
+        break
+
+    details_str = f", {', '.join(details)}" if details else ""
+    return f"{status_prefix} '{name}': ready={ready}, restarts={restart_count}, state={state_description}{details_str}"
+
+
+def _collect_notebook_pod_diagnostics(notebook_pod: Pod) -> str:
+    """Collect concise pod status details for pytest assertion messages."""
+    pod_instance = notebook_pod.instance
+    pod_status = _read_obj_field(obj=pod_instance, field_name="status", default=None)
+    pod_phase = _read_obj_field(obj=pod_status, field_name="phase", default="Unknown")
+    pod_reason = _read_obj_field(obj=pod_status, field_name="reason", default=None)
+    pod_message = _read_obj_field(obj=pod_status, field_name="message", default=None)
+
+    lines = [f"Pod phase={pod_phase}, reason={pod_reason}, message={pod_message}"]
+
+    pod_conditions = _read_obj_field(obj=pod_status, field_name="conditions", default=[]) or []
+    lines.extend(
+        "Condition "
+        f"{_read_obj_field(obj=condition, field_name='type', default='<unknown>')}: "
+        f"status={_read_obj_field(obj=condition, field_name='status', default='Unknown')}, "
+        f"reason={_read_obj_field(obj=condition, field_name='reason', default='')}, "
+        f"message={_read_obj_field(obj=condition, field_name='message', default='')}"
+        for condition in pod_conditions
+    )
+
+    init_container_statuses = _read_obj_field(obj=pod_status, field_name="initContainerStatuses", default=[]) or []
+    lines.extend(
+        _format_container_status(container_status=container_status, status_prefix="Init container")
+        for container_status in init_container_statuses
+    )
+
+    container_statuses = _read_obj_field(obj=pod_status, field_name="containerStatuses", default=[]) or []
+    lines.extend(
+        _format_container_status(container_status=container_status, status_prefix="Container")
+        for container_status in container_statuses
+    )
+
+    return "\n".join(lines)
 
 
 @pytest.fixture(scope="function")
 def users_persistent_volume_claim(
     request: pytest.FixtureRequest, unprivileged_model_namespace: Namespace, unprivileged_client: DynamicClient
-) -> Generator[PersistentVolumeClaim, None, None]:
+) -> Generator[PersistentVolumeClaim]:
     with PersistentVolumeClaim(
         client=unprivileged_client,
         name=request.param["name"],
@@ -39,10 +104,16 @@ def users_persistent_volume_claim(
 
 
 @pytest.fixture(scope="function")
-def minimal_image() -> Generator[str, None, None]:
-    """Provides a full image name of a minimal workbench image"""
+def minimal_image(admin_client: DynamicClient) -> Generator[str]:
+    """Provides a full image name of a minimal workbench image."""
     image_name = "jupyter-minimal-notebook" if py_config.get("distribution") == "upstream" else "s2i-minimal-notebook"
-    yield f"{image_name}:{'2025.2'}"
+    image_tag = py_config.get("workbench_image_tag")
+
+    if not image_tag:
+        product_version = get_product_version(admin_client=admin_client)
+        image_tag = f"{product_version.major}.{product_version.minor}"
+
+    yield f"{image_name}:{image_tag}"
 
 
 @pytest.fixture(scope="function")
@@ -103,9 +174,15 @@ def notebook_image(
 def default_notebook(
     request: pytest.FixtureRequest,
     admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
     notebook_image: str,
-) -> Generator[Notebook, None, None]:
-    """Returns a new Notebook CR for a given namespace, name, and image"""
+    users_persistent_volume_claim: PersistentVolumeClaim,
+) -> Generator[Notebook]:
+    """Returns a new Notebook CR for a given namespace, name, and image.
+
+    The PVC fixture dependency guarantees the Notebook is created only after
+    the user PVC exists, avoiding pod scheduling races on claim lookup.
+    """
     namespace = request.param["namespace"]
     name = request.param["name"]
 
@@ -113,7 +190,7 @@ def default_notebook(
     auth_annotations = request.param.get("auth_annotations", {})
 
     # Set the correct username
-    username = get_username(dyn_client=admin_client)
+    username = get_username(client=admin_client)
     assert username, "Failed to determine username from the cluster"
 
     # Set the image path based on the resolved notebook_image
@@ -214,12 +291,13 @@ def default_notebook(
         },
     }
 
-    with Notebook(kind_dict=notebook) as nb:
+    with Notebook(client=unprivileged_client, kind_dict=notebook) as nb:
         yield nb
 
 
 @pytest.fixture(scope="function")
 def notebook_pod(
+    request: pytest.FixtureRequest,
     unprivileged_client: DynamicClient,
     default_notebook: Notebook,
 ) -> Pod:
@@ -229,10 +307,11 @@ def notebook_pod(
     This fixture:
     - Creates a Pod object for the notebook
     - Waits for pod to exist
-    - Waits for pod to reach Ready state (10-minute timeout)
+    - Waits for pod to reach Ready state (configurable timeout)
     - Provides detailed diagnostics on failure
 
     Args:
+        request: Optional fixture params. Supports {"timeout": <seconds>} via indirect parametrization.
         unprivileged_client: Client for interacting with the cluster
         default_notebook: The notebook CR to get the pod for
 
@@ -242,10 +321,13 @@ def notebook_pod(
     Raises:
         AssertionError: If pod fails to reach Ready state or is not created
     """
+    params = getattr(request, "param", {})
+    pod_ready_timeout = params.get("timeout", Timeout.TIMEOUT_10MIN)
+
     # Error messages
     _ERR_POD_NOT_READY = (
-        "Pod '{pod_name}-0' failed to reach Ready state within 10 minutes.\n"
-        "Pod Phase: {pod_phase}\n"
+        "Pod '{pod_name}-0' failed to reach Ready state within {timeout_seconds} seconds.\n"
+        "Pod diagnostics:\n{pod_diagnostics}\n"
         "Original Error: {original_error}\n"
         "Pod information collected to must-gather directory for debugging."
     )
@@ -263,18 +345,32 @@ def notebook_pod(
         notebook_pod.wait_for_condition(
             condition=Pod.Condition.READY,
             status=Pod.Condition.Status.TRUE,
-            timeout=Timeout.TIMEOUT_10MIN,
+            timeout=pod_ready_timeout,
         )
-    except (TimeoutError, RuntimeError) as e:
-        if notebook_pod.exists:
+    except (TimeoutError, TimeoutExpiredError, RuntimeError) as e:
+        try:
+            pod_exists = notebook_pod.exists
+        except Exception as exists_error:  # noqa: BLE001
+            LOGGER.warning(f"Failed to verify pod existence after timeout: {exists_error}")
+            pod_exists = False
+
+        if pod_exists:
             # Collect pod information for debugging purposes (YAML + logs saved to must-gather dir)
-            collect_pod_information(notebook_pod)
-            pod_status = notebook_pod.instance.status
-            pod_phase = pod_status.phase
+            try:
+                collect_pod_information(notebook_pod)
+            except Exception as collect_error:  # noqa: BLE001
+                LOGGER.warning(f"Failed to collect pod artifacts: {collect_error}")
+
+            try:
+                pod_diagnostics = _collect_notebook_pod_diagnostics(notebook_pod=notebook_pod)
+            except Exception as diagnostics_error:  # noqa: BLE001
+                pod_diagnostics = f"<failed to collect pod diagnostics: {diagnostics_error}>"
+
             raise AssertionError(
                 _ERR_POD_NOT_READY.format(
                     pod_name=default_notebook.name,
-                    pod_phase=pod_phase,
+                    timeout_seconds=pod_ready_timeout,
+                    pod_diagnostics=pod_diagnostics,
                     original_error=e,
                 )
             ) from e

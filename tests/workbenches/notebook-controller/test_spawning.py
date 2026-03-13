@@ -1,17 +1,16 @@
 import pytest
-
-from kubernetes.dynamic.client import DynamicClient
-
-from ocp_resources.pod import Pod
 from ocp_resources.namespace import Namespace
 from ocp_resources.notebook import Notebook
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
+from ocp_resources.pod import Pod
+
+from utilities.constants import Timeout
 
 
 class TestNotebook:
     @pytest.mark.smoke
     @pytest.mark.parametrize(
-        "unprivileged_model_namespace,users_persistent_volume_claim,default_notebook",
+        "unprivileged_model_namespace,users_persistent_volume_claim,default_notebook,notebook_pod",
         [
             pytest.param(
                 {
@@ -23,13 +22,14 @@ class TestNotebook:
                     "namespace": "test-odh-notebook",
                     "name": "test-odh-notebook",
                 },
+                {"timeout": Timeout.TIMEOUT_2MIN},
             )
         ],
         indirect=True,
     )
     def test_create_simple_notebook(
         self,
-        unprivileged_client: DynamicClient,
+        notebook_pod: Pod,
         unprivileged_model_namespace: Namespace,
         users_persistent_volume_claim: PersistentVolumeClaim,
         default_notebook: Notebook,
@@ -37,17 +37,11 @@ class TestNotebook:
         """
         Create a simple Notebook CR with all necessary resources and see if the Notebook Operator creates it properly
         """
-        notebook_pod = Pod(
-            client=unprivileged_client,
-            namespace=default_notebook.namespace,
-            name=f"{default_notebook.name}-0",
-        )
-        notebook_pod.wait()
-        notebook_pod.wait_for_condition(condition=Pod.Condition.READY, status=Pod.Condition.Status.TRUE)
+        assert notebook_pod.exists
 
     @pytest.mark.smoke
     @pytest.mark.parametrize(
-        "unprivileged_model_namespace,users_persistent_volume_claim,default_notebook",
+        "unprivileged_model_namespace,users_persistent_volume_claim,default_notebook,notebook_pod",
         [
             pytest.param(
                 {
@@ -65,13 +59,14 @@ class TestNotebook:
                         "notebooks.opendatahub.io/auth-sidecar-memory-limit": "256Mi",
                     },
                 },
+                {"timeout": Timeout.TIMEOUT_2MIN},
             )
         ],
         indirect=True,
     )
     def test_auth_container_resource_customization(
         self,
-        unprivileged_client: DynamicClient,
+        notebook_pod: Pod,
         unprivileged_model_namespace: Namespace,
         users_persistent_volume_claim: PersistentVolumeClaim,
         default_notebook: Notebook,
@@ -82,14 +77,6 @@ class TestNotebook:
         This test verifies that when a Notebook CR is created with custom Auth container resource
         annotations, the spawned pod has the Auth container with the specified resource values.
         """
-        notebook_pod = Pod(
-            client=unprivileged_client,
-            namespace=default_notebook.namespace,
-            name=f"{default_notebook.name}-0",
-        )
-        notebook_pod.wait()
-        notebook_pod.wait_for_condition(condition=Pod.Condition.READY, status=Pod.Condition.Status.TRUE)
-
         # Verify Auth container has the expected resource values
         auth_container = self._get_auth_container(pod=notebook_pod)
         assert auth_container, "Auth proxy container not found in the pod"

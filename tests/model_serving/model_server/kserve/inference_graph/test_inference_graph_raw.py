@@ -1,13 +1,13 @@
 import pytest
 
 from tests.model_serving.model_server.utils import verify_inference_response
+from utilities.constants import KServeDeploymentType, ModelInferenceRuntime, Protocols
 from utilities.inference_utils import Inference
-from utilities.constants import ModelInferenceRuntime, Protocols, KServeDeploymentType
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 
 @pytest.mark.rawdeployment
-@pytest.mark.sanity
+@pytest.mark.tier1
 @pytest.mark.parametrize(
     "unprivileged_model_namespace,ovms_kserve_serving_runtime",
     [
@@ -56,7 +56,7 @@ class TestInferenceGraphRaw:
             insecure=True,
         )
 
-    @pytest.mark.smoke
+    @pytest.mark.tier1
     @pytest.mark.parametrize(
         "dog_breed_inference_graph",
         [

@@ -1,17 +1,16 @@
-from typing import Any, Generator
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 from kubernetes.dynamic import DynamicClient
-from pytest_testconfig import config as py_config
-
 from ocp_resources.template import Template
+from pytest_testconfig import config as py_config
 
 from tests.model_serving.model_runtime.rhoai_upgrade.constant import (
     OVMS_SERVING_RUNTIME_TEMPLATE_DICT,
-    SERVING_RUNTIME_TEMPLATE_NAME,
     SERVING_RUNTIME_INSTANCE_NAME,
+    SERVING_RUNTIME_TEMPLATE_NAME,
 )
-
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 

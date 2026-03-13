@@ -2,8 +2,8 @@ import logging
 import os
 
 from sqlalchemy import Integer, String, create_engine
-from sqlalchemy.orm import Mapped, Session, mapped_column
-from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
+
 from utilities.must_gather_collector import get_base_dir
 
 LOGGER = logging.getLogger(__name__)
@@ -40,7 +40,8 @@ class Database:
     def get_test_start_time(self, test_name: str) -> int:
         with Session(bind=self.engine) as db_session:
             result_row = (
-                db_session.query(OpenDataHubTestTable)
+                db_session
+                .query(OpenDataHubTestTable)
                 .with_entities(OpenDataHubTestTable.start_time)
                 .filter_by(test_name=test_name)
                 .first()

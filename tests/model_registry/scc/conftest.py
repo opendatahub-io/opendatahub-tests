@@ -1,14 +1,13 @@
 import pytest
 from _pytest.fixtures import FixtureRequest
-
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
-from ocp_resources.deployment import Deployment
-from tests.model_registry.scc.utils import get_pod_by_deployment_name
-from tests.model_registry.constants import MR_INSTANCE_NAME, MR_POSTGRES_DEPLOYMENT_NAME_STR
-
-from kubernetes.dynamic import DynamicClient
 from simple_logger.logger import get_logger
+
+from tests.model_registry.constants import MR_INSTANCE_NAME, MR_POSTGRES_DEPLOYMENT_NAME_STR
+from tests.model_registry.scc.utils import get_pod_by_deployment_name
 
 LOGGER = get_logger(name=__name__)
 
@@ -32,8 +31,8 @@ def skip_if_not_valid_check(request) -> None:
 
 
 @pytest.fixture(scope="class")
-def model_registry_scc_namespace(model_registry_namespace: str):
-    mr_annotations = Namespace(name=model_registry_namespace).instance.metadata.annotations
+def model_registry_scc_namespace(admin_client: DynamicClient, model_registry_namespace: str):
+    mr_annotations = Namespace(client=admin_client, name=model_registry_namespace).instance.metadata.annotations
     return {
         "seLinuxOptions": mr_annotations.get("openshift.io/sa.scc.mcs"),
         "uid-range": mr_annotations.get("openshift.io/sa.scc.uid-range"),
@@ -41,8 +40,11 @@ def model_registry_scc_namespace(model_registry_namespace: str):
 
 
 @pytest.fixture(scope="function")
-def deployment_model_registry_ns(request: FixtureRequest, model_registry_namespace: str) -> Deployment:
+def deployment_model_registry_ns(
+    request: FixtureRequest, admin_client: DynamicClient, model_registry_namespace: str
+) -> Deployment:
     return Deployment(
+        client=admin_client,
         name=request.param.get("deployment_name", MR_INSTANCE_NAME),
         namespace=model_registry_namespace,
         ensure_exists=True,

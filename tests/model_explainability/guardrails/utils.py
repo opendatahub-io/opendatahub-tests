@@ -1,23 +1,20 @@
 import http
 import json
+from typing import Any
 
 import requests
 from requests import Response
 from simple_logger.logger import get_logger
-from typing import Dict, Any, List, Optional
-
 from timeout_sampler import retry
 
 from tests.model_explainability.guardrails.constants import GuardrailsDetectionPrompt
+from utilities.exceptions import UnexpectedValueError
+from utilities.guardrails import get_auth_headers
 
 LOGGER = get_logger(name=__name__)
 
 
-def get_auth_headers(token: str) -> Dict[str, str]:
-    return {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
-
-
-def get_chat_detections_payload(content: str, model: str, detectors: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def get_chat_detections_payload(content: str, model: str, detectors: dict[str, Any] | None = None) -> dict[str, Any]:
     """
     Constructs a chat detections payload for a given content string.
 
@@ -31,7 +28,7 @@ def get_chat_detections_payload(content: str, model: str, detectors: Optional[Di
         A dictionary representing the chat detections payload.
     """
 
-    payload: Dict[str, Any] = {
+    payload: dict[str, Any] = {
         "model": model,
         "messages": [
             {"role": "user", "content": content},
@@ -55,17 +52,17 @@ def verify_and_parse_response(response: Response) -> Any:
     return response_json
 
 
-def assert_no_errors(errors: List[str], failure_message_prefix: str) -> None:
+def assert_no_errors(errors: list[str], failure_message_prefix: str) -> None:
     assert not errors, f"{failure_message_prefix}:\n" + "\n".join(f"- {error}" for error in errors)
 
 
 def verify_detection(
-    detections_list: List[Dict[str, Any]],
+    detections_list: list[dict[str, Any]],
     detector_id: str,
     detection_name: str,
     detection_type: str,
-    expected_detection_text: Optional[str] = None,
-) -> List[str]:
+    expected_detection_text: str | None = None,
+) -> list[str]:
     """
     Helper to verify detection results.
 
@@ -129,9 +126,15 @@ def verify_builtin_detector_unsuitable_input_response(
     response_data = verify_and_parse_response(response=response)
     errors = []
 
-    warnings = response_data.get("warnings", [])
+    if not response_data:
+        raise UnexpectedValueError("Expected non-empty response data but got an empty response.")
+
+    warnings = response_data.get("warnings")
     unsuitable_input_warning: str = "UNSUITABLE_INPUT"
-    if len(warnings) != 1:
+
+    if warnings is None:
+        raise UnexpectedValueError("Expected warnings in response, got None")
+    elif len(warnings) != 1:
         errors.append(f"Expected 1 warning in response, got {len(warnings)}")
     elif warnings[0]["type"] != unsuitable_input_warning:
         errors.append(f"Expected warning type {unsuitable_input_warning}, got {warnings[0]['type']}")
@@ -231,26 +234,12 @@ def verify_negative_detection_response(response: Response) -> None:
     assert_no_errors(errors=errors, failure_message_prefix="Negative detection verification failed")
 
 
-def create_detector_config(*detector_names: str) -> Dict[str, Dict[str, Any]]:
+def create_detector_config(*detector_names: str) -> dict[str, dict[str, Any]]:
     detectors_dict = {name: {} for name in detector_names}
     return {
         "input": detectors_dict.copy(),
         "output": detectors_dict.copy(),
     }
-
-
-@retry(exceptions_dict={TimeoutError: []}, wait_timeout=120, sleep=10)
-def check_guardrails_health_endpoint(
-    host,
-    token,
-    ca_bundle_file,
-):
-    response = requests.get(url=f"https://{host}/health", headers=get_auth_headers(token=token), verify=ca_bundle_file)
-    if response.status_code == http.HTTPStatus.OK:
-        return response
-    raise TimeoutError(
-        f"Timeout waiting GuardrailsOrchestrator to be healthy. Response status code: {response.status_code}"
-    )
 
 
 def verify_health_info_response(host, token, ca_bundle_file):
@@ -271,7 +260,7 @@ def _send_guardrails_orchestrator_post_request(
     url: str,
     token: str,
     ca_bundle_file: str,
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
 ) -> requests.Response:
     response = requests.post(
         url=url,
@@ -292,7 +281,7 @@ def send_chat_detections_request(
     ca_bundle_file: str,
     content: str,
     model: str,
-    detectors: Dict[str, Any] = None,
+    detectors: dict[str, Any] | None = None,
 ) -> requests.Response:
     payload = get_chat_detections_payload(content=content, model=model, detectors=detectors)
     return _send_guardrails_orchestrator_post_request(
@@ -300,14 +289,14 @@ def send_chat_detections_request(
     )
 
 
-@retry(exceptions_dict={TimeoutError: []}, wait_timeout=120, sleep=1)
+@retry(exceptions_dict={TimeoutError: []}, wait_timeout=120, sleep=4)
 def send_and_verify_unsuitable_input_detection(
     url: str,
     token: str,
     ca_bundle_file: str,
     prompt: GuardrailsDetectionPrompt,
     model: str,
-    detectors: Dict[str, Any] = None,
+    detectors: dict[str, Any] | None = None,
 ):
     """Send a prompt to the GuardrailsOrchestrator and verify that it triggers an unsuitable input detection"""
     response = send_chat_detections_request(
@@ -331,7 +320,7 @@ def send_and_verify_unsuitable_output_detection(
     ca_bundle_file: str,
     prompt: GuardrailsDetectionPrompt,
     model: str,
-    detectors: Dict[str, Any] = None,
+    detectors: dict[str, Any] | None = None,
 ):
     """Send a prompt to the GuardrailsOrchestrator and verify that it triggers an unsuitable output detection"""
 
@@ -355,7 +344,7 @@ def send_and_verify_negative_detection(
     ca_bundle_file: str,
     content: str,
     model: str,
-    detectors: Dict[str, Any] = None,
+    detectors: dict[str, Any] | None = None,
 ):
     """Send a prompt to the GuardrailsOrchestrator and verify that it doesn't trigger any detection"""
 

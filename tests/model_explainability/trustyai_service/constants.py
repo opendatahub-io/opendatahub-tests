@@ -1,12 +1,12 @@
-from typing import Dict, Any, List
+from typing import Any
 
-from utilities.constants import Ports, ApiGroups
+from utilities.constants import ApiGroups, Ports
 
 DRIFT_BASE_DATA_PATH: str = "./tests/model_explainability/trustyai_service/drift/model_data"
-TAI_DATA_CONFIG: Dict[str, str] = {"filename": "data.csv", "format": "CSV"}
-TAI_METRICS_CONFIG: Dict[str, str] = {"schedule": "5s"}
-TAI_PVC_STORAGE_CONFIG: Dict[str, str] = {"format": "PVC", "folder": "/inputs", "size": "1Gi"}
-TAI_DB_STORAGE_CONFIG: Dict[str, str] = {
+TAI_DATA_CONFIG: dict[str, str] = {"filename": "data.csv", "format": "CSV"}
+TAI_METRICS_CONFIG: dict[str, str] = {"schedule": "5s"}
+TAI_PVC_STORAGE_CONFIG: dict[str, str] = {"format": "PVC", "folder": "/inputs", "size": "1Gi"}
+TAI_DB_STORAGE_CONFIG: dict[str, str] = {
     "format": "DATABASE",
     "size": "1Gi",
     "databaseConfigurations": "db-credentials",
@@ -21,13 +21,13 @@ MLFLOW: str = "mlflow"
 
 GAUSSIAN_CREDIT_MODEL: str = "gaussian-credit-model"
 GAUSSIAN_CREDIT_MODEL_STORAGE_PATH: str = f"{SKLEARN}/{GAUSSIAN_CREDIT_MODEL.replace('-', '_')}/1"
-GAUSSIAN_CREDIT_MODEL_RESOURCES: Dict[str, Dict[str, str]] = {
+GAUSSIAN_CREDIT_MODEL_RESOURCES: dict[str, dict[str, str]] = {
     "requests": {"cpu": "1", "memory": "2Gi"},
     "limits": {"cpu": "1", "memory": "2Gi"},
 }
 
 KSERVE_MLSERVER: str = f"kserve-{MLSERVER}"
-KSERVE_MLSERVER_SUPPORTED_MODEL_FORMATS: List[Dict[str, Any]] = [
+KSERVE_MLSERVER_SUPPORTED_MODEL_FORMATS: list[dict[str, Any]] = [
     {"name": "sklearn", "version": "0", "autoSelect": True, "priority": 2},
     {"name": "sklearn", "version": "1", "autoSelect": True, "priority": 2},
     {"name": "xgboost", "version": "1", "autoSelect": True, "priority": 2},
@@ -37,7 +37,7 @@ KSERVE_MLSERVER_SUPPORTED_MODEL_FORMATS: List[Dict[str, Any]] = [
     {"name": "mlflow", "version": "1", "autoSelect": True, "priority": 1},
     {"name": "mlflow", "version": "2", "autoSelect": True, "priority": 1},
 ]
-KSERVE_MLSERVER_CONTAINERS: List[Dict[str, Any]] = [
+KSERVE_MLSERVER_CONTAINERS: list[dict[str, Any]] = [
     {
         "name": "kserve-container",
         "image": "quay.io/trustyai_testing/mlserver"
@@ -51,7 +51,7 @@ KSERVE_MLSERVER_CONTAINERS: List[Dict[str, Any]] = [
         "resources": {"requests": {"cpu": "1", "memory": "2Gi"}, "limits": {"cpu": "1", "memory": "2Gi"}},
     }
 ]
-KSERVE_MLSERVER_ANNOTATIONS: Dict[str, str] = {
+KSERVE_MLSERVER_ANNOTATIONS: dict[str, str] = {
     f"{ApiGroups.OPENDATAHUB_IO}/accelerator-name": "",
     f"{ApiGroups.OPENDATAHUB_IO}/template-display-name": "KServe MLServer",
     "prometheus.kserve.io/path": "/metrics",

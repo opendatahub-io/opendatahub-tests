@@ -1,31 +1,19 @@
 import pytest
-
-from tests.llama_stack.constants import LlamaStackProviders
-from llama_stack_client import LlamaStackClient
-from utilities.constants import MinIo, QWEN_MODEL_NAME
+from llama_stack_client import LlamaStackClient, NotFoundError
+from llama_stack_client.types import Model, ModelRetrieveResponse
 
 
 @pytest.mark.parametrize(
-    "model_namespace, minio_pod, minio_data_connection, llama_stack_server_config",
+    "unprivileged_model_namespace",
     [
         pytest.param(
             {"name": "test-llamastack-models", "randomize_name": True},
-            MinIo.PodConfig.QWEN_HAP_BPIV2_MINIO_CONFIG,
-            {"bucket": "llms"},
-            {
-                "vllm_url_fixture": "qwen_isvc_url",
-                "inference_model": QWEN_MODEL_NAME,
-                "llama_stack_storage_size": "2Gi",
-            },
-        )
+        ),
     ],
     indirect=True,
 )
-@pytest.mark.rawdeployment
-@pytest.mark.smoke
 @pytest.mark.llama_stack
-@pytest.mark.skip_must_gather
-@pytest.mark.usefixtures("minio_pod", "minio_data_connection")
+@pytest.mark.tier1
 class TestLlamaStackModels:
     """Test class for LlamaStack models API functionality.
 
@@ -34,44 +22,98 @@ class TestLlamaStackModels:
     - https://github.com/openai/openai-python/blob/main/api.md#models
     """
 
-    def test_models_list(self, llama_stack_client: LlamaStackClient) -> None:
-        """Test the initial state of the LlamaStack server and available models."""
-        models = llama_stack_client.models.list()
+    def test_models_list(
+        self,
+        unprivileged_llama_stack_client: LlamaStackClient,
+    ) -> None:
+        """Test listing all available models.
+
+        Verifies that the models.list() method returns a non-empty list
+        containing at least one LLM and one embedding model, compatible
+        with OpenAI SDK structure.
+        """
+        models = unprivileged_llama_stack_client.models.list()
+        assert models is not None, "No models returned from LlamaStackClient"
+        assert isinstance(models, list), "models.list() should return a list"
+        assert len(models) > 0, "At least one model should be available"
+
+        llm_model = next((model for model in models if model.custom_metadata["model_type"] == "llm"), None)
+        assert llm_model is not None, "No LLM model found in available models"
+        assert isinstance(llm_model, Model), "LLM model should be a Model instance"
+        assert llm_model.id is not None, "No identifier set in LLM model"
+        assert len(llm_model.id) > 0, "LLM model identifier should not be empty"
+
+        embedding_model = next((model for model in models if model.custom_metadata["model_type"] == "embedding"), None)
+        assert embedding_model is not None, "No embedding model found in available models"
+        assert isinstance(embedding_model, Model), "Embedding model should be a Model instance"
+        assert embedding_model.id is not None, "No identifier set in embedding model"
+        assert len(embedding_model.id) > 0, "Embedding model identifier should not be empty"
+        assert "embedding_dimension" in embedding_model.custom_metadata, (
+            "embedding_dimension not found in custom_metadata"
+        )
+        embedding_dimension = embedding_model.custom_metadata["embedding_dimension"]
+        assert embedding_dimension is not None, "No embedding_dimension set in embedding model"
+        # API returns dimension as integer (e.g., 768)
+        assert isinstance(embedding_dimension, int), "embedding_dimension should be an integer"
+        assert embedding_dimension > 0, "embedding_dimension should be positive"
+
+    def test_models_list_structure(
+        self,
+        unprivileged_llama_stack_client: LlamaStackClient,
+    ) -> None:
+        """Test that model list response structure matches OpenAI SDK compatibility.
+
+        Verifies that each model in the list has the required fields expected
+        by OpenAI-compatible clients.
+        """
+        models = unprivileged_llama_stack_client.models.list()
         assert models is not None, "No models returned from LlamaStackClient"
 
-        llm_model = next((model for model in models if model.api_model_type == "llm"), None)
-        assert llm_model is not None, "No LLM model found in available models"
-        model_id = llm_model.identifier
-        assert model_id is not None, "No identifier set in LLM model"
+        for model in models:
+            assert hasattr(model, "id"), "Model should have identifier attribute"
+            assert hasattr(model, "custom_metadata"), "Model should have custom_metadata attribute"
+            assert isinstance(model.custom_metadata, dict), "Model custom_metadata should be a dictionary"
+            assert model.id is not None, f"Model {model} should have a non-None identifier"
+            assert model.custom_metadata["model_type"] in ["llm", "embedding"], (
+                f"Model {model.id} should have custom_metadata[\"model_type\"] 'llm' or 'embedding', "
+                f"got '{model.custom_metadata['model_type']}'"
+            )
 
-        embedding_model = next((model for model in models if model.api_model_type == "embedding"), None)
-        assert embedding_model is not None, "No embedding model found in available models"
-        embedding_model_id = embedding_model.identifier
-        assert embedding_model_id is not None, "No embedding model returned from LlamaStackClient"
-        assert "embedding_dimension" in embedding_model.metadata, "embedding_dimension not found in model metadata"
-        embedding_dimension = embedding_model.metadata["embedding_dimension"]
-        assert embedding_dimension is not None, "No embedding_dimension set in embedding model"
+    def test_models_retrieve_existing(
+        self,
+        unprivileged_llama_stack_client: LlamaStackClient,
+    ) -> None:
+        """Test retrieving an existing model by ID.
 
-    def test_models_register(self, llama_stack_client: LlamaStackClient) -> None:
-        """Test model registration functionality."""
-        response = llama_stack_client.models.register(
-            provider_id=LlamaStackProviders.Inference.VLLM_INFERENCE, model_type="llm", model_id=QWEN_MODEL_NAME
+        Verifies that models.retrieve() returns the correct model when given
+        a valid model identifier from the list.
+        """
+        models = unprivileged_llama_stack_client.models.list()
+        assert len(models) > 0, "At least one model should be available"
+
+        test_model = models[0]
+        retrieved_model = unprivileged_llama_stack_client.models.retrieve(model_id=test_model.id)
+
+        assert retrieved_model is not None, f"Model {test_model.id} should be retrievable"
+        assert isinstance(retrieved_model, ModelRetrieveResponse), "Retrieved model should be a ModelRetrieveResponse"
+        assert retrieved_model.identifier == test_model.id, (
+            f"Retrieved model identifier '{retrieved_model.identifier}' should match requested '{test_model.id}'"
         )
-        assert response
-
-    def test_model_list(self, llama_stack_client: LlamaStackClient) -> None:
-        """Test listing available models and verify their properties."""
-        models = llama_stack_client.models.list()
-
-        # Find the registered LLM by identifier suffix
-        expected_id_suffix = f"/{QWEN_MODEL_NAME}"
-        target = next(
-            (model for model in models if model.model_type == "llm" and model.identifier.endswith(expected_id_suffix)),
-            None,
+        assert retrieved_model.api_model_type == test_model.custom_metadata["model_type"], (
+            f"Retrieved model type '{retrieved_model.api_model_type}' "
+            f"should match original '{test_model.custom_metadata['model_type']}'"
         )
-        assert target is not None, (
-            f"LLM {QWEN_MODEL_NAME} not found in models: {[model.identifier for model in models]}"
-        )
-        assert target.identifier.endswith(expected_id_suffix)
-        assert target.model_type == "llm"
-        assert target.provider_id == LlamaStackProviders.Inference.VLLM_INFERENCE.value
+
+    def test_models_retrieve_nonexistent(
+        self,
+        unprivileged_llama_stack_client: LlamaStackClient,
+    ) -> None:
+        """Test retrieving a non-existent model raises NotFoundError.
+
+        Verifies that models.retrieve() raises NotFoundError when given
+        an invalid model identifier, matching OpenAI SDK behavior.
+        """
+        nonexistent_model_id = "nonexistent-provider/nonexistent-model"
+
+        with pytest.raises(NotFoundError):
+            unprivileged_llama_stack_client.models.retrieve(model_id=nonexistent_model_id)

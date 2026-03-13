@@ -1,16 +1,17 @@
 import json
 import os
+import platform
 import re
 import shlex
 import stat
 import tarfile
 import zipfile
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from functools import cache
-from typing import Any, Generator, Optional, Set, Callable
+from typing import Any
 
 import kubernetes
-import platform
 import pytest
 import requests
 import urllib3
@@ -21,12 +22,10 @@ from kubernetes.dynamic.exceptions import (
     NotFoundError,
     ResourceNotFoundError,
 )
-
 from ocp_resources.authentication_config_openshift_io import Authentication
-from ocp_resources.catalog_source import CatalogSource
 from ocp_resources.cluster_service_version import ClusterServiceVersion
-from ocp_resources.config_map import ConfigMap
 from ocp_resources.config_imageregistry_operator_openshift_io import Config
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.console_cli_download import ConsoleCLIDownload
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
@@ -47,6 +46,8 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
+from ocp_resources.subscription import Subscription
+from ocp_resources.utils.constants import DEFAULT_CLUSTER_RETRY_EXCEPTIONS
 from ocp_utilities.exceptions import NodeNotReadyError, NodeUnschedulableError
 from ocp_utilities.infra import (
     assert_nodes_in_healthy_condition,
@@ -56,15 +57,11 @@ from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
 from semver import Version
 from simple_logger.logger import get_logger
-
-from ocp_resources.subscription import Subscription
-from utilities.constants import ApiGroups, Labels, Timeout, RHOAI_OPERATOR_NAMESPACE
-from utilities.constants import KServeDeploymentType
-from utilities.constants import Annotations
-from utilities.exceptions import ClusterLoginError, FailedPodsError, ResourceNotReadyError, UnexpectedResourceCountError
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, TimeoutWatch, retry
+
 import utilities.general
-from ocp_resources.utils.constants import DEFAULT_CLUSTER_RETRY_EXCEPTIONS
+from utilities.constants import RHOAI_OPERATOR_NAMESPACE, Annotations, ApiGroups, KServeDeploymentType, Labels, Timeout
+from utilities.exceptions import ClusterLoginError, FailedPodsError, ResourceNotReadyError, UnexpectedResourceCountError
 from utilities.general import generate_random_name
 
 LOGGER = get_logger(name=__name__)
@@ -252,7 +249,7 @@ def wait_for_inference_deployment_replicas(
             exceptions_dict=DEFAULT_CLUSTER_RETRY_EXCEPTIONS,
             func=Deployment.get,
             label_selector=label_selector,
-            dyn_client=client,
+            client=client,
             namespace=ns,
         ):
             deployment_list = list(deployments)
@@ -365,7 +362,7 @@ def create_isvc_view_role(
     client: DynamicClient,
     isvc: InferenceService,
     name: str,
-    resource_names: Optional[list[str]] = None,
+    resource_names: list[str] | None = None,
     teardown: bool = True,
 ) -> Generator[Role, Any, Any]:
     """
@@ -408,7 +405,7 @@ def create_inference_graph_view_role(
     client: DynamicClient,
     namespace: str,
     name: str,
-    resource_names: Optional[list[str]] = None,
+    resource_names: list[str] | None = None,
     teardown: bool = True,
 ) -> Generator[Role, Any, Any]:
     """
@@ -467,28 +464,7 @@ def login_with_user_password(api_address: str, user: str, password: str | None =
     if err and err.lower().startswith("error"):
         raise ClusterLoginError(user=user)
 
-    if re.search(r"Login successful|Logged into", out):
-        return True
-
-    return False
-
-
-@cache
-def is_self_managed_operator(client: DynamicClient) -> bool:
-    """
-    Check if the operator is self-managed.
-    """
-    if py_config["distribution"] == "upstream":
-        return True
-
-    if CatalogSource(
-        client=client,
-        name="addon-managed-odh-catalog",
-        namespace=py_config["applications_namespace"],
-    ).exists:
-        return False
-
-    return True
+    return bool(re.search(r"Login successful|Logged into", out))
 
 
 @cache
@@ -505,10 +481,9 @@ def is_managed_cluster(client: DynamicClient) -> bool:
     platform_statuses = infra.instance.status.platformStatus
 
     for entry in platform_statuses.values():
-        if isinstance(entry, kubernetes.dynamic.resource.ResourceField):
-            if tags := entry.resourceTags:
-                LOGGER.info(f"Infrastructure {infra.name} resource tags: {tags}")
-                return any([tag["value"] == "true" for tag in tags if tag["key"] == "red-hat-managed"])
+        if isinstance(entry, kubernetes.dynamic.resource.ResourceField) and (tags := entry.resourceTags):
+            LOGGER.info(f"Infrastructure {infra.name} resource tags: {tags}")
+            return any(tag["value"] == "true" for tag in tags if tag["key"] == "red-hat-managed")
 
     return False
 
@@ -535,7 +510,7 @@ def get_services_by_isvc_label(
     if svcs := [
         svc
         for svc in Service.get(
-            dyn_client=client,
+            client=client,
             namespace=isvc.namespace,
             label_selector=label_selector,
         )
@@ -562,7 +537,7 @@ def get_pods_by_ig_label(client: DynamicClient, ig: InferenceGraph) -> list[Pod]
     if pods := [
         pod
         for pod in Pod.get(
-            dyn_client=client,
+            client=client,
             namespace=ig.namespace,
             label_selector=label_selector,
         )
@@ -592,7 +567,7 @@ def get_pods_by_isvc_label(client: DynamicClient, isvc: InferenceService, runtim
     if pods := [
         pod
         for pod in Pod.get(
-            dyn_client=client,
+            client=client,
             namespace=isvc.namespace,
             label_selector=label_selector,
         )
@@ -687,7 +662,7 @@ def get_model_route(client: DynamicClient, isvc: InferenceService) -> Route:
     if routes := [
         route
         for route in Route.get(
-            dyn_client=client,
+            client=client,
             namespace=isvc.namespace,
             label_selector=f"inferenceservice-name={isvc.name}",
         )
@@ -764,6 +739,16 @@ def verify_no_failed_pods(
     """
     wait_for_isvc_pods(client=client, isvc=isvc, runtime_name=runtime_name)
 
+    container_wait_base_errors = ["InvalidImageName"]
+    container_terminated_base_errors = [Resource.Status.ERROR]
+
+    # For Model Mesh, if image pulling takes longer, pod may be in CrashLoopBackOff state but recover with retries.
+    if (
+        deployment_mode := isvc.instance.metadata.annotations.get("serving.kserve.io/deploymentMode")
+    ) and deployment_mode != KServeDeploymentType.MODEL_MESH:
+        container_wait_base_errors.append(Resource.Status.CRASH_LOOPBACK_OFF)
+        container_terminated_base_errors.append(Resource.Status.CRASH_LOOPBACK_OFF)
+
     LOGGER.info("Verifying no failed pods")
     for pods in TimeoutSampler(
         wait_timeout=timeout,
@@ -773,57 +758,51 @@ def verify_no_failed_pods(
         isvc=isvc,
         runtime_name=runtime_name,
     ):
-        ready_pods = 0
+        if not pods:
+            continue
+
         failed_pods: dict[str, Any] = {}
 
-        container_wait_base_errors = ["InvalidImageName"]
-        container_terminated_base_errors = [Resource.Status.ERROR]
+        for pod in pods:
+            pod_status = pod.instance.status
 
-        # For Model Mesh, if image pulling takes longer, pod may be in CrashLoopBackOff state but recover with retries.
-        if (
-            deployment_mode := isvc.instance.metadata.annotations.get("serving.kserve.io/deploymentMode")
-        ) and deployment_mode != KServeDeploymentType.MODEL_MESH:
-            container_wait_base_errors.append(Resource.Status.CRASH_LOOPBACK_OFF)
-            container_terminated_base_errors.append(Resource.Status.CRASH_LOOPBACK_OFF)
+            all_container_statuses = list(pod_status.get("initContainerStatuses", []) or []) + list(
+                pod_status.get("containerStatuses", []) or []
+            )
 
-        if pods:
-            for pod in pods:
-                for condition in pod.instance.status.conditions:
-                    if condition.type == pod.Status.READY and condition.status == pod.Condition.Status.TRUE:
-                        ready_pods += 1
+            for container_status in all_container_statuses:
+                is_waiting_error = (
+                    wait_state := container_status.state.waiting
+                ) and wait_state.reason in container_wait_base_errors
 
-            if ready_pods == len(pods):
-                return
+                is_terminated_error = (
+                    terminate_state := container_status.state.terminated
+                ) and terminate_state.reason in container_terminated_base_errors
 
-            for pod in pods:
-                pod_status = pod.instance.status
-
-                if pod_status.containerStatuses:
-                    for container_status in pod_status.get("containerStatuses", []) + pod_status.get(
-                        "initContainerStatuses", []
-                    ):
-                        is_waiting_pull_back_off = (
-                            wait_state := container_status.state.waiting
-                        ) and wait_state.reason in container_wait_base_errors
-
-                        is_terminated_error = (
-                            terminate_state := container_status.state.terminated
-                        ) and terminate_state.reason in container_terminated_base_errors
-
-                        if is_waiting_pull_back_off or is_terminated_error:
-                            failed_pods[pod.name] = pod_status
-
-                elif pod_status.phase in (
-                    pod.Status.CRASH_LOOPBACK_OFF,
-                    pod.Status.FAILED,
-                ):
+                if is_waiting_error or is_terminated_error:
                     failed_pods[pod.name] = pod_status
+                    break
 
-            if failed_pods:
-                raise FailedPodsError(pods=failed_pods)
+            if pod_status.phase in (pod.Status.CRASH_LOOPBACK_OFF, pod.Status.FAILED):
+                failed_pods[pod.name] = pod_status
+
+        if failed_pods:
+            raise FailedPodsError(pods=failed_pods)
+
+        ready_pods = sum(
+            1
+            for pod in pods
+            if any(
+                c.type == pod.Status.READY and c.status == pod.Condition.Status.TRUE
+                for c in (pod.instance.status.conditions or [])
+            )
+        )
+
+        if ready_pods == len(pods):
+            return
 
 
-def check_pod_status_in_time(pod: Pod, status: Set[str], duration: int = Timeout.TIMEOUT_2MIN, wait: int = 1) -> None:
+def check_pod_status_in_time(pod: Pod, status: set[str], duration: int = Timeout.TIMEOUT_2MIN, wait: int = 1) -> None:
     """
     Checks if a pod status is maintained for a given duration. If not, an AssertionError is raised.
 
@@ -846,9 +825,8 @@ def check_pod_status_in_time(pod: Pod, status: Set[str], duration: int = Timeout
 
     try:
         for sample in sampler:
-            if sample:
-                if sample.status.phase not in status:
-                    raise AssertionError(f"Pod status is not the expected: {pod.status}")
+            if sample and sample.status.phase not in status:
+                raise AssertionError(f"Pod status is not the expected: {pod.status}")
 
     except TimeoutExpiredError:
         LOGGER.info(f"Pod status is {pod.status} as expected")
@@ -869,7 +847,7 @@ def get_product_version(admin_client: DynamicClient) -> Version:
 
     """
     operator_version: str = ""
-    for csv in ClusterServiceVersion.get(dyn_client=admin_client, namespace=py_config["applications_namespace"]):
+    for csv in ClusterServiceVersion.get(client=admin_client, namespace=py_config["applications_namespace"]):
         if re.match("rhods|opendatahub", csv.name):
             operator_version = csv.instance.spec.version
             break
@@ -981,7 +959,7 @@ def wait_for_serverless_pods_deletion(resource: Project | Namespace, admin_clien
 
     """
     client = admin_client or get_client()
-    for pod in Pod.get(dyn_client=client, namespace=resource.name):
+    for pod in Pod.get(client=client, namespace=resource.name):
         try:
             if (
                 pod.exists
@@ -991,7 +969,7 @@ def wait_for_serverless_pods_deletion(resource: Project | Namespace, admin_clien
                 LOGGER.info(f"Waiting for {KServeDeploymentType.SERVERLESS} pod {pod.name} to be deleted")
                 pod.wait_deleted(timeout=Timeout.TIMEOUT_1MIN)
 
-        except (ResourceNotFoundError, NotFoundError):
+        except ResourceNotFoundError, NotFoundError:
             LOGGER.info(f"Pod {pod.name} is deleted")
 
 
@@ -1020,11 +998,11 @@ def wait_for_isvc_pods(client: DynamicClient, isvc: InferenceService, runtime_na
 
 
 def get_rhods_subscription() -> Subscription | None:
-    subscriptions = Subscription.get(dyn_client=get_client(), namespace=RHOAI_OPERATOR_NAMESPACE)
+    subscriptions = Subscription.get(client=get_client(), namespace=RHOAI_OPERATOR_NAMESPACE)
     if subscriptions:
         for subscription in subscriptions:
             LOGGER.info(f"Checking subscription {subscription.name}")
-            if subscription.name.startswith(tuple(["rhods-operator", "rhoai-operator"])):
+            if subscription.name.startswith(("rhods-operator", "rhoai-operator")):
                 return subscription
 
     LOGGER.warning("No RHOAI subscription found. Potentially ODH cluster")
@@ -1108,7 +1086,7 @@ def verify_cluster_sanity(
             wait_for_dsc_status_ready(dsc_resource=dsc_resource)
 
     except (ResourceNotReadyError, NodeUnschedulableError, NodeNotReadyError) as ex:
-        error_msg = f"Cluster sanity check failed: {str(ex)}"
+        error_msg = f"Cluster sanity check failed: {ex!s}"
         # return_code set to 99 to not collide with https://docs.pytest.org/en/stable/reference/exit-codes.html
         return_code = 99
 
@@ -1133,8 +1111,8 @@ def get_os_system() -> str:
     return os_system
 
 
-def get_oc_console_cli_download_link() -> str:
-    oc_console_cli_download = ConsoleCLIDownload(name="oc-cli-downloads", ensure_exists=True)
+def get_oc_console_cli_download_link(admin_client: DynamicClient) -> str:
+    oc_console_cli_download = ConsoleCLIDownload(client=admin_client, name="oc-cli-downloads", ensure_exists=True)
     os_system = get_os_system()
     machine_platform = get_machine_platform()
     oc_links = oc_console_cli_download.instance.spec.links
@@ -1152,11 +1130,12 @@ def get_oc_console_cli_download_link() -> str:
     return all_links[0]
 
 
-def download_oc_console_cli(tmpdir: LocalPath) -> str:
+def download_oc_console_cli(admin_client: DynamicClient, tmpdir: LocalPath) -> str:
     """
     Download and extract the OpenShift CLI binary.
 
     Args:
+        admin_client (DynamicClient): admin client
         tmpdir (str): Directory to download and extract the binary to
 
     Returns:
@@ -1165,15 +1144,15 @@ def download_oc_console_cli(tmpdir: LocalPath) -> str:
     Raises:
         ValueError: If multiple files are found in the archive or if no download link is found
     """
-    oc_console_cli_download_link = get_oc_console_cli_download_link()
+    oc_console_cli_download_link = get_oc_console_cli_download_link(admin_client=admin_client)
     LOGGER.info(f"Downloading archive using: url={oc_console_cli_download_link}")
     urllib3.disable_warnings()  # TODO: remove when cert issue is addressed for managed clusters
     local_file_name = os.path.join(tmpdir, oc_console_cli_download_link.split("/")[-1])
     with requests.get(oc_console_cli_download_link, verify=False, stream=True) as created_request:
         created_request.raise_for_status()
+        content_iterator = created_request.iter_content(chunk_size=8192)
         with open(local_file_name, "wb") as file_downloaded:
-            for chunk in created_request.iter_content(chunk_size=8192):
-                file_downloaded.write(chunk)
+            file_downloaded.writelines(content_iterator)
     LOGGER.info("Extract the downloaded archive.")
     extracted_filenames = []
     if oc_console_cli_download_link.endswith(".zip"):
@@ -1182,7 +1161,7 @@ def download_oc_console_cli(tmpdir: LocalPath) -> str:
         extracted_filenames = zip_file.namelist()
     else:
         with tarfile.open(name=local_file_name, mode="r") as tar_file:
-            tar_file.extractall(path=tmpdir)
+            tar_file.extractall(path=tmpdir, filter="fully_trusted")
             extracted_filenames = tar_file.getnames()
     LOGGER.info(f"Downloaded file: {extracted_filenames}")
 
@@ -1206,8 +1185,8 @@ def check_internal_image_registry_available(admin_client: DynamicClient) -> bool
         is_available = management_state == "managed"
 
         LOGGER.info(f"Image registry management state: {management_state}, available: {is_available}")
-        return is_available
-    except (ResourceNotFoundError, Exception) as e:
+        return is_available  # noqa: TRY300
+    except (ResourceNotFoundError, Exception) as e:  # noqa: BLE001
         LOGGER.warning(f"Failed to check image registry config: {e}")
         return False
 

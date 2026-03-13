@@ -1,4 +1,5 @@
-from typing import Any, Union
+from typing import Any
+
 from utilities.constants import AcceleratorType, KServeDeploymentType, Labels, RuntimeTemplates
 
 OPENAI_ENDPOINT_NAME: str = "openai"
@@ -18,7 +19,7 @@ TEMPLATE_MAP: dict[str, str] = {
     AcceleratorType.GAUDI: RuntimeTemplates.VLLM_GAUDI,
 }
 
-PREDICT_RESOURCES: dict[str, Union[list[dict[str, Union[str, dict[str, str]]]], dict[str, dict[str, str]]]] = {
+PREDICT_RESOURCES: dict[str, list[dict[str, str | dict[str, str]]] | dict[str, dict[str, str]]] = {
     "volumes": [
         {"name": "shared-memory", "emptyDir": {"medium": "Memory", "sizeLimit": "16Gi"}},
         {"name": "tmp", "emptyDir": {}},
@@ -220,7 +221,7 @@ COMPLETION_QUERY_JAPANESE: list[dict[str, str]] = [
         "text": "小説に登場させる魔法使いのキャラクターを考えています。主人公の師となるようなキャラクターの案を背景を含めて考えてください。"
     },
     {
-        "text": "日本国内で観光に行きたいと思っています。東京、名古屋、大阪、京都、福岡の特徴を表にまとめてください。列名は「都道府県」「おすすめスポット」「おすすめグルメ」にしてください。"
+        "text": "日本国内で観光に行きたいと思っています。東京、名古屋、大阪、京都、福岡の特徴を表にまとめてください。列名は「都道府県」「おすすめスポット」「おすすめグルメ」にしてください。"  # noqa: E501
     },
 ]
 
@@ -239,7 +240,7 @@ CHAT_QUERY_JAPANESE: list[list[dict[str, str]]] = [
         },
         {
             "role": "user",
-            "content": "ルービックキューブをセンター試験の会場で、休憩時間に回そうと思っています。このような行動をしたときに周囲の人たちが感じるであろう感情について、3パターン程度述べてください。",
+            "content": "ルービックキューブをセンター試験の会場で、休憩時間に回そうと思っています。このような行動をしたときに周囲の人たちが感じるであろう感情について、3パターン程度述べてください。",  # noqa: E501
         },
     ],
 ]

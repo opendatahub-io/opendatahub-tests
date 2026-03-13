@@ -1,25 +1,27 @@
+from collections.abc import Generator
+from typing import Any
+
 import pytest
-from simple_logger.logger import get_logger
-from typing import List, Any, Generator
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
-from utilities.constants import KServeDeploymentType, Ports
+from simple_logger.logger import get_logger
+
+from tests.model_serving.model_runtime.vllm.constant import OPENAI_ENDPOINT_NAME, TGIS_ENDPOINT_NAME
 from tests.model_serving.model_runtime.vllm.utils import (
     run_raw_inference,
     validate_inference_output,
 )
-from tests.model_serving.model_runtime.vllm.constant import OPENAI_ENDPOINT_NAME, TGIS_ENDPOINT_NAME
+from utilities.constants import KServeDeploymentType, Ports
 
 LOGGER = get_logger(name=__name__)
 
 TIMEOUT_20MIN: str = 20 * 60
-SERVING_ARGUMENT: List[str] = [
+SERVING_ARGUMENT: list[str] = [
     "--model=/mnt/models/granite-7b-instruct",
     "--uvicorn-log-level=debug",
     "--dtype=float16",
     "--speculative_config",
     '{ "model": "/mnt/models/granite-7b-instruct-accelerator", "num_speculative_tokens": 5 }',
-    "--use-v2-block-manager",
 ]
 
 MODEL_PATH: str = "speculative_decoding"
@@ -28,6 +30,8 @@ MODEL_PATH: str = "speculative_decoding"
 pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "valid_aws_config")
 
 
+@pytest.mark.vllm_nvidia_single_gpu
+@pytest.mark.vllm_amd_gpu
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [
@@ -48,6 +52,9 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
     indirect=True,
 )
 class TestGraniteLabDraftModel:
+    @pytest.mark.xfail(
+        reason="vLLM does not support MLPSpeculatorPreTrainedModel architecture for draft model speculative decoding"
+    )
     def test_spec_draft_inference(
         self,
         vllm_inference_service: Generator[InferenceService, Any, Any],
@@ -77,6 +84,8 @@ class TestGraniteLabDraftModel:
         )
 
 
+@pytest.mark.vllm_nvidia_multi_gpu
+@pytest.mark.vllm_amd_gpu
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [
@@ -97,6 +106,9 @@ class TestGraniteLabDraftModel:
     indirect=True,
 )
 class TestMultiGraniteLabDraftModel:
+    @pytest.mark.xfail(
+        reason="vLLM does not support MLPSpeculatorPreTrainedModel architecture for draft model speculative decoding"
+    )
     def test_multi_spec_draft_inference(
         self,
         vllm_inference_service: Generator[InferenceService, Any, Any],

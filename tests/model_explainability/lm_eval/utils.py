@@ -1,16 +1,14 @@
-from typing import List
 import re
-from pyhelper_utils.general import tts
+
+import pandas as pd
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.lm_eval_job import LMEvalJob
 from ocp_resources.pod import Pod
-
-from utilities.constants import Timeout
+from pyhelper_utils.general import tts
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError
 
-import pandas as pd
-
+from utilities.constants import Timeout
 from utilities.exceptions import PodLogMissMatchError, UnexpectedFailureError
 
 LOGGER = get_logger(name=__name__)
@@ -39,7 +37,7 @@ def get_lmevaljob_pod(client: DynamicClient, lmevaljob: LMEvalJob, timeout: int 
     return lmeval_pod
 
 
-def get_lmeval_tasks(min_downloads: int | float, max_downloads: int | float | None = None) -> List[str]:
+def get_lmeval_tasks(min_downloads: float, max_downloads: float | None = None) -> list[str]:
     """
     Gets the list of supported LM-Eval tasks that have above a certain number of minimum downloads on HuggingFace.
 

@@ -2,15 +2,9 @@ import os
 import re
 import sys
 
-from github.PullRequest import PullRequest
-from github.Repository import Repository
-from github.MainClass import Github
-from github.GithubException import UnknownObjectException
-from github.Organization import Organization
-from github.Team import Team
-
 from constants import (
     ALL_LABELS_DICT,
+    APPROVED,
     CANCEL_ACTION,
     CHANGED_REQUESTED_BY_LABEL_PREFIX,
     COMMENTED_BY_LABEL_PREFIX,
@@ -22,8 +16,13 @@ from constants import (
     SUPPORTED_LABELS,
     VERIFIED_LABEL_STR,
     WELCOME_COMMENT,
-    APPROVED,
 )
+from github.GithubException import UnknownObjectException
+from github.MainClass import Github
+from github.Organization import Organization
+from github.PullRequest import PullRequest
+from github.Repository import Repository
+from github.Team import Team
 from simple_logger.logger import get_logger
 
 LOGGER = get_logger(name="pr_labeler")
@@ -35,7 +34,7 @@ class PrBaseClass:
         pr_size_action_name: str = "add-pr-size-label"
         welcome_comment_action_name: str = "add-welcome-comment-set-assignee"
         build_push_pr_image_action_name: str = "push-container-on-comment"
-        supported_actions: set[str] = {
+        supported_actions: set[str] = {  # noqa: RUF012
             pr_size_action_name,
             add_remove_labels_action_name,
             welcome_comment_action_name,
@@ -48,7 +47,7 @@ class PrBaseClass:
         self.gh_client: Github
 
         self.repo_name = os.environ["GITHUB_REPOSITORY"]
-        self.pr_number = int(os.getenv("GITHUB_PR_NUMBER", 0))
+        self.pr_number = int(os.getenv("GITHUB_PR_NUMBER", "0"))
         self.action = os.getenv("ACTION")
         self.event_action = os.getenv("GITHUB_EVENT_ACTION")
         self.event_name = os.getenv("GITHUB_EVENT_NAME")
@@ -110,7 +109,7 @@ class PrLabeler(PrBaseClass):
             # check if the user is a member of opendatahub-tests-contributors
             membership = team.get_team_membership(member=self.user_login)
             LOGGER.info(f"User {self.user_login} is a member of the test contributor team. {membership}")
-            return True
+            return True  # noqa: TRY300
         except UnknownObjectException:
             LOGGER.error(f"User {self.user_login} is not allowed for this action. Exiting.")
             return False
@@ -123,9 +122,7 @@ class PrLabeler(PrBaseClass):
             if not self.user_login:
                 sys.exit("`GITHUB_USER_LOGIN` is not set")
 
-            if (
-                self.event_name == "issue_comment" or self.event_name == "pull_request_review"
-            ) and not self.comment_body:
+            if (self.event_name in {"issue_comment", "pull_request_review"}) and not self.comment_body:
                 LOGGER.info("No comment, nothing to do. Exiting.")
                 sys.exit(0)
 
@@ -133,13 +130,11 @@ class PrLabeler(PrBaseClass):
         if self.action == self.SupportedActions.pr_size_action_name:
             self.set_pr_size()
 
-        if self.action == self.SupportedActions.build_push_pr_image_action_name:
-            if not self.verify_allowed_user():
-                sys.exit(1)
+        if self.action == self.SupportedActions.build_push_pr_image_action_name and not self.verify_allowed_user():
+            sys.exit(1)
 
-        if self.action == self.SupportedActions.add_remove_labels_action_name:
-            if self.verify_allowed_user():
-                self.add_remove_pr_labels()
+        if self.action == self.SupportedActions.add_remove_labels_action_name and self.verify_allowed_user():
+            self.add_remove_pr_labels()
 
         if self.action == self.SupportedActions.welcome_comment_action_name:
             self.add_welcome_comment_set_assignee()
@@ -187,10 +182,9 @@ class PrLabeler(PrBaseClass):
         LOGGER.info(f"repo labels: {repo_labels}")
 
         try:
-            if _repo_label := self.repo.get_label(name=label):
-                if _repo_label.color != label_color:
-                    LOGGER.info(f"Edit repository label: {label}, color: {label_color}")
-                    _repo_label.edit(name=_repo_label.name, color=label_color)
+            if (_repo_label := self.repo.get_label(name=label)) and _repo_label.color != label_color:
+                LOGGER.info(f"Edit repository label: {label}, color: {label_color}")
+                _repo_label.edit(name=_repo_label.name, color=label_color)
 
         except UnknownObjectException:
             LOGGER.info(f"Add repository label: {label}, color: {label_color}")
@@ -249,14 +243,13 @@ class PrLabeler(PrBaseClass):
 
             return
 
-        elif self.event_name == "pull_request_review":
+        elif (
+            self.event_name == "pull_request_review"
+            or self.event_name == "workflow_run"
+            and self.event_action == "submitted"
+        ):
             self.pull_request_review_label_actions()
 
-            return
-
-        # We will only reach here if the PR was created from a fork
-        elif self.event_name == "workflow_run" and self.event_action == "submitted":
-            self.pull_request_review_label_actions()
             return
 
         LOGGER.warning("`add_remove_pr_label` called without a supported event")
@@ -317,7 +310,7 @@ class PrLabeler(PrBaseClass):
                         if not action[CANCEL_ACTION] or self.event_action == "deleted":
                             self.approve_pr()
 
-                label_in_pr = any([label == _label.lower() for _label in self.pr_labels])
+                label_in_pr = any(label == _label.lower() for _label in self.pr_labels)
                 LOGGER.info(f"Processing label: {label}, action: {action}")
 
                 if action[CANCEL_ACTION] or self.event_action == "deleted":

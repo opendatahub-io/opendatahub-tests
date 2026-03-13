@@ -1,30 +1,30 @@
-from typing import cast, Any, Generator, List, Dict
 import copy
-import pytest
+from collections.abc import Generator
 from contextlib import contextmanager
+from typing import Any, cast
 
-from kubernetes.dynamic.exceptions import ResourceNotFoundError
-from syrupy.extensions.json import JSONSnapshotExtension
-from pytest_testconfig import config as py_config
-
+import pytest
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.namespace import Namespace
-from ocp_resources.serving_runtime import ServingRuntime
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.inference_service import InferenceService
+from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
-from ocp_resources.template import Template
 from ocp_resources.service_account import ServiceAccount
+from ocp_resources.serving_runtime import ServingRuntime
+from ocp_resources.template import Template
+from pytest_testconfig import config as py_config
+from simple_logger.logger import get_logger
+from syrupy.extensions.json import JSONSnapshotExtension
 
+from tests.model_serving.model_runtime.triton.basic_model_deployment.utils import (
+    get_gpu_identifier,
+    get_template_name,
+)
 from tests.model_serving.model_runtime.triton.constant import (
     PREDICT_RESOURCES,
     RUNTIME_MAP,
 )
-from tests.model_serving.model_runtime.triton.basic_model_deployment.utils import (
-    get_template_name,
-    get_gpu_identifier,
-)
-
 from utilities.constants import (
     KServeDeploymentType,
     Protocols,
@@ -33,15 +33,11 @@ from utilities.inference_utils import create_isvc
 from utilities.infra import get_pods_by_isvc_label
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
-from simple_logger.logger import get_logger
-
 LOGGER = get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")
-def triton_grpc_serving_runtime_template(
-    admin_client: DynamicClient, triton_runtime_image: str
-) -> Generator[Template, None, None]:
+def triton_grpc_serving_runtime_template(admin_client: DynamicClient, triton_runtime_image: str) -> Generator[Template]:
     with create_triton_template(
         admin_client=admin_client, protocol=Protocols.GRPC, triton_runtime_image=triton_runtime_image
     ) as template:
@@ -49,9 +45,7 @@ def triton_grpc_serving_runtime_template(
 
 
 @pytest.fixture(scope="class")
-def triton_rest_serving_runtime_template(
-    admin_client: DynamicClient, triton_runtime_image: str
-) -> Generator[Template, None, None]:
+def triton_rest_serving_runtime_template(admin_client: DynamicClient, triton_runtime_image: str) -> Generator[Template]:
     with create_triton_template(
         admin_client=admin_client, protocol=Protocols.REST, triton_runtime_image=triton_runtime_image
     ) as template:
@@ -101,7 +95,7 @@ def create_triton_serving_runtime(protocol: str, triton_runtime_image: str) -> d
         f"--{'allow-grpc' if protocol == Protocols.GRPC else 'allow-http'}=True",
     ]
 
-    kserve_container: List[Dict[str, Any]] = [
+    kserve_container: list[dict[str, Any]] = [
         {
             "name": "kserve-container",
             "image": triton_runtime_image,
@@ -121,7 +115,7 @@ def create_triton_serving_runtime(protocol: str, triton_runtime_image: str) -> d
         }
     ]
 
-    supported_model_formats: List[Dict[str, Any]] = [
+    supported_model_formats: list[dict[str, Any]] = [
         {"name": "tensorrt", "version": "8", "autoSelect": True, "priority": 1},
         {"name": "tensorflow", "version": "1", "autoSelect": True, "priority": 1},
         {"name": "tensorflow", "version": "2", "autoSelect": True, "priority": 1},
@@ -158,7 +152,7 @@ def triton_serving_runtime(
     model_namespace: Namespace,
     protocol: str,
     supported_accelerator_type: str | None,
-) -> Generator[ServingRuntime, None, None]:
+) -> Generator[ServingRuntime]:
     template_name = get_template_name(protocol=protocol, accelerator_type=supported_accelerator_type)
     with ServingRuntimeFromTemplate(
         client=admin_client,
@@ -220,9 +214,7 @@ def triton_inference_service(
 
 
 @pytest.fixture(scope="class")
-def triton_model_service_account(
-    admin_client: DynamicClient, kserve_s3_secret: Secret
-) -> Generator[ServiceAccount, None, None]:
+def triton_model_service_account(admin_client: DynamicClient, kserve_s3_secret: Secret) -> Generator[ServiceAccount]:
     with ServiceAccount(
         client=admin_client,
         namespace=kserve_s3_secret.namespace,

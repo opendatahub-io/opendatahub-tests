@@ -1,11 +1,12 @@
-import grpc
 import socket
 import ssl
 import sys
-from utilities.plugins.tgis_grpc import generation_pb2_grpc
-from typing import Any, Optional
+from typing import Any
+
+import grpc
 from simple_logger.logger import get_logger
 
+from utilities.plugins.tgis_grpc import generation_pb2_grpc
 
 LOGGER = get_logger(name=__name__)
 
@@ -28,9 +29,9 @@ class TGISGRPCPlugin:
         self.request_func = self.make_grpc_request_stream if streaming else self.make_grpc_request
 
     def _get_server_certificate(self, port: int) -> str:
-        if sys.version_info >= (3, 10):
+        if sys.version_info >= (3, 10):  # noqa: UP036
             return ssl.get_server_certificate((self.host, port))
-        ssl.SSLContext
+        ssl.SSLContext  # noqa: B018
         context = ssl.SSLContext()
         with (
             socket.create_connection((self.host, port)) as sock,
@@ -39,7 +40,7 @@ class TGISGRPCPlugin:
             cert_der = ssock.getpeercert(binary_form=True)
         return ssl.DER_cert_to_PEM_cert(cert_der)
 
-    def _channel_credentials(self) -> Optional[grpc.ChannelCredentials]:
+    def _channel_credentials(self) -> grpc.ChannelCredentials | None:
         if self.use_tls:
             cert = self._get_server_certificate(port=443).encode()
             return grpc.ssl_channel_credentials(root_certificates=cert)
@@ -65,15 +66,15 @@ class TGISGRPCPlugin:
         try:
             response = stub.Generate(request=request)
             LOGGER.info(response)
-            response = response.responses[0]
-            return {
-                "input_tokens": response.input_token_count,
-                "stop_reason": response.stop_reason,
-                "output_text": response.text,
-                "output_tokens": response.generated_token_count,
+            res = response.responses[0]
+            return {  # noqa: TRY300
+                "input_tokens": res.input_token_count,
+                "stop_reason": res.stop_reason,
+                "output_text": res.text,
+                "output_tokens": res.generated_token_count,
             }
         except grpc.RpcError as err:
-            self._handle_grpc_error(err)
+            LOGGER.error("gRPC Error: %s", err.details())
 
     def make_grpc_request_stream(self, query: dict[str, Any]) -> Any:
         channel = self._create_channel()
@@ -103,7 +104,7 @@ class TGISGRPCPlugin:
                             "output_tokens": resp.generated_token_count,
                         }
         except grpc.RpcError as err:
-            self._handle_grpc_error(err)
+            LOGGER.error("gRPC Error: %s", err.details())
 
     def get_model_info(self) -> list[str]:  # type: ignore
         channel = self._create_channel()
@@ -112,11 +113,6 @@ class TGISGRPCPlugin:
         request = generation_pb2_grpc.generation__pb2.ModelInfoRequest()  # type: ignore
         LOGGER.info(request)
         try:
-            response = stub.ModelInfo(request=request)
-            return response
+            return stub.ModelInfo(request=request)
         except grpc.RpcError as err:
-            self._handle_grpc_error(err)
-
-    def _handle_grpc_error(self, err: grpc.RpcError) -> None:
-        """Handle gRPC errors."""
-        LOGGER.error("gRPC Error: %s", err.details())
+            LOGGER.error("gRPC Error: %s", err.details())

@@ -7,6 +7,13 @@ EXAMPLE_EMAIL_ADDRESS: str = "johndoe@example.com"
 OTEL_EXPORTER_PORT: int = 4317
 SUPER_SECRET = "supersecret"  # pragma: allowlist secret
 TEMPO = "tempo"
+HARMLESS_PROMPT: str = "What is the opposite of up?"
+CHAT_COMPLETIONS_DETECTION_ENDPOINT: str = "api/v2/chat/completions-detection"
+PII_ENDPOINT: str = "/pii"
+AUTOCONFIG_GATEWAY_ENDPOINT: str = "/all"
+STANDALONE_DETECTION_ENDPOINT: str = "api/v2/text/detection/content"
+PROMPT_INJECTION_DETECTOR: str = "prompt-injection-detector"
+HAP_DETECTOR: str = "hap-detector"
 
 
 @dataclass

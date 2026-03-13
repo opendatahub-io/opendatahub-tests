@@ -1,4 +1,5 @@
-from typing import Generator, Any, List
+from collections.abc import Generator
+from typing import Any
 
 import portforward
 import pytest
@@ -15,6 +16,7 @@ from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
+from ocp_resources.subscription import Subscription
 from ocp_resources.tempo_stack import TempoStack
 from ocp_utilities.operators import install_operator, uninstall_operator
 from timeout_sampler import TimeoutSampler
@@ -28,10 +30,10 @@ from tests.model_explainability.guardrails.constants import (
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import (
     KServeDeploymentType,
-    Timeout,
     RuntimeTemplates,
+    Timeout,
 )
-from utilities.inference_utils import create_isvc, LOGGER
+from utilities.inference_utils import LOGGER, create_isvc
 from utilities.operator_utils import get_cluster_service_version
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -105,7 +107,7 @@ def prompt_injection_detector_route(
 def openshift_ca_bundle_file(
     admin_client: DynamicClient,
 ) -> str:
-    return create_ca_bundle_file(client=admin_client, ca_type="openshift")
+    return create_ca_bundle_file(client=admin_client)
 
 
 @pytest.fixture(scope="class")
@@ -154,7 +156,7 @@ def hap_detector_route(
 
 
 @pytest.fixture(scope="class")
-def installed_tempo_operator(admin_client: DynamicClient, model_namespace: Namespace) -> Generator[None, Any, None]:
+def installed_tempo_operator(admin_client: DynamicClient, model_namespace: Namespace) -> Generator[None, Any]:
     """
     Installs the Tempo operator and waits for its deployment.
     """
@@ -165,44 +167,47 @@ def installed_tempo_operator(admin_client: DynamicClient, model_namespace: Names
         operator_ns.create()
 
     package_name = "tempo-product"
+    tempo_operator_subscription = Subscription(client=admin_client, namespace=operator_ns.name, name=package_name)
 
-    install_operator(
-        admin_client=admin_client,
-        target_namespaces=None,
-        name=package_name,
-        channel="stable",
-        source="redhat-operators",
-        operator_namespace=operator_ns.name,
-        timeout=Timeout.TIMEOUT_15MIN,
-        install_plan_approval="Automatic",
-        starting_csv="tempo-operator.v0.18.0-2",
-    )
+    if not tempo_operator_subscription.exists:
+        install_operator(
+            admin_client=admin_client,
+            target_namespaces=None,
+            name=package_name,
+            channel="stable",
+            source="redhat-operators",
+            operator_namespace=operator_ns.name,
+            timeout=Timeout.TIMEOUT_15MIN,
+            install_plan_approval="Automatic",
+            starting_csv="tempo-operator.v0.19.0-2",
+        )
 
-    deployment = Deployment(
-        client=admin_client,
-        namespace=operator_ns.name,
-        name="tempo-operator-controller",
-        wait_for_resource=True,
-    )
-    deployment.wait_for_replicas()
+        deployment = Deployment(
+            client=admin_client,
+            namespace=operator_ns.name,
+            name="tempo-operator-controller",
+            wait_for_resource=True,
+        )
+        deployment.wait_for_replicas()
 
-    yield
+        yield
 
-    uninstall_operator(
-        admin_client=admin_client,
-        name=package_name,
-        operator_namespace=operator_ns.name,
-        clean_up_namespace=False,
-    )
+        uninstall_operator(
+            admin_client=admin_client,
+            name=package_name,
+            operator_namespace=operator_ns.name,
+            clean_up_namespace=False,
+        )
+    else:
+        yield
 
 
 @pytest.fixture(scope="class")
 def tempo_stack(
     admin_client: DynamicClient,
-    installed_tempo_operator: None,
     model_namespace: Namespace,
     minio_secret_otel: Secret,
-) -> Generator[Any, Any, None]:
+) -> Generator[Any, Any]:
     """
     Create a TempoStack CR in the test namespace, configured to use MinIO backend.
     """
@@ -257,18 +262,11 @@ def tempo_stack(
             timeout=Timeout.TIMEOUT_10MIN,
         )
 
-        label_selector = f"app.kubernetes.io/instance={tempo_name}"
-        wait_for_pods_by_label(
-            client=admin_client,
-            namespace=model_namespace.name,
-            label_selector=label_selector,
-        )
-
         yield tempo_cr
 
 
 @pytest.fixture(scope="class")
-def installed_opentelemetry_operator(admin_client: DynamicClient) -> Generator[None, Any, None]:
+def installed_opentelemetry_operator(admin_client: DynamicClient) -> Generator[None, Any]:
     """
     Installs the Red Hat OpenTelemetry Operator and waits for its deployment.
     """
@@ -279,41 +277,44 @@ def installed_opentelemetry_operator(admin_client: DynamicClient) -> Generator[N
 
     package_name = "opentelemetry-product"
 
-    install_operator(
-        admin_client=admin_client,
-        target_namespaces=[operator_ns.name],
-        name=package_name,
-        channel="stable",
-        source="redhat-operators",
-        operator_namespace=operator_ns.name,
-        timeout=Timeout.TIMEOUT_15MIN,
-        install_plan_approval="Automatic",
-        starting_csv="opentelemetry-operator.v0.135.0-1",
-    )
+    opentelemetry_subscription = Subscription(client=admin_client, namespace=operator_ns.name, name=package_name)
 
-    deployment = Deployment(
-        client=admin_client,
-        namespace=operator_ns.name,
-        name="opentelemetry-operator-controller-manager",
-        wait_for_resource=True,
-    )
-    deployment.wait_for_replicas()
+    if not opentelemetry_subscription.exists:
+        install_operator(
+            admin_client=admin_client,
+            target_namespaces=None,
+            name=package_name,
+            channel="stable",
+            source="redhat-operators",
+            operator_namespace=operator_ns.name,
+            timeout=Timeout.TIMEOUT_15MIN,
+            install_plan_approval="Automatic",
+            starting_csv="opentelemetry-operator.v0.140.0-1",
+        )
 
-    yield
+        deployment = Deployment(
+            client=admin_client,
+            namespace=operator_ns.name,
+            name="opentelemetry-operator-controller-manager",
+            wait_for_resource=True,
+        )
+        deployment.wait_for_replicas()
 
-    uninstall_operator(
-        admin_client=admin_client,
-        name=package_name,
-        operator_namespace=operator_ns.name,
-        clean_up_namespace=False,
-    )
+        yield
+
+        uninstall_operator(
+            admin_client=admin_client,
+            name=package_name,
+            operator_namespace=operator_ns.name,
+            clean_up_namespace=False,
+        )
+    else:
+        yield
 
 
 @pytest.fixture(scope="class")
 def otel_collector(
     admin_client: DynamicClient,
-    installed_opentelemetry_operator: None,
-    tempo_stack,
     model_namespace: Namespace,
     minio_service_otel,
 ) -> Generator[OpenTelemetryCollector, Any, Any]:
@@ -401,11 +402,11 @@ def wait_for_pods_by_label(
         timeout: Maximum wait time in seconds
     """
 
-    def _get_pods() -> List[Pod]:
+    def _get_pods() -> list[Pod]:
         return [
             pod
             for pod in Pod.get(
-                dyn_client=client,
+                client=client,
                 namespace=namespace,
                 label_selector=label_selector,
             )
@@ -543,7 +544,7 @@ def otelcol_metrics_endpoint(admin_client: DynamicClient, model_namespace: Names
 
     service = next(
         Service.get(
-            dyn_client=admin_client,
+            client=admin_client,
             namespace=model_namespace.name,
             label_selector="app.kubernetes.io/component=opentelemetry-collector",
         )

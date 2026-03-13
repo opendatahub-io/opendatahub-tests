@@ -11,31 +11,52 @@
     "enabled": true,
     "dependencyDashboardApproval": false
   },
-  "baseBranches": ["main"],
+  "baseBranchPatterns": [
+    "main"
+  ],
   "recreateWhen": "never",
   "timezone": "America/New_York",
   "packageRules": [
     {
       "groupName": "Python dependencies (minor and patch)",
-      "matchUpdateTypes": ["minor", "patch"],
-      "matchFileNames": ["pyproject.toml"],
-      "schedule": ["before 7am on monday"],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "matchFileNames": [
+        "pyproject.toml"
+      ],
+      "schedule": [
+        "before 7am on monday"
+      ],
       "prPriority": 7
     },
     {
       "groupName": "Python dependencies (major)",
-      "matchUpdateTypes": ["major"],
-      "matchFileNames": ["pyproject.toml"],
-      "schedule": ["after 7pm on thursday"],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "matchFileNames": [
+        "pyproject.toml"
+      ],
+      "schedule": [
+        "after 7pm on thursday"
+      ],
       "prPriority": 10
     },
     {
-        "groupName": "GitHub Actions",
-        "matchManagers": ["github-actions"],
-        "matchFileNames": [".github/workflows/**"],
-        "schedule": ["before 6pm on wednesday"],
-        "prPriority": 5,
-        "dependencyDashboardApproval": false
-      }
+      "groupName": "GitHub Actions",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchFileNames": [
+        ".github/workflows/**"
+      ],
+      "schedule": [
+        "before 6pm on wednesday"
+      ],
+      "prPriority": 5,
+      "dependencyDashboardApproval": false
+    }
   ]
 }
