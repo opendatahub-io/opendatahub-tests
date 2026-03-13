@@ -13,12 +13,12 @@ from ocp_resources.service_account import ServiceAccount
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 
-from tests.model_serving.model_server.maas_billing.maas_subscription.utils import (
+from tests.model_serving.maas_billing.maas_subscription.utils import (
     MAAS_SUBSCRIPTION_NAMESPACE,
     create_api_key,
     patch_llmisvc_with_maas_router_and_tiers,
 )
-from tests.model_serving.model_server.maas_billing.utils import build_maas_headers
+from tests.model_serving.maas_billing.utils import build_maas_headers
 from utilities.general import generate_random_name
 from utilities.infra import create_inference_token, create_ns, login_with_user_password
 from utilities.llmd_constants import ContainerImages, ModelStorage

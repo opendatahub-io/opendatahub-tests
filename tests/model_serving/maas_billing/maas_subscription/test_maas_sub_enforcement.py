@@ -4,7 +4,7 @@ import pytest
 import requests
 from simple_logger.logger import get_logger
 
-from tests.model_serving.model_server.maas_billing.maas_subscription.utils import chat_payload_for_url
+from tests.model_serving.maas_billing.maas_subscription.utils import chat_payload_for_url
 
 LOGGER = get_logger(name=__name__)
 
