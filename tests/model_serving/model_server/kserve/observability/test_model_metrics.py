@@ -1,7 +1,7 @@
 import pytest
 from timeout_sampler import TimeoutSampler
 
-from tests.model_serving.model_server.kserve.metrics.utils import validate_metrics_configuration
+from tests.model_serving.model_server.kserve.observability.utils import validate_metrics_configuration
 from tests.model_serving.model_server.utils import (
     run_inference_multiple_times,
     verify_inference_response,
