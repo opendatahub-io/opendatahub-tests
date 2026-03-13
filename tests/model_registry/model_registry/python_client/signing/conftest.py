@@ -1,12 +1,17 @@
 """Fixtures for Model Registry Python Client Signing Tests."""
 
 import json
+import logging
+import os
 from collections.abc import Generator
+from pathlib import Path
 from typing import Any
 
 import pytest
 import requests
+from huggingface_hub import snapshot_download
 from kubernetes.dynamic import DynamicClient
+from model_registry.signing import Signer
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
@@ -23,17 +28,30 @@ from tests.model_registry.model_registry.python_client.signing.constants import 
 )
 from tests.model_registry.model_registry.python_client.signing.utils import (
     create_connection_type_field,
+    generate_token,
     get_organization_config,
+    get_root_checksum,
     get_tas_service_urls,
 )
 from utilities.constants import OPENSHIFT_OPERATORS, Timeout
-from utilities.infra import get_openshift_token
+from utilities.infra import get_openshift_token, is_managed_cluster
 from utilities.resources.securesign import Securesign
 
 LOGGER = get_logger(name=__name__)
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="package")
+def skip_if_not_managed_cluster(admin_client: DynamicClient) -> None:
+    """
+    Skip tests if the cluster is not managed.
+    """
+    if not is_managed_cluster(admin_client):
+        pytest.skip("Skipping tests - cluster is not managed")
+
+    LOGGER.info("Cluster is managed - proceeding with tests")
+
+
+@pytest.fixture(scope="package")
 def oidc_issuer_url(admin_client: DynamicClient, api_server_url: str) -> str:
     """Get the OIDC issuer URL from cluster's .well-known/openid-configuration endpoint.
 
@@ -61,7 +79,7 @@ def oidc_issuer_url(admin_client: DynamicClient, api_server_url: str) -> str:
     return issuer
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="package")
 def installed_tas_operator(admin_client: DynamicClient) -> Generator[None, Any]:
     """Install Red Hat Trusted Artifact Signer (RHTAS/TAS) operator if not already installed.
 
@@ -126,7 +144,7 @@ def installed_tas_operator(admin_client: DynamicClient) -> Generator[None, Any]:
         yield
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="package")
 def securesign_instance(
     admin_client: DynamicClient, installed_tas_operator: None, oidc_issuer_url: str
 ) -> Generator[Securesign, Any]:
@@ -165,6 +183,7 @@ def securesign_instance(
         },
         "spec": {
             "fulcio": {
+                "enabled": True,
                 "externalAccess": {"enabled": True},
                 "certificate": org_config,
                 "config": {
@@ -178,13 +197,18 @@ def securesign_instance(
                 },
             },
             "rekor": {
+                "enabled": True,
                 "externalAccess": {"enabled": True},
             },
-            "ctlog": {},
+            "ctlog": {
+                "enabled": True,
+            },
             "tuf": {
+                "enabled": True,
                 "externalAccess": {"enabled": True},
             },
             "tsa": {
+                "enabled": True,
                 "externalAccess": {"enabled": True},
                 "signer": {
                     "certificateChain": {
@@ -207,7 +231,7 @@ def securesign_instance(
     LOGGER.info(f"Securesign instance '{SECURESIGN_NAME}' cleanup completed")
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="package")
 def tas_connection_type(admin_client: DynamicClient, securesign_instance: Securesign) -> Generator[ConfigMap, Any]:
     """Create ODH Connection Type ConfigMap for TAS (Trusted Artifact Signer).
 
@@ -288,3 +312,95 @@ def tas_connection_type(admin_client: DynamicClient, securesign_instance: Secure
         yield connection_type
 
     LOGGER.info(f"TAS Connection Type '{TAS_CONNECTION_TYPE_NAME}' deleted from namespace '{app_namespace}'")
+
+
+@pytest.fixture(scope="package")
+def downloaded_model_dir() -> Path:
+    """Download a test model from Hugging Face to a temporary directory.
+
+    Downloads the jonburdo/public-test-model-1 model to a temporary directory
+    and yields the path to the downloaded model directory.
+
+    Yields:
+        Path: Path to the temporary directory containing the downloaded model
+    """
+    model_dir = Path(py_config["tmp_base_dir"]) / "model"
+    model_dir.mkdir(exist_ok=True)
+
+    LOGGER.info(f"Downloading model to temporary directory: {model_dir}")
+    snapshot_download(repo_id="jonburdo/public-test-model-1", local_dir=str(model_dir))
+    LOGGER.info(f"Model downloaded successfully to: {model_dir}")
+
+    return model_dir
+
+
+@pytest.fixture(scope="package")
+def set_environment_variables(securesign_instance: Securesign) -> None:
+    """
+    Create a service account token and save it to a temporary directory.
+    """
+    securesign_data = securesign_instance.instance.to_dict()
+    service_urls = get_tas_service_urls(securesign_instance=securesign_data)
+    os.environ["IDENTITY_TOKEN_PATH"] = generate_token(temp_base_folder=py_config["tmp_base_dir"])
+    os.environ["SIGSTORE_TUF_URL"] = service_urls["tuf"]
+    os.environ["SIGSTORE_FULCIO_URL"] = service_urls["fulcio"]
+    os.environ["SIGSTORE_REKOR_URL"] = service_urls["rekor"]
+    os.environ["SIGSTORE_TSA_URL"] = service_urls["tsa"]
+    os.environ["ROOT_CHECKSUM"] = get_root_checksum(sigstore_tuf_url=service_urls["tuf"])
+    os.environ["ROOT_URL"] = os.environ["SIGSTORE_TUF_URL"] + "/root.json"
+
+
+@pytest.fixture(scope="function")
+def signer(set_environment_variables) -> Signer:
+    """Create and initialize a Signer instance for model signing.
+
+    Creates a Signer with identity token, root URL, and root checksum from environment
+    variables set by the set_environment_variables fixture. Initializes the signer
+    with force=True and debug logging.
+
+    Args:
+        set_environment_variables: Fixture that sets up required environment variables
+
+    Returns:
+        Signer: Initialized signer instance ready for model signing
+
+    Raises:
+        Exception: If signer initialization fails
+    """
+    LOGGER.info(f"Creating Signer with token path: {os.environ['IDENTITY_TOKEN_PATH']}")
+    LOGGER.info(f"Root URL: {os.environ['ROOT_URL']}")
+
+    signer = Signer(
+        identity_token_path=os.environ["IDENTITY_TOKEN_PATH"],
+        root_url=os.environ["ROOT_URL"],
+        root_checksum=os.environ["ROOT_CHECKSUM"],
+        log_level=logging.DEBUG,
+    )
+
+    LOGGER.info("Initializing signer...")
+    signer.initialize(force=True)
+    LOGGER.info("Signer initialized successfully")
+
+    return signer
+
+
+@pytest.fixture(scope="function")
+def signed_model(signer, downloaded_model_dir) -> Path:
+    """
+    Use an initialized signer to sign the downloaded model.
+    """
+    LOGGER.info(f"Signing model in directory: {downloaded_model_dir}")
+    signer.sign_model(model_path=str(downloaded_model_dir))
+    LOGGER.info("Model signed successfully")
+
+    return downloaded_model_dir
+
+
+@pytest.fixture(scope="function")
+def verified_model(signer, downloaded_model_dir) -> None:
+    """
+    Verify a signed model.
+    """
+    LOGGER.info(f"Verifying signed model in directory: {downloaded_model_dir}")
+    signer.verify_model(model_path=str(downloaded_model_dir))
+    LOGGER.info("Model verified successfully")
