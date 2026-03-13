@@ -1,3 +1,5 @@
+import secrets
+import string
 from collections.abc import Generator
 from contextlib import ExitStack
 from typing import Any
@@ -12,6 +14,7 @@ from ocp_resources.maas_auth_policy import MaaSAuthPolicy
 from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.namespace import Namespace
+from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
@@ -311,8 +314,29 @@ def model_url_tinyllama_premium(
 
 
 @pytest.fixture(scope="session")
+def maas_postgres_credentials() -> dict[str, str]:
+    alphabet = string.ascii_letters + string.digits
+
+    postgres_user = f"maas-{generate_random_name()}"
+    postgres_db = f"maas-{generate_random_name()}"
+    postgres_password = "".join(secrets.choice(alphabet) for _ in range(32))
+
+    LOGGER.info(
+        f"Generated PostgreSQL test credentials: "
+        f"user={postgres_user}, db={postgres_db}, password_length={len(postgres_password)}"
+    )
+
+    return {
+        "postgres_user": postgres_user,
+        "postgres_password": postgres_password,
+        "postgres_db": postgres_db,
+    }
+
+
+@pytest.fixture(scope="session")
 def maas_postgres_prereqs(
     admin_client: DynamicClient,
+    maas_postgres_credentials: dict[str, str],
 ) -> Generator[dict[Any, Any], Any, Any]:
     """
     Prepare PostgreSQL resources required by maas-api before MaaS API key tests run.
@@ -320,10 +344,10 @@ def maas_postgres_prereqs(
     resources = get_maas_postgres_resources(
         client=admin_client,
         namespace=MAAS_DB_NAMESPACE,
-        teardown_resources=False,
-        postgres_user="maas",
-        postgres_password="maas",  # pragma: allowlist secret
-        postgres_db="maas",
+        teardown_resources=True,
+        postgres_user=maas_postgres_credentials["postgres_user"],
+        postgres_password=maas_postgres_credentials["postgres_password"],
+        postgres_db=maas_postgres_credentials["postgres_db"],
     )
 
     resources_instances: dict[Any, Any] = {}
@@ -333,11 +357,7 @@ def maas_postgres_prereqs(
             resources_instances[kind_name] = []
 
             for resource_obj in resources[kind_name]:
-                if resource_obj.exists:
-                    LOGGER.info(f"Reusing existing {resource_obj.kind} {resource_obj.namespace}/{resource_obj.name}")
-                    resources_instances[kind_name].append(resource_obj)
-                else:
-                    resources_instances[kind_name].append(stack.enter_context(resource_obj))
+                resources_instances[kind_name].append(stack.enter_context(resource_obj))
 
         for deployment in resources_instances[Deployment]:
             deployment.wait_for_condition(condition="Available", status="True", timeout=180)
@@ -352,6 +372,33 @@ def maas_postgres_prereqs(
             namespace=MAAS_DB_NAMESPACE,
             timeout=180,
         )
+
+        maas_api_deployment = Deployment(
+            client=admin_client,
+            name="maas-api",
+            namespace=MAAS_DB_NAMESPACE,
+        )
+
+        if maas_api_deployment.exists:
+            LOGGER.info("maas-api already exists; restarting pod(s) so new maas-db-config is reloaded")
+
+            maas_api_pods = list(
+                Pod.get(
+                    client=admin_client,
+                    namespace=MAAS_DB_NAMESPACE,
+                    label_selector="app.kubernetes.io/name=maas-api",
+                )
+            )
+
+            for pod in maas_api_pods:
+                LOGGER.info(f"Deleting maas-api pod {pod.name} to force reload of DB config")
+                pod.delete(wait=True)
+
+            maas_api_deployment.wait_for_condition(
+                condition="Available",
+                status="True",
+                timeout=300,
+            )
 
         yield resources_instances
 

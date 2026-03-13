@@ -237,9 +237,9 @@ def get_maas_postgres_secret_objects(
     client: DynamicClient,
     namespace: str,
     teardown_resources: bool,
-    postgres_user: str = "maas",
-    postgres_password: str = "maas",
-    postgres_db: str = "maas",
+    postgres_user: str,
+    postgres_password: str,
+    postgres_db: str,
 ) -> list[Secret]:
     return [
         Secret(
@@ -262,9 +262,9 @@ def get_maas_db_config_secret_objects(
     client: DynamicClient,
     namespace: str,
     teardown_resources: bool,
-    postgres_user: str = "maas",
-    postgres_password: str = "maas",
-    postgres_db: str = "maas",
+    postgres_user: str,
+    postgres_password: str,
+    postgres_db: str,
 ) -> list[Secret]:
     db_connection_url = (
         f"postgresql://{postgres_user}:{postgres_password}@{POSTGRES_SERVICE_NAME}:5432/{postgres_db}?sslmode=disable"
@@ -389,9 +389,9 @@ def get_maas_postgres_resources(
     client: DynamicClient,
     namespace: str,
     teardown_resources: bool,
-    postgres_user: str = "maas",
-    postgres_password: str = "maas",
-    postgres_db: str = "maas",
+    postgres_user: str,
+    postgres_password: str,
+    postgres_db: str,
 ) -> dict[Any, Any]:
     return {
         Secret: get_maas_postgres_secret_objects(
