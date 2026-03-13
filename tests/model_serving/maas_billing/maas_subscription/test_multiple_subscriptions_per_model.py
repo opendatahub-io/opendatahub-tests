@@ -9,12 +9,12 @@ from ocp_resources.maas_auth_policy import MaaSAuthPolicy
 from ocp_resources.service_account import ServiceAccount
 from simple_logger.logger import get_logger
 
-from tests.model_serving.model_server.maas_billing.maas_subscription.utils import (
+from tests.model_serving.maas_billing.maas_subscription.utils import (
     chat_payload_for_url,
     create_maas_subscription,
     poll_expected_status,
 )
-from tests.model_serving.model_server.maas_billing.utils import build_maas_headers
+from tests.model_serving.maas_billing.utils import build_maas_headers
 from utilities.infra import create_inference_token, login_with_user_password
 
 LOGGER = get_logger(name=__name__)

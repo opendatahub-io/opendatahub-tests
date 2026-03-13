@@ -1,6 +1,6 @@
 import json
 
-from tests.model_serving.model_server.maas_billing.utils import b64url_decode
+from tests.model_serving.maas_billing.utils import b64url_decode
 
 
 class TestMintedToken:
