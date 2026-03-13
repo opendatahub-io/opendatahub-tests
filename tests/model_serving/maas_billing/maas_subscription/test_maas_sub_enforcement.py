@@ -14,7 +14,7 @@ INVALID_SUBSCRIPTION = "does-not-exist"
 
 @pytest.mark.usefixtures(
     "maas_unprivileged_model_namespace",
-    "maas_controller_enabled_latest",
+    "maas_subscription_controller_enabled_latest",
     "maas_gateway_api",
     "maas_api_gateway_reachable",
     "maas_inference_service_tinyllama_premium",
