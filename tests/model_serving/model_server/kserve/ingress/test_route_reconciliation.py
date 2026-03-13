@@ -1,6 +1,6 @@
 import pytest
 
-from tests.model_serving.model_server.kserve.raw_deployment.utils import assert_ingress_status_changed
+from tests.model_serving.model_server.kserve.ingress.utils import assert_ingress_status_changed
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import ModelFormat, ModelVersion, Protocols, RunTimeConfigs
 from utilities.inference_utils import Inference

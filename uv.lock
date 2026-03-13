@@ -1175,7 +1175,7 @@ wheels = [
 
 [[package]]
 name = "llama-stack-client"
-version = "0.5.2"
+version = "0.6.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -1194,9 +1194,9 @@ dependencies = [
     { name = "tqdm" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/99/8a/8742475db7cedc2d452a3a7677da7f24aa84bdd262bc97543029c62df772/llama_stack_client-0.5.2.tar.gz", hash = "sha256:17c1bbad90f7699da4eb3cae256e8823caa4d2be945512a45c8c6f89ab899f28", size = 368612, upload_time = "2026-03-06T13:24:22.252Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b7/e9/62dc71e7d6003d9b56a1e632445065f55687c891e62eff1636e10b5dd629/llama_stack_client-0.6.0.tar.gz", hash = "sha256:3290aac36dcafbd1bc0baaf995522e2037f57056672b5a1516af112a4210f3ea", size = 368695, upload-time = "2026-03-11T15:04:19.267Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4d/f9/f6224b8819748358a573e3a2b8e299c0b6ba5f9cedf2942188c361c8e555/llama_stack_client-0.5.2-py3-none-any.whl", hash = "sha256:473f4d67ac0b243b0fc29555a0203a742615d31bea606b4332d9e2f193f73d6a", size = 391951, upload_time = "2026-03-06T13:24:20.559Z" },
+    { url = "https://files.pythonhosted.org/packages/83/a3/33d3e066a320a993b6f9cca9c8efe8da7deb2045df61235d327d0a05b25f/llama_stack_client-0.6.0-py3-none-any.whl", hash = "sha256:7e514a6ffd92f237aceb062dadc4db44e24a3cd9c4ea35e25173d1e0739beb8e", size = 392001, upload-time = "2026-03-11T15:04:17.772Z" },
 ]
 
 [[package]]
@@ -1508,7 +1508,7 @@ requires-dist = [
     { name = "huggingface-hub", specifier = ">=1.2.3" },
     { name = "ipython", specifier = ">=8.18.1" },
     { name = "jira", specifier = ">=3.8.0" },
-    { name = "llama-stack-client", specifier = ">=0.5.0,<0.6" },
+    { name = "llama-stack-client", specifier = ">=0.6.0,<0.7" },
     { name = "marshmallow", specifier = "==3.26.2,<4" },
     { name = "model-registry", extras = ["signing"], specifier = ">=0.2.13" },
     { name = "openshift-python-utilities", specifier = ">=5.0.71" },
@@ -1709,7 +1709,7 @@ name = "pexpect"
 version = "4.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "ptyprocess" },
+    { name = "ptyprocess", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/42/92/cc564bf6381ff43ce1f4d06852fc19a2f11d180f23dc32d9588bee2f149d/pexpect-4.9.0.tar.gz", hash = "sha256:ee7d41123f3c9911050ea2c2dac107568dc43b2d3b0c7557a33212c398ead30f", size = 166450, upload_time = "2023-11-25T09:07:26.339Z" }
 wheels = [
