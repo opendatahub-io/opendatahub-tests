@@ -335,10 +335,12 @@ def downloaded_model_dir() -> Path:
 
 
 @pytest.fixture(scope="package")
-def set_environment_variables(securesign_instance: Securesign) -> None:
+def set_environment_variables(securesign_instance: Securesign) -> Generator[None, Any]:
     """
     Create a service account token and save it to a temporary directory.
+    Automatically cleans up environment variables when fixture scope ends.
     """
+    # Set up environment variables
     securesign_data = securesign_instance.instance.to_dict()
     service_urls = get_tas_service_urls(securesign_instance=securesign_data)
     os.environ["IDENTITY_TOKEN_PATH"] = generate_token(temp_base_folder=py_config["tmp_base_dir"])
@@ -348,6 +350,23 @@ def set_environment_variables(securesign_instance: Securesign) -> None:
     os.environ["SIGSTORE_TSA_URL"] = service_urls["tsa"]
     os.environ["ROOT_CHECKSUM"] = get_root_checksum(sigstore_tuf_url=service_urls["tuf"])
     os.environ["ROOT_URL"] = os.environ["SIGSTORE_TUF_URL"] + "/root.json"
+
+    LOGGER.info("Environment variables set for signing tests")
+    yield
+
+    # Clean up environment variables
+    for var_name in [
+        "IDENTITY_TOKEN_PATH",
+        "SIGSTORE_TUF_URL",
+        "SIGSTORE_FULCIO_URL",
+        "SIGSTORE_REKOR_URL",
+        "SIGSTORE_TSA_URL",
+        "ROOT_CHECKSUM",
+        "ROOT_URL",
+    ]:
+        os.environ.pop(var_name, None)
+
+    LOGGER.info("Environment variables cleaned up")
 
 
 @pytest.fixture(scope="function")
