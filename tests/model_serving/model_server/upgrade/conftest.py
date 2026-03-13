@@ -801,6 +801,7 @@ def llmd_namespace_fixture(
 def llmd_gateway_fixture(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
+    teardown_resources: bool,
 ) -> Generator[Gateway, Any, Any]:
     """Shared LLMD Gateway for upgrade tests."""
     gateway = Gateway(
@@ -820,7 +821,7 @@ def llmd_gateway_fixture(
             gateway_class_name=LLMDGateway.DEFAULT_CLASS,
             wait_for_condition=True,
             timeout=Timeout.TIMEOUT_1MIN,
-            teardown=False,
+            teardown=teardown_resources,
         ) as gateway:
             yield gateway
 

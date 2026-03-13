@@ -400,6 +400,9 @@ def verify_gateway_accepted(gateway: Gateway) -> None:
         raise AssertionError(f"Gateway {gateway.name} does not exist in namespace {gateway.namespace}")
 
     conditions = gateway.instance.status.get("conditions", [])
-    accepted = any(c.get("type") == "Accepted" and c.get("status") == "True" for c in conditions)
-    if not accepted:
+    is_accepted = any(
+        condition.get("type") == "Accepted" and condition.get("status") == "True"
+        for condition in conditions
+    )
+    if not is_accepted:
         raise AssertionError(f"Gateway {gateway.name} is not Accepted. Conditions: {conditions}")
