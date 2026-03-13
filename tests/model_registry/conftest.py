@@ -36,6 +36,7 @@ from tests.model_registry.mcp_servers.constants import (
     MCP_CATALOG_API_PATH,
     MCP_CATALOG_SOURCE,
     MCP_SERVERS_YAML,
+    NAMED_QUERIES,
 )
 from tests.model_registry.utils import (
     generate_namespace_name,
@@ -492,10 +493,11 @@ def mcp_servers_configmap_patch(
     model_registry_rest_headers: dict[str, str],
 ) -> Generator[None]:
     """
-    Class-scoped fixture that patches the model-catalog-sources ConfigMap
+    Class-scoped fixture that patches the model-catalog-sources ConfigMap.
 
     Sets two keys in the ConfigMap data:
-    - sources.yaml: catalog source definition pointing to the MCP servers YAML
+    - sources.yaml: catalog source definition pointing to the MCP servers YAML,
+      plus named queries for filtering by custom properties
     - mcp-servers.yaml: the actual MCP server definitions
     """
     catalog_config_map = ConfigMap(
@@ -508,6 +510,7 @@ def mcp_servers_configmap_patch(
     if "mcp_catalogs" not in current_data:
         current_data["mcp_catalogs"] = []
     current_data["mcp_catalogs"].append(MCP_CATALOG_SOURCE)
+    current_data["namedQueries"] = NAMED_QUERIES
 
     patches = {
         "data": {
