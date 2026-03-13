@@ -1,3 +1,5 @@
+CALCULATOR_SERVER_NAME: str = "calculator"
+CALCULATOR_PROVIDER: str = "Math Community"
 MCP_CATALOG_SOURCE_ID: str = "test_mcp_servers"
 MCP_CATALOG_SOURCE_NAME: str = "Test MCP Servers"
 MCP_CATALOG_API_PATH: str = "/api/mcp_catalog/v1alpha1/"
