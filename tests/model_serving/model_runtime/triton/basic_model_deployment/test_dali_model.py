@@ -29,6 +29,7 @@ pytestmark = pytest.mark.usefixtures(
     "root_dir", "valid_aws_config", "triton_rest_serving_runtime_template", "triton_grpc_serving_runtime_template"
 )
 
+
 @pytest.mark.tier1
 @pytest.mark.gpu
 @pytest.mark.parametrize(
