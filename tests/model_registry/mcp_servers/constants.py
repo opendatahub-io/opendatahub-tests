@@ -165,6 +165,16 @@ MCP_CATALOG_INVALID_SOURCE: dict = {
     "labels": [MCP_CATALOG_INVALID_SOURCE_NAME],
 }
 
+NAMED_QUERIES: dict = {
+    "production_ready": {
+        "verifiedSource": {"operator": "=", "value": True},
+    },
+    "security_focused": {
+        "sast": {"operator": "=", "value": True},
+        "readOnlyTools": {"operator": "=", "value": True},
+    },
+}
+
 EXPECTED_MCP_SOURCE2_SERVER_NAMES: set[str] = {"code-reviewer"}
 EXPECTED_ALL_MCP_SERVER_NAMES: set[str] = EXPECTED_MCP_SERVER_NAMES | EXPECTED_MCP_SOURCE2_SERVER_NAMES
 
