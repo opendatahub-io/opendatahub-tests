@@ -31,7 +31,7 @@ pytestmark = pytest.mark.usefixtures(
 )
 
 
-@pytest.mark.smoke
+@pytest.mark.tier1
 @pytest.mark.parametrize(
     ("protocol", "model_namespace", "s3_models_storage_uri", "triton_serving_runtime", "triton_inference_service"),
     [

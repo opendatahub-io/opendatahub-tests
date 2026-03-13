@@ -22,11 +22,10 @@ LOGGER = get_logger(name=__name__)
 
 pytestmark = [
     pytest.mark.downstream_only,
-    pytest.mark.skip_must_gather,
-    pytest.mark.smoke,
+    pytest.mark.skip_must_gather
 ]
 
-
+@pytest.mark.smoke
 @pytest.mark.parametrize("serving_runtime_pods_for_runtime", RUNTIME_CONFIGS, indirect=True)
 class TestServingRuntimeImagesPerTemplate:
     """

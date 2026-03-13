@@ -27,7 +27,7 @@ from utilities.constants import ModelFormat, Protocols
 pytestmark = pytest.mark.usefixtures("valid_aws_config")
 
 
-@pytest.mark.smoke
+@pytest.mark.tier1
 @pytest.mark.parametrize(
     (
         "model_namespace",
@@ -64,6 +64,7 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
                 model_format_name=ModelFormat.ONNX,
                 deployment_type=RAW_DEPLOYMENT_TYPE,
             ),
+            marks=pytest.mark.smoke,
         ),
         pytest.param(
             get_model_namespace_dict(
