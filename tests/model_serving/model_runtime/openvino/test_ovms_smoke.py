@@ -22,7 +22,7 @@ from ocp_resources.pod import Pod
 @pytest.mark.smoke
 @pytest.mark.parametrize(
     "model_namespace",
-    [pytest.param({"name": "ovms-smoke"}, id="ovms-smoke")],
+    [pytest.param({"name": "ovms-smoke"}, id="ovms-smoke", marks=pytest.mark.smoke)],
     indirect=["model_namespace"],
 )
 class TestOVMSSmokeInOpenShift:
