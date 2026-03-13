@@ -21,7 +21,7 @@ from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
-from tests.model_serving.model_server.maas_billing.utils import (
+from tests.model_serving.maas_billing.utils import (
     build_maas_headers,
     create_maas_group,
     detect_scheme_via_llmisvc,

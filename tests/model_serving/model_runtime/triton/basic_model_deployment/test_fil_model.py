@@ -43,6 +43,7 @@ pytestmark = pytest.mark.usefixtures(
                 **BASE_RAW_DEPLOYMENT_CONFIG,
             },
             id="fil-raw-rest-deployment",
+            marks=pytest.mark.tier1,
         ),
         pytest.param(
             {"protocol_type": Protocols.GRPC},
@@ -54,6 +55,7 @@ pytestmark = pytest.mark.usefixtures(
                 **BASE_RAW_DEPLOYMENT_CONFIG,
             },
             id="fil-raw-grpc-deployment",
+            marks=pytest.mark.tier1,
         ),
     ],
     indirect=True,
