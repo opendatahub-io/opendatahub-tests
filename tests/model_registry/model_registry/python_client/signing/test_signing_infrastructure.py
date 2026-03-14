@@ -7,13 +7,14 @@ import pytest
 from ocp_resources.config_map import ConfigMap
 from simple_logger.logger import get_logger
 
+from tests.model_registry.model_registry.python_client.signing.utils import check_model_signature_file
 from utilities.resources.securesign import Securesign
 
 LOGGER = get_logger(name=__name__)
 
 
-@pytest.mark.usefixtures("tas_connection_type")
-class TestSigningInfrastructure:
+@pytest.mark.usefixtures("skip_if_not_managed_cluster", "tas_connection_type", "set_environment_variables")
+class TestSigning:
     """Test suite to verify TAS signing infrastructure is ready for model signing operations."""
 
     def test_signing_environment_ready(
@@ -80,3 +81,31 @@ class TestSigningInfrastructure:
         LOGGER.info(f"✓ OIDC issuer configured: {oidc_issuer_url}")
 
         LOGGER.info("Environment is ready for model signing operations!")
+
+    def test_model_sign(self, signed_model):
+        """Test model signing functionality.
+
+        Args:
+            signed_model: Tuple of (signer, signed_model_directory_path)
+
+        Verifies:
+            - Model has been signed successfully
+            - Signature files are created
+        """
+
+        LOGGER.info(f"Testing model signing in directory: {signed_model}")
+        assert signed_model
+        has_signature = check_model_signature_file(model_dir=str(signed_model))
+        assert has_signature, "model.sig file not found after signing"
+
+    def test_model_verify(self, verified_model):
+        """Test model verification functionality.
+
+        Args:
+            verified_model: Result of model verification after signing
+
+        Verifies:
+            - Signed model can be verified successfully
+            - Verification result indicates success
+        """
+        LOGGER.info("Testing model verification")

@@ -18,7 +18,7 @@ from ocp_resources.service_account import ServiceAccount
 from simple_logger.logger import get_logger
 
 from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaOciConfig
-from tests.model_serving.model_server.llmd.utils import wait_for_llmisvc
+from tests.model_serving.model_server.llmd.utils import wait_for_llmisvc, wait_for_llmisvc_pods_ready
 from utilities.constants import Timeout
 from utilities.infra import create_inference_token, s3_endpoint_secret, update_configmap_data
 from utilities.llmd_constants import LLMDGateway
@@ -297,4 +297,5 @@ def _create_llmisvc_from_config(
 
     with LLMInferenceService(**svc_kwargs) as llm_service:
         wait_for_llmisvc(llmisvc=llm_service, timeout=config_cls.wait_timeout)
+        wait_for_llmisvc_pods_ready(client=client, llmisvc=llm_service)
         yield llm_service

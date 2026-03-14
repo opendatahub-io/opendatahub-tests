@@ -12,7 +12,7 @@ from ocp_resources.utils.constants import DEFAULT_CLUSTER_RETRY_EXCEPTIONS
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, TimeoutWatch
 
-from tests.model_serving.model_server.kserve.keda.utils import get_isvc_keda_scaledobject
+from tests.model_serving.model_server.kserve.autoscaling.keda.utils import get_isvc_keda_scaledobject
 from utilities.constants import KServeDeploymentType, Protocols, Timeout
 from utilities.exceptions import (
     InferenceResponseError,

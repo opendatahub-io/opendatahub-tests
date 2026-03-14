@@ -32,7 +32,6 @@ LOGGER = get_logger(name=__name__)
 pytestmark = pytest.mark.usefixtures("valid_aws_config")
 
 
-@pytest.mark.smoke
 @pytest.mark.parametrize(
     (
         "protocol",
@@ -59,6 +58,7 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
                 deployment_type=RAW_DEPLOYMENT_TYPE,
                 protocol_type=Protocols.REST,
             ),
+            marks=pytest.mark.smoke,
         ),
         pytest.param(
             REST_PROTOCOL_TYPE_DICT,
@@ -76,6 +76,7 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
                 deployment_type=RAW_DEPLOYMENT_TYPE,
                 protocol_type=Protocols.REST,
             ),
+            marks=pytest.mark.tier1,
         ),
         pytest.param(
             REST_PROTOCOL_TYPE_DICT,
@@ -93,6 +94,7 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
                 deployment_type=RAW_DEPLOYMENT_TYPE,
                 protocol_type=Protocols.REST,
             ),
+            marks=pytest.mark.tier1,
         ),
     ],
     indirect=[

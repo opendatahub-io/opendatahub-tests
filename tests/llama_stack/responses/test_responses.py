@@ -23,7 +23,7 @@ class TestLlamaStackResponses:
     - https://github.com/openai/openai-python/blob/main/api.md#responses
     """
 
-    @pytest.mark.smoke
+    @pytest.mark.tier1
     def test_responses_create(
         self,
         unprivileged_llama_stack_client: LlamaStackClient,
