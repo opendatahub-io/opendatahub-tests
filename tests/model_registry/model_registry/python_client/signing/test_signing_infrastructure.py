@@ -4,61 +4,45 @@ import json
 from typing import Self
 
 import pytest
+import requests
 from ocp_resources.config_map import ConfigMap
 from simple_logger.logger import get_logger
 
+from tests.model_registry.model_registry.python_client.signing.constants import (
+    SIGNING_OCI_REPO_NAME,
+)
 from tests.model_registry.model_registry.python_client.signing.utils import check_model_signature_file
 from utilities.resources.securesign import Securesign
 
 LOGGER = get_logger(name=__name__)
 
+pytestmark = pytest.mark.usefixtures("skip_if_not_managed_cluster", "tas_connection_type")
 
-@pytest.mark.usefixtures("skip_if_not_managed_cluster", "tas_connection_type", "set_environment_variables")
-class TestSigning:
-    """Test suite to verify TAS signing infrastructure is ready for model signing operations."""
 
-    def test_signing_environment_ready(
-        self: Self,
-        securesign_instance: Securesign,
-        tas_connection_type: ConfigMap,
-        oidc_issuer_url: str,
-    ):
-        """Temporary test to verify the complete signing environment is ready.
+class TestSigningInfrastructure:
+    """
+    Test suite to verify TAS signing infrastructure is ready for model signing operations."
+    """
 
-        This test validates that all required components for model signing are
-        properly configured and ready:
-        - TAS operator is installed
-        - Securesign instance is ready
-        - All Sigstore components (Fulcio, Rekor, TUF, TSA) are available
-        - Service URLs are accessible via Connection Type
-        - OIDC issuer is configured
-
-        Replace this test with a more comprehensive test suite for model signing.
-
-        Args:
-            admin_client: Kubernetes dynamic client
-            securesign_instance: Securesign instance from fixture
-            tas_connection_type: TAS Connection Type ConfigMap from fixture
-            oidc_issuer_url: OIDC issuer URL from cluster
-        """
-        LOGGER.info("Verifying Model Signing Environment Readiness")
-
-        # 1. Verify Securesign instance status has all required service URLs
+    @pytest.mark.dependency(name="test_securesign_service_urls")
+    def test_securesign_service_urls(self: Self, securesign_instance: Securesign):
+        """Verify Securesign instance has all required service URLs with HTTPS."""
         instance = securesign_instance.instance.to_dict()
 
         status = instance.get("status", {})
         assert status, "Securesign instance has no status"
 
-        # Check each service has a URL
         required_services = ["fulcio", "rekor", "tuf", "tsa"]
         for service in required_services:
             service_status = status.get(service, {})
             url = service_status.get("url")
             assert url, f"Service '{service}' has no URL in Securesign status"
             assert url.startswith("https://"), f"Service '{service}' URL is not HTTPS: {url}"
-            LOGGER.info(f"✓ {service.upper()} service available: {url}")
+            LOGGER.info(f"{service.upper()} service available: {url}")
 
-        # 2. Verify Connection Type has all required environment variables
+    @pytest.mark.dependency(name="test_connection_type_env_vars")
+    def test_connection_type_env_vars(self: Self, tas_connection_type: ConfigMap):
+        """Verify TAS Connection Type has all required environment variables."""
         data = dict(tas_connection_type.instance.data)
         fields = json.loads(data["fields"])
 
@@ -74,23 +58,28 @@ class TestSigning:
             assert env_var in env_var_to_url, f"Missing required environment variable: {env_var}"
             url = env_var_to_url[env_var]
             assert url, f"Environment variable {env_var} has empty value"
-            LOGGER.info(f"✓ {env_var} configured: {url[:50]}...")
+            LOGGER.info(f"{env_var} configured: {url[:50]}...")
 
-        # 3. Verify OIDC issuer is set
+    @pytest.mark.dependency(name="test_oidc_issuer")
+    def test_oidc_issuer(self: Self, oidc_issuer_url: str):
+        """Verify OIDC issuer URL is configured."""
         assert oidc_issuer_url, "OIDC issuer URL is empty"
-        LOGGER.info(f"✓ OIDC issuer configured: {oidc_issuer_url}")
+        LOGGER.info(f"OIDC issuer configured: {oidc_issuer_url}")
 
-        LOGGER.info("Environment is ready for model signing operations!")
 
+@pytest.mark.usefixtures("set_environment_variables", "downloaded_model_dir")
+class TestModelSigning:
+    """
+    Test suite for model signing and verification.
+    """
+
+    @pytest.mark.dependency(
+        name="test_model_sign",
+        depends=["test_securesign_service_urls", "test_connection_type_env_vars", "test_oidc_issuer"],
+    )
     def test_model_sign(self, signed_model):
-        """Test model signing functionality.
-
-        Args:
-            signed_model: Tuple of (signer, signed_model_directory_path)
-
-        Verifies:
-            - Model has been signed successfully
-            - Signature files are created
+        """
+        Test model signing functionality.
         """
 
         LOGGER.info(f"Testing model signing in directory: {signed_model}")
@@ -98,14 +87,73 @@ class TestSigning:
         has_signature = check_model_signature_file(model_dir=str(signed_model))
         assert has_signature, "model.sig file not found after signing"
 
-    def test_model_verify(self, verified_model):
-        """Test model verification functionality.
-
-        Args:
-            verified_model: Result of model verification after signing
-
-        Verifies:
-            - Signed model can be verified successfully
-            - Verification result indicates success
+    @pytest.mark.dependency(
+        depends=[
+            "test_securesign_service_urls",
+            "test_connection_type_env_vars",
+            "test_oidc_issuer",
+            "test_model_sign",
+        ],
+    )
+    def test_model_verify(self, signer, downloaded_model_dir):
+        """
+        Test model verification functionality.
         """
         LOGGER.info("Testing model verification")
+        LOGGER.info(f"Verifying signed model in directory: {downloaded_model_dir}")
+        signer.verify_model(model_path=str(downloaded_model_dir))
+        LOGGER.info("Model verified successfully")
+
+
+@pytest.mark.usefixtures("set_environment_variables", "oci_registry_pod", "copied_model_to_oci_registry")
+class TestImageSigning:
+    """
+    Test suite for signing OCI images in an OCI registry.
+    """
+
+    @pytest.mark.dependency(
+        name="test_image_sign",
+        depends=["test_securesign_service_urls", "test_connection_type_env_vars", "test_oidc_issuer"],
+    )
+    def test_image_sign(self, signer, copied_model_to_oci_registry, ai_hub_oci_registry_host):
+        """
+        Test image signing functionality.
+        """
+
+        LOGGER.info(f"Testing model signing for image: {copied_model_to_oci_registry}")
+        assert copied_model_to_oci_registry
+        registry_url = f"https://{ai_hub_oci_registry_host}"
+        tags_url = f"{registry_url}/v2/{SIGNING_OCI_REPO_NAME}/tags/list"
+
+        tags_before = requests.get(tags_url, verify=False, timeout=10).json()
+        LOGGER.info(f"Tags before signing: {json.dumps(tags_before, indent=2)}")
+        assert tags_before["tags"] == ["latest"], (
+            f"Expected only ['latest'] tag before signing, got: {tags_before['tags']}"
+        )
+
+        signer.sign_image(image=str(copied_model_to_oci_registry))
+        LOGGER.info("Model signed successfully")
+
+        tags_after = requests.get(tags_url, verify=False, timeout=10).json()
+        LOGGER.info(f"Tags after signing: {json.dumps(tags_after, indent=2)}")
+        digest = copied_model_to_oci_registry.split("@")[-1]
+        expected_sig_tag = f"{digest.replace(':', '-')}.sig"
+        assert expected_sig_tag in tags_after["tags"], (
+            f"Signature tag '{expected_sig_tag}' not found in registry tags: {tags_after['tags']}"
+        )
+
+    @pytest.mark.dependency(
+        depends=[
+            "test_securesign_service_urls",
+            "test_connection_type_env_vars",
+            "test_oidc_issuer",
+            "test_image_sign",
+        ],
+    )
+    def test_image_verify(self, signer, copied_model_to_oci_registry):
+        """
+        Test image verification functionality.
+        """
+        LOGGER.info(f"Verifying signed image: {copied_model_to_oci_registry}")
+        signer.verify_image(image=str(copied_model_to_oci_registry))
+        LOGGER.info("Image verified successfully")
