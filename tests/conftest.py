@@ -299,7 +299,7 @@ def supported_accelerator_type(pytestconfig: pytest.Config) -> str | None:
     if accelerator_type.lower() not in AcceleratorType.SUPPORTED_LISTS:
         raise ValueError(
             "accelerator type is not defined."
-            "Either pass with `--supported-accelerator-type` or set `SUPPORTED_ACCLERATOR_TYPE` environment variable"
+            "Either pass with `--supported-accelerator-type` or set `SUPPORTED_ACCELERATOR_TYPE` environment variable"
         )
     return accelerator_type
 
