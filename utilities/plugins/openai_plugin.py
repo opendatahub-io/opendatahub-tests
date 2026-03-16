@@ -136,7 +136,7 @@ class OpenAIClient:
             keys_to_remove = ["created", "id"]
             if data:
                 data = OpenAIClient._remove_keys(data, keys_to_remove)
-            return data  # noqa: TRY300
+            return data
         except requests.exceptions.RequestException, json.JSONDecodeError:
             LOGGER.exception("Request error")
 
