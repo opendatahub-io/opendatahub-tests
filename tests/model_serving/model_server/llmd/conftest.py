@@ -9,10 +9,14 @@ import structlog
 import yaml
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.deployment import Deployment
 from ocp_resources.gateway import Gateway
+from ocp_resources.gateway_class import GatewayClass
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.namespace import Namespace
+from ocp_resources.resource import Resource
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service_account import ServiceAccount
@@ -24,9 +28,135 @@ from utilities.infra import create_inference_token, s3_endpoint_secret, update_c
 from utilities.llmd_constants import LLMDGateway
 from utilities.llmd_utils import create_llmd_gateway
 from utilities.logger import RedactedString
+from utilities.resources.kuadrant import Kuadrant
+from utilities.resources.leader_worker_set_operator import LeaderWorkerSetOperator
 
 LOGGER = structlog.get_logger(name=__name__)
 logging.getLogger("timeout_sampler").setLevel(logging.WARNING)
+
+LLMD_DSC_CONDITION: str = "KserveLLMInferenceServiceDependencies"
+
+LLMD_REQUIRED_OPERATORS: dict[str, str] = {
+    "cert-manager-operator": "cert-manager-operator",
+    "authorino-operator": "openshift-operators",
+    "rhcl-operator": "openshift-operators",
+}
+
+LLMD_REQUIRED_DEPLOYMENTS: dict[str, str] = {
+    "cert-manager-operator-controller-manager": "cert-manager-operator",
+    "cert-manager": "cert-manager",
+    "cert-manager-webhook": "cert-manager",
+    "authorino-operator": "openshift-operators",
+    "kuadrant-operator-controller-manager": "openshift-operators",
+    "lws-controller-manager": "openshift-lws-operator",
+}
+
+
+def _verify_operator_csv(admin_client: DynamicClient, csv_prefix: str, namespace: str) -> None:
+    for csv in ClusterServiceVersion.get(client=admin_client, namespace=namespace):
+        if csv.name.startswith(csv_prefix) and csv.status == csv.Status.SUCCEEDED:
+            return
+    pytest.skip(f"Operator CSV {csv_prefix} not found or not Succeeded in {namespace}")
+
+
+def verify_llmd_health(admin_client: DynamicClient, dsc_resource: Resource) -> None:
+    """Verify LLMD infrastructure dependencies are healthy.
+
+    Checks DSC condition, required operator CSVs, controller deployments,
+    LeaderWorkerSetOperator CR, GatewayClass, and Kuadrant CR.
+    """
+    # 1. DSC condition for LLMD dependencies
+    for condition in dsc_resource.instance.status.conditions:
+        if condition.type == LLMD_DSC_CONDITION:
+            if condition.status != "True":
+                pytest.skip(f"{LLMD_DSC_CONDITION} is not ready: {condition.status}, reason: {condition.get('reason')}")
+            break
+    else:
+        pytest.skip(f"{LLMD_DSC_CONDITION} condition not found in DSC status")
+
+    # 2. Operator CSVs
+    for csv_prefix, namespace in LLMD_REQUIRED_OPERATORS.items():
+        _verify_operator_csv(admin_client=admin_client, csv_prefix=csv_prefix, namespace=namespace)
+
+    # 3. Controller deployments
+    for name, namespace in LLMD_REQUIRED_DEPLOYMENTS.items():
+        deployment = Deployment(client=admin_client, name=name, namespace=namespace)
+        if not deployment.exists:
+            pytest.skip(f"LLMD dependency deployment {name} not found in {namespace}")
+
+        dep_available = False
+        for condition in deployment.instance.status.get("conditions", []):
+            if condition.type == "Available":
+                if condition.status != "True":
+                    pytest.skip(f"Deployment {name} in {namespace} is not Available: {condition.get('reason')}")
+                dep_available = True
+                break
+
+        if not dep_available:
+            pytest.skip(f"Deployment {name} in {namespace} has no Available condition")
+
+    # 4. LeaderWorkerSetOperator CR
+    lws_operator = LeaderWorkerSetOperator(client=admin_client, name="cluster")
+    if not lws_operator.exists:
+        pytest.skip("LeaderWorkerSetOperator 'cluster' CR not found")
+
+    lws_available = False
+    for condition in lws_operator.instance.status.get("conditions", []):
+        if condition.type == "Available":
+            if condition.status != "True":
+                pytest.skip(f"LeaderWorkerSetOperator is not Available: {condition.get('reason')}")
+            lws_available = True
+            break
+
+    if not lws_available:
+        pytest.skip("LeaderWorkerSetOperator has no Available condition")
+
+    # 5. GatewayClass
+    gateway_class = GatewayClass(client=admin_client, name="openshift-default")
+    if not gateway_class.exists:
+        pytest.skip("GatewayClass 'openshift-default' not found")
+
+    gc_accepted = False
+    for condition in gateway_class.instance.status.get("conditions", []):
+        if condition.type == "Accepted":
+            if condition.status != "True":
+                pytest.skip(f"GatewayClass 'openshift-default' is not Accepted: {condition.get('reason')}")
+            gc_accepted = True
+            break
+
+    if not gc_accepted:
+        pytest.skip("GatewayClass 'openshift-default' has no Accepted condition")
+
+    # 6. Kuadrant CR
+    kuadrant = Kuadrant(client=admin_client, name="kuadrant", namespace="kuadrant-system")
+    if not kuadrant.exists:
+        pytest.skip("Kuadrant 'kuadrant' CR not found")
+
+    LOGGER.info("LLMD component health check passed")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def llmd_health_check(
+    request: pytest.FixtureRequest,
+    admin_client: DynamicClient,
+    dsc_resource: Resource,
+) -> None:
+    """Session-scoped health gate for all LLMD tests.
+
+    Skips all tests under tests/model_serving/model_server/llmd/ when
+    LLMD infrastructure dependencies are not healthy.
+    """
+    if request.session.config.getoption("--skip-llmd-health-check"):
+        LOGGER.warning("Skipping LLMD health check, got --skip-llmd-health-check")
+        return
+
+    selected_markers = {mark.name for item in request.session.items for mark in item.iter_markers()}
+    if "component_health" in selected_markers:
+        LOGGER.info("Skipping LLMD health gate because selected tests include component_health marker")
+        return
+
+    verify_llmd_health(admin_client=admin_client, dsc_resource=dsc_resource)
+
 
 AuthEntry = namedtuple(typename="AuthEntry", field_names=["service", "token"])
 
