@@ -6,7 +6,7 @@ from ocp_resources.resource import ResourceEditor
 import pytest
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
-from llama_stack_client import LlamaStackClient
+from llama_stack_client import APIError, LlamaStackClient
 from llama_stack_client.types.vector_store import VectorStore
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
@@ -67,59 +67,6 @@ LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY = os.getenv("LLS_CORE_VLLM_EMBEDDING_TLS_VERI
 IBM_EARNINGS_DOC_URL = "https://www.ibm.com/downloads/documents/us-en/1550f7eea8c0ded6"
 
 distribution_name = generate_random_name(prefix="llama-stack-distribution")
-
-
-def _cleanup_s3_files(
-    bucket_name: str,
-    endpoint_url: str,
-    region: str,
-    access_key_id: str,
-    secret_access_key: str,
-) -> None:
-    """
-    Clean up files from S3 bucket that were uploaded during tests.
-
-    Args:
-        bucket_name: S3 bucket name
-        endpoint_url: S3 endpoint URL
-        region: S3 region
-        access_key_id: AWS access key ID
-        secret_access_key: AWS secret access key
-    """
-
-    try:
-        import boto3
-        from botocore.exceptions import ClientError
-
-        s3_client = boto3.client(
-            service_name="s3",
-            endpoint_url=endpoint_url,
-            aws_access_key_id=access_key_id,
-            aws_secret_access_key=secret_access_key,
-            region_name=region,
-        )
-
-        response = s3_client.list_objects_v2(Bucket=bucket_name)
-
-        if "Contents" not in response:
-            LOGGER.info("No files found to clean up from S3")
-            return
-
-        # We only want to delete files that start with "file-"
-        for obj in response["Contents"]:
-            key = obj["Key"]
-            if key.startswith("file-"):
-                s3_client.delete_object(Bucket=bucket_name, Key=key)
-                LOGGER.debug(f"Deleted file from S3: {key}")
-
-        response = s3_client.list_objects_v2(Bucket=bucket_name)
-
-        if "Contents" not in response:
-            LOGGER.info("No files found to clean up from S3")
-            return
-
-    except ClientError as e:
-        LOGGER.warning(f"Failed to clean up S3 files: {e}")
 
 
 @pytest.fixture(scope="class")
@@ -380,12 +327,7 @@ def unprivileged_llama_stack_distribution(
     unprivileged_model_namespace: Namespace,
     enabled_llama_stack_operator: DataScienceCluster,
     request: FixtureRequest,
-    llama_stack_server_config: Dict[str, Any],
-    ci_s3_bucket_name: str,
-    ci_s3_bucket_endpoint: str,
-    ci_s3_bucket_region: str,
-    aws_access_key_id: str,
-    aws_secret_access_key: str,
+    llama_stack_server_config: dict[str, Any],
     unprivileged_llama_stack_distribution_secret: Secret,
     unprivileged_postgres_deployment: Deployment,
     unprivileged_postgres_service: Service,
@@ -402,25 +344,6 @@ def unprivileged_llama_stack_distribution(
         lls_dist.wait_for_status(status=LlamaStackDistribution.Status.READY, timeout=600)
         yield lls_dist
 
-        try:
-            env_vars = llama_stack_server_config.get("containerSpec", {}).get("env", [])
-            enable_s3 = any(env.get("name") == "ENABLE_S3" and env.get("value") == "s3" for env in env_vars)
-
-            if enable_s3:
-                try:
-                    _cleanup_s3_files(
-                        bucket_name=ci_s3_bucket_name,
-                        endpoint_url=ci_s3_bucket_endpoint,
-                        region=ci_s3_bucket_region,
-                        access_key_id=aws_access_key_id,
-                        secret_access_key=aws_secret_access_key,
-                    )
-                except Exception as e:
-                    LOGGER.warning(f"Failed to clean up S3 files: {e}")
-
-        except Exception as e:
-            LOGGER.warning(f"Failed to clean up S3 files: {e}")
-
 
 @pytest.fixture(scope="class")
 def llama_stack_distribution(
@@ -428,12 +351,7 @@ def llama_stack_distribution(
     model_namespace: Namespace,
     enabled_llama_stack_operator: DataScienceCluster,
     request: FixtureRequest,
-    llama_stack_server_config: Dict[str, Any],
-    ci_s3_bucket_name: str,
-    ci_s3_bucket_endpoint: str,
-    ci_s3_bucket_region: str,
-    aws_access_key_id: str,
-    aws_secret_access_key: str,
+    llama_stack_server_config: dict[str, Any],
     llama_stack_distribution_secret: Secret,
     postgres_deployment: Deployment,
     postgres_service: Service,
@@ -448,25 +366,6 @@ def llama_stack_distribution(
     ) as lls_dist:
         lls_dist.wait_for_status(status=LlamaStackDistribution.Status.READY, timeout=600)
         yield lls_dist
-
-        try:
-            env_vars = llama_stack_server_config.get("containerSpec", {}).get("env", [])
-            enable_s3 = any(env.get("name") == "ENABLE_S3" and env.get("value") == "s3" for env in env_vars)
-
-            if enable_s3:
-                try:
-                    _cleanup_s3_files(
-                        bucket_name=ci_s3_bucket_name,
-                        endpoint_url=ci_s3_bucket_endpoint,
-                        region=ci_s3_bucket_region,
-                        access_key_id=aws_access_key_id,
-                        secret_access_key=aws_secret_access_key,
-                    )
-                except Exception as e:
-                    LOGGER.warning(f"Failed to clean up S3 files: {e}")
-
-        except Exception as e:
-            LOGGER.warning(f"Failed to clean up S3 files: {e}")
 
 
 def _get_llama_stack_distribution_deployment(
@@ -636,9 +535,35 @@ def _create_llama_stack_client(
             http_client=http_client,
         )
         wait_for_llama_stack_client_ready(client=client)
+        existing_file_ids = {f.id for f in client.files.list().data}
+
         yield client
+
+        _cleanup_files(client=client, existing_file_ids=existing_file_ids)
     finally:
         http_client.close()
+
+
+def _cleanup_files(client: LlamaStackClient, existing_file_ids: set[str]) -> None:
+    """Delete files created during test execution via the LlamaStack files API.
+
+    Only deletes files whose IDs were not present before the test ran,
+    avoiding interference with other test sessions.
+
+    Args:
+        client: The LlamaStackClient used during the test
+        existing_file_ids: File IDs that existed before the test started
+    """
+    try:
+        for file in client.files.list().data:
+            if file.id not in existing_file_ids:
+                try:
+                    client.files.delete(file_id=file.id)
+                    LOGGER.debug(f"Deleted file: {file.id}")
+                except APIError as e:
+                    LOGGER.warning(f"Failed to delete file {file.id}: {e}")
+    except APIError as e:
+        LOGGER.warning(f"Failed to clean up files: {e}")
 
 
 @pytest.fixture(scope="class")
