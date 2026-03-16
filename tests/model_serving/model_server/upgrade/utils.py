@@ -1,6 +1,8 @@
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.gateway import Gateway
 from ocp_resources.inference_service import InferenceService
+from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.prometheus import Prometheus
 from ocp_resources.route import Route
 
@@ -315,3 +317,91 @@ def verify_isvc_internal_access(isvc: InferenceService) -> str:
         raise AssertionError(f"InferenceService {isvc.name} has empty URL in status.address")
 
     return url
+
+
+def verify_llmd_pods_not_restarted(
+    client: DynamicClient,
+    llmisvc: LLMInferenceService,
+    max_restarts: int = 0,
+) -> None:
+    """
+    Verify that workload pods for an LLMInferenceService have not restarted.
+
+    Args:
+        client: DynamicClient instance
+        llmisvc: LLMInferenceService instance
+        max_restarts: Maximum allowed restart count (default 0)
+
+    Raises:
+        PodContainersRestartError: If any container has restarted more than max_restarts times
+    """
+    from tests.model_serving.model_server.llmd.utils import get_llmd_workload_pods
+
+    pods = get_llmd_workload_pods(client=client, llmisvc=llmisvc)
+    restarted_containers: dict[str, list[str]] = {}
+
+    for pod in pods:
+        if pod.instance.status.containerStatuses:
+            for container in pod.instance.status.containerStatuses:
+                if container.restartCount > max_restarts:
+                    restarted_containers.setdefault(pod.name, []).append(
+                        f"{container.name} (restarts: {container.restartCount})"
+                    )
+
+    if restarted_containers:
+        raise PodContainersRestartError(f"LLMD workload containers restarted: {restarted_containers}")
+
+
+def verify_llmd_router_not_restarted(
+    client: DynamicClient,
+    llmisvc: LLMInferenceService,
+    max_restarts: int = 0,
+) -> None:
+    """
+    Verify that the router-scheduler pod for an LLMInferenceService has not restarted.
+
+    Args:
+        client: DynamicClient instance
+        llmisvc: LLMInferenceService instance
+        max_restarts: Maximum allowed restart count (default 0)
+
+    Raises:
+        PodContainersRestartError: If any container has restarted more than max_restarts times
+    """
+    from tests.model_serving.model_server.llmd.utils import get_llmd_router_scheduler_pod
+
+    router_pod = get_llmd_router_scheduler_pod(client=client, llmisvc=llmisvc)
+    if not router_pod:
+        raise PodContainersRestartError(f"Router-scheduler pod not found for {llmisvc.name}")
+
+    restarted_containers: dict[str, list[str]] = {}
+    if router_pod.instance.status.containerStatuses:
+        for container in router_pod.instance.status.containerStatuses:
+            if container.restartCount > max_restarts:
+                restarted_containers.setdefault(router_pod.name, []).append(
+                    f"{container.name} (restarts: {container.restartCount})"
+                )
+
+    if restarted_containers:
+        raise PodContainersRestartError(f"LLMD router-scheduler containers restarted: {restarted_containers}")
+
+
+def verify_gateway_accepted(gateway: Gateway) -> None:
+    """
+    Verify that a Gateway resource exists and has an Accepted condition.
+
+    Args:
+        gateway: Gateway instance
+
+    Raises:
+        AssertionError: If gateway does not exist or is not accepted
+    """
+    if not gateway.exists:
+        raise AssertionError(f"Gateway {gateway.name} does not exist in namespace {gateway.namespace}")
+
+    conditions = gateway.instance.status.get("conditions", [])
+    is_accepted = any(
+        condition.get("type") == "Accepted" and condition.get("status") == "True" for condition in conditions
+    )
+    if not is_accepted:
+        raise AssertionError(f"Gateway {gateway.name} is not Accepted. Conditions: {conditions}")
