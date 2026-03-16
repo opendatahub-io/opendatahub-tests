@@ -50,12 +50,20 @@ class TestHuggingFaceModelsMultipleSources:
             headers=model_registry_rest_headers,
         )
         sources = response.get("items", [])
+        expected_source_ids = {MIXED_SOURCE_ID, OVERLAPPING_SOURCE_ID}
+        found_source_ids = set()
         for source in sources:
-            if source["id"] in [MIXED_SOURCE_ID, OVERLAPPING_SOURCE_ID]:
+            if source["id"] in expected_source_ids:
+                found_source_ids.add(source["id"])
                 assert source["status"] == "available", (
                     f"Source '{source['id']}' has status '{source['status']}', expected 'available'. "
                     f"Error: {source.get('error', 'N/A')}"
                 )
+        missing_sources = expected_source_ids - found_source_ids
+        assert not missing_sources, (
+            f"Expected sources {missing_sources} not found in response. "
+            f"Available source IDs: {[s['id'] for s in sources]}"
+        )
 
     def test_shared_model_present_in_both_sources(
         self: Self,
