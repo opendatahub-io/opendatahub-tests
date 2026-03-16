@@ -28,7 +28,6 @@ class TestModelRegistryWithSecureDB:
     Tests both MySQL and PostgreSQL backends with invalid and valid CA certificate scenarios.
     """
 
-    # Implements RHOAIENG-26150
     @pytest.mark.tier3
     @pytest.mark.parametrize(
         "patch_external_deployment_with_ssl_ca,patch_invalid_ca,local_ca_bundle",

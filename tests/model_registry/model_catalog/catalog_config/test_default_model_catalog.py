@@ -258,7 +258,7 @@ class TestModelCatalogDefaultData:
         default_model_catalog_yaml_content: dict[Any, Any],
     ):
         """
-        RHOAIENG-33667: Validate number of models in default catalog
+        Validate number of models in default catalog
         """
 
         count = len(default_model_catalog_yaml_content.get("models", []))
@@ -275,7 +275,7 @@ class TestModelCatalogDefaultData:
         catalog_openapi_schema: dict[Any, Any],
     ):
         """
-        RHOAIENG-35260: Validate the correspondence of model parameters in default catalog yaml and model catalog api
+        Validate the correspondence of model parameters in default catalog yaml and model catalog api
         """
 
         all_model_fields, required_model_fields = extract_schema_fields(
@@ -326,7 +326,6 @@ class TestModelCatalogDefaultData:
                 models_with_differences[model["name"]] = differences
                 LOGGER.warning(f"Found value differences for {model['name']}: {differences}")
 
-        # FAILS for null-valued properties in YAML model until https://issues.redhat.com/browse/RHOAIENG-35322 is fixed
         assert not models_with_differences, (
             f"Found differences in {len(models_with_differences)} model(s): {models_with_differences}"
         )
@@ -340,7 +339,7 @@ class TestModelCatalogDefaultData:
         catalog_openapi_schema: dict[Any, Any],
     ):
         """
-        RHOAIENG-35260: Validate the random artifact in default catalog yaml matches API response
+        Validate the random artifact in default catalog yaml matches API response
         """
 
         all_artifact_fields, required_artifact_fields = extract_schema_fields(
