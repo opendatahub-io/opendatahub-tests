@@ -61,7 +61,7 @@ def validate_default_catalog(catalogs: list[dict[Any, Any]]) -> None:
 
 
 def get_validate_default_model_catalog_source(catalogs: list[dict[Any, Any]]) -> None:
-    assert len(catalogs) == 2, f"Expected no custom models to be present. Actual: {catalogs}"
+    assert len(catalogs) == 3, f"Expected no custom models to be present. Actual: {catalogs}"
     ids_actual = [entry["id"] for entry in catalogs]
     assert sorted(ids_actual) == sorted(DEFAULT_CATALOGS.keys()), (
         f"Actual default catalog entries: {ids_actual},Expected: {DEFAULT_CATALOGS.keys()}"
@@ -206,6 +206,7 @@ def validate_filter_test_result(
         model_registry_rest_headers=model_registry_rest_headers,
         source_label=REDHAT_AI_CATALOG_NAME,
         expected_models=expected_models,
+        source_id=REDHAT_AI_CATALOG_ID,
     )
 
     # Get database models
@@ -426,6 +427,7 @@ def wait_for_model_set_match(
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
     source_label: str,
+    source_id: str,
     expected_models: set[str],
 ) -> set[str]:
     """
@@ -436,6 +438,7 @@ def wait_for_model_set_match(
         model_registry_rest_headers: API headers
         source_label: Source to query
         expected_models: Expected set of model names
+        source_id: Source to query
 
     Returns:
         Set of matched models
@@ -445,10 +448,13 @@ def wait_for_model_set_match(
         AssertionError: If models don't match (retried automatically)
         Exception: If API errors occur (retried automatically)
     """
-    current_models = get_api_models_by_source_label(
-        model_catalog_rest_url=model_catalog_rest_url,
-        model_registry_rest_headers=model_registry_rest_headers,
-        source_label=source_label,
+    current_models = models_with_source_id(
+        models=get_api_models_by_source_label(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            source_label=source_label,
+        ),
+        source_id=source_id,
     )
     # Raise AssertionError if condition not met - this will be retried
     assert current_models == expected_models, f"Expected models {expected_models}, got {current_models}"
@@ -526,6 +532,11 @@ def wait_for_catalog_source_restore(
 
     LOGGER.info("Found expected number of models: %s for source: %s", expected_count, source_label)
     return True
+
+
+def models_with_source_id(models: set[str], source_id: str) -> set[str]:
+    """Prefix each model name with the source ID to create unique identifiers across sources."""
+    return {f"{source_id}:{model}" for model in models}
 
 
 def validate_model_catalog_sources(

@@ -59,7 +59,7 @@ class TestModelCatalogGeneral:
             ),
             pytest.param(
                 {"configmap_name": DEFAULT_MODEL_CATALOG_CM},
-                2,
+                3,
                 True,
                 id="test_model_catalog_default_sources_configmap",
             ),
