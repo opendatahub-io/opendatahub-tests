@@ -1,6 +1,5 @@
-"""Tests for unsupported Content-Type headers in inference requests.
-
-Jira: RHOAIENG-48283
+"""
+Tests for unsupported Content-Type headers in inference requests.
 """
 
 import json

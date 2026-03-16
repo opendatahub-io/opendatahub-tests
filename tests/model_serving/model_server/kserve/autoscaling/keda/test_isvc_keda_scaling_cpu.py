@@ -5,7 +5,6 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
-from ocp_resources.resource import ResourceEditor
 from simple_logger.logger import get_logger
 
 from tests.model_serving.model_runtime.vllm.basic_model_deployment.test_granite_7b_starter import SERVING_ARGUMENT
@@ -17,7 +16,6 @@ from tests.model_serving.model_server.utils import (
 )
 from utilities.constants import ModelFormat, ModelVersion, Protocols, RunTimeConfigs, Timeout
 from utilities.inference_utils import Inference
-from utilities.jira import is_jira_open
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 from utilities.monitoring import validate_metrics_field
 
@@ -74,31 +72,6 @@ class TestOVMSKedaScaling:
         admin_client: DynamicClient,
     ):
         """Test KEDA ScaledObject configuration and run inference multiple times to trigger scaling."""
-
-        if is_jira_open(jira_id="RHOAIENG-31386", admin_client=admin_client):
-            isvc_dict = stressed_ovms_keda_inference_service.instance.to_dict()
-            metrics = isvc_dict.get("spec", {}).get("predictor", {}).get("autoScaling", {}).get("metrics", [])
-
-            if metrics and isinstance(metrics[0], dict) and metrics[0].get("external") is not None:
-                metrics[0].setdefault("external", {})["authenticationRef"] = {
-                    "authModes": "bearer",
-                    "authenticationRef": {"name": "inference-prometheus-auth"},
-                }
-
-                ResourceEditor(
-                    patches={
-                        stressed_ovms_keda_inference_service: {
-                            "spec": {
-                                "predictor": {
-                                    "autoScaling": {
-                                        "metrics": metrics,
-                                    }
-                                }
-                            }
-                        }
-                    }
-                ).update()
-
         verify_keda_scaledobject(
             client=unprivileged_client,
             isvc=stressed_ovms_keda_inference_service,
