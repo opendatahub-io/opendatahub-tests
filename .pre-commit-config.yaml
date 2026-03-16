@@ -62,6 +62,16 @@ repos:
         exclude: ^(docs/|.*test.*\.py$|utilities/manifests/.*|utilities/plugins/tgis_grpc/.*)
 
 
+  - repo: local
+    hooks:
+        - id: check-signoff
+          name: Check Signed-off-by
+          stages: [commit-msg]
+          language: system
+          entry: >
+            bash -c 'grep -q "^Signed-off-by:" "$1" ||
+            { echo "ERROR: Commit not signed. Use git commit -s"; exit 1; }' --
+
   - repo: https://github.com/espressif/conventional-precommit-linter
     rev: v1.11.0
     hooks:
