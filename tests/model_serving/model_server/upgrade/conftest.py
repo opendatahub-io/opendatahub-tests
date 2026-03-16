@@ -5,7 +5,9 @@ import pytest
 import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.gateway import Gateway
 from ocp_resources.inference_service import InferenceService
+from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
@@ -23,6 +25,7 @@ from utilities.constants import (
     ModelVersion,
     Protocols,
     RuntimeTemplates,
+    Timeout,
 )
 from utilities.inference_utils import create_isvc
 from utilities.infra import (
@@ -32,6 +35,8 @@ from utilities.infra import (
     s3_endpoint_secret,
     update_configmap_data,
 )
+from utilities.llmd_constants import KServeGateway, LLMDGateway
+from utilities.llmd_utils import create_llmd_gateway
 from utilities.logger import RedactedString
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -42,6 +47,7 @@ AUTH_UPGRADE_NAMESPACE = "upgrade-auth-model-server"
 MODEL_CAR_UPGRADE_NAMESPACE = "upgrade-model-car"
 METRICS_UPGRADE_NAMESPACE = "upgrade-metrics"
 PRIVATE_ENDPOINT_UPGRADE_NAMESPACE = "upgrade-private-endpoint"
+LLMD_UPGRADE_NAMESPACE = "upgrade-llmd"
 S3_CONNECTION = "upgrade-connection"
 
 
@@ -765,3 +771,88 @@ def private_endpoint_inference_service_fixture(
             **isvc_kwargs,
         ) as isvc:
             yield isvc
+
+
+# LLMD Upgrade Fixtures
+@pytest.fixture(scope="session")
+def llmd_namespace_fixture(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    teardown_resources: bool,
+) -> Generator[Namespace, Any, Any]:
+    """Namespace for LLMD upgrade tests."""
+    ns = Namespace(client=admin_client, name=LLMD_UPGRADE_NAMESPACE)
+
+    if pytestconfig.option.post_upgrade:
+        yield ns
+        ns.clean_up()
+    else:
+        with create_ns(
+            admin_client=admin_client,
+            name=LLMD_UPGRADE_NAMESPACE,
+            model_mesh_enabled=False,
+            add_dashboard_label=True,
+            teardown=teardown_resources,
+        ) as ns:
+            yield ns
+
+
+@pytest.fixture(scope="session")
+def llmd_gateway_fixture(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    teardown_resources: bool,
+) -> Generator[Gateway, Any, Any]:
+    """Shared LLMD Gateway for upgrade tests."""
+    gateway = Gateway(
+        client=admin_client,
+        name=LLMDGateway.DEFAULT_NAME,
+        namespace=LLMDGateway.DEFAULT_NAMESPACE,
+        api_group=KServeGateway.API_GROUP,
+    )
+
+    if pytestconfig.option.post_upgrade:
+        yield gateway
+        gateway.clean_up()
+    else:
+        with create_llmd_gateway(
+            client=admin_client,
+            namespace=LLMDGateway.DEFAULT_NAMESPACE,
+            gateway_class_name=LLMDGateway.DEFAULT_CLASS,
+            wait_for_condition=True,
+            timeout=Timeout.TIMEOUT_1MIN,
+            teardown=teardown_resources,
+        ) as gateway:
+            yield gateway
+
+
+@pytest.fixture(scope="session")
+def llmd_inference_service_fixture(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    llmd_namespace_fixture: Namespace,
+    llmd_gateway_fixture: Gateway,
+    teardown_resources: bool,
+) -> Generator[LLMInferenceService, Any, Any]:
+    """LLMInferenceService using TinyLlama OCI for upgrade tests."""
+    from tests.model_serving.model_server.llmd.conftest import _create_llmisvc_from_config
+    from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaOciConfig
+
+    config_cls = TinyLlamaOciConfig
+    llmisvc = LLMInferenceService(
+        client=admin_client,
+        name=config_cls.name,
+        namespace=llmd_namespace_fixture.name,
+    )
+
+    if pytestconfig.option.post_upgrade:
+        yield llmisvc
+        llmisvc.clean_up()
+    else:
+        with _create_llmisvc_from_config(
+            config_cls=config_cls,
+            namespace=llmd_namespace_fixture.name,
+            client=admin_client,
+            teardown=teardown_resources,
+        ) as llmisvc:
+            yield llmisvc
