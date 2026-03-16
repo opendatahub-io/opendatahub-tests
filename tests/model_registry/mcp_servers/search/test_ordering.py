@@ -12,7 +12,6 @@ LOGGER = get_logger(name=__name__)
 class TestMCPServerOrdering:
     """RHOAIENG-51584: Tests for MCP server ordering functionality."""
 
-    @pytest.mark.xfail(reason="RHOAIENG-52448: sortOrder/orderBy not working, fix in PR #2367")
     @pytest.mark.parametrize(
         "sort_order",
         [
