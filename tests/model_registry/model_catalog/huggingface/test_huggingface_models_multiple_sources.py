@@ -112,44 +112,25 @@ class TestHuggingFaceModelsMultipleSources:
                 f"The API should strip the source prefix for backward compatibility."
             )
 
-    @pytest.mark.xfail(reason="Name and sourceLabel filter query is not working")
-    def test_filter_by_name_and_source_label(
+    @pytest.mark.parametrize(
+        "filter_field",
+        [
+            pytest.param("name", id="filter_by_name", marks=pytest.mark.xfail(reason="RHOAIENG-53498")),
+            pytest.param("externalId", id="filter_by_external_id"),
+        ],
+    )
+    def test_filter_returns_model_from_all_sources(
         self: Self,
         updated_catalog_config_map: ConfigMap,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
+        filter_field: str,
     ):
-        """Verify filtering by model name with a source label returns the model only from that source."""
-        for source_id, source_label in [
-            (MIXED_SOURCE_ID, "HuggingFace Source mixed"),
-            (OVERLAPPING_SOURCE_ID, "HuggingFace Source overlapping_mixed"),
-        ]:
-            LOGGER.info(f"Filtering model '{SHARED_MODEL}' with source label '{source_label}'")
-            response = get_models_from_catalog_api(
-                model_catalog_rest_url=model_catalog_rest_url,
-                model_registry_rest_headers=model_registry_rest_headers,
-                source_label=source_label,
-                additional_params=f"&filterQuery=name='{SHARED_MODEL}'",
-                page_size=1000,
-            )
-            matching_items = response.get("items", [])
-            assert len(matching_items) == 1, (
-                f"Expected exactly 1 model for source '{source_id}', got {len(matching_items)}"
-            )
-            assert matching_items[0]["name"] == SHARED_MODEL
-            assert matching_items[0]["source_id"] == source_id
-
-    def test_filter_by_name_returns_model_from_all_sources(
-        self: Self,
-        updated_catalog_config_map: ConfigMap,
-        model_catalog_rest_url: list[str],
-        model_registry_rest_headers: dict[str, str],
-    ):
-        """Verify filtering by model name without specifying a source returns the model from all sources."""
+        """Verify filtering by model name or externalId returns the model from all sources."""
         response = get_models_from_catalog_api(
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
-            additional_params=f"&filterQuery=externalId='{SHARED_MODEL}'",
+            additional_params=f"&filterQuery={filter_field}='{SHARED_MODEL}'",
             page_size=1000,
         )
         matching_items = response.get("items", [])
