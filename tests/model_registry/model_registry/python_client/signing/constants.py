@@ -9,3 +9,7 @@ SECURESIGN_ORGANIZATION_EMAIL = "admin@example.com"
 
 # TAS Connection Type ConfigMap name
 TAS_CONNECTION_TYPE_NAME = "tas-securesign-v1"
+
+# OCI Registry configuration for signed model storage
+SIGNING_OCI_REPO_NAME = "signing-test/signed-model"
+SIGNING_OCI_TAG = "latest"

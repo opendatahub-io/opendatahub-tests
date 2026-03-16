@@ -1,3 +1,5 @@
+CALCULATOR_SERVER_NAME: str = "calculator"
+CALCULATOR_PROVIDER: str = "Math Community"
 MCP_CATALOG_SOURCE_ID: str = "test_mcp_servers"
 MCP_CATALOG_SOURCE_NAME: str = "Test MCP Servers"
 MCP_CATALOG_API_PATH: str = "/api/mcp_catalog/v1alpha1/"
@@ -161,6 +163,16 @@ MCP_CATALOG_INVALID_SOURCE: dict = {
     "enabled": True,
     "properties": {"yamlCatalogPath": MCP_SERVERS_YAML_INVALID_CATALOG_PATH},
     "labels": [MCP_CATALOG_INVALID_SOURCE_NAME],
+}
+
+NAMED_QUERIES: dict = {
+    "production_ready": {
+        "verifiedSource": {"operator": "=", "value": True},
+    },
+    "security_focused": {
+        "sast": {"operator": "=", "value": True},
+        "readOnlyTools": {"operator": "=", "value": True},
+    },
 }
 
 EXPECTED_MCP_SOURCE2_SERVER_NAMES: set[str] = {"code-reviewer"}

@@ -18,7 +18,7 @@ from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
     ],
     indirect=True,
 )
-@pytest.mark.sanity
+@pytest.mark.smoke
 @pytest.mark.rawdeployment
 class TestRawUnprivilegedUser:
     @pytest.mark.polarion("ODS-2611")

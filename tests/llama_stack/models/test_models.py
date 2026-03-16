@@ -13,7 +13,7 @@ from llama_stack_client.types import Model, ModelRetrieveResponse
     indirect=True,
 )
 @pytest.mark.llama_stack
-@pytest.mark.smoke
+@pytest.mark.tier1
 class TestLlamaStackModels:
     """Test class for LlamaStack models API functionality.
 

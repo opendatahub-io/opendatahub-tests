@@ -31,7 +31,6 @@ pytestmark = pytest.mark.usefixtures(
 )
 
 
-@pytest.mark.sanity
 @pytest.mark.parametrize(
     ("protocol", "model_namespace", "s3_models_storage_uri", "triton_serving_runtime", "triton_inference_service"),
     [
@@ -45,6 +44,7 @@ pytestmark = pytest.mark.usefixtures(
                 **BASE_RAW_DEPLOYMENT_CONFIG,
             },
             id="pytorch-raw-rest-deployment",
+            marks=pytest.mark.tier1,
         ),
         pytest.param(
             {"protocol_type": Protocols.GRPC},
@@ -56,6 +56,7 @@ pytestmark = pytest.mark.usefixtures(
                 **BASE_RAW_DEPLOYMENT_CONFIG,
             },
             id="pytorch-raw-grpc-deployment",
+            marks=pytest.mark.tier1,
         ),
     ],
     indirect=True,
