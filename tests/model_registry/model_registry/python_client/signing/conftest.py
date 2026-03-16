@@ -15,15 +15,21 @@ from model_registry.signing import Signer
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
+from ocp_resources.pod import Pod
+from ocp_resources.service import Service
 from ocp_resources.subscription import Subscription
 from ocp_utilities.operators import install_operator, uninstall_operator
+from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
+from timeout_sampler import TimeoutSampler
 
 from tests.model_registry.model_registry.python_client.signing.constants import (
     SECURESIGN_API_VERSION,
     SECURESIGN_NAME,
     SECURESIGN_NAMESPACE,
+    SIGNING_OCI_REPO_NAME,
+    SIGNING_OCI_TAG,
     TAS_CONNECTION_TYPE_NAME,
 )
 from tests.model_registry.model_registry.python_client.signing.utils import (
@@ -33,8 +39,9 @@ from tests.model_registry.model_registry.python_client.signing.utils import (
     get_root_checksum,
     get_tas_service_urls,
 )
-from utilities.constants import OPENSHIFT_OPERATORS, Timeout
+from utilities.constants import OPENSHIFT_OPERATORS, Labels, ModelCarImage, OCIRegistry, Timeout
 from utilities.infra import get_openshift_token, is_managed_cluster
+from utilities.resources.route import Route
 from utilities.resources.securesign import Securesign
 
 LOGGER = get_logger(name=__name__)
@@ -314,7 +321,89 @@ def tas_connection_type(admin_client: DynamicClient, securesign_instance: Secure
     LOGGER.info(f"TAS Connection Type '{TAS_CONNECTION_TYPE_NAME}' deleted from namespace '{app_namespace}'")
 
 
-@pytest.fixture(scope="package")
+@pytest.fixture(scope="class")
+def oci_registry_pod(
+    admin_client: DynamicClient,
+    oci_namespace: Namespace,
+) -> Generator[Pod, Any]:
+    """Create a simple OCI registry (Zot) pod with local emptyDir storage.
+
+    Unlike oci_registry_pod_with_minio, this does not require MinIO — data is
+    stored in an emptyDir volume, which is sufficient for signing test scenarios.
+
+    Args:
+        admin_client: Kubernetes dynamic client
+        oci_namespace: Namespace for the OCI registry pod
+
+    Yields:
+        Pod: Ready OCI registry pod
+    """
+    with Pod(
+        client=admin_client,
+        name=OCIRegistry.Metadata.NAME,
+        namespace=oci_namespace.name,
+        containers=[
+            {
+                "env": [
+                    {"name": "ZOT_HTTP_ADDRESS", "value": OCIRegistry.Metadata.DEFAULT_HTTP_ADDRESS},
+                    {"name": "ZOT_HTTP_PORT", "value": str(OCIRegistry.Metadata.DEFAULT_PORT)},
+                    {"name": "ZOT_LOG_LEVEL", "value": "info"},
+                ],
+                "image": OCIRegistry.PodConfig.REGISTRY_IMAGE,
+                "name": OCIRegistry.Metadata.NAME,
+                "securityContext": {
+                    "allowPrivilegeEscalation": False,
+                    "capabilities": {"drop": ["ALL"]},
+                    "runAsNonRoot": True,
+                    "seccompProfile": {"type": "RuntimeDefault"},
+                },
+                "volumeMounts": [
+                    {
+                        "name": "zot-data",
+                        "mountPath": "/var/lib/registry",
+                    }
+                ],
+            }
+        ],
+        volumes=[
+            {
+                "name": "zot-data",
+                "emptyDir": {},
+            }
+        ],
+        label={
+            Labels.Openshift.APP: OCIRegistry.Metadata.NAME,
+            "maistra.io/expose-route": "true",
+        },
+    ) as oci_pod:
+        oci_pod.wait_for_condition(condition="Ready", status="True")
+        yield oci_pod
+
+
+@pytest.fixture(scope="class")
+def ai_hub_oci_registry_route(admin_client: DynamicClient, oci_registry_service: Service) -> Generator[Route, Any]:
+    """Override the default Route with edge TLS termination.
+
+    Cosign requires HTTPS. Edge termination lets the OpenShift router handle TLS
+    and forward plain HTTP to the Zot backend.
+    """
+    with Route(
+        client=admin_client,
+        name=OCIRegistry.Metadata.NAME,
+        namespace=oci_registry_service.namespace,
+        to={"kind": "Service", "name": oci_registry_service.name},
+        tls={"termination": "edge", "insecureEdgeTerminationPolicy": "Redirect"},
+    ) as oci_route:
+        yield oci_route
+
+
+@pytest.fixture(scope="class")
+def ai_hub_oci_registry_host(ai_hub_oci_registry_route: Route) -> str:
+    """Get the OCI registry host from the route."""
+    return ai_hub_oci_registry_route.instance.spec.host
+
+
+@pytest.fixture(scope="class")
 def downloaded_model_dir() -> Path:
     """Download a test model from Hugging Face to a temporary directory.
 
@@ -334,7 +423,7 @@ def downloaded_model_dir() -> Path:
     return model_dir
 
 
-@pytest.fixture(scope="package")
+@pytest.fixture(scope="class")
 def set_environment_variables(securesign_instance: Securesign) -> Generator[None, Any]:
     """
     Create a service account token and save it to a temporary directory.
@@ -403,6 +492,81 @@ def signer(set_environment_variables) -> Signer:
     return signer
 
 
+@pytest.fixture(scope="class")
+def copied_model_to_oci_registry(
+    oci_registry_pod: Pod,
+    ai_hub_oci_registry_host: str,
+) -> Generator[str, Any]:
+    """Copy ModelCarImage.MNIST_8_1 from quay.io to the local OCI registry using skopeo.
+
+    Sets COSIGN_ALLOW_INSECURE_REGISTRY so cosign can access the registry over
+    the edge-terminated Route with a self-signed certificate.
+
+    Args:
+        oci_registry_pod: OCI registry pod fixture ensuring registry is running
+        ai_hub_oci_registry_host: OCI registry hostname from route
+
+    Yields:
+        str: The destination image reference with digest (e.g. "{host}/{repo}@sha256:...")
+    """
+    # Wait for the OCI registry to be reachable via the Route
+    registry_url = f"https://{ai_hub_oci_registry_host}"
+    LOGGER.info(f"Waiting for OCI registry to be reachable at {registry_url}/v2/")
+    for sample in TimeoutSampler(
+        wait_timeout=120,
+        sleep=5,
+        func=requests.get,
+        url=f"{registry_url}/v2/",
+        timeout=5,
+        verify=False,
+    ):
+        if sample.ok:
+            LOGGER.info("OCI registry is reachable")
+            break
+
+    source_image = ModelCarImage.MNIST_8_1.removeprefix("oci://")
+    dest_ref = f"{ai_hub_oci_registry_host}/{SIGNING_OCI_REPO_NAME}:{SIGNING_OCI_TAG}"
+
+    LOGGER.info(f"Copying image from docker://{source_image} to docker://{dest_ref}")
+    run_command(
+        command=[
+            "skopeo",
+            "copy",
+            "--dest-tls-verify=false",
+            f"docker://{source_image}",
+            f"docker://{dest_ref}",
+        ],
+        check=True,
+    )
+    LOGGER.info(f"Image copied successfully to {dest_ref}")
+
+    # Get the digest of the pushed image
+    _, inspect_out, _ = run_command(
+        command=[
+            "skopeo",
+            "inspect",
+            "--tls-verify=false",
+            f"docker://{dest_ref}",
+        ],
+        check=True,
+    )
+    digest = json.loads(inspect_out).get("Digest", "")
+    LOGGER.info(f"Pushed image {inspect_out} digest: {digest}")
+
+    dest_with_digest = f"{ai_hub_oci_registry_host}/{SIGNING_OCI_REPO_NAME}@{digest}"
+    LOGGER.info(f"Full image reference: {dest_with_digest}")
+
+    # Set cosign env var to allow insecure registry access (self-signed cert from edge Route)
+    os.environ["COSIGN_ALLOW_INSECURE_REGISTRY"] = "true"
+    LOGGER.info("Set COSIGN_ALLOW_INSECURE_REGISTRY=true")
+
+    yield dest_with_digest
+
+    # Cleanup
+    os.environ.pop("COSIGN_ALLOW_INSECURE_REGISTRY", None)
+    LOGGER.info("Cleaned up COSIGN_ALLOW_INSECURE_REGISTRY")
+
+
 @pytest.fixture(scope="function")
 def signed_model(signer, downloaded_model_dir) -> Path:
     """
@@ -413,13 +577,3 @@ def signed_model(signer, downloaded_model_dir) -> Path:
     LOGGER.info("Model signed successfully")
 
     return downloaded_model_dir
-
-
-@pytest.fixture(scope="function")
-def verified_model(signer, downloaded_model_dir) -> None:
-    """
-    Verify a signed model.
-    """
-    LOGGER.info(f"Verifying signed model in directory: {downloaded_model_dir}")
-    signer.verify_model(model_path=str(downloaded_model_dir))
-    LOGGER.info("Model verified successfully")
