@@ -18,7 +18,7 @@ class LLMISvcConfig:
     container_image = None
     template_config_ref = "kserve-config-llm-template"
     enable_auth = False
-    wait_timeout = 180
+    wait_timeout = 240
 
     @classmethod
     def container_resources(cls):
