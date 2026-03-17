@@ -82,6 +82,12 @@ HF_MODELS: dict[str, Any] = {
         "ibm-granite/granite-4.0-h-micro",
     ],
     "custom": [HF_CUSTOM_MODE],
+    "overlapping_mixed": [
+        # Shared with "mixed" - tests that same model across sources is not silently dropped
+        "ibm-granite/granite-4.0-h-1b",
+        # Unique to this source
+        "ibm-granite/granite-4.0-h-small",
+    ],
 }
 EXPECTED_HF_CATALOG_VALUES: list[dict[str, str]] = [{"id": HF_SOURCE_ID, "model_name": HF_MODELS["mixed"][0]}]
 EXPECTED_MULTIPLE_HF_CATALOG_VALUES: list[dict[str, str]] = [

@@ -28,7 +28,7 @@ pytestmark = [
 
 
 class TestModelInclusionFiltering:
-    """Test inclusion filtering functionality (RHOAIENG-41841)"""
+    """Test inclusion filtering functionality"""
 
     @pytest.mark.parametrize(
         "redhat_ai_models_with_filter",
@@ -76,7 +76,7 @@ class TestModelInclusionFiltering:
 
 
 class TestModelExclusionFiltering:
-    """Test exclusion filtering functionality (RHOAIENG-41841 part 2)"""
+    """Test exclusion filtering functionality"""
 
     @pytest.mark.parametrize(
         "redhat_ai_models_with_filter",
@@ -119,7 +119,7 @@ class TestModelExclusionFiltering:
 
 
 class TestCombinedIncludeExcludeFiltering:
-    """Test combined include+exclude filtering (RHOAIENG-41841 part 3)"""
+    """Test combined include+exclude filtering"""
 
     @pytest.mark.parametrize(
         "redhat_ai_models_with_filter",
@@ -169,7 +169,7 @@ class TestCombinedIncludeExcludeFiltering:
 
 
 class TestModelCleanupLifecycle:
-    """Test automatic model cleanup during lifecycle changes (RHOAIENG-41846)"""
+    """Test automatic model cleanup during lifecycle changes"""
 
     @pytest.mark.tier2
     def test_model_cleanup_on_exclusion_change(
@@ -276,7 +276,7 @@ class TestModelCleanupLifecycle:
 
 @pytest.mark.usefixtures("disabled_redhat_ai_source")
 class TestSourceLifecycleCleanup:
-    """Test source disabling cleanup scenarios (RHOAIENG-41846)"""
+    """Test source disabling cleanup scenarios"""
 
     @pytest.mark.tier2
     def test_source_disabling_removes_models(
@@ -318,7 +318,7 @@ class TestSourceLifecycleCleanup:
 
 
 class TestLoggingValidation:
-    """Test cleanup operation logging (RHOAIENG-41846)"""
+    """Test cleanup operation logging"""
 
     @pytest.mark.parametrize(
         "redhat_ai_models_with_filter",

@@ -64,7 +64,8 @@ MODEL_DATA = {
 )
 @pytest.mark.downstream_only
 class TestAsyncUploadE2E:
-    """RHOAIENG-32501: Test for async upload job with real MinIO, OCI registry, Connection Secrets and Model Registry"""
+    """
+    Test for async upload job with real MinIO, OCI registry, Connection Secrets and Model Registry"""
 
     @pytest.mark.dependency(name="job_creation_and_pod_spawning")
     def test_job_creation_and_pod_spawning(
@@ -89,7 +90,7 @@ class TestAsyncUploadE2E:
         model_registry_client: list[ModelRegistryClient],
     ) -> None:
         """
-        RHOAIENG-47260: Verify that created IDs are exposed to termination message
+        Verify that created IDs are exposed to termination message
 
         The termination message should contain RegisteredModel, ModelVersion, and ModelArtifact IDs
         that match the actual resources created in the model registry.
