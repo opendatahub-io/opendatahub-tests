@@ -49,7 +49,7 @@ catalogs:
     "model_registry_namespace",
 )
 class TestHuggingFaceSourceErrorValidation:
-    """Partial model fetching errors should not affect other models."""
+    """Test cases for Partial model fetching errors should not affect other models."""
 
     def test_source_state_and_message(
         self: Self,
