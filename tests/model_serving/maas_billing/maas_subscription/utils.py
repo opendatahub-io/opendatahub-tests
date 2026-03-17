@@ -4,7 +4,7 @@ import json
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import pytest
 import requests
@@ -229,7 +229,7 @@ def get_api_key(
     """
     Fetch a single API key by ID via MaaS API (GET /v1/api-keys/{id}).
     """
-    url = f"{base_url}/v1/api-keys/{key_id}"
+    url = f"{base_url}/v1/api-keys/{quote(key_id, safe='')}"
     response = request_session_http.get(
         url=url,
         headers={"Authorization": f"Bearer {ocp_user_token}"},
@@ -292,7 +292,7 @@ def revoke_api_key(
     """
     Revoke an API key via MaaS API (DELETE /v1/api-keys/{id}).
     """
-    url = f"{base_url}/v1/api-keys/{key_id}"
+    url = f"{base_url}/v1/api-keys/{quote(key_id, safe='')}"
     response = request_session_http.delete(
         url=url,
         headers={"Authorization": f"Bearer {ocp_user_token}"},

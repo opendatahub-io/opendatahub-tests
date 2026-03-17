@@ -50,7 +50,7 @@ class TestAPIKeyCRUD:
         assert key.startswith("sk-oai-"), f"Expected 'sk-oai-' prefix, got: {key[:20]}"
         assert len(key) > len("sk-oai-"), "Key body after prefix must not be empty"
 
-        LOGGER.info(f"[create] Created key id={body['id']}, prefix={key[:15]}...")
+        LOGGER.info(f"[create] Created key id={body['id']}, key_prefix=sk-oai-***")
 
         get_resp, get_body = get_api_key(
             request_session_http=request_session_http,
