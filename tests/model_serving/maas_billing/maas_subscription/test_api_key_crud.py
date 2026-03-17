@@ -42,12 +42,12 @@ class TestAPIKeyCRUD:
             api_key_name=key_name,
         )
 
-        assert "id" in body, f"Expected 'id' in create response, got: {body}"
-        assert "key" in body, f"Expected 'key' in create response, got: {body}"
-        assert "name" in body, f"Expected 'name' in create response, got: {body}"
+        assert "id" in body, "Expected 'id' field in create response"
+        assert "key" in body, "Expected 'key' field in create response"
+        assert "name" in body, "Expected 'name' field in create response"
 
         key = body["key"]
-        assert key.startswith("sk-oai-"), f"Expected 'sk-oai-' prefix, got: {key[:20]}"
+        assert key.startswith("sk-oai-"), "Expected key to start with 'sk-oai-' prefix"
         assert len(key) > len("sk-oai-"), "Key body after prefix must not be empty"
 
         LOGGER.info(f"[create] Created key id={body['id']}, key_prefix=sk-oai-***")
