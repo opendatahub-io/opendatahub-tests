@@ -31,7 +31,7 @@ class TestSubscriptionWithoutAuthPolicy:
     the token must also be listed in a MaaSAuthPolicy for the model.
     """
 
-    @pytest.mark.smoke
+    @pytest.mark.tier1
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
     def test_subscription_without_auth_policy_gets_403(
         self,

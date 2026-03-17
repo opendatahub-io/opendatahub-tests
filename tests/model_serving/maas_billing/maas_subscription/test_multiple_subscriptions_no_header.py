@@ -29,7 +29,7 @@ class TestMultipleSubscriptionsNoHeader:
     is denied when no x-maas-subscription header is provided to disambiguate.
     """
 
-    @pytest.mark.smoke
+    @pytest.mark.tier1
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
     def test_multiple_matching_subscriptions_no_header_gets_403(
         self,
