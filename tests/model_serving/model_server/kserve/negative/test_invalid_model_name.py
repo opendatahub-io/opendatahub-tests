@@ -1,6 +1,5 @@
-"""Tests for invalid model name in inference endpoint.
-
-Jira: RHOAIENG-48282
+"""
+Tests for invalid model name in inference endpoint.
 """
 
 import json

@@ -1,6 +1,5 @@
-"""Tests for malformed JSON payload handling in inference requests.
-
-Jira: RHOAIENG-48279
+"""
+Tests for malformed JSON payload handling in inference requests.
 """
 
 from http import HTTPStatus

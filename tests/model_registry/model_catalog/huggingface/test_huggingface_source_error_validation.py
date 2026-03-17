@@ -49,7 +49,7 @@ catalogs:
     "model_registry_namespace",
 )
 class TestHuggingFaceSourceErrorValidation:
-    """Test cases for RHOAIENG-47934 - Partial model fetching errors should not affect other models."""
+    """Test cases for Partial model fetching errors should not affect other models."""
 
     def test_source_state_and_message(
         self: Self,
@@ -58,7 +58,7 @@ class TestHuggingFaceSourceErrorValidation:
         model_registry_rest_headers: dict[str, str],
     ):
         """
-        RHOAIENG-47934: Verify source shows error state with correct error message.
+        Verify source shows error state with correct error message.
 
         This test verifies that:
         1. The source is in error state due to private model fetch failure
@@ -89,7 +89,7 @@ class TestHuggingFaceSourceErrorValidation:
         model_registry_rest_headers: dict[str, str],
     ):
         """
-        RHOAIENG-49162: Check that accessible models are visible through catalog API using source label.
+        Check that accessible models are visible through catalog API using source label.
 
         This test verifies that accessible models are still returned by the catalog API
         even when the source is in error state.
@@ -108,7 +108,7 @@ class TestHuggingFaceSourceErrorValidation:
         model_registry_rest_headers: dict[str, str],
     ):
         """
-        RHOAIENG-47934: Check that accessible models are visible through catalog API.
+        Check that accessible models are visible through catalog API.
 
         This test verifies that accessible models are still returned by the catalog API
         even when the source is in error state.
@@ -127,7 +127,7 @@ class TestHuggingFaceSourceErrorValidation:
         model_registry_rest_headers: dict[str, str],
     ):
         """
-        RHOAIENG-47934: Ensure inaccessible models are not found via API calls.
+        Ensure inaccessible models are not found via API calls.
 
         This test verifies that inaccessible models (private/gated) correctly return
         "Not Found" errors when accessed via individual model API endpoints.

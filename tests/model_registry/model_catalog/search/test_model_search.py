@@ -37,7 +37,7 @@ class TestSearchModelCatalog:
         model_registry_rest_headers: dict[str, str],
     ):
         """
-        RHOAIENG-33656: Validate search model catalog by source label
+        Validate search model catalog by source label
         """
 
         redhat_ai_filter_moldels_size = get_models_from_catalog_api(
@@ -78,7 +78,6 @@ class TestSearchModelCatalog:
         model_registry_rest_headers: dict[str, str],
     ):
         """
-        RHOAIENG-33656:
         Validate search model catalog by invalid source label
         """
 
@@ -122,7 +121,7 @@ class TestSearchModelCatalog:
         source_filter: str,
     ):
         """
-        RHOAIENG-33656: Validate search model catalog by match
+        Validate search model catalog by match
         """
         random_model, random_model_name, _ = randomly_picked_model_from_catalog_api_by_source
         LOGGER.info(f"random_model_name: {random_model_name}")
@@ -141,7 +140,7 @@ class TestSearchModelCatalog:
 
 
 class TestSearchModelCatalogQParameter:
-    """Test suite for the 'q' search parameter functionality (RHOAIENG-36911)."""
+    """Test suite for the 'q' search parameter functionality."""
 
     @pytest.mark.parametrize(
         "search_term",
@@ -249,7 +248,7 @@ class TestSearchModelsByFilterQuery:
         model_registry_namespace: str,
     ):
         """
-        RHOAIENG-33658: Tests that the API returns all models matching a given filter query and
+        Tests that the API returns all models matching a given filter query and
         that the database results are consistent.
         """
         # Filter parameters
@@ -297,7 +296,7 @@ class TestSearchModelsByFilterQuery:
         model_registry_namespace: str,
     ):
         """
-        RHOAIENG-36938: Tests the API's response to invalid and non-matching filter queries.
+        Tests the API's response to invalid and non-matching filter queries.
         It verifies that an invalid filter query raises the correct error and
         that a query with no matches returns zero models.
         """
@@ -336,7 +335,7 @@ class TestSearchModelsByFilterQuery:
         model_registry_namespace: str,
     ):
         """
-        RHOAIENG-36938: Checks that performance data files exist for all models in the catalog pod.
+        Checks that performance data files exist for all models in the catalog pod.
         It ensures that each model has the required metadata and performance files present in the pod.
         """
 
@@ -408,7 +407,7 @@ class TestSearchModelsByFilterQuery:
         model_registry_rest_headers: dict[str, str],
     ):
         """
-        RHOAIENG-39615: Advanced filter query test for performance-based filtering with AND/OR logic
+        Advanced filter query test for performance-based filtering with AND/OR logic
         """
         errors = []
 

@@ -1,6 +1,5 @@
-"""Tests for missing required fields in inference requests.
-
-Jira: RHOAIENG-48281
+"""
+Tests for missing required fields in inference requests.
 """
 
 import json
