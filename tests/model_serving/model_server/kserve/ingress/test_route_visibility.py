@@ -189,6 +189,7 @@ class TestRestRawDeploymentRoutesTimeout:
     ],
     indirect=True,
 )
+@pytest.mark.skip(reason="skipping grpc raw for tgis-caikit")
 class TestGrpcRawDeployment:
     def test_grpc_raw_deployment_internal_route(self, s3_models_inference_service):
         """Test GRPC inference using internal route"""
@@ -244,6 +245,7 @@ class TestGrpcRawDeployment:
     ],
     indirect=True,
 )
+@pytest.mark.skip(reason="skipping grpc raw for tgis-caikit")
 class TestGrpcRawDeploymentTimeout:
     @pytest.mark.dependency(name="test_grpc_raw_deployment_exposed_route")
     def test_grpc_raw_deployment_exposed_route(self, s3_models_inference_service):
