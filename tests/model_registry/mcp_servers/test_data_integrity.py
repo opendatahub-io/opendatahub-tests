@@ -15,7 +15,7 @@ LOGGER = get_logger(name=__name__)
 
 @pytest.mark.usefixtures("mcp_servers_configmap_patch")
 class TestMCPServerLoading:
-    """RHOAIENG-51582: Tests for loading MCP servers from YAML into the catalog (TC-LOAD-001)."""
+    """Tests for loading MCP servers from YAML into the catalog (TC-LOAD-001)."""
 
     def test_mcp_servers_loaded(
         self: Self,

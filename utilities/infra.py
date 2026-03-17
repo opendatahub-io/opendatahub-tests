@@ -85,7 +85,7 @@ def create_ns(
     """
     Create namespace with admin or unprivileged client.
 
-    For a namespace / project which contains Serverless ISVC,  there is a workaround for RHOAIENG-19969.
+    For a namespace / project which contains Serverless ISVC,  there is a workaround.
     Currently, when Serverless ISVC is deleted and the namespace is deleted, namespace "SomeResourcesRemain" is True.
     This is because the serverless pods are not immediately deleted resulting in prolonged namespace deletion.
     Waiting for the pod(s) to be deleted before cleanup, eliminates the issue.
@@ -1185,7 +1185,7 @@ def check_internal_image_registry_available(admin_client: DynamicClient) -> bool
         is_available = management_state == "managed"
 
         LOGGER.info(f"Image registry management state: {management_state}, available: {is_available}")
-        return is_available  # noqa: TRY300
+        return is_available
     except (ResourceNotFoundError, Exception) as e:  # noqa: BLE001
         LOGGER.warning(f"Failed to check image registry config: {e}")
         return False

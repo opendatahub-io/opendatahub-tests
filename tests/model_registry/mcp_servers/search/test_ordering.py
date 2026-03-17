@@ -10,7 +10,7 @@ LOGGER = get_logger(name=__name__)
 
 @pytest.mark.usefixtures("mcp_servers_configmap_patch")
 class TestMCPServerOrdering:
-    """RHOAIENG-51584: Tests for MCP server ordering functionality."""
+    """Tests for MCP server ordering functionality."""
 
     @pytest.mark.parametrize(
         "sort_order",

@@ -27,7 +27,7 @@ class TestDBMigration:
         delete_mr_deployment: None,
     ):
         """
-        RHOAIENG-27505: This test is to check the migration error when the database is dirty.
+        This test is to check the migration error when the database is dirty.
         The test will:
         1. Set the dirty flag to 1 for the latest migration version
         2. Delete the model registry deployment

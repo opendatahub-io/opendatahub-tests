@@ -167,7 +167,7 @@ def registry_pull_secret(pytestconfig: Config) -> list[str]:
     try:
         for secret in registry_pull_secret:
             base64.b64decode(s=secret, validate=True)
-        return registry_pull_secret  # noqa: TRY300
+        return registry_pull_secret
     except binascii.Error:
         raise ValueError("Registry pull secret is not a valid base64 encoded string")
 
@@ -253,7 +253,7 @@ def modelcar_yaml_config(pytestconfig: pytest.Config) -> dict[str, Any] | None:
             modelcar_yaml = yaml.safe_load(file)
             if not isinstance(modelcar_yaml, dict):
                 raise ValueError("modelcar.yaml should contain a dictionary.")  # noqa: TRY004
-            return modelcar_yaml  # noqa: TRY300
+            return modelcar_yaml
         except yaml.YAMLError as e:
             raise ValueError(f"Error parsing modelcar.yaml: {e}") from e
 

@@ -37,7 +37,8 @@ CATALOG_CONTAINER = "catalog"
 )
 @pytest.mark.usefixtures("mcp_invalid_yaml_configmap_patch")
 class TestMCPServerInvalidYAML:
-    """RHOAIENG-51582: Tests for graceful handling of invalid YAML sources (TC-LOAD-007, TC-LOAD-008)."""
+    """
+    Tests for graceful handling of invalid YAML sources (TC-LOAD-007, TC-LOAD-008)."""
 
     def test_valid_servers_loaded_despite_invalid_source(
         self: Self,

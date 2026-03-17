@@ -752,9 +752,7 @@ def create_isvc(
                         and isvc_annotations.get(Annotations.KserveIo.DEPLOYMENT_MODE)
                         == KServeDeploymentType.MODEL_MESH
                     ):
-                        LOGGER.warning(
-                            "Bug RHOAIENG-13636 - re-creating isvc if there's already a modelmesh isvc in the namespace"
-                        )
+                        LOGGER.warning("re-creating isvc if there's already a modelmesh isvc in the namespace")
                         inference_service.clean_up()
                         inference_service.deploy()
                         break

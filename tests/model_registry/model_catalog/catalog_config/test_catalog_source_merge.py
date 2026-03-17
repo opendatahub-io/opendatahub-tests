@@ -31,7 +31,7 @@ class TestCatalogSourceMerge:
         model_registry_rest_headers: dict[str, str],
     ):
         """
-        RHOAIENG-41738: Test that a sparse override in custom ConfigMap successfully overrides
+        Test that a sparse override in custom ConfigMap successfully overrides
         specific fields while preserving unspecified fields.
         """
         catalog_id = sparse_override_catalog_source["catalog_id"]

@@ -1,6 +1,5 @@
-"""Tests for wrong data types in input tensor.
-
-Jira: RHOAIENG-48280
+"""
+Tests for wrong data types in input tensor.
 """
 
 import copy

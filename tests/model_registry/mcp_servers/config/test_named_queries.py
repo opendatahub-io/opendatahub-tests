@@ -11,7 +11,7 @@ LOGGER = get_logger(name=__name__)
 
 @pytest.mark.usefixtures("mcp_servers_configmap_patch")
 class TestMCPServerNamedQueries:
-    """RHOAIENG-52375: Tests for MCP server named query functionality."""
+    """Tests for MCP server named query functionality."""
 
     @pytest.mark.parametrize(
         "named_query, expected_custom_properties",
