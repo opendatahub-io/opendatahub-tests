@@ -32,7 +32,7 @@ class TestAPIKeyCRUD:
         ocp_token_for_actor: str,
     ) -> None:
         """Verify API key creation and show-once behavior."""
-        
+
         key_name = f"e2e-crud-create-{generate_random_name()}"
 
         _, body = create_api_key(
@@ -61,9 +61,7 @@ class TestAPIKeyCRUD:
         assert get_resp.status_code == 200, (
             f"Expected 200 on GET /v1/api-keys/{body['id']}, got {get_resp.status_code}: {get_resp.text[:200]}"
         )
-        assert "key" not in get_body, (
-            "Plaintext key must not be returned by GET after creation (show-once pattern)"
-        )
+        assert "key" not in get_body, "Plaintext key must not be returned by GET after creation (show-once pattern)"
 
     @pytest.mark.tier1
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "admin"}], indirect=True)
@@ -174,7 +172,5 @@ class TestAPIKeyCRUD:
         assert get_resp.status_code == 200, (
             f"Expected 200 on GET after revoke, got {get_resp.status_code}: {get_resp.text[:200]}"
         )
-        assert get_body.get("status") == "revoked", (
-            f"Expected status='revoked' on GET after revoke, got: {get_body}"
-        )
+        assert get_body.get("status") == "revoked", f"Expected status='revoked' on GET after revoke, got: {get_body}"
         LOGGER.info(f"[revoke] Key {key_id} confirmed revoked")
