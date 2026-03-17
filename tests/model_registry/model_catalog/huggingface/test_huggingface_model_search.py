@@ -35,7 +35,7 @@ class TestHuggingFaceModelSearch:
         source_filter: str,
     ):
         """
-        RHOAIENG-41869: Validate search model catalog by match
+        Validate search model catalog by match
         """
         LOGGER.info(f"Testing ability to filter models by name: {hf_model_name}")
         result = get_models_from_catalog_api(

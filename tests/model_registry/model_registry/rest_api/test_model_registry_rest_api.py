@@ -291,7 +291,7 @@ class TestModelRegistryCreationRest:
         expected_param: dict[str, Any],
     ):
         """
-        Update, [RHOAIENG-24371] archive, unarchive model versions and ensure the updated values
+        Update, archive, unarchive model versions and ensure the updated values
         are reflected on the model version
         """
         validate_resource_attributes(
@@ -337,7 +337,7 @@ class TestModelRegistryCreationRest:
         expected_param: dict[str, Any],
     ):
         """
-        Update, [RHOAIENG-24371] archive, unarchive registered models and ensure the updated values
+        Update, archive, unarchive registered models and ensure the updated values
         are reflected on the registered model
         """
         validate_resource_attributes(

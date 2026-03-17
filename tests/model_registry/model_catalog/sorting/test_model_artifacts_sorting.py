@@ -58,7 +58,6 @@ class TestArtifactsSorting:
                     "header_type": "registry",
                     "model_name": random.choice(MODEL_NAMES_CUSTOM_PROPERTIES),
                 },
-                marks=pytest.mark.xfail(reason="RHOAIENG-38056: falls back to ID sorting"),
             ),
             pytest.param(
                 "NAME",
@@ -68,7 +67,6 @@ class TestArtifactsSorting:
                     "header_type": "registry",
                     "model_name": random.choice(MODEL_NAMES_CUSTOM_PROPERTIES),
                 },
-                marks=pytest.mark.xfail(reason="RHOAIENG-38056: falls back to ID sorting"),
             ),
         ],
         indirect=["randomly_picked_model_from_catalog_api_by_source"],
@@ -82,7 +80,7 @@ class TestArtifactsSorting:
         randomly_picked_model_from_catalog_api_by_source: tuple[dict, str, str],
     ):
         """
-        RHOAIENG-37260: Test artifacts endpoint sorts correctly by supported fields
+        Test artifacts endpoint sorts correctly by supported fields
         """
         _, model_name, _ = randomly_picked_model_from_catalog_api_by_source
         LOGGER.info(f"Testing artifacts sorting for {model_name}: orderBy={order_by}, sortOrder={sort_order}")
@@ -199,7 +197,7 @@ class TestCustomPropertiesSorting:
         expect_pure_fallback: bool,
     ):
         """
-        RHOAIENG-38010: Test custom properties endpoint sorts correctly by supported fields
+        Test custom properties endpoint sorts correctly by supported fields
 
         This test validates two scenarios:
         1. expect_pure_fallback=False: Tests custom property sorting where at least some artifacts

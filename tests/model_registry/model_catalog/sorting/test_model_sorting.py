@@ -40,7 +40,7 @@ class TestAccuracySorting:
         model_registry_rest_headers: dict[str, str],
     ):
         """
-        RHOAIENG-36856: Test accuracy sorting for FindModels endpoint
+        Test accuracy sorting for FindModels endpoint
 
         This test validates accuracy sorting behavior with different sort_order parameters:
 
@@ -86,7 +86,7 @@ class TestAccuracySorting:
         model_registry_rest_headers: dict[str, str],
     ):
         """
-        RHOAIENG-45852: Validate that recommendations parameter affects artifact-based model sorting
+        Validate that recommendations parameter affects artifact-based model sorting
 
         This test is parametrized by use_case and validates:
         1. Without recommendations=true: Models sorted by lowest latency across ALL artifacts

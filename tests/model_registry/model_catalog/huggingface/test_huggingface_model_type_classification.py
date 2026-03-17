@@ -59,7 +59,9 @@ pytestmark = [pytest.mark.skip_on_disconnected]
     indirect=["updated_catalog_config_map", "hf_source_filter"],
 )
 class TestModelTypeClassification:
-    """RHOAIENG-49090: Test suite for model_type classification on Hugging Face models."""
+    """
+    Test suite for model_type classification on Hugging Face models.
+    """
 
     @pytest.mark.parametrize("model_type_filter", ["generative", "predictive", "unknown"])
     def test_model_type_filter_and_classification(
