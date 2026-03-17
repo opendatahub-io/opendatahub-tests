@@ -35,7 +35,7 @@ class TestLlamaStackInferenceEmbeddings:
     - https://github.com/openai/openai-python/blob/main/api.md#embeddings
     """
 
-    @pytest.mark.smoke
+    @pytest.mark.tier1
     def test_inference_embeddings(
         self,
         llama_stack_models: ModelInfo,

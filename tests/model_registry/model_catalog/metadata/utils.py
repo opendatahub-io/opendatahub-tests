@@ -10,8 +10,7 @@ from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
 
 from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
-from tests.model_registry.model_catalog.utils import execute_get_command
-from tests.model_registry.utils import get_rest_headers
+from tests.model_registry.utils import execute_get_command, get_rest_headers
 
 LOGGER = get_logger(name=__name__)
 CATALOG_CONTAINER = "catalog"
@@ -295,7 +294,7 @@ def get_metadata_from_catalog_pod(model_catalog_pod: Pod, model_name: str) -> di
         metadata_json = model_catalog_pod.execute(command=["cat", metadata_path], container=CATALOG_CONTAINER)
         metadata = json.loads(metadata_json)
         LOGGER.info(f"Successfully loaded metadata.json for model '{model_name}'")
-        return metadata  # noqa: TRY300
+        return metadata
     except Exception as e:
         LOGGER.error(f"Failed to read metadata.json for model '{model_name}': {e}")
         raise

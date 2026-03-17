@@ -10,8 +10,7 @@ from tests.model_registry.model_catalog.metadata.utils import (
     get_metadata_from_catalog_pod,
     validate_custom_properties_match_metadata,
 )
-from tests.model_registry.model_catalog.utils import execute_get_command
-from tests.model_registry.utils import get_model_catalog_pod
+from tests.model_registry.utils import execute_get_command, get_model_catalog_pod
 
 LOGGER = get_logger(name=__name__)
 
@@ -62,7 +61,7 @@ class TestCustomProperties:
         model_registry_rest_headers: dict[str, str],
     ):
         """
-        RHOAIENG-41720: Test that all models have model_type with valid values: "generative", "predictive", "unknown".
+        Test that all models have model_type with valid values: "generative", "predictive", "unknown".
         """
         valid_model_types = {"generative", "predictive", "unknown"}
 

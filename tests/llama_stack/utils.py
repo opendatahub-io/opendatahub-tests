@@ -1,24 +1,19 @@
 import os
 import tempfile
-from collections.abc import Callable, Generator
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any, cast
+from typing import Any
 
 import requests
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from llama_stack_client import APIConnectionError, InternalServerError, LlamaStackClient
-from llama_stack_client.types.vector_store import VectorStore
 from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
 from tests.llama_stack.constants import (
     LLS_CORE_POD_FILTER,
-    TORCHTUNE_TEST_EXPECTATIONS,
-    ModelInfo,
-    TurnExpectation,
-    ValidationResult,
 )
 from utilities.exceptions import UnexpectedResourceCountError
 from utilities.resources.llama_stack_distribution import LlamaStackDistribution
@@ -103,7 +98,7 @@ def wait_for_llama_stack_client_ready(client: LlamaStackClient) -> bool:
             f"vector_stores:{len(vector_stores.data)} "
             f"files:{len(files.data)})"
         )
-        return True  # noqa: TRY300
+        return True
 
     except (APIConnectionError, InternalServerError) as error:
         LOGGER.debug(f"Llama Stack server not ready yet: {error}")
@@ -113,142 +108,6 @@ def wait_for_llama_stack_client_ready(client: LlamaStackClient) -> bool:
     except Exception as e:  # noqa: BLE001
         LOGGER.warning(f"Unexpected error checking Llama Stack readiness: {e}")
         return False
-
-
-def get_torchtune_test_expectations() -> list[TurnExpectation]:
-    """
-    Helper function to get the test expectations for TorchTune documentation questions.
-
-    Returns:
-        List of TurnExpectation objects for testing RAG responses
-    """
-    return [
-        {
-            "question": expectation.question,
-            "expected_keywords": expectation.expected_keywords,
-            "description": expectation.description,
-        }
-        for expectation in TORCHTUNE_TEST_EXPECTATIONS
-    ]
-
-
-def create_response_function(
-    llama_stack_client: LlamaStackClient, llama_stack_models: ModelInfo, vector_store: VectorStore
-) -> Callable:
-    """
-    Helper function to create a response function for testing with vector store integration.
-
-    Args:
-        llama_stack_client: The LlamaStack client instance
-        llama_stack_models: The model configuration
-        vector_store: The vector store instance
-
-    Returns:
-        A callable function that takes a question and returns a response
-    """
-
-    def _response_fn(*, question: str) -> str:
-        response = llama_stack_client.responses.create(
-            input=question,
-            model=llama_stack_models.model_id,
-            stream=False,
-            tools=[
-                {
-                    "type": "file_search",
-                    "vector_store_ids": [vector_store.id],
-                }
-            ],
-        )
-        return response.output_text
-
-    return _response_fn
-
-
-def validate_api_responses(
-    response_fn: Callable[..., str],
-    test_cases: list[TurnExpectation],
-    min_keywords_required: int = 1,
-) -> ValidationResult:
-    """
-    Validate API responses against expected keywords.
-
-    Tests multiple questions and validates that responses contain expected keywords.
-    Returns validation results with success status and detailed results for each turn.
-    """
-    all_results = []
-    successful = 0
-
-    for idx, test in enumerate(test_cases, 1):
-        question = test["question"]
-        expected_keywords = test["expected_keywords"]
-        description = test.get("description", "")
-
-        LOGGER.debug(f"\n[{idx}] Question: {question}")
-        if description:
-            LOGGER.debug(f"    Expectation: {description}")
-
-        try:
-            response = response_fn(question=question)
-            response_lower = response.lower()
-
-            found = [kw for kw in expected_keywords if kw.lower() in response_lower]
-            missing = [kw for kw in expected_keywords if kw.lower() not in response_lower]
-            success = len(found) >= min_keywords_required
-
-            if success:
-                successful += 1
-
-            result = {
-                "question": question,
-                "description": description,
-                "expected_keywords": expected_keywords,
-                "found_keywords": found,
-                "missing_keywords": missing,
-                "response_content": response,
-                "response_length": len(response) if isinstance(response, str) else 0,
-                "event_count": len(response.events) if hasattr(response, "events") else 0,
-                "success": success,
-                "error": None,
-            }
-
-            all_results.append(result)
-
-            LOGGER.debug(f"✓ Found: {found}")
-            if missing:
-                LOGGER.debug(f"✗ Missing: {missing}")
-            LOGGER.info(f"[{idx}] Result: {'PASS' if success else 'FAIL'}")
-
-        except Exception as e:
-            all_results.append({
-                "question": question,
-                "description": description,
-                "expected_keywords": expected_keywords,
-                "found_keywords": [],
-                "missing_keywords": expected_keywords,
-                "response_content": "",
-                "response_length": 0,
-                "event_count": 0,
-                "success": False,
-                "error": str(e),
-            })
-            LOGGER.exception(f"[{idx}] ERROR")
-
-    total = len(test_cases)
-    summary = {
-        "total": total,
-        "passed": successful,
-        "failed": total - successful,
-        "success_rate": successful / total if total > 0 else 0,
-    }
-
-    LOGGER.info("\n" + "=" * 40)
-    LOGGER.info("Validation Summary:")
-    LOGGER.info(f"Total: {summary['total']}")
-    LOGGER.info(f"Passed: {summary['passed']}")
-    LOGGER.info(f"Failed: {summary['failed']}")
-    LOGGER.info(f"Success rate: {summary['success_rate']:.1%}")
-
-    return cast("ValidationResult", {"success": successful == total, "results": all_results, "summary": summary})
 
 
 @retry(

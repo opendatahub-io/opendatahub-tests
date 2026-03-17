@@ -20,7 +20,8 @@ from tests.model_registry.model_catalog.db_constants import (
     SEARCH_MODELS_DB_QUERY,
     SEARCH_MODELS_WITH_SOURCE_ID_DB_QUERY,
 )
-from tests.model_registry.model_catalog.utils import execute_database_query, execute_get_command, parse_psql_output
+from tests.model_registry.model_catalog.utils import execute_database_query, parse_psql_output
+from tests.model_registry.utils import execute_get_command
 
 LOGGER = get_logger(name=__name__)
 
@@ -329,7 +330,8 @@ def validate_performance_data_files_on_pod(model_catalog_pod: Pod) -> dict[str, 
 
     for provider in providers.splitlines():
         required_files = ["metadata.json", "performance.ndjson", "evaluations.ndjson"]
-        if provider == "manifest.json":
+        # skip the files manifest.json and variant-groups.ndjson
+        if provider in ["manifest.json", "variant-groups.ndjson"]:
             continue
         LOGGER.info(f"Checking provider: {provider}")
         # Only for RedHatAI model we expect performance.ndjson file, based on edge case definition
@@ -404,7 +406,7 @@ def _validate_single_criterion(
         else:
             LOGGER.warning(f"Unknown key_type: {key_type}")
             return False, f"{key_name}: unknown type {key_type}"
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return False, f"{key_name}: conversion error"
 
     # Perform comparison based on type

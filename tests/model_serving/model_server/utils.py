@@ -12,7 +12,7 @@ from ocp_resources.utils.constants import DEFAULT_CLUSTER_RETRY_EXCEPTIONS
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, TimeoutWatch
 
-from tests.model_serving.model_server.kserve.keda.utils import get_isvc_keda_scaledobject
+from tests.model_serving.model_server.kserve.autoscaling.keda.utils import get_isvc_keda_scaledobject
 from utilities.constants import KServeDeploymentType, Protocols, Timeout
 from utilities.exceptions import (
     InferenceResponseError,
@@ -91,6 +91,10 @@ def verify_inference_response(
             and inference.deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT
         ):
             assert "x-forbidden-reason: Access to the InferenceGraph is not allowed" in res["output"]
+
+        elif "403 Forbidden" in res["output"]:
+            resource = f"{inference_service.kind.lower()}s"
+            assert re.search(rf"Forbidden \(user=.*verb=get.*resource={resource}", res["output"])
 
         else:
             raise ValueError(f"Auth header {auth_header} not found in response. Response: {res['output']}")

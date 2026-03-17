@@ -17,7 +17,7 @@ LOGGER = get_logger(name=__name__)
     "updated_dsc_component_state_scope_session", "model_registry_metadata_db_resources", "model_registry_instance"
 )
 class TestDBMigration:
-    @pytest.mark.sanity
+    @pytest.mark.tier3
     def test_db_migration_negative(
         self: Self,
         admin_client: DynamicClient,
@@ -27,7 +27,7 @@ class TestDBMigration:
         delete_mr_deployment: None,
     ):
         """
-        RHOAIENG-27505: This test is to check the migration error when the database is dirty.
+        This test is to check the migration error when the database is dirty.
         The test will:
         1. Set the dirty flag to 1 for the latest migration version
         2. Delete the model registry deployment
