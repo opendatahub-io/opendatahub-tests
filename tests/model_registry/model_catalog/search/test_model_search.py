@@ -7,6 +7,7 @@ from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.constants import (
+    OTHER_MODELS,
     REDHAT_AI_CATALOG_ID,
     REDHAT_AI_CATALOG_NAME,
     REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
@@ -52,15 +53,23 @@ class TestSearchModelCatalog:
         no_filtered_models_size = get_models_from_catalog_api(
             model_catalog_rest_url=model_catalog_rest_url, model_registry_rest_headers=model_registry_rest_headers
         )["size"]
-        both_filtered_models_size = get_models_from_catalog_api(
+        other_models_filter_models_size = get_models_from_catalog_api(
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
-            source_label=f"{REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME},{REDHAT_AI_CATALOG_NAME}",
+            source_label=OTHER_MODELS,
+        )["size"]
+        all_filtered_models_size = get_models_from_catalog_api(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            source_label=f"{REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME},{REDHAT_AI_CATALOG_NAME},{OTHER_MODELS}",
         )["size"]
         LOGGER.info(f"no_filtered_models_size: {no_filtered_models_size}")
         assert no_filtered_models_size > 0
-        assert no_filtered_models_size == both_filtered_models_size
-        assert redhat_ai_filter_moldels_size + redhat_ai_validated_filter_models_size == both_filtered_models_size
+        assert no_filtered_models_size == all_filtered_models_size
+        assert (
+            redhat_ai_filter_moldels_size + redhat_ai_validated_filter_models_size + other_models_filter_models_size
+            == all_filtered_models_size
+        )
 
     @pytest.mark.tier3
     def test_search_model_catalog_invalid_source_label(
