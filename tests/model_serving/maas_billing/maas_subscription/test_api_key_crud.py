@@ -8,7 +8,6 @@ from tests.model_serving.maas_billing.maas_subscription.utils import (
     create_api_key,
     get_api_key,
     list_api_keys,
-    revoke_api_key,
 )
 from utilities.general import generate_random_name
 
@@ -42,9 +41,8 @@ class TestAPIKeyCRUD:
             api_key_name=key_name,
         )
 
-        assert "id" in body, "Expected 'id' field in create response"
-        assert "key" in body, "Expected 'key' field in create response"
-        assert "name" in body, "Expected 'name' field in create response"
+        for field in ("id", "key", "name"):
+            assert field in body, f"Expected '{field}' field in create response"
 
         key = body["key"]
         assert key.startswith("sk-oai-"), "Expected key to start with 'sk-oai-' prefix"
@@ -70,26 +68,9 @@ class TestAPIKeyCRUD:
         request_session_http: requests.Session,
         base_url: str,
         ocp_token_for_actor: str,
+        two_active_api_key_ids: list[str],
     ) -> None:
-        """Verify active API keys are listed and pagination works."""
-
-        key1_name = f"e2e-crud-list-1-{generate_random_name()}"
-        key2_name = f"e2e-crud-list-2-{generate_random_name()}"
-
-        _, key1_body = create_api_key(
-            base_url=base_url,
-            ocp_user_token=ocp_token_for_actor,
-            request_session_http=request_session_http,
-            api_key_name=key1_name,
-        )
-        _, key2_body = create_api_key(
-            base_url=base_url,
-            ocp_user_token=ocp_token_for_actor,
-            request_session_http=request_session_http,
-            api_key_name=key2_name,
-        )
-        key1_id = key1_body["id"]
-        key2_id = key2_body["id"]
+        """Verify active API keys are listed and no plaintext key is exposed."""
 
         list_resp, list_body = list_api_keys(
             request_session_http=request_session_http,
@@ -107,13 +88,23 @@ class TestAPIKeyCRUD:
         assert len(items) >= 2, f"Expected at least 2 active keys, got {len(items)}"
 
         key_ids = [item["id"] for item in items]
-        assert key1_id in key_ids, f"key1 id={key1_id} not found in listed keys: {key_ids}"
-        assert key2_id in key_ids, f"key2 id={key2_id} not found in listed keys: {key_ids}"
+        for created_id in two_active_api_key_ids:
+            assert created_id in key_ids, f"Created key id={created_id} not found in listed keys"
 
         for item in items:
             assert "key" not in item, f"Plaintext key must not appear in any list item: {item}"
 
         LOGGER.info(f"[list] Found {len(items)} active keys")
+
+    @pytest.mark.tier1
+    @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "admin"}], indirect=True)
+    def test_list_api_keys_pagination(
+        self,
+        request_session_http: requests.Session,
+        base_url: str,
+        ocp_token_for_actor: str,
+    ) -> None:
+        """Verify that the search endpoint respects the pagination limit."""
 
         page_resp, page_body = list_api_keys(
             request_session_http=request_session_http,
@@ -137,40 +128,18 @@ class TestAPIKeyCRUD:
         request_session_http: requests.Session,
         base_url: str,
         ocp_token_for_actor: str,
+        revoked_api_key_id: str,
     ) -> None:
-        """Verify an API key can be revoked and remains revoked on GET."""
-
-        key_name = f"e2e-crud-revoke-{generate_random_name()}"
-
-        _, body = create_api_key(
-            base_url=base_url,
-            ocp_user_token=ocp_token_for_actor,
-            request_session_http=request_session_http,
-            api_key_name=key_name,
-        )
-        key_id = body["id"]
-
-        revoke_resp, revoke_body = revoke_api_key(
-            request_session_http=request_session_http,
-            base_url=base_url,
-            key_id=key_id,
-            ocp_user_token=ocp_token_for_actor,
-        )
-        assert revoke_resp.status_code == 200, (
-            f"Expected 200 on DELETE /v1/api-keys/{key_id}, got {revoke_resp.status_code}: {revoke_resp.text[:200]}"
-        )
-        assert revoke_body.get("status") == "revoked", (
-            f"Expected status='revoked' in DELETE response, got: {revoke_body}"
-        )
+        """Verify a revoked API key shows status='revoked' on subsequent GET."""
 
         get_resp, get_body = get_api_key(
             request_session_http=request_session_http,
             base_url=base_url,
-            key_id=key_id,
+            key_id=revoked_api_key_id,
             ocp_user_token=ocp_token_for_actor,
         )
         assert get_resp.status_code == 200, (
             f"Expected 200 on GET after revoke, got {get_resp.status_code}: {get_resp.text[:200]}"
         )
         assert get_body.get("status") == "revoked", f"Expected status='revoked' on GET after revoke, got: {get_body}"
-        LOGGER.info(f"[revoke] Key {key_id} confirmed revoked")
+        LOGGER.info(f"[revoke] Key {revoked_api_key_id} confirmed revoked")

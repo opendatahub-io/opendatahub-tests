@@ -28,6 +28,7 @@ from tests.model_serving.maas_billing.maas_subscription.utils import (
     create_maas_subscription,
     get_maas_postgres_resources,
     patch_llmisvc_with_maas_router_and_tiers,
+    revoke_api_key,
     wait_for_postgres_connection_log,
     wait_for_postgres_deployment_ready,
 )
@@ -620,3 +621,74 @@ def free_actor_premium_subscription(
             f"on premium model {maas_model_tinyllama_premium.name}"
         )
         yield sub_for_free_actor
+
+
+@pytest.fixture(scope="function")
+def two_active_api_key_ids(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_token_for_actor: str,
+) -> list[str]:
+    """
+    Create two active API keys and return their IDs for list tests.
+    """
+    ids = [
+        create_api_key(
+            base_url=base_url,
+            ocp_user_token=ocp_token_for_actor,
+            request_session_http=request_session_http,
+            api_key_name=f"e2e-fixture-list-{i}-{generate_random_name()}",
+        )[1]["id"]
+        for i in range(1, 3)
+    ]
+    LOGGER.info(f"two_active_api_key_ids: created keys {ids}")
+    return ids
+
+
+@pytest.fixture(scope="function")
+def active_api_key_id(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_token_for_actor: str,
+) -> str:
+    """
+    Create a single active API key and return its ID for revoke tests.
+    """
+    key_name = f"e2e-fixture-key-{generate_random_name()}"
+    _, body = create_api_key(
+        base_url=base_url,
+        ocp_user_token=ocp_token_for_actor,
+        request_session_http=request_session_http,
+        api_key_name=key_name,
+    )
+    LOGGER.info(f"active_api_key_id: created key id={body['id']}")
+    return body["id"]
+
+
+@pytest.fixture(scope="function")
+def revoked_api_key_id(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_token_for_actor: str,
+    active_api_key_id: str,
+) -> str:
+    """
+    Revoke the active API key and return its ID.
+
+    Asserts the DELETE response confirms status='revoked'.
+    Used as a precondition fixture for tests that verify revoked state persists.
+    """
+    revoke_resp, revoke_body = revoke_api_key(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        key_id=active_api_key_id,
+        ocp_user_token=ocp_token_for_actor,
+    )
+    assert revoke_resp.status_code == 200, (
+        f"Expected 200 on DELETE /v1/api-keys/{active_api_key_id}, "
+        f"got {revoke_resp.status_code}: {revoke_resp.text[:200]}"
+    )
+    assert revoke_body.get("status") == "revoked", f"Expected status='revoked' in DELETE response, got: {revoke_body}"
+    LOGGER.info(f"revoked_api_key_id: revoked key id={active_api_key_id}")
+    return active_api_key_id
+
