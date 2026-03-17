@@ -8,6 +8,7 @@ from pyhelper_utils.shell import run_command
 from simple_logger.logger import get_logger
 
 from tests.model_registry.model_registry.python_client.signing.constants import (
+    SECURESIGN_NAMESPACE,
     SECURESIGN_ORGANIZATION_EMAIL,
     SECURESIGN_ORGANIZATION_NAME,
 )
@@ -76,9 +77,9 @@ def generate_token(temp_base_folder) -> str:
     """
     filepath = os.path.join(temp_base_folder, "token")
 
-    LOGGER.info("Creating service account token for namespace rhods-notebooks...")
+    LOGGER.info(f"Creating service account token for namespace {SECURESIGN_NAMESPACE}...")
     _, out, _ = run_command(
-        command=["oc", "create", "token", "default", "-n", "rhods-notebooks", "--duration=1h"], check=True
+        command=["oc", "create", "token", "default", "-n", SECURESIGN_NAMESPACE, "--duration=1h"], check=True
     )
 
     token = out.strip()
