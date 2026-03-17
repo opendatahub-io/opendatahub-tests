@@ -1185,7 +1185,7 @@ def check_internal_image_registry_available(admin_client: DynamicClient) -> bool
         is_available = management_state == "managed"
 
         LOGGER.info(f"Image registry management state: {management_state}, available: {is_available}")
-        return is_available  # noqa: TRY300
+        return is_available
     except (ResourceNotFoundError, Exception) as e:  # noqa: BLE001
         LOGGER.warning(f"Failed to check image registry config: {e}")
         return False
