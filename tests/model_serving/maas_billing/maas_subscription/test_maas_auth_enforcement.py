@@ -16,7 +16,7 @@ LOGGER = get_logger(name=__name__)
 
 @pytest.mark.usefixtures(
     "maas_unprivileged_model_namespace",
-    "maas_controller_enabled_latest",
+    "maas_subscription_controller_enabled_latest",
     "maas_gateway_api",
     "maas_api_gateway_reachable",
     "maas_model_tinyllama_free",

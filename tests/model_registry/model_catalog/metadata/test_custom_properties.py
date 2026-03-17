@@ -61,7 +61,7 @@ class TestCustomProperties:
         model_registry_rest_headers: dict[str, str],
     ):
         """
-        RHOAIENG-41720: Test that all models have model_type with valid values: "generative", "predictive", "unknown".
+        Test that all models have model_type with valid values: "generative", "predictive", "unknown".
         """
         valid_model_types = {"generative", "predictive", "unknown"}
 

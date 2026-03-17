@@ -24,7 +24,7 @@ MAAS_SUBSCRIPTION_HEADER = "x-maas-subscription"
 
 @pytest.mark.usefixtures(
     "maas_unprivileged_model_namespace",
-    "maas_controller_enabled_latest",
+    "maas_subscription_controller_enabled_latest",
     "maas_gateway_api",
     "maas_inference_service_tinyllama_free",
     "maas_model_tinyllama_free",

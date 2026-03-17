@@ -42,7 +42,7 @@ class TestCatalogRBAC:
         configmap_name: str,
     ):
         """
-        RHOAIENG-41850: Verify that admin users can read both catalog ConfigMaps.
+        Verify that admin users can read both catalog ConfigMaps.
 
         Admins should have:
         - get/watch on model-catalog-default-sources (read-only)
@@ -84,7 +84,7 @@ class TestCatalogRBAC:
         configmap_name: str,
     ):
         """
-        RHOAIENG-41850: Verify that non-admin users cannot access catalog ConfigMaps,
+        Verify that non-admin users cannot access catalog ConfigMaps,
         receiving a 403 Forbidden error.
         """
         if is_byoidc:

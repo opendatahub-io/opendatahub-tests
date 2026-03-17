@@ -12,7 +12,7 @@ LOGGER = get_logger(name=__name__)
 
 
 @pytest.mark.component_health
-@pytest.mark.usefixtures("maas_controller_enabled_latest")
+@pytest.mark.usefixtures("maas_subscription_controller_enabled_latest")
 class TestMaaSApiComponentHealth:
     def test_maas_management_state(
         self,

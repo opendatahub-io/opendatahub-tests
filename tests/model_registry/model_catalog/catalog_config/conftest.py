@@ -35,7 +35,7 @@ def recreated_model_catalog_configmap(
         ConfigMap: The recreated ConfigMap instance
     """
     namespace_name = py_config["model_registry_namespace"]
-    # TODO: RHOAIENG-46741 would require changing this to look for configmaps based on label
+    # TODO: would require changing this to look for configmaps based on label
     # Get the existing ConfigMap
     configmap = ConfigMap(
         name=DEFAULT_CUSTOM_MODEL_CATALOG, client=admin_client, namespace=namespace_name, ensure_exists=True

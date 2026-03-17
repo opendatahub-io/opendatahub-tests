@@ -459,7 +459,7 @@ def baseline_redhat_ai_models(
         model_registry_rest_headers=model_registry_rest_headers,
         source_label="Red Hat AI",
     )
-    api_models = {model["name"] for model in api_response.get("items", [])}
+    api_models = {f"{REDHAT_AI_CATALOG_ID}:{model['name']}" for model in api_response.get("items", [])}
 
     db_models = get_models_from_database_by_source(
         admin_client=admin_client, source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
