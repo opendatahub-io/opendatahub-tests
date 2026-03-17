@@ -556,3 +556,67 @@ def premium_system_authenticated_access(
         if extra_auth_policy.exists:
             LOGGER.info(f"Fixture teardown: ensuring AuthPolicy {extra_auth_policy.name} is removed")
             extra_auth_policy.clean_up(wait=True)
+
+
+@pytest.fixture(scope="function")
+def second_free_subscription(
+    admin_client: DynamicClient,
+    maas_free_group: str,
+    maas_model_tinyllama_free: MaaSModelRef,
+    maas_subscription_tinyllama_free: MaaSSubscription,
+) -> Generator[MaaSSubscription, Any, Any]:
+    """
+    Creates a second subscription for maas_free_group on the free model.
+    Used to simulate an ambiguous subscription selection (two qualifying subscriptions,
+    no x-maas-subscription header).
+    """
+    with create_maas_subscription(
+        admin_client=admin_client,
+        subscription_namespace=maas_subscription_tinyllama_free.namespace,
+        subscription_name="e2e-second-free-subscription",
+        owner_group_name=maas_free_group,
+        model_name=maas_model_tinyllama_free.name,
+        model_namespace=maas_model_tinyllama_free.namespace,
+        tokens_per_minute=500,
+        window="1m",
+        priority=5,
+        teardown=True,
+        wait_for_resource=True,
+    ) as second_subscription:
+        second_subscription.wait_for_condition(condition="Ready", status="True", timeout=300)
+        LOGGER.info(
+            f"Created second free subscription {second_subscription.name} for model {maas_model_tinyllama_free.name}"
+        )
+        yield second_subscription
+
+
+@pytest.fixture(scope="function")
+def free_actor_premium_subscription(
+    admin_client: DynamicClient,
+    maas_model_tinyllama_premium: MaaSModelRef,
+    maas_subscription_tinyllama_premium: MaaSSubscription,
+) -> Generator[MaaSSubscription, Any, Any]:
+    """
+    Creates a subscription for system:authenticated on the premium model.
+    Used to verify that having a subscription alone is not sufficient —
+    the actor must also be listed in the model's MaaSAuthPolicy.
+    """
+    with create_maas_subscription(
+        admin_client=admin_client,
+        subscription_namespace=maas_subscription_tinyllama_premium.namespace,
+        subscription_name="e2e-free-actor-premium-sub",
+        owner_group_name="system:authenticated",
+        model_name=maas_model_tinyllama_premium.name,
+        model_namespace=maas_model_tinyllama_premium.namespace,
+        tokens_per_minute=100,
+        window="1m",
+        priority=0,
+        teardown=True,
+        wait_for_resource=True,
+    ) as sub_for_free_actor:
+        sub_for_free_actor.wait_for_condition(condition="Ready", status="True", timeout=300)
+        LOGGER.info(
+            f"Created subscription {sub_for_free_actor.name} for system:authenticated "
+            f"on premium model {maas_model_tinyllama_premium.name}"
+        )
+        yield sub_for_free_actor

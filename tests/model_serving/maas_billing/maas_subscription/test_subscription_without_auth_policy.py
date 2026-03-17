@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import pytest
 import requests
-from kubernetes.dynamic import DynamicClient
+from ocp_resources.maas_subscription import MaaSSubscription
 from simple_logger.logger import get_logger
 
 from tests.model_serving.maas_billing.maas_subscription.utils import (
     chat_payload_for_url,
-    create_maas_subscription,
     poll_expected_status,
 )
 
@@ -37,56 +36,37 @@ class TestSubscriptionWithoutAuthPolicy:
     def test_subscription_without_auth_policy_gets_403(
         self,
         request_session_http: requests.Session,
-        admin_client: DynamicClient,
         model_url_tinyllama_premium: str,
         maas_headers_for_actor_api_key: dict[str, str],
-        maas_model_tinyllama_premium,
-        maas_subscription_tinyllama_premium,
+        free_actor_premium_subscription: MaaSSubscription,
     ) -> None:
         """
-        Verify that a token with a valid subscription but NOT listed in any MaaSAuthPolicy
-        for that model is denied with 403.
+        Verify that a user with a subscription but without AuthPolicy access
+        to the model gets 403.
 
-        Given a premium model whose MaaSAuthPolicy only permits the premium group,
-        When a free actor (system:authenticated but NOT premium group) is given a
-          subscription for that model,
-        Then the request should be denied with 403 because the AuthPolicy check
-          fails regardless of subscription ownership.
+        A free user is given a subscription for the premium model,
+        but since the user is not allowed by the model's MaaSAuthPolicy,
+        the request should be denied with 403.
         """
-        with create_maas_subscription(
-            admin_client=admin_client,
-            subscription_namespace=maas_subscription_tinyllama_premium.namespace,
-            subscription_name="e2e-free-actor-premium-sub",
-            owner_group_name="system:authenticated",
-            model_name=maas_model_tinyllama_premium.name,
-            model_namespace=maas_model_tinyllama_premium.namespace,
-            tokens_per_minute=100,
-            window="1m",
-            priority=0,
-            teardown=True,
-            wait_for_resource=True,
-        ) as sub_for_free_actor:
-            sub_for_free_actor.wait_for_condition(condition="Ready", status="True", timeout=300)
+        LOGGER.info(
+            f"Testing: free actor has subscription '{free_actor_premium_subscription.name}' "
+            f"but is NOT in premium MaaSAuthPolicy — expecting 403"
+        )
 
-            headers = dict(maas_headers_for_actor_api_key)
-            headers[MAAS_SUBSCRIPTION_HEADER] = sub_for_free_actor.name
+        headers = dict(maas_headers_for_actor_api_key)
+        headers[MAAS_SUBSCRIPTION_HEADER] = free_actor_premium_subscription.name
 
-            payload = chat_payload_for_url(model_url=model_url_tinyllama_premium)
+        payload = chat_payload_for_url(model_url=model_url_tinyllama_premium)
 
-            LOGGER.info(
-                f"Testing: free actor has subscription '{sub_for_free_actor.name}' "
-                f"but is NOT in premium MaaSAuthPolicy — expecting 403"
-            )
+        response = poll_expected_status(
+            request_session_http=request_session_http,
+            model_url=model_url_tinyllama_premium,
+            headers=headers,
+            payload=payload,
+            expected_statuses={403},
+        )
 
-            response = poll_expected_status(
-                request_session_http=request_session_http,
-                model_url=model_url_tinyllama_premium,
-                headers=headers,
-                payload=payload,
-                expected_statuses={403},
-            )
-
-            assert response.status_code == 403, (
-                f"Expected 403 for token with subscription but not in MaaSAuthPolicy, "
-                f"got {response.status_code}: {(response.text or '')[:200]}"
-            )
+        assert response.status_code == 403, (
+            f"Expected 403 for token with subscription but not in MaaSAuthPolicy, "
+            f"got {response.status_code}: {(response.text or '')[:200]}"
+        )
