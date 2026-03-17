@@ -52,7 +52,7 @@ class TestMultipleSubscriptionsNoHeader:
         then the request should be denied with 403 because the subscription
         selection is ambiguous.
         """
-        _ = maas_subscription_tinyllama_free  
+        _ = maas_subscription_tinyllama_free
 
         with create_maas_subscription(
             admin_client=admin_client,
