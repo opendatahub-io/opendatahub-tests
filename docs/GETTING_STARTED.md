@@ -138,7 +138,7 @@ To run tests with admin client only, pass `--tc=use_unprivileged_client:False` t
 ### jira integration
 
 To skip running tests which have open bugs, [pytest_jira](https://github.com/rhevm-qe-automation/pytest_jira) plugin is used.
-To run tests with jira integration, you need to set `PYTEST_JIRA_URL` and `PYTEST_JIRA_TOKEN` environment variables.
+To run tests with jira integration, you need to set `PYTEST_JIRA_URL`, `PYTEST_JIRA_USERNAME` and `PYTEST_JIRA_PASSWORD` environment variables.
 To make a test with jira marker, add: `@pytest.mark.jira(jira_id="RHOAIENG-0000", run=False)` to the test.
 
 ### Running containerized tests
