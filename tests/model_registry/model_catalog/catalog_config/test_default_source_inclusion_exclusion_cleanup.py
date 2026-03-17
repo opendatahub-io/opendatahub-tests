@@ -208,6 +208,7 @@ class TestModelCleanupLifecycle:
                         model_registry_rest_headers=model_registry_rest_headers,
                         source_label=REDHAT_AI_CATALOG_NAME,
                         expected_models=granite_models,
+                        source_id=REDHAT_AI_CATALOG_ID,
                     )
                 except TimeoutExpiredError as e:
                     pytest.fail(f"Phase 1: Timeout waiting for granite models {granite_models}: {e}")
@@ -245,6 +246,7 @@ class TestModelCleanupLifecycle:
                         model_registry_rest_headers=model_registry_rest_headers,
                         source_label=REDHAT_AI_CATALOG_NAME,
                         expected_models=prometheus_models,
+                        source_id=REDHAT_AI_CATALOG_ID,
                     )
                 except TimeoutExpiredError as e:
                     pytest.fail(f"Phase 2: Timeout waiting for prometheus models {prometheus_models}: {e}")

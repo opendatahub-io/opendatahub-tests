@@ -16,28 +16,38 @@ REDHAT_AI_VALIDATED_CATALOG_NAME: str = "Red Hat AI validated"
 REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME: str = "Red Hat AI Validated"
 REDHAT_AI_FILTER: str = "Red+Hat+AI"
 REDHAT_AI_VALIDATED_FILTER = "Red+Hat+AI+Validated"
-
+OTHER_MODELS_CATALOG_ID: str = "other_models"
 SAMPLE_MODEL_NAME3 = "mistralai/Ministral-8B-Instruct-2410"
 CATALOG_CONTAINER: str = "catalog"
+REDHAT_AI_CATALOG_ID: str = "redhat_ai_models"
+OTHER_MODELS: str = "Other Models"
+VALIDATED_CATALOG_ID: str = "redhat_ai_validated_models"
 DEFAULT_CATALOGS: dict[str, Any] = {
-    "redhat_ai_models": {
+    REDHAT_AI_CATALOG_ID: {
         "name": REDHAT_AI_CATALOG_NAME,
         "type": "yaml",
         "properties": {"yamlCatalogPath": "/shared-data/models-catalog.yaml"},
         "labels": [REDHAT_AI_CATALOG_NAME],
         "enabled": True,
     },
-    "redhat_ai_validated_models": {
+    VALIDATED_CATALOG_ID: {
         "name": REDHAT_AI_VALIDATED_CATALOG_NAME,
         "type": "yaml",
         "properties": {"yamlCatalogPath": "/shared-data/validated-models-catalog.yaml"},
         "labels": [REDHAT_AI_VALIDATED_CATALOG_NAME],
         "enabled": True,
     },
+    OTHER_MODELS_CATALOG_ID: {
+        "name": OTHER_MODELS,
+        "type": "yaml",
+        "properties": {"yamlCatalogPath": "/shared-data/other-models-catalog.yaml"},
+        "labels": None,
+        "enabled": True,
+    },
 }
-REDHAT_AI_CATALOG_ID: str = "redhat_ai_models"
+
 DEFAULT_CATALOG_FILE: str = DEFAULT_CATALOGS[REDHAT_AI_CATALOG_ID]["properties"]["yamlCatalogPath"]
-VALIDATED_CATALOG_ID: str = "redhat_ai_validated_models"
+
 VALIDATED_CATALOG_FILE: str = DEFAULT_CATALOGS[VALIDATED_CATALOG_ID]["properties"]["yamlCatalogPath"]
 
 MODEL_ARTIFACT_TYPE: str = "model-artifact"

@@ -4,7 +4,11 @@ import pytest
 from simple_logger.logger import get_logger
 
 from tests.model_registry.mcp_servers.constants import MCP_CATALOG_SOURCE_ID
-from tests.model_registry.model_catalog.constants import REDHAT_AI_CATALOG_ID, VALIDATED_CATALOG_ID
+from tests.model_registry.model_catalog.constants import (
+    OTHER_MODELS_CATALOG_ID,
+    REDHAT_AI_CATALOG_ID,
+    VALIDATED_CATALOG_ID,
+)
 from tests.model_registry.utils import execute_get_command
 
 pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace")]
@@ -58,8 +62,8 @@ class TestAssetTypeFilter:
     @pytest.mark.parametrize(
         "asset_type,expected_ids",
         [
-            (None, {REDHAT_AI_CATALOG_ID, VALIDATED_CATALOG_ID}),
-            ("models", {REDHAT_AI_CATALOG_ID, VALIDATED_CATALOG_ID}),
+            (None, {REDHAT_AI_CATALOG_ID, VALIDATED_CATALOG_ID, OTHER_MODELS_CATALOG_ID}),
+            ("models", {REDHAT_AI_CATALOG_ID, VALIDATED_CATALOG_ID, OTHER_MODELS_CATALOG_ID}),
             ("mcp_servers", {MCP_CATALOG_SOURCE_ID}),
             ("invalid_value", set()),
         ],
