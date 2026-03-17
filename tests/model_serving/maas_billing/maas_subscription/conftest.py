@@ -628,7 +628,7 @@ def two_active_api_key_ids(
     request_session_http: requests.Session,
     base_url: str,
     ocp_token_for_actor: str,
-) -> list[str]:
+) -> Generator[list[str], Any, Any]:
     """
     Create two active API keys and return their IDs for list tests.
     """
@@ -642,7 +642,15 @@ def two_active_api_key_ids(
         for i in range(1, 3)
     ]
     LOGGER.info(f"two_active_api_key_ids: created keys {ids}")
-    return ids
+    yield ids
+    for key_id in ids:
+        LOGGER.info(f"Fixture teardown: revoking key {key_id}")
+        revoke_api_key(
+            request_session_http=request_session_http,
+            base_url=base_url,
+            key_id=key_id,
+            ocp_user_token=ocp_token_for_actor,
+        )
 
 
 @pytest.fixture(scope="function")
@@ -650,7 +658,7 @@ def active_api_key_id(
     request_session_http: requests.Session,
     base_url: str,
     ocp_token_for_actor: str,
-) -> str:
+) -> Generator[str, Any, Any]:
     """
     Create a single active API key and return its ID for revoke tests.
     """
@@ -662,7 +670,14 @@ def active_api_key_id(
         api_key_name=key_name,
     )
     LOGGER.info(f"active_api_key_id: created key id={body['id']}")
-    return body["id"]
+    yield body["id"]
+    LOGGER.info(f"Fixture teardown: revoking key {body['id']}")
+    revoke_api_key(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        key_id=body["id"],
+        ocp_user_token=ocp_token_for_actor,
+    )
 
 
 @pytest.fixture(scope="function")
@@ -691,4 +706,3 @@ def revoked_api_key_id(
     assert revoke_body.get("status") == "revoked", f"Expected status='revoked' in DELETE response, got: {revoke_body}"
     LOGGER.info(f"revoked_api_key_id: revoked key id={active_api_key_id}")
     return active_api_key_id
-
