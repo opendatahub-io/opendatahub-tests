@@ -24,6 +24,7 @@ class TestMCPServerFiltering:
                 id="by_provider",
             ),
             pytest.param("tags='math'", 1, CALCULATOR_SERVER_NAME, None, id="by_tags"),
+            pytest.param("license='BSD 3-Clause'", 1, "file-manager", ("license", "BSD 3-Clause"), id="by_license"),
         ],
     )
     def test_filter_by_field(
@@ -35,7 +36,7 @@ class TestMCPServerFiltering:
         expected_name: str,
         field_check: tuple[str, str] | None,
     ):
-        """TC-API-003, TC-API-005: Test filtering MCP servers by provider and tags."""
+        """TC-API-003, TC-API-005, TC-API-009: Test filtering MCP servers by provider, tags, and license."""
         response = execute_get_command(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
             headers=model_registry_rest_headers,
