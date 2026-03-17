@@ -119,7 +119,7 @@ class TestCascadeDeletion:
                 f"got {response.status_code}: {(response.text or '')[:200]}"
             )
         finally:
-            with MaaSSubscription(
+            restored_subscription = MaaSSubscription(
                 client=admin_client,
                 name=original_name,
                 namespace=maas_subscription_tinyllama_free.namespace,
@@ -136,10 +136,14 @@ class TestCascadeDeletion:
                 priority=original_priority,
                 teardown=False,
                 wait_for_resource=True,
-            ) as restored_subscription:
-                restored_subscription.wait_for_condition(
-                    condition="Ready",
-                    status="True",
-                    timeout=300,
-                )
-                LOGGER.info("Restored original subscription %s", restored_subscription.name)
+            )
+
+            restored_subscription.deploy(wait=True)
+
+            restored_subscription.wait_for_condition(
+                condition="Ready",
+                status="True",
+                timeout=300,
+            )
+
+            LOGGER.info("Restored original subscription %s", restored_subscription.name)
