@@ -56,15 +56,24 @@ class TestLabelsEndpoint:
 
         def _check_updated_labels():
             # Get updated expected labels from ConfigMaps
-            expected_labels = get_labels_from_configmaps(admin_client=admin_client, namespace=model_registry_namespace)
-
-            # Get labels from API
-            api_labels = get_labels_from_api(
-                model_catalog_rest_url=model_catalog_rest_url[0], user_token=get_openshift_token()
+            all_expected_labels = get_labels_from_configmaps(
+                admin_client=admin_client, namespace=model_registry_namespace
             )
 
-            # Verify they match (including the new label)
-            verify_labels_match(expected_labels=expected_labels, api_labels=api_labels)
+            token = get_openshift_token()
+            url = model_catalog_rest_url[0]
+
+            # Default /labels excludes MCP labels — filter them out for comparison
+            model_expected_labels = [label for label in all_expected_labels if label.get("assetType") != "mcp_servers"]
+            mcp_expected_labels = [label for label in all_expected_labels if label.get("assetType") == "mcp_servers"]
+
+            # Verify model labels match default API response
+            api_labels = get_labels_from_api(model_catalog_rest_url=url, user_token=token)
+            verify_labels_match(expected_labels=model_expected_labels, api_labels=api_labels)
+
+            # Verify MCP labels are only returned with assetType=mcp_servers
+            mcp_api_labels = get_labels_from_api(model_catalog_rest_url=url, user_token=token, asset_type="mcp_servers")
+            verify_labels_match(expected_labels=mcp_expected_labels, api_labels=mcp_api_labels)
 
         sampler = TimeoutSampler(wait_timeout=60, sleep=5, func=_check_updated_labels)
         for _ in sampler:

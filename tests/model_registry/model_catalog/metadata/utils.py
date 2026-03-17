@@ -442,13 +442,16 @@ def get_labels_from_configmaps(admin_client: DynamicClient, namespace: str) -> l
     return labels
 
 
-def get_labels_from_api(model_catalog_rest_url: str, user_token: str) -> list[dict[str, Any]]:
+def get_labels_from_api(
+    model_catalog_rest_url: str, user_token: str, asset_type: str | None = None
+) -> list[dict[str, Any]]:
     """
     Get labels from the API endpoint.
 
     Args:
         model_catalog_rest_url: Base URL for model catalog API
         user_token: Authentication token
+        asset_type: Filter by asset type ('models' or 'mcp_servers')
 
     Returns:
         List of label dictionaries from API response
@@ -456,7 +459,8 @@ def get_labels_from_api(model_catalog_rest_url: str, user_token: str) -> list[di
 
     url = f"{model_catalog_rest_url}labels"
     headers = get_rest_headers(token=user_token)
-    response = execute_get_command(url=url, headers=headers)
+    params: dict[str, str] | None = {"assetType": asset_type} if asset_type is not None else None
+    response = execute_get_command(url=url, headers=headers, params=params)
     return response["items"]
 
 
