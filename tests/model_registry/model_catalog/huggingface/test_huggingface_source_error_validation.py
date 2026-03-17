@@ -89,7 +89,7 @@ class TestHuggingFaceSourceErrorValidation:
         model_registry_rest_headers: dict[str, str],
     ):
         """
-        RHOAIENG-49162: Check that accessible models are visible through catalog API using source label.
+        Check that accessible models are visible through catalog API using source label.
 
         This test verifies that accessible models are still returned by the catalog API
         even when the source is in error state.

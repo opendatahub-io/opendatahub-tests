@@ -28,7 +28,7 @@ class TestSourcesEndpoint:
         model_registry_rest_headers: dict[str, str],
     ):
         """
-        RHOAIENG-41633: Test that sources endpoint returns ALL sources regardless of enabled field value.
+        Test that sources endpoint returns ALL sources regardless of enabled field value.
         """
         response = execute_get_command(url=f"{model_catalog_rest_url[0]}sources", headers=model_registry_rest_headers)
         items = response.get("items", [])
@@ -53,7 +53,7 @@ class TestSourcesEndpoint:
 
 @pytest.mark.usefixtures("mcp_servers_configmap_patch")
 class TestAssetTypeFilter:
-    """RHOAIENG-51583: Tests for /sources endpoint assetType query parameter filtering."""
+    """Tests for /sources endpoint assetType query parameter filtering."""
 
     @pytest.mark.parametrize(
         "asset_type,expected_ids",
