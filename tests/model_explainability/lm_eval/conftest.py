@@ -578,6 +578,7 @@ def lmeval_hf_access_token(
 
 # GPU-based vLLM fixtures for SmolLM-1.7B
 
+
 @pytest.fixture(scope="session")
 def skip_if_no_supported_accelerator_type(supported_accelerator_type: str) -> None:
     """Skip test if no GPU accelerator is available."""
