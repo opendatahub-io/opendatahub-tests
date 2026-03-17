@@ -83,7 +83,7 @@ class TestModelRegistryCreation:
     @pytest.mark.tier1
     def test_model_registry_grpc_container_removal(self, model_registry_deployment_containers: list[dict[str, Any]]):
         """
-        RHOAIENG-26239: Test to ensure removal of grpc container from model registry deployment
+        Test to ensure removal of grpc container from model registry deployment
         Steps:
             Create metadata database
             Deploys model registry using the same
@@ -96,7 +96,7 @@ class TestModelRegistryCreation:
         self, model_registry_deployment_containers: list[dict[str, Any]], model_registry_pod: Pod
     ):
         """
-        RHOAIENG-26239: Test to ensure removal of grpc container from model registry deployment
+        Test to ensure removal of grpc container from model registry deployment
         Steps:
             Create metadata database
             Deploys model registry using the same
@@ -122,7 +122,7 @@ class TestModelRegistryCreation:
         self, model_registry_rest_url: list[str], model_registry_rest_headers: dict[str, str], endpoint: str
     ):
         """
-        RHOAIENG-26239: Test to ensure model registry endpoints are responsive
+        Test to ensure model registry endpoints are responsive
         Steps:
             Create metadata database
             Deploys model registry using the same

@@ -79,8 +79,11 @@ All code MUST consider security implications.
 - Avoid running destructive commands without explicit user confirmation
 - Use detect-secrets and gitleaks pre-commit hooks to prevent secret leakage
 - Test code MUST NOT introduce vulnerabilities into the tested systems
+- JIRA ticket links are allowed in PRs and commit messages (our Jira is public)
+- Do NOT reference internal-only resources (Jenkins, Confluence, Slack threads) in code, PRs, or commit messages
+- Do NOT link embargoed or security-restricted (RH-employee-only) tickets
 
-**Rationale**: Tests interact with production-like clusters; security lapses can have real consequences.
+**Rationale**: Tests interact with production-like clusters; security lapses can have real consequences. This is a public repository — only reference publicly accessible resources.
 
 ## Test Development Standards
 

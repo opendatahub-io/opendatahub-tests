@@ -13,7 +13,7 @@ LOGGER = get_logger(name=__name__)
 
 @pytest.mark.usefixtures("mcp_multi_source_configmap_patch")
 class TestMCPServerMultiSource:
-    """RHOAIENG-51582: Tests for loading MCP servers from multiple YAML sources (TC-LOAD-002)."""
+    """Tests for loading MCP servers from multiple YAML sources (TC-LOAD-002)."""
 
     def test_all_servers_from_multiple_sources_loaded(
         self: Self,
