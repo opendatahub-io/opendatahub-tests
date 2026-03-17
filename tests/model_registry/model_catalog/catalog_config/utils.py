@@ -132,11 +132,12 @@ def validate_model_catalog_configmap_data(configmap: ConfigMap, num_catalogs: in
         validate_default_catalog(catalogs=catalogs)
 
 
-def get_models_from_database_by_source(source_id: str, namespace: str) -> set[str]:
+def get_models_from_database_by_source(admin_client: DynamicClient, source_id: str, namespace: str) -> set[str]:
     """
     Query database directly to get all model names for a specific source.
 
     Args:
+        admin_client: DynamicClient for Kubernetes API access
         source_id: Catalog source ID to filter by
         namespace: OpenShift namespace for database access
 
@@ -145,7 +146,7 @@ def get_models_from_database_by_source(source_id: str, namespace: str) -> set[st
     """
 
     query = GET_MODELS_BY_SOURCE_ID_DB_QUERY.format(source_id=source_id)
-    result = execute_database_query(query=query, namespace=namespace)
+    result = execute_database_query(admin_client=admin_client, query=query, namespace=namespace)
     parsed = parse_psql_output(psql_output=result)
     return set(parsed.get("values", []))
 
@@ -478,7 +479,7 @@ def execute_inclusion_exclusion_filter_test(
             pytest.fail(f"Timeout waiting for {pattern} models to appear. Expected: {expected_models}, {e}")
 
         db_models = get_models_from_database_by_source(
-            source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
+            admin_client=admin_client, source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
         )
 
         # Validate consistency
@@ -493,6 +494,7 @@ def execute_inclusion_exclusion_filter_test(
 
 @retry(wait_timeout=300, sleep=10, exceptions_dict={Exception: []}, print_log=False)
 def _validate_baseline_models(
+    admin_client: DynamicClient,
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
     model_registry_namespace: str,
@@ -513,7 +515,9 @@ def _validate_baseline_models(
     api_models = {model["name"] for model in api_response.get("items", [])}
 
     # Fetch current models from database
-    db_models = get_models_from_database_by_source(source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace)
+    db_models = get_models_from_database_by_source(
+        admin_client=admin_client, source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
+    )
 
     count = len(api_models)
 
@@ -542,6 +546,7 @@ def _validate_baseline_models(
 
 
 def ensure_baseline_model_state(
+    admin_client: DynamicClient,
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
     model_registry_namespace: str,
@@ -574,6 +579,7 @@ def ensure_baseline_model_state(
     # Use retry decorator for automatic polling and eventual reconciliation
     try:
         _validate_baseline_models(
+            admin_client=admin_client,
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
             model_registry_namespace=model_registry_namespace,

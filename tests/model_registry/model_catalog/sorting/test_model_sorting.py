@@ -1,5 +1,6 @@
 import pytest
 from typing import Self
+from kubernetes.dynamic import DynamicClient
 from simple_logger.logger import get_logger
 from tests.model_registry.model_catalog.constants import (
     REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
@@ -67,6 +68,7 @@ class TestAccuracySorting:
     def test_accuracy_sorting_works_correctly(
         self: Self,
         sort_order: str | None,
+        admin_client: DynamicClient,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
     ):
@@ -96,6 +98,7 @@ class TestAccuracySorting:
         )
 
         assert validate_accuracy_sorting_against_database(
+            admin_client=admin_client,
             api_response=response,
             sort_order=sort_order,
         )
@@ -112,6 +115,7 @@ class TestAccuracySorting:
         self: Self,
         sort_order: str,
         filter_query: str,
+        admin_client: DynamicClient,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
     ):
@@ -138,6 +142,7 @@ class TestAccuracySorting:
         task_value = filter_query.split("tasks=")[1].strip("'\"")
 
         assert validate_accuracy_sorting_against_database(
+            admin_client=admin_client,
             api_response=response,
             sort_order=sort_order,
             task_filter=task_value,

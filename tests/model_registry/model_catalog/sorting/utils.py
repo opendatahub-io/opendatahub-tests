@@ -1,5 +1,6 @@
 from typing import Any
 
+from kubernetes.dynamic import DynamicClient
 from simple_logger.logger import get_logger
 from tests.model_registry.utils import execute_get_command
 from tests.model_registry.model_catalog.utils import (
@@ -176,6 +177,7 @@ def verify_custom_properties_sorted(items: list[dict], property_field: str, sort
 
 
 def validate_accuracy_sorting_against_database(
+    admin_client: DynamicClient,
     api_response: dict[str, Any],
     sort_order: str | None,
     namespace: str = "rhoai-model-registries",
@@ -203,7 +205,7 @@ def validate_accuracy_sorting_against_database(
     """
     # Get models with accuracy from database
     models_with_accuracy = get_models_by_accuracy_from_database(
-        sort_order=sort_order or "ASC", namespace=namespace, task_filter=task_filter
+        admin_client=admin_client, sort_order=sort_order or "ASC", namespace=namespace, task_filter=task_filter
     )
     filter_info = f" with task filter '{task_filter}'" if task_filter else ""
     sort_info = f", ordered {sort_order}" if sort_order else " (no sort order)"
@@ -252,6 +254,7 @@ def validate_accuracy_sorting_against_database(
 
 
 def get_models_by_accuracy_from_database(
+    admin_client: DynamicClient,
     sort_order: str,
     namespace: str = "rhoai-model-registries",
     task_filter: str | None = None,
@@ -277,7 +280,7 @@ def get_models_by_accuracy_from_database(
     LOGGER.debug(f"Accuracy query (SQL): {accuracy_query}")
 
     # Execute the database query
-    db_result = execute_database_query(query=accuracy_query, namespace=namespace)
+    db_result = execute_database_query(admin_client=admin_client, query=accuracy_query, namespace=namespace)
     parsed_result = parse_psql_output(psql_output=db_result)
 
     # The query returns context_name values in order

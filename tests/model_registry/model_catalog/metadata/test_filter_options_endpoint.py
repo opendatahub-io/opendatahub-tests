@@ -1,5 +1,6 @@
 import pytest
 from typing import Self
+from kubernetes.dynamic import DynamicClient
 from simple_logger.logger import get_logger
 from tests.model_registry.model_catalog.metadata.utils import (
     validate_filter_options_structure,
@@ -103,6 +104,7 @@ class TestFilterOptionsEndpoint:
     )
     def test_comprehensive_coverage_against_database(
         self: Self,
+        admin_client: DynamicClient,
         model_catalog_rest_url: list[str],
         user_token_for_api_calls: str,
         model_registry_namespace: str,
@@ -130,7 +132,9 @@ class TestFilterOptionsEndpoint:
 
         LOGGER.info(f"Executing database query in namespace: {model_registry_namespace}")
 
-        db_result = execute_database_query(query=FILTER_OPTIONS_DB_QUERY, namespace=model_registry_namespace)
+        db_result = execute_database_query(
+            admin_client=admin_client, query=FILTER_OPTIONS_DB_QUERY, namespace=model_registry_namespace
+        )
         parsed_result = parse_psql_output(psql_output=db_result)
 
         db_properties = parsed_result.get("properties", {})

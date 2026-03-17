@@ -1,6 +1,7 @@
 """Utility functions for model catalog search tests."""
 
 from typing import Any
+from kubernetes.dynamic import DynamicClient
 from simple_logger.logger import get_logger
 from ocp_resources.pod import Pod
 
@@ -51,7 +52,10 @@ def validate_model_contains_search_term(model: dict[str, Any], search_term: str)
 
 
 def get_models_matching_search_from_database(
-    search_term: str, namespace: str = "rhoai-model-registries", source_label: str | None = None
+    admin_client: DynamicClient,
+    search_term: str,
+    namespace: str = "rhoai-model-registries",
+    source_label: str | None = None,
 ) -> list[str]:
     """
     Query the database directly to find model IDs that should match the search term.
@@ -92,13 +96,14 @@ def get_models_matching_search_from_database(
         # Use the standardized search query from db_constants
         search_query = SEARCH_MODELS_DB_QUERY.format(search_pattern=search_pattern)
 
-    db_result = execute_database_query(query=search_query, namespace=namespace)
+    db_result = execute_database_query(admin_client=admin_client, query=search_query, namespace=namespace)
     parsed_result = parse_psql_output(psql_output=db_result)
 
     return parsed_result.get("values", [])
 
 
 def get_models_matching_filter_query_from_database(
+    admin_client: DynamicClient,
     licenses: str,
     language_pattern_1: str | None = None,
     language_pattern_2: str | None = None,
@@ -132,7 +137,7 @@ def get_models_matching_filter_query_from_database(
     LOGGER.debug(f"Filter query (SQL): {filter_query_sql}")
 
     # Execute the database query
-    db_result = execute_database_query(query=filter_query_sql, namespace=namespace)
+    db_result = execute_database_query(admin_client=admin_client, query=filter_query_sql, namespace=namespace)
     parsed_result = parse_psql_output(psql_output=db_result)
 
     return parsed_result.get("values", [])
@@ -181,6 +186,7 @@ def _compare_api_and_database_results(
 
 
 def validate_search_results_against_database(
+    admin_client: DynamicClient,
     api_response: dict[str, Any],
     search_term: str,
     namespace: str = "rhoai-model-registries",
@@ -190,6 +196,7 @@ def validate_search_results_against_database(
     Validate API search results against database query results.
 
     Args:
+        admin_client: DynamicClient for Kubernetes API access
         api_response: API response from search query
         search_term: Search term used
         namespace: OpenShift namespace for PostgreSQL pod
@@ -199,7 +206,11 @@ def validate_search_results_against_database(
         Tuple of (is_valid, list_of_error_messages)
     """
     # Get expected results from database
-    expected_model_ids = set(get_models_matching_search_from_database(search_term, namespace, source_label))
+    expected_model_ids = set(
+        get_models_matching_search_from_database(
+            admin_client=admin_client, search_term=search_term, namespace=namespace, source_label=source_label
+        )
+    )
     filter_desc = f"search term '{search_term}'" + (f" with source_label='{source_label}'" if source_label else "")
     LOGGER.info(f"Database query found {len(expected_model_ids)} models for {filter_desc}")
 
@@ -210,6 +221,7 @@ def validate_search_results_against_database(
 
 
 def validate_filter_query_results_against_database(
+    admin_client: DynamicClient,
     api_response: dict[str, Any],
     licenses: str,
     language_pattern_1: str | None = None,
@@ -224,6 +236,7 @@ def validate_filter_query_results_against_database(
     - License and language filters: license IN (...) AND (language ILIKE ... OR language ILIKE ...)
 
     Args:
+        admin_client: DynamicClient for Kubernetes API access
         api_response: API response from filter query
         licenses: License values in SQL IN clause format (e.g., "'gemma','modified-mit'")
         language_pattern_1: First language pattern for ILIKE (e.g., '%it%'). Optional.
@@ -236,6 +249,7 @@ def validate_filter_query_results_against_database(
     # Get expected results from database
     expected_model_ids = set(
         get_models_matching_filter_query_from_database(
+            admin_client=admin_client,
             licenses=licenses,
             language_pattern_1=language_pattern_1,
             language_pattern_2=language_pattern_2,

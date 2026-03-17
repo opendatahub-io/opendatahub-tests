@@ -66,6 +66,7 @@ class TestModelInclusionFiltering:
 
         # Ensure baseline model state is restored for subsequent tests
         ensure_baseline_model_state(
+            admin_client=admin_client,
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
             model_registry_namespace=model_registry_namespace,
@@ -110,6 +111,7 @@ class TestModelExclusionFiltering:
 
         # Ensure baseline model state is restored for subsequent tests
         ensure_baseline_model_state(
+            admin_client=admin_client,
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
             model_registry_namespace=model_registry_namespace,
@@ -190,7 +192,7 @@ class TestCombinedIncludeExcludeFiltering:
                 )
 
             db_models = get_models_from_database_by_source(
-                source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
+                admin_client=admin_client, source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
             )
 
             is_valid, error_msg = validate_model_filtering_consistency(api_models=api_models, db_models=db_models)
@@ -206,6 +208,7 @@ class TestCombinedIncludeExcludeFiltering:
 
         # Ensure baseline model state is restored for subsequent tests
         ensure_baseline_model_state(
+            admin_client=admin_client,
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
             model_registry_namespace=model_registry_namespace,
@@ -255,7 +258,7 @@ class TestModelCleanupLifecycle:
                 pytest.fail(f"Phase 1: Timeout waiting for granite models {granite_models}: {e}")
 
             phase1_db_models = get_models_from_database_by_source(
-                source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
+                admin_client=admin_client, source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
             )
 
             assert phase1_api_models == granite_models, (
@@ -292,7 +295,7 @@ class TestModelCleanupLifecycle:
                 pytest.fail(f"Phase 2: Timeout waiting for prometheus models {prometheus_models}: {e}")
 
             phase2_db_models = get_models_from_database_by_source(
-                source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
+                admin_client=admin_client, source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
             )
 
             # Should only have prometheus models now
@@ -307,6 +310,7 @@ class TestModelCleanupLifecycle:
 
         # Ensure baseline model state is restored for subsequent tests
         ensure_baseline_model_state(
+            admin_client=admin_client,
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
             model_registry_namespace=model_registry_namespace,
@@ -351,7 +355,7 @@ class TestSourceLifecycleCleanup:
 
             # Verify database is also cleaned
             db_models = get_models_from_database_by_source(
-                source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
+                admin_client=admin_client, source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
             )
             assert len(db_models) == 0, f"Database should be clean when source disabled, found: {db_models}"
 
@@ -359,6 +363,7 @@ class TestSourceLifecycleCleanup:
 
         # Ensure baseline model state is restored for subsequent tests
         ensure_baseline_model_state(
+            admin_client=admin_client,
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
             model_registry_namespace=model_registry_namespace,
@@ -416,6 +421,7 @@ class TestLoggingValidation:
 
         # Ensure baseline model state is restored for subsequent tests
         ensure_baseline_model_state(
+            admin_client=admin_client,
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
             model_registry_namespace=model_registry_namespace,
@@ -467,6 +473,7 @@ class TestLoggingValidation:
 
         # Ensure baseline model state is restored for subsequent tests
         ensure_baseline_model_state(
+            admin_client=admin_client,
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
             model_registry_namespace=model_registry_namespace,

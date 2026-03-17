@@ -146,6 +146,7 @@ class TestSearchModelCatalogQParameter:
     def test_q_parameter_basic_search(
         self: Self,
         search_term: str,
+        admin_client: DynamicClient,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         model_registry_namespace: str,
@@ -166,6 +167,7 @@ class TestSearchModelCatalogQParameter:
 
         # Validate API results against database query
         is_valid, errors = validate_search_results_against_database(
+            admin_client=admin_client,
             api_response=response,
             search_term=search_term,
             namespace=model_registry_namespace,
@@ -186,6 +188,7 @@ class TestSearchModelCatalogQParameter:
         self: Self,
         search_term: str,
         case_variant: str,
+        admin_client: DynamicClient,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         model_registry_namespace: str,
@@ -207,6 +210,7 @@ class TestSearchModelCatalogQParameter:
 
         # Validate both responses against database
         is_valid1, errors1 = validate_search_results_against_database(
+            admin_client=admin_client,
             api_response=response1,
             search_term=search_term,
             namespace=model_registry_namespace,
@@ -214,6 +218,7 @@ class TestSearchModelCatalogQParameter:
         assert is_valid1, f"API search results do not match database query for '{search_term}': {errors1}"
 
         is_valid2, errors2 = validate_search_results_against_database(
+            admin_client=admin_client,
             api_response=response2,
             search_term=case_variant,
             namespace=model_registry_namespace,
@@ -234,6 +239,7 @@ class TestSearchModelCatalogQParameter:
 
     def test_q_parameter_no_results(
         self: Self,
+        admin_client: DynamicClient,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         model_registry_namespace: str,
@@ -250,6 +256,7 @@ class TestSearchModelCatalogQParameter:
 
         # Validate API results against database query
         is_valid, errors = validate_search_results_against_database(
+            admin_client=admin_client,
             api_response=response,
             search_term=nonexistent_term,
             namespace=model_registry_namespace,
@@ -326,6 +333,7 @@ class TestSearchModelsByFilterQuery:
     @pytest.mark.sanity
     def test_search_models_by_filter_query(
         self: Self,
+        admin_client: DynamicClient,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         model_registry_namespace: str,
@@ -351,6 +359,7 @@ class TestSearchModelsByFilterQuery:
 
         # Validate API results against database query using same parameters
         is_valid, errors = validate_filter_query_results_against_database(
+            admin_client=admin_client,
             api_response=result,
             licenses=licenses,
             language_pattern_1=language_pattern_1,
@@ -371,6 +380,7 @@ class TestSearchModelsByFilterQuery:
 
     def test_search_models_by_invalid_filter_query(
         self: Self,
+        admin_client: DynamicClient,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         model_registry_namespace: str,
@@ -400,6 +410,7 @@ class TestSearchModelsByFilterQuery:
 
         # Validate API results against database query using same license parameter
         is_valid, errors = validate_filter_query_results_against_database(
+            admin_client=admin_client,
             api_response=result,
             licenses=no_result_licenses,
             namespace=model_registry_namespace,
