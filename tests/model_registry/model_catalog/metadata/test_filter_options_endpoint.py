@@ -26,7 +26,6 @@ pytestmark = [
 class TestFilterOptionsEndpoint:
     """
     Test class for validating the models/filter_options endpoint
-    RHOAIENG-36696
     """
 
     # Cannot use non-admin user for this test as it cannot list the pods in the namespace
@@ -58,8 +57,6 @@ class TestFilterOptionsEndpoint:
 
         This test executes the exact same SQL query the API uses and compares results
         to catch any discrepancies between database content and API response.
-
-        Expected failure because of RHOAIENG-37069 & RHOAIENG-37226
         """
         api_url = f"{model_catalog_rest_url[0]}models/filter_options"
         LOGGER.info(f"Testing comprehensive database coverage for: {api_url}")
@@ -125,7 +122,6 @@ class TestFilterOptionsEndpoint:
         test_idp_user: UserTestSession,
     ):
         """
-        Test for: RHOAIENG-38836
         Validate that namedQueries field is present in filter_options response.
         Validates that default-performance-filters named query exists with expected properties.
         """

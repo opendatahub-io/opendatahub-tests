@@ -25,6 +25,7 @@ from tests.model_serving.maas_billing.maas_subscription.utils import (
     MAAS_DB_NAMESPACE,
     MAAS_SUBSCRIPTION_NAMESPACE,
     create_api_key,
+    create_maas_subscription,
     get_maas_postgres_resources,
     patch_llmisvc_with_maas_router_and_tiers,
     wait_for_postgres_connection_log,
@@ -447,3 +448,111 @@ def maas_subscription_namespace(unprivileged_client, admin_client):
         admin_client=admin_client,
     ) as ns:
         yield ns
+
+
+@pytest.fixture(scope="function")
+def temporary_system_authenticated_subscription(
+    admin_client: DynamicClient,
+    maas_subscription_tinyllama_free: MaaSSubscription,
+    maas_model_tinyllama_free: MaaSModelRef,
+) -> Generator[MaaSSubscription, Any, Any]:
+    """
+    Creates a temporary subscription owned by system:authenticated.
+    Used for cascade deletion tests.
+    """
+
+    subscription_name = f"e2e-temp-sub-{generate_random_name()}"
+
+    with create_maas_subscription(
+        admin_client=admin_client,
+        subscription_namespace=maas_subscription_tinyllama_free.namespace,
+        subscription_name=subscription_name,
+        owner_group_name="system:authenticated",
+        model_name=maas_model_tinyllama_free.name,
+        model_namespace=maas_model_tinyllama_free.namespace,
+        tokens_per_minute=50,
+        window="1m",
+        priority=0,
+        teardown=False,
+        wait_for_resource=True,
+    ) as temporary_subscription:
+        temporary_subscription.wait_for_condition(
+            condition="Ready",
+            status="True",
+            timeout=300,
+        )
+
+        LOGGER.info(
+            f"Created temporary subscription {temporary_subscription.name} for model {maas_model_tinyllama_free.name}"
+        )
+
+        yield temporary_subscription
+
+        LOGGER.info(f"Fixture teardown: ensuring subscription {temporary_subscription.name} is removed")
+        temporary_subscription.clean_up(wait=True)
+
+
+@pytest.fixture(scope="function")
+def premium_system_authenticated_access(
+    admin_client: DynamicClient,
+    maas_model_tinyllama_premium: MaaSModelRef,
+    maas_subscription_tinyllama_premium: MaaSSubscription,
+) -> Generator[dict[str, Any], Any, Any]:
+    """
+    Creates an extra AuthPolicy and matching subscription for system:authenticated
+    on the premium model.
+    """
+
+    auth_policy_name = f"e2e-premium-system-auth-{generate_random_name()}"
+    subscription_name = f"e2e-premium-system-auth-sub-{generate_random_name()}"
+
+    with (
+        MaaSAuthPolicy(
+            client=admin_client,
+            name=auth_policy_name,
+            namespace=maas_subscription_tinyllama_premium.namespace,
+            model_refs=[
+                {
+                    "name": maas_model_tinyllama_premium.name,
+                    "namespace": maas_model_tinyllama_premium.namespace,
+                }
+            ],
+            subjects={"groups": [{"name": "system:authenticated"}]},
+            teardown=False,
+            wait_for_resource=True,
+        ) as extra_auth_policy,
+        create_maas_subscription(
+            admin_client=admin_client,
+            subscription_namespace=maas_subscription_tinyllama_premium.namespace,
+            subscription_name=subscription_name,
+            owner_group_name="system:authenticated",
+            model_name=maas_model_tinyllama_premium.name,
+            model_namespace=maas_model_tinyllama_premium.namespace,
+            tokens_per_minute=100,
+            window="1m",
+            priority=0,
+            teardown=True,
+            wait_for_resource=True,
+        ) as system_authenticated_subscription,
+    ):
+        extra_auth_policy.wait_for_condition(condition="Ready", status="True", timeout=300)
+        system_authenticated_subscription.wait_for_condition(
+            condition="Ready",
+            status="True",
+            timeout=300,
+        )
+
+        LOGGER.info(
+            f"Created extra AuthPolicy {extra_auth_policy.name} and subscription "
+            f"{system_authenticated_subscription.name} for premium model "
+            f"{maas_model_tinyllama_premium.name}"
+        )
+
+        yield {
+            "auth_policy": extra_auth_policy,
+            "subscription": system_authenticated_subscription,
+        }
+
+        if extra_auth_policy.exists:
+            LOGGER.info(f"Fixture teardown: ensuring AuthPolicy {extra_auth_policy.name} is removed")
+            extra_auth_policy.clean_up(wait=True)
