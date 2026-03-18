@@ -48,11 +48,6 @@ POSTGRES_IMAGE = os.getenv(
 POSTGRESQL_USER = os.getenv("LLS_VECTOR_IO_POSTGRESQL_USER", "ps_user")
 POSTGRESQL_PASSWORD = os.getenv("LLS_VECTOR_IO_POSTGRESQL_PASSWORD", "ps_password")
 
-LLAMA_STACK_DISTRIBUTION_SECRET_DATA = {
-    "postgres-user": POSTGRESQL_USER,
-    "postgres-password": POSTGRESQL_PASSWORD,
-}
-
 LLS_CORE_INFERENCE_MODEL = os.getenv("LLS_CORE_INFERENCE_MODEL", "")
 LLS_CORE_VLLM_URL = os.getenv("LLS_CORE_VLLM_URL", "")
 LLS_CORE_VLLM_API_TOKEN = os.getenv("LLS_CORE_VLLM_API_TOKEN", "")
@@ -67,6 +62,18 @@ LLS_CORE_VLLM_EMBEDDING_URL = os.getenv(
 LLS_CORE_VLLM_EMBEDDING_API_TOKEN = os.getenv("LLS_CORE_VLLM_EMBEDDING_API_TOKEN", "fake")
 LLS_CORE_VLLM_EMBEDDING_MAX_TOKENS = os.getenv("LLS_CORE_VLLM_EMBEDDING_MAX_TOKENS", "8192")
 LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY = os.getenv("LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY", "true")
+
+LLS_CORE_AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "")
+LLS_CORE_AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "")
+
+LLAMA_STACK_DISTRIBUTION_SECRET_DATA = {
+    "postgres-user": POSTGRESQL_USER,
+    "postgres-password": POSTGRESQL_PASSWORD,
+    "vllm-api-token": LLS_CORE_VLLM_API_TOKEN,
+    "vllm-embedding-api-token": LLS_CORE_VLLM_EMBEDDING_API_TOKEN,
+    "aws-access-key-id": LLS_CORE_AWS_ACCESS_KEY_ID,
+    "aws-secret-access-key": LLS_CORE_AWS_SECRET_ACCESS_KEY,
+}
 
 IBM_EARNINGS_DOC_URL = "https://www.ibm.com/downloads/documents/us-en/1550f7eea8c0ded6"
 
@@ -171,11 +178,12 @@ def llama_stack_server_config(
         inference_model = LLS_CORE_INFERENCE_MODEL
     env_vars.append({"name": "INFERENCE_MODEL", "value": inference_model})
 
-    if params.get("vllm_api_token"):
-        vllm_api_token = str(params.get("vllm_api_token"))
-    else:
-        vllm_api_token = LLS_CORE_VLLM_API_TOKEN
-    env_vars.append({"name": "VLLM_API_TOKEN", "value": vllm_api_token})
+    env_vars.append(
+        {
+            "name": "VLLM_API_TOKEN",
+            "valueFrom": {"secretKeyRef": {"name": "llamastack-distribution-secret", "key": "vllm-api-token"}},
+        },
+    )
 
     if params.get("vllm_url_fixture"):
         vllm_url = str(request.getfixturevalue(argname=params.get("vllm_url_fixture")))
@@ -200,7 +208,14 @@ def llama_stack_server_config(
         env_vars.append({"name": "EMBEDDING_MODEL", "value": LLS_CORE_EMBEDDING_MODEL})
         env_vars.append({"name": "EMBEDDING_PROVIDER_MODEL_ID", "value": LLS_CORE_EMBEDDING_PROVIDER_MODEL_ID})
         env_vars.append({"name": "VLLM_EMBEDDING_URL", "value": LLS_CORE_VLLM_EMBEDDING_URL})
-        env_vars.append({"name": "VLLM_EMBEDDING_API_TOKEN", "value": LLS_CORE_VLLM_EMBEDDING_API_TOKEN})
+        env_vars.append(
+            {
+                "name": "VLLM_EMBEDDING_API_TOKEN",
+                "valueFrom": {
+                    "secretKeyRef": {"name": "llamastack-distribution-secret", "key": "vllm-embedding-api-token"}
+                },
+            },
+        )
         env_vars.append({"name": "VLLM_EMBEDDING_MAX_TOKENS", "value": LLS_CORE_VLLM_EMBEDDING_MAX_TOKENS})
         env_vars.append({"name": "VLLM_EMBEDDING_TLS_VERIFY", "value": LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY})
     elif embedding_provider == "sentence-transformers":
