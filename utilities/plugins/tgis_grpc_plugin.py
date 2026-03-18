@@ -67,7 +67,7 @@ class TGISGRPCPlugin:
             response = stub.Generate(request=request)
             LOGGER.info(response)
             res = response.responses[0]
-            return {  # noqa: TRY300
+            return {
                 "input_tokens": res.input_token_count,
                 "stop_reason": res.stop_reason,
                 "output_text": res.text,
