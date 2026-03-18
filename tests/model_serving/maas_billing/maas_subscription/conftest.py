@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 import requests
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.cluster_role_binding import ClusterRoleBinding
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.llm_inference_service import LLMInferenceService
@@ -24,10 +25,12 @@ from simple_logger.logger import get_logger
 from tests.model_serving.maas_billing.maas_subscription.utils import (
     MAAS_DB_NAMESPACE,
     MAAS_SUBSCRIPTION_NAMESPACE,
+    create_and_yield_api_key_id,
     create_api_key,
     create_maas_subscription,
     get_maas_postgres_resources,
     patch_llmisvc_with_maas_router_and_tiers,
+    resolve_api_key_username,
     revoke_api_key,
     wait_for_postgres_connection_log,
     wait_for_postgres_deployment_ready,
@@ -662,22 +665,87 @@ def active_api_key_id(
     """
     Create a single active API key and return its ID for revoke tests.
     """
-    key_name = f"e2e-fixture-key-{generate_random_name()}"
-    _, body = create_api_key(
-        base_url=base_url,
-        ocp_user_token=ocp_token_for_actor,
-        request_session_http=request_session_http,
-        api_key_name=key_name,
-    )
-    LOGGER.info(f"active_api_key_id: created key id={body['id']}")
-    yield body["id"]
-    LOGGER.info(f"Fixture teardown: revoking key {body['id']}")
-    revoke_api_key(
+    yield from create_and_yield_api_key_id(
         request_session_http=request_session_http,
         base_url=base_url,
-        key_id=body["id"],
+        ocp_user_token=ocp_token_for_actor,
+        key_name_prefix="e2e-fixture-key",
+    )
+
+
+@pytest.fixture(scope="function")
+def free_user_username(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_token_for_actor: str,
+    active_api_key_id: str,
+) -> str:
+    """Resolve and return the free (non-admin) actor's username from their active API key."""
+    username = resolve_api_key_username(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        key_id=active_api_key_id,
         ocp_user_token=ocp_token_for_actor,
     )
+    LOGGER.info(f"free_user_username: resolved username='{username}' from key id={active_api_key_id}")
+    return username
+
+
+@pytest.fixture(scope="function")
+def admin_username(
+    request_session_http: requests.Session,
+    base_url: str,
+    admin_ocp_token: str,
+    admin_active_api_key_id: str,
+) -> str:
+    """Resolve and return the admin actor's username from their active API key."""
+    username = resolve_api_key_username(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        key_id=admin_active_api_key_id,
+        ocp_user_token=admin_ocp_token,
+    )
+    LOGGER.info(f"admin_username: resolved username='{username}' from key id={admin_active_api_key_id}")
+    return username
+
+
+@pytest.fixture(scope="function")
+def admin_active_api_key_id(
+    request_session_http: requests.Session,
+    base_url: str,
+    admin_ocp_token: str,
+) -> Generator[str, Any, Any]:
+    """Create an active API key as the admin user, yield its ID, and revoke on teardown."""
+    yield from create_and_yield_api_key_id(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        ocp_user_token=admin_ocp_token,
+        key_name_prefix="e2e-authz-admin",
+    )
+
+
+@pytest.fixture(scope="class")
+def admin_ocp_token(admin_client: DynamicClient) -> Generator[str, Any, Any]:
+    """OCP bearer token for a dedicated SA with cluster-admin ClusterRole, recognised as admin by MaaS API."""
+    applications_namespace = py_config["applications_namespace"]
+    sa_name = f"maas-e2e-admin-{generate_random_name()}"
+
+    with ServiceAccount(
+        client=admin_client,
+        namespace=applications_namespace,
+        name=sa_name,
+        teardown=True,
+    ) as sa:
+        sa.wait(timeout=60)
+
+        with ClusterRoleBinding(
+            client=admin_client,
+            name=sa_name,
+            cluster_role="cluster-admin",
+            subjects=[{"kind": "ServiceAccount", "name": sa_name, "namespace": applications_namespace}],
+            teardown=True,
+        ):
+            yield create_inference_token(model_service_account=sa)
 
 
 @pytest.fixture(scope="function")
