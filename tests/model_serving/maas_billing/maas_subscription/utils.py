@@ -300,7 +300,7 @@ def resolve_api_key_username(
         f"Expected 200 on GET /v1/api-keys/{key_id}, got {get_resp.status_code}: {get_resp.text[:200]}"
     )
     username = get_body.get("username") or get_body.get("owner")
-    assert username, f"Expected 'username' or 'owner' field in GET response: {get_body}"
+    assert username, "Expected 'username' or 'owner' field in GET response"
     return username
 
 

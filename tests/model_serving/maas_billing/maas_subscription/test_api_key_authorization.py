@@ -153,8 +153,4 @@ class TestAPIKeyAuthorization:
             f"Expected 403 when free user searches by another user's username, "
             f"got {list_resp.status_code}: {list_resp.text[:200]}"
         )
-<<<<<<< HEAD
-        LOGGER.info(f"[authz] Free user correctly received 403 when searching by admin username='{admin_username}'")
-=======
         LOGGER.info("[authz] Free user correctly received 403 when searching by another user's username")
->>>>>>> 626a88d (test: update API key authorization tests)
