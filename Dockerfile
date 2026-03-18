@@ -13,7 +13,7 @@ ENV PATH="$PATH:$BIN_DIR"
 
 # Install system dependencies using dnf
 RUN dnf update -y \
-    && dnf install -y python3 python3-pip ssh gnupg curl gpg wget vim httpd-tools rsync openssl openssl-devel\
+    && dnf install -y python3 python3-pip ssh gnupg curl gpg wget vim httpd-tools rsync openssl openssl-devel skopeo\
     && dnf clean all \
     && rm -rf /var/cache/dnf
 
@@ -21,6 +21,9 @@ RUN dnf update -y \
 RUN curl -sSL "https://github.com/fullstorydev/grpcurl/releases/download/v1.9.2/grpcurl_1.9.2_linux_x86_64.tar.gz" --output /tmp/grpcurl_1.2.tar.gz \
     && tar xvf /tmp/grpcurl_1.2.tar.gz --no-same-owner \
     && mv grpcurl /usr/bin/grpcurl
+
+# Install cosign
+COPY --from=quay.io/securesign/cli-cosign@sha256:a8289d488491991d454a32784de19476f2c984917eb7a33b4544e55512f2747c /usr/local/bin/cosign /usr/bin/cosign
 
 RUN useradd -ms /bin/bash $USER
 USER $USER

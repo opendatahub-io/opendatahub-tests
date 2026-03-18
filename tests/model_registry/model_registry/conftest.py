@@ -135,7 +135,7 @@ def sa_token(service_account: ServiceAccount) -> str:
             raise ValueError("Retrieved token is empty after successful command execution.")
 
         LOGGER.info(f"Successfully retrieved token for SA '{sa_name}'")
-        return token  # noqa: TRY300
+        return token
 
     except Exception as e:  # Catch all exceptions from the try block
         error_type = type(e).__name__
