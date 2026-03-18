@@ -7,6 +7,7 @@ from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.constants import (
+    OTHER_MODELS_CATALOG_ID,
     REDHAT_AI_CATALOG_ID,
     REDHAT_AI_CATALOG_NAME,
     REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
@@ -438,3 +439,48 @@ class TestSearchModelsByFilterQuery:
         LOGGER.info(
             f"Advanced {logic_type.upper()} filter validation completed for {len(models_from_filter_query)} models"
         )
+
+
+@pytest.mark.install
+@pytest.mark.post_upgrade
+class TestEmbeddingModelSearch:
+    def test_filter_query_by_text_embedding_task(
+        self: Self,
+        embedding_models_response: dict[str, Any],
+    ):
+        """
+        Validate filterQuery with tasks='text-embedding' returns models
+        """
+        number_of_models = embedding_models_response.get("size", 0)
+        LOGGER.info(f"Found number of embedding models: {number_of_models}")
+        assert number_of_models > 0, "Expected at least one model with tasks='text-embedding'"
+
+    def test_embedding_models_source_id(
+        self: Self,
+        embedding_models_response: dict[str, Any],
+    ):
+        """
+        Validate all embedding models belong to the Other Models source
+        """
+        mismatched_models = [
+            f"{model['name']} (source_id={model['source_id']})"
+            for model in embedding_models_response.get("items", [])
+            if model["source_id"] != OTHER_MODELS_CATALOG_ID
+        ]
+        assert not mismatched_models, (
+            f"Models with unexpected source_id (expected '{OTHER_MODELS_CATALOG_ID}'): {mismatched_models}"
+        )
+
+    def test_embedding_models_have_text_embedding_task(
+        self: Self,
+        embedding_models_response: dict[str, Any],
+    ):
+        """
+        Validate all returned models have 'text-embedding' in their tasks
+        """
+        models_missing_task = [
+            model["name"]
+            for model in embedding_models_response.get("items", [])
+            if "text-embedding" not in model.get("tasks", [])
+        ]
+        assert not models_missing_task, f"Models missing 'text-embedding' task: {models_missing_task}"
