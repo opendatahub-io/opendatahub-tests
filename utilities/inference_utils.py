@@ -118,7 +118,7 @@ class Inference:
         """
         labels = self.inference_service.labels
 
-        if self.deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
+        if self.deployment_mode in (KServeDeploymentType.RAW_DEPLOYMENT, KServeDeploymentType.STANDARD):
             if isinstance(self.inference_service, InferenceGraph):
                 # For InferenceGraph, the logic is similar as in Serverless. Only the label is different.
                 return not (labels and labels.get(Labels.Kserve.NETWORKING_KSERVE_IO) == "cluster-local")

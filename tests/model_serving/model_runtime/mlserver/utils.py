@@ -49,10 +49,10 @@ def run_mlserver_inference(
 ) -> Any:
     """
     Run inference against an MLServer-hosted model using REST protocol.
-    Supports RAW KServe deployment mode.
+    Supports RawDeployment(Standard) modes.
 
     Args:
-        pod_name (str): Name of the pod running the MLServer model (used for RAW deployment).
+        pod_name (str): Name of the pod running the MLServer model.
         isvc (InferenceService): The KServe InferenceService object.
         input_data (dict[str, Any]): The input data payload for inference.
         model_version (str): The version of the model to target, if applicable.
@@ -66,7 +66,7 @@ def run_mlserver_inference(
 
     Notes:
         - REST calls expect the model to support V2 REST inference APIs.
-        - RAW deployments use port-forwarding.
+        - Uses port-forwarding for RawDeployment(Standard) modes.
     """
     deployment_mode = isvc.instance.metadata.annotations.get("serving.kserve.io/deploymentMode")
     model_name = isvc.instance.metadata.name
@@ -76,8 +76,9 @@ def run_mlserver_inference(
     if protocol != Protocols.REST:
         raise ValueError(f"Unsupported protocol: {protocol}. Only REST is supported.")
 
-    if deployment_mode != KServeDeploymentType.RAW_DEPLOYMENT:
-        raise ValueError(f"Unsupported deployment mode: {deployment_mode}. Only RawDeployment is supported.")
+    supported_modes = (KServeDeploymentType.RAW_DEPLOYMENT, KServeDeploymentType.STANDARD)
+    if deployment_mode not in supported_modes:
+        raise ValueError(f"Unsupported deployment mode: {deployment_mode}. Supported modes: {supported_modes}")
 
     port = Ports.REST_PORT
     with portforward.forward(pod_or_service=pod_name, namespace=isvc.namespace, from_port=port, to_port=port):
@@ -181,25 +182,51 @@ def validate_nondeterministic_snapshot(response: Any, protocol: str) -> None:
         ) from e
 
 
-def get_model_storage_uri_dict(model_format_name: str) -> dict[str, str]:
+def get_model_storage_uri_dict(
+    model_format_name: str,
+    modelcar: bool = False,
+    env_variables: list[dict[str, str]] | None = None,
+) -> dict[str, Any]:
     """
-    Generate a dictionary containing the storage path for a given model format.
+    Generate a dictionary containing the storage configuration for a given model format.
 
-    This utility helps build a consistent storage URI dictionary, typically used
-    for referencing model directories in file systems or remote storage.
+    This utility helps build a consistent storage configuration dictionary for both
+    S3-based deployments and model car (OCI image) deployments.
 
     Args:
-        model_format_name (str): Name of the model format or subdirectory.
+        model_format_name (str): Name of the model format (e.g., "sklearn").
+        modelcar (bool): If True, generate config for model car (OCI image) deployment.
+                        If False (default), generate config for S3 storage.
+        env_variables (list[dict[str, str]] | None): Optional environment variables for model car deployments.
 
     Returns:
-        dict[str, str]: A dictionary with a single key "model-dir" pointing to the
-                        constructed path using the global MODEL_PATH_PREFIX.
-                        Example: {"model-dir": "/mnt/models/sklearn"}
+        dict[str, Any]: For S3 (modelcar=False): {"model-dir": "/mnt/models/sklearn"}
+                       For model car (modelcar=True): {"storage-uri": "oci://quay.io/...", "model-format": "sklearn"}
     """
-    return {"model-dir": f"{MODEL_PATH_PREFIX.rstrip('/')}/{model_format_name.lstrip('/')}"}
+    if modelcar:
+        from utilities.constants import ModelCarImage
+
+        # Get OCI image URI from ModelCarImage constant
+        storage_uri = getattr(ModelCarImage, f"MLSERVER_{model_format_name.upper()}")
+
+        config: dict[str, Any] = {
+            "storage-uri": storage_uri,
+            "model-format": model_format_name,
+        }
+
+        if env_variables:
+            config["model_env_variables"] = env_variables
+
+        return config
+    else:
+        return {"model-dir": f"{MODEL_PATH_PREFIX.rstrip('/')}/{model_format_name.lstrip('/')}"}
 
 
-def get_model_namespace_dict(model_format_name: str, deployment_type: str) -> dict[str, str]:
+def get_model_namespace_dict(
+    model_format_name: str,
+    deployment_type: str = RAW_DEPLOYMENT_TYPE,
+    modelcar: bool = False,
+) -> dict[str, str]:
     """
     Generate a dictionary containing a unique model namespace or name identifier.
 
@@ -209,17 +236,24 @@ def get_model_namespace_dict(model_format_name: str, deployment_type: str) -> di
 
     Args:
         model_format_name (str): The model format name (e.g., "sklearn").
-        deployment_type (str): The type of deployment (e.g., "raw").
+        deployment_type (str): The type of deployment. Defaults to "raw".
+        modelcar (bool): If True, use "modelcar" suffix instead of deployment type.
 
     Returns:
         dict[str, str]: A dictionary with the key "name" and a concatenated identifier as value.
-                        Example: {"name": "sklearn-raw"}
+                        Example: {"name": "sklearn-raw"} or {"name": "sklearn-modelcar"}
     """
-    name = f"{model_format_name.strip()}-{deployment_type.strip()}"
+    if modelcar:
+        name = f"{model_format_name.strip()}-modelcar"
+    else:
+        name = f"{model_format_name.strip()}-{deployment_type.strip()}"
     return {"name": name}
 
 
-def get_deployment_config_dict(model_format_name: str, deployment_type: str) -> dict[str, str]:
+def get_deployment_config_dict(
+    model_format_name: str,
+    deployment_type: str = RAW_DEPLOYMENT_TYPE,
+) -> dict[str, str]:
     """
     Generate a deployment configuration dictionary based on the model format and deployment type.
 
@@ -228,7 +262,7 @@ def get_deployment_config_dict(model_format_name: str, deployment_type: str) -> 
 
     Args:
         model_format_name (str): The model format name (e.g., "sklearn").
-        deployment_type (str): The deployment type (e.g., "raw").
+        deployment_type (str): The deployment type. Defaults to "raw".
 
     Returns:
         dict[str, str]: A dictionary containing the deployment configuration.
@@ -241,16 +275,24 @@ def get_deployment_config_dict(model_format_name: str, deployment_type: str) -> 
     return deployment_config_dict
 
 
-def get_test_case_id(model_format_name: str, deployment_type: str) -> str:
+def get_test_case_id(
+    model_format_name: str,
+    deployment_type: str = RAW_DEPLOYMENT_TYPE,
+    modelcar: bool = False,
+) -> str:
     """
     Generate a test case identifier string based on model format and deployment type.
 
     Args:
         model_format_name (str): The model format name (e.g., "sklearn").
-        deployment_type (str): The deployment type (e.g., "raw").
+        deployment_type (str): The deployment type. Defaults to "raw".
+        modelcar (bool): Whether this is a model car deployment. Defaults to False.
 
     Returns:
-        str: A test case ID in the format: "<model_format>-<deployment_type>-deployment".
-              Example: "sklearn-raw-deployment"
+        str: A test case ID in the format: "<model_format>-<deployment_type>-deployment[-modelcar]".
+              Example: "sklearn-raw-deployment" or "sklearn-raw-deployment-modelcar"
     """
-    return f"{model_format_name.strip()}-{deployment_type.strip()}-deployment"
+    base_id = f"{model_format_name.strip()}-{deployment_type.strip()}-deployment"
+    if modelcar:
+        base_id += "-modelcar"
+    return base_id
