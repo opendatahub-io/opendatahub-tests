@@ -63,15 +63,15 @@ class TestLabelsEndpoint:
             token = get_openshift_token()
             url = model_catalog_rest_url[0]
 
-            # Default /labels excludes MCP labels — filter them out for comparison
-            model_expected_labels = [label for label in all_expected_labels if label.get("assetType") != "mcp_servers"]
+            # Split expected labels by asset type
             mcp_expected_labels = [label for label in all_expected_labels if label.get("assetType") == "mcp_servers"]
+            model_expected_labels = [label for label in all_expected_labels if label not in mcp_expected_labels]
 
-            # Verify model labels match default API response
+            # Verify default /labels returns only model labels (no MCP cross-contamination)
             api_labels = get_labels_from_api(model_catalog_rest_url=url, user_token=token)
             verify_labels_match(expected_labels=model_expected_labels, api_labels=api_labels)
 
-            # Verify MCP labels are only returned with assetType=mcp_servers
+            # Verify assetType=mcp_servers returns only MCP labels (no model cross-contamination)
             mcp_api_labels = get_labels_from_api(model_catalog_rest_url=url, user_token=token, asset_type="mcp_servers")
             verify_labels_match(expected_labels=mcp_expected_labels, api_labels=mcp_api_labels)
 
