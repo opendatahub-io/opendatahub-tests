@@ -5,8 +5,8 @@ import requests
 from simple_logger.logger import get_logger
 
 from tests.model_serving.maas_billing.maas_subscription.utils import (
-    list_api_keys,
     get_api_key,
+    list_api_keys,
     revoke_api_key,
 )
 
@@ -131,8 +131,7 @@ class TestAPIKeyAuthorization:
             f"Admin's key id={admin_active_api_key_id} must NOT appear in free user's search results"
         )
         LOGGER.info(
-            f"[authz] Free user search returned {len(items)} key(s) — "
-            f"own key present, admin's key correctly excluded"
+            f"[authz] Free user search returned {len(items)} key(s) — own key present, admin's key correctly excluded"
         )
 
     @pytest.mark.tier1
@@ -156,6 +155,4 @@ class TestAPIKeyAuthorization:
             f"Expected 403 when free user searches by admin username='{admin_username}', "
             f"got {list_resp.status_code}: {list_resp.text[:200]}"
         )
-        LOGGER.info(
-            f"[authz] Free user correctly received 403 when searching by admin username='{admin_username}'"
-        )
+        LOGGER.info(f"[authz] Free user correctly received 403 when searching by admin username='{admin_username}'")
