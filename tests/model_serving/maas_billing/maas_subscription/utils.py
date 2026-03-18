@@ -4,7 +4,7 @@ import json
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import pytest
 import requests
@@ -216,6 +216,95 @@ def create_api_key(
     if not isinstance(api_key, str) or not api_key.startswith("sk-"):
         raise AssertionError("No plaintext api key returned in MaaS API response")
 
+    return response, parsed_body
+
+
+def get_api_key(
+    request_session_http: requests.Session,
+    base_url: str,
+    key_id: str,
+    ocp_user_token: str,
+    request_timeout_seconds: int = 60,
+) -> tuple[Response, dict[str, Any]]:
+    """
+    Fetch a single API key by ID via MaaS API (GET /v1/api-keys/{id}).
+    """
+    url = f"{base_url}/v1/api-keys/{quote(key_id, safe='')}"
+    response = request_session_http.get(
+        url=url,
+        headers={"Authorization": f"Bearer {ocp_user_token}"},
+        timeout=request_timeout_seconds,
+    )
+    LOGGER.info(f"get_api_key: url={url} key_id={key_id} status={response.status_code}")
+    try:
+        parsed_body: dict[str, Any] = json.loads(response.text)
+    except json.JSONDecodeError as error:
+        raise AssertionError(
+            f"get_api_key returned non-JSON response: status={response.status_code} body={response.text[:200]}"
+        ) from error
+    return response, parsed_body
+
+
+def list_api_keys(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_user_token: str,
+    filters: dict[str, Any] | None = None,
+    sort: dict[str, Any] | None = None,
+    pagination: dict[str, Any] | None = None,
+    request_timeout_seconds: int = 60,
+) -> tuple[Response, dict[str, Any]]:
+    """
+    Search/list API keys via MaaS API (POST /v1/api-keys/search).
+    """
+    url = f"{base_url}/v1/api-keys/search"
+    payload: dict[str, Any] = {}
+    if filters is not None:
+        payload["filters"] = filters
+    if sort is not None:
+        payload["sort"] = sort
+    if pagination is not None:
+        payload["pagination"] = pagination
+
+    response = request_session_http.post(
+        url=url,
+        headers={"Authorization": f"Bearer {ocp_user_token}"},
+        json=payload,
+        timeout=request_timeout_seconds,
+    )
+    LOGGER.info(f"list_api_keys: url={url} status={response.status_code} items_count=pending_parse")
+    try:
+        parsed_body: dict[str, Any] = json.loads(response.text)
+    except json.JSONDecodeError as error:
+        raise AssertionError(
+            f"list_api_keys returned non-JSON response: status={response.status_code} body={response.text[:200]}"
+        ) from error
+    return response, parsed_body
+
+
+def revoke_api_key(
+    request_session_http: requests.Session,
+    base_url: str,
+    key_id: str,
+    ocp_user_token: str,
+    request_timeout_seconds: int = 60,
+) -> tuple[Response, dict[str, Any]]:
+    """
+    Revoke an API key via MaaS API (DELETE /v1/api-keys/{id}).
+    """
+    url = f"{base_url}/v1/api-keys/{quote(key_id, safe='')}"
+    response = request_session_http.delete(
+        url=url,
+        headers={"Authorization": f"Bearer {ocp_user_token}"},
+        timeout=request_timeout_seconds,
+    )
+    LOGGER.info(f"revoke_api_key: url={url} key_id={key_id} status={response.status_code}")
+    try:
+        parsed_body: dict[str, Any] = json.loads(response.text)
+    except json.JSONDecodeError as error:
+        raise AssertionError(
+            f"revoke_api_key returned non-JSON response: status={response.status_code} body={response.text[:200]}"
+        ) from error
     return response, parsed_body
 
 
