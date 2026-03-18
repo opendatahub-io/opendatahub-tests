@@ -41,16 +41,14 @@ class TestAPIKeyAuthorization:
             pagination={"limit": 50, "offset": 0},
         )
         assert list_resp.status_code == 200, (
-            f"Expected 200 on admin search for username='{free_user_username}', "
-            f"got {list_resp.status_code}: {list_resp.text[:200]}"
+            f"Expected 200 on admin search by username, got {list_resp.status_code}: {list_resp.text[:200]}"
         )
         items: list[dict] = list_body.get("items") or list_body.get("data") or []
         key_ids = [item["id"] for item in items]
         assert active_api_key_id in key_ids, (
-            f"Expected free user's key id={active_api_key_id} in admin search results "
-            f"for username='{free_user_username}', found ids={key_ids}"
+            f"Expected free user's key id={active_api_key_id} in admin search results, found ids={key_ids}"
         )
-        LOGGER.info(f"[authz] Admin found {len(items)} active key(s) for user='{free_user_username}'")
+        LOGGER.info(f"[authz] Admin found {len(items)} active key(s) for the free user")
 
         revoke_resp, revoke_body = revoke_api_key(
             request_session_http=request_session_http,
@@ -100,7 +98,7 @@ class TestAPIKeyAuthorization:
         )
         LOGGER.info(f"[authz] Free user correctly received 404 on DELETE of admin's key id={admin_active_api_key_id}")
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_non_admin_search_only_returns_own_keys(
         self,
         request_session_http: requests.Session,
@@ -134,7 +132,7 @@ class TestAPIKeyAuthorization:
             f"[authz] Free user search returned {len(items)} key(s) — own key present, admin's key correctly excluded"
         )
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_non_admin_cannot_search_by_other_username(
         self,
         request_session_http: requests.Session,
@@ -152,7 +150,11 @@ class TestAPIKeyAuthorization:
             pagination={"limit": 50, "offset": 0},
         )
         assert list_resp.status_code == 403, (
-            f"Expected 403 when free user searches by admin username='{admin_username}', "
+            f"Expected 403 when free user searches by another user's username, "
             f"got {list_resp.status_code}: {list_resp.text[:200]}"
         )
+<<<<<<< HEAD
         LOGGER.info(f"[authz] Free user correctly received 403 when searching by admin username='{admin_username}'")
+=======
+        LOGGER.info("[authz] Free user correctly received 403 when searching by another user's username")
+>>>>>>> 626a88d (test: update API key authorization tests)

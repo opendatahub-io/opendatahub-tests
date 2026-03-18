@@ -7,7 +7,6 @@ from typing import Any
 import pytest
 import requests
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.cluster_role_binding import ClusterRoleBinding
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.llm_inference_service import LLMInferenceService
@@ -38,10 +37,11 @@ from tests.model_serving.maas_billing.maas_subscription.utils import (
 from tests.model_serving.maas_billing.utils import build_maas_headers
 from utilities.constants import DscComponents
 from utilities.general import generate_random_name
-from utilities.infra import create_inference_token, create_ns, login_with_user_password
+from utilities.infra import create_inference_token, create_ns, get_openshift_token, login_with_user_password
 from utilities.llmd_constants import ContainerImages, ModelStorage
 from utilities.llmd_utils import create_llmisvc
 from utilities.plugins.constant import OpenAIEnpoints
+from utilities.resources.auth import Auth
 
 LOGGER = get_logger(name=__name__)
 
@@ -687,7 +687,7 @@ def free_user_username(
         key_id=active_api_key_id,
         ocp_user_token=ocp_token_for_actor,
     )
-    LOGGER.info(f"free_user_username: resolved username='{username}' from key id={active_api_key_id}")
+    LOGGER.info(f"free_user_username: resolved username from key id={active_api_key_id}")
     return username
 
 
@@ -705,7 +705,7 @@ def admin_username(
         key_id=admin_active_api_key_id,
         ocp_user_token=admin_ocp_token,
     )
-    LOGGER.info(f"admin_username: resolved username='{username}' from key id={admin_active_api_key_id}")
+    LOGGER.info(f"admin_username: resolved username from key id={admin_active_api_key_id}")
     return username
 
 
@@ -726,26 +726,14 @@ def admin_active_api_key_id(
 
 @pytest.fixture(scope="class")
 def admin_ocp_token(admin_client: DynamicClient) -> Generator[str, Any, Any]:
-    """OCP bearer token for a dedicated SA with cluster-admin ClusterRole, recognised as admin by MaaS API."""
-    applications_namespace = py_config["applications_namespace"]
-    sa_name = f"maas-e2e-admin-{generate_random_name()}"
+    """Temporarily adds dedicated-admins to Auth CR adminGroups so the admin token is recognised by MaaS."""
+    auth = Auth(client=admin_client, name="auth")
+    current_groups: list[str] = list(auth.instance.spec.adminGroups or [])
+    patched_groups = list(set(current_groups + ["dedicated-admins"]))
+    LOGGER.info(f"admin_ocp_token: patching Auth CR adminGroups to {patched_groups}")
 
-    with ServiceAccount(
-        client=admin_client,
-        namespace=applications_namespace,
-        name=sa_name,
-        teardown=True,
-    ) as sa:
-        sa.wait(timeout=60)
-
-        with ClusterRoleBinding(
-            client=admin_client,
-            name=sa_name,
-            cluster_role="cluster-admin",
-            subjects=[{"kind": "ServiceAccount", "name": sa_name, "namespace": applications_namespace}],
-            teardown=True,
-        ):
-            yield create_inference_token(model_service_account=sa)
+    with ResourceEditor(patches={auth: {"spec": {"adminGroups": patched_groups}}}):
+        yield get_openshift_token(client=admin_client)
 
 
 @pytest.fixture(scope="function")

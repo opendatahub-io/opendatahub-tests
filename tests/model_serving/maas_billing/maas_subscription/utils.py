@@ -321,12 +321,16 @@ def create_and_yield_api_key_id(
     LOGGER.info(f"create_and_yield_api_key_id: created key id={body['id']} name={key_name}")
     yield body["id"]
     LOGGER.info(f"create_and_yield_api_key_id: teardown revoking key id={body['id']}")
-    revoke_api_key(
+    revoke_resp, _ = revoke_api_key(
         request_session_http=request_session_http,
         base_url=base_url,
         key_id=body["id"],
         ocp_user_token=ocp_user_token,
     )
+    if revoke_resp.status_code not in (200, 404):
+        raise AssertionError(
+            f"Unexpected teardown status for key id={body['id']}: {revoke_resp.status_code} {revoke_resp.text[:200]}"
+        )
 
 
 def revoke_api_key(
