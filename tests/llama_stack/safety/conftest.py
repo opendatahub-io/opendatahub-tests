@@ -48,7 +48,7 @@ def guardrails_orchestrator_ssl_cert(guardrails_orchestrator_route: Route):
         with open(filepath, "w") as f:
             f.write("\n".join(cert_lines))
 
-        return filepath  # noqa: TRY300
+        return filepath
 
     except Exception as e:  # noqa: BLE001
         raise RuntimeError(f"Could not get certificate from {hostname}: {e}")
