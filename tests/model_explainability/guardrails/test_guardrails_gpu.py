@@ -66,6 +66,7 @@ from utilities.plugins.constant import OpenAIEnpoints
     indirect=True,
 )
 @pytest.mark.smoke
+@pytest.mark.gpu
 @pytest.mark.rawdeployment
 @pytest.mark.usefixtures("patched_dsc_kserve_headed", "guardrails_gateway_config")
 class TestGuardrailsOrchestratorWithBuiltInDetectors:
@@ -206,8 +207,8 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
 class TestGuardrailsOrchestratorHuggingFaceGPU:
     """
     These tests verify that the GuardrailsOrchestrator works as expected when using HuggingFace detectors
-    Steps:/
-        - Deploy an LLM (Qwen2.5-0.5B-Instruct) using the vLLM SR.
+    Steps:
+        - Deploy an LLM (Qwen2.5-3B-Instruct) using the vLLM SR.
         - Deploy the GuardrailsOrchestrator.
         - Deploy a prompt injection detector using the HuggingFace SR.
         - Check that the detector works when we have an unsuitable input.

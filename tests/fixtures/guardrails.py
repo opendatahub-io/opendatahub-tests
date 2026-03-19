@@ -48,11 +48,11 @@ def guardrails_orchestrator(
             orchestrator_config = request.getfixturevalue(argname="orchestrator_config")
             gorch_kwargs["orchestrator_config"] = orchestrator_config.name
 
-        if request.param.get("orchestrator_config_gpu"):
+        elif request.param.get("orchestrator_config_gpu"):
             orchestrator_config = request.getfixturevalue(argname="orchestrator_config_gpu")
             gorch_kwargs["orchestrator_config"] = orchestrator_config.name
 
-        if request.param.get("orchestrator_config_builtin_gpu"):
+        elif request.param.get("orchestrator_config_builtin_gpu"):
             orchestrator_config = request.getfixturevalue(argname="orchestrator_config_builtin_gpu")
             gorch_kwargs["orchestrator_config"] = orchestrator_config.name
 
