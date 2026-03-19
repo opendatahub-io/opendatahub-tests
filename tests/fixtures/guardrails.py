@@ -2,6 +2,7 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+import yaml
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
@@ -12,7 +13,8 @@ from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 
-from utilities.constants import Annotations, Labels
+from tests.model_explainability.guardrails.constants import PROMPT_INJECTION_DETECTOR, HAP_DETECTOR
+from utilities.constants import Annotations, Labels, VLLMGPUConfig, BUILTIN_DETECTOR_CONFIG
 from utilities.guardrails import check_guardrails_health_endpoint
 
 GUARDRAILS_ORCHESTRATOR_NAME: str = "guardrails-orchestrator"
@@ -44,6 +46,14 @@ def guardrails_orchestrator(
 
         if request.param.get("orchestrator_config"):
             orchestrator_config = request.getfixturevalue(argname="orchestrator_config")
+            gorch_kwargs["orchestrator_config"] = orchestrator_config.name
+
+        if request.param.get("orchestrator_config_gpu"):
+            orchestrator_config = request.getfixturevalue(argname="orchestrator_config_gpu")
+            gorch_kwargs["orchestrator_config"] = orchestrator_config.name
+
+        if request.param.get("orchestrator_config_builtin_gpu"):
+            orchestrator_config = request.getfixturevalue(argname="orchestrator_config_builtin_gpu")
             gorch_kwargs["orchestrator_config"] = orchestrator_config.name
 
         if request.param.get("enable_guardrails_gateway"):
@@ -209,3 +219,106 @@ def guardrails_orchestrator_gateway_route(
         wait_for_resource=True,
         ensure_exists=True,
     )
+
+def get_vllm_chat_config(namespace: str) -> dict[str, Any]:
+    return {
+        "service": {
+            "hostname": VLLMGPUConfig.get_hostname(namespace),
+            "port": VLLMGPUConfig.port,
+        }
+    }
+
+@pytest.fixture(scope="class")
+def orchestrator_config_gpu(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    teardown_resources: bool,
+    pytestconfig: pytest.Config,
+) -> Generator[ConfigMap, Any, Any]:
+    if pytestconfig.option.post_upgrade:
+        cm = ConfigMap(
+            client=admin_client,
+            name="fms-orchestr8-config-nlp",
+            namespace=model_namespace.name,
+            ensure_exists=True,
+        )
+        yield cm
+        cm.clean_up()
+    else:
+        param = getattr(request, "param", None)
+
+        if not param or not param.get("orchestrator_config_data"):
+            orchestrator_data = {
+                "config.yaml": yaml.dump({
+                    "openai": get_vllm_chat_config(model_namespace.name),
+                    "detectors": {
+                        PROMPT_INJECTION_DETECTOR: {
+                            "type": "text_contents",
+                            "service": {
+                                "hostname": f"{PROMPT_INJECTION_DETECTOR}-predictor.{model_namespace.name}.svc.cluster.local",
+                                "port": 80,
+                            },
+                            "chunker_id": "whole_doc_chunker",
+                            "default_threshold": 0.5,
+                        },
+                        HAP_DETECTOR: {
+                            "type": "text_contents",
+                            "service": {
+                                "hostname": f"{HAP_DETECTOR}-predictor.{model_namespace.name}.svc.cluster.local",
+                                "port": 80,
+                            },
+                            "chunker_id": "whole_doc_chunker",
+                            "default_threshold": 0.5,
+                        },
+                    },
+                })
+            }
+        else:
+            orchestrator_data = param["orchestrator_config_data"]
+        with ConfigMap(
+            client=admin_client,
+            name="fms-orchestr8-config-nlp",
+            namespace=model_namespace.name,
+            data=orchestrator_data,
+            teardown=teardown_resources,
+        ) as cm:
+            yield cm
+
+@pytest.fixture(scope="class")
+def orchestrator_config_builtin_gpu(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    teardown_resources: bool,
+    pytestconfig: pytest.Config,
+) -> Generator[ConfigMap, Any, Any]:
+    if pytestconfig.option.post_upgrade:
+        cm = ConfigMap(
+            client=admin_client,
+            name="fms-orchestr8-config-nlp",
+            namespace=model_namespace.name,
+            ensure_exists=True,
+        )
+        yield cm
+        cm.clean_up()
+    else:
+        param = getattr(request, "param", None)
+
+        if not param or not param.get("orchestrator_config_data"):
+            orchestrator_data = {
+                "config.yaml": yaml.dump({
+                    "openai": get_vllm_chat_config(model_namespace.name),
+                    "detectors": BUILTIN_DETECTOR_CONFIG,
+                })
+            }
+        else:
+            orchestrator_data = param["orchestrator_config_data"]
+        with ConfigMap(
+            client=admin_client,
+            name="fms-orchestr8-config-nlp",
+            namespace=model_namespace.name,
+            data=orchestrator_data,
+            teardown=teardown_resources,
+        ) as cm:
+            yield cm

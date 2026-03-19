@@ -38,6 +38,14 @@ PII_INPUT_DETECTION_PROMPT: GuardrailsDetectionPrompt = GuardrailsDetectionPromp
     detection_text=EXAMPLE_EMAIL_ADDRESS,
 )
 
+PII_OUTPUT_DETECTION_PROMPT_QWEN: GuardrailsDetectionPrompt = GuardrailsDetectionPrompt(
+    content="Give an example of a email address for a character in a story. Only return the email address string.",
+    detector_id="regex",
+    detection_name="email_address",
+    detection_type="pii",
+    detection_text="",
+)
+
 PII_OUTPUT_DETECTION_PROMPT: GuardrailsDetectionPrompt = GuardrailsDetectionPrompt(
     content="Give me one email and nothing else.",
     detector_id="regex",
