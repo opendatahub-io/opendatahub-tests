@@ -733,6 +733,7 @@ def admin_ocp_token(admin_client: DynamicClient) -> Generator[str, Any, Any]:
     LOGGER.info(f"admin_ocp_token: patching Auth CR adminGroups to {patched_groups}")
 
     with ResourceEditor(patches={auth: {"spec": {"adminGroups": patched_groups}}}):
+        auth.wait_for_condition(condition="Ready", status="True", timeout=60)
         yield get_openshift_token(client=admin_client)
 
 
