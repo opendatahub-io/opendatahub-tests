@@ -369,15 +369,21 @@ def labels_configmap_patch(
     # Parse current data and add test label
     current_data = yaml.safe_load(sources_cm.instance.data["sources.yaml"])
 
-    new_label = {
-        "name": "test-dynamic",
-        "displayName": "Dynamic Test Label",
-        "description": "A label added during test execution",
-    }
+    new_labels = [
+        {
+            "name": "test-dynamic",
+            "displayName": "Dynamic Test Label",
+            "description": "A label added during test execution",
+        },
+        {
+            "name": "mcp-test-label",
+            "assetType": "mcp_servers",
+        },
+    ]
 
     if "labels" not in current_data:
         current_data["labels"] = []
-    current_data["labels"].append(new_label)
+    current_data["labels"].extend(new_labels)
 
     patches = {"data": {"sources.yaml": yaml.dump(current_data, default_flow_style=False)}}
 

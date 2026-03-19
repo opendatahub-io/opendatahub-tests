@@ -515,7 +515,7 @@ wheels = [
 
 [[package]]
 name = "deepdiff"
-version = "8.6.1"
+version = "8.6.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "orderly-set" },
@@ -1846,7 +1846,7 @@ wheels = [
 
 [[package]]
 name = "protobuf"
-version = "6.33.5"
+version = "6.33.6"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/ba/25/7c72c307aafc96fa87062aa6291d9f7c94836e43214d43722e86037aac02/protobuf-6.33.5.tar.gz", hash = "sha256:6ddcac2a081f8b7b9642c09406bc6a4290128fce5f471cddd165960bb9119e5c", size = 444465, upload_time = "2026-01-29T21:51:33.494Z" }
 wheels = [
@@ -2032,10 +2032,11 @@ wheels = [
 
 [[package]]
 name = "pyhelper-utils"
-version = "2.0.0"
+version = "2.0.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "ipdb" },
+    { name = "paramiko" },
     { name = "python-rrmngmnt" },
     { name = "python-simple-logger" },
     { name = "requests" },
