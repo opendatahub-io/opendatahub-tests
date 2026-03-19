@@ -43,6 +43,20 @@ LOGGER = logging.getLogger(name=__name__)
 BASIC_LOGGER = logging.getLogger(name="basic")
 
 
+@pytest.hookimpl(tryfirst=True)
+def pytest_configure(config: Config) -> None:
+    """Migrate PYTEST_JIRA_TOKEN to PYTEST_JIRA_PASSWORD for Basic Auth compatibility.
+
+    The pytest-jira plugin uses PYTEST_JIRA_TOKEN for Bearer auth, which fails on
+    Atlassian Cloud. Migrating to PYTEST_JIRA_PASSWORD ensures both the plugin and
+    utilities/jira.py use Basic Auth instead.
+    """
+    jira_token = os.environ.get("PYTEST_JIRA_TOKEN")
+    if jira_token and not os.environ.get("PYTEST_JIRA_PASSWORD"):
+        os.environ["PYTEST_JIRA_PASSWORD"] = jira_token
+        del os.environ["PYTEST_JIRA_TOKEN"]
+
+
 def pytest_addoption(parser: Parser) -> None:
     aws_group = parser.getgroup(name="AWS")
     buckets_group = parser.getgroup(name="Buckets")
