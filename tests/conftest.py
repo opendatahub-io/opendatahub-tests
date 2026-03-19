@@ -167,7 +167,7 @@ def registry_pull_secret(pytestconfig: Config) -> list[str]:
     try:
         for secret in registry_pull_secret:
             base64.b64decode(s=secret, validate=True)
-        return registry_pull_secret  # noqa: TRY300
+        return registry_pull_secret
     except binascii.Error:
         raise ValueError("Registry pull secret is not a valid base64 encoded string")
 
@@ -253,7 +253,7 @@ def modelcar_yaml_config(pytestconfig: pytest.Config) -> dict[str, Any] | None:
             modelcar_yaml = yaml.safe_load(file)
             if not isinstance(modelcar_yaml, dict):
                 raise ValueError("modelcar.yaml should contain a dictionary.")  # noqa: TRY004
-            return modelcar_yaml  # noqa: TRY300
+            return modelcar_yaml
         except yaml.YAMLError as e:
             raise ValueError(f"Error parsing modelcar.yaml: {e}") from e
 
@@ -554,13 +554,29 @@ def cluster_monitoring_config(
 
 @pytest.fixture(scope="class")
 def unprivileged_model_namespace(
-    request: FixtureRequest, admin_client: DynamicClient, unprivileged_client: DynamicClient
+    request: FixtureRequest,
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
+    teardown_resources: bool,
 ) -> Generator[Namespace, Any, Any]:
     if request.param.get("modelmesh-enabled"):
         request.getfixturevalue(argname="enabled_modelmesh_in_dsc")
 
-    with create_ns(admin_client=admin_client, unprivileged_client=unprivileged_client, pytest_request=request) as ns:
+    ns = Namespace(client=unprivileged_client, name=request.param["name"])
+    if pytestconfig.option.post_upgrade:
         yield ns
+        ns.client = admin_client
+        if teardown_resources:
+            ns.clean_up()
+    else:
+        with create_ns(
+            admin_client=admin_client,
+            unprivileged_client=unprivileged_client,
+            pytest_request=request,
+            teardown=teardown_resources,
+        ) as ns:
+            yield ns
 
 
 # MinIo

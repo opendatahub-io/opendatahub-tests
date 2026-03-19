@@ -11,7 +11,7 @@ LOGGER = get_logger(name=__name__)
 
 @pytest.mark.usefixtures("mcp_servers_configmap_patch")
 class TestMCPServerFiltering:
-    """RHOAIENG-51584: Tests for MCP server filterQuery functionality."""
+    """Tests for MCP server filterQuery functionality."""
 
     @pytest.mark.parametrize(
         "filter_query, expected_count, expected_name, field_check",

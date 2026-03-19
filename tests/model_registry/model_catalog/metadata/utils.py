@@ -1,6 +1,6 @@
 import json
 from fnmatch import fnmatch
-from typing import Any
+from typing import Any, Literal
 
 import requests
 import yaml
@@ -294,7 +294,7 @@ def get_metadata_from_catalog_pod(model_catalog_pod: Pod, model_name: str) -> di
         metadata_json = model_catalog_pod.execute(command=["cat", metadata_path], container=CATALOG_CONTAINER)
         metadata = json.loads(metadata_json)
         LOGGER.info(f"Successfully loaded metadata.json for model '{model_name}'")
-        return metadata  # noqa: TRY300
+        return metadata
     except Exception as e:
         LOGGER.error(f"Failed to read metadata.json for model '{model_name}': {e}")
         raise
@@ -442,13 +442,16 @@ def get_labels_from_configmaps(admin_client: DynamicClient, namespace: str) -> l
     return labels
 
 
-def get_labels_from_api(model_catalog_rest_url: str, user_token: str) -> list[dict[str, Any]]:
+def get_labels_from_api(
+    model_catalog_rest_url: str, user_token: str, asset_type: Literal["models", "mcp_servers"] | None = None
+) -> list[dict[str, Any]]:
     """
     Get labels from the API endpoint.
 
     Args:
         model_catalog_rest_url: Base URL for model catalog API
         user_token: Authentication token
+        asset_type: Filter by asset type ('models' or 'mcp_servers')
 
     Returns:
         List of label dictionaries from API response
@@ -456,32 +459,39 @@ def get_labels_from_api(model_catalog_rest_url: str, user_token: str) -> list[di
 
     url = f"{model_catalog_rest_url}labels"
     headers = get_rest_headers(token=user_token)
-    response = execute_get_command(url=url, headers=headers)
+    params: dict[str, str] | None = {"assetType": asset_type} if asset_type is not None else None
+    response = execute_get_command(url=url, headers=headers, params=params)
     return response["items"]
+
+
+def _label_key(label: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
+    """Extract comparable key from a label dict."""
+    return (label.get("name"), label.get("displayName"), label.get("description"))
 
 
 def verify_labels_match(expected_labels: list[dict[str, Any]], api_labels: list[dict[str, Any]]) -> None:
     """
-    Verify that all expected labels are present in the API response.
+    Verify that expected labels and API labels match exactly (bidirectional).
 
     Args:
         expected_labels: Labels expected from ConfigMaps
         api_labels: Labels returned by API
 
     Raises:
-        AssertionError: If any expected label is not found in API response
+        AssertionError: If there are missing or unexpected labels
     """
     LOGGER.info(f"Verifying {len(expected_labels)} expected labels against {len(api_labels)} API labels")
 
-    for expected_label in expected_labels:
-        found = False
-        for api_label in api_labels:
-            if (
-                expected_label.get("name") == api_label.get("name")
-                and expected_label.get("displayName") == api_label.get("displayName")
-                and expected_label.get("description") == api_label.get("description")
-            ):
-                found = True
-                break
+    expected_keys = {_label_key(label) for label in expected_labels}
+    api_keys = {_label_key(label) for label in api_labels}
 
-        assert found, f"Expected label not found in API response: {expected_label}"
+    missing = expected_keys - api_keys
+    unexpected = api_keys - expected_keys
+
+    errors = []
+    if missing:
+        errors.append(f"Missing labels not found in API response: {missing}")
+    if unexpected:
+        errors.append(f"Unexpected labels in API response: {unexpected}")
+
+    assert not errors, "\n".join(errors)

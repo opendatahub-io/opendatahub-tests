@@ -36,21 +36,13 @@ repos:
         exclude: .*/__snapshots__/.*|.*-input\.json$|^semgrep\.yaml$
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.5
+    rev: v0.15.6
     hooks:
       - id: ruff
       - id: ruff-format
 
-  # https://github.com/renovatebot/pre-commit-hooks/issues/2621
-  # This hook goes over the 250MiB limit that pre-commit.ci imposes
-  # Disable unless a solution is found.
-  # - repo: https://github.com/renovatebot/pre-commit-hooks
-  #   rev: 39.45.0
-  #   hooks:
-  #     - id: renovate-config-validator
-
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.30.0
+    rev: v8.30.1
     hooks:
       - id: gitleaks
 
@@ -61,6 +53,18 @@ repos:
         additional_dependencies: ["types-PyYAML", "types-requests"]
         exclude: ^(docs/|.*test.*\.py$|utilities/manifests/.*|utilities/plugins/tgis_grpc/.*)
 
+
+  - repo: local
+    hooks:
+      - id: check-signoff
+        name: Check Signed-off-by
+        stages: [commit-msg]
+        language: system
+        entry: >
+          bash -c 'grep -q "^Signed-off-by: .* <.*@.*>" "$1" ||
+          { echo "ERROR: Commit message must include a valid Signed-off-by trailer.";
+          echo "  Use: git commit -s";
+          echo "  Or add manually: Signed-off-by: Your Name <your@email.com>"; exit 1; }' --
 
   - repo: https://github.com/espressif/conventional-precommit-linter
     rev: v1.11.0
