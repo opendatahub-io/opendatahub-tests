@@ -8,9 +8,10 @@ from tests.model_explainability.guardrails.constants import (
     HARMLESS_PROMPT,
     PII_ENDPOINT,
     PII_INPUT_DETECTION_PROMPT,
+    PII_OUTPUT_DETECTION_PROMPT_QWEN,
     PROMPT_INJECTION_DETECTOR,
     PROMPT_INJECTION_INPUT_DETECTION_PROMPT,
-    STANDALONE_DETECTION_ENDPOINT, PII_OUTPUT_DETECTION_PROMPT_QWEN,
+    STANDALONE_DETECTION_ENDPOINT,
 )
 from tests.model_explainability.guardrails.utils import (
     create_detector_config,
@@ -20,11 +21,11 @@ from tests.model_explainability.guardrails.utils import (
     send_and_verify_unsuitable_output_detection,
     verify_health_info_response,
 )
-
 from utilities.constants import (
-   VLLMGPUConfig,
+    VLLMGPUConfig,
 )
 from utilities.plugins.constant import OpenAIEnpoints
+
 
 @pytest.mark.parametrize(
     "model_namespace, orchestrator_config_builtin_gpu, guardrails_gateway_config, guardrails_orchestrator",
@@ -160,6 +161,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
             model=VLLMGPUConfig.model_name,
         )
 
+
 @pytest.mark.gpu
 @pytest.mark.rawdeployment
 @pytest.mark.usefixtures("patched_dsc_kserve_headed", "guardrails_gateway_config")
@@ -201,7 +203,6 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
     ],
     indirect=True,
 )
-
 class TestGuardrailsOrchestratorHuggingFaceGPU:
     """
     These tests verify that the GuardrailsOrchestrator works as expected when using HuggingFace detectors

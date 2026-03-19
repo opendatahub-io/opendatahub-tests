@@ -13,8 +13,8 @@ from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 
-from tests.model_explainability.guardrails.constants import PROMPT_INJECTION_DETECTOR, HAP_DETECTOR
-from utilities.constants import Annotations, Labels, VLLMGPUConfig, BUILTIN_DETECTOR_CONFIG
+from tests.model_explainability.guardrails.constants import HAP_DETECTOR, PROMPT_INJECTION_DETECTOR
+from utilities.constants import BUILTIN_DETECTOR_CONFIG, Annotations, Labels, VLLMGPUConfig
 from utilities.guardrails import check_guardrails_health_endpoint
 
 GUARDRAILS_ORCHESTRATOR_NAME: str = "guardrails-orchestrator"
@@ -220,6 +220,7 @@ def guardrails_orchestrator_gateway_route(
         ensure_exists=True,
     )
 
+
 def get_vllm_chat_config(namespace: str) -> dict[str, Any]:
     return {
         "service": {
@@ -227,6 +228,7 @@ def get_vllm_chat_config(namespace: str) -> dict[str, Any]:
             "port": VLLMGPUConfig.port,
         }
     }
+
 
 @pytest.fixture(scope="class")
 def orchestrator_config_gpu(
@@ -284,6 +286,7 @@ def orchestrator_config_gpu(
             teardown=teardown_resources,
         ) as cm:
             yield cm
+
 
 @pytest.fixture(scope="class")
 def orchestrator_config_builtin_gpu(
