@@ -63,11 +63,13 @@ def files_provider_config_factory(
             })
             env_vars.append({
                 "name": "AWS_ACCESS_KEY_ID",
-                "value": request.getfixturevalue(argname="aws_access_key_id"),
+                "valueFrom": {"secretKeyRef": {"name": "llamastack-distribution-secret", "key": "aws-access-key-id"}},
             })
             env_vars.append({
                 "name": "AWS_SECRET_ACCESS_KEY",
-                "value": request.getfixturevalue(argname="aws_secret_access_key"),
+                "valueFrom": {
+                    "secretKeyRef": {"name": "llamastack-distribution-secret", "key": "aws-secret-access-key"}
+                },
             })
             env_vars.append({"name": "S3_AUTO_CREATE_BUCKET", "value": S3_AUTO_CREATE_BUCKET})
 
