@@ -123,7 +123,7 @@ class TestHuggingFaceModelsMultipleSources:
     @pytest.mark.parametrize(
         "filter_field",
         [
-            pytest.param("name", id="filter_by_name", marks=pytest.mark.xfail(reason="RHOAIENG-53498")),
+            pytest.param("name", id="filter_by_name"),
             pytest.param("externalId", id="filter_by_external_id"),
         ],
     )
