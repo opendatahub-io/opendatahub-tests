@@ -444,6 +444,7 @@ class TestSearchModelsByFilterQuery:
 @pytest.mark.install
 @pytest.mark.post_upgrade
 class TestEmbeddingModelSearch:
+    @pytest.mark.dependency(name="test_filter_query_by_text_embedding_task")
     def test_filter_query_by_text_embedding_task(
         self: Self,
         embedding_models_response: dict[str, Any],
@@ -455,6 +456,7 @@ class TestEmbeddingModelSearch:
         LOGGER.info(f"Found number of embedding models: {number_of_models}")
         assert number_of_models > 0, "Expected at least one model with tasks='text-embedding'"
 
+    @pytest.mark.dependency(depends=["test_filter_query_by_text_embedding_task"])
     def test_embedding_models_source_id(
         self: Self,
         embedding_models_response: dict[str, Any],
@@ -471,6 +473,7 @@ class TestEmbeddingModelSearch:
             f"Models with unexpected source_id (expected '{OTHER_MODELS_CATALOG_ID}'): {mismatched_models}"
         )
 
+    @pytest.mark.dependency(depends=["test_filter_query_by_text_embedding_task"])
     def test_embedding_models_have_text_embedding_task(
         self: Self,
         embedding_models_response: dict[str, Any],
