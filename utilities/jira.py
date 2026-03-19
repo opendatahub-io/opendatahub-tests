@@ -24,7 +24,7 @@ def get_jira_connection() -> JIRA:
     """
     return JIRA(
         server=os.getenv("PYTEST_JIRA_URL"),
-        basic_auth=(os.getenv("PYTEST_JIRA_USERNAME"), os.getenv("PYTEST_JIRA_PASSWORD")),
+        basic_auth=(os.getenv("PYTEST_JIRA_USERNAME"), os.getenv("PYTEST_JIRA_TOKEN")),
     )
 
 
