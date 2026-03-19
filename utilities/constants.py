@@ -497,6 +497,7 @@ LLM_D_CHAT_GENERATION_CONFIG: dict[str, Any] = {
     "service": {"hostname": f"{LLMdInferenceSimConfig.isvc_name}-predictor", "port": 80}
 }
 
+
 @dataclass
 class VLLMGPUConfig:
     name: str = "vllm-gpu"
@@ -509,12 +510,11 @@ class VLLMGPUConfig:
     def get_hostname(cls, namespace: str) -> str:
         return f"{cls.isvc_name}-predictor.{namespace}.svc.cluster.local"
 
+
 VLLM_CHAT_GENERATION_CONFIG: dict[str, Any] = {
-    "service": {
-        "hostname": VLLMGPUConfig.get_hostname("test-guardrails-huggingface"),
-        "port": VLLMGPUConfig.port
-    }
+    "service": {"hostname": VLLMGPUConfig.get_hostname("test-guardrails-huggingface"), "port": VLLMGPUConfig.port}
 }
+
 
 class PodNotFound(Exception):
     """Pod not found"""
