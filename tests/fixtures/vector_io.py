@@ -152,11 +152,13 @@ def vector_io_provider_deployment_config_factory(
 
 @pytest.fixture(scope="class")
 def vector_io_secret(
+    pytestconfig: pytest.Config,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
+    teardown_resources: bool,
 ) -> Generator[Secret, Any, Any]:
     """Create a secret for the vector I/O providers"""
-    with Secret(
+    secret = Secret(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
         name="vector-io-secret",
@@ -167,17 +169,26 @@ def vector_io_secret(
             "pgvector-password": PGVECTOR_PASSWORD,
             "milvus-token": MILVUS_TOKEN,
         },
-    ) as secret:
+        ensure_exists=pytestconfig.option.post_upgrade,
+        teardown=teardown_resources,
+    )
+    if pytestconfig.option.post_upgrade:
         yield secret
+        secret.clean_up()
+    else:
+        with secret:
+            yield secret
 
 
 @pytest.fixture(scope="class")
 def etcd_deployment(
+    pytestconfig: pytest.Config,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
+    teardown_resources: bool,
 ) -> Generator[Deployment, Any, Any]:
     """Deploy an etcd instance for vector I/O provider testing."""
-    with Deployment(
+    deployment = Deployment(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
         name="vector-io-etcd-deployment",
@@ -185,19 +196,28 @@ def etcd_deployment(
         selector={"matchLabels": {"app": "etcd"}},
         strategy={"type": "Recreate"},
         template=get_etcd_deployment_template(),
-        teardown=True,
-    ) as deployment:
+        teardown=teardown_resources,
+        ensure_exists=pytestconfig.option.post_upgrade,
+    )
+    if pytestconfig.option.post_upgrade:
         deployment.wait_for_replicas(deployed=True, timeout=120)
         yield deployment
+        deployment.clean_up()
+    else:
+        with deployment:
+            deployment.wait_for_replicas(deployed=True, timeout=120)
+            yield deployment
 
 
 @pytest.fixture(scope="class")
 def etcd_service(
+    pytestconfig: pytest.Config,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
+    teardown_resources: bool,
 ) -> Generator[Service, Any, Any]:
     """Create a service for the etcd deployment."""
-    with Service(
+    service = Service(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
         name="vector-io-etcd-service",
@@ -209,24 +229,33 @@ def etcd_service(
         ],
         selector={"app": "etcd"},
         wait_for_resource=True,
-    ) as service:
+        ensure_exists=pytestconfig.option.post_upgrade,
+        teardown=teardown_resources,
+    )
+    if pytestconfig.option.post_upgrade:
         yield service
+        service.clean_up()
+    else:
+        with service:
+            yield service
 
 
 @pytest.fixture(scope="class")
 def remote_milvus_deployment(
+    pytestconfig: pytest.Config,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     etcd_deployment: Deployment,
     etcd_service: Service,
     vector_io_secret: Secret,
+    teardown_resources: bool,
 ) -> Generator[Deployment, Any, Any]:
     """Deploy a remote Milvus instance for vector I/O provider testing."""
     _ = etcd_deployment
     _ = etcd_service
     _ = vector_io_secret
 
-    with Deployment(
+    deployment = Deployment(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
         name="vector-io-milvus-deployment",
@@ -235,22 +264,31 @@ def remote_milvus_deployment(
         selector={"matchLabels": {"app": "milvus-standalone"}},
         strategy={"type": "Recreate"},
         template=get_milvus_deployment_template(),
-        teardown=True,
-    ) as deployment:
+        teardown=teardown_resources,
+        ensure_exists=pytestconfig.option.post_upgrade,
+    )
+    if pytestconfig.option.post_upgrade:
         deployment.wait_for_replicas(deployed=True, timeout=240)
         yield deployment
+        deployment.clean_up()
+    else:
+        with deployment:
+            deployment.wait_for_replicas(deployed=True, timeout=240)
+            yield deployment
 
 
 @pytest.fixture(scope="class")
 def milvus_service(
+    pytestconfig: pytest.Config,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     remote_milvus_deployment: Deployment,
+    teardown_resources: bool,
 ) -> Generator[Service, Any, Any]:
     """Create a service for the remote Milvus deployment."""
     _ = remote_milvus_deployment
 
-    with Service(
+    service = Service(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
         name="vector-io-milvus-service",
@@ -263,8 +301,15 @@ def milvus_service(
         ],
         selector={"app": "milvus-standalone"},
         wait_for_resource=True,
-    ) as service:
+        ensure_exists=pytestconfig.option.post_upgrade,
+        teardown=teardown_resources,
+    )
+    if pytestconfig.option.post_upgrade:
         yield service
+        service.clean_up()
+    else:
+        with service:
+            yield service
 
 
 def get_milvus_deployment_template() -> Dict[str, Any]:
@@ -344,14 +389,16 @@ def get_etcd_deployment_template() -> Dict[str, Any]:
 
 @pytest.fixture(scope="class")
 def pgvector_deployment(
+    pytestconfig: pytest.Config,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     vector_io_secret: Secret,
+    teardown_resources: bool,
 ) -> Generator[Deployment, Any, Any]:
     """Deploy a PGVector instance for vector I/O provider testing."""
     _ = vector_io_secret
 
-    with Deployment(
+    deployment = Deployment(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
         name="vector-io-pgvector-deployment",
@@ -360,22 +407,31 @@ def pgvector_deployment(
         selector={"matchLabels": {"app": "pgvector"}},
         strategy={"type": "Recreate"},
         template=get_pgvector_deployment_template(),
-        teardown=True,
-    ) as deployment:
+        teardown=teardown_resources,
+        ensure_exists=pytestconfig.option.post_upgrade,
+    )
+    if pytestconfig.option.post_upgrade:
         deployment.wait_for_replicas(deployed=True, timeout=240)
         yield deployment
+        deployment.clean_up()
+    else:
+        with deployment:
+            deployment.wait_for_replicas(deployed=True, timeout=240)
+            yield deployment
 
 
 @pytest.fixture(scope="class")
 def pgvector_service(
+    pytestconfig: pytest.Config,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     pgvector_deployment: Deployment,
+    teardown_resources: bool,
 ) -> Generator[Service, Any, Any]:
     """Create a service for the PGVector deployment."""
     _ = pgvector_deployment
 
-    with Service(
+    service = Service(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
         name="vector-io-pgvector-service",
@@ -388,8 +444,15 @@ def pgvector_service(
         ],
         selector={"app": "pgvector"},
         wait_for_resource=True,
-    ) as service:
+        ensure_exists=pytestconfig.option.post_upgrade,
+        teardown=teardown_resources,
+    )
+    if pytestconfig.option.post_upgrade:
         yield service
+        service.clean_up()
+    else:
+        with service:
+            yield service
 
 
 def get_pgvector_deployment_template() -> Dict[str, Any]:
@@ -439,14 +502,16 @@ def get_pgvector_deployment_template() -> Dict[str, Any]:
 
 @pytest.fixture(scope="class")
 def qdrant_deployment(
+    pytestconfig: pytest.Config,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     vector_io_secret: Secret,
+    teardown_resources: bool,
 ) -> Generator[Deployment, Any, Any]:
     """Deploy a Qdrant instance for vector I/O provider testing."""
     _ = vector_io_secret
 
-    with Deployment(
+    deployment = Deployment(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
         name="vector-io-qdrant-deployment",
@@ -455,22 +520,31 @@ def qdrant_deployment(
         selector={"matchLabels": {"app": "qdrant"}},
         strategy={"type": "Recreate"},
         template=get_qdrant_deployment_template(),
-        teardown=True,
-    ) as deployment:
+        teardown=teardown_resources,
+        ensure_exists=pytestconfig.option.post_upgrade,
+    )
+    if pytestconfig.option.post_upgrade:
         deployment.wait_for_replicas(deployed=True, timeout=240)
         yield deployment
+        deployment.clean_up()
+    else:
+        with deployment:
+            deployment.wait_for_replicas(deployed=True, timeout=240)
+            yield deployment
 
 
 @pytest.fixture(scope="class")
 def qdrant_service(
+    pytestconfig: pytest.Config,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     qdrant_deployment: Deployment,
+    teardown_resources: bool,
 ) -> Generator[Service, Any, Any]:
     """Create a service for the Qdrant deployment."""
     _ = qdrant_deployment
 
-    with Service(
+    service = Service(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
         name="vector-io-qdrant-service",
@@ -488,8 +562,15 @@ def qdrant_service(
         ],
         selector={"app": "qdrant"},
         wait_for_resource=True,
-    ) as service:
+        ensure_exists=pytestconfig.option.post_upgrade,
+        teardown=teardown_resources,
+    )
+    if pytestconfig.option.post_upgrade:
         yield service
+        service.clean_up()
+    else:
+        with service:
+            yield service
 
 
 def get_qdrant_deployment_template() -> Dict[str, Any]:

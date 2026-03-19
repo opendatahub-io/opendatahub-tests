@@ -66,7 +66,14 @@ LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY = os.getenv("LLS_CORE_VLLM_EMBEDDING_TLS_VERI
 
 IBM_EARNINGS_DOC_URL = "https://www.ibm.com/downloads/documents/us-en/1550f7eea8c0ded6"
 
-distribution_name = generate_random_name(prefix="llama-stack-distribution")
+UPGRADE_DISTRIBUTION_NAME = "llama-stack-distribution-upgrade"
+
+
+@pytest.fixture(scope="class")
+def distribution_name(pytestconfig: pytest.Config) -> str:
+    if pytestconfig.option.pre_upgrade or pytestconfig.option.post_upgrade:
+        return UPGRADE_DISTRIBUTION_NAME
+    return generate_random_name(prefix="llama-stack-distribution")
 
 
 @pytest.fixture(scope="class")
@@ -84,9 +91,11 @@ def enabled_llama_stack_operator(dsc_resource: DataScienceCluster) -> Generator[
 @pytest.fixture(scope="class")
 def llama_stack_server_config(
     request: FixtureRequest,
-    vector_io_provider_deployment_config_factory: Callable[[str], list[Dict[str, str]]],
-    files_provider_config_factory: Callable[[str], list[Dict[str, str]]],
-) -> Dict[str, Any]:
+    pytestconfig: pytest.Config,
+    distribution_name: str,
+    vector_io_provider_deployment_config_factory: Callable[[str], list[dict[str, str]]],
+    files_provider_config_factory: Callable[[str], list[dict[str, str]]],
+) -> dict[str, Any]:
     """
     Generate server configuration for LlamaStack distribution deployment and deploy vector I/O provider resources.
 
@@ -293,53 +302,89 @@ def llama_stack_server_config(
 
 @pytest.fixture(scope="class")
 def llama_stack_distribution_secret(
+    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace: Namespace,
+    teardown_resources: bool,
 ) -> Generator[Secret, Any, Any]:
-    with Secret(
+    secret = Secret(
         client=admin_client,
         namespace=model_namespace.name,
         name="llamastack-distribution-secret",
         type="Opaque",
         string_data=LLAMA_STACK_DISTRIBUTION_SECRET_DATA,
-    ) as secret:
+        ensure_exists=pytestconfig.option.post_upgrade,
+        teardown=teardown_resources,
+    )
+    if pytestconfig.option.post_upgrade:
         yield secret
+        secret.clean_up()
+    else:
+        with secret:
+            yield secret
 
 
 @pytest.fixture(scope="class")
 def unprivileged_llama_stack_distribution_secret(
+    pytestconfig: pytest.Config,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
+    teardown_resources: bool,
 ) -> Generator[Secret, Any, Any]:
-    with Secret(
+    secret = Secret(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
         name="llamastack-distribution-secret",
         type="Opaque",
         string_data=LLAMA_STACK_DISTRIBUTION_SECRET_DATA,
-    ) as secret:
+        ensure_exists=pytestconfig.option.post_upgrade,
+        teardown=teardown_resources,
+    )
+    if pytestconfig.option.post_upgrade:
         yield secret
+        secret.clean_up()
+    else:
+        with secret:
+            yield secret
 
 
 @pytest.fixture(scope="class")
 def unprivileged_llama_stack_distribution(
+    pytestconfig: pytest.Config,
+    distribution_name: str,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     enabled_llama_stack_operator: DataScienceCluster,
     request: FixtureRequest,
     llama_stack_server_config: dict[str, Any],
+    ci_s3_bucket_name: str,
+    ci_s3_bucket_endpoint: str,
+    ci_s3_bucket_region: str,
+    aws_access_key_id: str,
+    aws_secret_access_key: str,
+    teardown_resources: bool,
     unprivileged_llama_stack_distribution_secret: Secret,
     unprivileged_postgres_deployment: Deployment,
     unprivileged_postgres_service: Service,
-) -> Generator[LlamaStackDistribution, None, None]:
-    # Distribution name needs a random substring due to bug RHAIENG-999 / RHAIENG-1139
-    distribution_name = generate_random_name(prefix="llama-stack-distribution")
+) -> Generator[LlamaStackDistribution, Any, Any]:
+    if pytestconfig.option.post_upgrade:
+        lls_dist = LlamaStackDistribution(
+            client=unprivileged_client,
+            name=distribution_name,
+            namespace=unprivileged_model_namespace.name,
+            ensure_exists=True,
+        )
+        lls_dist.wait_for_status(status=LlamaStackDistribution.Status.READY, timeout=600)
+        yield lls_dist
+        lls_dist.clean_up()
+        return
     with create_llama_stack_distribution(
         client=unprivileged_client,
         name=distribution_name,
         namespace=unprivileged_model_namespace.name,
         replicas=1,
         server=llama_stack_server_config,
+        teardown=teardown_resources,
     ) as lls_dist:
         lls_dist.wait_for_status(status=LlamaStackDistribution.Status.READY, timeout=600)
         yield lls_dist
@@ -347,22 +392,41 @@ def unprivileged_llama_stack_distribution(
 
 @pytest.fixture(scope="class")
 def llama_stack_distribution(
+    pytestconfig: pytest.Config,
+    distribution_name: str,
     admin_client: DynamicClient,
     model_namespace: Namespace,
     enabled_llama_stack_operator: DataScienceCluster,
     request: FixtureRequest,
     llama_stack_server_config: dict[str, Any],
+    ci_s3_bucket_name: str,
+    ci_s3_bucket_endpoint: str,
+    ci_s3_bucket_region: str,
+    aws_access_key_id: str,
+    aws_secret_access_key: str,
+    teardown_resources: bool,
     llama_stack_distribution_secret: Secret,
     postgres_deployment: Deployment,
     postgres_service: Service,
-) -> Generator[LlamaStackDistribution, None, None]:
-    # Distribution name needs a random substring due to bug RHAIENG-999 / RHAIENG-1139
+) -> Generator[LlamaStackDistribution, Any, Any]:
+    if pytestconfig.option.post_upgrade:
+        lls_dist = LlamaStackDistribution(
+            client=admin_client,
+            name=distribution_name,
+            namespace=model_namespace.name,
+            ensure_exists=True,
+        )
+        lls_dist.wait_for_status(status=LlamaStackDistribution.Status.READY, timeout=600)
+        yield lls_dist
+        lls_dist.clean_up()
+        return
     with create_llama_stack_distribution(
         client=admin_client,
         name=distribution_name,
         namespace=model_namespace.name,
         replicas=1,
         server=llama_stack_server_config,
+        teardown=teardown_resources,
     ) as lls_dist:
         lls_dist.wait_for_status(status=LlamaStackDistribution.Status.READY, timeout=600)
         yield lls_dist
@@ -454,9 +518,11 @@ def llama_stack_distribution_deployment(
 
 
 def _create_llama_stack_test_route(
+    pytestconfig: pytest.Config,
     client: DynamicClient,
     namespace: Namespace,
     deployment: Deployment,
+    teardown_resources: bool,
 ) -> Generator[Route, Any, Any]:
     """
     Creates a Route for LlamaStack distribution with TLS configuration.
@@ -469,56 +535,107 @@ def _create_llama_stack_test_route(
     Yields:
         Generator[Route, Any, Any]: Route resource with TLS edge termination
     """
-    route_name = generate_random_name(prefix="llama-stack", length=12)
+    if pytestconfig.option.pre_upgrade or pytestconfig.option.post_upgrade:
+        # Keep the upgrade route name short to avoid OpenShift-generated host labels
+        # exceeding the DNS label limit (63 chars).
+        route_name = "lls-upg-route"
+        upgrade_route_patch = {
+            "spec": {
+                "tls": {
+                    "termination": "edge",
+                    "insecureEdgeTerminationPolicy": "Redirect",
+                }
+            },
+            "metadata": {
+                "annotations": {Annotations.HaproxyRouterOpenshiftIo.TIMEOUT: "10m"},
+            },
+        }
+    else:
+        route_name = generate_random_name(prefix="llama-stack", length=12)
+
+    if pytestconfig.option.post_upgrade:
+        route = Route(
+            client=client,
+            namespace=namespace.name,
+            name=route_name,
+            ensure_exists=True,
+        )
+        ResourceEditor(
+            patches={
+                route: upgrade_route_patch,
+            }
+        ).update()
+        route.wait(timeout=60)
+        yield route
+        if teardown_resources:
+            route.clean_up()
+        return
+
     with Route(
         client=client,
         namespace=namespace.name,
         name=route_name,
         service=f"{deployment.name}-service",
         wait_for_resource=True,
+        teardown=teardown_resources,
     ) as route:
-        with ResourceEditor(
-            patches={
-                route: {
-                    "spec": {
-                        "tls": {
-                            "termination": "edge",
-                            "insecureEdgeTerminationPolicy": "Redirect",
-                        }
-                    },
-                    "metadata": {
-                        "annotations": {Annotations.HaproxyRouterOpenshiftIo.TIMEOUT: "10m"},
-                    },
+        if pytestconfig.option.pre_upgrade:
+            ResourceEditor(
+                patches={
+                    route: upgrade_route_patch,
                 }
-            }
-        ):
-            route.wait(timeout=60)
-            yield route
+            ).update()
+        else:
+            ResourceEditor(
+                patches={
+                    route: {
+                        "spec": {
+                            "tls": {
+                                "termination": "edge",
+                                "insecureEdgeTerminationPolicy": "Redirect",
+                            }
+                        },
+                        "metadata": {
+                            "annotations": {Annotations.HaproxyRouterOpenshiftIo.TIMEOUT: "10m"},
+                        },
+                    }
+                }
+            ).update()
+        route.wait(timeout=60)
+        yield route
 
 
 @pytest.fixture(scope="class")
 def unprivileged_llama_stack_test_route(
+    pytestconfig: pytest.Config,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     unprivileged_llama_stack_distribution_deployment: Deployment,
+    teardown_resources: bool,
 ) -> Generator[Route, Any, Any]:
     yield from _create_llama_stack_test_route(
+        pytestconfig=pytestconfig,
         client=unprivileged_client,
         namespace=unprivileged_model_namespace,
         deployment=unprivileged_llama_stack_distribution_deployment,
+        teardown_resources=teardown_resources,
     )
 
 
 @pytest.fixture(scope="class")
 def llama_stack_test_route(
+    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace: Namespace,
     llama_stack_distribution_deployment: Deployment,
+    teardown_resources: bool,
 ) -> Generator[Route, Any, Any]:
     yield from _create_llama_stack_test_route(
+        pytestconfig=pytestconfig,
         client=admin_client,
         namespace=model_namespace,
         deployment=llama_stack_distribution_deployment,
+        teardown_resources=teardown_resources,
     )
 
 
@@ -659,7 +776,9 @@ def vector_store(
     unprivileged_llama_stack_client: LlamaStackClient,
     llama_stack_models: ModelInfo,
     request: FixtureRequest,
-) -> Generator[VectorStore, None, None]:
+    pytestconfig: pytest.Config,
+    teardown_resources: bool,
+) -> Generator[VectorStore, Any, Any]:
     """
     Creates a vector store for testing and automatically cleans it up.
 
@@ -677,29 +796,45 @@ def vector_store(
     params = getattr(request, "param", {"vector_io_provider": "milvus"})
     vector_io_provider = str(params.get("vector_io_provider"))
 
-    vector_store = unprivileged_llama_stack_client.vector_stores.create(
-        name="test_vector_store",
-        extra_body={
-            "embedding_model": llama_stack_models.embedding_model.id,
-            "embedding_dimension": llama_stack_models.embedding_dimension,
-            "provider_id": vector_io_provider,
-        },
-    )
-    LOGGER.info(f"vector_store successfully created (provider_id={vector_io_provider}, id={vector_store.id})")
+    if pytestconfig.option.post_upgrade:
+        vector_store = next(
+            (
+                vs
+                for vs in unprivileged_llama_stack_client.vector_stores.list().data
+                if getattr(vs, "name", "") == "test_vector_store"
+            ),
+            None,
+        )
+        if not vector_store:
+            raise ValueError("Expected vector store 'test_vector_store' to exist in post-upgrade run")
+        LOGGER.info(f"Reusing existing vector_store in post-upgrade run (id={vector_store.id})")
+    else:
+        vector_store = unprivileged_llama_stack_client.vector_stores.create(
+            name="test_vector_store",
+            extra_body={
+                "embedding_model": llama_stack_models.embedding_model.id,
+                "embedding_dimension": llama_stack_models.embedding_dimension,
+                "provider_id": vector_io_provider,
+            },
+        )
+        LOGGER.info(f"vector_store successfully created (provider_id={vector_io_provider}, id={vector_store.id})")
 
     yield vector_store
 
-    try:
-        unprivileged_llama_stack_client.vector_stores.delete(vector_store_id=vector_store.id)
-        LOGGER.info(f"Deleted vector store {vector_store.id}")
-    except Exception as e:
-        LOGGER.warning(f"Failed to delete vector store {vector_store.id}: {e}")
+    if teardown_resources:
+        try:
+            unprivileged_llama_stack_client.vector_stores.delete(vector_store_id=vector_store.id)
+            LOGGER.info(f"Deleted vector store {vector_store.id}")
+        except Exception as e:  # noqa: BLE001
+            LOGGER.warning(f"Failed to delete vector store {vector_store.id}: {e}")
 
 
 @pytest.fixture(scope="class")
 def vector_store_with_example_docs(
-    unprivileged_llama_stack_client: LlamaStackClient, vector_store: VectorStore
-) -> Generator[VectorStore, None, None]:
+    unprivileged_llama_stack_client: LlamaStackClient,
+    vector_store: VectorStore,
+    pytestconfig: pytest.Config,
+) -> Generator[VectorStore, Any, Any]:
     """
     Creates a vector store with the IBM fourth-quarter 2025 earnings report uploaded.
 
@@ -714,23 +849,28 @@ def vector_store_with_example_docs(
     Yields:
         Vector store object with uploaded IBM earnings report document
     """
-    vector_store_create_file_from_url(
-        url=IBM_EARNINGS_DOC_URL,
-        llama_stack_client=unprivileged_llama_stack_client,
-        vector_store=vector_store,
-    )
+    if pytestconfig.option.post_upgrade:
+        LOGGER.info("Post-upgrade run: reusing vector store docs without uploading new files")
+    else:
+        vector_store_create_file_from_url(
+            url=IBM_EARNINGS_DOC_URL,
+            llama_stack_client=unprivileged_llama_stack_client,
+            vector_store=vector_store,
+        )
 
     yield vector_store
 
 
 @pytest.fixture(scope="class")
 def unprivileged_postgres_service(
+    pytestconfig: pytest.Config,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     unprivileged_postgres_deployment: Deployment,
+    teardown_resources: bool,
 ) -> Generator[Service, Any, Any]:
     """Create a service for the unprivileged postgres deployment."""
-    with Service(
+    service = Service(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
         name="vector-io-postgres-service",
@@ -742,17 +882,26 @@ def unprivileged_postgres_service(
         ],
         selector={"app": "postgres"},
         wait_for_resource=True,
-    ) as service:
+        ensure_exists=pytestconfig.option.post_upgrade,
+        teardown=teardown_resources,
+    )
+    if pytestconfig.option.post_upgrade:
         yield service
+        service.clean_up()
+    else:
+        with service:
+            yield service
 
 
 @pytest.fixture(scope="class")
 def unprivileged_postgres_deployment(
+    pytestconfig: pytest.Config,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
+    teardown_resources: bool,
 ) -> Generator[Deployment, Any, Any]:
     """Deploy a Postgres instance for vector I/O provider testing with unprivileged client."""
-    with Deployment(
+    deployment = Deployment(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
         name="vector-io-postgres-deployment",
@@ -761,20 +910,29 @@ def unprivileged_postgres_deployment(
         selector={"matchLabels": {"app": "postgres"}},
         strategy={"type": "Recreate"},
         template=get_postgres_deployment_template(),
-        teardown=True,
-    ) as deployment:
+        teardown=teardown_resources,
+        ensure_exists=pytestconfig.option.post_upgrade,
+    )
+    if pytestconfig.option.post_upgrade:
         deployment.wait_for_replicas(deployed=True, timeout=240)
         yield deployment
+        deployment.clean_up()
+    else:
+        with deployment:
+            deployment.wait_for_replicas(deployed=True, timeout=240)
+            yield deployment
 
 
 @pytest.fixture(scope="class")
 def postgres_service(
+    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace: Namespace,
     postgres_deployment: Deployment,
+    teardown_resources: bool,
 ) -> Generator[Service, Any, Any]:
     """Create a service for the postgres deployment."""
-    with Service(
+    service = Service(
         client=admin_client,
         namespace=model_namespace.name,
         name="vector-io-postgres-service",
@@ -786,17 +944,26 @@ def postgres_service(
         ],
         selector={"app": "postgres"},
         wait_for_resource=True,
-    ) as service:
+        ensure_exists=pytestconfig.option.post_upgrade,
+        teardown=teardown_resources,
+    )
+    if pytestconfig.option.post_upgrade:
         yield service
+        service.clean_up()
+    else:
+        with service:
+            yield service
 
 
 @pytest.fixture(scope="class")
 def postgres_deployment(
+    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace: Namespace,
+    teardown_resources: bool,
 ) -> Generator[Deployment, Any, Any]:
     """Deploy a Postgres instance for vector I/O provider testing."""
-    with Deployment(
+    deployment = Deployment(
         client=admin_client,
         namespace=model_namespace.name,
         name="vector-io-postgres-deployment",
@@ -805,10 +972,17 @@ def postgres_deployment(
         selector={"matchLabels": {"app": "postgres"}},
         strategy={"type": "Recreate"},
         template=get_postgres_deployment_template(),
-        teardown=True,
-    ) as deployment:
+        teardown=teardown_resources,
+        ensure_exists=pytestconfig.option.post_upgrade,
+    )
+    if pytestconfig.option.post_upgrade:
         deployment.wait_for_replicas(deployed=True, timeout=240)
         yield deployment
+        deployment.clean_up()
+    else:
+        with deployment:
+            deployment.wait_for_replicas(deployed=True, timeout=240)
+            yield deployment
 
 
 def get_postgres_deployment_template() -> Dict[str, Any]:

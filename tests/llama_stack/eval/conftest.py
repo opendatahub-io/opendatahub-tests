@@ -17,59 +17,81 @@ from utilities.constants import MinIo
 
 
 @pytest.fixture(scope="class")
-def dataset_pvc(admin_client, model_namespace) -> Generator[PersistentVolumeClaim, Any, Any]:
+def dataset_pvc(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    teardown_resources: bool,
+) -> Generator[PersistentVolumeClaim, Any, Any]:
     """
     Creates a PVC to store the custom dataset.
     """
-    with PersistentVolumeClaim(
+    pvc = PersistentVolumeClaim(
         client=admin_client,
         namespace=model_namespace.name,
         name="dataset-pvc",
         size="1Gi",
         accessmodes="ReadWriteOnce",
         label={"app.kubernetes.io/name": "dataset-storage"},
-    ) as pvc:
+        ensure_exists=pytestconfig.option.post_upgrade,
+        teardown=teardown_resources,
+    )
+    if pytestconfig.option.post_upgrade:
         yield pvc
+        pvc.clean_up()
+    else:
+        with pvc:
+            yield pvc
 
 
 @pytest.fixture(scope="class")
 def dataset_upload(
-    admin_client: DynamicClient, model_namespace: Namespace, dataset_pvc: PersistentVolumeClaim
-) -> Generator[dict[str, Any], None, None]:
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    dataset_pvc: PersistentVolumeClaim,
+) -> Generator[dict[str, Any], Any, Any]:
     """
     Copies dataset files from an image into the PVC at the location expected by LM-Eval
     """
 
     dataset_target_path = "/opt/app-root/src/hf_home"
 
-    with Pod(
-        client=admin_client,
-        namespace=model_namespace.name,
-        name="dataset-copy-to-pvc",
-        label={"trustyai-tests": "dataset-upload"},
-        security_context={"fsGroup": 1001, "seccompProfile": {"type": "RuntimeDefault"}},
-        containers=[
-            {
-                "name": "dataset-copy-to-pvc",
-                "image": DK_CUSTOM_DATASET_IMAGE,
-                "command": ["/bin/sh", "-c", "cp --verbose -r /models/* /mnt/pvc"],
-                "securityContext": {
-                    "runAsUser": 1001,
-                    "runAsNonRoot": True,
-                    "allowPrivilegeEscalation": False,
-                    "capabilities": {"drop": ["ALL"]},
-                },
-                "volumeMounts": [{"mountPath": "/mnt/pvc", "name": "pvc-volume"}],
-            }
-        ],
-        restart_policy="Never",
-        volumes=[{"name": "pvc-volume", "persistentVolumeClaim": {"claimName": dataset_pvc.name}}],
-    ) as pod:
-        pod.wait_for_status(status=Pod.Status.SUCCEEDED)
+    if pytestconfig.option.post_upgrade:
+        # In post-upgrade runs, only reuse expected dataset location from pre-upgrade.
         yield {
-            "pod": pod,
+            "pod": None,
             "dataset_path": f"{dataset_target_path}/example-dk-bench-input-bmo.jsonl",
         }
+    else:
+        with Pod(
+            client=admin_client,
+            namespace=model_namespace.name,
+            name="dataset-copy-to-pvc",
+            label={"trustyai-tests": "dataset-upload"},
+            security_context={"fsGroup": 1001, "seccompProfile": {"type": "RuntimeDefault"}},
+            containers=[
+                {
+                    "name": "dataset-copy-to-pvc",
+                    "image": DK_CUSTOM_DATASET_IMAGE,
+                    "command": ["/bin/sh", "-c", "cp --verbose -r /models/* /mnt/pvc"],
+                    "securityContext": {
+                        "runAsUser": 1001,
+                        "runAsNonRoot": True,
+                        "allowPrivilegeEscalation": False,
+                        "capabilities": {"drop": ["ALL"]},
+                    },
+                    "volumeMounts": [{"mountPath": "/mnt/pvc", "name": "pvc-volume"}],
+                }
+            ],
+            restart_policy="Never",
+            volumes=[{"name": "pvc-volume", "persistentVolumeClaim": {"claimName": dataset_pvc.name}}],
+        ) as pod:
+            pod.wait_for_status(status=Pod.Status.SUCCEEDED)
+            yield {
+                "pod": pod,
+                "dataset_path": f"{dataset_target_path}/example-dk-bench-input-bmo.jsonl",
+            }
 
 
 @pytest.fixture(scope="function")
@@ -98,17 +120,19 @@ def teardown_lmeval_job_pod(admin_client, model_namespace) -> None:
 
 @pytest.fixture(scope="class")
 def dspa(
+    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace: Namespace,
     minio_pod: Pod,
     minio_service: Service,
     dspa_s3_secret: Secret,
+    teardown_resources: bool,
 ) -> Generator[DataSciencePipelinesApplication, Any, Any]:
     """
     Creates a DataSciencePipelinesApplication with MinIO object storage.
     """
 
-    with DataSciencePipelinesApplication(
+    dspa_resource = DataSciencePipelinesApplication(
         client=admin_client,
         name="dspa",
         namespace=model_namespace.name,
@@ -154,25 +178,39 @@ def dspa(
             "deploy": True,
             "cronScheduleTimezone": "UTC",
         },
-    ) as dspa_resource:
+        ensure_exists=pytestconfig.option.post_upgrade,
+        teardown=teardown_resources,
+    )
+    if pytestconfig.option.post_upgrade:
         wait_for_dspa_pods(
             admin_client=admin_client,
             namespace=model_namespace.name,
             dspa_name=dspa_resource.name,
         )
         yield dspa_resource
+        dspa_resource.clean_up()
+    else:
+        with dspa_resource:
+            wait_for_dspa_pods(
+                admin_client=admin_client,
+                namespace=model_namespace.name,
+                dspa_name=dspa_resource.name,
+            )
+            yield dspa_resource
 
 
 @pytest.fixture(scope="class")
 def dspa_s3_secret(
+    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace: Namespace,
     minio_service: Service,
+    teardown_resources: bool,
 ) -> Generator[Secret, Any, Any]:
     """
     Creates a secret for DSPA S3 credentials using MinIO.
     """
-    with Secret(
+    secret = Secret(
         client=admin_client,
         name="dashboard-dspa-secret",
         namespace=model_namespace.name,
@@ -181,8 +219,15 @@ def dspa_s3_secret(
             "AWS_SECRET_ACCESS_KEY": MinIo.Credentials.SECRET_KEY_VALUE,
             "AWS_DEFAULT_REGION": "us-east-1",
         },
-    ) as secret:
+        ensure_exists=pytestconfig.option.post_upgrade,
+        teardown=teardown_resources,
+    )
+    if pytestconfig.option.post_upgrade:
         yield secret
+        secret.clean_up()
+    else:
+        with secret:
+            yield secret
 
 
 @pytest.fixture(scope="class")
