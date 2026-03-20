@@ -2,7 +2,7 @@ import pytest
 from llama_stack_client import LlamaStackClient
 from llama_stack_client.types.vector_store import VectorStore
 
-from tests.llama_stack.constants import ModelInfo
+from tests.llama_stack.constants import IBM_2025_Q4_EARNINGS_DOC_UNENCRYPTED, ModelInfo
 
 IBM_EARNINGS_RAG_QUERY = "How did IBM perform financially in the fourth quarter of 2025?"
 
@@ -10,7 +10,7 @@ IBM_EARNINGS_RAG_QUERY = "How did IBM perform financially in the fourth quarter 
 def _assert_minimal_rag_response(
     unprivileged_llama_stack_client: LlamaStackClient,
     llama_stack_models: ModelInfo,
-    vector_store_with_example_docs: VectorStore,
+    vector_store: VectorStore,
 ) -> None:
     response = unprivileged_llama_stack_client.responses.create(
         input=IBM_EARNINGS_RAG_QUERY,
@@ -20,7 +20,7 @@ def _assert_minimal_rag_response(
         tools=[
             {
                 "type": "file_search",
-                "vector_store_ids": [vector_store_with_example_docs.id],
+                "vector_store_ids": [vector_store.id],
             }
         ],
     )
@@ -62,7 +62,7 @@ def _assert_minimal_rag_response(
                 "vector_io_provider": "milvus",
                 "files_provider": "s3",
             },
-            {"vector_io_provider": "milvus"},
+            {"vector_io_provider": "milvus", "doc_sources": [IBM_2025_Q4_EARNINGS_DOC_UNENCRYPTED]},
         ),
     ],
     indirect=True,
@@ -75,7 +75,7 @@ class TestPreUpgradeLlamaStackVectorStoreRag:
         self,
         unprivileged_llama_stack_client: LlamaStackClient,
         llama_stack_models: ModelInfo,
-        vector_store_with_example_docs: VectorStore,
+        vector_store: VectorStore,
     ) -> None:
         """Verify vector-store-backed RAG works before upgrade.
 
@@ -86,7 +86,7 @@ class TestPreUpgradeLlamaStackVectorStoreRag:
         _assert_minimal_rag_response(
             unprivileged_llama_stack_client=unprivileged_llama_stack_client,
             llama_stack_models=llama_stack_models,
-            vector_store_with_example_docs=vector_store_with_example_docs,
+            vector_store=vector_store,
         )
 
 
@@ -114,7 +114,7 @@ class TestPostUpgradeLlamaStackVectorStoreRag:
         self,
         unprivileged_llama_stack_client: LlamaStackClient,
         llama_stack_models: ModelInfo,
-        vector_store_with_example_docs: VectorStore,
+        vector_store: VectorStore,
     ) -> None:
         """Verify vector-store-backed RAG remains correct after upgrade.
 
@@ -125,5 +125,5 @@ class TestPostUpgradeLlamaStackVectorStoreRag:
         _assert_minimal_rag_response(
             unprivileged_llama_stack_client=unprivileged_llama_stack_client,
             llama_stack_models=llama_stack_models,
-            vector_store_with_example_docs=vector_store_with_example_docs,
+            vector_store=vector_store,
         )
