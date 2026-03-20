@@ -260,8 +260,11 @@ def vllm_gpu_runtime(
         namespace=model_namespace.name,
         template_name=RuntimeTemplates.VLLM_CUDA,
         deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
-        runtime_image="registry.redhat.io/rhaiis/vllm-cuda-rhel9@sha256:ec799bb5eeb7e25b4b25a8917ab5161da6b6f1ab830cbba61bba371cffb0c34d",
-        containers={
+        runtime_image=(
+            "registry.redhat.io/rhaiis/vllm-cuda-rhel9@"
+            "sha256:ec799bb5eeb7e25b4b25a8917ab5161da6b6f1ab830cbba61bba371cffb0c34d"
+            ),
+            containers={
             "kserve-container": {
                 "command": ["python", "-m", "vllm.entrypoints.openai.api_server"],
                 "args": [
@@ -294,7 +297,10 @@ def qwen_gpu_isvc(
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         model_format="vLLM",
         runtime=vllm_gpu_runtime.name,
-        storage_uri="oci://quay.io/trustyai_testing/models/qwen2.5-3b-instruct@sha256:6f9d9843599a9959de23c76d6b5adb556505482a7e732b2fcbca695a9c4ce545",
+        storage_uri=(
+            "oci://quay.io/trustyai_testing/models/qwen2.5-3b-instruct@"
+            "sha256:6f9d9843599a9959de23c76d6b5adb556505482a7e732b2fcbca695a9c4ce545"
+            ),
         enable_auth=False,
         wait_for_predictor_pods=True,
         resources={
