@@ -11,6 +11,7 @@ MCP_CATALOG_API_PATH = "/api/mcp_catalog/v1alpha1/"
 MODEL_CATALOG_API_PATH = "/api/model_catalog/v1alpha1/"
 
 
+@pytest.mark.tier1
 @pytest.mark.usefixtures("mcp_servers_configmap_patch")
 class TestCatalogSecurity:
     """Tests for catalog endpoint security (TC-SEC-001)."""
