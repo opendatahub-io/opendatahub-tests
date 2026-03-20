@@ -3,11 +3,10 @@ from collections.abc import Generator
 import pytest
 import yaml
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.config_map import ConfigMap
 from ocp_resources.resource import ResourceEditor
 from simple_logger.logger import get_logger
 
-from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG
+from tests.model_registry.mcp_servers.config.utils import get_mcp_catalog_sources
 from tests.model_registry.mcp_servers.constants import (
     MCP_CATALOG_INVALID_SOURCE,
     MCP_CATALOG_SOURCE,
@@ -37,13 +36,9 @@ def mcp_multi_source_configmap_patch(
     Class-scoped fixture that patches the model-catalog-sources ConfigMap
     with two MCP catalog sources pointing to two different YAML files.
     """
-    catalog_config_map = ConfigMap(
-        name=DEFAULT_CUSTOM_MODEL_CATALOG,
-        client=admin_client,
-        namespace=model_registry_namespace,
+    catalog_config_map, current_data = get_mcp_catalog_sources(
+        admin_client=admin_client, model_registry_namespace=model_registry_namespace
     )
-
-    current_data = yaml.safe_load(catalog_config_map.instance.data.get("sources.yaml", "{}") or "{}")
     if "mcp_catalogs" not in current_data:
         current_data["mcp_catalogs"] = []
     current_data["mcp_catalogs"].extend([MCP_CATALOG_SOURCE, MCP_CATALOG_SOURCE2])
@@ -80,13 +75,9 @@ def mcp_invalid_yaml_configmap_patch(
     Class-scoped fixture that patches the ConfigMap with a valid MCP source
     plus an invalid one (parameterized via request.param as the invalid YAML content).
     """
-    catalog_config_map = ConfigMap(
-        name=DEFAULT_CUSTOM_MODEL_CATALOG,
-        client=admin_client,
-        namespace=model_registry_namespace,
+    catalog_config_map, current_data = get_mcp_catalog_sources(
+        admin_client=admin_client, model_registry_namespace=model_registry_namespace
     )
-
-    current_data = yaml.safe_load(catalog_config_map.instance.data.get("sources.yaml", "{}") or "{}")
     if "mcp_catalogs" not in current_data:
         current_data["mcp_catalogs"] = []
     current_data["mcp_catalogs"].extend([MCP_CATALOG_SOURCE, MCP_CATALOG_INVALID_SOURCE])
@@ -142,13 +133,9 @@ def mcp_included_excluded_configmap_patch(
     if "excludedServers" in filter_params:
         source_config["excludedServers"] = filter_params["excludedServers"]
 
-    catalog_config_map = ConfigMap(
-        name=DEFAULT_CUSTOM_MODEL_CATALOG,
-        client=admin_client,
-        namespace=model_registry_namespace,
+    catalog_config_map, current_data = get_mcp_catalog_sources(
+        admin_client=admin_client, model_registry_namespace=model_registry_namespace
     )
-
-    current_data = yaml.safe_load(catalog_config_map.instance.data.get("sources.yaml", "{}") or "{}")
     if "mcp_catalogs" not in current_data:
         current_data["mcp_catalogs"] = []
     current_data["mcp_catalogs"].append(source_config)
