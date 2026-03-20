@@ -94,7 +94,9 @@ class TestArtifactsSorting:
             sort_order=sort_order,
         )
 
-        assert validate_items_sorted_correctly(response["items"], order_by, sort_order)
+        # Exclude model-artifact items as they lack sortable fields like "name"
+        items = [item for item in response["items"] if item.get("artifactType") != "model-artifact"]
+        assert validate_items_sorted_correctly(items, order_by, sort_order)
 
 
 @pytest.mark.downstream_only
