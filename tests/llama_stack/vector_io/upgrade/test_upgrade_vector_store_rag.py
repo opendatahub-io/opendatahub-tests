@@ -109,6 +109,7 @@ class TestPreUpgradeLlamaStackVectorStoreRag:
 @pytest.mark.rag
 class TestPostUpgradeLlamaStackVectorStoreRag:
     @pytest.mark.post_upgrade
+    @pytest.mark.xfail(reason="RHAIENG-3650")
     def test_vector_store_rag_post_upgrade(
         self,
         unprivileged_llama_stack_client: LlamaStackClient,

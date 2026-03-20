@@ -229,48 +229,6 @@ def llama_stack_server_config(
     if trustyai_embedding_model:
         env_vars.append({"name": "TRUSTYAI_EMBEDDING_MODEL", "value": trustyai_embedding_model})
 
-    # Kubeflow-related environment variables
-    if params.get("enable_ragas_remote"):
-        # Get fixtures only when Ragas Remote/Kubeflow is enabled
-        model_namespace = request.getfixturevalue(argname="model_namespace")
-        current_client_token = request.getfixturevalue(argname="current_client_token")
-        dspa_route = request.getfixturevalue(argname="dspa_route")
-        dspa_s3_secret = request.getfixturevalue(argname="dspa_s3_secret")
-
-        # KUBEFLOW_LLAMA_STACK_URL: Build from LlamaStackDistribution service
-        env_vars.append({
-            "name": "KUBEFLOW_LLAMA_STACK_URL",
-            "value": f"http://{distribution_name}-service.{model_namespace.name}.svc.cluster.local:8321",
-        })
-
-        # KUBEFLOW_PIPELINES_ENDPOINT: Get from DSPA route
-        env_vars.append({"name": "KUBEFLOW_PIPELINES_ENDPOINT", "value": f"https://{dspa_route.instance.spec.host}"})
-
-        # KUBEFLOW_NAMESPACE: Use model namespace
-        env_vars.append({"name": "KUBEFLOW_NAMESPACE", "value": model_namespace.name})
-
-        # KUBEFLOW_BASE_IMAGE
-        env_vars.append({
-            "name": "KUBEFLOW_BASE_IMAGE",
-            "value": params.get(
-                "kubeflow_base_image",
-                "quay.io/diegosquayorg/my-ragas-provider-image"
-                "@sha256:3749096c47f7536d6be2a7932e691abebacd578bafbe65bad2f7db475e2b93fb",
-            ),
-        })
-
-        # KUBEFLOW_RESULTS_S3_PREFIX: Build from MinIO bucket
-        env_vars.append({
-            "name": "KUBEFLOW_RESULTS_S3_PREFIX",
-            "value": params.get("kubeflow_results_s3_prefix", "s3://llms/ragas-results"),
-        })
-
-        # KUBEFLOW_S3_CREDENTIALS_SECRET_NAME: Use DSPA secret name
-        env_vars.append({"name": "KUBEFLOW_S3_CREDENTIALS_SECRET_NAME", "value": dspa_s3_secret.name})
-
-        # KUBEFLOW_PIPELINES_TOKEN: Get from current client token
-        env_vars.append({"name": "KUBEFLOW_PIPELINES_TOKEN", "value": str(current_client_token)})
-
     # POSTGRESQL environment variables for sql_default and kvstore_default
     env_vars.append({"name": "POSTGRES_HOST", "value": "vector-io-postgres-service"})
     env_vars.append({"name": "POSTGRES_PORT", "value": "5432"})
