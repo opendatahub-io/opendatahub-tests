@@ -808,45 +808,67 @@ def vector_store(
         LOGGER.info(f"vector_store successfully created (provider_id={vector_io_provider}, id={vector_store.id})")
 
         if doc_sources:
-            if not isinstance(doc_sources, list):
-                raise TypeError(f"doc_sources must be a list[str], got {type(doc_sources).__name__}")
-            LOGGER.info(
-                "Uploading doc_sources to vector_store (provider_id=%s, id=%s): %s",
-                vector_io_provider,
-                vector_store.id,
-                doc_sources,
-            )
-            for source in doc_sources:
-                if source.startswith(("http://", "https://")):
-                    vector_store_create_file_from_url(
-                        url=source,
-                        llama_stack_client=unprivileged_llama_stack_client,
-                        vector_store=vector_store,
-                    )
-                else:
-                    source_path = Path(source)  # noqa: FCN001
-                    if not source_path.is_absolute():
-                        source_path = Path(request.config.rootdir) / source_path  # noqa: FCN001
-
-                    if source_path.is_dir():
-                        files = sorted(source_path.iterdir())
-                        if not files:
-                            raise FileNotFoundError(f"No files found in directory: {source_path}")
-                        for file_path in files:
-                            if file_path.is_file():
-                                vector_store_create_file_from_path(
-                                    file_path=file_path,
-                                    llama_stack_client=unprivileged_llama_stack_client,
-                                    vector_store=vector_store,
-                                )
-                    elif source_path.is_file():
-                        vector_store_create_file_from_path(
-                            file_path=source_path,
+            try:
+                if not isinstance(doc_sources, list):
+                    raise TypeError(f"doc_sources must be a list[str], got {type(doc_sources).__name__}")
+                LOGGER.info(
+                    "Uploading doc_sources to vector_store (provider_id=%s, id=%s): %s",
+                    vector_io_provider,
+                    vector_store.id,
+                    doc_sources,
+                )
+                repo_root = Path(request.config.rootdir).resolve()
+                for source in doc_sources:
+                    if source.startswith(("http://", "https://")):
+                        vector_store_create_file_from_url(
+                            url=source,
                             llama_stack_client=unprivileged_llama_stack_client,
                             vector_store=vector_store,
                         )
                     else:
-                        raise FileNotFoundError(f"Document source not found: {source_path}")
+                        raw_path = Path(source)
+                        resolved_source = (
+                            raw_path.resolve() if raw_path.is_absolute() else (repo_root / raw_path).resolve()
+                        )
+                        if not resolved_source.is_relative_to(repo_root):
+                            raise ValueError(
+                                f"doc_sources path must be under repo root ({repo_root}): {source!r}",
+                            )
+                        source_path = resolved_source
+
+                        if source_path.is_dir():
+                            files = sorted(source_path.iterdir())
+                            if not files:
+                                raise FileNotFoundError(f"No files found in directory: {source_path}")
+                            for file_path in files:
+                                if file_path.is_file():
+                                    vector_store_create_file_from_path(
+                                        file_path=file_path,
+                                        llama_stack_client=unprivileged_llama_stack_client,
+                                        vector_store=vector_store,
+                                    )
+                        elif source_path.is_file():
+                            vector_store_create_file_from_path(
+                                file_path=source_path,
+                                llama_stack_client=unprivileged_llama_stack_client,
+                                vector_store=vector_store,
+                            )
+                        else:
+                            raise FileNotFoundError(f"Document source not found: {source_path}")
+            except Exception:
+                try:
+                    unprivileged_llama_stack_client.vector_stores.delete(vector_store_id=vector_store.id)
+                    LOGGER.info(
+                        "Deleted vector store %s after failed doc_sources ingestion",
+                        vector_store.id,
+                    )
+                except Exception as del_exc:  # noqa: BLE001
+                    LOGGER.warning(
+                        "Failed to delete vector store %s after ingestion error: %s",
+                        vector_store.id,
+                        del_exc,
+                    )
+                raise
 
     yield vector_store
 
