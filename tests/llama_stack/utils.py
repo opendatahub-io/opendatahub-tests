@@ -276,3 +276,80 @@ def vector_store_create_file_from_path(
     )
     LOGGER.info(f"Addded uploaded file (filename{uploaded_file.filename} to vector store {vector_store.id}")
     return vs_file
+
+
+def vector_store_upload_doc_sources(
+    doc_sources: Any,
+    repo_root: Path,
+    llama_stack_client: LlamaStackClient,
+    vector_store: Any,
+    vector_io_provider: str,
+) -> None:
+    """Upload parametrized document sources (URLs and repo-local paths) to a vector store.
+
+    Resolves each local path under ``repo_root`` and re-resolves directory entries to avoid
+    symlink escape outside the repository.
+
+    Args:
+        doc_sources: List of URL or path strings (repo-relative or absolute under repo root).
+        repo_root: Resolved repository root; local paths must resolve under this directory.
+        llama_stack_client: Client used for file and vector store APIs.
+        vector_store: Target vector store (must expose ``id``).
+        vector_io_provider: Provider id for log context only.
+
+    Raises:
+        TypeError: If ``doc_sources`` is not a list.
+        ValueError: If a local path resolves outside ``repo_root``.
+        FileNotFoundError: If a file or non-empty directory source is missing.
+    """
+    if not isinstance(doc_sources, list):
+        raise TypeError(f"doc_sources must be a list[str], got {type(doc_sources).__name__}")
+    LOGGER.info(
+        "Uploading doc_sources to vector_store (provider_id=%s, id=%s): %s",
+        vector_io_provider,
+        vector_store.id,
+        doc_sources,
+    )
+    repo_root_resolved = repo_root.resolve()
+    for source in doc_sources:
+        if source.startswith(("http://", "https://")):
+            vector_store_create_file_from_url(
+                url=source,
+                llama_stack_client=llama_stack_client,
+                vector_store=vector_store,
+            )
+            continue
+        raw_path = Path(source)  # noqa: FCN001
+        resolved_source = raw_path.resolve() if raw_path.is_absolute() else (repo_root_resolved / raw_path).resolve()
+        if not resolved_source.is_relative_to(repo_root_resolved):
+            raise ValueError(
+                f"doc_sources path must be under repo root ({repo_root_resolved}): {source!r}",
+            )
+        source_path = resolved_source
+
+        if source_path.is_dir():
+            files = sorted(source_path.iterdir())
+            if not files:
+                raise FileNotFoundError(f"No files found in directory: {source_path}")
+            for file_path in files:
+                file_path_resolved = file_path.resolve(strict=True)
+                if not file_path_resolved.is_relative_to(repo_root_resolved):
+                    raise ValueError(
+                        f"doc_sources directory entry must resolve under repo root "
+                        f"({repo_root_resolved}): {file_path!r} -> {file_path_resolved!r}",
+                    )
+                if not file_path_resolved.is_file():
+                    continue
+                vector_store_create_file_from_path(
+                    file_path=file_path_resolved,
+                    llama_stack_client=llama_stack_client,
+                    vector_store=vector_store,
+                )
+        elif source_path.is_file():
+            vector_store_create_file_from_path(
+                file_path=source_path,
+                llama_stack_client=llama_stack_client,
+                vector_store=vector_store,
+            )
+        else:
+            raise FileNotFoundError(f"Document source not found: {source_path}")

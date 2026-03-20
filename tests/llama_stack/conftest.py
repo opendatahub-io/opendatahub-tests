@@ -37,8 +37,7 @@ from tests.llama_stack.constants import (
 )
 from tests.llama_stack.utils import (
     create_llama_stack_distribution,
-    vector_store_create_file_from_path,
-    vector_store_create_file_from_url,
+    vector_store_upload_doc_sources,
     wait_for_llama_stack_client_ready,
     wait_for_unique_llama_stack_pod,
 )
@@ -809,52 +808,13 @@ def vector_store(
 
         if doc_sources:
             try:
-                if not isinstance(doc_sources, list):
-                    raise TypeError(f"doc_sources must be a list[str], got {type(doc_sources).__name__}")
-                LOGGER.info(
-                    "Uploading doc_sources to vector_store (provider_id=%s, id=%s): %s",
-                    vector_io_provider,
-                    vector_store.id,
-                    doc_sources,
+                vector_store_upload_doc_sources(
+                    doc_sources=doc_sources,
+                    repo_root=Path(request.config.rootdir).resolve(),
+                    llama_stack_client=unprivileged_llama_stack_client,
+                    vector_store=vector_store,
+                    vector_io_provider=vector_io_provider,
                 )
-                repo_root = Path(request.config.rootdir).resolve()
-                for source in doc_sources:
-                    if source.startswith(("http://", "https://")):
-                        vector_store_create_file_from_url(
-                            url=source,
-                            llama_stack_client=unprivileged_llama_stack_client,
-                            vector_store=vector_store,
-                        )
-                    else:
-                        raw_path = Path(source)
-                        resolved_source = (
-                            raw_path.resolve() if raw_path.is_absolute() else (repo_root / raw_path).resolve()
-                        )
-                        if not resolved_source.is_relative_to(repo_root):
-                            raise ValueError(
-                                f"doc_sources path must be under repo root ({repo_root}): {source!r}",
-                            )
-                        source_path = resolved_source
-
-                        if source_path.is_dir():
-                            files = sorted(source_path.iterdir())
-                            if not files:
-                                raise FileNotFoundError(f"No files found in directory: {source_path}")
-                            for file_path in files:
-                                if file_path.is_file():
-                                    vector_store_create_file_from_path(
-                                        file_path=file_path,
-                                        llama_stack_client=unprivileged_llama_stack_client,
-                                        vector_store=vector_store,
-                                    )
-                        elif source_path.is_file():
-                            vector_store_create_file_from_path(
-                                file_path=source_path,
-                                llama_stack_client=unprivileged_llama_stack_client,
-                                vector_store=vector_store,
-                            )
-                        else:
-                            raise FileNotFoundError(f"Document source not found: {source_path}")
             except Exception:
                 try:
                     unprivileged_llama_stack_client.vector_stores.delete(vector_store_id=vector_store.id)
