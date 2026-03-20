@@ -32,6 +32,7 @@ class TestAccuracySorting:
         ],
     )
     @pytest.mark.tier1
+    @pytest.mark.xfail(reason="RHOAIENG-54579")
     def test_accuracy_sorting_works_correctly(
         self: Self,
         admin_client: DynamicClient,

@@ -1,5 +1,6 @@
 import pytest
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.network_policy import NetworkPolicy
 from ocp_resources.secret import Secret
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
@@ -56,3 +57,14 @@ def recreated_model_catalog_postgres_secret(
             break
 
     return extract_secret_values(secret=recreated_secret)
+
+
+@pytest.fixture(scope="class")
+def model_catalog_postgres_network_policy(admin_client: DynamicClient, model_registry_namespace: str) -> NetworkPolicy:
+    """Get the model-catalog-postgres NetworkPolicy from model registry namespace"""
+    return NetworkPolicy(
+        client=admin_client,
+        name="model-catalog-postgres",
+        namespace=model_registry_namespace,
+        ensure_exists=True,
+    )
