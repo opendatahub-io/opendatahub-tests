@@ -12,8 +12,7 @@ CHAT_COMPLETIONS_DETECTION_ENDPOINT: str = "api/v2/chat/completions-detection"
 PII_ENDPOINT: str = "/pii"
 AUTOCONFIG_GATEWAY_ENDPOINT: str = "/all"
 STANDALONE_DETECTION_ENDPOINT: str = "api/v2/text/detection/content"
-PROMPT_INJECTION_DETECTOR: str = "prompt-injection-detector"
-HAP_DETECTOR: str = "hap-detector"
+
 
 
 @dataclass

@@ -518,3 +518,6 @@ VLLM_CHAT_GENERATION_CONFIG: dict[str, Any] = {
 
 class PodNotFound(Exception):
     """Pod not found"""
+
+PROMPT_INJECTION_DETECTOR: str = "prompt-injection-detector"
+HAP_DETECTOR: str = "hap-detector"

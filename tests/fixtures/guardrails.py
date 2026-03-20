@@ -13,7 +13,7 @@ from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 
-from tests.model_explainability.guardrails.constants import HAP_DETECTOR, PROMPT_INJECTION_DETECTOR
+from utilities.constants import HAP_DETECTOR, PROMPT_INJECTION_DETECTOR
 from utilities.constants import BUILTIN_DETECTOR_CONFIG, Annotations, Labels, VLLMGPUConfig
 from utilities.guardrails import check_guardrails_health_endpoint
 

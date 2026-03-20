@@ -3,13 +3,11 @@ import yaml
 
 from tests.model_explainability.guardrails.constants import (
     CHAT_COMPLETIONS_DETECTION_ENDPOINT,
-    HAP_DETECTOR,
     HAP_INPUT_DETECTION_PROMPT,
     HARMLESS_PROMPT,
     PII_ENDPOINT,
     PII_INPUT_DETECTION_PROMPT,
     PII_OUTPUT_DETECTION_PROMPT_QWEN,
-    PROMPT_INJECTION_DETECTOR,
     PROMPT_INJECTION_INPUT_DETECTION_PROMPT,
     STANDALONE_DETECTION_ENDPOINT,
 )
@@ -22,7 +20,7 @@ from tests.model_explainability.guardrails.utils import (
     verify_health_info_response,
 )
 from utilities.constants import (
-    VLLMGPUConfig,
+    VLLMGPUConfig, PROMPT_INJECTION_DETECTOR, HAP_DETECTOR,
 )
 from utilities.plugins.constant import OpenAIEnpoints
 
