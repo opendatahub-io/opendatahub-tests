@@ -1,5 +1,6 @@
 import os
 from collections.abc import Callable, Generator
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -19,11 +20,24 @@ from semver import Version
 from simple_logger.logger import get_logger
 
 from tests.llama_stack.constants import (
+    LLAMA_STACK_DISTRIBUTION_SECRET_DATA,
+    LLS_CORE_EMBEDDING_MODEL,
+    LLS_CORE_EMBEDDING_PROVIDER_MODEL_ID,
+    LLS_CORE_INFERENCE_MODEL,
+    LLS_CORE_VLLM_EMBEDDING_MAX_TOKENS,
+    LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY,
+    LLS_CORE_VLLM_EMBEDDING_URL,
+    LLS_CORE_VLLM_MAX_TOKENS,
+    LLS_CORE_VLLM_TLS_VERIFY,
+    LLS_CORE_VLLM_URL,
     LLS_OPENSHIFT_MINIMAL_VERSION,
+    POSTGRES_IMAGE,
+    UPGRADE_DISTRIBUTION_NAME,
     ModelInfo,
 )
 from tests.llama_stack.utils import (
     create_llama_stack_distribution,
+    vector_store_create_file_from_path,
     vector_store_create_file_from_url,
     wait_for_llama_stack_client_ready,
     wait_for_unique_llama_stack_pod,
@@ -36,48 +50,6 @@ from utilities.resources.llama_stack_distribution import LlamaStackDistribution
 LOGGER = get_logger(name=__name__)
 
 pytestmark = pytest.mark.skip_on_disconnected
-
-POSTGRES_IMAGE = os.getenv(
-    "LLS_VECTOR_IO_POSTGRES_IMAGE",
-    (
-        "registry.redhat.io/rhel9/postgresql-15@sha256:"
-        "90ec347a35ab8a5d530c8d09f5347b13cc71df04f3b994bfa8b1a409b1171d59"  # postgres 15 # pragma: allowlist secret
-    ),
-)
-
-POSTGRESQL_USER = os.getenv("LLS_VECTOR_IO_POSTGRESQL_USER", "ps_user")
-POSTGRESQL_PASSWORD = os.getenv("LLS_VECTOR_IO_POSTGRESQL_PASSWORD", "ps_password")
-
-LLS_CORE_INFERENCE_MODEL = os.getenv("LLS_CORE_INFERENCE_MODEL", "")
-LLS_CORE_VLLM_URL = os.getenv("LLS_CORE_VLLM_URL", "")
-LLS_CORE_VLLM_API_TOKEN = os.getenv("LLS_CORE_VLLM_API_TOKEN", "")
-LLS_CORE_VLLM_MAX_TOKENS = os.getenv("LLS_CORE_VLLM_MAX_TOKENS", "16384")
-LLS_CORE_VLLM_TLS_VERIFY = os.getenv("LLS_CORE_VLLM_TLS_VERIFY", "true")
-
-LLS_CORE_EMBEDDING_MODEL = os.getenv("LLS_CORE_EMBEDDING_MODEL", "nomic-embed-text-v1-5")
-LLS_CORE_EMBEDDING_PROVIDER_MODEL_ID = os.getenv("LLS_CORE_EMBEDDING_PROVIDER_MODEL_ID", "nomic-embed-text-v1-5")
-LLS_CORE_VLLM_EMBEDDING_URL = os.getenv(
-    "LLS_CORE_VLLM_EMBEDDING_URL", "https://nomic-embed-text-v1-5.example.com:443/v1"
-)
-LLS_CORE_VLLM_EMBEDDING_API_TOKEN = os.getenv("LLS_CORE_VLLM_EMBEDDING_API_TOKEN", "fake")
-LLS_CORE_VLLM_EMBEDDING_MAX_TOKENS = os.getenv("LLS_CORE_VLLM_EMBEDDING_MAX_TOKENS", "8192")
-LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY = os.getenv("LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY", "true")
-
-LLS_CORE_AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "")
-LLS_CORE_AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "")
-
-LLAMA_STACK_DISTRIBUTION_SECRET_DATA = {
-    "postgres-user": POSTGRESQL_USER,
-    "postgres-password": POSTGRESQL_PASSWORD,
-    "vllm-api-token": LLS_CORE_VLLM_API_TOKEN,
-    "vllm-embedding-api-token": LLS_CORE_VLLM_EMBEDDING_API_TOKEN,
-    "aws-access-key-id": LLS_CORE_AWS_ACCESS_KEY_ID,
-    "aws-secret-access-key": LLS_CORE_AWS_SECRET_ACCESS_KEY,
-}
-
-IBM_EARNINGS_DOC_URL = "https://www.ibm.com/downloads/documents/us-en/1550f7eea8c0ded6"
-
-UPGRADE_DISTRIBUTION_NAME = "llama-stack-distribution-upgrade"
 
 
 @pytest.fixture(scope="class")
@@ -803,27 +775,64 @@ def vector_store(
     """
     Creates a vector store for testing and automatically cleans it up.
 
-    This fixture creates a vector store, yields it to the test,
-    and ensures it's deleted after the test completes (whether it passes or fails).
+    You can have example documents ingested into the store automatically by passing a
+    non-empty ``doc_sources`` list in the indirect parametrization dict (URLs, files, or
+    directories under the repo root). Omit ``doc_sources`` when the test only needs an
+    empty store.
+
+    Options when parametrizing with ``indirect=True``:
+
+    * ``vector_io_provider`` (optional): backend id for the store; defaults to ``"milvus"``.
+    * ``doc_sources`` (optional): non-empty list of document sources to upload after creation.
+      Omitted, empty, or absent means no uploads. Each entry may be:
+
+      * A remote URL (``http://`` or ``https://``)
+      * A repo-relative or absolute file path
+      * A directory path (all files in the directory are uploaded)
+
+    Example:
+
+        @pytest.mark.parametrize(
+            "vector_store",
+            [
+                pytest.param(
+                    {
+                        "vector_io_provider": "milvus",
+                        "doc_sources": [
+                            "https://www.ibm.com/downloads/documents/us-en/1550f7eea8c0ded6",
+                            "tests/llama_stack/dataset/corpus/finance",
+                            "tests/llama_stack/dataset/corpus/finance/ibm-4q25-earnings-press-release-unencrypted.pdf",
+                        ],
+                    },
+                    id="doc_sources:url+folder+file",
+                ),
+            ],
+            indirect=True,
+        )
+
+    Post-upgrade runs reuse the existing store; uploads run only in the create path when
+    ``doc_sources`` is non-empty (documents from the pre-upgrade run are reused otherwise).
 
     Args:
-        llama_stack_client: The configured LlamaStackClient
+        unprivileged_llama_stack_client: The configured LlamaStackClient
         llama_stack_models: Model information including embedding model details
+        request: Pytest fixture request carrying optional param dict
+        pytestconfig: Pytest config (post-upgrade reuses store, no create/upload path)
+        teardown_resources: Whether to delete the store after the class
 
     Yields:
         Vector store object that can be used in tests
     """
 
-    params = getattr(request, "param", {"vector_io_provider": "milvus"})
-    vector_io_provider = str(params.get("vector_io_provider"))
+    params_raw = getattr(request, "param", None)
+    params: dict[str, Any] = dict(params_raw) if isinstance(params_raw, dict) else {"vector_io_provider": "milvus"}
+    vector_io_provider = str(params.get("vector_io_provider") or "milvus")
+    doc_sources = params.get("doc_sources")
 
     if pytestconfig.option.post_upgrade:
+        stores = unprivileged_llama_stack_client.vector_stores.list().data
         vector_store = next(
-            (
-                vs
-                for vs in unprivileged_llama_stack_client.vector_stores.list().data
-                if getattr(vs, "name", "") == "test_vector_store"
-            ),
+            (vs for vs in stores if getattr(vs, "name", "") == "test_vector_store"),
             None,
         )
         if not vector_store:
@@ -840,6 +849,47 @@ def vector_store(
         )
         LOGGER.info(f"vector_store successfully created (provider_id={vector_io_provider}, id={vector_store.id})")
 
+        if doc_sources:
+            if not isinstance(doc_sources, list):
+                raise TypeError(f"doc_sources must be a list[str], got {type(doc_sources).__name__}")
+            LOGGER.info(
+                "Uploading doc_sources to vector_store (provider_id=%s, id=%s): %s",
+                vector_io_provider,
+                vector_store.id,
+                doc_sources,
+            )
+            for source in doc_sources:
+                if source.startswith(("http://", "https://")):
+                    vector_store_create_file_from_url(
+                        url=source,
+                        llama_stack_client=unprivileged_llama_stack_client,
+                        vector_store=vector_store,
+                    )
+                else:
+                    source_path = Path(source)  # noqa: FCN001
+                    if not source_path.is_absolute():
+                        source_path = Path(request.config.rootdir) / source_path  # noqa: FCN001
+
+                    if source_path.is_dir():
+                        files = sorted(source_path.iterdir())
+                        if not files:
+                            raise FileNotFoundError(f"No files found in directory: {source_path}")
+                        for file_path in files:
+                            if file_path.is_file():
+                                vector_store_create_file_from_path(
+                                    file_path=file_path,
+                                    llama_stack_client=unprivileged_llama_stack_client,
+                                    vector_store=vector_store,
+                                )
+                    elif source_path.is_file():
+                        vector_store_create_file_from_path(
+                            file_path=source_path,
+                            llama_stack_client=unprivileged_llama_stack_client,
+                            vector_store=vector_store,
+                        )
+                    else:
+                        raise FileNotFoundError(f"Document source not found: {source_path}")
+
     yield vector_store
 
     if teardown_resources:
@@ -848,36 +898,6 @@ def vector_store(
             LOGGER.info(f"Deleted vector store {vector_store.id}")
         except Exception as e:  # noqa: BLE001
             LOGGER.warning(f"Failed to delete vector store {vector_store.id}: {e}")
-
-
-@pytest.fixture(scope="class")
-def vector_store_with_example_docs(
-    unprivileged_llama_stack_client: LlamaStackClient, vector_store: VectorStore, pytestconfig: pytest.Config
-) -> Generator[VectorStore]:
-    """
-    Creates a vector store with the IBM fourth-quarter 2025 earnings report uploaded.
-
-    This fixture depends on the vector_store fixture and uploads the IBM earnings
-    document to the vector store for testing vector, keyword, and hybrid search.
-    The file is automatically cleaned up after the test completes.
-
-    Args:
-        unprivileged_llama_stack_client: The configured LlamaStackClient
-        vector_store: The vector store fixture to upload files to
-
-    Yields:
-        Vector store object with uploaded IBM earnings report document
-    """
-    if pytestconfig.option.post_upgrade:
-        LOGGER.info("Post-upgrade run: reusing vector store docs without uploading new files")
-    else:
-        vector_store_create_file_from_url(
-            url=IBM_EARNINGS_DOC_URL,
-            llama_stack_client=unprivileged_llama_stack_client,
-            vector_store=vector_store,
-        )
-
-    yield vector_store
 
 
 @pytest.fixture(scope="class")
