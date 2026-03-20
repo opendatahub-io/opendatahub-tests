@@ -517,7 +517,6 @@ def assert_model_sorting(
     sort_order: str | None,
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
-    source_label: str | None = None,
 ) -> None:
     LOGGER.info(f"Testing models sorting: orderBy={order_by}, sortOrder={sort_order}")
 
@@ -526,7 +525,6 @@ def assert_model_sorting(
         model_registry_rest_headers=model_registry_rest_headers,
         order_by=order_by,
         sort_order=sort_order,
-        source_label=source_label,
     )
 
     assert validate_items_sorted_correctly(items=response["items"], field=order_by, order=sort_order)
