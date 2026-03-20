@@ -263,8 +263,8 @@ def vllm_gpu_runtime(
         runtime_image=(
             "registry.redhat.io/rhaiis/vllm-cuda-rhel9@"
             "sha256:ec799bb5eeb7e25b4b25a8917ab5161da6b6f1ab830cbba61bba371cffb0c34d"
-            ),
-            containers={
+        ),
+        containers={
             "kserve-container": {
                 "command": ["python", "-m", "vllm.entrypoints.openai.api_server"],
                 "args": [
@@ -300,7 +300,7 @@ def qwen_gpu_isvc(
         storage_uri=(
             "oci://quay.io/trustyai_testing/models/qwen2.5-3b-instruct@"
             "sha256:6f9d9843599a9959de23c76d6b5adb556505482a7e732b2fcbca695a9c4ce545"
-            ),
+        ),
         enable_auth=False,
         wait_for_predictor_pods=True,
         resources={

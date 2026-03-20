@@ -259,9 +259,8 @@ def orchestrator_config_gpu(
                             "type": "text_contents",
                             "service": {
                                 "hostname": (
-                                            f"{PROMPT_INJECTION_DETECTOR}-predictor."
-                                            f"{model_namespace.name}.svc.cluster.local"
-                                        ),
+                                    f"{PROMPT_INJECTION_DETECTOR}-predictor.{model_namespace.name}.svc.cluster.local"
+                                ),
                                 "port": 80,
                             },
                             "chunker_id": "whole_doc_chunker",
