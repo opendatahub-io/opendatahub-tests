@@ -70,7 +70,6 @@ LLAMA_STACK_DISTRIBUTION_SECRET_DATA = {
 
 UPGRADE_DISTRIBUTION_NAME = "llama-stack-distribution-upgrade"
 
-FINANCE_DOCS = "tests/llama_stack/dataset/corpus/finance"
 IBM_2025_Q4_EARNINGS_DOC_ENCRYPTED = "tests/llama_stack/dataset/corpus/pdf-testing/ibm-4q25-press-release-encrypted.pdf"
 IBM_2025_Q4_EARNINGS_DOC_UNENCRYPTED = (
     "tests/llama_stack/dataset/corpus/finance/ibm-4q25-earnings-press-release-unencrypted.pdf"
