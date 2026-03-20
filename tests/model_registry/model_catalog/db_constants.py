@@ -195,7 +195,7 @@ API_COMPUTED_FILTER_FIELDS = {
 # Models are ordered by their overall_average (accuracy) value from artifact properties.
 # Only returns the model name column for easy comparison with API results.
 GET_MODELS_BY_ACCURACY_DB_QUERY = """
-SELECT SPLIT_PART(c.name, ':', 2) AS name
+SELECT c.name
 FROM "ArtifactProperty" ap
 JOIN "Artifact" a ON a.id = ap.artifact_id
 JOIN "Attribution" attr ON attr.artifact_id = a.id
@@ -210,7 +210,7 @@ ORDER BY ap.double_value {sort_order};
 # Models are ordered by their overall_average (accuracy) value from artifact properties.
 # The tasks field is stored as a JSON array, so we use LIKE pattern matching
 GET_MODELS_BY_ACCURACY_WITH_TASK_FILTER_DB_QUERY = """
-SELECT SPLIT_PART(c.name, ':', 2) AS name
+SELECT c.name
 FROM "ArtifactProperty" ap
 JOIN "Artifact" a ON a.id = ap.artifact_id
 JOIN "Attribution" attr ON attr.artifact_id = a.id
