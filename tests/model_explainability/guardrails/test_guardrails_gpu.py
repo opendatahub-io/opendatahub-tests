@@ -20,7 +20,9 @@ from tests.model_explainability.guardrails.utils import (
     verify_health_info_response,
 )
 from utilities.constants import (
-    VLLMGPUConfig, PROMPT_INJECTION_DETECTOR, HAP_DETECTOR,
+    HAP_DETECTOR,
+    PROMPT_INJECTION_DETECTOR,
+    VLLMGPUConfig,
 )
 from utilities.plugins.constant import OpenAIEnpoints
 

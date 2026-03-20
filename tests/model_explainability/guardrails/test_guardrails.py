@@ -27,9 +27,11 @@ from tests.model_explainability.guardrails.utils import (
 from tests.model_explainability.utils import validate_tai_component_images
 from utilities.constants import (
     BUILTIN_DETECTOR_CONFIG,
+    HAP_DETECTOR,
     LLM_D_CHAT_GENERATION_CONFIG,
+    PROMPT_INJECTION_DETECTOR,
     LLMdInferenceSimConfig,
-    Timeout, PROMPT_INJECTION_DETECTOR, HAP_DETECTOR,
+    Timeout,
 )
 from utilities.plugins.constant import OpenAIEnpoints
 

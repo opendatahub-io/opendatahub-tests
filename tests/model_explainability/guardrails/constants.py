@@ -14,7 +14,6 @@ AUTOCONFIG_GATEWAY_ENDPOINT: str = "/all"
 STANDALONE_DETECTION_ENDPOINT: str = "api/v2/text/detection/content"
 
 
-
 @dataclass
 class GuardrailsDetectionPrompt:
     """
