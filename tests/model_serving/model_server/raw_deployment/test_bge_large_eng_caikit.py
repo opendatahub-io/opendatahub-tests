@@ -15,7 +15,6 @@ pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_conf
 
 
 @pytest.mark.smoke
-@pytest.mark.jira("RHOAIENG-11749")
 @pytest.mark.parametrize(
     "model_namespace, serving_runtime_from_template, s3_models_inference_service",
     [
