@@ -33,12 +33,12 @@ class TestSigningNegative:
         """TC-011c: Verify model with missing signature file.
 
         Verifies that attempting to verify a model directory that has no model.sig
-        file fails with a VerificationError.
+        file fails with a FileNotFoundError indicating the signature is missing.
         """
         model_file = tmp_path / "model.onnx"
         model_file.write_bytes(data=b"fake onnx model content for testing")
 
         LOGGER.info(f"Attempting to verify model without signature: {tmp_path}")
-        with pytest.raises(FileNotFoundError, match="model.sig"):
+        with pytest.raises(FileNotFoundError, match=r"model\.sig"):
             signer.verify_model(model_path=str(tmp_path))
         LOGGER.info("FileNotFoundError raised as expected for missing signature")
