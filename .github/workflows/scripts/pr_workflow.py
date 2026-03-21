@@ -32,10 +32,12 @@ class PrBaseClass:
         add_remove_labels_action_name: str = "add-remove-labels"
         pr_size_action_name: str = "add-pr-size-label"
         welcome_comment_action_name: str = "add-welcome-comment"
+        build_push_pr_image_action_name: str = "push-container-on-comment"
         supported_actions: set[str] = {
             pr_size_action_name,
             add_remove_labels_action_name,
             welcome_comment_action_name,
+            build_push_pr_image_action_name,
         }
 
     def __init__(self) -> None:
@@ -55,7 +57,7 @@ class PrBaseClass:
     def verify_base_config(self) -> None:
         if not self.action or self.action not in self.SupportedActions.supported_actions:
             sys.exit(
-                "`ACTION` is not set in workflow or is not supported. "
+                f"{self.action} is not set in workflow or is not supported. "
                 f"Supported actions: {self.SupportedActions.supported_actions}"
             )
 
@@ -77,8 +79,8 @@ class PrBaseClass:
         )
 
     def set_gh_config(self) -> None:
-        gh_client: Github = Github(login_or_token=self.github_token)
-        self.repo = gh_client.get_repo(full_name_or_id=self.repo_name)
+        self.gh_client: Github = Github(login_or_token=self.github_token)
+        self.repo = self.gh_client.get_repo(full_name_or_id=self.repo_name)
         self.pr = self.repo.get_pull(number=self.pr_number)
 
 
@@ -88,9 +90,10 @@ class PrLabeler(PrBaseClass):
         self.user_login = os.getenv("GITHUB_USER_LOGIN")
         self.review_state = os.getenv("GITHUB_EVENT_REVIEW_STATE")
         self.comment_body = os.getenv("COMMENT_BODY", "")
+        if self.event_name == "pull_request_review":
+            self.comment_body = os.getenv("REVIEW_COMMENT_BODY", "")
         self.last_commit = list(self.pr.get_commits())[-1]
         self.last_commit_sha = self.last_commit.sha
-
         self.verify_labeler_config()
 
     def verify_labeler_config(self) -> None:
@@ -107,12 +110,31 @@ class PrLabeler(PrBaseClass):
             if self.event_name == "pull_request_review" and not self.review_state:
                 sys.exit("`GITHUB_EVENT_REVIEW_STATE` is not set")
 
+    def verify_allowed_user(self) -> bool:
+        org = self.gh_client.get_organization("opendatahub-io")
+        # slug is the team name with replaced special characters,
+        # all words to lowercase and spaces replace with a -
+        try:
+            team = org.get_team_by_slug("opendatahub-tests-contributors")
+            # check if the user is a member of opendatahub-tests-contributors
+            membership = team.get_team_membership(member=self.user_login)
+            LOGGER.info(f"User {self.user_login} is a member of the test contributor team. {membership}")
+            return True
+        except UnknownObjectException:
+            LOGGER.error(f"User {self.user_login} is not allowed for this action. Exiting.")
+            return False
+
     def run_pr_label_action(self) -> None:
         if self.action == self.SupportedActions.pr_size_action_name:
             self.set_pr_size()
 
+        if self.action == self.SupportedActions.build_push_pr_image_action_name:
+            if not self.verify_allowed_user():
+                sys.exit(1)
+
         if self.action == self.SupportedActions.add_remove_labels_action_name:
-            self.add_remove_pr_labels()
+            if self.verify_allowed_user():
+                self.add_remove_pr_labels()
 
         if self.action == self.SupportedActions.welcome_comment_action_name:
             self.add_welcome_comment()
