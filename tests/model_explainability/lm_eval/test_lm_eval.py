@@ -11,7 +11,11 @@ from tests.model_explainability.lm_eval.constants import (
     LMEVAL_OCI_REPO,
     LMEVAL_OCI_TAG,
 )
-from tests.model_explainability.lm_eval.utils import get_lmeval_tasks, validate_lmeval_job_pod_and_logs
+from tests.model_explainability.lm_eval.utils import (
+    get_lmeval_tasks,
+    validate_lmeval_job_pod_and_logs,
+    wait_for_vllm_model_ready,
+)
 from tests.model_explainability.utils import validate_tai_component_images
 from utilities.constants import OCIRegistry
 from utilities.registry_utils import pull_manifest_from_oci_registry
@@ -194,3 +198,35 @@ def test_lmeval_local_offline_unitxt_tasks_flan_20newsgroups_oci_artifacts(
     LOGGER.info(f"Verifying artifact in OCI registry: {registry_url}/v2/{LMEVAL_OCI_REPO}/manifests/{LMEVAL_OCI_TAG}")
     pull_manifest_from_oci_registry(registry_url=registry_url, repo=LMEVAL_OCI_REPO, tag=LMEVAL_OCI_TAG)
     LOGGER.info("Manifest found in OCI registry")
+
+
+@pytest.mark.gpu
+@pytest.mark.parametrize(
+    "model_namespace",
+    [
+        pytest.param(
+            {"name": "test-lmeval-gpu"},
+        )
+    ],
+    indirect=True,
+)
+@pytest.mark.usefixtures("patched_dsc_kserve_headed", "skip_if_no_supported_accelerator_type")
+def test_lmeval_gpu(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    patched_dsc_lmeval_allow_all,
+    lmeval_vllm_inference_service,
+    lmevaljob_gpu_pod,
+):
+    """Test LMEval with GPU-backed model deployment via vLLM.
+
+    Verifies that LMEval can successfully evaluate a model deployed on GPU using vLLM runtime.
+    The model is downloaded directly from HuggingFace Hub and evaluated using the arc_easy task.
+    """
+    wait_for_vllm_model_ready(
+        client=admin_client,
+        namespace=model_namespace.name,
+        inference_service_name=lmeval_vllm_inference_service.name,
+    )
+
+    validate_lmeval_job_pod_and_logs(lmevaljob_pod=lmevaljob_gpu_pod)

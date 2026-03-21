@@ -1,4 +1,5 @@
 import re
+import time
 
 import pandas as pd
 from kubernetes.dynamic import DynamicClient
@@ -106,3 +107,76 @@ def validate_lmeval_job_pod_and_logs(lmevaljob_pod: Pod) -> None:
         raise UnexpectedFailureError("LMEval job pod failed from a running state.") from e
     if not bool(re.search(pod_success_log_regex, lmevaljob_pod.log())):
         raise PodLogMissMatchError("LMEval job pod failed.")
+
+
+def wait_for_vllm_model_ready(
+    client: DynamicClient,
+    namespace: str,
+    inference_service_name: str,
+    max_wait_time: int = 600,
+    check_interval: int = 10,
+    stabilization_wait: int = 10,
+) -> Pod:
+    """Wait for vLLM model to download and be ready to serve requests.
+
+    Args:
+        client: Kubernetes dynamic client
+        namespace: Namespace where the inference service is deployed
+        inference_service_name: Name of the inference service
+        max_wait_time: Maximum time to wait in seconds
+        check_interval: Time between checks in seconds
+        stabilization_wait: Seconds to wait after model is ready for server stabilization
+
+    Returns:
+        The predictor pod once model is ready
+
+    Raises:
+        UnexpectedFailureError: If model fails to load or pod encounters errors
+    """
+    LOGGER.info("Waiting for vLLM model to download and load...")
+
+    predictor_pods = list(
+        Pod.get(
+            dyn_client=client,
+            namespace=namespace,
+            label_selector=f"serving.kserve.io/inferenceservice={inference_service_name}",
+        )
+    )
+
+    if not predictor_pods:
+        raise UnexpectedFailureError("No predictor pod found for inference service")
+
+    predictor_pod = predictor_pods[0]
+    LOGGER.info(f"Predictor pod: {predictor_pod.name}")
+
+    elapsed_time = 0
+    model_loaded = False
+
+    while elapsed_time < max_wait_time:
+        try:
+            pod_logs = predictor_pod.log(container="kserve-container")
+
+            if "Uvicorn running on" in pod_logs or "Application startup complete" in pod_logs:
+                LOGGER.info("vLLM server is running and ready!")
+                model_loaded = True
+                break
+            else:
+                LOGGER.info(f"Model still loading... (waited {elapsed_time}s)")
+        except Exception as e:
+            LOGGER.info(f"Could not get pod logs yet: {e}")
+
+        time.sleep(check_interval)
+        elapsed_time += check_interval
+
+    if not model_loaded:
+        try:
+            full_logs = predictor_pod.log(container="kserve-container")
+            LOGGER.error(f"vLLM pod failed to start within {max_wait_time}s. Full logs:\n{full_logs}")
+        except Exception as e:
+            LOGGER.error(f"Could not retrieve pod logs: {e}")
+        raise UnexpectedFailureError(f"vLLM model failed to load within {max_wait_time} seconds")
+
+    LOGGER.info(f"Model loaded! Waiting {stabilization_wait} more seconds for server stabilization.")
+    time.sleep(stabilization_wait)
+
+    return predictor_pod
