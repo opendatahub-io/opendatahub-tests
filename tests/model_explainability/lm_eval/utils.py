@@ -167,7 +167,7 @@ def wait_for_vllm_model_ready(
                 break
             else:
                 LOGGER.info(f"Model still loading... (waited {elapsed_time}s)")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             LOGGER.info(f"Could not get pod logs yet: {e}")
 
         time.sleep(check_interval)
@@ -177,7 +177,7 @@ def wait_for_vllm_model_ready(
         try:
             full_logs = predictor_pod.log(container="kserve-container")
             LOGGER.error(f"vLLM pod failed to start within {max_wait_time}s. Full logs:\n{full_logs}")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             LOGGER.error(f"Could not retrieve pod logs: {e}")
         raise UnexpectedFailureError(f"vLLM model failed to load within {max_wait_time} seconds")
 
