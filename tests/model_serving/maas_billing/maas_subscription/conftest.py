@@ -742,9 +742,15 @@ def admin_ocp_token(admin_client: DynamicClient) -> Generator[str, Any, Any]:
     LOGGER.info(f"admin_ocp_token: patching Auth CR adminGroups to {patched_groups}")
     with ResourceEditor(patches={auth: {"spec": {"adminGroups": patched_groups}}}):
         wait_for_auth_ready(auth=auth, baseline_time=baseline_time)
+        auth_conditions_after = (auth.instance.status or {}).get("conditions") or []
+        ready_after = next(
+            (condition for condition in auth_conditions_after if condition.get("type") == "Ready"),
+            {},
+        )
+        cleanup_baseline_time: str = ready_after.get("lastTransitionTime", "")
         yield get_openshift_token(client=admin_client)
 
-    wait_for_auth_ready(auth=auth, baseline_time=baseline_time)
+    wait_for_auth_ready(auth=auth, baseline_time=cleanup_baseline_time)
 
 
 @pytest.fixture(scope="function")
