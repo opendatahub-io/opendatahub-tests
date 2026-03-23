@@ -42,12 +42,10 @@ def component_deployment(
     [
         pytest.param(
             {"name": "odh-model-controller"},
-            marks=pytest.mark.polarion("ODS-1919"),
             id="odh-model-controller",
         ),
         pytest.param(
             {"name": "kserve-controller-manager"},
-            marks=pytest.mark.polarion("ODS-1919"),
             id="kserve-controller-manager",
         ),
     ],
