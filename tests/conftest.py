@@ -985,3 +985,10 @@ def oci_registry_route(admin_client: DynamicClient, oci_registry_service: Servic
 def oci_registry_host(oci_registry_route: Route) -> str:
     """Get the OCI registry host from the route"""
     return oci_registry_route.host
+
+
+@pytest.fixture(scope="session")
+def skip_if_no_supported_accelerator_type(supported_accelerator_type: str | None) -> None:
+    """Skip test if no GPU accelerator is available."""
+    if not supported_accelerator_type:
+        pytest.skip("Accelerator type is not provided, vLLM test cannot be run on CPU")

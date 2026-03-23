@@ -18,13 +18,13 @@ from ocp_resources.serving_runtime import ServingRuntime
 from pytest import Config, FixtureRequest
 
 from tests.model_explainability.lm_eval.constants import (
+    ACCELERATOR_IDENTIFIER,
     ARC_EASY_DATASET_IMAGE,
     FLAN_T5_IMAGE,
     LMEVAL_OCI_REPO,
     LMEVAL_OCI_TAG,
 )
 from tests.model_explainability.lm_eval.utils import get_lmevaljob_pod
-from tests.model_serving.model_runtime.vllm.constant import ACCELERATOR_IDENTIFIER
 from utilities.constants import ApiGroups, KServeDeploymentType, Labels, MinIo, Protocols, RuntimeTemplates, Timeout
 from utilities.exceptions import MissingParameter
 from utilities.general import b64_encoded_string
@@ -578,12 +578,6 @@ def lmeval_hf_access_token(
 
 # GPU-based vLLM fixtures for SmolLM-1.7B
 
-@pytest.fixture(scope="session")
-def skip_if_no_supported_accelerator_type(supported_accelerator_type: str) -> None:
-    """Skip test if no GPU accelerator is available."""
-    if not supported_accelerator_type:
-        pytest.skip("Accelerator type is not provided, GPU test cannot be run on CPU")
-
 
 @pytest.fixture(scope="function")
 def lmeval_vllm_serving_runtime(
@@ -609,14 +603,14 @@ def lmeval_vllm_inference_service(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     lmeval_vllm_serving_runtime: ServingRuntime,
-    supported_accelerator_type: str,
+    supported_accelerator_type: str | None,
 ) -> Generator[InferenceService]:
     """InferenceService for GPU-based model deployment in LMEval tests."""
     model_path = "HuggingFaceTB/SmolLM-1.7B"
     model_name = "lmeval-model"
 
     # Get the correct GPU identifier based on accelerator type
-    accelerator_type = supported_accelerator_type.lower()
+    accelerator_type = supported_accelerator_type.lower() if supported_accelerator_type else "nvidia"
     gpu_identifier = ACCELERATOR_IDENTIFIER.get(accelerator_type, Labels.Nvidia.NVIDIA_COM_GPU)
 
     resources = {

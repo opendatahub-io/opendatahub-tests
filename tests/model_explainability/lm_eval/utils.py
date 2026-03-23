@@ -146,6 +146,11 @@ def wait_for_vllm_model_ready(
     if not predictor_pods:
         raise UnexpectedFailureError("No predictor pod found for inference service")
 
+    predictor_pods = [pod for pod in predictor_pods if "predictor" in pod.name]
+
+    if not predictor_pods:
+        raise UnexpectedFailureError("No predictor pod found for inference service")
+
     predictor_pod = predictor_pods[0]
     LOGGER.info(f"Predictor pod: {predictor_pod.name}")
 
