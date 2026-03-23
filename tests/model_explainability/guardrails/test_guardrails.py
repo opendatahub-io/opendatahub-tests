@@ -38,6 +38,7 @@ from utilities.plugins.constant import OpenAIEnpoints
 LOGGER = get_logger(name=__name__)
 
 
+@pytest.mark.smoke
 @pytest.mark.parametrize(
     "model_namespace, orchestrator_config, guardrails_orchestrator",
     [
@@ -56,7 +57,6 @@ LOGGER = get_logger(name=__name__)
     ],
     indirect=True,
 )
-@pytest.mark.smoke
 def test_validate_guardrails_orchestrator_images(
     model_namespace,
     orchestrator_config,
@@ -70,6 +70,7 @@ def test_validate_guardrails_orchestrator_images(
     validate_tai_component_images(pod=guardrails_orchestrator_pod, tai_operator_configmap=trustyai_operator_configmap)
 
 
+@pytest.mark.smoke
 @pytest.mark.parametrize(
     "model_namespace, orchestrator_config, guardrails_gateway_config, guardrails_orchestrator",
     [
@@ -115,7 +116,6 @@ def test_validate_guardrails_orchestrator_images(
     ],
     indirect=True,
 )
-@pytest.mark.smoke
 @pytest.mark.rawdeployment
 @pytest.mark.usefixtures("patched_dsc_kserve_headed", "guardrails_gateway_config")
 class TestGuardrailsOrchestratorWithBuiltInDetectors:
@@ -212,6 +212,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         )
 
 
+@pytest.mark.smoke
 @pytest.mark.parametrize(
     "model_namespace, orchestrator_config, guardrails_gateway_config,guardrails_orchestrator",
     [
@@ -421,6 +422,7 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
     indirect=True,
 )
 @pytest.mark.usefixtures("patched_dsc_kserve_headed")
+@pytest.mark.tier1
 @pytest.mark.rawdeployment
 class TestGuardrailsOrchestratorAutoConfig:
     """
@@ -495,6 +497,7 @@ class TestGuardrailsOrchestratorAutoConfig:
     indirect=True,
 )
 @pytest.mark.usefixtures("patched_dsc_kserve_headed")
+@pytest.mark.tier2
 @pytest.mark.rawdeployment
 class TestGuardrailsOrchestratorAutoConfigWithGateway:
     """

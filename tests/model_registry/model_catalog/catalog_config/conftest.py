@@ -17,11 +17,8 @@ from tests.model_registry.model_catalog.catalog_config.utils import (
     wait_for_catalog_source_restore,
 )
 from tests.model_registry.model_catalog.constants import REDHAT_AI_CATALOG_ID, REDHAT_AI_CATALOG_NAME
-from tests.model_registry.model_catalog.utils import (
-    wait_for_model_catalog_api,
-    wait_for_model_catalog_pod_ready_after_deletion,
-)
-from tests.model_registry.utils import get_model_catalog_pod
+from tests.model_registry.model_catalog.utils import wait_for_model_catalog_api
+from tests.model_registry.utils import get_model_catalog_pod, wait_for_model_catalog_pod_ready_after_deletion
 
 LOGGER = get_logger(name=__name__)
 
@@ -38,7 +35,7 @@ def recreated_model_catalog_configmap(
         ConfigMap: The recreated ConfigMap instance
     """
     namespace_name = py_config["model_registry_namespace"]
-    # TODO: RHOAIENG-46741 would require changing this to look for configmaps based on label
+    # TODO: would require changing this to look for configmaps based on label
     # Get the existing ConfigMap
     configmap = ConfigMap(
         name=DEFAULT_CUSTOM_MODEL_CATALOG, client=admin_client, namespace=namespace_name, ensure_exists=True

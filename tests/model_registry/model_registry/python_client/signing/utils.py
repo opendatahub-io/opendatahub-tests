@@ -1,9 +1,19 @@
 """Utility functions for Model Registry Python Client Signing Tests."""
 
+import hashlib
+import os
+
+import requests
+from pyhelper_utils.shell import run_command
+from simple_logger.logger import get_logger
+
 from tests.model_registry.model_registry.python_client.signing.constants import (
+    SECURESIGN_NAMESPACE,
     SECURESIGN_ORGANIZATION_EMAIL,
     SECURESIGN_ORGANIZATION_NAME,
 )
+
+LOGGER = get_logger(name=__name__)
 
 
 def get_organization_config() -> dict[str, str]:
@@ -12,22 +22,6 @@ def get_organization_config() -> dict[str, str]:
         "organizationName": SECURESIGN_ORGANIZATION_NAME,
         "organizationEmail": SECURESIGN_ORGANIZATION_EMAIL,
     }
-
-
-def is_securesign_ready(securesign_instance: dict) -> bool:
-    """Check if a Securesign instance is ready.
-
-    Args:
-        securesign_instance: Securesign instance dictionary from Kubernetes API
-
-    Returns:
-        bool: True if instance has Ready condition with status True
-    """
-    conditions = securesign_instance.get("status", {}).get("conditions", [])
-    ready = [
-        condition for condition in conditions if condition.get("type") == "Ready" and condition.get("status") == "True"
-    ]
-    return bool(ready)
 
 
 def get_tas_service_urls(securesign_instance: dict) -> dict[str, str]:
@@ -75,3 +69,67 @@ def create_connection_type_field(
         "properties": {"defaultValue": default_value},
         "required": required,
     }
+
+
+def generate_token(temp_base_folder) -> str:
+    """
+    Create a service account token and save it to a temporary directory.
+    """
+    filepath = os.path.join(temp_base_folder, "token")
+
+    LOGGER.info(f"Creating service account token for namespace {SECURESIGN_NAMESPACE}...")
+    _, out, _ = run_command(
+        command=["oc", "create", "token", "default", "-n", SECURESIGN_NAMESPACE, "--duration=1h"], check=True
+    )
+
+    token = out.strip()
+    with open(filepath, "w") as fd:
+        fd.write(token)
+    return filepath
+
+
+def get_root_checksum(sigstore_tuf_url: str) -> str:
+    """
+    Download root.json from TUF URL and calculate SHA256 checksum.
+    """
+    if not sigstore_tuf_url:
+        raise ValueError("sigstore_tuf_url cannot be empty or None")
+
+    try:
+        LOGGER.info(f"Downloading root.json from: {sigstore_tuf_url}/root.json")
+        response = requests.get(f"{sigstore_tuf_url}/root.json", timeout=30)
+        response.raise_for_status()  # Raise exception for HTTP errors
+
+        # Calculate SHA256 checksum
+        checksum = hashlib.sha256(response.content).hexdigest()
+        LOGGER.info(f"Calculated root.json checksum: {checksum}")
+
+    except requests.RequestException as e:
+        LOGGER.error(f"Failed to download root.json from {sigstore_tuf_url}: {e}")
+        raise
+    except (ValueError, OSError) as e:
+        LOGGER.error(f"Failed to calculate checksum: {e}")
+        raise RuntimeError(f"Checksum calculation failed: {e}")
+    else:
+        return checksum
+
+
+def check_model_signature_file(model_dir: str) -> bool:
+    """
+    Check for the presence of model.sig file in the model directory.
+
+    Args:
+        model_dir: Path to the model directory
+
+    Returns:
+        bool: True if model.sig file exists, False otherwise
+    """
+    sig_file_path = os.path.join(model_dir, "model.sig")
+    LOGGER.info(f"Checking for signature file: {sig_file_path}")
+
+    if os.path.exists(sig_file_path):
+        LOGGER.info(f"Signature file found: {sig_file_path}")
+        return True
+    else:
+        LOGGER.info(f"Signature file not found: {sig_file_path}")
+        return False

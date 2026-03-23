@@ -79,7 +79,7 @@ def multi_node_serving_runtime(
 ) -> Generator[ServingRuntime, Any, Any]:
     with ServingRuntimeFromTemplate(
         client=unprivileged_client,
-        name="vllm-multinode-runtime",  # TODO: rename servingruntime when RHOAIENG-16147 is resolved
+        name="vllm-multinode-runtime",
         namespace=unprivileged_model_namespace.name,
         template_name="vllm-multinode-runtime-template",
         multi_model=False,

@@ -1,29 +1,103 @@
 import os
 import tempfile
-from collections.abc import Callable, Generator
+import time
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any, cast
+from pathlib import Path
+from typing import Any
 
 import requests
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from llama_stack_client import APIConnectionError, InternalServerError, LlamaStackClient
-from llama_stack_client.types.vector_store import VectorStore
+from llama_stack_client.types.file import File
+from llama_stack_client.types.vector_stores.vector_store_file import VectorStoreFile
 from ocp_resources.pod import Pod
 from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
 from tests.llama_stack.constants import (
     LLS_CORE_POD_FILTER,
-    TORCHTUNE_TEST_EXPECTATIONS,
-    ModelInfo,
-    TurnExpectation,
-    ValidationResult,
 )
 from utilities.exceptions import UnexpectedResourceCountError
 from utilities.resources.llama_stack_distribution import LlamaStackDistribution
 
 LOGGER = get_logger(name=__name__)
+
+
+def _assert_file_uploaded(uploaded_file: File, expected_purpose: str) -> None:
+    """Validate that the Files API response indicates a successful upload."""
+    assert uploaded_file.id, f"Uploaded file has no id: {uploaded_file}"
+    assert uploaded_file.bytes > 0, f"Uploaded file reports 0 bytes: {uploaded_file}"
+    assert uploaded_file.filename, f"Uploaded file has no filename: {uploaded_file}"
+    assert uploaded_file.purpose == expected_purpose, (
+        f"Expected purpose '{expected_purpose}', got '{uploaded_file.purpose}'"
+    )
+    LOGGER.info(
+        f"File uploaded successfully: id={uploaded_file.id}, "
+        f"filename={uploaded_file.filename}, bytes={uploaded_file.bytes}"
+    )
+
+
+def _assert_vector_store_file_attached(filename: str, vs_file: VectorStoreFile, vector_store_id: str) -> None:
+    """Validate that the vector store file was attached successfully.
+
+    Per the OpenAI Vector Store Files API, status may be in_progress (processing)
+    or completed (ready for use). We require that the file is not failed or cancelled.
+    """
+    assert vs_file.id, f"Vector store file has no id: {vs_file}"
+    assert vs_file.vector_store_id == vector_store_id, (
+        f"Vector store file vector_store_id {vs_file.vector_store_id!r} does not match expected {vector_store_id!r}"
+    )
+    assert vs_file.status != "failed", (
+        f"Vector store file is failed: filename={filename} id={vs_file.id}, last_error={vs_file.last_error!r}"
+    )
+    assert vs_file.status != "cancelled", f"Vector store file was cancelled: filename={filename} id={vs_file.id}"
+    LOGGER.info(
+        f"File attached to vector store: filename={filename} id={vs_file.id}, "
+        f"vector_store_id={vs_file.vector_store_id}, status={vs_file.status}"
+    )
+
+
+def vector_store_create_and_poll(
+    llama_stack_client: LlamaStackClient,
+    vector_store_id: str,
+    file_id: str,
+    *,
+    poll_interval_sec: float = 5.0,
+    wait_timeout: float = 240.0,
+) -> VectorStoreFile:
+    """Attach a file to a vector store and poll until processing finishes.
+
+    Mirrors the OpenAI Python SDK create_and_poll pattern: create the vector store
+    file, then repeatedly retrieve until status is completed, failed, or cancelled.
+
+    Args:
+        llama_stack_client: The configured LlamaStackClient.
+        vector_store_id: The vector store to attach the file to.
+        file_id: The file ID (from files.create) to attach.
+        poll_interval_sec: Seconds to wait between poll attempts.
+        wait_timeout: Total seconds to wait for a terminal status before raising.
+
+    Returns:
+        The final VectorStoreFile (caller should check status and last_error).
+
+    Raises:
+        TimeoutError: If wait_timeout is reached while status is still in_progress.
+    """
+    vs_file = llama_stack_client.vector_stores.files.create(vector_store_id=vector_store_id, file_id=file_id)
+    terminal_statuses = ("completed", "failed", "cancelled")
+    deadline = time.monotonic() + wait_timeout
+
+    while vs_file.status == "in_progress":
+        if time.monotonic() >= deadline:
+            raise TimeoutError(f"Vector store file {vs_file.id} still in_progress after {wait_timeout}s")
+        time.sleep(poll_interval_sec)
+        vs_file = llama_stack_client.vector_stores.files.retrieve(file_id=vs_file.id, vector_store_id=vector_store_id)
+
+    if vs_file.status not in terminal_statuses:
+        LOGGER.warning(f"Unexpected vector store file status {vs_file.status!r}, treating as terminal")
+    return vs_file
 
 
 @contextmanager
@@ -103,7 +177,7 @@ def wait_for_llama_stack_client_ready(client: LlamaStackClient) -> bool:
             f"vector_stores:{len(vector_stores.data)} "
             f"files:{len(files.data)})"
         )
-        return True  # noqa: TRY300
+        return True
 
     except (APIConnectionError, InternalServerError) as error:
         LOGGER.debug(f"Llama Stack server not ready yet: {error}")
@@ -115,148 +189,9 @@ def wait_for_llama_stack_client_ready(client: LlamaStackClient) -> bool:
         return False
 
 
-def get_torchtune_test_expectations() -> list[TurnExpectation]:
-    """
-    Helper function to get the test expectations for TorchTune documentation questions.
-
-    Returns:
-        List of TurnExpectation objects for testing RAG responses
-    """
-    return [
-        {
-            "question": expectation.question,
-            "expected_keywords": expectation.expected_keywords,
-            "description": expectation.description,
-        }
-        for expectation in TORCHTUNE_TEST_EXPECTATIONS
-    ]
-
-
-def create_response_function(
-    llama_stack_client: LlamaStackClient, llama_stack_models: ModelInfo, vector_store: VectorStore
-) -> Callable:
-    """
-    Helper function to create a response function for testing with vector store integration.
-
-    Args:
-        llama_stack_client: The LlamaStack client instance
-        llama_stack_models: The model configuration
-        vector_store: The vector store instance
-
-    Returns:
-        A callable function that takes a question and returns a response
-    """
-
-    def _response_fn(*, question: str) -> str:
-        response = llama_stack_client.responses.create(
-            input=question,
-            model=llama_stack_models.model_id,
-            stream=False,
-            tools=[
-                {
-                    "type": "file_search",
-                    "vector_store_ids": [vector_store.id],
-                }
-            ],
-        )
-        return response.output_text
-
-    return _response_fn
-
-
-def validate_api_responses(
-    response_fn: Callable[..., str],
-    test_cases: list[TurnExpectation],
-    min_keywords_required: int = 1,
-) -> ValidationResult:
-    """
-    Validate API responses against expected keywords.
-
-    Tests multiple questions and validates that responses contain expected keywords.
-    Returns validation results with success status and detailed results for each turn.
-    """
-    all_results = []
-    successful = 0
-
-    for idx, test in enumerate(test_cases, 1):
-        question = test["question"]
-        expected_keywords = test["expected_keywords"]
-        description = test.get("description", "")
-
-        LOGGER.debug(f"\n[{idx}] Question: {question}")
-        if description:
-            LOGGER.debug(f"    Expectation: {description}")
-
-        try:
-            response = response_fn(question=question)
-            response_lower = response.lower()
-
-            found = [kw for kw in expected_keywords if kw.lower() in response_lower]
-            missing = [kw for kw in expected_keywords if kw.lower() not in response_lower]
-            success = len(found) >= min_keywords_required
-
-            if success:
-                successful += 1
-
-            result = {
-                "question": question,
-                "description": description,
-                "expected_keywords": expected_keywords,
-                "found_keywords": found,
-                "missing_keywords": missing,
-                "response_content": response,
-                "response_length": len(response) if isinstance(response, str) else 0,
-                "event_count": len(response.events) if hasattr(response, "events") else 0,
-                "success": success,
-                "error": None,
-            }
-
-            all_results.append(result)
-
-            LOGGER.debug(f"✓ Found: {found}")
-            if missing:
-                LOGGER.debug(f"✗ Missing: {missing}")
-            LOGGER.info(f"[{idx}] Result: {'PASS' if success else 'FAIL'}")
-
-        except Exception as e:
-            all_results.append({
-                "question": question,
-                "description": description,
-                "expected_keywords": expected_keywords,
-                "found_keywords": [],
-                "missing_keywords": expected_keywords,
-                "response_content": "",
-                "response_length": 0,
-                "event_count": 0,
-                "success": False,
-                "error": str(e),
-            })
-            LOGGER.exception(f"[{idx}] ERROR")
-
-    total = len(test_cases)
-    summary = {
-        "total": total,
-        "passed": successful,
-        "failed": total - successful,
-        "success_rate": successful / total if total > 0 else 0,
-    }
-
-    LOGGER.info("\n" + "=" * 40)
-    LOGGER.info("Validation Summary:")
-    LOGGER.info(f"Total: {summary['total']}")
-    LOGGER.info(f"Passed: {summary['passed']}")
-    LOGGER.info(f"Failed: {summary['failed']}")
-    LOGGER.info(f"Success rate: {summary['success_rate']:.1%}")
-
-    return cast("ValidationResult", {"success": successful == total, "results": all_results, "summary": summary})
-
-
-@retry(
-    wait_timeout=240,
-    sleep=15,
-    exceptions_dict={requests.exceptions.RequestException: [], Exception: []},
-)
-def vector_store_create_file_from_url(url: str, llama_stack_client: LlamaStackClient, vector_store: Any) -> bool:
+def vector_store_create_file_from_url(
+    url: str, llama_stack_client: LlamaStackClient, vector_store: Any
+) -> VectorStoreFile:
     """
     Downloads a file from URL to a temporally file and uploads it to the files provider (files.create)
     and to the vector_store (vector_stores.files.create)
@@ -267,9 +202,11 @@ def vector_store_create_file_from_url(url: str, llama_stack_client: LlamaStackCl
         vector_store: The vector store to upload the file to
 
     Returns:
-        bool: True if successful, raises exception if failed
+        The vector store file after processing completes. Raises on failure.
     """
+    temp_file_path = None
     try:
+        LOGGER.info(f"Downloading remote file (url={url})")
         response = requests.get(url, timeout=60)
         response.raise_for_status()
 
@@ -285,19 +222,134 @@ def vector_store_create_file_from_url(url: str, llama_stack_client: LlamaStackCl
 
         with tempfile.NamedTemporaryFile(mode="wb", suffix=file_suffix, delete=False) as temp_file:
             temp_file.write(response.content)
-            temp_file_path = temp_file.name
-
-        try:
-            # Upload saved file to LlamaStack (filename extension used for parsing)
-            with open(temp_file_path, "rb") as file_to_upload:
-                uploaded_file = llama_stack_client.files.create(file=file_to_upload, purpose="assistants")
-
-            # Add file to vector store
-            llama_stack_client.vector_stores.files.create(vector_store_id=vector_store.id, file_id=uploaded_file.id)
-            return True
-        finally:
-            os.unlink(temp_file_path)
+            temp_file_path = Path(temp_file.name)  # noqa: FCN001
+            LOGGER.info(f"Stored remote file (url={url}) into temporal file (temp_file_path={temp_file_path})")
+            return vector_store_create_file_from_path(
+                file_path=temp_file_path, llama_stack_client=llama_stack_client, vector_store=vector_store
+            )
 
     except (requests.exceptions.RequestException, Exception) as e:
-        LOGGER.warning(f"Failed to download and upload file {url}: {e}")
+        LOGGER.warning(f"Failed to download remote file (url={url}) and attach it to vector store: {e}")
         raise
+    finally:
+        if temp_file_path is not None:
+            os.unlink(temp_file_path)
+
+
+def vector_store_create_file_from_path(
+    file_path: Path, llama_stack_client: LlamaStackClient, vector_store: Any
+) -> VectorStoreFile:
+    """
+    Uploads a local file to the files provider (files.create) and adds it to the
+    vector store (vector_stores.files.create).
+
+    Args:
+        file_path: Path to the local file to upload
+        llama_stack_client: The configured LlamaStackClient
+        vector_store: The vector store to add the file to
+
+    Returns:
+        The vector store file after processing completes.
+
+    Raises:
+        FileNotFoundError: If the file does not exist
+        Exception: If the upload fails
+    """
+    if not file_path.is_file():
+        raise FileNotFoundError(f"File not found: {file_path}")
+
+    LOGGER.info(f"Uploading local file {file_path.name} to the llama-stack files provider")
+    with open(file_path, "rb") as file_to_upload:
+        uploaded_file = llama_stack_client.files.create(file=file_to_upload, purpose="assistants")
+        _assert_file_uploaded(uploaded_file=uploaded_file, expected_purpose="assistants")
+    LOGGER.info(f"Uploaded {file_path.name} (file_id={uploaded_file.id}) to the llama-stack files provider")
+
+    # Add file to vector store and wait for processing to finish
+    LOGGER.info(f"Adding uploaded file (filename{uploaded_file.filename} to vector store {vector_store.id}")
+    vs_file = vector_store_create_and_poll(
+        llama_stack_client=llama_stack_client,
+        vector_store_id=vector_store.id,
+        file_id=uploaded_file.id,
+    )
+    _assert_vector_store_file_attached(
+        filename=uploaded_file.filename, vs_file=vs_file, vector_store_id=vector_store.id
+    )
+    LOGGER.info(f"Addded uploaded file (filename{uploaded_file.filename} to vector store {vector_store.id}")
+    return vs_file
+
+
+def vector_store_upload_doc_sources(
+    doc_sources: Any,
+    repo_root: Path,
+    llama_stack_client: LlamaStackClient,
+    vector_store: Any,
+    vector_io_provider: str,
+) -> None:
+    """Upload parametrized document sources (URLs and repo-local paths) to a vector store.
+
+    Resolves each local path under ``repo_root`` and re-resolves directory entries to avoid
+    symlink escape outside the repository.
+
+    Args:
+        doc_sources: List of URL or path strings (repo-relative or absolute under repo root).
+        repo_root: Resolved repository root; local paths must resolve under this directory.
+        llama_stack_client: Client used for file and vector store APIs.
+        vector_store: Target vector store (must expose ``id``).
+        vector_io_provider: Provider id for log context only.
+
+    Raises:
+        TypeError: If ``doc_sources`` is not a list.
+        ValueError: If a local path resolves outside ``repo_root``.
+        FileNotFoundError: If a file or non-empty directory source is missing.
+    """
+    if not isinstance(doc_sources, list):
+        raise TypeError(f"doc_sources must be a list[str], got {type(doc_sources).__name__}")
+    LOGGER.info(
+        "Uploading doc_sources to vector_store (provider_id=%s, id=%s): %s",
+        vector_io_provider,
+        vector_store.id,
+        doc_sources,
+    )
+    repo_root_resolved = repo_root.resolve()
+    for source in doc_sources:
+        if source.startswith(("http://", "https://")):
+            vector_store_create_file_from_url(
+                url=source,
+                llama_stack_client=llama_stack_client,
+                vector_store=vector_store,
+            )
+            continue
+        raw_path = Path(source)  # noqa: FCN001
+        resolved_source = raw_path.resolve() if raw_path.is_absolute() else (repo_root_resolved / raw_path).resolve()
+        if not resolved_source.is_relative_to(repo_root_resolved):
+            raise ValueError(
+                f"doc_sources path must be under repo root ({repo_root_resolved}): {source!r}",
+            )
+        source_path = resolved_source
+
+        if source_path.is_dir():
+            files = sorted(source_path.iterdir())
+            if not files:
+                raise FileNotFoundError(f"No files found in directory: {source_path}")
+            for file_path in files:
+                file_path_resolved = file_path.resolve(strict=True)
+                if not file_path_resolved.is_relative_to(repo_root_resolved):
+                    raise ValueError(
+                        f"doc_sources directory entry must resolve under repo root "
+                        f"({repo_root_resolved}): {file_path!r} -> {file_path_resolved!r}",
+                    )
+                if not file_path_resolved.is_file():
+                    continue
+                vector_store_create_file_from_path(
+                    file_path=file_path_resolved,
+                    llama_stack_client=llama_stack_client,
+                    vector_store=vector_store,
+                )
+        elif source_path.is_file():
+            vector_store_create_file_from_path(
+                file_path=source_path,
+                llama_stack_client=llama_stack_client,
+                vector_store=vector_store,
+            )
+        else:
+            raise FileNotFoundError(f"Document source not found: {source_path}")

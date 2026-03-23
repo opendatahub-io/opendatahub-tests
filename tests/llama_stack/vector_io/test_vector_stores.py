@@ -3,39 +3,14 @@ from llama_stack_client import LlamaStackClient
 from llama_stack_client.types.vector_store import VectorStore
 from simple_logger.logger import get_logger
 
-from tests.llama_stack.constants import ModelInfo
-from tests.llama_stack.utils import (
-    create_response_function,
-    get_torchtune_test_expectations,
-    validate_api_responses,
+from tests.llama_stack.constants import (
+    IBM_2025_Q4_EARNINGS_DOC_ENCRYPTED,
+    IBM_2025_Q4_EARNINGS_DOC_UNENCRYPTED,
+    IBM_EARNINGS_SEARCH_QUERIES_BY_MODE,
+    ModelInfo,
 )
 
 LOGGER = get_logger(name=__name__)
-
-
-IBM_EARNINGS_SEARCH_QUERIES_BY_MODE: dict[str, list[str]] = {
-    "vector": [
-        "How did IBM perform financially in the fourth quarter of 2025?",
-        "What were the main drivers of revenue growth?",
-        "What is the company outlook for 2026?",
-        "How did profit margins change year over year?",
-        "What did leadership say about generative AI and growth?",
-    ],
-    "keyword": [
-        "What was free cash flow in the fourth quarter?",
-        "What was Consulting revenue and segment profit margin?",
-        "What was Software revenue and constant currency growth?",
-        "What was diluted earnings per share for continuing operations?",
-        "What are full-year 2026 expectations for revenue and free cash flow?",
-    ],
-    "hybrid": [
-        "What was IBM free cash flow and what does the company expect for 2026?",
-        "What were segment results for Software and Infrastructure revenue?",
-        "What was GAAP gross profit margin and pre-tax income?",
-        "What did James Kavanaugh say about 2025 results and 2026 prospects?",
-        "What was Consulting revenue and segment profit margin?",
-    ],
-}
 
 
 @pytest.mark.parametrize(
@@ -46,10 +21,41 @@ IBM_EARNINGS_SEARCH_QUERIES_BY_MODE: dict[str, list[str]] = {
             {
                 "llama_stack_storage_size": "2Gi",
                 "vector_io_provider": "milvus",
+                "embedding_provider": "sentence-transformers",
+                "files_provider": "local",
+            },
+            {
+                "vector_io_provider": "milvus",
+                "doc_sources": [IBM_2025_Q4_EARNINGS_DOC_UNENCRYPTED],
+            },
+            id="vector_io:milvus, files:local, embedding:sentence-transformers, doc_sources:unencrypted file",
+            marks=(pytest.mark.smoke),
+        ),
+        pytest.param(
+            {"name": "test-llamastack-vector-stores", "randomize_name": True},
+            {
+                "llama_stack_storage_size": "2Gi",
+                "vector_io_provider": "milvus",
+                "embedding_provider": "sentence-transformers",
+                "files_provider": "local",
+            },
+            {"vector_io_provider": "milvus", "doc_sources": [IBM_2025_Q4_EARNINGS_DOC_ENCRYPTED]},
+            id="vector_io:milvus, files:local, embedding:sentence-transformers, doc_sources:encrypted file",
+            marks=(pytest.mark.tier1, pytest.mark.xfail(reason="RHAIENG-3816")),
+        ),
+        pytest.param(
+            {"name": "test-llamastack-vector-stores", "randomize_name": True},
+            {
+                "vector_io_provider": "milvus-remote",
+                "embedding_provider": "vllm-embedding",
                 "files_provider": "s3",
             },
-            {"vector_io_provider": "milvus"},
-            id="vector_io_provider_milvus+files_provider_s3",
+            {
+                "vector_io_provider": "milvus-remote",
+                "doc_sources": [IBM_2025_Q4_EARNINGS_DOC_UNENCRYPTED],
+            },
+            id="vector_io:milvus-remote, files: s3, embedding: vllm-embedding",
+            marks=(pytest.mark.smoke),
         ),
         pytest.param(
             {"name": "test-llamastack-vector-stores", "randomize_name": True},
@@ -58,36 +64,40 @@ IBM_EARNINGS_SEARCH_QUERIES_BY_MODE: dict[str, list[str]] = {
                 "vector_io_provider": "faiss",
                 "files_provider": "local",
             },
-            {"vector_io_provider": "faiss"},
-            id="vector_io_provider_faiss+files_provider_local",
-        ),
-        pytest.param(
-            {"name": "test-llamastack-vector-stores", "randomize_name": True},
             {
-                "llama_stack_storage_size": "2Gi",
-                "vector_io_provider": "milvus-remote",
-                "files_provider": "s3",
+                "vector_io_provider": "faiss",
+                "doc_sources": [IBM_2025_Q4_EARNINGS_DOC_UNENCRYPTED],
             },
-            {"vector_io_provider": "milvus-remote"},
-            id="vector_io_provider_milvus-remote+files_provider_s3",
+            id="vector_io: faiss, files:local, embedding: vllm-embedding",
+            marks=(pytest.mark.tier1),
         ),
         pytest.param(
             {"name": "test-llamastack-vector-stores", "randomize_name": True},
             {
                 "llama_stack_storage_size": "2Gi",
                 "vector_io_provider": "pgvector",
+                "files_provider": "s3",
             },
-            {"vector_io_provider": "pgvector"},
-            id="vector_io_provider_pgvector",
+            {
+                "vector_io_provider": "pgvector",
+                "doc_sources": [IBM_2025_Q4_EARNINGS_DOC_UNENCRYPTED],
+            },
+            id="vector_io:pgvector, files:s3, embedding: vllm-embedding",
+            marks=(pytest.mark.tier1),
         ),
         pytest.param(
             {"name": "test-llamastack-vector-stores", "randomize_name": True},
             {
                 "llama_stack_storage_size": "2Gi",
                 "vector_io_provider": "qdrant-remote",
+                "files_provider": "local",
             },
-            {"vector_io_provider": "qdrant-remote"},
-            id="vector_io_provider_qdrant-remote",
+            {
+                "vector_io_provider": "qdrant-remote",
+                "doc_sources": [IBM_2025_Q4_EARNINGS_DOC_UNENCRYPTED],
+            },
+            id="vector_io:qdrant-remote, files:local, embedding: vllm-embedding",
+            marks=(pytest.mark.tier1),
         ),
     ],
     indirect=True,
@@ -103,38 +113,38 @@ class TestLlamaStackVectorStores:
     - https://github.com/openai/openai-python/blob/main/api.md#vectorstores
     """
 
-    @pytest.mark.smoke
-    def test_vector_stores_create_search(
+    def test_vector_stores_file_upload(
         self,
         unprivileged_llama_stack_client: LlamaStackClient,
-        llama_stack_models: ModelInfo,
-        vector_store_with_example_docs: VectorStore,
+        vector_store: VectorStore,
     ) -> None:
         """
-        Test vector_stores and responses API
+        Test vector_stores file listing after documents are uploaded to the store.
 
-        Uses a vector store with pre-uploaded TorchTune documentation files and tests the responses API
-        with file search capabilities. Validates that the API can retrieve and use
-        knowledge from uploaded documents to answer questions.
+        Calls vector_stores.files.list with filter completed on the store filled by
+        the vector_store fixture (with doc_sources). Asserts at least one file is returned so
+        completed ingestion is observable through the OpenAI-compatible files API.
         """
-
-        _response_fn = create_response_function(
-            llama_stack_client=unprivileged_llama_stack_client,
-            llama_stack_models=llama_stack_models,
-            vector_store=vector_store_with_example_docs,
+        store_id = vector_store.id
+        completed_files = list(
+            unprivileged_llama_stack_client.vector_stores.files.list(
+                vector_store_id=store_id,
+                filter="completed",
+            )
+        )
+        assert len(completed_files) >= 1, (
+            f"Expected at least one completed vector store file in {store_id!r} after upload"
+        )
+        LOGGER.info(
+            "Vector store %s lists %s completed file(s)",
+            store_id,
+            len(completed_files),
         )
 
-        turns_with_expectations = get_torchtune_test_expectations()
-
-        validation_result = validate_api_responses(response_fn=_response_fn, test_cases=turns_with_expectations)
-
-        assert validation_result["success"], f"RAG agent validation failed. Summary: {validation_result['summary']}"
-
-    @pytest.mark.smoke
     def test_vector_stores_search(
         self,
         unprivileged_llama_stack_client: LlamaStackClient,
-        vector_store_with_example_docs: VectorStore,
+        vector_store: VectorStore,
     ) -> None:
         """
         Test vector_stores search functionality using the search endpoint.
@@ -144,7 +154,7 @@ class TestLlamaStackVectorStores:
         relevant results with proper metadata and content.
         """
 
-        provider_id = vector_store_with_example_docs.metadata.get("provider_id", "")
+        provider_id = vector_store.metadata.get("provider_id", "")
         # FAISS does not support hybrid and keyword search modes see:
         # https://github.com/llamastack/llama-stack/blob/main/src/llama_stack/providers/inline/vector_io/faiss/faiss.py#L180-L196
         search_modes = ["vector"] if provider_id == "faiss" else list(IBM_EARNINGS_SEARCH_QUERIES_BY_MODE)
@@ -153,7 +163,7 @@ class TestLlamaStackVectorStores:
             queries = IBM_EARNINGS_SEARCH_QUERIES_BY_MODE[search_mode]
             for query in queries:
                 search_response = unprivileged_llama_stack_client.vector_stores.search(
-                    vector_store_id=vector_store_with_example_docs.id,
+                    vector_store_id=vector_store.id,
                     query=query,
                     search_mode=search_mode,
                     max_num_results=10,
@@ -173,12 +183,11 @@ class TestLlamaStackVectorStores:
 
         LOGGER.info(f"Successfully tested vector store search across modes: {search_modes}")
 
-    @pytest.mark.smoke
     def test_response_file_search_tool_invocation(
         self,
         unprivileged_llama_stack_client: LlamaStackClient,
         llama_stack_models: ModelInfo,
-        vector_store_with_example_docs: VectorStore,
+        vector_store: VectorStore,
     ) -> None:
         """
         Test that the file_search tool is invoked and returns results via the responses API.
@@ -196,7 +205,7 @@ class TestLlamaStackVectorStores:
             tools=[
                 {
                     "type": "file_search",
-                    "vector_store_ids": [vector_store_with_example_docs.id],
+                    "vector_store_ids": [vector_store.id],
                 }
             ],
         )

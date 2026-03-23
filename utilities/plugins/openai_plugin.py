@@ -104,7 +104,7 @@ class OpenAIClient:
                     message = json.loads(data)
                     token = self._parse_streaming_response(endpoint, message)
                     tokens.append(token)
-        except (requests.exceptions.RequestException, json.JSONDecodeError):
+        except requests.exceptions.RequestException, json.JSONDecodeError:
             LOGGER.error("Streaming request error")
             raise
         return "".join(tokens)
@@ -136,8 +136,8 @@ class OpenAIClient:
             keys_to_remove = ["created", "id"]
             if data:
                 data = OpenAIClient._remove_keys(data, keys_to_remove)
-            return data  # noqa: TRY300
-        except (requests.exceptions.RequestException, json.JSONDecodeError):
+            return data
+        except requests.exceptions.RequestException, json.JSONDecodeError:
             LOGGER.exception("Request error")
 
     @retry(stop=stop_after_attempt(MAX_RETRIES), wait=wait_exponential(min=1, max=6))

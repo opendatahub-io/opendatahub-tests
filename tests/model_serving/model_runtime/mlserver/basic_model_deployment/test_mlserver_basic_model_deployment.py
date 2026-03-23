@@ -27,7 +27,6 @@ from utilities.constants import ModelFormat, Protocols
 pytestmark = pytest.mark.usefixtures("valid_aws_config")
 
 
-@pytest.mark.smoke
 @pytest.mark.parametrize(
     (
         "model_namespace",
@@ -50,6 +49,22 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
                 model_format_name=ModelFormat.LIGHTGBM,
                 deployment_type=RAW_DEPLOYMENT_TYPE,
             ),
+            marks=pytest.mark.tier1,
+        ),
+        pytest.param(
+            get_model_namespace_dict(
+                model_format_name=ModelFormat.ONNX,
+                deployment_type=RAW_DEPLOYMENT_TYPE,
+            ),
+            get_deployment_config_dict(model_format_name=ModelFormat.ONNX, deployment_type=RAW_DEPLOYMENT_TYPE),
+            get_model_storage_uri_dict(model_format_name=ModelFormat.ONNX),
+            get_deployment_config_dict(model_format_name=ModelFormat.ONNX, deployment_type=RAW_DEPLOYMENT_TYPE),
+            ModelFormat.ONNX,
+            id=get_test_case_id(
+                model_format_name=ModelFormat.ONNX,
+                deployment_type=RAW_DEPLOYMENT_TYPE,
+            ),
+            marks=pytest.mark.tier1,
         ),
         pytest.param(
             get_model_namespace_dict(
@@ -64,6 +79,7 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
                 model_format_name=ModelFormat.SKLEARN,
                 deployment_type=RAW_DEPLOYMENT_TYPE,
             ),
+            marks=pytest.mark.smoke,
         ),
         pytest.param(
             get_model_namespace_dict(
@@ -78,6 +94,7 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
                 model_format_name=ModelFormat.XGBOOST,
                 deployment_type=RAW_DEPLOYMENT_TYPE,
             ),
+            marks=pytest.mark.tier1,
         ),
     ],
     indirect=[

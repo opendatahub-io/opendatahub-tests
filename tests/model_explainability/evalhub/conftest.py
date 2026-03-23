@@ -66,4 +66,4 @@ def evalhub_ca_bundle_file(
     admin_client: DynamicClient,
 ) -> str:
     """Create a CA bundle file for verifying the EvalHub route TLS certificate."""
-    return create_ca_bundle_file(client=admin_client, ca_type="openshift")
+    return create_ca_bundle_file(client=admin_client)

@@ -167,7 +167,7 @@ def registry_pull_secret(pytestconfig: Config) -> list[str]:
     try:
         for secret in registry_pull_secret:
             base64.b64decode(s=secret, validate=True)
-        return registry_pull_secret  # noqa: TRY300
+        return registry_pull_secret
     except binascii.Error:
         raise ValueError("Registry pull secret is not a valid base64 encoded string")
 
@@ -253,7 +253,7 @@ def modelcar_yaml_config(pytestconfig: pytest.Config) -> dict[str, Any] | None:
             modelcar_yaml = yaml.safe_load(file)
             if not isinstance(modelcar_yaml, dict):
                 raise ValueError("modelcar.yaml should contain a dictionary.")  # noqa: TRY004
-            return modelcar_yaml  # noqa: TRY300
+            return modelcar_yaml
         except yaml.YAMLError as e:
             raise ValueError(f"Error parsing modelcar.yaml: {e}") from e
 
@@ -554,13 +554,29 @@ def cluster_monitoring_config(
 
 @pytest.fixture(scope="class")
 def unprivileged_model_namespace(
-    request: FixtureRequest, admin_client: DynamicClient, unprivileged_client: DynamicClient
+    request: FixtureRequest,
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
+    teardown_resources: bool,
 ) -> Generator[Namespace, Any, Any]:
     if request.param.get("modelmesh-enabled"):
         request.getfixturevalue(argname="enabled_modelmesh_in_dsc")
 
-    with create_ns(admin_client=admin_client, unprivileged_client=unprivileged_client, pytest_request=request) as ns:
+    ns = Namespace(client=unprivileged_client, name=request.param["name"])
+    if pytestconfig.option.post_upgrade:
         yield ns
+        ns.client = admin_client
+        if teardown_resources:
+            ns.clean_up()
+    else:
+        with create_ns(
+            admin_client=admin_client,
+            unprivileged_client=unprivileged_client,
+            pytest_request=request,
+            teardown=teardown_resources,
+        ) as ns:
+            yield ns
 
 
 # MinIo
@@ -676,6 +692,12 @@ def cluster_sanity_scope_session(
     dsc_resource: DataScienceCluster,
     junitxml_plugin: Callable[[str, object], None],
 ) -> None:
+    # Skip cluster sanity check when running tests that have cluster_health or operator_health markers
+    selected_markers = {mark.name for item in request.session.items for mark in item.iter_markers()}
+    if {"cluster_health", "operator_health"} & selected_markers:
+        LOGGER.info("Skipping cluster sanity check because selected tests include cluster/operator health")
+        return
+
     verify_cluster_sanity(
         request=request,
         nodes=nodes,
@@ -690,9 +712,7 @@ def prometheus(admin_client: DynamicClient) -> Prometheus:
     return Prometheus(
         client=admin_client,
         resource_name="thanos-querier",
-        verify_ssl=create_ca_bundle_file(
-            client=admin_client, ca_type="openshift"
-        ),  # TODO: Verify SSL with appropriate certs
+        verify_ssl=create_ca_bundle_file(client=admin_client),  # TODO: Verify SSL with appropriate certs
         bearer_token=get_openshift_token(),
     )
 
@@ -831,7 +851,7 @@ def gpu_count_on_cluster(nodes: list[Any]) -> int:
             if key in allowed_exact or any(key.startswith(p) for p in allowed_prefixes):
                 try:
                     total_gpus += int(val)
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     LOGGER.debug(f"Skipping non-integer allocatable for {key} on {node.name}: {val!r}")
                     continue
     return total_gpus

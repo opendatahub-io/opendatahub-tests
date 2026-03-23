@@ -23,7 +23,6 @@ from kubernetes.dynamic.exceptions import (
     ResourceNotFoundError,
 )
 from ocp_resources.authentication_config_openshift_io import Authentication
-from ocp_resources.catalog_source import CatalogSource
 from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.config_imageregistry_operator_openshift_io import Config
 from ocp_resources.config_map import ConfigMap
@@ -86,7 +85,7 @@ def create_ns(
     """
     Create namespace with admin or unprivileged client.
 
-    For a namespace / project which contains Serverless ISVC,  there is a workaround for RHOAIENG-19969.
+    For a namespace / project which contains Serverless ISVC,  there is a workaround.
     Currently, when Serverless ISVC is deleted and the namespace is deleted, namespace "SomeResourcesRemain" is True.
     This is because the serverless pods are not immediately deleted resulting in prolonged namespace deletion.
     Waiting for the pod(s) to be deleted before cleanup, eliminates the issue.
@@ -466,23 +465,6 @@ def login_with_user_password(api_address: str, user: str, password: str | None =
         raise ClusterLoginError(user=user)
 
     return bool(re.search(r"Login successful|Logged into", out))
-
-
-@cache
-def is_self_managed_operator(client: DynamicClient) -> bool:
-    """
-    Check if the operator is self-managed.
-    """
-    if py_config["distribution"] == "upstream":
-        return True
-
-    return not bool(
-        CatalogSource(
-            client=client,
-            name="addon-managed-odh-catalog",
-            namespace=py_config["applications_namespace"],
-        ).exists
-    )
 
 
 @cache
@@ -987,7 +969,7 @@ def wait_for_serverless_pods_deletion(resource: Project | Namespace, admin_clien
                 LOGGER.info(f"Waiting for {KServeDeploymentType.SERVERLESS} pod {pod.name} to be deleted")
                 pod.wait_deleted(timeout=Timeout.TIMEOUT_1MIN)
 
-        except (ResourceNotFoundError, NotFoundError):
+        except ResourceNotFoundError, NotFoundError:
             LOGGER.info(f"Pod {pod.name} is deleted")
 
 
@@ -1203,7 +1185,7 @@ def check_internal_image_registry_available(admin_client: DynamicClient) -> bool
         is_available = management_state == "managed"
 
         LOGGER.info(f"Image registry management state: {management_state}, available: {is_available}")
-        return is_available  # noqa: TRY300
+        return is_available
     except (ResourceNotFoundError, Exception) as e:  # noqa: BLE001
         LOGGER.warning(f"Failed to check image registry config: {e}")
         return False

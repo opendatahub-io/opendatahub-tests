@@ -1,6 +1,5 @@
-"""Tests for malformed JSON payload handling in inference requests.
-
-Jira: RHOAIENG-48279
+"""
+Tests for malformed JSON payload handling in inference requests.
 """
 
 from http import HTTPStatus
@@ -25,7 +24,7 @@ MISSING_BRACE_BODY = '{"inputs": [{"name": "Input3"'
 TRAILING_COMMA_BODY = '{"inputs": [{"name": "Input3",}]}'
 
 
-@pytest.mark.tier1
+@pytest.mark.tier2
 @pytest.mark.rawdeployment
 class TestMalformedJsonPayload:
     """Test class for verifying error handling when receiving malformed JSON payloads.

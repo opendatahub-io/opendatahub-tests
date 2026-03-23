@@ -30,7 +30,6 @@ pytestmark = pytest.mark.usefixtures(
 )
 
 
-@pytest.mark.gpu
 @pytest.mark.parametrize(
     ("protocol", "model_namespace", "s3_models_storage_uri", "triton_serving_runtime", "triton_inference_service"),
     [
@@ -44,6 +43,7 @@ pytestmark = pytest.mark.usefixtures(
                 **BASE_RAW_DEPLOYMENT_CONFIG,
             },
             id="dali-raw-rest-deployment",
+            marks=[pytest.mark.tier1, pytest.mark.gpu],
         ),
         pytest.param(
             {"protocol_type": Protocols.GRPC},
@@ -55,6 +55,7 @@ pytestmark = pytest.mark.usefixtures(
                 **BASE_RAW_DEPLOYMENT_CONFIG,
             },
             id="dali-raw-grpc-deployment",
+            marks=[pytest.mark.tier1, pytest.mark.gpu],
         ),
     ],
     indirect=True,

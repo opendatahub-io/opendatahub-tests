@@ -25,16 +25,16 @@ from tests.model_registry.model_catalog.constants import (
     SAMPLE_MODEL_NAME3,
 )
 from tests.model_registry.model_catalog.utils import (
-    execute_get_command,
     get_model_str,
     get_models_from_catalog_api,
     wait_for_model_catalog_api,
-    wait_for_model_catalog_pod_ready_after_deletion,
 )
 from tests.model_registry.utils import (
+    execute_get_command,
     get_model_catalog_pod,
     get_mr_user_token,
     get_rest_headers,
+    wait_for_model_catalog_pod_ready_after_deletion,
 )
 from utilities.infra import create_inference_token, get_openshift_token, login_with_user_password
 
@@ -369,15 +369,21 @@ def labels_configmap_patch(
     # Parse current data and add test label
     current_data = yaml.safe_load(sources_cm.instance.data["sources.yaml"])
 
-    new_label = {
-        "name": "test-dynamic",
-        "displayName": "Dynamic Test Label",
-        "description": "A label added during test execution",
-    }
+    new_labels = [
+        {
+            "name": "test-dynamic",
+            "displayName": "Dynamic Test Label",
+            "description": "A label added during test execution",
+        },
+        {
+            "name": "mcp-test-label",
+            "assetType": "mcp_servers",
+        },
+    ]
 
     if "labels" not in current_data:
         current_data["labels"] = []
-    current_data["labels"].append(new_label)
+    current_data["labels"].extend(new_labels)
 
     patches = {"data": {"sources.yaml": yaml.dump(current_data, default_flow_style=False)}}
 
@@ -428,13 +434,6 @@ def catalog_config_map(admin_client: DynamicClient, model_registry_namespace: st
 
 
 @pytest.fixture(scope="class")
-def model_catalog_routes(admin_client: DynamicClient, model_registry_namespace: str) -> list[Route]:
-    return list(
-        Route.get(namespace=model_registry_namespace, label_selector="component=model-catalog", client=admin_client)
-    )
-
-
-@pytest.fixture(scope="class")
 def model_catalog_rest_url(model_registry_namespace: str, model_catalog_routes: list[Route]) -> list[str]:
     assert model_catalog_routes, f"Model catalog routes does not exist in {model_registry_namespace}"
     route_urls = [
@@ -466,7 +465,7 @@ def baseline_redhat_ai_models(
         model_registry_rest_headers=model_registry_rest_headers,
         source_label="Red Hat AI",
     )
-    api_models = {model["name"] for model in api_response.get("items", [])}
+    api_models = {f"{REDHAT_AI_CATALOG_ID}:{model['name']}" for model in api_response.get("items", [])}
 
     db_models = get_models_from_database_by_source(
         admin_client=admin_client, source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
