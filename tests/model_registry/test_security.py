@@ -3,7 +3,8 @@ from typing import Self
 import pytest
 import requests
 from ocp_resources.route import Route
-from simple_logger.logger import get_logger
+
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

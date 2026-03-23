@@ -5,12 +5,12 @@ from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
 from tests.model_serving.model_server.kserve.multi_node.constants import HEAD_POD_ROLE, SUPPORTED_ROLES, WORKER_POD_ROLE
 from utilities.constants import Timeout
 from utilities.infra import get_pods_by_isvc_label
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

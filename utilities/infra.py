@@ -56,13 +56,13 @@ from ocp_utilities.infra import (
 from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
 from semver import Version
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, TimeoutWatch, retry
 
 import utilities.general
 from utilities.constants import RHOAI_OPERATOR_NAMESPACE, Annotations, ApiGroups, KServeDeploymentType, Labels, Timeout
 from utilities.exceptions import ClusterLoginError, FailedPodsError, ResourceNotReadyError, UnexpectedResourceCountError
 from utilities.general import generate_random_name
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

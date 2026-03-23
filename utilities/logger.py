@@ -4,7 +4,7 @@ import shutil
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 from typing import Any
 
-from simple_logger.logger import DuplicateFilter, WrapperLogFormatter
+from utilities.opendatahub_logger import DuplicateFilter, WrapperLogFormatter
 
 LOGGER = logging.getLogger(__name__)
 

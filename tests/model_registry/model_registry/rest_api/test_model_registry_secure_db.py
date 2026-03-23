@@ -3,11 +3,11 @@ from typing import Any, Self
 import pytest
 import requests
 from kubernetes.dynamic import DynamicClient
-from simple_logger.logger import get_logger
 
 from tests.model_registry.model_registry.rest_api.utils import register_model_rest_api, validate_resource_attributes
 from tests.model_registry.utils import get_endpoint_from_mr_service, get_mr_service_by_label
 from utilities.constants import Protocols
+from utilities.opendatahub_logger import get_logger
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
 LOGGER = get_logger(name=__name__)

@@ -10,7 +10,6 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 from ocp_resources.service_account import ServiceAccount
-from simple_logger.logger import get_logger
 
 from tests.model_registry.constants import (
     CUSTOM_CATALOG_ID1,
@@ -37,6 +36,7 @@ from tests.model_registry.utils import (
     wait_for_model_catalog_pod_ready_after_deletion,
 )
 from utilities.infra import create_inference_token, get_openshift_token, login_with_user_password
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

@@ -1,8 +1,8 @@
 import pytest
 import requests
-from simple_logger.logger import get_logger
 
 from tests.model_serving.maas_billing.utils import verify_chat_completions
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

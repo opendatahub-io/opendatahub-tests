@@ -1,9 +1,9 @@
 from typing import Self
 
 import pytest
-from simple_logger.logger import get_logger
 
 from tests.model_registry.utils import execute_get_command
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

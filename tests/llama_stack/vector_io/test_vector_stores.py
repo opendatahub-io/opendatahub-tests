@@ -1,7 +1,6 @@
 import pytest
 from llama_stack_client import LlamaStackClient
 from llama_stack_client.types.vector_store import VectorStore
-from simple_logger.logger import get_logger
 
 from tests.llama_stack.constants import (
     IBM_2025_Q4_EARNINGS_DOC_ENCRYPTED,
@@ -9,6 +8,7 @@ from tests.llama_stack.constants import (
     IBM_EARNINGS_SEARCH_QUERIES_BY_MODE,
     ModelInfo,
 )
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

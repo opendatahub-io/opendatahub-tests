@@ -1,8 +1,8 @@
 import pytest
 from llama_stack_client import LlamaStackClient
-from simple_logger.logger import get_logger
 
 from tests.llama_stack.constants import ModelInfo
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

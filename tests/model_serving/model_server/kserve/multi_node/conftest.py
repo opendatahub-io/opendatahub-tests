@@ -14,7 +14,6 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from tests.model_serving.model_server.kserve.multi_node.constants import WORKER_POD_ROLE
@@ -30,6 +29,7 @@ from utilities.infra import (
     verify_no_failed_pods,
     wait_for_inference_deployment_replicas,
 )
+from utilities.opendatahub_logger import get_logger
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 LOGGER = get_logger(name=__name__)

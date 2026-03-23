@@ -3,11 +3,7 @@ from __future__ import annotations
 import pytest
 import requests
 from kubernetes.dynamic import DynamicClient
-
-# from utilities.resources.maa_s_auth_policy import MaaSAuthPolicy
-from ocp_resources.maas_auth_policy import MaaSAuthPolicy
 from ocp_resources.service_account import ServiceAccount
-from simple_logger.logger import get_logger
 
 from tests.model_serving.maas_billing.maas_subscription.utils import (
     chat_payload_for_url,
@@ -16,6 +12,8 @@ from tests.model_serving.maas_billing.maas_subscription.utils import (
 )
 from tests.model_serving.maas_billing.utils import build_maas_headers
 from utilities.infra import create_inference_token, login_with_user_password
+from utilities.opendatahub_logger import get_logger
+from utilities.resources.maa_s_auth_policy import MaaSAuthPolicy
 
 LOGGER = get_logger(name=__name__)
 

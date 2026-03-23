@@ -1,7 +1,6 @@
 import pytest
 import requests
 import yaml
-from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
 from tests.model_explainability.guardrails.constants import (
@@ -33,6 +32,7 @@ from utilities.constants import (
     LLMdInferenceSimConfig,
     Timeout,
 )
+from utilities.opendatahub_logger import get_logger
 from utilities.plugins.constant import OpenAIEnpoints
 
 LOGGER = get_logger(name=__name__)

@@ -17,7 +17,6 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from requests import Response
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from utilities.constants import (
@@ -26,6 +25,7 @@ from utilities.constants import (
     ApiGroups,
 )
 from utilities.general import generate_random_name
+from utilities.opendatahub_logger import get_logger
 from utilities.resources.auth import Auth
 
 LOGGER = get_logger(name=__name__)

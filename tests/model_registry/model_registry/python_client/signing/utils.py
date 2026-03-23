@@ -5,13 +5,13 @@ import os
 
 import requests
 from pyhelper_utils.shell import run_command
-from simple_logger.logger import get_logger
 
 from tests.model_registry.model_registry.python_client.signing.constants import (
     SECURESIGN_NAMESPACE,
     SECURESIGN_ORGANIZATION_EMAIL,
     SECURESIGN_ORGANIZATION_NAME,
 )
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

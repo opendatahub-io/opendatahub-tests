@@ -5,7 +5,6 @@ import pytest
 from huggingface_hub import HfApi
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
-from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.constants import HF_MODELS, HF_SOURCE_ID
 from tests.model_registry.model_catalog.huggingface.utils import (
@@ -18,6 +17,7 @@ from tests.model_registry.model_catalog.huggingface.utils import (
 from tests.model_registry.model_catalog.utils import (
     get_hf_catalog_str,
 )
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

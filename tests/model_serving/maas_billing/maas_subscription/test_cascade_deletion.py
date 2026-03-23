@@ -3,12 +3,12 @@ from __future__ import annotations
 import pytest
 import requests
 from kubernetes.dynamic import DynamicClient
-from simple_logger.logger import get_logger
 
 from tests.model_serving.maas_billing.maas_subscription.utils import (
     chat_payload_for_url,
     poll_expected_status,
 )
+from utilities.opendatahub_logger import get_logger
 from utilities.resources.maa_s_subscription import MaaSSubscription
 
 LOGGER = get_logger(name=__name__)

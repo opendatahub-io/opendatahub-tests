@@ -17,7 +17,6 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
 
 from tests.model_registry.constants import (
     CA_CONFIGMAP_NAME,
@@ -45,6 +44,7 @@ from utilities.certificates_utils import create_ca_bundle_with_router_cert, crea
 from utilities.exceptions import MissingParameter
 from utilities.general import generate_random_name, wait_for_pods_running
 from utilities.infra import create_ns
+from utilities.opendatahub_logger import get_logger
 from utilities.operator_utils import get_cluster_service_version
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 

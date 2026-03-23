@@ -2,7 +2,6 @@ from typing import Self
 
 import pytest
 from kubernetes.dynamic import DynamicClient
-from simple_logger.logger import get_logger
 
 from tests.model_registry.mcp_servers.constants import (
     EXPECTED_MCP_SERVER_NAMES,
@@ -13,6 +12,7 @@ from tests.model_registry.mcp_servers.constants import (
     MCP_SERVERS_YAML_MISSING_NAME,
 )
 from tests.model_registry.utils import execute_get_command, get_model_catalog_pod
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

@@ -7,7 +7,6 @@ import requests
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from pyhelper_utils.shell import run_command
-from simple_logger.logger import get_logger
 
 from tests.model_registry.exceptions import (
     ModelRegistryResourceNotCreated,
@@ -15,6 +14,7 @@ from tests.model_registry.exceptions import (
 )
 from tests.model_registry.model_registry.rest_api.constants import MODEL_REGISTER_DATA, MODEL_REGISTRY_BASE_URI
 from utilities.exceptions import ResourceValueMismatch
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

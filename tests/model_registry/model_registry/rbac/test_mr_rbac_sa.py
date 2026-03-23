@@ -5,11 +5,11 @@ import pytest
 from model_registry import ModelRegistry as ModelRegistryClient
 from mr_openapi.exceptions import ForbiddenException, UnauthorizedException
 from ocp_resources.service_account import ServiceAccount
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler, retry
 
 from tests.model_registry.model_registry.rbac.utils import build_mr_client_args
 from utilities.infra import create_inference_token
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

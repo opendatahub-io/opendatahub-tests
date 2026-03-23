@@ -1,13 +1,13 @@
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.network_policy import NetworkPolicy
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from tests.model_registry.model_catalog.utils import get_postgres_pod_in_namespace
 from tests.model_registry.utils import (
     wait_for_model_catalog_pod_ready_after_deletion,
 )
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

@@ -7,7 +7,6 @@ from kubernetes.dynamic import DynamicClient
 from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
 from pytest import Config, FixtureRequest
-from simple_logger.logger import get_logger
 
 from tests.model_registry.constants import KUBERBACPROXY_STR, MR_INSTANCE_BASE_NAME
 from tests.model_registry.utils import (
@@ -18,6 +17,7 @@ from tests.model_registry.utils import (
 )
 from utilities.constants import Protocols
 from utilities.general import wait_for_pods_running
+from utilities.opendatahub_logger import get_logger
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
 LOGGER = get_logger(name=__name__)

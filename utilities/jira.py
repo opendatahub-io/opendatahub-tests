@@ -10,8 +10,9 @@ from ocp_resources.exceptions import MissingResourceError
 from packaging.version import Version
 from pytest_testconfig import config as py_config
 from requests.exceptions import ConnectionError as RequestsConnectionError
-from simple_logger.logger import get_logger
 from urllib3.exceptions import NewConnectionError
+
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

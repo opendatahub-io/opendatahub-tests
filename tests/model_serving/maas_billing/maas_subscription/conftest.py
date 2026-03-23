@@ -19,7 +19,6 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
 
 from tests.model_serving.maas_billing.maas_subscription.utils import (
     MAAS_DB_NAMESPACE,
@@ -41,6 +40,7 @@ from utilities.general import generate_random_name
 from utilities.infra import create_inference_token, create_ns, get_openshift_token, login_with_user_password
 from utilities.llmd_constants import ContainerImages, ModelStorage
 from utilities.llmd_utils import create_llmisvc
+from utilities.opendatahub_logger import get_logger
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.resources.auth import Auth
 
