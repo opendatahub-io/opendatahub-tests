@@ -1,0 +1,66 @@
+# Workbenches Tests
+
+This directory contains tests for Jupyter notebook workbenches in OpenDataHub/RHOAI. These tests validate notebook spawning and lifecycle management via the Kubeflow Notebook Controller, ImageStream health, custom workbench image validation, and resource customization.
+
+## Directory Structure
+
+```text
+workbenches/
+├── conftest.py                           # Pytest fixtures (PVC, notebook image, notebook CR, pod)
+├── utils.py                              # Utility functions (username retrieval)
+├── test_imagestream_health.py            # ImageStream validation tests
+└── notebook-controller/
+    ├── test_spawning.py                  # Basic notebook spawning tests
+    └── test_custom_images.py             # Custom image package verification tests
+```
+
+### Current Test Suites
+
+- **`test_imagestream_health.py`** - Validates that workbench ImageStreams are properly imported and resolved. Checks correct ImageStream counts, tag digest references (`@sha256:`), and `ImportSuccess` conditions for both notebook images (11 expected) and runtime images (7 expected)
+- **`notebook-controller/test_spawning.py`** - Tests basic notebook creation via Notebook CR and validates pod creation. Also tests Auth proxy container resource customization via annotations
+- **`notebook-controller/test_custom_images.py`** - Validates custom workbench images contain required Python packages by spawning a workbench, installing any missing packages, and executing import verification
+
+## Test Markers
+
+```python
+@pytest.mark.smoke    # Quick validation tests (imagestream health, basic spawning)
+@pytest.mark.sanity   # Comprehensive validation tests
+@pytest.mark.slow     # Long-running tests (custom image validation)
+```
+
+## Running Tests
+
+### Run All Workbenches Tests
+
+```bash
+pytest tests/workbenches/
+```
+
+### Run Tests by Component
+
+```bash
+# Run ImageStream health tests
+pytest tests/workbenches/test_imagestream_health.py
+
+# Run notebook spawning tests
+pytest tests/workbenches/notebook-controller/test_spawning.py
+
+# Run custom image validation tests
+pytest tests/workbenches/notebook-controller/test_custom_images.py
+```
+
+### Run Tests with Markers
+
+```bash
+# Run smoke tests only
+pytest -m smoke tests/workbenches/
+
+# Run all except slow tests
+pytest -m "not slow" tests/workbenches/
+```
+
+## Additional Resources
+
+- [Kubeflow Notebook Controller](https://github.com/kubeflow/kubeflow/tree/master/components/notebook-controller)
+- [OpenDataHub Documentation](https://opendatahub.io/docs)
+- [OpenShift AI Documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed)
