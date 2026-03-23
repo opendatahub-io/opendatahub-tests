@@ -64,7 +64,7 @@ utilities/                # Shared utility functions
 
 - **ERROR vs FAILED**: Pytest reports fixture failures as ERROR, test failures as FAILED
 - **Heavy imports**: Don't import heavy resources at module level; defer to fixture scope
-- **Flaky tests**: Use `pytest.skip()` with `@pytest.mark.jira("PROJ-123")`, never delete
+- **Flaky tests**: Use `pytest.skip()`
 - **Fixture scope**: Session fixtures in `tests/conftest.py` run once for entire suite—modify carefully
 
 ## Boundaries
