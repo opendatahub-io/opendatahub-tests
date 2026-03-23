@@ -30,8 +30,7 @@ class TestAPIKeyBulkOperations:
         ocp_token_for_actor: str,
         three_active_api_key_ids: list[str],
     ) -> None:
-        """Verify a user can bulk revoke all their own active API keys.
-        """
+        """Verify a user can bulk revoke all their own active API keys."""
         username = resolve_api_key_username(
             request_session_http=request_session_http,
             base_url=base_url,
@@ -46,8 +45,7 @@ class TestAPIKeyBulkOperations:
             username=username,
         )
         assert bulk_resp.status_code == 200, (
-            f"Expected 200 on bulk-revoke for user {username}, "
-            f"got {bulk_resp.status_code}: {bulk_resp.text[:200]}"
+            f"Expected 200 on bulk-revoke for user {username}, got {bulk_resp.status_code}: {bulk_resp.text[:200]}"
         )
         revoked_count = bulk_body.get("revokedCount", 0)
         assert revoked_count >= 3, f"Expected at least 3 revoked keys, got revokedCount={revoked_count}"
@@ -74,8 +72,7 @@ class TestAPIKeyBulkOperations:
         base_url: str,
         ocp_token_for_actor: str,
     ) -> None:
-        """Verify a non-admin user gets 403 when attempting to bulk revoke another user's keys.
-        """
+        """Verify a non-admin user gets 403 when attempting to bulk revoke another user's keys."""
         bulk_resp, _ = bulk_revoke_api_keys(
             request_session_http=request_session_http,
             base_url=base_url,
@@ -98,8 +95,7 @@ class TestAPIKeyBulkOperations:
         free_user_username: str,
         admin_ocp_token: str,
     ) -> None:
-        """Verify an admin can bulk revoke any user's active API keys.
-        """
+        """Verify an admin can bulk revoke any user's active API keys."""
         bulk_resp, bulk_body = bulk_revoke_api_keys(
             request_session_http=request_session_http,
             base_url=base_url,
