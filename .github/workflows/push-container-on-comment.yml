@@ -1,8 +1,8 @@
-name: Build and Push Container Image On PR Merge
+name: Push Container Image On PR Comment
 
 on:
-  pull_request_target:
-    types: [closed]
+  issue_comment:
+    types: [created]
 
 permissions:
   pull-requests: write
@@ -10,22 +10,33 @@ permissions:
   issues: write
 
 jobs:
-  if_merged:
-    if: github.event.pull_request.merged == true
+  push-container-on-comment:
+    if: contains(github.event.comment.body, '/build-push-pr-image')
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v5
+      - name: Checkout pull request
+        uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.base.ref }}
-      - name: Set env TAG
+          ref: refs/pull/${{ github.event.issue.number }}/head
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Check if the user is authorized
+        env:
+          GITHUB_TOKEN: ${{ secrets.RHODS_CI_BOT_PAT }}
+          GITHUB_PR_NUMBER: ${{ github.event.issue.number }}
+          GITHUB_EVENT_ACTION: ${{ github.event.action }}
+          GITHUB_EVENT_REVIEW_STATE: ${{ github.event.review.state }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          REVIEW_COMMENT_BODY: ${{ github.event.review.body }}
+          GITHUB_USER_LOGIN: ${{ github.event.sender.login }}
+          ACTION: "push-container-on-comment"
+        run: uv run python .github/workflows/scripts/pr_workflow.py
+      - name: Set env TAG for image
         run: |
-          if [ ${{ github.event.pull_request.base.ref }} == "main" ]; then
-              echo "TAG=latest" >> $GITHUB_ENV
-          else
-              echo "TAG=${{ github.event.pull_request.base.ref }}" >> "$GITHUB_ENV"
-          fi
-      - name: Build Image
+          echo "TAG=pr-${{ github.event.issue.number }}" >> "$GITHUB_ENV"
+      - name: Build Image to push
         id: build-image
         uses: redhat-actions/buildah-build@v2
         with:
@@ -33,7 +44,6 @@ jobs:
           tags: ${{ env.TAG }}
           containerfiles: |
             ./Dockerfile
-
       - name: Push To Image Registry
         id: push-to-registry
         uses: redhat-actions/push-to-registry@v2
@@ -47,7 +57,7 @@ jobs:
       - name: Add comment to PR
         if: always()
         env:
-          URL: ${{ github.event.pull_request.comments_url }}
+          URL: ${{ github.event.issue.comments_url }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           curl \

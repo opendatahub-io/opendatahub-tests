@@ -1,0 +1,32 @@
+name: Delete PR Image On PR Close Action
+
+on:
+  pull_request_target:
+    types: [closed]
+
+permissions:
+  pull-requests: write
+  contents: write
+  issues: write
+
+jobs:
+    delete-quay-tag:
+      runs-on: ubuntu-latest
+      steps:
+        - name: Install regctl
+          run: |
+            curl -LO https://github.com/regclient/regclient/releases/latest/download/regctl-linux-amd64
+            chmod +x regctl-linux-amd64
+            sudo mv regctl-linux-amd64 /usr/local/bin/regctl
+            regctl version
+
+        - name: Configure regctl authentication
+          run: |
+            regctl registry login quay.io -u ${{ secrets.QUAY_USERNAME }} -p ${{ secrets.QUAY_PASSWORD }}
+            echo "PR number: ${{ github.event.pull_request.number }}"
+            echo "TAG_TO_DELETE=$(regctl tag ls quay.io/opendatahub/opendatahub-tests --include pr-${{ github.event.pull_request.number }})" >> $GITHUB_ENV
+        - name: Delete Quay Tag
+          if: env.TAG_TO_DELETE != ''
+          run: |
+            echo "Deleting tag '$TAG_TO_DELETE' from repository..."
+            regctl tag rm quay.io/opendatahub/opendatahub-tests:pr-${{ github.event.pull_request.number }}
