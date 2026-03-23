@@ -34,7 +34,6 @@ def wait_for_isvc_model_status(isvc: InferenceService, target_model_state: str, 
         raise
 
 
-@pytest.mark.jira("RHOAIENG-10765")
 @pytest.mark.parametrize(
     "model_namespace, serving_runtime_from_template, invalid_s3_models_inference_service",
     [
