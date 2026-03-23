@@ -25,6 +25,8 @@ from utilities.constants import (
     MAAS_GATEWAY_NAMESPACE,
     ApiGroups,
 )
+from utilities.general import generate_random_name
+from utilities.resources.auth import Auth
 
 LOGGER = get_logger(name=__name__)
 MAAS_SUBSCRIPTION_NAMESPACE = "models-as-a-service"
@@ -280,6 +282,72 @@ def list_api_keys(
             f"list_api_keys returned non-JSON response: status={response.status_code} body={response.text[:200]}"
         ) from error
     return response, parsed_body
+
+
+def wait_for_auth_ready(auth: Auth, baseline_time: str, timeout: int = 60) -> None:
+    """Wait for Auth CR to reconcile after a patch."""
+    for instance in TimeoutSampler(wait_timeout=timeout, sleep=2, func=lambda: auth.instance):
+        auth_conditions = (instance.status or {}).get("conditions") or []
+        ready_condition = next(
+            (condition for condition in auth_conditions if condition.get("type") == "Ready"),
+            None,
+        )
+        if (
+            ready_condition
+            and ready_condition.get("lastTransitionTime") != baseline_time
+            and ready_condition.get("status") == "True"
+        ):
+            return
+
+
+def resolve_api_key_username(
+    request_session_http: requests.Session,
+    base_url: str,
+    key_id: str,
+    ocp_user_token: str,
+) -> str:
+    """Fetch an API key by ID and return the owner's username."""
+    get_resp, get_body = get_api_key(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        key_id=key_id,
+        ocp_user_token=ocp_user_token,
+    )
+    assert get_resp.status_code == 200, (
+        f"Expected 200 on GET /v1/api-keys/{key_id}, got {get_resp.status_code}: {get_resp.text[:200]}"
+    )
+    username = get_body.get("username") or get_body.get("owner")
+    assert username, "Expected 'username' or 'owner' field in GET response"
+    return username
+
+
+def create_and_yield_api_key_id(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_user_token: str,
+    key_name_prefix: str,
+) -> Generator[str]:
+    """Create an API key, yield its ID, and revoke it on teardown."""
+    key_name = f"{key_name_prefix}-{generate_random_name()}"
+    _, body = create_api_key(
+        base_url=base_url,
+        ocp_user_token=ocp_user_token,
+        request_session_http=request_session_http,
+        api_key_name=key_name,
+    )
+    LOGGER.info(f"create_and_yield_api_key_id: created key id={body['id']} name={key_name}")
+    yield body["id"]
+    LOGGER.info(f"create_and_yield_api_key_id: teardown revoking key id={body['id']}")
+    revoke_resp, _ = revoke_api_key(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        key_id=body["id"],
+        ocp_user_token=ocp_user_token,
+    )
+    if revoke_resp.status_code not in (200, 404):
+        raise AssertionError(
+            f"Unexpected teardown status for key id={body['id']}: {revoke_resp.status_code} {revoke_resp.text[:200]}"
+        )
 
 
 def revoke_api_key(
