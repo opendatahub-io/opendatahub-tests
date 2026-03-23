@@ -262,30 +262,18 @@ def configure_third_party_logging() -> None:
 def setup_global_json_logging() -> None:
     """
     Set up global logging configuration to ensure all new loggers use JSON format.
-    This is a one-time setup that affects all future logger creation.
+    This patches logging.Logger.addHandler so that any handler added by any library
+    automatically gets the ThirdPartyJSONFormatter applied.
     """
-    # Store original getLogger function
-    original_getLogger = logging.getLogger
+    original_add_handler = logging.Logger.addHandler
 
-    def patched_getLogger(name: str | None = None) -> logging.Logger:
-        """Patched getLogger that automatically applies JSON formatting to new loggers."""
-        logger = original_getLogger(name=name)
+    def patched_add_handler(self: logging.Logger, hdlr: logging.Handler) -> None:
+        """Patched addHandler that automatically applies JSON formatting."""
+        if not isinstance(hdlr.formatter, (ThirdPartyJSONFormatter, JSONOnlyFormatter)):
+            hdlr.setFormatter(fmt=ThirdPartyJSONFormatter())
+        original_add_handler(self, hdlr)  # noqa: FCN001
 
-        # Skip if this is our structlog wrapper or if already configured
-        if (name and ("opendatahub_logger" in name or "structlog" in name)) or hasattr(logger, "_json_configured"):
-            return logger
-
-        # Apply JSON formatter to any handlers this logger might have
-        for handler in logger.handlers:
-            if isinstance(handler.formatter, (logging.Formatter, type(None))):
-                handler.setFormatter(fmt=ThirdPartyJSONFormatter())
-
-        # Mark as configured to avoid repeated processing
-        logger._json_configured = True  # type: ignore[attr-defined]
-        return logger
-
-    # Patch the logging.getLogger function
-    logging.getLogger = patched_getLogger
+    logging.Logger.addHandler = patched_add_handler  # type: ignore[method-assign]
 
 
 # Global flag to ensure we only set up global logging once
