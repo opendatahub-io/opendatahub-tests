@@ -376,6 +376,37 @@ def revoke_api_key(
     return response, parsed_body
 
 
+def bulk_revoke_api_keys(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_user_token: str,
+    username: str,
+    request_timeout_seconds: int = 60,
+) -> tuple[Response, dict[str, Any]]:
+    """
+    Bulk revoke all active API keys for a given user via MaaS API (POST /v1/api-keys/bulk-revoke).
+
+    """
+    url = f"{base_url}/v1/api-keys/bulk-revoke"
+    response = request_session_http.post(
+        url=url,
+        headers={
+            "Authorization": f"Bearer {ocp_user_token}",
+            "Content-Type": "application/json",
+        },
+        json={"username": username},
+        timeout=request_timeout_seconds,
+    )
+    LOGGER.info(f"bulk_revoke_api_keys: url={url} username={username} status={response.status_code}")
+    try:
+        parsed_body: dict[str, Any] = json.loads(response.text)
+    except json.JSONDecodeError as error:
+        raise AssertionError(
+            f"bulk_revoke_api_keys returned non-JSON response: status={response.status_code} body={response.text[:200]}"
+        ) from error
+    return response, parsed_body
+
+
 def get_maas_postgres_labels() -> dict[str, str]:
     return {
         "app": "postgres",

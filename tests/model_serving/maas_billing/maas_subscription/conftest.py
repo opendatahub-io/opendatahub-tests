@@ -658,6 +658,34 @@ def two_active_api_key_ids(
 
 
 @pytest.fixture(scope="function")
+def three_active_api_key_ids(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_token_for_actor: str,
+) -> Generator[list[str], Any, Any]:
+    """Create three active API keys and yield their IDs for bulk-revoke tests."""
+    key_ids = [
+        create_api_key(
+            base_url=base_url,
+            ocp_user_token=ocp_token_for_actor,
+            request_session_http=request_session_http,
+            api_key_name=f"e2e-bulk-key-{index}-{generate_random_name()}",
+        )[1]["id"]
+        for index in range(1, 4)
+    ]
+    LOGGER.info(f"three_active_api_key_ids: created keys {key_ids}")
+    yield key_ids
+    for key_id in key_ids:
+        LOGGER.info(f"three_active_api_key_ids: teardown revoking key {key_id}")
+        revoke_api_key(
+            request_session_http=request_session_http,
+            base_url=base_url,
+            key_id=key_id,
+            ocp_user_token=ocp_token_for_actor,
+        )
+
+
+@pytest.fixture(scope="function")
 def active_api_key_id(
     request_session_http: requests.Session,
     base_url: str,
