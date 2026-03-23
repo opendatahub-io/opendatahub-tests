@@ -24,21 +24,25 @@ from simple_logger.logger import get_logger
 from tests.model_serving.maas_billing.maas_subscription.utils import (
     MAAS_DB_NAMESPACE,
     MAAS_SUBSCRIPTION_NAMESPACE,
+    create_and_yield_api_key_id,
     create_api_key,
     create_maas_subscription,
     get_maas_postgres_resources,
     patch_llmisvc_with_maas_router_and_tiers,
+    resolve_api_key_username,
     revoke_api_key,
+    wait_for_auth_ready,
     wait_for_postgres_connection_log,
     wait_for_postgres_deployment_ready,
 )
 from tests.model_serving.maas_billing.utils import build_maas_headers
 from utilities.constants import DscComponents
 from utilities.general import generate_random_name
-from utilities.infra import create_inference_token, create_ns, login_with_user_password
+from utilities.infra import create_inference_token, create_ns, get_openshift_token, login_with_user_password
 from utilities.llmd_constants import ContainerImages, ModelStorage
 from utilities.llmd_utils import create_llmisvc
 from utilities.plugins.constant import OpenAIEnpoints
+from utilities.resources.auth import Auth
 
 LOGGER = get_logger(name=__name__)
 
@@ -662,22 +666,91 @@ def active_api_key_id(
     """
     Create a single active API key and return its ID for revoke tests.
     """
-    key_name = f"e2e-fixture-key-{generate_random_name()}"
-    _, body = create_api_key(
-        base_url=base_url,
-        ocp_user_token=ocp_token_for_actor,
-        request_session_http=request_session_http,
-        api_key_name=key_name,
-    )
-    LOGGER.info(f"active_api_key_id: created key id={body['id']}")
-    yield body["id"]
-    LOGGER.info(f"Fixture teardown: revoking key {body['id']}")
-    revoke_api_key(
+    yield from create_and_yield_api_key_id(
         request_session_http=request_session_http,
         base_url=base_url,
-        key_id=body["id"],
+        ocp_user_token=ocp_token_for_actor,
+        key_name_prefix="e2e-fixture-key",
+    )
+
+
+@pytest.fixture(scope="function")
+def free_user_username(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_token_for_actor: str,
+    active_api_key_id: str,
+) -> str:
+    """Resolve and return the free (non-admin) actor's username from their active API key."""
+    username = resolve_api_key_username(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        key_id=active_api_key_id,
         ocp_user_token=ocp_token_for_actor,
     )
+    LOGGER.info(f"free_user_username: resolved username from key id={active_api_key_id}")
+    return username
+
+
+@pytest.fixture(scope="function")
+def admin_username(
+    request_session_http: requests.Session,
+    base_url: str,
+    admin_ocp_token: str,
+    admin_active_api_key_id: str,
+) -> str:
+    """Resolve and return the admin actor's username from their active API key."""
+    username = resolve_api_key_username(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        key_id=admin_active_api_key_id,
+        ocp_user_token=admin_ocp_token,
+    )
+    LOGGER.info(f"admin_username: resolved username from key id={admin_active_api_key_id}")
+    return username
+
+
+@pytest.fixture(scope="function")
+def admin_active_api_key_id(
+    request_session_http: requests.Session,
+    base_url: str,
+    admin_ocp_token: str,
+) -> Generator[str, Any, Any]:
+    """Create an active API key as the admin user, yield its ID, and revoke on teardown."""
+    yield from create_and_yield_api_key_id(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        ocp_user_token=admin_ocp_token,
+        key_name_prefix="e2e-authz-admin",
+    )
+
+
+@pytest.fixture(scope="class")
+def admin_ocp_token(admin_client: DynamicClient) -> Generator[str, Any, Any]:
+    """Temporarily adds dedicated-admins to Auth CR adminGroups so the admin token is recognised by MaaS."""
+    auth = Auth(client=admin_client, name="auth")
+    current_groups: list[str] = list(auth.instance.spec.adminGroups or [])
+    patched_groups = list(set(current_groups + ["dedicated-admins"]))
+
+    auth_conditions = (auth.instance.status or {}).get("conditions") or []
+    ready_before = next(
+        (condition for condition in auth_conditions if condition.get("type") == "Ready"),
+        {},
+    )
+    baseline_time: str = ready_before.get("lastTransitionTime", "")
+
+    LOGGER.info(f"admin_ocp_token: patching Auth CR adminGroups to {patched_groups}")
+    with ResourceEditor(patches={auth: {"spec": {"adminGroups": patched_groups}}}):
+        wait_for_auth_ready(auth=auth, baseline_time=baseline_time)
+        auth_conditions_after = (auth.instance.status or {}).get("conditions") or []
+        ready_after = next(
+            (condition for condition in auth_conditions_after if condition.get("type") == "Ready"),
+            {},
+        )
+        cleanup_baseline_time: str = ready_after.get("lastTransitionTime", "")
+        yield get_openshift_token(client=admin_client)
+
+    wait_for_auth_ready(auth=auth, baseline_time=cleanup_baseline_time)
 
 
 @pytest.fixture(scope="function")
