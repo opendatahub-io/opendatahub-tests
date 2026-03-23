@@ -280,7 +280,7 @@ def vector_store_create_file_from_path(
 
 
 def vector_store_upload_doc_sources(
-    doc_sources: Any,
+    doc_sources: list[str],
     llama_stack_client: LlamaStackClient,
     vector_store: Any,
     vector_io_provider: str,
@@ -297,12 +297,9 @@ def vector_store_upload_doc_sources(
         vector_io_provider: Provider id for log context only.
 
     Raises:
-        TypeError: If ``doc_sources`` is not a list.
         ValueError: If a local path resolves outside the repo root.
         FileNotFoundError: If a file or non-empty directory source is missing.
     """
-    if not isinstance(doc_sources, list):
-        raise TypeError(f"doc_sources must be a list[str], got {type(doc_sources).__name__}")
     LOGGER.info(
         "Uploading doc_sources to vector_store (provider_id=%s, id=%s): %s",
         vector_io_provider,
