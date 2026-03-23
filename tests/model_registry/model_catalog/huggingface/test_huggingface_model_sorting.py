@@ -28,8 +28,8 @@ class TestHuggingFaceModelsSorting:
         [
             ("ID", "ASC"),
             ("ID", "DESC"),
-            ("NAME", "ASC"),
-            ("NAME", "DESC"),
+            pytest.param("NAME", "ASC", marks=pytest.mark.xfail(reason="RHOAIENG-54579")),
+            pytest.param("NAME", "DESC", marks=pytest.mark.xfail(reason="RHOAIENG-54579")),
             ("CREATE_TIME", "ASC"),
             ("CREATE_TIME", "DESC"),
             ("LAST_UPDATE_TIME", "ASC"),
