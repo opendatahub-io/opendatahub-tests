@@ -30,10 +30,10 @@ UPGRADE_NAMESPACE: str = "upgrade-model-server"
 UPGRADE_RESOURCES: str = (
     f"{{Namespace: {{{UPGRADE_NAMESPACE:}}},"
     f"ServingRuntime: {{onnx-serverless: {UPGRADE_NAMESPACE},"
-    f"caikit-raw: {UPGRADE_NAMESPACE},ovms-model-mesh: {UPGRADE_NAMESPACE}}},"
+    f"onnx-raw: {UPGRADE_NAMESPACE},ovms-model-mesh: {UPGRADE_NAMESPACE}}},"
     f"InferenceService: {{onnx-serverless: {UPGRADE_NAMESPACE},"
-    f"caikit-raw: {UPGRADE_NAMESPACE}, ovms-model-mesh: {UPGRADE_NAMESPACE}}},"
-    f"Secret: {{ci-bucket-secret: {UPGRADE_NAMESPACE}, models-bucket-secret: {UPGRADE_NAMESPACE}}},"
+    f"onnx-raw: {UPGRADE_NAMESPACE}, ovms-model-mesh: {UPGRADE_NAMESPACE}}},"
+    f"Secret: {{ci-bucket-secret: {UPGRADE_NAMESPACE}}},"
     f"ServiceAccount: {{models-bucket-sa: {UPGRADE_NAMESPACE}}}}}"
 )
 
@@ -61,29 +61,6 @@ def model_namespace_scope_session(
         labels={"modelmesh-enabled": "true"},
     ) as ns:
         yield ns
-
-
-@pytest.fixture(scope="session")
-def models_endpoint_s3_secret_scope_session(
-    admin_client: DynamicClient,
-    model_namespace_scope_session: Namespace,
-    aws_access_key_id: str,
-    aws_secret_access_key: str,
-    models_s3_bucket_name: str,
-    models_s3_bucket_region: str,
-    models_s3_bucket_endpoint: str,
-) -> Generator[Secret, Any, Any]:
-    with s3_endpoint_secret(
-        admin_client=admin_client,
-        name="models-bucket-secret",
-        namespace=model_namespace_scope_session.name,
-        aws_access_key=aws_access_key_id,
-        aws_secret_access_key=aws_secret_access_key,
-        aws_s3_region=models_s3_bucket_region,
-        aws_s3_bucket=models_s3_bucket_name,
-        aws_s3_endpoint=models_s3_bucket_endpoint,
-    ) as secret:
-        yield secret
 
 
 @pytest.fixture(scope="session")
@@ -177,49 +154,54 @@ def ovms_serverless_inference_service_scope_session(
 
 
 @pytest.fixture(scope="session")
-def caikit_raw_serving_runtime_scope_session(
+def ovms_raw_serving_runtime_scope_session(
     admin_client: DynamicClient,
     model_namespace_scope_session: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
     with ServingRuntimeFromTemplate(
         client=admin_client,
-        name="caikit-raw",
+        name="onnx-raw",
         namespace=model_namespace_scope_session.name,
-        template_name=RuntimeTemplates.CAIKIT_STANDALONE_SERVING,
+        template_name=RuntimeTemplates.OVMS_KSERVE,
         multi_model=False,
-        enable_http=True,
+        resources={
+            ModelFormat.OVMS: {
+                "requests": {"cpu": "1", "memory": "4Gi"},
+                "limits": {"cpu": "2", "memory": "8Gi"},
+            }
+        },
+        model_format_name={ModelFormat.ONNX: ModelVersion.OPSET13},
     ) as model_runtime:
         yield model_runtime
 
 
 @pytest.fixture(scope="session")
-def caikit_raw_inference_service_scope_session(
+def ovms_raw_inference_service_scope_session(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    caikit_raw_serving_runtime_scope_session: ServingRuntime,
-    models_endpoint_s3_secret_scope_session: Secret,
+    ovms_raw_serving_runtime_scope_session: ServingRuntime,
+    ci_endpoint_s3_secret_scope_session: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     isvc_kwargs = {
         "client": admin_client,
-        "name": caikit_raw_serving_runtime_scope_session.name,
-        "namespace": caikit_raw_serving_runtime_scope_session.namespace,
+        "name": ovms_raw_serving_runtime_scope_session.name,
+        "namespace": ovms_raw_serving_runtime_scope_session.namespace,
     }
 
     isvc = InferenceService(**isvc_kwargs)
 
     if pytestconfig.option.post_upgrade:
         yield isvc
-
         isvc.clean_up()
 
     else:
         with create_isvc(
-            runtime=caikit_raw_serving_runtime_scope_session.name,
-            model_format=caikit_raw_serving_runtime_scope_session.instance.spec.supportedModelFormats[0].name,
+            runtime=ovms_raw_serving_runtime_scope_session.name,
+            storage_path="test-dir",
+            storage_key=ci_endpoint_s3_secret_scope_session.name,
+            model_format=ModelAndFormat.OPENVINO_IR,
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-            storage_key=models_endpoint_s3_secret_scope_session.name,
-            storage_path=ModelStoragePath.EMBEDDING_MODEL,
-            external_route=True,
+            model_version=ModelVersion.OPSET13,
             **isvc_kwargs,
         ) as isvc:
             yield isvc

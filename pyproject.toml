@@ -56,7 +56,7 @@ dependencies = [
     "syrupy",
     "protobuf",
     "grpcio-reflection",
-    "portforward>=0.7.1",
+    "portforward>=0.7.6",
     "pytest-testconfig>=0.2.0",
     "pygithub>=2.5.0",
     "timeout-sampler>=1.0.6",
