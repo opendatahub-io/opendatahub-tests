@@ -31,6 +31,7 @@ from tests.model_serving.maas_billing.maas_subscription.utils import (
     patch_llmisvc_with_maas_router_and_tiers,
     resolve_api_key_username,
     revoke_api_key,
+    wait_for_auth_ready,
     wait_for_postgres_connection_log,
     wait_for_postgres_deployment_ready,
 )
@@ -730,11 +731,20 @@ def admin_ocp_token(admin_client: DynamicClient) -> Generator[str, Any, Any]:
     auth = Auth(client=admin_client, name="auth")
     current_groups: list[str] = list(auth.instance.spec.adminGroups or [])
     patched_groups = list(set(current_groups + ["dedicated-admins"]))
-    LOGGER.info(f"admin_ocp_token: patching Auth CR adminGroups to {patched_groups}")
 
+    auth_conditions = (auth.instance.status or {}).get("conditions") or []
+    ready_before = next(
+        (condition for condition in auth_conditions if condition.get("type") == "Ready"),
+        {},
+    )
+    baseline_time: str = ready_before.get("lastTransitionTime", "")
+
+    LOGGER.info(f"admin_ocp_token: patching Auth CR adminGroups to {patched_groups}")
     with ResourceEditor(patches={auth: {"spec": {"adminGroups": patched_groups}}}):
-        auth.wait_for_condition(condition="Ready", status="True", timeout=60)
+        wait_for_auth_ready(auth=auth, baseline_time=baseline_time)
         yield get_openshift_token(client=admin_client)
+
+    wait_for_auth_ready(auth=auth, baseline_time=baseline_time)
 
 
 @pytest.fixture(scope="function")

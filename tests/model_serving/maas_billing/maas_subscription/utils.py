@@ -26,6 +26,7 @@ from utilities.constants import (
     ApiGroups,
 )
 from utilities.general import generate_random_name
+from utilities.resources.auth import Auth
 
 LOGGER = get_logger(name=__name__)
 MAAS_SUBSCRIPTION_NAMESPACE = "models-as-a-service"
@@ -281,6 +282,22 @@ def list_api_keys(
             f"list_api_keys returned non-JSON response: status={response.status_code} body={response.text[:200]}"
         ) from error
     return response, parsed_body
+
+
+def wait_for_auth_ready(auth: Auth, baseline_time: str, timeout: int = 60) -> None:
+    """Wait for Auth CR to reconcile after a patch."""
+    for instance in TimeoutSampler(wait_timeout=timeout, sleep=2, func=lambda: auth.instance):
+        auth_conditions = (instance.status or {}).get("conditions") or []
+        ready_condition = next(
+            (condition for condition in auth_conditions if condition.get("type") == "Ready"),
+            None,
+        )
+        if (
+            ready_condition
+            and ready_condition.get("lastTransitionTime") != baseline_time
+            and ready_condition.get("status") == "True"
+        ):
+            return
 
 
 def resolve_api_key_username(
