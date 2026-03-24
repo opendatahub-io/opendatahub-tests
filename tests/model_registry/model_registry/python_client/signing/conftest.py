@@ -21,7 +21,6 @@ from ocp_resources.subscription import Subscription
 from ocp_utilities.operators import install_operator, uninstall_operator
 from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from tests.model_registry.model_registry.python_client.signing.constants import (
@@ -41,6 +40,7 @@ from tests.model_registry.model_registry.python_client.signing.utils import (
 )
 from utilities.constants import OPENSHIFT_OPERATORS, Labels, ModelCarImage, OCIRegistry, Timeout
 from utilities.infra import get_openshift_token, is_managed_cluster
+from utilities.opendatahub_logger import get_logger
 from utilities.resources.route import Route
 from utilities.resources.securesign import Securesign
 

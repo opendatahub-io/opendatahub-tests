@@ -5,12 +5,12 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
-from simple_logger.logger import get_logger
 
 from tests.model_serving.model_runtime.vllm.constant import BASE_RAW_DEPLOYMENT_CONFIG
 from tests.model_serving.model_server.utils import verify_final_pod_count, verify_keda_scaledobject
 from utilities.constants import KServeDeploymentType
 from utilities.monitoring import validate_metrics_field
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

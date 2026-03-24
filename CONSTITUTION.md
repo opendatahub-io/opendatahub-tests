@@ -79,6 +79,7 @@ All code MUST consider security implications.
 - Avoid running destructive commands without explicit user confirmation
 - Use detect-secrets and gitleaks pre-commit hooks to prevent secret leakage
 - Test code MUST NOT introduce vulnerabilities into the tested systems
+- Use `utilities.path_utils.resolve_repo_path` to resolve and validate any user-supplied or parameterized file paths, preventing path-traversal and symlink-escape outside the repository root
 - JIRA ticket links are allowed in PRs and commit messages (our Jira is public)
 - Do NOT reference internal-only resources (Jenkins, Confluence, Slack threads) in code, PRs, or commit messages
 - Do NOT link embargoed or security-restricted (RH-employee-only) tickets

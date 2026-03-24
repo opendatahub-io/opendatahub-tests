@@ -5,10 +5,10 @@ from typing import Any
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.pod import Pod
 from ocp_resources.resource import MissingRequiredArgumentError, NamespacedResource, Resource
-from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
 from utilities.constants import Timeout
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

@@ -13,12 +13,12 @@ from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.pod import Pod
 from ocp_resources.prometheus import Prometheus
 from pyhelper_utils.shell import run_command
-from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
 from utilities.certificates_utils import get_ca_bundle
 from utilities.constants import Timeout
 from utilities.monitoring import get_metrics_value
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

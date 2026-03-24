@@ -16,7 +16,6 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.resource import get_client
 from ocp_resources.service import Service
 from pyhelper_utils.shell import run_command
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler, TimeoutWatch, retry
 
 from utilities.certificates_utils import get_ca_bundle
@@ -39,6 +38,7 @@ from utilities.infra import (
     verify_no_failed_pods,
     wait_for_inference_deployment_replicas,
 )
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 
@@ -118,7 +118,7 @@ class Inference:
         """
         labels = self.inference_service.labels
 
-        if self.deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
+        if self.deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT_MODES:
             if isinstance(self.inference_service, InferenceGraph):
                 # For InferenceGraph, the logic is similar as in Serverless. Only the label is different.
                 return not (labels and labels.get(Labels.Kserve.NETWORKING_KSERVE_IO) == "cluster-local")
@@ -310,7 +310,7 @@ class UserInference(Inference):
 
         elif self.protocol == "grpc":
             cmd_exec = "grpcurl -connect-timeout 10 "
-            if self.deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
+            if self.deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT_MODES:
                 cmd_exec += " --plaintext "
 
         else:
@@ -536,10 +536,9 @@ class UserInference(Inference):
                 and port.protocol.lower() == svc_protocol.lower()
                 and port.name == self.protocol
             ) or (
-                self.deployment_mode
-                in (
-                    KServeDeploymentType.RAW_DEPLOYMENT,
-                    KServeDeploymentType.SERVERLESS,
+                (
+                    self.deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT_MODES
+                    or self.deployment_mode == KServeDeploymentType.SERVERLESS
                 )
                 and port.protocol.lower() == svc_protocol.lower()
             ):
@@ -679,7 +678,10 @@ def create_isvc(
         _annotations = {Annotations.KserveIo.DEPLOYMENT_MODE: deployment_mode}
 
     # model mesh auth is set in ServingRuntime
-    if enable_auth and deployment_mode in {KServeDeploymentType.SERVERLESS, KServeDeploymentType.RAW_DEPLOYMENT}:
+    if enable_auth and (
+        deployment_mode == KServeDeploymentType.SERVERLESS
+        or deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT_MODES
+    ):
         _annotations[Annotations.KserveAuth.SECURITY] = "true"
 
     # default to True if deployment_mode is Serverless (default behavior of Serverless) if was not provided by the user
@@ -687,7 +689,7 @@ def create_isvc(
     if external_route is None and deployment_mode == KServeDeploymentType.SERVERLESS:
         external_route = True
 
-    if external_route and deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
+    if external_route and deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT_MODES:
         labels[Labels.Kserve.NETWORKING_KSERVE_IO] = Labels.Kserve.EXPOSED
 
     if deployment_mode == KServeDeploymentType.SERVERLESS and external_route is False:

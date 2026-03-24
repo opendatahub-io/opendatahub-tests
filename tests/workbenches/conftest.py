@@ -8,7 +8,6 @@ from ocp_resources.notebook import Notebook
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError
 
 from tests.workbenches.utils import get_username
@@ -16,6 +15,7 @@ from utilities import constants
 from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH, Labels, Timeout
 from utilities.general import collect_pod_information
 from utilities.infra import check_internal_image_registry_available, get_product_version
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

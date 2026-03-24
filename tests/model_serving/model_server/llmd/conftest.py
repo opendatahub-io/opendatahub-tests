@@ -15,7 +15,6 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service_account import ServiceAccount
-from simple_logger.logger import get_logger
 
 from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaOciConfig
 from tests.model_serving.model_server.llmd.utils import wait_for_llmisvc, wait_for_llmisvc_pods_ready
@@ -24,6 +23,7 @@ from utilities.infra import create_inference_token, s3_endpoint_secret, update_c
 from utilities.llmd_constants import LLMDGateway
 from utilities.llmd_utils import create_llmd_gateway
 from utilities.logger import RedactedString
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 logging.getLogger("timeout_sampler").setLevel(logging.WARNING)

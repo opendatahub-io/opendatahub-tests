@@ -19,7 +19,6 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
 
 from tests.model_serving.maas_billing.maas_subscription.utils import (
     MAAS_DB_NAMESPACE,
@@ -41,6 +40,7 @@ from utilities.general import generate_random_name
 from utilities.infra import create_inference_token, create_ns, get_openshift_token, login_with_user_password
 from utilities.llmd_constants import ContainerImages, ModelStorage
 from utilities.llmd_utils import create_llmisvc
+from utilities.opendatahub_logger import get_logger
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.resources.auth import Auth
 
@@ -655,6 +655,36 @@ def two_active_api_key_ids(
             key_id=key_id,
             ocp_user_token=ocp_token_for_actor,
         )
+
+
+@pytest.fixture(scope="function")
+def three_active_api_key_ids(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_token_for_actor: str,
+) -> Generator[list[str], Any, Any]:
+    """Create three active API keys and yield their IDs for bulk-revoke tests."""
+    key_ids = [
+        create_api_key(
+            base_url=base_url,
+            ocp_user_token=ocp_token_for_actor,
+            request_session_http=request_session_http,
+            api_key_name=f"e2e-bulk-key-{index}-{generate_random_name()}",
+        )[1]["id"]
+        for index in range(1, 4)
+    ]
+    LOGGER.info(f"three_active_api_key_ids: created keys {key_ids}")
+    yield key_ids
+    for key_id in key_ids:
+        LOGGER.info(f"three_active_api_key_ids: teardown revoking key {key_id}")
+        revoke_resp, _ = revoke_api_key(
+            request_session_http=request_session_http,
+            base_url=base_url,
+            key_id=key_id,
+            ocp_user_token=ocp_token_for_actor,
+        )
+        if revoke_resp.status_code not in (200, 404):
+            raise AssertionError(f"Unexpected teardown status for key id={key_id}: {revoke_resp.status_code}")
 
 
 @pytest.fixture(scope="function")

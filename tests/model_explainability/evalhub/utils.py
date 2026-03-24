@@ -1,11 +1,11 @@
 import requests
-from simple_logger.logger import get_logger
 
 from tests.model_explainability.evalhub.constants import (
     EVALHUB_HEALTH_PATH,
     EVALHUB_HEALTH_STATUS_HEALTHY,
 )
 from utilities.guardrails import get_auth_headers
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

@@ -13,7 +13,6 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest_testconfig import py_config
-from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
 from utilities.constants import (
@@ -24,6 +23,7 @@ from utilities.constants import (
 )
 from utilities.inference_utils import create_isvc
 from utilities.infra import get_data_science_cluster, wait_for_dsc_status_ready
+from utilities.opendatahub_logger import get_logger
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 LOGGER = get_logger(name=__name__)

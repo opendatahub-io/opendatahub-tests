@@ -1,7 +1,6 @@
 import pytest
 from kubernetes.dynamic.client import DynamicClient
 from ocp_resources.resource import ResourceEditor
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError
 
 from tests.model_registry.model_catalog.catalog_config.utils import (
@@ -19,6 +18,7 @@ from tests.model_registry.model_catalog.constants import (
     REDHAT_AI_CATALOG_NAME,
 )
 from tests.model_registry.model_catalog.utils import wait_for_model_catalog_api
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

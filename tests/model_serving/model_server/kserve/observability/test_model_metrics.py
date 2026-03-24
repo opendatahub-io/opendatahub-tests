@@ -43,7 +43,6 @@ pytestmark = [
 )
 class TestModelMetrics:
     @pytest.mark.tier1
-    @pytest.mark.polarion("ODS-2555")
     def test_model_metrics_num_success_requests(self, model_car_inference_service, prometheus):
         """Verify number of successful model requests in OpenShift monitoring system (UserWorkloadMonitoring) metrics"""
         # validate cm values is true for metrics dashboard
@@ -69,7 +68,6 @@ class TestModelMetrics:
         )
 
     @pytest.mark.tier1
-    @pytest.mark.polarion("ODS-2555")
     def test_model_metrics_num_total_requests(self, model_car_inference_service, prometheus):
         """Verify number of total model requests in OpenShift monitoring system (UserWorkloadMonitoring) metrics"""
         validate_metrics_configuration(model_car_inference_service=model_car_inference_service)
@@ -98,7 +96,6 @@ class TestModelMetrics:
         )
 
     @pytest.mark.tier1
-    @pytest.mark.polarion("ODS-2555")
     def test_model_metrics_cpu_utilization(self, model_car_inference_service, prometheus):
         """Verify CPU utilization data in OpenShift monitoring system (UserWorkloadMonitoring) metrics"""
         validate_metrics_configuration(model_car_inference_service=model_car_inference_service)

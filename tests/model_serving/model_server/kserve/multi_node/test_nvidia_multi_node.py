@@ -1,7 +1,6 @@
 from typing import Any
 
 import pytest
-from simple_logger.logger import get_logger
 
 from tests.model_serving.model_server.kserve.multi_node.constants import (
     HEAD_POD_ROLE,
@@ -16,6 +15,7 @@ from tests.model_serving.model_server.kserve.multi_node.utils import (
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import Labels, Protocols, StorageClassName
 from utilities.manifests.vllm import VLLM_INFERENCE_CONFIG
+from utilities.opendatahub_logger import get_logger
 
 pytestmark = [
     pytest.mark.rawdeployment,

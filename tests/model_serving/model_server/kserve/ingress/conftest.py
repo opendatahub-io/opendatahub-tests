@@ -11,13 +11,13 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from tests.model_serving.model_server.kserve.ingress.utils import create_curl_pod
 from utilities.constants import KServeDeploymentType, Labels, ModelStoragePath
 from utilities.inference_utils import create_isvc
 from utilities.infra import create_ns
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

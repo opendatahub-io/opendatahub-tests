@@ -56,13 +56,13 @@ from ocp_utilities.infra import (
 from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
 from semver import Version
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, TimeoutWatch, retry
 
 import utilities.general
 from utilities.constants import RHOAI_OPERATOR_NAMESPACE, Annotations, ApiGroups, KServeDeploymentType, Labels, Timeout
 from utilities.exceptions import ClusterLoginError, FailedPodsError, ResourceNotReadyError, UnexpectedResourceCountError
 from utilities.general import generate_random_name
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 
@@ -272,7 +272,7 @@ def wait_for_inference_deployment_replicas(
             # to be set in deployment spec by HPA
             if (
                 isvc.instance.metadata.annotations.get("serving.kserve.io/deploymentMode")
-                == KServeDeploymentType.RAW_DEPLOYMENT
+                in KServeDeploymentType.RAW_DEPLOYMENT_MODES
             ):
                 wait_for_replicas_in_deployment(
                     deployment=deployment,

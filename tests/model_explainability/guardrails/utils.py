@@ -4,12 +4,12 @@ from typing import Any
 
 import requests
 from requests import Response
-from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
 from tests.model_explainability.guardrails.constants import GuardrailsDetectionPrompt
 from utilities.exceptions import UnexpectedValueError
 from utilities.guardrails import get_auth_headers
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

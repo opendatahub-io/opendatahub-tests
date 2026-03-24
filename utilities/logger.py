@@ -4,7 +4,7 @@ import shutil
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 from typing import Any
 
-from simple_logger.logger import DuplicateFilter, WrapperLogFormatter
+from utilities.opendatahub_logger import DuplicateFilter, WrapperLogFormatter
 
 LOGGER = logging.getLogger(__name__)
 
@@ -58,7 +58,6 @@ def setup_logging(
             "ERROR": "red",
             "CRITICAL": "red,bg_white",
         },
-        secondary_log_colors={},
     )
 
     log_file_handler = RotatingFileHandler(filename=log_file, maxBytes=100 * 1024 * 1024, backupCount=20)

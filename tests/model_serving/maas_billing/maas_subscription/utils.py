@@ -17,7 +17,6 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from requests import Response
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from utilities.constants import (
@@ -26,6 +25,7 @@ from utilities.constants import (
     ApiGroups,
 )
 from utilities.general import generate_random_name
+from utilities.opendatahub_logger import get_logger
 from utilities.resources.auth import Auth
 
 LOGGER = get_logger(name=__name__)
@@ -374,6 +374,61 @@ def revoke_api_key(
             f"revoke_api_key returned non-JSON response: status={response.status_code} body={response.text[:200]}"
         ) from error
     return response, parsed_body
+
+
+def bulk_revoke_api_keys(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_user_token: str,
+    username: str,
+    request_timeout_seconds: int = 60,
+) -> tuple[Response, dict[str, Any]]:
+    """
+    Bulk revoke all active API keys for a given user via MaaS API (POST /v1/api-keys/bulk-revoke).
+
+    """
+    url = f"{base_url}/v1/api-keys/bulk-revoke"
+    response = request_session_http.post(
+        url=url,
+        headers={
+            "Authorization": f"Bearer {ocp_user_token}",
+            "Content-Type": "application/json",
+        },
+        json={"username": username},
+        timeout=request_timeout_seconds,
+    )
+    LOGGER.info(f"bulk_revoke_api_keys: url={url} username={username} status={response.status_code}")
+    try:
+        parsed_body: dict[str, Any] = json.loads(response.text)
+    except json.JSONDecodeError as error:
+        raise AssertionError(
+            f"bulk_revoke_api_keys returned non-JSON response: status={response.status_code} body={response.text[:200]}"
+        ) from error
+    return response, parsed_body
+
+
+def assert_bulk_revoke_success(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_user_token: str,
+    username: str,
+    min_revoked_count: int = 1,
+) -> int:
+    """Bulk revoke API keys for a user and assert the operation succeeded."""
+    bulk_resp, bulk_body = bulk_revoke_api_keys(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        ocp_user_token=ocp_user_token,
+        username=username,
+    )
+    assert bulk_resp.status_code == 200, (
+        f"Expected 200 on bulk-revoke for user {username}, got {bulk_resp.status_code}: {bulk_resp.text[:200]}"
+    )
+    revoked_count: int = bulk_body.get("revokedCount", 0)
+    assert revoked_count >= min_revoked_count, (
+        f"Expected at least {min_revoked_count} revoked key(s), got revokedCount={revoked_count}"
+    )
+    return revoked_count
 
 
 def get_maas_postgres_labels() -> dict[str, str]:

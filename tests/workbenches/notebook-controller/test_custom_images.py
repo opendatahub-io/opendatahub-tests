@@ -9,10 +9,10 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.notebook import Notebook
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import ExecOnPodError, Pod
-from simple_logger.logger import get_logger
 
 from utilities.constants import Timeout
 from utilities.general import collect_pod_information
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

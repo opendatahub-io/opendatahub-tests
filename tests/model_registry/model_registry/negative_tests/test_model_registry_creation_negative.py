@@ -8,7 +8,6 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
 
 from tests.model_registry.constants import (
     DB_RESOURCE_NAME,
@@ -16,6 +15,7 @@ from tests.model_registry.constants import (
     MR_OPERATOR_NAME,
 )
 from utilities.constants import Annotations
+from utilities.opendatahub_logger import get_logger
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
 LOGGER = get_logger(name=__name__)

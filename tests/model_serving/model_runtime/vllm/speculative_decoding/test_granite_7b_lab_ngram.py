@@ -4,7 +4,6 @@ from typing import Any
 import pytest
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 
 from tests.model_serving.model_runtime.vllm.constant import OPENAI_ENDPOINT_NAME, TGIS_ENDPOINT_NAME
 from tests.model_serving.model_runtime.vllm.utils import (
@@ -12,6 +11,7 @@ from tests.model_serving.model_runtime.vllm.utils import (
     validate_inference_output,
 )
 from utilities.constants import KServeDeploymentType, Ports
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

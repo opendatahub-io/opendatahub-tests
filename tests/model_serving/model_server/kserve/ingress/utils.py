@@ -8,11 +8,11 @@ from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 
 from utilities.constants import Protocols, Timeout
 from utilities.exceptions import ProtocolNotSupportedError
 from utilities.infra import get_model_route
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

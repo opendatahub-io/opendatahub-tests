@@ -37,7 +37,6 @@ from pyhelper_utils.shell import run_command
 from pytest import Config, FixtureRequest
 from pytest_testconfig import config as py_config
 from semver import Version
-from simple_logger.logger import get_logger
 
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import (
@@ -65,6 +64,7 @@ from utilities.infra import (
 from utilities.logger import RedactedString
 from utilities.mariadb_utils import wait_for_mariadb_operator_deployments
 from utilities.minio import create_minio_data_connection_secret
+from utilities.opendatahub_logger import get_logger
 from utilities.operator_utils import get_cluster_service_version, get_csv_related_images
 from utilities.serving_runtime import get_runtime_image_from_template
 from utilities.user_utils import get_byoidc_issuer_url, get_oidc_tokens

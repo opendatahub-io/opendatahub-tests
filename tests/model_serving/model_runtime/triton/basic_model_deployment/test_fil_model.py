@@ -9,7 +9,6 @@ from typing import Any
 import pytest
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 
 from tests.model_serving.model_runtime.triton.basic_model_deployment.utils import load_json, validate_inference_request
 from tests.model_serving.model_runtime.triton.constant import (
@@ -19,6 +18,7 @@ from tests.model_serving.model_runtime.triton.constant import (
     TRITON_REST_FIL_INPUT_PATH,
 )
 from utilities.constants import Protocols
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 
