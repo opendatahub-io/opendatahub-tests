@@ -5,6 +5,15 @@
 inheritance: true
 
 reviews:
+  path_instructions:
+    - path: "**/*.py"
+      instructions: |
+        - This project targets Python 3.14 (requires-python = '==3.14.*').
+        - Per PEP 758 (https://peps.python.org/pep-0758/), bare 'except ExcA, ExcB:' without parentheses is valid syntax in Python 3.14+ and means catching both exceptions. Do not flag this as a Python 2-style except clause or suggest adding parentheses.
+        - Focus on security, test structure and coding style adherence in new code introduced
+        - Code should follow python, pytest best practices
+        - ensure we use https://github.com/RedHatQE/openshift-python-wrapper/ instead of direct oc calls when possible
+        - code reuse, test parameterization, proper test dependency should be also encouraged
   review_status: false
   changed_files_summary: true
   suggested_labels: true
