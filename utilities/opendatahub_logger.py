@@ -103,17 +103,25 @@ class JSONOnlyFormatter(logging.Formatter):
 
 
 class ThirdPartyJSONFormatter(logging.Formatter):
-    """Custom formatter that converts third-party logging to JSON format"""
+    """Custom formatter that converts third-party logging to JSON format.
+
+    If the message is already valid JSON (e.g. from structlog), it is passed through as-is.
+    """
 
     def format(self, record: logging.LogRecord) -> str:
-        return json.dumps({
-            "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
-            "logger": record.name,
-            "level": record.levelname.lower(),
-            "event": record.getMessage(),
-            "filename": record.pathname.split("/")[-1] if record.pathname else "",
-            "lineno": str(record.lineno),
-        })
+        msg = record.getMessage()
+        try:
+            json.loads(msg)
+            return msg
+        except json.JSONDecodeError, TypeError:
+            return json.dumps({
+                "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
+                "logger": record.name,
+                "level": record.levelname.lower(),
+                "event": msg,
+                "filename": record.pathname.split("/")[-1] if record.pathname else "",
+                "lineno": str(record.lineno),
+            })
 
 
 _initialized = False
