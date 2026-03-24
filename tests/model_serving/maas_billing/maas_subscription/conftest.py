@@ -49,6 +49,49 @@ LOGGER = get_logger(name=__name__)
 CHAT_COMPLETIONS = OpenAIEnpoints.CHAT_COMPLETIONS
 
 
+# # TEMPORARY: patches maas-controller to pr-498 to fix /v1/models 500 response.
+# # Remove once the upstream maas-controller image is fixed (Konflux onboarding complete).
+# @pytest.fixture(scope="session")
+# def maas_controller_pr498_image(
+#     admin_client: DynamicClient,
+#     maas_subscription_controller_enabled_latest: DataScienceCluster,
+# ) -> Generator[None, Any, Any]:
+#     """Patch maas-controller image to pr-498 after MaaS is enabled.
+
+#     The maas-controller:latest image has a broken /v1/models endpoint (returns 500).
+#     This fixture temporarily overrides the image after the operator creates the deployment.
+#     """
+#     deployment = Deployment(
+#         client=admin_client,
+#         name="maas-controller",
+#         namespace=MAAS_DB_NAMESPACE,
+#     )
+#     deployment.wait_for_condition(condition="Available", status="True", timeout=120)
+
+#     with ResourceEditor(
+#         patches={
+#             deployment: {
+#                 "metadata": {"annotations": {"opendatahub.io/managed": "false"}},
+#                 "spec": {
+#                     "template": {
+#                         "spec": {
+#                             "containers": [
+#                                 {
+#                                     "name": "manager",
+#                                     "image": "quay.io/opendatahub/maas-controller:pr-498",
+#                                 }
+#                             ]
+#                         }
+#                     }
+#                 },
+#             }
+#         }
+#     ):
+#         deployment.wait_for_condition(condition="Available", status="True", timeout=180)
+#         LOGGER.info("[TEMPORARY] maas-controller patched to pr-498 image")
+#         yield
+
+
 @pytest.fixture(scope="session")
 def maas_subscription_controller_enabled_latest(
     dsc_resource: DataScienceCluster,
@@ -809,3 +852,19 @@ def revoked_api_key_id(
     assert revoke_body.get("status") == "revoked", f"Expected status='revoked' in DELETE response, got: {revoke_body}"
     LOGGER.info(f"revoked_api_key_id: revoked key id={active_api_key_id}")
     return active_api_key_id
+
+
+@pytest.fixture(scope="function")
+def short_expiration_api_key_id(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_token_for_actor: str,
+) -> Generator[str, Any, Any]:
+    """Create an API key with 1-hour expiration, yield its ID, and revoke on teardown."""
+    yield from create_and_yield_api_key_id(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        ocp_user_token=ocp_token_for_actor,
+        key_name_prefix="e2e-exp-short",
+        expires_in="1h",
+    )

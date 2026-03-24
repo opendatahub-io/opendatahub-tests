@@ -185,14 +185,26 @@ def create_api_key(
     request_session_http: requests.Session,
     api_key_name: str,
     request_timeout_seconds: int = 60,
+    expires_in: str | None = None,
+    raise_on_error: bool = True,
 ) -> tuple[Response, dict[str, Any]]:
     """
     Create an API key via MaaS API and return (response, parsed_body).
 
     Uses ocp_user_token for auth against maas-api.
     Expects plaintext key in body["key"] (sk-...).
+
+    Args:
+        expires_in: Optional expiration duration string (e.g. "24h", "720h").
+            When None, no expiresIn field is sent and the key does not expire.
+        raise_on_error: When True (default), raises AssertionError for non-200/201
+            responses. Set to False when testing error cases (e.g. 400 rejection).
     """
     api_keys_url = f"{base_url}/v1/api-keys"
+
+    payload: dict[str, Any] = {"name": api_key_name}
+    if expires_in is not None:
+        payload["expiresIn"] = expires_in
 
     response = request_session_http.post(
         url=api_keys_url,
@@ -200,13 +212,15 @@ def create_api_key(
             "Authorization": f"Bearer {ocp_user_token}",
             "Content-Type": "application/json",
         },
-        json={"name": api_key_name},
+        json=payload,
         timeout=request_timeout_seconds,
     )
 
     LOGGER.info(f"create_api_key: url={api_keys_url} status={response.status_code}")
     if response.status_code not in (200, 201):
-        raise AssertionError(f"api-key create failed: status={response.status_code}")
+        if raise_on_error:
+            raise AssertionError(f"api-key create failed: status={response.status_code}")
+        return response, {}
 
     try:
         parsed_body: dict[str, Any] = json.loads(response.text)
@@ -326,6 +340,7 @@ def create_and_yield_api_key_id(
     base_url: str,
     ocp_user_token: str,
     key_name_prefix: str,
+    expires_in: str | None = None,
 ) -> Generator[str]:
     """Create an API key, yield its ID, and revoke it on teardown."""
     key_name = f"{key_name_prefix}-{generate_random_name()}"
@@ -334,6 +349,7 @@ def create_and_yield_api_key_id(
         ocp_user_token=ocp_user_token,
         request_session_http=request_session_http,
         api_key_name=key_name,
+        expires_in=expires_in,
     )
     LOGGER.info(f"create_and_yield_api_key_id: created key id={body['id']} name={key_name}")
     yield body["id"]
@@ -429,6 +445,19 @@ def assert_bulk_revoke_success(
         f"Expected at least {min_revoked_count} revoked key(s), got revokedCount={revoked_count}"
     )
     return revoked_count
+
+
+def assert_api_key_created_ok(
+    resp: Response,
+    body: dict[str, Any],
+    required_fields: tuple[str, ...] = ("key",),
+) -> None:
+    """Assert an API key creation response has a success status and expected fields."""
+    assert resp.status_code in (200, 201), (
+        f"Expected 200/201 for API key creation, got {resp.status_code}: {resp.text[:200]}"
+    )
+    for field in required_fields:
+        assert field in body, f"Response must contain '{field}'"
 
 
 def get_maas_postgres_labels() -> dict[str, str]:
