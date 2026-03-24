@@ -21,7 +21,6 @@ from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 @pytest.mark.smoke
 @pytest.mark.rawdeployment
 class TestRawUnprivilegedUser:
-    @pytest.mark.polarion("ODS-2611")
     def test_non_admin_deploy_raw_and_query_model(
         self,
         unprivileged_s3_ovms_raw_inference_service,
