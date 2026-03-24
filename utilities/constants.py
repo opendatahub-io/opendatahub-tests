@@ -7,7 +7,10 @@ from ocp_resources.resource import Resource
 class KServeDeploymentType:
     SERVERLESS: str = "Serverless"
     RAW_DEPLOYMENT: str = "RawDeployment"
+    STANDARD: str = "Standard"
     MODEL_MESH: str = "ModelMesh"
+
+    RAW_DEPLOYMENT_MODES: tuple[str, ...] = (RAW_DEPLOYMENT, STANDARD)
 
 
 class ModelFormat:
