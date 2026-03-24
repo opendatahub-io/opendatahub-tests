@@ -5,6 +5,7 @@ from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import Annotations, Protocols
 from utilities.inference_utils import Inference
 from utilities.infra import check_pod_status_in_time, get_pods_by_isvc_label
+from utilities.jira import is_jira_issue_open
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 pytestmark = pytest.mark.usefixtures("valid_aws_config")
@@ -49,7 +50,7 @@ class TestKserveTokenAuthenticationRawForRest:
         )
 
     @pytest.mark.smoke
-    @pytest.mark.jira("RHOAIENG-52129", run=False)
+    @pytest.mark.xfail(condition=is_jira_issue_open(jira_id="RHOAIENG-52129"), reason="RHOAIENG-52129", run=False)
     def test_raw_disable_enable_authentication_no_pod_rollout(self, http_s3_ovms_raw_inference_service):
         """Verify no pod rollout when disabling and enabling authentication"""
         pod = get_pods_by_isvc_label(
