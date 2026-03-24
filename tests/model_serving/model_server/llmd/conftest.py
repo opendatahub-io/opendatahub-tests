@@ -13,7 +13,6 @@ from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
 from ocp_resources.gateway import Gateway
-from ocp_resources.gateway_class import GatewayClass
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.resource import Resource
@@ -56,7 +55,7 @@ def _verify_operator_csv(admin_client: DynamicClient, csv_prefix: str, namespace
     for csv in ClusterServiceVersion.get(client=admin_client, namespace=namespace):
         if csv.name.startswith(csv_prefix) and csv.status == csv.Status.SUCCEEDED:
             return
-    pytest.skip(f"Operator CSV {csv_prefix} not found or not Succeeded in {namespace}")
+    pytest.fail(f"Operator CSV {csv_prefix} not found or not Succeeded in {namespace}")
 
 
 def verify_llmd_health(admin_client: DynamicClient, dsc_resource: Resource) -> None:
@@ -69,10 +68,10 @@ def verify_llmd_health(admin_client: DynamicClient, dsc_resource: Resource) -> N
     for condition in dsc_resource.instance.status.conditions:
         if condition.type == LLMD_DSC_CONDITION:
             if condition.status != "True":
-                pytest.skip(f"{LLMD_DSC_CONDITION} is not ready: {condition.status}, reason: {condition.get('reason')}")
+                pytest.fail(f"{LLMD_DSC_CONDITION} is not ready: {condition.status}, reason: {condition.get('reason')}")
             break
     else:
-        pytest.skip(f"{LLMD_DSC_CONDITION} condition not found in DSC status")
+        pytest.fail(f"{LLMD_DSC_CONDITION} condition not found in DSC status")
 
     # 2. Operator CSVs
     for csv_prefix, namespace in LLMD_REQUIRED_OPERATORS.items():
@@ -82,55 +81,39 @@ def verify_llmd_health(admin_client: DynamicClient, dsc_resource: Resource) -> N
     for name, namespace in LLMD_REQUIRED_DEPLOYMENTS.items():
         deployment = Deployment(client=admin_client, name=name, namespace=namespace)
         if not deployment.exists:
-            pytest.skip(f"LLMD dependency deployment {name} not found in {namespace}")
+            pytest.fail(f"LLMD dependency deployment {name} not found in {namespace}")
 
         dep_available = False
         for condition in deployment.instance.status.get("conditions", []):
             if condition.type == "Available":
                 if condition.status != "True":
-                    pytest.skip(f"Deployment {name} in {namespace} is not Available: {condition.get('reason')}")
+                    pytest.fail(f"Deployment {name} in {namespace} is not Available: {condition.get('reason')}")
                 dep_available = True
                 break
 
         if not dep_available:
-            pytest.skip(f"Deployment {name} in {namespace} has no Available condition")
+            pytest.fail(f"Deployment {name} in {namespace} has no Available condition")
 
     # 4. LeaderWorkerSetOperator CR
     lws_operator = LeaderWorkerSetOperator(client=admin_client, name="cluster")
     if not lws_operator.exists:
-        pytest.skip("LeaderWorkerSetOperator 'cluster' CR not found")
+        pytest.fail("LeaderWorkerSetOperator 'cluster' CR not found")
 
     lws_available = False
     for condition in lws_operator.instance.status.get("conditions", []):
         if condition.type == "Available":
             if condition.status != "True":
-                pytest.skip(f"LeaderWorkerSetOperator is not Available: {condition.get('reason')}")
+                pytest.fail(f"LeaderWorkerSetOperator is not Available: {condition.get('reason')}")
             lws_available = True
             break
 
     if not lws_available:
-        pytest.skip("LeaderWorkerSetOperator has no Available condition")
+        pytest.fail("LeaderWorkerSetOperator has no Available condition")
 
-    # 5. GatewayClass
-    gateway_class = GatewayClass(client=admin_client, name="openshift-default")
-    if not gateway_class.exists:
-        pytest.skip("GatewayClass 'openshift-default' not found")
-
-    gc_accepted = False
-    for condition in gateway_class.instance.status.get("conditions", []):
-        if condition.type == "Accepted":
-            if condition.status != "True":
-                pytest.skip(f"GatewayClass 'openshift-default' is not Accepted: {condition.get('reason')}")
-            gc_accepted = True
-            break
-
-    if not gc_accepted:
-        pytest.skip("GatewayClass 'openshift-default' has no Accepted condition")
-
-    # 6. Kuadrant CR
+    # 5. Kuadrant CR
     kuadrant = Kuadrant(client=admin_client, name="kuadrant", namespace="kuadrant-system")
     if not kuadrant.exists:
-        pytest.skip("Kuadrant 'kuadrant' CR not found")
+        pytest.fail("Kuadrant 'kuadrant' CR not found")
 
     LOGGER.info("LLMD component health check passed")
 
