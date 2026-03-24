@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pytest
 import requests
-from utilities.opendatahub_logger import get_logger
 
 from tests.model_serving.maas_billing.maas_subscription.utils import (
     assert_api_key_created_ok,
@@ -10,6 +9,7 @@ from tests.model_serving.maas_billing.maas_subscription.utils import (
     get_api_key,
 )
 from utilities.general import generate_random_name
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 
@@ -23,8 +23,7 @@ MAAS_API_KEY_MAX_EXPIRATION_DAYS = 30
     "maas_api_gateway_reachable",
 )
 class TestAPIKeyExpiration:
-    """Tests for API key expiration policy enforcement.
-    """
+    """Tests for API key expiration policy enforcement."""
 
     @pytest.mark.tier1
     def test_create_key_within_expiration_limit(
@@ -124,8 +123,7 @@ class TestAPIKeyExpiration:
             ocp_user_token=ocp_token_for_actor,
         )
         assert get_resp.status_code == 200, (
-            f"Expected 200 on GET /v1/api-keys/{active_api_key_id}, "
-            f"got {get_resp.status_code}: {get_resp.text[:200]}"
+            f"Expected 200 on GET /v1/api-keys/{active_api_key_id}, got {get_resp.status_code}: {get_resp.text[:200]}"
         )
         expires_at = get_body.get("expiresAt")
         LOGGER.info(f"[expiration] Key without expiration field: expiresAt={expires_at!r}")
