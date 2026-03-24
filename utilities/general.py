@@ -173,9 +173,9 @@ def create_isvc_label_selector_str(isvc: InferenceService, resource_type: str, r
 
     """
     deployment_mode = isvc.instance.metadata.annotations.get(Annotations.KserveIo.DEPLOYMENT_MODE)
-    if deployment_mode in (
-        KServeDeploymentType.SERVERLESS,
-        KServeDeploymentType.RAW_DEPLOYMENT,
+    if (
+        deployment_mode == KServeDeploymentType.SERVERLESS
+        or deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT_MODES
     ):
         return f"{isvc.ApiGroup.SERVING_KSERVE_IO}/inferenceservice={isvc.name}"
 

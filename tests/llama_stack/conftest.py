@@ -1,6 +1,5 @@
 import os
 from collections.abc import Callable, Generator
-from pathlib import Path
 from typing import Any
 
 import httpx
@@ -810,7 +809,6 @@ def vector_store(
             try:
                 vector_store_upload_doc_sources(
                     doc_sources=doc_sources,
-                    repo_root=Path(request.config.rootdir).resolve(),
                     llama_stack_client=unprivileged_llama_stack_client,
                     vector_store=vector_store,
                     vector_io_provider=vector_io_provider,

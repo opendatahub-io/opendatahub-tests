@@ -272,7 +272,7 @@ def wait_for_inference_deployment_replicas(
             # to be set in deployment spec by HPA
             if (
                 isvc.instance.metadata.annotations.get("serving.kserve.io/deploymentMode")
-                == KServeDeploymentType.RAW_DEPLOYMENT
+                in KServeDeploymentType.RAW_DEPLOYMENT_MODES
             ):
                 wait_for_replicas_in_deployment(
                     deployment=deployment,

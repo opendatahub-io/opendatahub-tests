@@ -88,7 +88,7 @@ def verify_inference_response(
 
         elif (
             isinstance(inference_service, InferenceGraph)
-            and inference.deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT
+            and inference.deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT_MODES
         ):
             assert "x-forbidden-reason: Access to the InferenceGraph is not allowed" in res["output"]
 
