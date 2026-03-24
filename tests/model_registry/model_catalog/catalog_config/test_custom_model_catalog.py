@@ -16,11 +16,11 @@ from tests.model_registry.model_catalog.constants import (
     SAMPLE_MODEL_NAME3,
 )
 from tests.model_registry.model_catalog.utils import (
-    execute_get_command,
     get_catalog_str,
     get_hf_catalog_str,
     get_sample_yaml_str,
 )
+from tests.model_registry.utils import execute_get_command
 from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)

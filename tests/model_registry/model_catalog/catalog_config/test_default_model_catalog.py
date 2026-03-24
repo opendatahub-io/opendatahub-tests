@@ -22,8 +22,7 @@ from tests.model_registry.model_catalog.catalog_config.utils import (
     validate_model_catalog_resource,
 )
 from tests.model_registry.model_catalog.constants import CATALOG_CONTAINER, DEFAULT_CATALOGS, REDHAT_AI_CATALOG_ID
-from tests.model_registry.model_catalog.utils import execute_get_command
-from tests.model_registry.utils import get_model_catalog_pod, get_rest_headers
+from tests.model_registry.utils import execute_get_command, get_model_catalog_pod, get_rest_headers
 from utilities.opendatahub_logger import get_logger
 from utilities.user_utils import UserTestSession
 

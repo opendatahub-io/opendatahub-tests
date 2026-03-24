@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import sys
@@ -24,9 +25,7 @@ from github.PullRequest import PullRequest
 from github.Repository import Repository
 from github.Team import Team
 
-from utilities.opendatahub_logger import get_logger
-
-LOGGER = get_logger(name="pr_labeler")
+LOGGER = logging.getLogger("pr_labeler")
 
 
 class PrBaseClass:

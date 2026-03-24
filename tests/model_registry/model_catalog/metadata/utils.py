@@ -9,8 +9,7 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.pod import Pod
 
 from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
-from tests.model_registry.model_catalog.utils import execute_get_command
-from tests.model_registry.utils import get_rest_headers
+from tests.model_registry.utils import execute_get_command, get_rest_headers
 from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)

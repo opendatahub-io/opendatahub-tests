@@ -8,7 +8,7 @@ from tests.model_registry.model_catalog.constants import (
     REDHAT_AI_CATALOG_ID,
     VALIDATED_CATALOG_ID,
 )
-from tests.model_registry.model_catalog.utils import execute_get_command
+from tests.model_registry.utils import execute_get_command
 from utilities.opendatahub_logger import get_logger
 
 pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace")]
