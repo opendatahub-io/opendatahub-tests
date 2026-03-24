@@ -407,6 +407,30 @@ def bulk_revoke_api_keys(
     return response, parsed_body
 
 
+def assert_bulk_revoke_success(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_user_token: str,
+    username: str,
+    min_revoked_count: int = 1,
+) -> int:
+    """Bulk revoke API keys for a user and assert the operation succeeded."""
+    bulk_resp, bulk_body = bulk_revoke_api_keys(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        ocp_user_token=ocp_user_token,
+        username=username,
+    )
+    assert bulk_resp.status_code == 200, (
+        f"Expected 200 on bulk-revoke for user {username}, got {bulk_resp.status_code}: {bulk_resp.text[:200]}"
+    )
+    revoked_count: int = bulk_body.get("revokedCount", 0)
+    assert revoked_count >= min_revoked_count, (
+        f"Expected at least {min_revoked_count} revoked key(s), got revokedCount={revoked_count}"
+    )
+    return revoked_count
+
+
 def get_maas_postgres_labels() -> dict[str, str]:
     return {
         "app": "postgres",

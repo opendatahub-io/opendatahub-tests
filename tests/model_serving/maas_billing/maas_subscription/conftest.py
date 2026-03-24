@@ -677,12 +677,14 @@ def three_active_api_key_ids(
     yield key_ids
     for key_id in key_ids:
         LOGGER.info(f"three_active_api_key_ids: teardown revoking key {key_id}")
-        revoke_api_key(
+        revoke_resp, _ = revoke_api_key(
             request_session_http=request_session_http,
             base_url=base_url,
             key_id=key_id,
             ocp_user_token=ocp_token_for_actor,
         )
+        if revoke_resp.status_code not in (200, 404):
+            raise AssertionError(f"Unexpected teardown status for key id={key_id}: {revoke_resp.status_code}")
 
 
 @pytest.fixture(scope="function")

@@ -5,6 +5,7 @@ import requests
 from simple_logger.logger import get_logger
 
 from tests.model_serving.maas_billing.maas_subscription.utils import (
+    assert_bulk_revoke_success,
     bulk_revoke_api_keys,
     get_api_key,
     resolve_api_key_username,
@@ -21,7 +22,7 @@ LOGGER = get_logger(name=__name__)
 class TestAPIKeyBulkOperations:
     """Tests for MaaS API key bulk revoke operations."""
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "admin"}], indirect=True)
     def test_bulk_revoke_own_keys(
         self,
@@ -38,17 +39,21 @@ class TestAPIKeyBulkOperations:
             ocp_user_token=ocp_token_for_actor,
         )
 
-        bulk_resp, bulk_body = bulk_revoke_api_keys(
+        revoked_count = assert_bulk_revoke_success(
             request_session_http=request_session_http,
             base_url=base_url,
             ocp_user_token=ocp_token_for_actor,
             username=username,
+            min_revoked_count=3,
         )
+<<<<<<< HEAD
         assert bulk_resp.status_code == 200, (
             f"Expected 200 on bulk-revoke for user {username}, got {bulk_resp.status_code}: {bulk_resp.text[:200]}"
         )
         revoked_count = bulk_body.get("revokedCount", 0)
         assert revoked_count >= 3, f"Expected at least 3 revoked keys, got revokedCount={revoked_count}"
+=======
+>>>>>>> 8c7033f (fix: address review comments)
         LOGGER.info(f"[bulk-revoke] User {username} bulk revoked {revoked_count} key(s)")
 
         for key_id in three_active_api_key_ids:
@@ -58,13 +63,16 @@ class TestAPIKeyBulkOperations:
                 key_id=key_id,
                 ocp_user_token=ocp_token_for_actor,
             )
-            if get_resp.status_code == 200:
-                assert get_body.get("status") == "revoked", (
-                    f"Expected key id={key_id} to have status='revoked', got: {get_body.get('status')}"
-                )
+            assert get_resp.status_code == 200, (
+                f"Expected 200 on GET /v1/api-keys/{key_id} after bulk-revoke, "
+                f"got {get_resp.status_code}: {get_resp.text[:200]}"
+            )
+            assert get_body.get("status") == "revoked", (
+                f"Expected key id={key_id} to have status='revoked', got: {get_body.get('status')}"
+            )
         LOGGER.info(f"[bulk-revoke] All {len(three_active_api_key_ids)} key(s) confirmed revoked")
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
     def test_bulk_revoke_other_user_forbidden(
         self,
@@ -85,7 +93,7 @@ class TestAPIKeyBulkOperations:
         )
         LOGGER.info("[bulk-revoke] Non-admin correctly received 403 when attempting to bulk revoke another user's keys")
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
     def test_bulk_revoke_admin_can_revoke_any_user(
         self,
@@ -96,16 +104,15 @@ class TestAPIKeyBulkOperations:
         admin_ocp_token: str,
     ) -> None:
         """Verify an admin can bulk revoke any user's active API keys."""
+<<<<<<< HEAD
         bulk_resp, bulk_body = bulk_revoke_api_keys(
+=======
+        revoked_count = assert_bulk_revoke_success(
+>>>>>>> 8c7033f (fix: address review comments)
             request_session_http=request_session_http,
             base_url=base_url,
             ocp_user_token=admin_ocp_token,
             username=free_user_username,
+            min_revoked_count=1,
         )
-        assert bulk_resp.status_code == 200, (
-            f"Expected 200 on admin bulk-revoke for user {free_user_username}, "
-            f"got {bulk_resp.status_code}: {bulk_resp.text[:200]}"
-        )
-        revoked_count = bulk_body.get("revokedCount", 0)
-        assert revoked_count >= 1, f"Expected at least 1 revoked key, got revokedCount={revoked_count}"
         LOGGER.info(f"[bulk-revoke] Admin successfully revoked {revoked_count} key(s) for user {free_user_username}")
