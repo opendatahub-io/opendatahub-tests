@@ -88,7 +88,7 @@ LLS_FILES_S3_AUTO_CREATE_BUCKET=true             # Optional
 To run all tests in the `/tests/llama_stack` directory:
 
 ```bash
-pytest tests/llama_stack/
+uv run pytest tests/llama_stack/
 ```
 
 ### Run Tests by Component/Team
@@ -96,7 +96,7 @@ pytest tests/llama_stack/
 To run tests for a specific team (e.g. rag):
 
 ```bash
-pytest -m rag tests/llama_stack/
+uv run pytest -m rag tests/llama_stack/
 ```
 
 ### Run Tests for a llama-stack API
@@ -104,7 +104,7 @@ pytest -m rag tests/llama_stack/
 To run tests for a specific API (e.g., vector_io):
 
 ```bash
-pytest tests/llama_stack/vector_io
+uv run pytest tests/llama_stack/vector_io
 ```
 
 ### Run Tests with Additional Markers
@@ -113,10 +113,10 @@ You can combine team markers with other pytest markers:
 
 ```bash
 # Run only smoke tests for rag
-pytest -m "rag and smoke" tests/llama_stack/
+uv run pytest -m "rag and smoke" tests/llama_stack/
 
 # Run all rag tests except the ones requiring a GPU
-pytest -m "rag and not gpu" tests/llama_stack/
+uv run pytest -m "rag and not gpu" tests/llama_stack/
 ```
 
 ## Related Testing Repositories
@@ -145,5 +145,3 @@ For information about the APIs and Providers available in the Red Hat LlamaStack
 ## Additional Resources
 
 - [Llama Stack Documentation](https://llamastack.github.io/docs/)
-- [OpenDataHub Documentation](https://opendatahub.io/docs)
-- [OpenShift AI Documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed)

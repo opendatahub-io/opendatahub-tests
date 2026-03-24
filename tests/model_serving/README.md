@@ -112,42 +112,42 @@ model_serving/
 ### Run All Model Serving Tests
 
 ```bash
-pytest tests/model_serving/
+uv run pytest tests/model_serving/
 ```
 
 ### Run Tests by Component
 
 ```bash
 # Run vLLM runtime tests
-pytest tests/model_serving/model_runtime/vllm/
+uv run pytest tests/model_serving/model_runtime/vllm/
 
 # Run OpenVINO tests
-pytest tests/model_serving/model_runtime/openvino/
+uv run pytest tests/model_serving/model_runtime/openvino/
 
 # Run KServe platform tests
-pytest tests/model_serving/model_server/kserve/
+uv run pytest tests/model_serving/model_server/kserve/
 
 # Run MaaS billing tests
-pytest tests/model_serving/maas_billing/
+uv run pytest tests/model_serving/maas_billing/
 
 # Run LLMD tests
-pytest tests/model_serving/model_server/llmd/
+uv run pytest tests/model_serving/model_server/llmd/
 ```
 
 ### Run Tests with Markers
 
 ```bash
 # Run smoke tests
-pytest -m smoke tests/model_serving/
+uv run pytest -m smoke tests/model_serving/
 
 # Run GPU tests only
-pytest -m gpu tests/model_serving/
+uv run pytest -m gpu tests/model_serving/
 
 # Run raw deployment tests
-pytest -m rawdeployment tests/model_serving/
+uv run pytest -m rawdeployment tests/model_serving/
 
 # Run tests excluding GPU
-pytest -m "not gpu" tests/model_serving/
+uv run pytest -m "not gpu" tests/model_serving/
 ```
 
 ## Additional Resources
@@ -156,5 +156,3 @@ pytest -m "not gpu" tests/model_serving/
 - [vLLM Documentation](https://docs.vllm.ai/)
 - [OpenVINO Documentation](https://docs.openvino.ai/)
 - [Triton Inference Server](https://github.com/triton-inference-server/server)
-- [OpenDataHub Documentation](https://opendatahub.io/docs)
-- [OpenShift AI Documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed)

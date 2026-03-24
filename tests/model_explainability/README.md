@@ -86,40 +86,38 @@ model_explainability/
 ### Run All Model Explainability Tests
 
 ```bash
-pytest tests/model_explainability/
+uv run pytest tests/model_explainability/
 ```
 
 ### Run Tests by Component
 
 ```bash
 # Run TrustyAI Service tests
-pytest tests/model_explainability/trustyai_service/
+uv run pytest tests/model_explainability/trustyai_service/
 
 # Run Guardrails tests
-pytest tests/model_explainability/guardrails/
+uv run pytest tests/model_explainability/guardrails/
 
 # Run LM Eval tests
-pytest tests/model_explainability/lm_eval/
+uv run pytest tests/model_explainability/lm_eval/
 
 # Run EvalHub tests
-pytest tests/model_explainability/evalhub/
+uv run pytest tests/model_explainability/evalhub/
 ```
 
 ### Run Tests with Markers
 
 ```bash
 # Run only smoke tests
-pytest -m "model_explainability and smoke" tests/model_explainability/
+uv run pytest -m "model_explainability and smoke" tests/model_explainability/
 
 # Run drift detection tests
-pytest tests/model_explainability/trustyai_service/drift/
+uv run pytest tests/model_explainability/trustyai_service/drift/
 
 # Run fairness tests
-pytest tests/model_explainability/trustyai_service/fairness/
+uv run pytest tests/model_explainability/trustyai_service/fairness/
 ```
 
 ## Additional Resources
 
 - [TrustyAI Documentation](https://github.com/trustyai-explainability)
-- [OpenDataHub Documentation](https://opendatahub.io/docs)
-- [OpenShift AI Documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed)

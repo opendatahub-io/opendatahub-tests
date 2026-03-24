@@ -39,23 +39,18 @@ Tests use the following markers defined in `pytest.ini`:
 ### Run All Cluster Health Tests
 
 ```bash
-pytest tests/cluster_health/
+uv run pytest tests/cluster_health/
 ```
 
 ### Run by Marker
 
 ```bash
 # Run cluster node health tests
-pytest -m cluster_health
+uv run pytest -m cluster_health
 
 # Run operator health tests
-pytest -m operator_health
+uv run pytest -m operator_health
 
 # Run both
-pytest -m "cluster_health or operator_health"
+uv run pytest -m "cluster_health or operator_health"
 ```
-
-## Additional Resources
-
-- [OpenDataHub Documentation](https://opendatahub.io/docs)
-- [OpenShift AI Documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed)

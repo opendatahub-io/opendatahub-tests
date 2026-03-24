@@ -61,6 +61,7 @@ model_registry/
 @pytest.mark.smoke                 # Critical smoke tests
 @pytest.mark.tier1                 # Tier 1 tests
 @pytest.mark.tier2                 # Tier 2 tests
+@pytest.mark.tier3                 # Tier 3 tests, includes negative tests
 @pytest.mark.custom_namespace      # Custom namespace tests
 @pytest.mark.component_health      # Component health checks
 @pytest.mark.skip_on_disconnected  # Requires internet connectivity
@@ -85,40 +86,38 @@ Tests are parametrized across multiple database backends:
 ### Run All Model Registry Tests
 
 ```bash
-pytest tests/model_registry/
+uv run pytest tests/model_registry/
 ```
 
 ### Run Tests by Component
 
 ```bash
 # Run core registry tests
-pytest tests/model_registry/model_registry/
+uv run pytest tests/model_registry/model_registry/
 
 # Run catalog tests
-pytest tests/model_registry/model_catalog/
+uv run pytest tests/model_registry/model_catalog/
 
 # Run MCP server tests
-pytest tests/model_registry/mcp_servers/
+uv run pytest tests/model_registry/mcp_servers/
 
 # Run HuggingFace integration tests
-pytest tests/model_registry/model_catalog/huggingface/
+uv run pytest tests/model_registry/model_catalog/huggingface/
 ```
 
 ### Run Tests with Markers
 
 ```bash
 # Run smoke tests
-pytest -m smoke tests/model_registry/
+uv run pytest -m smoke tests/model_registry/
 
 # Run RBAC tests
-pytest tests/model_registry/model_registry/rbac/
+uv run pytest tests/model_registry/model_registry/rbac/
 
 # Run upgrade tests
-pytest -m pre_upgrade tests/model_registry/
+uv run pytest -m pre_upgrade tests/model_registry/
 ```
 
 ## Additional Resources
 
 - [Model Registry Documentation](https://github.com/kubeflow/model-registry)
-- [OpenDataHub Documentation](https://opendatahub.io/docs)
-- [OpenShift AI Documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed)

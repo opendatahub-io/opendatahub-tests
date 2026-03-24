@@ -33,34 +33,29 @@ workbenches/
 ### Run All Workbenches Tests
 
 ```bash
-pytest tests/workbenches/
+uv run pytest tests/workbenches/
 ```
 
 ### Run Tests by Component
 
 ```bash
 # Run ImageStream health tests
-pytest tests/workbenches/test_imagestream_health.py
+uv run pytest tests/workbenches/test_imagestream_health.py
 
 # Run notebook spawning tests
-pytest tests/workbenches/notebook-controller/test_spawning.py
+uv run pytest tests/workbenches/notebook-controller/test_spawning.py
 
 # Run custom image validation tests
-pytest tests/workbenches/notebook-controller/test_custom_images.py
+uv run pytest tests/workbenches/notebook-controller/test_custom_images.py
 ```
 
 ### Run Tests with Markers
 
 ```bash
 # Run smoke tests only
-pytest -m smoke tests/workbenches/
-
-# Run all except slow tests
-pytest -m "not slow" tests/workbenches/
+uv run pytest -m smoke tests/workbenches/
 ```
 
 ## Additional Resources
 
 - [Kubeflow Notebook Controller](https://github.com/kubeflow/kubeflow/tree/master/components/notebook-controller)
-- [OpenDataHub Documentation](https://opendatahub.io/docs)
-- [OpenShift AI Documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed)

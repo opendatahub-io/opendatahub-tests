@@ -72,8 +72,3 @@ def test_with_vector_db(vector_io_provider_deployment_config_factory):
 ## Adding New Fixtures
 
 When adding shared fixtures, place them in the appropriate module file (or create a new one), and register the new module in `/tests/conftest.py` under `pytest_plugins`. Follow the project's fixture conventions: use noun-based names, narrowest appropriate scope, and context managers for resource lifecycle.
-
-## Additional Resources
-
-- [OpenDataHub Documentation](https://opendatahub.io/docs)
-- [OpenShift AI Documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed)
