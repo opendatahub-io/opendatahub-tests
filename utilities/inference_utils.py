@@ -679,7 +679,8 @@ def create_isvc(
 
     # model mesh auth is set in ServingRuntime
     if enable_auth and (
-        deployment_mode == KServeDeploymentType.SERVERLESS or deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT_MODES
+        deployment_mode == KServeDeploymentType.SERVERLESS
+        or deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT_MODES
     ):
         _annotations[Annotations.KserveAuth.SECURITY] = "true"
 
