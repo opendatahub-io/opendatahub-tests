@@ -40,7 +40,7 @@ class TestSearchModelCatalog:
         Validate search model catalog by source label
         """
 
-        redhat_ai_filter_moldels_size = get_models_from_catalog_api(
+        redhat_ai_filter_models_size = get_models_from_catalog_api(
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
             source_label=REDHAT_AI_CATALOG_NAME,
@@ -50,20 +50,24 @@ class TestSearchModelCatalog:
             model_registry_rest_headers=model_registry_rest_headers,
             source_label=REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
         )["size"]
+        null_label_models_size = get_models_from_catalog_api(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            source_label="null",
+        )["size"]
         no_filtered_models_size = get_models_from_catalog_api(
             model_catalog_rest_url=model_catalog_rest_url, model_registry_rest_headers=model_registry_rest_headers
         )["size"]
-        both_filtered_models_size = get_models_from_catalog_api(
+        both_labeled_models_size = get_models_from_catalog_api(
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
             source_label=f"{REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME},{REDHAT_AI_CATALOG_NAME}",
         )["size"]
         LOGGER.info(f"no_filtered_models_size: {no_filtered_models_size}")
         assert no_filtered_models_size > 0
-        # no_filtered includes models from sources without labels (e.g. Other Models),
-        # which cannot be queried via sourceLabel, so total >= labeled sum
-        assert no_filtered_models_size >= both_filtered_models_size
-        assert redhat_ai_filter_moldels_size + redhat_ai_validated_filter_models_size == both_filtered_models_size
+        assert null_label_models_size >= 0
+        assert redhat_ai_filter_models_size + redhat_ai_validated_filter_models_size == both_labeled_models_size
+        assert no_filtered_models_size == both_labeled_models_size + null_label_models_size
 
     @pytest.mark.tier3
     def test_search_model_catalog_invalid_source_label(
@@ -74,22 +78,13 @@ class TestSearchModelCatalog:
         """
         Validate search model catalog by invalid source label
         """
-
-        # "null" is a valid source label for sources without explicit labels (e.g. Other Models)
-        null_size = get_models_from_catalog_api(
-            model_catalog_rest_url=model_catalog_rest_url,
-            model_registry_rest_headers=model_registry_rest_headers,
-            source_label="null",
-        )["size"]
-
         invalid_size = get_models_from_catalog_api(
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
             source_label="invalid",
         )["size"]
 
-        assert null_size >= 0, f"Expected non-negative size for null source label, got {null_size}"
-        assert invalid_size == 0, f"Expected 0 models for invalid source label, got {invalid_size}"
+        assert invalid_size == 0
 
     @pytest.mark.parametrize(
         "randomly_picked_model_from_catalog_api_by_source,source_filter",
