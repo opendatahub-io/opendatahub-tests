@@ -35,7 +35,7 @@ def mcp_multi_source_configmap_patch(
     model_registry_rest_headers: dict[str, str],
 ) -> Generator[None]:
     """
-    Class-scoped fixture that patches the mcp-catalog-sources ConfigMap
+    Class-scoped fixture that patches the model-catalog-sources ConfigMap
     with two MCP catalog sources pointing to two different YAML files.
     """
     catalog_config_map, current_data = get_mcp_catalog_sources(

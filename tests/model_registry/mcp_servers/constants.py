@@ -3,7 +3,7 @@ CALCULATOR_PROVIDER: str = "Math Community"
 MCP_CATALOG_SOURCE_ID: str = "test_mcp_servers"
 MCP_CATALOG_SOURCE_NAME: str = "Test MCP Servers"
 MCP_CATALOG_API_PATH: str = "/api/mcp_catalog/v1alpha1/"
-MCP_SERVERS_YAML_CATALOG_PATH: str = "/data/user-mcp-sources/mcp-servers.yaml"
+MCP_SERVERS_YAML_CATALOG_PATH: str = "/data/user-sources/mcp-servers.yaml"
 
 MCP_SERVERS_YAML: str = """\
 mcp_servers:
@@ -86,7 +86,7 @@ MCP_CATALOG_SOURCE: dict = {
 
 MCP_CATALOG_SOURCE2_ID: str = "test_mcp_servers_2"
 MCP_CATALOG_SOURCE2_NAME: str = "Test MCP Servers 2"
-MCP_SERVERS_YAML2_CATALOG_PATH: str = "/data/user-mcp-sources/mcp-servers-2.yaml"
+MCP_SERVERS_YAML2_CATALOG_PATH: str = "/data/user-sources/mcp-servers-2.yaml"
 
 MCP_SERVERS_YAML2: str = """\
 mcp_servers:
@@ -136,7 +136,7 @@ EXPECTED_MCP_SERVER_TIMESTAMPS: dict[str, dict[str, str]] = {
 
 MCP_CATALOG_INVALID_SOURCE_ID: str = "test_mcp_servers_invalid"
 MCP_CATALOG_INVALID_SOURCE_NAME: str = "Test MCP Servers Invalid"
-MCP_SERVERS_YAML_INVALID_CATALOG_PATH: str = "/data/user-mcp-sources/mcp-servers-invalid.yaml"
+MCP_SERVERS_YAML_INVALID_CATALOG_PATH: str = "/data/user-sources/mcp-servers-invalid.yaml"
 
 MCP_SERVERS_YAML_MALFORMED: str = """\
 mcp_servers:
