@@ -48,7 +48,7 @@ def get_jira_issue_fields(jira_id: str) -> Any:
     return get_jira_connection().issue(id=jira_id, fields="status, fixVersions").fields
 
 
-def is_jira_open(jira_id: str, admin_client: DynamicClient) -> bool:
+def is_jira_open(jira_id: str, admin_client: DynamicClient) -> bool:  # skip-unused-code
     """
     Check if Jira issue is open.
 
@@ -65,7 +65,6 @@ def is_jira_open(jira_id: str, admin_client: DynamicClient) -> bool:
 
     else:
         jira_fields = get_jira_issue_fields(jira_id=jira_id)
-        # Check if the operator version in ClusterServiceVersion is greater than the jira fix version
         jira_fix_versions: list[Version] = [
             Version(_fix_version.group())
             for fix_version in jira_fields.fixVersions

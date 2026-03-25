@@ -24,6 +24,15 @@ from utilities.constants import ModelName, ModelStorage, RuntimeTemplates
     indirect=True,
 )
 class TestISVCPullSecretUpdate:
+    """Validate pull secret lifecycle operations on a KServe model car inference service.
+
+    Steps:
+        1. Deploy a model car ISVC with an initial pull secret attached.
+        2. Verify the initial pull secret is correctly set in the predictor pod.
+        3. Update the pull secret to a new value and verify it is reflected in the new pod.
+        4. Remove the pull secret and verify it is no longer present in the pod.
+    """
+
     @pytest.mark.tier1
     def test_initial_pull_secret_set(self, model_car_raw_inference_service_with_pull_secret):
         """Ensure initial pull secret is correctly set in the pod"""
@@ -36,4 +45,5 @@ class TestISVCPullSecretUpdate:
         verify_pull_secret(isvc=updated_isvc_pull_secret, pull_secret=UPDATED_PULL_SECRET, secret_exists=True)
 
     def test_remove_pull_secret(self, updated_isvc_remove_pull_secret):
+        """Remove the pull secret and verify it is no longer present in the pod."""
         verify_pull_secret(isvc=updated_isvc_remove_pull_secret, pull_secret=UPDATED_PULL_SECRET, secret_exists=False)
