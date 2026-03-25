@@ -10,7 +10,7 @@
 - Fixes: <!-- github issue -->
 - JIRA: <!-- Jira information -->
 
-## How it has been tested
+## Please review and indicate how it has been tested
 
 - [ ] Locally
 - [ ] Jenkins
