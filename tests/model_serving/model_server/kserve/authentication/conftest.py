@@ -21,19 +21,15 @@ from utilities.constants import (
     ModelName,
     Protocols,
     RuntimeTemplates,
+    Timeout,
 )
 from utilities.inference_utils import create_isvc
 from utilities.infra import (
     create_inference_token,
     create_isvc_view_role,
-    get_pods_by_isvc_label,
 )
-from utilities.jira import is_jira_open
 from utilities.logger import RedactedString
-from utilities.opendatahub_logger import get_logger
 from utilities.serving_runtime import ServingRuntimeFromTemplate
-
-LOGGER = get_logger(name=__name__)
 
 
 # HTTP/REST model serving
@@ -77,15 +73,9 @@ def http_raw_inference_token(model_service_account: ServiceAccount, http_raw_rol
 
 @pytest.fixture()
 def patched_remove_raw_authentication_isvc(
-    admin_client: DynamicClient,
     unprivileged_client: DynamicClient,
     http_s3_ovms_raw_inference_service: InferenceService,
 ) -> Generator[InferenceService, Any, Any]:
-    predictor_pod = get_pods_by_isvc_label(
-        client=unprivileged_client,
-        isvc=http_s3_ovms_raw_inference_service,
-    )[0]
-
     with ResourceEditor(
         patches={
             http_s3_ovms_raw_inference_service: {
@@ -95,11 +85,19 @@ def patched_remove_raw_authentication_isvc(
             }
         }
     ):
-        if is_jira_open(jira_id="RHOAIENG-52129", admin_client=admin_client):
-            LOGGER.info("RHOAIENG-52129 is open; waiting for predictor pod rollout after auth toggle")
-            predictor_pod.wait_deleted()
-
+        http_s3_ovms_raw_inference_service.wait_for_condition(
+            condition=http_s3_ovms_raw_inference_service.Condition.READY,
+            status=http_s3_ovms_raw_inference_service.Condition.Status.TRUE,
+            timeout=Timeout.TIMEOUT_2MIN,
+        )
         yield http_s3_ovms_raw_inference_service
+
+    # ResourceEditor restores auth on exit; wait for ISVC to reconcile before next test
+    http_s3_ovms_raw_inference_service.wait_for_condition(
+        condition=http_s3_ovms_raw_inference_service.Condition.READY,
+        status=http_s3_ovms_raw_inference_service.Condition.Status.TRUE,
+        timeout=Timeout.TIMEOUT_2MIN,
+    )
 
 
 @pytest.fixture(scope="class")

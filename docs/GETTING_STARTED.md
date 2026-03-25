@@ -168,3 +168,28 @@ To run tests in containerized environment:
 ```bash
 podman run  -v $HOME:/mnt/host:Z  -e KUBECONFIG=/mnt/host/kubeconfig quay.io/opendatahub/opendatahub-tests
 ```
+
+## Debugging test failures
+
+### Human-readable log output
+
+By default, logs are written in JSON format to `pytest-tests.log`. To write logs in human-readable format instead, use the `--readable-logs` flag:
+
+```bash
+uv run pytest --readable-logs tests/my_test.py
+```
+
+This produces output like:
+
+```text
+2026-03-25T10:48:56.864955+00:00 conftest INFO Writing tests log to pytest-tests.log (conftest.py:342)
+2026-03-25T10:48:56.881095+00:00 ocp_resources.resource INFO Trying to get client via new_client_from_config (resource.py:272)
+```
+
+### Converting existing JSON logs
+
+To convert an existing JSON log file to readable format:
+
+```bash
+sed 's/^[^{]*//' pytest-tests.log | jq -r '"\(.timestamp) [\(.level)] \(.logger): \(.event)"'
+```

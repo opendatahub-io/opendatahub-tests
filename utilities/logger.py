@@ -4,7 +4,7 @@ import shutil
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 from typing import Any
 
-from utilities.opendatahub_logger import DuplicateFilter, WrapperLogFormatter
+from utilities.opendatahub_logger import DuplicateFilter, WrapperLogFormatter, set_human_readable
 
 LOGGER = logging.getLogger(__name__)
 
@@ -22,7 +22,11 @@ class RedactedString(str):
 
 
 def setup_logging(
-    log_level: int, log_file: str = "/tmp/pytest-tests.log", thread_name: str | None = None, enable_console: bool = True
+    log_level: int,
+    log_file: str = "/tmp/pytest-tests.log",
+    thread_name: str | None = None,
+    enable_console: bool = True,
+    human_readable: bool = False,
 ) -> QueueListener:
     """
     Setup basic/root logging using QueueHandler/QueueListener
@@ -117,6 +121,8 @@ def setup_logging(
     for handler in logging.root.handlers[:]:
         if handler != root_log_queue_handler:
             logging.root.removeHandler(hdlr=handler)
+
+    set_human_readable(enabled=human_readable)
 
     log_listener.start()
     return log_listener

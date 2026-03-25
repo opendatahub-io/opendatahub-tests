@@ -25,7 +25,7 @@ from pytest_testconfig import config as py_config
 from tests.model_registry.constants import (
     DB_BASE_RESOURCES_NAME,
     DB_RESOURCE_NAME,
-    DEFAULT_CUSTOM_MODEL_CATALOG,
+    DEFAULT_MCP_CATALOG_CM,
     KUBERBACPROXY_STR,
     MR_INSTANCE_BASE_NAME,
     MR_INSTANCE_NAME,
@@ -493,7 +493,7 @@ def mcp_servers_configmap_patch(
     model_registry_rest_headers: dict[str, str],
 ) -> Generator[None]:
     """
-    Class-scoped fixture that patches the model-catalog-sources ConfigMap.
+    Class-scoped fixture that patches the mcp-catalog-sources ConfigMap.
 
     Sets two keys in the ConfigMap data:
     - sources.yaml: catalog source definition pointing to the MCP servers YAML,
@@ -501,7 +501,7 @@ def mcp_servers_configmap_patch(
     - mcp-servers.yaml: the actual MCP server definitions
     """
     catalog_config_map = ConfigMap(
-        name=DEFAULT_CUSTOM_MODEL_CATALOG,
+        name=DEFAULT_MCP_CATALOG_CM,
         client=admin_client,
         namespace=model_registry_namespace,
     )
