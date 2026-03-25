@@ -19,6 +19,7 @@ from timeout_sampler import retry
 from tests.llama_stack.constants import (
     LLS_CORE_POD_FILTER,
 )
+from tests.llama_stack.datasets import Dataset
 from utilities.exceptions import UnexpectedResourceCountError
 from utilities.path_utils import resolve_repo_path
 from utilities.resources.llama_stack_distribution import LlamaStackDistribution
@@ -40,7 +41,13 @@ def _assert_file_uploaded(uploaded_file: File, expected_purpose: str) -> None:
     )
 
 
-def _assert_vector_store_file_attached(filename: str, vs_file: VectorStoreFile, vector_store_id: str) -> None:
+def _assert_vector_store_file_attached(
+    filename: str,
+    vs_file: VectorStoreFile,
+    vector_store_id: str,
+    *,
+    attributes: dict[str, str | int | float | bool] | None = None,
+) -> None:
     """Validate that the vector store file was attached successfully.
 
     Per the OpenAI Vector Store Files API, status may be in_progress (processing)
@@ -54,6 +61,13 @@ def _assert_vector_store_file_attached(filename: str, vs_file: VectorStoreFile, 
         f"Vector store file is failed: filename={filename} id={vs_file.id}, last_error={vs_file.last_error!r}"
     )
     assert vs_file.status != "cancelled", f"Vector store file was cancelled: filename={filename} id={vs_file.id}"
+    if attributes:
+        assert vs_file.attributes, f"Expected attributes on vector store file {vs_file.id} but got none"
+        for key, expected in attributes.items():
+            actual = vs_file.attributes.get(key)
+            assert actual == expected, (
+                f"Attribute mismatch on file {vs_file.id}: {key!r} expected {expected!r}, got {actual!r}"
+            )
     LOGGER.info(
         f"File attached to vector store: filename={filename} id={vs_file.id}, "
         f"vector_store_id={vs_file.vector_store_id}, status={vs_file.status}"
@@ -65,6 +79,7 @@ def vector_store_create_and_poll(
     vector_store_id: str,
     file_id: str,
     *,
+    attributes: Any,
     poll_interval_sec: float = 5.0,
     wait_timeout: float = 240.0,
 ) -> VectorStoreFile:
@@ -77,6 +92,7 @@ def vector_store_create_and_poll(
         llama_stack_client: The configured LlamaStackClient.
         vector_store_id: The vector store to attach the file to.
         file_id: The file ID (from files.create) to attach.
+        attributes: Optional attributes to associate with the file.
         poll_interval_sec: Seconds to wait between poll attempts.
         wait_timeout: Total seconds to wait for a terminal status before raising.
 
@@ -86,7 +102,9 @@ def vector_store_create_and_poll(
     Raises:
         TimeoutError: If wait_timeout is reached while status is still in_progress.
     """
-    vs_file = llama_stack_client.vector_stores.files.create(vector_store_id=vector_store_id, file_id=file_id)
+    vs_file = llama_stack_client.vector_stores.files.create(
+        vector_store_id=vector_store_id, file_id=file_id, attributes=attributes
+    )
     terminal_statuses = ("completed", "failed", "cancelled")
     deadline = time.monotonic() + wait_timeout
 
@@ -178,7 +196,6 @@ def wait_for_llama_stack_client_ready(client: LlamaStackClient) -> bool:
             f"vector_stores:{len(vector_stores.data)} "
             f"files:{len(files.data)})"
         )
-        return True
 
     except (APIConnectionError, InternalServerError) as error:
         LOGGER.debug(f"Llama Stack server not ready yet: {error}")
@@ -188,6 +205,9 @@ def wait_for_llama_stack_client_ready(client: LlamaStackClient) -> bool:
     except Exception as e:  # noqa: BLE001
         LOGGER.warning(f"Unexpected error checking Llama Stack readiness: {e}")
         return False
+
+    else:
+        return True
 
 
 def vector_store_create_file_from_url(
@@ -238,7 +258,11 @@ def vector_store_create_file_from_url(
 
 
 def vector_store_create_file_from_path(
-    file_path: Path, llama_stack_client: LlamaStackClient, vector_store: Any
+    file_path: Path,
+    llama_stack_client: LlamaStackClient,
+    vector_store: Any,
+    *,
+    attributes: dict[str, str | int | float | bool] | None = None,
 ) -> VectorStoreFile:
     """
     Uploads a local file to the files provider (files.create) and adds it to the
@@ -248,6 +272,7 @@ def vector_store_create_file_from_path(
         file_path: Path to the local file to upload
         llama_stack_client: The configured LlamaStackClient
         vector_store: The vector store to add the file to
+        attributes: Optional attributes to associate with the vector-store file.
 
     Returns:
         The vector store file after processing completes.
@@ -265,17 +290,17 @@ def vector_store_create_file_from_path(
         _assert_file_uploaded(uploaded_file=uploaded_file, expected_purpose="assistants")
     LOGGER.info(f"Uploaded {file_path.name} (file_id={uploaded_file.id}) to the llama-stack files provider")
 
-    # Add file to vector store and wait for processing to finish
     LOGGER.info(f"Adding uploaded file (filename{uploaded_file.filename} to vector store {vector_store.id}")
     vs_file = vector_store_create_and_poll(
         llama_stack_client=llama_stack_client,
         vector_store_id=vector_store.id,
         file_id=uploaded_file.id,
+        attributes=attributes,
     )
     _assert_vector_store_file_attached(
-        filename=uploaded_file.filename, vs_file=vs_file, vector_store_id=vector_store.id
+        filename=uploaded_file.filename, vs_file=vs_file, vector_store_id=vector_store.id, attributes=attributes
     )
-    LOGGER.info(f"Addded uploaded file (filename{uploaded_file.filename} to vector store {vector_store.id}")
+    LOGGER.info(f"Added uploaded file (filename{uploaded_file.filename} to vector store {vector_store.id}")
     return vs_file
 
 
@@ -285,7 +310,7 @@ def vector_store_upload_doc_sources(
     vector_store: Any,
     vector_io_provider: str,
 ) -> None:
-    """Upload parametrized document sources (URLs and repo-local paths) to a vector store.
+    """Upload document sources (URLs and repo-local paths) to a vector store.
 
     Resolves each local path via ``resolve_repo_path`` and re-resolves directory entries
     to avoid symlink escape outside the repository.
@@ -337,3 +362,34 @@ def vector_store_upload_doc_sources(
             )
         else:
             raise FileNotFoundError(f"Document source not found: {source_path}")
+
+
+def vector_store_upload_dataset(
+    dataset: Dataset,
+    llama_stack_client: LlamaStackClient,
+    vector_store: Any,
+) -> None:
+    """Upload all documents from a ``Dataset`` to a vector store.
+
+    Each ``DatasetDocument`` is uploaded via the Files API and attached to
+    the vector store.  When a document carries non-empty ``attributes``,
+    they are set on the resulting vector-store file.
+
+    Args:
+        dataset: Dataset whose ``documents`` will be uploaded.
+        llama_stack_client: Client used for file and vector store APIs.
+        vector_store: Target vector store (must expose ``id``).
+    """
+    LOGGER.info(
+        "Uploading dataset (%d document(s)) to vector_store (id=%s)",
+        len(dataset.documents),
+        vector_store.id,
+    )
+    for doc in dataset.documents:
+        source_path = resolve_repo_path(source=doc.path)
+        vector_store_create_file_from_path(
+            file_path=source_path,
+            llama_stack_client=llama_stack_client,
+            vector_store=vector_store,
+            attributes=doc.attributes,
+        )

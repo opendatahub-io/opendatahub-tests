@@ -2,7 +2,8 @@ import pytest
 from llama_stack_client import LlamaStackClient
 from llama_stack_client.types.vector_store import VectorStore
 
-from tests.llama_stack.constants import IBM_2025_Q4_EARNINGS_DOC_UNENCRYPTED, ModelInfo
+from tests.llama_stack.constants import ModelInfo
+from tests.llama_stack.datasets import IBM_2025_Q4_EARNINGS
 
 IBM_EARNINGS_RAG_QUERY = "How did IBM perform financially in the fourth quarter of 2025?"
 
@@ -62,7 +63,7 @@ def _assert_minimal_rag_response(
                 "vector_io_provider": "milvus",
                 "files_provider": "s3",
             },
-            {"vector_io_provider": "milvus", "doc_sources": [IBM_2025_Q4_EARNINGS_DOC_UNENCRYPTED]},
+            {"vector_io_provider": "milvus", "dataset": IBM_2025_Q4_EARNINGS},
         ),
     ],
     indirect=True,
