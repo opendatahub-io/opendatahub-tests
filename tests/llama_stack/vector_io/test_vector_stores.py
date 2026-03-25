@@ -148,36 +148,39 @@ class TestLlamaStackVectorStores:
         When: Queries from the dataset QA ground truth are executed per retrieval mode
         Then: Each mode returns relevant results with proper metadata and content
         """
-        queries_by_mode: dict[str, list[str]] = {}
-        for record in dataset.load_qa():
-            queries_by_mode.setdefault(record.retrieval_mode, []).append(record.question)
+        search_modes = sorted({r.retrieval_mode for r in dataset.load_qa()})
 
         provider_id = (vector_store.metadata or {}).get("provider_id", "")
         # FAISS does not support hybrid and keyword search modes see:
         # https://github.com/llamastack/llama-stack/blob/main/src/llama_stack/providers/inline/vector_io/faiss/faiss.py#L180-L196
-        search_modes = ["vector"] if provider_id == "faiss" else list(queries_by_mode)
+        if provider_id == "faiss":
+            search_modes = [m for m in search_modes if m == "vector"]
 
         for search_mode in search_modes:
-            queries = queries_by_mode[search_mode]
-            for query in queries:
+            qa_records = dataset.load_qa(retrieval_mode=search_mode)
+            for record in qa_records:
                 search_response = unprivileged_llama_stack_client.vector_stores.search(
                     vector_store_id=vector_store.id,
-                    query=query,
+                    query=record.question,
                     search_mode=search_mode,
                     max_num_results=10,
                 )
 
-                assert search_response is not None, f"Search response is None for mode={search_mode!r} query={query!r}"
+                assert search_response is not None, (
+                    f"Search response is None for mode={search_mode!r} query={record.question!r}"
+                )
                 assert hasattr(search_response, "data"), "Search response missing 'data' attribute"
                 assert isinstance(search_response.data, list), "Search response data should be a list"
-                assert len(search_response.data) > 0, f"No search results for mode={search_mode!r} query={query!r}"
+                assert len(search_response.data) > 0, (
+                    f"No search results for mode={search_mode!r} query={record.question!r}"
+                )
 
                 for result in search_response.data:
                     assert hasattr(result, "content"), "Search result missing 'content' attribute"
                     assert result.content is not None, "Search result content should not be None"
                     assert len(result.content) > 0, "Search result content should not be empty"
 
-            LOGGER.info(f"Search mode {search_mode!r}: {len(queries)} queries returned results")
+            LOGGER.info(f"Search mode {search_mode!r}: {len(qa_records)} queries returned results")
 
         LOGGER.info(f"Successfully tested vector store search across modes: {search_modes}")
 

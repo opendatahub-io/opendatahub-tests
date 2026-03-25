@@ -114,9 +114,10 @@ The `vector_store` fixture reads the `"dataset"` key from its param to upload th
 ## Adding a new subject
 
 1. Create `corpus/<subject>/` and drop in the source documents (PDFs, or any other format supported by the Llama Stack Files and Vector IO providers).
-2. Create `corpus/<subject>/documents.json` (see schema below).
-3. Create `ground_truth/<subject>_qa.jsonl` (see schema below).
-4. Add a new `Dataset` instance in `tests/llama_stack/datasets.py` (follow the `FINANCE_DATASET` pattern).
+2. Then add the following files and configuration for the subject:
+   - `corpus/<subject>/documents.json` — manifest mapping each file to a `document_id` and attributes (see schema below).
+   - `ground_truth/<subject>_qa.jsonl` — QA pairs linking questions and answers to document IDs (see schema below).
+   - A new `Dataset` instance in `tests/llama_stack/datasets.py` following the `FINANCE_DATASET` pattern.
 
 ## `documents.json` manifest
 

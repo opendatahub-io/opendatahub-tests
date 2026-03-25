@@ -732,8 +732,24 @@ def dataset(request: FixtureRequest) -> Dataset:
     Note: we use this fixture instead of a plain pytest parameter to avoid
     fixture dependency problems that were causing Llama Stack dependent resources
     like databases or secrets not being created at the right time.
+
+    Raises:
+        pytest.UsageError: If the fixture is not indirect-parametrized or the
+            parameter is not a :class:`~tests.llama_stack.datasets.Dataset` instance.
     """
-    return request.param
+    if not hasattr(request, "param"):
+        raise pytest.UsageError(
+            "The `dataset` fixture must be indirect-parametrized with a Dataset instance "
+            "(e.g. @pytest.mark.parametrize('dataset', [MY_DATASET], indirect=True)). "
+            "Without indirect parametrization, `request.param` is missing."
+        )
+    param = request.param
+    if not isinstance(param, Dataset):
+        raise pytest.UsageError(
+            "The `dataset` fixture must be indirect-parametrized with a "
+            f"tests.llama_stack.datasets.Dataset instance; got {type(param).__name__!r}."
+        )
+    return param
 
 
 @pytest.fixture(scope="class")
@@ -803,7 +819,8 @@ def vector_store(
         VectorStore: The created or reused vector store ready for ingestion/search tests.
 
     Raises:
-        ValueError: If the required vector store is missing in a post-upgrade scenario.
+        ValueError: If the required vector store is missing in a post-upgrade scenario, or if
+            both ``dataset`` and ``doc_sources`` are set in params (mutually exclusive).
         Exception: If vector store creation or file upload fails, attempts cleanup.
     """
 
@@ -812,6 +829,10 @@ def vector_store(
     vector_io_provider = str(params.get("vector_io_provider") or "milvus")
     dataset: Dataset | None = params.get("dataset")
     doc_sources: list[str] | None = params.get("doc_sources")
+    if dataset is not None and doc_sources is not None:
+        raise ValueError(
+            'vector_store fixture params must set at most one of "dataset" or "doc_sources"; both were provided.'
+        )
 
     if pytestconfig.option.post_upgrade:
         stores = unprivileged_llama_stack_client.vector_stores.list().data
