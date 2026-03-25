@@ -125,6 +125,37 @@ class ThirdPartyJSONFormatter(logging.Formatter):
 
 
 _initialized = False
+_human_readable = False
+_original_add_handler = logging.Logger.addHandler
+
+
+def set_human_readable(enabled: bool) -> None:
+    """Set log output format and re-initialize structlog if already configured."""
+    global _human_readable, _initialized
+    _human_readable = enabled
+    _initialized = False
+    _initialize()
+
+
+_LEVEL_COLORS = {
+    "DEBUG": _FG_CODES["cyan"],
+    "INFO": _FG_CODES["green"],
+    "WARNING": _FG_CODES["yellow"],
+    "ERROR": _FG_CODES["red"],
+    "CRITICAL": _FG_CODES["red"] + _BG_CODES["white"],
+}
+
+
+class ThirdPartyHumanReadableFormatter(logging.Formatter):
+    """Formatter for third-party logs in human-readable mode with colors and source location."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        timestamp = datetime.fromtimestamp(record.created, tz=UTC).isoformat()
+        color = _LEVEL_COLORS.get(record.levelname, "")
+        reset = _RESET if color else ""
+        filename = record.pathname.rsplit("/", 1)[-1] if record.pathname else ""
+        msg = record.getMessage()
+        return f"{timestamp} {record.name} {color}{record.levelname}{reset} {msg} ({filename}:{record.lineno})"
 
 
 def _initialize() -> None:
@@ -133,36 +164,51 @@ def _initialize() -> None:
     if _initialized:
         return
 
-    structlog.configure(
-        processors=[
+    if _human_readable:
+        processors = [
+            structlog.processors.KeyValueRenderer(key_order=["event"]),
+        ]
+    else:
+        processors = [
             structlog.stdlib.add_logger_name,
             structlog.stdlib.add_log_level,
             structlog.processors.TimeStamper(fmt="ISO", utc=True),
             structlog.processors.JSONRenderer(),
-        ],
+        ]
+
+    structlog.configure(
+        processors=processors,
         wrapper_class=structlog.stdlib.BoundLogger,
         logger_factory=structlog.stdlib.LoggerFactory(),
-        cache_logger_on_first_use=True,
+        cache_logger_on_first_use=False,
     )
 
-    # Patch addHandler so new loggers get JSON formatting
-    original_add_handler = logging.Logger.addHandler
+    third_party_formatter = ThirdPartyHumanReadableFormatter() if _human_readable else ThirdPartyJSONFormatter()
 
+    # Formatters that should not be replaced:
+    # - JSONOnlyFormatter: used by StructlogWrapper (structlog already formats the message)
+    # - WrapperLogFormatter: used by setup_logging's QueueHandlers (only protected in HR mode)
+    _skip_formatters: tuple[type, ...] = (JSONOnlyFormatter,)
+    if _human_readable:
+        _skip_formatters = (*_skip_formatters, WrapperLogFormatter)
+
+    # Patch addHandler so new loggers (e.g. from ocp_resources/simple_logger)
+    # get the correct formatter on their handlers.
     def patched_add_handler(self: logging.Logger, hdlr: logging.Handler) -> None:
-        if not isinstance(hdlr.formatter, (ThirdPartyJSONFormatter, JSONOnlyFormatter)):
-            hdlr.setFormatter(fmt=ThirdPartyJSONFormatter())
-        original_add_handler(self, hdlr)  # noqa: FCN001
+        if not isinstance(hdlr.formatter, _skip_formatters):
+            hdlr.setFormatter(fmt=third_party_formatter)
+        _original_add_handler(self, hdlr)  # noqa: FCN001
 
     logging.Logger.addHandler = patched_add_handler  # type: ignore[method-assign]
 
-    # Apply JSON formatter to all existing handlers on all loggers
+    # Apply formatter to all existing handlers on all loggers
     all_loggers = [logging.getLogger()] + [
         logger for logger in logging.root.manager.loggerDict.values() if isinstance(logger, logging.Logger)
     ]
     for logger in all_loggers:
         for handler in logger.handlers:
-            if isinstance(handler.formatter, (logging.Formatter, type(None))):
-                handler.setFormatter(fmt=ThirdPartyJSONFormatter())
+            if not isinstance(handler.formatter, _skip_formatters):
+                handler.setFormatter(fmt=third_party_formatter)
 
     _initialized = True
 
@@ -185,8 +231,14 @@ class StructlogWrapper:
         if args:
             msg_str = msg_str % args
 
-        log_method = getattr(self._logger, level.lower())
-        log_method(event=msg_str, **kwargs)
+        if _human_readable:
+            std_logger = logging.getLogger(self.name)
+            log_method = getattr(std_logger, level.lower())
+            extra_str = " ".join(f"{k}={v}" for k, v in kwargs.items()) if kwargs else ""
+            log_method(f"{msg_str} {extra_str}" if extra_str else msg_str, stacklevel=3)  # noqa: FCN001
+        else:
+            log_method = getattr(self._logger, level.lower())
+            log_method(event=msg_str, **kwargs)
 
     def info(self, msg: Any, *args: Any, **kwargs: Any) -> None:
         self._log("info", msg, *args, **kwargs)  # noqa: FCN001
