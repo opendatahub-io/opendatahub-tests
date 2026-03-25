@@ -116,7 +116,7 @@ class ThirdPartyJSONFormatter(logging.Formatter):
         try:
             json.loads(msg)
             return msg
-        except (json.JSONDecodeError, TypeError):
+        except json.JSONDecodeError, TypeError:
             return json.dumps({
                 "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
                 "logger": record.name,
