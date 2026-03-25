@@ -14,10 +14,16 @@ assignees: ''
 
 <!-- Add any steps to reproduce the issue being reported or add any relevant stacktrace -->
 
+## Expected behavior
+
+A clear and concise description of what you expected to happen.
+
 ## Proposed Solution
 
 <!-- If you have a suggestion for how to fix this, describe it here -->
 
 ## Additional Context
 
-<!-- Any other information that might be helpful -->
+### Environment
+
+<!-- Any other information that might be helpful, including environment -->
