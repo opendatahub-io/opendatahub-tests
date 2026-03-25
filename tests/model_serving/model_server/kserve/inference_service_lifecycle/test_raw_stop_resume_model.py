@@ -33,6 +33,15 @@ pytestmark = [pytest.mark.usefixtures("valid_aws_config")]
     indirect=True,
 )
 class TestStopRaw:
+    """Validate stopping a running KServe raw deployment model via the stop annotation.
+
+    Steps:
+        1. Deploy an OVMS ONNX model as a raw deployment with stop set to false.
+        2. Verify the model can be queried via REST.
+        3. Patch the ISVC stop annotation to true.
+        4. Verify all predictor pods are deleted and remain absent.
+    """
+
     def test_raw_onnx_rest_inference(
         self, unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_raw_inference_service
     ):
@@ -58,8 +67,7 @@ class TestStopRaw:
         ovms_raw_inference_service,
         patched_raw_inference_service_stop_annotation,
     ):
-        """Verify pod rollout is deleted when the stop annotation updated to true"""
-        """Verify pods do not exist"""
+        """Verify pod rollout is deleted when the stop annotation is updated to true."""
         result = consistently_verify_no_pods_exist(
             client=unprivileged_client,
             isvc=patched_raw_inference_service_stop_annotation,
@@ -86,6 +94,15 @@ class TestStopRaw:
     indirect=True,
 )
 class TestStoppedResumeRaw:
+    """Validate resuming a stopped KServe raw deployment model by clearing the stop annotation.
+
+    Steps:
+        1. Deploy an OVMS ONNX model as a raw deployment with stop set to true.
+        2. Verify no predictor pods are created while the stop annotation is true.
+        3. Patch the ISVC stop annotation to false.
+        4. Verify predictor pods are rolled out and the model can be queried via REST.
+    """
+
     def test_stop_and_true_no_pod_rollout(
         self,
         unprivileged_client,
@@ -93,8 +110,7 @@ class TestStoppedResumeRaw:
         ovms_kserve_serving_runtime,
         ovms_raw_inference_service,
     ):
-        """Verify no pod rollout when the stop annotation is true"""
-        """Verify pods do not exist"""
+        """Verify no pod rollout when the stop annotation is true."""
         result = consistently_verify_no_pods_exist(
             client=unprivileged_client,
             isvc=ovms_raw_inference_service,
@@ -114,8 +130,7 @@ class TestStoppedResumeRaw:
         ovms_raw_inference_service,
         patched_raw_inference_service_stop_annotation,
     ):
-        """Verify pod rollout when the stop annotation is updated to false"""
-        """Verify that kserve Raw ONNX model can be queried using REST"""
+        """Verify pod rollout and REST inference after the stop annotation is set to false."""
         verify_inference_response(
             inference_service=patched_raw_inference_service_stop_annotation,
             inference_config=ONNX_INFERENCE_CONFIG,

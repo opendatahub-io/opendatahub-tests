@@ -41,6 +41,15 @@ from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
     indirect=True,
 )
 class TestKserveModelCar:
+    """Validate KServe model serving using OCI Model Car images for model storage.
+
+    Steps:
+        1. Deploy an OVMS inference service using an OCI Model Car image (MNIST).
+        2. Verify the predictor pod does not experience excessive container restarts.
+        3. Send a REST inference request and verify a successful response.
+        4. Verify the model status on the InferenceService resource is Loaded and UpToDate.
+    """
+
     @pytest.mark.tier1
     def test_model_car_no_restarts(self, model_car_inference_service):
         """Verify that model pod doesn't restart"""

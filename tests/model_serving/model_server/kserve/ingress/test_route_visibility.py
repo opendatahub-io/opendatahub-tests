@@ -44,6 +44,16 @@ pytestmark = [pytest.mark.usefixtures("valid_aws_config"), pytest.mark.rawdeploy
     indirect=True,
 )
 class TestRestRawDeploymentRoutes:
+    """Validate REST route visibility transitions for KServe raw deployment.
+
+    Steps:
+        1. Deploy a Caikit-TGIS model as a raw deployment with HTTP enabled.
+        2. Verify the default route visibility label is not set.
+        3. Query the model via the internal route and confirm a successful response.
+        4. Patch the ISVC to expose the route externally and verify inference over HTTPS.
+        5. Revert the route to local-cluster visibility and verify external access is disabled.
+    """
+
     def test_default_visibility_value(self, s3_models_inference_service):
         """Test default route visibility value"""
         if labels := s3_models_inference_service.labels:
@@ -126,6 +136,15 @@ class TestRestRawDeploymentRoutes:
     indirect=True,
 )
 class TestRestRawDeploymentRoutesTimeout:
+    """Validate REST route timeout behavior for KServe raw deployment.
+
+    Steps:
+        1. Deploy a Caikit-TGIS model as a raw deployment with an external route.
+        2. Verify inference succeeds over the exposed HTTPS route.
+        3. Patch the route with an extremely low timeout annotation.
+        4. Verify inference fails with a 504 Gateway Time-out error.
+    """
+
     @pytest.mark.dependency(name="test_rest_raw_deployment_exposed_route")
     def test_rest_raw_deployment_exposed_route(self, s3_models_inference_service):
         """Test HTTP inference using exposed (external) route"""
@@ -191,6 +210,14 @@ class TestRestRawDeploymentRoutesTimeout:
 )
 @pytest.mark.skip(reason="skipping grpc raw for tgis-caikit")
 class TestGrpcRawDeployment:
+    """Validate gRPC route visibility transitions for KServe raw deployment.
+
+    Steps:
+        1. Deploy a Caikit-TGIS model as a raw deployment with gRPC enabled.
+        2. Query the model via the internal gRPC route and confirm a successful streaming response.
+        3. Patch the ISVC to expose the route externally and verify gRPC inference over the exposed route.
+    """
+
     def test_grpc_raw_deployment_internal_route(self, s3_models_inference_service):
         """Test GRPC inference using internal route"""
         verify_inference_response(
@@ -247,6 +274,15 @@ class TestGrpcRawDeployment:
 )
 @pytest.mark.skip(reason="skipping grpc raw for tgis-caikit")
 class TestGrpcRawDeploymentTimeout:
+    """Validate gRPC route timeout behavior for KServe raw deployment.
+
+    Steps:
+        1. Deploy a Caikit-TGIS model as a raw deployment with an external gRPC route.
+        2. Verify gRPC inference succeeds over the exposed route.
+        3. Patch the route with an extremely low timeout annotation.
+        4. Verify gRPC inference fails with a 504 Gateway Time-out error.
+    """
+
     @pytest.mark.dependency(name="test_grpc_raw_deployment_exposed_route")
     def test_grpc_raw_deployment_exposed_route(self, s3_models_inference_service):
         """Test GRPC inference using exposed (external) route"""

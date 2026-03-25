@@ -21,6 +21,16 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
     indirect=True,
 )
 class TestKserveTokenAuthenticationRawForRest:
+    """Validate KServe raw deployment token-based authentication for REST inference.
+
+    Steps:
+        1. Deploy an OVMS model with authentication enabled in a raw deployment namespace.
+        2. Query the model with a valid token and verify a successful REST inference response.
+        3. Disable authentication and verify the model is still queryable without a token.
+        4. Re-enable authentication and verify the model requires a valid token again.
+        5. Attempt cross-model authentication using another model's token and verify access is denied.
+    """
+
     @pytest.mark.smoke
     @pytest.mark.ocp_interop
     @pytest.mark.dependency(name="test_model_authentication_using_rest_raw")

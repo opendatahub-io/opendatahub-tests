@@ -42,6 +42,15 @@ INFERENCE_SERVICE_PARAMS = {
     indirect=True,
 )
 class TestKServeDSCRawDefaultDeploymentMode:
+    """Validate that the DSC default deployment mode propagates to inference services.
+
+    Steps:
+        1. Set the DSC default deployment mode to RawDeployment.
+        2. Deploy an OVMS inference service without explicitly specifying a deployment mode.
+        3. Verify the ISVC annotation reflects RawDeployment as the deployment mode.
+        4. Send an inference request and verify a successful response over HTTPS.
+    """
+
     def test_isvc_contains_raw_deployment_mode(self, default_deployment_mode_in_dsc, ovms_inference_service):
         """Verify that default deployment mode is set to raw in inference service."""
         assert (
