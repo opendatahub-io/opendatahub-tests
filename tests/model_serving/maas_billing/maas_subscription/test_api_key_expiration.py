@@ -5,8 +5,10 @@ import requests
 
 from tests.model_serving.maas_billing.maas_subscription.utils import (
     assert_api_key_created_ok,
+    assert_api_key_get_ok,
     create_api_key,
     get_api_key,
+    revoke_api_key,
 )
 from utilities.general import generate_random_name
 from utilities.opendatahub_logger import get_logger
@@ -44,10 +46,16 @@ class TestAPIKeyExpiration:
             expires_in=f"{expires_in_hours}h",
             raise_on_error=False,
         )
-        assert_api_key_created_ok(create_resp, create_body, required_fields=("key", "expiresAt"))
+        assert_api_key_created_ok(resp=create_resp, body=create_body, required_fields=("key", "expiresAt"))
         LOGGER.info(
             f"[expiration] Created key within limit: expires_in={expires_in_hours}h, "
             f"expiresAt={create_body.get('expiresAt')}"
+        )
+        revoke_api_key(
+            request_session_http=request_session_http,
+            base_url=base_url,
+            key_id=create_body["id"],
+            ocp_user_token=ocp_token_for_actor,
         )
 
     @pytest.mark.tier1
@@ -69,10 +77,16 @@ class TestAPIKeyExpiration:
             expires_in=f"{expires_in_hours}h",
             raise_on_error=False,
         )
-        assert_api_key_created_ok(create_resp, create_body, required_fields=("key", "expiresAt"))
+        assert_api_key_created_ok(resp=create_resp, body=create_body, required_fields=("key", "expiresAt"))
         LOGGER.info(
             f"[expiration] Created key at limit: expires_in={expires_in_hours}h "
             f"({MAAS_API_KEY_MAX_EXPIRATION_DAYS} days)"
+        )
+        revoke_api_key(
+            request_session_http=request_session_http,
+            base_url=base_url,
+            key_id=create_body["id"],
+            ocp_user_token=ocp_token_for_actor,
         )
 
     @pytest.mark.tier1
@@ -122,10 +136,9 @@ class TestAPIKeyExpiration:
             key_id=active_api_key_id,
             ocp_user_token=ocp_token_for_actor,
         )
-        assert get_resp.status_code == 200, (
-            f"Expected 200 on GET /v1/api-keys/{active_api_key_id}, got {get_resp.status_code}: {get_resp.text[:200]}"
-        )
+        assert_api_key_get_ok(resp=get_resp, body=get_body, key_id=active_api_key_id)
         expires_at = get_body.get("expiresAt")
+        assert expires_at is None, f"Expected no 'expiresAt' for key created without expiration, got: {expires_at!r}"
         LOGGER.info(f"[expiration] Key without expiration field: expiresAt={expires_at!r}")
 
     @pytest.mark.tier2
@@ -136,17 +149,14 @@ class TestAPIKeyExpiration:
         ocp_token_for_actor: str,
         short_expiration_api_key_id: str,
     ) -> None:
-        """Verify a key created with a 1-hour expiration has a non-null expiresAt value."""
+        """Verify a key created with a 1-hour expiration has a non-null expirationDate value."""
         get_resp, get_body = get_api_key(
             request_session_http=request_session_http,
             base_url=base_url,
             key_id=short_expiration_api_key_id,
             ocp_user_token=ocp_token_for_actor,
         )
-        assert get_resp.status_code == 200, (
-            f"Expected 200 on GET /v1/api-keys/{short_expiration_api_key_id}, "
-            f"got {get_resp.status_code}: {get_resp.text[:200]}"
-        )
+        assert_api_key_get_ok(resp=get_resp, body=get_body, key_id=short_expiration_api_key_id)
         assert get_body.get("expirationDate"), (
             f"Expected non-null 'expirationDate' for 1h key, got: {get_body.get('expirationDate')!r}"
         )

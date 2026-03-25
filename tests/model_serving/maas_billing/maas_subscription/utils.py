@@ -460,6 +460,13 @@ def assert_api_key_created_ok(
         assert field in body, f"Response must contain '{field}'"
 
 
+def assert_api_key_get_ok(resp: Response, body: dict[str, Any], key_id: str) -> None:
+    """Assert a GET /v1/api-keys/{id} response has status 200."""
+    assert resp.status_code == 200, (
+        f"Expected 200 on GET /v1/api-keys/{key_id}, got {resp.status_code}: {resp.text[:200]}"
+    )
+
+
 def get_maas_postgres_labels() -> dict[str, str]:
     return {
         "app": "postgres",
