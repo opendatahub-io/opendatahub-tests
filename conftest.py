@@ -54,7 +54,6 @@ def pytest_addoption(parser: Parser) -> None:
     serving_arguments_group = parser.getgroup(name="Serving arguments")
     model_validation_automation_group = parser.getgroup(name="Model Validation Automation")
     hf_group = parser.getgroup(name="Hugging Face")
-    logging_group = parser.getgroup(name="Logging")
     model_registry_group = parser.getgroup(name="Model Registry options")
     # AWS config and credentials options
     aws_group.addoption(
@@ -207,14 +206,6 @@ def pytest_addoption(parser: Parser) -> None:
         help="Indicates if the model registry tests are to be run against custom namespace",
     )
 
-    # Logging options
-    logging_group.addoption(
-        "--readable-logs",
-        action="store_true",
-        default=False,
-        help="Write logs in human-readable format instead of JSON",
-    )
-
 
 def pytest_cmdline_main(config: Any) -> None:
     config.option.basetemp = py_config["tmp_base_dir"] = f"{config.option.basetemp}-{shortuuid.uuid()}"
@@ -335,7 +326,6 @@ def pytest_sessionstart(session: Session) -> None:
         log_level=log_level,
         thread_name=thread_name,
         enable_console=enable_console_value,
-        human_readable=session.config.getoption("--readable-logs"),
     )
 
     # Now safe to log after configuration is applied (only to file when console disabled)

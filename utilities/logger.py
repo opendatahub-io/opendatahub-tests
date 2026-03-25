@@ -167,7 +167,6 @@ def setup_logging(
     log_file: str = "/tmp/pytest-tests.log",
     thread_name: str | None = None,
     enable_console: bool = True,
-    human_readable: bool = False,
 ) -> QueueListener:
     """
     Setup structlog and root logging using QueueHandler/QueueListener

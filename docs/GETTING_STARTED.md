@@ -171,25 +171,13 @@ podman run  -v $HOME:/mnt/host:Z  -e KUBECONFIG=/mnt/host/kubeconfig quay.io/ope
 
 ## Debugging test failures
 
-### Human-readable log output
+### Log output
 
-By default, logs are written in JSON format to `pytest-tests.log`. To write logs in human-readable format instead, use the `--readable-logs` flag:
+Console output uses structlog's `ConsoleRenderer` (human-readable, colorized).
+The log file (`pytest-tests.log`) uses structlog's `JSONRenderer` (structured JSON).
 
-```bash
-uv run pytest --readable-logs tests/my_test.py
-```
-
-This produces output like:
-
-```text
-2026-03-25T10:48:56.864955+00:00 conftest INFO Writing tests log to pytest-tests.log (conftest.py:342)
-2026-03-25T10:48:56.881095+00:00 ocp_resources.resource INFO Trying to get client via new_client_from_config (resource.py:272)
-```
-
-### Converting existing JSON logs
-
-To convert an existing JSON log file to readable format:
+To convert the JSON log file to a readable format:
 
 ```bash
-sed 's/^[^{]*//' pytest-tests.log | jq -r '"\(.timestamp) [\(.level)] \(.logger): \(.event)"'
+jq -r '"\(.timestamp) [\(.level)] \(.logger): \(.event)"' pytest-tests.log
 ```
