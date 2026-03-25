@@ -3,6 +3,7 @@ from contextlib import ExitStack
 from typing import Any
 
 import pytest
+import structlog
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
@@ -20,11 +21,10 @@ from tests.model_registry.constants import (
 )
 from tests.model_registry.model_registry.rbac.group_utils import create_group
 from tests.model_registry.model_registry.rbac.utils import create_role_binding
-from utilities.opendatahub_logger import get_logger
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from utilities.user_utils import UserTestSession
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="function")

@@ -1,6 +1,7 @@
 from typing import Self
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.pod import Pod
@@ -17,10 +18,9 @@ from tests.model_registry.model_registry.rest_api.utils import (
     validate_resource_attributes,
 )
 from tests.model_registry.utils import get_model_catalog_pod
-from utilities.opendatahub_logger import get_logger
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(

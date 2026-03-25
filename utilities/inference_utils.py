@@ -10,6 +10,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import portforward
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
@@ -38,9 +39,8 @@ from utilities.infra import (
     verify_no_failed_pods,
     wait_for_inference_deployment_replicas,
 )
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 class Inference:

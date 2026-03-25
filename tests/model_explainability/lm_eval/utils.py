@@ -1,6 +1,7 @@
 import re
 
 import pandas as pd
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.lm_eval_job import LMEvalJob
 from ocp_resources.pod import Pod
@@ -9,9 +10,8 @@ from timeout_sampler import TimeoutExpiredError
 
 from utilities.constants import Timeout
 from utilities.exceptions import PodLogMissMatchError, UnexpectedFailureError
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def get_lmevaljob_pod(client: DynamicClient, lmevaljob: LMEvalJob, timeout: int = Timeout.TIMEOUT_10MIN) -> Pod:

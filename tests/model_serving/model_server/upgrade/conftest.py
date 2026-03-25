@@ -2,6 +2,7 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
@@ -37,10 +38,9 @@ from utilities.infra import (
 from utilities.llmd_constants import KServeGateway, LLMDGateway
 from utilities.llmd_utils import create_llmd_gateway
 from utilities.logger import RedactedString
-from utilities.opendatahub_logger import get_logger
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 UPGRADE_NAMESPACE = "upgrade-model-server"
 AUTH_UPGRADE_NAMESPACE = "upgrade-auth-model-server"

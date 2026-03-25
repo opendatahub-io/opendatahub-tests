@@ -1,10 +1,9 @@
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.self_subject_review import SelfSubjectReview
 from ocp_resources.user import User
 
-from utilities.opendatahub_logger import get_logger
-
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def get_username(client: DynamicClient) -> str | None:

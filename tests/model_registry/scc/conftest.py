@@ -1,4 +1,5 @@
 import pytest
+import structlog
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
@@ -7,9 +8,8 @@ from ocp_resources.pod import Pod
 
 from tests.model_registry.constants import MR_INSTANCE_NAME, MR_POSTGRES_DEPLOYMENT_NAME_STR
 from tests.model_registry.scc.utils import get_pod_by_deployment_name
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture()

@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 import requests
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
@@ -40,11 +41,10 @@ from utilities.general import generate_random_name
 from utilities.infra import create_inference_token, create_ns, get_openshift_token, login_with_user_password
 from utilities.llmd_constants import ContainerImages, ModelStorage
 from utilities.llmd_utils import create_llmisvc
-from utilities.opendatahub_logger import get_logger
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.resources.auth import Auth
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 CHAT_COMPLETIONS = OpenAIEnpoints.CHAT_COMPLETIONS
 

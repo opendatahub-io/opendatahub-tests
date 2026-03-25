@@ -1,6 +1,7 @@
 from typing import Any, Self
 
 import pytest
+import structlog
 from dictdiffer import diff
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
@@ -23,9 +24,8 @@ from tests.model_registry.model_catalog.search.utils import (
 )
 from tests.model_registry.model_catalog.utils import get_models_from_catalog_api
 from tests.model_registry.utils import get_model_catalog_pod
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace")]
 
 

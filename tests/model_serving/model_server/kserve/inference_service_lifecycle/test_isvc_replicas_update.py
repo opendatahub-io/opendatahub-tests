@@ -1,4 +1,5 @@
 import pytest
+import structlog
 from timeout_sampler import TimeoutSampler
 
 from tests.model_serving.model_server.kserve.inference_service_lifecycle.constants import (
@@ -14,9 +15,8 @@ from utilities.constants import (
 from utilities.inference_utils import Inference
 from utilities.infra import get_pods_by_isvc_label
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = [pytest.mark.tier1, pytest.mark.usefixtures("valid_aws_config")]
 

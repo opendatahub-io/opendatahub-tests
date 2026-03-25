@@ -4,6 +4,7 @@ from typing import Any
 
 import pytest
 import requests
+import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
@@ -36,9 +37,8 @@ from tests.model_registry.utils import (
     wait_for_model_catalog_pod_ready_after_deletion,
 )
 from utilities.infra import create_inference_token, get_openshift_token, login_with_user_password
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture()

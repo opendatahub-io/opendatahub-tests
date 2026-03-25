@@ -2,11 +2,10 @@ from typing import Self
 
 import pytest
 import requests
+import structlog
 from ocp_resources.route import Route
 
-from utilities.opendatahub_logger import get_logger
-
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 MCP_CATALOG_API_PATH = "/api/mcp_catalog/v1alpha1/"
 MODEL_CATALOG_API_PATH = "/api/model_catalog/v1alpha1/"

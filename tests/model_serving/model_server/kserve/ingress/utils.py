@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from typing import Any
 from urllib.parse import urlparse
 
+import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.inference_service import InferenceService
@@ -12,9 +13,8 @@ from ocp_resources.pod import Pod
 from utilities.constants import Protocols, Timeout
 from utilities.exceptions import ProtocolNotSupportedError
 from utilities.infra import get_model_route
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def assert_ingress_status_changed(client: DynamicClient, inference_service: InferenceService) -> None:

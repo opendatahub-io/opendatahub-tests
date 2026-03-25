@@ -1,6 +1,7 @@
 from typing import Self
 
 import pytest
+import structlog
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.resource import ResourceEditor
 
@@ -8,9 +9,8 @@ from tests.model_registry.constants import DEFAULT_MODEL_CATALOG_CM
 from tests.model_registry.model_catalog.catalog_config.utils import validate_model_catalog_configmap_data
 from tests.model_registry.model_catalog.constants import DEFAULT_CATALOGS
 from tests.model_registry.model_catalog.utils import assert_source_error_state_message
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = [
     pytest.mark.usefixtures(

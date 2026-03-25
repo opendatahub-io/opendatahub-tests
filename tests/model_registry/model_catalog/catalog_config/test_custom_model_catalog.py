@@ -1,6 +1,7 @@
 from typing import Self
 
 import pytest
+import structlog
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.config_map import ConfigMap
 
@@ -21,9 +22,8 @@ from tests.model_registry.model_catalog.utils import (
     get_sample_yaml_str,
 )
 from tests.model_registry.utils import execute_get_command
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(

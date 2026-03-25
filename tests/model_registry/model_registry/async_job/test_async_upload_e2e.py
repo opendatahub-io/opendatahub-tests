@@ -3,6 +3,7 @@ import time
 from typing import Self
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import ArtifactState, RegisteredModelState
@@ -19,10 +20,9 @@ from tests.model_registry.model_registry.async_job.utils import (
     get_latest_job_pod,
 )
 from utilities.constants import MinIo, OCIRegistry
-from utilities.opendatahub_logger import get_logger
 from utilities.registry_utils import pull_manifest_from_oci_registry
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 MODEL_NAME = f"async-test-model-{int(time.time())}"
 MODEL_DATA = {

@@ -1,10 +1,10 @@
 import pytest
+import structlog
 from llama_stack_client import LlamaStackClient
 
 from tests.llama_stack.constants import ModelInfo
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(

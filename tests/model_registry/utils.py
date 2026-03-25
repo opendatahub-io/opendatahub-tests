@@ -3,6 +3,7 @@ import json
 from typing import Any
 
 import requests
+import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from model_registry import ModelRegistry as ModelRegistryClient
@@ -29,7 +30,6 @@ from tests.model_registry.exceptions import ModelRegistryResourceNotFoundError
 from utilities.constants import Annotations, PodNotFound, Protocols, Timeout
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
 from utilities.general import wait_for_pods_running
-from utilities.opendatahub_logger import get_logger
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from utilities.user_utils import get_byoidc_issuer_url
 
@@ -40,7 +40,7 @@ MARIA_DB_IMAGE = (
 POSTGRES_DB_IMAGE = (
     "public.ecr.aws/docker/library/postgres@sha256:6e9bbed548cc1ca776dd4685cfea9efe60d58df91186ec6bad7328fd03b388a5"
 )
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def get_mr_service_by_label(client: DynamicClient, namespace_name: str, mr_instance: ModelRegistry) -> Service:

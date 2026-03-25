@@ -4,6 +4,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
 
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.gateway import Gateway
 from ocp_resources.llm_inference_service import LLMInferenceService
@@ -16,9 +17,8 @@ from utilities.llmd_constants import (
     KServeGateway,
     LLMDGateway,
 )
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @contextmanager

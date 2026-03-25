@@ -1,5 +1,6 @@
 import pytest
 import requests
+import structlog
 import yaml
 from timeout_sampler import retry
 
@@ -32,10 +33,9 @@ from utilities.constants import (
     LLMdInferenceSimConfig,
     Timeout,
 )
-from utilities.opendatahub_logger import get_logger
 from utilities.plugins.constant import OpenAIEnpoints
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.smoke

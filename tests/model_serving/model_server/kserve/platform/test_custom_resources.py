@@ -1,4 +1,5 @@
 import pytest
+import structlog
 from ocp_resources.inference_service import InferenceService
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
@@ -7,9 +8,8 @@ from utilities.constants import (
     ModelFormat,
     RuntimeTemplates,
 )
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = [pytest.mark.tier3, pytest.mark.slow, pytest.mark.usefixtures("valid_aws_config")]
 

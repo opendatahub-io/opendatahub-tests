@@ -1,6 +1,7 @@
 from typing import Self
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 
 from tests.model_registry.mcp_servers.constants import (
@@ -12,9 +13,8 @@ from tests.model_registry.mcp_servers.constants import (
     MCP_SERVERS_YAML_MISSING_NAME,
 )
 from tests.model_registry.utils import execute_get_command, get_model_catalog_pod
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 CATALOG_CONTAINER = "catalog"
 

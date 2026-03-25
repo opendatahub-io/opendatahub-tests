@@ -1,6 +1,7 @@
 from collections.abc import Generator
 
 import pytest
+import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.resource import ResourceEditor
@@ -22,9 +23,8 @@ from tests.model_registry.utils import (
     wait_for_mcp_catalog_api,
     wait_for_model_catalog_pod_ready_after_deletion,
 )
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")

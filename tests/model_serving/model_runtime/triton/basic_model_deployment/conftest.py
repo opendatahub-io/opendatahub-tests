@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from typing import Any, cast
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.inference_service import InferenceService
@@ -30,10 +31,9 @@ from utilities.constants import (
 )
 from utilities.inference_utils import create_isvc
 from utilities.infra import get_pods_by_isvc_label
-from utilities.opendatahub_logger import get_logger
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")

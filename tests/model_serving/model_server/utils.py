@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 from string import Template
 from typing import Any
 
+import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.inference_graph import InferenceGraph
@@ -18,9 +19,8 @@ from utilities.exceptions import (
 )
 from utilities.inference_utils import UserInference
 from utilities.infra import get_pods_by_isvc_label
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def verify_inference_response(

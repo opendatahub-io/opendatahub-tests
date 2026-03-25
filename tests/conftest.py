@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 import shortuuid
+import structlog
 import yaml
 from _pytest._py.path import LocalPath
 from _pytest.legacypath import TempdirFactory
@@ -64,12 +65,11 @@ from utilities.infra import (
 from utilities.logger import RedactedString
 from utilities.mariadb_utils import wait_for_mariadb_operator_deployments
 from utilities.minio import create_minio_data_connection_secret
-from utilities.opendatahub_logger import get_logger
 from utilities.operator_utils import get_cluster_service_version, get_csv_related_images
 from utilities.serving_runtime import get_runtime_image_from_template
 from utilities.user_utils import get_byoidc_issuer_url, get_oidc_tokens
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytest_plugins = [
     "tests.fixtures.inference",

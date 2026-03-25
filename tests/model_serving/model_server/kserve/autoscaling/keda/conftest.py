@@ -3,6 +3,7 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+import structlog
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
@@ -28,10 +29,9 @@ from utilities.constants import (
 )
 from utilities.inference_utils import create_isvc
 from utilities.manifests.vllm import VLLM_INFERENCE_CONFIG
-from utilities.opendatahub_logger import get_logger
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")

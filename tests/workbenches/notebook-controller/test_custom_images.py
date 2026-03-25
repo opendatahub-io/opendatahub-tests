@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from time import time
 
 import pytest
+import structlog
 from ocp_resources.namespace import Namespace
 from ocp_resources.notebook import Notebook
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
@@ -12,9 +13,8 @@ from ocp_resources.pod import ExecOnPodError, Pod
 
 from utilities.constants import Timeout
 from utilities.general import collect_pod_information
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 # Error messages
 _ERR_EMPTY_PACKAGES = "packages list cannot be empty"

@@ -1,6 +1,7 @@
 from typing import Any
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from timeout_sampler import TimeoutSampler
 
@@ -10,9 +11,8 @@ from tests.model_registry.model_catalog.metadata.utils import (
     verify_labels_match,
 )
 from utilities.infra import get_openshift_token
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 class TestLabelsEndpoint:

@@ -8,6 +8,7 @@ across REST and Grpc protocol and raw deployment type.
 from typing import Any
 
 import pytest
+import structlog
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
 
@@ -25,9 +26,8 @@ from tests.model_serving.model_runtime.openvino.utils import (
     validate_inference_request,
 )
 from utilities.constants import ModelFormat, Protocols
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = pytest.mark.usefixtures("valid_aws_config")
 

@@ -1,15 +1,14 @@
 from typing import Any
 
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.pod import Pod
 from ocp_resources.resource import NamespacedResource
 
-from utilities.opendatahub_logger import get_logger
-
 KEYS_TO_VALIDATE = ["runAsGroup", "runAsUser", "allowPrivilegeEscalation", "capabilities"]
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def get_uid_from_namespace(namespace_scc: dict[str, str]) -> str:

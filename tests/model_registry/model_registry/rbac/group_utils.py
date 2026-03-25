@@ -1,12 +1,11 @@
 from collections.abc import Generator
 from contextlib import contextmanager
 
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.group import Group
 
-from utilities.opendatahub_logger import get_logger
-
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @contextmanager

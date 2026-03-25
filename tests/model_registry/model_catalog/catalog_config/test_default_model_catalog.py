@@ -2,6 +2,7 @@ import random
 from typing import Any, Self
 
 import pytest
+import structlog
 import yaml
 from dictdiffer import diff
 from kubernetes.dynamic import DynamicClient
@@ -23,10 +24,9 @@ from tests.model_registry.model_catalog.catalog_config.utils import (
 )
 from tests.model_registry.model_catalog.constants import CATALOG_CONTAINER, DEFAULT_CATALOGS, REDHAT_AI_CATALOG_ID
 from tests.model_registry.utils import execute_get_command, get_model_catalog_pod, get_rest_headers
-from utilities.opendatahub_logger import get_logger
 from utilities.user_utils import UserTestSession
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = [
     pytest.mark.usefixtures(

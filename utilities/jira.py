@@ -3,6 +3,7 @@ import re
 from functools import cache
 from typing import Any
 
+import structlog
 from jira import JIRA, JIRAError
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.cluster_service_version import ClusterServiceVersion
@@ -12,9 +13,7 @@ from pytest_testconfig import config as py_config
 from requests.exceptions import ConnectionError as RequestsConnectionError
 from urllib3.exceptions import NewConnectionError
 
-from utilities.opendatahub_logger import get_logger
-
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 JIRA_CLOSED_STATUSES = ("closed", "resolved", "testing")
 

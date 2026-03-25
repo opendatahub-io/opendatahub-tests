@@ -1,12 +1,12 @@
 import pytest
+import structlog
 
 from tests.model_serving.maas_billing.utils import (
     verify_chat_completions,
 )
-from utilities.opendatahub_logger import get_logger
 from utilities.plugins.constant import OpenAIEnpoints
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 MODELS_INFO = OpenAIEnpoints.MODELS_INFO
 CHAT_COMPLETIONS = OpenAIEnpoints.CHAT_COMPLETIONS

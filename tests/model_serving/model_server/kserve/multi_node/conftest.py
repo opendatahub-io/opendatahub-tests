@@ -2,6 +2,7 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+import structlog
 from _pytest.fixtures import FixtureRequest
 from kubernetes.client.rest import ApiException
 from kubernetes.dynamic import DynamicClient
@@ -29,10 +30,9 @@ from utilities.infra import (
     verify_no_failed_pods,
     wait_for_inference_deployment_replicas,
 )
-from utilities.opendatahub_logger import get_logger
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="session")

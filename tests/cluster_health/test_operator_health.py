@@ -1,4 +1,5 @@
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.dsc_initialization import DSCInitialization
@@ -6,9 +7,8 @@ from pytest_testconfig import config as py_config
 
 from utilities.general import wait_for_pods_running
 from utilities.infra import wait_for_dsc_status_ready, wait_for_dsci_status_ready
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.operator_health

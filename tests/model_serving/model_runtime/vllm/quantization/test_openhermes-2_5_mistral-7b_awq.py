@@ -1,5 +1,6 @@
 # noqa: N999
 import pytest
+import structlog
 
 from tests.model_serving.model_runtime.vllm.constant import VLLM_SUPPORTED_QUANTIZATION
 from tests.model_serving.model_runtime.vllm.utils import (
@@ -7,9 +8,8 @@ from tests.model_serving.model_runtime.vllm.utils import (
     validate_inference_output,
 )
 from utilities.constants import KServeDeploymentType, Ports
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 SERVING_ARGUMENT = [

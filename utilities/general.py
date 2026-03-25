@@ -4,6 +4,7 @@ import re
 import uuid
 from typing import Any
 
+import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
 from ocp_resources.deployment import Deployment
@@ -16,12 +17,11 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 import utilities.infra
 from utilities.constants import MODELMESH_SERVING, Annotations, KServeDeploymentType
 from utilities.exceptions import ResourceValueMismatch, UnexpectedResourceCountError
-from utilities.opendatahub_logger import get_logger
 
 # Constants for image validation
 SHA256_DIGEST_PATTERN = r"@sha256:[a-f0-9]{64}$"
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def get_s3_secret_dict(

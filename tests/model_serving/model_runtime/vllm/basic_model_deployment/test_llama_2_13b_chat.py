@@ -2,6 +2,7 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+import structlog
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
 
@@ -15,9 +16,8 @@ from tests.model_serving.model_runtime.vllm.utils import (
     validate_raw_tgis_inference_request,
 )
 from utilities.constants import KServeDeploymentType
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 TIMEOUT_20MIN: str = 20 * 60
 

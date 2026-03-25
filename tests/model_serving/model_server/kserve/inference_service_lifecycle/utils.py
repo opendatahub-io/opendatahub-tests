@@ -5,6 +5,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
 
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
@@ -14,9 +15,8 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 from tests.model_serving.model_server.utils import verify_no_inference_pods
 from utilities.constants import Timeout
 from utilities.infra import get_pods_by_isvc_label
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @contextmanager

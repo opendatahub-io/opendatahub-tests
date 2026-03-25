@@ -1,11 +1,11 @@
 import pytest
+import structlog
 import yaml
 
 from tests.llama_stack.constants import LlamaStackProviders
 from utilities.constants import BUILTIN_DETECTOR_CONFIG, CHAT_GENERATION_CONFIG, QWEN_MODEL_NAME, MinIo
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 SECURE_SHIELD_ID: str = "secure_shield"
 
 

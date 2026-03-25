@@ -2,14 +2,14 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+import structlog
 
 from tests.model_serving.model_runtime.rhoai_upgrade.constant import (
     SERVING_RUNTIME_INSTANCE_NAME,
     SERVING_RUNTIME_TEMPLATE_NAME,
 )
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 class TestServingRuntimeLifecycle:

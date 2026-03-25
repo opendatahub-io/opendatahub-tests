@@ -4,6 +4,7 @@ from typing import Any
 
 import portforward
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.secret import Secret
@@ -18,12 +19,11 @@ from tests.model_serving.model_runtime.vllm.constant import (
 )
 from utilities.constants import Ports
 from utilities.exceptions import NotSupportedError
-from utilities.opendatahub_logger import get_logger
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.plugins.openai_plugin import OpenAIClient
 from utilities.plugins.tgis_grpc_plugin import TGISGRPCPlugin
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @contextmanager

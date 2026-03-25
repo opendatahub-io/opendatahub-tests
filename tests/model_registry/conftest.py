@@ -4,6 +4,7 @@ from contextlib import ExitStack
 from typing import Any
 
 import pytest
+import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
@@ -55,12 +56,11 @@ from utilities.general import (
     wait_for_pods_running,
 )
 from utilities.infra import get_data_science_cluster, login_with_user_password, wait_for_dsc_status_ready
-from utilities.opendatahub_logger import get_logger
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from utilities.user_utils import UserTestSession, create_htpasswd_file, wait_for_user_creation
 
 DEFAULT_TOKEN_DURATION = "10m"
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="session")

@@ -1,4 +1,5 @@
 import requests
+import structlog
 
 from tests.model_explainability.evalhub.constants import (
     EVALHUB_HEALTH_PATH,
@@ -6,9 +7,8 @@ from tests.model_explainability.evalhub.constants import (
     EVALHUB_PROVIDERS_PATH,
 )
 from utilities.guardrails import get_auth_headers
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 TENANT_HEADER: str = "X-Tenant"
 

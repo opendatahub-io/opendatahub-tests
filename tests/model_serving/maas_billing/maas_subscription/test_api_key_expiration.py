@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 import requests
+import structlog
 
 from tests.model_serving.maas_billing.maas_subscription.utils import (
     assert_api_key_created_ok,
@@ -11,9 +12,8 @@ from tests.model_serving.maas_billing.maas_subscription.utils import (
     revoke_api_key,
 )
 from utilities.general import generate_random_name
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 MAAS_API_KEY_MAX_EXPIRATION_DAYS = 30
 

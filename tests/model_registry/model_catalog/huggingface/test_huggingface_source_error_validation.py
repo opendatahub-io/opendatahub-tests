@@ -2,14 +2,14 @@ import re
 from typing import Self
 
 import pytest
+import structlog
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.config_map import ConfigMap
 
 from tests.model_registry.model_catalog.huggingface.utils import assert_accessible_models_via_catalog_api
 from tests.model_registry.utils import execute_get_command
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 INACCESSIBLE_MODELS: list[str] = [
     "jonburdo/private-test-model-1",
 ]

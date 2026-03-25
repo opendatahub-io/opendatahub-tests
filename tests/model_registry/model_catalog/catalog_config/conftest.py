@@ -2,6 +2,7 @@ import re
 from collections.abc import Generator
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import NotFoundError
 from ocp_resources.config_map import ConfigMap
@@ -18,9 +19,8 @@ from tests.model_registry.model_catalog.catalog_config.utils import (
 from tests.model_registry.model_catalog.constants import REDHAT_AI_CATALOG_ID, REDHAT_AI_CATALOG_NAME
 from tests.model_registry.model_catalog.utils import wait_for_model_catalog_api
 from tests.model_registry.utils import get_model_catalog_pod, wait_for_model_catalog_pod_ready_after_deletion
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="package")

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import requests
+import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from llama_stack_client import APIConnectionError, InternalServerError, LlamaStackClient
@@ -19,11 +20,10 @@ from tests.llama_stack.constants import (
     LLS_CORE_POD_FILTER,
 )
 from utilities.exceptions import UnexpectedResourceCountError
-from utilities.opendatahub_logger import get_logger
 from utilities.path_utils import resolve_repo_path
 from utilities.resources.llama_stack_distribution import LlamaStackDistribution
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def _assert_file_uploaded(uploaded_file: File, expected_purpose: str) -> None:

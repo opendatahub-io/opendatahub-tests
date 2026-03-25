@@ -1,6 +1,7 @@
 from typing import Self
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 
 from tests.model_registry.model_catalog.constants import (
@@ -12,9 +13,8 @@ from tests.model_registry.model_catalog.sorting.utils import (
     validate_accuracy_sorting_against_database,
 )
 from tests.model_registry.model_catalog.utils import get_models_from_catalog_api
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace")]
 

@@ -12,6 +12,7 @@ from collections.abc import Generator
 from typing import Self
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from model_registry import ModelRegistry as ModelRegistryClient
 from mr_openapi.exceptions import ForbiddenException
@@ -36,11 +37,10 @@ from tests.model_registry.model_registry.rbac.utils import (
 from tests.model_registry.utils import get_endpoint_from_mr_service, get_mr_service_by_label, get_mr_user_token
 from utilities.constants import Protocols
 from utilities.infra import get_openshift_token
-from utilities.opendatahub_logger import get_logger
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from utilities.user_utils import UserTestSession
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 pytestmark = [pytest.mark.usefixtures("original_user", "test_idp_user")]
 
 

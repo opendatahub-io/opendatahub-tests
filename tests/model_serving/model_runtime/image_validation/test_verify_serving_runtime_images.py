@@ -12,13 +12,13 @@ No hardcoded image SHAs—validation uses whatever CSV is installed (e.g. rhods-
 from typing import Self
 
 import pytest
+import structlog
 from ocp_resources.pod import Pod
 
 from tests.model_serving.model_runtime.image_validation.constant import RUNTIME_CONFIGS
 from utilities.general import validate_container_images
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = [pytest.mark.downstream_only, pytest.mark.skip_must_gather, pytest.mark.smoke]
 

@@ -4,6 +4,7 @@ from http import HTTPStatus
 from typing import Any
 
 import requests
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
@@ -17,9 +18,8 @@ from utilities.constants import TRUSTYAI_SERVICE_NAME, Protocols, Timeout
 from utilities.exceptions import MetricValidationError
 from utilities.general import create_isvc_label_selector_str
 from utilities.inference_utils import Inference, UserInference
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 class NoMetricsFoundError(ValueError):

@@ -2,6 +2,7 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+import structlog
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
@@ -17,9 +18,8 @@ from tests.model_serving.model_server.kserve.ingress.utils import create_curl_po
 from utilities.constants import KServeDeploymentType, Labels, ModelStoragePath
 from utilities.inference_utils import create_isvc
 from utilities.infra import create_ns
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture()

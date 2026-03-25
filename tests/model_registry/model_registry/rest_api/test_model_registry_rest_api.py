@@ -2,6 +2,7 @@ from typing import Any, Self
 
 import pytest
 import requests
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
@@ -28,10 +29,9 @@ from tests.model_registry.model_registry.rest_api.constants import (
     STATE_LIVE,
 )
 from tests.model_registry.model_registry.rest_api.utils import validate_resource_attributes
-from utilities.opendatahub_logger import get_logger
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 CONNECTION_STRING: str = "/var/run/postgresql:5432 - accepting connections"
 
 

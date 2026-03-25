@@ -3,14 +3,13 @@
 from typing import Any
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.image_stream import ImageStream
 from pytest_testconfig import config as py_config
 
-from utilities.opendatahub_logger import get_logger
-
 pytestmark = [pytest.mark.smoke]
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 IMPORT_SUCCESS_CONDITION_TYPE = "ImportSuccess"
 
 

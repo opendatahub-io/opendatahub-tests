@@ -1,6 +1,7 @@
 from typing import Any, Self
 
 import pytest
+import structlog
 
 from tests.model_registry.mcp_servers.constants import MCP_CATALOG_SOURCE_ID
 from tests.model_registry.model_catalog.constants import (
@@ -9,11 +10,10 @@ from tests.model_registry.model_catalog.constants import (
     VALIDATED_CATALOG_ID,
 )
 from tests.model_registry.utils import execute_get_command
-from utilities.opendatahub_logger import get_logger
 
 pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace")]
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 class TestSourcesEndpoint:

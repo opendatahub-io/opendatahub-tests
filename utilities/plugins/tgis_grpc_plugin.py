@@ -4,11 +4,11 @@ import sys
 from typing import Any
 
 import grpc
+import structlog
 
-from utilities.opendatahub_logger import get_logger
 from utilities.plugins.tgis_grpc import generation_pb2_grpc
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 class TGISGRPCPlugin:

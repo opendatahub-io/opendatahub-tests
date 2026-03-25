@@ -1,5 +1,6 @@
 from typing import Any
 
+import structlog
 from kubernetes.dynamic import DynamicClient
 
 from tests.model_registry.model_catalog.db_constants import (
@@ -12,9 +13,8 @@ from tests.model_registry.model_catalog.utils import (
     get_models_from_catalog_api,
     parse_psql_output,
 )
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def get_sources_with_sorting(

@@ -1,4 +1,5 @@
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
@@ -13,7 +14,6 @@ from tests.model_explainability.lm_eval.constants import (
 from tests.model_explainability.lm_eval.utils import get_lmeval_tasks, validate_lmeval_job_pod_and_logs
 from tests.model_explainability.utils import validate_tai_component_images
 from utilities.constants import OCIRegistry
-from utilities.opendatahub_logger import get_logger
 from utilities.registry_utils import pull_manifest_from_oci_registry
 
 LMEVALJOB_COMPLETE_STATE: str = "Complete"
@@ -24,7 +24,7 @@ TIER2_LMEVAL_TASKS: list[str] = list(
     set(get_lmeval_tasks(min_downloads=0.70, max_downloads=10000)) - set(TIER1_LMEVAL_TASKS)
 )
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.skip_on_disconnected

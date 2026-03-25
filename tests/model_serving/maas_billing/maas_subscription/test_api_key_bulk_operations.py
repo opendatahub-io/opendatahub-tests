@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 import requests
+import structlog
 
 from tests.model_serving.maas_billing.maas_subscription.utils import (
     assert_bulk_revoke_success,
@@ -9,9 +10,8 @@ from tests.model_serving.maas_billing.maas_subscription.utils import (
     get_api_key,
     resolve_api_key_username,
 )
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.usefixtures(

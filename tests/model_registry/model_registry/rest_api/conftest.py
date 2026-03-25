@@ -7,6 +7,7 @@ from typing import Any
 
 import portforward
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
@@ -44,11 +45,10 @@ from utilities.certificates_utils import create_ca_bundle_with_router_cert, crea
 from utilities.exceptions import MissingParameter
 from utilities.general import generate_random_name, wait_for_pods_running
 from utilities.infra import create_ns
-from utilities.opendatahub_logger import get_logger
 from utilities.operator_utils import get_cluster_service_version
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 POSTGRES_FILE_PATH: str = "/etc/server-cert"

@@ -1,6 +1,7 @@
 from typing import Any, Self
 
 import pytest
+import structlog
 from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
 
@@ -13,9 +14,8 @@ from tests.model_registry.utils import (
     validate_mlmd_removal_in_model_registry_pod_log,
     validate_no_grpc_container,
 )
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 CUSTOM_NAMESPACE = "model-registry-custom-ns"
 

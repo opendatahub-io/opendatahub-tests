@@ -1,6 +1,7 @@
 from typing import Self
 
 import pytest
+import structlog
 from kubernetes.dynamic.client import DynamicClient
 from ocp_resources.pod import Pod
 from pytest_testconfig import config as py_config
@@ -8,9 +9,8 @@ from pytest_testconfig import config as py_config
 from tests.model_registry.constants import MR_INSTANCE_NAME
 from tests.model_registry.utils import wait_for_new_running_mr_pod
 from utilities.general import wait_for_container_status
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.usefixtures(

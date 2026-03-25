@@ -2,6 +2,7 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+import structlog
 from class_generator.parsers.explain_parser import ResourceNotFoundError
 from kubernetes.dynamic import DynamicClient
 from model_registry import ModelRegistry as ModelRegistryClient
@@ -17,10 +18,9 @@ from tests.model_registry.utils import (
 )
 from utilities.constants import Protocols
 from utilities.general import wait_for_pods_running
-from utilities.opendatahub_logger import get_logger
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 MR_DEFAULT_DB_NAME: str = f"{MR_INSTANCE_BASE_NAME}1"
 
 

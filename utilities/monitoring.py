@@ -1,12 +1,11 @@
 from collections.abc import Callable
 from typing import Any
 
+import structlog
 from ocp_resources.prometheus import Prometheus
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
-from utilities.opendatahub_logger import get_logger
-
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def get_metrics_value(prometheus: Prometheus, metrics_query: str) -> Any:

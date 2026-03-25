@@ -8,6 +8,7 @@ from urllib.parse import quote, urlparse
 
 import pytest
 import requests
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.llm_inference_service import LLMInferenceService
@@ -25,10 +26,9 @@ from utilities.constants import (
     ApiGroups,
 )
 from utilities.general import generate_random_name
-from utilities.opendatahub_logger import get_logger
 from utilities.resources.auth import Auth
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 MAAS_SUBSCRIPTION_NAMESPACE = "models-as-a-service"
 MAAS_DB_NAMESPACE = "redhat-ods-applications"
 POSTGRES_DEPLOYMENT_NAME = "postgres"

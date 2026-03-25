@@ -14,6 +14,7 @@ from typing import Any
 import kubernetes
 import pytest
 import requests
+import structlog
 import urllib3
 from _pytest._py.path import LocalPath
 from _pytest.fixtures import FixtureRequest
@@ -62,9 +63,8 @@ import utilities.general
 from utilities.constants import RHOAI_OPERATOR_NAMESPACE, Annotations, ApiGroups, KServeDeploymentType, Labels, Timeout
 from utilities.exceptions import ClusterLoginError, FailedPodsError, ResourceNotReadyError, UnexpectedResourceCountError
 from utilities.general import generate_random_name
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @contextmanager

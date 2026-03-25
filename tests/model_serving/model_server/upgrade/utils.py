@@ -1,3 +1,4 @@
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.gateway import Gateway
@@ -200,9 +201,7 @@ def verify_metrics_retained(
     """
     from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
-    from utilities.opendatahub_logger import get_logger
-
-    logger = get_logger(name=__name__)
+    logger = structlog.get_logger(name=__name__)
 
     try:
         for sample in TimeoutSampler(

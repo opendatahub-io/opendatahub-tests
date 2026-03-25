@@ -3,6 +3,7 @@ import subprocess
 from typing import Any
 
 import pytest
+import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
@@ -23,9 +24,8 @@ from tests.model_registry.model_catalog.utils import (
 )
 from tests.model_registry.utils import execute_get_command, get_model_catalog_pod
 from utilities.constants import Timeout
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def validate_model_catalog_enabled(pod: Pod) -> bool:

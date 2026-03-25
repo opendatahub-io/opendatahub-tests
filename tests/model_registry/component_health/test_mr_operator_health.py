@@ -1,9 +1,8 @@
 import pytest
+import structlog
 from ocp_utilities.monitoring import Prometheus
 
-from utilities.opendatahub_logger import get_logger
-
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.order("last")

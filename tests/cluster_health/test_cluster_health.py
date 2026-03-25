@@ -1,10 +1,9 @@
 import pytest
+import structlog
 from ocp_resources.node import Node
 from ocp_utilities.infra import assert_nodes_in_healthy_condition, assert_nodes_schedulable
 
-from utilities.opendatahub_logger import get_logger
-
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.cluster_health

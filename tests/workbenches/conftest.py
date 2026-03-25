@@ -2,6 +2,7 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 from ocp_resources.notebook import Notebook
@@ -15,9 +16,8 @@ from utilities import constants
 from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH, Labels, Timeout
 from utilities.general import collect_pod_information
 from utilities.infra import check_internal_image_registry_available, get_product_version
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def _read_obj_field(obj: Any, field_name: str, default: Any = None) -> Any:

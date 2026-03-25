@@ -1,11 +1,11 @@
 import pytest
+import structlog
 
 from tests.model_serving.maas_billing.utils import (
     assert_mixed_200_and_429,
 )
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 REQUEST_RATE_MAX_REQUESTS = 10
 

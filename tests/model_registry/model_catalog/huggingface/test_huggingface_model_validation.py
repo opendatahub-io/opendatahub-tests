@@ -2,6 +2,7 @@ from collections.abc import Generator
 from typing import Self
 
 import pytest
+import structlog
 from huggingface_hub import HfApi
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
@@ -17,9 +18,8 @@ from tests.model_registry.model_catalog.huggingface.utils import (
 from tests.model_registry.model_catalog.utils import (
     get_hf_catalog_str,
 )
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = [pytest.mark.skip_on_disconnected]
 

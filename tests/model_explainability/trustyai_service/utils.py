@@ -3,6 +3,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
 
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
@@ -20,9 +21,8 @@ from timeout_sampler import TimeoutSampler, retry
 from utilities.constants import TRUSTYAI_SERVICE_NAME, Timeout
 from utilities.exceptions import TooManyPodsError, UnexpectedFailureError
 from utilities.general import validate_container_images, wait_for_pods_by_labels
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def wait_for_mariadb_operator_deployments(mariadb_operator: MariadbOperator, client: DynamicClient) -> None:

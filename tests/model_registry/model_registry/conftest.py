@@ -4,6 +4,7 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from model_registry import ModelRegistry as ModelRegistryClient
@@ -27,9 +28,8 @@ from tests.model_registry.utils import (
 )
 from utilities.constants import Protocols
 from utilities.general import wait_for_pods_by_labels
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 DEFAULT_TOKEN_DURATION = "10m"
 
 

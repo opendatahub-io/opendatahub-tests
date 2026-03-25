@@ -1,6 +1,7 @@
 from typing import Self
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ForbiddenError
 from ocp_resources.data_science_cluster import DataScienceCluster
@@ -15,10 +16,9 @@ from tests.model_registry.constants import (
     MR_OPERATOR_NAME,
 )
 from utilities.constants import Annotations
-from utilities.opendatahub_logger import get_logger
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.usefixtures(

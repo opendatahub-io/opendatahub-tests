@@ -1,4 +1,5 @@
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.data_science_cluster import DataScienceCluster
@@ -7,9 +8,8 @@ from pytest_testconfig import config as py_config
 
 from utilities.constants import ApiGroups
 from utilities.general import wait_for_pods_running
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.component_health

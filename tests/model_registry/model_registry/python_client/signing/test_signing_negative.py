@@ -3,11 +3,10 @@
 from pathlib import Path
 
 import pytest
+import structlog
 from model_registry.signing.exceptions import SigningError
 
-from utilities.opendatahub_logger import get_logger
-
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = pytest.mark.usefixtures("skip_if_not_managed_cluster", "tas_connection_type")
 

@@ -4,6 +4,7 @@ from typing import Any
 
 import pytest
 import requests
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.data_science_cluster import DataScienceCluster
@@ -47,13 +48,12 @@ from utilities.general import generate_random_name, wait_for_oauth_openshift_dep
 from utilities.infra import create_ns, get_openshift_token, login_with_user_password, s3_endpoint_secret
 from utilities.llmd_constants import ContainerImages, ModelStorage
 from utilities.llmd_utils import create_llmisvc
-from utilities.opendatahub_logger import get_logger
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.resources.rate_limit_policy import RateLimitPolicy
 from utilities.resources.token_rate_limit_policy import TokenRateLimitPolicy
 from utilities.user_utils import UserTestSession, create_htpasswd_file, wait_for_user_creation
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 MODELS_INFO = OpenAIEnpoints.MODELS_INFO
 CHAT_COMPLETIONS = OpenAIEnpoints.CHAT_COMPLETIONS
 

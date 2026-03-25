@@ -3,6 +3,7 @@ from contextlib import ExitStack
 from typing import Any
 
 import pytest
+import structlog
 import yaml
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
@@ -47,10 +48,9 @@ from utilities.kueue_utils import (
     create_resource_flavor,
     wait_for_kueue_crds_available,
 )
-from utilities.opendatahub_logger import get_logger
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")

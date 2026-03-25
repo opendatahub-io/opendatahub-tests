@@ -1,6 +1,7 @@
 import ast
 from typing import Any
 
+import structlog
 from huggingface_hub import HfApi
 from kubernetes.dynamic import DynamicClient
 from timeout_sampler import retry
@@ -8,9 +9,8 @@ from timeout_sampler import retry
 from tests.model_registry.model_catalog.constants import HF_SOURCE_ID
 from tests.model_registry.model_catalog.utils import get_models_from_catalog_api
 from tests.model_registry.utils import execute_get_command, get_model_catalog_pod
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def get_huggingface_model_params(model_name: str, huggingface_api: HfApi) -> dict[str, Any]:

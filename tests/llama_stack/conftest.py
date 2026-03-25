@@ -4,6 +4,7 @@ from typing import Any
 
 import httpx
 import pytest
+import structlog
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from llama_stack_client import APIError, LlamaStackClient
@@ -42,10 +43,9 @@ from tests.llama_stack.utils import (
 from utilities.constants import Annotations, DscComponents
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.general import generate_random_name
-from utilities.opendatahub_logger import get_logger
 from utilities.resources.llama_stack_distribution import LlamaStackDistribution
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = pytest.mark.skip_on_disconnected
 

@@ -5,6 +5,7 @@ from typing import Any
 
 import portforward
 import pytest
+import structlog
 from huggingface_hub import HfApi
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
@@ -19,10 +20,9 @@ from tests.model_registry.model_catalog.constants import HF_CUSTOM_MODE
 from tests.model_registry.model_catalog.huggingface.utils import get_huggingface_model_from_api
 from tests.model_registry.model_catalog.utils import get_models_from_catalog_api
 from utilities.infra import create_ns
-from utilities.opendatahub_logger import get_logger
 from utilities.operator_utils import get_cluster_service_version
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 class OpenVINOImageNotFoundError(Exception):

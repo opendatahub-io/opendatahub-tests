@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 import requests
+import structlog
 from huggingface_hub import snapshot_download
 from kubernetes.dynamic import DynamicClient
 from model_registry.signing import Signer
@@ -40,11 +41,10 @@ from tests.model_registry.model_registry.python_client.signing.utils import (
 )
 from utilities.constants import OPENSHIFT_OPERATORS, Labels, ModelCarImage, OCIRegistry, Timeout
 from utilities.infra import get_openshift_token, is_managed_cluster
-from utilities.opendatahub_logger import get_logger
 from utilities.resources.route import Route
 from utilities.resources.securesign import Securesign
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="package")

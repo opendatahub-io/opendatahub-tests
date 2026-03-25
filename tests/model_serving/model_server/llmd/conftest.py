@@ -5,6 +5,7 @@ from contextlib import ExitStack, contextmanager
 from typing import Any
 
 import pytest
+import structlog
 import yaml
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
@@ -23,9 +24,8 @@ from utilities.infra import create_inference_token, s3_endpoint_secret, update_c
 from utilities.llmd_constants import LLMDGateway
 from utilities.llmd_utils import create_llmd_gateway
 from utilities.logger import RedactedString
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 logging.getLogger("timeout_sampler").setLevel(logging.WARNING)
 
 AuthEntry = namedtuple(typename="AuthEntry", field_names=["service", "token"])

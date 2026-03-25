@@ -1,15 +1,14 @@
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.network_policy import NetworkPolicy
 from ocp_resources.secret import Secret
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutSampler
 
-from utilities.opendatahub_logger import get_logger
-
 from .utils import extract_secret_values
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")

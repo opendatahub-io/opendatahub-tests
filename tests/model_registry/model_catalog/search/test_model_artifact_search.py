@@ -2,6 +2,7 @@ import random
 from typing import Any, Self
 
 import pytest
+import structlog
 from dictdiffer import diff
 
 from tests.model_registry.model_catalog.constants import (
@@ -15,9 +16,8 @@ from tests.model_registry.model_catalog.search.utils import (
     validate_model_artifacts_match_criteria_or,
     validate_recommendations_subset,
 )
-from utilities.opendatahub_logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace")]
 MODEL_NAMEs_ARTIFACT_SEARCH: list[str] = [
     "RedHatAI/Llama-3.1-8B-Instruct",
