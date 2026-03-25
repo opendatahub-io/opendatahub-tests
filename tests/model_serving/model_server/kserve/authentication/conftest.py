@@ -21,6 +21,7 @@ from utilities.constants import (
     ModelName,
     Protocols,
     RuntimeTemplates,
+    Timeout,
 )
 from utilities.inference_utils import create_isvc
 from utilities.infra import (
@@ -84,7 +85,19 @@ def patched_remove_raw_authentication_isvc(
             }
         }
     ):
+        http_s3_ovms_raw_inference_service.wait_for_condition(
+            condition=http_s3_ovms_raw_inference_service.Condition.READY,
+            status=http_s3_ovms_raw_inference_service.Condition.Status.TRUE,
+            timeout=Timeout.TIMEOUT_2MIN,
+        )
         yield http_s3_ovms_raw_inference_service
+
+    # ResourceEditor restores auth on exit; wait for ISVC to reconcile before next test
+    http_s3_ovms_raw_inference_service.wait_for_condition(
+        condition=http_s3_ovms_raw_inference_service.Condition.READY,
+        status=http_s3_ovms_raw_inference_service.Condition.Status.TRUE,
+        timeout=Timeout.TIMEOUT_2MIN,
+    )
 
 
 @pytest.fixture(scope="class")
