@@ -117,14 +117,17 @@ class ThirdPartyJSONFormatter(logging.Formatter):
             json.loads(msg)
             return msg
         except json.JSONDecodeError, TypeError:
-            return json.dumps({
+            result = {
                 "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
                 "logger": record.name,
                 "level": record.levelname.lower(),
                 "event": msg,
                 "filename": record.pathname.split("/")[-1] if record.pathname else "",
                 "lineno": str(record.lineno),
-            })
+            }
+            if record.exc_text:
+                result["traceback"] = record.exc_text
+            return json.dumps(result)
 
 
 _initialized = False
@@ -157,7 +160,10 @@ class ThirdPartyHumanReadableFormatter(logging.Formatter):
         reset = _RESET if color else ""
         filename = record.pathname.rsplit("/", 1)[-1] if record.pathname else ""
         msg = record.getMessage()
-        return f"{timestamp} {record.name} {color}{record.levelname}{reset} {msg} ({filename}:{record.lineno})"
+        result = f"{timestamp} {record.name} {color}{record.levelname}{reset} {msg} ({filename}:{record.lineno})"
+        if record.exc_text:
+            result = f"{result}\n{record.exc_text}"
+        return result
 
 
 def _plain_text_renderer(_logger: Any, _method_name: str, event_dict: dict[str, Any]) -> str:
@@ -167,7 +173,7 @@ def _plain_text_renderer(_logger: Any, _method_name: str, event_dict: dict[str, 
     for key in ("logger", "level", "timestamp"):
         event_dict.pop(key, None)
     if event_dict:
-        extras = " ".join(f"{k}={v}" for k, v in event_dict.items())
+        extras = " ".join(f"{k}={v!r}" for k, v in event_dict.items())
         return f"{event} [{extras}]"
     return str(event)
 
@@ -216,7 +222,7 @@ class StructlogWrapper:
         if _human_readable:
             std_logger = logging.getLogger(self.name)
             log_method = getattr(std_logger, level.lower())
-            extra_str = " ".join(f"{k}={v}" for k, v in kwargs.items()) if kwargs else ""
+            extra_str = " ".join(f"{k}={v!r}" for k, v in kwargs.items()) if kwargs else ""
             log_method(f"{msg_str} {extra_str}" if extra_str else msg_str, stacklevel=3)  # noqa: FCN001
         else:
             log_method = getattr(self._logger, level.lower())
