@@ -1,12 +1,12 @@
 from typing import Self
 
 import pytest
-from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.sorting.utils import (
     get_sources_with_sorting,
     validate_items_sorted_correctly,
 )
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

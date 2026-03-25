@@ -11,7 +11,6 @@ from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
-from simple_logger.logger import get_logger
 
 from tests.model_registry.constants import MR_POSTGRES_DB_OBJECT
 from tests.model_registry.model_registry.rest_api.constants import (
@@ -29,6 +28,7 @@ from tests.model_registry.model_registry.rest_api.constants import (
     STATE_LIVE,
 )
 from tests.model_registry.model_registry.rest_api.utils import validate_resource_attributes
+from utilities.opendatahub_logger import get_logger
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
 LOGGER = get_logger(name=__name__)

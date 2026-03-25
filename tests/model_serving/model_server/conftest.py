@@ -19,7 +19,6 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.storage_class import StorageClass
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
 
 from utilities.constants import (
     DscComponents,
@@ -48,6 +47,7 @@ from utilities.kueue_utils import (
     create_resource_flavor,
     wait_for_kueue_crds_available,
 )
+from utilities.opendatahub_logger import get_logger
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 LOGGER = get_logger(name=__name__)

@@ -28,6 +28,7 @@ from utilities.infra import (
     create_isvc_view_role,
 )
 from utilities.logger import RedactedString
+from utilities.opendatahub_logger import get_logger
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 

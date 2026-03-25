@@ -6,7 +6,8 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.image_stream import ImageStream
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
+
+from utilities.opendatahub_logger import get_logger
 
 pytestmark = [pytest.mark.smoke]
 LOGGER = get_logger(name=__name__)

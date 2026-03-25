@@ -3,11 +3,11 @@ from typing import Any, Self
 import pytest
 from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
-from simple_logger.logger import get_logger
 
 from tests.model_registry.constants import MODEL_DICT, MODEL_NAME
 from tests.model_registry.model_registry.upgrade.utils import validate_upgrade_model_registration
 from utilities.constants import ModelFormat
+from utilities.opendatahub_logger import get_logger
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
 LOGGER = get_logger(name=__name__)

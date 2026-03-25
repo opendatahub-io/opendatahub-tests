@@ -5,11 +5,11 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.lm_eval_job import LMEvalJob
 from ocp_resources.pod import Pod
 from pyhelper_utils.general import tts
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError
 
 from utilities.constants import Timeout
 from utilities.exceptions import PodLogMissMatchError, UnexpectedFailureError
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

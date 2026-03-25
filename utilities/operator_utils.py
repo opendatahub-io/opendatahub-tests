@@ -2,9 +2,9 @@ from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError, ResourceNotUniqueError
 from ocp_resources.cluster_service_version import ClusterServiceVersion
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
 
 from utilities.infra import get_product_version
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

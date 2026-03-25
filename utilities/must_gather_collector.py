@@ -5,10 +5,10 @@ import shutil
 from pyhelper_utils.shell import run_command
 from pytest import Item
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
 
 from utilities.exceptions import InvalidArgumentsError
 from utilities.infra import get_rhods_operator_installed_csv
+from utilities.opendatahub_logger import get_logger
 
 BASE_DIRECTORY_NAME = "must-gather-collected"
 BASE_RESULTS_DIR = "/home/odh/opendatahub-tests/"

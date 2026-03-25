@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pytest
 import requests
-from simple_logger.logger import get_logger
 
 from tests.model_serving.maas_billing.maas_subscription.utils import (
     create_api_key,
@@ -10,6 +9,7 @@ from tests.model_serving.maas_billing.maas_subscription.utils import (
     list_api_keys,
 )
 from utilities.general import generate_random_name
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

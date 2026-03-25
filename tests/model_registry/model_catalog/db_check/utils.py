@@ -2,7 +2,8 @@ import base64
 import binascii
 
 from ocp_resources.secret import Secret
-from simple_logger.logger import get_logger
+
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

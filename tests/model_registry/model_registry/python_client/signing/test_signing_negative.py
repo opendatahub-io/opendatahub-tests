@@ -4,7 +4,8 @@ from pathlib import Path
 
 import pytest
 from model_registry.signing.exceptions import SigningError
-from simple_logger.logger import get_logger
+
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

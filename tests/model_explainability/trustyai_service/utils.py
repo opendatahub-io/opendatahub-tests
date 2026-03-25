@@ -15,12 +15,12 @@ from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.trustyai_service import TrustyAIService
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler, retry
 
 from utilities.constants import TRUSTYAI_SERVICE_NAME, Timeout
 from utilities.exceptions import TooManyPodsError, UnexpectedFailureError
 from utilities.general import validate_container_images, wait_for_pods_by_labels
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

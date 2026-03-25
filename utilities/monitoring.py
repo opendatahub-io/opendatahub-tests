@@ -2,8 +2,9 @@ from collections.abc import Callable
 from typing import Any
 
 from ocp_resources.prometheus import Prometheus
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
+
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

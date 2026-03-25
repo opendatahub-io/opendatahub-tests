@@ -11,7 +11,6 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 from ocp_resources.service import Service
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
@@ -24,6 +23,7 @@ from tests.model_registry.model_catalog.catalog_config.utils import (
 )
 from tests.model_registry.model_catalog.constants import CATALOG_CONTAINER, DEFAULT_CATALOGS, REDHAT_AI_CATALOG_ID
 from tests.model_registry.utils import execute_get_command, get_model_catalog_pod, get_rest_headers
+from utilities.opendatahub_logger import get_logger
 from utilities.user_utils import UserTestSession
 
 LOGGER = get_logger(name=__name__)

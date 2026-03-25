@@ -50,7 +50,7 @@ dependencies = [
     "openshift-python-utilities>=5.0.71",
     "pytest-dependency>=0.6.0",
     "pytest-progress",
-    "python-simple-logger",
+    "structlog>=24.1.0",
     "pyyaml",
     "tenacity",
     "types-requests>=2.32.0.20241016",

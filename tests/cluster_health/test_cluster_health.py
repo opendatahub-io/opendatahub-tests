@@ -1,7 +1,8 @@
 import pytest
 from ocp_resources.node import Node
 from ocp_utilities.infra import assert_nodes_in_healthy_condition, assert_nodes_schedulable
-from simple_logger.logger import get_logger
+
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

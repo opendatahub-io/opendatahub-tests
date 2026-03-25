@@ -4,23 +4,25 @@ import pytest
 import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.resource import ResourceEditor
-from simple_logger.logger import get_logger
 
 from tests.model_registry.mcp_servers.config.utils import get_mcp_catalog_sources
 from tests.model_registry.mcp_servers.constants import (
     MCP_CATALOG_INVALID_SOURCE,
     MCP_CATALOG_SOURCE,
     MCP_CATALOG_SOURCE2,
+    MCP_CATALOG_SOURCE3,
     MCP_CATALOG_SOURCE_ID,
     MCP_CATALOG_SOURCE_NAME,
     MCP_SERVERS_YAML,
     MCP_SERVERS_YAML2,
+    MCP_SERVERS_YAML3,
     MCP_SERVERS_YAML_CATALOG_PATH,
 )
 from tests.model_registry.utils import (
     wait_for_mcp_catalog_api,
     wait_for_model_catalog_pod_ready_after_deletion,
 )
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 
@@ -48,6 +50,46 @@ def mcp_multi_source_configmap_patch(
             "sources.yaml": yaml.dump(current_data, default_flow_style=False),
             "mcp-servers.yaml": MCP_SERVERS_YAML,
             "mcp-servers-2.yaml": MCP_SERVERS_YAML2,
+        }
+    }
+
+    with ResourceEditor(patches={catalog_config_map: patches}):
+        wait_for_model_catalog_pod_ready_after_deletion(
+            client=admin_client, model_registry_namespace=model_registry_namespace
+        )
+        wait_for_mcp_catalog_api(url=mcp_catalog_rest_urls[0], headers=model_registry_rest_headers)
+        yield
+
+    wait_for_model_catalog_pod_ready_after_deletion(
+        client=admin_client, model_registry_namespace=model_registry_namespace
+    )
+
+
+@pytest.fixture(scope="class")
+def mcp_source_label_configmap_patch(
+    admin_client: DynamicClient,
+    model_registry_namespace: str,
+    mcp_catalog_rest_urls: list[str],
+    model_registry_rest_headers: dict[str, str],
+) -> Generator[None]:
+    """
+    Class-scoped fixture that patches the model-catalog-sources ConfigMap
+    with three MCP catalog sources: two labeled and one unlabeled.
+    Used for sourceLabel filtering tests (TC-API-036 to TC-API-039).
+    """
+    catalog_config_map, current_data = get_mcp_catalog_sources(
+        admin_client=admin_client, model_registry_namespace=model_registry_namespace
+    )
+    if "mcp_catalogs" not in current_data:
+        current_data["mcp_catalogs"] = []
+    current_data["mcp_catalogs"].extend([MCP_CATALOG_SOURCE, MCP_CATALOG_SOURCE2, MCP_CATALOG_SOURCE3])
+
+    patches = {
+        "data": {
+            "sources.yaml": yaml.dump(current_data, default_flow_style=False),
+            "mcp-servers.yaml": MCP_SERVERS_YAML,
+            "mcp-servers-2.yaml": MCP_SERVERS_YAML2,
+            "mcp-servers-3.yaml": MCP_SERVERS_YAML3,
         }
     }
 

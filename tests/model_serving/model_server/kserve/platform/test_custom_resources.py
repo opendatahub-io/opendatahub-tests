@@ -1,6 +1,5 @@
 import pytest
 from ocp_resources.inference_service import InferenceService
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from utilities.constants import (
@@ -8,6 +7,7 @@ from utilities.constants import (
     ModelFormat,
     RuntimeTemplates,
 )
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

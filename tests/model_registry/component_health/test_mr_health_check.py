@@ -3,10 +3,10 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.namespace import Namespace
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
 
 from utilities.constants import DscComponents
 from utilities.general import wait_for_pods_running
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

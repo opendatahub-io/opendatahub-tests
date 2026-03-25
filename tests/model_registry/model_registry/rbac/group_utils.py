@@ -3,7 +3,8 @@ from contextlib import contextmanager
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.group import Group
-from simple_logger.logger import get_logger
+
+from utilities.opendatahub_logger import get_logger
 
 LOGGER = get_logger(name=__name__)
 

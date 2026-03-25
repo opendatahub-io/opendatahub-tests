@@ -11,12 +11,12 @@ from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
 from ocp_resources.resource import Resource
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 
 import utilities.infra
 from utilities.constants import MODELMESH_SERVING, Annotations, KServeDeploymentType
 from utilities.exceptions import ResourceValueMismatch, UnexpectedResourceCountError
+from utilities.opendatahub_logger import get_logger
 
 # Constants for image validation
 SHA256_DIGEST_PATTERN = r"@sha256:[a-f0-9]{64}$"

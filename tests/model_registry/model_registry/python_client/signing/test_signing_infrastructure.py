@@ -6,12 +6,12 @@ from typing import Self
 import pytest
 import requests
 from ocp_resources.config_map import ConfigMap
-from simple_logger.logger import get_logger
 
 from tests.model_registry.model_registry.python_client.signing.constants import (
     SIGNING_OCI_REPO_NAME,
 )
 from tests.model_registry.model_registry.python_client.signing.utils import check_model_signature_file
+from utilities.opendatahub_logger import get_logger
 from utilities.resources.securesign import Securesign
 
 LOGGER = get_logger(name=__name__)
