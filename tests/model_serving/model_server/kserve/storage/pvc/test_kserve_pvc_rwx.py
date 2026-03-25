@@ -29,6 +29,14 @@ pytestmark = [pytest.mark.usefixtures("skip_if_no_nfs_storage_class")]
     indirect=True,
 )
 class TestKservePVCReadWriteManyAccess:
+    """Validate ReadWriteMany PVC access across multiple KServe predictor pods.
+
+    Steps:
+        1. Deploy a serverless ISVC with 2 replicas backed by an NFS ReadWriteMany PVC.
+        2. Verify the first predictor pod can read from the mounted PVC path.
+        3. Verify the second predictor pod can also read from the same PVC path.
+    """
+
     def test_first_isvc_pvc_read_access(self, predictor_pods_scope_class):
         """Test that the first predictor pod has read access to the PVC"""
         predictor_pods_scope_class[0].execute(

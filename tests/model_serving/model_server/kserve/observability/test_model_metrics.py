@@ -42,6 +42,15 @@ pytestmark = [
     indirect=True,
 )
 class TestModelMetrics:
+    """Validate OVMS model metrics are reported through OpenShift UserWorkloadMonitoring.
+
+    Steps:
+        1. Deploy an OVMS model car inference service with metrics enabled.
+        2. Send a single inference request and verify the success counter increments to 1.
+        3. Send multiple inference requests in parallel and verify the total success count.
+        4. Query Prometheus for CPU utilization metrics of the model namespace pods.
+    """
+
     @pytest.mark.tier1
     def test_model_metrics_num_success_requests(self, model_car_inference_service, prometheus):
         """Verify number of successful model requests in OpenShift monitoring system (UserWorkloadMonitoring) metrics"""

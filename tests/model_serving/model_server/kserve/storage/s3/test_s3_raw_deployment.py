@@ -29,6 +29,14 @@ pytestmark = [pytest.mark.rawdeployment, pytest.mark.minio]
 )
 @pytest.mark.usefixtures("minio_pod")
 class TestMinioRawDeployment:
+    """Validate KServe raw deployment model inference using MinIO as the S3 storage backend.
+
+    Steps:
+        1. Deploy a MinIO pod and configure a data connection for model storage.
+        2. Deploy an OVMS inference service as a raw deployment pointing to MinIO.
+        3. Send a REST inference request and verify a successful response over HTTPS.
+    """
+
     def test_minio_raw_inference(
         self,
         kserve_ovms_minio_inference_service,
