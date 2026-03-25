@@ -4,7 +4,13 @@ import shutil
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 from typing import Any
 
-from utilities.opendatahub_logger import DuplicateFilter, WrapperLogFormatter, set_human_readable
+from utilities.opendatahub_logger import (
+    DuplicateFilter,
+    ThirdPartyHumanReadableFormatter,
+    ThirdPartyJSONFormatter,
+    WrapperLogFormatter,
+    set_human_readable,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -21,6 +27,31 @@ class RedactedString(str):
         return "'***REDACTED***'"
 
 
+class PassthroughQueueHandler(QueueHandler):
+    """QueueHandler that preserves raw log records for independent formatting by output handlers."""
+
+    def prepare(self, record: logging.LogRecord) -> logging.LogRecord:
+        # Convert exc_info to text for pickling (traceback objects can't be pickled)
+        if record.exc_info:
+            if not record.exc_text:
+                record.exc_text = logging.Formatter().formatException(record.exc_info)
+            record.exc_info = None
+        return record
+
+
+class DelegatingFormatter(logging.Formatter):
+    """Routes formatting to different formatters based on logger name."""
+
+    def __init__(self, formatters: dict[str, logging.Formatter], default: logging.Formatter) -> None:
+        super().__init__()
+        self._formatters = formatters
+        self._default = default
+
+    def format(self, record: logging.LogRecord) -> str:
+        formatter = self._formatters.get(record.name, self._default)
+        return formatter.format(record)
+
+
 def setup_logging(
     log_level: int,
     log_file: str = "/tmp/pytest-tests.log",
@@ -29,21 +60,25 @@ def setup_logging(
     human_readable: bool = False,
 ) -> QueueListener:
     """
-    Setup basic/root logging using QueueHandler/QueueListener
+    Setup basic/root logging using PassthroughQueueHandler/QueueListener
     to consolidate log messages into a single stream to be written to multiple outputs.
+
+    Raw log records flow through the queue unformatted, allowing each output handler
+    to format independently: text for console, JSON for file.
 
     Args:
         log_level (int): log level
         log_file (str): logging output file
         thread_name (str | None): optional thread_name id prefix, e.g., [gw0]
+        human_readable (bool): if True, file output is also human-readable text instead of JSON
 
     Returns:
         QueueListener: Process monitoring the log Queue
 
     Eg:
-       root QueueHandler ┐                         ┌> StreamHandler
+       root QueueHandler ┐                         ┌> StreamHandler (text)
                          ├> Queue -> QueueListener ┤
-      basic QueueHandler ┘                         └> FileHandler
+      basic QueueHandler ┘                         └> FileHandler (JSON)
     """
     basic_fmt_str = "%(message)s"
     root_fmt_str = "%(asctime)s %(name)s %(log_color)s%(levelname)s%(reset)s %(message)s"
@@ -64,8 +99,11 @@ def setup_logging(
         },
     )
 
+    file_formatter = ThirdPartyHumanReadableFormatter() if human_readable else ThirdPartyJSONFormatter()
+
     log_file_handler = RotatingFileHandler(filename=log_file, maxBytes=100 * 1024 * 1024, backupCount=20)
     log_file_handler.setLevel(level=log_level)  # Set the file handler log level
+    log_file_handler.setFormatter(fmt=file_formatter)
 
     handlers: list[Any] = [log_file_handler]
 
@@ -76,23 +114,27 @@ def setup_logging(
     if enable_console:
         console_handler = logging.StreamHandler()
         console_handler.setLevel(level=log_level)  # Set the console handler log level
+        console_handler.setFormatter(
+            fmt=DelegatingFormatter(
+                formatters={"basic": basic_log_formatter},
+                default=root_log_formatter,
+            )
+        )
         handlers.append(console_handler)
 
     log_queue = multiprocessing.Queue(maxsize=-1)  # type: ignore[var-annotated]
     log_listener = QueueListener(log_queue, *handlers)
 
-    basic_log_queue_handler = QueueHandler(queue=log_queue)
+    basic_log_queue_handler = PassthroughQueueHandler(queue=log_queue)
     basic_log_queue_handler.set_name(name="basic")
-    basic_log_queue_handler.setFormatter(fmt=basic_log_formatter)
 
     basic_logger = logging.getLogger(name="basic")
     basic_logger.setLevel(level=log_level)
     basic_logger.handlers.clear()
     basic_logger.addHandler(hdlr=basic_log_queue_handler)
 
-    root_log_queue_handler = QueueHandler(queue=log_queue)
+    root_log_queue_handler = PassthroughQueueHandler(queue=log_queue)
     root_log_queue_handler.set_name(name="root")
-    root_log_queue_handler.setFormatter(fmt=root_log_formatter)
 
     root_logger = logging.getLogger(name="root")
     root_logger.setLevel(level=log_level)

@@ -1,15 +1,18 @@
 """
-OpenDataHub logging utilities using structlog with third-party logging integration.
+OpenDataHub logging utilities using structlog.
 
-This module provides structured JSON logging using structlog with automatic
-third-party library logging integration.
+Structlog renders plain text for console-friendly output. JSON formatting for the
+log file is handled by ThirdPartyJSONFormatter applied on the file handler in setup_logging().
+
+When --readable-logs is passed, both console and file output are human-readable text.
 
 Example:
     from utilities.opendatahub_logger import get_logger
 
     logger = get_logger("myapp")
     logger.info("User logged in", user_id=123)
-    # Output: {"timestamp": "...", "logger": "myapp", "level": "info", "event": "User logged in", "user_id": 123}
+    # Console: 2024-01-01 myapp INFO User logged in [user_id=123]
+    # File:    {"timestamp": "...", "logger": "myapp", "level": "info", "event": "User logged in [user_id=123]"}
 """
 
 import inspect
@@ -113,7 +116,7 @@ class ThirdPartyJSONFormatter(logging.Formatter):
         try:
             json.loads(msg)
             return msg
-        except json.JSONDecodeError, TypeError:
+        except (json.JSONDecodeError, TypeError):
             return json.dumps({
                 "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
                 "logger": record.name,
@@ -126,7 +129,6 @@ class ThirdPartyJSONFormatter(logging.Formatter):
 
 _initialized = False
 _human_readable = False
-_original_add_handler = logging.Logger.addHandler
 
 
 def set_human_readable(enabled: bool) -> None:
@@ -158,8 +160,20 @@ class ThirdPartyHumanReadableFormatter(logging.Formatter):
         return f"{timestamp} {record.name} {color}{record.levelname}{reset} {msg} ({filename}:{record.lineno})"
 
 
+def _plain_text_renderer(_logger: Any, _method_name: str, event_dict: dict[str, Any]) -> str:
+    """Render structlog events as plain text for console-friendly output."""
+    event = event_dict.pop("event", "")
+    # Remove fields already present on the log record (added by structlog processors)
+    for key in ("logger", "level", "timestamp"):
+        event_dict.pop(key, None)
+    if event_dict:
+        extras = " ".join(f"{k}={v}" for k, v in event_dict.items())
+        return f"{event} [{extras}]"
+    return str(event)
+
+
 def _initialize() -> None:
-    """One-time setup for structlog and third-party logging."""
+    """One-time setup for structlog."""
     global _initialized
     if _initialized:
         return
@@ -173,7 +187,7 @@ def _initialize() -> None:
             structlog.stdlib.add_logger_name,
             structlog.stdlib.add_log_level,
             structlog.processors.TimeStamper(fmt="ISO", utc=True),
-            structlog.processors.JSONRenderer(),
+            _plain_text_renderer,
         ]
 
     structlog.configure(
@@ -182,33 +196,6 @@ def _initialize() -> None:
         logger_factory=structlog.stdlib.LoggerFactory(),
         cache_logger_on_first_use=False,
     )
-
-    third_party_formatter = ThirdPartyHumanReadableFormatter() if _human_readable else ThirdPartyJSONFormatter()
-
-    # Formatters that should not be replaced:
-    # - JSONOnlyFormatter: used by StructlogWrapper (structlog already formats the message)
-    # - WrapperLogFormatter: used by setup_logging's QueueHandlers (only protected in HR mode)
-    _skip_formatters: tuple[type, ...] = (JSONOnlyFormatter,)
-    if _human_readable:
-        _skip_formatters = (*_skip_formatters, WrapperLogFormatter)
-
-    # Patch addHandler so new loggers (e.g. from ocp_resources/simple_logger)
-    # get the correct formatter on their handlers.
-    def patched_add_handler(self: logging.Logger, hdlr: logging.Handler) -> None:
-        if not isinstance(hdlr.formatter, _skip_formatters):
-            hdlr.setFormatter(fmt=third_party_formatter)
-        _original_add_handler(self, hdlr)  # noqa: FCN001
-
-    logging.Logger.addHandler = patched_add_handler  # type: ignore[method-assign]
-
-    # Apply formatter to all existing handlers on all loggers
-    all_loggers = [logging.getLogger()] + [
-        logger for logger in logging.root.manager.loggerDict.values() if isinstance(logger, logging.Logger)
-    ]
-    for logger in all_loggers:
-        for handler in logger.handlers:
-            if not isinstance(handler.formatter, _skip_formatters):
-                handler.setFormatter(fmt=third_party_formatter)
 
     _initialized = True
 
@@ -220,11 +207,6 @@ class StructlogWrapper:
         self.name = name
         _initialize()
         self._logger = structlog.get_logger(name=name)
-
-        underlying_logger = logging.getLogger(name)
-        for handler in underlying_logger.handlers:
-            if isinstance(handler.formatter, (logging.Formatter, type(None))):
-                handler.setFormatter(fmt=JSONOnlyFormatter())
 
     def _log(self, level: str, msg: Any, *args: Any, **kwargs: Any) -> None:
         msg_str = str(msg)
