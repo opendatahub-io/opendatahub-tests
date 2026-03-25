@@ -55,7 +55,6 @@ class TestKserveModelCar:
 
     @pytest.mark.tier1
     @pytest.mark.ocp_interop
-    @pytest.mark.skip(reason="Skipping due to RHOAIENG-12306")
     def test_model_car_using_rest(self, model_car_inference_service):
         """Verify model query with token using REST"""
         verify_inference_response(
@@ -68,7 +67,6 @@ class TestKserveModelCar:
 
     @pytest.mark.tier1
     @pytest.mark.ocp_interop
-    @pytest.mark.skip(reason="Skipping due to RHOAIENG-38674")
     def test_model_status_loaded(self, model_car_inference_service):
         """Verify model status on the InferenceService resource is in a valid state."""
         model_status = model_car_inference_service.instance.status.modelStatus
