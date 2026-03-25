@@ -802,7 +802,9 @@ def verify_no_failed_pods(
             return
 
 
-def check_pod_status_in_time(pod: Pod, status: set[str], duration: int = Timeout.TIMEOUT_2MIN, wait: int = 1) -> None:
+def check_pod_status_in_time(
+    pod: Pod, status: set[str], duration: int = Timeout.TIMEOUT_2MIN, wait: int = 1
+) -> None:  # skip-unused-code
     """
     Checks if a pod status is maintained for a given duration. If not, an AssertionError is raised.
 

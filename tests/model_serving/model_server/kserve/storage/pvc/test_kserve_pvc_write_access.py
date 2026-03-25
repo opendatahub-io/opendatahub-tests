@@ -31,6 +31,17 @@ POD_TOUCH_SPLIT_COMMAND: list[str] = shlex.split("touch /mnt/models/test")
     indirect=True,
 )
 class TestKservePVCWriteAccess:
+    """Validate PVC write access control via the KServe read-only storage annotation.
+
+    Steps:
+        1. Deploy an ISVC with a ReadWriteMany NFS PVC and no explicit read-only annotation.
+        2. Verify no pod containers have restarted.
+        3. Verify the read-only annotation is not set by default.
+        4. Verify write access is denied by default (touch command fails).
+        5. Patch the ISVC with readonly=false and verify write access is allowed.
+        6. Patch the ISVC with readonly=true and verify write access is denied again.
+    """
+
     def test_pod_containers_not_restarted(self, first_predictor_pod):
         """Test that the containers are not restarted"""
         restarted_containers = [
@@ -84,6 +95,7 @@ class TestKservePVCWriteAccess:
         indirect=True,
     )
     def test_isvc_read_only_annotation_true(self, unprivileged_client, patched_read_only_isvc):
+        """Verify that write access is denied when the read-only annotation is set to true."""
         new_pod = get_pods_by_isvc_label(
             client=unprivileged_client,
             isvc=patched_read_only_isvc,

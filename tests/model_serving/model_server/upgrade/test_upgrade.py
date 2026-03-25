@@ -13,6 +13,13 @@ pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_conf
 
 
 class TestPreUpgradeModelServer:
+    """Validate raw deployment model inference before an operator upgrade.
+
+    Steps:
+        1. Deploy an OVMS inference service as a raw deployment.
+        2. Send an inference request via the internal HTTP route and verify a successful response.
+    """
+
     @pytest.mark.pre_upgrade
     def test_raw_deployment_pre_upgrade_inference(self, inference_service_fixture):
         """Test raw deployment model inference using internal route before upgrade"""
@@ -26,6 +33,15 @@ class TestPreUpgradeModelServer:
 
 
 class TestPostUpgradeModelServer:
+    """Validate raw deployment model integrity and inference after an operator upgrade.
+
+    Steps:
+        1. Verify the inference service still exists after the upgrade.
+        2. Verify the inference service was not modified during the upgrade (generation=1).
+        3. Verify the serving runtime was not modified during the upgrade (generation=1).
+        4. Send an inference request via the internal HTTP route and verify a successful response.
+    """
+
     @pytest.mark.post_upgrade
     @pytest.mark.dependency(name="isvc_exists")
     def test_raw_deployment_post_upgrade_inference_exists(self, inference_service_fixture):
