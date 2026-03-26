@@ -79,7 +79,7 @@ def vector_store_create_and_poll(
     vector_store_id: str,
     file_id: str,
     *,
-    attributes: Any,
+    attributes: dict[str, str | int | float | bool] | None = None,
     poll_interval_sec: float = 5.0,
     wait_timeout: float = 240.0,
 ) -> VectorStoreFile:
