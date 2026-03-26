@@ -16,7 +16,7 @@ workbenches/
 
 ### Current Test Suites
 
-- **`test_imagestream_health.py`** - Validates that workbench ImageStreams are properly imported and resolved. Checks correct ImageStream counts, tag digest references (`@sha256:`), and `ImportSuccess` conditions for both notebook images (11 expected) and runtime images (7 expected)
+- **`test_imagestream_health.py`** - Validates that workbench ImageStreams are properly imported and resolved. Checks correct ImageStream counts, tag digest references (`@sha256:`), and `ImportSuccess` conditions for both notebook images (14 expected) and runtime images (7 expected)
 - **`notebook-controller/test_spawning.py`** - Tests basic notebook creation via Notebook CR and validates pod creation. Also tests Auth proxy container resource customization via annotations
 - **`notebook-controller/test_custom_images.py`** - Validates custom workbench images contain required Python packages by spawning a workbench, installing any missing packages, and executing import verification
 
