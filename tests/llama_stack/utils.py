@@ -326,10 +326,7 @@ def vector_store_upload_doc_sources(
         FileNotFoundError: If a file or non-empty directory source is missing.
     """
     LOGGER.info(
-        "Uploading doc_sources to vector_store (provider_id=%s, id=%s): %s",
-        vector_io_provider,
-        vector_store.id,
-        doc_sources,
+        f"Uploading doc_sources to vector_store (provider_id={vector_io_provider}, id={vector_store.id}): {doc_sources}"
     )
     for source in doc_sources:
         if source.startswith(("http://", "https://")):
@@ -380,11 +377,7 @@ def vector_store_upload_dataset(
         llama_stack_client: Client used for file and vector store APIs.
         vector_store: Target vector store (must expose ``id``).
     """
-    LOGGER.info(
-        "Uploading dataset (%d document(s)) to vector_store (id=%s)",
-        len(dataset.documents),
-        vector_store.id,
-    )
+    LOGGER.info(f"Uploading dataset ({len(dataset.documents)} document(s)) to vector_store (id={vector_store.id})")
     for doc in dataset.documents:
         source_path = resolve_repo_path(source=doc.path)
         vector_store_create_file_from_path(

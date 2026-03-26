@@ -872,16 +872,9 @@ def vector_store(
             except Exception:
                 try:
                     unprivileged_llama_stack_client.vector_stores.delete(vector_store_id=vector_store.id)
-                    LOGGER.info(
-                        "Deleted vector store %s after failed document ingestion",
-                        vector_store.id,
-                    )
+                    LOGGER.info(f"Deleted vector store {vector_store.id} after failed document ingestion")
                 except Exception as del_exc:  # noqa: BLE001
-                    LOGGER.warning(
-                        "Failed to delete vector store %s after ingestion error: %s",
-                        vector_store.id,
-                        del_exc,
-                    )
+                    LOGGER.warning(f"Failed to delete vector store {vector_store.id} after ingestion error: {del_exc}")
                 raise
 
     yield vector_store

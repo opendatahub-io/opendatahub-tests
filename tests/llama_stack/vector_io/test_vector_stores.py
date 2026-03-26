@@ -129,11 +129,7 @@ class TestLlamaStackVectorStores:
             f"Expected {len(dataset.documents)} completed vector store file(s) in {store_id!r} after upload, "
             f"found {len(completed_files)}"
         )
-        LOGGER.info(
-            "Vector store %s lists %s completed file(s)",
-            store_id,
-            len(completed_files),
-        )
+        LOGGER.info(f"Vector store {store_id} lists {len(completed_files)} completed file(s)")
 
     def test_vector_stores_search(
         self,
