@@ -24,7 +24,7 @@ CATALOG_CONTAINER = "catalog"
     [
         pytest.param(
             MCP_SERVERS_YAML_MALFORMED,
-            f"Error reading MCP catalog from {MCP_SERVERS_YAML_INVALID_CATALOG_PATH}: error parsing YAML",
+            f"{MCP_SERVERS_YAML_INVALID_CATALOG_PATH}: error parsing YAML",
             id="malformed_yaml",
         ),
         pytest.param(
