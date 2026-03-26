@@ -135,11 +135,29 @@ To skip RHOAI/ODH-related tests (for example when running in upstream), pass `--
 
 To run tests with admin client only, pass `--tc=use_unprivileged_client:False` to pytest.
 
-### jira integration
 
-To skip running tests which have open bugs, [pytest_jira](https://github.com/rhevm-qe-automation/pytest_jira) plugin is used.
-To run tests with jira integration, you need to set `PYTEST_JIRA_URL` and `PYTEST_JIRA_TOKEN` environment variables.
-To make a test with jira marker, add: `@pytest.mark.jira(jira_id="RHOAIENG-0000", run=False)` to the test.
+### Skipping tests for known Jira issues
+
+To skip a test that is affected by a known Jira bug, use `pytest.mark.xfail`:
+
+```python
+
+@pytest.mark.xfail(reason="RHOAIENG-12345", run=False)
+def test_example(self):
+    ...
+```
+
+- `condition=is_jira_issue_open(...)` checks the Jira issue status at collection time. If the issue is open, the test is marked as xfail.
+- `run=False` skips execution entirely while the issue is open. Once the issue is closed/resolved, the test runs normally.
+- If Jira is unreachable, the issue is assumed open and the test is skipped.
+
+The following environment variables must be set for Jira connectivity:
+
+```bash
+export PYTEST_JIRA_URL=<your_jira_url>
+export PYTEST_JIRA_USERNAME=<username>
+export PYTEST_JIRA_TOKEN=<token>
+```
 
 ### Running containerized tests
 
