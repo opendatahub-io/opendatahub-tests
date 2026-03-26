@@ -28,11 +28,11 @@ from utilities.plugins.constant import OpenAIEnpoints
 
 
 @pytest.mark.parametrize(
-    "model_namespace, orchestrator_config_builtin_gpu, guardrails_gateway_config, guardrails_orchestrator",
+    "model_namespace, orchestrator_config_gpu, guardrails_gateway_config, guardrails_orchestrator",
     [
         pytest.param(
             {"name": "test-guardrails-builtin-gpu"},
-            {"orchestrator_config_data": None},
+            {"use_builtin_detectors": True},
             {
                 "guardrails_gateway_config_data": {
                     "config.yaml": yaml.dump({
@@ -56,7 +56,7 @@ from utilities.plugins.constant import OpenAIEnpoints
                 },
             },
             {
-                "orchestrator_config_builtin_gpu": True,
+                "orchestrator_config_gpu": True,
                 "enable_built_in_detectors": True,
                 "enable_guardrails_gateway": True,
                 "guardrails_gateway_config": True,
@@ -68,7 +68,7 @@ from utilities.plugins.constant import OpenAIEnpoints
 @pytest.mark.smoke
 @pytest.mark.gpu
 @pytest.mark.rawdeployment
-@pytest.mark.usefixtures("patched_dsc_kserve_headed", "guardrails_gateway_config")
+@pytest.mark.usefixtures("patched_dsc_kserve_headed")
 class TestGuardrailsOrchestratorWithBuiltInDetectors:
     """
     Tests if basic functions of the GuardrailsOrchestrator are working properly with the built-in (regex) detectors.
@@ -88,7 +88,8 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         current_client_token,
         openshift_ca_bundle_file,
         qwen_gpu_isvc,
-        orchestrator_config_builtin_gpu,
+        guardrails_gateway_config,
+        orchestrator_config_gpu,
         guardrails_orchestrator_health_route,
         guardrails_healthcheck,
     ):
@@ -103,7 +104,8 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         current_client_token,
         openshift_ca_bundle_file,
         qwen_gpu_isvc,
-        orchestrator_config_builtin_gpu,
+        guardrails_gateway_config,
+        orchestrator_config_gpu,
         guardrails_orchestrator_gateway_route,
         guardrails_healthcheck,
     ):
@@ -120,7 +122,8 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         current_client_token,
         openshift_ca_bundle_file,
         qwen_gpu_isvc,
-        orchestrator_config_builtin_gpu,
+        guardrails_gateway_config,
+        orchestrator_config_gpu,
         guardrails_orchestrator_gateway_route,
         guardrails_healthcheck,
     ):
@@ -148,7 +151,8 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         current_client_token,
         openshift_ca_bundle_file,
         qwen_gpu_isvc,
-        orchestrator_config_builtin_gpu,
+        guardrails_gateway_config,
+        orchestrator_config_gpu,
         guardrails_orchestrator_gateway_route,
         message,
         url_path,
@@ -165,7 +169,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
 
 @pytest.mark.gpu
 @pytest.mark.rawdeployment
-@pytest.mark.usefixtures("patched_dsc_kserve_headed", "guardrails_gateway_config")
+@pytest.mark.usefixtures("patched_dsc_kserve_headed")
 @pytest.mark.parametrize(
     "model_namespace, orchestrator_config_gpu, guardrails_gateway_config, guardrails_orchestrator",
     [
