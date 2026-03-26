@@ -68,7 +68,9 @@ def verify_llmd_health(admin_client: DynamicClient, dsc_resource: Resource) -> N
     for condition in dsc_resource.instance.status.conditions:
         if condition.type == LLMD_DSC_CONDITION:
             if condition.status != "True":
-                pytest.xfail(f"{LLMD_DSC_CONDITION} is not ready: {condition.status}, reason: {condition.get('reason')}")
+                pytest.xfail(
+                    f"{LLMD_DSC_CONDITION} is not ready: {condition.status}, reason: {condition.get('reason')}"
+                )
             break
     else:
         pytest.xfail(f"{LLMD_DSC_CONDITION} condition not found in DSC status")
