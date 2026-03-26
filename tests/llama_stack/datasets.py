@@ -12,6 +12,8 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
 
 @dataclass(frozen=True)
 class DatasetDocumentQA:
@@ -52,7 +54,8 @@ def _load_document_qa(
     """
     allowed_ids = set(document_ids) if document_ids is not None else None
     records: list[DatasetDocumentQA] = []
-    with Path(path).open() as fh:
+    abs_path = _REPO_ROOT / path if not Path(path).is_absolute() else Path(path)
+    with abs_path.open() as fh:
         for line in fh:
             line = line.strip()
             if not line:
@@ -76,8 +79,9 @@ def _load_document_qa(
 
 def _load_documents_from_manifest(manifest_path: str) -> tuple[DatasetDocument, ...]:
     """Load documents from a JSON manifest, resolving paths relative to the manifest directory."""
-    manifest_dir = str(Path(manifest_path).parent)
-    raw_list = json.loads(Path(manifest_path).read_text())
+    abs_manifest = _REPO_ROOT / manifest_path
+    manifest_dir = str(abs_manifest.parent)
+    raw_list = json.loads(abs_manifest.read_text())
     return tuple(
         DatasetDocument(
             path=f"{manifest_dir}/{entry['filename']}",
