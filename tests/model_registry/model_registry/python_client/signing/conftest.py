@@ -138,7 +138,7 @@ def installed_tas_operator(admin_client: DynamicClient) -> Generator[None, Any]:
         None: Operator is ready for use
     """
     distribution = py_config["distribution"]
-    operator_ns = Namespace(name=OPENSHIFT_OPERATORS, ensure_exists=True)
+    operator_ns = Namespace(client=admin_client, name=OPENSHIFT_OPERATORS, ensure_exists=True)
     package_name = "rhtas-operator"
 
     # Determine operator source: ODH uses community-operators, RHOAI uses redhat-operators
@@ -179,7 +179,7 @@ def installed_tas_operator(admin_client: DynamicClient) -> Generator[None, Any]:
             clean_up_namespace=False,
         )
         # Ensure namespace exists for Securesign
-        ns = Namespace(name=SECURESIGN_NAMESPACE)
+        ns = Namespace(client=admin_client, name=SECURESIGN_NAMESPACE)
         if ns.exists:
             ns.delete(wait=True)
     else:
@@ -212,7 +212,7 @@ def securesign_instance(
         Resource: Securesign resource instance
     """
     # Ensure namespace exists for Securesign
-    ns = Namespace(name=SECURESIGN_NAMESPACE)
+    ns = Namespace(client=admin_client, name=SECURESIGN_NAMESPACE)
     ns.wait_for_status(status=Namespace.Status.ACTIVE)
 
     # Build Securesign CR spec
