@@ -176,8 +176,21 @@ def _validate_imagestreams_with_label(
 @pytest.mark.parametrize(
     "label_selector, expected_imagestream_count",
     [
-        pytest.param("opendatahub.io/notebook-image=true", 11, id="notebook_imagestreams"),
-        pytest.param("opendatahub.io/runtime-image=true", 7, id="runtime_imagestreams"),
+        pytest.param(
+            "opendatahub.io/notebook-image=true,platform.opendatahub.io/part-of=workbenches",
+            11,
+            id="notebook_imagestreams",
+        ),
+        pytest.param(
+            "opendatahub.io/runtime-image=true,platform.opendatahub.io/part-of=workbenches",
+            7,
+            id="runtime_imagestreams",
+        ),
+        pytest.param(
+            "opendatahub.io/notebook-image=true,platform.opendatahub.io/part-of=trainer",
+            3,
+            id="trainer_imagestreams",
+        ),
     ],
 )
 def test_workbench_imagestreams_health(
