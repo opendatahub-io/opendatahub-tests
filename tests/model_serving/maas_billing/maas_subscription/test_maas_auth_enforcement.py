@@ -6,9 +6,12 @@ import structlog
 
 from tests.model_serving.maas_billing.maas_subscription.utils import (
     chat_payload_for_url,
+    create_api_key,
     poll_expected_status,
+    revoke_api_key,
 )
 from tests.model_serving.maas_billing.utils import build_maas_headers
+from utilities.general import generate_random_name
 from utilities.plugins.constant import RestHeader
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -32,21 +35,41 @@ class TestMaaSAuthPolicyEnforcementTinyLlama:
     def test_authorized_user_gets_200(
         self,
         request_session_http: requests.Session,
+        base_url: str,
+        ocp_token_for_actor: str,
         model_url_tinyllama_free: str,
-        maas_headers_for_actor_api_key: dict[str, str],
+        maas_subscription_tinyllama_free,
     ) -> None:
-        payload = chat_payload_for_url(model_url=model_url_tinyllama_free)
-
-        resp = poll_expected_status(
+        """
+        Verify a free user with a subscription-bound API key can access the free model.
+        """
+        _, body = create_api_key(
+            base_url=base_url,
+            ocp_user_token=ocp_token_for_actor,
             request_session_http=request_session_http,
-            model_url=model_url_tinyllama_free,
-            headers=maas_headers_for_actor_api_key,
-            payload=payload,
-            expected_statuses={200},
+            api_key_name=f"e2e-auth-enforce-{generate_random_name()}",
+            subscription=maas_subscription_tinyllama_free.name,
         )
+        api_key = body["key"]
+        key_id = body["id"]
 
-        LOGGER.info(f"test_authorized_user_gets_200 -> POST {model_url_tinyllama_free} returned {resp.status_code}")
-        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text[:200]}"
+        try:
+            resp = poll_expected_status(
+                request_session_http=request_session_http,
+                model_url=model_url_tinyllama_free,
+                headers=build_maas_headers(token=api_key),
+                payload=chat_payload_for_url(model_url=model_url_tinyllama_free),
+                expected_statuses={200},
+            )
+            LOGGER.info(f"test_authorized_user_gets_200 -> POST {model_url_tinyllama_free} returned {resp.status_code}")
+            assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text[:200]}"
+        finally:
+            revoke_api_key(
+                request_session_http=request_session_http,
+                base_url=base_url,
+                key_id=key_id,
+                ocp_user_token=ocp_token_for_actor,
+            )
 
     @pytest.mark.smoke
     def test_no_auth_header_gets_401(
@@ -99,10 +122,12 @@ class TestMaaSAuthPolicyEnforcementTinyLlama:
             model_url=model_url_tinyllama_premium,
             headers=maas_headers_for_wrong_group_sa,
             payload=payload,
-            expected_statuses={403},
+            expected_statuses={401},
         )
         LOGGER.info(
             "test_wrong_group_sa_denied_on_premium_model -> "
             f"POST {model_url_tinyllama_premium} returned {resp.status_code}"
         )
-        assert resp.status_code == 403, f"Expected 403, got {resp.status_code}: {resp.text[:200]}"
+        assert resp.status_code == 401, (
+            f"Expected 401 (SA token not authenticated as MaaS user), got {resp.status_code}: {resp.text[:200]}"
+        )
