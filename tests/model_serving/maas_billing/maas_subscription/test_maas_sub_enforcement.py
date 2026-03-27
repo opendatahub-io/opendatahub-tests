@@ -4,7 +4,10 @@ import pytest
 import requests
 import structlog
 
-from tests.model_serving.maas_billing.maas_subscription.utils import chat_payload_for_url
+from tests.model_serving.maas_billing.maas_subscription.utils import (
+    chat_payload_for_url,
+)
+from tests.model_serving.maas_billing.utils import build_maas_headers
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -31,18 +34,20 @@ class TestSubscriptionEnforcementTinyLlama:
         self,
         request_session_http: requests.Session,
         model_url_tinyllama_premium: str,
-        maas_headers_for_actor_api_key: dict[str, str],
+        api_key_bound_to_premium_subscription: str,
     ) -> None:
+        """
+        Verify a premium user with a subscription-bound API key can access the premium model.
+        """
         resp = request_session_http.post(
             url=model_url_tinyllama_premium,
-            headers=maas_headers_for_actor_api_key,
+            headers=build_maas_headers(token=api_key_bound_to_premium_subscription),
             json=chat_payload_for_url(model_url=model_url_tinyllama_premium),
             timeout=60,
         )
         LOGGER.info(f"test_subscribed_user_gets_200 -> {resp.status_code}")
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text[:200]}"
 
-    @pytest.mark.tier1
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "premium"}], indirect=True)
     def test_explicit_subscription_header_works(
         self,
