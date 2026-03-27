@@ -1,6 +1,5 @@
 """Fixtures for Model Registry Python Client Signing Tests."""
 
-import base64
 import json
 import logging
 import os
@@ -39,14 +38,11 @@ from tests.model_registry.model_registry.async_job.constants import (
 from tests.model_registry.model_registry.async_job.utils import get_latest_job_pod
 from tests.model_registry.model_registry.python_client.signing.constants import (
     IDENTITY_TOKEN_MOUNT_PATH,
-    MODEL_CONTENT,
     NATIVE_SIGNING_REPO,
     NATIVE_SIGNING_TAG,
     SECURESIGN_API_VERSION,
     SECURESIGN_NAME,
     SECURESIGN_NAMESPACE,
-    SIGNING_ASYNC_REPO,
-    SIGNING_ASYNC_TAG,
     SIGNING_MODEL_DATA,
     SIGNING_OCI_REPO_NAME,
     SIGNING_OCI_TAG,
@@ -705,149 +701,6 @@ def signing_registered_model(
         model_format_version=SIGNING_MODEL_DATA.get("model_format_version"),
         storage_key=SIGNING_MODEL_DATA.get("model_storage_key"),
         storage_path=SIGNING_MODEL_DATA.get("model_storage_path"),
-    )
-
-
-@pytest.fixture(scope="class")
-def class_scoped_signer(set_environment_variables: None) -> Signer:
-    """Class-scoped signer instance for use in class-scoped fixtures."""
-    signer = Signer(
-        identity_token_path=os.environ["IDENTITY_TOKEN_PATH"],
-        root_url=os.environ["ROOT_URL"],
-        root_checksum=os.environ["ROOT_CHECKSUM"],
-        log_level=logging.DEBUG,
-    )
-    signer.initialize(force=True)
-    LOGGER.info("Class-scoped signer initialized")
-    return signer
-
-
-@pytest.fixture(scope="class")
-def signed_model_dir(class_scoped_signer: Signer, tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Create a model directory, sign it, and return the path."""
-    model_dir = tmp_path_factory.mktemp(basename="async-signing-model")
-    model_file = model_dir / "model.onnx"
-    model_file.write_bytes(data=MODEL_CONTENT)
-
-    LOGGER.info(f"Signing model in {model_dir}")
-    class_scoped_signer.sign_model(model_path=str(model_dir))
-
-    sig_file = model_dir / "model.sig"
-    assert sig_file.exists(), "model.sig not created after signing"
-    LOGGER.info(f"Model signed successfully, model.sig size: {sig_file.stat().st_size} bytes")
-    return model_dir
-
-
-@pytest.fixture(scope="class")
-def signed_model_secret(
-    admin_client: DynamicClient,
-    model_registry_namespace: str,
-    signed_model_dir: Path,
-) -> Generator[Secret, Any, Any]:
-    """Create a Secret containing the signed model files for upload to MinIO."""
-    model_onnx = (signed_model_dir / "model.onnx").read_bytes()
-    model_sig = (signed_model_dir / "model.sig").read_bytes()
-
-    with Secret(
-        client=admin_client,
-        name=f"signed-model-files-{shortuuid.uuid().lower()}",
-        namespace=model_registry_namespace,
-        data_dict={
-            "model.onnx": base64.b64encode(model_onnx).decode(),
-            "model.sig": base64.b64encode(model_sig).decode(),
-        },
-    ) as secret:
-        LOGGER.info(f"Created signed model secret: {secret.name}")
-        yield secret
-
-
-@pytest.fixture(scope="class")
-def upload_signed_model_to_minio(
-    admin_client: DynamicClient,
-    model_registry_namespace: str,
-    minio_service: Service,
-    signed_model_secret: Secret,
-) -> None:
-    """Upload signed model files (model.onnx + model.sig) to MinIO."""
-    source_key = MODEL_SYNC_CONFIG["SOURCE_AWS_KEY"]
-    bucket = MinIo.Buckets.MODELMESH_EXAMPLE_MODELS
-
-    run_minio_uploader_pod(
-        admin_client=admin_client,
-        namespace=model_registry_namespace,
-        minio_service=minio_service,
-        pod_name="signed-model-uploader",
-        mc_commands=(
-            f"mc cp /model-files/model.onnx testminio/{bucket}/{source_key}/model.onnx && "
-            f"mc cp /model-files/model.sig testminio/{bucket}/{source_key}/model.sig && "
-            f"mc ls testminio/{bucket}/{source_key}/ && "
-            f"echo 'Signed model upload completed'"
-        ),
-        volumes=[{"name": "model-files", "secret": {"secretName": signed_model_secret.name}}],
-        volume_mounts=[{"name": "model-files", "mountPath": "/model-files", "readOnly": True}],
-    )
-
-
-@pytest.fixture(scope="class")
-def signing_async_job(
-    admin_client: DynamicClient,
-    sa_token: str,
-    service_account: ServiceAccount,
-    model_registry_namespace: str,
-    model_registry_instance: list[ModelRegistry],
-    signing_s3_secret: Secret,
-    signing_oci_secret: Secret,
-    oci_registry_service: Service,
-    mr_access_role_binding: RoleBinding,
-    async_upload_image: str,
-    signing_registered_model: RegisteredModel,
-    upload_signed_model_to_minio: None,
-    teardown_resources: bool,
-) -> Generator[Job, Any, Any]:
-    """Create and run the async upload job for the externally signed model."""
-    mr_host = get_model_registry_host(
-        admin_client=admin_client,
-        model_registry_namespace=model_registry_namespace,
-        model_registry_instance=model_registry_instance,
-    )
-    oci_internal = get_oci_internal_endpoint(oci_registry_service=oci_registry_service)
-
-    yield from create_async_upload_job(
-        admin_client=admin_client,
-        job_name=f"{ASYNC_UPLOAD_JOB_NAME}-signing",
-        namespace=service_account.namespace,
-        async_upload_image=async_upload_image,
-        s3_secret=signing_s3_secret,
-        oci_secret=signing_oci_secret,
-        environment_variables=get_base_async_job_env_vars(
-            mr_host=mr_host,
-            sa_token=sa_token,
-            oci_internal=oci_internal,
-            oci_repo=SIGNING_ASYNC_REPO,
-        ),
-        teardown=teardown_resources,
-    )
-
-
-@pytest.fixture(scope="class")
-def signing_job_pod(
-    admin_client: DynamicClient,
-    signing_async_job: Job,
-) -> Pod:
-    """Get the pod created by the async signing job."""
-    return get_latest_job_pod(admin_client=admin_client, job=signing_async_job)
-
-
-@pytest.fixture(scope="class")
-def oci_image_with_digest(
-    ai_hub_oci_registry_host: str,
-    signing_async_job: Job,
-) -> Generator[str, Any, Any]:
-    """Get the OCI image reference with digest after async job completes."""
-    yield from get_oci_image_with_digest(
-        oci_host=ai_hub_oci_registry_host,
-        repo=SIGNING_ASYNC_REPO,
-        tag=SIGNING_ASYNC_TAG,
     )
 
 
