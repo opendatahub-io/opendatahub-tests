@@ -14,12 +14,12 @@ from tests.model_serving.model_server.kserve.multi_node.utils import (
     verify_ray_status,
 )
 from tests.model_serving.model_server.utils import verify_inference_response
-from utilities.constants import Labels, Protocols, StorageClassName
+from utilities.constants import Labels, Protocols
 from utilities.manifests.vllm import VLLM_INFERENCE_CONFIG
 
 pytestmark = [
     pytest.mark.rawdeployment,
-    pytest.mark.usefixtures("skip_if_no_gpu_nodes", "skip_if_no_nfs_storage_class"),
+    pytest.mark.usefixtures("skip_if_no_gpu_nodes"),
     pytest.mark.model_server_gpu,
     pytest.mark.multinode,
     pytest.mark.gpu,
@@ -31,16 +31,10 @@ MAX_NUM_BATCHED_TOKENS_ARG: str = "--max-num-batched-tokens=256"
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, models_bucket_downloaded_model_data, model_pvc, multi_node_inference_service",
+    "unprivileged_model_namespace, multi_node_inference_service",
     [
         pytest.param(
             {"name": "gpu-multi-node"},
-            {"model-dir": "granite-8b-code-base"},
-            {
-                "access-modes": "ReadWriteMany",
-                "storage-class-name": StorageClassName.NFS,
-                "pvc-size": "40Gi",
-            },
             {"name": "multi-vllm"},
         )
     ],
@@ -52,10 +46,10 @@ class TestMultiNode:
         verify_ray_status(pods=multi_node_predictor_pods_scope_class)
 
     def test_multi_node_nvidia_gpu_status(self, multi_node_predictor_pods_scope_class):
-        """Test multi node ray status"""
+        """Test multi node nvidia gpu status"""
         verify_nvidia_gpu_status(pod=multi_node_predictor_pods_scope_class[0])
 
-    def test_multi_node_default_config(self, multi_node_serving_runtime, multi_node_predictor_pods_scope_class):
+    def test_multi_node_default_config(self, multi_node_serving_runtime, multi_node_inference_service):
         """Test multi node inference service with default config"""
         runtime_worker_spec = multi_node_serving_runtime.instance.spec.workerSpec
 
@@ -179,16 +173,21 @@ class TestMultiNode:
                 "spec": {
                     "workerSpec": {
                         "pipelineParallelSize": 2,
-                        "tensorParallelSize": 4,
+                        "tensorParallelSize": 2,
                     }
                 }
             })
         ],
         indirect=True,
     )
-    def test_multi_node_tensor_parallel_size_propagation(self, unprivileged_client, patched_multi_node_spec):
+    def test_multi_node_tensor_parallel_size_propagation(
+        self, unprivileged_client, patched_multi_node_spec, max_gpu_per_node
+    ):
         """Test multi node tensor parallel size (number of GPUs per pod) propagation to pod config"""
         isvc_parallel_size = str(patched_multi_node_spec.instance.spec.predictor.workerSpec.tensorParallelSize)
+
+        if int(isvc_parallel_size) > max_gpu_per_node:
+            pytest.skip(f"tensorParallelSize {isvc_parallel_size} exceeds max GPUs per node ({max_gpu_per_node})")
 
         failed_pods: list[dict[str, Any]] = []
 

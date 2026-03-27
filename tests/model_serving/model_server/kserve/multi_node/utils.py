@@ -124,6 +124,53 @@ def get_pods_by_isvc_generation(client: DynamicClient, isvc: InferenceService) -
     raise ResourceNotFoundError(f"InferenceService {isvc.name} generation {isvc_generation} has no pods")
 
 
+@retry(wait_timeout=Timeout.TIMEOUT_10MIN, sleep=10)
+def wait_for_vllm_health(client: DynamicClient, isvc: InferenceService) -> bool:
+    """Wait for vLLM to serve inference successfully on the head pod.
+
+    After pod deletion and recovery, the vLLM /health endpoint and Ray
+    node count may report healthy before the distributed inference
+    pipeline is fully rebuilt. This function verifies the model can
+    serve an actual inference request via pod exec on the head pod.
+
+    Args:
+        client: Dynamic client.
+        isvc: InferenceService object.
+
+    Returns:
+        True when inference succeeds.
+
+    Raises:
+        RuntimeError: If inference check fails.
+    """
+    for pod in get_pods_by_isvc_label(client=client, isvc=isvc):
+        if WORKER_POD_ROLE not in pod.name:
+            result = pod.execute(
+                command=[
+                    "curl",
+                    "-s",
+                    "-o",
+                    "/dev/null",
+                    "-w",
+                    "%{http_code}",
+                    "-X",
+                    "POST",
+                    "http://localhost:8080/v1/completions",
+                    "-H",
+                    "Content-Type: application/json",
+                    "-d",
+                    f'{{"model":"{isvc.name}","prompt":"test","max_tokens":1}}',
+                ]
+            )
+            if result.strip().strip("'") != "200":
+                raise RuntimeError(f"vLLM inference check returned {result} on head pod {pod.name}")
+
+            LOGGER.info(f"vLLM inference check passed on head pod {pod.name}")
+            return True
+
+    raise RuntimeError(f"No head pod found for InferenceService {isvc.name}")
+
+
 def is_arg_in_model_spec(client: DynamicClient, isvc: InferenceService, arg: str) -> bool:
     """
     Check if arg is in model spec; spec.model.args are only added to head pod

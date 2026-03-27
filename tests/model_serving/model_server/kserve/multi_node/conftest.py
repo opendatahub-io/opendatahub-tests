@@ -6,19 +6,19 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.node import Node
-from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest_testconfig import config as py_config
-from timeout_sampler import TimeoutSampler
 
 from tests.model_serving.model_server.kserve.multi_node.utils import (
     delete_multi_node_pod_by_role,
+    wait_for_vllm_health,
 )
+from timeout_sampler import TimeoutSampler
+
 from utilities.constants import KServeDeploymentType, Labels, Protocols, Timeout, ModelCarImage
-from utilities.general import download_model_data
 from utilities.inference_utils import create_isvc
 from utilities.infra import (
     get_pods_by_isvc_label,
@@ -34,34 +34,17 @@ def nvidia_gpu_nodes(nodes: list[Node]) -> list[Node]:
 
 
 @pytest.fixture(scope="session")
+def max_gpu_per_node(nvidia_gpu_nodes: list[Node]) -> int:
+    return max(
+        (int(node.instance.status.allocatable.get("nvidia.com/gpu", 0)) for node in nvidia_gpu_nodes),
+        default=0,
+    )
+
+
+@pytest.fixture(scope="session")
 def skip_if_no_gpu_nodes(nvidia_gpu_nodes: list[Node]) -> None:
     if len(nvidia_gpu_nodes) < 2:
         pytest.skip("Multi-node tests can only run on a Cluster with at least 2 GPU Worker nodes")
-
-
-@pytest.fixture(scope="class")
-def models_bucket_downloaded_model_data(
-    request: FixtureRequest,
-    admin_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
-    models_s3_bucket_name: str,
-    model_pvc: PersistentVolumeClaim,
-    aws_secret_access_key: str,
-    aws_access_key_id: str,
-    models_s3_bucket_endpoint: str,
-    models_s3_bucket_region: str,
-) -> str:
-    return download_model_data(
-        client=admin_client,
-        aws_access_key_id=aws_access_key_id,
-        aws_secret_access_key=aws_secret_access_key,
-        model_namespace=unprivileged_model_namespace.name,
-        model_pvc_name=model_pvc.name,
-        bucket_name=models_s3_bucket_name,
-        aws_endpoint_url=models_s3_bucket_endpoint,
-        aws_default_region=models_s3_bucket_region,
-        model_path=request.param["model-dir"],
-    )
 
 
 @pytest.fixture(scope="class")
@@ -86,35 +69,6 @@ def multi_node_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
     multi_node_serving_runtime: ServingRuntime,
-    model_pvc: PersistentVolumeClaim,
-    models_bucket_downloaded_model_data: str,
-) -> Generator[InferenceService, Any, Any]:
-    with create_isvc(
-        client=unprivileged_client,
-        name=request.param["name"],
-        namespace=multi_node_serving_runtime.namespace,
-        runtime=multi_node_serving_runtime.name,
-        storage_uri=f"pvc://{model_pvc.name}/{models_bucket_downloaded_model_data}",
-        model_format=multi_node_serving_runtime.instance.spec.supportedModelFormats[0].name,
-        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-        autoscaler_mode="external",
-        multi_node_worker_spec={},
-        wait_for_predictor_pods=False,
-    ) as isvc:
-        wait_for_inference_deployment_replicas(
-            client=unprivileged_client,
-            isvc=isvc,
-            expected_num_deployments=2,
-            runtime_name=multi_node_serving_runtime.name,
-        )
-        yield isvc
-
-
-@pytest.fixture(scope="class")
-def multi_node_oci_inference_service(
-    request: FixtureRequest,
-    unprivileged_client: DynamicClient,
-    multi_node_serving_runtime: ServingRuntime,
 ) -> Generator[InferenceService, Any, Any]:
     resources = {
         "requests": {
@@ -136,7 +90,6 @@ def multi_node_oci_inference_service(
         ]
     }
 
-    # NOTE: In KServe v0.15, the autoscaler_mode needs to be updated to "none".
     with create_isvc(
         client=unprivileged_client,
         name=request.param["name"],
@@ -145,11 +98,10 @@ def multi_node_oci_inference_service(
         storage_uri=ModelCarImage.GRANITE_8B_CODE_INSTRUCT,
         model_format=multi_node_serving_runtime.instance.spec.supportedModelFormats[0].name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-        autoscaler_mode="external",
+        autoscaler_mode="none",
         resources=resources,
         multi_node_worker_spec=worker_resources,
         wait_for_predictor_pods=False,
-        external_route=True,
         timeout=Timeout.TIMEOUT_30MIN,
     ) as isvc:
         wait_for_inference_deployment_replicas(
@@ -177,6 +129,12 @@ def multi_node_predictor_pods_scope_class(
 def patched_multi_node_isvc_external_route(
     multi_node_inference_service: InferenceService,
 ) -> Generator[InferenceService, Any, Any]:
+    multi_node_inference_service.wait_for_condition(
+        condition=multi_node_inference_service.Condition.READY,
+        status=multi_node_inference_service.Condition.Status.TRUE,
+        timeout=Timeout.TIMEOUT_10MIN,
+    )
+
     with ResourceEditor(
         patches={
             multi_node_inference_service: {
@@ -185,7 +143,7 @@ def patched_multi_node_isvc_external_route(
         }
     ):
         for sample in TimeoutSampler(
-            wait_timeout=Timeout.TIMEOUT_1MIN,
+            wait_timeout=Timeout.TIMEOUT_5MIN,
             sleep=1,
             func=lambda: multi_node_inference_service.instance.status,
         ):
@@ -257,4 +215,9 @@ def deleted_multi_node_pod(
         client=unprivileged_client,
         isvc=multi_node_inference_service,
         timeout=Timeout.TIMEOUT_10MIN,
+    )
+
+    wait_for_vllm_health(
+        client=unprivileged_client,
+        isvc=multi_node_inference_service,
     )
