@@ -14,8 +14,13 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 
 from tests.fixtures.inference import get_vllm_chat_config
-from utilities.constants import HAP_DETECTOR, PROMPT_INJECTION_DETECTOR
-from utilities.constants import BUILTIN_DETECTOR_CONFIG, Annotations, Labels, VLLMGPUConfig
+from utilities.constants import (
+    BUILTIN_DETECTOR_CONFIG,
+    HAP_DETECTOR,
+    PROMPT_INJECTION_DETECTOR,
+    Annotations,
+    Labels,
+)
 from utilities.guardrails import check_guardrails_health_endpoint
 
 GUARDRAILS_ORCHESTRATOR_NAME: str = "guardrails-orchestrator"
@@ -220,7 +225,6 @@ def guardrails_orchestrator_gateway_route(
         wait_for_resource=True,
         ensure_exists=True,
     )
-
 
 
 @pytest.fixture(scope="class")
