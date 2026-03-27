@@ -96,6 +96,11 @@ def _get_disconnected_inference_url(llmisvc: LLMInferenceService) -> str:
             "Disconnected clusters require the gateway Route to be configured."
         )
     host = route.instance.spec.host
+    if not host:
+        raise RuntimeError(
+            f"Gateway Route {LLMDGateway.DEFAULT_NAME} in {LLMDGateway.DEFAULT_NAMESPACE} "
+            "has no host set. Ensure the Route is fully configured."
+        )
     return f"https://{host}/{llmisvc.namespace}/{llmisvc.name}"
 
 
