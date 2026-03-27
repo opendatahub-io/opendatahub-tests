@@ -15,7 +15,7 @@ from utilities.constants import (
 class LLMDGateway:
     DEFAULT_NAME: str = "openshift-ai-inference"
     DEFAULT_NAMESPACE: str = "openshift-ingress"
-    DEFAULT_CLASS: str = "data-science-gateway-class"
+    DEFAULT_GATEWAY_CLASS: str = "openshift-default"
 
 
 class KServeGateway:
