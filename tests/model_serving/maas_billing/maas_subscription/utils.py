@@ -185,14 +185,32 @@ def create_api_key(
     request_session_http: requests.Session,
     api_key_name: str,
     request_timeout_seconds: int = 60,
+    expires_in: str | None = None,
+    raise_on_error: bool = True,
+    subscription: str | None = None,
 ) -> tuple[Response, dict[str, Any]]:
     """
     Create an API key via MaaS API and return (response, parsed_body).
 
     Uses ocp_user_token for auth against maas-api.
     Expects plaintext key in body["key"] (sk-...).
+
+    Args:
+        expires_in: Optional expiration duration string (e.g. "24h", "720h").
+            When None, no expiresIn field is sent and the key does not expire.
+        raise_on_error: When True (default), raises AssertionError for non-200/201
+            responses. Set to False when testing error cases (e.g. 400 rejection).
+        subscription: Optional MaaSSubscription name to bind at mint time.
+            When provided, the key is bound to this subscription for inference.
+            When None, the API auto-selects the highest-priority subscription.
     """
     api_keys_url = f"{base_url}/v1/api-keys"
+
+    payload: dict[str, Any] = {"name": api_key_name}
+    if expires_in is not None:
+        payload["expiresIn"] = expires_in
+    if subscription is not None:
+        payload["subscription"] = subscription
 
     response = request_session_http.post(
         url=api_keys_url,
@@ -200,13 +218,15 @@ def create_api_key(
             "Authorization": f"Bearer {ocp_user_token}",
             "Content-Type": "application/json",
         },
-        json={"name": api_key_name},
+        json=payload,
         timeout=request_timeout_seconds,
     )
 
     LOGGER.info(f"create_api_key: url={api_keys_url} status={response.status_code}")
     if response.status_code not in (200, 201):
-        raise AssertionError(f"api-key create failed: status={response.status_code}")
+        if raise_on_error:
+            raise AssertionError(f"api-key create failed: status={response.status_code}")
+        return response, {}
 
     try:
         parsed_body: dict[str, Any] = json.loads(response.text)

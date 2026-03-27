@@ -204,6 +204,64 @@ def maas_headers_for_actor_api_key(maas_api_key_for_actor: str) -> dict[str, str
 
 
 @pytest.fixture(scope="class")
+def api_key_bound_to_free_subscription(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_token_for_actor: str,
+    maas_subscription_tinyllama_free: MaaSSubscription,
+    maas_subscription_controller_enabled_latest: None,
+    maas_gateway_api: None,
+    maas_api_gateway_reachable: None,
+) -> Generator[str, Any, Any]:
+    """
+    API key bound to the free subscription at mint time. Revoked on teardown.
+    """
+    _, body = create_api_key(
+        base_url=base_url,
+        ocp_user_token=ocp_token_for_actor,
+        request_session_http=request_session_http,
+        api_key_name=f"e2e-auth-enforce-{generate_random_name()}",
+        subscription=maas_subscription_tinyllama_free.name,
+    )
+    yield body["key"]
+    revoke_api_key(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        key_id=body["id"],
+        ocp_user_token=ocp_token_for_actor,
+    )
+
+
+@pytest.fixture(scope="class")
+def api_key_bound_to_premium_subscription(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_token_for_actor: str,
+    maas_subscription_tinyllama_premium: MaaSSubscription,
+    maas_subscription_controller_enabled_latest: None,
+    maas_gateway_api: None,
+    maas_api_gateway_reachable: None,
+) -> Generator[str, Any, Any]:
+    """
+    API key bound to the premium subscription at mint time. Revoked on teardown.
+    """
+    _, body = create_api_key(
+        base_url=base_url,
+        ocp_user_token=ocp_token_for_actor,
+        request_session_http=request_session_http,
+        api_key_name=f"e2e-sub-enforce-{generate_random_name()}",
+        subscription=maas_subscription_tinyllama_premium.name,
+    )
+    yield body["key"]
+    revoke_api_key(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        key_id=body["id"],
+        ocp_user_token=ocp_token_for_actor,
+    )
+
+
+@pytest.fixture(scope="class")
 def maas_wrong_group_service_account_token(
     maas_api_server_url: str,
     original_user: str,
