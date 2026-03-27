@@ -469,19 +469,14 @@ def login_with_user_password(api_address: str, user: str, password: str | None =
 
 @cache
 def is_disconnected_cluster(client: DynamicClient) -> bool:
-    """Check if the cluster is disconnected (air-gapped) based on ImageDigestMirrorSet resources."""
+    """Check if the cluster is disconnected (air-gapped) based on OperatorHub disableAllDefaultSources."""
     try:
-        idms = list(
+        operator_hub = (
             client.resources
-            .get(
-                api_version="config.openshift.io/v1",
-                kind="ImageDigestMirrorSet",
-            )
-            .get()
-            .items
-            or []
+            .get(api_version="config.openshift.io/v1", kind="OperatorHub")
+            .get(name="cluster")
         )
-        result = len(idms) > 0
+        result = bool(getattr(operator_hub.spec, "disableAllDefaultSources", False))
     except Exception:  # noqa: BLE001
         result = False
     LOGGER.info(f"Disconnected cluster detection: {result}")

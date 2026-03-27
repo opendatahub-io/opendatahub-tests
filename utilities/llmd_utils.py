@@ -77,44 +77,42 @@ def create_llmd_gateway(
                 timeout=timeout,
             )
         yield existing_gateway
-        return
-
-    if is_disconnected_cluster(client=client):
+    elif is_disconnected_cluster(client=client):
         raise RuntimeError(
             f"Gateway {name} in namespace {namespace} does not exist on a disconnected cluster. "
             "The gateway must be pre-created by CI using configure-disconnected-llmd-gateway.sh."
         )
+    else:
+        gateway_body = {
+            "apiVersion": f"{KServeGateway.API_GROUP}/v1",
+            "kind": "Gateway",
+            "metadata": {
+                "name": name,
+                "namespace": namespace,
+            },
+            "spec": {
+                "gatewayClassName": gateway_class_name,
+                "listeners": listeners,
+                "infrastructure": infrastructure,
+            },
+        }
 
-    gateway_body = {
-        "apiVersion": f"{KServeGateway.API_GROUP}/v1",
-        "kind": "Gateway",
-        "metadata": {
-            "name": name,
-            "namespace": namespace,
-        },
-        "spec": {
-            "gatewayClassName": gateway_class_name,
-            "listeners": listeners,
-            "infrastructure": infrastructure,
-        },
-    }
+        with Gateway(
+            client=client,
+            teardown=teardown,
+            kind_dict=gateway_body,
+            api_group="gateway.networking.k8s.io",
+        ) as gateway:
+            if wait_for_condition:
+                LOGGER.info(f"Waiting for Gateway {name} to be programmed...")
+                gateway.wait_for_condition(
+                    condition="Programmed",
+                    status="True",
+                    timeout=timeout,
+                )
+                LOGGER.info(f"Gateway {name} is programmed and ready")
 
-    with Gateway(
-        client=client,
-        teardown=teardown,
-        kind_dict=gateway_body,
-        api_group="gateway.networking.k8s.io",
-    ) as gateway:
-        if wait_for_condition:
-            LOGGER.info(f"Waiting for Gateway {name} to be programmed...")
-            gateway.wait_for_condition(
-                condition="Programmed",
-                status="True",
-                timeout=timeout,
-            )
-            LOGGER.info(f"Gateway {name} is programmed and ready")
-
-        yield gateway
+            yield gateway
 
 
 def _get_llm_config_references(enable_prefill_decode: bool = False, disable_scheduler: bool = False) -> dict[str, str]:
