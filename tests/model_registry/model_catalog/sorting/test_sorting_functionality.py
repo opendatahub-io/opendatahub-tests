@@ -1,14 +1,14 @@
 from typing import Self
 
 import pytest
-from simple_logger.logger import get_logger
+import structlog
 
 from tests.model_registry.model_catalog.sorting.utils import (
     get_sources_with_sorting,
     validate_items_sorted_correctly,
 )
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace")]
 

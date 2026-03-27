@@ -1,7 +1,7 @@
 from typing import Any
 
 import pytest
-from simple_logger.logger import get_logger
+import structlog
 
 from tests.model_serving.model_server.kserve.multi_node.constants import (
     HEAD_POD_ROLE,
@@ -26,7 +26,7 @@ pytestmark = [
 ]
 
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 MAX_NUM_BATCHED_TOKENS_ARG: str = "--max-num-batched-tokens=256"
 
 
@@ -47,6 +47,19 @@ MAX_NUM_BATCHED_TOKENS_ARG: str = "--max-num-batched-tokens=256"
     indirect=True,
 )
 class TestMultiNode:
+    """Validate multi-node GPU inference with Ray-based vLLM serving on KServe.
+
+    Steps:
+        1. Deploy a Granite-8B model on a multi-node vLLM inference service backed by PVC storage.
+        2. Verify Ray cluster health and NVIDIA GPU status across head and worker pods.
+        3. Validate default runtime worker spec (tensorParallelSize=1, pipelineParallelSize=2).
+        4. Confirm pods are distributed across GPU nodes and TLS certificates are provisioned.
+        5. Test pod resilience by deleting head and worker pods and verifying inference recovery.
+        6. Validate TLS secret reconciliation, runtime deletion cleanup, and runtime re-creation.
+        7. Test external route inference and dynamic updates to tensor/pipeline parallel sizes.
+        8. Verify model args propagation to and removal from the vLLM command spec.
+    """
+
     def test_multi_node_ray_status(self, multi_node_predictor_pods_scope_class):
         """Test multi node ray status"""
         verify_ray_status(pods=multi_node_predictor_pods_scope_class)

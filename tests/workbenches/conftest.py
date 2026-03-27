@@ -2,13 +2,13 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 from ocp_resources.notebook import Notebook
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError
 
 from tests.workbenches.utils import get_username
@@ -17,7 +17,7 @@ from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH, Labels, Timeout
 from utilities.general import collect_pod_information
 from utilities.infra import check_internal_image_registry_available, get_product_version
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def _read_obj_field(obj: Any, field_name: str, default: Any = None) -> Any:

@@ -2,15 +2,15 @@ import json
 from collections.abc import Generator
 from typing import Any
 
+import structlog
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.resource import ResourceEditor
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from utilities.constants import Timeout
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def wait_for_default_deployment_mode_in_cm(config_map: ConfigMap, deployment_mode: str) -> None:

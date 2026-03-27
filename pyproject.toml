@@ -6,7 +6,7 @@ output-format = "grouped"
 extend-exclude = ["utilities/manifests"]
 
 [tool.ruff.lint]
-external = ["E501"]
+external = ["E501", "FCN001"]
 
 [tool.ruff.format]
 exclude = [".git", ".venv", ".mypy_cache", ".tox", "__pycache__", "utilities/manifests"]
@@ -50,7 +50,7 @@ dependencies = [
     "openshift-python-utilities>=5.0.71",
     "pytest-dependency>=0.6.0",
     "pytest-progress",
-    "python-simple-logger",
+    "structlog>=24.1.0",
     "pyyaml",
     "tenacity",
     "types-requests>=2.32.0.20241016",
@@ -61,7 +61,7 @@ dependencies = [
     "grpcio-reflection",
     "portforward>=0.7.1",
     "pytest-testconfig>=0.2.0",
-    "pytest-jira>=0.3.21",
+
     "pygithub>=2.5.0",
     "timeout-sampler>=1.0.6",
     "shortuuid>=1.0.13",

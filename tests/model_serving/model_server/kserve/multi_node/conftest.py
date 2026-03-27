@@ -2,6 +2,7 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+import structlog
 from _pytest.fixtures import FixtureRequest
 from kubernetes.client.rest import ApiException
 from kubernetes.dynamic import DynamicClient
@@ -14,7 +15,6 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from tests.model_serving.model_server.kserve.multi_node.constants import WORKER_POD_ROLE
@@ -32,7 +32,7 @@ from utilities.infra import (
 )
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="session")

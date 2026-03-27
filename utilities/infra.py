@@ -14,6 +14,7 @@ from typing import Any
 import kubernetes
 import pytest
 import requests
+import structlog
 import urllib3
 from _pytest._py.path import LocalPath
 from _pytest.fixtures import FixtureRequest
@@ -56,7 +57,6 @@ from ocp_utilities.infra import (
 from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
 from semver import Version
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, TimeoutWatch, retry
 
 import utilities.general
@@ -64,7 +64,7 @@ from utilities.constants import RHOAI_OPERATOR_NAMESPACE, Annotations, ApiGroups
 from utilities.exceptions import ClusterLoginError, FailedPodsError, ResourceNotReadyError, UnexpectedResourceCountError
 from utilities.general import generate_random_name
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @contextmanager
@@ -272,7 +272,7 @@ def wait_for_inference_deployment_replicas(
             # to be set in deployment spec by HPA
             if (
                 isvc.instance.metadata.annotations.get("serving.kserve.io/deploymentMode")
-                == KServeDeploymentType.RAW_DEPLOYMENT
+                in KServeDeploymentType.RAW_DEPLOYMENT_MODES
             ):
                 wait_for_replicas_in_deployment(
                     deployment=deployment,
@@ -802,7 +802,9 @@ def verify_no_failed_pods(
             return
 
 
-def check_pod_status_in_time(pod: Pod, status: set[str], duration: int = Timeout.TIMEOUT_2MIN, wait: int = 1) -> None:
+def check_pod_status_in_time(
+    pod: Pod, status: set[str], duration: int = Timeout.TIMEOUT_2MIN, wait: int = 1
+) -> None:  # skip-unused-code
     """
     Checks if a pod status is maintained for a given duration. If not, an AssertionError is raised.
 

@@ -1,8 +1,8 @@
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 
 from tests.model_explainability.lm_eval.constants import (
     ARC_EASY_DATASET_IMAGE,
@@ -28,7 +28,7 @@ TIER2_LMEVAL_TASKS: list[str] = list(
     set(get_lmeval_tasks(min_downloads=0.70, max_downloads=10000)) - set(TIER1_LMEVAL_TASKS)
 )
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.skip_on_disconnected

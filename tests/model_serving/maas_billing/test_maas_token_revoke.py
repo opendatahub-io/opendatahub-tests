@@ -1,12 +1,12 @@
 import pytest
-from simple_logger.logger import get_logger
+import structlog
 from timeout_sampler import TimeoutSampler
 
 from tests.model_serving.maas_billing.utils import (
     verify_chat_completions,
 )
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.usefixtures("maas_free_group", "maas_premium_group", "maas_unprivileged_model_namespace")

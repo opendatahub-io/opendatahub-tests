@@ -1,8 +1,8 @@
 from typing import Any
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from tests.model_registry.model_catalog.metadata.utils import (
@@ -12,7 +12,7 @@ from tests.model_registry.model_catalog.metadata.utils import (
 )
 from utilities.infra import get_openshift_token
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 class TestLabelsEndpoint:

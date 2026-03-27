@@ -4,8 +4,8 @@ from collections.abc import Iterable
 from typing import Any
 
 import portforward
+import structlog
 from ocp_resources.inference_service import InferenceService
-from simple_logger.logger import get_logger
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from tests.model_serving.model_runtime.model_validation.constant import (
@@ -22,7 +22,7 @@ from utilities.plugins.constant import OpenAIEnpoints
 from utilities.plugins.openai_plugin import OpenAIClient
 from utilities.plugins.tgis_grpc_plugin import TGISGRPCPlugin
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def validate_inference_output(*args: tuple[str, ...] | list[Any], response_snapshot: Any) -> None:

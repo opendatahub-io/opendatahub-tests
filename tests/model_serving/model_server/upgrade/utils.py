@@ -1,3 +1,4 @@
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.gateway import Gateway
@@ -198,10 +199,9 @@ def verify_metrics_retained(
     Raises:
         AssertionError: If metrics are not retained or below threshold
     """
-    from simple_logger.logger import get_logger
     from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
-    logger = get_logger(name=__name__)
+    logger = structlog.get_logger(name=__name__)
 
     try:
         for sample in TimeoutSampler(

@@ -1,8 +1,8 @@
 from typing import Self
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
-from simple_logger.logger import get_logger
 
 from tests.model_registry.mcp_servers.constants import (
     EXPECTED_MCP_SERVER_NAMES,
@@ -14,7 +14,7 @@ from tests.model_registry.mcp_servers.constants import (
 )
 from tests.model_registry.utils import execute_get_command, get_model_catalog_pod
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 CATALOG_CONTAINER = "catalog"
 
@@ -24,7 +24,7 @@ CATALOG_CONTAINER = "catalog"
     [
         pytest.param(
             MCP_SERVERS_YAML_MALFORMED,
-            f"Error reading MCP catalog from {MCP_SERVERS_YAML_INVALID_CATALOG_PATH}: error parsing YAML",
+            f"{MCP_SERVERS_YAML_INVALID_CATALOG_PATH}: error parsing YAML",
             id="malformed_yaml",
         ),
         pytest.param(

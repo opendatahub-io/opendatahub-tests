@@ -5,8 +5,8 @@ from typing import Self
 
 import pytest
 import requests
+import structlog
 from ocp_resources.config_map import ConfigMap
-from simple_logger.logger import get_logger
 
 from tests.model_registry.model_registry.python_client.signing.constants import (
     SIGNING_OCI_REPO_NAME,
@@ -14,7 +14,7 @@ from tests.model_registry.model_registry.python_client.signing.constants import 
 from tests.model_registry.model_registry.python_client.signing.utils import check_model_signature_file
 from utilities.resources.securesign import Securesign
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = pytest.mark.usefixtures("skip_if_not_managed_cluster", "tas_connection_type")
 

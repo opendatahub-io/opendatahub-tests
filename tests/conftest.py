@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 import shortuuid
+import structlog
 import yaml
 from _pytest._py.path import LocalPath
 from _pytest.legacypath import TempdirFactory
@@ -37,7 +38,6 @@ from pyhelper_utils.shell import run_command
 from pytest import Config, FixtureRequest
 from pytest_testconfig import config as py_config
 from semver import Version
-from simple_logger.logger import get_logger
 
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import (
@@ -69,7 +69,7 @@ from utilities.operator_utils import get_cluster_service_version, get_csv_relate
 from utilities.serving_runtime import get_runtime_image_from_template
 from utilities.user_utils import get_byoidc_issuer_url, get_oidc_tokens
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytest_plugins = [
     "tests.fixtures.inference",

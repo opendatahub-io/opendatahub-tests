@@ -1,10 +1,10 @@
 import pytest
-from simple_logger.logger import get_logger
+import structlog
 
 from tests.model_registry.model_catalog.constants import REDHAT_AI_CATALOG_ID
 from tests.model_registry.utils import execute_get_command
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace")]
 

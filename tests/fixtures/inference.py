@@ -2,6 +2,7 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
@@ -13,7 +14,6 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest_testconfig import py_config
-from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
 from utilities.constants import (
@@ -26,7 +26,7 @@ from utilities.inference_utils import create_isvc
 from utilities.infra import get_data_science_cluster, wait_for_dsc_status_ready
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")

@@ -2,19 +2,19 @@ import base64
 import os
 from functools import cache
 
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.ingress_controller import IngressController
 from ocp_resources.secret import Secret
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
 
 from utilities.constants import (
     OPENSHIFT_CA_BUNDLE_FILENAME,
 )
 from utilities.infra import is_managed_cluster
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def _get_router_cert_secret_name(client: DynamicClient) -> str:

@@ -3,6 +3,7 @@ from contextlib import ExitStack
 from typing import Any
 
 import pytest
+import structlog
 import yaml
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
@@ -19,7 +20,6 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.storage_class import StorageClass
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
 
 from utilities.constants import (
     DscComponents,
@@ -50,7 +50,7 @@ from utilities.kueue_utils import (
 )
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")

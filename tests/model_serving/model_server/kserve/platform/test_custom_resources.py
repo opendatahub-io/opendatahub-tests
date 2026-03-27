@@ -1,6 +1,6 @@
 import pytest
+import structlog
 from ocp_resources.inference_service import InferenceService
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from utilities.constants import (
@@ -9,7 +9,7 @@ from utilities.constants import (
     RuntimeTemplates,
 )
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = [pytest.mark.tier3, pytest.mark.slow, pytest.mark.usefixtures("valid_aws_config")]
 
@@ -51,6 +51,15 @@ def wait_for_isvc_model_status(isvc: InferenceService, target_model_state: str, 
     indirect=True,
 )
 class TestInferenceServiceCustomResources:
+    """Validate InferenceService status transitions when the model storage path is invalid and then corrected.
+
+    Steps:
+        1. Deploy an ISVC with a non-existing S3 model path.
+        2. Verify the model status transitions to FailedToLoad / BlockedByFailedLoad.
+        3. Update the ISVC with a valid S3 model path.
+        4. Verify the model status transitions to Loaded / UpToDate.
+    """
+
     @pytest.mark.dependency(name="test_isvc_with_invalid_models_s3_path")
     def test_isvc_with_invalid_models_s3_path(self, invalid_s3_models_inference_service):
         """Test ISVC status with invalid models storage path"""

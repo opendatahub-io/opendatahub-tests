@@ -88,6 +88,7 @@ utilities/                # Shared utility functions
 - Moving fixtures to shared locations
 - Adding new markers to `pytest.ini`
 - Modifying session-scoped fixtures
+- Adding new binaries or system-level dependencies (must also update `Dockerfile` and verify with `make build`)
 
 ### 🚫 Never
 

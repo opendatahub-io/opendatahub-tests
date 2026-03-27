@@ -1,8 +1,8 @@
 from typing import Any
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
-from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.constants import REDHAT_AI_CATALOG_ID, VALIDATED_CATALOG_ID
 from tests.model_registry.model_catalog.metadata.utils import (
@@ -12,7 +12,7 @@ from tests.model_registry.model_catalog.metadata.utils import (
 )
 from tests.model_registry.utils import execute_get_command, get_model_catalog_pod
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = [
     pytest.mark.usefixtures(

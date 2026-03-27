@@ -3,6 +3,7 @@ import json
 from typing import Any
 
 import requests
+import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from model_registry import ModelRegistry as ModelRegistryClient
@@ -13,7 +14,6 @@ from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
-from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
 from tests.model_registry.constants import (
@@ -40,7 +40,7 @@ MARIA_DB_IMAGE = (
 POSTGRES_DB_IMAGE = (
     "public.ecr.aws/docker/library/postgres@sha256:6e9bbed548cc1ca776dd4685cfea9efe60d58df91186ec6bad7328fd03b388a5"
 )
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def get_mr_service_by_label(client: DynamicClient, namespace_name: str, mr_instance: ModelRegistry) -> Service:

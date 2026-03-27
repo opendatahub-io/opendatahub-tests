@@ -1,12 +1,12 @@
 from typing import Self
 
 import pytest
-from simple_logger.logger import get_logger
+import structlog
 
 from tests.model_registry.mcp_servers.constants import CALCULATOR_PROVIDER, CALCULATOR_SERVER_NAME
 from tests.model_registry.utils import execute_get_command
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.usefixtures("mcp_servers_configmap_patch")

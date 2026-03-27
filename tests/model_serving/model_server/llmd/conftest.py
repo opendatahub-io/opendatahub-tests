@@ -5,6 +5,7 @@ from contextlib import ExitStack, contextmanager
 from typing import Any
 
 import pytest
+import structlog
 import yaml
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
@@ -15,7 +16,6 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service_account import ServiceAccount
-from simple_logger.logger import get_logger
 
 from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaOciConfig
 from tests.model_serving.model_server.llmd.utils import wait_for_llmisvc, wait_for_llmisvc_pods_ready
@@ -25,7 +25,7 @@ from utilities.llmd_constants import LLMDGateway
 from utilities.llmd_utils import create_llmd_gateway
 from utilities.logger import RedactedString
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 logging.getLogger("timeout_sampler").setLevel(logging.WARNING)
 
 AuthEntry = namedtuple(typename="AuthEntry", field_names=["service", "token"])

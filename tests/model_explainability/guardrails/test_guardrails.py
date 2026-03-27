@@ -1,7 +1,7 @@
 import pytest
 import requests
+import structlog
 import yaml
-from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
 from tests.model_explainability.guardrails.constants import (
@@ -35,7 +35,7 @@ from utilities.constants import (
 )
 from utilities.plugins.constant import OpenAIEnpoints
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.smoke

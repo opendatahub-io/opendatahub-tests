@@ -4,13 +4,13 @@ from typing import Any
 
 import pytest
 import requests
+import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 from ocp_resources.service_account import ServiceAccount
-from simple_logger.logger import get_logger
 
 from tests.model_registry.constants import (
     CUSTOM_CATALOG_ID1,
@@ -38,7 +38,7 @@ from tests.model_registry.utils import (
 )
 from utilities.infra import create_inference_token, get_openshift_token, login_with_user_password
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture()

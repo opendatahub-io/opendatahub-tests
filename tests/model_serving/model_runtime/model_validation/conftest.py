@@ -3,6 +3,7 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
@@ -11,7 +12,6 @@ from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
-from simple_logger.logger import get_logger
 
 from tests.model_serving.model_runtime.model_validation.constant import (
     ACCELERATOR_IDENTIFIER,
@@ -29,7 +29,7 @@ from utilities.inference_utils import create_isvc
 from utilities.infra import get_pods_by_isvc_label
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")

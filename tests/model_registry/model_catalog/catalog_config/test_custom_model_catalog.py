@@ -1,9 +1,9 @@
 from typing import Self
 
 import pytest
+import structlog
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.config_map import ConfigMap
-from simple_logger.logger import get_logger
 
 from tests.model_registry.constants import CUSTOM_CATALOG_ID1, SAMPLE_MODEL_NAME1
 from tests.model_registry.model_catalog.catalog_config.utils import validate_model_catalog_sources
@@ -16,10 +16,14 @@ from tests.model_registry.model_catalog.constants import (
     SAMPLE_MODEL_NAME2,
     SAMPLE_MODEL_NAME3,
 )
-from tests.model_registry.model_catalog.utils import get_catalog_str, get_hf_catalog_str, get_sample_yaml_str
+from tests.model_registry.model_catalog.utils import (
+    get_catalog_str,
+    get_hf_catalog_str,
+    get_sample_yaml_str,
+)
 from tests.model_registry.utils import execute_get_command
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(

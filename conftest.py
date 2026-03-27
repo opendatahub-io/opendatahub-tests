@@ -42,6 +42,15 @@ from utilities.must_gather_collector import (
 LOGGER = logging.getLogger(name=__name__)
 BASIC_LOGGER = logging.getLogger(name="basic")
 
+# Add support to mark tests that does not have specific marking already, with tier2 marker
+EXCLUDE_MARKERS_FROM_DEFAULT_TIER2: set[str] = {"smoke", "tier1", "tier2", "tier3", "pre_upgrade", "post_upgrade"}
+# To include a component for default marking please add the component path to this list
+DEFAULT_TIER2_MARKER_TEST_PATHS: tuple[str, ...] = (
+    "tests/model_registry",
+    "tests/model_explainability",
+    "tests/model_serving/maas_billing",
+)
+
 
 def pytest_addoption(parser: Parser) -> None:
     aws_group = parser.getgroup(name="AWS")
@@ -285,6 +294,19 @@ def pytest_collection_modifyitems(session: Session, config: Config, items: list[
     else:
         items[:] = non_upgrade_tests
         config.hook.pytest_deselected(items=upgrade_tests)
+
+    _add_default_tier2_marker(items=items)
+
+
+def _add_default_tier2_marker(items: list[Item]) -> None:
+    """Add tier2 marker to tests that lack any tier/smoke/upgrade marker, for specific components."""
+    for item in items:
+        if not any(item.nodeid.startswith(path) for path in DEFAULT_TIER2_MARKER_TEST_PATHS):
+            continue
+
+        item_markers = {mark.name for mark in item.iter_markers()}
+        if not item_markers & EXCLUDE_MARKERS_FROM_DEFAULT_TIER2:
+            item.add_marker(marker=pytest.mark.tier2)
 
 
 def pytest_sessionstart(session: Session) -> None:

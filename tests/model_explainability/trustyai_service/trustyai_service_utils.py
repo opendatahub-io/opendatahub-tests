@@ -4,13 +4,13 @@ from http import HTTPStatus
 from typing import Any
 
 import requests
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 from ocp_resources.trustyai_service import TrustyAIService
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from utilities.certificates_utils import create_ca_bundle_file
@@ -19,7 +19,7 @@ from utilities.exceptions import MetricValidationError
 from utilities.general import create_isvc_label_selector_str
 from utilities.inference_utils import Inference, UserInference
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 class NoMetricsFoundError(ValueError):

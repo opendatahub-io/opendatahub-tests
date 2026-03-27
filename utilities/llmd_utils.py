@@ -4,10 +4,10 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
 
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.gateway import Gateway
 from ocp_resources.llm_inference_service import LLMInferenceService
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutWatch
 
 from utilities.constants import Timeout
@@ -18,7 +18,7 @@ from utilities.llmd_constants import (
     LLMDGateway,
 )
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @contextmanager

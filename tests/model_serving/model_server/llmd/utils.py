@@ -8,19 +8,19 @@ Follows the established model server utils pattern for consistency.
 import json
 from pathlib import Path
 
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.pod import Pod
 from ocp_resources.prometheus import Prometheus
 from pyhelper_utils.shell import run_command
-from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
 from utilities.certificates_utils import get_ca_bundle
 from utilities.constants import Timeout
 from utilities.monitoring import get_metrics_value
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def ns_from_file(file: str) -> str:

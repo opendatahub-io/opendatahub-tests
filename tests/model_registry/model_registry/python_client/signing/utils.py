@@ -4,8 +4,8 @@ import hashlib
 import os
 
 import requests
+import structlog
 from pyhelper_utils.shell import run_command
-from simple_logger.logger import get_logger
 
 from tests.model_registry.model_registry.python_client.signing.constants import (
     SECURESIGN_NAMESPACE,
@@ -13,7 +13,7 @@ from tests.model_registry.model_registry.python_client.signing.constants import 
     SECURESIGN_ORGANIZATION_NAME,
 )
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def get_organization_config() -> dict[str, str]:

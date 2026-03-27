@@ -4,6 +4,7 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from model_registry import ModelRegistry as ModelRegistryClient
@@ -16,7 +17,6 @@ from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service_account import ServiceAccount
 from pyhelper_utils.shell import run_command
 from pytest import FixtureRequest
-from simple_logger.logger import get_logger
 
 from tests.model_registry.constants import (
     MODEL_REGISTRY_POD_FILTER,
@@ -29,7 +29,7 @@ from tests.model_registry.utils import (
 from utilities.constants import Protocols
 from utilities.general import wait_for_pods_by_labels
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 DEFAULT_TOKEN_DURATION = "10m"
 
 

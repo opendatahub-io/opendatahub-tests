@@ -2,6 +2,7 @@ from typing import Any, Self
 
 import pytest
 import requests
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
@@ -11,7 +12,6 @@ from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
-from simple_logger.logger import get_logger
 
 from tests.model_registry.constants import MR_POSTGRES_DB_OBJECT
 from tests.model_registry.model_registry.rest_api.constants import (
@@ -31,7 +31,7 @@ from tests.model_registry.model_registry.rest_api.constants import (
 from tests.model_registry.model_registry.rest_api.utils import validate_resource_attributes
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 CONNECTION_STRING: str = "/var/run/postgresql:5432 - accepting connections"
 
 
@@ -42,19 +42,18 @@ CONNECTION_STRING: str = "/var/run/postgresql:5432 - accepting connections"
             {},
             {},
             MODEL_REGISTER_DATA,
-            marks=(pytest.mark.tier1),
+            marks=pytest.mark.tier1,
         ),
         pytest.param(
             {"db_name": "postgres"},
             {"db_name": "postgres"},
             MODEL_REGISTER_DATA,
-            marks=(pytest.mark.tier2),
+            marks=pytest.mark.smoke,
         ),
         pytest.param(
             {"db_name": "default"},
             {"db_name": "default"},
             MODEL_REGISTER_DATA,
-            marks=(pytest.mark.tier2),
         ),
         pytest.param(
             {"db_name": "mariadb"},
@@ -84,7 +83,6 @@ class TestModelRegistryCreationRest:
             pytest.param(
                 MODEL_REGISTER,
                 "register_model",
-                marks=pytest.mark.smoke,
                 id="test_validate_registered_model",
             ),
             pytest.param(
@@ -111,7 +109,6 @@ class TestModelRegistryCreationRest:
             resource_name=data_key,
         )
 
-    @pytest.mark.tier2
     @pytest.mark.parametrize(
         "kind, resource_name",
         [
@@ -160,7 +157,6 @@ class TestModelRegistryCreationRest:
         for field in ["controller", "blockOwnerDeletion"]:
             assert owner_reference[0][field] is True
 
-    @pytest.mark.tier2
     def test_default_postgres_db_pod_log(
         self: Self,
         skip_if_not_default_db: None,
@@ -180,7 +176,6 @@ class TestModelRegistryCreationRest:
         postgres_pod_log = pods[0].log(container="postgres")
         assert CONNECTION_STRING in postgres_pod_log
 
-    @pytest.mark.tier2
     def test_model_registry_validate_api_version(
         self: Self,
         admin_client: DynamicClient,
@@ -196,7 +191,6 @@ class TestModelRegistryCreationRest:
         expected_version = f"{ModelRegistry.ApiGroup.MODELREGISTRY_OPENDATAHUB_IO}/{ModelRegistry.ApiVersion.V1BETA1}"
         assert api_version == expected_version
 
-    @pytest.mark.tier2
     def test_model_registry_validate_kuberbacproxy_enabled(
         self: Self,
         model_registry_instance: list[ModelRegistry],
@@ -239,7 +233,6 @@ class TestModelRegistryCreationRest:
         ],
         indirect=["updated_model_registry_resource"],
     )
-    @pytest.mark.tier2
     def test_create_update_model_artifact(
         self,
         updated_model_registry_resource: dict[str, Any],
@@ -284,7 +277,6 @@ class TestModelRegistryCreationRest:
         ],
         indirect=["updated_model_registry_resource"],
     )
-    @pytest.mark.tier2
     def test_updated_model_version(
         self,
         updated_model_registry_resource: dict[str, Any],
@@ -330,7 +322,6 @@ class TestModelRegistryCreationRest:
         ],
         indirect=["updated_model_registry_resource"],
     )
-    @pytest.mark.tier2
     def test_updated_registered_model(
         self,
         updated_model_registry_resource: dict[str, Any],
@@ -375,7 +366,6 @@ class TestModelRegistryDeployment:
     Tests the complete deployment workflow from registered model to InferenceService.
     """
 
-    @pytest.mark.tier2
     def test_registered_model_deployment(
         self,
         admin_client: DynamicClient,

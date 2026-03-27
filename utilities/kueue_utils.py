@@ -2,15 +2,15 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
 
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.pod import Pod
 from ocp_resources.resource import MissingRequiredArgumentError, NamespacedResource, Resource
-from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
 from utilities.constants import Timeout
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 class ResourceFlavor(Resource):

@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 import requests
+import structlog
 from huggingface_hub import snapshot_download
 from kubernetes.dynamic import DynamicClient
 from model_registry.signing import Signer
@@ -21,7 +22,6 @@ from ocp_resources.subscription import Subscription
 from ocp_utilities.operators import install_operator, uninstall_operator
 from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from tests.model_registry.model_registry.python_client.signing.constants import (
@@ -44,7 +44,7 @@ from utilities.infra import get_openshift_token, is_managed_cluster
 from utilities.resources.route import Route
 from utilities.resources.securesign import Securesign
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="package")

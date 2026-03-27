@@ -2,14 +2,14 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
-from simple_logger.logger import get_logger
+import structlog
 
 from tests.model_serving.model_runtime.rhoai_upgrade.constant import (
     SERVING_RUNTIME_INSTANCE_NAME,
     SERVING_RUNTIME_TEMPLATE_NAME,
 )
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 class TestServingRuntimeLifecycle:

@@ -3,15 +3,15 @@ import json
 from typing import Any
 
 import requests
+import structlog
 from requests import Response
-from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
 from tests.model_explainability.guardrails.constants import GuardrailsDetectionPrompt
 from utilities.exceptions import UnexpectedValueError
 from utilities.guardrails import get_auth_headers
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def get_chat_detections_payload(content: str, model: str, detectors: dict[str, Any] | None = None) -> dict[str, Any]:

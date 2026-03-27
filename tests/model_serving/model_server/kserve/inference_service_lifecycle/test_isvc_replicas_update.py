@@ -1,5 +1,5 @@
 import pytest
-from simple_logger.logger import get_logger
+import structlog
 from timeout_sampler import TimeoutSampler
 
 from tests.model_serving.model_server.kserve.inference_service_lifecycle.constants import (
@@ -16,7 +16,7 @@ from utilities.inference_utils import Inference
 from utilities.infra import get_pods_by_isvc_label
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = [pytest.mark.tier1, pytest.mark.usefixtures("valid_aws_config")]
 
@@ -39,6 +39,16 @@ pytestmark = [pytest.mark.tier1, pytest.mark.usefixtures("valid_aws_config")]
     indirect=True,
 )
 class TestRawISVCReplicasUpdates:
+    """Validate scaling replica count up and down on a KServe raw deployment ISVC.
+
+    Steps:
+        1. Deploy an OVMS inference service with 2 min-replicas and 4 max-replicas.
+        2. Verify that 2 predictor pods are running after deployment.
+        3. Run inference to confirm the model responds correctly with multiple replicas.
+        4. Patch the ISVC to scale down to 1 replica and verify only 1 pod remains.
+        5. Run inference again to confirm the model responds correctly after scale-down.
+    """
+
     @pytest.mark.dependency(name="test_raw_increase_isvc_replicas")
     def test_raw_increase_isvc_replicas(self, isvc_pods, ovms_kserve_inference_service):
         """Test replicas increase"""

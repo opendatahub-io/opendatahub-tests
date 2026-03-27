@@ -2,10 +2,10 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
-from simple_logger.logger import get_logger
 
 from tests.model_serving.model_runtime.vllm.basic_model_deployment.test_granite_7b_starter import SERVING_ARGUMENT
 from tests.model_serving.model_runtime.vllm.constant import BASE_RAW_DEPLOYMENT_CONFIG
@@ -19,7 +19,7 @@ from utilities.inference_utils import Inference
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 from utilities.monitoring import validate_metrics_field
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 BASE_RAW_DEPLOYMENT_CONFIG["runtime_argument"] = SERVING_ARGUMENT

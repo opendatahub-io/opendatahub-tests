@@ -2,9 +2,9 @@
 
 from typing import Any
 
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.constants import (
     CATALOG_CONTAINER,
@@ -23,7 +23,7 @@ from tests.model_registry.model_catalog.db_constants import (
 from tests.model_registry.model_catalog.utils import execute_database_query, parse_psql_output
 from tests.model_registry.utils import execute_get_command
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def validate_model_contains_search_term(model: dict[str, Any], search_term: str) -> bool:

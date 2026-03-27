@@ -12,6 +12,7 @@ from collections.abc import Generator
 from typing import Self
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from model_registry import ModelRegistry as ModelRegistryClient
 from mr_openapi.exceptions import ForbiddenException
@@ -22,7 +23,6 @@ from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from tests.model_registry.constants import NUM_MR_INSTANCES
@@ -40,7 +40,7 @@ from utilities.infra import get_openshift_token
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from utilities.user_utils import UserTestSession
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 pytestmark = [pytest.mark.usefixtures("original_user", "test_idp_user")]
 
 
