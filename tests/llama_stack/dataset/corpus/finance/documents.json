@@ -1,0 +1,50 @@
+[
+  {
+    "filename": "ibm-1q25-earnings-press-release-unencrypted.pdf",
+    "document_id": "ibm_1q25_earnings_pr",
+    "attributes": {
+      "entity_symbol": "IBM",
+      "period_label": "2025-Q1",
+      "period_year": 2025,
+      "document_type": "earnings_press_release",
+      "language": "en",
+      "publication_date": 1745366400
+    }
+  },
+  {
+    "filename": "ibm-2q25-earnings-press-release-unencrypted.pdf",
+    "document_id": "ibm_2q25_earnings_pr",
+    "attributes": {
+      "entity_symbol": "IBM",
+      "period_label": "2025-Q2",
+      "period_year": 2025,
+      "document_type": "earnings_press_release",
+      "language": "en",
+      "publication_date": 1753228800
+    }
+  },
+  {
+    "filename": "ibm-3q25-earnings-press-release-unencrypted.pdf",
+    "document_id": "ibm_3q25_earnings_pr",
+    "attributes": {
+      "entity_symbol": "IBM",
+      "period_label": "2025-Q3",
+      "period_year": 2025,
+      "document_type": "earnings_press_release",
+      "language": "en",
+      "publication_date": 1761177600
+    }
+  },
+  {
+    "filename": "ibm-4q25-earnings-press-release-unencrypted.pdf",
+    "document_id": "ibm_4q25_earnings_pr",
+    "attributes": {
+      "entity_symbol": "IBM",
+      "period_label": "2025-Q4",
+      "period_year": 2025,
+      "document_type": "earnings_press_release",
+      "language": "en",
+      "publication_date": 1738022400
+    }
+  }
+]

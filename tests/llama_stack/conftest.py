@@ -34,8 +34,10 @@ from tests.llama_stack.constants import (
     UPGRADE_DISTRIBUTION_NAME,
     ModelInfo,
 )
+from tests.llama_stack.datasets import Dataset
 from tests.llama_stack.utils import (
     create_llama_stack_distribution,
+    vector_store_upload_dataset,
     vector_store_upload_doc_sources,
     wait_for_llama_stack_client_ready,
     wait_for_unique_llama_stack_pod,
@@ -721,6 +723,36 @@ def llama_stack_models(unprivileged_llama_stack_client: LlamaStackClient) -> Mod
 
 
 @pytest.fixture(scope="class")
+def dataset(request: FixtureRequest) -> Dataset:
+    """Return the Dataset passed via indirect parametrize.
+
+    This exists as a standalone fixture so that test methods can access the
+    Dataset (e.g. for QA ground-truth queries) without hardcoding it.
+
+    Note: we use this fixture instead of a plain pytest parameter to avoid
+    fixture dependency problems that were causing Llama Stack dependent resources
+    like databases or secrets not being created at the right time.
+
+    Raises:
+        pytest.UsageError: If the fixture is not indirect-parametrized or the
+            parameter is not a :class:`~tests.llama_stack.datasets.Dataset` instance.
+    """
+    if not hasattr(request, "param"):
+        raise pytest.UsageError(
+            "The `dataset` fixture must be indirect-parametrized with a Dataset instance "
+            "(e.g. @pytest.mark.parametrize('dataset', [MY_DATASET], indirect=True)). "
+            "Without indirect parametrization, `request.param` is missing."
+        )
+    param = request.param
+    if not isinstance(param, Dataset):
+        raise pytest.UsageError(
+            "The `dataset` fixture must be indirect-parametrized with a "
+            f"tests.llama_stack.datasets.Dataset instance; got {type(param).__name__!r}."
+        )
+    return param
+
+
+@pytest.fixture(scope="class")
 def vector_store(
     unprivileged_llama_stack_client: LlamaStackClient,
     llama_stack_models: ModelInfo,
@@ -729,61 +761,78 @@ def vector_store(
     teardown_resources: bool,
 ) -> Generator[VectorStore]:
     """
-    Creates a vector store for testing and automatically cleans it up.
+    Fixture to provide a vector store instance for tests.
 
-    You can have example documents ingested into the store automatically by passing a
-    non-empty ``doc_sources`` list in the indirect parametrization dict (URLs, files, or
-    directories under the repo root). Omit ``doc_sources`` when the test only needs an
-    empty store.
+    Given: A configured LlamaStackClient, an embedding model, and test parameters specifying
+        vector store provider and a dataset or document sources.
+    When: The fixture is invoked by a parameterized test class or function.
+    Then: It creates (or reuses, in post-upgrade scenarios) a vector store with the specified
+        vector I/O provider, optionally uploads a dataset or custom document sources, and ensures
+        proper cleanup after the test if needed.
 
-    Options when parametrizing with ``indirect=True``:
+    Parameter Usage:
+        - vector_io_provider (str): The provider backend to use for the vector store (e.g., 'milvus',
+          'faiss', 'pgvector', 'qdrant-remote', etc.). Determines how vector data is persisted and queried.
+          If not specified, defaults to 'milvus'.
+        - dataset (Dataset): An instance of the Dataset class (see datasets.py) specifying the documents and
+          ground-truth QA to upload to the vector store. Use this to quickly populate the store with a
+          standard test corpus. Mutually exclusive with doc_sources.
+        - doc_sources (list[str]): A list of document sources to upload to the vector store. Each entry may be:
+            - A file path (repo-relative or absolute) to a single document.
+            - A directory path, in which case all files within the directory will be uploaded.
+            - A remote HTTPS URL to a document (e.g., "https://example.com/mydoc.pdf"), which will be downloaded
+              and ingested.
+          `doc_sources` is mutually exclusive with `dataset`.
 
-    * ``vector_io_provider`` (optional): backend id for the store; defaults to ``"milvus"``.
-    * ``doc_sources`` (optional): non-empty list of document sources to upload after creation.
-      Omitted, empty, or absent means no uploads. Each entry may be:
-
-      * A remote URL (``http://`` or ``https://``)
-      * A repo-relative or absolute file path
-      * A directory path (all files in the directory are uploaded)
-
-    Example:
-
+    Examples:
+        # Example 1: Use dataset to populate the vector store
         @pytest.mark.parametrize(
             "vector_store",
             [
                 pytest.param(
-                    {
-                        "vector_io_provider": "milvus",
-                        "doc_sources": [
-                            "https://www.ibm.com/downloads/documents/us-en/1550f7eea8c0ded6",
-                            "tests/llama_stack/dataset/corpus/finance",
-                            "tests/llama_stack/dataset/corpus/finance/ibm-4q25-earnings-press-release-unencrypted.pdf",
-                        ],
-                    },
-                    id="doc_sources:url+folder+file",
+                    {"vector_io_provider": "milvus", "dataset": IBM_2025_Q4_EARNINGS},
+                    id="milvus-with-IBM-earnings-dataset",
                 ),
             ],
             indirect=True,
         )
 
-    Post-upgrade runs reuse the existing store; uploads run only in the create path when
-    ``doc_sources`` is non-empty (documents from the pre-upgrade run are reused otherwise).
-
-    Args:
-        unprivileged_llama_stack_client: The configured LlamaStackClient
-        llama_stack_models: Model information including embedding model details
-        request: Pytest fixture request carrying optional param dict
-        pytestconfig: Pytest config (post-upgrade reuses store, no create/upload path)
-        teardown_resources: Whether to delete the store after the class
+        # Example 2: Upload local documents by file path
+        @pytest.mark.parametrize(
+            "vector_store",
+            [
+                pytest.param(
+                    {
+                        "vector_io_provider": "faiss",
+                        "doc_sources": [
+                            "tests/llama_stack/dataset/corpus/finance/document1.pdf",
+                            "tests/llama_stack/dataset/corpus/finance/document2.pdf",
+                        ],
+                    },
+                    id="faiss-with-explicit-documents",
+                ),
+            ],
+            indirect=True,
+        )
 
     Yields:
-        Vector store object that can be used in tests
+        VectorStore: The created or reused vector store ready for ingestion/search tests.
+
+    Raises:
+        ValueError: If the required vector store is missing in a post-upgrade scenario, or if
+            both ``dataset`` and ``doc_sources`` are set in params (mutually exclusive).
+        Exception: If vector store creation or file upload fails, attempts cleanup.
     """
 
     params_raw = getattr(request, "param", None)
     params: dict[str, Any] = dict(params_raw) if isinstance(params_raw, dict) else {"vector_io_provider": "milvus"}
     vector_io_provider = str(params.get("vector_io_provider") or "milvus")
-    doc_sources = params.get("doc_sources")
+    dataset: Dataset | None = params.get("dataset")
+    doc_sources: list[str] | None = params.get("doc_sources")
+    if dataset is not None and doc_sources is not None:
+        raise ValueError(
+            'vector_store fixture params must set at most one of "dataset" or "doc_sources"; both were provided.'
+        )
 
     if pytestconfig.option.post_upgrade:
         stores = unprivileged_llama_stack_client.vector_stores.list().data
@@ -805,27 +854,27 @@ def vector_store(
         )
         LOGGER.info(f"vector_store successfully created (provider_id={vector_io_provider}, id={vector_store.id})")
 
-        if doc_sources:
+        if dataset or doc_sources:
             try:
-                vector_store_upload_doc_sources(
-                    doc_sources=doc_sources,
-                    llama_stack_client=unprivileged_llama_stack_client,
-                    vector_store=vector_store,
-                    vector_io_provider=vector_io_provider,
-                )
+                if dataset:
+                    vector_store_upload_dataset(
+                        dataset=dataset,
+                        llama_stack_client=unprivileged_llama_stack_client,
+                        vector_store=vector_store,
+                    )
+                elif doc_sources:
+                    vector_store_upload_doc_sources(
+                        doc_sources=doc_sources,
+                        llama_stack_client=unprivileged_llama_stack_client,
+                        vector_store=vector_store,
+                        vector_io_provider=vector_io_provider,
+                    )
             except Exception:
                 try:
                     unprivileged_llama_stack_client.vector_stores.delete(vector_store_id=vector_store.id)
-                    LOGGER.info(
-                        "Deleted vector store %s after failed doc_sources ingestion",
-                        vector_store.id,
-                    )
+                    LOGGER.info(f"Deleted vector store {vector_store.id} after failed document ingestion")
                 except Exception as del_exc:  # noqa: BLE001
-                    LOGGER.warning(
-                        "Failed to delete vector store %s after ingestion error: %s",
-                        vector_store.id,
-                        del_exc,
-                    )
+                    LOGGER.warning(f"Failed to delete vector store {vector_store.id} after ingestion error: {del_exc}")
                 raise
 
     yield vector_store
