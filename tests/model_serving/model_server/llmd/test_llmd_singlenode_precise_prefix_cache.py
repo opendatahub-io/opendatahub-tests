@@ -31,7 +31,7 @@ pytestmark = [pytest.mark.tier2, pytest.mark.gpu]
     [({"name": NAMESPACE}, PrecisePrefixCacheConfig)],
     indirect=True,
 )
-@pytest.mark.usefixtures("valid_aws_config", "skip_if_less_than_2_gpus")
+@pytest.mark.usefixtures("valid_aws_config", "skip_if_less_than_2_gpus", "skip_if_disconnected")
 class TestSingleNodePrecisePrefixCache:
     """Deploy Qwen on GPU with 2 replicas and precise prefix cache routing,
     then verify cache hits via Prometheus metrics.
@@ -60,7 +60,10 @@ class TestSingleNodePrecisePrefixCache:
         assert len(workload_pods) == 2, f"Expected 2 workload pods, found {len(workload_pods)}"
 
         successful = send_prefix_cache_requests(
-            llmisvc=llmisvc, prompt=PREFIX_CACHE_PROMPT, token=llmisvc_token, count=NUM_REQUESTS
+            llmisvc=llmisvc,
+            prompt=PREFIX_CACHE_PROMPT,
+            token=llmisvc_token,
+            count=NUM_REQUESTS,
         )
         assert successful == NUM_REQUESTS, f"Expected all {NUM_REQUESTS} requests to succeed, got {successful}"
 
