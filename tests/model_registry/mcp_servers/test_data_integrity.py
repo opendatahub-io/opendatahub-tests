@@ -35,7 +35,7 @@ class TestMCPServerLoading:
             )
             assert server["toolCount"] == EXPECTED_MCP_SERVER_TOOL_COUNTS[name]
 
-    @pytest.mark.skip(reason="RHOAIENG-55737 - toolLimit query parameter has no effect on MCP servers listing endpoint")
+    @pytest.mark.xfail(reason="RHOAIENG-55737 - toolLimit query parameter has no effect on MCP listing endpoint")
     def test_mcp_server_tool_limit(
         self: Self,
         mcp_catalog_rest_urls: list[str],
