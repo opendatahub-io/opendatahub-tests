@@ -8,10 +8,9 @@ from tests.model_serving.maas_billing.maas_subscription.utils import (
     chat_payload_for_url,
     poll_expected_status,
 )
+from tests.model_serving.maas_billing.utils import build_maas_headers
 
 LOGGER = structlog.get_logger(name=__name__)
-
-MAAS_SUBSCRIPTION_HEADER = "x-maas-subscription"
 
 
 @pytest.mark.usefixtures(
@@ -31,21 +30,18 @@ class TestMultipleAuthPoliciesPerModel:
         self,
         request_session_http: requests.Session,
         model_url_tinyllama_premium: str,
-        maas_subscription_tinyllama_premium,
         maas_headers_for_actor_api_key: dict[str, str],
     ) -> None:
         """
         Verify FREE actor is denied by default on the premium model.
+        The API key is not bound to the premium subscription, and auth policy denies the free group.
         """
-
-        baseline_headers = dict(maas_headers_for_actor_api_key)
-        baseline_headers[MAAS_SUBSCRIPTION_HEADER] = maas_subscription_tinyllama_premium.name
         baseline_payload = chat_payload_for_url(model_url=model_url_tinyllama_premium)
 
         baseline_response = poll_expected_status(
             request_session_http=request_session_http,
             model_url=model_url_tinyllama_premium,
-            headers=baseline_headers,
+            headers=maas_headers_for_actor_api_key,
             payload=baseline_payload,
             expected_statuses={403},
         )
@@ -61,18 +57,14 @@ class TestMultipleAuthPoliciesPerModel:
         self,
         request_session_http: requests.Session,
         model_url_tinyllama_premium: str,
-        maas_headers_for_actor_api_key: dict[str, str],
         premium_system_authenticated_access,
+        api_key_bound_to_system_auth_subscription: str,
     ) -> None:
         """
         Verify FREE actor can access the premium model when an extra AuthPolicy
         and matching subscription for system:authenticated exist.
+        API key is minted and bound to the system:authenticated subscription at creation time.
         """
-
-        payload = chat_payload_for_url(model_url=model_url_tinyllama_premium)
-        explicit_headers = dict(maas_headers_for_actor_api_key)
-        explicit_headers[MAAS_SUBSCRIPTION_HEADER] = premium_system_authenticated_access["subscription"].name
-
         LOGGER.info(
             f"Polling for 200 on premium model with OR auth policy: "
             f"auth_policy={premium_system_authenticated_access['auth_policy'].name}, "
@@ -82,11 +74,10 @@ class TestMultipleAuthPoliciesPerModel:
         response = poll_expected_status(
             request_session_http=request_session_http,
             model_url=model_url_tinyllama_premium,
-            headers=explicit_headers,
-            payload=payload,
+            headers=build_maas_headers(token=api_key_bound_to_system_auth_subscription),
+            payload=chat_payload_for_url(model_url=model_url_tinyllama_premium),
             expected_statuses={200},
         )
-
         assert response.status_code == 200, (
             f"Expected 200 with second AuthPolicy (OR logic), got {response.status_code}: {(response.text or '')[:200]}"
         )
@@ -97,21 +88,20 @@ class TestMultipleAuthPoliciesPerModel:
         self,
         request_session_http: requests.Session,
         model_url_tinyllama_premium: str,
-        maas_headers_for_actor_api_key: dict[str, str],
         premium_system_authenticated_access,
+        api_key_bound_to_system_auth_subscription: str,
     ) -> None:
         """
         Verify FREE actor loses access again after the extra AuthPolicy is deleted.
+        API key is minted and bound to the system:authenticated subscription at creation time.
         """
-
+        headers = build_maas_headers(token=api_key_bound_to_system_auth_subscription)
         payload = chat_payload_for_url(model_url=model_url_tinyllama_premium)
-        explicit_headers = dict(maas_headers_for_actor_api_key)
-        explicit_headers[MAAS_SUBSCRIPTION_HEADER] = premium_system_authenticated_access["subscription"].name
 
         poll_expected_status(
             request_session_http=request_session_http,
             model_url=model_url_tinyllama_premium,
-            headers=explicit_headers,
+            headers=headers,
             payload=payload,
             expected_statuses={200},
         )
@@ -121,7 +111,7 @@ class TestMultipleAuthPoliciesPerModel:
         response = poll_expected_status(
             request_session_http=request_session_http,
             model_url=model_url_tinyllama_premium,
-            headers=explicit_headers,
+            headers=headers,
             payload=payload,
             expected_statuses={403},
         )

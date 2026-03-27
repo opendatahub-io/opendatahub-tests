@@ -1083,6 +1083,7 @@ def maas_subscription_controller_enabled_latest(
     dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=600)
 
 
+
 @pytest.fixture(scope="class")
 def maas_inference_service_tinyllama_free(
     admin_client: DynamicClient,
