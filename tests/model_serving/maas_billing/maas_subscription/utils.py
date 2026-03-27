@@ -187,6 +187,7 @@ def create_api_key(
     request_timeout_seconds: int = 60,
     expires_in: str | None = None,
     raise_on_error: bool = True,
+    subscription: str | None = None,
 ) -> tuple[Response, dict[str, Any]]:
     """
     Create an API key via MaaS API and return (response, parsed_body).
@@ -199,12 +200,17 @@ def create_api_key(
             When None, no expiresIn field is sent and the key does not expire.
         raise_on_error: When True (default), raises AssertionError for non-200/201
             responses. Set to False when testing error cases (e.g. 400 rejection).
+        subscription: Optional MaaSSubscription name to bind at mint time.
+            When provided, the key is bound to this subscription for inference.
+            When None, the API auto-selects the highest-priority subscription.
     """
     api_keys_url = f"{base_url}/v1/api-keys"
 
     payload: dict[str, Any] = {"name": api_key_name}
     if expires_in is not None:
         payload["expiresIn"] = expires_in
+    if subscription is not None:
+        payload["subscription"] = subscription
 
     response = request_session_http.post(
         url=api_keys_url,
