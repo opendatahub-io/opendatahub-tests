@@ -1,5 +1,7 @@
 ci:
     autofix_prs: true
+    autoupdate_schedule: weekly
+    autoupdate_commit_msg: "chore: update pre-commit hooks"
 
 minimum_pre_commit_version: 3.3.0
 default_install_hook_types: [pre-commit, commit-msg]
