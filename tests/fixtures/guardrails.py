@@ -256,7 +256,7 @@ def orchestrator_config_gpu(
         - Reuses existing ConfigMap in post-upgrade scenarios
         - Uses built-in detectors if `use_builtin_detectors` is set
         - Otherwise configures external detectors (e.g., prompt injection, HAP)
-        """
+    """
     if pytestconfig.option.post_upgrade:
         cm = ConfigMap(
             client=admin_client,
