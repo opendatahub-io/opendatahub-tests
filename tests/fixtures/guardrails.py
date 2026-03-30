@@ -235,7 +235,28 @@ def orchestrator_config_gpu(
     teardown_resources: bool,
     pytestconfig: pytest.Config,
 ) -> Generator[ConfigMap, Any, Any]:
+    """
+    Fixture for creating and managing the Guardrails Orchestrator ConfigMap.
 
+    This fixture dynamically generates the orchestrator configuration used in tests,
+    including detector setup and OpenAI/vLLM integration. It supports both built-in
+    detectors and external HuggingFace-based detectors depending on test parameters.
+
+    Args:
+        request: Pytest request object used to access parametrization
+        admin_client: Kubernetes client for resource management
+        model_namespace: Namespace where resources are deployed
+        teardown_resources: Whether to clean up resources after test execution
+        pytestconfig: Pytest configuration (used for post-upgrade handling)
+
+    Returns:
+        Generator[ConfigMap, Any, Any]: ConfigMap containing orchestrator configuration
+
+    Behavior:
+        - Reuses existing ConfigMap in post-upgrade scenarios
+        - Uses built-in detectors if `use_builtin_detectors` is set
+        - Otherwise configures external detectors (e.g., prompt injection, HAP)
+        """
     if pytestconfig.option.post_upgrade:
         cm = ConfigMap(
             client=admin_client,
