@@ -3,6 +3,7 @@ import time
 
 import pandas as pd
 import structlog
+from kubernetes.client.rest import ApiException
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.lm_eval_job import LMEvalJob
 from ocp_resources.pod import Pod
@@ -167,7 +168,7 @@ def wait_for_vllm_model_ready(
                 break
             else:
                 LOGGER.info(f"Model still loading... (waited {elapsed_time}s)")
-        except Exception as e:  # noqa: BLE001
+        except (ApiException, OSError) as e:
             LOGGER.info(f"Could not get pod logs yet: {e}")
 
         time.sleep(check_interval)
@@ -177,7 +178,7 @@ def wait_for_vllm_model_ready(
         try:
             full_logs = predictor_pod.log(container="kserve-container")
             LOGGER.error(f"vLLM pod failed to start within {max_wait_time}s. Full logs:\n{full_logs}")
-        except Exception as e:  # noqa: BLE001
+        except (ApiException, OSError) as e:
             LOGGER.error(f"Could not retrieve pod logs: {e}")
         raise UnexpectedFailureError(f"vLLM model failed to load within {max_wait_time} seconds")
 

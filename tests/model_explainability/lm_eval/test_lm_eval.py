@@ -201,6 +201,7 @@ def test_lmeval_local_offline_unitxt_tasks_flan_20newsgroups_oci_artifacts(
 
 
 @pytest.mark.gpu
+@pytest.mark.skip_on_disconnected
 @pytest.mark.parametrize(
     "model_namespace",
     [

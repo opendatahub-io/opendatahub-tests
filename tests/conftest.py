@@ -989,6 +989,15 @@ def oci_registry_host(oci_registry_route: Route) -> str:
 
 @pytest.fixture(scope="session")
 def skip_if_no_supported_accelerator_type(supported_accelerator_type: str | None) -> None:
-    """Skip test if no GPU accelerator is available."""
-    if not supported_accelerator_type:
-        pytest.skip("Accelerator type is not provided, vLLM test cannot be run on CPU")
+    """Skip test if no supported GPU accelerator is available."""
+    # Only GPU accelerators that support vLLM
+    supported_gpu_accelerators = {
+        AcceleratorType.NVIDIA,
+        AcceleratorType.AMD,
+        AcceleratorType.GAUDI,
+    }
+
+    if not supported_accelerator_type or supported_accelerator_type.lower() not in supported_gpu_accelerators:
+        pytest.skip(
+            f"Unsupported accelerator '{supported_accelerator_type}'. Expected one of {supported_gpu_accelerators}."
+        )

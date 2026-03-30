@@ -577,20 +577,32 @@ def lmeval_hf_access_token(
 
 
 # GPU-based vLLM fixtures for SmolLM-1.7B
-
-
 @pytest.fixture(scope="function")
 def lmeval_vllm_serving_runtime(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     vllm_runtime_image: str,
+    supported_accelerator_type: str | None,
 ) -> Generator[ServingRuntime]:
     """vLLM ServingRuntime for GPU-based model deployment in LMEval tests."""
+    # Map accelerator type to runtime template
+    accelerator_to_template = {
+        "nvidia": RuntimeTemplates.VLLM_CUDA,
+        "amd": RuntimeTemplates.VLLM_ROCM,
+        "gaudi": RuntimeTemplates.VLLM_GAUDI,
+    }
+
+    accelerator_type = supported_accelerator_type.lower() if supported_accelerator_type else "nvidia"
+    template_name = accelerator_to_template.get(accelerator_type)
+
+    if not template_name:
+        pytest.skip(f"Unsupported accelerator type for vLLM: {supported_accelerator_type}")
+
     with ServingRuntimeFromTemplate(
         client=admin_client,
         name="lmeval-vllm-runtime",
         namespace=model_namespace.name,
-        template_name=RuntimeTemplates.VLLM_CUDA,
+        template_name=template_name,
         deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
         runtime_image=vllm_runtime_image,
         support_tgis_open_ai_endpoints=True,
