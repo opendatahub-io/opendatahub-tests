@@ -17,8 +17,6 @@ from utilities.resources.maa_s_auth_policy import MaaSAuthPolicy
 
 LOGGER = structlog.get_logger(name=__name__)
 
-MAAS_SUBSCRIPTION_HEADER = "x-maas-subscription"
-
 
 @pytest.mark.usefixtures(
     "maas_unprivileged_model_namespace",
@@ -39,109 +37,53 @@ class TestMultipleSubscriptionsPerModel:
     def test_user_in_one_of_two_subscriptions_can_access_model(
         self,
         request_session_http: requests.Session,
-        admin_client: DynamicClient,
-        maas_free_group: str,
-        maas_model_tinyllama_free,
         model_url_tinyllama_free: str,
-        maas_subscription_tinyllama_free,
-        maas_headers_for_actor_api_key: dict[str, str],
-        maas_subscription_namespace,
+        extra_subscription_with_api_key: str,
     ) -> None:
         """
         Create a second subscription for a different group the user is NOT in.
-        User should still get 200 when explicitly selecting the correct subscription.
+        User should still get 200 — API key is bound to the original free subscription,
+        verifying OR-logic: a second subscription does not block access.
         """
-        assert maas_free_group, "maas_free_group fixture returned empty group name"
+        LOGGER.info("Polling for 200 — user's API key bound to original subscription despite a second one existing")
 
-        with create_maas_subscription(
-            admin_client=admin_client,
-            subscription_namespace=maas_subscription_namespace.name,
-            subscription_name="extra-subscription",
-            owner_group_name="nonexistent-group-xyz",
-            model_name=maas_model_tinyllama_free.name,
-            model_namespace=maas_model_tinyllama_free.namespace,
-            tokens_per_minute=999,
-            window="1m",
-            priority=0,
-            teardown=True,
-            wait_for_resource=True,
-        ) as extra_subscription:
-            extra_subscription.wait_for_condition(condition="Ready", status="True", timeout=300)
+        response = poll_expected_status(
+            request_session_http=request_session_http,
+            model_url=model_url_tinyllama_free,
+            headers=build_maas_headers(token=extra_subscription_with_api_key),
+            payload=chat_payload_for_url(model_url=model_url_tinyllama_free),
+            expected_statuses={200},
+        )
 
-            payload = chat_payload_for_url(model_url=model_url_tinyllama_free)
-            explicit_headers = dict(maas_headers_for_actor_api_key)
-            explicit_headers[MAAS_SUBSCRIPTION_HEADER] = maas_subscription_tinyllama_free.name
-
-            LOGGER.info(
-                "Polling for 200 with explicit subscription selection: "
-                f"subscription={maas_subscription_tinyllama_free.name}"
-            )
-
-            response = poll_expected_status(
-                request_session_http=request_session_http,
-                model_url=model_url_tinyllama_free,
-                headers=explicit_headers,
-                payload=payload,
-                expected_statuses={200},
-            )
-
-            assert response.status_code == 200, (
-                f"Expected 200 after adding second subscription, got {response.status_code}: "
-                f"{(response.text or '')[:200]}"
-            )
+        assert response.status_code == 200, (
+            f"Expected 200 after adding second subscription, got {response.status_code}: {(response.text or '')[:200]}"
+        )
 
     @pytest.mark.smoke
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
     def test_high_priority_subscription_allows_access_when_explicitly_selected(
         self,
         request_session_http: requests.Session,
-        admin_client: DynamicClient,
-        maas_free_group: str,
-        maas_model_tinyllama_free,
         model_url_tinyllama_free: str,
-        maas_subscription_tinyllama_free,
-        maas_headers_for_actor_api_key: dict[str, str],
-        maas_subscription_namespace,
+        high_tier_subscription_with_api_key: str,
     ) -> None:
         """
         Create a second (higher priority) subscription for the same group + model.
-        User should get 200 when explicitly selecting the high-priority subscription.
+        User should get 200 — API key is minted and bound to the high-priority subscription
+        at creation time.
         """
-        assert maas_free_group, "maas_free_group fixture returned empty group name"
-        _ = maas_subscription_tinyllama_free
+        response = poll_expected_status(
+            request_session_http=request_session_http,
+            model_url=model_url_tinyllama_free,
+            headers=build_maas_headers(token=high_tier_subscription_with_api_key),
+            payload=chat_payload_for_url(model_url=model_url_tinyllama_free),
+            expected_statuses={200},
+        )
 
-        with create_maas_subscription(
-            admin_client=admin_client,
-            subscription_namespace=maas_subscription_namespace.name,
-            subscription_name="high-tier-subscription",
-            owner_group_name=maas_free_group,
-            model_name=maas_model_tinyllama_free.name,
-            model_namespace=maas_model_tinyllama_free.namespace,
-            tokens_per_minute=9999,
-            window="1m",
-            priority=10,
-            teardown=True,
-            wait_for_resource=True,
-        ) as high_tier_subscription:
-            high_tier_subscription.wait_for_condition(condition="Ready", status="True", timeout=300)
-
-            payload = chat_payload_for_url(model_url=model_url_tinyllama_free)
-
-            explicit_headers = dict(maas_headers_for_actor_api_key)
-            explicit_headers[MAAS_SUBSCRIPTION_HEADER] = high_tier_subscription.name
-
-            response = poll_expected_status(
-                request_session_http=request_session_http,
-                model_url=model_url_tinyllama_free,
-                headers=explicit_headers,
-                payload=payload,
-                expected_statuses={200},
-            )
-
-            assert response.status_code == 200, (
-                f"Expected 200 when selecting high-priority subscription '{high_tier_subscription.name}', "
-                f"got {response.status_code}: {(response.text or '')[:200]}"
-            )
+        assert response.status_code == 200, (
+            f"Expected 200 when using API key bound to high-priority subscription, "
+            f"got {response.status_code}: {(response.text or '')[:200]}"
+        )
 
     @pytest.mark.smoke
     def test_service_account_cannot_use_subscription_it_does_not_belong_to(
@@ -192,7 +134,7 @@ class TestMultipleSubscriptionsPerModel:
                 model_namespace=maas_model_tinyllama_free.namespace,
                 tokens_per_minute=500,
                 window="1m",
-                priority=0,
+                priority=2,
                 teardown=True,
                 wait_for_resource=True,
             ) as premium_subscription,
@@ -208,8 +150,8 @@ class TestMultipleSubscriptionsPerModel:
             service_account.wait(timeout=60)
 
             service_account_token = create_inference_token(model_service_account=service_account)
+            # SA token is not a valid MaaS API key — request is rejected (401/403/429)
             headers = build_maas_headers(token=service_account_token)
-            headers[MAAS_SUBSCRIPTION_HEADER] = premium_subscription.name
 
             payload = chat_payload_for_url(model_url=model_url_tinyllama_free)
 
@@ -218,10 +160,10 @@ class TestMultipleSubscriptionsPerModel:
                 model_url=model_url_tinyllama_free,
                 headers=headers,
                 payload=payload,
-                expected_statuses={403, 429},
+                expected_statuses={401, 403, 429},
             )
 
-            assert response.status_code in {403, 429}, (
-                f"Expected 403/429 when service account selects a subscription it doesn't belong to, "
+            assert response.status_code in {401, 403, 429}, (
+                f"Expected 401/403/429 when service account token has no valid MaaS subscription, "
                 f"got {response.status_code}: {(response.text or '')[:200]}"
             )

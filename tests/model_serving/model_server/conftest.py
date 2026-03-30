@@ -36,6 +36,7 @@ from utilities.data_science_cluster_utils import (
 )
 from utilities.inference_utils import create_isvc
 from utilities.infra import (
+    is_disconnected_cluster,
     s3_endpoint_secret,
     update_configmap_data,
 )
@@ -373,6 +374,13 @@ def model_car_inference_service(
         wait_for_predictor_pods=False,
     ) as isvc:
         yield isvc
+
+
+@pytest.fixture(scope="session")
+def skip_if_disconnected(admin_client: DynamicClient) -> None:
+    """Skip test if running on a disconnected (air-gapped) cluster."""
+    if is_disconnected_cluster(client=admin_client):
+        pytest.skip("S3/HuggingFace storage not available on disconnected clusters")
 
 
 @pytest.fixture(scope="session")

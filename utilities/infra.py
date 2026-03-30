@@ -37,6 +37,7 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.infrastructure import Infrastructure
 from ocp_resources.namespace import Namespace
 from ocp_resources.node_config_openshift_io import Node
+from ocp_resources.operator_hub import OperatorHub
 from ocp_resources.pod import Pod
 from ocp_resources.project_project_openshift_io import Project
 from ocp_resources.project_request import ProjectRequest
@@ -465,6 +466,18 @@ def login_with_user_password(api_address: str, user: str, password: str | None =
         raise ClusterLoginError(user=user)
 
     return bool(re.search(r"Login successful|Logged into", out))
+
+
+@cache
+def is_disconnected_cluster(client: DynamicClient) -> bool:
+    """Check if the cluster is disconnected (air-gapped) based on OperatorHub disableAllDefaultSources."""
+    operator_hub = OperatorHub(client=client, name="cluster")
+    if operator_hub.exists:
+        result = bool(getattr(operator_hub.instance.spec, "disableAllDefaultSources", False))
+        LOGGER.info(f"Disconnected cluster detection: {result}")
+        return result
+
+    raise RuntimeError("OperatorHub 'cluster' resource does not exist. Cannot determine cluster connectivity.")
 
 
 @cache

@@ -26,7 +26,7 @@ class S3GpuNoSchedulerConfig(QwenS3Config):
     [({"name": NAMESPACE}, S3GpuNoSchedulerConfig)],
     indirect=True,
 )
-@pytest.mark.usefixtures("valid_aws_config", "skip_if_no_gpu_available")
+@pytest.mark.usefixtures("valid_aws_config", "skip_if_no_gpu_available", "skip_if_disconnected")
 class TestLlmdNoScheduler:
     """Deploy Qwen on GPU with the scheduler disabled and verify chat completions."""
 

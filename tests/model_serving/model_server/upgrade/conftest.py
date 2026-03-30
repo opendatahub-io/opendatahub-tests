@@ -817,9 +817,6 @@ def llmd_gateway_fixture(
     else:
         with create_llmd_gateway(
             client=admin_client,
-            namespace=LLMDGateway.DEFAULT_NAMESPACE,
-            gateway_class_name=LLMDGateway.DEFAULT_CLASS,
-            wait_for_condition=True,
             timeout=Timeout.TIMEOUT_1MIN,
             teardown=teardown_resources,
         ) as gateway:
