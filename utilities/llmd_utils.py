@@ -11,7 +11,7 @@ from ocp_resources.llm_inference_service import LLMInferenceService
 from timeout_sampler import TimeoutWatch
 
 from utilities.constants import Timeout
-from utilities.infra import get_services_by_isvc_label
+from utilities.infra import get_services_by_isvc_label, is_disconnected_cluster
 from utilities.llmd_constants import (
     ContainerImages,
     KServeGateway,
@@ -26,7 +26,7 @@ def create_llmd_gateway(
     client: DynamicClient,
     name: str = LLMDGateway.DEFAULT_NAME,
     namespace: str = LLMDGateway.DEFAULT_NAMESPACE,
-    gateway_class_name: str = LLMDGateway.DEFAULT_CLASS,
+    gateway_class_name: str = LLMDGateway.DEFAULT_GATEWAY_CLASS,
     listeners: list[dict[str, Any]] | None = None,
     infrastructure: dict[str, Any] | None = None,
     wait_for_condition: bool = True,
@@ -62,48 +62,57 @@ def create_llmd_gateway(
 
     if infrastructure is None:
         infrastructure = {"labels": {KServeGateway.LABEL: KServeGateway.INGRESS_GATEWAY}}
-    try:
-        existing_gateway = Gateway(
-            client=client,
-            name=name,
-            namespace=namespace,
-            api_group=KServeGateway.API_GROUP,
-        )
-        if existing_gateway.exists:
-            LOGGER.info(f"Cleaning up existing Gateway {name} in namespace {namespace}")
-            existing_gateway.delete(wait=True, timeout=Timeout.TIMEOUT_2MIN)
-    except Exception as e:  # noqa: BLE001
-        LOGGER.debug(f"No existing Gateway to clean up: {e}")
-    gateway_body = {
-        "apiVersion": f"{KServeGateway.API_GROUP}/v1",
-        "kind": "Gateway",
-        "metadata": {
-            "name": name,
-            "namespace": namespace,
-        },
-        "spec": {
-            "gatewayClassName": gateway_class_name,
-            "listeners": listeners,
-            "infrastructure": infrastructure,
-        },
-    }
-
-    with Gateway(
+    existing_gateway = Gateway(
         client=client,
-        teardown=teardown,
-        kind_dict=gateway_body,
-        api_group="gateway.networking.k8s.io",
-    ) as gateway:
+        name=name,
+        namespace=namespace,
+        api_group=KServeGateway.API_GROUP,
+    )
+    if existing_gateway.exists:
+        LOGGER.info(f"Reusing existing Gateway {name} in namespace {namespace}")
         if wait_for_condition:
-            LOGGER.info(f"Waiting for Gateway {name} to be programmed...")
-            gateway.wait_for_condition(
+            existing_gateway.wait_for_condition(
                 condition="Programmed",
                 status="True",
                 timeout=timeout,
             )
-            LOGGER.info(f"Gateway {name} is programmed and ready")
+        yield existing_gateway
+    elif is_disconnected_cluster(client=client):
+        raise RuntimeError(
+            f"Gateway {name} in namespace {namespace} does not exist on a disconnected cluster. "
+            "The gateway must be pre-created by CI using configure-disconnected-llmd-gateway.sh."
+        )
+    else:
+        gateway_body = {
+            "apiVersion": f"{KServeGateway.API_GROUP}/v1",
+            "kind": "Gateway",
+            "metadata": {
+                "name": name,
+                "namespace": namespace,
+            },
+            "spec": {
+                "gatewayClassName": gateway_class_name,
+                "listeners": listeners,
+                "infrastructure": infrastructure,
+            },
+        }
 
-        yield gateway
+        with Gateway(
+            client=client,
+            teardown=teardown,
+            kind_dict=gateway_body,
+            api_group="gateway.networking.k8s.io",
+        ) as gateway:
+            if wait_for_condition:
+                LOGGER.info(f"Waiting for Gateway {name} to be programmed...")
+                gateway.wait_for_condition(
+                    condition="Programmed",
+                    status="True",
+                    timeout=timeout,
+                )
+                LOGGER.info(f"Gateway {name} is programmed and ready")
+
+            yield gateway
 
 
 def _get_llm_config_references(enable_prefill_decode: bool = False, disable_scheduler: bool = False) -> dict[str, str]:

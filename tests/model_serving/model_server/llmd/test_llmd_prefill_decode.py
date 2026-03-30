@@ -18,7 +18,7 @@ NAMESPACE = ns_from_file(file=__file__)
     [({"name": NAMESPACE}, PrefillDecodeConfig)],
     indirect=True,
 )
-@pytest.mark.usefixtures("valid_aws_config", "skip_if_no_gpu_available")
+@pytest.mark.usefixtures("valid_aws_config", "skip_if_no_gpu_available", "skip_if_disconnected")
 class TestLlmdPrefillDecode:
     """Deploy Qwen on GPU with prefill-decode disaggregation and verify chat completions."""
 
