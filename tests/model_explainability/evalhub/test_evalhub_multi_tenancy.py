@@ -4,13 +4,13 @@ EvalHub Multi-Tenancy E2E Tests
 Tests multi-tenant isolation, RBAC, and evaluation workflows across
 separate tenant namespaces with dedicated service accounts.
 """
+
 import pytest
 import requests
 import structlog
-from ocp_resources.namespace import Namespace
 from ocp_resources.route import Route
 
-from tests.model_explainability.evalhub.constants import TENANT_A_NAME, TENANT_B_NAME
+from tests.model_explainability.evalhub.constants import TENANT_A_NAME
 from tests.model_explainability.evalhub.utils import (
     create_evalhub_collection,
     create_evalhub_evaluation_job,
@@ -164,9 +164,7 @@ class TestEvalHubMultiTenancy:
 
             assert "id" in collection, f"Collection response missing 'id' for {tenant_name}"
             assert "name" in collection, f"Collection response missing 'name' for {tenant_name}"
-            assert collection["name"] == f"{tenant_name}-test-collection", (
-                f"Collection name mismatch for {tenant_name}"
-            )
+            assert collection["name"] == f"{tenant_name}-test-collection", f"Collection name mismatch for {tenant_name}"
 
     def test_tenant_collections_are_isolated(
         self,
@@ -197,9 +195,7 @@ class TestEvalHubMultiTenancy:
         )
 
         tenant_a_collection_names = [c["name"] for c in tenant_a_collections.get("items", [])]
-        assert "tenant_a-isolated-collection" in tenant_a_collection_names, (
-            "Tenant A should see their own collection"
-        )
+        assert "tenant_a-isolated-collection" in tenant_a_collection_names, "Tenant A should see their own collection"
         assert "tenant_b-isolated-collection" not in tenant_a_collection_names, (
             "Tenant A should NOT see Tenant B's collection"
         )
@@ -214,9 +210,7 @@ class TestEvalHubMultiTenancy:
         )
 
         tenant_b_collection_names = [c["name"] for c in tenant_b_collections.get("items", [])]
-        assert "tenant_b-isolated-collection" in tenant_b_collection_names, (
-            "Tenant B should see their own collection"
-        )
+        assert "tenant_b-isolated-collection" in tenant_b_collection_names, "Tenant B should see their own collection"
         assert "tenant_a-isolated-collection" not in tenant_b_collection_names, (
             "Tenant B should NOT see Tenant A's collection"
         )

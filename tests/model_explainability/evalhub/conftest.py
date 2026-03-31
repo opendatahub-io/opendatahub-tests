@@ -1,7 +1,6 @@
-from collections.abc import Generator
-from contextlib import ExitStack
-from typing import Any
 import shlex
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 import structlog
@@ -297,8 +296,7 @@ def tenant_a_token(
     """Generate bearer token for tenant-a service account (30 min validity)."""
     return run_command(
         shlex.split(
-            f"oc create token -n {tenant_a_service_account.namespace} "
-            f"{tenant_a_service_account.name} --duration=30m"
+            f"oc create token -n {tenant_a_service_account.namespace} {tenant_a_service_account.name} --duration=30m"
         )
     )[1].strip()
 
@@ -312,8 +310,7 @@ def tenant_b_token(
     """Generate bearer token for tenant-b service account (30 min validity)."""
     return run_command(
         shlex.split(
-            f"oc create token -n {tenant_b_service_account.namespace} "
-            f"{tenant_b_service_account.name} --duration=30m"
+            f"oc create token -n {tenant_b_service_account.namespace} {tenant_b_service_account.name} --duration=30m"
         )
     )[1].strip()
 
