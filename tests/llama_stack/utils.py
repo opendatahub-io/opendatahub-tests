@@ -103,7 +103,10 @@ def vector_store_create_and_poll(
         TimeoutError: If wait_timeout is reached while status is still in_progress.
     """
     vs_file = llama_stack_client.vector_stores.files.create(
-        vector_store_id=vector_store_id, file_id=file_id, attributes=attributes
+        vector_store_id=vector_store_id,
+        file_id=file_id,
+        timeout=240,  # Increased timeout for slow processing (e.g., sentence-transformers)
+        attributes=dict(attributes) if attributes else attributes,
     )
     terminal_statuses = ("completed", "failed", "cancelled")
     deadline = time.monotonic() + wait_timeout
