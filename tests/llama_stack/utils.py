@@ -155,7 +155,7 @@ def create_llama_stack_distribution(
 
 
 @retry(
-    wait_timeout=60,
+    wait_timeout=240,
     sleep=5,
     exceptions_dict={ResourceNotFoundError: [], UnexpectedResourceCountError: []},
 )

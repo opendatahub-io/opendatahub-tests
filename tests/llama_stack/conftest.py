@@ -19,6 +19,8 @@ from ocp_resources.service import Service
 from semver import Version
 
 from tests.llama_stack.constants import (
+    HTTPS_PROXY,
+    IS_DISCONNECTED_CLUSTER,
     LLAMA_STACK_DISTRIBUTION_SECRET_DATA,
     LLS_CORE_EMBEDDING_MODEL,
     LLS_CORE_EMBEDDING_PROVIDER_MODEL_ID,
@@ -141,7 +143,10 @@ def llama_stack_server_config(
     """
 
     env_vars = []
+    tls_config: dict[str, Any] | None = None
     params = getattr(request, "param", {})
+    cpu_requests = "2"
+    cpu_limits = "4"
 
     # INFERENCE_MODEL
     if params.get("inference_model"):
@@ -191,8 +196,21 @@ def llama_stack_server_config(
         env_vars.append({"name": "VLLM_EMBEDDING_MAX_TOKENS", "value": LLS_CORE_VLLM_EMBEDDING_MAX_TOKENS})
         env_vars.append({"name": "VLLM_EMBEDDING_TLS_VERIFY", "value": LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY})
     elif embedding_provider == "sentence-transformers":
+        # Increase CPU limits to prevent timeouts when inserting files into vector stores
+        cpu_requests = "4"
+        cpu_limits = "8"
+
+        # Enable sentence-transformers embedding model
         env_vars.append({"name": "ENABLE_SENTENCE_TRANSFORMERS", "value": "true"})
         env_vars.append({"name": "EMBEDDING_PROVIDER", "value": "sentence-transformers"})
+
+        if IS_DISCONNECTED_CLUSTER:
+            # Workaround to fix sentence-transformer embeddings on disconnected (RHAIENG-1624)
+            env_vars.append({"name": "SENTENCE_TRANSFORMERS_HOME", "value": "/opt/app-root/src/.cache/huggingface/hub"})
+            env_vars.append({"name": "HF_HUB_OFFLINE", "value": "1"})
+            env_vars.append({"name": "TRANSFORMERS_OFFLINE", "value": "1"})
+            env_vars.append({"name": "HF_DATASETS_OFFLINE", "value": "1"})
+
     else:
         raise ValueError(f"Unsupported embeddings provider: {embedding_provider}")
 
@@ -229,11 +247,35 @@ def llama_stack_server_config(
     env_vars_vector_io = vector_io_provider_deployment_config_factory(provider_name=vector_io_provider)
     env_vars.extend(env_vars_vector_io)
 
+    if HTTPS_PROXY:
+        LOGGER.info(f"Setting proxy and tlsconfig configuration (https_proxy:{HTTPS_PROXY}")
+        env_vars.append({"name": "HTTPS_PROXY", "value": HTTPS_PROXY})
+
+        # The operator sets SSL_CERT_FILE automatically when tlsConfig.caBundle is
+        # configured, but the `requests` library (used by tiktoken to download
+        # tokenizer data) ignores SSL_CERT_FILE and only checks REQUESTS_CA_BUNDLE.
+        # Without this, tiktoken fails with SSL CERTIFICATE_VERIFY_FAILED when the
+        # proxy uses a self-signed certificate (e.g. in disconnected clusters).
+        env_vars.append({
+            "name": "REQUESTS_CA_BUNDLE",
+            "value": "/etc/ssl/certs/ca-bundle/ca-bundle.crt",
+        })
+
+        tls_config = {
+            "caBundle": {
+                "configMapName": "odh-trusted-ca-bundle",
+                "configMapKeys": [
+                    "ca-bundle.crt",  # CNO-injected cluster CAs
+                    "odh-ca-bundle.crt",  # User-specified custom CAs
+                ],
+            },
+        }
+
     server_config: dict[str, Any] = {
         "containerSpec": {
             "resources": {
-                "requests": {"cpu": "1", "memory": "3Gi"},
-                "limits": {"cpu": "3", "memory": "6Gi"},
+                "requests": {"cpu": cpu_requests, "memory": "3Gi"},
+                "limits": {"cpu": cpu_limits, "memory": "6Gi"},
             },
             "env": env_vars,
             "name": "llama-stack",
@@ -241,6 +283,9 @@ def llama_stack_server_config(
         },
         "distribution": {"name": "rh-dev"},
     }
+
+    if tls_config:
+        server_config["tlsConfig"] = tls_config
 
     if params.get("llama_stack_storage_size"):
         storage_size = params.get("llama_stack_storage_size")
@@ -595,12 +640,13 @@ def _create_llama_stack_client(
 ) -> Generator[LlamaStackClient, Any, Any]:
     # LLS_CLIENT_VERIFY_SSL is false by default to be able to test with Self-Signed certificates
     verifySSL = os.getenv("LLS_CLIENT_VERIFY_SSL", "false").lower() == "true"
-    http_client = httpx.Client(verify=verifySSL, timeout=240)
+    http_client = httpx.Client(verify=verifySSL, timeout=300)
     try:
         client = LlamaStackClient(
             base_url=f"https://{route.host}",
             max_retries=3,
             http_client=http_client,
+            timeout=300,
         )
         wait_for_llama_stack_client_ready(client=client)
         existing_file_ids = {f.id for f in client.files.list().data}

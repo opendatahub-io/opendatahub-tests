@@ -28,6 +28,8 @@ class ModelInfo(NamedTuple):
     embedding_dimension: int  # API returns integer (e.g., 768)
 
 
+IS_DISCONNECTED_CLUSTER = os.getenv("IS_DISCONNECTED_CLUSTER", "false")
+HTTPS_PROXY = os.getenv("SQUID_HTTPS_PROXY", "")
 LLS_CORE_POD_FILTER: str = "app=llama-stack"
 LLS_OPENSHIFT_MINIMAL_VERSION: VersionInfo = semver.VersionInfo.parse("4.17.0")
 
