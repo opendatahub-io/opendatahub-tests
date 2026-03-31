@@ -10,14 +10,17 @@ from ocp_resources.maas_auth_policy import MaaSAuthPolicy
 from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.namespace import Namespace
+from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.service_account import ServiceAccount
 from pytest_testconfig import config as py_config
 
 from tests.model_serving.maas_billing.maas_subscription.utils import (
+    assert_api_key_created_ok,
     create_and_yield_api_key_id,
     create_api_key,
     create_maas_subscription,
+    get_maas_api_labels,
     patch_llmisvc_with_maas_router_and_tiers,
     resolve_api_key_username,
     revoke_api_key,
@@ -786,3 +789,53 @@ def short_expiration_api_key_id(
         key_name_prefix="e2e-exp-short",
         expires_in="1h",
     )
+
+
+@pytest.fixture()
+def maas_api_pod_name(
+    admin_client: DynamicClient,
+) -> str:
+    """Return the name of the first running maas-api pod."""
+    applications_namespace = py_config["applications_namespace"]
+    label_selector = ",".join(f"{k}={v}" for k, v in get_maas_api_labels().items())
+    all_pods = list(
+        Pod.get(
+            client=admin_client,
+            namespace=applications_namespace,
+            label_selector=label_selector,
+        )
+    )
+    running_pods = [pod for pod in all_pods if pod.instance.status.phase == "Running"]
+    assert running_pods, f"No Running maas-api pods found in {applications_namespace}"
+    return running_pods[0].name
+
+
+@pytest.fixture()
+def ephemeral_api_key(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_token_for_actor: str,
+) -> Generator[dict[str, Any]]:
+    """Create an ephemeral API key and revoke it on teardown."""
+    create_resp, create_body = create_api_key(
+        base_url=base_url,
+        ocp_user_token=ocp_token_for_actor,
+        request_session_http=request_session_http,
+        api_key_name=f"e2e-ephemeral-{generate_random_name()}",
+        expires_in="1h",
+        ephemeral=True,
+        raise_on_error=False,
+    )
+    assert_api_key_created_ok(resp=create_resp, body=create_body, required_fields=("key", "id"))
+    LOGGER.info(f"[ephemeral] Created ephemeral key: id={create_body['id']}, expiresAt={create_body.get('expiresAt')}")
+    yield create_body
+    revoke_resp, _ = revoke_api_key(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        key_id=create_body["id"],
+        ocp_user_token=ocp_token_for_actor,
+    )
+    if revoke_resp.status_code not in (200, 404):
+        raise AssertionError(
+            f"Unexpected teardown status for ephemeral key id={create_body['id']}: {revoke_resp.status_code}"
+        )

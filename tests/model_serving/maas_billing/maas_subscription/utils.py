@@ -188,6 +188,7 @@ def create_api_key(
     expires_in: str | None = None,
     raise_on_error: bool = True,
     subscription: str | None = None,
+    ephemeral: bool = False,
 ) -> tuple[Response, dict[str, Any]]:
     """
     Create an API key via MaaS API and return (response, parsed_body).
@@ -203,6 +204,9 @@ def create_api_key(
         subscription: Optional MaaSSubscription name to bind at mint time.
             When provided, the key is bound to this subscription for inference.
             When None, the API auto-selects the highest-priority subscription.
+        ephemeral: When True, marks the key as short-lived/programmatic.
+            Ephemeral keys are hidden from default search results and are
+            cleaned up automatically by the cleanup CronJob after expiration.
     """
     api_keys_url = f"{base_url}/v1/api-keys"
 
@@ -211,6 +215,8 @@ def create_api_key(
         payload["expiresIn"] = expires_in
     if subscription is not None:
         payload["subscription"] = subscription
+    if ephemeral:
+        payload["ephemeral"] = True
 
     response = request_session_http.post(
         url=api_keys_url,
