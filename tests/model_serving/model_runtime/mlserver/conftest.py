@@ -146,6 +146,50 @@ def mlserver_model_service_account(admin_client: DynamicClient, kserve_s3_secret
         yield sa
 
 
+@pytest.fixture(scope="class")
+def mlserver_model_car_inference_service(
+    request: pytest.FixtureRequest,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    mlserver_serving_runtime: ServingRuntime,
+) -> Generator[InferenceService]:
+    """
+    Create InferenceService for MLServer model car (OCI image) testing.
+
+    Args:
+        request: Pytest fixture request with parameters.
+        admin_client: Kubernetes dynamic client.
+        model_namespace: Namespace for deployment.
+        mlserver_serving_runtime: MLServer ServingRuntime instance.
+
+    Yields:
+        InferenceService: Configured ISVC using OCI storage.
+    """
+    params = request.param
+    storage_uri = params.get("storage-uri")
+    if not storage_uri:
+        raise ValueError("storage-uri is required in params")
+
+    deployment_mode = params.get("deployment-mode", KServeDeploymentType.RAW_DEPLOYMENT)
+    model_format = params.get("model-format")
+    if not model_format:
+        raise ValueError("model-format is required in params")
+
+    with create_isvc(
+        client=admin_client,
+        name=f"{model_format}-modelcar",
+        namespace=model_namespace.name,
+        runtime=mlserver_serving_runtime.name,
+        storage_uri=storage_uri,
+        model_format=model_format,
+        deployment_mode=deployment_mode,
+        external_route=params.get("enable_external_route"),
+        wait_for_predictor_pods=params.get("wait_for_predictor_pods", False),
+        model_env_variables=params.get("model_env_variables"),
+    ) as isvc:
+        yield isvc
+
+
 @pytest.fixture
 def mlserver_response_snapshot(snapshot: Any) -> Any:
     """

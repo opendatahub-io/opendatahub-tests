@@ -9,6 +9,7 @@ class KServeDeploymentType:
     RAW_DEPLOYMENT: str = "RawDeployment"
     STANDARD: str = "Standard"
     MODEL_MESH: str = "ModelMesh"
+    KNATIVE: str = "Knative"
 
     RAW_DEPLOYMENT_MODES: tuple[str, ...] = (RAW_DEPLOYMENT, STANDARD)
 
@@ -298,6 +299,20 @@ class ModelCarImage:
         "oci://quay.io/mwaykole/test@sha256:cb7d25c43e52c755e85f5b59199346f30e03b7112ef38b74ed4597aec8748743"
     )
     GRANITE_8B_CODE_INSTRUCT: str = "oci://registry.redhat.io/rhelai1/modelcar-granite-8b-code-instruct:1.4"
+
+    # MLServer model car images - update URIs when images are available
+    MLSERVER_SKLEARN: str = (
+        "oci://quay.io/jooholee/mlserver-sklearn@sha256:ec9bc6b520909c52bd1d4accc2b2d28adb04981bd4c3ce94f17f23dd573e1f55"
+    )
+    MLSERVER_XGBOOST: str = (
+        "oci://quay.io/jooholee/mlserver-xgboost@sha256:5b6982bdc939b53a7a1210f56aa52bf7de0f0cbc693668db3fd1f496571bff29"
+    )
+    MLSERVER_LIGHTGBM: str = (
+        "oci://quay.io/jooholee/mlserver-lightgbm@sha256:77eb15a2eccefa3756faaf2ee4bc1e63990b746427d323957c461f33a4f1a6a3"
+    )
+    MLSERVER_ONNX: str = (
+        "oci://quay.io/jooholee/mlserver-onnx@sha256:d0ad00fb6f2caa8f02a0250fc44a576771d0846b2ac8d164ec203b10ec5d604b"
+    )
 
 
 class ModelStorage:

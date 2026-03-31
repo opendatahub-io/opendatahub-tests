@@ -1,0 +1,23 @@
+{
+  "id": "lightgbm",
+  "model_name": "lightgbm-modelcar",
+  "outputs": [
+    {
+      "data": [
+        0.0017564886970520908,
+        0.008535872687680112,
+        0.9897076386152678
+      ],
+      "datatype": "FP64",
+      "name": "predict",
+      "parameters": {
+        "content_type": "np"
+      },
+      "shape": [
+        1,
+        3
+      ]
+    }
+  ],
+  "parameters": {}
+}
