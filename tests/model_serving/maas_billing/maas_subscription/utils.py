@@ -472,6 +472,29 @@ def assert_api_key_created_ok(
         assert field in body, f"Response must contain '{field}'"
 
 
+def search_active_api_keys(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_user_token: str,
+    include_ephemeral: bool = False,
+    request_timeout_seconds: int = 30,
+) -> list[dict[str, Any]]:
+    """POST /v1/api-keys/search for active keys and return the list of matching items."""
+    filters: dict[str, Any] = {"status": ["active"]}
+    if include_ephemeral:
+        filters["includeEphemeral"] = True
+    url = f"{base_url}/v1/api-keys/search"
+    resp = request_session_http.post(
+        url=url,
+        headers={"Authorization": f"Bearer {ocp_user_token}"},
+        json={"filters": filters, "pagination": {"limit": 50, "offset": 0}},
+        timeout=request_timeout_seconds,
+    )
+    assert resp.status_code == 200, f"Expected 200 from key search, got {resp.status_code}: {(resp.text or '')[:200]}"
+    body = resp.json()
+    return body.get("items") or body.get("data") or []
+
+
 def assert_api_key_get_ok(resp: Response, body: dict[str, Any], key_id: str) -> None:
     """Assert a GET /v1/api-keys/{id} response has status 200."""
     assert resp.status_code == 200, (

@@ -1,22 +1,17 @@
-from __future__ import annotations
-
 from typing import Any
 
 import portforward
 import pytest
 import requests
 import structlog
-from kubernetes.dynamic import DynamicClient
 from ocp_resources.cron_job import CronJob
 from ocp_resources.network_policy import NetworkPolicy
 from pytest_testconfig import config as py_config
 
+from tests.model_serving.maas_billing.maas_subscription.utils import search_active_api_keys
 from tests.model_serving.maas_billing.utils import build_maas_headers
 
 LOGGER = structlog.get_logger(name=__name__)
-
-MAAS_CLEANUP_CRONJOB_NAME = "maas-api-key-cleanup"
-MAAS_CLEANUP_NETWORKPOLICY_NAME = "maas-api-cleanup-restrict"
 
 
 @pytest.mark.usefixtures(
@@ -28,18 +23,9 @@ class TestEphemeralKeyCleanup:
     """Tests for ephemeral API key cleanup (CronJob + internal endpoint)."""
 
     @pytest.mark.tier1
-    def test_cronjob_exists_and_configured(self, admin_client: DynamicClient) -> None:
+    def test_cronjob_exists_and_configured(self, maas_cleanup_cronjob: CronJob) -> None:
         """Verify the maas-api-key-cleanup CronJob exists with expected configuration."""
-        applications_namespace = py_config["applications_namespace"]
-
-        cronjob = CronJob(
-            client=admin_client,
-            name=MAAS_CLEANUP_CRONJOB_NAME,
-            namespace=applications_namespace,
-        )
-        assert cronjob.exists, f"CronJob {MAAS_CLEANUP_CRONJOB_NAME} not found in {applications_namespace}"
-
-        spec = cronjob.instance.spec
+        spec = maas_cleanup_cronjob.instance.spec
 
         assert spec.schedule == "*/15 * * * *", f"Expected schedule '*/15 * * * *', got '{spec.schedule}'"
         assert spec.concurrencyPolicy == "Forbid", (
@@ -62,26 +48,15 @@ class TestEphemeralKeyCleanup:
         LOGGER.info(f"[ephemeral] CronJob validated: schedule={spec.schedule}, concurrency={spec.concurrencyPolicy}")
 
     @pytest.mark.tier1
-    def test_cleanup_networkpolicy_exists(self, admin_client: DynamicClient) -> None:
+    def test_cleanup_networkpolicy_exists(self, maas_cleanup_networkpolicy: NetworkPolicy) -> None:
         """Verify the cleanup NetworkPolicy restricts cleanup pod egress to maas-api only."""
-        applications_namespace = py_config["applications_namespace"]
-
-        network_policy = NetworkPolicy(
-            client=admin_client,
-            name=MAAS_CLEANUP_NETWORKPOLICY_NAME,
-            namespace=applications_namespace,
-        )
-        assert network_policy.exists, (
-            f"NetworkPolicy {MAAS_CLEANUP_NETWORKPOLICY_NAME} not found in {applications_namespace}"
-        )
-
-        spec = network_policy.instance.spec
+        spec = maas_cleanup_networkpolicy.instance.spec
 
         assert spec.podSelector.matchLabels.get("app") == "maas-api-cleanup", (
             f"NetworkPolicy should target app=maas-api-cleanup pods, got: {spec.podSelector.matchLabels}"
         )
-        assert "Egress" in spec.policyTypes, "NetworkPolicy should control Egress traffic"
-        assert "Ingress" in spec.policyTypes, "NetworkPolicy should control Ingress traffic"
+        for policy_type in ("Egress", "Ingress"):
+            assert policy_type in spec.policyTypes, f"NetworkPolicy should control {policy_type} traffic"
 
         ingress_rules = getattr(spec, "ingress", None)
         assert ingress_rules in ([], None), "Cleanup pods should have no inbound traffic allowed"
@@ -93,57 +68,51 @@ class TestEphemeralKeyCleanup:
 
     @pytest.mark.tier1
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
-    def test_create_ephemeral_key(
+    def test_ephemeral_key_visible_with_include_filter(
         self,
         request_session_http: requests.Session,
         base_url: str,
         ocp_token_for_actor: str,
         ephemeral_api_key: dict[str, Any],
     ) -> None:
-        """Verify ephemeral keys are visible with includeEphemeral filter but hidden by default."""
+        """Verify ephemeral key is marked as ephemeral and visible when includeEphemeral=True."""
         key_id = ephemeral_api_key["id"]
-        api_keys_endpoint = f"{base_url}/v1/api-keys"
-        auth_header = build_maas_headers(token=ocp_token_for_actor)
 
         assert ephemeral_api_key.get("ephemeral") is True, "Key should be marked as ephemeral"
 
-        r_search = request_session_http.post(
-            url=f"{api_keys_endpoint}/search",
-            headers=auth_header,
-            json={
-                "filters": {"status": ["active"], "includeEphemeral": True},
-                "pagination": {"limit": 50, "offset": 0},
-            },
-            timeout=30,
+        items = search_active_api_keys(
+            request_session_http=request_session_http,
+            base_url=base_url,
+            ocp_user_token=ocp_token_for_actor,
+            include_ephemeral=True,
         )
-        assert r_search.status_code == 200, (
-            f"Expected 200 from search with includeEphemeral=True, "
-            f"got {r_search.status_code}: {(r_search.text or '')[:200]}"
-        )
-        search_body = r_search.json()
-        items: list[dict[str, Any]] = search_body.get("items") or search_body.get("data") or []
         assert key_id in [item["id"] for item in items], (
             f"Ephemeral key {key_id} should appear in search with includeEphemeral=True"
         )
+        LOGGER.info(f"[ephemeral] Ephemeral key {key_id} visible with includeEphemeral=True")
 
-        r_default = request_session_http.post(
-            url=f"{api_keys_endpoint}/search",
-            headers=auth_header,
-            json={
-                "filters": {"status": ["active"]},
-                "pagination": {"limit": 50, "offset": 0},
-            },
-            timeout=30,
+    @pytest.mark.tier1
+    @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
+    def test_ephemeral_key_hidden_from_default_search(
+        self,
+        request_session_http: requests.Session,
+        base_url: str,
+        ocp_token_for_actor: str,
+        ephemeral_api_key: dict[str, Any],
+    ) -> None:
+        """Verify ephemeral key is hidden from default search when includeEphemeral is not set."""
+        key_id = ephemeral_api_key["id"]
+
+        default_items = search_active_api_keys(
+            request_session_http=request_session_http,
+            base_url=base_url,
+            ocp_user_token=ocp_token_for_actor,
+            include_ephemeral=False,
         )
-        assert r_default.status_code == 200, (
-            f"Expected 200 from default search, got {r_default.status_code}: {(r_default.text or '')[:200]}"
-        )
-        default_body = r_default.json()
-        default_items: list[dict[str, Any]] = default_body.get("items") or default_body.get("data") or []
         assert key_id not in [item["id"] for item in default_items], (
             "Ephemeral key should be excluded from default search (includeEphemeral defaults to False)"
         )
-        LOGGER.info(f"[ephemeral] Ephemeral key {key_id} visibility verified")
+        LOGGER.info(f"[ephemeral] Ephemeral key {key_id} correctly hidden from default search")
 
     @pytest.mark.tier1
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
