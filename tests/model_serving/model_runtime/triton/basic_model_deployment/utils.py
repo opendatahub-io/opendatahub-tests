@@ -155,15 +155,20 @@ def validate_inference_request(
     assert response == response_snapshot, f"Output mismatch: {response} != {response_snapshot}"
 
 
-def get_gpu_identifier(accelerator_type: str) -> str:
+def get_gpu_identifier(accelerator_type: str | None) -> str:
+    if accelerator_type is None:
+        return Labels.Nvidia.NVIDIA_COM_GPU
     return ACCELERATOR_IDENTIFIER.get(accelerator_type.lower(), Labels.Nvidia.NVIDIA_COM_GPU)
 
 
-def get_template_name(protocol: str, accelerator_type: str) -> str:
+def get_template_name(protocol: str, accelerator_type: str | None) -> str:
     """
     Returns template name based on protocol and accelerator type.
     Falls back to default TRITON_REST if not found.
+    If accelerator_type is None or empty, defaults to "nvidia".
     """
+    if not (accelerator_type and accelerator_type.strip()):
+        accelerator_type = "nvidia"
     key = f"{protocol.lower()}_{accelerator_type.lower()}"
     return TEMPLATE_MAP.get(key, RuntimeTemplates.TRITON_REST)
 
