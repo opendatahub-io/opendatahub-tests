@@ -342,10 +342,10 @@ def get_scheduler_decision_logs(
 
     # Get all logs from the scheduler pod
     # Note: The router-scheduler container is the default/main container
-    raw_logs = router_scheduler_pod.log()
+    raw_logs = router_scheduler_pod.log(container="main")
 
     # Target decision message
-    target_decision_msg = "Selecting pods from candidates sorted by max score"
+    target_decision_msg = "Selecting endpoints from candidates sorted by max score"
 
     # Filtering logs
     filtered_logs = "\n".join(line for line in raw_logs.splitlines() if target_decision_msg in line)
