@@ -3,6 +3,7 @@ from typing import Generator, Any
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_pipelines_application import DataSciencePipelinesApplication
+from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
@@ -14,6 +15,28 @@ from timeout_sampler import TimeoutSampler
 from tests.llama_stack.eval.constants import DK_CUSTOM_DATASET_IMAGE
 from tests.llama_stack.eval.utils import wait_for_dspa_pods
 from utilities.constants import MinIo
+
+
+@pytest.fixture(scope="class")
+def qwen_isvc_service_url(admin_client: DynamicClient, qwen_isvc: InferenceService) -> str:
+    """URL for the Qwen ISVC using the actual Kubernetes service port.
+
+    Reads the predictor service port from the cluster instead of hardcoding
+    a container port. Works correctly regardless of KServe headed/headless mode.
+    """
+    svc_name = f"{qwen_isvc.name}-predictor"
+    svc_list = list(
+        Service.get(
+            client=admin_client,
+            namespace=qwen_isvc.namespace,
+            name=svc_name,
+        )
+    )
+    if not svc_list:
+        raise RuntimeError(f"Service {svc_name} not found in namespace {qwen_isvc.namespace}")
+    svc = svc_list[0]
+    port = svc.instance.spec.ports[0].port
+    return f"http://{svc_name}.{qwen_isvc.namespace}.svc.cluster.local:{port}/v1"
 
 
 @pytest.fixture(scope="class")
@@ -209,3 +232,37 @@ def dspa_route(
         if route:
             yield route
             return
+
+
+@pytest.fixture(scope="class")
+def guardrails_orchestrator_service_url(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    guardrails_orchestrator: Any,
+) -> str:
+    """In-cluster HTTP URL for the guardrails orchestrator service.
+
+    Uses the Kubernetes service directly (HTTP) instead of the OpenShift route
+    (HTTPS), avoiding TLS certificate chain issues for pod-to-pod communication.
+    The operator creates the Service asynchronously, so we poll until it appears.
+    """
+    orch_name = guardrails_orchestrator.name
+    ns = model_namespace.name
+
+    _HTTP_PORTS = (8033, 8034, 80, 443)
+
+    def _find_orchestrator_service() -> tuple[Service, int] | None:
+        for svc in Service.get(client=admin_client, namespace=ns):
+            svc_name = svc.name
+            if svc_name == orch_name or svc_name.startswith(f"{orch_name}-"):
+                for p in svc.instance.spec.ports:
+                    if p.port in _HTTP_PORTS:
+                        return svc, p.port
+        return None
+
+    for result in TimeoutSampler(wait_timeout=120, sleep=5, func=_find_orchestrator_service):
+        if result is not None:
+            svc, http_port = result
+            return f"http://{svc.name}.{ns}.svc.cluster.local:{http_port}"
+
+    raise RuntimeError(f"No orchestrator service found for {orch_name} in {ns}")
