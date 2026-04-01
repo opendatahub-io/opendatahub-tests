@@ -4,6 +4,7 @@ import re
 import uuid
 from typing import Any
 
+import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
 from ocp_resources.deployment import Deployment
@@ -11,7 +12,6 @@ from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
 from ocp_resources.resource import Resource
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 
 import utilities.infra
@@ -21,7 +21,7 @@ from utilities.exceptions import ResourceValueMismatch, UnexpectedResourceCountE
 # Constants for image validation
 SHA256_DIGEST_PATTERN = r"@sha256:[a-f0-9]{64}$"
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def get_s3_secret_dict(
@@ -173,9 +173,9 @@ def create_isvc_label_selector_str(isvc: InferenceService, resource_type: str, r
 
     """
     deployment_mode = isvc.instance.metadata.annotations.get(Annotations.KserveIo.DEPLOYMENT_MODE)
-    if deployment_mode in (
-        KServeDeploymentType.SERVERLESS,
-        KServeDeploymentType.RAW_DEPLOYMENT,
+    if (
+        deployment_mode == KServeDeploymentType.SERVERLESS
+        or deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT_MODES
     ):
         return f"{isvc.ApiGroup.SERVING_KSERVE_IO}/inferenceservice={isvc.name}"
 

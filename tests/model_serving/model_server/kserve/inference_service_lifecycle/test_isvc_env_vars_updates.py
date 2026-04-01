@@ -43,6 +43,15 @@ RAW_DEPLOYMENT_ISVC_CONFIG = {
     indirect=True,
 )
 class TestRawISVCEnvVarsUpdates:
+    """Validate adding and removing environment variables on a KServe raw deployment ISVC.
+
+    Steps:
+        1. Deploy an OVMS inference service with custom environment variables.
+        2. Verify the environment variables are present in the predictor pods.
+        3. Remove the environment variables from the inference service.
+        4. Verify the environment variables are no longer present in the predictor pods.
+    """
+
     def test_raw_with_isvc_env_vars(self, ovms_kserve_inference_service):
         """Test adding environment variables to the inference service"""
         verify_env_vars_in_isvc_pods(isvc=ovms_kserve_inference_service, env_vars=ISVC_ENV_VARS, vars_exist=True)

@@ -1,14 +1,14 @@
 from typing import Self
 
 import pytest
+import structlog
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 
 from tests.model_serving.model_server.kserve.ingress.utils import curl_from_pod
 from utilities.constants import RuntimeTemplates
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 OVMS_REST_PORT = 8888
 OVMS_HEALTH_ENDPOINT = "v2/health/ready"

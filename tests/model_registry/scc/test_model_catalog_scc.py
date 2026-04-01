@@ -1,16 +1,16 @@
 from typing import Self
 
 import pytest
+import structlog
 from ocp_resources.deployment import Deployment
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 
 from tests.model_registry.scc.utils import (
     validate_deployment_scc,
     validate_pod_scc,
 )
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 MODEL_CATALOG_STR = "model-catalog"
 
 

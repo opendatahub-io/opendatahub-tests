@@ -1,9 +1,9 @@
 import pytest
-from simple_logger.logger import get_logger
+import structlog
 
 from tests.model_registry.utils import execute_get_command
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")

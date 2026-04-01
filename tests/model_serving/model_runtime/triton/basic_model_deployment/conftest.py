@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from typing import Any, cast
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.inference_service import InferenceService
@@ -14,7 +15,6 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.template import Template
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
 from syrupy.extensions.json import JSONSnapshotExtension
 
 from tests.model_serving.model_runtime.triton.basic_model_deployment.utils import (
@@ -33,7 +33,7 @@ from utilities.inference_utils import create_isvc
 from utilities.infra import get_pods_by_isvc_label
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")

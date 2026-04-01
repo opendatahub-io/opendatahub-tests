@@ -6,6 +6,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import requests
+import structlog
 from kubernetes.dynamic import DynamicClient
 
 # from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
@@ -15,7 +16,6 @@ from ocp_resources.ingress_config_openshift_io import Ingress as IngressConfig
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.resource import ResourceEditor
 from requests import Response
-from simple_logger.logger import get_logger
 
 from utilities.constants import (
     MAAS_GATEWAY_NAME,
@@ -26,7 +26,7 @@ from utilities.plugins.constant import OpenAIEnpoints, RestHeader
 from utilities.resources.rate_limit_policy import RateLimitPolicy
 from utilities.resources.token_rate_limit_policy import TokenRateLimitPolicy
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 MODELS_INFO = OpenAIEnpoints.MODELS_INFO
 
 

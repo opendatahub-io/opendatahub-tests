@@ -2,6 +2,7 @@ import random
 from typing import Any, Self
 
 import pytest
+import structlog
 import yaml
 from dictdiffer import diff
 from kubernetes.dynamic import DynamicClient
@@ -11,7 +12,6 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 from ocp_resources.service import Service
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
@@ -26,7 +26,7 @@ from tests.model_registry.model_catalog.constants import CATALOG_CONTAINER, DEFA
 from tests.model_registry.utils import execute_get_command, get_model_catalog_pod, get_rest_headers
 from utilities.user_utils import UserTestSession
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = [
     pytest.mark.usefixtures(

@@ -37,6 +37,14 @@ from utilities.monitoring import validate_metrics_field
 @pytest.mark.tier1
 @pytest.mark.rawdeployment
 class TestRawUnprivilegedUserMetrics:
+    """Validate that an unprivileged user can access model metrics via UserWorkloadMonitoring.
+
+    Steps:
+        1. Deploy an OVMS model car inference service as a non-admin user with metrics enabled.
+        2. Send multiple inference requests to the model.
+        3. Query Prometheus and verify the success request count matches expectations.
+    """
+
     @pytest.mark.metrics
     def test_non_admin_raw_metrics(
         self,

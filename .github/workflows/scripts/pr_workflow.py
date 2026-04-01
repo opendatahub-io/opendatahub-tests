@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import sys
@@ -23,9 +24,8 @@ from github.Organization import Organization
 from github.PullRequest import PullRequest
 from github.Repository import Repository
 from github.Team import Team
-from simple_logger.logger import get_logger
 
-LOGGER = get_logger(name="pr_labeler")
+LOGGER = logging.getLogger("pr_labeler")
 
 
 class PrBaseClass:

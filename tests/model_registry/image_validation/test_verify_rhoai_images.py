@@ -9,16 +9,16 @@ meet the requirements:
 from typing import Self
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.pod import Pod
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
 
 from tests.model_registry.constants import MR_INSTANCE_NAME, MR_OPERATOR_NAME, MR_POSTGRES_DEPLOYMENT_NAME_STR
 from tests.model_registry.image_validation.utils import validate_images
 from utilities.constants import Labels
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 pytestmark = [pytest.mark.downstream_only, pytest.mark.skip_must_gather]
 
 

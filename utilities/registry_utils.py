@@ -1,7 +1,7 @@
 import requests
-from simple_logger.logger import get_logger
+import structlog
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def pull_manifest_from_oci_registry(registry_url: str, repo: str, tag: str) -> dict[str, str]:

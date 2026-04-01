@@ -2,9 +2,9 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+import structlog
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 
 from tests.model_serving.model_runtime.vllm.constant import OPENAI_ENDPOINT_NAME, TGIS_ENDPOINT_NAME
 from tests.model_serving.model_runtime.vllm.utils import (
@@ -13,7 +13,7 @@ from tests.model_serving.model_runtime.vllm.utils import (
 )
 from utilities.constants import KServeDeploymentType, Ports
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 TIMEOUT_20MIN: str = 20 * 60
 SERVING_ARGUMENT: list[str] = [

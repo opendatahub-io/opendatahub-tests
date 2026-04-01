@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.config_map import ConfigMap
@@ -24,7 +25,6 @@ from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
-from simple_logger.logger import get_logger
 from syrupy.extensions.json import JSONSnapshotExtension
 
 from tests.model_serving.model_runtime.openvino.constant import PREDICT_RESOURCES
@@ -37,7 +37,7 @@ from utilities.inference_utils import create_isvc
 from utilities.infra import get_pods_by_isvc_label
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 OVMS_SMOKE_SCRIPTS_DIR = Path(__file__).parent / "smoke"
 OVMS_SMOKE_SCRIPT_NAMES = ("ovms_smoketest.py", "smoke.py")

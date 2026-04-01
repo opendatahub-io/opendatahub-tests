@@ -1,11 +1,11 @@
 import pytest
-from simple_logger.logger import get_logger
+import structlog
 
 from tests.model_serving.maas_billing.utils import (
     assert_mixed_200_and_429,
 )
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 TOKEN_RATE_MAX_REQUESTS = 8
 LARGE_MAX_TOKENS = 80

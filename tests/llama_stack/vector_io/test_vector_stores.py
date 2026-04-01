@@ -1,20 +1,21 @@
 import pytest
+import structlog
 from llama_stack_client import LlamaStackClient
 from llama_stack_client.types.vector_store import VectorStore
-from simple_logger.logger import get_logger
 
-from tests.llama_stack.constants import (
-    IBM_2025_Q4_EARNINGS_DOC_ENCRYPTED,
-    IBM_2025_Q4_EARNINGS_DOC_UNENCRYPTED,
-    IBM_EARNINGS_SEARCH_QUERIES_BY_MODE,
-    ModelInfo,
+from tests.llama_stack.constants import ModelInfo
+from tests.llama_stack.datasets import (
+    FINANCE_DATASET,
+    IBM_2025_Q4_EARNINGS,
+    IBM_2025_Q4_EARNINGS_ENCRYPTED,
+    Dataset,
 )
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, llama_stack_server_config, vector_store",
+    "unprivileged_model_namespace, llama_stack_server_config, vector_store, dataset",
     [
         pytest.param(
             {"name": "test-llamastack-vector-stores", "randomize_name": True},
@@ -24,11 +25,9 @@ LOGGER = get_logger(name=__name__)
                 "embedding_provider": "sentence-transformers",
                 "files_provider": "local",
             },
-            {
-                "vector_io_provider": "milvus",
-                "doc_sources": [IBM_2025_Q4_EARNINGS_DOC_UNENCRYPTED],
-            },
-            id="vector_io:milvus, files:local, embedding:sentence-transformers, doc_sources:unencrypted file",
+            {"vector_io_provider": "milvus", "dataset": IBM_2025_Q4_EARNINGS},
+            IBM_2025_Q4_EARNINGS,
+            id="vector_io:milvus, files:local, embedding:sentence-transformers, dataset:IBM_2025_Q4_EARNINGS",
             marks=(pytest.mark.smoke),
         ),
         pytest.param(
@@ -39,8 +38,9 @@ LOGGER = get_logger(name=__name__)
                 "embedding_provider": "sentence-transformers",
                 "files_provider": "local",
             },
-            {"vector_io_provider": "milvus", "doc_sources": [IBM_2025_Q4_EARNINGS_DOC_ENCRYPTED]},
-            id="vector_io:milvus, files:local, embedding:sentence-transformers, doc_sources:encrypted file",
+            {"vector_io_provider": "milvus", "dataset": IBM_2025_Q4_EARNINGS_ENCRYPTED},
+            IBM_2025_Q4_EARNINGS_ENCRYPTED,
+            id="vector_io:milvus, files:local, embedding:sentence-transformers, dataset:IBM_2025_Q4_EARNINGS_ENCRYPTED",
             marks=(pytest.mark.tier1, pytest.mark.xfail(reason="RHAIENG-3816")),
         ),
         pytest.param(
@@ -50,11 +50,9 @@ LOGGER = get_logger(name=__name__)
                 "embedding_provider": "vllm-embedding",
                 "files_provider": "s3",
             },
-            {
-                "vector_io_provider": "milvus-remote",
-                "doc_sources": [IBM_2025_Q4_EARNINGS_DOC_UNENCRYPTED],
-            },
-            id="vector_io:milvus-remote, files: s3, embedding: vllm-embedding",
+            {"vector_io_provider": "milvus-remote", "dataset": FINANCE_DATASET},
+            FINANCE_DATASET,
+            id="vector_io:milvus-remote, files: s3, embedding: vllm-embedding, dataset:FINANCE_DATASET",
             marks=(pytest.mark.smoke),
         ),
         pytest.param(
@@ -64,11 +62,9 @@ LOGGER = get_logger(name=__name__)
                 "vector_io_provider": "faiss",
                 "files_provider": "local",
             },
-            {
-                "vector_io_provider": "faiss",
-                "doc_sources": [IBM_2025_Q4_EARNINGS_DOC_UNENCRYPTED],
-            },
-            id="vector_io: faiss, files:local, embedding: vllm-embedding",
+            {"vector_io_provider": "faiss", "dataset": FINANCE_DATASET},
+            FINANCE_DATASET,
+            id="vector_io: faiss, files:local, embedding: vllm-embedding, dataset:FINANCE_DATASET",
             marks=(pytest.mark.tier1),
         ),
         pytest.param(
@@ -78,11 +74,9 @@ LOGGER = get_logger(name=__name__)
                 "vector_io_provider": "pgvector",
                 "files_provider": "s3",
             },
-            {
-                "vector_io_provider": "pgvector",
-                "doc_sources": [IBM_2025_Q4_EARNINGS_DOC_UNENCRYPTED],
-            },
-            id="vector_io:pgvector, files:s3, embedding: vllm-embedding",
+            {"vector_io_provider": "pgvector", "dataset": FINANCE_DATASET},
+            FINANCE_DATASET,
+            id="vector_io:pgvector, files:s3, embedding: vllm-embedding, dataset:FINANCE_DATASET",
             marks=(pytest.mark.tier1),
         ),
         pytest.param(
@@ -92,11 +86,9 @@ LOGGER = get_logger(name=__name__)
                 "vector_io_provider": "qdrant-remote",
                 "files_provider": "local",
             },
-            {
-                "vector_io_provider": "qdrant-remote",
-                "doc_sources": [IBM_2025_Q4_EARNINGS_DOC_UNENCRYPTED],
-            },
-            id="vector_io:qdrant-remote, files:local, embedding: vllm-embedding",
+            {"vector_io_provider": "qdrant-remote", "dataset": FINANCE_DATASET},
+            FINANCE_DATASET,
+            id="vector_io:qdrant-remote, files:local, embedding: vllm-embedding, dataset:FINANCE_DATASET",
             marks=(pytest.mark.tier1),
         ),
     ],
@@ -106,7 +98,7 @@ LOGGER = get_logger(name=__name__)
 class TestLlamaStackVectorStores:
     """Test class for LlamaStack OpenAI Compatible Vector Stores API
 
-    Note: multiple vector_io providers are tested thanks to the pytest.param vector_io_provider
+    Note: multiple vector_io providers and datasets are tested via pytest parametrize
 
     For more information about this API, see:
     - https://github.com/llamastack/llama-stack-client-python/blob/main/api.md#vectorstores
@@ -117,13 +109,14 @@ class TestLlamaStackVectorStores:
         self,
         unprivileged_llama_stack_client: LlamaStackClient,
         vector_store: VectorStore,
+        dataset: Dataset,
     ) -> None:
-        """
-        Test vector_stores file listing after documents are uploaded to the store.
+        """Verify vector store files listing after document upload.
 
-        Calls vector_stores.files.list with filter completed on the store filled by
-        the vector_store fixture (with doc_sources). Asserts at least one file is returned so
-        completed ingestion is observable through the OpenAI-compatible files API.
+        Given: A vector store populated with the parametrized dataset documents.
+        When: The vector_stores.files.list API is called with filter="completed".
+        Then: The list returns exactly one completed file per uploaded document,
+            confirming ingestion is visible through the OpenAI-compatible API.
         """
         store_id = vector_store.id
         completed_files = list(
@@ -132,54 +125,58 @@ class TestLlamaStackVectorStores:
                 filter="completed",
             )
         )
-        assert len(completed_files) >= 1, (
-            f"Expected at least one completed vector store file in {store_id!r} after upload"
+        assert len(completed_files) == len(dataset.documents), (
+            f"Expected {len(dataset.documents)} completed vector store file(s) in {store_id!r} after upload, "
+            f"found {len(completed_files)}"
         )
-        LOGGER.info(
-            "Vector store %s lists %s completed file(s)",
-            store_id,
-            len(completed_files),
-        )
+        LOGGER.info(f"Vector store {store_id} lists {len(completed_files)} completed file(s)")
 
     def test_vector_stores_search(
         self,
         unprivileged_llama_stack_client: LlamaStackClient,
         vector_store: VectorStore,
+        dataset: Dataset,
     ) -> None:
         """
         Test vector_stores search functionality using the search endpoint.
 
-        Iterates over vector, keyword, and hybrid search modes using
-        IBM_EARNINGS_SEARCH_QUERIES_BY_MODE. Validates that each mode returns
-        relevant results with proper metadata and content.
+        Given: A vector store populated with the parametrized dataset documents
+        When: Queries from the dataset QA ground truth are executed per retrieval mode
+        Then: Each mode returns relevant results with proper metadata and content
         """
+        search_modes = sorted({r.retrieval_mode for r in dataset.load_qa()})
 
-        provider_id = vector_store.metadata.get("provider_id", "")
+        provider_id = (vector_store.metadata or {}).get("provider_id", "")
         # FAISS does not support hybrid and keyword search modes see:
         # https://github.com/llamastack/llama-stack/blob/main/src/llama_stack/providers/inline/vector_io/faiss/faiss.py#L180-L196
-        search_modes = ["vector"] if provider_id == "faiss" else list(IBM_EARNINGS_SEARCH_QUERIES_BY_MODE)
+        if provider_id == "faiss":
+            search_modes = [m for m in search_modes if m == "vector"]
 
         for search_mode in search_modes:
-            queries = IBM_EARNINGS_SEARCH_QUERIES_BY_MODE[search_mode]
-            for query in queries:
+            qa_records = dataset.load_qa(retrieval_mode=search_mode)
+            for record in qa_records:
                 search_response = unprivileged_llama_stack_client.vector_stores.search(
                     vector_store_id=vector_store.id,
-                    query=query,
+                    query=record.question,
                     search_mode=search_mode,
                     max_num_results=10,
                 )
 
-                assert search_response is not None, f"Search response is None for mode={search_mode!r} query={query!r}"
+                assert search_response is not None, (
+                    f"Search response is None for mode={search_mode!r} query={record.question!r}"
+                )
                 assert hasattr(search_response, "data"), "Search response missing 'data' attribute"
                 assert isinstance(search_response.data, list), "Search response data should be a list"
-                assert len(search_response.data) > 0, f"No search results for mode={search_mode!r} query={query!r}"
+                assert len(search_response.data) > 0, (
+                    f"No search results for mode={search_mode!r} query={record.question!r}"
+                )
 
                 for result in search_response.data:
                     assert hasattr(result, "content"), "Search result missing 'content' attribute"
                     assert result.content is not None, "Search result content should not be None"
                     assert len(result.content) > 0, "Search result content should not be empty"
 
-            LOGGER.info(f"Search mode {search_mode!r}: {len(queries)} queries returned results")
+            LOGGER.info(f"Search mode {search_mode!r}: {len(qa_records)} queries returned results")
 
         LOGGER.info(f"Successfully tested vector store search across modes: {search_modes}")
 
@@ -188,17 +185,20 @@ class TestLlamaStackVectorStores:
         unprivileged_llama_stack_client: LlamaStackClient,
         llama_stack_models: ModelInfo,
         vector_store: VectorStore,
+        dataset: Dataset,
     ) -> None:
         """
-        Test that the file_search tool is invoked and returns results via the responses API.
+        Test file_search tool invocation and results via the responses API.
 
-        Given: A vector store with pre-uploaded documentation files
-        When: A question requiring document knowledge is asked with the file_search tool
-        Then: The response contains a file_search_call output with status 'completed',
-              results with file_id and filename, and message annotations with file citations
+        Sends a question from the dataset QA ground truth to the responses API with the
+        file_search tool attached to the vector_store fixture. Asserts the response contains
+        a completed file_search_call with results carrying file metadata, and that the
+        message includes file_citation annotations with file_id and filename.
         """
+        vector_question = next(r.question for r in dataset.load_qa(retrieval_mode="vector"))
+
         response = unprivileged_llama_stack_client.responses.create(
-            input=IBM_EARNINGS_SEARCH_QUERIES_BY_MODE["vector"][0],
+            input=vector_question,
             model=llama_stack_models.model_id,
             instructions="Always use the file_search tool to look up information before answering.",
             stream=False,

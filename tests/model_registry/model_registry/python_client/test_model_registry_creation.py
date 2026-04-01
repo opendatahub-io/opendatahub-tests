@@ -1,12 +1,12 @@
 from typing import Any, Self
 
 import pytest
+import structlog
 from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
 
 # ocp_resources imports
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 
 from tests.model_registry.constants import MODEL_DICT, MODEL_NAME
 from tests.model_registry.utils import (
@@ -15,7 +15,7 @@ from tests.model_registry.utils import (
     validate_no_grpc_container,
 )
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 CUSTOM_NAMESPACE = "model-registry-custom-ns"
 

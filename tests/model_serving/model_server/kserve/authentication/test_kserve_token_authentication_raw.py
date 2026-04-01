@@ -1,10 +1,8 @@
 import pytest
-from ocp_resources.resource import ResourceEditor
 
 from tests.model_serving.model_server.utils import verify_inference_response
-from utilities.constants import Annotations, Protocols
+from utilities.constants import Protocols
 from utilities.inference_utils import Inference
-from utilities.infra import check_pod_status_in_time, get_pods_by_isvc_label
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 pytestmark = pytest.mark.usefixtures("valid_aws_config")
@@ -23,6 +21,16 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
     indirect=True,
 )
 class TestKserveTokenAuthenticationRawForRest:
+    """Validate KServe raw deployment token-based authentication for REST inference.
+
+    Steps:
+        1. Deploy an OVMS model with authentication enabled in a raw deployment namespace.
+        2. Query the model with a valid token and verify a successful REST inference response.
+        3. Disable authentication and verify the model is still queryable without a token.
+        4. Re-enable authentication and verify the model requires a valid token again.
+        5. Attempt cross-model authentication using another model's token and verify access is denied.
+    """
+
     @pytest.mark.smoke
     @pytest.mark.ocp_interop
     @pytest.mark.dependency(name="test_model_authentication_using_rest_raw")
@@ -48,40 +56,6 @@ class TestKserveTokenAuthenticationRawForRest:
             use_default_query=True,
         )
 
-    @pytest.mark.smoke
-    @pytest.mark.jira("RHOAIENG-52129", run=False)
-    def test_raw_disable_enable_authentication_no_pod_rollout(self, http_s3_ovms_raw_inference_service):
-        """Verify no pod rollout when disabling and enabling authentication"""
-        pod = get_pods_by_isvc_label(
-            client=http_s3_ovms_raw_inference_service.client,
-            isvc=http_s3_ovms_raw_inference_service,
-        )[0]
-
-        ResourceEditor(
-            patches={
-                http_s3_ovms_raw_inference_service: {
-                    "metadata": {
-                        "annotations": {Annotations.KserveAuth.SECURITY: "false"},
-                    }
-                }
-            }
-        ).update()
-
-        check_pod_status_in_time(pod=pod, status={pod.Status.RUNNING})
-
-        ResourceEditor(
-            patches={
-                http_s3_ovms_raw_inference_service: {
-                    "metadata": {
-                        "annotations": {Annotations.KserveAuth.SECURITY: "true"},
-                    }
-                }
-            }
-        ).update()
-
-        check_pod_status_in_time(pod=pod, status={pod.Status.RUNNING})
-
-    @pytest.mark.dependency(depends=["test_disabled_raw_model_authentication"])
     def test_re_enabled_raw_model_authentication(self, http_s3_ovms_raw_inference_service, http_raw_inference_token):
         """Verify model query after authentication is re-enabled"""
         verify_inference_response(

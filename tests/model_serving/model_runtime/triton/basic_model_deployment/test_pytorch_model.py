@@ -7,9 +7,9 @@ Validates inference using REST and gRPC protocols with raw deployment mode.
 from typing import Any
 
 import pytest
+import structlog
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 
 from tests.model_serving.model_runtime.triton.basic_model_deployment.utils import load_json, validate_inference_request
 from tests.model_serving.model_runtime.triton.constant import (
@@ -20,7 +20,7 @@ from tests.model_serving.model_runtime.triton.constant import (
 )
 from utilities.constants import Protocols
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 PYTORCH_MODEL_NAME = "resnet50"
 

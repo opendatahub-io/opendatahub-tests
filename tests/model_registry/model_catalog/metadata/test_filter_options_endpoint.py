@@ -1,8 +1,8 @@
 from typing import Self
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
-from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.db_constants import (
     API_COMPUTED_FILTER_FIELDS,
@@ -12,11 +12,15 @@ from tests.model_registry.model_catalog.db_constants import (
 from tests.model_registry.model_catalog.metadata.utils import (
     compare_filter_options_with_database,
 )
-from tests.model_registry.model_catalog.utils import execute_database_query, parse_psql_output
-from tests.model_registry.utils import execute_get_command, get_rest_headers
+from tests.model_registry.model_catalog.utils import (
+    execute_database_query,
+    execute_get_command,
+    parse_psql_output,
+)
+from tests.model_registry.utils import get_rest_headers
 from utilities.user_utils import UserTestSession
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = [
     pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace", "original_user")

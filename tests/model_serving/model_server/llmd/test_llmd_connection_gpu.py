@@ -21,7 +21,7 @@ NAMESPACE = ns_from_file(file=__file__)
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("valid_aws_config", "skip_if_no_gpu_available")
+@pytest.mark.usefixtures("valid_aws_config", "skip_if_no_gpu_available", "skip_if_disconnected")
 class TestLlmdConnectionGpu:
     """Deploy Qwen on GPU via S3 and HuggingFace and verify chat completions."""
 

@@ -2,9 +2,9 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+import structlog
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 
 from tests.model_serving.model_runtime.vllm.constant import MULTI_IMAGE_QUERIES, OPENAI_ENDPOINT_NAME, THREE_IMAGE_QUERY
 from tests.model_serving.model_runtime.vllm.utils import (
@@ -13,7 +13,7 @@ from tests.model_serving.model_runtime.vllm.utils import (
 )
 from utilities.constants import KServeDeploymentType, Ports
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 SERVING_ARGUMENT: list[str] = ["--model=/mnt/models", "--uvicorn-log-level=debug", '--limit-mm-per-prompt={"image": 2}']

@@ -1,10 +1,10 @@
 import pytest
+import structlog
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 
 from utilities.general import validate_container_images
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def validate_images(pods_to_validate: list[Pod], related_images_refs: set[str]):

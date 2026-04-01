@@ -1,13 +1,13 @@
 from typing import Self
 
 import pytest
+import structlog
 from ocp_resources.config_map import ConfigMap
-from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.utils import get_hf_catalog_str, get_models_from_catalog_api
 from tests.model_registry.utils import execute_get_command
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = [
     pytest.mark.skip_on_disconnected,

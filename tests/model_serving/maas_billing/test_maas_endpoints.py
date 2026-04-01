@@ -1,10 +1,10 @@
 import pytest
 import requests
-from simple_logger.logger import get_logger
+import structlog
 
 from tests.model_serving.maas_billing.utils import verify_chat_completions
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.usefixtures("maas_unprivileged_model_namespace", "maas_controller_enabled_latest")

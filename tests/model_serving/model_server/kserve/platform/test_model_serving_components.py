@@ -42,18 +42,24 @@ def component_deployment(
     [
         pytest.param(
             {"name": "odh-model-controller"},
-            marks=pytest.mark.polarion("ODS-1919"),
             id="odh-model-controller",
         ),
         pytest.param(
             {"name": "kserve-controller-manager"},
-            marks=pytest.mark.polarion("ODS-1919"),
             id="kserve-controller-manager",
         ),
     ],
     indirect=True,
 )
 class TestModelServerComponents:
+    """Validate that KServe model serving control plane components are healthy.
+
+    Steps:
+        1. Check each component deployment (odh-model-controller, kserve-controller-manager) exists.
+        2. Verify the deployment spec matches the expected replica count.
+        3. Verify all expected replicas are running and ready.
+    """
+
     def test_deployment_expected_replicas(self, component_deployment):
         """Check expected number of replicas"""
         if expected_replicas := COMPONENTS_EXPECTED_REPLICAS.get(component_deployment.name):

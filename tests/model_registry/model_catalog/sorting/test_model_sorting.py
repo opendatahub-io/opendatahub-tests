@@ -1,8 +1,8 @@
 from typing import Self
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
-from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.constants import (
     REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
@@ -14,7 +14,7 @@ from tests.model_registry.model_catalog.sorting.utils import (
 )
 from tests.model_registry.model_catalog.utils import get_models_from_catalog_api
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace")]
 
@@ -32,7 +32,6 @@ class TestAccuracySorting:
         ],
     )
     @pytest.mark.tier1
-    @pytest.mark.xfail(reason="RHOAIENG-54579")
     def test_accuracy_sorting_works_correctly(
         self: Self,
         admin_client: DynamicClient,

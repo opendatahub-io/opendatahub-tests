@@ -69,31 +69,3 @@ LLAMA_STACK_DISTRIBUTION_SECRET_DATA = {
 }
 
 UPGRADE_DISTRIBUTION_NAME = "llama-stack-distribution-upgrade"
-
-IBM_2025_Q4_EARNINGS_DOC_ENCRYPTED = "tests/llama_stack/dataset/corpus/pdf-testing/ibm-4q25-press-release-encrypted.pdf"
-IBM_2025_Q4_EARNINGS_DOC_UNENCRYPTED = (
-    "tests/llama_stack/dataset/corpus/finance/ibm-4q25-earnings-press-release-unencrypted.pdf"
-)
-IBM_EARNINGS_SEARCH_QUERIES_BY_MODE: dict[str, list[str]] = {
-    "vector": [
-        "How did IBM perform financially in the fourth quarter of 2025?",
-        "What were the main drivers of revenue growth?",
-        "What is the company outlook for 2026?",
-        "How did profit margins change year over year?",
-        "What did leadership say about generative AI and growth?",
-    ],
-    "keyword": [
-        "What was free cash flow in the fourth quarter?",
-        "What was Consulting revenue and segment profit margin?",
-        "What was Software revenue and constant currency growth?",
-        "What was diluted earnings per share for continuing operations?",
-        "What are full-year 2026 expectations for revenue and free cash flow?",
-    ],
-    "hybrid": [
-        "What was IBM free cash flow and what does the company expect for 2026?",
-        "What were segment results for Software and Infrastructure revenue?",
-        "What was GAAP gross profit margin and pre-tax income?",
-        "What did James Kavanaugh say about 2025 results and 2026 prospects?",
-        "What was Consulting revenue and segment profit margin?",
-    ],
-}

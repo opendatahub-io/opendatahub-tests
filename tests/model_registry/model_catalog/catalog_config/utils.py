@@ -3,11 +3,11 @@ import subprocess
 from typing import Any
 
 import pytest
+import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError, retry
 
 from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG
@@ -25,7 +25,7 @@ from tests.model_registry.model_catalog.utils import (
 from tests.model_registry.utils import execute_get_command, get_model_catalog_pod
 from utilities.constants import Timeout
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def validate_model_catalog_enabled(pod: Pod) -> bool:

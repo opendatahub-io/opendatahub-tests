@@ -191,11 +191,12 @@ API_COMPUTED_FILTER_FIELDS = {
 }
 
 # SQL query for accuracy sorting database validation
-# Returns an ordered list of model names (context names) that have accuracy metrics.
+# Returns an ordered list of model display names that have accuracy metrics.
+# Context names are stored as "source_id:display_name", so we strip the prefix
+# using SUBSTRING to match the display names returned by the API.
 # Models are ordered by their overall_average (accuracy) value from artifact properties.
-# Only returns the model name column for easy comparison with API results.
 GET_MODELS_BY_ACCURACY_DB_QUERY = """
-SELECT c.name
+SELECT SUBSTRING(c.name FROM STRPOS(c.name, ':') + 1) AS display_name
 FROM "ArtifactProperty" ap
 JOIN "Artifact" a ON a.id = ap.artifact_id
 JOIN "Attribution" attr ON attr.artifact_id = a.id
@@ -205,12 +206,14 @@ ORDER BY ap.double_value {sort_order};
 """
 
 # SQL query for accuracy sorting with task filter database validation
-# Returns an ordered list of model names (context names) that have accuracy metrics
+# Returns an ordered list of model display names that have accuracy metrics
 # and match the specified task filter.
+# Context names are stored as "source_id:display_name", so we strip the prefix
+# using SUBSTRING to match the display names returned by the API.
 # Models are ordered by their overall_average (accuracy) value from artifact properties.
 # The tasks field is stored as a JSON array, so we use LIKE pattern matching
 GET_MODELS_BY_ACCURACY_WITH_TASK_FILTER_DB_QUERY = """
-SELECT c.name
+SELECT SUBSTRING(c.name FROM STRPOS(c.name, ':') + 1) AS display_name
 FROM "ArtifactProperty" ap
 JOIN "Artifact" a ON a.id = ap.artifact_id
 JOIN "Attribution" attr ON attr.artifact_id = a.id

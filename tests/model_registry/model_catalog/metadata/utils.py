@@ -3,16 +3,16 @@ from fnmatch import fnmatch
 from typing import Any, Literal
 
 import requests
+import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 
 from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
 from tests.model_registry.utils import execute_get_command, get_rest_headers
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 CATALOG_CONTAINER = "catalog"
 
 

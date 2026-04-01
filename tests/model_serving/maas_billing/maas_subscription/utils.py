@@ -8,6 +8,7 @@ from urllib.parse import quote, urlparse
 
 import pytest
 import requests
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.llm_inference_service import LLMInferenceService
@@ -17,7 +18,6 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from requests import Response
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from utilities.constants import (
@@ -25,8 +25,10 @@ from utilities.constants import (
     MAAS_GATEWAY_NAMESPACE,
     ApiGroups,
 )
+from utilities.general import generate_random_name
+from utilities.resources.auth import Auth
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 MAAS_SUBSCRIPTION_NAMESPACE = "models-as-a-service"
 MAAS_DB_NAMESPACE = "redhat-ods-applications"
 POSTGRES_DEPLOYMENT_NAME = "postgres"
@@ -183,14 +185,38 @@ def create_api_key(
     request_session_http: requests.Session,
     api_key_name: str,
     request_timeout_seconds: int = 60,
+    expires_in: str | None = None,
+    raise_on_error: bool = True,
+    subscription: str | None = None,
+    ephemeral: bool = False,
 ) -> tuple[Response, dict[str, Any]]:
     """
     Create an API key via MaaS API and return (response, parsed_body).
 
     Uses ocp_user_token for auth against maas-api.
     Expects plaintext key in body["key"] (sk-...).
+
+    Args:
+        expires_in: Optional expiration duration string (e.g. "24h", "720h").
+            When None, no expiresIn field is sent and the key does not expire.
+        raise_on_error: When True (default), raises AssertionError for non-200/201
+            responses. Set to False when testing error cases (e.g. 400 rejection).
+        subscription: Optional MaaSSubscription name to bind at mint time.
+            When provided, the key is bound to this subscription for inference.
+            When None, the API auto-selects the highest-priority subscription.
+        ephemeral: When True, marks the key as short-lived/programmatic.
+            Ephemeral keys are hidden from default search results and are
+            cleaned up automatically by the cleanup CronJob after expiration.
     """
     api_keys_url = f"{base_url}/v1/api-keys"
+
+    payload: dict[str, Any] = {"name": api_key_name}
+    if expires_in is not None:
+        payload["expiresIn"] = expires_in
+    if subscription is not None:
+        payload["subscription"] = subscription
+    if ephemeral:
+        payload["ephemeral"] = True
 
     response = request_session_http.post(
         url=api_keys_url,
@@ -198,13 +224,15 @@ def create_api_key(
             "Authorization": f"Bearer {ocp_user_token}",
             "Content-Type": "application/json",
         },
-        json={"name": api_key_name},
+        json=payload,
         timeout=request_timeout_seconds,
     )
 
     LOGGER.info(f"create_api_key: url={api_keys_url} status={response.status_code}")
     if response.status_code not in (200, 201):
-        raise AssertionError(f"api-key create failed: status={response.status_code}")
+        if raise_on_error:
+            raise AssertionError(f"api-key create failed: status={response.status_code}")
+        return response, {}
 
     try:
         parsed_body: dict[str, Any] = json.loads(response.text)
@@ -282,6 +310,74 @@ def list_api_keys(
     return response, parsed_body
 
 
+def wait_for_auth_ready(auth: Auth, baseline_time: str, timeout: int = 60) -> None:
+    """Wait for Auth CR to reconcile after a patch."""
+    for instance in TimeoutSampler(wait_timeout=timeout, sleep=2, func=lambda: auth.instance):
+        auth_conditions = (instance.status or {}).get("conditions") or []
+        ready_condition = next(
+            (condition for condition in auth_conditions if condition.get("type") == "Ready"),
+            None,
+        )
+        if (
+            ready_condition
+            and ready_condition.get("lastTransitionTime") != baseline_time
+            and ready_condition.get("status") == "True"
+        ):
+            return
+
+
+def resolve_api_key_username(
+    request_session_http: requests.Session,
+    base_url: str,
+    key_id: str,
+    ocp_user_token: str,
+) -> str:
+    """Fetch an API key by ID and return the owner's username."""
+    get_resp, get_body = get_api_key(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        key_id=key_id,
+        ocp_user_token=ocp_user_token,
+    )
+    assert get_resp.status_code == 200, (
+        f"Expected 200 on GET /v1/api-keys/{key_id}, got {get_resp.status_code}: {get_resp.text[:200]}"
+    )
+    username = get_body.get("username") or get_body.get("owner")
+    assert username, "Expected 'username' or 'owner' field in GET response"
+    return username
+
+
+def create_and_yield_api_key_id(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_user_token: str,
+    key_name_prefix: str,
+    expires_in: str | None = None,
+) -> Generator[str]:
+    """Create an API key, yield its ID, and revoke it on teardown."""
+    key_name = f"{key_name_prefix}-{generate_random_name()}"
+    _, body = create_api_key(
+        base_url=base_url,
+        ocp_user_token=ocp_user_token,
+        request_session_http=request_session_http,
+        api_key_name=key_name,
+        expires_in=expires_in,
+    )
+    LOGGER.info(f"create_and_yield_api_key_id: created key id={body['id']} name={key_name}")
+    yield body["id"]
+    LOGGER.info(f"create_and_yield_api_key_id: teardown revoking key id={body['id']}")
+    revoke_resp, _ = revoke_api_key(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        key_id=body["id"],
+        ocp_user_token=ocp_user_token,
+    )
+    if revoke_resp.status_code not in (200, 404):
+        raise AssertionError(
+            f"Unexpected teardown status for key id={body['id']}: {revoke_resp.status_code} {revoke_resp.text[:200]}"
+        )
+
+
 def revoke_api_key(
     request_session_http: requests.Session,
     base_url: str,
@@ -306,6 +402,104 @@ def revoke_api_key(
             f"revoke_api_key returned non-JSON response: status={response.status_code} body={response.text[:200]}"
         ) from error
     return response, parsed_body
+
+
+def bulk_revoke_api_keys(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_user_token: str,
+    username: str,
+    request_timeout_seconds: int = 60,
+) -> tuple[Response, dict[str, Any]]:
+    """
+    Bulk revoke all active API keys for a given user via MaaS API (POST /v1/api-keys/bulk-revoke).
+
+    """
+    url = f"{base_url}/v1/api-keys/bulk-revoke"
+    response = request_session_http.post(
+        url=url,
+        headers={
+            "Authorization": f"Bearer {ocp_user_token}",
+            "Content-Type": "application/json",
+        },
+        json={"username": username},
+        timeout=request_timeout_seconds,
+    )
+    LOGGER.info(f"bulk_revoke_api_keys: url={url} username={username} status={response.status_code}")
+    try:
+        parsed_body: dict[str, Any] = json.loads(response.text)
+    except json.JSONDecodeError as error:
+        raise AssertionError(
+            f"bulk_revoke_api_keys returned non-JSON response: status={response.status_code} body={response.text[:200]}"
+        ) from error
+    return response, parsed_body
+
+
+def assert_bulk_revoke_success(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_user_token: str,
+    username: str,
+    min_revoked_count: int = 1,
+) -> int:
+    """Bulk revoke API keys for a user and assert the operation succeeded."""
+    bulk_resp, bulk_body = bulk_revoke_api_keys(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        ocp_user_token=ocp_user_token,
+        username=username,
+    )
+    assert bulk_resp.status_code == 200, (
+        f"Expected 200 on bulk-revoke for user {username}, got {bulk_resp.status_code}: {bulk_resp.text[:200]}"
+    )
+    revoked_count: int = bulk_body.get("revokedCount", 0)
+    assert revoked_count >= min_revoked_count, (
+        f"Expected at least {min_revoked_count} revoked key(s), got revokedCount={revoked_count}"
+    )
+    return revoked_count
+
+
+def assert_api_key_created_ok(
+    resp: Response,
+    body: dict[str, Any],
+    required_fields: tuple[str, ...] = ("key",),
+) -> None:
+    """Assert an API key creation response has a success status and expected fields."""
+    assert resp.status_code in (200, 201), (
+        f"Expected 200/201 for API key creation, got {resp.status_code}: {resp.text[:200]}"
+    )
+    for field in required_fields:
+        assert field in body, f"Response must contain '{field}'"
+
+
+def search_active_api_keys(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_user_token: str,
+    include_ephemeral: bool = False,
+    request_timeout_seconds: int = 30,
+) -> list[dict[str, Any]]:
+    """POST /v1/api-keys/search for active keys and return the list of matching items."""
+    filters: dict[str, Any] = {"status": ["active"]}
+    if include_ephemeral:
+        filters["includeEphemeral"] = True
+    url = f"{base_url}/v1/api-keys/search"
+    resp = request_session_http.post(
+        url=url,
+        headers={"Authorization": f"Bearer {ocp_user_token}"},
+        json={"filters": filters, "pagination": {"limit": 50, "offset": 0}},
+        timeout=request_timeout_seconds,
+    )
+    assert resp.status_code == 200, f"Expected 200 from key search, got {resp.status_code}: {(resp.text or '')[:200]}"
+    body = resp.json()
+    return body.get("items") or body.get("data") or []
+
+
+def assert_api_key_get_ok(resp: Response, body: dict[str, Any], key_id: str) -> None:
+    """Assert a GET /v1/api-keys/{id} response has status 200."""
+    assert resp.status_code == 200, (
+        f"Expected 200 on GET /v1/api-keys/{key_id}, got {resp.status_code}: {resp.text[:200]}"
+    )
 
 
 def get_maas_postgres_labels() -> dict[str, str]:

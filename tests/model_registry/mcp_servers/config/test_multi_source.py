@@ -1,10 +1,10 @@
 from typing import Any, Self
 
 import pytest
+import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.resource import ResourceEditor
-from simple_logger.logger import get_logger
 
 from tests.model_registry.mcp_servers.config.utils import get_mcp_catalog_sources
 from tests.model_registry.mcp_servers.constants import (
@@ -19,7 +19,7 @@ from tests.model_registry.utils import (
     wait_for_model_catalog_pod_ready_after_deletion,
 )
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.usefixtures("mcp_multi_source_configmap_patch")

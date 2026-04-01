@@ -1,10 +1,10 @@
 import base64
 import binascii
 
+import structlog
 from ocp_resources.secret import Secret
-from simple_logger.logger import get_logger
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def extract_secret_values(secret: Secret) -> dict[str, str]:

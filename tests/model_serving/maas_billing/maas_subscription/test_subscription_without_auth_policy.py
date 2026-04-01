@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import pytest
 import requests
+import structlog
 from ocp_resources.maas_subscription import MaaSSubscription
-from simple_logger.logger import get_logger
 
 from tests.model_serving.maas_billing.maas_subscription.utils import (
     chat_payload_for_url,
     poll_expected_status,
 )
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 MAAS_SUBSCRIPTION_HEADER = "x-maas-subscription"
 

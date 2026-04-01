@@ -2,8 +2,8 @@ import json
 from typing import Any
 
 import requests
+import structlog
 import urllib3
-from simple_logger.logger import get_logger
 from tenacity import retry, stop_after_attempt, wait_exponential
 from urllib3.exceptions import InsecureRequestWarning
 
@@ -11,7 +11,7 @@ from utilities.plugins.constant import OpenAIEnpoints, RestHeader
 
 urllib3.disable_warnings(category=InsecureRequestWarning)
 requests.packages  # noqa: B018
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 MAX_RETRIES = 5
 

@@ -1,10 +1,10 @@
 import pytest
-from simple_logger.logger import get_logger
+import structlog
 
 from tests.model_serving.model_runtime.vllm.utils import run_raw_inference
 from utilities.constants import KServeDeploymentType, Ports
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 serving_arument = ["--dtype=bfloat16", "--model=/mnt/models", "--max-model-len=2048", "--uvicorn-log-level=debug"]
 

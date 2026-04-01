@@ -21,7 +21,14 @@ from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 @pytest.mark.smoke
 @pytest.mark.rawdeployment
 class TestRawUnprivilegedUser:
-    @pytest.mark.polarion("ODS-2611")
+    """Validate that a non-admin user can deploy and query a KServe raw deployment model.
+
+    Steps:
+        1. Create a namespace with unprivileged user credentials.
+        2. Deploy an OVMS model as a raw deployment using the non-admin user.
+        3. Query the deployed model via REST and verify a successful inference response.
+    """
+
     def test_non_admin_deploy_raw_and_query_model(
         self,
         unprivileged_s3_ovms_raw_inference_service,

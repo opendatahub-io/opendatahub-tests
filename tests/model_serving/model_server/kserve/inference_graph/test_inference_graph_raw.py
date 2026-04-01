@@ -19,12 +19,22 @@ from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
     indirect=True,
 )
 class TestInferenceGraphRaw:
+    """Validate KServe InferenceGraph functionality in raw deployment mode.
+
+    Steps:
+        1. Deploy an OVMS serving runtime with ONNX support in the test namespace.
+        2. Create inference graphs with various configurations (public, private, auth-enabled).
+        3. Send inference requests through each graph and verify correct routing and responses.
+        4. Verify authentication enforcement by testing with privileged and unprivileged tokens.
+    """
+
     @pytest.mark.parametrize(
         "dog_breed_inference_graph",
         [{"name": "dog-breed-raw-pipeline", "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT}],
         indirect=True,
     )
     def test_inference_graph_raw_deployment(self, dog_breed_inference_graph):
+        """Verify inference through a public raw deployment inference graph."""
         verify_inference_response(
             inference_service=dog_breed_inference_graph,
             inference_config=ONNX_INFERENCE_CONFIG,
@@ -46,6 +56,7 @@ class TestInferenceGraphRaw:
         indirect=True,
     )
     def test_private_inference_graph_raw_deployment(self, dog_breed_inference_graph):
+        """Verify inference through a private (no external route) raw deployment inference graph."""
         verify_inference_response(
             inference_service=dog_breed_inference_graph,
             inference_config=ONNX_INFERENCE_CONFIG,
@@ -69,6 +80,7 @@ class TestInferenceGraphRaw:
         indirect=True,
     )
     def test_inference_graph_raw_authentication(self, dog_breed_inference_graph, inference_graph_sa_token_with_access):
+        """Verify inference through an auth-enabled inference graph using an authorized service account token."""
         verify_inference_response(
             inference_service=dog_breed_inference_graph,
             inference_config=ONNX_INFERENCE_CONFIG,
@@ -94,6 +106,7 @@ class TestInferenceGraphRaw:
     def test_private_inference_graph_raw_authentication(
         self, dog_breed_inference_graph, inference_graph_sa_token_with_access
     ):
+        """Verify inference through a private auth-enabled inference graph using an authorized token."""
         verify_inference_response(
             inference_service=dog_breed_inference_graph,
             inference_config=ONNX_INFERENCE_CONFIG,
@@ -119,6 +132,7 @@ class TestInferenceGraphRaw:
     def test_inference_graph_raw_authentication_without_privileges(
         self, dog_breed_inference_graph, inference_graph_unprivileged_sa_token
     ):
+        """Verify that an unprivileged token is denied access to an auth-enabled inference graph."""
         verify_inference_response(
             inference_service=dog_breed_inference_graph,
             inference_config=ONNX_INFERENCE_CONFIG,
@@ -145,6 +159,7 @@ class TestInferenceGraphRaw:
     def test_private_inference_graph_raw_authentication_without_privileges(
         self, dog_breed_inference_graph, inference_graph_unprivileged_sa_token
     ):
+        """Verify that an unprivileged token is denied access to a private auth-enabled inference graph."""
         verify_inference_response(
             inference_service=dog_breed_inference_graph,
             inference_config=ONNX_INFERENCE_CONFIG,

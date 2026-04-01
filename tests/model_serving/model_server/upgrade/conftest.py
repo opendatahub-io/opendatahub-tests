@@ -2,6 +2,7 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
@@ -14,7 +15,6 @@ from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
-from simple_logger.logger import get_logger
 
 from utilities.constants import (
     KServeDeploymentType,
@@ -40,7 +40,7 @@ from utilities.llmd_utils import create_llmd_gateway
 from utilities.logger import RedactedString
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 UPGRADE_NAMESPACE = "upgrade-model-server"
 AUTH_UPGRADE_NAMESPACE = "upgrade-auth-model-server"
@@ -817,9 +817,6 @@ def llmd_gateway_fixture(
     else:
         with create_llmd_gateway(
             client=admin_client,
-            namespace=LLMDGateway.DEFAULT_NAMESPACE,
-            gateway_class_name=LLMDGateway.DEFAULT_CLASS,
-            wait_for_condition=True,
             timeout=Timeout.TIMEOUT_1MIN,
             teardown=teardown_resources,
         ) as gateway:
