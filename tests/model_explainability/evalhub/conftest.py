@@ -25,6 +25,7 @@ def evalhub_cr(
         client=admin_client,
         name="evalhub",
         namespace=model_namespace.name,
+        database={"type": "sqlite"},
         wait_for_resource=True,
     ) as evalhub:
         yield evalhub

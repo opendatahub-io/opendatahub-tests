@@ -1,14 +1,20 @@
 import pytest
+import requests
 from ocp_resources.route import Route
 
-from tests.model_explainability.evalhub.utils import validate_evalhub_health, validate_evalhub_providers
+from tests.model_explainability.evalhub.constants import (
+    EVALHUB_HEALTH_PATH,
+    EVALHUB_HEALTH_STATUS_HEALTHY,
+)
+from tests.model_explainability.evalhub.utils import validate_evalhub_health
+from utilities.guardrails import get_auth_headers
 
 
 @pytest.mark.parametrize(
     "model_namespace",
     [
         pytest.param(
-            {"name": "test-evalhub-health-providers"},
+            {"name": "test-evalhub-health"},
         ),
     ],
     indirect=True,
@@ -16,7 +22,7 @@ from tests.model_explainability.evalhub.utils import validate_evalhub_health, va
 @pytest.mark.smoke
 @pytest.mark.model_explainability
 class TestEvalHub:
-    """Tests for basic EvalHub service health and providers."""
+    """Tests for basic EvalHub service health."""
 
     def test_evalhub_health_endpoint(
         self,
@@ -24,25 +30,45 @@ class TestEvalHub:
         evalhub_ca_bundle_file: str,
         evalhub_route: Route,
     ) -> None:
-        """Verify the EvalHub service responds with healthy status via kube-rbac-proxy."""
+        """Verify the EvalHub service responds with healthy status."""
         validate_evalhub_health(
             host=evalhub_route.host,
             token=current_client_token,
             ca_bundle_file=evalhub_ca_bundle_file,
         )
 
-    def test_evalhub_providers_list(
+    def test_evalhub_health_is_tenant_agnostic(
         self,
         current_client_token: str,
         evalhub_ca_bundle_file: str,
         evalhub_route: Route,
-        model_namespace,
     ) -> None:
-        """Test that the evaluations providers endpoint returns a non-empty list."""
+        """Health endpoint works without X-Tenant header.
 
-        validate_evalhub_providers(
-            host=evalhub_route.host,
-            token=current_client_token,
-            ca_bundle_file=evalhub_ca_bundle_file,
-            tenant=model_namespace.name,
+        The health endpoint is not in auth.yaml, so it should not
+        require tenant authorization. It should also tolerate an
+        X-Tenant header being present (ignored, not rejected).
+        """
+        url = f"https://{evalhub_route.host}{EVALHUB_HEALTH_PATH}"
+        headers = get_auth_headers(token=current_client_token)
+
+        # Without X-Tenant — should work
+        response = requests.get(
+            url=url,
+            headers=headers,
+            verify=evalhub_ca_bundle_file,
+            timeout=10,
         )
+        response.raise_for_status()
+        assert response.json()["status"] == EVALHUB_HEALTH_STATUS_HEALTHY
+
+        # With X-Tenant — should also work (header ignored)
+        headers["X-Tenant"] = "nonexistent-namespace"
+        response = requests.get(
+            url=url,
+            headers=headers,
+            verify=evalhub_ca_bundle_file,
+            timeout=10,
+        )
+        response.raise_for_status()
+        assert response.json()["status"] == EVALHUB_HEALTH_STATUS_HEALTHY
