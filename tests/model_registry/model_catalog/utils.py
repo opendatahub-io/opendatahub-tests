@@ -2,10 +2,10 @@ import time
 from typing import Any
 
 import requests
+import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
 from tests.model_registry.model_catalog.constants import HF_MODELS
@@ -15,7 +15,7 @@ from tests.model_registry.utils import (
     execute_get_command,
 )
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def get_postgres_pod_in_namespace(admin_client: DynamicClient, namespace: str = "rhoai-model-registries") -> Pod:

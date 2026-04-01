@@ -1,14 +1,14 @@
 import pytest
 import requests
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.serving_runtime import ServingRuntime
-from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.utils import get_hf_catalog_str
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = [pytest.mark.skip_on_disconnected]
 
@@ -33,7 +33,7 @@ class TestHuggingFaceModelDeployment:
     Tests the complete deployment workflow from ServingRuntime to InferenceService.
     """
 
-    @pytest.mark.sanity
+    @pytest.mark.tier2
     def test_huggingface_model_deployment_end_to_end(
         self,
         admin_client: DynamicClient,

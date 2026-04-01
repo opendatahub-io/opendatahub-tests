@@ -14,6 +14,7 @@ from typing import Any
 import kubernetes
 import pytest
 import requests
+import structlog
 import urllib3
 from _pytest._py.path import LocalPath
 from _pytest.fixtures import FixtureRequest
@@ -36,6 +37,7 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.infrastructure import Infrastructure
 from ocp_resources.namespace import Namespace
 from ocp_resources.node_config_openshift_io import Node
+from ocp_resources.operator_hub import OperatorHub
 from ocp_resources.pod import Pod
 from ocp_resources.project_project_openshift_io import Project
 from ocp_resources.project_request import ProjectRequest
@@ -56,7 +58,6 @@ from ocp_utilities.infra import (
 from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
 from semver import Version
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, TimeoutWatch, retry
 
 import utilities.general
@@ -64,7 +65,7 @@ from utilities.constants import RHOAI_OPERATOR_NAMESPACE, Annotations, ApiGroups
 from utilities.exceptions import ClusterLoginError, FailedPodsError, ResourceNotReadyError, UnexpectedResourceCountError
 from utilities.general import generate_random_name
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @contextmanager
@@ -85,7 +86,7 @@ def create_ns(
     """
     Create namespace with admin or unprivileged client.
 
-    For a namespace / project which contains Serverless ISVC,  there is a workaround for RHOAIENG-19969.
+    For a namespace / project which contains Serverless ISVC,  there is a workaround.
     Currently, when Serverless ISVC is deleted and the namespace is deleted, namespace "SomeResourcesRemain" is True.
     This is because the serverless pods are not immediately deleted resulting in prolonged namespace deletion.
     Waiting for the pod(s) to be deleted before cleanup, eliminates the issue.
@@ -272,7 +273,7 @@ def wait_for_inference_deployment_replicas(
             # to be set in deployment spec by HPA
             if (
                 isvc.instance.metadata.annotations.get("serving.kserve.io/deploymentMode")
-                == KServeDeploymentType.RAW_DEPLOYMENT
+                in KServeDeploymentType.RAW_DEPLOYMENT_MODES
             ):
                 wait_for_replicas_in_deployment(
                     deployment=deployment,
@@ -465,6 +466,18 @@ def login_with_user_password(api_address: str, user: str, password: str | None =
         raise ClusterLoginError(user=user)
 
     return bool(re.search(r"Login successful|Logged into", out))
+
+
+@cache
+def is_disconnected_cluster(client: DynamicClient) -> bool:
+    """Check if the cluster is disconnected (air-gapped) based on OperatorHub disableAllDefaultSources."""
+    operator_hub = OperatorHub(client=client, name="cluster")
+    if operator_hub.exists:
+        result = bool(getattr(operator_hub.instance.spec, "disableAllDefaultSources", False))
+        LOGGER.info(f"Disconnected cluster detection: {result}")
+        return result
+
+    raise RuntimeError("OperatorHub 'cluster' resource does not exist. Cannot determine cluster connectivity.")
 
 
 @cache
@@ -802,7 +815,9 @@ def verify_no_failed_pods(
             return
 
 
-def check_pod_status_in_time(pod: Pod, status: set[str], duration: int = Timeout.TIMEOUT_2MIN, wait: int = 1) -> None:
+def check_pod_status_in_time(
+    pod: Pod, status: set[str], duration: int = Timeout.TIMEOUT_2MIN, wait: int = 1
+) -> None:  # skip-unused-code
     """
     Checks if a pod status is maintained for a given duration. If not, an AssertionError is raised.
 
@@ -969,7 +984,7 @@ def wait_for_serverless_pods_deletion(resource: Project | Namespace, admin_clien
                 LOGGER.info(f"Waiting for {KServeDeploymentType.SERVERLESS} pod {pod.name} to be deleted")
                 pod.wait_deleted(timeout=Timeout.TIMEOUT_1MIN)
 
-        except (ResourceNotFoundError, NotFoundError):
+        except ResourceNotFoundError, NotFoundError:
             LOGGER.info(f"Pod {pod.name} is deleted")
 
 
@@ -1185,7 +1200,7 @@ def check_internal_image_registry_available(admin_client: DynamicClient) -> bool
         is_available = management_state == "managed"
 
         LOGGER.info(f"Image registry management state: {management_state}, available: {is_available}")
-        return is_available  # noqa: TRY300
+        return is_available
     except (ResourceNotFoundError, Exception) as e:  # noqa: BLE001
         LOGGER.warning(f"Failed to check image registry config: {e}")
         return False

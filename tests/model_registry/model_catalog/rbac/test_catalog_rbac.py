@@ -3,15 +3,15 @@ Test suite for verifying RBAC permissions for Model Catalog ConfigMaps.
 """
 
 import pytest
+import structlog
 from kubernetes.client.rest import ApiException
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.resource import get_client
-from simple_logger.logger import get_logger
 
 from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = [
     pytest.mark.usefixtures(
@@ -25,11 +25,16 @@ pytestmark = [
 class TestCatalogRBAC:
     """Test suite for catalog ConfigMap RBAC"""
 
-    @pytest.mark.smoke
     @pytest.mark.pre_upgrade
     @pytest.mark.post_upgrade
     @pytest.mark.install
-    @pytest.mark.parametrize("configmap_name", [DEFAULT_MODEL_CATALOG_CM, DEFAULT_CUSTOM_MODEL_CATALOG])
+    @pytest.mark.parametrize(
+        "configmap_name",
+        [
+            pytest.param(DEFAULT_MODEL_CATALOG_CM, marks=pytest.mark.smoke),
+            pytest.param(DEFAULT_CUSTOM_MODEL_CATALOG, marks=pytest.mark.tier1),
+        ],
+    )
     def test_admin_can_read_catalog_configmaps(
         self,
         admin_client: DynamicClient,
@@ -37,7 +42,7 @@ class TestCatalogRBAC:
         configmap_name: str,
     ):
         """
-        RHOAIENG-41850: Verify that admin users can read both catalog ConfigMaps.
+        Verify that admin users can read both catalog ConfigMaps.
 
         Admins should have:
         - get/watch on model-catalog-default-sources (read-only)
@@ -63,8 +68,13 @@ class TestCatalogRBAC:
 
         LOGGER.info(f"Admin successfully read ConfigMap '{configmap_name}'")
 
-    @pytest.mark.smoke
-    @pytest.mark.parametrize("configmap_name", [DEFAULT_MODEL_CATALOG_CM, DEFAULT_CUSTOM_MODEL_CATALOG])
+    @pytest.mark.parametrize(
+        "configmap_name",
+        [
+            pytest.param(DEFAULT_MODEL_CATALOG_CM, marks=pytest.mark.tier1),
+            pytest.param(DEFAULT_CUSTOM_MODEL_CATALOG, marks=pytest.mark.tier1),
+        ],
+    )
     def test_non_admin_cannot_access_catalog_configmaps(
         self,
         is_byoidc: bool,
@@ -74,7 +84,7 @@ class TestCatalogRBAC:
         configmap_name: str,
     ):
         """
-        RHOAIENG-41850: Verify that non-admin users cannot access catalog ConfigMaps,
+        Verify that non-admin users cannot access catalog ConfigMaps,
         receiving a 403 Forbidden error.
         """
         if is_byoidc:

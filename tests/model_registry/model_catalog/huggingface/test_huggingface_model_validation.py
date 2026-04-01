@@ -2,10 +2,10 @@ from collections.abc import Generator
 from typing import Self
 
 import pytest
+import structlog
 from huggingface_hub import HfApi
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
-from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.constants import HF_MODELS, HF_SOURCE_ID
 from tests.model_registry.model_catalog.huggingface.utils import (
@@ -19,7 +19,7 @@ from tests.model_registry.model_catalog.utils import (
     get_hf_catalog_str,
 )
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = [pytest.mark.skip_on_disconnected]
 

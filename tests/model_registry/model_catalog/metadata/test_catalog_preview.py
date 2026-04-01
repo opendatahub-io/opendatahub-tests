@@ -2,8 +2,8 @@ from typing import Self
 
 import pytest
 import requests
+import structlog
 import yaml
-from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.constants import VALIDATED_CATALOG_FILE, VALIDATED_CATALOG_ID
 from tests.model_registry.model_catalog.metadata.utils import (
@@ -13,13 +13,12 @@ from tests.model_registry.model_catalog.metadata.utils import (
     validate_catalog_preview_items,
 )
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 class TestCatalogPreviewExistingSource:
     """
     Test class for validating the catalog preview API for an existing source
-    RHOAIENG-41826
     """
 
     @pytest.mark.parametrize("default_model_catalog_yaml_content", [VALIDATED_CATALOG_ID], indirect=True)
@@ -200,10 +199,10 @@ class TestCatalogPreviewExistingSource:
             LOGGER.info(f"filterStatus={filter_status} validation passed: {len(items)} items")
 
 
+@pytest.mark.tier3
 class TestCatalogPreviewErrorHandling:
     """
     Test class for validating the catalog preview API error handling
-    RHOAIENG-41826
     """
 
     @pytest.mark.parametrize(
@@ -289,7 +288,6 @@ properties:
 class TestCatalogPreviewUserProvidedData:
     """
     Test class for validating the catalog preview API with user-provided catalog data
-    RHOAIENG-41826
     """
 
     @pytest.mark.usefixtures(

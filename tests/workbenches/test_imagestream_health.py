@@ -3,13 +3,13 @@
 from typing import Any
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.image_stream import ImageStream
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
 
 pytestmark = [pytest.mark.smoke]
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 IMPORT_SUCCESS_CONDITION_TYPE = "ImportSuccess"
 
 
@@ -176,8 +176,21 @@ def _validate_imagestreams_with_label(
 @pytest.mark.parametrize(
     "label_selector, expected_imagestream_count",
     [
-        pytest.param("opendatahub.io/notebook-image=true", 11, id="notebook_imagestreams"),
-        pytest.param("opendatahub.io/runtime-image=true", 7, id="runtime_imagestreams"),
+        pytest.param(
+            "opendatahub.io/notebook-image=true,platform.opendatahub.io/part-of=workbenches",
+            11,
+            id="notebook_imagestreams",
+        ),
+        pytest.param(
+            "opendatahub.io/runtime-image=true,platform.opendatahub.io/part-of=workbenches",
+            7,
+            id="runtime_imagestreams",
+        ),
+        pytest.param(
+            "opendatahub.io/notebook-image=true,platform.opendatahub.io/part-of=trainer",
+            3,
+            id="trainer_imagestreams",
+        ),
     ],
 )
 def test_workbench_imagestreams_health(

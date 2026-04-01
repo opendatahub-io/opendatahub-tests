@@ -2,8 +2,8 @@ import json
 from typing import Any
 
 import requests
+import structlog
 import urllib3
-from simple_logger.logger import get_logger
 from tenacity import retry, stop_after_attempt, wait_exponential
 from urllib3.exceptions import InsecureRequestWarning
 
@@ -11,7 +11,7 @@ from utilities.plugins.constant import OpenAIEnpoints, RestHeader
 
 urllib3.disable_warnings(category=InsecureRequestWarning)
 requests.packages  # noqa: B018
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 MAX_RETRIES = 5
 
@@ -104,7 +104,7 @@ class OpenAIClient:
                     message = json.loads(data)
                     token = self._parse_streaming_response(endpoint, message)
                     tokens.append(token)
-        except (requests.exceptions.RequestException, json.JSONDecodeError):
+        except requests.exceptions.RequestException, json.JSONDecodeError:
             LOGGER.error("Streaming request error")
             raise
         return "".join(tokens)
@@ -136,8 +136,8 @@ class OpenAIClient:
             keys_to_remove = ["created", "id"]
             if data:
                 data = OpenAIClient._remove_keys(data, keys_to_remove)
-            return data  # noqa: TRY300
-        except (requests.exceptions.RequestException, json.JSONDecodeError):
+            return data
+        except requests.exceptions.RequestException, json.JSONDecodeError:
             LOGGER.exception("Request error")
 
     @retry(stop=stop_after_attempt(MAX_RETRIES), wait=wait_exponential(min=1, max=6))

@@ -2,17 +2,21 @@ from collections.abc import Generator
 from typing import Self
 
 import pytest
+import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.resource import ResourceEditor
-from simple_logger.logger import get_logger
 
 from tests.model_registry.constants import CUSTOM_CATALOG_ID1, SAMPLE_MODEL_NAME1
-from tests.model_registry.model_catalog.utils import get_catalog_str, get_sample_yaml_str, wait_for_model_catalog_api
+from tests.model_registry.model_catalog.utils import (
+    get_catalog_str,
+    get_sample_yaml_str,
+    wait_for_model_catalog_api,
+)
 from tests.model_registry.utils import wait_for_model_catalog_pod_ready_after_deletion
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = [
     pytest.mark.usefixtures(

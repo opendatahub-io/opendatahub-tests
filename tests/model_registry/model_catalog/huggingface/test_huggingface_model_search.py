@@ -1,12 +1,12 @@
 from typing import Self
 
 import pytest
+import structlog
 from ocp_resources.config_map import ConfigMap
-from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.utils import get_hf_catalog_str, get_models_from_catalog_api
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = [pytest.mark.skip_on_disconnected]
 
@@ -35,7 +35,7 @@ class TestHuggingFaceModelSearch:
         source_filter: str,
     ):
         """
-        RHOAIENG-41869: Validate search model catalog by match
+        Validate search model catalog by match
         """
         LOGGER.info(f"Testing ability to filter models by name: {hf_model_name}")
         result = get_models_from_catalog_api(

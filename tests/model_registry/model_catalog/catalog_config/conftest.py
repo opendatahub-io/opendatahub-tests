@@ -2,12 +2,12 @@ import re
 from collections.abc import Generator
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import NotFoundError
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.resource import ResourceEditor
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG
@@ -20,7 +20,7 @@ from tests.model_registry.model_catalog.constants import REDHAT_AI_CATALOG_ID, R
 from tests.model_registry.model_catalog.utils import wait_for_model_catalog_api
 from tests.model_registry.utils import get_model_catalog_pod, wait_for_model_catalog_pod_ready_after_deletion
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="package")
@@ -35,7 +35,7 @@ def recreated_model_catalog_configmap(
         ConfigMap: The recreated ConfigMap instance
     """
     namespace_name = py_config["model_registry_namespace"]
-    # TODO: RHOAIENG-46741 would require changing this to look for configmaps based on label
+    # TODO: would require changing this to look for configmaps based on label
     # Get the existing ConfigMap
     configmap = ConfigMap(
         name=DEFAULT_CUSTOM_MODEL_CATALOG, client=admin_client, namespace=namespace_name, ensure_exists=True

@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import sys
@@ -23,9 +24,8 @@ from github.Organization import Organization
 from github.PullRequest import PullRequest
 from github.Repository import Repository
 from github.Team import Team
-from simple_logger.logger import get_logger
 
-LOGGER = get_logger(name="pr_labeler")
+LOGGER = logging.getLogger("pr_labeler")
 
 
 class PrBaseClass:
@@ -109,7 +109,7 @@ class PrLabeler(PrBaseClass):
             # check if the user is a member of opendatahub-tests-contributors
             membership = team.get_team_membership(member=self.user_login)
             LOGGER.info(f"User {self.user_login} is a member of the test contributor team. {membership}")
-            return True  # noqa: TRY300
+            return True
         except UnknownObjectException:
             LOGGER.error(f"User {self.user_login} is not allowed for this action. Exiting.")
             return False

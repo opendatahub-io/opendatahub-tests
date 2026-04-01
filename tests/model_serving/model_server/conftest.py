@@ -3,6 +3,7 @@ from contextlib import ExitStack
 from typing import Any
 
 import pytest
+import structlog
 import yaml
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
@@ -19,7 +20,6 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.storage_class import StorageClass
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
 
 from utilities.constants import (
     DscComponents,
@@ -36,6 +36,7 @@ from utilities.data_science_cluster_utils import (
 )
 from utilities.inference_utils import create_isvc
 from utilities.infra import (
+    is_disconnected_cluster,
     s3_endpoint_secret,
     update_configmap_data,
 )
@@ -50,7 +51,7 @@ from utilities.kueue_utils import (
 )
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")
@@ -376,6 +377,13 @@ def model_car_inference_service(
 
 
 @pytest.fixture(scope="session")
+def skip_if_disconnected(admin_client: DynamicClient) -> None:
+    """Skip test if running on a disconnected (air-gapped) cluster."""
+    if is_disconnected_cluster(client=admin_client):
+        pytest.skip("S3/HuggingFace storage not available on disconnected clusters")
+
+
+@pytest.fixture(scope="session")
 def skip_if_no_gpu_available(gpu_count_on_cluster: int) -> None:
     """Skip test if no GPUs are available on the cluster."""
     if gpu_count_on_cluster < 1:
@@ -436,7 +444,7 @@ def _is_kueue_operator_installed(admin_client: DynamicClient) -> bool:
             if csv.name.startswith("kueue") and csv.status == csv.Status.SUCCEEDED:
                 LOGGER.info(f"Found Kueue operator CSV: {csv.name}")
                 return True
-        return False  # noqa: TRY300
+        return False
     except ResourceNotFoundError:
         return False
 

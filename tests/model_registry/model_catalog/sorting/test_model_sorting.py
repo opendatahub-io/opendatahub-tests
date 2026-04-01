@@ -1,8 +1,8 @@
 from typing import Self
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
-from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.constants import (
     REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
@@ -14,7 +14,7 @@ from tests.model_registry.model_catalog.sorting.utils import (
 )
 from tests.model_registry.model_catalog.utils import get_models_from_catalog_api
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace")]
 
@@ -31,7 +31,7 @@ class TestAccuracySorting:
             "DESC",
         ],
     )
-    @pytest.mark.sanity
+    @pytest.mark.tier1
     def test_accuracy_sorting_works_correctly(
         self: Self,
         admin_client: DynamicClient,
@@ -40,7 +40,7 @@ class TestAccuracySorting:
         model_registry_rest_headers: dict[str, str],
     ):
         """
-        RHOAIENG-36856: Test accuracy sorting for FindModels endpoint
+        Test accuracy sorting for FindModels endpoint
 
         This test validates accuracy sorting behavior with different sort_order parameters:
 
@@ -74,7 +74,7 @@ class TestAccuracySorting:
         "use_case",
         [
             "code_fixing",
-            pytest.param("chatbot", marks=pytest.mark.sanity),  # Dashboard default use case
+            pytest.param("chatbot", marks=pytest.mark.tier1),  # Dashboard default use case
             "long_rag",
             "rag",
         ],
@@ -86,7 +86,7 @@ class TestAccuracySorting:
         model_registry_rest_headers: dict[str, str],
     ):
         """
-        RHOAIENG-45852: Validate that recommendations parameter affects artifact-based model sorting
+        Validate that recommendations parameter affects artifact-based model sorting
 
         This test is parametrized by use_case and validates:
         1. Without recommendations=true: Models sorted by lowest latency across ALL artifacts

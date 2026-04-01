@@ -3,6 +3,7 @@ from contextlib import ExitStack
 from typing import Any
 
 import pytest
+import structlog
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
@@ -13,7 +14,6 @@ from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
-from simple_logger.logger import get_logger
 
 from tests.model_registry.constants import (
     KUBERBACPROXY_STR,
@@ -24,7 +24,7 @@ from tests.model_registry.model_registry.rbac.utils import create_role_binding
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from utilities.user_utils import UserTestSession
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="function")

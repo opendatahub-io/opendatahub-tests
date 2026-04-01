@@ -2,14 +2,14 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
 
+import structlog
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.resource import ResourceEditor
-from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
 from utilities.constants import DscComponents
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @contextmanager

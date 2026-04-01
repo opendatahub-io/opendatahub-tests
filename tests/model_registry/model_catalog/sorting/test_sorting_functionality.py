@@ -1,14 +1,14 @@
 from typing import Self
 
 import pytest
-from simple_logger.logger import get_logger
+import structlog
 
 from tests.model_registry.model_catalog.sorting.utils import (
     get_sources_with_sorting,
     validate_items_sorted_correctly,
 )
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace")]
 
@@ -33,7 +33,7 @@ class TestSourcesSorting:
         model_registry_rest_headers: dict[str, str],
     ):
         """
-        RHOAIENG-37260: Test sources endpoint sorts correctly by supported fields
+        Test sources endpoint sorts correctly by supported fields
         """
         LOGGER.info(f"Testing sources sorting: orderBy={order_by}, sortOrder={sort_order}")
 
@@ -46,6 +46,7 @@ class TestSourcesSorting:
 
         assert validate_items_sorted_correctly(response["items"], order_by, sort_order)
 
+    @pytest.mark.tier3
     @pytest.mark.parametrize("unsupported_field", ["CREATE_TIME", "LAST_UPDATE_TIME"])
     def test_sources_rejects_unsupported_fields(
         self: Self,
@@ -54,7 +55,7 @@ class TestSourcesSorting:
         model_registry_rest_headers: dict[str, str],
     ):
         """
-        RHOAIENG-37260: Test sources endpoint rejects fields it doesn't support
+        Test sources endpoint rejects fields it doesn't support
         """
         LOGGER.info(f"Testing sources rejection of unsupported field: {unsupported_field}")
 

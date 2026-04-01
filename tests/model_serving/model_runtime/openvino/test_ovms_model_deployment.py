@@ -8,9 +8,9 @@ across REST and Grpc protocol and raw deployment type.
 from typing import Any
 
 import pytest
+import structlog
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 
 from tests.model_serving.model_runtime.openvino.constant import (
     MODEL_CONFIGS,
@@ -27,12 +27,11 @@ from tests.model_serving.model_runtime.openvino.utils import (
 )
 from utilities.constants import ModelFormat, Protocols
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = pytest.mark.usefixtures("valid_aws_config")
 
 
-@pytest.mark.smoke
 @pytest.mark.parametrize(
     (
         "protocol",
@@ -59,6 +58,7 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
                 deployment_type=RAW_DEPLOYMENT_TYPE,
                 protocol_type=Protocols.REST,
             ),
+            marks=pytest.mark.smoke,
         ),
         pytest.param(
             REST_PROTOCOL_TYPE_DICT,
@@ -76,6 +76,7 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
                 deployment_type=RAW_DEPLOYMENT_TYPE,
                 protocol_type=Protocols.REST,
             ),
+            marks=pytest.mark.tier1,
         ),
         pytest.param(
             REST_PROTOCOL_TYPE_DICT,
@@ -93,6 +94,7 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
                 deployment_type=RAW_DEPLOYMENT_TYPE,
                 protocol_type=Protocols.REST,
             ),
+            marks=pytest.mark.tier1,
         ),
     ],
     indirect=[

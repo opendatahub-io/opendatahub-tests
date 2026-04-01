@@ -2,15 +2,15 @@ from typing import Any, Self
 
 import pytest
 import requests
+import structlog
 from kubernetes.dynamic import DynamicClient
-from simple_logger.logger import get_logger
 
 from tests.model_registry.model_registry.rest_api.utils import register_model_rest_api, validate_resource_attributes
 from tests.model_registry.utils import get_endpoint_from_mr_service, get_mr_service_by_label
 from utilities.constants import Protocols
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(
@@ -28,7 +28,7 @@ class TestModelRegistryWithSecureDB:
     Tests both MySQL and PostgreSQL backends with invalid and valid CA certificate scenarios.
     """
 
-    # Implements RHOAIENG-26150
+    @pytest.mark.tier3
     @pytest.mark.parametrize(
         "patch_external_deployment_with_ssl_ca,patch_invalid_ca,local_ca_bundle",
         [
@@ -99,7 +99,6 @@ class TestModelRegistryWithSecureDB:
         "ca_configmap_for_test",
         "patch_external_deployment_with_ssl_ca",
     )
-    @pytest.mark.smoke
     def test_register_model_with_valid_ca(
         self: Self,
         admin_client: DynamicClient,

@@ -1,6 +1,7 @@
 from typing import Self
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ForbiddenError
 from ocp_resources.data_science_cluster import DataScienceCluster
@@ -8,7 +9,6 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
 
 from tests.model_registry.constants import (
     DB_RESOURCE_NAME,
@@ -18,7 +18,7 @@ from tests.model_registry.constants import (
 from utilities.constants import Annotations
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.usefixtures(
@@ -29,7 +29,7 @@ LOGGER = get_logger(name=__name__)
 )
 @pytest.mark.custom_namespace
 class TestModelRegistryCreationNegative:
-    @pytest.mark.sanity
+    @pytest.mark.tier3
     def test_registering_model_negative(
         self: Self,
         admin_client: DynamicClient,

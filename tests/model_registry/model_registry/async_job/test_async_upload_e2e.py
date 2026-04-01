@@ -3,11 +3,11 @@ import time
 from typing import Self
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import ArtifactState, RegisteredModelState
 from ocp_resources.job import Job
-from simple_logger.logger import get_logger
 
 from tests.model_registry.constants import MODEL_DICT
 from tests.model_registry.model_registry.async_job.constants import (
@@ -22,7 +22,7 @@ from tests.model_registry.model_registry.async_job.utils import (
 from utilities.constants import MinIo, OCIRegistry
 from utilities.registry_utils import pull_manifest_from_oci_registry
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 MODEL_NAME = f"async-test-model-{int(time.time())}"
 MODEL_DATA = {
@@ -64,7 +64,8 @@ MODEL_DATA = {
 )
 @pytest.mark.downstream_only
 class TestAsyncUploadE2E:
-    """RHOAIENG-32501: Test for async upload job with real MinIO, OCI registry, Connection Secrets and Model Registry"""
+    """
+    Test for async upload job with real MinIO, OCI registry, Connection Secrets and Model Registry"""
 
     @pytest.mark.dependency(name="job_creation_and_pod_spawning")
     def test_job_creation_and_pod_spawning(
@@ -89,7 +90,7 @@ class TestAsyncUploadE2E:
         model_registry_client: list[ModelRegistryClient],
     ) -> None:
         """
-        RHOAIENG-47260: Verify that created IDs are exposed to termination message
+        Verify that created IDs are exposed to termination message
 
         The termination message should contain RegisteredModel, ModelVersion, and ModelArtifact IDs
         that match the actual resources created in the model registry.

@@ -2,8 +2,8 @@ import random
 from typing import Any, Self
 
 import pytest
+import structlog
 from dictdiffer import diff
-from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.constants import (
     METRICS_ARTIFACT_TYPE,
@@ -17,7 +17,7 @@ from tests.model_registry.model_catalog.search.utils import (
     validate_recommendations_subset,
 )
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace")]
 MODEL_NAMEs_ARTIFACT_SEARCH: list[str] = [
     "RedHatAI/Llama-3.1-8B-Instruct",
@@ -246,7 +246,7 @@ class TestSearchModelArtifact:
         artifact_type: str,
     ):
         """
-        RHOAIENG-33659: Validates that the model artifacts returned by the artifactType filter
+        Validates that the model artifacts returned by the artifactType filter
         match the complete set of artifacts for a random model.
         """
         _, model_name, catalog_id = randomly_picked_model_from_catalog_api_by_source
@@ -310,7 +310,7 @@ class TestSearchModelArtifact:
         randomly_picked_model_from_catalog_api_by_source: tuple[dict[Any, Any], str, str],
     ):
         """
-        RHOAIENG-33659: Validates that the API returns all artifacts of a random model
+        Validates that the API returns all artifacts of a random model
         when filtering by multiple artifact types.
         """
         _, model_name, catalog_id = randomly_picked_model_from_catalog_api_by_source

@@ -1,16 +1,16 @@
 import ast
 from typing import Any
 
+import structlog
 from huggingface_hub import HfApi
 from kubernetes.dynamic import DynamicClient
-from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
 from tests.model_registry.model_catalog.constants import HF_SOURCE_ID
 from tests.model_registry.model_catalog.utils import get_models_from_catalog_api
 from tests.model_registry.utils import execute_get_command, get_model_catalog_pod
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def get_huggingface_model_params(model_name: str, huggingface_api: HfApi) -> dict[str, Any]:
@@ -57,7 +57,7 @@ def get_huggingface_nested_attributes(obj, attr_path) -> Any:
                 if not hasattr(current_obj, attr):
                     return None
                 current_obj = getattr(current_obj, attr)
-        return current_obj  # noqa: TRY300
+        return current_obj
     except AttributeError as e:
         LOGGER.error(f"AttributeError getting '{attr_path}': {e}")
         return None

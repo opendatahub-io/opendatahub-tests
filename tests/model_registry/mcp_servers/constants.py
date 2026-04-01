@@ -1,7 +1,9 @@
+CALCULATOR_SERVER_NAME: str = "calculator"
+CALCULATOR_PROVIDER: str = "Math Community"
 MCP_CATALOG_SOURCE_ID: str = "test_mcp_servers"
 MCP_CATALOG_SOURCE_NAME: str = "Test MCP Servers"
 MCP_CATALOG_API_PATH: str = "/api/mcp_catalog/v1alpha1/"
-MCP_SERVERS_YAML_CATALOG_PATH: str = "/data/user-sources/mcp-servers.yaml"
+MCP_SERVERS_YAML_CATALOG_PATH: str = "mcp-servers.yaml"
 
 MCP_SERVERS_YAML: str = """\
 mcp_servers:
@@ -84,7 +86,7 @@ MCP_CATALOG_SOURCE: dict = {
 
 MCP_CATALOG_SOURCE2_ID: str = "test_mcp_servers_2"
 MCP_CATALOG_SOURCE2_NAME: str = "Test MCP Servers 2"
-MCP_SERVERS_YAML2_CATALOG_PATH: str = "/data/user-sources/mcp-servers-2.yaml"
+MCP_SERVERS_YAML2_CATALOG_PATH: str = "mcp-servers-2.yaml"
 
 MCP_SERVERS_YAML2: str = """\
 mcp_servers:
@@ -134,7 +136,7 @@ EXPECTED_MCP_SERVER_TIMESTAMPS: dict[str, dict[str, str]] = {
 
 MCP_CATALOG_INVALID_SOURCE_ID: str = "test_mcp_servers_invalid"
 MCP_CATALOG_INVALID_SOURCE_NAME: str = "Test MCP Servers Invalid"
-MCP_SERVERS_YAML_INVALID_CATALOG_PATH: str = "/data/user-sources/mcp-servers-invalid.yaml"
+MCP_SERVERS_YAML_INVALID_CATALOG_PATH: str = "mcp-servers-invalid.yaml"
 
 MCP_SERVERS_YAML_MALFORMED: str = """\
 mcp_servers:
@@ -163,6 +165,16 @@ MCP_CATALOG_INVALID_SOURCE: dict = {
     "labels": [MCP_CATALOG_INVALID_SOURCE_NAME],
 }
 
+NAMED_QUERIES: dict = {
+    "production_ready": {
+        "verifiedSource": {"operator": "=", "value": True},
+    },
+    "security_focused": {
+        "sast": {"operator": "=", "value": True},
+        "readOnlyTools": {"operator": "=", "value": True},
+    },
+}
+
 EXPECTED_MCP_SOURCE2_SERVER_NAMES: set[str] = {"code-reviewer"}
 EXPECTED_ALL_MCP_SERVER_NAMES: set[str] = EXPECTED_MCP_SERVER_NAMES | EXPECTED_MCP_SOURCE2_SERVER_NAMES
 
@@ -172,3 +184,36 @@ EXPECTED_MCP_SOURCE_ID_MAP: dict[str, str] = {
     "calculator": MCP_CATALOG_SOURCE_ID,
     "code-reviewer": MCP_CATALOG_SOURCE2_ID,
 }
+
+# Source 3: unlabeled source (no labels) for sourceLabel=null testing
+MCP_CATALOG_SOURCE3_ID: str = "test_mcp_servers_unlabeled"
+MCP_CATALOG_SOURCE3_NAME: str = "Test MCP Servers Unlabeled"
+MCP_SERVERS_YAML3_CATALOG_PATH: str = "mcp-servers-3.yaml"
+
+MCP_SERVERS_YAML3: str = """\
+mcp_servers:
+  - name: database-connector
+    description: "Database connection MCP server"
+    provider: "Data Tools"
+    version: "1.0.0"
+    license: "PostgreSQL"
+    tags:
+      - database
+      - sql
+    tools:
+      - name: execute_query
+        description: "Execute a database query"
+"""
+
+MCP_CATALOG_SOURCE3: dict = {
+    "name": MCP_CATALOG_SOURCE3_NAME,
+    "id": MCP_CATALOG_SOURCE3_ID,
+    "type": "yaml",
+    "enabled": True,
+    "properties": {"yamlCatalogPath": MCP_SERVERS_YAML3_CATALOG_PATH},
+}
+
+EXPECTED_MCP_SOURCE3_SERVER_NAMES: set[str] = {"database-connector"}
+EXPECTED_ALL_MCP_SERVER_NAMES_WITH_UNLABELED: set[str] = (
+    EXPECTED_ALL_MCP_SERVER_NAMES | EXPECTED_MCP_SOURCE3_SERVER_NAMES
+)

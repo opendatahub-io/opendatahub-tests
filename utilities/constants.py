@@ -7,7 +7,10 @@ from ocp_resources.resource import Resource
 class KServeDeploymentType:
     SERVERLESS: str = "Serverless"
     RAW_DEPLOYMENT: str = "RawDeployment"
+    STANDARD: str = "Standard"
     MODEL_MESH: str = "ModelMesh"
+
+    RAW_DEPLOYMENT_MODES: tuple[str, ...] = (RAW_DEPLOYMENT, STANDARD)
 
 
 class ModelFormat:
@@ -140,6 +143,7 @@ class ApiGroups:
     KSERVE: str = "serving.kserve.io"
     KUADRANT_IO: str = "kuadrant.io"
     MAAS_IO: str = "maas.opendatahub.io"
+    AUTH_IO: str = "SERVICES_PLATFORM_OPENDATAHUB_IO"
 
 
 class Annotations:
@@ -314,6 +318,7 @@ class ModelStorage:
     class HuggingFace:
         TINYLLAMA: str = "hf://TinyLlama/TinyLlama-1.1B-Chat-v1.0"
         OPT125M: str = "hf://facebook/opt-125m"
+        QWEN_7B_INSTRUCT: str = "hf://Qwen/Qwen2.5-7B-Instruct"
 
 
 class OCIRegistry:

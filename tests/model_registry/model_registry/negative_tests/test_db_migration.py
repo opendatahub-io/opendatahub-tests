@@ -1,23 +1,23 @@
 from typing import Self
 
 import pytest
+import structlog
 from kubernetes.dynamic.client import DynamicClient
 from ocp_resources.pod import Pod
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
 
 from tests.model_registry.constants import MR_INSTANCE_NAME
 from tests.model_registry.utils import wait_for_new_running_mr_pod
 from utilities.general import wait_for_container_status
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.usefixtures(
     "updated_dsc_component_state_scope_session", "model_registry_metadata_db_resources", "model_registry_instance"
 )
 class TestDBMigration:
-    @pytest.mark.sanity
+    @pytest.mark.tier3
     def test_db_migration_negative(
         self: Self,
         admin_client: DynamicClient,
@@ -27,7 +27,7 @@ class TestDBMigration:
         delete_mr_deployment: None,
     ):
         """
-        RHOAIENG-27505: This test is to check the migration error when the database is dirty.
+        This test is to check the migration error when the database is dirty.
         The test will:
         1. Set the dirty flag to 1 for the latest migration version
         2. Delete the model registry deployment

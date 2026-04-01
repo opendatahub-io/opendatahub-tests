@@ -12,6 +12,7 @@ from collections.abc import Generator
 from typing import Self
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from model_registry import ModelRegistry as ModelRegistryClient
 from mr_openapi.exceptions import ForbiddenException
@@ -22,7 +23,6 @@ from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from tests.model_registry.constants import NUM_MR_INSTANCES
@@ -40,7 +40,7 @@ from utilities.infra import get_openshift_token
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from utilities.user_utils import UserTestSession
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 pytestmark = [pytest.mark.usefixtures("original_user", "test_idp_user")]
 
 
@@ -52,7 +52,7 @@ pytestmark = [pytest.mark.usefixtures("original_user", "test_idp_user")]
 )
 @pytest.mark.custom_namespace
 class TestUserPermission:
-    @pytest.mark.sanity
+    @pytest.mark.tier1
     def test_user_permission_non_admin_user(
         self: Self,
         is_byoidc: bool,
@@ -76,7 +76,7 @@ class TestUserPermission:
         assert exc_info.value.status == 403, f"Expected HTTP 403 ForbiddenException, but got {exc_info.value.status}"
         LOGGER.info("Successfully received expected HTTP 403 status code")
 
-    @pytest.mark.sanity
+    @pytest.mark.tier1
     def test_user_added_to_group(
         self: Self,
         is_byoidc: bool,
@@ -108,7 +108,7 @@ class TestUserPermission:
             break  # Break after first successful iteration
         LOGGER.info("Successfully accessed Model Registry")
 
-    @pytest.mark.sanity
+    @pytest.mark.tier1
     def test_create_group(
         self: Self,
         skip_test_on_byoidc: None,
@@ -129,7 +129,7 @@ class TestUserPermission:
             model_registry_instance_rest_endpoint=model_registry_instance_rest_endpoint[0],
         )
 
-    @pytest.mark.sanity
+    @pytest.mark.tier1
     def test_add_single_user_role_binding(
         self: Self,
         is_byoidc: bool,
@@ -181,7 +181,7 @@ class TestUserMultiProjectPermission:
         MR_MULTIPROJECT_TEST_SCENARIO_PARAMS,
         indirect=True,
     )
-    @pytest.mark.sanity
+    @pytest.mark.tier2
     def test_user_permission_multi_project_parametrized(
         self: Self,
         is_byoidc: bool,

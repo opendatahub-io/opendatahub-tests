@@ -1,14 +1,15 @@
 import pytest
+import structlog
 import yaml
-from simple_logger.logger import get_logger
 
 from tests.llama_stack.constants import LlamaStackProviders
 from utilities.constants import BUILTIN_DETECTOR_CONFIG, CHAT_GENERATION_CONFIG, QWEN_MODEL_NAME, MinIo
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 SECURE_SHIELD_ID: str = "secure_shield"
 
 
+@pytest.mark.tier1
 @pytest.mark.parametrize(
     "model_namespace, minio_pod, minio_data_connection, "
     "orchestrator_config, guardrails_orchestrator, llama_stack_server_config",

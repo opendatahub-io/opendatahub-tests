@@ -1,6 +1,6 @@
-from dataclasses import dataclass
+import os
 from enum import Enum
-from typing import NamedTuple, TypedDict
+from typing import NamedTuple
 
 import semver
 from llama_stack_client.types import Model
@@ -18,8 +18,6 @@ class LlamaStackProviders:
 
     class Eval(str, Enum):
         TRUSTYAI_LMEVAL = "trustyai_lmeval"
-        TRUSTYAI_RAGAS_INLINE = "trustyai_ragas_inline"
-        TRUSTYAI_RAGAS_REMOTE = "trustyai_ragas_remote"
 
 
 class ModelInfo(NamedTuple):
@@ -33,87 +31,41 @@ class ModelInfo(NamedTuple):
 LLS_CORE_POD_FILTER: str = "app=llama-stack"
 LLS_OPENSHIFT_MINIMAL_VERSION: VersionInfo = semver.VersionInfo.parse("4.17.0")
 
-
-class TurnExpectation(TypedDict):
-    question: str
-    expected_keywords: list[str]
-    description: str
-
-
-class TurnResult(TypedDict):
-    question: str
-    description: str
-    expected_keywords: list[str]
-    found_keywords: list[str]
-    missing_keywords: list[str]
-    response_content: str
-    response_length: int
-    event_count: int
-    success: bool
-    error: str | None
-
-
-class ValidationSummary(TypedDict):
-    total_turns: int
-    successful_turns: int
-    failed_turns: int
-    success_rate: float
-    total_events: int
-    total_response_length: int
-
-
-class ValidationResult(TypedDict):
-    success: bool
-    results: list[TurnResult]
-    summary: ValidationSummary
-
-
-@dataclass
-class TorchTuneTestExpectation:
-    """Test expectation for TorchTune documentation questions."""
-
-    question: str
-    expected_keywords: list[str]
-    description: str
-
-
-TORCHTUNE_TEST_EXPECTATIONS: list[TorchTuneTestExpectation] = [
-    TorchTuneTestExpectation(
-        question="what is torchtune",
-        expected_keywords=["torchtune", "pytorch", "fine-tuning", "training", "model"],
-        description="Should provide information about torchtune framework",
+POSTGRES_IMAGE = os.getenv(
+    "LLS_VECTOR_IO_POSTGRES_IMAGE",
+    (
+        "registry.redhat.io/rhel9/postgresql-15@sha256:"
+        "90ec347a35ab8a5d530c8d09f5347b13cc71df04f3b994bfa8b1a409b1171d59"  # postgres 15 # pragma: allowlist secret
     ),
-    TorchTuneTestExpectation(
-        question="What do you know about LoRA?",
-        expected_keywords=[
-            "LoRA",
-            "parameter",
-            "efficient",
-            "fine-tuning",
-            "reduce",
-        ],
-        description="Should provide information about LoRA (Low Rank Adaptation)",
-    ),
-    TorchTuneTestExpectation(
-        question="How can I optimize model training for quantization?",
-        expected_keywords=[
-            "Quantization-Aware Training",
-            "QAT",
-            "training",
-            "fine-tuning",
-            "fake",
-            "quantized",
-        ],
-        description="Should provide information about QAT (Quantization-Aware Training)",
-    ),
-    TorchTuneTestExpectation(
-        question="Are there any memory optimizations for LoRA?",
-        expected_keywords=["QLoRA", "fine-tuning", "4-bit", "Optimization", "LoRA"],
-        description="Should provide information about QLoRA",
-    ),
-    TorchTuneTestExpectation(
-        question="tell me about dora",
-        expected_keywords=["dora", "parameter", "magnitude", "direction", "fine-tuning"],
-        description="Should provide information about DoRA (Weight-Decomposed Low-Rank Adaptation)",
-    ),
-]
+)
+POSTGRESQL_USER = os.getenv("LLS_VECTOR_IO_POSTGRESQL_USER", "ps_user")
+POSTGRESQL_PASSWORD = os.getenv("LLS_VECTOR_IO_POSTGRESQL_PASSWORD", "ps_password")
+
+LLS_CORE_INFERENCE_MODEL = os.getenv("LLS_CORE_INFERENCE_MODEL", "")
+LLS_CORE_VLLM_URL = os.getenv("LLS_CORE_VLLM_URL", "")
+LLS_CORE_VLLM_API_TOKEN = os.getenv("LLS_CORE_VLLM_API_TOKEN", "")
+LLS_CORE_VLLM_MAX_TOKENS = os.getenv("LLS_CORE_VLLM_MAX_TOKENS", "16384")
+LLS_CORE_VLLM_TLS_VERIFY = os.getenv("LLS_CORE_VLLM_TLS_VERIFY", "true")
+
+LLS_CORE_EMBEDDING_MODEL = os.getenv("LLS_CORE_EMBEDDING_MODEL", "nomic-embed-text-v1-5")
+LLS_CORE_EMBEDDING_PROVIDER_MODEL_ID = os.getenv("LLS_CORE_EMBEDDING_PROVIDER_MODEL_ID", "nomic-embed-text-v1-5")
+LLS_CORE_VLLM_EMBEDDING_URL = os.getenv(
+    "LLS_CORE_VLLM_EMBEDDING_URL", "https://nomic-embed-text-v1-5.example.com:443/v1"
+)
+LLS_CORE_VLLM_EMBEDDING_API_TOKEN = os.getenv("LLS_CORE_VLLM_EMBEDDING_API_TOKEN", "fake")
+LLS_CORE_VLLM_EMBEDDING_MAX_TOKENS = os.getenv("LLS_CORE_VLLM_EMBEDDING_MAX_TOKENS", "8192")
+LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY = os.getenv("LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY", "true")
+
+LLS_CORE_AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "")
+LLS_CORE_AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "")
+
+LLAMA_STACK_DISTRIBUTION_SECRET_DATA = {
+    "postgres-user": POSTGRESQL_USER,
+    "postgres-password": POSTGRESQL_PASSWORD,
+    "vllm-api-token": LLS_CORE_VLLM_API_TOKEN,
+    "vllm-embedding-api-token": LLS_CORE_VLLM_EMBEDDING_API_TOKEN,
+    "aws-access-key-id": LLS_CORE_AWS_ACCESS_KEY_ID,
+    "aws-secret-access-key": LLS_CORE_AWS_SECRET_ACCESS_KEY,
+}
+
+UPGRADE_DISTRIBUTION_NAME = "llama-stack-distribution-upgrade"

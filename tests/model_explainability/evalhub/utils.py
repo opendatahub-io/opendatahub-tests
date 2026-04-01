@@ -1,13 +1,32 @@
 import requests
-from simple_logger.logger import get_logger
+import structlog
 
 from tests.model_explainability.evalhub.constants import (
     EVALHUB_HEALTH_PATH,
     EVALHUB_HEALTH_STATUS_HEALTHY,
+    EVALHUB_PROVIDERS_PATH,
 )
 from utilities.guardrails import get_auth_headers
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
+
+TENANT_HEADER: str = "X-Tenant"
+
+
+def _build_headers(token: str, tenant: str | None = None) -> dict[str, str]:
+    """Build request headers with auth and optional tenant.
+
+    Args:
+        token: Bearer token for authentication.
+        tenant: Namespace for the X-Tenant header. Omitted if None.
+
+    Returns:
+        Headers dict.
+    """
+    headers = get_auth_headers(token=token)
+    if tenant is not None:
+        headers[TENANT_HEADER] = tenant
+    return headers
 
 
 def validate_evalhub_health(
@@ -45,3 +64,26 @@ def validate_evalhub_health(
         f"Expected status '{EVALHUB_HEALTH_STATUS_HEALTHY}', got '{data['status']}'"
     )
     assert "timestamp" in data, "Health response missing 'timestamp' field"
+
+
+def validate_evalhub_providers(
+    host: str,
+    token: str,
+    ca_bundle_file: str,
+    tenant: str | None = None,
+) -> dict:
+    """Smoke test for the EvalHub providers endpoint."""
+    url = f"https://{host}{EVALHUB_PROVIDERS_PATH}"
+
+    response = requests.get(
+        url=url,
+        headers=_build_headers(token=token, tenant=tenant),
+        verify=ca_bundle_file,
+        timeout=10,
+    )
+    response.raise_for_status()
+
+    data = response.json()
+    assert data.get("items"), f"Smoke test failed: Providers list is empty for tenant {tenant}"
+
+    return data

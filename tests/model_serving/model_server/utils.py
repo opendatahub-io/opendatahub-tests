@@ -4,15 +4,15 @@ from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 from string import Template
 from typing import Any
 
+import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.utils.constants import DEFAULT_CLUSTER_RETRY_EXCEPTIONS
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, TimeoutWatch
 
-from tests.model_serving.model_server.kserve.keda.utils import get_isvc_keda_scaledobject
+from tests.model_serving.model_server.kserve.autoscaling.keda.utils import get_isvc_keda_scaledobject
 from utilities.constants import KServeDeploymentType, Protocols, Timeout
 from utilities.exceptions import (
     InferenceResponseError,
@@ -20,7 +20,7 @@ from utilities.exceptions import (
 from utilities.inference_utils import UserInference
 from utilities.infra import get_pods_by_isvc_label
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def verify_inference_response(
@@ -88,9 +88,13 @@ def verify_inference_response(
 
         elif (
             isinstance(inference_service, InferenceGraph)
-            and inference.deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT
+            and inference.deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT_MODES
         ):
             assert "x-forbidden-reason: Access to the InferenceGraph is not allowed" in res["output"]
+
+        elif "403 Forbidden" in res["output"]:
+            resource = f"{inference_service.kind.lower()}s"
+            assert re.search(rf"Forbidden \(user=.*verb=get.*resource={resource}", res["output"])
 
         else:
             raise ValueError(f"Auth header {auth_header} not found in response. Response: {res['output']}")

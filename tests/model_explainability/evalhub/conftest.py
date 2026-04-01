@@ -2,17 +2,17 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
 from ocp_resources.route import Route
-from simple_logger.logger import get_logger
 
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import Timeout
 from utilities.resources.evalhub import EvalHub
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")

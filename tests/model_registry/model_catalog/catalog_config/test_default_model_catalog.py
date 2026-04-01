@@ -2,6 +2,7 @@ import random
 from typing import Any, Self
 
 import pytest
+import structlog
 import yaml
 from dictdiffer import diff
 from kubernetes.dynamic import DynamicClient
@@ -11,7 +12,6 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 from ocp_resources.service import Service
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
@@ -26,7 +26,7 @@ from tests.model_registry.model_catalog.constants import CATALOG_CONTAINER, DEFA
 from tests.model_registry.utils import execute_get_command, get_model_catalog_pod, get_rest_headers
 from utilities.user_utils import UserTestSession
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = [
     pytest.mark.usefixtures(
@@ -59,7 +59,7 @@ class TestModelCatalogGeneral:
             ),
             pytest.param(
                 {"configmap_name": DEFAULT_MODEL_CATALOG_CM},
-                2,
+                3,
                 True,
                 id="test_model_catalog_default_sources_configmap",
             ),
@@ -258,7 +258,7 @@ class TestModelCatalogDefaultData:
         default_model_catalog_yaml_content: dict[Any, Any],
     ):
         """
-        RHOAIENG-33667: Validate number of models in default catalog
+        Validate number of models in default catalog
         """
 
         count = len(default_model_catalog_yaml_content.get("models", []))
@@ -275,7 +275,7 @@ class TestModelCatalogDefaultData:
         catalog_openapi_schema: dict[Any, Any],
     ):
         """
-        RHOAIENG-35260: Validate the correspondence of model parameters in default catalog yaml and model catalog api
+        Validate the correspondence of model parameters in default catalog yaml and model catalog api
         """
 
         all_model_fields, required_model_fields = extract_schema_fields(
@@ -326,7 +326,6 @@ class TestModelCatalogDefaultData:
                 models_with_differences[model["name"]] = differences
                 LOGGER.warning(f"Found value differences for {model['name']}: {differences}")
 
-        # FAILS for null-valued properties in YAML model until https://issues.redhat.com/browse/RHOAIENG-35322 is fixed
         assert not models_with_differences, (
             f"Found differences in {len(models_with_differences)} model(s): {models_with_differences}"
         )
@@ -340,7 +339,7 @@ class TestModelCatalogDefaultData:
         catalog_openapi_schema: dict[Any, Any],
     ):
         """
-        RHOAIENG-35260: Validate the random artifact in default catalog yaml matches API response
+        Validate the random artifact in default catalog yaml matches API response
         """
 
         all_artifact_fields, required_artifact_fields = extract_schema_fields(

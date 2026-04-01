@@ -1,14 +1,14 @@
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.job import Job
 from ocp_resources.pod import Pod
 from ocp_resources.service import Service
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError
 
 from utilities.constants import MinIo
 from utilities.general import collect_pod_information
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def get_latest_job_pod(admin_client: DynamicClient, job: Job) -> Pod:

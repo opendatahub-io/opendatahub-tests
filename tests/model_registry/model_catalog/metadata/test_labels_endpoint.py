@@ -1,8 +1,8 @@
 from typing import Any
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from tests.model_registry.model_catalog.metadata.utils import (
@@ -12,7 +12,7 @@ from tests.model_registry.model_catalog.metadata.utils import (
 )
 from utilities.infra import get_openshift_token
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 class TestLabelsEndpoint:
@@ -41,7 +41,7 @@ class TestLabelsEndpoint:
         # Verify they match
         verify_labels_match(expected_labels=expected_labels, api_labels=api_labels)
 
-    @pytest.mark.sanity
+    @pytest.mark.tier1
     def test_labels_endpoint_configmap_updates(
         self,
         admin_client: DynamicClient,
@@ -56,15 +56,24 @@ class TestLabelsEndpoint:
 
         def _check_updated_labels():
             # Get updated expected labels from ConfigMaps
-            expected_labels = get_labels_from_configmaps(admin_client=admin_client, namespace=model_registry_namespace)
-
-            # Get labels from API
-            api_labels = get_labels_from_api(
-                model_catalog_rest_url=model_catalog_rest_url[0], user_token=get_openshift_token()
+            all_expected_labels = get_labels_from_configmaps(
+                admin_client=admin_client, namespace=model_registry_namespace
             )
 
-            # Verify they match (including the new label)
-            verify_labels_match(expected_labels=expected_labels, api_labels=api_labels)
+            token = get_openshift_token()
+            url = model_catalog_rest_url[0]
+
+            # Split expected labels by asset type
+            mcp_expected_labels = [label for label in all_expected_labels if label.get("assetType") == "mcp_servers"]
+            model_expected_labels = [label for label in all_expected_labels if label not in mcp_expected_labels]
+
+            # Verify default /labels returns only model labels (no MCP cross-contamination)
+            api_labels = get_labels_from_api(model_catalog_rest_url=url, user_token=token)
+            verify_labels_match(expected_labels=model_expected_labels, api_labels=api_labels)
+
+            # Verify assetType=mcp_servers returns only MCP labels (no model cross-contamination)
+            mcp_api_labels = get_labels_from_api(model_catalog_rest_url=url, user_token=token, asset_type="mcp_servers")
+            verify_labels_match(expected_labels=mcp_expected_labels, api_labels=mcp_api_labels)
 
         sampler = TimeoutSampler(wait_timeout=60, sleep=5, func=_check_updated_labels)
         for _ in sampler:

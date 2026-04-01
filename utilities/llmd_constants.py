@@ -15,7 +15,7 @@ from utilities.constants import (
 class LLMDGateway:
     DEFAULT_NAME: str = "openshift-ai-inference"
     DEFAULT_NAMESPACE: str = "openshift-ingress"
-    DEFAULT_CLASS: str = "data-science-gateway-class"
+    DEFAULT_GATEWAY_CLASS: str = "openshift-default"
 
 
 class KServeGateway:
@@ -39,6 +39,7 @@ class ModelStorage:
     S3_QWEN: str = SharedModelStorage.S3.QWEN_7B_INSTRUCT
     HF_TINYLLAMA: str = SharedModelStorage.HuggingFace.TINYLLAMA
     HF_OPT125M: str = SharedModelStorage.HuggingFace.OPT125M
+    HF_QWEN_7B_INSTRUCT: str = SharedModelStorage.HuggingFace.QWEN_7B_INSTRUCT
 
 
 class ContainerImages:

@@ -5,11 +5,11 @@ Tests for Hugging Face model_type classification.
 from typing import Self
 
 import pytest
-from simple_logger.logger import get_logger
+import structlog
 
 from tests.model_registry.model_catalog.utils import get_hf_catalog_str, get_models_from_catalog_api
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 # Known task types from model-registry hf_catalog.go implementation
 # Source: https://github.com/kubeflow/model-registry/blob/main/catalog/internal/catalog/hf_catalog.go
@@ -59,7 +59,9 @@ pytestmark = [pytest.mark.skip_on_disconnected]
     indirect=["updated_catalog_config_map", "hf_source_filter"],
 )
 class TestModelTypeClassification:
-    """RHOAIENG-49090: Test suite for model_type classification on Hugging Face models."""
+    """
+    Test suite for model_type classification on Hugging Face models.
+    """
 
     @pytest.mark.parametrize("model_type_filter", ["generative", "predictive", "unknown"])
     def test_model_type_filter_and_classification(

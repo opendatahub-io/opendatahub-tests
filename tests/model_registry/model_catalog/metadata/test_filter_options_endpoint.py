@@ -1,8 +1,8 @@
 from typing import Self
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
-from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.db_constants import (
     API_COMPUTED_FILTER_FIELDS,
@@ -12,11 +12,15 @@ from tests.model_registry.model_catalog.db_constants import (
 from tests.model_registry.model_catalog.metadata.utils import (
     compare_filter_options_with_database,
 )
-from tests.model_registry.model_catalog.utils import execute_database_query, parse_psql_output
-from tests.model_registry.utils import execute_get_command, get_rest_headers
+from tests.model_registry.model_catalog.utils import (
+    execute_database_query,
+    execute_get_command,
+    parse_psql_output,
+)
+from tests.model_registry.utils import get_rest_headers
 from utilities.user_utils import UserTestSession
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = [
     pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace", "original_user")
@@ -26,7 +30,6 @@ pytestmark = [
 class TestFilterOptionsEndpoint:
     """
     Test class for validating the models/filter_options endpoint
-    RHOAIENG-36696
     """
 
     # Cannot use non-admin user for this test as it cannot list the pods in the namespace
@@ -58,8 +61,6 @@ class TestFilterOptionsEndpoint:
 
         This test executes the exact same SQL query the API uses and compares results
         to catch any discrepancies between database content and API response.
-
-        Expected failure because of RHOAIENG-37069 & RHOAIENG-37226
         """
         api_url = f"{model_catalog_rest_url[0]}models/filter_options"
         LOGGER.info(f"Testing comprehensive database coverage for: {api_url}")
@@ -125,7 +126,6 @@ class TestFilterOptionsEndpoint:
         test_idp_user: UserTestSession,
     ):
         """
-        Test for: RHOAIENG-38836
         Validate that namedQueries field is present in filter_options response.
         Validates that default-performance-filters named query exists with expected properties.
         """

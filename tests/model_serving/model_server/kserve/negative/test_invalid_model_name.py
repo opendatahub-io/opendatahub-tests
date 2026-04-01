@@ -1,6 +1,5 @@
-"""Tests for invalid model name in inference endpoint.
-
-Jira: RHOAIENG-48282
+"""
+Tests for invalid model name in inference endpoint.
 """
 
 import json
@@ -22,7 +21,7 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
 VALID_BODY_RAW = json.dumps(VALID_OVMS_INFERENCE_BODY)
 
 
-@pytest.mark.tier1
+@pytest.mark.tier2
 class TestInvalidModelName:
     """Test class for verifying error handling when targeting a non-existent model.
 

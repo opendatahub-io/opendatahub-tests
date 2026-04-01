@@ -9,9 +9,9 @@ TF refers to TENSORFLOW
 from typing import Any
 
 import pytest
+import structlog
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 
 from tests.model_serving.model_runtime.triton.basic_model_deployment.utils import load_json, validate_inference_request
 from tests.model_serving.model_runtime.triton.constant import (
@@ -22,7 +22,7 @@ from tests.model_serving.model_runtime.triton.constant import (
 )
 from utilities.constants import Protocols
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 TF_MODEL_NAME = "inceptiongraphdef"
 
@@ -33,7 +33,6 @@ pytestmark = pytest.mark.usefixtures(
 )
 
 
-@pytest.mark.smoke
 @pytest.mark.parametrize(
     ("protocol", "model_namespace", "s3_models_storage_uri", "triton_serving_runtime", "triton_inference_service"),
     [
@@ -47,6 +46,7 @@ pytestmark = pytest.mark.usefixtures(
                 **BASE_RAW_DEPLOYMENT_CONFIG,
             },
             id="tensorflow-raw-rest-deployment",
+            marks=pytest.mark.smoke,
         ),
         pytest.param(
             {"protocol_type": Protocols.GRPC},
@@ -58,6 +58,7 @@ pytestmark = pytest.mark.usefixtures(
                 **BASE_RAW_DEPLOYMENT_CONFIG,
             },
             id="tensorflow-raw-grpc-deployment",
+            marks=pytest.mark.smoke,
         ),
     ],
     indirect=True,

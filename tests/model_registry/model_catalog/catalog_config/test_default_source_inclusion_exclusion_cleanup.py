@@ -1,7 +1,7 @@
 import pytest
+import structlog
 from kubernetes.dynamic.client import DynamicClient
 from ocp_resources.resource import ResourceEditor
-from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError
 
 from tests.model_registry.model_catalog.catalog_config.utils import (
@@ -20,7 +20,7 @@ from tests.model_registry.model_catalog.constants import (
 )
 from tests.model_registry.model_catalog.utils import wait_for_model_catalog_api
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = [
     pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace"),
@@ -28,29 +28,29 @@ pytestmark = [
 
 
 class TestModelInclusionFiltering:
-    """Test inclusion filtering functionality (RHOAIENG-41841)"""
+    """Test inclusion filtering functionality"""
 
     @pytest.mark.parametrize(
         "redhat_ai_models_with_filter",
         [
             pytest.param(
                 {"filter_type": "inclusion", "pattern": "granite", "filter_value": "*granite*"},
-                marks=pytest.mark.smoke,
+                marks=pytest.mark.tier2,
                 id="test_include_granite_models_only",
             ),
             pytest.param(
                 {"filter_type": "inclusion", "pattern": "prometheus", "filter_value": "*prometheus*"},
-                marks=pytest.mark.sanity,
+                marks=pytest.mark.tier2,
                 id="test_include_prometheus_models_only",
             ),
             pytest.param(
                 {"filter_type": "inclusion", "pattern": "-8b-", "filter_value": "*-8b-*"},
-                marks=pytest.mark.sanity,
+                marks=pytest.mark.tier2,
                 id="test_include_eight_b_models_only",
             ),
             pytest.param(
                 {"filter_type": "inclusion", "pattern": "code", "filter_value": "*code*"},
-                marks=pytest.mark.sanity,
+                marks=pytest.mark.tier2,
                 id="test_include_code_models_only",
             ),
         ],
@@ -76,24 +76,24 @@ class TestModelInclusionFiltering:
 
 
 class TestModelExclusionFiltering:
-    """Test exclusion filtering functionality (RHOAIENG-41841 part 2)"""
+    """Test exclusion filtering functionality"""
 
     @pytest.mark.parametrize(
         "redhat_ai_models_with_filter",
         [
             pytest.param(
                 {"filter_type": "exclusion", "pattern": "granite", "filter_value": "*granite*"},
-                marks=pytest.mark.smoke,
+                marks=pytest.mark.tier2,
                 id="test_exclude_granite_models",
             ),
             pytest.param(
                 {"filter_type": "exclusion", "pattern": "prometheus", "filter_value": "*prometheus*"},
-                marks=pytest.mark.sanity,
+                marks=pytest.mark.tier1,
                 id="test_exclude_prometheus_models",
             ),
             pytest.param(
                 {"filter_type": "exclusion", "pattern": "lab", "filter_value": "*lab*"},
-                marks=pytest.mark.sanity,
+                marks=pytest.mark.tier2,
                 id="test_exclude_lab_models",
             ),
         ],
@@ -119,7 +119,7 @@ class TestModelExclusionFiltering:
 
 
 class TestCombinedIncludeExcludeFiltering:
-    """Test combined include+exclude filtering (RHOAIENG-41841 part 3)"""
+    """Test combined include+exclude filtering"""
 
     @pytest.mark.parametrize(
         "redhat_ai_models_with_filter",
@@ -132,7 +132,7 @@ class TestCombinedIncludeExcludeFiltering:
                     "exclude_pattern": "lab",
                     "exclude_filter_value": "*lab*",
                 },
-                marks=pytest.mark.smoke,
+                marks=pytest.mark.tier2,
                 id="include_granite_exclude_lab",
             ),
             pytest.param(
@@ -143,7 +143,7 @@ class TestCombinedIncludeExcludeFiltering:
                     "exclude_pattern": "code",
                     "exclude_filter_value": "*code*",
                 },
-                marks=pytest.mark.sanity,
+                marks=pytest.mark.tier2,
                 id="include_eight_b_exclude_code",
             ),
         ],
@@ -169,9 +169,9 @@ class TestCombinedIncludeExcludeFiltering:
 
 
 class TestModelCleanupLifecycle:
-    """Test automatic model cleanup during lifecycle changes (RHOAIENG-41846)"""
+    """Test automatic model cleanup during lifecycle changes"""
 
-    @pytest.mark.sanity
+    @pytest.mark.tier2
     def test_model_cleanup_on_exclusion_change(
         self,
         admin_client: DynamicClient,
@@ -208,6 +208,7 @@ class TestModelCleanupLifecycle:
                         model_registry_rest_headers=model_registry_rest_headers,
                         source_label=REDHAT_AI_CATALOG_NAME,
                         expected_models=granite_models,
+                        source_id=REDHAT_AI_CATALOG_ID,
                     )
                 except TimeoutExpiredError as e:
                     pytest.fail(f"Phase 1: Timeout waiting for granite models {granite_models}: {e}")
@@ -245,6 +246,7 @@ class TestModelCleanupLifecycle:
                         model_registry_rest_headers=model_registry_rest_headers,
                         source_label=REDHAT_AI_CATALOG_NAME,
                         expected_models=prometheus_models,
+                        source_id=REDHAT_AI_CATALOG_ID,
                     )
                 except TimeoutExpiredError as e:
                     pytest.fail(f"Phase 2: Timeout waiting for prometheus models {prometheus_models}: {e}")
@@ -274,9 +276,9 @@ class TestModelCleanupLifecycle:
 
 @pytest.mark.usefixtures("disabled_redhat_ai_source")
 class TestSourceLifecycleCleanup:
-    """Test source disabling cleanup scenarios (RHOAIENG-41846)"""
+    """Test source disabling cleanup scenarios"""
 
-    @pytest.mark.smoke
+    @pytest.mark.tier2
     def test_source_disabling_removes_models(
         self,
         admin_client: DynamicClient,
@@ -294,7 +296,7 @@ class TestSourceLifecycleCleanup:
             model_registry_namespace=model_registry_namespace,
         )
 
-    @pytest.mark.sanity
+    @pytest.mark.tier2
     def test_source_disabling_logging(
         self,
         admin_client: DynamicClient,
@@ -316,14 +318,14 @@ class TestSourceLifecycleCleanup:
 
 
 class TestLoggingValidation:
-    """Test cleanup operation logging (RHOAIENG-41846)"""
+    """Test cleanup operation logging"""
 
     @pytest.mark.parametrize(
         "redhat_ai_models_with_filter",
         [
             pytest.param(
                 {"filter_type": "exclusion", "pattern": "granite", "filter_value": "*granite*", "log_cleanup": True},
-                marks=pytest.mark.sanity,
+                marks=pytest.mark.tier2,
                 id="test_exclude_granite_models_for_logging",
             )
         ],

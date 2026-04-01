@@ -1,16 +1,16 @@
 from typing import Self
 
 import pytest
+import structlog
 from ocp_resources.deployment import Deployment
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 
 from tests.model_registry.scc.utils import (
     validate_deployment_scc,
     validate_pod_scc,
 )
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 MODEL_CATALOG_STR = "model-catalog"
 
 
@@ -28,7 +28,7 @@ class TestModelCatalogSecurityContextValidation:
         ],
         indirect=["deployment_model_registry_ns"],
     )
-    @pytest.mark.sanity
+    @pytest.mark.tier2
     def test_model_catalog_deployment_security_context_validation(
         self: Self,
         deployment_model_registry_ns: Deployment,
@@ -46,7 +46,7 @@ class TestModelCatalogSecurityContextValidation:
         ],
         indirect=["pod_model_registry_ns"],
     )
-    @pytest.mark.sanity
+    @pytest.mark.tier2
     def test_model_catalog_pod_security_context_validation(
         self: Self,
         pod_model_registry_ns: Pod,

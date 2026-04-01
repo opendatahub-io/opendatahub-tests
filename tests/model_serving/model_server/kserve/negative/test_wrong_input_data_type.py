@@ -1,6 +1,5 @@
-"""Tests for wrong data types in input tensor.
-
-Jira: RHOAIENG-48280
+"""
+Tests for wrong data types in input tensor.
 """
 
 import copy
@@ -32,7 +31,7 @@ STRING_VALUES_AS_FP32_BODY = _make_body_with_input_override(data=["string_value"
 INVALID_DATATYPE_BODY = _make_body_with_input_override(datatype="INVALID_TYPE")
 
 
-@pytest.mark.tier1
+@pytest.mark.tier2
 class TestWrongInputDataType:
     """Test class for verifying error handling when input tensor has wrong data type.
 

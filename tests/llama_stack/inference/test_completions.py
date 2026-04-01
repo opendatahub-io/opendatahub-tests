@@ -1,10 +1,10 @@
 import pytest
+import structlog
 from llama_stack_client import LlamaStackClient
-from simple_logger.logger import get_logger
 
 from tests.llama_stack.constants import ModelInfo
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(
@@ -25,7 +25,7 @@ class TestLlamaStackInferenceCompletions:
     - https://github.com/openai/openai-python/blob/main/api.md#completions-1
     """
 
-    @pytest.mark.smoke
+    @pytest.mark.tier1
     def test_inference_chat_completion(
         self,
         unprivileged_llama_stack_client: LlamaStackClient,
@@ -47,7 +47,7 @@ class TestLlamaStackInferenceCompletions:
         assert content is not None, "LLM response content is None"
         assert "ACK" in content, "The LLM didn't provide the expected answer to the prompt"
 
-    @pytest.mark.smoke
+    @pytest.mark.tier1
     def test_inference_completion(
         self,
         unprivileged_llama_stack_client: LlamaStackClient,

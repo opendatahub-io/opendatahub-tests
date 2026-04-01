@@ -4,11 +4,11 @@ import sys
 from typing import Any
 
 import grpc
-from simple_logger.logger import get_logger
+import structlog
 
 from utilities.plugins.tgis_grpc import generation_pb2_grpc
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 class TGISGRPCPlugin:
@@ -67,7 +67,7 @@ class TGISGRPCPlugin:
             response = stub.Generate(request=request)
             LOGGER.info(response)
             res = response.responses[0]
-            return {  # noqa: TRY300
+            return {
                 "input_tokens": res.input_token_count,
                 "stop_reason": res.stop_reason,
                 "output_text": res.text,

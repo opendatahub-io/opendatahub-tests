@@ -2,6 +2,7 @@ from typing import Any, Self
 
 import pytest
 import requests
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
@@ -11,7 +12,6 @@ from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
-from simple_logger.logger import get_logger
 
 from tests.model_registry.constants import MR_POSTGRES_DB_OBJECT
 from tests.model_registry.model_registry.rest_api.constants import (
@@ -31,7 +31,7 @@ from tests.model_registry.model_registry.rest_api.constants import (
 from tests.model_registry.model_registry.rest_api.utils import validate_resource_attributes
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 CONNECTION_STRING: str = "/var/run/postgresql:5432 - accepting connections"
 
 
@@ -42,21 +42,24 @@ CONNECTION_STRING: str = "/var/run/postgresql:5432 - accepting connections"
             {},
             {},
             MODEL_REGISTER_DATA,
-            marks=(pytest.mark.smoke),
+            marks=pytest.mark.tier1,
         ),
         pytest.param(
             {"db_name": "postgres"},
             {"db_name": "postgres"},
             MODEL_REGISTER_DATA,
-            marks=(pytest.mark.smoke),
+            marks=pytest.mark.smoke,
+        ),
+        pytest.param(
+            {"db_name": "default"},
+            {"db_name": "default"},
+            MODEL_REGISTER_DATA,
         ),
         pytest.param(
             {"db_name": "mariadb"},
             {"db_name": "mariadb"},
             MODEL_REGISTER_DATA,
-            marks=(pytest.mark.sanity),
         ),
-        pytest.param({"db_name": "default"}, {"db_name": "default"}, MODEL_REGISTER_DATA, marks=(pytest.mark.smoke)),
     ],
     indirect=True,
 )
@@ -280,7 +283,7 @@ class TestModelRegistryCreationRest:
         expected_param: dict[str, Any],
     ):
         """
-        Update, [RHOAIENG-24371] archive, unarchive model versions and ensure the updated values
+        Update, archive, unarchive model versions and ensure the updated values
         are reflected on the model version
         """
         validate_resource_attributes(
@@ -325,7 +328,7 @@ class TestModelRegistryCreationRest:
         expected_param: dict[str, Any],
     ):
         """
-        Update, [RHOAIENG-24371] archive, unarchive registered models and ensure the updated values
+        Update, archive, unarchive registered models and ensure the updated values
         are reflected on the registered model
         """
         validate_resource_attributes(
@@ -363,7 +366,6 @@ class TestModelRegistryDeployment:
     Tests the complete deployment workflow from registered model to InferenceService.
     """
 
-    @pytest.mark.tier2
     def test_registered_model_deployment(
         self,
         admin_client: DynamicClient,

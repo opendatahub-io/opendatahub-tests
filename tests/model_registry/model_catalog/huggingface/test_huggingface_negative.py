@@ -1,12 +1,12 @@
 from typing import Self
 
 import pytest
+import structlog
 from ocp_resources.config_map import ConfigMap
-from simple_logger.logger import get_logger
 
 from tests.model_registry.model_catalog.utils import assert_source_error_state_message
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = [
     pytest.mark.skip_on_disconnected,
@@ -17,6 +17,7 @@ pytestmark = [
 ]
 
 
+@pytest.mark.tier3
 class TestHuggingFaceNegative:
     @pytest.mark.parametrize(
         "updated_catalog_config_map_scope_function, expected_error_message",
