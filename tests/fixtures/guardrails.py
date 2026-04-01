@@ -64,7 +64,7 @@ def guardrails_orchestrator(
                 "otlpMetricsEndpoint": metrics_endpoint,
                 "otlpTracesEndpoint": traces_endpoint,
                 "enableMetrics": True,
-                "enableTracing": True,
+                "enableTraces": True,
             }
 
         with GuardrailsOrchestrator(**gorch_kwargs, teardown=teardown_resources) as gorch:

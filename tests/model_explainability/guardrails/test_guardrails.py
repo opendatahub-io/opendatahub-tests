@@ -390,8 +390,7 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
 
         @retry(wait_timeout=Timeout.TIMEOUT_1MIN, sleep=5)
         def check_traces():
-            services = requests.get(f"{tempo_traces_service_portforward}/api/services").json().get("data", [])
-
+            services = requests.get(f"{tempo_traces_service_portforward}/api/services").json().get("data") or []
             guardrails_services = [s for s in services if "guardrails" in s]
             if not guardrails_services:
                 return False
