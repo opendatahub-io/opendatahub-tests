@@ -27,6 +27,7 @@ from utilities.inference_utils import create_isvc
 from utilities.infra import (
     create_inference_token,
     create_isvc_view_role,
+    wait_for_inference_deployment_replicas,
 )
 from utilities.logger import RedactedString
 from utilities.serving_runtime import ServingRuntimeFromTemplate
@@ -90,6 +91,10 @@ def patched_remove_raw_authentication_isvc(
             status=http_s3_ovms_raw_inference_service.Condition.Status.TRUE,
             timeout=Timeout.TIMEOUT_2MIN,
         )
+        wait_for_inference_deployment_replicas(
+            client=unprivileged_client,
+            isvc=http_s3_ovms_raw_inference_service,
+        )
         yield http_s3_ovms_raw_inference_service
 
     # ResourceEditor restores auth on exit; wait for ISVC to reconcile before next test
@@ -97,6 +102,10 @@ def patched_remove_raw_authentication_isvc(
         condition=http_s3_ovms_raw_inference_service.Condition.READY,
         status=http_s3_ovms_raw_inference_service.Condition.Status.TRUE,
         timeout=Timeout.TIMEOUT_2MIN,
+    )
+    wait_for_inference_deployment_replicas(
+        client=unprivileged_client,
+        isvc=http_s3_ovms_raw_inference_service,
     )
 
 
