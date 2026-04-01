@@ -226,6 +226,7 @@ def guardrails_orchestrator_gateway_route(
         ensure_exists=True,
     )
 
+
 @pytest.fixture(scope="class")
 def orchestrator_config_gpu(
     request: FixtureRequest,
