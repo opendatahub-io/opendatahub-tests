@@ -201,7 +201,7 @@ def submit_evalhub_job(
     assert response.status_code == 202, f"Expected 202 Accepted, got {response.status_code}: {response.text}"
 
     data = response.json()
-    LOGGER.info(f"Job submitted: {data.get('id', 'unknown')}")
+    LOGGER.info(f"Job submitted: {data.get('resource', {}).get('id', 'unknown')}")
     return data
 
 
