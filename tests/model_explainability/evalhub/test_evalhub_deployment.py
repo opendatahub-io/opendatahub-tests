@@ -1,4 +1,5 @@
 import pytest
+from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
@@ -27,7 +28,7 @@ class TestEvalHubDeployment:
 
     def test_evalhub_single_pod_single_container(
         self,
-        admin_client,
+        admin_client: DynamicClient,
         model_namespace: Namespace,
         evalhub_deployment: Deployment,
     ) -> None:
