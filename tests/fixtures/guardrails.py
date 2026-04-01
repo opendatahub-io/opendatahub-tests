@@ -226,7 +226,6 @@ def guardrails_orchestrator_gateway_route(
         ensure_exists=True,
     )
 
-
 @pytest.fixture(scope="class")
 def orchestrator_config_gpu(
     request: FixtureRequest,
@@ -266,51 +265,51 @@ def orchestrator_config_gpu(
         )
         yield cm
         cm.clean_up()
-        return
-
-    param = getattr(request, "param", {}) or {}
-
-    if param and param.get("orchestrator_config_data"):
-        orchestrator_data = param["orchestrator_config_data"]
 
     else:
-        # Decide detectors dynamically
-        if param and param.get("use_builtin_detectors"):
-            detectors = BUILTIN_DETECTOR_CONFIG
+        param = getattr(request, "param", {}) or {}
+
+        if param and param.get("orchestrator_config_data"):
+            orchestrator_data = param["orchestrator_config_data"]
+
         else:
-            detectors = {
-                PROMPT_INJECTION_DETECTOR: {
-                    "type": "text_contents",
-                    "service": {
-                        "hostname": f"{PROMPT_INJECTION_DETECTOR}-predictor.{model_namespace.name}.svc.cluster.local",
-                        "port": 80,
+            # Decide detectors dynamically
+            if param and param.get("use_builtin_detectors"):
+                detectors = BUILTIN_DETECTOR_CONFIG
+            else:
+                detectors = {
+                    PROMPT_INJECTION_DETECTOR: {
+                        "type": "text_contents",
+                        "service": {
+                            "hostname": f"{PROMPT_INJECTION_DETECTOR}-predictor.{model_namespace.name}.svc.cluster.local",
+                            "port": 80,
+                        },
+                        "chunker_id": "whole_doc_chunker",
+                        "default_threshold": 0.5,
                     },
-                    "chunker_id": "whole_doc_chunker",
-                    "default_threshold": 0.5,
-                },
-                HAP_DETECTOR: {
-                    "type": "text_contents",
-                    "service": {
-                        "hostname": f"{HAP_DETECTOR}-predictor.{model_namespace.name}.svc.cluster.local",
-                        "port": 80,
+                    HAP_DETECTOR: {
+                        "type": "text_contents",
+                        "service": {
+                            "hostname": f"{HAP_DETECTOR}-predictor.{model_namespace.name}.svc.cluster.local",
+                            "port": 80,
+                        },
+                        "chunker_id": "whole_doc_chunker",
+                        "default_threshold": 0.5,
                     },
-                    "chunker_id": "whole_doc_chunker",
-                    "default_threshold": 0.5,
-                },
+                }
+
+            orchestrator_data = {
+                "config.yaml": yaml.dump({
+                    "openai": get_vllm_chat_config(model_namespace.name),
+                    "detectors": detectors,
+                })
             }
 
-        orchestrator_data = {
-            "config.yaml": yaml.dump({
-                "openai": get_vllm_chat_config(model_namespace.name),
-                "detectors": detectors,
-            })
-        }
-
-    with ConfigMap(
-        client=admin_client,
-        name="fms-orchestr8-config-nlp",
-        namespace=model_namespace.name,
-        data=orchestrator_data,
-        teardown=teardown_resources,
-    ) as cm:
-        yield cm
+        with ConfigMap(
+            client=admin_client,
+            name="fms-orchestr8-config-nlp",
+            namespace=model_namespace.name,
+            data=orchestrator_data,
+            teardown=teardown_resources,
+        ) as cm:
+            yield cm
