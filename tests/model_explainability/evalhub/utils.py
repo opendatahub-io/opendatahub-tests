@@ -1,6 +1,6 @@
 import requests
 import structlog
-from timeout_sampler import TimeoutSampler
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_explainability.evalhub.constants import (
     EVALHUB_COLLECTIONS_PATH,
@@ -376,7 +376,7 @@ def wait_for_evalhub_job(
         if state in EVALHUB_JOB_TERMINAL_STATES:
             return sample
 
-    return {}
+    raise TimeoutExpiredError(f"Job '{job_id}' did not reach a terminal state within {timeout}s")
 
 
 def validate_evalhub_job_completed(job_data: dict) -> None:
