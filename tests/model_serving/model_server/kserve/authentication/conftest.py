@@ -22,6 +22,7 @@ from utilities.constants import (
     ModelName,
     Protocols,
     RuntimeTemplates,
+    Timeout,
 )
 from utilities.inference_utils import create_isvc
 from utilities.infra import (
@@ -80,11 +81,6 @@ def patched_remove_raw_authentication_isvc(
     unprivileged_client: DynamicClient,
     http_s3_ovms_raw_inference_service: InferenceService,
 ) -> Generator[InferenceService, Any, Any]:
-    predictor_pod = get_pods_by_isvc_label(
-        client=unprivileged_client,
-        isvc=http_s3_ovms_raw_inference_service,
-    )[0]
-
     with ResourceEditor(
         patches={
             http_s3_ovms_raw_inference_service: {
