@@ -2,6 +2,7 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+import yaml
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
@@ -12,7 +13,14 @@ from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 
-from utilities.constants import Annotations, Labels
+from tests.fixtures.inference import get_vllm_chat_config
+from utilities.constants import (
+    BUILTIN_DETECTOR_CONFIG,
+    HAP_DETECTOR,
+    PROMPT_INJECTION_DETECTOR,
+    Annotations,
+    Labels,
+)
 from utilities.guardrails import check_guardrails_health_endpoint
 
 GUARDRAILS_ORCHESTRATOR_NAME: str = "guardrails-orchestrator"
@@ -46,6 +54,14 @@ def guardrails_orchestrator(
             orchestrator_config = request.getfixturevalue(argname="orchestrator_config")
             gorch_kwargs["orchestrator_config"] = orchestrator_config.name
 
+        elif request.param.get("orchestrator_config_gpu"):
+            orchestrator_config = request.getfixturevalue(argname="orchestrator_config_gpu")
+            gorch_kwargs["orchestrator_config"] = orchestrator_config.name
+
+        elif request.param.get("orchestrator_config_builtin_gpu"):
+            orchestrator_config = request.getfixturevalue(argname="orchestrator_config_builtin_gpu")
+            gorch_kwargs["orchestrator_config"] = orchestrator_config.name
+
         if request.param.get("enable_guardrails_gateway"):
             gorch_kwargs["enable_guardrails_gateway"] = True
 
@@ -64,7 +80,7 @@ def guardrails_orchestrator(
                 "otlpMetricsEndpoint": metrics_endpoint,
                 "otlpTracesEndpoint": traces_endpoint,
                 "enableMetrics": True,
-                "enableTracing": True,
+                "enableTraces": True,
             }
 
         with GuardrailsOrchestrator(**gorch_kwargs, teardown=teardown_resources) as gorch:
@@ -209,3 +225,79 @@ def guardrails_orchestrator_gateway_route(
         wait_for_resource=True,
         ensure_exists=True,
     )
+
+
+@pytest.fixture(scope="class")
+def orchestrator_config_gpu(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    teardown_resources: bool,
+    pytestconfig: pytest.Config,
+) -> Generator[ConfigMap, Any, Any]:
+    """
+    Creates the Guardrails Orchestrator ConfigMap for tests.
+
+    Builds configuration dynamically based on test parameters, supporting either
+    built-in detectors or external detector services. Reuses existing ConfigMap
+    during post-upgrade scenarios.
+    """
+    if pytestconfig.option.post_upgrade:
+        cm = ConfigMap(
+            client=admin_client,
+            name="fms-orchestr8-config-nlp",
+            namespace=model_namespace.name,
+            ensure_exists=True,
+        )
+        yield cm
+        cm.clean_up()
+
+    else:
+        param = getattr(request, "param", {}) or {}
+
+        if param and param.get("orchestrator_config_data"):
+            orchestrator_data = param["orchestrator_config_data"]
+
+        else:
+            # Decide detectors dynamically
+            if param and param.get("use_builtin_detectors"):
+                detectors = BUILTIN_DETECTOR_CONFIG
+            else:
+                detectors = {
+                    PROMPT_INJECTION_DETECTOR: {
+                        "type": "text_contents",
+                        "service": {
+                            "hostname": (
+                                f"{PROMPT_INJECTION_DETECTOR}-predictor.{model_namespace.name}.svc.cluster.local"
+                            ),
+                            "port": 80,
+                        },
+                        "chunker_id": "whole_doc_chunker",
+                        "default_threshold": 0.5,
+                    },
+                    HAP_DETECTOR: {
+                        "type": "text_contents",
+                        "service": {
+                            "hostname": f"{HAP_DETECTOR}-predictor.{model_namespace.name}.svc.cluster.local",
+                            "port": 80,
+                        },
+                        "chunker_id": "whole_doc_chunker",
+                        "default_threshold": 0.5,
+                    },
+                }
+
+            orchestrator_data = {
+                "config.yaml": yaml.dump({
+                    "openai": get_vllm_chat_config(model_namespace.name),
+                    "detectors": detectors,
+                })
+            }
+
+        with ConfigMap(
+            client=admin_client,
+            name="fms-orchestr8-config-nlp",
+            namespace=model_namespace.name,
+            data=orchestrator_data,
+            teardown=teardown_resources,
+        ) as cm:
+            yield cm

@@ -12,8 +12,6 @@ CHAT_COMPLETIONS_DETECTION_ENDPOINT: str = "api/v2/chat/completions-detection"
 PII_ENDPOINT: str = "/pii"
 AUTOCONFIG_GATEWAY_ENDPOINT: str = "/all"
 STANDALONE_DETECTION_ENDPOINT: str = "api/v2/text/detection/content"
-PROMPT_INJECTION_DETECTOR: str = "prompt-injection-detector"
-HAP_DETECTOR: str = "hap-detector"
 
 
 @dataclass
@@ -36,6 +34,14 @@ PII_INPUT_DETECTION_PROMPT: GuardrailsDetectionPrompt = GuardrailsDetectionPromp
     detection_name="email_address",
     detection_type="pii",
     detection_text=EXAMPLE_EMAIL_ADDRESS,
+)
+
+PII_OUTPUT_DETECTION_PROMPT_QWEN: GuardrailsDetectionPrompt = GuardrailsDetectionPrompt(
+    content="Give an example of a email address for a character in a story. Only return the email address string.",
+    detector_id="regex",
+    detection_name="email_address",
+    detection_type="pii",
+    detection_text="",
 )
 
 PII_OUTPUT_DETECTION_PROMPT: GuardrailsDetectionPrompt = GuardrailsDetectionPrompt(
