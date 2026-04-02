@@ -70,9 +70,9 @@ class TestEvalHubTenantRBAC:
             )
         )
         job_writer_rbs = [
-            rb for rb in rbs
-            if rb.name.startswith(EVALHUB_MT_CR_NAME)
-            and rb.instance.roleRef.name == EVALHUB_JOBS_WRITER_CLUSTERROLE
+            rb
+            for rb in rbs
+            if rb.name.startswith(EVALHUB_MT_CR_NAME) and rb.instance.roleRef.name == EVALHUB_JOBS_WRITER_CLUSTERROLE
         ]
         assert len(job_writer_rbs) == 1, (
             f"Expected 1 jobs-writer RoleBinding for '{EVALHUB_MT_CR_NAME}', "
@@ -110,9 +110,9 @@ class TestEvalHubTenantRBAC:
             )
         )
         job_config_rbs = [
-            rb for rb in rbs
-            if rb.name.startswith(EVALHUB_MT_CR_NAME)
-            and rb.instance.roleRef.name == EVALHUB_JOB_CONFIG_CLUSTERROLE
+            rb
+            for rb in rbs
+            if rb.name.startswith(EVALHUB_MT_CR_NAME) and rb.instance.roleRef.name == EVALHUB_JOB_CONFIG_CLUSTERROLE
         ]
         assert len(job_config_rbs) == 1, (
             f"Expected 1 job-config RoleBinding for '{EVALHUB_MT_CR_NAME}', "
