@@ -448,16 +448,15 @@ def delete_evalhub_job(
     ca_bundle_file: str,
     tenant: str,
     job_id: str,
-) -> int:
-    """Delete (cancel) an evaluation job. Returns the HTTP status code."""
+) -> requests.Response:
+    """Delete (cancel) an evaluation job. Returns the full HTTP response."""
     url = f"https://{host}{EVALHUB_JOBS_PATH}/{job_id}"
-    response = requests.delete(
+    return requests.delete(
         url=url,
         headers=build_headers(token=token, tenant=tenant),
         verify=ca_bundle_file,
         timeout=10,
     )
-    return response.status_code
 
 
 def validate_evalhub_delete_denied(
@@ -468,14 +467,24 @@ def validate_evalhub_delete_denied(
     job_id: str,
 ) -> None:
     """Assert that a DELETE request is denied for cross-tenant access."""
-    status = delete_evalhub_job(
+    response = delete_evalhub_job(
         host=host,
         token=token,
         ca_bundle_file=ca_bundle_file,
         tenant=tenant,
         job_id=job_id,
     )
-    assert status in (400, 403), f"Expected 400 or 403 for cross-tenant DELETE, got {status}"
+    assert response.status_code in (400, 403), (
+        f"Expected 400 or 403 for cross-tenant DELETE, got {response.status_code}: {response.text}"
+    )
+    try:
+        body = response.json()
+    except Exception:
+        body = {}
+    body_str = str(body).lower()
+    assert any(kw in body_str for kw in ("unauthorized", "forbidden", "auth")), (
+        f"Expected auth-related error in response body for cross-tenant DELETE, got: {response.text}"
+    )
 
 
 def validate_evalhub_delete_no_tenant(
@@ -493,6 +502,14 @@ def validate_evalhub_delete_no_tenant(
         timeout=10,
     )
     assert response.status_code == 400, f"Expected 400 Bad Request, got {response.status_code}: {response.text}"
+    try:
+        body = response.json()
+    except Exception:
+        body = {}
+    body_str = str(body).lower()
+    assert any(kw in body_str for kw in ("tenant", "missing tenant header", "x-tenant")), (
+        f"Expected tenant-header-related error in response body for no-tenant DELETE, got: {response.text}"
+    )
 
 
 # ---------------------------------------------------------------------------
