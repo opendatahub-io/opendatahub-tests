@@ -247,7 +247,7 @@ def llama_stack_server_config(
     env_vars_vector_io = vector_io_provider_deployment_config_factory(provider_name=vector_io_provider)
     env_vars.extend(env_vars_vector_io)
 
-    if HTTPS_PROXY:
+    if IS_DISCONNECTED_CLUSTER and HTTPS_PROXY:
         LOGGER.info(f"Setting proxy and tlsconfig configuration (https_proxy:{HTTPS_PROXY}")
         env_vars.append({"name": "HTTPS_PROXY", "value": HTTPS_PROXY})
 
