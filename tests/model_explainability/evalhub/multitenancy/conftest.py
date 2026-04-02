@@ -309,6 +309,14 @@ def evalhub_vllm_emulator_deployment(
                     {
                         "image": VLLM_EMULATOR_IMAGE,
                         "name": VLLM_EMULATOR,
+                        "ports": [{"containerPort": EVALHUB_VLLM_EMULATOR_PORT, "protocol": Protocols.TCP}],
+                        "readinessProbe": {
+                            "tcpSocket": {"port": EVALHUB_VLLM_EMULATOR_PORT},
+                            "initialDelaySeconds": 5,
+                            "periodSeconds": 5,
+                            "timeoutSeconds": 3,
+                            "failureThreshold": 6,
+                        },
                         "securityContext": {
                             "allowPrivilegeEscalation": False,
                             "capabilities": {"drop": ["ALL"]},
