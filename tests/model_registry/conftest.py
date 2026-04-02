@@ -507,9 +507,7 @@ def mcp_servers_configmap_patch(
     )
 
     current_data = yaml.safe_load(catalog_config_map.instance.data.get("sources.yaml", "{}") or "{}")
-    if "mcp_catalogs" not in current_data:
-        current_data["mcp_catalogs"] = []
-    current_data["mcp_catalogs"].append(MCP_CATALOG_SOURCE)
+    current_data["mcp_catalogs"] = [MCP_CATALOG_SOURCE]
     current_data["namedQueries"] = NAMED_QUERIES
 
     patches = {
@@ -529,3 +527,4 @@ def mcp_servers_configmap_patch(
     wait_for_model_catalog_pod_ready_after_deletion(
         client=admin_client, model_registry_namespace=model_registry_namespace
     )
+    wait_for_mcp_catalog_api(url=mcp_catalog_rest_urls[0], headers=model_registry_rest_headers)
