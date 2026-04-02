@@ -131,7 +131,3 @@ class ExceptionUserLogin(Exception):
 
 class UnexpectedValueError(Exception):
     """Unexpected value found"""
-
-
-class ResourceNotFoundError(Exception):
-    """Resource not found"""

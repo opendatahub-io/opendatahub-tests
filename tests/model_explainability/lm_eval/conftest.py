@@ -592,11 +592,14 @@ def lmeval_vllm_serving_runtime(
         "gaudi": RuntimeTemplates.VLLM_GAUDI,
     }
 
-    accelerator_type = supported_accelerator_type.lower() if supported_accelerator_type else "nvidia"
+    if not supported_accelerator_type:
+        pytest.skip("supported_accelerator_type is required for GPU-backed vLLM tests")
+
+    accelerator_type = supported_accelerator_type.lower()
     template_name = accelerator_to_template.get(accelerator_type)
 
     if not template_name:
-        pytest.skip(f"Unsupported accelerator type for vLLM: {supported_accelerator_type}")
+        pytest.skip(f"Unsupported accelerator type for vLLM: {accelerator_type}")
 
     with ServingRuntimeFromTemplate(
         client=admin_client,

@@ -4,6 +4,7 @@ import pandas as pd
 import structlog
 from kubernetes.client.rest import ApiException
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.lm_eval_job import LMEvalJob
 from ocp_resources.pod import Pod
 from pyhelper_utils.general import tts
@@ -12,7 +13,6 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 from utilities.constants import Timeout
 from utilities.exceptions import (
     PodLogMissMatchError,
-    ResourceNotFoundError,
     UnexpectedFailureError,
     UnexpectedResourceCountError,
 )
@@ -181,9 +181,9 @@ def wait_for_vllm_model_ready(
         ):
             if sample:
                 break
-    except TimeoutExpiredError as e:
+    except TimeoutExpiredError:
         LOGGER.error(f"vLLM pod failed to start within {max_wait_time} seconds")
         collect_pod_information(pod=predictor_pod)
-        raise UnexpectedFailureError(f"vLLM model failed to load within {max_wait_time} seconds") from e
+        raise
 
     return predictor_pod
