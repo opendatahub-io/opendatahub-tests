@@ -190,7 +190,10 @@ def tenant_a_rbac_ready(
                 LOGGER.info(f"Operator RBAC provisioned in {tenant_a_namespace.name}")
                 return
     except TimeoutExpiredError:
-        msg = f"Operator RBAC provision failed: RoleBindings, ServiceAccount, or service-CA ConfigMap not found in namespace '{tenant_a_namespace.name}' within timeout"
+        msg = (
+            f"Operator RBAC provision failed: RoleBindings, ServiceAccount, or service-CA ConfigMap"
+            f" not found in namespace '{tenant_a_namespace.name}' within timeout"
+        )
         LOGGER.error(msg)
         raise RuntimeError(msg)
 
