@@ -43,9 +43,9 @@ def two_active_api_key_ids(
             base_url=base_url,
             ocp_user_token=ocp_token_for_actor,
             request_session_http=request_session_http,
-            api_key_name=f"e2e-fixture-list-{i}-{generate_random_name()}",
+            api_key_name=f"e2e-fixture-list-{index}-{generate_random_name()}",
         )[1]["id"]
-        for i in range(1, 3)
+        for index in range(1, 3)
     ]
     LOGGER.info(f"two_active_api_key_ids: created keys {ids}")
     yield ids
