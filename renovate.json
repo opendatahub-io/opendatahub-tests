@@ -59,8 +59,12 @@
       "schedule": [
         "before 6pm on wednesday"
       ],
-      "prPriority": 5,
-      "pinDigests": true
+      "prPriority": 5
+    },
+    {
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["quay.io/fedora/fedora"],
+      "enabled": false
     }
   ]
 }

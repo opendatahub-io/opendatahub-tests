@@ -8,13 +8,11 @@ from tests.model_explainability.guardrails.constants import (
     AUTOCONFIG_DETECTOR_LABEL,
     AUTOCONFIG_GATEWAY_ENDPOINT,
     CHAT_COMPLETIONS_DETECTION_ENDPOINT,
-    HAP_DETECTOR,
     HAP_INPUT_DETECTION_PROMPT,
     HARMLESS_PROMPT,
     PII_ENDPOINT,
     PII_INPUT_DETECTION_PROMPT,
     PII_OUTPUT_DETECTION_PROMPT,
-    PROMPT_INJECTION_DETECTOR,
     PROMPT_INJECTION_INPUT_DETECTION_PROMPT,
     STANDALONE_DETECTION_ENDPOINT,
 )
@@ -29,7 +27,9 @@ from tests.model_explainability.guardrails.utils import (
 from tests.model_explainability.utils import validate_tai_component_images
 from utilities.constants import (
     BUILTIN_DETECTOR_CONFIG,
+    HAP_DETECTOR,
     LLM_D_CHAT_GENERATION_CONFIG,
+    PROMPT_INJECTION_DETECTOR,
     LLMdInferenceSimConfig,
     Timeout,
 )
@@ -390,8 +390,7 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
 
         @retry(wait_timeout=Timeout.TIMEOUT_1MIN, sleep=5)
         def check_traces():
-            services = requests.get(f"{tempo_traces_service_portforward}/api/services").json().get("data", [])
-
+            services = requests.get(f"{tempo_traces_service_portforward}/api/services").json().get("data") or []
             guardrails_services = [s for s in services if "guardrails" in s]
             if not guardrails_services:
                 return False
