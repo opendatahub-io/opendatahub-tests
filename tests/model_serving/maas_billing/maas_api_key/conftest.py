@@ -242,15 +242,16 @@ def minimal_subscription_for_free_user(
     model_name = f"e2e-authz-model-{generate_random_name()}"
     sub_name = f"e2e-authz-free-sub-{generate_random_name()}"
 
-    with MaaSModelRef(
-        client=admin_client,
-        name=model_name,
-        namespace=model_ns,
-        model_ref={"name": model_name, "namespace": model_ns, "kind": "LLMInferenceService"},
-        teardown=True,
-        wait_for_resource=True,
-    ) as model_ref:
-        with create_maas_subscription(
+    with (
+        MaaSModelRef(
+            client=admin_client,
+            name=model_name,
+            namespace=model_ns,
+            model_ref={"name": model_name, "namespace": model_ns, "kind": "LLMInferenceService"},
+            teardown=True,
+            wait_for_resource=True,
+        ) as model_ref,
+        create_maas_subscription(
             admin_client=admin_client,
             subscription_namespace=maas_subscription_namespace.name,
             subscription_name=sub_name,
@@ -262,9 +263,10 @@ def minimal_subscription_for_free_user(
             priority=0,
             teardown=True,
             wait_for_resource=True,
-        ) as subscription:
-            subscription.wait_for_condition(condition="Ready", status="True", timeout=300)
-            yield subscription
+        ) as subscription,
+    ):
+        subscription.wait_for_condition(condition="Ready", status="True", timeout=300)
+        yield subscription
 
 
 @pytest.fixture()

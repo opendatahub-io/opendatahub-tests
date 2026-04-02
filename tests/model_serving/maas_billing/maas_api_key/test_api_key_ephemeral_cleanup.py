@@ -153,11 +153,8 @@ class TestEphemeralKeyCleanup:
         )
         cleanup_resp = cleanup_response.json()
         deleted_count = cleanup_resp.get("deletedCount", -1)
-        assert deleted_count >= 0, (
-            f"Cleanup response should have non-negative deletedCount, got: {cleanup_resp}"
-        )
+        assert deleted_count >= 0, f"Cleanup response should have non-negative deletedCount, got: {cleanup_resp}"
         LOGGER.info(f"[ephemeral] Cleanup completed: deletedCount={deleted_count}")
-
 
         r_get = request_session_http.get(
             url=f"{api_keys_endpoint}/{key_id}",
