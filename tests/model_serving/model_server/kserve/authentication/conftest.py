@@ -29,7 +29,6 @@ from utilities.infra import (
     create_isvc_view_role,
     wait_for_inference_deployment_replicas,
 )
-from utilities.jira import is_jira_open
 from utilities.logger import RedactedString
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
