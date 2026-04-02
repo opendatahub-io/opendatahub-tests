@@ -241,7 +241,7 @@ def validate_evalhub_post_denied(
     )
     try:
         body = response.json()
-    except Exception:
+    except ValueError:
         body = {}
     body_str = str(body).lower()
     assert any(kw in body_str for kw in ("unauthorized", "forbidden", "auth")), (
@@ -281,7 +281,7 @@ def validate_evalhub_post_no_tenant(
     assert response.status_code == 400, f"Expected 400 Bad Request, got {response.status_code}: {response.text}"
     try:
         body = response.json()
-    except Exception:
+    except ValueError:
         body = {}
     body_str = str(body).lower()
     assert any(kw in body_str for kw in ("tenant", "missing tenant header", "x-tenant")), (
@@ -479,7 +479,7 @@ def validate_evalhub_delete_denied(
     )
     try:
         body = response.json()
-    except Exception:
+    except ValueError:
         body = {}
     body_str = str(body).lower()
     assert any(kw in body_str for kw in ("unauthorized", "forbidden", "auth")), (
@@ -504,7 +504,7 @@ def validate_evalhub_delete_no_tenant(
     assert response.status_code == 400, f"Expected 400 Bad Request, got {response.status_code}: {response.text}"
     try:
         body = response.json()
-    except Exception:
+    except ValueError:
         body = {}
     body_str = str(body).lower()
     assert any(kw in body_str for kw in ("tenant", "missing tenant header", "x-tenant")), (
