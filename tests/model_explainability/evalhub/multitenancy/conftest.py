@@ -1,3 +1,4 @@
+import uuid
 from collections.abc import Generator
 from typing import Any
 
@@ -14,6 +15,8 @@ from ocp_resources.service_account import ServiceAccount
 from timeout_sampler import TimeoutSampler
 
 from tests.model_explainability.evalhub.constants import (
+    EVALHUB_JOB_CONFIG_CLUSTERROLE,
+    EVALHUB_JOBS_WRITER_CLUSTERROLE,
     EVALHUB_MT_CR_NAME,
     EVALHUB_TENANT_LABEL_KEY,
     EVALHUB_VLLM_EMULATOR_PORT,
@@ -99,12 +102,16 @@ def evalhub_mt_ca_bundle_file(
 
 @pytest.fixture(scope="class")
 def tenant_a_namespace(
+    request: pytest.FixtureRequest,
     admin_client: DynamicClient,
 ) -> Generator[Namespace, Any, Any]:
     """Tenant namespace where the test user HAS access."""
+    cls_name = request.cls.__name__.lower() if request.cls else "default"
+    suffix = uuid.uuid4().hex[:6]
+    name = f"test-evalhub-tenant-a-{cls_name}-{suffix}"
     with create_ns(
         admin_client=admin_client,
-        name="test-evalhub-tenant-a",
+        name=name,
         labels={EVALHUB_TENANT_LABEL_KEY: "true"},
     ) as ns:
         yield ns
@@ -112,12 +119,16 @@ def tenant_a_namespace(
 
 @pytest.fixture(scope="class")
 def tenant_b_namespace(
+    request: pytest.FixtureRequest,
     admin_client: DynamicClient,
 ) -> Generator[Namespace, Any, Any]:
     """Tenant namespace where the test user does NOT have access."""
+    cls_name = request.cls.__name__.lower() if request.cls else "default"
+    suffix = uuid.uuid4().hex[:6]
+    name = f"test-evalhub-tenant-b-{cls_name}-{suffix}"
     with create_ns(
         admin_client=admin_client,
-        name="test-evalhub-tenant-b",
+        name=name,
         labels={EVALHUB_TENANT_LABEL_KEY: "true"},
     ) as ns:
         yield ns
@@ -129,13 +140,23 @@ def tenant_b_namespace(
 
 
 def _tenant_rbac_ready(admin_client: DynamicClient, namespace: str) -> bool:
-    """Check if the operator has provisioned job RBAC for the test EvalHub instance."""
+    """Check if the operator has provisioned job RBAC for the test EvalHub instance.
+
+    Matches by roleRef ClusterRole name rather than RoleBinding name substrings,
+    because long namespace names cause normalizeDNS1123LabelValue to truncate
+    the "job-config"/"job-writer" suffix out of the RoleBinding name.
+    """
     rbs = list(RoleBinding.get(client=admin_client, namespace=namespace))
-    rb_names = [rb.name for rb in rbs]
-    # Look for RoleBindings prefixed with the test instance name to avoid
-    # matching RoleBindings from the production EvalHub instance.
-    has_job_config = any(name.startswith(EVALHUB_MT_CR_NAME) and "job-config" in name for name in rb_names)
-    has_job_writer = any(name.startswith(EVALHUB_MT_CR_NAME) and "job-writer" in name for name in rb_names)
+    has_job_config = any(
+        rb.instance.roleRef.name == EVALHUB_JOB_CONFIG_CLUSTERROLE
+        and rb.name.startswith(EVALHUB_MT_CR_NAME)
+        for rb in rbs
+    )
+    has_job_writer = any(
+        rb.instance.roleRef.name == EVALHUB_JOBS_WRITER_CLUSTERROLE
+        and rb.name.startswith(EVALHUB_MT_CR_NAME)
+        for rb in rbs
+    )
     return has_job_config and has_job_writer
 
 
