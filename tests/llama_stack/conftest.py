@@ -288,8 +288,11 @@ def llama_stack_server_config(
         server_config["tlsConfig"] = tls_config
 
     if params.get("llama_stack_storage_size"):
-        storage_size = params.get("llama_stack_storage_size")
-        server_config["storage"] = {"size": storage_size}
+        if IS_DISCONNECTED_CLUSTER:
+            LOGGER.info("Skipping storage_size configuration on disconnected clusters due to known bug RHAIENG-1819")
+        else:
+            storage_size = params.get("llama_stack_storage_size")
+            server_config["storage"] = {"size": storage_size}
 
     return server_config
 
