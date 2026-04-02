@@ -13,7 +13,7 @@ from ocp_resources.role_binding import RoleBinding
 from ocp_resources.route import Route
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
-from timeout_sampler import TimeoutSampler
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_explainability.evalhub.constants import (
     EVALHUB_JOB_CONFIG_CLUSTERROLE,
@@ -178,16 +178,21 @@ def tenant_a_rbac_ready(
     creates jobs-writer + job-config RoleBindings. This fixture
     blocks until those RoleBindings exist.
     """
-    for ready in TimeoutSampler(
-        wait_timeout=120,
-        sleep=5,
-        func=_tenant_rbac_ready,
-        admin_client=admin_client,
-        namespace=tenant_a_namespace.name,
-    ):
-        if ready:
-            LOGGER.info(f"Operator RBAC provisioned in {tenant_a_namespace.name}")
-            return
+    try:
+        for ready in TimeoutSampler(
+            wait_timeout=120,
+            sleep=5,
+            func=_tenant_rbac_ready,
+            admin_client=admin_client,
+            namespace=tenant_a_namespace.name,
+        ):
+            if ready:
+                LOGGER.info(f"Operator RBAC provisioned in {tenant_a_namespace.name}")
+                return
+    except TimeoutExpiredError:
+        msg = f"Operator RBAC provision failed: RoleBindings, ServiceAccount, or service-CA ConfigMap not found in namespace '{tenant_a_namespace.name}' within timeout"
+        LOGGER.error(msg)
+        raise RuntimeError(msg)
 
 
 # ---------------------------------------------------------------------------
