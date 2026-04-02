@@ -399,9 +399,7 @@ def validate_evalhub_job_completed(job_data: dict) -> None:
 
     arc_easy_benches = [b for b in benchmarks if b.get("id") == "arc_easy"]
     assert arc_easy_benches, f"Expected 'arc_easy' benchmark in results, got: {[b.get('id') for b in benchmarks]}"
-    assert arc_easy_benches[0].get("metrics"), (
-        f"Benchmark 'arc_easy' completed with no metrics: {arc_easy_benches[0]}"
-    )
+    assert arc_easy_benches[0].get("metrics"), f"Benchmark 'arc_easy' completed with no metrics: {arc_easy_benches[0]}"
 
 
 def list_evalhub_jobs(
