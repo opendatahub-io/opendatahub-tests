@@ -239,6 +239,14 @@ def validate_evalhub_post_denied(
     assert response.status_code in (400, 403), (
         f"Expected 400 or 403 for cross-tenant POST, got {response.status_code}: {response.text}"
     )
+    try:
+        body = response.json()
+    except Exception:
+        body = {}
+    body_str = str(body).lower()
+    assert any(kw in body_str for kw in ("unauthorized", "forbidden", "auth")), (
+        f"Expected auth-related error in response body for cross-tenant POST, got: {response.text}"
+    )
 
 
 def validate_evalhub_post_no_tenant(
@@ -271,6 +279,14 @@ def validate_evalhub_post_no_tenant(
         timeout=30,
     )
     assert response.status_code == 400, f"Expected 400 Bad Request, got {response.status_code}: {response.text}"
+    try:
+        body = response.json()
+    except Exception:
+        body = {}
+    body_str = str(body).lower()
+    assert any(kw in body_str for kw in ("tenant", "missing tenant header", "x-tenant")), (
+        f"Expected tenant-header-related error in response body for no-tenant POST, got: {response.text}"
+    )
 
 
 # ---------------------------------------------------------------------------
