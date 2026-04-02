@@ -7,6 +7,7 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.route import Route
@@ -145,6 +146,9 @@ def _tenant_rbac_ready(admin_client: DynamicClient, namespace: str) -> bool:
     Matches by roleRef ClusterRole name rather than RoleBinding name substrings,
     because long namespace names cause normalizeDNS1123LabelValue to truncate
     the "job-config"/"job-writer" suffix out of the RoleBinding name.
+
+    Also waits for the operator-created ServiceAccount (name contains "job") and
+    service CA ConfigMap (name contains "service-ca") to be present.
     """
     rbs = list(RoleBinding.get(client=admin_client, namespace=namespace))
     has_job_config = any(
@@ -157,7 +161,17 @@ def _tenant_rbac_ready(admin_client: DynamicClient, namespace: str) -> bool:
         and rb.name.startswith(EVALHUB_MT_CR_NAME)
         for rb in rbs
     )
-    return has_job_config and has_job_writer
+    sas = list(ServiceAccount.get(client=admin_client, namespace=namespace))
+    has_job_sa = any(
+        sa.name.startswith(EVALHUB_MT_CR_NAME) and "job" in sa.name
+        for sa in sas
+    )
+    cms = list(ConfigMap.get(client=admin_client, namespace=namespace))
+    has_service_ca_cm = any(
+        cm.name.startswith(EVALHUB_MT_CR_NAME) and "service-ca" in cm.name
+        for cm in cms
+    )
+    return has_job_config and has_job_writer and has_job_sa and has_service_ca_cm
 
 
 @pytest.fixture(scope="class")
