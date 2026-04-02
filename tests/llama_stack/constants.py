@@ -30,6 +30,9 @@ class ModelInfo(NamedTuple):
 
 IS_DISCONNECTED_CLUSTER: bool = os.getenv("IS_DISCONNECTED_CLUSTER", "false").lower() == "true"
 HTTPS_PROXY = os.getenv("SQUID_HTTPS_PROXY", "")
+
+# LLS_CLIENT_VERIFY_SSL is false by default to be able to test with Self-Signed certificates
+LLS_CLIENT_VERIFY_SSL = os.getenv("LLS_CLIENT_VERIFY_SSL", "false").lower() == "true"
 LLS_CORE_POD_FILTER: str = "app=llama-stack"
 LLS_OPENSHIFT_MINIMAL_VERSION: VersionInfo = semver.VersionInfo.parse("4.17.0")
 

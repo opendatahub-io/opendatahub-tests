@@ -1,4 +1,3 @@
-import os
 from collections.abc import Callable, Generator
 from typing import Any
 
@@ -22,6 +21,7 @@ from tests.llama_stack.constants import (
     HTTPS_PROXY,
     IS_DISCONNECTED_CLUSTER,
     LLAMA_STACK_DISTRIBUTION_SECRET_DATA,
+    LLS_CLIENT_VERIFY_SSL,
     LLS_CORE_EMBEDDING_MODEL,
     LLS_CORE_EMBEDDING_PROVIDER_MODEL_ID,
     LLS_CORE_INFERENCE_MODEL,
@@ -248,7 +248,7 @@ def llama_stack_server_config(
     env_vars.extend(env_vars_vector_io)
 
     if IS_DISCONNECTED_CLUSTER and HTTPS_PROXY:
-        LOGGER.info(f"Setting proxy and tlsconfig configuration (https_proxy:{HTTPS_PROXY}")
+        LOGGER.info(f"Setting proxy and tlsconfig configuration (https_proxy:{HTTPS_PROXY})")
         env_vars.append({"name": "HTTPS_PROXY", "value": HTTPS_PROXY})
 
         # The operator sets SSL_CERT_FILE automatically when tlsConfig.caBundle is
@@ -641,9 +641,7 @@ def llama_stack_test_route(
 def _create_llama_stack_client(
     route: Route,
 ) -> Generator[LlamaStackClient, Any, Any]:
-    # LLS_CLIENT_VERIFY_SSL is false by default to be able to test with Self-Signed certificates
-    verifySSL = os.getenv("LLS_CLIENT_VERIFY_SSL", "false").lower() == "true"
-    http_client = httpx.Client(verify=verifySSL, timeout=300)
+    http_client = httpx.Client(verify=LLS_CLIENT_VERIFY_SSL, timeout=300)
     try:
         client = LlamaStackClient(
             base_url=f"https://{route.host}",
