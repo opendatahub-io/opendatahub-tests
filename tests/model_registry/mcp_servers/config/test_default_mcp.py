@@ -193,7 +193,7 @@ class TestDefaultMCPCatalogSourceValidations:
         response = execute_get_command(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
             headers=model_registry_rest_headers,
-            params={"includeTools": "true", "pageSize": "100"},
+            params={"includeTools": "true", "toolLimit": "100"},
         )
         default_server_names = {server["name"] for server in default_mcp_servers.get("items", [])}
         default_servers = [server for server in response.get("items", []) if server["name"] in default_server_names]
