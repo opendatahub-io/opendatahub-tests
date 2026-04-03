@@ -47,7 +47,7 @@ def get_jira_issue_fields(jira_id: str) -> Any:
     return get_jira_connection().issue(id=jira_id, fields="status, fixVersions").fields
 
 
-def is_jira_open(jira_id: str, admin_client: DynamicClient) -> bool:
+def is_jira_open(jira_id: str, admin_client: DynamicClient) -> bool:  # skip-unused-code
     """
     Check if Jira issue is open.
 
