@@ -204,7 +204,7 @@ def tenant_a_rbac_ready(
 
 # Mirrors the user RBAC template from resources/evalhub-user-rbac-template.yaml.
 # evaluations/collections/providers are virtual SAR resources — not real CRDs.
-EVALHUB_USER_ROLE_RULES: list[dict] = [
+EVALHUB_USER_ROLE_RULES: list[dict[str, list[str]]] = [
     {
         "apiGroups": ["trustyai.opendatahub.io"],
         "resources": ["evaluations", "collections", "providers"],
