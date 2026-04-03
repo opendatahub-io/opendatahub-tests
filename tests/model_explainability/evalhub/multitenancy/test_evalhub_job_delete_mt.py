@@ -54,14 +54,14 @@ class TestEvalHubJobDeleteMT:
         )
         job_id = data["resource"]["id"]
 
-        status = delete_evalhub_job(
+        response = delete_evalhub_job(
             host=evalhub_mt_route.host,
             token=tenant_a_token,
             ca_bundle_file=evalhub_mt_ca_bundle_file,
             tenant=tenant_a_namespace.name,
             job_id=job_id,
         )
-        assert status in (200, 204), f"Expected 200 or 204 for job deletion, got {status}"
+        assert response.status_code in (200, 204), f"Expected 200 or 204 for job deletion, got {response.status_code}"
 
     def test_job_delete_cross_tenant_denied(
         self,
