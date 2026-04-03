@@ -8,7 +8,7 @@ from ocp_resources.cron_job import CronJob
 from ocp_resources.network_policy import NetworkPolicy
 from pytest_testconfig import config as py_config
 
-from tests.model_serving.maas_billing.maas_subscription.utils import search_active_api_keys
+from tests.model_serving.maas_billing.maas_api_key.utils import search_active_api_keys
 from tests.model_serving.maas_billing.utils import build_maas_headers
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -18,6 +18,8 @@ LOGGER = structlog.get_logger(name=__name__)
     "maas_subscription_controller_enabled_latest",
     "maas_gateway_api",
     "maas_api_gateway_reachable",
+    "maas_unprivileged_model_namespace",
+    "minimal_subscription_for_free_user",
 )
 class TestEphemeralKeyCleanup:
     """Tests for ephemeral API key cleanup (CronJob + internal endpoint)."""
@@ -115,7 +117,7 @@ class TestEphemeralKeyCleanup:
         LOGGER.info(f"[ephemeral] Ephemeral key {key_id} correctly hidden from default search")
 
     @pytest.mark.tier1
-    @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
+    @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "admin"}], indirect=True)
     def test_trigger_cleanup_preserves_active_keys(
         self,
         request_session_http: requests.Session,
@@ -135,13 +137,14 @@ class TestEphemeralKeyCleanup:
         with portforward.forward(
             pod_or_service=maas_api_pod_name,
             namespace=applications_namespace,
-            from_port=8080,
-            to_port=8080,
+            from_port=28443,
+            to_port=8443,
             waiting=20,
         ):
             cleanup_response = requests.post(
-                url="http://localhost:8080/internal/v1/api-keys/cleanup",
+                url="https://localhost:28443/internal/v1/api-keys/cleanup",
                 timeout=30,
+                verify=False,
             )
 
         assert cleanup_response.status_code == 200, (
