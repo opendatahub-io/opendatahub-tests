@@ -5,7 +5,6 @@ import requests
 import structlog
 
 from tests.model_serving.maas_billing.maas_subscription.utils import assert_subscription_info_schema
-from tests.model_serving.maas_billing.utils import build_maas_headers
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -28,14 +27,13 @@ class TestListSubscriptions:
         self,
         request_session_http: requests.Session,
         base_url: str,
-        ocp_token_for_actor: str,
+        ocp_headers_for_actor: dict[str, str],
         maas_subscription_tinyllama_free,
     ) -> None:
         """Verify authenticated user gets their accessible subscriptions."""
-        url = f"{base_url}/v1/subscriptions"
-        headers = build_maas_headers(token=ocp_token_for_actor)
-
-        response = request_session_http.get(url=url, headers=headers, timeout=30)
+        response = request_session_http.get(
+            url=f"{base_url}/v1/subscriptions", headers=ocp_headers_for_actor, timeout=30
+        )
 
         assert response.status_code == 200, f"Expected 200, got {response.status_code}: {(response.text or '')[:200]}"
 
@@ -61,9 +59,7 @@ class TestListSubscriptions:
         base_url: str,
     ) -> None:
         """Verify request without auth header returns 401."""
-        url = f"{base_url}/v1/subscriptions"
-
-        response = request_session_http.get(url=url, timeout=30)
+        response = request_session_http.get(url=f"{base_url}/v1/subscriptions", timeout=30)
 
         assert response.status_code == 401, f"Expected 401, got {response.status_code}: {(response.text or '')[:200]}"
         LOGGER.info(f"[subscriptions] GET /v1/subscriptions (no auth) -> {response.status_code}")
@@ -74,14 +70,13 @@ class TestListSubscriptions:
         self,
         request_session_http: requests.Session,
         base_url: str,
-        ocp_token_for_actor: str,
+        ocp_headers_for_actor: dict[str, str],
         maas_subscription_tinyllama_free,
     ) -> None:
         """Verify subscription response includes model_refs with rate limit info."""
-        url = f"{base_url}/v1/subscriptions"
-        headers = build_maas_headers(token=ocp_token_for_actor)
-
-        response = request_session_http.get(url=url, headers=headers, timeout=30)
+        response = request_session_http.get(
+            url=f"{base_url}/v1/subscriptions", headers=ocp_headers_for_actor, timeout=30
+        )
 
         assert response.status_code == 200, f"Expected 200, got {response.status_code}: {(response.text or '')[:200]}"
 
