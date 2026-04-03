@@ -3,6 +3,8 @@ from __future__ import annotations
 import pytest
 import requests
 import structlog
+from ocp_resources.maas_model_ref import MaaSModelRef
+from ocp_resources.maas_subscription import MaaSSubscription
 
 from tests.model_serving.maas_billing.maas_subscription.utils import assert_subscription_info_schema
 
@@ -31,9 +33,9 @@ class TestListSubscriptionsForModel:
         request_session_http: requests.Session,
         base_url: str,
         ocp_headers_for_actor: dict[str, str],
-        maas_model_tinyllama_free,
-        maas_subscription_tinyllama_free,
-        maas_subscription_tinyllama_premium,
+        maas_model_tinyllama_free: MaaSModelRef,
+        maas_subscription_tinyllama_free: MaaSSubscription,
+        maas_subscription_tinyllama_premium: MaaSSubscription,
     ) -> None:
         """Verify endpoint returns only subscriptions referencing the requested model."""
         model_name = maas_model_tinyllama_free.name
@@ -95,7 +97,7 @@ class TestListSubscriptionsForModel:
         self,
         request_session_http: requests.Session,
         base_url: str,
-        maas_model_tinyllama_free,
+        maas_model_tinyllama_free: MaaSModelRef,
     ) -> None:
         """Verify request without auth header returns 401."""
         model_name = maas_model_tinyllama_free.name

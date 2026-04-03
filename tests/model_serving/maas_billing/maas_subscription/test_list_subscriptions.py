@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 import requests
 import structlog
+from ocp_resources.maas_subscription import MaaSSubscription
 
 from tests.model_serving.maas_billing.maas_subscription.utils import assert_subscription_info_schema
 
@@ -28,7 +29,7 @@ class TestListSubscriptions:
         request_session_http: requests.Session,
         base_url: str,
         ocp_headers_for_actor: dict[str, str],
-        maas_subscription_tinyllama_free,
+        maas_subscription_tinyllama_free: MaaSSubscription,
     ) -> None:
         """Verify authenticated user gets their accessible subscriptions."""
         response = request_session_http.get(
@@ -71,7 +72,7 @@ class TestListSubscriptions:
         request_session_http: requests.Session,
         base_url: str,
         ocp_headers_for_actor: dict[str, str],
-        maas_subscription_tinyllama_free,
+        maas_subscription_tinyllama_free: MaaSSubscription,
     ) -> None:
         """Verify subscription response includes model_refs with rate limit info."""
         response = request_session_http.get(
@@ -81,6 +82,8 @@ class TestListSubscriptions:
         assert response.status_code == 200, f"Expected 200, got {response.status_code}: {(response.text or '')[:200]}"
 
         subscriptions = response.json()
+        assert isinstance(subscriptions, list), f"Expected array response, got {type(subscriptions).__name__}"
+
         target_subscription = next(
             (
                 subscription
