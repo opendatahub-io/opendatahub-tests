@@ -3,7 +3,7 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.route import Route
 
-from tests.model_registry.mcp_servers.constants import MCP_CATALOG_API_PATH
+from tests.model_registry.constants import MCP_CATALOG_API_PATH
 from tests.model_registry.utils import execute_get_command, get_rest_headers
 
 LOGGER = structlog.get_logger(name=__name__)

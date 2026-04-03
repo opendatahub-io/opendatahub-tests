@@ -3,8 +3,8 @@ from typing import Self
 import pytest
 import structlog
 
-from tests.model_registry.mcp_servers.config.constants import DEFAULT_MCP_LABEL
-from tests.model_registry.mcp_servers.constants import (
+from tests.model_registry.mcp_servers.config.constants import (
+    DEFAULT_MCP_LABEL,
     MCP_CATALOG_SOURCE2_NAME,
     MCP_CATALOG_SOURCE_NAME,
 )

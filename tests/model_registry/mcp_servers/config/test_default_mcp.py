@@ -4,6 +4,7 @@ import pytest
 import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.config_map import ConfigMap
 
 from tests.model_registry.constants import DEFAULT_MODEL_CATALOG_CM
@@ -125,6 +126,38 @@ class TestDefaultMCPCatalogSourceValidations:
                     )
         assert not errors, "Tool validation failed:\n" + "\n".join(errors)
 
+    def test_mcp_server_tool_limit(
+        self: Self,
+        mcp_catalog_rest_urls: list[str],
+        model_registry_rest_headers: dict[str, str],
+    ):
+        """Verify toolLimit caps returned tools array (TC-API-021)."""
+        tool_limit = 1
+        response = execute_get_command(
+            url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
+            headers=model_registry_rest_headers,
+            params={"includeTools": "true", "toolLimit": str(tool_limit)},
+        )
+        for server in response.get("items", []):
+            name = server["name"]
+            assert len(server["tools"]) <= tool_limit, (
+                f"Server '{name}' returned {len(server['tools'])} tools, expected at most {tool_limit}"
+            )
+
+    @pytest.mark.tier3
+    def test_tool_limit_exceeding_maximum(
+        self: Self,
+        mcp_catalog_rest_urls: list[str],
+        model_registry_rest_headers: dict[str, str],
+    ):
+        """Verify toolLimit exceeding maximum (100) is rejected (TC-API-023)."""
+        with pytest.raises(ResourceNotFoundError):
+            execute_get_command(
+                url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
+                headers=model_registry_rest_headers,
+                params={"includeTools": "true", "toolLimit": "101"},
+            )
+
     def test_get_default_mcp_server_tool_by_name(
         self: Self,
         mcp_catalog_rest_urls: list[str],
@@ -134,21 +167,44 @@ class TestDefaultMCPCatalogSourceValidations:
     ):
         """Verify that fetching a specific tool by name returns the same data as the tools list."""
         server_id = random_default_mcp_server["id"]
-        # TODO: RHOAIENG-56579 - update tool_name once the API supports direct tool name lookup
-        tool_name = (
-            f"{random_default_mcp_server['name']}@{random_default_mcp_server['version']}"
-            f":{random_default_mcp_server_tool['name']}"
-        )
+        tool_name = random_default_mcp_server_tool["name"]
         response = execute_get_command(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers/{server_id}/tools/{tool_name}",
             headers=model_registry_rest_headers,
         )
+
         LOGGER.info(f"Fetched tool '{tool_name}' for MCP server: {random_default_mcp_server['name']}")
         assert response == random_default_mcp_server_tool, (
             f"Tool fetched by name does not match tools list response.\n"
             f"Expected: {random_default_mcp_server_tool}\n"
             f"Actual: {response}"
         )
+
+    def test_default_mcp_server_tools_loaded(
+        self: Self,
+        mcp_catalog_rest_urls: list[str],
+        model_registry_rest_headers: dict[str, str],
+        default_mcp_servers: dict,
+    ):
+        """Verify that default MCP server tools are correctly loaded when includeTools=true."""
+        response = execute_get_command(
+            url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
+            headers=model_registry_rest_headers,
+            params={"includeTools": "true", "toolLimit": "100"},
+        )
+        default_server_names = {server["name"] for server in default_mcp_servers.get("items", [])}
+        default_servers = [server for server in response.get("items", []) if server["name"] in default_server_names]
+        errors = []
+        for server in default_servers:
+            name = server["name"]
+            tool_count = server.get("toolCount", 0)
+            tools = server.get("tools", [])
+            if not tools:
+                errors.append(f"Server '{name}' has no tools with includeTools=true")
+                continue
+            if len(tools) != tool_count:
+                errors.append(f"Server '{name}': toolCount={tool_count} but got {len(tools)} tools")
+        assert not errors, "Tool loading validation failed:\n" + "\n".join(errors)
 
 
 class TestDefaultMCPDisable:

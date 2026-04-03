@@ -5,14 +5,13 @@ import requests
 import structlog
 from ocp_resources.route import Route
 
-LOGGER = structlog.get_logger(name=__name__)
+from tests.model_registry.constants import MCP_CATALOG_API_PATH
 
-MCP_CATALOG_API_PATH = "/api/mcp_catalog/v1alpha1/"
+LOGGER = structlog.get_logger(name=__name__)
 MODEL_CATALOG_API_PATH = "/api/model_catalog/v1alpha1/"
 
 
 @pytest.mark.tier1
-@pytest.mark.usefixtures("mcp_servers_configmap_patch")
 class TestCatalogSecurity:
     """Tests for catalog endpoint security (TC-SEC-001)."""
 
