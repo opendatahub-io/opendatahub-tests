@@ -136,6 +136,12 @@ def maas_subscription_tinyllama_premium(
 
 
 @pytest.fixture(scope="class")
+def models_url(base_url: str) -> str:
+    """GET /v1/models endpoint URL."""
+    return f"{base_url}/v1/models"
+
+
+@pytest.fixture(scope="class")
 def model_url_tinyllama_free(
     maas_scheme: str,
     maas_host: str,
