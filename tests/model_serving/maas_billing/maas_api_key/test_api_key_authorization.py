@@ -4,20 +4,19 @@ import pytest
 import requests
 import structlog
 
-from tests.model_serving.maas_billing.maas_subscription.utils import (
-    get_api_key,
-    list_api_keys,
-    revoke_api_key,
-)
+from tests.model_serving.maas_billing.maas_api_key.utils import get_api_key, list_api_keys
+from tests.model_serving.maas_billing.utils import revoke_api_key
 
 LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
 @pytest.mark.usefixtures(
+    "maas_unprivileged_model_namespace",
     "maas_subscription_controller_enabled_latest",
     "maas_gateway_api",
     "maas_api_gateway_reachable",
+    "minimal_subscription_for_free_user",
 )
 class TestAPIKeyAuthorization:
     """Tests for MaaS API key admin and non-admin access control."""

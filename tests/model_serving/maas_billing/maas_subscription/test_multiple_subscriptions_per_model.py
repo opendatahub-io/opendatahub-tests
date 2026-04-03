@@ -32,7 +32,7 @@ class TestMultipleSubscriptionsPerModel:
     Validates behavior when multiple subscriptions exist for the same model.
     """
 
-    @pytest.mark.smoke
+    @pytest.mark.tier1
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
     def test_user_in_one_of_two_subscriptions_can_access_model(
         self,
@@ -59,7 +59,7 @@ class TestMultipleSubscriptionsPerModel:
             f"Expected 200 after adding second subscription, got {response.status_code}: {(response.text or '')[:200]}"
         )
 
-    @pytest.mark.smoke
+    @pytest.mark.tier1
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
     def test_high_priority_subscription_allows_access_when_explicitly_selected(
         self,
@@ -85,7 +85,7 @@ class TestMultipleSubscriptionsPerModel:
             f"got {response.status_code}: {(response.text or '')[:200]}"
         )
 
-    @pytest.mark.smoke
+    @pytest.mark.tier1
     def test_service_account_cannot_use_subscription_it_does_not_belong_to(
         self,
         request_session_http: requests.Session,

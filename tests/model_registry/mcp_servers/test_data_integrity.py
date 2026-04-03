@@ -1,9 +1,10 @@
-from typing import Any, Self
+from typing import Self
 
 import pytest
 import structlog
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 
+from tests.model_registry.mcp_servers.config.utils import exclude_default_mcp_servers
 from tests.model_registry.mcp_servers.constants import (
     EXPECTED_MCP_SERVER_NAMES,
     EXPECTED_MCP_SERVER_TIMESTAMPS,
@@ -19,12 +20,12 @@ LOGGER = structlog.get_logger(name=__name__)
 class TestMCPServerLoading:
     """Tests for loading MCP servers from YAML into the catalog (TC-LOAD-001)."""
 
-    def test_mcp_servers_loaded(
+    def test_mcp_servers_updated(
         self: Self,
-        mcp_servers_response: dict[str, Any],
+        custom_mcp_servers: list[dict],
     ):
         """Verify MCP servers loaded with correct timestamps and tools excluded by default (TC-LOAD-001, TC-API-020)."""
-        servers_by_name = {server["name"]: server for server in mcp_servers_response["items"]}
+        servers_by_name = {server["name"]: server for server in custom_mcp_servers}
         assert set(servers_by_name) == EXPECTED_MCP_SERVER_NAMES
         for name, server in servers_by_name.items():
             expected = EXPECTED_MCP_SERVER_TIMESTAMPS[name]
@@ -71,6 +72,7 @@ class TestMCPServerLoading:
         self: Self,
         mcp_catalog_rest_urls: list[str],
         model_registry_rest_headers: dict[str, str],
+        default_mcp_servers: dict,
     ):
         """Verify that MCP server tools are correctly loaded when includeTools=true."""
         response = execute_get_command(
@@ -78,7 +80,8 @@ class TestMCPServerLoading:
             headers=model_registry_rest_headers,
             params={"includeTools": "true"},
         )
-        for server in response.get("items", []):
+        custom_servers = exclude_default_mcp_servers(response=response, default_mcp_servers=default_mcp_servers)
+        for server in custom_servers:
             name = server["name"]
             expected_tool_names = EXPECTED_MCP_SERVER_TOOLS[name]
             assert server["toolCount"] == len(expected_tool_names)
