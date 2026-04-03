@@ -22,6 +22,7 @@ LOGGER = structlog.get_logger(name=__name__)
     "maas_model_tinyllama_premium",
     "maas_auth_policy_tinyllama_premium",
     "maas_subscription_tinyllama_premium",
+    "minimal_subscription_for_free_user",
 )
 class TestMultipleAuthPoliciesPerModel:
     @pytest.mark.tier1

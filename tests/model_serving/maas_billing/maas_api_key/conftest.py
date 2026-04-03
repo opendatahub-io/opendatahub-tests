@@ -7,7 +7,6 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.cron_job import CronJob
 from ocp_resources.deployment import Deployment
-from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.network_policy import NetworkPolicy
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
@@ -15,7 +14,6 @@ from pytest_testconfig import config as py_config
 
 from tests.model_serving.maas_billing.maas_api_key.utils import resolve_api_key_username
 from tests.model_serving.maas_billing.maas_subscription.utils import (
-    create_maas_subscription,
     wait_for_auth_ready,
 )
 from tests.model_serving.maas_billing.utils import (
@@ -224,49 +222,6 @@ def short_expiration_api_key_id(
         key_name_prefix="e2e-exp-short",
         expires_in="1h",
     )
-
-
-@pytest.fixture(scope="class")
-def minimal_subscription_for_free_user(
-    admin_client: DynamicClient,
-    maas_unprivileged_model_namespace,
-    maas_subscription_namespace,
-) -> Generator[Any, Any, Any]:
-    """Create a minimal MaaSModelRef + MaaSSubscription for system:authenticated.
-
-    Does NOT wait for LLMInferenceService to be Ready — skips the 3-4 min model loading.
-    Used by tests that only need a subscription to exist for key creation without performing
-    model inference. Covers both free users and admin tokens.
-    """
-    model_ns = maas_unprivileged_model_namespace.name
-    model_name = f"e2e-authz-model-{generate_random_name()}"
-    sub_name = f"e2e-authz-free-sub-{generate_random_name()}"
-
-    with (
-        MaaSModelRef(
-            client=admin_client,
-            name=model_name,
-            namespace=model_ns,
-            model_ref={"name": model_name, "namespace": model_ns, "kind": "LLMInferenceService"},
-            teardown=True,
-            wait_for_resource=True,
-        ) as model_ref,
-        create_maas_subscription(
-            admin_client=admin_client,
-            subscription_namespace=maas_subscription_namespace.name,
-            subscription_name=sub_name,
-            owner_group_name="system:authenticated",
-            model_name=model_ref.name,
-            model_namespace=model_ref.namespace,
-            tokens_per_minute=1000,
-            window="1m",
-            priority=0,
-            teardown=True,
-            wait_for_resource=True,
-        ) as subscription,
-    ):
-        subscription.wait_for_condition(condition="Ready", status="True", timeout=300)
-        yield subscription
 
 
 @pytest.fixture()

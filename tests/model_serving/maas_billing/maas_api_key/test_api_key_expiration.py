@@ -10,7 +10,7 @@ from utilities.general import generate_random_name
 
 LOGGER = structlog.get_logger(name=__name__)
 
-MAAS_API_KEY_MAX_EXPIRATION_DAYS = 30
+MAAS_API_KEY_MAX_EXPIRATION_DAYS = 90
 
 
 @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "admin"}], indirect=True)

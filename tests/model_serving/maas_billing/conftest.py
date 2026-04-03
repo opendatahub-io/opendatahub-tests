@@ -31,6 +31,7 @@ from timeout_sampler import TimeoutSampler
 from tests.model_serving.maas_billing.maas_subscription.utils import (
     MAAS_DB_NAMESPACE,
     MAAS_SUBSCRIPTION_NAMESPACE,
+    create_maas_subscription,
     get_maas_postgres_resources,
     patch_llmisvc_with_maas_router_and_tiers,
     wait_for_postgres_connection_log,
@@ -1190,3 +1191,41 @@ def maas_subscription_tinyllama_free(
     ) as maas_subscription_free:
         maas_subscription_free.wait_for_condition(condition="Ready", status="True", timeout=300)
         yield maas_subscription_free
+
+
+@pytest.fixture(scope="class")
+def minimal_subscription_for_free_user(
+    admin_client: DynamicClient,
+    maas_unprivileged_model_namespace,
+    maas_subscription_namespace,
+) -> Generator[Any, Any, Any]:
+    """Create a minimal MaaSModelRef + MaaSSubscription for system:authenticated."""
+    model_ns = maas_unprivileged_model_namespace.name
+    model_name = f"e2e-authz-model-{generate_random_name()}"
+    sub_name = f"e2e-authz-free-sub-{generate_random_name()}"
+
+    with (
+        MaaSModelRef(
+            client=admin_client,
+            name=model_name,
+            namespace=model_ns,
+            model_ref={"name": model_name, "namespace": model_ns, "kind": "LLMInferenceService"},
+            teardown=True,
+            wait_for_resource=True,
+        ) as model_ref,
+        create_maas_subscription(
+            admin_client=admin_client,
+            subscription_namespace=maas_subscription_namespace.name,
+            subscription_name=sub_name,
+            owner_group_name="system:authenticated",
+            model_name=model_ref.name,
+            model_namespace=model_ref.namespace,
+            tokens_per_minute=1000,
+            window="1m",
+            priority=0,
+            teardown=True,
+            wait_for_resource=True,
+        ) as subscription,
+    ):
+        subscription.wait_for_condition(condition="Ready", status="True", timeout=300)
+        yield subscription
