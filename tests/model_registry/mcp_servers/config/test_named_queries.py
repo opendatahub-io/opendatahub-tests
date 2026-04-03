@@ -3,8 +3,8 @@ from typing import Self
 import pytest
 import structlog
 
+from tests.model_registry.mcp_servers.config.constants import CALCULATOR_PROVIDER, CALCULATOR_SERVER_NAME
 from tests.model_registry.mcp_servers.config.utils import exclude_default_mcp_servers
-from tests.model_registry.mcp_servers.constants import CALCULATOR_PROVIDER, CALCULATOR_SERVER_NAME
 from tests.model_registry.utils import execute_get_command
 
 LOGGER = structlog.get_logger(name=__name__)
