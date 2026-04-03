@@ -167,15 +167,12 @@ class TestDefaultMCPCatalogSourceValidations:
     ):
         """Verify that fetching a specific tool by name returns the same data as the tools list."""
         server_id = random_default_mcp_server["id"]
-        # TODO: RHOAIENG-56579 - update tool_name once the API supports direct tool name lookup
-        tool_name = (
-            f"{random_default_mcp_server['name']}@{random_default_mcp_server['version']}"
-            f":{random_default_mcp_server_tool['name']}"
-        )
+        tool_name = random_default_mcp_server_tool["name"]
         response = execute_get_command(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers/{server_id}/tools/{tool_name}",
             headers=model_registry_rest_headers,
         )
+
         LOGGER.info(f"Fetched tool '{tool_name}' for MCP server: {random_default_mcp_server['name']}")
         assert response == random_default_mcp_server_tool, (
             f"Tool fetched by name does not match tools list response.\n"
