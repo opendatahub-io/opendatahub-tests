@@ -55,6 +55,7 @@ def _get_console_formatter(thread_name: str | None = None) -> structlog.stdlib.P
     return structlog.stdlib.ProcessorFormatter(
         processors=[
             _prepend_thread_name(thread_name) if thread_name else _noop,
+            _strip_basic_metadata,
             structlog.stdlib.ProcessorFormatter.remove_processors_meta,
             structlog.dev.ConsoleRenderer(),
         ],
@@ -67,11 +68,24 @@ def _get_json_formatter(thread_name: str | None = None) -> structlog.stdlib.Proc
     return structlog.stdlib.ProcessorFormatter(
         processors=[
             _prepend_thread_name(thread_name) if thread_name else _noop,
+            _strip_basic_metadata,
             structlog.stdlib.ProcessorFormatter.remove_processors_meta,
             structlog.processors.JSONRenderer(),
         ],
         foreign_pre_chain=_SHARED_PROCESSORS,
     )
+
+
+def _strip_basic_metadata(
+    logger: structlog.types.WrappedLogger,
+    method_name: str,
+    event_dict: structlog.types.EventDict,
+) -> structlog.types.EventDict:
+    if event_dict.get("logger") == "basic":
+        event_dict.pop("logger", None)
+        event_dict.pop("timestamp", None)
+        event_dict.pop("level", None)
+    return event_dict
 
 
 def _noop(

@@ -1,5 +1,3 @@
-from typing import Any
-
 import pytest
 import structlog
 
@@ -14,12 +12,12 @@ from tests.model_serving.model_server.kserve.multi_node.utils import (
     verify_ray_status,
 )
 from tests.model_serving.model_server.utils import verify_inference_response
-from utilities.constants import Labels, Protocols, StorageClassName
+from utilities.constants import Protocols
 from utilities.manifests.vllm import VLLM_INFERENCE_CONFIG
 
 pytestmark = [
     pytest.mark.rawdeployment,
-    pytest.mark.usefixtures("skip_if_no_gpu_nodes", "skip_if_no_nfs_storage_class"),
+    pytest.mark.usefixtures("skip_if_no_gpu_nodes"),
     pytest.mark.model_server_gpu,
     pytest.mark.multinode,
     pytest.mark.gpu,
@@ -31,16 +29,10 @@ MAX_NUM_BATCHED_TOKENS_ARG: str = "--max-num-batched-tokens=256"
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, models_bucket_downloaded_model_data, model_pvc, multi_node_inference_service",
+    "unprivileged_model_namespace, multi_node_inference_service",
     [
         pytest.param(
             {"name": "gpu-multi-node"},
-            {"model-dir": "granite-8b-code-base"},
-            {
-                "access-modes": "ReadWriteMany",
-                "storage-class-name": StorageClassName.NFS,
-                "pvc-size": "40Gi",
-            },
             {"name": "multi-vllm"},
         )
     ],
@@ -50,7 +42,7 @@ class TestMultiNode:
     """Validate multi-node GPU inference with Ray-based vLLM serving on KServe.
 
     Steps:
-        1. Deploy a Granite-8B model on a multi-node vLLM inference service backed by PVC storage.
+        1. Deploy a Granite-8B model on a multi-node vLLM inference service backed by OCI model image.
         2. Verify Ray cluster health and NVIDIA GPU status across head and worker pods.
         3. Validate default runtime worker spec (tensorParallelSize=1, pipelineParallelSize=2).
         4. Confirm pods are distributed across GPU nodes and TLS certificates are provisioned.
@@ -200,22 +192,19 @@ class TestMultiNode:
         indirect=True,
     )
     def test_multi_node_tensor_parallel_size_propagation(self, unprivileged_client, patched_multi_node_spec):
-        """Test multi node tensor parallel size (number of GPUs per pod) propagation to pod config"""
-        isvc_parallel_size = str(patched_multi_node_spec.instance.spec.predictor.workerSpec.tensorParallelSize)
+        """Test multi node tensor parallel size propagation to pod count"""
+        worker_spec = patched_multi_node_spec.instance.spec.predictor.workerSpec
+        expected_pod_count = worker_spec.tensorParallelSize * worker_spec.pipelineParallelSize
 
-        failed_pods: list[dict[str, Any]] = []
+        pods = get_pods_by_isvc_generation(client=unprivileged_client, isvc=patched_multi_node_spec)
 
-        for pod in get_pods_by_isvc_generation(client=unprivileged_client, isvc=patched_multi_node_spec):
-            pod_resources = pod.instance.spec.containers[0].resources
-            if not (
-                isvc_parallel_size
-                == pod_resources.limits[Labels.Nvidia.NVIDIA_COM_GPU]
-                == pod_resources.requests[Labels.Nvidia.NVIDIA_COM_GPU]
-            ):
-                failed_pods.append({pod.name: pod_resources})
-
-        if failed_pods:
-            pytest.fail(f"Failed pods resources : {failed_pods}, expected tesnor parallel size {isvc_parallel_size}")
+        if len(pods) != expected_pod_count:
+            pytest.fail(
+                f"Expected {expected_pod_count} pods "
+                f"(tensorParallelSize={worker_spec.tensorParallelSize} "
+                f"* pipelineParallelSize={worker_spec.pipelineParallelSize}), "
+                f"but found {len(pods)} pods"
+            )
 
     @pytest.mark.parametrize(
         "patched_multi_node_spec",

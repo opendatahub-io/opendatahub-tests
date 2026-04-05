@@ -33,7 +33,10 @@ class TestLLMISVCAuth:
 
         for entry in [entry_a, entry_b]:
             status, body = send_chat_completions(
-                llmisvc=entry.service, prompt=prompt, token=entry.token, insecure=False
+                llmisvc=entry.service,
+                prompt=prompt,
+                token=entry.token,
+                insecure=False,
             )
             assert status == 200, f"Authorized request failed with {status}: {body}"
             completion = parse_completion_text(response_body=body)

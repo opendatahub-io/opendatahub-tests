@@ -1,5 +1,8 @@
 import base64
+import secrets
+import string
 from collections.abc import Generator
+from contextlib import ExitStack
 from typing import Any
 
 import pytest
@@ -12,15 +15,28 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.infrastructure import Infrastructure
 from ocp_resources.llm_inference_service import LLMInferenceService
+from ocp_resources.maas_auth_policy import MaaSAuthPolicy
+from ocp_resources.maas_model_ref import MaaSModelRef
+from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.namespace import Namespace
 from ocp_resources.oauth import OAuth
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
+from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from pytest import FixtureRequest
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutSampler
 
+from tests.model_serving.maas_billing.maas_subscription.utils import (
+    MAAS_DB_NAMESPACE,
+    MAAS_SUBSCRIPTION_NAMESPACE,
+    create_maas_subscription,
+    get_maas_postgres_resources,
+    patch_llmisvc_with_maas_router_and_tiers,
+    wait_for_postgres_connection_log,
+    wait_for_postgres_deployment_ready,
+)
 from tests.model_serving.maas_billing.utils import (
     build_maas_headers,
     create_maas_group,
@@ -828,7 +844,10 @@ def maas_gateway_api(
     if gw.exists:
         LOGGER.info(f"Reusing existing gateway {MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_NAME}")
         gw.wait_for_condition(condition="Programmed", status="True", timeout=300)
-        yield
+        with ResourceEditor(
+            patches={gw: {"metadata": {"annotations": {"security.opendatahub.io/authorino-tls-bootstrap": "true"}}}}
+        ):
+            yield
     else:
         LOGGER.info(f"Creating gateway {MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_NAME}")
         with Gateway(
@@ -837,7 +856,10 @@ def maas_gateway_api(
             namespace=MAAS_GATEWAY_NAMESPACE,
             gateway_class_name="openshift-default",
             listeners=maas_gateway_listeners(hostname=maas_gateway_api_hostname),
-            annotations={"opendatahub.io/managed": "false"},
+            annotations={
+                "opendatahub.io/managed": "false",
+                "security.opendatahub.io/authorino-tls-bootstrap": "true",
+            },
             label={
                 "app.kubernetes.io/name": "maas",
                 "app.kubernetes.io/instance": MAAS_GATEWAY_NAME,
@@ -950,3 +972,260 @@ def revoke_maas_tokens_for_actor(
     )
 
     LOGGER.info(f"[{actor_label}] revoke response: status={r_del.status_code} body={(r_del.text or '')[:200]}")
+
+
+@pytest.fixture(scope="session")
+def maas_postgres_credentials() -> dict[str, str]:
+    alphabet = string.ascii_letters + string.digits
+
+    postgres_user = f"maas-{generate_random_name()}"
+    postgres_db = f"maas-{generate_random_name()}"
+    postgres_password = "".join(secrets.choice(alphabet) for _ in range(32))
+
+    LOGGER.info(
+        f"Generated PostgreSQL test credentials: "
+        f"user={postgres_user}, db={postgres_db}, password_length={len(postgres_password)}"
+    )
+
+    return {
+        "postgres_user": postgres_user,
+        "postgres_password": postgres_password,
+        "postgres_db": postgres_db,
+    }
+
+
+@pytest.fixture(scope="session")
+def maas_postgres_prereqs(
+    admin_client: DynamicClient,
+    maas_postgres_credentials: dict[str, str],
+) -> Generator[dict[Any, Any], Any, Any]:
+    """
+    Prepare PostgreSQL resources required by maas-api before MaaS API key tests run.
+    """
+    resources = get_maas_postgres_resources(
+        client=admin_client,
+        namespace=MAAS_DB_NAMESPACE,
+        teardown_resources=True,
+        postgres_user=maas_postgres_credentials["postgres_user"],
+        postgres_password=maas_postgres_credentials["postgres_password"],
+        postgres_db=maas_postgres_credentials["postgres_db"],
+    )
+
+    resources_instances: dict[Any, Any] = {}
+
+    with ExitStack() as stack:
+        for kind_name in [Secret, Service, Deployment]:
+            resources_instances[kind_name] = []
+
+            for resource_obj in resources[kind_name]:
+                resources_instances[kind_name].append(stack.enter_context(resource_obj))
+
+        for deployment in resources_instances[Deployment]:
+            deployment.wait_for_condition(condition="Available", status="True", timeout=180)
+
+        wait_for_postgres_deployment_ready(
+            admin_client=admin_client,
+            namespace=MAAS_DB_NAMESPACE,
+            timeout=180,
+        )
+        wait_for_postgres_connection_log(
+            admin_client=admin_client,
+            namespace=MAAS_DB_NAMESPACE,
+            timeout=180,
+        )
+
+        yield resources_instances
+
+
+@pytest.fixture(scope="session")
+def maas_subscription_namespace(
+    unprivileged_client: DynamicClient, admin_client: DynamicClient
+) -> Generator[Namespace, Any, Any]:
+    existing_ns = Namespace(client=admin_client, name=MAAS_SUBSCRIPTION_NAMESPACE)
+    if existing_ns.exists:
+        LOGGER.info(f"Namespace {MAAS_SUBSCRIPTION_NAMESPACE} already exists, reusing it")
+        yield existing_ns
+    else:
+        with create_ns(
+            name=MAAS_SUBSCRIPTION_NAMESPACE,
+            unprivileged_client=unprivileged_client,
+            admin_client=admin_client,
+        ) as ns:
+            yield ns
+
+
+@pytest.fixture(scope="session")
+def maas_subscription_controller_enabled_latest(
+    dsc_resource: DataScienceCluster,
+    maas_postgres_prereqs: None,
+    maas_gateway_api: None,
+    maas_subscription_namespace: Namespace,
+) -> Generator[DataScienceCluster, Any, Any]:
+    """
+    ensures postgres prerequisites and subscription namespace exist before MaaS is switched to Managed.
+    """
+    component_patch = {
+        DscComponents.KSERVE: {"modelsAsService": {"managementState": DscComponents.ManagementState.MANAGED}}
+    }
+
+    with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
+        dsc_resource.wait_for_condition(
+            condition="ModelsAsServiceReady",
+            status="True",
+            timeout=900,
+        )
+        dsc_resource.wait_for_condition(
+            condition="Ready",
+            status="True",
+            timeout=600,
+        )
+        yield dsc_resource
+
+    dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=600)
+
+
+@pytest.fixture(scope="class")
+def maas_inference_service_tinyllama_free(
+    admin_client: DynamicClient,
+    maas_unprivileged_model_namespace: Namespace,
+    maas_model_service_account: ServiceAccount,
+    maas_gateway_api: None,
+) -> Generator[LLMInferenceService, Any, Any]:
+    with (
+        create_llmisvc(
+            client=admin_client,
+            name="llm-s3-tinyllama-free",
+            namespace=maas_unprivileged_model_namespace.name,
+            storage_uri=ModelStorage.TINYLLAMA_S3,
+            container_image=ContainerImages.VLLM_CPU,
+            container_resources={
+                "limits": {"cpu": "2", "memory": "12Gi"},
+                "requests": {"cpu": "1", "memory": "8Gi"},
+            },
+            service_account=maas_model_service_account.name,
+            wait=False,
+            timeout=900,
+        ) as llm_service,
+        patch_llmisvc_with_maas_router_and_tiers(llm_service=llm_service, tiers=[]),
+    ):
+        llm_service.wait_for_condition(condition="Ready", status="True", timeout=900)
+        yield llm_service
+
+
+@pytest.fixture(scope="class")
+def maas_model_tinyllama_free(
+    admin_client: DynamicClient,
+    maas_inference_service_tinyllama_free: LLMInferenceService,
+) -> Generator[MaaSModelRef, Any, Any]:
+
+    with MaaSModelRef(
+        client=admin_client,
+        name=maas_inference_service_tinyllama_free.name,
+        namespace=maas_inference_service_tinyllama_free.namespace,
+        model_ref={
+            "name": maas_inference_service_tinyllama_free.name,
+            "namespace": maas_inference_service_tinyllama_free.namespace,
+            "kind": "LLMInferenceService",
+        },
+        teardown=True,
+        wait_for_resource=True,
+    ) as maas_model:
+        yield maas_model
+
+
+@pytest.fixture(scope="class")
+def maas_auth_policy_tinyllama_free(
+    admin_client: DynamicClient,
+    maas_free_group: str,
+    maas_model_tinyllama_free: MaaSModelRef,
+    maas_subscription_namespace: Namespace,
+) -> Generator[MaaSAuthPolicy, Any, Any]:
+
+    with MaaSAuthPolicy(
+        client=admin_client,
+        name="tinyllama-free-access",
+        namespace=maas_subscription_namespace.name,
+        model_refs=[
+            {
+                "name": maas_model_tinyllama_free.name,
+                "namespace": maas_model_tinyllama_free.namespace,
+            }
+        ],
+        subjects={
+            "groups": [
+                {"name": "system:authenticated"},
+                {"name": maas_free_group},
+            ],
+        },
+        teardown=True,
+        wait_for_resource=True,
+    ) as maas_auth_policy_free:
+        yield maas_auth_policy_free
+
+
+@pytest.fixture(scope="class")
+def maas_subscription_tinyllama_free(
+    admin_client: DynamicClient,
+    maas_free_group: str,
+    maas_model_tinyllama_free: MaaSModelRef,
+    maas_subscription_namespace: Namespace,
+) -> Generator[MaaSSubscription, Any, Any]:
+
+    with MaaSSubscription(
+        client=admin_client,
+        name="tinyllama-free-subscription",
+        namespace=maas_subscription_namespace.name,
+        owner={
+            "groups": [{"name": maas_free_group}],
+        },
+        model_refs=[
+            {
+                "name": maas_model_tinyllama_free.name,
+                "namespace": maas_model_tinyllama_free.namespace,
+                "tokenRateLimits": [{"limit": 100, "window": "1m"}],
+            }
+        ],
+        priority=0,
+        teardown=True,
+        wait_for_resource=True,
+    ) as maas_subscription_free:
+        maas_subscription_free.wait_for_condition(condition="Ready", status="True", timeout=300)
+        yield maas_subscription_free
+
+
+@pytest.fixture(scope="class")
+def minimal_subscription_for_free_user(
+    admin_client: DynamicClient,
+    maas_unprivileged_model_namespace,
+    maas_subscription_namespace,
+) -> Generator[Any, Any, Any]:
+    """Create a minimal MaaSModelRef + MaaSSubscription for system:authenticated."""
+    model_ns = maas_unprivileged_model_namespace.name
+    model_name = f"e2e-authz-model-{generate_random_name()}"
+    sub_name = f"e2e-authz-free-sub-{generate_random_name()}"
+
+    with (
+        MaaSModelRef(
+            client=admin_client,
+            name=model_name,
+            namespace=model_ns,
+            model_ref={"name": model_name, "namespace": model_ns, "kind": "LLMInferenceService"},
+            teardown=True,
+            wait_for_resource=True,
+        ) as model_ref,
+        create_maas_subscription(
+            admin_client=admin_client,
+            subscription_namespace=maas_subscription_namespace.name,
+            subscription_name=sub_name,
+            owner_group_name="system:authenticated",
+            model_name=model_ref.name,
+            model_namespace=model_ref.namespace,
+            tokens_per_minute=1000,
+            window="1m",
+            priority=0,
+            teardown=True,
+            wait_for_resource=True,
+        ) as subscription,
+    ):
+        subscription.wait_for_condition(condition="Ready", status="True", timeout=300)
+        yield subscription

@@ -13,11 +13,14 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.pod import Pod
 from ocp_resources.prometheus import Prometheus
+from ocp_resources.route import Route
 from pyhelper_utils.shell import run_command
 from timeout_sampler import retry
 
 from utilities.certificates_utils import get_ca_bundle
 from utilities.constants import Timeout
+from utilities.infra import is_disconnected_cluster
+from utilities.llmd_constants import LLMDGateway, LLMEndpoint
 from utilities.monitoring import get_metrics_value
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -73,6 +76,32 @@ def _get_inference_url(llmisvc: LLMInferenceService) -> str:
     if status and status.get("url"):
         return status["url"]
     return f"http://{llmisvc.name}.{llmisvc.namespace}.svc.cluster.local"
+
+
+def _get_disconnected_inference_url(llmisvc: LLMInferenceService) -> str:
+    """Build inference URL using the gateway Route for disconnected clusters.
+
+    On disconnected clusters the gateway uses ClusterIP instead of LoadBalancer,
+    so the internal service URL from LLMISVC status is not reachable from outside
+    the cluster. This function resolves the URL via the gateway Route instead.
+    """
+    route = Route(
+        client=llmisvc.client,
+        name=LLMDGateway.DEFAULT_NAME,
+        namespace=LLMDGateway.DEFAULT_NAMESPACE,
+    )
+    if not route.exists:
+        raise RuntimeError(
+            f"Gateway Route {LLMDGateway.DEFAULT_NAME} not found in {LLMDGateway.DEFAULT_NAMESPACE}. "
+            "Disconnected clusters require the gateway Route to be configured."
+        )
+    host = route.instance.spec.host
+    if not host:
+        raise RuntimeError(
+            f"Gateway Route {LLMDGateway.DEFAULT_NAME} in {LLMDGateway.DEFAULT_NAMESPACE} "
+            "has no host set. Ensure the Route is fully configured."
+        )
+    return f"https://{host}/{llmisvc.namespace}/{llmisvc.name}"
 
 
 def _build_chat_body(model_name: str, prompt: str, max_tokens: int = 50) -> str:
@@ -163,7 +192,12 @@ def send_chat_completions(
     insecure: bool = True,
 ) -> tuple[int, str]:
     """Send a chat completion request. Returns (status_code, response_body)."""
-    url = _get_inference_url(llmisvc) + "/v1/chat/completions"
+    base_url = (
+        _get_disconnected_inference_url(llmisvc)
+        if is_disconnected_cluster(llmisvc.client)
+        else _get_inference_url(llmisvc)
+    )
+    url = base_url + LLMEndpoint.CHAT_COMPLETIONS
     model_name = _get_model_name(llmisvc=llmisvc)
     body = _build_chat_body(model_name=model_name, prompt=prompt)
     ca_cert = None if insecure else _resolve_ca_cert(llmisvc.client)
@@ -314,7 +348,12 @@ def send_prefix_cache_requests(
     successful = 0
     for i in range(count):
         try:
-            status, _ = send_chat_completions(llmisvc=llmisvc, prompt=prompt, token=token, insecure=False)
+            status, _ = send_chat_completions(
+                llmisvc=llmisvc,
+                prompt=prompt,
+                token=token,
+                insecure=False,
+            )
             if status == 200:
                 successful += 1
         except Exception:
@@ -342,10 +381,10 @@ def get_scheduler_decision_logs(
 
     # Get all logs from the scheduler pod
     # Note: The router-scheduler container is the default/main container
-    raw_logs = router_scheduler_pod.log()
+    raw_logs = router_scheduler_pod.log(container="main")
 
     # Target decision message
-    target_decision_msg = "Selecting pods from candidates sorted by max score"
+    target_decision_msg = "Selecting endpoints from candidates sorted by max score"
 
     # Filtering logs
     filtered_logs = "\n".join(line for line in raw_logs.splitlines() if target_decision_msg in line)

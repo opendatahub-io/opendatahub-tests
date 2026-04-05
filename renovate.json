@@ -2,14 +2,18 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended",
-    ":dependencyDashboardApproval",
+    ":prHourlyLimitNone",
+    ":dependencyDashboard",
     ":maintainLockFilesWeekly",
-    ":prHourlyLimitNone"
+    ":semanticCommitTypeAll(chore)"
   ],
   "prConcurrentLimit": 0,
-  "lockFileMaintenance": {
+  "rangeStrategy": "update-lockfile",
+  "commitBody": "Signed-off-by: renovate[bot] <29139614+renovate[bot]@users.noreply.github.com>",
+  "labels": ["dependencies"],
+  "vulnerabilityAlerts": {
     "enabled": true,
-    "dependencyDashboardApproval": false
+    "labels": ["security"]
   },
   "baseBranchPatterns": [
     "main"
@@ -55,8 +59,12 @@
       "schedule": [
         "before 6pm on wednesday"
       ],
-      "prPriority": 5,
-      "dependencyDashboardApproval": false
+      "prPriority": 5
+    },
+    {
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["quay.io/fedora/fedora"],
+      "enabled": false
     }
   ]
 }
