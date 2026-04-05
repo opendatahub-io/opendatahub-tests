@@ -19,6 +19,7 @@ from ocp_resources.resource import Resource
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service_account import ServiceAccount
+from pytest_testconfig import config as py_config
 
 from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaOciConfig
 from tests.model_serving.model_server.llmd.utils import wait_for_llmisvc, wait_for_llmisvc_pods_ready
@@ -46,8 +47,14 @@ LLMD_REQUIRED_DEPLOYMENTS: dict[str, str] = {
     "cert-manager-webhook": "cert-manager",
     "authorino-operator": "openshift-operators",
     "kuadrant-operator-controller-manager": "openshift-operators",
-    "lws-controller-manager": "openshift-lws-operator",
 }
+
+# Same KServe stack as tests/model_serving/model_server/kserve/conftest.py plus LLM-ISVC controller.
+LLMD_KSERVE_CONTROLLER_DEPLOYMENTS: list[str] = [
+    "kserve-controller-manager",
+    "odh-model-controller",
+    "llmisvc-controller-manager",
+]
 
 
 def _verify_operator_csv(admin_client: DynamicClient, csv_prefix: str, namespace: str) -> None:
@@ -60,8 +67,9 @@ def _verify_operator_csv(admin_client: DynamicClient, csv_prefix: str, namespace
 def verify_llmd_health(admin_client: DynamicClient, dsc_resource: Resource) -> None:
     """Verify LLMD infrastructure dependencies are healthy.
 
-    Checks DSC condition, required operator CSVs, controller deployments,
-    LeaderWorkerSetOperator CR, GatewayClass, and Kuadrant CR.
+    Checks DSC condition, required operator CSVs, dependency and KServe controller
+    deployments, optional LeaderWorkerSetOperator CR (LWS is optional),
+    and Kuadrant CR.
     """
     # 1. DSC condition for LLMD dependencies
     for condition in dsc_resource.instance.status.conditions:
@@ -95,21 +103,40 @@ def verify_llmd_health(admin_client: DynamicClient, dsc_resource: Resource) -> N
         if not dep_available:
             pytest.xfail(f"Deployment {name} in {namespace} has no Available condition")
 
-    # 4. LeaderWorkerSetOperator CR
+    applications_namespace = py_config["applications_namespace"]
+    for name in LLMD_KSERVE_CONTROLLER_DEPLOYMENTS:
+        deployment = Deployment(client=admin_client, name=name, namespace=applications_namespace)
+        if not deployment.exists:
+            pytest.xfail(f"KServe/LLMD controller deployment {name} not found in {applications_namespace}")
+
+        kserve_dep_available = False
+        for condition in deployment.instance.status.get("conditions", []):
+            if condition.type == "Available":
+                if condition.status != "True":
+                    pytest.xfail(
+                        f"Deployment {name} in {applications_namespace} is not Available: {condition.get('reason')}"
+                    )
+                kserve_dep_available = True
+                break
+
+        if not kserve_dep_available:
+            pytest.xfail(f"Deployment {name} in {applications_namespace} has no Available condition")
+
+    # 4. LeaderWorkerSetOperator CR (optional)
     lws_operator = LeaderWorkerSetOperator(client=admin_client, name="cluster")
-    if not lws_operator.exists:
-        pytest.xfail("LeaderWorkerSetOperator 'cluster' CR not found")
+    if lws_operator.exists:
+        lws_available = False
+        for condition in lws_operator.instance.status.get("conditions", []):
+            if condition.type == "Available":
+                if condition.status != "True":
+                    pytest.xfail(f"LeaderWorkerSetOperator is not Available: {condition.get('reason')}")
+                lws_available = True
+                break
 
-    lws_available = False
-    for condition in lws_operator.instance.status.get("conditions", []):
-        if condition.type == "Available":
-            if condition.status != "True":
-                pytest.xfail(f"LeaderWorkerSetOperator is not Available: {condition.get('reason')}")
-            lws_available = True
-            break
-
-    if not lws_available:
-        pytest.xfail("LeaderWorkerSetOperator has no Available condition")
+        if not lws_available:
+            pytest.xfail("LeaderWorkerSetOperator has no Available condition")
+    else:
+        LOGGER.warning("LeaderWorkerSetOperator cluster CR not found; LWS is optional for LLMD (RHOAIENG-52057)")
 
     # 5. Kuadrant CR
     kuadrant = Kuadrant(client=admin_client, name="kuadrant", namespace="kuadrant-system")
@@ -127,8 +154,8 @@ def llmd_health_check(
 ) -> None:
     """Session-scoped health gate for all LLMD tests.
 
-    Skips all tests under tests/model_serving/model_server/llmd/ when
-    LLMD infrastructure dependencies are not healthy.
+    Marks LLMD tests as xfail when required infrastructure dependencies are unhealthy
+    (see verify_llmd_health). Use --skip-llmd-health-check to disable.
     """
     if request.session.config.getoption("--skip-llmd-health-check"):
         LOGGER.warning("Skipping LLMD health check, got --skip-llmd-health-check")
