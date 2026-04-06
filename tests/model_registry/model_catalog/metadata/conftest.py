@@ -8,11 +8,11 @@ from tests.model_registry.model_catalog.metadata.utils import get_labels_from_co
 
 @pytest.fixture()
 def expected_labels_by_asset_type(
+    request: pytest.FixtureRequest,
     admin_client: DynamicClient,
     model_registry_namespace: str,
-) -> dict[str, list[dict[str, Any]]]:
-    """Get expected labels from ConfigMaps, split by asset type."""
+) -> list[dict[str, Any]]:
+    """Get expected labels from ConfigMaps, filtered by asset type from the test's parametrize."""
+    asset_type = request.param
     all_labels = get_labels_from_configmaps(admin_client=admin_client, namespace=model_registry_namespace)
-    mcp_labels = [label for label in all_labels if label.get("assetType") == "mcp_servers"]
-    model_labels = [label for label in all_labels if label not in mcp_labels]
-    return {"models": model_labels, "mcp_servers": mcp_labels}
+    return [label for label in all_labels if label.get("assetType") == asset_type]
