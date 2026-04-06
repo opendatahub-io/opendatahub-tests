@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 import structlog
@@ -19,27 +19,27 @@ class TestLabelsEndpoint:
     """Test class for the model catalog labels endpoint."""
 
     @pytest.mark.smoke
+    @pytest.mark.parametrize(
+        "asset_type",
+        [
+            pytest.param("models", id="models"),
+            pytest.param("mcp_servers", id="mcp_servers"),
+        ],
+    )
     def test_labels_endpoint_default_data(
         self,
-        admin_client: DynamicClient,
-        model_registry_namespace: str,
         model_catalog_rest_url: list[str],
+        expected_labels_by_asset_type: dict[str, list[dict[str, Any]]],
+        asset_type: Literal["models", "mcp_servers"],
     ):
         """
         Smoke test: Validate default labels from ConfigMaps are returned by the endpoint.
         """
-        LOGGER.info("Testing labels endpoint with default data")
-
-        # Get expected labels from ConfigMaps
-        expected_labels = get_labels_from_configmaps(admin_client=admin_client, namespace=model_registry_namespace)
-
-        # Get labels from API
+        LOGGER.info(f"Testing labels endpoint with default data for asset type: {asset_type}")
         api_labels = get_labels_from_api(
-            model_catalog_rest_url=model_catalog_rest_url[0], user_token=get_openshift_token()
+            model_catalog_rest_url=model_catalog_rest_url[0], user_token=get_openshift_token(), asset_type=asset_type
         )
-
-        # Verify they match
-        verify_labels_match(expected_labels=expected_labels, api_labels=api_labels)
+        verify_labels_match(expected_labels=expected_labels_by_asset_type[asset_type], api_labels=api_labels)
 
     @pytest.mark.tier1
     def test_labels_endpoint_configmap_updates(
