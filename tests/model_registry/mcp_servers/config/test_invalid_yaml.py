@@ -4,7 +4,7 @@ import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
 
-from tests.model_registry.mcp_servers.constants import (
+from tests.model_registry.mcp_servers.config.constants import (
     EXPECTED_MCP_SERVER_NAMES,
     MCP_CATALOG_INVALID_SOURCE_ID,
     MCP_CATALOG_INVALID_SOURCE_NAME,

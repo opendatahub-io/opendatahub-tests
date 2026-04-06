@@ -6,12 +6,12 @@ import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.resource import ResourceEditor
 
-from tests.model_registry.mcp_servers.config.utils import get_mcp_catalog_sources
-from tests.model_registry.mcp_servers.constants import (
+from tests.model_registry.mcp_servers.config.constants import (
     EXPECTED_ALL_MCP_SERVER_NAMES,
     EXPECTED_MCP_SOURCE_ID_MAP,
     MCP_CATALOG_SOURCE2_ID,
 )
+from tests.model_registry.mcp_servers.config.utils import get_mcp_catalog_sources
 from tests.model_registry.utils import (
     execute_get_command,
     wait_for_mcp_catalog_api,
