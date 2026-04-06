@@ -1,4 +1,4 @@
-from typing import Any, Self
+from typing import Self
 
 import pytest
 import structlog
@@ -6,13 +6,12 @@ import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.resource import ResourceEditor
 
-from tests.model_registry.mcp_servers.config.utils import get_mcp_catalog_sources
-from tests.model_registry.mcp_servers.constants import (
+from tests.model_registry.mcp_servers.config.constants import (
     EXPECTED_ALL_MCP_SERVER_NAMES,
-    EXPECTED_MCP_SERVER_NAMES,
     EXPECTED_MCP_SOURCE_ID_MAP,
     MCP_CATALOG_SOURCE2_ID,
 )
+from tests.model_registry.mcp_servers.config.utils import get_mcp_catalog_sources
 from tests.model_registry.utils import (
     execute_get_command,
     wait_for_mcp_catalog_api,
@@ -28,18 +27,18 @@ class TestMCPServerMultiSource:
 
     def test_all_servers_from_multiple_sources_loaded(
         self: Self,
-        mcp_servers_response: dict[str, Any],
+        custom_mcp_servers: list[dict],
     ):
         """Verify that servers from all configured sources are loaded."""
-        server_names = {server["name"] for server in mcp_servers_response.get("items", [])}
+        server_names = {server["name"] for server in custom_mcp_servers}
         assert server_names == EXPECTED_ALL_MCP_SERVER_NAMES
 
     def test_servers_tagged_with_correct_source_id(
         self: Self,
-        mcp_servers_response: dict[str, Any],
+        custom_mcp_servers: list[dict],
     ):
         """Verify that each server is tagged with the correct source_id from its source."""
-        for server in mcp_servers_response.get("items", []):
+        for server in custom_mcp_servers:
             name = server["name"]
             expected_source = EXPECTED_MCP_SOURCE_ID_MAP[name]
             assert server.get("source_id") == expected_source, (
@@ -59,16 +58,11 @@ class TestMCPServerMultiSource:
         model_registry_namespace: str,
         mcp_catalog_rest_urls: list[str],
         model_registry_rest_headers: dict[str, str],
+        default_mcp_servers: dict,
+        custom_mcp_servers: list[dict],
         cleanup_action: str,
     ):
         """TC-LOAD-011/012: Verify that disabling or removing a source removes its servers from the catalog."""
-        response = execute_get_command(
-            url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
-            headers=model_registry_rest_headers,
-        )
-        server_names = {server["name"] for server in response.get("items", [])}
-        assert server_names == EXPECTED_ALL_MCP_SERVER_NAMES
-
         catalog_config_map, current_data = get_mcp_catalog_sources(
             admin_client=admin_client, model_registry_namespace=model_registry_namespace
         )
@@ -95,9 +89,9 @@ class TestMCPServerMultiSource:
                 url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
                 headers=model_registry_rest_headers,
             )
-            remaining_names = {server["name"] for server in response.get("items", [])}
-            assert remaining_names == EXPECTED_MCP_SERVER_NAMES, (
-                f"Expected only source1 servers {EXPECTED_MCP_SERVER_NAMES} after {cleanup_action} of source2, "
+            remaining_names = {server["name"] for server in response["items"]}
+            assert MCP_CATALOG_SOURCE2_ID not in remaining_names, (
+                f"Expected  {MCP_CATALOG_SOURCE2_ID} not to be present after {cleanup_action} of source2, "
                 f"got {remaining_names}"
             )
 

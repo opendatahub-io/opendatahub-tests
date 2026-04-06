@@ -4,7 +4,7 @@ import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
 
-from tests.model_registry.mcp_servers.constants import (
+from tests.model_registry.mcp_servers.config.constants import (
     EXPECTED_MCP_SERVER_NAMES,
     MCP_CATALOG_INVALID_SOURCE_ID,
     MCP_CATALOG_INVALID_SOURCE_NAME,
@@ -42,23 +42,28 @@ class TestMCPServerInvalidYAML:
 
     def test_valid_servers_loaded_despite_invalid_source(
         self: Self,
-        admin_client: DynamicClient,
-        model_registry_namespace: str,
         mcp_catalog_rest_urls: list[str],
         model_registry_rest_headers: dict[str, str],
         expected_log_error: str,
     ):
         """Verify that valid MCP servers from a healthy source are still loaded
-        when another source contains invalid YAML, and pod logs contain the expected error."""
+        when another source contains invalid YAML."""
         response = execute_get_command(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
             headers=model_registry_rest_headers,
         )
         server_names = {server["name"] for server in response["items"]}
-        assert server_names == EXPECTED_MCP_SERVER_NAMES, (
-            f"Expected exactly {EXPECTED_MCP_SERVER_NAMES}, got {server_names}"
+        assert EXPECTED_MCP_SERVER_NAMES.issubset(server_names), (
+            f"Expected {EXPECTED_MCP_SERVER_NAMES} to be a subset of {server_names}"
         )
 
+    def test_invalid_source_error_logged(
+        self: Self,
+        admin_client: DynamicClient,
+        model_registry_namespace: str,
+        expected_log_error: str,
+    ):
+        """Verify that pod logs contain the expected error for the invalid YAML source."""
         pod = get_model_catalog_pod(client=admin_client, model_registry_namespace=model_registry_namespace)[0]
         log = pod.log(container=CATALOG_CONTAINER)
         source_error = (

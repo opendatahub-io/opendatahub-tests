@@ -8,7 +8,6 @@ from tests.model_registry.utils import execute_get_command
 LOGGER = structlog.get_logger(name=__name__)
 
 
-@pytest.mark.usefixtures("mcp_servers_configmap_patch")
 class TestMCPServerOrdering:
     """Tests for MCP server ordering functionality."""
 

@@ -4,7 +4,7 @@ import pytest
 import requests
 import structlog
 
-from tests.model_serving.maas_billing.maas_subscription.utils import (
+from tests.model_serving.maas_billing.maas_api_key.utils import (
     assert_bulk_revoke_success,
     bulk_revoke_api_keys,
     get_api_key,
@@ -15,9 +15,11 @@ LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.usefixtures(
+    "maas_unprivileged_model_namespace",
     "maas_subscription_controller_enabled_latest",
     "maas_gateway_api",
     "maas_api_gateway_reachable",
+    "minimal_subscription_for_free_user",
 )
 class TestAPIKeyBulkOperations:
     """Tests for MaaS API key bulk revoke operations."""

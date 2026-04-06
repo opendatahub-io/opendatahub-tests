@@ -73,7 +73,7 @@ class TestSubscriptionEnforcementTinyLlama:
 
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text[:200]}"
 
-    @pytest.mark.smoke
+    @pytest.mark.tier1
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "premium"}], indirect=True)
     def test_invalid_subscription_header_gets_429(
         self,

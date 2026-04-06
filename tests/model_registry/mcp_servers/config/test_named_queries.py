@@ -3,7 +3,8 @@ from typing import Self
 import pytest
 import structlog
 
-from tests.model_registry.mcp_servers.constants import CALCULATOR_PROVIDER, CALCULATOR_SERVER_NAME
+from tests.model_registry.mcp_servers.config.constants import CALCULATOR_PROVIDER, CALCULATOR_SERVER_NAME
+from tests.model_registry.mcp_servers.config.utils import exclude_default_mcp_servers
 from tests.model_registry.utils import execute_get_command
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -32,6 +33,7 @@ class TestMCPServerNamedQueries:
         self: Self,
         mcp_catalog_rest_urls: list[str],
         model_registry_rest_headers: dict[str, str],
+        default_mcp_servers: dict,
         named_query: str,
         expected_custom_properties: dict[str, bool],
     ):
@@ -41,7 +43,7 @@ class TestMCPServerNamedQueries:
             headers=model_registry_rest_headers,
             params={"namedQuery": named_query},
         )
-        items = response["items"]
+        items = exclude_default_mcp_servers(response=response, default_mcp_servers=default_mcp_servers)
         assert len(items) == 1, f"Expected 1 server matching '{named_query}', got {len(items)}"
         assert items[0]["name"] == CALCULATOR_SERVER_NAME
 
