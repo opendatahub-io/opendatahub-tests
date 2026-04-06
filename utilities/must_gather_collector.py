@@ -13,6 +13,9 @@ BASE_DIRECTORY_NAME = "must-gather-collected"
 BASE_RESULTS_DIR = "/home/odh/opendatahub-tests/"
 LOGGER = get_logger(name=__name__)
 
+MUST_GATHER_TIMEOUT_SECONDS = int(os.environ.get("MUST_GATHER_TIMEOUT_SECONDS", "600"))
+MUST_GATHER_OC_TIMEOUT = os.environ.get("MUST_GATHER_OC_TIMEOUT", "5m")
+
 
 def get_base_dir() -> str:
     if os.path.exists(BASE_RESULTS_DIR):
@@ -83,7 +86,7 @@ def run_must_gather(
     since: str = "1m",
     component_name: str = "",
     namespaces_dict: dict[str, str] | None = None,
-    timeout: int = 900,
+    timeout: int = MUST_GATHER_TIMEOUT_SECONDS,
 ) -> str:
     """
     Process the arguments to build must-gather command and run the same
@@ -103,7 +106,7 @@ def run_must_gather(
     if component_name and namespaces_dict:
         raise InvalidArgumentsError("component name and namespaces can't be passed together")
 
-    must_gather_command = "oc adm must-gather"
+    must_gather_command = f"oc adm must-gather --timeout={MUST_GATHER_OC_TIMEOUT}"
     if target_dir:
         must_gather_command += f" --dest-dir={target_dir}"
     if since:

@@ -25,10 +25,8 @@ from typing import Optional, Any
 from pytest_testconfig import config as py_config
 
 from utilities.constants import KServeDeploymentType, MODEL_REGISTRY_CUSTOM_NAMESPACE
-from utilities.database import Database
 from utilities.logger import separator, setup_logging
 from utilities.must_gather_collector import (
-    set_must_gather_collector_directory,
     set_must_gather_collector_values,
     get_must_gather_collector_dir,
     collect_rhoai_must_gather,
@@ -286,12 +284,13 @@ def pytest_sessionstart(session: Session) -> None:
     LOGGER.info(f"Writing tests log to {tests_log_file}")
     if os.path.exists(tests_log_file):
         pathlib.Path(tests_log_file).unlink()
-    if session.config.getoption("--collect-must-gather"):
-        session.config.option.must_gather_db = Database()
     session.config.option.log_listener = setup_logging(
         log_file=tests_log_file,
         log_level=session.config.getoption("log_cli_level") or logging.INFO,
     )
+    session.config._has_failures = False
+    session.config._first_failure_time = 0
+    session.config._session_start_time = int(datetime.datetime.now().timestamp())
     must_gather_dict = set_must_gather_collector_values()
     shutil.rmtree(
         path=must_gather_dict["must_gather_base_directory"],
@@ -350,22 +349,6 @@ def pytest_runtest_setup(item: Item) -> None:
     """
     BASIC_LOGGER.info(f"\n{separator(symbol_='-', val=item.name)}")
     BASIC_LOGGER.info(f"{separator(symbol_='-', val='SETUP')}")
-    if item.config.getoption("--collect-must-gather"):
-        # set must-gather collection directory:
-        set_must_gather_collector_directory(item=item, directory_path=get_must_gather_collector_dir())
-
-        # At the begining of setup work, insert current epoch time into the database to indicate test
-        # start time
-
-        try:
-            db = item.config.option.must_gather_db
-            db.insert_test_start_time(
-                test_name=f"{item.fspath}::{item.name}",
-                start_time=int(datetime.datetime.now().timestamp()),
-            )
-        except Exception as db_exception:
-            LOGGER.error(f"Database error: {db_exception}. Must-gather collection may not be accurate")
-
     if KServeDeploymentType.SERVERLESS.lower() in item.keywords:
         item.fixturenames.insert(0, "fail_if_missing_dependent_operators")
 
@@ -413,13 +396,23 @@ def pytest_sessionfinish(session: Session, exitstatus: int) -> None:
     session.config.option.log_listener.stop()
     if session.config.option.setupplan or session.config.option.collectonly:
         return
+
     if session.config.getoption("--collect-must-gather"):
-        db = session.config.option.must_gather_db
-        file_path = db.database_file_path
-        LOGGER.info(f"Removing database file path {file_path}")
-        if os.path.exists(file_path):
-            os.remove(file_path)
-        # clean up the empty folders
+        if getattr(session.config, "_has_failures", False):
+            LOGGER.info("Test failures detected — collecting must-gather once for the session.")
+            since = int(datetime.datetime.now().timestamp()) - session.config._session_start_time
+            since = max(since, 300)
+            try:
+                collect_rhoai_must_gather(
+                    base_file_name=f"mg-session-{session.config._session_start_time}",
+                    since=since,
+                    target_dir=os.path.join(get_must_gather_collector_dir(), "session_end"),
+                )
+            except Exception as exc:
+                LOGGER.warning(f"Session-end must-gather failed: {exc} {traceback.format_exc()}")
+        else:
+            LOGGER.info("No test failures — skipping must-gather collection.")
+
     collector_directory = py_config["must_gather_collector"]["must_gather_base_directory"]
     if os.path.exists(collector_directory):
         for root, dirs, files in os.walk(collector_directory, topdown=False):
@@ -435,16 +428,6 @@ def pytest_sessionfinish(session: Session, exitstatus: int) -> None:
         reporter.summary_stats()
 
 
-def calculate_must_gather_timer(test_start_time: int) -> int:
-    default_duration = 300
-    if test_start_time > 0:
-        duration = int(datetime.datetime.now().timestamp()) - test_start_time
-        return duration if duration > 60 else default_duration
-    else:
-        LOGGER.warning(f"Could not get start time of test. Collecting must-gather for last {default_duration}s")
-        return default_duration
-
-
 def get_all_node_markers(node: Node) -> list[str]:
     return [mark.name for mark in list(node.iter_markers())]
 
@@ -456,25 +439,9 @@ def is_skip_must_gather(node: Node) -> bool:
 def pytest_exception_interact(node: Item | Collector, call: CallInfo[Any], report: TestReport | CollectReport) -> None:
     LOGGER.error(report.longreprtext)
     if node.config.getoption("--collect-must-gather") and not is_skip_must_gather(node=node):
-        test_name = f"{node.fspath}::{node.name}"
-        LOGGER.info(f"Must-gather collection is enabled for {test_name}.")
-
-        try:
-            db = node.config.option.must_gather_db
-            test_start_time = db.get_test_start_time(test_name=test_name)
-        except Exception as db_exception:
-            test_start_time = 0
-            LOGGER.warning(f"Error: {db_exception} in accessing database.")
-
-        try:
-            collect_rhoai_must_gather(
-                base_file_name=f"mg-{test_start_time}",
-                since=calculate_must_gather_timer(test_start_time=test_start_time),
-                target_dir=os.path.join(get_must_gather_collector_dir(), "pytest_exception_interact"),
-            )
-
-        except Exception as current_exception:
-            LOGGER.warning(f"Failed to collect logs: {test_name}: {current_exception} {traceback.format_exc()}")
+        if getattr(node.config, "_first_failure_time", 0) == 0:
+            node.config._first_failure_time = int(datetime.datetime.now().timestamp())
+        node.config._has_failures = True
 
 
 @pytest.fixture(scope="package")
