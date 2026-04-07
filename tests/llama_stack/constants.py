@@ -28,7 +28,6 @@ class ModelInfo(NamedTuple):
     embedding_dimension: int  # API returns integer (e.g., 768)
 
 
-IS_DISCONNECTED_CLUSTER: bool = os.getenv("IS_DISCONNECTED_CLUSTER", "false").lower() == "true"
 HTTPS_PROXY: str = os.getenv("SQUID_HTTPS_PROXY", "")
 
 # LLS_CLIENT_VERIFY_SSL is false by default to be able to test with Self-Signed certificates

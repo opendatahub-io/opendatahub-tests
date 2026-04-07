@@ -17,9 +17,9 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from semver import Version
 
+import utilities
 from tests.llama_stack.constants import (
     HTTPS_PROXY,
-    IS_DISCONNECTED_CLUSTER,
     LLAMA_STACK_DISTRIBUTION_SECRET_DATA,
     LLS_CLIENT_VERIFY_SSL,
     LLS_CORE_EMBEDDING_MODEL,
@@ -74,12 +74,19 @@ def enabled_llama_stack_operator(dsc_resource: DataScienceCluster) -> Generator[
 
 
 @pytest.fixture(scope="class")
+def is_disconnected_cluster(admin_client: DynamicClient) -> bool:
+    """Whether the target cluster is disconnected (air-gapped)."""
+    return utilities.infra.is_disconnected_cluster(client=admin_client)
+
+
+@pytest.fixture(scope="class")
 def llama_stack_server_config(
     request: FixtureRequest,
     pytestconfig: pytest.Config,
     distribution_name: str,
     vector_io_provider_deployment_config_factory: Callable[[str], list[dict[str, str]]],
     files_provider_config_factory: Callable[[str], list[dict[str, str]]],
+    is_disconnected_cluster: bool,
 ) -> dict[str, Any]:
     """
     Generate server configuration for LlamaStack distribution deployment and deploy vector I/O provider resources.
@@ -96,6 +103,7 @@ def llama_stack_server_config(
             and return their configuration environment variables
         files_provider_config_factory: Factory function to configure files storage providers
             and return their configuration environment variables
+        is_disconnected_cluster: Whether the target cluster is disconnected (air-gapped)
 
     Returns:
         Dict containing server configuration with the following structure:
@@ -204,7 +212,7 @@ def llama_stack_server_config(
         env_vars.append({"name": "ENABLE_SENTENCE_TRANSFORMERS", "value": "true"})
         env_vars.append({"name": "EMBEDDING_PROVIDER", "value": "sentence-transformers"})
 
-        if IS_DISCONNECTED_CLUSTER:
+        if is_disconnected_cluster:
             # Workaround to fix sentence-transformer embeddings on disconnected (RHAIENG-1624)
             env_vars.append({"name": "SENTENCE_TRANSFORMERS_HOME", "value": "/opt/app-root/src/.cache/huggingface/hub"})
             env_vars.append({"name": "HF_HUB_OFFLINE", "value": "1"})
@@ -247,7 +255,7 @@ def llama_stack_server_config(
     env_vars_vector_io = vector_io_provider_deployment_config_factory(provider_name=vector_io_provider)
     env_vars.extend(env_vars_vector_io)
 
-    if IS_DISCONNECTED_CLUSTER and HTTPS_PROXY:
+    if is_disconnected_cluster and HTTPS_PROXY:
         LOGGER.info(f"Setting proxy and tlsconfig configuration (https_proxy:{HTTPS_PROXY})")
         env_vars.append({"name": "HTTPS_PROXY", "value": HTTPS_PROXY})
 
@@ -288,7 +296,7 @@ def llama_stack_server_config(
         server_config["tlsConfig"] = tls_config
 
     if params.get("llama_stack_storage_size"):
-        if IS_DISCONNECTED_CLUSTER:
+        if is_disconnected_cluster:
             LOGGER.warning("Skipping storage_size configuration on disconnected clusters due to known bug RHAIENG-1819")
         else:
             storage_size = params.get("llama_stack_storage_size")
