@@ -456,7 +456,8 @@ def minio_deployment_otel(admin_client, model_namespace, minio_pvc_otel):
             "containers": [
                 {
                     "name": "minio",
-                    "image": "quay.io/minio/minio",
+                    "image": "quay.io/minio/minio"
+                    "@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e",
                     "command": ["/bin/sh", "-c", "mkdir -p /storage/tempo && minio server /storage"],
                     "env": [
                         {"name": "MINIO_ACCESS_KEY", "value": TEMPO},

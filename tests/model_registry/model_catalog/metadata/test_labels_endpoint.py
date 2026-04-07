@@ -42,6 +42,26 @@ class TestLabelsEndpoint:
         )
         verify_labels_match(expected_labels=expected_labels_by_asset_type, api_labels=api_labels)
 
+    @pytest.mark.smoke
+    def test_labels_endpoint_default_no_asset_type(
+        self,
+        model_catalog_rest_url: list[str],
+    ):
+        """
+        Smoke test: Validate that /labels with no assetType param returns only model labels.
+        """
+        LOGGER.info("Testing labels endpoint with no asset type parameter")
+        api_labels = get_labels_from_api(
+            model_catalog_rest_url=model_catalog_rest_url[0], user_token=get_openshift_token()
+        )
+        assert api_labels, "Expected non-empty labels response"
+        mismatches = [
+            f"Label '{label.get('name')}' has assetType '{label.get('assetType')}', expected 'models'"
+            for label in api_labels
+            if label.get("assetType") != "models"
+        ]
+        assert not mismatches, "\n".join(mismatches)
+
     @pytest.mark.tier1
     def test_labels_endpoint_configmap_updates(
         self,

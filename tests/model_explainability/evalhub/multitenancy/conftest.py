@@ -3,6 +3,7 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
@@ -16,10 +17,12 @@ from ocp_resources.service_account import ServiceAccount
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_explainability.evalhub.constants import (
+    EVALHUB_HEALTH_PATH,
     EVALHUB_JOB_CONFIG_CLUSTERROLE,
     EVALHUB_JOBS_WRITER_CLUSTERROLE,
     EVALHUB_MT_CR_NAME,
     EVALHUB_TENANT_LABEL_KEY,
+    EVALHUB_USER_ROLE_RULES,
     EVALHUB_VLLM_EMULATOR_PORT,
 )
 from utilities.certificates_utils import create_ca_bundle_file
@@ -94,6 +97,32 @@ def evalhub_mt_ca_bundle_file(
 ) -> str:
     """CA bundle file for verifying TLS on the EvalHub route."""
     return create_ca_bundle_file(client=admin_client)
+
+
+@pytest.fixture(scope="class")
+def evalhub_mt_ready(
+    evalhub_mt_route: Route,
+    evalhub_mt_ca_bundle_file: str,
+) -> None:
+    """Wait for the EvalHub service to respond via its route.
+
+    The deployment may report ready replicas before the OpenShift router
+    has fully configured the backend, causing 503 errors. This fixture
+    polls the health endpoint until it responds successfully.
+    """
+    url = f"https://{evalhub_mt_route.host}{EVALHUB_HEALTH_PATH}"
+    try:
+        for sample in TimeoutSampler(
+            wait_timeout=120,
+            sleep=5,
+            func=lambda: requests.get(url, verify=evalhub_mt_ca_bundle_file, timeout=10),
+            exceptions_dict={Exception: []},
+        ):
+            if sample.ok:
+                LOGGER.info(f"EvalHub at {evalhub_mt_route.host} is healthy")
+                return
+    except TimeoutExpiredError as err:
+        raise RuntimeError(f"EvalHub at {evalhub_mt_route.host} did not become healthy within 120s") from err
 
 
 # ---------------------------------------------------------------------------
@@ -201,21 +230,6 @@ def tenant_a_rbac_ready(
 # ---------------------------------------------------------------------------
 # ServiceAccount and RBAC (only in tenant-a)
 # ---------------------------------------------------------------------------
-
-# Mirrors the user RBAC template from resources/evalhub-user-rbac-template.yaml.
-# evaluations/collections/providers are virtual SAR resources — not real CRDs.
-EVALHUB_USER_ROLE_RULES: list[dict[str, list[str]]] = [
-    {
-        "apiGroups": ["trustyai.opendatahub.io"],
-        "resources": ["evaluations", "collections", "providers"],
-        "verbs": ["get", "list", "create", "update", "delete"],
-    },
-    {
-        "apiGroups": ["mlflow.kubeflow.org"],
-        "resources": ["experiments"],
-        "verbs": ["create", "get"],
-    },
-]
 
 
 @pytest.fixture(scope="class")
