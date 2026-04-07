@@ -91,6 +91,7 @@ class TestMCPServerNamedQueries:
         assert {server["name"] for server in items} == expected_names
 
 
+@pytest.mark.tier1
 class TestMCPServerFilterOptionsNamedQueries:
     """Tests for RHOAIENG-56783: MCP server filter_options should not contain model-specific namedQueries."""
 
