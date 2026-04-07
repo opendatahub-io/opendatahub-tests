@@ -556,6 +556,12 @@ def maas_headers_for_actor(maas_token_for_actor: str) -> dict:
 
 
 @pytest.fixture(scope="class")
+def ocp_headers_for_actor(ocp_token_for_actor: str) -> dict[str, str]:
+    """Headers built from the OCP token for the current actor (admin/free/premium)."""
+    return build_maas_headers(token=ocp_token_for_actor)
+
+
+@pytest.fixture(scope="class")
 def maas_models_response_for_actor(
     request_session_http: requests.Session,
     base_url: str,
