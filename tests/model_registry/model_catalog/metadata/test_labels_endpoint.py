@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 import structlog
@@ -19,27 +19,48 @@ class TestLabelsEndpoint:
     """Test class for the model catalog labels endpoint."""
 
     @pytest.mark.smoke
+    @pytest.mark.parametrize(
+        "expected_labels_by_asset_type, asset_type",
+        [
+            pytest.param("models", "models", id="test_models"),
+            pytest.param("mcp_servers", "mcp_servers", id="test_mcp_servers"),
+        ],
+        indirect=["expected_labels_by_asset_type"],
+    )
     def test_labels_endpoint_default_data(
         self,
-        admin_client: DynamicClient,
-        model_registry_namespace: str,
         model_catalog_rest_url: list[str],
+        expected_labels_by_asset_type: list[dict[str, Any]],
+        asset_type: Literal["models", "mcp_servers"],
     ):
         """
         Smoke test: Validate default labels from ConfigMaps are returned by the endpoint.
         """
-        LOGGER.info("Testing labels endpoint with default data")
+        LOGGER.info(f"Testing labels endpoint with default data for asset type: {asset_type}")
+        api_labels = get_labels_from_api(
+            model_catalog_rest_url=model_catalog_rest_url[0], user_token=get_openshift_token(), asset_type=asset_type
+        )
+        verify_labels_match(expected_labels=expected_labels_by_asset_type, api_labels=api_labels)
 
-        # Get expected labels from ConfigMaps
-        expected_labels = get_labels_from_configmaps(admin_client=admin_client, namespace=model_registry_namespace)
-
-        # Get labels from API
+    @pytest.mark.smoke
+    def test_labels_endpoint_default_no_asset_type(
+        self,
+        model_catalog_rest_url: list[str],
+    ):
+        """
+        Smoke test: Validate that /labels with no assetType param returns only model labels.
+        """
+        LOGGER.info("Testing labels endpoint with no asset type parameter")
         api_labels = get_labels_from_api(
             model_catalog_rest_url=model_catalog_rest_url[0], user_token=get_openshift_token()
         )
-
-        # Verify they match
-        verify_labels_match(expected_labels=expected_labels, api_labels=api_labels)
+        assert api_labels, "Expected non-empty labels response"
+        mismatches = [
+            f"Label '{label.get('name')}' has assetType '{label.get('assetType')}', expected 'models'"
+            for label in api_labels
+            if label.get("assetType") != "models"
+        ]
+        assert not mismatches, "\n".join(mismatches)
 
     @pytest.mark.tier1
     def test_labels_endpoint_configmap_updates(
@@ -65,7 +86,7 @@ class TestLabelsEndpoint:
 
             # Split expected labels by asset type
             mcp_expected_labels = [label for label in all_expected_labels if label.get("assetType") == "mcp_servers"]
-            model_expected_labels = [label for label in all_expected_labels if label not in mcp_expected_labels]
+            model_expected_labels = [label for label in all_expected_labels if label.get("assetType") == "models"]
 
             # Verify default /labels returns only model labels (no MCP cross-contamination)
             api_labels = get_labels_from_api(model_catalog_rest_url=url, user_token=token)

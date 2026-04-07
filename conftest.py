@@ -205,6 +205,22 @@ def pytest_addoption(parser: Parser) -> None:
         action="store_true",
     )
 
+    # KServe health check options
+    kserve_health_group = parser.getgroup(name="KServe Health")
+    kserve_health_group.addoption(
+        "--skip-kserve-health-check",
+        help="Skip KServe component health check",
+        action="store_true",
+    )
+
+    # LLMD health check options
+    llmd_health_group = parser.getgroup(name="LLMD Health")
+    llmd_health_group.addoption(
+        "--skip-llmd-health-check",
+        help="Skip LLMD infrastructure dependency health check",
+        action="store_true",
+    )
+
     # HuggingFace options
     hf_group.addoption("--hf-access-token", default=os.environ.get("HF_ACCESS_TOKEN"), help="HF access token")
     # Model Registry options

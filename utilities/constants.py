@@ -494,6 +494,7 @@ class LLMdInferenceSimConfig:
     name: str = LLM_D_INFERENCE_SIM_NAME
     port: int = 8032
     model_name: str = "Qwen2.5-1.5B-Instruct"
+    max_model_len: int = 8192
     serving_runtime_name: str = f"{LLM_D_INFERENCE_SIM_NAME}-serving-runtime"
     isvc_name: str = f"{LLM_D_INFERENCE_SIM_NAME}-isvc"
 

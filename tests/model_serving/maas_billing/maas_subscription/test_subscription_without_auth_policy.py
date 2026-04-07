@@ -24,6 +24,7 @@ MAAS_SUBSCRIPTION_HEADER = "x-maas-subscription"
     "maas_model_tinyllama_premium",
     "maas_auth_policy_tinyllama_premium",
     "maas_subscription_tinyllama_premium",
+    "minimal_subscription_for_free_user",
 )
 class TestSubscriptionWithoutAuthPolicy:
     """

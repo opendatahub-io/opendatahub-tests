@@ -374,6 +374,7 @@ def labels_configmap_patch(
             "name": "test-dynamic",
             "displayName": "Dynamic Test Label",
             "description": "A label added during test execution",
+            "assetType": "models",
         },
         {
             "name": "mcp-test-label",
