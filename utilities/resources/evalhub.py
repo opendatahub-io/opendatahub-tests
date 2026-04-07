@@ -17,6 +17,7 @@ class EvalHub(NamespacedResource):
         self,
         env: list[Any] | None = None,
         replicas: int | None = None,
+        database: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
         r"""
@@ -25,11 +26,14 @@ class EvalHub(NamespacedResource):
 
             replicas (int): Number of replicas for the eval-hub deployment
 
+            database (dict[str, Any]): Database configuration (e.g. {"type": "sqlite"})
+
         """
         super().__init__(**kwargs)
 
         self.env = env
         self.replicas = replicas
+        self.database = database
 
     def to_dict(self) -> None:
 
@@ -44,5 +48,8 @@ class EvalHub(NamespacedResource):
 
             if self.replicas is not None:
                 _spec["replicas"] = self.replicas
+
+            if self.database is not None:
+                _spec["database"] = self.database
 
     # End of generated code

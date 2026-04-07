@@ -4,25 +4,22 @@ import pytest
 import requests
 import structlog
 
-from tests.model_serving.maas_billing.maas_subscription.utils import (
-    assert_api_key_created_ok,
-    assert_api_key_get_ok,
-    create_api_key,
-    get_api_key,
-    revoke_api_key,
-)
+from tests.model_serving.maas_billing.maas_api_key.utils import assert_api_key_get_ok, get_api_key
+from tests.model_serving.maas_billing.utils import assert_api_key_created_ok, create_api_key, revoke_api_key
 from utilities.general import generate_random_name
 
 LOGGER = structlog.get_logger(name=__name__)
 
-MAAS_API_KEY_MAX_EXPIRATION_DAYS = 30
+MAAS_API_KEY_MAX_EXPIRATION_DAYS = 90
 
 
 @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "admin"}], indirect=True)
 @pytest.mark.usefixtures(
+    "maas_unprivileged_model_namespace",
     "maas_subscription_controller_enabled_latest",
     "maas_gateway_api",
     "maas_api_gateway_reachable",
+    "minimal_subscription_for_free_user",
 )
 class TestAPIKeyExpiration:
     """Tests for API key expiration policy enforcement."""
@@ -58,7 +55,7 @@ class TestAPIKeyExpiration:
             ocp_user_token=ocp_token_for_actor,
         )
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_create_key_at_expiration_limit(
         self,
         request_session_http: requests.Session,

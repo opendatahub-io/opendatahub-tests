@@ -3,7 +3,6 @@ from typing import Any, Self
 import pytest
 import structlog
 
-from tests.model_registry.mcp_servers.constants import MCP_CATALOG_SOURCE_ID
 from tests.model_registry.model_catalog.constants import (
     OTHER_MODELS_CATALOG_ID,
     REDHAT_AI_CATALOG_ID,
@@ -13,6 +12,7 @@ from tests.model_registry.utils import execute_get_command
 
 pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace")]
 
+DEFAULT_MCP_CATALOG_ID: str = "rh_mcp_servers"
 LOGGER = structlog.get_logger(name=__name__)
 
 
@@ -55,7 +55,6 @@ class TestSourcesEndpoint:
         )
 
 
-@pytest.mark.usefixtures("mcp_servers_configmap_patch")
 class TestAssetTypeFilter:
     """Tests for /sources endpoint assetType query parameter filtering."""
 
@@ -64,7 +63,7 @@ class TestAssetTypeFilter:
         [
             (None, {REDHAT_AI_CATALOG_ID, VALIDATED_CATALOG_ID, OTHER_MODELS_CATALOG_ID}),
             ("models", {REDHAT_AI_CATALOG_ID, VALIDATED_CATALOG_ID, OTHER_MODELS_CATALOG_ID}),
-            ("mcp_servers", {MCP_CATALOG_SOURCE_ID}),
+            ("mcp_servers", {DEFAULT_MCP_CATALOG_ID}),
             ("invalid_value", set()),
         ],
         ids=["default-models", "explicit-models", "mcp-servers", "invalid-empty"],
