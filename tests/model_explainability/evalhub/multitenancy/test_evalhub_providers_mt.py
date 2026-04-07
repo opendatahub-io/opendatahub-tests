@@ -20,6 +20,7 @@ from tests.model_explainability.evalhub.utils import (
     indirect=True,
 )
 @pytest.mark.model_explainability
+@pytest.mark.usefixtures("evalhub_mt_ready")
 class TestEvalHubProvidersMT:
     """Multi-tenancy tests for the EvalHub providers endpoint.
 
@@ -41,7 +42,7 @@ class TestEvalHubProvidersMT:
             host=evalhub_mt_route.host,
             token=tenant_a_token,
             ca_bundle_file=evalhub_mt_ca_bundle_file,
-            tenant=tenant_a_namespace.name,
+            tenant_namespace=tenant_a_namespace.name,
         )
 
     def test_providers_cross_tenant_forbidden(

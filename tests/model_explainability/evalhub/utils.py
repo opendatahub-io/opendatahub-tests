@@ -1,5 +1,7 @@
 import requests
 import structlog
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.service_account import ServiceAccount
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_explainability.evalhub.constants import (
@@ -9,6 +11,8 @@ from tests.model_explainability.evalhub.constants import (
     EVALHUB_JOBS_PATH,
     EVALHUB_PROVIDERS_PATH,
     EVALHUB_VLLM_EMULATOR_PORT,
+    GARAK_JOB_POLL_INTERVAL,
+    GARAK_JOB_TIMEOUT,
 )
 from utilities.guardrails import get_auth_headers
 
@@ -74,21 +78,30 @@ def validate_evalhub_providers(
     host: str,
     token: str,
     ca_bundle_file: str,
-    tenant: str | None = None,
+    tenant_namespace: str,
+    expected_providers: list[str] | None = None,
 ) -> dict:
-    """Smoke test for the EvalHub providers endpoint."""
+    """Validate that the EvalHub providers endpoint returns the expected providers."""
     url = f"https://{host}{EVALHUB_PROVIDERS_PATH}"
+    LOGGER.info(f"Checking EvalHub providers at {url}")
 
     response = requests.get(
         url=url,
-        headers=build_headers(token=token, tenant=tenant),
+        headers=build_headers(token=token, tenant=tenant_namespace),
         verify=ca_bundle_file,
         timeout=10,
     )
     response.raise_for_status()
 
     data = response.json()
-    assert data.get("items"), f"Smoke test failed: Providers list is empty for tenant {tenant}"
+    LOGGER.info(f"EvalHub providers response: {data}")
+
+    assert data.get("items"), f"Providers list is empty for tenant {tenant_namespace}"
+
+    if expected_providers:
+        provider_ids = [item["resource"]["id"] for item in data.get("items", [])]
+        for expected in expected_providers:
+            assert expected in provider_ids, f"Expected provider '{expected}' not found in {provider_ids}"
 
     return data
 
@@ -588,3 +601,100 @@ def submit_evalhub_collection(
         verify=ca_bundle_file,
         timeout=30,
     )
+
+
+# ---------------------------------------------------------------------------
+# Garak-specific helpers
+# ---------------------------------------------------------------------------
+
+
+def submit_garak_job(
+    host: str,
+    token: str,
+    ca_bundle_file: str,
+    tenant_namespace: str,
+    payload: dict,
+) -> str:
+    """Submit a garak evaluation job and return the job ID."""
+    url = f"https://{host}{EVALHUB_JOBS_PATH}"
+    LOGGER.info(f"Submitting garak job to {url}")
+
+    response = requests.post(
+        url=url,
+        headers=build_headers(token=token, tenant=tenant_namespace),
+        json=payload,
+        verify=ca_bundle_file,
+        timeout=30,
+    )
+    if not response.ok:
+        LOGGER.error(f"Job submission failed ({response.status_code}): {response.text}")
+    response.raise_for_status()
+
+    data = response.json()
+    LOGGER.info(f"Garak job submission response: {data}")
+
+    job_id = data.get("id") or data.get("job_id") or (data.get("resource", {}).get("id"))
+    assert job_id, f"No job ID in response: {data}"
+    return job_id
+
+
+def wait_for_job_completion(
+    host: str,
+    token: str,
+    ca_bundle_file: str,
+    tenant_namespace: str,
+    job_id: str,
+    timeout: int = GARAK_JOB_TIMEOUT,
+    poll_interval: int = GARAK_JOB_POLL_INTERVAL,
+) -> dict:
+    """Poll for garak job completion, returning the final job status."""
+    result = wait_for_evalhub_job(
+        host=host,
+        token=token,
+        ca_bundle_file=ca_bundle_file,
+        tenant=tenant_namespace,
+        job_id=job_id,
+        timeout=timeout,
+        sleep=poll_interval,
+    )
+    state = result.get("status", {}).get("state", "")
+    assert state == "completed", f"Job {job_id} ended with status '{state}': {result}"
+    return result
+
+
+# ---------------------------------------------------------------------------
+# ServiceAccount helpers
+# ---------------------------------------------------------------------------
+
+
+def wait_for_service_account(
+    admin_client: DynamicClient,
+    namespace: str,
+    sa_name: str,
+    timeout: int = 360,
+) -> ServiceAccount:
+    """Wait for a ServiceAccount to be created in the given namespace."""
+    LOGGER.info(f"Waiting for ServiceAccount '{sa_name}' in namespace '{namespace}'")
+
+    def _sa_exists() -> ServiceAccount | None:
+        try:
+            sa = ServiceAccount(client=admin_client, name=sa_name, namespace=namespace)
+            if sa.exists:
+                return sa
+        except (
+            ValueError,
+            AttributeError,
+        ):
+            pass
+        return None
+
+    for sa in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=10,
+        func=_sa_exists,
+    ):
+        if sa is not None:
+            LOGGER.info(f"ServiceAccount '{sa_name}' found in namespace '{namespace}'")
+            return sa
+
+    raise TimeoutError(f"ServiceAccount '{sa_name}' not found in namespace '{namespace}' within {timeout}s")

@@ -18,6 +18,7 @@ EVALHUB_PLURAL: str = "evalhubs"
 
 # Multi-tenancy
 EVALHUB_TENANT_LABEL_KEY: str = "evalhub.trustyai.opendatahub.io/tenant"
+EVALHUB_TENANT_LABEL_VALUE: str = "true"
 EVALHUB_COLLECTIONS_PATH: str = "/api/v1/evaluations/collections"
 EVALHUB_PROVIDERS_ACCESS_CLUSTERROLE: str = "trustyai-service-operator-evalhub-providers-access"
 EVALHUB_MT_CR_NAME: str = "evalhub-mt"
@@ -26,3 +27,27 @@ EVALHUB_VLLM_EMULATOR_PORT: int = 8000
 # ClusterRole names (kustomize namePrefix applied by operator install)
 EVALHUB_JOBS_WRITER_CLUSTERROLE: str = "trustyai-service-operator-evalhub-jobs-writer"
 EVALHUB_JOB_CONFIG_CLUSTERROLE: str = "trustyai-service-operator-evalhub-job-config"
+
+# Shared RBAC rules for EvalHub user access
+EVALHUB_USER_ROLE_RULES: list[dict[str, list[str]]] = [
+    {
+        "apiGroups": ["trustyai.opendatahub.io"],
+        "resources": ["evaluations", "collections", "providers"],
+        "verbs": ["get", "list", "create", "update", "delete"],
+    },
+    {
+        "apiGroups": ["mlflow.kubeflow.org"],
+        "resources": ["experiments"],
+        "verbs": ["create", "get"],
+    },
+]
+
+# Garak provider
+GARAK_PROVIDER_ID: str = "garak-kfp"
+GARAK_BENCHMARK_ID: str = "quick"
+GARAK_JOB_TIMEOUT: int = 1800  # 30 minutes
+GARAK_JOB_POLL_INTERVAL: int = 30  # seconds
+
+# Job service account naming
+EVALHUB_JOB_SA_PREFIX: str = "evalhub-"
+EVALHUB_JOB_SA_SUFFIX: str = "-job"
