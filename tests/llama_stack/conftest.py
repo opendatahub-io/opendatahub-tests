@@ -289,7 +289,7 @@ def llama_stack_server_config(
 
     if params.get("llama_stack_storage_size"):
         if IS_DISCONNECTED_CLUSTER:
-            LOGGER.info("Skipping storage_size configuration on disconnected clusters due to known bug RHAIENG-1819")
+            LOGGER.warning("Skipping storage_size configuration on disconnected clusters due to known bug RHAIENG-1819")
         else:
             storage_size = params.get("llama_stack_storage_size")
             server_config["storage"] = {"size": storage_size}
