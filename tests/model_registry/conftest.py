@@ -482,9 +482,13 @@ def pytest_collection_modifyitems(items: list[Item], config: pytest.Config) -> N
     remaining = []
     for item in items:
         callspec = getattr(item, "callspec", None)
-        if callspec and "test_requires_default_db" in item.keywords:
-            db_name = callspec.params.get("model_registry_metadata_db_resources", {}).get("db_name")
-            if db_name != "default":
+        if callspec:
+            if "test_requires_default_db" in item.keywords:
+                db_name = callspec.params.get("model_registry_metadata_db_resources", {}).get("db_name")
+                if db_name != "default":
+                    deselected.append(item)
+                    continue
+            if "test_huggingface_source" in item.keywords and "test_skip_on_huggingface_source" in item.keywords:
                 deselected.append(item)
                 continue
         remaining.append(item)
