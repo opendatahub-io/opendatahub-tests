@@ -21,6 +21,8 @@ from utilities.constants import (
     KServeDeploymentType,
     LLMdInferenceSimConfig,
     RuntimeTemplates,
+    Timeout,
+    VLLMGPUConfig,
 )
 from utilities.inference_utils import create_isvc
 from utilities.infra import get_data_science_cluster, wait_for_dsc_status_ready
@@ -196,7 +198,7 @@ def llm_d_inference_sim_isvc(
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             model_format=LLMdInferenceSimConfig.name,
             runtime=llm_d_inference_sim_serving_runtime.name,
-            wait_for_predictor_pods=True,
+            wait_for_predictor_pods=False,
             min_replicas=1,
             max_replicas=1,
             resources={
@@ -205,6 +207,12 @@ def llm_d_inference_sim_isvc(
             },
             teardown=teardown_resources,
         ) as isvc:
+            deployment = Deployment(
+                client=admin_client,
+                name=f"{isvc.name}-predictor",
+                namespace=model_namespace.name,
+            )
+            deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_2MIN)
             yield isvc
 
 
@@ -244,4 +252,114 @@ def patched_dsc_kserve_headed(
             yield dsc
     else:
         LOGGER.info("DSC already configured for Headed mode")
+        yield dsc
+
+
+@pytest.fixture(scope="class")
+def vllm_gpu_runtime(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+) -> Generator[ServingRuntime, Any, Any]:
+
+    with ServingRuntimeFromTemplate(
+        client=admin_client,
+        name="vllm-runtime-gpu",
+        namespace=model_namespace.name,
+        template_name=RuntimeTemplates.VLLM_CUDA,
+        deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
+        runtime_image=(
+            "registry.redhat.io/rhaiis/vllm-cuda-rhel9@"
+            "sha256:ec799bb5eeb7e25b4b25a8917ab5161da6b6f1ab830cbba61bba371cffb0c34d"
+        ),
+        containers={
+            "kserve-container": {
+                "command": ["python", "-m", "vllm.entrypoints.openai.api_server"],
+                "args": [
+                    "--port=8080",
+                    "--model=/mnt/models",
+                    "--tokenizer=/mnt/models",
+                    "--served-model-name={{.Name}}",
+                    "--dtype=float16",
+                    "--enforce-eager",
+                ],
+                "ports": [{"containerPort": 8080, "protocol": "TCP"}],
+                "resources": {"limits": {"nvidia.com/gpu": "1"}},
+            }
+        },
+    ) as runtime:
+        yield runtime
+
+
+@pytest.fixture(scope="class")
+def qwen_gpu_isvc(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    vllm_gpu_runtime: ServingRuntime,
+) -> Generator[InferenceService, Any, Any]:
+
+    with create_isvc(
+        client=admin_client,
+        name="qwen3b",
+        namespace=model_namespace.name,
+        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+        model_format="vLLM",
+        runtime=vllm_gpu_runtime.name,
+        storage_uri=(
+            "oci://quay.io/trustyai_testing/models/qwen2.5-3b-instruct@"
+            "sha256:6f9d9843599a9959de23c76d6b5adb556505482a7e732b2fcbca695a9c4ce545"
+        ),
+        enable_auth=False,
+        wait_for_predictor_pods=True,
+        resources={
+            "requests": {
+                "cpu": "2",
+                "memory": "8Gi",
+                "nvidia.com/gpu": "1",
+            },
+            "limits": {
+                "cpu": "4",
+                "memory": "12Gi",
+                "nvidia.com/gpu": "1",
+            },
+        },
+    ) as isvc:
+        yield isvc
+
+
+def get_vllm_chat_config(namespace: str) -> dict[str, Any]:
+    return {
+        "service": {
+            "hostname": VLLMGPUConfig.get_hostname(namespace),
+            "port": VLLMGPUConfig.port,
+        }
+    }
+
+
+@pytest.fixture(scope="class")
+def patched_dsc_garak_kfp(admin_client) -> Generator[DataScienceCluster]:
+    """Configure the DataScienceCluster for Garak and KFP (Kubeflow Pipelines) testing.
+
+    This fixture patches the DataScienceCluster to enable:
+        - KServe in Headed mode (using Service port instead of Pod port)
+        - AI Pipelines component in Managed state
+        - MLflow operator in Managed state
+
+    Waits for the DSC to be ready before yielding.
+    """
+
+    dsc = get_data_science_cluster(client=admin_client)
+    with ResourceEditor(
+        patches={
+            dsc: {
+                "spec": {
+                    "components": {
+                        "kserve": {"rawDeploymentServiceConfig": "Headed"},
+                        "aipipelines": {"managementState": "Managed"},
+                        "mlflowoperator": {"managementState": "Managed"},
+                    }
+                }
+            }
+        }
+    ):
+        wait_for_dsc_status_ready(dsc_resource=dsc)
         yield dsc

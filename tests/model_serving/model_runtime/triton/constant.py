@@ -31,7 +31,10 @@ TRITON_REST_PORT: int = 8080
 TRITON_GRPC_PORT: int = 9000
 
 
-TRITON_IMAGE: str = "nvcr.io/nvidia/tritonserver:24.10-py3"
+# Updated to 25.02 - last Triton release with TensorFlow backend included by default
+# TensorFlow backend was deprecated in 25.03 and removed in 26.x+
+# See: https://docs.nvidia.com/deeplearning/triton-inference-server/release-notes/
+TRITON_IMAGE: str = "nvcr.io/nvidia/tritonserver:25.02-py3"
 
 
 MODEL_PATH_PREFIX_KERAS: str = "triton_resnet/model_repository"

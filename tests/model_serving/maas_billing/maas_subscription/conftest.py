@@ -10,26 +10,19 @@ from ocp_resources.maas_auth_policy import MaaSAuthPolicy
 from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.namespace import Namespace
-from ocp_resources.resource import ResourceEditor
 from ocp_resources.service_account import ServiceAccount
 from pytest_testconfig import config as py_config
 
 from tests.model_serving.maas_billing.maas_subscription.utils import (
-    create_and_yield_api_key_id,
-    create_api_key,
     create_maas_subscription,
     patch_llmisvc_with_maas_router_and_tiers,
-    resolve_api_key_username,
-    revoke_api_key,
-    wait_for_auth_ready,
 )
-from tests.model_serving.maas_billing.utils import build_maas_headers
+from tests.model_serving.maas_billing.utils import build_maas_headers, create_api_key, revoke_api_key
 from utilities.general import generate_random_name
-from utilities.infra import create_inference_token, get_openshift_token, login_with_user_password
+from utilities.infra import create_inference_token, login_with_user_password
 from utilities.llmd_constants import ContainerImages, ModelStorage
 from utilities.llmd_utils import create_llmisvc
 from utilities.plugins.constant import OpenAIEnpoints
-from utilities.resources.auth import Auth
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -140,6 +133,12 @@ def maas_subscription_tinyllama_premium(
     ) as maas_subscription_premium:
         maas_subscription_premium.wait_for_condition(condition="Ready", status="True", timeout=300)
         yield maas_subscription_premium
+
+
+@pytest.fixture(scope="class")
+def models_url(base_url: str) -> str:
+    """GET /v1/models endpoint URL."""
+    return f"{base_url}/v1/models"
 
 
 @pytest.fixture(scope="class")
@@ -586,203 +585,3 @@ def free_actor_premium_subscription(
             f"on premium model {maas_model_tinyllama_premium.name}"
         )
         yield sub_for_free_actor
-
-
-@pytest.fixture(scope="function")
-def two_active_api_key_ids(
-    request_session_http: requests.Session,
-    base_url: str,
-    ocp_token_for_actor: str,
-) -> Generator[list[str], Any, Any]:
-    """
-    Create two active API keys and return their IDs for list tests.
-    """
-    ids = [
-        create_api_key(
-            base_url=base_url,
-            ocp_user_token=ocp_token_for_actor,
-            request_session_http=request_session_http,
-            api_key_name=f"e2e-fixture-list-{i}-{generate_random_name()}",
-        )[1]["id"]
-        for i in range(1, 3)
-    ]
-    LOGGER.info(f"two_active_api_key_ids: created keys {ids}")
-    yield ids
-    for key_id in ids:
-        LOGGER.info(f"Fixture teardown: revoking key {key_id}")
-        revoke_api_key(
-            request_session_http=request_session_http,
-            base_url=base_url,
-            key_id=key_id,
-            ocp_user_token=ocp_token_for_actor,
-        )
-
-
-@pytest.fixture(scope="function")
-def three_active_api_key_ids(
-    request_session_http: requests.Session,
-    base_url: str,
-    ocp_token_for_actor: str,
-) -> Generator[list[str], Any, Any]:
-    """Create three active API keys and yield their IDs for bulk-revoke tests."""
-    key_ids = [
-        create_api_key(
-            base_url=base_url,
-            ocp_user_token=ocp_token_for_actor,
-            request_session_http=request_session_http,
-            api_key_name=f"e2e-bulk-key-{index}-{generate_random_name()}",
-        )[1]["id"]
-        for index in range(1, 4)
-    ]
-    LOGGER.info(f"three_active_api_key_ids: created keys {key_ids}")
-    yield key_ids
-    for key_id in key_ids:
-        LOGGER.info(f"three_active_api_key_ids: teardown revoking key {key_id}")
-        revoke_resp, _ = revoke_api_key(
-            request_session_http=request_session_http,
-            base_url=base_url,
-            key_id=key_id,
-            ocp_user_token=ocp_token_for_actor,
-        )
-        if revoke_resp.status_code not in (200, 404):
-            raise AssertionError(f"Unexpected teardown status for key id={key_id}: {revoke_resp.status_code}")
-
-
-@pytest.fixture(scope="function")
-def active_api_key_id(
-    request_session_http: requests.Session,
-    base_url: str,
-    ocp_token_for_actor: str,
-) -> Generator[str, Any, Any]:
-    """
-    Create a single active API key and return its ID for revoke tests.
-    """
-    yield from create_and_yield_api_key_id(
-        request_session_http=request_session_http,
-        base_url=base_url,
-        ocp_user_token=ocp_token_for_actor,
-        key_name_prefix="e2e-fixture-key",
-    )
-
-
-@pytest.fixture(scope="function")
-def free_user_username(
-    request_session_http: requests.Session,
-    base_url: str,
-    ocp_token_for_actor: str,
-    active_api_key_id: str,
-) -> str:
-    """Resolve and return the free (non-admin) actor's username from their active API key."""
-    username = resolve_api_key_username(
-        request_session_http=request_session_http,
-        base_url=base_url,
-        key_id=active_api_key_id,
-        ocp_user_token=ocp_token_for_actor,
-    )
-    LOGGER.info(f"free_user_username: resolved username from key id={active_api_key_id}")
-    return username
-
-
-@pytest.fixture(scope="function")
-def admin_username(
-    request_session_http: requests.Session,
-    base_url: str,
-    admin_ocp_token: str,
-    admin_active_api_key_id: str,
-) -> str:
-    """Resolve and return the admin actor's username from their active API key."""
-    username = resolve_api_key_username(
-        request_session_http=request_session_http,
-        base_url=base_url,
-        key_id=admin_active_api_key_id,
-        ocp_user_token=admin_ocp_token,
-    )
-    LOGGER.info(f"admin_username: resolved username from key id={admin_active_api_key_id}")
-    return username
-
-
-@pytest.fixture(scope="function")
-def admin_active_api_key_id(
-    request_session_http: requests.Session,
-    base_url: str,
-    admin_ocp_token: str,
-) -> Generator[str, Any, Any]:
-    """Create an active API key as the admin user, yield its ID, and revoke on teardown."""
-    yield from create_and_yield_api_key_id(
-        request_session_http=request_session_http,
-        base_url=base_url,
-        ocp_user_token=admin_ocp_token,
-        key_name_prefix="e2e-authz-admin",
-    )
-
-
-@pytest.fixture(scope="class")
-def admin_ocp_token(admin_client: DynamicClient) -> Generator[str, Any, Any]:
-    """Temporarily adds dedicated-admins to Auth CR adminGroups so the admin token is recognised by MaaS."""
-    auth = Auth(client=admin_client, name="auth")
-    current_groups: list[str] = list(auth.instance.spec.adminGroups or [])
-    patched_groups = list(set(current_groups + ["dedicated-admins"]))
-
-    auth_conditions = (auth.instance.status or {}).get("conditions") or []
-    ready_before = next(
-        (condition for condition in auth_conditions if condition.get("type") == "Ready"),
-        {},
-    )
-    baseline_time: str = ready_before.get("lastTransitionTime", "")
-
-    LOGGER.info(f"admin_ocp_token: patching Auth CR adminGroups to {patched_groups}")
-    with ResourceEditor(patches={auth: {"spec": {"adminGroups": patched_groups}}}):
-        wait_for_auth_ready(auth=auth, baseline_time=baseline_time)
-        auth_conditions_after = (auth.instance.status or {}).get("conditions") or []
-        ready_after = next(
-            (condition for condition in auth_conditions_after if condition.get("type") == "Ready"),
-            {},
-        )
-        cleanup_baseline_time: str = ready_after.get("lastTransitionTime", "")
-        yield get_openshift_token(client=admin_client)
-
-    wait_for_auth_ready(auth=auth, baseline_time=cleanup_baseline_time)
-
-
-@pytest.fixture(scope="function")
-def revoked_api_key_id(
-    request_session_http: requests.Session,
-    base_url: str,
-    ocp_token_for_actor: str,
-    active_api_key_id: str,
-) -> str:
-    """
-    Revoke the active API key and return its ID.
-
-    Asserts the DELETE response confirms status='revoked'.
-    Used as a precondition fixture for tests that verify revoked state persists.
-    """
-    revoke_resp, revoke_body = revoke_api_key(
-        request_session_http=request_session_http,
-        base_url=base_url,
-        key_id=active_api_key_id,
-        ocp_user_token=ocp_token_for_actor,
-    )
-    assert revoke_resp.status_code == 200, (
-        f"Expected 200 on DELETE /v1/api-keys/{active_api_key_id}, "
-        f"got {revoke_resp.status_code}: {revoke_resp.text[:200]}"
-    )
-    assert revoke_body.get("status") == "revoked", f"Expected status='revoked' in DELETE response, got: {revoke_body}"
-    LOGGER.info(f"revoked_api_key_id: revoked key id={active_api_key_id}")
-    return active_api_key_id
-
-
-@pytest.fixture(scope="function")
-def short_expiration_api_key_id(
-    request_session_http: requests.Session,
-    base_url: str,
-    ocp_token_for_actor: str,
-) -> Generator[str, Any, Any]:
-    """Create an API key with 1-hour expiration, yield its ID, and revoke on teardown."""
-    yield from create_and_yield_api_key_id(
-        request_session_http=request_session_http,
-        base_url=base_url,
-        ocp_user_token=ocp_token_for_actor,
-        key_name_prefix="e2e-exp-short",
-        expires_in="1h",
-    )

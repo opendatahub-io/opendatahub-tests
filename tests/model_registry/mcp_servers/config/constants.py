@@ -1,8 +1,20 @@
+DEFAULT_MCP_LABEL: str = "Red Hat"
+
+EXPECTED_DEFAULT_MCP_CATALOG: dict = {
+    "name": "Red Hat MCP Servers",
+    "id": "rh_mcp_servers",
+    "type": "yaml",
+    "enabled": True,
+    "properties": {
+        "yamlCatalogPath": "/shared-data/redhat-mcp-servers-catalog.yaml",
+    },
+    "labels": ["Red Hat"],
+}
+
 CALCULATOR_SERVER_NAME: str = "calculator"
 CALCULATOR_PROVIDER: str = "Math Community"
 MCP_CATALOG_SOURCE_ID: str = "test_mcp_servers"
 MCP_CATALOG_SOURCE_NAME: str = "Test MCP Servers"
-MCP_CATALOG_API_PATH: str = "/api/mcp_catalog/v1alpha1/"
 MCP_SERVERS_YAML_CATALOG_PATH: str = "mcp-servers.yaml"
 
 MCP_SERVERS_YAML: str = """\

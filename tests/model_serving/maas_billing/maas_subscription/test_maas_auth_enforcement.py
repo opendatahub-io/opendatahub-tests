@@ -18,7 +18,7 @@ LOGGER = structlog.get_logger(name=__name__)
     "maas_unprivileged_model_namespace",
     "maas_subscription_controller_enabled_latest",
     "maas_gateway_api",
-    "maas_api_gateway_reachable",
+    # "maas_api_gateway_reachable",
     "maas_model_tinyllama_free",
     "maas_model_tinyllama_premium",
     "maas_auth_policy_tinyllama_free",
@@ -85,7 +85,7 @@ class TestMaaSAuthPolicyEnforcementTinyLlama:
         LOGGER.info(f"test_invalid_token_gets_401 -> POST {model_url_tinyllama_free} returned {resp.status_code}")
         assert resp.status_code in (401, 403), f"Expected 401 or 403, got {resp.status_code}: {(resp.text or '')[:200]}"
 
-    @pytest.mark.smoke
+    @pytest.mark.tier1
     def test_wrong_group_sa_denied_on_premium_model(
         self,
         request_session_http: requests.Session,

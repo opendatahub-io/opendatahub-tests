@@ -22,9 +22,10 @@ LOGGER = structlog.get_logger(name=__name__)
     "maas_model_tinyllama_premium",
     "maas_auth_policy_tinyllama_premium",
     "maas_subscription_tinyllama_premium",
+    "minimal_subscription_for_free_user",
 )
 class TestMultipleAuthPoliciesPerModel:
-    @pytest.mark.smoke
+    @pytest.mark.tier1
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
     def test_premium_model_denies_free_actor_by_default(
         self,
@@ -51,7 +52,7 @@ class TestMultipleAuthPoliciesPerModel:
             f"{baseline_response.status_code}: {(baseline_response.text or '')[:200]}"
         )
 
-    @pytest.mark.smoke
+    @pytest.mark.tier1
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
     def test_two_auth_policies_or_logic_allows_access(
         self,
