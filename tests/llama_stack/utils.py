@@ -81,7 +81,7 @@ def vector_store_create_and_poll(
     *,
     attributes: dict[str, str | int | float | bool] | None = None,
     poll_interval_sec: float = 5.0,
-    wait_timeout: float = 240.0,
+    wait_timeout: float = 300.0,
 ) -> VectorStoreFile:
     """Attach a file to a vector store and poll until processing finishes.
 
@@ -102,14 +102,16 @@ def vector_store_create_and_poll(
     Raises:
         TimeoutError: If wait_timeout is reached while status is still in_progress.
     """
+    start = time.monotonic()
+    request_timeout = max(1, int(wait_timeout - (time.monotonic() - start)))
     vs_file = llama_stack_client.vector_stores.files.create(
         vector_store_id=vector_store_id,
         file_id=file_id,
-        timeout=240,  # Increased timeout for slow processing (e.g., sentence-transformers)
+        timeout=request_timeout,
         attributes=dict(attributes) if attributes else attributes,
     )
     terminal_statuses = ("completed", "failed", "cancelled")
-    deadline = time.monotonic() + wait_timeout
+    deadline = start + wait_timeout
 
     while vs_file.status == "in_progress":
         if time.monotonic() >= deadline:

@@ -17,7 +17,6 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from semver import Version
 
-import utilities
 from tests.llama_stack.constants import (
     HTTPS_PROXY,
     LLAMA_STACK_DISTRIBUTION_SECRET_DATA,
@@ -44,6 +43,7 @@ from tests.llama_stack.utils import (
     wait_for_llama_stack_client_ready,
     wait_for_unique_llama_stack_pod,
 )
+from utilities import infra
 from utilities.constants import Annotations, DscComponents
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.general import generate_random_name
@@ -76,7 +76,7 @@ def enabled_llama_stack_operator(dsc_resource: DataScienceCluster) -> Generator[
 @pytest.fixture(scope="class")
 def is_disconnected_cluster(admin_client: DynamicClient) -> bool:
     """Whether the target cluster is disconnected (air-gapped)."""
-    return utilities.infra.is_disconnected_cluster(client=admin_client)
+    return infra.is_disconnected_cluster(client=admin_client)
 
 
 @pytest.fixture(scope="class")
