@@ -89,3 +89,24 @@ class TestMCPServerNamedQueries:
             f"Expected {expected_count} server(s) for namedQuery + '{filter_query}', got {len(items)}"
         )
         assert {server["name"] for server in items} == expected_names
+
+
+@pytest.mark.tier1
+class TestMCPServerFilterOptionsNamedQueries:
+    """Tests for RHOAIENG-56783: MCP server filter_options should not contain model-specific namedQueries."""
+
+    @pytest.mark.xfail(reason="RHOAIENG-56783: MCP filter_options returns model-specific namedQueries")
+    def test_filter_options_no_named_queries(
+        self: Self,
+        mcp_catalog_rest_urls: list[str],
+        model_registry_rest_headers: dict[str, str],
+    ):
+        """Validate that MCP filter_options does not return any namedQueries."""
+        response = execute_get_command(
+            url=f"{mcp_catalog_rest_urls[0]}mcp_servers/filter_options",
+            headers=model_registry_rest_headers,
+        )
+        named_queries = response.get("namedQueries", {})
+        LOGGER.info(f"MCP filter_options namedQueries: {named_queries}")
+
+        assert not named_queries, f"MCP filter_options should not contain namedQueries, got: {named_queries}"
