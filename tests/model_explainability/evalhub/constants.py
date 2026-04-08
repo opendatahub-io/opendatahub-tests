@@ -44,10 +44,13 @@ EVALHUB_USER_ROLE_RULES: list[dict[str, list[str]]] = [
 
 # Garak provider
 GARAK_PROVIDER_ID: str = "garak-kfp"
-GARAK_BENCHMARK_ID: str = "quick"
+GARAK_BENCHMARK_ID: str = "intents"
 GARAK_JOB_TIMEOUT: int = 1800  # 30 minutes
 GARAK_JOB_POLL_INTERVAL: int = 30  # seconds
 
 # Job service account naming
 EVALHUB_JOB_SA_PREFIX: str = "evalhub-"
 EVALHUB_JOB_SA_SUFFIX: str = "-job"
+
+# Garak intents CSV
+GARAK_INTENTS_S3_KEY: str = "intents/misinformation_prompts.csv"

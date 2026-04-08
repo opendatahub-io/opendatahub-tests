@@ -76,6 +76,7 @@ class TestGarakBenchmark:
         dsp_access_for_job_sa,
         garak_tenant_rbac_ready: None,
         garak_sim_isvc_url: str,
+        garak_intents_csv: str,
     ) -> None:
         """Submit a garak quick benchmark evaluation job using LLM-d inference simulator."""
         kfp_endpoint = f"https://ds-pipeline-dspa.{tenant_namespace.name}.svc.cluster.local:8443"
@@ -98,6 +99,25 @@ class TestGarakBenchmark:
                             "s3_endpoint": f"http://minio-dspa.{tenant_namespace.name}.svc.cluster.local:9000",
                             "s3_bucket": "mlpipeline",
                             "verify_ssl": False,
+                        },
+                        # Skip the SDGHub step, it'll fail to produce a dataset with our dummy model
+                        "intents_s3_key": garak_intents_csv,
+                        "intents_models": { # This is a required parameter even if not used in practice
+                            "judge": {
+                                "url": garak_sim_isvc_url,
+                                "name": LLMdInferenceSimConfig.model_name
+                            }
+                        },
+                        "garak_config": {
+                            "plugins": {
+                                # We only run one single probe to speed up computation
+                                "probe_spec": "spo.SPOIntent",
+                                # Instead of using the default model as a judge, we use a test detector
+                                "detector_spec": "always.Fail",
+                            },
+                            "run": {
+                                "generations": 1
+                            }
                         }
                     },
                 }
