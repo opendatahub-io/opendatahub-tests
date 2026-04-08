@@ -45,14 +45,12 @@ def mlflow_deployment_ready(
     admin_client: DynamicClient,
 ) -> Deployment:
     """Verify the existing MLflow deployment is available. Skip if not deployed."""
-    try:
-        deployment = Deployment(
-            client=admin_client,
-            name="mlflow",
-            namespace=MLFLOW_NAMESPACE,
-            ensure_exists=True,
-        )
-    except Exception:  # noqa: BLE001
+    deployment = Deployment(
+        client=admin_client,
+        name="mlflow",
+        namespace=MLFLOW_NAMESPACE,
+    )
+    if not deployment.exists:
         pytest.skip("MLflow deployment not found in opendatahub namespace — deploy MLflow first")
     deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
     return deployment
