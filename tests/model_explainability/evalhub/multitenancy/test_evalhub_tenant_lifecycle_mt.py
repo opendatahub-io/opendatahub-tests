@@ -14,7 +14,7 @@ from tests.model_explainability.evalhub.constants import (
     EVALHUB_MT_CR_NAME,
     EVALHUB_TENANT_LABEL_KEY,
 )
-from tests.model_explainability.evalhub.utils import tenant_rbac_ready
+from tests.model_explainability.evalhub.utils import tenant_rbac_absent, tenant_rbac_ready
 from utilities.infra import create_ns
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -70,14 +70,14 @@ class TestEvalHubTenantLifecycle:
 
             # Wait for operator to clean up RBAC
             try:
-                for ready in TimeoutSampler(
+                for absent in TimeoutSampler(
                     wait_timeout=120,
                     sleep=5,
-                    func=tenant_rbac_ready,
+                    func=tenant_rbac_absent,
                     admin_client=admin_client,
                     namespace=ns.name,
                 ):
-                    if not ready:
+                    if absent:
                         LOGGER.info(f"Operator RBAC cleaned up in {ns.name}")
                         break
             except TimeoutExpiredError:

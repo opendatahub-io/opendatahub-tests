@@ -788,6 +788,28 @@ def tenant_rbac_ready(admin_client: DynamicClient, namespace: str) -> bool:
     return has_job_config and has_job_writer and has_job_sa and has_service_ca_cm
 
 
+def tenant_rbac_absent(admin_client: DynamicClient, namespace: str) -> bool:
+    """Check that all operator-managed RBAC resources have been removed.
+
+    Returns True only when both RoleBindings, the job ServiceAccount,
+    and the service-CA ConfigMap are all gone.
+    """
+    rbs = list(RoleBinding.get(client=admin_client, namespace=namespace))
+    has_job_config = any(
+        rb.instance.roleRef.name == EVALHUB_JOB_CONFIG_CLUSTERROLE and rb.name.startswith(EVALHUB_MT_CR_NAME)
+        for rb in rbs
+    )
+    has_job_writer = any(
+        rb.instance.roleRef.name == EVALHUB_JOBS_WRITER_CLUSTERROLE and rb.name.startswith(EVALHUB_MT_CR_NAME)
+        for rb in rbs
+    )
+    sas = list(ServiceAccount.get(client=admin_client, namespace=namespace))
+    has_job_sa = any(sa.name.startswith(EVALHUB_MT_CR_NAME) and "job" in sa.name for sa in sas)
+    cms = list(ConfigMap.get(client=admin_client, namespace=namespace))
+    has_service_ca_cm = any(cm.name.startswith(EVALHUB_MT_CR_NAME) and "service-ca" in cm.name for cm in cms)
+    return not has_job_config and not has_job_writer and not has_job_sa and not has_service_ca_cm
+
+
 # ---------------------------------------------------------------------------
 # Garak-specific helpers
 # ---------------------------------------------------------------------------
