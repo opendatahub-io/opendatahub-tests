@@ -273,8 +273,8 @@ class TestEvalHubK8sMultiBenchmarkJob:
             parsed = json.loads(raw)
             specs_by_index[int(parsed["benchmark_index"])] = parsed
 
-        assert specs_by_index[0].get("num_examples") == 8
-        assert specs_by_index[1].get("num_examples") == 3
+        assert specs_by_index[0]["parameters"]["num_examples"] == 8
+        assert specs_by_index[1]["parameters"]["num_examples"] == 3
 
 
 @pytest.mark.parametrize(
