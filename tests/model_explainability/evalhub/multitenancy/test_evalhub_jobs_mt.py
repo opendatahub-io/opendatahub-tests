@@ -631,7 +631,17 @@ class TestEvalHubJobsMT:
         assert "next" in body, "Expected 'next' pagination link"
 
         # Second page via next href
-        next_url = f"https://{evalhub_mt_route.host}{body['next']['href']}"
+        next_href = body["next"]["href"]
+        if next_href.startswith("http"):
+            from urllib.parse import urlparse
+
+            parsed = urlparse(next_href)
+            assert parsed.hostname == evalhub_mt_route.host, (
+                f"next href points to unexpected host: {parsed.hostname} != {evalhub_mt_route.host}"
+            )
+            next_url = next_href
+        else:
+            next_url = f"https://{evalhub_mt_route.host}{next_href}"
         resp2 = requests.get(
             url=next_url,
             headers=headers,
