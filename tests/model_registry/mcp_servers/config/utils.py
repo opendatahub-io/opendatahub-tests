@@ -2,7 +2,7 @@ import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 
-from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG
+MCP_CATALOG_SOURCES_CM: str = "mcp-catalog-sources"
 
 
 def exclude_default_mcp_servers(response: dict, default_mcp_servers: dict) -> list[dict]:
@@ -14,7 +14,7 @@ def exclude_default_mcp_servers(response: dict, default_mcp_servers: dict) -> li
 def get_mcp_catalog_sources(admin_client: DynamicClient, model_registry_namespace: str) -> tuple[ConfigMap, dict]:
     """Return the catalog ConfigMap and its parsed sources.yaml data."""
     catalog_config_map = ConfigMap(
-        name=DEFAULT_CUSTOM_MODEL_CATALOG,
+        name=MCP_CATALOG_SOURCES_CM,
         client=admin_client,
         namespace=model_registry_namespace,
     )

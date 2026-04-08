@@ -15,7 +15,7 @@ from ocp_resources.pod import Pod
 from ocp_resources.prometheus import Prometheus
 from ocp_resources.route import Route
 from pyhelper_utils.shell import run_command
-from timeout_sampler import retry
+from timeout_sampler import TimeoutExpiredError, retry
 
 from utilities.certificates_utils import get_ca_bundle
 from utilities.constants import Timeout
@@ -34,13 +34,98 @@ def ns_from_file(file: str) -> str:
     return Path(file).stem.removeprefix("test_").replace("_", "-")[:63]
 
 
+def _debug_info_conditions(llmisvc: LLMInferenceService) -> str:
+    """Return debug info containing LLMISVC status conditions."""
+    conditions = llmisvc.instance.status.get("conditions", [])
+    lines = []
+    for condition in conditions:
+        line = f"  * {condition['type']}: {condition['status']}"
+        if condition.get("reason"):
+            line += f" reason={condition['reason']}"
+        if condition.get("message"):
+            line += f" message={condition['message']}"
+        lines.append(line)
+    return "\n".join(lines) or "  (no conditions)"
+
+
+def _debug_info_pod_statuses(llmisvc: LLMInferenceService) -> str:
+    """Return debug info containing pod phase, restart count, and waiting reasons."""
+    pods = list(
+        Pod.get(
+            client=llmisvc.client,
+            namespace=llmisvc.namespace,
+            label_selector=(
+                f"{Pod.ApiGroup.APP_KUBERNETES_IO}/part-of=llminferenceservice,"
+                f"{Pod.ApiGroup.APP_KUBERNETES_IO}/name={llmisvc.name}"
+            ),
+        )
+    )
+    if not pods:
+        return "  (no pods found)"
+
+    lines = []
+    for pod in pods:
+        phase = pod.instance.status.phase
+        all_statuses = (pod.instance.status.get("initContainerStatuses") or []) + (
+            pod.instance.status.get("containerStatuses") or []
+        )
+        restarts = sum(container_status.get("restartCount", 0) for container_status in all_statuses)
+        parts = [f"* pod={pod.name} phase={phase} restarts={restarts}"]
+
+        for container_status in all_statuses:
+            state = container_status.get("state") or {}
+            waiting = state.get("waiting")
+            if waiting:
+                # Container is currently waiting (e.g. CrashLoopBackOff, ImagePullBackOff)
+                reason = waiting.get("reason", "Unknown")
+                message = waiting.get("message", "")
+                parts.append(f"{reason}" + (f": {message}" if message else ""))
+            elif container_status.get("restartCount", 0) > 0:
+                # Container is running but has restarted — show why it last crashed
+                terminated = (container_status.get("lastState") or {}).get("terminated")
+                if terminated:
+                    parts.append(
+                        f" {container_status['name']}: last terminated"
+                        f" reason={terminated.get('reason', 'Unknown')}"
+                        f" exitCode={terminated.get('exitCode', '?')}"
+                    )
+
+        lines.append("  " + " | ".join(parts))
+    return "\n".join(lines)
+
+
+def _log_llmisvc_debug_info(llmisvc: LLMInferenceService) -> None:
+    """Log debug info related to LLMISVC timeout: conditions and pod statuses."""
+    name, ns = llmisvc.name, llmisvc.namespace
+    separator = "=" * 60
+    sections = [
+        f"\n{separator}",
+        f"  LLMISVC {name} timed out in {ns}",
+        separator,
+    ]
+    for label, func in [
+        ("Conditions", lambda: _debug_info_conditions(llmisvc)),
+        ("Pods", lambda: _debug_info_pod_statuses(llmisvc)),
+    ]:
+        try:
+            sections.append(f"\n {label}:\n{func()}")
+        except Exception:  # noqa: BLE001
+            sections.append(f"\n {label}:\n  (failed to collect)")
+    sections.append(separator + "\n")
+    LOGGER.error("\n".join(sections))
+
+
 def wait_for_llmisvc(llmisvc: LLMInferenceService, timeout: int = Timeout.TIMEOUT_5MIN) -> None:
     """Wait for LLMISVC to reach Ready condition. Raises on timeout."""
-    llmisvc.wait_for_condition(
-        condition="Ready",
-        status="True",
-        timeout=timeout,
-    )
+    try:
+        llmisvc.wait_for_condition(
+            condition="Ready",
+            status="True",
+            timeout=timeout,
+        )
+    except TimeoutExpiredError:
+        _log_llmisvc_debug_info(llmisvc)
+        raise
     LOGGER.info(f"LLMInferenceService {llmisvc.name} is Ready in namespace {llmisvc.namespace}")
 
 

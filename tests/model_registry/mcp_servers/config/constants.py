@@ -179,11 +179,17 @@ MCP_CATALOG_INVALID_SOURCE: dict = {
 
 NAMED_QUERIES: dict = {
     "production_ready": {
-        "verifiedSource": {"operator": "=", "value": True},
+        "assetType": "mcp_servers",
+        "filters": {
+            "verifiedSource": {"operator": "=", "value": True},
+        },
     },
     "security_focused": {
-        "sast": {"operator": "=", "value": True},
-        "readOnlyTools": {"operator": "=", "value": True},
+        "assetType": "mcp_servers",
+        "filters": {
+            "sast": {"operator": "=", "value": True},
+            "readOnlyTools": {"operator": "=", "value": True},
+        },
     },
 }
 
