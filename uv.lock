@@ -1718,7 +1718,7 @@ name = "pexpect"
 version = "4.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "ptyprocess" },
+    { name = "ptyprocess", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/42/92/cc564bf6381ff43ce1f4d06852fc19a2f11d180f23dc32d9588bee2f149d/pexpect-4.9.0.tar.gz", hash = "sha256:ee7d41123f3c9911050ea2c2dac107568dc43b2d3b0c7557a33212c398ead30f", size = 166450, upload-time = "2023-11-25T09:07:26.339Z" }
 wheels = [
@@ -2428,25 +2428,25 @@ wheels = [
 
 [[package]]
 name = "rfc3161-client"
-version = "1.0.5"
+version = "1.0.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/85/19/c04a07f9926943b6a6945ae6972dc2c3c79b7f02e2be6346e3010a48d5f5/rfc3161_client-1.0.5.tar.gz", hash = "sha256:f1a2e32e2a053455cee1ff9b325b88dbc7c66c8882dde60962add92f572df5c5", size = 60966, upload-time = "2025-09-23T10:47:15.906Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/66/a7/be3b086133a87d595e7b11564931d5e5283edeeabba05dfee636a34b4dab/rfc3161_client-1.0.6.tar.gz", hash = "sha256:9969262fe6c08ecce39f9fe3996cf412187793834a022a643803090db5aae6b4", size = 106710, upload-time = "2026-04-08T14:15:05.66Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f3/11/96bc76086113b8d24291f7f72826739d4fc8d8e83683e27125b8966d0cea/rfc3161_client-1.0.5-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:8a54fdb2f9e64481272b89137a7b71403cf1d30f5505c2e0c15a47a1cc100264", size = 473872, upload-time = "2025-09-23T10:46:56.987Z" },
-    { url = "https://files.pythonhosted.org/packages/80/45/19224e046d76f214d056c40a2086d9147afb0bcadc0c823c2c8bd54d62aa/rfc3161_client-1.0.5-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:d9ed8e597d0ee7387da1945e1583c4516b26f133770b3956e079606e2d90b69c", size = 458218, upload-time = "2025-09-23T10:46:58.485Z" },
-    { url = "https://files.pythonhosted.org/packages/27/d7/0511f1423f1658b708cfa27043a21b06699ba7c2aef37ba465379b81c24d/rfc3161_client-1.0.5-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:61c04b4953453e5c26a1949c20adac415b65cd062dab0960574d6c36240222d2", size = 2396335, upload-time = "2025-09-23T10:47:00.111Z" },
-    { url = "https://files.pythonhosted.org/packages/bc/d3/f93d1af5d9a1fed348ef543d39418aff02b0badf019b772f128c3483321c/rfc3161_client-1.0.5-cp39-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:31b6ee79f15b93d90952efd0395bb3f5ebf07941469c5c6eb32f9b64312cda6e", size = 1805162, upload-time = "2025-09-23T10:47:01.912Z" },
-    { url = "https://files.pythonhosted.org/packages/69/51/0b30e3542fdf7adeb9f6afac1f095c543328a1a28c9d220f4e2207c6b845/rfc3161_client-1.0.5-cp39-abi3-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:9c53a6711bab0c3f77dc9cf1e2fd750da475ff7abbc40ffe0333d8c518a8a9c8", size = 2115530, upload-time = "2025-09-23T10:47:03.816Z" },
-    { url = "https://files.pythonhosted.org/packages/2e/b9/4da9f80da4ac30b9645c9a3455e71c4f6652ed886f20e11bfb9a01bcacd0/rfc3161_client-1.0.5-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:09c47582ecea2ca4a3debf8a1eda775cc3d5ae1379da40272cc065d32e639a7a", size = 2124925, upload-time = "2025-09-23T10:47:05.386Z" },
-    { url = "https://files.pythonhosted.org/packages/46/ed/f173556ddbd667e9f4642f8f7eb0f920e3e3be4b7459ec98c73a5029200d/rfc3161_client-1.0.5-cp39-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:d31d30e354d2349ae8483ce811ef61498a3780daf8622c0b79d8cd44d271b46b", size = 2695972, upload-time = "2025-09-23T10:47:07.272Z" },
-    { url = "https://files.pythonhosted.org/packages/84/97/2ca7bdbb2d84b75fad7f572264a45c0b54446a7a65735172275c09293bd6/rfc3161_client-1.0.5-cp39-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:ae440461a310ae097417afe536d9d22fd71c95fbc9d21db3561b2707bed0aff0", size = 2096478, upload-time = "2025-09-23T10:47:08.736Z" },
-    { url = "https://files.pythonhosted.org/packages/da/94/9e16134e04a45347eaad5680f8f52b0388664b45be09a0877daa196e1157/rfc3161_client-1.0.5-cp39-abi3-musllinux_1_2_i686.whl", hash = "sha256:8fb34470e867a29cc15dc4987ea14f19d3bd25c863e132b6f75dca583e2cc67e", size = 2243602, upload-time = "2025-09-23T10:47:10.196Z" },
-    { url = "https://files.pythonhosted.org/packages/c2/13/85b6a5b5247f79dfa75d80a2e8f8d415472ff7fd72b31d152e00f71198b9/rfc3161_client-1.0.5-cp39-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:3106f3361a5a36789f43d2700e5678c847a9d3460a23f455f4c20cd39314c557", size = 2296304, upload-time = "2025-09-23T10:47:11.594Z" },
-    { url = "https://files.pythonhosted.org/packages/e7/0a/f7991ff6158a00ed79d6e151ede63ae50bef650cf49436cea7226a0457dc/rfc3161_client-1.0.5-cp39-abi3-win32.whl", hash = "sha256:078e4bbf0770ddc472e2ca96cf1e23efd0c313e6682b4c2c9765e1fdf09f55a3", size = 1917793, upload-time = "2025-09-23T10:47:12.92Z" },
-    { url = "https://files.pythonhosted.org/packages/47/28/140516906a2117e15c37505d54968e9cc9a8275d042b195728f5ffc2ad02/rfc3161_client-1.0.5-cp39-abi3-win_amd64.whl", hash = "sha256:e904430e27e75a5a379fc4aac09bd60ba5f4b48054f0481b2fb417297e404047", size = 2313057, upload-time = "2025-09-23T10:47:14.243Z" },
+    { url = "https://files.pythonhosted.org/packages/57/b1/262af0901e1507a4e21d268091f1f7b738b44bca424b9bd481981828a7e8/rfc3161_client-1.0.6-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:9a98e9c7ff632d9571fcea25fb70bde0e8339b86368aef67a65f6a301f125733", size = 474975, upload-time = "2026-04-08T14:14:31.559Z" },
+    { url = "https://files.pythonhosted.org/packages/8a/b6/da7caa10c2a3e01f244ad116ffe2cc87056fa71a7dd76453faab2fc2c6ad/rfc3161_client-1.0.6-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:0b3920334f7334ec3bb9c319d53a5d08cd43b6883f75e2669cfd869cd264d53a", size = 467442, upload-time = "2026-04-08T14:14:33.556Z" },
+    { url = "https://files.pythonhosted.org/packages/64/dd/5c92004ca167ae182f543aedc7a7a8bebeb0668ade7263b82212e4b4c59d/rfc3161_client-1.0.6-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:1671b1be16480ea54c0d36239efd0fb62c13dd572a9865a5e91fea39f1b95303", size = 2435049, upload-time = "2026-04-08T14:14:35.062Z" },
+    { url = "https://files.pythonhosted.org/packages/c4/19/c44702336aed367c6513493c4df9e880db8c4df37d5cd8d525aac9aad827/rfc3161_client-1.0.6-cp39-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:63355099d932851eac507806bb9d0937dab546a66d5857d888168799ec635f6d", size = 1850399, upload-time = "2026-04-08T14:14:36.707Z" },
+    { url = "https://files.pythonhosted.org/packages/64/fa/5af9bbfd4dcd9926463a95c4de6ea137176252d7a1d0b96533f6c85f2742/rfc3161_client-1.0.6-cp39-abi3-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:2bc9835467f6166edd6f876470484e5b294ee141add6eff6a59f5047937aaa75", size = 2174593, upload-time = "2026-04-08T14:14:38.764Z" },
+    { url = "https://files.pythonhosted.org/packages/53/3c/32a0c7de4d63a69eb97e2564e5f1d51879ec93232b0c5ac1ec444843acba/rfc3161_client-1.0.6-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:e3caffaebf43242b000c4a6659d60eaf19c3b161ccbe05b15634a856c9ea7e61", size = 2177997, upload-time = "2026-04-08T14:14:40.641Z" },
+    { url = "https://files.pythonhosted.org/packages/e5/8d/4253affe1d1e221369ad3043f5d697fc3f5d7fcb439d21add84c65cafc53/rfc3161_client-1.0.6-cp39-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:b7ad54288a49379b01b1d0d9d15167d2b7c6c7f940332ab85eeb4a6e844da8c7", size = 2745033, upload-time = "2026-04-08T14:14:42.82Z" },
+    { url = "https://files.pythonhosted.org/packages/1c/f0/eed22d6ed52d36b1eab3dfe56b9f507e22a328e3d018b84d48877ad7abe7/rfc3161_client-1.0.6-cp39-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:85a1d71d1eb2c9bced2b3eb75e96f9fe49732ec2567b5dafa1dd889fff42b7fe", size = 2145631, upload-time = "2026-04-08T14:14:44.901Z" },
+    { url = "https://files.pythonhosted.org/packages/a2/bb/feeacd1859e364080729b9cded1129b740eeea54c6d61ff12daceed4b7dd/rfc3161_client-1.0.6-cp39-abi3-musllinux_1_2_i686.whl", hash = "sha256:1be4e1133f0f7fe875629f2c358285503c1cfc79cebfbc3fb4e28b8a57d6f1a4", size = 2328742, upload-time = "2026-04-08T14:14:46.743Z" },
+    { url = "https://files.pythonhosted.org/packages/6a/f5/2df8e402f069a6af2db1f21d1c88d5a929398923265189a0141709a6f25c/rfc3161_client-1.0.6-cp39-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:bc379167238df32cbcc1dc9c324088559c1734331030f5293d75f4fd37b5f4f6", size = 2386899, upload-time = "2026-04-08T14:14:48.59Z" },
+    { url = "https://files.pythonhosted.org/packages/a5/1b/f78c75c6c92a0f5de46a86b7f39cf9bb8fb5980fbd684a56f46f031dbce6/rfc3161_client-1.0.6-cp39-abi3-win32.whl", hash = "sha256:8631f7db7c1327bf87ee6a9a8681b4cd6bc2a90aae651388f29d045cd9ff1ac9", size = 1966796, upload-time = "2026-04-08T14:14:50.215Z" },
+    { url = "https://files.pythonhosted.org/packages/26/10/6e54860ae82e4ed5665fd3f1d798a8f68f7bac321431f444640da6f93600/rfc3161_client-1.0.6-cp39-abi3-win_amd64.whl", hash = "sha256:4ef4b096abe7d55b020526e39932c2721939a6c55e9a5cd3b3e77897a0942937", size = 2386738, upload-time = "2026-04-08T14:14:52.364Z" },
 ]
 
 [[package]]
