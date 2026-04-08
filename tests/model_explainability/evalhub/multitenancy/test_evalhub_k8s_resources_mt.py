@@ -435,7 +435,7 @@ class TestEvalHubK8sJobDeleteBehaviour:
             minimum=1,
         )
 
-        delete_evalhub_job(
+        resp = delete_evalhub_job(
             host=evalhub_mt_route.host,
             token=tenant_a_token,
             ca_bundle_file=evalhub_mt_ca_bundle_file,
@@ -443,6 +443,7 @@ class TestEvalHubK8sJobDeleteBehaviour:
             job_id=job_id,
             hard_delete=True,
         )
+        assert resp.status_code == 204
 
         wait_for_evalhub_runtime_resources_absent(
             admin_client=admin_client,
