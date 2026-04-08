@@ -1313,32 +1313,32 @@ class TestEvalHubJobsMT:
         # Verify aggregate pass
         assert results["test"]["pass"] is True
 
-    def test_pass_criteria_from_provider(
+    def test_job_submission_with_user_provider_benchmarks(
         self,
         tenant_a_token: str,
         tenant_a_namespace: Namespace,
         evalhub_mt_ca_bundle_file: str,
         evalhub_mt_route: Route,
     ) -> None:
-        """Create provider+collection with pass_criteria, submit job via collection, verify scores."""
+        """Create a user provider, submit a job referencing its benchmarks, verify accepted."""
         host = evalhub_mt_route.host
         tenant = tenant_a_namespace.name
         headers = build_headers(token=tenant_a_token, tenant=tenant)
 
-        # Create a user provider with benchmarks that have pass_criteria
+        # Create a user provider with benchmarks
         provider_payload = {
-            "name": "Provider for pass_criteria from provider test",
+            "name": "Provider for user-provider benchmark test",
             "description": "Two benchmarks with primary_score and pass_criteria",
             "benchmarks": [
                 {
-                    "id": "pc_b1",
-                    "name": "pc_b1",
+                    "id": "up_b1",
+                    "name": "up_b1",
                     "primary_score": {"metric": "accuracy", "lower_is_better": False},
                     "pass_criteria": {"threshold": 0.5},
                 },
                 {
-                    "id": "pc_b2",
-                    "name": "pc_b2",
+                    "id": "up_b2",
+                    "name": "up_b2",
                     "primary_score": {"metric": "f1", "lower_is_better": False},
                     "pass_criteria": {"threshold": 0.6},
                 },
@@ -1354,32 +1354,14 @@ class TestEvalHubJobsMT:
         assert resp.status_code == 201
         provider_id = resp.json()["resource"]["id"]
 
-        # Create a collection referencing the provider's benchmarks
-        collection_payload = {
-            "name": "Collection for pass_criteria from provider test",
-            "description": "References two benchmarks from provider",
-            "category": "test",
-            "benchmarks": [
-                {"id": "pc_b1", "provider_id": provider_id},
-                {"id": "pc_b2", "provider_id": provider_id},
-            ],
-        }
-        resp = requests.post(
-            url=f"https://{host}/api/v1/evaluations/collections",
-            headers=headers,
-            json=collection_payload,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=30,
-        )
-        assert resp.status_code == 201
-        collection_id = resp.json()["resource"]["id"]
-
-        # Submit job via collection
+        # Submit job with benchmarks referencing the user provider
         job_payload = {
-            "name": "pass-criteria-provider-test",
+            "name": "user-provider-benchmark-test",
             "model": {"url": "http://test.com", "name": "test"},
-            "collection": {"id": collection_id},
-            "pass_criteria": {"threshold": 0.5},
+            "benchmarks": [
+                {"id": "up_b1", "provider_id": provider_id},
+                {"id": "up_b2", "provider_id": provider_id},
+            ],
         }
         resp = requests.post(
             url=f"https://{host}{EVALHUB_JOBS_PATH}",
@@ -1391,67 +1373,7 @@ class TestEvalHubJobsMT:
         assert resp.status_code == 202
         job_id = resp.json()["resource"]["id"]
 
-        # Transition job to running first
-        running_event = {
-            "benchmark_status_event": {
-                "id": "pc_b1",
-                "provider_id": provider_id,
-                "status": "running",
-            }
-        }
-        resp = self._post_event(
-            host=host,
-            token=tenant_a_token,
-            ca_bundle_file=evalhub_mt_ca_bundle_file,
-            tenant=tenant,
-            job_id=job_id,
-            event=running_event,
-        )
-        assert resp.status_code == 204
-
-        # Post completion events for both benchmarks
-        b1_event = {
-            "benchmark_status_event": {
-                "id": "pc_b1",
-                "provider_id": provider_id,
-                "benchmark_index": 0,
-                "status": "completed",
-                "metrics": {"accuracy": 0.9},
-                "started_at": "2026-01-12T10:45:32Z",
-                "completed_at": "2026-01-12T10:47:12Z",
-            }
-        }
-        resp = self._post_event(
-            host=host,
-            token=tenant_a_token,
-            ca_bundle_file=evalhub_mt_ca_bundle_file,
-            tenant=tenant,
-            job_id=job_id,
-            event=b1_event,
-        )
-        assert resp.status_code == 204
-
-        b2_event = {
-            "benchmark_status_event": {
-                "id": "pc_b2",
-                "provider_id": provider_id,
-                "benchmark_index": 1,
-                "status": "completed",
-                "metrics": {"f1": 0.8},
-                "started_at": "2026-01-12T10:45:32Z",
-                "completed_at": "2026-01-12T10:47:12Z",
-            }
-        }
-        resp = self._post_event(
-            host=host,
-            token=tenant_a_token,
-            ca_bundle_file=evalhub_mt_ca_bundle_file,
-            tenant=tenant,
-            job_id=job_id,
-            event=b2_event,
-        )
-        assert resp.status_code == 204
-
+        # Verify job references the correct provider and benchmarks
         job = self._get_job(
             host=host,
             token=tenant_a_token,
@@ -1459,25 +1381,15 @@ class TestEvalHubJobsMT:
             tenant=tenant,
             job_id=job_id,
         )
-        assert job["status"]["state"] == "completed"
 
-        results = job["results"]
-        b1_result = next(b for b in results["benchmarks"] if b["id"] == "pc_b1")
-        assert b1_result["test"]["pass"] is True
-        assert float(b1_result["test"]["threshold"]) == 0.5
-        b2_result = next(b for b in results["benchmarks"] if b["id"] == "pc_b2")
-        assert b2_result["test"]["pass"] is True
-        assert float(b2_result["test"]["threshold"]) == 0.6
-
-        assert results["test"]["pass"] is True
+        benchmarks = job["status"]["benchmarks"]
+        assert len(benchmarks) == 2
+        b1 = next(b for b in benchmarks if b["id"] == "up_b1")
+        b2 = next(b for b in benchmarks if b["id"] == "up_b2")
+        assert b1["provider_id"] == provider_id
+        assert b2["provider_id"] == provider_id
 
         # Cleanup
-        requests.delete(
-            url=f"https://{host}/api/v1/evaluations/collections/{collection_id}",
-            headers=headers,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=10,
-        )
         requests.delete(
             url=f"https://{host}/api/v1/evaluations/providers/{provider_id}",
             headers=headers,

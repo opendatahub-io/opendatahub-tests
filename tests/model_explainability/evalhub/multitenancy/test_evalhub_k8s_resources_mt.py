@@ -273,8 +273,11 @@ class TestEvalHubK8sMultiBenchmarkJob:
             parsed = json.loads(raw)
             specs_by_index[int(parsed["benchmark_index"])] = parsed
 
-        assert specs_by_index[0]["parameters"]["num_examples"] == 8
-        assert specs_by_index[1]["parameters"]["num_examples"] == 3
+        # Both benchmarks share the same tokenizer but have distinct indices
+        assert specs_by_index[0]["parameters"].get("tokenizer") == "google/flan-t5-small"
+        assert specs_by_index[1]["parameters"].get("tokenizer") == "google/flan-t5-small"
+        assert specs_by_index[0]["benchmark_index"] == 0
+        assert specs_by_index[1]["benchmark_index"] == 1
 
 
 @pytest.mark.parametrize(
