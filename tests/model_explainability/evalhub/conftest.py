@@ -30,11 +30,11 @@ from tests.model_explainability.evalhub.constants import (
     EVALHUB_USER_ROLE_RULES,
     GARAK_INTENTS_S3_KEY,
 )
+from tests.model_explainability.evalhub.utils import wait_for_service_account
 from tests.model_registry.model_registry.python_client.signing.constants import (
     MINIO_MC_IMAGE,
     MINIO_UPLOADER_SECURITY_CONTEXT,
 )
-from tests.model_explainability.evalhub.utils import wait_for_service_account
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import Timeout
 from utilities.general import collect_pod_information

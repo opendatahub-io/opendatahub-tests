@@ -102,11 +102,8 @@ class TestGarakBenchmark:
                         },
                         # Skip the SDGHub step, it'll fail to produce a dataset with our dummy model
                         "intents_s3_key": garak_intents_csv,
-                        "intents_models": { # This is a required parameter even if not used in practice
-                            "judge": {
-                                "url": garak_sim_isvc_url,
-                                "name": LLMdInferenceSimConfig.model_name
-                            }
+                        "intents_models": {  # This is a required parameter even if not used in practice
+                            "judge": {"url": garak_sim_isvc_url, "name": LLMdInferenceSimConfig.model_name}
                         },
                         "garak_config": {
                             "plugins": {
@@ -115,10 +112,8 @@ class TestGarakBenchmark:
                                 # Instead of using the default model as a judge, we use a test detector
                                 "detector_spec": "always.Fail",
                             },
-                            "run": {
-                                "generations": 1
-                            }
-                        }
+                            "run": {"generations": 1},
+                        },
                     },
                 }
             ],
