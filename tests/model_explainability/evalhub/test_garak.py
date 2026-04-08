@@ -78,11 +78,11 @@ class TestGarakBenchmark:
         garak_sim_isvc_url: str,
         garak_intents_csv: str,
     ) -> None:
-        """Submit a garak quick benchmark evaluation job using LLM-d inference simulator."""
+        """Submit a garak intents benchmark evaluation job using LLM-d inference simulator."""
         kfp_endpoint = f"https://ds-pipeline-dspa.{tenant_namespace.name}.svc.cluster.local:8443"
 
         payload = {
-            "name": "garak-quick-test",
+            "name": "garak-intents-test",
             "model": {
                 "url": garak_sim_isvc_url,
                 "name": LLMdInferenceSimConfig.model_name,
@@ -123,7 +123,7 @@ class TestGarakBenchmark:
                 }
             ],
             "experiment": {
-                "name": "garak-quick-test",
+                "name": "garak-intents-test",
             },
         }
 
@@ -173,16 +173,16 @@ class TestGarakBenchmark:
         job_files = [line for line in lines if expected_prefix in line]
 
         # Check for expected output files
-        has_html_report = any("scan.report.jsonl" in f for f in job_files)
-        has_jsonl_report = any("scan.intents.html" in f for f in job_files)
+        has_html_report = any("scan.intents.html" in f for f in job_files)
+        has_jsonl_report = any("scan.report.jsonl" in f for f in job_files)
 
         if not has_html_report or not has_jsonl_report:
             # Output bucket contents for debugging
-            print(f"\n=== S3 bucket listing for debugging ===")
+            print("\n=== S3 bucket listing for debugging ===")
             print(f"Expected prefix: {expected_prefix}")
             print(f"Full bucket listing:\n{garak_s3_listing}")
             print(f"Files matching job prefix:\n{chr(10).join(job_files) if job_files else '(none)'}")
-            print(f"=== End S3 listing ===\n")
+            print("=== End S3 listing ===\n")
 
         assert has_html_report, f"Missing scan.intents.html in S3 outputs. Files found: {job_files}"
         assert has_jsonl_report, f"Missing scan.report.jsonl in S3 outputs. Files found: {job_files}"
