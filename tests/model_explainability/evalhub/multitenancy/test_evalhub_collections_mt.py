@@ -1182,7 +1182,7 @@ class TestEvalHubCollectionsFeature:
         if next_href.startswith("http"):
             from urllib.parse import urlparse
 
-            parsed = urlparse(next_href)
+            parsed = urlparse(url=next_href)
             assert parsed.hostname == evalhub_mt_route.host, (
                 f"next href points to unexpected host: {parsed.hostname} != {evalhub_mt_route.host}"
             )
