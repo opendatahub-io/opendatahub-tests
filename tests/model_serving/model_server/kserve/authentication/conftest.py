@@ -97,7 +97,7 @@ def patched_remove_raw_authentication_isvc(
             client=unprivileged_client,
             isvc=http_s3_ovms_raw_inference_service,
         )
-        wait_for_raw_isvc_https_infer_ready(http_s3_ovms_raw_inference_service, token=None)
+        wait_for_raw_isvc_https_infer_ready(isvc=http_s3_ovms_raw_inference_service, token=None)
         yield http_s3_ovms_raw_inference_service
 
     # ResourceEditor restores auth on exit; wait for ISVC to reconcile before next test
@@ -111,7 +111,7 @@ def patched_remove_raw_authentication_isvc(
         isvc=http_s3_ovms_raw_inference_service,
     )
     wait_for_raw_isvc_https_infer_ready(
-        http_s3_ovms_raw_inference_service,
+        isvc=http_s3_ovms_raw_inference_service,
         token=http_raw_inference_token,
     )
 
