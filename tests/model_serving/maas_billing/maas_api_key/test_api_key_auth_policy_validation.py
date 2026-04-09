@@ -44,8 +44,7 @@ class TestAuthPolicyApiKeyValidation:
         )
 
         LOGGER.info(
-            f"AuthPolicy callback URL correctly uses namespace "
-            f"'{py_config['applications_namespace']}': {callback_url}"
+            f"AuthPolicy callback URL correctly uses namespace '{py_config['applications_namespace']}': {callback_url}"
         )
 
     @pytest.mark.smoke
@@ -71,7 +70,4 @@ class TestAuthPolicyApiKeyValidation:
         models_list: list[dict] = models_response.json().get("data", [])
         assert models_list, "Expected at least one model from /v1/models"
 
-        LOGGER.info(
-            f"API key successfully listed {len(models_list)} model(s) "
-            f"via /v1/models (key id={api_key_id})"
-        )
+        LOGGER.info(f"API key successfully listed {len(models_list)} model(s) via /v1/models (key id={api_key_id})")

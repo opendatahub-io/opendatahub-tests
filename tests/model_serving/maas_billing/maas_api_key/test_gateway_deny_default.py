@@ -52,10 +52,7 @@ class TestGatewayDenyByDefault:
             f"message={accepted_condition.get('message')}"
         )
 
-        LOGGER.info(
-            f"{GATEWAY_DEFAULT_AUTH_NAME} correctly deployed to "
-            f"'{gateway_namespace}' and Accepted"
-        )
+        LOGGER.info(f"{GATEWAY_DEFAULT_AUTH_NAME} correctly deployed to '{gateway_namespace}' and Accepted")
 
     @pytest.mark.smoke
     def test_unconfigured_model_denies_unauthenticated_request(
@@ -66,10 +63,7 @@ class TestGatewayDenyByDefault:
         unconfigured_model_ref: MaaSModelRef,
     ) -> None:
         """Verify a model without MaaSAuthPolicy rejects unauthenticated requests with 403."""
-        inference_url = (
-            f"{maas_scheme}://{maas_host}/llm/{unconfigured_model_ref.name}"
-            f"{CHAT_COMPLETIONS}"
-        )
+        inference_url = f"{maas_scheme}://{maas_host}/llm/{unconfigured_model_ref.name}{CHAT_COMPLETIONS}"
 
         response = request_session_http.post(
             url=inference_url,
@@ -89,6 +83,5 @@ class TestGatewayDenyByDefault:
         )
 
         LOGGER.info(
-            f"Unconfigured model '{unconfigured_model_ref.name}' correctly "
-            f"denied unauthenticated request with 403"
+            f"Unconfigured model '{unconfigured_model_ref.name}' correctly denied unauthenticated request with 403"
         )
