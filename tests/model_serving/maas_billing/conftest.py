@@ -1068,26 +1068,47 @@ def maas_subscription_controller_enabled_latest(
     maas_subscription_namespace: Namespace,
 ) -> Generator[DataScienceCluster, Any, Any]:
     """
-    ensures postgres prerequisites and subscription namespace exist before MaaS is switched to Managed.
-    """
-    component_patch = {
-        DscComponents.KSERVE: {"modelsAsService": {"managementState": DscComponents.ManagementState.MANAGED}}
-    }
+    Ensures postgres prerequisites and subscription namespace exist before MaaS is ready.
 
-    with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
+    If modelsAsService is already Managed on the cluster, yields the DSC as-is.
+    Otherwise, patches the DSC to Managed and restores the original state on teardown.
+    """
+    kserve_component = dsc_resource.instance.spec.components[DscComponents.KSERVE]
+    current_state = getattr(getattr(kserve_component, "modelsAsService", None), "managementState", None)
+
+    if current_state == DscComponents.ManagementState.MANAGED:
+        LOGGER.info("modelsAsService is already Managed, skipping DSC patch")
         dsc_resource.wait_for_condition(
             condition="ModelsAsServiceReady",
             status="True",
-            timeout=900,
+            timeout=120,
         )
         dsc_resource.wait_for_condition(
             condition="Ready",
             status="True",
-            timeout=600,
+            timeout=120,
         )
         yield dsc_resource
+    else:
+        LOGGER.info(f"modelsAsService is {current_state!r}, patching DSC to Managed")
+        component_patch = {
+            DscComponents.KSERVE: {"modelsAsService": {"managementState": DscComponents.ManagementState.MANAGED}}
+        }
 
-    dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=600)
+        with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
+            dsc_resource.wait_for_condition(
+                condition="ModelsAsServiceReady",
+                status="True",
+                timeout=600,
+            )
+            dsc_resource.wait_for_condition(
+                condition="Ready",
+                status="True",
+                timeout=300,
+            )
+            yield dsc_resource
+
+        dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=300)
 
 
 @pytest.fixture(scope="class")
