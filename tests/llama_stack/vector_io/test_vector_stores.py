@@ -204,7 +204,7 @@ class TestLlamaStackVectorStores:
                 model=llama_stack_models.model_id,
                 instructions="Always use the file_search tool to look up information before answering.",
                 stream=False,
-                max_output_tokens=16384,
+                max_output_tokens=4096,
                 tools=[
                     {
                         "type": "file_search",
