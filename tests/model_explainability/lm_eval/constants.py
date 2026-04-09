@@ -119,3 +119,10 @@ ARC_EASY_DATASET_IMAGE: str = (
 
 LMEVAL_OCI_REPO = "lmeval/offline-oci"
 LMEVAL_OCI_TAG = "v1"
+
+# Accelerator identifier mapping for GPU types
+ACCELERATOR_IDENTIFIER: dict[str, str] = {
+    "nvidia": "nvidia.com/gpu",
+    "amd": "amd.com/gpu",
+    "gaudi": "habana.ai/gaudi",
+}

@@ -1522,7 +1522,7 @@ requires-dist = [
     { name = "marshmallow", specifier = ">=4.0" },
     { name = "model-registry", extras = ["signing"], specifier = ">=0.2.13" },
     { name = "openshift-python-utilities", specifier = ">=5.0.71" },
-    { name = "openshift-python-wrapper", specifier = ">=11.0.99" },
+    { name = "openshift-python-wrapper", specifier = ">=11.0.122" },
     { name = "portforward", specifier = ">=0.7.1" },
     { name = "protobuf" },
     { name = "pygithub", specifier = ">=2.5.0" },
@@ -1574,7 +1574,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/11/8c/5a03b7c28670dd355
 
 [[package]]
 name = "openshift-python-wrapper"
-version = "11.0.121"
+version = "11.0.122"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cloup" },
@@ -1594,7 +1594,7 @@ dependencies = [
     { name = "timeout-sampler" },
     { name = "xmltodict" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c1/0b/60d84c7c2570227b299c0004d8cef799e3cfddfb814a075a7c2531eee95d/openshift_python_wrapper-11.0.121.tar.gz", hash = "sha256:4e0f1bc66354262c3db06209eed78261321312414ec9e290fb645014334205ea", size = 5674123, upload-time = "2026-03-22T17:13:27.789Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b9/c3/ac5c206b40b9c95cff3f2e6f516632f34a2a7bf760b4d83c200265e1f37a/openshift_python_wrapper-11.0.122.tar.gz", hash = "sha256:6244c4863a038fac9b3506f39f80ebd0439576002176cf2a04ea0733664047d0", size = 5710861, upload-time = "2026-04-08T09:14:35.521Z" }
 
 [[package]]
 name = "openshift-python-wrapper-data-collector"

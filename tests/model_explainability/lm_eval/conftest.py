@@ -6,6 +6,7 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
+from ocp_resources.inference_service import InferenceService
 from ocp_resources.lm_eval_job import LMEvalJob
 from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
@@ -13,18 +14,22 @@ from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
+from ocp_resources.serving_runtime import ServingRuntime
 from pytest import Config, FixtureRequest
 
 from tests.model_explainability.lm_eval.constants import (
+    ACCELERATOR_IDENTIFIER,
     ARC_EASY_DATASET_IMAGE,
     FLAN_T5_IMAGE,
     LMEVAL_OCI_REPO,
     LMEVAL_OCI_TAG,
 )
 from tests.model_explainability.lm_eval.utils import get_lmevaljob_pod
-from utilities.constants import ApiGroups, Labels, MinIo, Protocols, Timeout
+from utilities.constants import ApiGroups, KServeDeploymentType, Labels, MinIo, Protocols, RuntimeTemplates, Timeout
 from utilities.exceptions import MissingParameter
 from utilities.general import b64_encoded_string
+from utilities.inference_utils import create_isvc
+from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 VLLM_EMULATOR: str = "vllm-emulator"
 VLLM_EMULATOR_PORT: int = 8000
@@ -543,6 +548,11 @@ def lmevaljob_s3_offline_pod(admin_client: DynamicClient, lmevaljob_s3_offline: 
 
 
 @pytest.fixture(scope="function")
+def lmevaljob_gpu_pod(admin_client: DynamicClient, lmevaljob_gpu: LMEvalJob) -> Generator[Pod, Any, Any]:
+    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_gpu)
+
+
+@pytest.fixture(scope="function")
 def lmeval_hf_access_token(
     admin_client: DynamicClient,
     model_namespace: Namespace,
@@ -564,3 +574,134 @@ def lmeval_hf_access_token(
         wait_for_resource=True,
     ) as secret:
         yield secret
+
+
+# GPU-based vLLM fixtures for SmolLM-1.7B
+@pytest.fixture(scope="function")
+def lmeval_vllm_serving_runtime(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    vllm_runtime_image: str,
+    supported_accelerator_type: str | None,
+) -> Generator[ServingRuntime]:
+    """vLLM ServingRuntime for GPU-based model deployment in LMEval tests."""
+    # Map accelerator type to runtime template
+    accelerator_to_template = {
+        "nvidia": RuntimeTemplates.VLLM_CUDA,
+        "amd": RuntimeTemplates.VLLM_ROCM,
+        "gaudi": RuntimeTemplates.VLLM_GAUDI,
+    }
+
+    if not supported_accelerator_type:
+        pytest.skip("supported_accelerator_type is required for GPU-backed vLLM tests")
+
+    accelerator_type = supported_accelerator_type.lower()
+    template_name = accelerator_to_template.get(accelerator_type)
+
+    if not template_name:
+        pytest.skip(f"Unsupported accelerator type for vLLM: {accelerator_type}")
+
+    with ServingRuntimeFromTemplate(
+        client=admin_client,
+        name="lmeval-vllm-runtime",
+        namespace=model_namespace.name,
+        template_name=template_name,
+        deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
+        runtime_image=vllm_runtime_image,
+        support_tgis_open_ai_endpoints=True,
+    ) as serving_runtime:
+        yield serving_runtime
+
+
+@pytest.fixture(scope="function")
+def lmeval_vllm_inference_service(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    lmeval_vllm_serving_runtime: ServingRuntime,
+    supported_accelerator_type: str | None,
+) -> Generator[InferenceService]:
+    """InferenceService for GPU-based model deployment in LMEval tests."""
+    model_path = "HuggingFaceTB/SmolLM-1.7B"
+    model_name = "lmeval-model"
+
+    # Get the correct GPU identifier based on accelerator type
+    accelerator_type = supported_accelerator_type.lower() if supported_accelerator_type else "nvidia"
+    gpu_identifier = ACCELERATOR_IDENTIFIER.get(accelerator_type, Labels.Nvidia.NVIDIA_COM_GPU)
+
+    resources = {
+        "requests": {
+            "cpu": "2",
+            "memory": "8Gi",
+            gpu_identifier: "1",
+        },
+        "limits": {
+            "cpu": "3",
+            "memory": "8Gi",
+            gpu_identifier: "1",
+        },
+    }
+
+    runtime_args = [
+        f"--model={model_path}",
+        "--dtype=float16",
+        "--max-model-len=2048",
+    ]
+
+    env_vars = [
+        {"name": "HF_HUB_OFFLINE", "value": "0"},
+        {"name": "HF_HUB_ENABLE_HF_TRANSFER", "value": "0"},
+    ]
+
+    with create_isvc(
+        client=admin_client,
+        name=model_name,
+        namespace=model_namespace.name,
+        runtime=lmeval_vllm_serving_runtime.name,
+        model_format=lmeval_vllm_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+        resources=resources,
+        argument=runtime_args,
+        model_env_variables=env_vars,
+        min_replicas=1,
+    ) as inference_service:
+        yield inference_service
+
+
+@pytest.fixture(scope="function")
+def lmevaljob_gpu(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    lmeval_vllm_inference_service: InferenceService,
+) -> Generator[LMEvalJob]:
+    """LMEvalJob for evaluating a GPU-deployed model via vLLM."""
+    model_path = "HuggingFaceTB/SmolLM-1.7B"
+    model_service = Service(
+        name=f"{lmeval_vllm_inference_service.name}-predictor",
+        namespace=lmeval_vllm_inference_service.namespace,
+    )
+
+    with LMEvalJob(
+        client=admin_client,
+        namespace=model_namespace.name,
+        name=LMEVALJOB_NAME,
+        model="local-completions",
+        task_list={"taskNames": ["arc_easy"]},
+        log_samples=True,
+        batch_size="1",
+        allow_online=True,
+        allow_code_execution=False,
+        outputs={"pvcManaged": {"size": "5Gi"}},
+        limit="0.01",
+        model_args=[
+            {"name": "model", "value": lmeval_vllm_inference_service.name},
+            {
+                "name": "base_url",
+                "value": f"http://{model_service.name}.{model_namespace.name}.svc.cluster.local:80/v1/completions",
+            },
+            {"name": "num_concurrent", "value": "1"},
+            {"name": "max_retries", "value": "3"},
+            {"name": "tokenized_requests", "value": "False"},
+            {"name": "tokenizer", "value": model_path},
+        ],
+    ) as lmevaljob:
+        yield lmevaljob
