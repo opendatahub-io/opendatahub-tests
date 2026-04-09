@@ -27,25 +27,23 @@ LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(
-    "updated_catalog_config_map, expected_catalog_values, is_huggingface",
+    "updated_catalog_config_map, expected_catalog_values",
     [
         pytest.param(
             {
                 "sources_yaml": get_hf_catalog_str(ids=["mixed"]),
             },
             EXPECTED_HF_CATALOG_VALUES,
-            True,
             id="test_HF_catalog_single_source",
-            marks=(pytest.mark.install),
+            marks=(pytest.mark.install, pytest.mark.test_huggingface_source),
         ),
         pytest.param(
             {
                 "sources_yaml": get_hf_catalog_str(ids=["mixed", "granite"]),
             },
             EXPECTED_MULTIPLE_HF_CATALOG_VALUES,
-            True,
             id="test_HF_catalog_multiple_sources",
-            marks=(pytest.mark.install),
+            marks=(pytest.mark.install, pytest.mark.test_huggingface_source),
         ),
         pytest.param(
             {
@@ -53,7 +51,6 @@ LOGGER = structlog.get_logger(name=__name__)
                 "sample_yaml": {"sample-custom-catalog1.yaml": get_sample_yaml_str(models=[SAMPLE_MODEL_NAME1])},
             },
             EXPECTED_CUSTOM_CATALOG_VALUES,
-            False,
             id="test_file_test_catalog",
             marks=(pytest.mark.pre_upgrade, pytest.mark.post_upgrade, pytest.mark.install),
         ),
@@ -66,11 +63,10 @@ LOGGER = structlog.get_logger(name=__name__)
                 },
             },
             MULTIPLE_CUSTOM_CATALOG_VALUES,
-            False,
             id="test_file_test_catalog_multiple_sources",
         ),
     ],
-    indirect=True,
+    indirect=["updated_catalog_config_map", "expected_catalog_values"],
 )
 @pytest.mark.usefixtures(
     "model_registry_namespace",
@@ -83,7 +79,6 @@ class TestModelCatalogCustom:
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         expected_catalog_values: dict[str, str],
-        is_huggingface: bool,
     ):
         """
         Validate sources api for model catalog
@@ -100,7 +95,6 @@ class TestModelCatalogCustom:
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         expected_catalog_values: dict[str, str],
-        is_huggingface: bool,
     ):
         """
         Validate models api for model catalog associated with a specific source
@@ -119,7 +113,6 @@ class TestModelCatalogCustom:
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         expected_catalog_values: dict[str, str],
-        is_huggingface: bool,
     ):
         """
         Get Model by name associated with a specific source
@@ -133,13 +126,13 @@ class TestModelCatalogCustom:
             )
             assert result["name"] == model_name
 
+    @pytest.mark.test_skip_on_huggingface_source
     def test_model_custom_catalog_get_model_artifact(
         self: Self,
         updated_catalog_config_map: tuple[ConfigMap, str, str],
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         expected_catalog_values: dict[str, str],
-        skip_on_huggingface_source: None,
     ):
         """
         Get Model artifacts for model associated with specific source
@@ -158,13 +151,12 @@ class TestModelCatalogCustom:
             assert artifacts[0]["uri"]
 
     @pytest.mark.dependency(name="test_model_custom_catalog_add_model")
+    @pytest.mark.test_skip_on_huggingface_source
     def test_model_custom_catalog_add_model(
         self: Self,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         expected_catalog_values: dict[str, str],
-        is_huggingface: bool,
-        skip_on_huggingface_source: None,
         update_configmap_data_add_model: dict[str, str],
     ):
         """
@@ -178,12 +170,12 @@ class TestModelCatalogCustom:
         assert result["name"] == SAMPLE_MODEL_NAME3
 
     @pytest.mark.dependency(depends=["test_model_custom_catalog_add_model"])
+    @pytest.mark.test_skip_on_huggingface_source
     def test_model_custom_catalog_remove_model(
         self: Self,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         expected_catalog_values: dict[str, str],
-        is_huggingface: bool,
     ):
         """
         Ensure models are removed from the catalog

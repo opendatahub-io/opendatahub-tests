@@ -14,6 +14,7 @@ from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 
+from tests.model_serving.model_server.utils import wait_for_raw_isvc_https_infer_ready
 from utilities.constants import (
     Annotations,
     KServeDeploymentType,
@@ -76,6 +77,7 @@ def http_raw_inference_token(model_service_account: ServiceAccount, http_raw_rol
 def patched_remove_raw_authentication_isvc(
     unprivileged_client: DynamicClient,
     http_s3_ovms_raw_inference_service: InferenceService,
+    http_raw_inference_token: str,
 ) -> Generator[InferenceService, Any, Any]:
     with ResourceEditor(
         patches={
@@ -95,6 +97,7 @@ def patched_remove_raw_authentication_isvc(
             client=unprivileged_client,
             isvc=http_s3_ovms_raw_inference_service,
         )
+        wait_for_raw_isvc_https_infer_ready(isvc=http_s3_ovms_raw_inference_service, token=None)
         yield http_s3_ovms_raw_inference_service
 
     # ResourceEditor restores auth on exit; wait for ISVC to reconcile before next test
@@ -106,6 +109,10 @@ def patched_remove_raw_authentication_isvc(
     wait_for_inference_deployment_replicas(
         client=unprivileged_client,
         isvc=http_s3_ovms_raw_inference_service,
+    )
+    wait_for_raw_isvc_https_infer_ready(
+        isvc=http_s3_ovms_raw_inference_service,
+        token=http_raw_inference_token,
     )
 
 
