@@ -95,7 +95,6 @@ class TestMCPServerNamedQueries:
 class TestMCPServerFilterOptionsNamedQueries:
     """Tests for RHOAIENG-56783: MCP server filter_options should not contain model-specific namedQueries."""
 
-    @pytest.mark.xfail(reason="RHOAIENG-56783: MCP filter_options returns model-specific namedQueries")
     def test_filter_options_no_named_queries(
         self: Self,
         mcp_catalog_rest_urls: list[str],
