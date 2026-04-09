@@ -34,14 +34,16 @@ class TestModelRegistrySecurityContextValidation:
         "deployment_model_registry_ns",
         [
             pytest.param({"deployment_name": MR_INSTANCE_NAME}),
-            pytest.param({"deployment_name": MR_POSTGRES_DEPLOYMENT_NAME_STR}),
+            pytest.param(
+                {"deployment_name": MR_POSTGRES_DEPLOYMENT_NAME_STR},
+                marks=pytest.mark.test_requires_default_db,
+            ),
         ],
         indirect=["deployment_model_registry_ns"],
     )
     @pytest.mark.tier2
     def test_model_registry_deployment_security_context_validation(
         self: Self,
-        skip_if_not_valid_check: None,
         deployment_model_registry_ns: Deployment,
     ):
         """
@@ -53,14 +55,17 @@ class TestModelRegistrySecurityContextValidation:
         "pod_model_registry_ns",
         [
             pytest.param({"deployment_name": MR_INSTANCE_NAME}, id="test_pod_scc_deployment_mr"),
-            pytest.param({"deployment_name": MR_POSTGRES_DEPLOYMENT_NAME_STR}, id="test_pod_scc_deployment_postgres"),
+            pytest.param(
+                {"deployment_name": MR_POSTGRES_DEPLOYMENT_NAME_STR},
+                id="test_pod_scc_deployment_postgres",
+                marks=pytest.mark.test_requires_default_db,
+            ),
         ],
         indirect=["pod_model_registry_ns"],
     )
     @pytest.mark.tier2
     def test_model_registry_pod_security_context_validation(
         self: Self,
-        skip_if_not_valid_check: None,
         pod_model_registry_ns: Pod,
         model_registry_scc_namespace: dict[str, str],
     ):
