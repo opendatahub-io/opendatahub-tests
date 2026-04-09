@@ -299,7 +299,7 @@ def supported_accelerator_type(pytestconfig: pytest.Config) -> str | None:
     if accelerator_type.lower() not in AcceleratorType.SUPPORTED_LISTS:
         raise ValueError(
             "accelerator type is not defined."
-            "Either pass with `--supported-accelerator-type` or set `SUPPORTED_ACCLERATOR_TYPE` environment variable"
+            "Either pass with `--supported-accelerator-type` or set `SUPPORTED_ACCELERATOR_TYPE` environment variable"
         )
     return accelerator_type
 
@@ -985,3 +985,26 @@ def oci_registry_route(admin_client: DynamicClient, oci_registry_service: Servic
 def oci_registry_host(oci_registry_route: Route) -> str:
     """Get the OCI registry host from the route"""
     return oci_registry_route.host
+
+
+@pytest.fixture(scope="session")
+def skip_if_no_supported_accelerator_type(supported_accelerator_type: str | None) -> None:
+    """Skip test if the required GPU accelerator type is not available.
+
+    Use this fixture for tests that validate GPU-specific functionality.
+    Note: vLLM supports CPU execution, but this fixture enforces GPU
+    requirements for tests that specifically need accelerator validation.
+    """
+    # GPU accelerators supported for vLLM GPU-specific testing
+    supported_gpu_accelerators = {
+        AcceleratorType.NVIDIA,
+        AcceleratorType.AMD,
+        AcceleratorType.GAUDI,
+    }
+
+    if not supported_accelerator_type or supported_accelerator_type.lower() not in supported_gpu_accelerators:
+        pytest.skip(
+            f"Test requires a supported GPU accelerator. "
+            f"Found: '{supported_accelerator_type or 'None'}'. "
+            f"Expected one of: {supported_gpu_accelerators}."
+        )
