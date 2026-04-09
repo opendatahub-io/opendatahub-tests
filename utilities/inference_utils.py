@@ -481,6 +481,14 @@ class UserInference(Inference):
                     f"{HTTPStatus.INTERNAL_SERVER_ERROR} error."
                 )
 
+            if re.search(rf"http/1\.\d\s+{HTTPStatus.BAD_REQUEST.value}\b", out.lower()) and (
+                "client sent an http request to an https server" in out.lower()
+            ):
+                raise InferenceResponseError(
+                    f"Inference route for {self.get_inference_url()} returned HTTP 400 "
+                    "(plain HTTP to TLS endpoint); likely route or predictor still reconciling."
+                )
+
         else:
             sanitized_cmd = re.sub(r"('Authorization: Bearer ).*?(')", r"\1***REDACTED***2", cmd)
             raise ValueError(f"Inference failed with error: {err}\nOutput: {out}\nCommand: {sanitized_cmd}")
