@@ -134,9 +134,9 @@ class TestModelRegistryCreationRest:
             ),
         ],
     )
+    @pytest.mark.test_requires_default_db
     def test_default_postgres_db_resource_exists(
         self: Self,
-        skip_if_not_default_db: None,
         admin_client: DynamicClient,
         kind: Any,
         resource_name: str,
@@ -157,9 +157,9 @@ class TestModelRegistryCreationRest:
         for field in ["controller", "blockOwnerDeletion"]:
             assert owner_reference[0][field] is True
 
+    @pytest.mark.test_requires_default_db
     def test_default_postgres_db_pod_log(
         self: Self,
-        skip_if_not_default_db: None,
         admin_client: DynamicClient,
         model_registry_namespace: str,
         model_registry_default_postgres_deployment_match_label: dict[str, str],

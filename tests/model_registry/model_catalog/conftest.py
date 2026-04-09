@@ -149,11 +149,6 @@ def expected_catalog_values(request: pytest.FixtureRequest) -> dict[str, str]:
     return request.param
 
 
-@pytest.fixture(scope="class")
-def is_huggingface(request: pytest.FixtureRequest) -> dict[str, str]:
-    return request.param
-
-
 @pytest.fixture(scope="function")
 def update_configmap_data_add_model(
     request: pytest.FixtureRequest,
@@ -374,6 +369,7 @@ def labels_configmap_patch(
             "name": "test-dynamic",
             "displayName": "Dynamic Test Label",
             "description": "A label added during test execution",
+            "assetType": "models",
         },
         {
             "name": "mcp-test-label",
@@ -397,12 +393,6 @@ def labels_configmap_patch(
         client=admin_client, model_registry_namespace=model_registry_namespace
     )
     wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
-
-
-@pytest.fixture()
-def skip_on_huggingface_source(is_huggingface: bool) -> None:
-    if is_huggingface:
-        pytest.skip(reason="Huggingface models does not support artifacts endpoints")
 
 
 @pytest.fixture()
