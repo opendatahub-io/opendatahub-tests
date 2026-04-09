@@ -18,7 +18,6 @@ from tests.model_serving.model_runtime.mlserver.constant import (
     BASE_RAW_DEPLOYMENT_CONFIG,
     LOCALHOST_URL,
     MODEL_PATH_PREFIX,
-    RAW_DEPLOYMENT_TYPE,
     OutputType,
 )
 from utilities.constants import KServeDeploymentType, Ports, Protocols
@@ -159,7 +158,7 @@ def validate_nondeterministic_snapshot(response: Any, protocol: str) -> None:
     when exact output matching is not feasible due to variability.
 
     Args:
-        response (Any): The raw inference response returned by the model server.
+        response (Any): The RawDeployment inference response returned by the model server.
         protocol (str): The communication protocol used to interact with the model server (e.g., 'rest').
 
     Raises:
@@ -229,52 +228,50 @@ def get_model_storage_uri_dict(
 
 def get_model_namespace_dict(
     model_format_name: str,
-    deployment_type: str = RAW_DEPLOYMENT_TYPE,
     modelcar: bool = False,
 ) -> dict[str, str]:
     """
     Generate a dictionary containing a unique model namespace or name identifier.
 
     The function constructs a name by concatenating the given model format
-    and deployment type using hyphens. It is useful for dynamically
+    and storage type using hyphens. It is useful for dynamically
     naming model-serving resources, configurations, or deployments.
 
     Args:
         model_format_name (str): The model format name (e.g., "sklearn").
-        deployment_type (str): The type of deployment. Defaults to "raw".
-        modelcar (bool): If True, use "modelcar" suffix instead of deployment type.
+        modelcar (bool): If True, use "modelcar" suffix defaults.
 
     Returns:
         dict[str, str]: A dictionary with the key "name" and a concatenated identifier as value.
-                        Example: {"name": "sklearn-raw"} or {"name": "sklearn-modelcar"}
+                        Example: {"name": "sklearn-s3"} or {"name": "sklearn-modelcar"}
     """
     if modelcar:
         name = f"{model_format_name.strip()}-modelcar"
     else:
-        name = f"{model_format_name.strip()}-{deployment_type.strip()}"
+        name = f"{model_format_name.strip()}-s3"
     return {"name": name}
 
 
 def get_deployment_config_dict(
     model_format_name: str,
-    deployment_type: str = RAW_DEPLOYMENT_TYPE,
+    deployment_mode: str = KServeDeploymentType.RAW_DEPLOYMENT,
 ) -> dict[str, str]:
     """
-    Generate a deployment configuration dictionary based on the model format and deployment type.
+    Generate a deployment configuration dictionary based on the model format and deployment mode.
 
-    This function merges a base deployment configuration (raw) with a given model format
+    This function merges a base deployment configuration (RawDeployment) with a given model format
     name to produce a complete configuration dictionary.
 
     Args:
         model_format_name (str): The model format name (e.g., "sklearn").
-        deployment_type (str): The deployment type. Defaults to "raw".
+        deployment_mode (str): The deployment mode. Defaults to "RawDeployment".
 
     Returns:
         dict[str, str]: A dictionary containing the deployment configuration.
     """
     deployment_config_dict = {}
 
-    if deployment_type == RAW_DEPLOYMENT_TYPE:
+    if deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
         deployment_config_dict = {"name": model_format_name, **BASE_RAW_DEPLOYMENT_CONFIG}
 
     return deployment_config_dict
@@ -282,21 +279,21 @@ def get_deployment_config_dict(
 
 def get_test_case_id(
     model_format_name: str,
-    deployment_type: str = RAW_DEPLOYMENT_TYPE,
+    deployment_mode: str = KServeDeploymentType.RAW_DEPLOYMENT,
     modelcar: bool = False,
 ) -> str:
     """
-    Generate a test case identifier string based on model format and deployment type.
+    Generate a test case identifier string based on model format and deployment mode.
 
     Args:
         model_format_name (str): The model format name (e.g., "sklearn").
-        deployment_type (str): The deployment type. Defaults to "raw".
+        deployment_mode (str): The deployment mode. Defaults to "RawDeployment".
         modelcar (bool): Whether this is a model car deployment. Defaults to False.
 
     Returns:
-        str: A test case ID in the format: "<model_format>-<storage_type>-<deployment_type>-deployment".
-              Example: "sklearn-s3-raw-deployment" or "sklearn-modelcar-raw-deployment"
+        str: A test case ID in the format: "<model_format>-<storage_type>-<deployment_mode>".
+              Example: "sklearn-s3-RawDeployment" or "sklearn-modelcar-RawDeployment"
     """
     storage_type = "modelcar" if modelcar else "s3"
-    base_id = f"{model_format_name.strip()}-{storage_type}-{deployment_type.strip()}-deployment"
+    base_id = f"{model_format_name.strip()}-{storage_type}-{deployment_mode.strip()}"
     return base_id

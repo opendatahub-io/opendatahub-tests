@@ -3,6 +3,9 @@
 End-to-end tests for MLServer inference using model car (OCI image-based) deployments.
 Models are packaged as OCI container images and deployed via KServe InferenceService with `storageUri: oci://...`.
 
+Main suite overview:
+[`mlserver/README.md`](../README.md)
+
 ## Supported Model Formats
 
 - sklearn
@@ -44,3 +47,8 @@ If model responses change and snapshots need to be updated, add the `--snapshot-
 ```bash
 OC_BINARY_PATH=/usr/local/bin/oc uv run pytest tests/model_serving/model_runtime/mlserver/model_car --snapshot-update
 ```
+
+## Related Suite
+
+For S3-based MLServer tests, see:
+[`mlserver/s3/README.md`](../s3/README.md)
